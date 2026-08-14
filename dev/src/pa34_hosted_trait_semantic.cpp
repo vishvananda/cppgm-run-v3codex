@@ -505,8 +505,7 @@ HostedTraitTemplateKind SemanticAnalyzer::ClassifyHostedTraitTemplate(
 	if (spelling == "__is_nothrow_invocable" &&
 		owner == program_->GlobalScope())
 		return HOSTED_TRAIT_TEMPLATE_NOTHROW_INVOCABLE;
-	if (program_->ParentScope(owner) != program_->GlobalScope() ||
-		program_->names.Get(program_->NameOfScope(owner)) != "std" ||
+	if (!program_->IsStandardNamespace(owner) ||
 		parameters.size() != 1)
 		return HOSTED_TRAIT_TEMPLATE_NONE;
 	if (spelling == "char_traits") return HOSTED_TRAIT_TEMPLATE_CHAR_TRAITS;

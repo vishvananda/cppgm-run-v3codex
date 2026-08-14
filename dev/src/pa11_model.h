@@ -793,6 +793,8 @@ public:
 	ScopeId ParentScope(ScopeId scope) const;
 	ScopeKind KindOfScope(ScopeId scope) const;
 	bool IsInlineNamespace(ScopeId scope) const;
+	bool IsStandardNamespace(ScopeId scope) const;
+	bool IsInStandardNamespace(ScopeId scope) const;
 	NameId NameOfScope(ScopeId scope) const;
 	EntityId EntityForScope(ScopeId scope) const;
 	std::size_t SizeOf(TypeId type) const;
@@ -940,6 +942,7 @@ private:
 	void IndexVirtualBase(EntityId derived, EntityId base,
 		std::uint32_t ordinal);
 
+	ScopeId standard_namespace_;
 	std::vector<ScopeRecord> scopes_;
 	std::vector<ChildEdge> child_edges_;
 	std::vector<UsingEdge> using_edges_;

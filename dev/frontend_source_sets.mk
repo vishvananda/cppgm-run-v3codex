@@ -32,6 +32,7 @@ FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_wide_constant_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_source_identity
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa19_template_shape_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_condition_semantic
+FRONTEND_OBJ_BASENAMES_cppgm++ += pa11_name_identity
 FRONTEND_OBJ_BASENAMES_lowiropt :=
 FRONTEND_OBJ_BASENAMES_lowir2cy86 := lowir_parse lowir_cy86
 FRONTEND_OBJ_BASENAMES_lowir2native := lowir_parse lowir_force_inline mir_model lowir_native_abi lowir_native_analysis lowir_native_eh lowir_native_host_eh lowir_native_mir lowir_native_object_elf lowir_native_program lowir_native_registers lowir_native_selection lowir_native_session lowir_native_stack lowir_native_varargs lowir_native_wide lowir_native lowir_native_elf

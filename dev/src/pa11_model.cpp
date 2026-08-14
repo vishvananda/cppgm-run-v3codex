@@ -200,62 +200,6 @@ private:
 
 }
 
-std::size_t MixHash(std::size_t seed, std::uint64_t value)
-{
-	std::uint64_t mixed = static_cast<std::uint64_t>(seed);
-	mixed ^= value + 0x9e3779b97f4a7c15ULL + (mixed << 6) + (mixed >> 2);
-	mixed ^= mixed >> 30;
-	mixed *= 0xbf58476d1ce4e5b9ULL;
-	mixed ^= mixed >> 27;
-	mixed *= 0x94d049bb133111ebULL;
-	mixed ^= mixed >> 31;
-	return static_cast<std::size_t>(mixed);
-}
-
-NameTable::NameTable(InternedStringTable& strings)
-	: strings_(strings), size_(0)
-{
-}
-
-NameId NameTable::Intern(const std::string& spelling)
-{
-	return InternRange(spelling, 0, spelling.size());
-}
-
-NameId NameTable::InternRange(const std::string& spelling,
-	std::size_t first, std::size_t count)
-{
-	return UseInterned(strings_.InternRange(spelling, first, count));
-}
-
-NameId NameTable::UseInterned(NameId name)
-{
-	(void)strings_.Get(name);
-	if (used_.size() <= name)
-		used_.resize(static_cast<std::size_t>(name) + 1, 0);
-	if (used_[name] == 0)
-	{
-		used_[name] = 1;
-		++size_;
-	}
-	return name;
-}
-
-const std::string& NameTable::Get(NameId name) const
-{
-	return strings_.Get(name);
-}
-
-std::size_t NameTable::Size() const
-{
-	return size_;
-}
-
-std::size_t NameTable::StorageBytes() const
-{
-	return used_.capacity() * sizeof(std::uint8_t);
-}
-
 NamePath::NamePath() : global(false), size_(0)
 {
 	std::fill(inline_parts_, inline_parts_ + 4, 0);
@@ -1030,7 +974,8 @@ Program::Program(InternedStringTable& strings)
 	  template_argument_list_requests(0),
 	  template_argument_list_cache_hits(0),
 	  template_argument_list_index_probes(0),
-	  using_edge_slots_(64, 0), visible_name_slots_(64, 0),
+	  standard_namespace_(kNoScope), using_edge_slots_(64, 0),
+	  visible_name_slots_(64, 0),
 	  using_name_relation_slots_(64, 0),
 	  using_name_invalidation_generation_(0), entry_slots_(64, 0),
 	  template_argument_list_slots_(32, 0),
@@ -1178,6 +1123,9 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline)
 	if (entry->name_space == kNoScope)
 	{
 		entry->name_space = NewScope(parent, SCOPE_NAMESPACE, name);
+		// Record the ABI-designated namespace once at semantic ingress.
+		if (parent == GlobalScope() && names.Get(name) == "std")
+			standard_namespace_ = entry->name_space;
 		InvalidateLookupName(parent, name);
 	}
 	if (is_inline)

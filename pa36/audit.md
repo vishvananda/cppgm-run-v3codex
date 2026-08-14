@@ -2,57 +2,61 @@
 
 ## Current Checkpoint Review
 
-Scope: landed checkpoint `1f918c84` and its changes to builtin call dispatch.
-The checkpoint correctly moved immediate intrinsic recognition ahead of the
-hosted `__builtin_x` -> `x` alias fallback, preserving `__builtin_alloca` as a
-canonical builtin call through lowering. Audit found the same ownership defect
-still present for two closed operations: `__builtin_invoke` remained after the
-fallback, and `__builtin_addressof` was implemented after the fallback inside
-the same mixed handler. Matching global `invoke` and `addressof` functions stole
-their calls; the representative collision program compiled and linked but
-returned 1 with the landed compiler.
+Scope: landed checkpoint `03e47d62`, which changed class-specialization owner
+facts so the leading standard namespace encodes as Itanium `St` instead of
+`3std`. The behavior is correct and raised the combined PA36 baseline from
+43/80 to 56/80, but the landed two-line classifier compared the rendered
+component string to `"std"` in ABI lowering. That left a relevant `spec.md`
+§§2, 6, and 10 violation: output identity was being rediscovered from
+presentation text rather than consumed from a canonical semantic fact.
 
-The repair separates generic alias lookup from closed compiler-builtin
-recognition and invokes the fallback only after every closed handler declines.
-The ref-generated course regression now returns 0 and its object has one direct
-relocation to the typed invocation target, with none to either colliding alias.
-This closes the checkpoint's `spec.md` §§2, 6, and 10 correctness/identity issue
-without broadening the hosted alias policy.
+The audit repair classifies the ABI-designated global `std` namespace once in
+`Program::OpenNamespace` after namespace lookup establishes its canonical
+`ScopeId`. `Program` retains that compact ID, and standard-template,
+initializer-list, hosted-trait, and class-owner ABI consumers query it by scope
+identity. `AppendClassTemplateOwner` still renders source names for the ABI fact
+payload, but selects `ABI_FUNCTION_RECORD_NAME_STD` from the owning entity's
+scope ancestry; it no longer parses or compares the rendered component.
 
-The affected ownership trace is source spelling -> closed semantic classifier
--> canonical builtin `BindingId` or typed invoke/address node -> typed LowIR ->
-function-local MIR -> direct ELF. `__builtin_alloca` reaches
-`BUILTIN_FUNCTION_ALLOCA`, then `STACK_ALLOC`, native stack adjustment, and ELF
-without an external symbol. Invoke consumes analyzed callable/member-pointer and
-conversion facts; addressof consumes the operand's type, value category, and
-binding fact. Neither lowering path performs lookup or name reconstruction.
+The complete affected trace is source namespace declaration -> interned
+`NameId` and canonical namespace `ScopeId` -> entity owner scope -> structured
+class-template owner facts -> non-numbered `NAME_STD` component -> Itanium `St`
+encoder state -> LowIR symbol identity and direct ELF definition/relocation.
+Template arguments remain canonical `TypeId`/argument facts, and the mangler's
+numbered substitution state remains continuous across the whole entity. No
+lowering lookup, rendered-name reconstruction, or hosted-only side channel is
+left on this path.
 
-Representation ownership is unchanged: dispatch adds no token, syntax,
-semantic, or IR copy and no retained phase pointer. Closed calls avoid the
-indexed global candidate lookup; unknown compatibility names alone may enter
-it. Dependent invoke calls continue through existing canonical specialization
-state and do not add replay, cache, invalidation, or retry behavior. No new
-container, allocation, whole-program scan, serializer, external tool, source
-path, test-name, or timeout path was introduced.
+The fact has translation-unit lifetime with `Program`; no token, syntax,
+semantic, LowIR, or MIR representation is duplicated and no phase-local pointer
+is retained. Demand state, specialization completion, emission worklists,
+per-function MIR, and direct ELF ownership are unchanged. Interned-name and
+designated-namespace identity code now lives in the responsibility-named
+`pa11_name_identity.cpp`, keeping `pa11_model.cpp` below its file-audit limit.
+The query adds only an owner-depth walk where ABI path construction already has
+the same O(depth) bound; it adds no allocation, cache, invalidation, global scan,
+retry loop, serializer, external tool, test/path shortcut, or timeout path.
 
-Three runs of the 83,073-token representative workload were stable at
-0.91/0.92/0.91 s and 43,160/43,336/43,316 KiB RSS, each with 231 functions,
-6,132 LowIR and 8,984 MIR instructions, 41,842,977 semantic peak bytes, and
-byte-identical 3,207,736-byte objects. The audit repair performed four fewer
-lookups and one fewer scope visit than the landed sample. The stack-pressure
-probe remained 0.01 s at 8,896 KiB, and all generated PA36 objects had zero
-undefined `alloca` symbols. Thus the dispatch boundary remains fixed work per
-direct call and adds no scaling-sensitive semantic or backend work.
+On the 136,183-token hosted stream workload, three release runs took
+1.33/1.33/1.34 s at 65,032/64,860/65,176 KiB RSS. Every run retained 45,257
+lookup queries, 69,440 scope visits, 2,608 template requests, 329 demand pushes,
+310 functions, 6,915 LowIR instructions, 9,936 MIR instructions, and 67,966,620
+semantic peak bytes. The 3,782,808-byte objects had identical SHA-256 hashes,
+host `St` spellings, and zero malformed `3std` undefined references. This is
+representative evidence that the repair preserves semantic/backend work and
+object output while removing the textual identity dependency.
 
-The sequential PA36 report preserves all 42/79 handout passes and adds the new
-course pass (43/80 combined); the same 37 handout failures remain for later
-checkpoints. PA1–PA35 pass 4,907/4,907, and the PA36 file audit passes with only
-22 inherited nonfatal header-division advisories. No relevant correctness,
-identity, shortcut, performance, timeout, ownership, or file-audit issue remains
-in this checkpoint increment.
+All 16 checkpoint-focused standard-owner, direct-substitution,
+initializer-list/trait, and prior builtin checks pass. The required sequential
+PA36 report remains 56/80 with the same 24 out-of-scope-for-this-increment
+failures and no timeout; PA1–PA35 pass 4,907/4,907. The PA36 file audit passes
+with 22 inherited nonfatal header-division advisories. No relevant spec,
+correctness, performance, shortcut, timeout, ownership, or file-audit issue
+remains in this checkpoint increment.
 
 ## Checkpoint Audit Ledger
 
 | Checkpoint | Audit disposition |
 | --- | --- |
 | Closed builtin dispatch (`1f918c84` plus audit repair) | Pass after separating generic aliases from all closed handlers; canonical typed identity, bounded work, baseline preservation, and required gates are evidenced. |
+| Canonical structured `std` owner (`03e47d62` plus audit repair) | Pass after replacing lowering's rendered-name test with canonical namespace-scope identity; 56/80 baseline, stable profile/output, prior stages, and file gate are preserved. |

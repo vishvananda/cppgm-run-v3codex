@@ -238,7 +238,7 @@ NameId StandardTemplateTerminal(const Program& program,
 {
 	std::vector<NameId> path;
 	program.BuildEmissionPath(entity.owner, entity.identity_name, &path);
-	return path.size() == 2 && program.names.Get(path[0]) == "std" ?
+	return path.size() == 2 && program.IsStandardNamespace(entity.owner) ?
 		path[1] : 0;
 }
 
@@ -1804,7 +1804,7 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 					builder->AddTemplateArgumentPack(first + fixed,
 						entity.template_argument_count - fixed));
 		}
-		else if (i == 0 && component.function.name == "std")
+		else if (i == 0 && program.IsInStandardNamespace(entity.owner))
 			component.function.kind = ABI_FUNCTION_RECORD_NAME_STD;
 		else component.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
 		facts->records.push_back(component);

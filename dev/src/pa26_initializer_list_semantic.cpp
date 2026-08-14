@@ -65,8 +65,7 @@ bool SemanticAnalyzer::IsStandardInitializerListTemplate(NameId name,
 		owner = program_->ParentScope(owner);
 	return program_->names.Get(name) == "initializer_list" &&
 		owner != kNoScope && program_->KindOfScope(owner) == SCOPE_NAMESPACE &&
-		program_->names.Get(program_->NameOfScope(owner)) == "std" &&
-		program_->ParentScope(owner) == program_->GlobalScope() &&
+		program_->IsStandardNamespace(owner) &&
 		parameters.size() == 1 &&
 		parameters[0].kind == TEMPLATE_ARGUMENT_TYPE && !parameters[0].pack;
 }
