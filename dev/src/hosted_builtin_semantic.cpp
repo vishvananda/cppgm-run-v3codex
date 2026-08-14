@@ -267,6 +267,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 	if (operands.empty())
 		throw std::runtime_error("builtin type trait has no operands");
 	bool value = false;
+	std::int64_t integral_value = 0;
+	TypeId result_type = program_->types.Fundamental(FUND_BOOL);
 	if (!dependent)
 	{
 		for (std::size_t i = 0; i < operands.size(); ++i)
@@ -295,7 +297,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 				throw std::runtime_error(
 					"base-of trait requires a complete derived type");
 		}
-		if (trait == TYPE_TRAIT_IS_SAME && operands.size() == 2)
+		if (trait == TYPE_TRAIT_ARRAY_RANK && operands.size() == 1)
+		{
+			TypeId ranked = program_->types.RemoveTopCv(first);
+			while (program_->types.Get(ranked).kind == TYPE_ARRAY)
+			{
+				++integral_value;
+				ranked = program_->types.RemoveTopCv(
+					program_->types.Get(ranked).child);
+			}
+			result_type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+		}
+		else if (trait == TYPE_TRAIT_IS_SAME && operands.size() == 2)
 			value = operands[0] == operands[1];
 		else if (trait == TYPE_TRAIT_IS_POINTER && operands.size() == 1)
 			value = shape.kind == TYPE_POINTER;
@@ -415,20 +428,31 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 			value = EvaluateBuiltinNothrowCopy(first);
 		else if (trait == TYPE_TRAIT_HAS_VIRTUAL_DESTRUCTOR &&
 			operands.size() == 1)
-			value = named && named->polymorphic_class &&
-				named->has_user_declared_destructor;
+		{
+			const BindingId destructor = named && IsClassEntity(*named) ?
+				DestructorForType(first) : kNoBinding;
+			value = destructor != kNoBinding &&
+				program_->bindings[destructor].virtual_function;
+		}
 		else if (trait == TYPE_TRAIT_IS_FINAL && operands.size() == 1)
-			value = false;
+			value = named && IsClassEntity(*named) && named->final_class;
 		else if (trait == TYPE_TRAIT_REFERENCE_BINDS_TO_TEMPORARY ||
 			trait == TYPE_TRAIT_REFERENCE_CONSTRUCTS_FROM_TEMPORARY)
 			value = false;
 		else
 			throw std::runtime_error("unsupported builtin type trait operands");
 	}
-	ExpressionInfo result = MakeLiteral(program_->types.Fundamental(FUND_BOOL),
-		program_->names.Intern(value ? "true" : "false"));
+	if (trait == TYPE_TRAIT_ARRAY_RANK)
+	{
+		if (operands.size() != 1)
+			throw std::runtime_error("unsupported builtin type trait operands");
+		result_type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+	}
+	else integral_value = value ? 1 : 0;
+	ExpressionInfo result = MakeLiteral(result_type,
+		program_->names.Intern(std::to_string(integral_value)));
 	result.constant = true;
-	result.value = value ? 1 : 0;
+	result.value = integral_value;
 	dump_.nodes[result.node].template_parameter_constant = dependent;
 	RecordExpressionFacts(result);
 	return result;

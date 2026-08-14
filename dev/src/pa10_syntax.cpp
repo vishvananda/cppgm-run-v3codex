@@ -2436,6 +2436,13 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		name.clear();
 	}
 	ParseSemanticAttributes(&alignments);
+	NodeId class_virt_specifier = kNoNode;
+	if (AtIdentifier() && Spelling(position_) == "final")
+	{
+		const std::size_t specifier = position_++;
+		class_virt_specifier = MakeTokenNode(
+			"class-virt-specifier", specifier);
+	}
 	if (name.empty() && !At(OP_LBRACE)) throw Error("expected class name");
 	last_declared_names_.clear();
 	if (!name.empty()) last_declared_names_.push_back(strings_.Intern(name));
@@ -2448,6 +2455,8 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		const NodeId declaration = arena_.Make("class-forward-declaration", name);
 		if (name_structure != kNoNode) arena_.Add(declaration, name_structure);
 		arena_.Add(declaration, MakeTokenNode("class-key", key));
+		if (class_virt_specifier != kNoNode)
+			arena_.Add(declaration, class_virt_specifier);
 		for (std::size_t i = 0; i < alignments.size(); ++i)
 			arena_.Add(declaration, alignments[i]);
 		arena_.SetTokenRange(declaration, key, position_);
@@ -2457,6 +2466,8 @@ NodeId Parser::ParseClass(bool require_semicolon)
 	if (name_structure != kNoNode) arena_.Add(declaration, name_structure);
 	const std::size_t class_fact_mark = name_fact_changes_.size();
 	arena_.Add(declaration, MakeTokenNode("class-key", key));
+	if (class_virt_specifier != kNoNode)
+		arena_.Add(declaration, class_virt_specifier);
 	for (std::size_t i = 0; i < alignments.size(); ++i)
 		arena_.Add(declaration, alignments[i]);
 	if (Match(OP_COLON))

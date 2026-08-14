@@ -78,7 +78,6 @@ OperatorKind ClassifyOperator(const std::string& name,
 	}
 	return OPERATOR_NONE;
 }
-
 BindingId LocalTypeContext(const Program& program, ScopeId owner,
 	BindingId current_function)
 {
@@ -166,6 +165,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
+	program_->entities[entity].final_class = program_->entities[entity].final_class || FindChild(node, "class-virt-specifier") != kNoNode;
 	ApplyClassAbiTagAttributes(node, entity);
 	if (entity_data_members_.size() <= entity)
 		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
@@ -285,7 +285,7 @@ bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 			EnsureClassDefinition(base_lookup.type);
 			const EntityId base = EntityOf(base_lookup.type);
 			if (base == kNoEntity || !program_->entities[base].complete ||
-				program_->entities[base].flavor == NAMED_UNION)
+				program_->entities[base].flavor == NAMED_UNION || program_->entities[base].final_class)
 			{
 				if (base != kNoEntity &&
 					FunctionTemplateTypeIsDependent(base_lookup.type))

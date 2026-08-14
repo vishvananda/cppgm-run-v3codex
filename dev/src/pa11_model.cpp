@@ -735,7 +735,7 @@ EntityRecord::EntityRecord()
 	  is_aggregate(false), empty_class(false), indirect_class_value_abi(false),
 	  indirect_class_result_abi(false),
 	  indirect_class_parameter_abi(false), polymorphic_class(false),
-	  abstract_class(false),
+	  abstract_class(false), final_class(false),
 	  nonlinear_base_graph(false),
 	  has_nonzero_base_subobject_offset(false),
 	  deferred_template_completion(false),

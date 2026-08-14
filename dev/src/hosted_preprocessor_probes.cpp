@@ -95,4 +95,33 @@ bool IsSupportedAttributeProbe(const std::string& value)
 		sizeof(entries) / sizeof(entries[0]));
 }
 
+bool IsCompilerIdentifier(const std::string& value)
+{
+	if (hosted_builtin::FindTypeTrait(value) !=
+			hosted_builtin::TYPE_TRAIT_NONE ||
+		hosted_builtin::FindTypeTransform(value) !=
+			hosted_builtin::TYPE_TRANSFORM_NONE ||
+		hosted_builtin::FindIntegerIntrinsic(value) ||
+		hosted_builtin::FindFloatingIntrinsic(value) ||
+		hosted_builtin::FindMemoryIntrinsic(value) ||
+		hosted_builtin::FindAtomicIntrinsic(value) ||
+		value == "__is_identifier") return true;
+	static const char* const keywords[] = {
+		"alignas", "alignof", "asm", "auto", "bool", "break", "case",
+		"catch", "char", "char16_t", "char32_t", "class", "const",
+		"const_cast", "constexpr", "continue", "decltype", "default",
+		"delete", "do", "double", "dynamic_cast", "else", "enum",
+		"explicit", "export", "extern", "false", "float", "for", "friend",
+		"goto", "if", "inline", "int", "long", "mutable", "namespace",
+		"new", "noexcept", "nullptr", "operator", "private", "protected",
+		"public", "register", "reinterpret_cast", "return", "short",
+		"signed", "sizeof", "static", "static_assert", "static_cast",
+		"struct", "switch", "template", "this", "thread_local", "throw",
+		"true", "try", "typedef", "typeid", "typename", "union", "unsigned",
+		"using", "virtual", "void", "volatile", "wchar_t", "while"
+	};
+	return IsSortedMetadataEntry(value, keywords,
+		sizeof(keywords) / sizeof(keywords[0]));
+}
+
 }

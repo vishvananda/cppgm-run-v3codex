@@ -1248,6 +1248,15 @@ struct ClassTemplatePartialSelection
 		: pattern(kNoDumpEdge), revision(0) {}
 };
 
+enum HostedTraitTemplateKind
+{
+	HOSTED_TRAIT_TEMPLATE_NONE,
+	HOSTED_TRAIT_TEMPLATE_NOTHROW_DEFAULT_CONSTRUCTIBLE,
+	HOSTED_TRAIT_TEMPLATE_NOTHROW_COPY_CONSTRUCTIBLE,
+	HOSTED_TRAIT_TEMPLATE_NOTHROW_MOVE_CONSTRUCTIBLE,
+	HOSTED_TRAIT_TEMPLATE_NOTHROW_INVOCABLE
+};
+
 struct VariableTemplatePattern
 {
 	ScopeId owner, lexical_scope;
@@ -1340,6 +1349,7 @@ struct ClassTemplatePattern
 	std::deque<ClassTemplatePartialPattern> partial_specializations;
 	EntityId marker_entity;
 	std::uint32_t template_parameter_ordinal;
+	HostedTraitTemplateKind hosted_trait_template;
 	bool defined;
 	bool template_parameter_proxy;
 	bool initializer_list_template;
@@ -1347,7 +1357,8 @@ struct ClassTemplatePattern
 	ClassTemplatePattern()
 		: owner(kNoScope), lexical_scope(kNoScope), name(0),
 		  declaration(kNoNode), marker_entity(kNoEntity),
-		  template_parameter_ordinal(kNoTemplateParameter), defined(false),
+		  template_parameter_ordinal(kNoTemplateParameter),
+		  hosted_trait_template(HOSTED_TRAIT_TEMPLATE_NONE), defined(false),
 		  template_parameter_proxy(false), initializer_list_template(false) {}
 };
 

@@ -19,7 +19,6 @@ std::size_t NoTemplatePattern()
 {
 	return std::numeric_limits<std::size_t>::max();
 }
-
 const std::uint8_t kClassTemplateCompletionPendingDefinition = 4;
 
 class ScopedTemplateRequest
@@ -55,7 +54,6 @@ private:
 	TemplateSpecializationKey key_;
 	bool active_;
 };
-
 bool ClassTemplateArgumentsAreLayoutReady(const Program& program,
 	const std::vector<TemplateArgument>& arguments)
 {
@@ -1353,6 +1351,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	pattern.declaration = declaration;
 	pattern.parameters = parameters;
 	pattern.defined = definition;
+	pattern.hosted_trait_template = ClassifyHostedTraitTemplate(owner, name, parameters);
 	pattern.initializer_list_template = IsStandardInitializerListTemplate(name, owner, parameters);
 	const NameId marker_name = EmissionName(owner, name);
 	pattern.marker_entity = program_->NewEntity(marker_name,
@@ -1688,6 +1687,7 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		(HasTrailingTemplateParameterPack(pattern.parameters) &&
 		 arguments.size() < FixedTemplateParameterCount(pattern.parameters)))
 		throw std::logic_error("class template completion argument mismatch");
+	if (CompleteHostedTraitTemplateSpecialization(index, binding, arguments)) return;
 	if (binding >= class_template_partial_selections_.size())
 		throw std::logic_error(
 			"class specialization has no partial-selection state");

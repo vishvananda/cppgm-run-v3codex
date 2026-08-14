@@ -17,6 +17,41 @@ namespace pa12_semantic_detail
 namespace
 {
 
+class ScopedVariableTemplateRequest
+{
+public:
+	ScopedVariableTemplateRequest() : table_(0), key_(), active_(false) {}
+	~ScopedVariableTemplateRequest()
+	{
+		if (active_) table_->ResetInProgressRequest(key_);
+	}
+	void Begin(TemplateSpecializationTable* table,
+		const TemplateSpecializationKey& key)
+	{
+		if (active_ || table == 0)
+			throw std::logic_error("invalid variable template request");
+		table_ = table;
+		key_ = key;
+		table_->SetRequest(key_, TEMPLATE_REQUEST_IN_PROGRESS);
+		active_ = true;
+	}
+	void Complete(BindingId binding)
+	{
+		if (!active_)
+			throw std::logic_error("inactive variable template request");
+		table_->SetRequest(key_, TEMPLATE_REQUEST_SUCCEEDED, binding);
+		active_ = false;
+	}
+
+private:
+	ScopedVariableTemplateRequest(const ScopedVariableTemplateRequest&);
+	ScopedVariableTemplateRequest& operator=(
+		const ScopedVariableTemplateRequest&);
+	TemplateSpecializationTable* table_;
+	TemplateSpecializationKey key_;
+	bool active_;
+};
+
 TypeId RetainedIntegralLiteralType(const SyntaxArena& arena, NodeId syntax,
 	Program* program, std::int64_t* value)
 {
@@ -851,12 +886,21 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	++template_specialization_requests_;
 	const TemplateSpecializationKey key =
 		CanonicalTemplateSpecializationKey(primary_index, arguments);
-	BindingId cached = variable_template_instantiations_.Find(key);
-	if (cached != kNoBinding)
+	BindingId cached = kNoBinding;
+	const TemplateRequestState request_state =
+		variable_template_instantiations_.FindRequest(key, &cached);
+	if (request_state == TEMPLATE_REQUEST_SUCCEEDED)
 	{
 		++template_specialization_cache_hits_;
 		return cached;
 	}
+	if (request_state != TEMPLATE_REQUEST_NOT_STARTED)
+	{
+		++template_specialization_cache_hits_;
+		return kNoBinding;
+	}
+	ScopedVariableTemplateRequest request;
+	request.Begin(&variable_template_instantiations_, key);
 
 	std::size_t selected_index = primary_index;
 	FunctionTemplateDeduction selected_bindings(primary.parameters);
@@ -1016,7 +1060,7 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 				HasConstantInitializerFact(initializer));
 		}
 	}
-	variable_template_instantiations_.Insert(key, binding);
+	request.Complete(binding);
 	return binding;
 }
 

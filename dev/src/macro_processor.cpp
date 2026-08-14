@@ -896,6 +896,7 @@ private:
 		AddBuiltinMarker("__has_feature");
 		AddBuiltinMarker("__has_include");
 		AddBuiltinMarker("__has_include_next");
+		AddBuiltinMarker("__is_identifier");
 		AddBuiltinMarker("__building_module");
 		if (stats_)
 			stats_->peak_retained_replacement_tokens = std::max(
@@ -1320,6 +1321,8 @@ private:
 			return IsSupportedFeatureProbe(operand);
 		if (name == "__has_attribute")
 			return IsSupportedAttributeProbe(operand);
+		if (name == "__is_identifier")
+			return !IsCompilerIdentifier(operand);
 		if (name == "__has_cpp_attribute" || name == "__building_module")
 			return false;
 		throw std::logic_error("unknown builtin probe");
@@ -1333,7 +1336,8 @@ private:
 		return name == "__has_attribute" || name == "__has_builtin" ||
 			name == "__has_cpp_attribute" || name == "__has_extension" ||
 			name == "__has_feature" || name == "__has_include" ||
-			name == "__has_include_next" || name == "__building_module";
+			name == "__has_include_next" || name == "__is_identifier" ||
+			name == "__building_module";
 	}
 
 	void RewriteConditionOperators(const std::vector<Token>& directive,

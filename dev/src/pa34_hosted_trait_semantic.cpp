@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <string>
 #include <vector>
 
 namespace cppgm
@@ -411,6 +412,207 @@ bool SemanticAnalyzer::EvaluateBuiltinNothrowCopy(TypeId type)
 	return !function.deleted_function && !function.deleted_constructor &&
 		!function.deleted_special_member && CanAccessMember(copy) &&
 		FunctionIsNonthrowing(copy);
+}
+
+HostedTraitTemplateKind SemanticAnalyzer::ClassifyHostedTraitTemplate(
+	ScopeId owner, NameId name,
+	const std::vector<TemplateParameter>& parameters) const
+{
+	if (owner == kNoScope || name == 0 || parameters.empty())
+		return HOSTED_TRAIT_TEMPLATE_NONE;
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+		if (parameters[i].kind != TEMPLATE_ARGUMENT_TYPE)
+			return HOSTED_TRAIT_TEMPLATE_NONE;
+	const std::string spelling = program_->names.Get(name);
+	if (spelling == "__is_nothrow_invocable" &&
+		owner == program_->GlobalScope())
+		return HOSTED_TRAIT_TEMPLATE_NOTHROW_INVOCABLE;
+	if (program_->ParentScope(owner) != program_->GlobalScope() ||
+		program_->names.Get(program_->NameOfScope(owner)) != "std" ||
+		parameters.size() != 1)
+		return HOSTED_TRAIT_TEMPLATE_NONE;
+	if (spelling == "is_nothrow_default_constructible")
+		return HOSTED_TRAIT_TEMPLATE_NOTHROW_DEFAULT_CONSTRUCTIBLE;
+	if (spelling == "is_nothrow_copy_constructible")
+		return HOSTED_TRAIT_TEMPLATE_NOTHROW_COPY_CONSTRUCTIBLE;
+	if (spelling == "is_nothrow_move_constructible")
+		return HOSTED_TRAIT_TEMPLATE_NOTHROW_MOVE_CONSTRUCTIBLE;
+	return HOSTED_TRAIT_TEMPLATE_NONE;
+}
+
+bool SemanticAnalyzer::EvaluateBuiltinInvocability(
+	const std::vector<TypeId>& operands, ScopeId scope, bool* nonthrowing)
+{
+	if (nonthrowing) *nonthrowing = false;
+	if (operands.empty()) return false;
+	ExpressionInfo callable = MakeBuiltinTraitOperand(operands[0]);
+	const EntityId entity = EntityOf(callable.type);
+	if (entity == kNoEntity) return false;
+	EnsureClassDefinition(callable.type);
+	const NameId name = program_->names.Intern("operator()");
+	BeginCandidateCollection();
+	std::vector<BindingId> candidates;
+	EntityId naming_class = kNoEntity;
+	const LookupResult ordinary = program_->LookupMember(
+		entity, name, LOOKUP_ORDINARY);
+	if (ordinary.ordinary != kNoBinding &&
+		program_->bindings[ordinary.ordinary].kind == BIND_FUNCTION)
+	{
+		naming_class = ordinary.naming_class;
+		const std::vector<BindingId> functions =
+			FunctionSet(ordinary.ordinary);
+		for (std::size_t i = 0; i < functions.size(); ++i)
+			if (GetFunction(functions[i]).member_owner != kNoType)
+				AddCandidate(functions[i], &candidates);
+	}
+	std::vector<ExpressionInfo> arguments;
+	for (std::size_t i = 1; i < operands.size(); ++i)
+		arguments.push_back(MakeBuiltinTraitOperand(operands[i]));
+	const LookupResult templates = program_->LookupMember(
+		entity, name, LOOKUP_FUNCTION_TEMPLATE);
+	std::vector<std::size_t> patterns;
+	for (std::size_t owner_index = 0;
+		owner_index < templates.FunctionTemplateOwnerCount(); ++owner_index)
+	{
+		const ScopeId template_owner =
+			templates.FunctionTemplateOwnerAt(owner_index);
+		const std::uint64_t key =
+			(static_cast<std::uint64_t>(template_owner) << 32) | name;
+		const CompactIndexSequence* indexed =
+			template_function_sets_.Find(key);
+		for (std::size_t i = 0; indexed && i < indexed->Size(); ++i)
+			patterns.push_back((*indexed)[i]);
+	}
+	if (!patterns.empty())
+	{
+		associated_declaration_visits_ += patterns.size();
+		std::vector<BindingId> specializations;
+		DeduceFunctionTemplatePatterns(patterns, arguments, &specializations);
+		for (std::size_t i = 0; i < specializations.size(); ++i)
+			if (GetFunction(specializations[i]).member_owner != kNoType)
+				AddCandidate(specializations[i], &candidates);
+		if (naming_class == kNoEntity) naming_class = templates.naming_class;
+	}
+	if (candidates.empty()) return false;
+	std::vector<NodeId> syntax(arguments.size() + 1, kNoNode);
+	std::vector<ExpressionInfo> invocation;
+	invocation.reserve(arguments.size() + 1);
+	invocation.push_back(callable);
+	invocation.insert(invocation.end(), arguments.begin(), arguments.end());
+	ExpressionInfo object;
+	object.type = program_->types.Pointer(EffectiveType(callable.type));
+	object.category = callable.category;
+	bool selected_member = false;
+	ObjectConversionFact object_conversion;
+	std::vector<CallConversionFact> conversions;
+	const BindingId selected = SelectOperatorOverload(scope, syntax,
+		invocation, candidates, object, &selected_member, &object_conversion,
+		&conversions, true);
+	if (selected == kNoBinding || !selected_member) return false;
+	const FunctionInfo& function = GetFunction(selected);
+	if (function.deleted_function || function.deleted_special_member ||
+		!CanAccessMember(selected, naming_class, entity)) return false;
+	for (std::size_t i = 0; i < conversions.size(); ++i)
+		if (!BuiltinConversionIsUsable(conversions[i])) return false;
+	if (nonthrowing)
+	{
+		*nonthrowing = FunctionIsNonthrowing(selected);
+		for (std::size_t i = 0; *nonthrowing && i < conversions.size(); ++i)
+			*nonthrowing = BuiltinConversionIsNonthrowing(conversions[i]);
+	}
+	return true;
+}
+
+bool SemanticAnalyzer::CompleteHostedTraitTemplateSpecialization(
+	std::size_t pattern_index, BindingId specialization,
+	const std::vector<TemplateArgument>& arguments)
+{
+	if (pattern_index >= class_templates_.size())
+		throw std::logic_error("invalid hosted trait template pattern");
+	const ClassTemplatePattern& pattern = class_templates_[pattern_index];
+	const HostedTraitTemplateKind kind = pattern.hosted_trait_template;
+	if (kind == HOSTED_TRAIT_TEMPLATE_NONE) return false;
+	std::vector<TypeId> operands;
+	operands.reserve(arguments.size());
+	for (std::size_t i = 0; i < arguments.size(); ++i)
+	{
+		if (arguments[i].kind != TEMPLATE_ARGUMENT_TYPE ||
+			arguments[i].type == kNoType || arguments[i].IsDependent())
+			return false;
+		operands.push_back(arguments[i].type);
+	}
+	bool value = false;
+	if (kind == HOSTED_TRAIT_TEMPLATE_NOTHROW_INVOCABLE)
+	{
+		bool nonthrowing = false;
+		value = EvaluateBuiltinInvocability(
+			operands, pattern.lexical_scope, &nonthrowing) && nonthrowing;
+	}
+	else
+	{
+		if (operands.size() != 1) return false;
+		std::vector<TypeId> construction(1, operands[0]);
+		if (kind == HOSTED_TRAIT_TEMPLATE_NOTHROW_COPY_CONSTRUCTIBLE ||
+			kind == HOSTED_TRAIT_TEMPLATE_NOTHROW_MOVE_CONSTRUCTIBLE)
+		{
+			TypeId source = operands[0];
+			if (kind == HOSTED_TRAIT_TEMPLATE_NOTHROW_COPY_CONSTRUCTIBLE)
+				source = program_->types.TryQualify(source, CV_CONST);
+			if (source != kNoType)
+				source = program_->types.TryReference(
+					kind == HOSTED_TRAIT_TEMPLATE_NOTHROW_COPY_CONSTRUCTIBLE ?
+						TYPE_LVALUE_REFERENCE : TYPE_RVALUE_REFERENCE, source);
+			if (source == kNoType) return false;
+			construction.push_back(source);
+		}
+		BindingId selected = kNoBinding;
+		std::vector<CallConversionFact> conversions;
+		value = EvaluateBuiltinConstructibility(
+			construction, &selected, &conversions) &&
+			BuiltinConstructionIsNonthrowing(
+				construction[0], selected, conversions);
+	}
+
+	if (specialization == kNoBinding ||
+		specialization >= program_->bindings.size())
+		throw std::logic_error("invalid hosted trait specialization binding");
+	const EntityId entity = EntityOf(program_->bindings[specialization].type);
+	if (entity == kNoEntity)
+		throw std::logic_error("hosted trait specialization has no entity");
+	EntityRecord& record = program_->entities[entity];
+	if (record.member_scope == kNoScope)
+	{
+		const ScopeId member_scope = NewScope(pattern.owner, SCOPE_CLASS,
+			pattern.name, ScopePrefixId(pattern.owner));
+		program_->SetEntityScope(entity, member_scope);
+		program_->SetTypeName(member_scope, pattern.name, record.type);
+		const BindingId injected = program_->AddBinding(member_scope,
+			BIND_TYPE, pattern.name, record.type, false, 0, record.flavor);
+		program_->bindings[injected].member_owner = entity;
+		program_->bindings[injected].access = ACCESS_PUBLIC;
+		const TypeId bool_type = program_->types.Qualify(
+			program_->types.Fundamental(FUND_BOOL), CV_CONST);
+		const NameId value_name = program_->names.Intern("value");
+		const BindingId member = program_->AddBinding(member_scope,
+			BIND_VARIABLE, value_name, bool_type, true, value ? 1 : 0);
+		program_->bindings[member].member_owner = entity;
+		program_->bindings[member].access = ACCESS_PUBLIC;
+	}
+	record.object_size = 1;
+	record.nonvirtual_size = 1;
+	record.object_alignment = 1;
+	record.nonvirtual_alignment = 1;
+	record.natural_alignment = 1;
+	record.default_constructible = true;
+	record.trivial_default_constructor = true;
+	record.destructible = true;
+	record.trivial_destructor = true;
+	record.is_aggregate = true;
+	record.empty_class = true;
+	record.layout_complete = true;
+	record.complete = true;
+	class_template_specialization_states_[specialization] = 2;
+	return true;
 }
 
 }

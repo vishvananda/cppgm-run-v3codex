@@ -211,6 +211,7 @@ Kind FindEntry(const std::string& spelling, const Entry<Kind> (&entries)[Size],
 TypeTraitKind FindTypeTrait(const std::string& spelling)
 {
 	static const Entry<TypeTraitKind> entries[] = {
+		{"__array_rank", TYPE_TRAIT_ARRAY_RANK},
 		{"__has_nothrow_copy", TYPE_TRAIT_HAS_NOTHROW_COPY},
 		{"__has_trivial_constructor", TYPE_TRAIT_HAS_TRIVIAL_CONSTRUCTOR},
 		{"__has_virtual_destructor", TYPE_TRAIT_HAS_VIRTUAL_DESTRUCTOR},
