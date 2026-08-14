@@ -12,30 +12,30 @@ owns all changes; no hosted-only route is introduced.
 
 ## Current Failure Map
 
-PA35 is 91/119 with 28 failures. The complete set groups by first owner:
+PA35 is 98/120 with 22 failures. The complete set groups by first owner:
 retained declaration/class lookup and access 3; expression/call/template demand
 10; parser/local semantics 2; stream/heap stability 6; and native
-object/register lowering 7.
+object/register lowering 1.
 
 ## Active Checkpoint
 
-**Native scalar aggregate transport.** Per `spec.md` §§6-9, a complete object
-value must retain its typed LowIR shape while native adaptation classifies and
-moves every ABI eightbyte without inventing a scalar or exhausting reactive
-registers. Data flows typed aggregate load/call -> ABI value classification ->
-legal register/stack fragments -> MIR locations and x86-64 encoding. PA15
-lowering and PA31 native adaptation own the boundary. Expected work is O(type
-fields + ABI eightbytes + LowIR instructions), with bounded per-instruction
-register work. Validate the current `obj<1x1>`, `obj<8x8>`, multi-eightbyte,
-missing-storage, and register-exhaustion failures; add size-boundary probes;
-then run PA35, PA1-34, audit, and representative scaling cases.
+**Growth-stable hosted token and syntax storage.** Per `spec.md` §§1, 2, 5,
+8, and 9, token expansion and retained syntax must keep stable spelling and node
+identity while temporary containers grow. Data flows include/macro tokens ->
+post-token retained buffers and interned ranges -> syntax tag queries ->
+template demand. `MacroProcessor` token queues and the interner/syntax arena own
+the boundary: current regex cases corrupt a deque during `Drain`, while stream
+cases fault in `InternedStringTable::InternRange` through `SyntaxArena::IsTag`.
+Expected work is O(source bytes + expansion tokens) with amortized O(1) growth
+and O(1) average intern lookup. Validate all six crash cases, token-burst and
+deep-template 8/16 probes, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-For 8/16-element explicit-id calls with a deduced trailing pack, lookup queries
-were 66/82, template requests stayed 7/7, and peak semantic storage was
-118,836/145,939 bytes. Five-run median semantic time was 0.762/0.781 ms; the
-argument-aware partition remains linear and introduces no specialization fanout.
+For 8/16 forced-inline 16-byte object transfers, typed LowIR instructions were
+140/268 and selected MIR instructions were 236/452. Five-run median native
+lowering time was 0.458/0.763 ms and encoding time was 0.370/0.531 ms; work and
+peak semantic storage (81,536/102,454 bytes) remained linear.
 
 ## Completed Checkpoints
 
@@ -66,3 +66,4 @@ argument-aware partition remains linear and introduces no specialization fanout.
 | Retained class/declaration convergence | injected class tags merge through the class-tag index; stale specialization-owned call facts rebuild in the active scope | PA35 77/111 -> 82/113 (80/111 existing); map/codecvt/wide-string and two regressions pass; PA1-34 4756/4756; scaling/audit pass |
 | Specialization-local construction convergence | class references remain references; static downcasts complete concrete targets; fixed cv-reference patterns order over forwarding packs; direct-member calls expand packs | PA35 82/113 -> 86/117; six construction and three pack-call barriers advance, four regressions pass; PA1-34 4756/4756; scaling/audit pass |
 | Explicit-id pack partition convergence | explicit function-template prefixes wait for argument-aware deduction, preserving canonical trailing-pack partitions | PA35 86/117 -> 91/119; three handout and two regressions pass; direct piecewise construction advances to native transport; PA1-34 4756/4756; scaling/audit pass |
+| Native scalar aggregate transport | object copy/load/store values stay address-backed until existing ABI call/return chunking; MIR uses bounded byte copies | PA35 91/119 -> 98/120; six handout plus one regression pass; 1/16-byte executable probe, PA1-34 4756/4756, linear MIR scaling, and audit pass |

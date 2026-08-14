@@ -1444,6 +1444,11 @@ private:
   }
   void emit_copy(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
+    if(instruction.type.kind == lowir_model::LTK_OBJECT) {
+      emit_object_value(instruction.dest, instruction.type,
+                        instruction.first, out);
+      return;
+    }
     if(wide::is_integer(instruction.type)) {
       const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
       wide::append_copy(destination, wide_value(instruction.first), out);
@@ -2008,40 +2013,81 @@ private:
       out.push_back(machine_instruction(MirInstruction::MI_MFENCE));
     consume(instruction.first);
   }
+  void append_object_copy(std::size_t bytes, std::size_t alignment,
+                          std::vector<MirInstruction> & out)
+  {
+    MirInstruction copy = machine_instruction(MirInstruction::MI_COPY_BYTES);
+    copy.byte_count = bytes;
+    copy.byte_alignment = alignment;
+    append_operand(copy, reg_operand(XR_RDI));
+    append_operand(copy, reg_operand(XR_RSI));
+    out.push_back(copy);
+  }
+  void emit_object_copy(const Operand & source, const Operand & destination,
+                        std::size_t bytes, std::size_t alignment,
+                        std::vector<MirInstruction> & out)
+  {
+    if(aliases_same_object(source, destination)) {
+      consume(source);
+      consume(destination);
+      return;
+    }
+    X64Register saved_source = XR_RSP;
+    bool allocated_saved_source = false;
+    if(source.kind == Operand::OP_TEMP) {
+      const MirOperand resolved_source = resolve(source);
+      if(resolved_source.kind == MirOperand::OP_REG &&
+         resolved_source.reg == XR_RDI) {
+        allocated_saved_source = registers_.try_allocate(false, saved_source);
+        if(!allocated_saved_source) saved_source = XR_R11;
+        append_move(out, reg_operand(saved_source), resolved_source);
+      }
+    }
+    emit_operand_address(out, XR_RDI, destination);
+    if(saved_source != XR_RSP)
+      append_move(out, reg_operand(XR_RSI), reg_operand(saved_source));
+    else
+      emit_operand_address(out, XR_RSI, source);
+    append_object_copy(bytes, alignment, out);
+    if(allocated_saved_source) registers_.release(saved_source);
+    consume(source);
+    consume(destination);
+  }
+  void emit_object_value(const std::string & name, const LowType & type,
+                         const Operand & source,
+                         std::vector<MirInstruction> & out)
+  {
+    const MirOperand home = allocate_temp_home(name, type);
+    // Resolve the source before assigning RDI: an incoming object address may
+    // itself still reside in RDI.  The frame destination cannot alias RSI.
+    emit_operand_address(out, XR_RSI, source);
+    append_address(out, XR_RDI, home);
+    append_object_copy(type.storage_size, type.alignment, out);
+    consume(source);
+    define_object_result(name, type, 0, home);
+  }
+  void emit_object_load(const Instruction & instruction,
+                        std::vector<MirInstruction> & out)
+  {
+    emit_object_value(instruction.dest, instruction.type,
+                      instruction.first, out);
+  }
   void emit_bulk(const Instruction & instruction,
                  std::vector<MirInstruction> & out)
   {
     const bool copying = instruction.kind == Instruction::IK_COPYOBJ;
-    if(copying && aliases_same_object(instruction.first, instruction.second)) {
-      consume(instruction.first);
-      consume(instruction.second);
+    if(copying) {
+      emit_object_copy(instruction.first, instruction.second,
+                       instruction.byte_count, instruction.byte_alignment, out);
       return;
     }
-    X64Register saved_source = XR_RSP;
-    if(copying && instruction.first.kind == Operand::OP_TEMP) {
-      const MirOperand source = resolve(instruction.first);
-      if(source.kind == MirOperand::OP_REG && source.reg == XR_RDI) {
-        if(!registers_.try_allocate(false, saved_source)) saved_source = XR_R11;
-        append_move(out, reg_operand(saved_source), source);
-      }
-    }
-    const Operand & destination = copying ? instruction.second : instruction.first;
-    emit_operand_address(out, XR_RDI, destination);
-    if(copying) {
-      if(saved_source != XR_RSP)
-        append_move(out, reg_operand(XR_RSI), reg_operand(saved_source));
-      else
-        emit_operand_address(out, XR_RSI, instruction.first);
-    }
-    MirInstruction bulk = machine_instruction(copying ?
-      MirInstruction::MI_COPY_BYTES : MirInstruction::MI_ZERO_BYTES);
+    emit_operand_address(out, XR_RDI, instruction.first);
+    MirInstruction bulk = machine_instruction(MirInstruction::MI_ZERO_BYTES);
     bulk.byte_count = instruction.byte_count;
     bulk.byte_alignment = instruction.byte_alignment;
     append_operand(bulk, reg_operand(XR_RDI));
-    if(copying) append_operand(bulk, reg_operand(XR_RSI));
     out.push_back(bulk);
     consume(instruction.first);
-    if(copying) consume(instruction.second);
   }
   std::vector<lowir_model::LowirParameter> call_parameters(
       const Instruction & instruction) const
@@ -2721,11 +2767,9 @@ private:
         append_store(out, destination, reg_operand(XR_RAX), instruction.type.text);
       }
       define(instruction.dest, instruction.type, destination);
-    } else if(instruction.kind == Instruction::IK_COPY) {
-      emit_copy(instruction, out);
-    } else if(instruction.kind == Instruction::IK_ADDR) {
-      emit_address_value(block, instruction_index, instruction, out);
-    } else if(instruction.kind == Instruction::IK_LOAD) {
+    } else if(instruction.kind == Instruction::IK_COPY) emit_copy(instruction, out);
+    else if(instruction.kind == Instruction::IK_ADDR) emit_address_value(block, instruction_index, instruction, out);
+    else if(instruction.kind == Instruction::IK_LOAD) {
       if(instruction.first.kind == Operand::OP_SLOT &&
          (storage_facts_.promoted_parameter_slots.count(instruction.first.text) ||
           storage_facts_.forwarded_parameter_slots.count(instruction.first.text))) {
@@ -2774,6 +2818,8 @@ private:
         define(instruction.dest, instruction.type, storage(instruction.first));
         return;
       }
+      if(instruction.type.kind == lowir_model::LTK_OBJECT)
+        return emit_object_load(instruction, out);
       MirOperand destination;
       const bool pressure_load = constrained_wide_pressure() &&
         facts_.definition[instruction.dest] > facts_.calls.front();
@@ -2789,9 +2835,8 @@ private:
             instruction.type.bit_width == 64))))
         destination = reg_operand(XR_RAX);
       else destination = reg_operand(allocate_result(instruction.dest, out));
-      if(instruction.type.kind == lowir_model::LTK_OBJECT && instruction.type.storage_size > 8) throw std::runtime_error("multi-eightbyte object load is not implemented");
-      const std::string transfer_type = instruction.type.kind == lowir_model::LTK_OBJECT ? abi::object_chunk_type(instruction.type.storage_size).text : instruction.type.text;
-      MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, transfer_type);
+      MirInstruction load = machine_instruction(MirInstruction::MI_LOAD,
+                                                instruction.type.text);
       append_operand(load, destination);
       append_operand(load, materialized_storage(instruction.first, out));
       out.push_back(load);
@@ -2819,6 +2864,9 @@ private:
         emit_float_store(instruction, out);
         return;
       }
+      if(instruction.type.kind == lowir_model::LTK_OBJECT)
+        return emit_object_copy(instruction.first, instruction.second,
+          instruction.type.storage_size, instruction.type.alignment, out);
       if(instruction.second.kind == Operand::OP_GLOBAL &&
          tls_wrappers_.count(instruction.second.text)) {
         MirOperand value = resolve(instruction.first);
@@ -2844,10 +2892,8 @@ private:
         consume(instruction.second);
         return;
       }
-      if(instruction.type.kind == lowir_model::LTK_OBJECT && instruction.type.storage_size > 8) throw std::runtime_error("multi-eightbyte object store is not implemented");
-      const std::string transfer_type = instruction.type.kind == lowir_model::LTK_OBJECT ?
-        abi::object_chunk_type(instruction.type.storage_size).text : instruction.type.text;
-      MirInstruction store = machine_instruction(MirInstruction::MI_STORE, transfer_type);
+      MirInstruction store = machine_instruction(MirInstruction::MI_STORE,
+                                                 instruction.type.text);
       MirOperand value = resolve(instruction.first);
       if(value.kind != MirOperand::OP_REG) {
         move_value_to_register(out, XR_RAX, value, operand_type(instruction.first));
