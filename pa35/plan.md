@@ -16,33 +16,35 @@ constant shifts reduce modulo their canonical width in both narrow and wide
 evaluators while signed overflow remains rejected. A direct lexical alias
 converges same-type namespace imports by canonical type identity without
 weakening imported/imported ambiguity; nested class-conditional arm temporaries
-join the enclosing full-expression cleanup graph.
+join the enclosing full-expression cleanup graph. Extended ABI calls retire
+their inputs immediately after call/stack teardown, so result placement sees
+only genuinely live values and can use the existing bounded spill path.
 
 ## Current Failure Map
 
-PA35 is 148/150 (126/128 pre-existing tests) with two failures. Both now group
-under reactive GPR allocation in the native backend.
+No failures remain: PA35 passes all 150 pre-existing tests plus the focused
+extended-call pressure regression. The starting string-compare and hosted
+export-closure failures shared premature call-input ownership in native MIR
+lowering and are resolved at that boundary.
 
 ## Active Checkpoint
 
-**Bounded reactive GPR spilling.** Per `spec.md` §§6-9, typed LowIR lowers to
-function-local MIR whose allocator must preserve every live value across calls
-and constrained instructions without exhausting the finite register set. Data
-flows MIR blocks -> liveness/use positions -> register assignment -> bounded
-spill/reload slots -> encoded instructions. The native allocator owns pressure
-resolution; lowering and ABI call facts are immutable inputs. Expected work is
-O(MIR size log live ranges) or better with function-local storage. Validate both
-hosted failures, call-clobber and address/value pressure probes, 8/16/32 live
-values, PA35, PA1-34, and audit.
+**PA35 complete — extended-call result pressure.** Per `spec.md` §§6-9, typed
+LowIR flows through function-local liveness and ABI argument placement to MIR
+register assignment and bounded spill slots. Native call lowering owns operand
+retirement: after the call and stack teardown, it consumes inputs before result
+allocation; remaining uses stay live and spillable. Work remains O(MIR size log
+live ranges) or better. Validation covers both hosted failures, dead/live call
+arguments, executable behavior, 8/16/32 live values, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen same-type namespace imports produced 25/41 semantic nodes, 15/23
-declarations, 18/26 lookup queries, and 23/39 scope visits, with no
-specialization or demand work. Peak semantic storage was 44,445/76,057 bytes;
-five-run median semantic analysis was 0.246/0.309 ms and lowering was
-0.131/0.129 ms. Indexed-edge traversal and O(1) canonical comparisons keep
-measured work bounded near linearly.
+Eight/sixteen/thirty-two values live around an extended call produced
+97/139/223 LowIR and 111/153/237 MIR instructions. Peak stage storage was
+104,222/148,862/268,174 bytes; five-run median native lowering was
+0.435/0.548/0.763 ms and encoding was 0.168/0.246/0.452 ms. Instruction count,
+storage, and time remain proportional to emitted value work; the focused
+dead/live-input executable probe returned zero.
 
 ## Completed Checkpoints
 
@@ -88,3 +90,4 @@ measured work bounded near linearly.
 | List/constructor candidate convergence | concrete braced targets complete before list classification; initializer-list ABI shells replay semantic members and implicit copy facts on demand | PA35 137/142 -> 141/144 (125/128 existing); both hosted barriers and two regressions pass; narrowing guard and 8/16 scaling pass |
 | Unsigned constant-shift modulo semantics | <=64-bit evaluation matches the existing wide path by normalizing discarded unsigned bits while preserving signed/count diagnostics | PA35 141/144 -> 144/146 (126/128 existing); Mersenne and two regressions pass; signed boundary guards and 8/16 scaling pass |
 | Direct/imported canonical aliases and enclosing conditional cleanup | direct aliases merge same-type namespace imports without weakening imported/imported or base lookup; nested arm temporaries publish into the enclosing lifetime graph | PA35 144/146 -> 148/150; four regressions and runtime lifetime probe pass; hosted export closure advances to backend; 8/16 scaling passes |
+| Extended-call input retirement | call inputs retire after call teardown before result allocation; later uses remain live and spillable | PA35 148/150 -> 151/151; dead/live regression and runtime probe; 8/16/32 scaling linear; PA1-34 and audit pass |

@@ -2347,6 +2347,14 @@ private:
       reg_operand(XR_R10));
     out.push_back(call);
     emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
+    // The call and its stack teardown have consumed every input.  Retire them
+    // before assigning a home to the return value: otherwise an extended call
+    // can make all managed registers look unspillable merely because its dead
+    // arguments still belong to the active LowIR instruction.
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      consume(instruction.args[i]);
+    consume(instruction.first);
+    active_instruction_ = 0;
     const bool materialize_result = !instruction.call_returns_void &&
       (instruction.type.kind == lowir_model::LTK_OBJECT ||
        (facts_.uses.find(instruction.dest) != facts_.uses.end() &&
@@ -2391,10 +2399,6 @@ private:
         normalize_integer(instruction.type, location, out);
       define(instruction.dest, instruction.type, location);
     }
-    for(std::size_t i = 0; i < instruction.args.size(); ++i)
-      consume(instruction.args[i]);
-    active_instruction_ = 0;
-    consume(instruction.first);
   }
   void emit_call(const Instruction & instruction,
                  const lowir_model::LowirBlock & block,
