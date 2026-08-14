@@ -759,6 +759,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(node);
+		if (spelling == "__func__")
+			return AnalyzePredefinedFunctionName(node, target);
 		ExpressionInfo local;
 		if (FindChild(node, "structured-type-name") == kNoNode &&
 			spelling.find("::") == std::string::npos &&
@@ -782,6 +784,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, "builtin-type-trait-expression"))
 		return ApplyTarget(AnalyzeBuiltinTypeTrait(node, scope), target);
+	if (arena_->IsTag(node, "builtin-offsetof-expression"))
+		return AnalyzeBuiltinOffsetof(node, scope, target);
 	if (arena_->IsTag(node, "call-expression"))
 		return AnalyzeCall(node, scope, target);
 	if (arena_->IsTag(node, "lambda-expression"))
@@ -1323,6 +1327,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		if (callee_path.Empty()) callee_path = ParseNamePath(spelling);
 		const bool qualified_callee = callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
+		if (TryAnalyzeCompilerFunctionBuiltin(spelling, scope,
+			argument_syntax, node, target, &builtin)) return builtin;
 		if (spelling == "__builtin_invoke") return AnalyzeBuiltinInvoke(scope, argument_syntax, arguments_analyzed ? &analyzed_arguments : 0, target);
 		if (TryAnalyzeImmediateBuiltinCall(
 			spelling, scope, argument_syntax, target, &builtin))

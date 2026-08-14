@@ -83,8 +83,18 @@ protected:
 			derived.program_.bindings[designator.binding].kind == BIND_FUNCTION &&
 			!derived.program_.bindings[designator.binding].virtual_function)
 		{
+			std::uint32_t address_node = children[1];
+			if (designator.kind == DUMP_UNARY_EXPRESSION)
+			{
+				const NodeChildren address_children =
+					derived.Children(address_node);
+				if (address_children.size() != 1)
+					throw std::runtime_error(
+						"direct member pointer has no address operand");
+				address_node = address_children[0];
+			}
 			callee = derived.AddressOfStorage(
-				derived.LowerStorage(children[1]));
+				derived.LowerStorage(address_node));
 			adjustment = Operand(designator.constant_value, LowI64());
 		}
 		else

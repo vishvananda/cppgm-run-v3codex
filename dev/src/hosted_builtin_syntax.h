@@ -14,6 +14,33 @@ template <class Derived>
 class Syntax
 {
 protected:
+	pa10_syntax_detail::NodeId ParseBuiltinOffsetofExpression()
+	{
+		using namespace pa10_syntax_detail;
+		Derived& parser = static_cast<Derived&>(*this);
+		if (!parser.AtIdentifier() ||
+			parser.Spelling(parser.position_) != "__builtin_offsetof" ||
+			!parser.AtOffset(1, OP_LPAREN)) return kNoNode;
+		parser.position_ += 2;
+		const NodeId expression = parser.arena_.Make(
+			"builtin-offsetof-expression", "__builtin_offsetof");
+		const NodeId operand = parser.arena_.Make("builtin-type-operand");
+		if (!parser.ParseTypeId(operand))
+			throw parser.Error("expected offsetof object type");
+		parser.arena_.Add(expression, operand);
+		parser.Expect(OP_COMMA);
+		if (!parser.AtIdentifier())
+			throw parser.Error("expected offsetof member name");
+		const std::size_t member = parser.position_++;
+		const NodeId identifier = parser.arena_.Make(
+			"identifier", parser.Spelling(member));
+		parser.arena_.SetSemanticPayload(
+			identifier, parser.tokens_[member].spelling);
+		parser.arena_.Add(expression, identifier);
+		parser.Expect(OP_RPAREN);
+		return expression;
+	}
+
 	pa10_syntax_detail::NodeId ParseBuiltinTypeTraitExpression()
 	{
 		using namespace pa10_syntax_detail;

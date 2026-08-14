@@ -1040,6 +1040,12 @@ private:
 	ExpressionInfo AnalyzeBuiltinInvoke(ScopeId scope,
 		const std::vector<NodeId>& argument_syntax,
 		const std::vector<ExpressionInfo>* analyzed_arguments, TypeId target);
+	bool TryAnalyzeCompilerFunctionBuiltin(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		NodeId call_syntax, TypeId target, ExpressionInfo* result);
+	ExpressionInfo AnalyzePredefinedFunctionName(NodeId syntax, TypeId target);
+	ExpressionInfo AnalyzeBuiltinOffsetof(NodeId syntax, ScopeId scope,
+		TypeId target);
 	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);

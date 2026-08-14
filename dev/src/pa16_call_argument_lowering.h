@@ -795,6 +795,46 @@ protected:
 		if (children.empty()) return false;
 		const DumpNode& callee = derived.arena_.nodes[children[0]];
 		if (callee.kind != DUMP_CALLEE) return false;
+		if (record.compiler_intrinsic != COMPILER_INTRINSIC_NONE)
+		{
+			if (children.size() != 4)
+				throw std::logic_error("invalid overflow intrinsic call");
+			const LowType narrow = derived.LowerType(record.operand_type);
+			if (!IsInteger(narrow) || narrow.width > 64)
+				throw std::logic_error("invalid overflow intrinsic operand type");
+			const LowType wide = narrow.width < 64 ?
+				(narrow.is_signed ? LowI64() : LowU64()) :
+				(narrow.is_signed ? LowI128() : LowU128());
+			const Operand left = derived.Convert(
+				derived.LowerValue(children[1], narrow), wide);
+			const Operand right = derived.Convert(
+				derived.LowerValue(children[2], narrow), wide);
+			const LowOperation operation =
+				record.compiler_intrinsic == COMPILER_INTRINSIC_ADD_OVERFLOW ?
+					LOW_OP_ADD :
+				record.compiler_intrinsic == COMPILER_INTRINSIC_SUB_OVERFLOW ?
+					LOW_OP_SUB : LOW_OP_MUL;
+			const Operand exact = EmitIntegerIntrinsicBinary(
+				operation, left, right, wide);
+			const Operand narrowed = derived.Convert(exact, narrow);
+			Instruction store(Instruction::STORE);
+			store.type = narrow;
+			store.first = narrowed;
+			store.second = derived.LowerValue(children[3], LowPtr());
+			derived.Emit(store);
+			const Operand round_trip = derived.Convert(narrowed, wide);
+			const Operand overflowed = derived.Temp(LowU8());
+			Instruction compare(Instruction::CMP);
+			compare.dest = overflowed.id;
+			compare.op = LOW_OP_NE;
+			compare.type = wide;
+			compare.first = exact;
+			compare.second = round_trip;
+			derived.Emit(compare);
+			*result = derived.Convert(
+				overflowed, derived.LowerType(record.type));
+			return true;
+		}
 		if (TryLowerAtomicIntrinsicCall(record, children, result)) return true;
 		if (callee.binding == kNoBinding ||
 			callee.binding >= derived.program_.bindings.size()) return false;

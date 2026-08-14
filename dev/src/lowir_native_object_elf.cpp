@@ -492,11 +492,13 @@ std::string host_runtime_object_symbol(
     const lowir_model::SymbolMetadata & metadata)
 {
   static const char * const memory_symbols[] = {
-    "bzero", "memchr", "memcpy", "memmove", "memset", "strchr", "strlen"
+    "bzero", "memchr", "memcmp", "memcpy", "memmove", "memset", "strchr",
+    "strcmp", "strlen", "vsnprintf"
   };
   const std::string prefix = "cppgm_builtin_";
   if(metadata.object_symbol.compare(0, prefix.size(), prefix) == 0) {
     const std::string suffix = metadata.object_symbol.substr(prefix.size());
+    if(suffix == "unreachable") return "abort";
     for(std::size_t i = 0;
         i < sizeof(memory_symbols) / sizeof(memory_symbols[0]); ++i)
       if(suffix == memory_symbols[i]) return suffix;

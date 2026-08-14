@@ -1920,6 +1920,7 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	case BUILTIN_FUNCTION_ABORT:
 		symbol->noreturn = true; break;
 	case BUILTIN_FUNCTION_ALLOCA:
+	case BUILTIN_FUNCTION_VSNPRINTF:
 	case BUILTIN_FUNCTION_VA_START:
 	case BUILTIN_FUNCTION_VA_END:
 	case BUILTIN_FUNCTION_VA_ARG:
@@ -1954,15 +1955,19 @@ void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 	using pa15_lowir_detail::Parameter;
 	if (kind == BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC)
 	{
-		const bool pointer_parameter = index == 0 ||
+		const bool comparison_parameter =
+			(memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCMP ||
+			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRCMP) && index < 2;
+		const bool pointer_parameter = index == 0 || comparison_parameter ||
 			((memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCPY ||
 			  memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMMOVE) &&
 			 index == 1);
 		if (pointer_parameter)
 			parameter->capture = Parameter::CAPTURE_NOCAPTURE;
-		if ((memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRLEN ||
+		if (comparison_parameter ||
+			((memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRLEN ||
 			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_STRCHR ||
-			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCHR) && index == 0)
+			 memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMCHR) && index == 0))
 			parameter->access = Parameter::ACCESS_READ;
 		else if ((memory_kind == hosted_builtin::MEMORY_INTRINSIC_BZERO ||
 			memory_kind == hosted_builtin::MEMORY_INTRINSIC_MEMSET) && index == 0)

@@ -78,6 +78,11 @@ bool IsSupportedBuiltinProbe(const std::string& value)
 		hosted_builtin::FindAtomicIntrinsic(value)) return true;
 	static const char* const entries[] = {
 		"__builtin_abort",
+		"__builtin_add_overflow",
+		"__builtin_invoke",
+		"__builtin_mul_overflow",
+		"__builtin_offsetof",
+		"__builtin_sub_overflow",
 		"__integer_pack",
 		"__is_trivially_destructible",
 		"__reference_binds_to_temporary",

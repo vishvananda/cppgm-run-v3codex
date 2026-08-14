@@ -124,6 +124,57 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinInvoke(ScopeId scope,
 	std::vector<NodeId> operand_syntax(
 		argument_syntax.begin() + 1, argument_syntax.end());
 	std::vector<ExpressionInfo> operands(values.begin() + 1, values.end());
+	const TypeId callable_type = program_->types.RemoveTopCv(
+		EffectiveType(callable_expression.type));
+	const TypeRecord callable_shape = program_->types.Get(callable_type);
+	if (callable_shape.kind == TYPE_MEMBER_POINTER)
+	{
+		if (operands.empty())
+			return CandidateExpressionFailure(
+				"__builtin_invoke member pointer requires an object");
+		ExpressionInfo object = operands.front();
+		const TypeId direct_type = program_->types.RemoveTopCv(
+			EffectiveType(object.type));
+		const TypeRecord direct_shape = program_->types.Get(direct_type);
+		const EntityId direct_entity = EntityOf(direct_type);
+		const EntityId owner = EntityOf(
+			static_cast<TypeId>(callable_shape.bound));
+		std::string application;
+		if (direct_entity != kNoEntity && owner != kNoEntity &&
+			(direct_entity == owner || program_->IsBaseOf(owner, direct_entity)))
+			application = ".*";
+		else if (direct_shape.kind == TYPE_POINTER)
+			application = "->*";
+		else
+		{
+			std::vector<NodeId> dereference_syntax(
+				1, operand_syntax.front());
+			std::vector<ExpressionInfo> dereference_operands(1, object);
+			ExpressionInfo dereferenced;
+			if (!TryAnalyzeOverloadedOperator("*", scope,
+				dereference_syntax, dereference_operands, false, kNoType,
+				&dereferenced))
+				return CandidateExpressionFailure(
+					"__builtin_invoke object is not dereferenceable");
+			object = dereferenced;
+			application = ".*";
+		}
+		ExpressionInfo member;
+		if (!TryAnalyzeMemberPointerApplication(application, application,
+			object, callable_expression, &member))
+			throw std::logic_error("member pointer application was not recognized");
+		if (CandidateSubstitutionFailed()) return ExpressionInfo();
+		operands.erase(operands.begin());
+		operand_syntax.erase(operand_syntax.begin());
+		if (!program_->types.IsFunction(callable_shape.child))
+		{
+			if (!operands.empty())
+				return CandidateExpressionFailure(
+					"__builtin_invoke data member has extra arguments");
+			return ApplyTarget(member, target);
+		}
+		callable_expression = member;
+	}
 	ExpressionInfo class_call;
 	if (TryAnalyzeCallOperator(scope, callable_expression, operand_syntax,
 		&operands, target, &class_call)) return class_call;
@@ -607,6 +658,11 @@ BindingId SemanticAnalyzer::EnsureMemoryIntrinsicFunction(
 		parameter_types.push_back(const_pointer);
 		parameter_types.push_back(integer);
 		parameter_types.push_back(size); break;
+	case MEMORY_INTRINSIC_MEMCMP:
+		result = integer;
+		parameter_types.push_back(const_pointer);
+		parameter_types.push_back(const_pointer);
+		parameter_types.push_back(size); break;
 	case MEMORY_INTRINSIC_MEMCPY:
 	case MEMORY_INTRINSIC_MEMMOVE:
 		result = pointer;
@@ -625,6 +681,10 @@ BindingId SemanticAnalyzer::EnsureMemoryIntrinsicFunction(
 		result = character_pointer;
 		parameter_types.push_back(const_character_pointer);
 		parameter_types.push_back(integer); break;
+	case MEMORY_INTRINSIC_STRCMP:
+		result = integer;
+		parameter_types.push_back(const_character_pointer);
+		parameter_types.push_back(const_character_pointer); break;
 	case MEMORY_INTRINSIC_STRLEN:
 		result = size;
 		parameter_types.push_back(const_character_pointer); break;
@@ -1257,6 +1317,14 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 	case BUILTIN_FUNCTION_ALLOCA:
 		spelling = "__builtin_alloca"; result = pointer;
 		parameter_types.push_back(size); break;
+	case BUILTIN_FUNCTION_VSNPRINTF:
+		spelling = "__builtin_vsnprintf";
+		result = program_->types.Fundamental(FUND_INT);
+		parameter_types.push_back(program_->types.Pointer(character));
+		parameter_types.push_back(size);
+		parameter_types.push_back(const_character_pointer);
+		parameter_types.push_back(program_->types.Pointer(
+			program_->types.Fundamental(FUND_UNSIGNED_LONG_INT))); break;
 	case BUILTIN_FUNCTION_VA_START:
 	case BUILTIN_FUNCTION_VA_END:
 	case BUILTIN_FUNCTION_VA_ARG:
@@ -1323,6 +1391,12 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 	else if (spelling == "__builtin_nanl") kind = BUILTIN_FUNCTION_NANL;
 	else if (spelling == "__builtin_isnan") kind = BUILTIN_FUNCTION_ISNAN;
 	else if (spelling == "__builtin_alloca") kind = BUILTIN_FUNCTION_ALLOCA;
+	else if (spelling == "__builtin_vsnprintf")
+		kind = BUILTIN_FUNCTION_VSNPRINTF;
+	else if (spelling == "__builtin_operator_new")
+		kind = BUILTIN_FUNCTION_OPERATOR_NEW;
+	else if (spelling == "__builtin_operator_delete")
+		kind = BUILTIN_FUNCTION_OPERATOR_DELETE;
 	else if (spelling == "::operator new")
 		kind = BUILTIN_FUNCTION_OPERATOR_NEW;
 	else if (spelling == "::operator delete")

@@ -1387,10 +1387,9 @@ NodeId Parser::ParsePrimaryExpression()
 	}
 	if (At(KW_DECLTYPE))
 		return ParseDecltypeValueName();
-	if (AtIdentifier() && AtOffset(1, OP_LPAREN))
-	{
-		const NodeId trait = ParseBuiltinTypeTraitExpression();
-		if (trait != kNoNode) return trait;
+	if (AtIdentifier() && AtOffset(1, OP_LPAREN)) {
+		const NodeId offset = ParseBuiltinOffsetofExpression(); if (offset != kNoNode) return offset;
+		const NodeId trait = ParseBuiltinTypeTraitExpression(); if (trait != kNoNode) return trait;
 	}
 	if (AtIdentifier() || At(OP_COLON2) || At(KW_OPERATOR) ||
 		(position_ < tokens_.size() &&

@@ -1,0 +1,231 @@
+#include "pa12_semantic_detail.h"
+
+#include <stdexcept>
+#include <string>
+
+namespace cppgm
+{
+namespace pa12_semantic_detail
+{
+namespace
+{
+
+std::string QuoteNarrowString(const std::string& value)
+{
+	std::string result(1, '"');
+	for (std::size_t i = 0; i < value.size(); ++i)
+	{
+		const unsigned char character =
+			static_cast<unsigned char>(value[i]);
+		if (character == '\\' || character == '"')
+		{
+			result += '\\';
+			result += static_cast<char>(character);
+		}
+		else if (character == '\n') result += "\\n";
+		else if (character == '\r') result += "\\r";
+		else if (character == '\t') result += "\\t";
+		else if (character >= 0x20 && character < 0x7f)
+			result += static_cast<char>(character);
+		else result += '?';
+	}
+	result += '"';
+	return result;
+}
+
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
+	NodeId syntax, TypeId target)
+{
+	if (current_function_context_ == kNoBinding)
+		throw std::runtime_error("__func__ outside function scope");
+	const FunctionInfo& function = GetFunction(
+		program_->bindings[current_function_context_].canonical);
+	const std::string name = function.display_name == 0 ? std::string() :
+		program_->names.Get(function.display_name);
+	return ApplyTarget(MakeStringLiteral(QuoteNarrowString(name)), target);
+}
+
+ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinOffsetof(
+	NodeId syntax, ScopeId scope, TypeId target)
+{
+	const std::uint32_t type_edge = arena_->FirstEdge(syntax);
+	const std::uint32_t member_edge = type_edge == kNoEdge ? kNoEdge :
+		arena_->NextEdge(type_edge);
+	if (member_edge == kNoEdge)
+		throw std::runtime_error("invalid offsetof expression");
+	const NodeId operand = arena_->EdgeChild(type_edge);
+	const NodeId type_syntax = FindChild(operand, "type-id");
+	const TypeId type = BuildTypeId(type_syntax, scope);
+	if (CandidateSubstitutionFailed() || type == kNoType)
+		return ExpressionInfo();
+	const EntityId entity = EntityOf(
+		program_->types.RemoveTopCv(EffectiveType(type)));
+	if (entity == kNoEntity)
+	{
+		if (FunctionTemplateTypeIsDependent(type))
+		{
+			ExpressionInfo dependent;
+			dependent.type = program_->types.Fundamental(
+				FUND_UNSIGNED_LONG_INT);
+			dependent.category = VALUE_PRVALUE;
+			dependent.node = MakeDump(DUMP_SIZEOF_EXPRESSION,
+				dependent.type, dependent.category);
+			dependent.constant = true;
+			dependent.value = 0;
+			dump_.nodes[dependent.node].template_parameter_constant = true;
+			dump_.nodes[dependent.node].template_layout_constant = true;
+			RecordExpressionFacts(dependent);
+			++expression_count_;
+			return ApplyTarget(dependent, target);
+		}
+		throw std::runtime_error("offsetof requires a class type");
+	}
+	EnsureClassDefinition(type);
+	const NameId name = program_->names.Intern(
+		arena_->Payload(arena_->EdgeChild(member_edge)));
+	const LookupResult found =
+		program_->LookupMember(entity, name, LOOKUP_ORDINARY);
+	if (found.ordinary == kNoBinding)
+		throw std::runtime_error("offsetof names an unknown member");
+	const BindingRecord& member = program_->bindings[found.ordinary];
+	if (!member.non_static_data_member)
+		throw std::runtime_error("offsetof requires a non-static data member");
+	if (member.bit_field)
+		throw std::runtime_error("offsetof cannot name a bit-field");
+	ExpressionInfo result;
+	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
+	result.category = VALUE_PRVALUE;
+	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION,
+		result.type, result.category);
+	result.constant = true;
+	result.value = static_cast<std::int64_t>(member.member_offset);
+	dump_.nodes[result.node].template_layout_constant =
+		IsClassTemplateSpecializationContext(entity);
+	RecordExpressionFacts(result);
+	++expression_count_;
+	return ApplyTarget(result, target);
+}
+
+bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, NodeId call_syntax,
+	TypeId target, ExpressionInfo* result)
+{
+	CompilerIntrinsicKind overflow = COMPILER_INTRINSIC_NONE;
+	if (spelling == "__builtin_add_overflow")
+		overflow = COMPILER_INTRINSIC_ADD_OVERFLOW;
+	else if (spelling == "__builtin_sub_overflow")
+		overflow = COMPILER_INTRINSIC_SUB_OVERFLOW;
+	else if (spelling == "__builtin_mul_overflow")
+		overflow = COMPILER_INTRINSIC_MUL_OVERFLOW;
+	if (overflow != COMPILER_INTRINSIC_NONE)
+	{
+		if (argument_syntax.size() != 3)
+			throw std::runtime_error("overflow builtin requires three arguments");
+		ExpressionInfo left =
+			AnalyzeUntypedCallArgument(argument_syntax[0], scope);
+		const TypeId value_type = program_->types.RemoveTopCv(
+			EffectiveType(left.type));
+		if (!IsIntegral(value_type, true) || IntegralWidth(value_type) > 64)
+			throw std::runtime_error(
+				"overflow builtin requires an integer type up to 64 bits");
+		left = ApplyCallArgument(left, value_type);
+		ExpressionInfo right = ApplyCallArgument(
+			AnalyzeUntypedCallArgument(argument_syntax[1], scope), value_type);
+		const TypeId pointer_type = program_->types.Pointer(value_type);
+		ExpressionInfo destination = ApplyCallArgument(
+			AnalyzeUntypedCallArgument(argument_syntax[2], scope), pointer_type);
+		const TypeId result_type = program_->types.Fundamental(FUND_BOOL);
+		std::vector<TypeId> parameters;
+		parameters.push_back(value_type);
+		parameters.push_back(value_type);
+		parameters.push_back(pointer_type);
+		const TypeId function_type = program_->types.Function(
+			result_type, parameters, false);
+		const std::uint32_t call = MakeDump(
+			DUMP_CALL_EXPRESSION, result_type, VALUE_PRVALUE);
+		dump_.nodes[call].compiler_intrinsic = overflow;
+		dump_.nodes[call].operand_type = value_type;
+		const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
+			VALUE_NONE, program_->names.Intern(spelling));
+		dump_.Add(call, callee);
+		dump_.Add(call, left.node);
+		dump_.Add(call, right.node);
+		dump_.Add(call, destination.node);
+		result->node = call;
+		result->type = result_type;
+		result->category = VALUE_PRVALUE;
+		++expression_count_;
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
+	const bool source_string = spelling == "__builtin_FILE" ||
+		spelling == "__builtin_FUNCTION";
+	const bool source_integer = spelling == "__builtin_LINE" ||
+		spelling == "__builtin_COLUMN";
+	if (source_string || source_integer)
+	{
+		if (!argument_syntax.empty())
+			throw std::runtime_error("source-location builtin requires no arguments");
+		if (source_string)
+		{
+			std::string value;
+			if (spelling == "__builtin_FILE")
+				value = arena_->SourceFile(call_syntax);
+			else if (current_function_context_ != kNoBinding)
+			{
+				const FunctionInfo& function = GetFunction(
+					program_->bindings[current_function_context_].canonical);
+				if (function.display_name != 0)
+					value = program_->names.Get(function.display_name);
+			}
+			*result = ApplyTarget(
+				MakeStringLiteral(QuoteNarrowString(value)), target);
+			return true;
+		}
+		const std::size_t value = spelling == "__builtin_LINE" ?
+			arena_->SourceLine(call_syntax) : arena_->SourceColumn(call_syntax);
+		*result = MakeLiteral(program_->types.Fundamental(FUND_INT),
+			program_->names.Intern(std::to_string(value)));
+		SetExpressionScalar(result,
+			ConstexprScalarValue(static_cast<std::int64_t>(value)));
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
+	if (spelling == "__builtin_is_constant_evaluated")
+	{
+		if (!argument_syntax.empty())
+			throw std::runtime_error(
+				"is_constant_evaluated requires no arguments");
+		*result = MakeLiteral(program_->types.Fundamental(FUND_BOOL),
+			program_->names.Intern("false"));
+		SetExpressionScalar(result,
+			ConstexprScalarValue(static_cast<std::int64_t>(0)));
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
+	if (spelling != "__builtin_addressof") return false;
+	if (argument_syntax.size() != 1)
+		throw std::runtime_error("addressof requires one argument");
+	ExpressionInfo operand = AnalyzeExpression(argument_syntax[0], scope);
+	if (operand.category != VALUE_LVALUE)
+		throw std::runtime_error("addressof requires an lvalue");
+	if (operand.binding != kNoBinding &&
+		program_->bindings[operand.binding].bit_field)
+		throw std::runtime_error("addressof cannot address a bit-field");
+	const TypeId result_type = program_->types.Pointer(EffectiveType(operand.type));
+	const std::uint32_t expression = MakeDump(DUMP_UNARY_EXPRESSION,
+		result_type, VALUE_PRVALUE, program_->names.Intern("&"));
+	dump_.Add(expression, operand.node);
+	result->node = expression;
+	result->type = result_type;
+	result->category = VALUE_PRVALUE;
+	++expression_count_;
+	*result = ApplyTarget(*result, target);
+	return true;
+}
+
+}
+}

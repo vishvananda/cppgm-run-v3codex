@@ -44,6 +44,14 @@ enum GnuAsmOperation : std::uint8_t
 	GNU_ASM_COMPILER_FENCE
 };
 
+enum CompilerIntrinsicKind : std::uint8_t
+{
+	COMPILER_INTRINSIC_NONE,
+	COMPILER_INTRINSIC_ADD_OVERFLOW,
+	COMPILER_INTRINSIC_SUB_OVERFLOW,
+	COMPILER_INTRINSIC_MUL_OVERFLOW
+};
+
 enum DumpKind
 {
 	DUMP_TRANSLATION_UNIT,
@@ -137,6 +145,7 @@ struct DumpNode
 	ValueCategory category;
 	LogicalOperation logical_operation;
 	GnuAsmOperation gnu_asm_operation;
+	CompilerIntrinsicKind compiler_intrinsic;
 	hosted_builtin::AtomicIntrinsicKind hosted_atomic_intrinsic;
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
@@ -220,6 +229,7 @@ struct DumpNode
 		: kind(value), type(kNoType), operand_type(kNoType),
 		  category(VALUE_NONE), logical_operation(LOGICAL_OPERATION_NONE),
 		  gnu_asm_operation(GNU_ASM_NONE),
+		  compiler_intrinsic(COMPILER_INTRINSIC_NONE),
 		  hosted_atomic_intrinsic(hosted_builtin::ATOMIC_INTRINSIC_NONE),
 		  text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
