@@ -1645,10 +1645,18 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		object_pointer = MakeImplicitObjectPointer(object);
 	}
 	else object_pointer.category = VALUE_LVALUE;
+	std::vector<NodeId> expanded_argument_syntax(argument_syntax);
 	std::vector<ExpressionInfo> arguments;
-	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
-		arguments.push_back(
-			AnalyzeUntypedCallArgument(argument_syntax[i], scope));
+	if (!ExpandCallArgumentPacks(argument_syntax, scope,
+		&expanded_argument_syntax, &arguments))
+		for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+			arguments.push_back(
+				AnalyzeUntypedCallArgument(argument_syntax[i], scope));
+	if (CandidateSubstitutionFailed())
+	{
+		*result = ExpressionInfo();
+		return true;
+	}
 	if (!template_patterns.empty())
 	{
 		NamePath syntax_base;
@@ -1661,9 +1669,9 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		if (has_explicit_syntax)
 			DeduceFunctionTemplatePatternsWithExplicitSyntax(template_patterns,
 				arguments, explicit_syntax, scope, &specializations,
-				&argument_syntax);
+				&expanded_argument_syntax);
 		else DeduceFunctionTemplatePatterns(template_patterns, arguments,
-			&specializations, 0, 0, scope, &argument_syntax);
+			&specializations, 0, 0, scope, &expanded_argument_syntax);
 		for (std::size_t i = 0; i < specializations.size(); ++i)
 		{
 			BindingId candidate = specializations[i];
@@ -1705,7 +1713,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 			&object_pointer, effective_naming_class, candidates[0]);
 	ObjectConversionFact object_conversion;
 	std::vector<CallConversionFact> argument_conversions;
-	const BindingId selected = SelectOverload(scope, argument_syntax,
+	const BindingId selected = SelectOverload(scope, expanded_argument_syntax,
 		arguments, candidates, &object_pointer, &object_conversion,
 		&argument_conversions);
 	if (selected == kNoBinding)
@@ -1715,7 +1723,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	}
 	if (!program_->bindings[selected].static_member_function)
 		DemandRetainedRuntimeCalls(object.node);
-	*result = BuildResolvedCall(selected, scope, argument_syntax,
+	*result = BuildResolvedCall(selected, scope, expanded_argument_syntax,
 		arguments, &object_pointer, target, effective_naming_class,
 		&object_conversion, &argument_conversions,
 		explicitly_qualified);

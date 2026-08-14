@@ -507,13 +507,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		constructed_target = target_record.child;
 	constructed_target = program_->types.RemoveTopCv(constructed_target);
 	const EntityId constructed_entity = EntityOf(constructed_target);
-	if (constructed_entity != kNoEntity &&
-		target_record.kind != TYPE_LVALUE_REFERENCE &&
-		target_record.kind != TYPE_RVALUE_REFERENCE)
-		EnsureClassDefinition(constructed_target);
 	const TypeId operand_object_type = program_->types.RemoveTopCv(
 		EffectiveType(operand.type));
 	const EntityId operand_entity = EntityOf(operand_object_type);
+	if (constructed_entity != kNoEntity &&
+		((target_record.kind != TYPE_LVALUE_REFERENCE &&
+		  target_record.kind != TYPE_RVALUE_REFERENCE) ||
+		 (arena_->Payload(node).find("STATIC") != std::string::npos &&
+		  operand_entity != kNoEntity && operand_entity != constructed_entity)))
+		EnsureClassDefinition(constructed_target);
 	const bool static_reference_downcast =
 		(target_record.kind == TYPE_LVALUE_REFERENCE ||
 		 target_record.kind == TYPE_RVALUE_REFERENCE) &&

@@ -6,35 +6,35 @@ PA35 keeps the source -> streaming preprocessing/post-tokenization -> integrated
 syntax/semantics -> typed LowIR -> native ELF architecture. Relevant `spec.md`
 requirements are canonical identity and phase flow (§2, §6), demand-owned
 template specialization (§4), and bounded, observable heavy-header work (§9).
-Retained syntax is shared, but concrete declaration, lookup, and access facts
-belong to the canonical specialization owner. The shared front end owns all
-changes; no hosted-only route is introduced.
+Retained syntax is shared, but concrete declaration, construction, lookup, and
+access facts belong to the canonical specialization owner. The shared front end
+owns all changes; no hosted-only route is introduced.
 
 ## Current Failure Map
 
-PA35 is 82/113 with 31 failures. The complete set groups by first owner:
+PA35 is 86/117 with 31 failures. The complete set groups by first owner:
 retained declaration/class lookup and access 3; expression/call/template demand
-16; parser/local semantics 2; stream/heap stability 6; and native
-object/register lowering 4.
+13; parser/local semantics 2; stream/heap stability 6; and native
+object/register lowering 7.
 
 ## Active Checkpoint
 
-**Specialization-local construction convergence.** Per `spec.md` §§2, 4, and 6,
-constructor viability must be computed from the demanded concrete owner, with
-canonical special-member and aggregate facts crossing into lowering only after
-semantic completion. Data flows retained initializer/call syntax -> active
-specialization scope -> constructor candidate set -> target-typed initialization
--> demand/lowering. PA12 initialization/special-member semantics and PA19 replay
-own the boundary. Expected work is O(candidate count + aggregate members) per
-new construction with O(1) average indexed specialization reuse. Validate the
-six current aggregate/no-viable/ambiguous-constructor cases, genuine ambiguity
-negatives, full PA35, PA1-34, audit, and 8/16 construction families.
+**Pack-indexed tuple/trait identity.** Per `spec.md` §§2, 4, and 6, pack-derived
+class arguments and indexed type members must preserve canonical specialization
+identity through static-assert and body demand. Data flows retained pack syntax
+-> canonical argument partition -> selected class specialization -> indexed
+member type/value -> constexpr assertion or call demand. PA19/PA20 template
+semantics and PA23 result identity own the boundary. Expected work is O(pack
+length) for a new specialization followed by O(1) average indexed reuse.
+Validate the current tuple-size/tuple-element and type-trait failures, an
+out-of-range negative, full PA35, PA1-34, audit, and 8/16-element packs.
 
 ## Performance Evidence
 
-For 8/16 specialization-owned retained calls, lookup queries were 600/1,192,
-template requests 72/144, and peak semantic storage 549,801/1,086,301 bytes.
-Five-run median semantic time was 2.90/5.46 ms; all tracked work stayed linear.
+For 8/16 construction families with reference aggregates, static downcasts,
+and direct-member pack calls, lookup queries were 946/1,834, template requests
+114/226, and peak semantic storage 1,059,065/2,073,617 bytes. Five-run median
+semantic time was 4.61/8.49 ms; all tracked work stayed linear.
 
 ## Completed Checkpoints
 
@@ -63,3 +63,4 @@ Five-run median semantic time was 2.90/5.46 ms; all tracked work stayed linear.
 | Canonical specialization completion re-entry | synthetic initializer-list layout and declaration replay remain distinct; only canonical in-progress replay crosses the duplicate guard | PA35 70/108 -> 73/109 (two handout plus one regression); PA1-34 4756/4756; 8/16 scaling and audit pass |
 | Canonical explicit class target routing | distinct `_Float128`/`__float128` identities and generic type/value/template argument routing remove all seven barriers | PA35 73/109 -> 77/111 (75/109 existing); two handouts pass, five advance, two regressions pass; PA1-34 4756/4756; scaling/audit pass |
 | Retained class/declaration convergence | injected class tags merge through the class-tag index; stale specialization-owned call facts rebuild in the active scope | PA35 77/111 -> 82/113 (80/111 existing); map/codecvt/wide-string and two regressions pass; PA1-34 4756/4756; scaling/audit pass |
+| Specialization-local construction convergence | class references remain references; static downcasts complete concrete targets; fixed cv-reference patterns order over forwarding packs; direct-member calls expand packs | PA35 82/113 -> 86/117; six construction and three pack-call barriers advance, four regressions pass; PA1-34 4756/4756; scaling/audit pass |

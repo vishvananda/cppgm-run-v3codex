@@ -1644,6 +1644,9 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 	{
 		const DumpNode& action = dump_.nodes[actions[i]];
 		const TypeKind kind = program_->types.Get(program_->types.RemoveTopCv(action.type)).kind;
+		const bool class_member = kind != TYPE_LVALUE_REFERENCE &&
+			kind != TYPE_RVALUE_REFERENCE &&
+			IsClassEntity(*program_, EntityOf(action.type));
 		if (kind == TYPE_ARRAY && allow_array_members)
 		{
 			if (action.first_edge == kNoDumpEdge)
@@ -1674,16 +1677,16 @@ std::uint32_t SemanticAnalyzer::BuildAggregateConstructionAction(TypeId type,
 			argument.type = dump_.nodes[value].type;
 			argument.category = dump_.nodes[value].category;
 			argument.binding = dump_.nodes[value].binding;
-			if (IsClassEntity(*program_, EntityOf(action.type)))
+			if (class_member)
 			{
 				argument.type = action.type;
 				argument.category = VALUE_PRVALUE;
 			}
-			values.push_back(IsClassEntity(*program_, EntityOf(action.type)) ?
+			values.push_back(class_member ?
 				ApplyCallArgument(argument, adjusted).node : value);
 		}
 		BindingId constructor = kNoBinding, destructor = kNoBinding;
-		if (IsClassEntity(*program_, EntityOf(action.type)))
+		if (class_member)
 		{
 			const EntityId member_entity = EntityOf(action.type);
 			const BindingId member_destructor =

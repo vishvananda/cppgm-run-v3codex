@@ -415,13 +415,15 @@ int SemanticAnalyzer::CompareFunctionTemplateConstraints(
 		{
 			const TypeRecord& record = program_->types.Get(reference);
 			if (record.kind != reference_kind) return false;
+			const TypeId referred = program_->types.RemoveTopCv(record.child);
+			if (referred == function_template_nondeduced_type_shape_ &&
+				referred != kNoType) return true;
 			for (std::size_t parameter = 0;
 				parameter < pattern.parameters.size() && parameter <
 					function_template_shape_parameters_.size(); ++parameter)
-				if (record.child == function_template_shape_parameters_[parameter])
+				if (referred == function_template_shape_parameters_[parameter])
 					return pattern.parameters[parameter].kind ==
-						TEMPLATE_ARGUMENT_TYPE &&
-						!pattern.parameters[parameter].pack;
+						TEMPLATE_ARGUMENT_TYPE;
 			return false;
 		};
 		for (std::size_t i = 0; i < left_shape.parameter_count; ++i)
