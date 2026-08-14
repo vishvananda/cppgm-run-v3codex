@@ -2149,6 +2149,16 @@ void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 			CompleteDefaultedDestructor(owner, binding);
 			program_->entities[owner].trivial_destructor = trivial &&
 				!GetFunction(binding).deleted_destructor;
+			BindingRecord& completed = program_->bindings[binding];
+			if (completed.exception_type_count != 0)
+				throw std::logic_error(
+					"implicit destructor has explicit exception types");
+			// ConfigureFunctionExceptionSpecification published a provisional
+			// boundary before the completed-class result existed. Lowering owns no
+			// semantic fallback, so publish the demanded canonical fact here.
+			completed.exception_boundary = completed.nonthrowing ?
+				FUNCTION_EXCEPTION_BOUNDARY_TERMINATE :
+				FUNCTION_EXCEPTION_BOUNDARY_NONE;
 		}
 		else if (function.inherited_constructor_source != kNoBinding &&
 			function.template_pattern == kNoDumpEdge)
