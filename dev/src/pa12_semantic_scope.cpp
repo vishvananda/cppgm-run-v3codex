@@ -86,14 +86,19 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 	}
 	scope_prefixes_[scope] = prefix;
 	scope_parents_[scope] = parent;
-	nearest_lifetime_scopes_[scope] = parent != kNoScope &&
-		parent < nearest_lifetime_scopes_.size() ?
-			nearest_lifetime_scopes_[parent] : kNoScope;
-	InitializeInitializerListLifetimeScope(scope, parent);
+	// A local class member keeps its enclosing lexical scope for lookup, but
+	// belongs to a new callable.  Automatic objects and temporaries from the
+	// enclosing function must not become cleanup obligations of that member.
+	const ScopeId lifetime_parent =
+		kind == SCOPE_FUNCTION ? kNoScope : parent;
+	nearest_lifetime_scopes_[scope] = lifetime_parent != kNoScope &&
+		lifetime_parent < nearest_lifetime_scopes_.size() ?
+			nearest_lifetime_scopes_[lifetime_parent] : kNoScope;
+	InitializeInitializerListLifetimeScope(scope, lifetime_parent);
 	scope_nontrivial_object_lifetime_prefixes_[scope] =
-		parent != kNoScope &&
-		parent < scope_nontrivial_object_lifetime_prefixes_.size() ?
-			scope_nontrivial_object_lifetime_prefixes_[parent] : 0;
+		lifetime_parent != kNoScope && lifetime_parent <
+			scope_nontrivial_object_lifetime_prefixes_.size() ?
+			scope_nontrivial_object_lifetime_prefixes_[lifetime_parent] : 0;
 	return scope;
 }
 

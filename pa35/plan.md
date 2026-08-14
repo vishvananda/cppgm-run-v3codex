@@ -5,36 +5,35 @@
 PA35 keeps source -> streaming preprocessing/post-tokenization -> integrated
 syntax/semantics -> typed LowIR -> native ELF. Relevant `spec.md` requirements
 are canonical identity and phase flow (§§2, 6), demand-owned specialization
-(§4), and bounded, observable heavy-header work (§9). Retained syntax is shared;
-concrete type, lookup, conversion, and lowering facts belong to their canonical
-owner in the shared front end.
+(§4), and bounded, observable heavy-header work (§9). Lexical ancestry supports
+lookup, while automatic lifetime state and lowered storage remain callable-owned.
 
 ## Current Failure Map
 
-PA35 is 125/133 (120/128 pre-existing tests) with eight failures. The complete
-set groups by shared owner and diagnostic: function-local storage lowering 2;
-hosted vector builtin lookup 2; list/constructor selection 2; retained local
-lookup 1; and reactive register allocation 1.
+PA35 is 128/135 (121/128 pre-existing tests) with seven failures. The complete
+set groups by owner: hosted vector builtin lookup 2; list/constructor selection
+2; static data-member addressability 1; retained local lookup 1; and reactive
+register allocation 1.
 
 ## Active Checkpoint
 
-**Function-local storage ownership convergence.** Per `spec.md` §§2, 4-6, a
-demanded function's parameters, locals, and retained expressions share one
-canonical lexical owner. Data flows semantic expression binding -> active
-function declaration/parameter/local owner -> per-function slot planning ->
-typed LowIR address. PA12 owns lexical binding identity; PA15 owns bounded slot
-collection and materialization. Expected work is O(body nodes + owned bindings)
-per demanded function with no global fallback or translation-unit rescan.
-Validate both current missing-storage failures, shadowed/local-class bindings, a
-cross-function leak negative, 8/16 owned bodies, PA35, PA1-34, and audit.
+**Addressable static data-member identity.** Per `spec.md` §§2, 5-6, an odr-used
+class static has one canonical object identity even when its declaration is
+retained inside a class rather than emitted at translation-unit depth. Data
+flows class declaration -> canonical PA12 binding -> PA15 global-symbol index ->
+typed address/relocation. PA12 owns constant and odr-use facts; PA15 owns one
+symbol per canonical binding. Expected work is amortized O(1) per use with no
+translation-unit rescan. Validate the regex `ctype_base::digit` reference,
+by-value constant use, declaration/definition coalescing, local-static
+separation, 8/16 references, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen control rows produced 261/517 semantic nodes, 61/117 declarations,
-320/640 lookup-scope visits, and 145/289 LowIR instructions. Peak semantic
-storage was 280,723/554,274 bytes; five-run median semantic analysis was
-1.039/1.941 ms and lowering was 0.363/0.546 ms. Work and storage remain bounded
-near linearly with doubled attributed functions and CFGs.
+Eight/sixteen callable-lifetime rows produced 360/712 semantic nodes, 149/285
+declarations, 416/832 lookup-scope visits, and 320/640 LowIR instructions. Peak
+semantic storage was 391,553/763,235 bytes; five-run median semantic analysis
+was 1.522/2.870 ms and lowering was 0.701/1.136 ms. Doubling demanded local
+classes and cleanup boundaries keeps work and storage near linear.
 
 ## Completed Checkpoints
 
@@ -73,3 +72,4 @@ near linearly with doubled attributed functions and CFGs.
 | Unevaluated retained-call demand | pending nested calls remain signature-only in `decltype`/`noexcept`; dynamic `typeid` still promotes its operand after evaluatedness is known | PA35 111/126 -> 116/128; three handouts plus positive/negative regressions pass; zero 8/16 body demand, PA1-34 4756/4756, and audit pass |
 | Specialization-owned retained-call replay | active ordinary/static members replace stale specialization facts; lambda special-member ABI and unwind cleanup stop at canonical callable boundaries | PA35 116/128 -> 119/128 existing (122/131 total); three `std::function` cases pass, regex advances, three regressions and 8/16 scaling pass |
 | Demanded-body return convergence | constant control edges retain feasible reachability; standard/GNU noreturn facts terminate direct-call full expressions without changing ABI identity | PA35 122/131 -> 125/133 (120/128 existing); one handout passes, regex advances, two regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
+| Callable-owned lifetime chains | function scopes retain lexical lookup ancestry but reset automatic, temporary, and initializer-list cleanup ancestry | PA35 125/133 -> 128/135 (121/128 existing); vector passes, regex advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
