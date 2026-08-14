@@ -373,6 +373,7 @@ void SemanticAnalyzer::PrepareBracedInitialization(NodeId list, ScopeId scope)
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child, "designated-initializer")) continue;
 		if (arena_->IsTag(child, "braced-init-list"))
 		{
 			PrepareBracedInitialization(child, scope);

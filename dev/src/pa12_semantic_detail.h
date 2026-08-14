@@ -319,6 +319,14 @@ private:
 		std::uint32_t output_parent, bool local,
 		bool qualified_lexical_scope = false,
 		bool demanded_template_storage = false);
+	bool IsStructuredBindingDeclarator(NodeId declarator) const;
+	void AnalyzeStructuredBindingDeclaration(NodeId item, NodeId declarator,
+		const SpecInfo& spec, ScopeId scope, std::uint32_t output_parent,
+		bool local);
+	void EmitStructuredBindingStorage(NodeId source, NodeId declarator,
+		const SpecInfo& spec, DeclaratorInfo parsed,
+		ExpressionInfo initializer, ScopeId scope,
+		std::uint32_t output_parent, bool local, bool range_variable);
 	ScopeId ResolveStructuredDeclaratorOwner(
 		NodeId declarator, ScopeId scope, bool routed_owner = false);
 	void AnalyzeSimpleFunctionDeclaration(NodeId item, NodeId declarator,
@@ -1240,6 +1248,8 @@ private:
 	ExpressionInfo AnalyzeSizeof(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeBracedInit(NodeId node, ScopeId scope, TypeId target);
 	ExpressionInfo AnalyzeAggregateInit(TypeId type, ScopeId scope,
+		std::uint32_t* element_edge);
+	ExpressionInfo AnalyzeDesignatedAggregateInit(TypeId type, ScopeId scope,
 		std::uint32_t* element_edge);
 	ExpressionInfo AnalyzeArrayAggregateInit(TypeId type, ScopeId scope,
 		std::uint32_t* element_edge);

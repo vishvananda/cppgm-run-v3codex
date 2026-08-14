@@ -484,6 +484,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		unqualified_target_record.kind == TYPE_MEMBER_POINTER || compound_literal ?
 		target : kNoType);
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();
+	if (compound_literal && EntityOf(target) != kNoEntity &&
+		dump_.nodes[operand.node].kind == DUMP_BRACED_INIT_LIST)
+	{
+		operand.node = BuildAggregateConstructionAction(
+			target, operand.node, true);
+		operand.category = VALUE_PRVALUE;
+		return MaterializeTemporary(operand);
+	}
 	if (compound_literal) return operand;
 	const std::string cast_kind = arena_->Payload(node);
 	ExpressionInfo dynamic_result;

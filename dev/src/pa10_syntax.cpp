@@ -10,6 +10,7 @@
 #include "pa25_range_for_syntax.h"
 #include "pa30_region_syntax.h"
 #include "pa34_gnu_asm_syntax.h"
+#include "pa34_aggregate_syntax.h"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -31,21 +32,18 @@ class Parser : private ParserNameFacts<Parser>,
 	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
 	private pa25_syntax_detail::RangeForSyntax<Parser>,
 	private pa30_syntax_detail::RegionSyntax<Parser>,
-	private pa34_syntax_detail::GnuAsmSyntax<Parser>
+	private pa34_syntax_detail::GnuAsmSyntax<Parser>,
+	private pa34_syntax_detail::AggregateSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>; friend class hosted_builtin::Syntax<Parser>;
-friend class hosted_extension::Syntax<Parser>;
-friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
-friend class pa25_syntax_detail::RangeForSyntax<Parser>;
-friend class pa30_syntax_detail::RegionSyntax<Parser>;
-friend class pa34_syntax_detail::GnuAsmSyntax<Parser>;
-public:
+friend class hosted_extension::Syntax<Parser>; friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
+friend class pa25_syntax_detail::RangeForSyntax<Parser>; friend class pa30_syntax_detail::RegionSyntax<Parser>;
+friend class pa34_syntax_detail::GnuAsmSyntax<Parser>; friend class pa34_syntax_detail::AggregateSyntax<Parser>; public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
 		: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats),
 		  position_(0), angle_stop_depth_(0), compound_depth_(0), retained_template_argument_depth_(0),
-		  name_fact_revision_(1),
-		  angle_matches_(tokens.size())
+		  name_fact_revision_(1), angle_matches_(tokens.size())
 	{
 		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
 			throw std::runtime_error("too many syntax tokens");
@@ -1052,6 +1050,8 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		if (name) *name = nested_name;
 		consumed = true;
 	}
+	else if (!abstract && ParseStructuredBindingDeclarator(result))
+		consumed = true;
 	else if (!abstract)
 	{
 		const Mark name_mark = Checkpoint();
@@ -1295,9 +1295,9 @@ NodeId Parser::ParseBracedInitList()
 	if (Match(OP_RBRACE)) return list;
 	while (true)
 	{
-		NodeId value;
-		if (At(OP_LBRACE)) value = ParseBracedInitList();
-		else value = ParseExpression(2);
+		NodeId value = TryParseDesignatedInitializer();
+		if (value == kNoNode) value = At(OP_LBRACE) ?
+			ParseBracedInitList() : ParseExpression(2);
 		if (value == kNoNode) throw Error("expected braced initializer");
 		value = ParsePackExpansion(value);
 		arena_.Add(list, value);
@@ -2779,7 +2779,7 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 				last_declared_names_.push_back(strings_.Intern(name));
 			return declaration;
 		}
-		names.push_back(name);
+		AppendDeclaratorNames(declarator, name, &names);
 		arena_.Add(item, declarator);
 		const NodeId initializer = ParseInitializer();
 		if (initializer != kNoNode) arena_.Add(item, initializer);

@@ -115,6 +115,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAggregateInit(TypeId type,
 		throw std::runtime_error("class is not an aggregate");
 	if (entity >= entity_data_members_.size())
 		throw std::logic_error("aggregate is missing its member index");
+	if (element_edge && *element_edge != kNoEdge && arena_->IsTag(
+		arena_->EdgeChild(*element_edge), "designated-initializer"))
+		return AnalyzeDesignatedAggregateInit(type, scope, element_edge);
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
 		type, VALUE_LVALUE);
 	const std::size_t member_count =

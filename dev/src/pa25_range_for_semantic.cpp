@@ -307,6 +307,21 @@ void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 		base = program_->types.Qualify(base, spec.placeholder_cv);
 		parsed = BuildDeclarator(declarator, base, scope);
 	}
+	if (IsStructuredBindingDeclarator(declarator))
+	{
+		const TypeKind kind = program_->types.Get(parsed.type).kind;
+		if ((kind == TYPE_LVALUE_REFERENCE || kind == TYPE_RVALUE_REFERENCE) &&
+			initializer.category == VALUE_PRVALUE &&
+			dump_.nodes[initializer.node].kind == DUMP_CALL_EXPRESSION &&
+			!IsClassObjectType(initializer.type))
+			dump_.nodes[initializer.node].reference_call_materialization = true;
+		initializer = ApplyTarget(initializer, parsed.type);
+		initializer = FinalizeVariableInitializer(
+			initializer, parsed.type, EntityOf(parsed.type), true);
+		EmitStructuredBindingStorage(declaration, declarator, spec, parsed,
+			initializer, scope, output_parent, true, true);
+		return;
+	}
 	if (parsed.name == 0)
 		throw std::runtime_error("unnamed range variable");
 	const TypeKind declared_kind = program_->types.Get(parsed.type).kind;

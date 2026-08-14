@@ -94,6 +94,7 @@ private:
 	void VisitFunction(NodeId node, std::size_t scope);
 	NodeId FindParameterClause(NodeId declarator) const;
 	void BindFunctionParameters(NodeId declarator, std::size_t scope);
+	bool DeclareStructuredBindings(NodeId declarator, std::size_t scope);
 	void VisitSimple(NodeId node, std::size_t scope, bool predeclared);
 	void VisitUsing(NodeId node, std::size_t scope);
 	void VisitSizeof(NodeId node, std::size_t scope);
@@ -484,6 +485,24 @@ void RetainedTemplateValidator::VisitFunction(NodeId node, std::size_t scope)
 	if (body != kNoNode) Visit(body, function_scope);
 }
 
+bool RetainedTemplateValidator::DeclareStructuredBindings(
+	NodeId declarator, std::size_t scope)
+{
+	const NodeId bindings = analyzer_.FindChild(
+		declarator, "structured-binding");
+	if (bindings == kNoNode) return false;
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(bindings);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const NodeId binding = analyzer_.arena_->EdgeChild(edge);
+		if (!analyzer_.arena_->IsTag(binding, "binding-identifier"))
+			throw std::runtime_error("invalid retained structured binding");
+		Declare(scope, analyzer_.program_->names.Intern(
+			analyzer_.arena_->Payload(binding)), RETAINED_VALUE_NAME);
+	}
+	return true;
+}
+
 void RetainedTemplateValidator::PredeclareClassSimple(NodeId node,
 	std::size_t scope)
 {
@@ -684,7 +703,8 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 			{
 				const NodeId declarator = analyzer_.FindChild(
 					analyzer_.arena_->EdgeChild(edge), "declarator");
-				if (declarator != kNoNode)
+				if (declarator != kNoNode &&
+					!DeclareStructuredBindings(declarator, scope))
 					Declare(scope, analyzer_.DeclaratorName(declarator),
 						type_declaration ? RETAINED_TYPE_NAME :
 						RETAINED_VALUE_NAME,
@@ -1040,8 +1060,9 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 			declaration, "declarator");
 		if (declarator == kNoNode)
 			throw std::runtime_error("retained range declaration has no declarator");
-		Declare(control, analyzer_.DeclaratorName(declarator),
-			RETAINED_VALUE_NAME);
+		if (!DeclareStructuredBindings(declarator, control))
+			Declare(control, analyzer_.DeclaratorName(declarator),
+				RETAINED_VALUE_NAME);
 		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(node);
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		{

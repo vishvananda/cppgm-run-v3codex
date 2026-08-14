@@ -102,6 +102,21 @@ protected:
 			parser.SetNameFact(name, Derived::kActiveNonTypeParameter);
 			parser.SetNameFact(name, Derived::kKnownNonTemplate);
 		}
+		for (std::uint32_t edge = parser.arena_.FirstEdge(declarator);
+			edge != kNoEdge; edge = parser.arena_.NextEdge(edge))
+		{
+			const NodeId bindings = parser.arena_.EdgeChild(edge);
+			if (!parser.arena_.IsTag(bindings, "structured-binding")) continue;
+			for (std::uint32_t binding = parser.arena_.FirstEdge(bindings);
+				binding != kNoEdge; binding = parser.arena_.NextEdge(binding))
+			{
+				const std::string spelling = parser.arena_.Payload(
+					parser.arena_.EdgeChild(binding));
+				parser.SetNameFact(spelling, Derived::kKnownType, false);
+				parser.SetNameFact(spelling, Derived::kActiveNonTypeParameter);
+				parser.SetNameFact(spelling, Derived::kKnownNonTemplate);
+			}
+		}
 		const NodeId body = parser.ParseStatement();
 		if (body == kNoNode) throw parser.Error("expected range-for body");
 		parser.arena_.Add(statement, body);

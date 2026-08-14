@@ -2038,8 +2038,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 	if (local && AnalyzeAmbiguousDirectInitializer(
 		node, scope, output_parent))
 		return;
-	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
-	const NodeId list = FindChild(node, "init-declarator-list");
+	const NodeId specifiers = FindChild(node, "decl-specifier-seq"), list = FindChild(node, "init-declarator-list");
 	std::string hint;
 	EntityId declaration_class_context = kNoEntity;
 	if (list != kNoNode)
@@ -2098,6 +2097,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const NodeId item = arena_->EdgeChild(edge);
 		const NodeId declarator = FindChild(item, "declarator");
 		if (declarator == kNoNode) throw std::runtime_error("missing declarator");
+		if (IsStructuredBindingDeclarator(declarator)) { AnalyzeStructuredBindingDeclaration(item, declarator, spec, scope, owner, local); continue; }
 		const NamePath declared_path = DeclaratorNamePath(declarator);
 		const ScopeId structured_declaration_scope = qualified_lexical_scope ?
 			kNoScope : ResolveStructuredDeclaratorOwner(declarator, scope);
