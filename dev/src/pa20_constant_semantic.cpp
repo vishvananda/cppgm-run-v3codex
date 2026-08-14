@@ -653,9 +653,20 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 
 void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 {
+	const std::string location = arena_->SourceFile(node).empty() ?
+		std::string() : " at " + arena_->SourceFile(node) + ":" +
+			std::to_string(arena_->SourceLine(node)) + ":" +
+			std::to_string(arena_->SourceColumn(node));
 	const NodeId condition_syntax = FirstSemanticChild(node);
 	if (condition_syntax == kNoNode)
-		throw std::runtime_error("static_assert has no condition");
+		throw std::runtime_error("static_assert has no condition" + location);
+	// A static assertion demanded while forming an unevaluated or discarded
+	// expression is still an independent constant-evaluation root.  Preserve
+	// the caller's suppression state, but do not let it disable the assertion's
+	// required constexpr calls and conversions.
+	const std::size_t outer_suppression =
+		constant_evaluation_suppressed_depth_;
+	constant_evaluation_suppressed_depth_ = 0;
 	++constant_expression_required_depth_;
 	ExpressionInfo condition;
 	try
@@ -666,14 +677,16 @@ void SemanticAnalyzer::AnalyzeStaticAssert(NodeId node, ScopeId scope)
 	catch (...)
 	{
 		--constant_expression_required_depth_;
+		constant_evaluation_suppressed_depth_ = outer_suppression;
 		throw;
 	}
 	--constant_expression_required_depth_;
+	constant_evaluation_suppressed_depth_ = outer_suppression;
 	if (!IsIntegral(condition.type, true) || !condition.constant)
 		throw std::runtime_error(
-			"static_assert requires an integral constant expression");
+			"static_assert requires an integral constant expression" + location);
 	if (condition.value == 0)
-		throw HardSemanticError("static assertion failed");
+		throw HardSemanticError("static assertion failed" + location);
 }
 
 }

@@ -2701,7 +2701,7 @@ bool Parser::StartsStandaloneEnumDeclaration() const
 }
 NodeId Parser::ParseStaticAssert()
 {
-	if (!Match(KW_STATIC_ASSERT)) return kNoNode;
+	const std::size_t first = position_; if (!Match(KW_STATIC_ASSERT)) return kNoNode;
 	const NodeId declaration = arena_.Make("static-assert-declaration");
 	Expect(OP_LPAREN);
 	const NodeId expression = ParseExpression(2);
@@ -2715,7 +2715,7 @@ NodeId Parser::ParseStaticAssert()
 	}
 	Expect(OP_RPAREN);
 	Expect(OP_SEMICOLON);
-	return declaration;
+	arena_.SetTokenRange(declaration, first, position_); return declaration;
 }
 NodeId Parser::ParseSimpleOrFunction(bool, bool)
 {

@@ -690,6 +690,12 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " overload_candidates=" << semantic.overload_candidates
 			 << " template_requests=" << semantic.template_specialization_requests
 			 << " template_cache_hits=" << semantic.template_specialization_cache_hits
+			 << " constexpr_call_requests="
+			 << semantic.constexpr_call_requests
+			 << " constexpr_call_cache_hits="
+			 << semantic.constexpr_call_cache_hits
+			 << " constexpr_step_visits="
+			 << semantic.constexpr_step_visits
 			 << " demand_pushes=" << semantic.demand_worklist_pushes
 			 << " demanded_functions=" << semantic.demanded_function_emissions
 			 << " functions=" << stats.functions
