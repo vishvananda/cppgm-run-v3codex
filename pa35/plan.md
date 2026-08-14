@@ -12,29 +12,30 @@ owns all changes; no hosted-only route is introduced.
 
 ## Current Failure Map
 
-PA35 is 86/117 with 31 failures. The complete set groups by first owner:
+PA35 is 91/119 with 28 failures. The complete set groups by first owner:
 retained declaration/class lookup and access 3; expression/call/template demand
-13; parser/local semantics 2; stream/heap stability 6; and native
+10; parser/local semantics 2; stream/heap stability 6; and native
 object/register lowering 7.
 
 ## Active Checkpoint
 
-**Pack-indexed tuple/trait identity.** Per `spec.md` §§2, 4, and 6, pack-derived
-class arguments and indexed type members must preserve canonical specialization
-identity through static-assert and body demand. Data flows retained pack syntax
--> canonical argument partition -> selected class specialization -> indexed
-member type/value -> constexpr assertion or call demand. PA19/PA20 template
-semantics and PA23 result identity own the boundary. Expected work is O(pack
-length) for a new specialization followed by O(1) average indexed reuse.
-Validate the current tuple-size/tuple-element and type-trait failures, an
-out-of-range negative, full PA35, PA1-34, audit, and 8/16-element packs.
+**Native scalar aggregate transport.** Per `spec.md` §§6-9, a complete object
+value must retain its typed LowIR shape while native adaptation classifies and
+moves every ABI eightbyte without inventing a scalar or exhausting reactive
+registers. Data flows typed aggregate load/call -> ABI value classification ->
+legal register/stack fragments -> MIR locations and x86-64 encoding. PA15
+lowering and PA31 native adaptation own the boundary. Expected work is O(type
+fields + ABI eightbytes + LowIR instructions), with bounded per-instruction
+register work. Validate the current `obj<1x1>`, `obj<8x8>`, multi-eightbyte,
+missing-storage, and register-exhaustion failures; add size-boundary probes;
+then run PA35, PA1-34, audit, and representative scaling cases.
 
 ## Performance Evidence
 
-For 8/16 construction families with reference aggregates, static downcasts,
-and direct-member pack calls, lookup queries were 946/1,834, template requests
-114/226, and peak semantic storage 1,059,065/2,073,617 bytes. Five-run median
-semantic time was 4.61/8.49 ms; all tracked work stayed linear.
+For 8/16-element explicit-id calls with a deduced trailing pack, lookup queries
+were 66/82, template requests stayed 7/7, and peak semantic storage was
+118,836/145,939 bytes. Five-run median semantic time was 0.762/0.781 ms; the
+argument-aware partition remains linear and introduces no specialization fanout.
 
 ## Completed Checkpoints
 
@@ -64,3 +65,4 @@ semantic time was 4.61/8.49 ms; all tracked work stayed linear.
 | Canonical explicit class target routing | distinct `_Float128`/`__float128` identities and generic type/value/template argument routing remove all seven barriers | PA35 73/109 -> 77/111 (75/109 existing); two handouts pass, five advance, two regressions pass; PA1-34 4756/4756; scaling/audit pass |
 | Retained class/declaration convergence | injected class tags merge through the class-tag index; stale specialization-owned call facts rebuild in the active scope | PA35 77/111 -> 82/113 (80/111 existing); map/codecvt/wide-string and two regressions pass; PA1-34 4756/4756; scaling/audit pass |
 | Specialization-local construction convergence | class references remain references; static downcasts complete concrete targets; fixed cv-reference patterns order over forwarding packs; direct-member calls expand packs | PA35 82/113 -> 86/117; six construction and three pack-call barriers advance, four regressions pass; PA1-34 4756/4756; scaling/audit pass |
+| Explicit-id pack partition convergence | explicit function-template prefixes wait for argument-aware deduction, preserving canonical trailing-pack partitions | PA35 86/117 -> 91/119; three handout and two regressions pass; direct piecewise construction advances to native transport; PA1-34 4756/4756; scaling/audit pass |

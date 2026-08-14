@@ -1826,8 +1826,23 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 		(retained_call_lookup_states_[callee] &
 			RETAINED_CALL_LOOKUP_PUBLISHED) != 0;
 	if (!*retained_lookup)
+	{
+		NamePath explicit_base;
+		std::vector<NodeId> explicit_arguments;
+		if (CollectExplicitTemplateArguments(
+			callee, &explicit_base, &explicit_arguments))
+		{
+			// A call's explicit template-id is only a prefix.  Instantiating it
+			// during lookup would make every still-deducible pack empty and can
+			// publish that wrong partition before the call arguments are known.
+			// CompleteFunctionCallTemplateCandidates owns the argument-aware
+			// specialization immediately after call-argument analysis.
+			*naming_class = kNoEntity;
+			return std::vector<BindingId>();
+		}
 		return FunctionCallCandidates(
 			scope, spelling, naming_class, callee, true);
+	}
 	*naming_class = retained_call_naming_classes_[callee];
 	std::vector<BindingId> result;
 	const CompactIndexSequence* retained_functions =
