@@ -986,6 +986,8 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 	bool unknown_callee)
 {
 	if (node == kNoNode) return;
+	// The parser and specialization demand own type syntax within this boundary.
+	if (analyzer_.arena_->IsTag(node, "builtin-type-operand")) return;
 	if (analyzer_.arena_->IsTag(node, "id-expression"))
 	{
 		VisitIdExpression(node, scope, unknown_callee);

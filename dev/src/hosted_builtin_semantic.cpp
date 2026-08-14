@@ -336,6 +336,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 				IsSignedFundamental(shape.fundamental);
 		else if (trait == TYPE_TRAIT_IS_ENUM && operands.size() == 1)
 			value = named && IsEnumEntity(*named);
+		else if (trait == TYPE_TRAIT_IS_UNION && operands.size() == 1)
+			value = named && named->flavor == NAMED_UNION;
+		else if (trait == TYPE_TRAIT_IS_CLASS && operands.size() == 1)
+			value = named && IsClassEntity(*named) &&
+				named->flavor != NAMED_UNION;
 		else if (trait == TYPE_TRAIT_IS_SCALAR && operands.size() == 1)
 			value = IsFundamentalIntegral(shape) || IsFundamentalFloating(shape) ||
 				(shape.kind == TYPE_FUNDAMENTAL &&

@@ -216,6 +216,8 @@ private:
 		NodeId declarator, bool definition, bool special_member_template,
 		TypeId dependent_result_shape,
 		bool dependent_exception_specification);
+	void ConfigureFunctionTemplateException(FunctionTemplatePattern* pattern,
+		NodeId declarator, const DeclaratorInfo& shape);
 	void EnsureFunctionTemplateShapeParameters(std::size_t count);
 	void ApplyGenericLambdaSpecializationFacts(
 		const FunctionTemplatePattern& pattern, BindingId binding,

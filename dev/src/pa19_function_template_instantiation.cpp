@@ -1038,6 +1038,31 @@ ScopeId SemanticAnalyzer::FunctionTemplateExceptionScope(
 	return scope;
 }
 
+void SemanticAnalyzer::ConfigureFunctionTemplateException(
+	FunctionTemplatePattern* pattern, NodeId declarator,
+	const DeclaratorInfo& shape)
+{
+	if (pattern->dependent_exception_specification)
+	{
+		pattern->nonthrowing = false;
+		return;
+	}
+	const NodeId qualifier = FindChild(declarator, "function-qualifier");
+	const NodeId expression = qualifier == kNoNode ?
+		kNoNode : FirstSemanticChild(qualifier);
+	if (expression != kNoNode)
+	{
+		std::unordered_set<NameId> names;
+		for (std::size_t i = 0; i < shape.parameters.size(); ++i)
+			if (shape.parameters[i].name != 0)
+				names.insert(shape.parameters[i].name);
+		pattern->dependent_exception_specification =
+			SyntaxUsesAnyTemplateParameter(expression, names);
+	}
+	pattern->nonthrowing = pattern->dependent_exception_specification ?
+		false : IsNonthrowing(declarator, pattern->owner);
+}
+
 void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters, NodeId specifiers,
@@ -1175,8 +1200,6 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		pattern.owner = ResolveOwner(scope, path);
 	if (pattern.owner == kNoScope)
 		throw std::runtime_error("function template owner not found");
-	pattern.nonthrowing = dependent_exception_specification ?
-		false : IsNonthrowing(declarator, pattern.owner);
 	pattern.trailing_return_syntax = FindChild(declarator, "trailing-return-type");
 	const bool defer_trailing_return = dependent_trailing_return;
 	const EntityId member_owner = program_->EntityForScope(pattern.owner);
@@ -1193,6 +1216,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		shape_scope, shape_spec.placeholder_auto, nonstatic_member,
 		defer_trailing_return, &parameter_names);
 	current_class_context_ = previous_class;
+	ConfigureFunctionTemplateException(&pattern, declarator, shape_declarator);
 	ValidateFunctionTemplatePatternResults(&pattern, shape_declarator, shape_scope,
 		parameter_names, defer_trailing_return);
 	if (!program_->types.IsFunction(shape_declarator.type)) throw std::runtime_error(

@@ -1112,6 +1112,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		if (Conversion(yes, no_type) != CONVERSION_INVALID) type = no_type;
 		else if (Conversion(no, yes_type) != CONVERSION_INVALID) type = yes_type;
 	}
+	if (type == kNoType &&
+		(FunctionTemplateTypeIsDependent(yes.type) ||
+		 FunctionTemplateTypeIsDependent(no.type)))
+	{
+		// A retained template shape cannot decide conversions between distinct
+		// dependent arms.  Specialization reanalyzes this syntax with concrete
+		// types, so carry one canonical dependent result through the shape pass.
+		type = DependentFunctionTemplateResultShape();
+		category = VALUE_PRVALUE;
+	}
 	if (type == kNoType) throw std::runtime_error("incompatible conditional arms");
 	if (IsPointer(type))
 	{

@@ -218,11 +218,13 @@ TypeTraitKind FindTypeTrait(const std::string& spelling)
 		{"__array_rank", TYPE_TRAIT_ARRAY_RANK},
 		{"__has_nothrow_copy", TYPE_TRAIT_HAS_NOTHROW_COPY},
 		{"__has_trivial_constructor", TYPE_TRAIT_HAS_TRIVIAL_CONSTRUCTOR},
+		{"__has_trivial_destructor", TYPE_TRAIT_IS_TRIVIALLY_DESTRUCTIBLE},
 		{"__has_virtual_destructor", TYPE_TRAIT_HAS_VIRTUAL_DESTRUCTOR},
 		{"__is_abstract", TYPE_TRAIT_IS_ABSTRACT},
 		{"__is_aggregate", TYPE_TRAIT_IS_AGGREGATE},
 		{"__is_assignable", TYPE_TRAIT_IS_ASSIGNABLE},
 		{"__is_base_of", TYPE_TRAIT_IS_BASE_OF},
+		{"__is_class", TYPE_TRAIT_IS_CLASS},
 		{"__is_complete_or_unbounded", TYPE_TRAIT_IS_COMPLETE_OR_UNBOUNDED},
 		{"__is_constructible", TYPE_TRAIT_IS_CONSTRUCTIBLE},
 		{"__is_convertible", TYPE_TRAIT_IS_CONVERTIBLE},
@@ -254,6 +256,7 @@ TypeTraitKind FindTypeTrait(const std::string& spelling)
 		{"__is_trivially_constructible", TYPE_TRAIT_IS_TRIVIALLY_CONSTRUCTIBLE},
 		{"__is_trivially_copyable", TYPE_TRAIT_IS_TRIVIALLY_COPYABLE},
 		{"__is_trivially_destructible", TYPE_TRAIT_IS_TRIVIALLY_DESTRUCTIBLE},
+		{"__is_union", TYPE_TRAIT_IS_UNION},
 		{"__reference_binds_to_temporary", TYPE_TRAIT_REFERENCE_BINDS_TO_TEMPORARY},
 		{"__reference_constructs_from_temporary", TYPE_TRAIT_REFERENCE_CONSTRUCTS_FROM_TEMPORARY}
 	};

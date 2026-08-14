@@ -306,8 +306,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 		TypeId decayed = Decay(result_type);
 		const TypeRecord pointer = program_->types.Get(decayed);
 		if (pointer.kind != TYPE_POINTER)
-			throw std::runtime_error("dereference requires pointer");
-		result_type = pointer.child;
+		{
+			if (!FunctionTemplateTypeIsDependent(operand.type))
+				throw std::runtime_error("dereference requires pointer");
+			result_type = DependentFunctionTemplateResultShape();
+		}
+		else result_type = pointer.child;
 		category = VALUE_LVALUE;
 		lvalue_address = address;
 		constant = false;

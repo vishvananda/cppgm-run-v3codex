@@ -176,7 +176,12 @@ private:
 			SetNameFact(parameter_names_[i], kKnownNonTemplate); } }
 	std::runtime_error Error(const std::string& message) const
 	{
-		return std::runtime_error(message + " at token " +
+		const std::string location = position_ < tokens_.size() &&
+			tokens_[position_].source_file != 0 ?
+			" at " + strings_.Get(tokens_[position_].source_file) + ":" +
+			std::to_string(tokens_[position_].source_line) + ":" +
+			std::to_string(tokens_[position_].source_column) : std::string();
+		return std::runtime_error(message + location + " at token " +
 			std::to_string(position_) +
 			(position_ < tokens_.size() ? " (`" + Spelling(position_) + "`)" :
 			 std::string()));
@@ -894,7 +899,15 @@ bool Parser::ParseTypeId(NodeId parent, bool attach)
 	}
 	arena_.Add(type_id, specifiers);
 	const Mark declarator_mark = Checkpoint();
-	const NodeId declarator = ParseDeclarator(true);
+	NodeId declarator = kNoNode;
+	try
+	{
+		declarator = ParseDeclarator(true);
+	}
+	catch (const std::runtime_error&) {
+		// `&& (` can enter an abstract declarator speculatively; rollback lets
+		// the template-argument or cast caller retry it as an expression.
+	}
 	if (declarator != kNoNode) arena_.Add(type_id, declarator);
 	else Rollback(declarator_mark);
 	if (attach) arena_.Add(parent, type_id);

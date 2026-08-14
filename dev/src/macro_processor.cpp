@@ -417,10 +417,12 @@ struct Macro
 	SpellingId name;
 	bool function_like;
 	bool variadic;
+	SpellingId named_variadic_parameter;
 	std::vector<SpellingId> parameters;
 	std::vector<ReplacementToken> replacement;
 
-	Macro() : name(0), function_like(false), variadic(false) {}
+	Macro() : name(0), function_like(false), variadic(false),
+		named_variadic_parameter(0) {}
 };
 
 struct FileIdentity
@@ -906,11 +908,8 @@ private:
 
 	void AddBuiltinMarker(const char* name)
 	{
-		Macro macro;
-		macro.name = spellings_.Intern(name);
-		macros_.Insert(macro.name, std::move(macro));
+		builtin_probe_markers_.Insert(spellings_.Intern(name), 1);
 	}
-
 	static bool IsCommandLineMacroName(const std::string& name)
 	{
 		if (name.empty() || !(std::isalpha(static_cast<unsigned char>(name[0])) ||
@@ -934,6 +933,7 @@ private:
 			retained_replacement_tokens_ -= old->replacement.size();
 			macros_.Erase(id);
 		}
+		builtin_probe_markers_.Erase(id);
 		replaceable_command_line_macros_.Erase(id);
 	}
 
@@ -1336,7 +1336,8 @@ private:
 
 	bool IsBuiltinProbe(const Token& token) const
 	{
-		if (token.kind != TK_IDENTIFIER || !IsMacroDefined(token.spelling))
+		if (token.kind != TK_IDENTIFIER ||
+			!builtin_probe_markers_.Find(token.spelling))
 			return false;
 		const std::string& name = Spell(token);
 		return name == "__has_attribute" || name == "__has_builtin" ||
@@ -1437,8 +1438,11 @@ private:
 		RewriteConditionOperators(directive, begin, &input);
 		std::vector<Token> expanded;
 		ExpandTokens(&input, &expanded);
-		for (std::size_t i = 0; i < expanded.size(); ++i)
-			FeedPreprocessingToken(expanded[i], condition_post_tokens_);
+		AnnotateParentheses(&expanded);
+		std::vector<Token> rewritten;
+		RewriteConditionOperators(expanded, 0, &rewritten);
+		for (std::size_t i = 0; i < rewritten.size(); ++i)
+			FeedPreprocessingToken(rewritten[i], condition_post_tokens_);
 		condition_post_tokens_.FlushPendingTokens();
 		bool value = false;
 		const bool valid = condition_evaluator_.Finish(&value);
@@ -1746,6 +1750,7 @@ private:
 			retained_replacement_tokens_ -= found->replacement.size();
 			macros_.Erase(directive[2].spelling);
 		}
+		builtin_probe_markers_.Erase(directive[2].spelling);
 		replaceable_command_line_macros_.Erase(directive[2].spelling);
 		if (stats_)
 			++stats_->macro_undefinitions;
@@ -1758,6 +1763,7 @@ private:
 			throw std::runtime_error("missing or invalid macro name");
 		Macro macro;
 		macro.name = directive[2].spelling;
+		builtin_probe_markers_.Erase(macro.name);
 		std::size_t replacement_begin = 3;
 		if (directive.size() > 3 && IsOperator(directive[3], "(") &&
 			!directive[3].leading_space)
@@ -1829,6 +1835,19 @@ private:
 			++position;
 			if (position >= directive.size())
 				throw std::runtime_error("unterminated macro parameter list");
+			// GNU `name...` denotes the final variadic slot; hosted Linux headers
+			// use this spelling and expansion still uses the contiguous tail.
+			if (IsOperator(directive[position], "..."))
+			{
+				macro->variadic = true;
+				macro->named_variadic_parameter = macro->parameters.back();
+				macro->parameters.pop_back();
+				++position;
+				if (position >= directive.size() || !IsOperator(
+					directive[position], ")"))
+					throw std::runtime_error("invalid variadic parameter list");
+				return position + 1;
+			}
 			if (IsOperator(directive[position], ")"))
 				return position + 1;
 			if (!IsOperator(directive[position], ","))
@@ -1855,7 +1874,12 @@ private:
 		for (std::size_t i = 0; i < macro->parameters.size(); ++i)
 			parameter_index.Insert(macro->parameters[i], i);
 		if (macro->variadic)
+		{
 			parameter_index.Insert(id_va_args_, macro->parameters.size());
+			if (macro->named_variadic_parameter != 0)
+				parameter_index.Insert(macro->named_variadic_parameter,
+					macro->parameters.size());
+		}
 
 		for (std::size_t i = begin; i < directive.size(); ++i)
 		{
@@ -1899,6 +1923,7 @@ private:
 	{
 		if (first.function_like != second.function_like ||
 			first.variadic != second.variadic ||
+			first.named_variadic_parameter != second.named_variadic_parameter ||
 			first.parameters != second.parameters ||
 			first.replacement.size() != second.replacement.size())
 			return false;
@@ -2445,7 +2470,8 @@ private:
 
 	bool IsMacroDefined(SpellingId name) const
 	{
-		return IsDynamicMacro(name) || macros_.Find(name) != 0;
+		return IsDynamicMacro(name) || macros_.Find(name) != 0 ||
+			builtin_probe_markers_.Find(name) != 0;
 	}
 
 	Token ExpandDynamicMacro(const Token& head)
@@ -2863,6 +2889,7 @@ private:
 	ControllingExpressionEvaluator condition_evaluator_;
 	PostTokenizationSession condition_post_tokens_;
 	FlatHashMap<SpellingId, Macro> macros_;
+	FlatHashMap<SpellingId, unsigned char> builtin_probe_markers_;
 	FlatHashMap<SpellingId, unsigned char> replaceable_command_line_macros_;
 	std::vector<Token> line_;
 	std::deque<Token> rescan_;

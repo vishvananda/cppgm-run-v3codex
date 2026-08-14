@@ -547,7 +547,18 @@ bool DecodeFloatingValue(const std::string& spelling,
 	input.imbue(std::locale::classic());
 	input >> value;
 	if (!input)
-		return false;
+	{
+		// A target extended-float literal can be finite in its declared type
+		// while exceeding the range of the compiler host's long double.  The
+		// semantic pipeline retains the source spelling and declared type, so
+		// accept a syntactically complete host conversion here even when it
+		// rounds to infinity in this compact phase-7 value cache.
+		char* end = 0;
+		const long double parsed = std::strtold(spelling.c_str(), &end);
+		if (!end || end == spelling.c_str() || *end != '\0')
+			return false;
+		value = static_cast<T>(parsed);
+	}
 	std::memcpy(bytes, &value, sizeof(value));
 	*size = sizeof(value);
 	return true;
