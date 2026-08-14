@@ -11,31 +11,32 @@ owner in the shared front end.
 
 ## Current Failure Map
 
-PA35 is 111/126 with 15 failures. The complete set groups by shared owner and
-diagnostic: unevaluated `declval` body demand 3; retained-call viability 4;
-hosted vector builtin lookup 2; list/constructor selection 2; local/class lookup
-and lowering 2; bound storage lowering 1; and reactive register allocation 1.
+PA35 is 116/128 with 12 failures. The complete set groups by shared owner and
+diagnostic: retained-call viability 4; hosted vector builtin lookup 2;
+list/constructor selection 2; local/class lookup and lowering 2; bound storage
+lowering 1; and reactive register allocation 1.
 
 ## Active Checkpoint
 
-**Unevaluated call-demand isolation.** Per `spec.md` §§2, 4-6, `decltype` and
-other unevaluated operands resolve lookup, substitution, overload, result type,
-and value category without demanding the selected function body. Data flows
-retained call syntax -> evaluatedness context -> specialization/signature lookup
--> overload result -> typed unevaluated expression; PA12 expression analysis
-owns evaluatedness and the canonical demand scheduler consumes it. Expected work
-is O(indexed candidates + deduction/type depth), with one cacheable signature
-request per specialization and zero body-emission roots. Validate the three
-`declval` static-assert failures, direct positive/negative evaluatedness probes,
-8/16 repeated unevaluated calls, PA35, PA1-34, and audit.
+**Specialization-owned retained-call replay.** Per `spec.md` §§2, 4-6, retained
+syntax is shared but lookup and conversion facts are owned by the active
+specialization. Data flows retained callee NodeId -> recorded function/template
+set -> active owner and substituted arguments -> validated/rebuilt candidates ->
+overload result and demand. PA19 retained-template validation owns fact reuse;
+PA12 call analysis consumes the canonical candidate view. Expected work is
+O(retained candidates + indexed active-owner candidates + deduction depth), with
+rebuilds cached per callee/owner specialization and no global declaration scan.
+Validate all four retained-call failures, owner-reentry and genuine no-viable
+negatives, 8/16 replayed specialization calls, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen reference-constrained calls used 8/16 overload candidates, 41/81
-conversion checks, 40/80 specialization requests, 23/47 cache hits, 8/16 failed
-default cache hits, and 16/32 deduction visits. Peak stage storage was
-223,491/314,629 bytes; five-run median analysis was 1.09/1.64 ms and elapsed time
-1.60/2.34 ms, showing bounded, near-linear classification and SFINAE demand.
+Eight/sixteen nested unevaluated calls used 8/16 indexed candidates, 16/32
+overload candidates, 44/92 conversion checks, 16/32 specialization requests,
+and 8/16 cache hits. Demand-worklist pushes and function emissions stayed zero.
+Peak stage storage was 203,057/342,069 bytes; five-run median analysis was
+1.46/2.48 ms and elapsed time 2.40/4.01 ms, showing bounded, near-linear
+signature resolution without body demand.
 
 ## Completed Checkpoints
 
@@ -71,3 +72,4 @@ default cache hits, and 16/32 deduction visits. Peak stage storage was
 | Template-argument function-type disambiguation | `bool(T)` retains a function type for an unadorned active type parameter while non-type and qualified-value forms remain expressions | PA35 99/121 -> 102/123; regex iterator passes and member-call advances; positive/negative plus PA24 guards, 8/16 scaling, PA1-34 4756/4756, and audit pass |
 | Canonical function-specialization request ownership | result-type re-entry is retryable substitution failure; successful specialization publishes once | PA35 102/123 -> 105/124; four crashes removed, two handouts plus one regression pass and two advance; 8/16 scaling, PA1-34 4756/4756, and audit pass |
 | Reference-preserving traits and conversions | direct traits retain reference wrappers; reference casts/ties, transitive anonymous aliases, and class-array member actions use canonical destinations | PA35 105/124 -> 111/126; four handouts plus two regressions pass, regex advances; 8/16 scaling, PA1-34 4756/4756, and audit pass |
+| Unevaluated retained-call demand | pending nested calls remain signature-only in `decltype`/`noexcept`; dynamic `typeid` still promotes its operand after evaluatedness is known | PA35 111/126 -> 116/128; three handouts plus positive/negative regressions pass; zero 8/16 body demand, PA1-34 4756/4756, and audit pass |

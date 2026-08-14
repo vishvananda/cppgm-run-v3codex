@@ -829,6 +829,7 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(
 
 void SemanticAnalyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
 {
+	if (unevaluated_depth_ != 0) return;
 	if (node >= dump_.nodes.size())
 		throw std::logic_error("invalid retained-call demand root");
 	std::vector<std::uint32_t> pending(1, node);
