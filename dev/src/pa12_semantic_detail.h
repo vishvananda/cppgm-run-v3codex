@@ -660,6 +660,8 @@ private:
 	bool SyntaxNamesUnboundTemplateParameter(NodeId syntax, ScopeId scope);
 	bool TryResolveBuiltinTypePackElement(
 		NodeId syntax, ScopeId scope, TypeId* type);
+	bool TryResolveBuiltinMakeIntegerSequence(
+		NodeId syntax, ScopeId scope, TypeId* type);
 	bool ExpandCallArgumentPacks(const std::vector<NodeId>& original,
 		ScopeId scope, std::vector<NodeId>* syntax,
 		std::vector<ExpressionInfo>* arguments);

@@ -150,6 +150,16 @@ bool SemanticAnalyzer::EvaluateBuiltinConvertibility(
 	const bool source_void = IsVoid(source_type);
 	const bool target_void = IsVoid(target);
 	if (source_void || target_void) return source_void && target_void;
+	const TypeId source_object = program_->types.RemoveTopCv(
+		EffectiveType(source_type));
+	const TypeId target_object_type = program_->types.RemoveTopCv(
+		EffectiveType(target));
+	const TypeRecord source_shape = program_->types.Get(source_object);
+	const TypeRecord target_shape = program_->types.Get(target_object_type);
+	if (source_shape.kind == TYPE_POINTER)
+		EnsureClassDefinition(source_shape.child);
+	if (target_shape.kind == TYPE_POINTER)
+		EnsureClassDefinition(target_shape.child);
 	ExpressionInfo source = MakeBuiltinTraitOperand(source_type);
 	const TypeRecord target_top = program_->types.Get(target);
 	if (program_->types.Get(source.type).kind == TYPE_FUNCTION &&
@@ -499,6 +509,7 @@ HostedTraitTemplateKind SemanticAnalyzer::ClassifyHostedTraitTemplate(
 		program_->names.Get(program_->NameOfScope(owner)) != "std" ||
 		parameters.size() != 1)
 		return HOSTED_TRAIT_TEMPLATE_NONE;
+	if (spelling == "char_traits") return HOSTED_TRAIT_TEMPLATE_CHAR_TRAITS;
 	if (spelling == "is_nothrow_default_constructible")
 		return HOSTED_TRAIT_TEMPLATE_NOTHROW_DEFAULT_CONSTRUCTIBLE;
 	if (spelling == "is_nothrow_copy_constructible")
@@ -600,6 +611,65 @@ bool SemanticAnalyzer::CompleteHostedTraitTemplateSpecialization(
 	const ClassTemplatePattern& pattern = class_templates_[pattern_index];
 	const HostedTraitTemplateKind kind = pattern.hosted_trait_template;
 	if (kind == HOSTED_TRAIT_TEMPLATE_NONE) return false;
+	if (kind == HOSTED_TRAIT_TEMPLATE_CHAR_TRAITS)
+	{
+		if (pattern.defined) return false;
+		if (arguments.size() != 1 ||
+			arguments[0].kind != TEMPLATE_ARGUMENT_TYPE ||
+			arguments[0].type == kNoType) return false;
+		if (specialization == kNoBinding ||
+			specialization >= program_->bindings.size())
+			throw std::logic_error("invalid hosted char_traits specialization");
+		const EntityId entity = EntityOf(program_->bindings[specialization].type);
+		if (entity == kNoEntity)
+			throw std::logic_error("hosted char_traits specialization has no entity");
+		EntityRecord& record = program_->entities[entity];
+		if (record.member_scope == kNoScope)
+		{
+			const ScopeId member_scope = NewScope(pattern.owner, SCOPE_CLASS,
+				pattern.name, ScopePrefixId(pattern.owner));
+			program_->SetEntityScope(entity, member_scope);
+			program_->SetTypeName(member_scope, pattern.name, record.type);
+			const BindingId injected = program_->AddBinding(member_scope,
+				BIND_TYPE, pattern.name, record.type, false, 0, record.flavor);
+			program_->bindings[injected].member_owner = entity;
+			program_->bindings[injected].access = ACCESS_PUBLIC;
+			const TypeId integer =
+				program_->types.Fundamental(FUND_UNSIGNED_INT);
+			const BindingId alias = program_->AddBinding(member_scope,
+				BIND_TYPE_ALIAS, program_->names.Intern("int_type"), integer);
+			program_->bindings[alias].member_owner = entity;
+			program_->bindings[alias].access = ACCESS_PUBLIC;
+			const TypeId results[] = {arguments[0].type, integer};
+			const TypeId inputs[] = {integer, arguments[0].type};
+			const char* names[] = {"to_char_type", "to_int_type"};
+			for (std::size_t i = 0; i < 2; ++i)
+			{
+				const std::vector<TypeId> parameter_types(1, inputs[i]);
+				const std::vector<ParameterInfo> parameters(
+					1, ParameterInfo(0, inputs[i], inputs[i]));
+				const TypeId function_type = program_->types.Function(
+					results[i], parameter_types, false);
+				const BindingId function = DeclareFunction(member_scope,
+					program_->names.Intern(names[i]), function_type, parameters,
+					false);
+				BindingRecord& binding = program_->bindings[function];
+				binding.member_owner = entity;
+				binding.access = ACCESS_PUBLIC;
+				binding.static_member_function = true;
+				RegisterClassMemberFunction(entity, function);
+			}
+		}
+		record.object_size = record.nonvirtual_size = 1;
+		record.object_alignment = record.nonvirtual_alignment = 1;
+		record.natural_alignment = 1;
+		record.default_constructible = record.trivial_default_constructor = true;
+		record.destructible = record.trivial_destructor = true;
+		record.is_aggregate = record.empty_class = record.layout_complete = true;
+		record.complete = true;
+		class_template_specialization_states_[specialization] = 2;
+		return true;
+	}
 	std::vector<TypeId> operands;
 	operands.reserve(arguments.size());
 	for (std::size_t i = 0; i < arguments.size(); ++i)

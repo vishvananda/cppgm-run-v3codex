@@ -124,5 +124,87 @@ bool SemanticAnalyzer::TryResolveBuiltinTypePackElement(
 	return true;
 }
 
+bool SemanticAnalyzer::TryResolveBuiltinMakeIntegerSequence(
+	NodeId syntax, ScopeId scope, TypeId* type)
+{
+	NamePath path;
+	std::vector<NodeId> source;
+	if (!CollectExplicitTemplateArguments(syntax, &path, &source) ||
+		path.Size() != 1 ||
+		program_->names.Get(path.Last()) != "__make_integer_seq") return false;
+	if (source.size() != 3)
+		throw std::runtime_error("__make_integer_seq requires three arguments");
+	const NodeId type_id = arena_->IsTag(source[0], "type-id") ? source[0] :
+		FindChild(source[0], "type-id");
+	const NodeId specifiers = type_id == kNoNode ? kNoNode :
+		FindChild(type_id, "type-specifier-seq");
+	const NodeId name = specifiers == kNoNode ? kNoNode :
+		FirstSemanticChild(specifiers);
+	if (name == kNoNode)
+		throw std::runtime_error("__make_integer_seq target is not a class template");
+	const NodeId structured = name == kNoNode ? kNoNode :
+		FindChild(name, "structured-type-name");
+	const NamePath target_path = structured == kNoNode ? NamePath() :
+		StructuredNamePath(structured);
+	const std::size_t target = structured == kNoNode ?
+		FindClassTemplate(scope, PayloadSource(name)) :
+		FindClassTemplate(scope, target_path);
+	if (target >= class_templates_.size())
+		throw std::runtime_error("__make_integer_seq target is not a class template");
+	const std::vector<TemplateParameter>& target_parameters =
+		class_templates_[target].parameters;
+	if (target_parameters.size() != 2 ||
+		target_parameters[0].kind != TEMPLATE_ARGUMENT_TYPE ||
+		target_parameters[1].kind != TEMPLATE_ARGUMENT_INTEGRAL ||
+		!target_parameters[1].pack)
+		throw std::runtime_error("__make_integer_seq target has invalid parameters");
+	std::vector<TemplateParameter> parameters(1);
+	parameters[0].kind = TEMPLATE_ARGUMENT_TYPE;
+	std::vector<NodeId> one_source(1, source[1]);
+	std::vector<TemplateArgument> element;
+	if (!BuildTemplateArguments(parameters, one_source, scope, scope, &element))
+	{
+		*type = kNoType;
+		return true;
+	}
+	if (element[0].IsDependent() ||
+		FunctionTemplateTypeIsDependent(element[0].type))
+	{
+		*type = FunctionTemplateNondeducedTypeShape();
+		return true;
+	}
+	if (!IsIntegral(element[0].type, true))
+		throw std::runtime_error("__make_integer_seq element type is not integral");
+	parameters[0].kind = TEMPLATE_ARGUMENT_INTEGRAL;
+	parameters[0].value_type = element[0].type;
+	one_source[0] = source[2];
+	std::vector<TemplateArgument> count;
+	if (!BuildTemplateArguments(parameters, one_source, scope, scope, &count))
+	{
+		*type = kNoType;
+		return true;
+	}
+	if (count[0].IsDependent())
+	{
+		*type = FunctionTemplateNondeducedTypeShape();
+		return true;
+	}
+	if (count[0].value < 0 || count[0].value > 1048576)
+		throw std::runtime_error("__make_integer_seq result is too large");
+	const std::size_t size = static_cast<std::size_t>(count[0].value);
+	std::vector<TemplateArgument> arguments;
+	arguments.reserve(size + 1);
+	arguments.push_back(element[0]);
+	for (std::size_t value = 0; value < size; ++value)
+		arguments.push_back(TemplateArgument(TEMPLATE_ARGUMENT_INTEGRAL,
+			element[0].type, NormalizeIntegralConstant(element[0].type,
+				static_cast<std::int64_t>(value))));
+	const BindingId binding = InstantiateClassTemplate(target, arguments);
+	if (binding == kNoBinding)
+		throw std::runtime_error("__make_integer_seq specialization is invalid");
+	*type = program_->bindings[binding].type;
+	return true;
+}
+
 }
 }

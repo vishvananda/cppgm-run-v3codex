@@ -412,7 +412,7 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 	ScopeId scope, LookupKind kind, ScopeId* terminal_owner)
 {
-	TypeId builtin_pack_type = kNoType; if (kind == LOOKUP_TYPE && TryResolveBuiltinTypePackElement(syntax, scope, &builtin_pack_type)) { LookupResult result; result.type = builtin_pack_type; return result; }
+	TypeId builtin_pack_type = kNoType; if (kind == LOOKUP_TYPE && (TryResolveBuiltinTypePackElement(syntax, scope, &builtin_pack_type) || TryResolveBuiltinMakeIntegerSequence(syntax, scope, &builtin_pack_type))) { LookupResult result; result.type = builtin_pack_type; return result; }
 	if (terminal_owner) *terminal_owner = kNoScope;
 	const NodeId structure = syntax != kNoNode &&
 		arena_->IsTag(syntax, "structured-type-name") ? syntax :
@@ -1688,9 +1688,9 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		 arguments.size() < FixedTemplateParameterCount(pattern.parameters)))
 		throw std::logic_error("class template completion argument mismatch");
 	if (CompleteHostedTraitTemplateSpecialization(index, binding, arguments)) return;
-	if (binding >= class_template_partial_selections_.size())
-		throw std::logic_error(
-			"class specialization has no partial-selection state");
+	if (class_template_partial_selections_.size() <= binding)
+		class_template_partial_selections_.resize(
+			static_cast<std::size_t>(binding) + 1);
 	FunctionTemplateDeduction refreshed(pattern.parameters);
 	const std::size_t selected_partial = SelectClassTemplatePartial(
 		pattern, arguments, &refreshed);

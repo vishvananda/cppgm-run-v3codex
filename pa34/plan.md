@@ -13,29 +13,28 @@ and no host-compiler fallback.
 ## Current Failure Map
 
 - Preprocess is complete: 45/45.
-- Dependent type formation/replay owns 6 compile and 1 run failures: vector deduction,
-  integer-sequence casts, template-id destructors, alias conversion, char-traits lookup,
-  static call operators, and local-lambda invoke-result packs.
+- Dependent callable/type replay owns 3 compile and 1 run failures: vector deduction,
+  template-id destructors, static call operators, and local-lambda invoke-result packs.
 - Object/layout/constant/lifetime owns 7 compile and 2 run failures: wait-status constexpr
   reinterpretation, deferred GNU inline emission, extern arrays, int128 constants,
   zero-length members, always-inline codegen, and large-array lifecycle.
 - ABI/source spelling owns 4 run failures: nested-template ABI-tag suppression and the
   three inline/owner-template pretty-function cases.
-- Audit course compile is 2/2. PA34 is 349/369 overall (347/367 handout), while
+- Audit course compile is 2/2. PA34 is 352/369 overall (350/367 handout), while
   PA1-PA33 remain 4387/4387.
 
-## Active Checkpoint — Dependent Type Formation and Lookup
+## Active Checkpoint — Dependent Callable and Type Replay
 
-Unify cast-valued non-type arguments, alias-mediated partial selection, and dependent member
-types at canonical type formation. Under `spec.md` §§2-3 and 6-8, structured argument nodes
-own syntax, canonical template arguments own identity, indexed partial selection owns
-matching, and parameter-bound lookup resolves dependent members without spelling recovery.
+Unify dependent vector deduction, destructor template-ids, static call operators, and local
+lambda result packs at retained declaration replay. Under `spec.md` §§2-3 and 6-8, canonical
+types own identity, bound replay scopes own dependent names, indexed candidate sets own
+lookup, and demand records—not source spelling—own specialization/member emission.
 
-Data flows from retained type/argument syntax -> bound replay scope -> canonical argument
-list -> candidate index -> cached specialization/member lookup. Expected work is O(argument
-nodes + viable partials + lookup depth), with one cache entry per canonical argument list.
-Validate the cast, alias-conversion, and dependent-member reducers, malformed substitutions,
-and 1/8/64 unique type-formation batches before all stage gates.
+Data flows from retained declarator/expression syntax -> bound class/function replay scope ->
+canonical type/argument list -> candidate index -> cached call/destructor result -> demand.
+Expected work is O(replayed syntax + viable candidates + pack width), with one cache entry per
+canonical specialization. Validate all four reducers, malformed substitutions, and 1/8/64
+unique replay batches before all stage gates.
 
 ## Performance Evidence
 
@@ -57,6 +56,7 @@ and 1/8/64 unique type-formation batches before all stage gates.
 | Hosted configuration/runtime | 1/8/64 cmath/cstring/cstdlib batches emitted 4,419/4,706/7,002 semantic nodes, 5,772/6,157/9,237 lookups, 45/339/2,691 LowIR and 87/633/5,001 MIR; 0.32/0.32/0.36 s wall, 18,012/18,160/22,772 KiB RSS; all linked probes passed |
 | Hosted declarations | 1/8/64 guide/conditional-explicit/placeholder groups produced 14/77/581 declarations and 9/37/261 lookups, zero template requests or demands; semantic time 0.254/0.760/4.631 ms, RSS 7,880/8,436/8,956 KiB, constant backend output |
 | Hosted selection replay | 1/8/64 selected/discarded specializations produced 25/130/970 semantic nodes, 25/130/970 lookups, and 3/24/192 template requests; semantic time 0.434/0.842/4.224 ms, RSS 8,568/8,388/9,048 KiB; linked probes passed and invalid discarded branches created no work |
+| Hosted type formation | 1/8/64 unique 8-element sequence specializations produced 1/8/64 requests, 12/61/453 semantic nodes, and 43/224/1,714 KiB peak semantic storage; semantic time 0.408/1.251/8.398 ms, RSS 8,360/8,352/9,496 KiB, constant backend output |
 
 ## Completed Checkpoints
 
@@ -85,3 +85,4 @@ and 1/8/64 unique type-formation batches before all stage gates.
 | Hosted configuration and runtime adapters | Mode-aware exception/RTTI facts, host scalar/keyword normalization, standard-layout/POD, GNU null/typeof/restrict forms, and declaration-backed C/math aliases; +13 | all 3 compile and 6 linked reducers pass; malformed suffix/alias reject; PA34 341/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Hosted declaration compatibility | Structured guide declarations and conditional `explicit`; canonical deleted placeholder overloads; +5 | guide/placeholder/instantiation reducers pass; malformed forms reject; PA34 346/369; proportional scaling; prior/audit gates pass |
 | Hosted selection and contextual control | Typed `if constexpr` branch selection, alias/declaration init scopes, ordinary runtime init lowering, and template-only contextual coroutine recipes; +3 | focused 3/3 plus linked/negative probes; PA34 349/369; PA1-33 4387/4387; proportional scaling; audit pass |
+| Hosted type formation and primary shims | Canonical `__make_integer_seq`, re-entrant partial selection, pointed-class conversion demand, and undefined `char_traits` primary members; +3 | focused 3/3 plus malformed-count rejection; PA34 352/369; PA1-33 4387/4387; proportional scaling; audit pass |
