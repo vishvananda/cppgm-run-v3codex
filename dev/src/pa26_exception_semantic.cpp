@@ -737,6 +737,8 @@ void SemanticAnalyzer::StageControlFullExpression(
 bool SemanticAnalyzer::HasUnwindDestructionActions(ScopeId scope,
 	ScopeId stop_exclusive) const
 {
+	if (stop_exclusive == kNoScope)
+		stop_exclusive = FunctionCleanupStop(scope);
 	ScopeId current = scope < nearest_lifetime_scopes_.size() ?
 		nearest_lifetime_scopes_[scope] : kNoScope;
 	while (current != kNoScope && current != stop_exclusive)
@@ -756,6 +758,8 @@ bool SemanticAnalyzer::HasEnclosingNontrivialObjectLifetime(
 	ScopeId scope, ScopeId stop_exclusive) const
 {
 	++enclosing_lifetime_queries_;
+	if (stop_exclusive == kNoScope)
+		stop_exclusive = FunctionCleanupStop(scope);
 	const std::uint32_t active =
 		scope < scope_nontrivial_object_lifetime_prefixes_.size() ?
 			scope_nontrivial_object_lifetime_prefixes_[scope] : 0;

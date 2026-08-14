@@ -11,32 +11,30 @@ owner in the shared front end.
 
 ## Current Failure Map
 
-PA35 is 116/128 with 12 failures. The complete set groups by shared owner and
-diagnostic: retained-call viability 4; hosted vector builtin lookup 2;
-list/constructor selection 2; local/class lookup and lowering 2; bound storage
-lowering 1; and reactive register allocation 1.
+PA35 is 122/131 (119/128 pre-existing tests) with nine failures. The complete
+set groups by shared owner and diagnostic: deferred-body return convergence 2;
+hosted vector builtin lookup 2; list/constructor selection 2; bound storage
+lowering 1; retained local lookup 1; and reactive register allocation 1.
 
 ## Active Checkpoint
 
-**Specialization-owned retained-call replay.** Per `spec.md` §§2, 4-6, retained
-syntax is shared but lookup and conversion facts are owned by the active
-specialization. Data flows retained callee NodeId -> recorded function/template
-set -> active owner and substituted arguments -> validated/rebuilt candidates ->
-overload result and demand. PA19 retained-template validation owns fact reuse;
-PA12 call analysis consumes the canonical candidate view. Expected work is
-O(retained candidates + indexed active-owner candidates + deduction depth), with
-rebuilds cached per callee/owner specialization and no global declaration scan.
-Validate all four retained-call failures, owner-reentry and genuine no-viable
-negatives, 8/16 replayed specialization calls, PA35, PA1-34, and audit.
+**Demanded-body return convergence.** Per `spec.md` §§2, 4-6, each canonical
+function specialization owns one body and control-flow graph. Data flows
+retained definition NodeId -> active function/substitution scope -> statement
+regions and reachability -> typed LowIR. PA12 demanded-body emission owns graph
+formation; PA30 region semantics and PA15 lowering consume it. Expected work is
+O(body nodes + edges) per newly demanded function, with canonical demand caching
+and no translation-unit rescans. Validate both current missing-return failures,
+a genuine missing-return negative, deferred/unreachable positives, 8/16 demanded
+bodies, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen nested unevaluated calls used 8/16 indexed candidates, 16/32
-overload candidates, 44/92 conversion checks, 16/32 specialization requests,
-and 8/16 cache hits. Demand-worklist pushes and function emissions stayed zero.
-Peak stage storage was 203,057/342,069 bytes; five-run median analysis was
-1.46/2.48 ms and elapsed time 2.40/4.01 ms, showing bounded, near-linear
-signature resolution without body demand.
+Eight/sixteen specialization-owned static replays used 24/48 overload
+candidates, 32/64 specialization requests, and 16/32 cache hits. Peak semantic
+storage was 439,944/865,082 bytes; five-run median analysis was 2.01/3.71 ms.
+All counters scale near-linearly and candidate work doubles without a global
+declaration scan.
 
 ## Completed Checkpoints
 
@@ -73,3 +71,4 @@ signature resolution without body demand.
 | Canonical function-specialization request ownership | result-type re-entry is retryable substitution failure; successful specialization publishes once | PA35 102/123 -> 105/124; four crashes removed, two handouts plus one regression pass and two advance; 8/16 scaling, PA1-34 4756/4756, and audit pass |
 | Reference-preserving traits and conversions | direct traits retain reference wrappers; reference casts/ties, transitive anonymous aliases, and class-array member actions use canonical destinations | PA35 105/124 -> 111/126; four handouts plus two regressions pass, regex advances; 8/16 scaling, PA1-34 4756/4756, and audit pass |
 | Unevaluated retained-call demand | pending nested calls remain signature-only in `decltype`/`noexcept`; dynamic `typeid` still promotes its operand after evaluatedness is known | PA35 111/126 -> 116/128; three handouts plus positive/negative regressions pass; zero 8/16 body demand, PA1-34 4756/4756, and audit pass |
+| Specialization-owned retained-call replay | active ordinary/static members replace stale specialization facts; lambda special-member ABI and unwind cleanup stop at canonical callable boundaries | PA35 116/128 -> 119/128 existing (122/131 total); three `std::function` cases pass, regex advances, three regressions and 8/16 scaling pass |

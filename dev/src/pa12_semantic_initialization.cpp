@@ -2628,6 +2628,8 @@ bool SemanticAnalyzer::HasControlDependentTemporary(std::uint32_t node)
 void SemanticAnalyzer::AppendUnwindDestructionActions(ScopeId scope,
 	std::uint32_t output_parent, ScopeId stop_exclusive)
 {
+	if (stop_exclusive == kNoScope)
+		stop_exclusive = FunctionCleanupStop(scope);
 	ScopeId current = scope < nearest_lifetime_scopes_.size() ?
 		nearest_lifetime_scopes_[scope] : kNoScope;
 	while (current != kNoScope && current != stop_exclusive)

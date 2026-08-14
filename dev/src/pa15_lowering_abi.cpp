@@ -2252,7 +2252,8 @@ std::string MangleFunction(const pa11::Program& program,
 		return program.names.Get(binding.name);
 	const EntityRecord* lambda = binding.member_owner == kNoEntity ? 0 :
 		&program.entities[binding.member_owner];
-	if (lambda && lambda->lambda_closure)
+	if (lambda && lambda->lambda_closure &&
+		binding.operator_kind == OPERATOR_CALL)
 		return MangleLambdaCallOperator(program, binding, *lambda);
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());

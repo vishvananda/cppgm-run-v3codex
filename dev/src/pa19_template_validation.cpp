@@ -1955,12 +1955,40 @@ void SemanticAnalyzer::CompleteFunctionCallTemplateCandidates(NodeId callee,
 				retained_name.Last();
 			const CompactIndexSequence* active_patterns =
 				template_function_sets_.Find(key);
+			const LookupResult active_functions = program_->LookupMember(
+				current_class_context_, retained_name.Last(), LOOKUP_ORDINARY);
+			const bool static_member_replay =
+				current_function_context_ != kNoBinding &&
+				program_->bindings[current_function_context_].member_owner ==
+					current_class_context_ &&
+				program_->bindings[current_function_context_].static_member_function &&
+				(active_patterns || active_functions.OrdinaryCount() != 0);
+			if (static_member_replay)
+			{
+				patterns.clear();
+				candidates->clear();
+			}
 			if (active_patterns)
 				for (std::size_t i = 0; i < active_patterns->Size(); ++i)
 					if (std::find(patterns.begin(), patterns.end(),
 						(*active_patterns)[i]) == patterns.end())
 						patterns.push_back((*active_patterns)[i]);
-			*naming_class = current_class_context_;
+			std::vector<BindingId> ordinary;
+			for (std::size_t i = 0; i < active_functions.OrdinaryCount(); ++i)
+				AppendFunctionSet(active_functions.OrdinaryAt(i), &ordinary,
+					!patterns.empty());
+			for (std::size_t i = 0; i < ordinary.size(); ++i)
+			{
+				const BindingId canonical =
+					program_->bindings[ordinary[i]].canonical;
+				bool present = false;
+				for (std::size_t prior = 0; prior < candidates->size(); ++prior)
+					if (program_->bindings[(*candidates)[prior]].canonical == canonical)
+						present = true;
+				if (!present) candidates->push_back(ordinary[i]);
+			}
+			*naming_class = active_functions.naming_class != kNoEntity ?
+				active_functions.naming_class : current_class_context_;
 		}
 	}
 	if (current_function_context_ != kNoBinding)
