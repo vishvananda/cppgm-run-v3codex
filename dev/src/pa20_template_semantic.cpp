@@ -1640,6 +1640,13 @@ bool SemanticAnalyzer::BuildTemplateArguments(
 			const NodeId operand = FirstSemanticChild(syntax[i]);
 			if (operand == kNoNode)
 				throw std::runtime_error("empty template argument pack expansion");
+			if (arguments->size() < fixed || has_pack)
+			{
+				const TemplateParameter& destination =
+					TemplateParameterForArgument(parameters, arguments->size());
+				if (TryExpandBuiltinIntegerPack(operand, use_scope,
+					destination, parameter_scope, arguments)) continue;
+			}
 			std::vector<ScopeId> element_scopes;
 			if (!ExpandPackElementScopes(
 				operand, use_scope, &element_scopes))

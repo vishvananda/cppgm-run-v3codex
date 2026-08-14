@@ -13,28 +13,28 @@ and no host-compiler fallback.
 ## Current Failure Map
 
 - Preprocess is complete: 45/45.
-- Handout compile has 51/281 failures: 16 parser/declaration/type cases, 8
-  semantic trait/layout/constant cases, and 27 template lookup/demand/pack cases.
+- Handout compile has 39/281 failures: 12 parser/declaration/type cases, 8
+  semantic trait/layout/constant cases, and 19 template lookup/demand cases.
 - Run has 19/41 failures: 16 stop in the compile pipeline and 3 reach linked
   backend/lifetime or forced-inline behavior.
-- Audit course compile is 2/2. PA34 is 299/369 overall and 297/367 in the
+- Audit course compile is 2/2. PA34 is 311/369 overall and 309/367 in the
   handout; PA1-PA33 remain 4387/4387.
 
-## Active Checkpoint — Retained Fold and Pack Expressions
+## Active Checkpoint — Aggregate Decomposition and Designated Initialization
 
-Implement fold expressions, `sizeof...`, and indexed pack selection as retained typed
-template recipes. Under `spec.md` §§1-5 and 9, the parser owns structured fold/pack
-syntax; template substitution binds compact pack slices; semantic replay applies the
-correct fold direction and empty identity, publishes canonical constant/type results,
-and demands only the selected alias/member specialization. Under §§6-8, lowering sees
-resolved scalar or type facts rather than source spellings.
+Implement structured bindings and designated aggregate/union initialization at the
+shared declaration boundary. Under `spec.md` §§1-3, the parser retains binding lists and
+designator order while semantic analysis resolves canonical class layout/member indices,
+aggregate holes, and the active union member. Under §§6-8, those facts become typed
+projection/initializer actions with ordinary ownership and lifetime obligations; lowering
+must not rediscover source names or aggregate layout.
 
-Ownership/data flow is parser fold/pack node -> retained template registry ->
-specialization substitution scope -> typed expression/type result -> ordinary lowering.
-Expected work is O(pack length) per unique specialization with O(1)-average indexed
-lookup/cache access and no whole-program retry. Validate the three fold-expression cases,
-integer/value/type pack aliases, nested tuple indices, pack constructors and SFINAE,
-1/8/64 pack widths, then the PA34, through-PA33, and file-audit gates.
+Ownership/data flow is parser binding/designator node -> canonical class/member index ->
+binding projection or aggregate initializer action -> lifetime-aware LowIR. Expected work
+is O(bindings + initialized members), with O(1)-average member-index access and no repeated
+layout scans. Validate the four structured-binding reducers, three designated
+aggregate/union reducers, template/range-for replay, 1/8/64 member counts, then the PA34,
+through-PA33, and file-audit gates.
 
 ## Performance Evidence
 
@@ -50,6 +50,7 @@ integer/value/type pack aliases, nested tuple indices, pack constructors and SFI
 | Construction/conversion traits | 1/8/64 unique template query sets compiled in 0.00/0.00/0.01 s with 8,088/8,212/9,644 KiB RSS |
 | Trait packs and assignment | 1/8/64 unique pack/operator sets recorded 5/40/320 candidates, 8/64/512 template requests, 13/69/517 nodes, and 90,239/467,809/3,661,927 peak semantic bytes; 0.690/2.400/16.499 ms semantic time, 8,264/8,680/10,060 KiB RSS, constant backend output |
 | Retained variable-template traits | 1/8/64 unique groups recorded 7/56/448 requests and 3/24/192 candidates; semantic time 0.535/1.319/8.313 ms, peak 73,899/250,858/1,911,348 bytes, RSS 8,560/8,408/9,552 KiB, and one backend instruction |
+| Fold and indexed pack replay | Width 1/8/64 mixed fold/integer/type-pack cases recorded 31/66/346 semantic nodes, 51/128/744 lookups, constant 3 template requests and 6 candidates; semantic time 0.587/0.915/3.216 ms, peak 78,971/187,906/928,290 bytes, RSS 8,376/8,460/9,216 KiB, and one backend instruction |
 
 ## Completed Checkpoints
 
@@ -72,3 +73,4 @@ integer/value/type pack aliases, nested tuple indices, pack constructors and SFI
 | Construction/conversion traits | `declval` categories, direct constructor/implicit conversion selection, nothrow/trivial special-member facts; +20 | focused 10/10; PA34 278/367; scaling; PA1-33 4387/4387; audit pass |
 | Trait packs and assignment | Ordered operand expansion, indexed member-template/ref-qualified selection, and distinct user-provided/trivial/body-copy facts; +14 handout, +2 audit regressions | focused 24/24; PA34 handout 292/367 and total 294/369; PA1-33 4387/4387; proportional scaling; audit/file gates pass |
 | Retained variable-template traits | Demand-state replay, final/rank/virtual-destructor facts, compiler-identifier probing, and typed global nothrow shorthands; +5 | focused 7/7; PA34 299/369; PA1-33 4387/4387; proportional scaling; audit pass |
+| Fold and indexed pack replay | Structured left/right/binary folds, bounded integer/type-pack builtins, and multi-argument direct-initializer recovery; +12 | focused 12/12; PA34 311/369; PA1-33 4387/4387; proportional scaling; audit pass |

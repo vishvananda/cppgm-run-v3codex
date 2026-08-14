@@ -412,6 +412,7 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 	ScopeId scope, LookupKind kind, ScopeId* terminal_owner)
 {
+	TypeId builtin_pack_type = kNoType; if (kind == LOOKUP_TYPE && TryResolveBuiltinTypePackElement(syntax, scope, &builtin_pack_type)) { LookupResult result; result.type = builtin_pack_type; return result; }
 	if (terminal_owner) *terminal_owner = kNoScope;
 	const NodeId structure = syntax != kNoNode &&
 		arena_->IsTag(syntax, "structured-type-name") ? syntax :
@@ -423,7 +424,6 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 		arena_->EdgeChild(component_edge), "name-component"))
 		component_edge = arena_->NextEdge(component_edge);
 	if (component_edge == kNoEdge) return LookupResult();
-
 	ScopeId carrier = FindChild(structure, "global-qualifier") != kNoNode ?
 		program_->GlobalScope() : kNoScope;
 	while (component_edge != kNoEdge)

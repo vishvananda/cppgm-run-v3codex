@@ -63,6 +63,114 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeofPackExpression(
 	return result;
 }
 
+ExpressionInfo SemanticAnalyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
+{
+	const bool unary_left = FindChild(node, "fold-left") != kNoNode;
+	const bool unary_right = FindChild(node, "fold-right") != kNoNode;
+	const bool binary = FindChild(node, "fold-binary") != kNoNode;
+	if ((!unary_left && !unary_right && !binary) ||
+		(unary_left && unary_right))
+		throw std::logic_error("fold expression has invalid direction");
+	std::vector<NodeId> operands;
+	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(child, "fold-left") &&
+			!arena_->IsTag(child, "fold-right") &&
+			!arena_->IsTag(child, "fold-binary")) operands.push_back(child);
+	}
+	if (operands.size() != (binary ? 2U : 1U))
+		throw std::logic_error("fold expression has invalid operands");
+	NodeId pattern = operands[0];
+	NodeId initializer = kNoNode;
+	bool left_fold = unary_left;
+	if (binary)
+	{
+		std::vector<NameId> left_packs, right_packs;
+		CollectPackExpansionNames(operands[0], scope, &left_packs);
+		CollectPackExpansionNames(operands[1], scope, &right_packs);
+		if (left_packs.empty() == right_packs.empty())
+			throw std::runtime_error(
+				"binary fold must contain one unexpanded parameter pack");
+		left_fold = left_packs.empty();
+		pattern = left_fold ? operands[1] : operands[0];
+		initializer = left_fold ? operands[0] : operands[1];
+	}
+	std::vector<ScopeId> element_scopes;
+	if (!ExpandPackElementScopes(pattern, scope, &element_scopes))
+	{
+		if (CandidateSubstitutionActive())
+		{
+			RecordCandidateSubstitutionFailure();
+			return CandidateSubstitutionFailure();
+		}
+		throw std::runtime_error("fold expression contains no parameter pack");
+	}
+	std::vector<ExpressionInfo> elements;
+	elements.reserve(element_scopes.size());
+	for (std::size_t i = 0; i < element_scopes.size(); ++i)
+	{
+		elements.push_back(AnalyzeExpression(pattern, element_scopes[i]));
+		if (CandidateSubstitutionFailed()) return elements.back();
+	}
+	const std::string operation = PayloadSource(node);
+	if (elements.empty() && initializer == kNoNode)
+	{
+		if (operation != "&&" && operation != "||")
+			throw std::runtime_error("empty unary fold has no identity");
+		ExpressionInfo identity = MakeLiteral(
+			program_->types.Fundamental(FUND_BOOL),
+			program_->names.Intern(operation == "&&" ? "true" : "false"));
+		identity.constant = true;
+		identity.value = operation == "&&";
+		RecordExpressionFacts(identity);
+		return identity;
+	}
+	ExpressionInfo result;
+	NodeId result_syntax = kNoNode;
+	if (left_fold)
+	{
+		std::size_t first = 0;
+		if (initializer != kNoNode)
+		{
+			result = AnalyzeExpression(initializer, scope);
+			result_syntax = initializer;
+		}
+		else
+		{
+			result = elements[0]; result_syntax = pattern; first = 1;
+		}
+		for (std::size_t i = first; i < elements.size(); ++i)
+		{
+			result = BuildBinaryExpression(operation, arena_->Payload(node),
+				result_syntax, pattern, result, elements[i], scope);
+			result_syntax = node;
+		}
+	}
+	else
+	{
+		std::size_t remaining = elements.size();
+		if (initializer != kNoNode)
+		{
+			result = AnalyzeExpression(initializer, scope);
+			result_syntax = initializer;
+		}
+		else
+		{
+			result = elements[--remaining]; result_syntax = pattern;
+		}
+		while (remaining != 0)
+		{
+			--remaining;
+			result = BuildBinaryExpression(operation, arena_->Payload(node),
+				pattern, result_syntax, elements[remaining], result, scope);
+			result_syntax = node;
+		}
+	}
+	return result;
+}
+
 void SemanticAnalyzer::InitializeFunctionTemplatePackShape(
 	FunctionTemplatePattern* pattern, const DeclaratorInfo& shape)
 {

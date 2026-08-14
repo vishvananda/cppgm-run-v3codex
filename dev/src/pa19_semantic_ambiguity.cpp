@@ -309,6 +309,108 @@ bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
 	return true;
 }
 
+bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
+	ScopeId scope, std::uint32_t output_parent, NodeId specifiers,
+	NodeId clause, NameId variable_name)
+{
+	bool has_value_argument = false;
+	for (std::uint32_t edge = arena_->FirstEdge(clause); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId parameter = arena_->EdgeChild(edge);
+		if (!arena_->IsTag(parameter, "parameter-declaration")) return false;
+		NodeId declarator = FindChild(parameter, "declarator");
+		if (declarator == kNoNode)
+			declarator = FindChild(parameter, "abstract-declarator");
+		if (declarator != kNoNode) continue;
+		const NodeId argument_specifiers =
+			FindChild(parameter, "decl-specifier-seq");
+		const NodeId argument = argument_specifiers == kNoNode ? kNoNode :
+			FirstSemanticChild(argument_specifiers);
+		if (argument == kNoNode) return false;
+		const NodeId structure = FindChild(argument, "structured-type-name");
+		const LookupResult value = structure == kNoNode ?
+			LookupSpelling(scope, PayloadSource(argument), LOOKUP_ORDINARY) :
+			LookupStructuredName(argument, scope, LOOKUP_ORDINARY);
+		if (value.ordinary != kNoBinding) has_value_argument = true;
+	}
+	if (!has_value_argument) return false;
+	std::vector<NodeId> argument_syntax;
+	std::vector<ExpressionInfo> arguments;
+	for (std::uint32_t edge = arena_->FirstEdge(clause); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId parameter = arena_->EdgeChild(edge);
+		const NodeId argument_specifiers =
+			FindChild(parameter, "decl-specifier-seq");
+		const NodeId argument = argument_specifiers == kNoNode ? kNoNode :
+			FirstSemanticChild(argument_specifiers);
+		if (argument == kNoNode) return false;
+		NodeId declarator = FindChild(parameter, "declarator");
+		if (declarator == kNoNode)
+			declarator = FindChild(parameter, "abstract-declarator");
+		argument_syntax.push_back(argument);
+		if (declarator == kNoNode)
+		{
+			arguments.push_back(AnalyzeNamedValue(
+				PayloadSource(argument), scope, kNoType, argument));
+			continue;
+		}
+		const NodeId empty_clause = FindChild(declarator, "parameter-clause");
+		if (empty_clause == kNoNode ||
+			FirstSemanticChild(empty_clause) != kNoNode) return false;
+		const SpecInfo argument_spec = BuildSpecifiers(
+			argument_specifiers, scope, std::string(), false, true);
+		ExpressionInfo value;
+		if (IsClassObjectType(argument_spec.type))
+		{
+			const std::vector<NodeId> no_syntax;
+			std::vector<ExpressionInfo> no_arguments;
+			value.node = BuildConstructorAction(argument_spec.type, scope,
+				no_syntax, false, false, false, true, kNoNode, &no_arguments);
+			value.type = argument_spec.type;
+			value.category = VALUE_PRVALUE;
+		}
+		else
+		{
+			value = MakeLiteral(argument_spec.type, InternNumber(0));
+			value.constant = true;
+			value.value = 0;
+			RecordExpressionFacts(value);
+		}
+		arguments.push_back(value);
+	}
+	const SpecInfo spec = BuildSpecifiers(specifiers, scope,
+		program_->names.Get(variable_name), true);
+	if (!IsClassObjectType(spec.type) && arguments.size() != 1) return false;
+	const LookupResult occupied =
+		program_->LookupDirect(scope, variable_name, LOOKUP_ORDINARY);
+	if (occupied.ordinary != kNoBinding)
+		throw std::runtime_error("duplicate local variable");
+	const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
+		variable_name, spec.type);
+	PublishVariableDeclarationFacts(binding, scope, variable_name,
+		spec.type, spec, true);
+	ExpressionInfo initializer;
+	if (IsClassObjectType(spec.type))
+	{
+		initializer.node = BuildConstructorAction(spec.type, scope,
+			argument_syntax, false, false, false, true, kNoNode, &arguments);
+		initializer.type = spec.type;
+		initializer.category = VALUE_PRVALUE;
+	}
+	else initializer = ApplyTarget(arguments[0], spec.type);
+	const std::uint32_t owner = MakeDump(DUMP_SIMPLE_DECLARATION);
+	const std::uint32_t variable = MakeDump(DUMP_VARIABLE, spec.type,
+		VALUE_NONE, variable_name, binding);
+	dump_.Add(variable, initializer.node);
+	dump_.Add(owner, variable);
+	dump_.Add(output_parent, owner);
+	AddLifetimeObligation(scope, binding, spec.type);
+	AppendFullExpressionDestructionActions(initializer.node, owner);
+	return true;
+}
+
 bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
@@ -328,9 +430,10 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 		DeclaratorName(declarator);
 	const std::uint32_t parameter_edge = clause == kNoNode ? kNoEdge :
 		arena_->FirstEdge(clause);
-	if (variable_name == 0 || parameter_edge == kNoEdge ||
-		arena_->NextEdge(parameter_edge) != kNoEdge)
-		return false;
+	if (variable_name == 0 || parameter_edge == kNoEdge) return false;
+	if (arena_->NextEdge(parameter_edge) != kNoEdge)
+		return AnalyzeAmbiguousMultiDirectInitializer(node, scope,
+			output_parent, specifiers, clause, variable_name);
 	const NodeId provisional = arena_->EdgeChild(parameter_edge);
 	if (!arena_->IsTag(provisional, "parameter-declaration")) return false;
 	const NodeId call_specifiers =

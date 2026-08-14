@@ -331,6 +331,9 @@ private:
 		std::uint32_t output_parent);
 	bool AnalyzeAmbiguousDirectInitializer(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
+	bool AnalyzeAmbiguousMultiDirectInitializer(NodeId node, ScopeId scope,
+		std::uint32_t output_parent, NodeId specifiers, NodeId clause,
+		NameId variable_name);
 	void PublishVariableDeclarationFacts(BindingId binding,
 		ScopeId declaration_scope, NameId name, TypeId type,
 		const SpecInfo& spec, bool local);
@@ -640,6 +643,13 @@ private:
 	bool LookupFunctionParameterPack(ScopeId scope, NameId name,
 		std::vector<BindingId>* bindings) const;
 	ExpressionInfo AnalyzeSizeofPackExpression(NodeId node, ScopeId scope);
+	ExpressionInfo AnalyzeFoldExpression(NodeId node, ScopeId scope);
+	bool TryExpandBuiltinIntegerPack(NodeId operand, ScopeId scope,
+		const TemplateParameter& destination, ScopeId parameter_scope,
+		std::vector<TemplateArgument>* arguments);
+	bool SyntaxNamesUnboundTemplateParameter(NodeId syntax, ScopeId scope);
+	bool TryResolveBuiltinTypePackElement(
+		NodeId syntax, ScopeId scope, TypeId* type);
 	bool ExpandCallArgumentPacks(const std::vector<NodeId>& original,
 		ScopeId scope, std::vector<NodeId>* syntax,
 		std::vector<ExpressionInfo>* arguments);

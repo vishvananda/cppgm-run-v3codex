@@ -1259,6 +1259,17 @@ NodeId Parser::ParseExpression(int minimum_precedence)
 			position_ += 2;
 		}
 		else ++position_;
+		if (At(OP_DOTS))
+		{
+			++position_; const bool binary_fold = kind == kRShiftFirstToken ? position_ + 1 < tokens_.size() && tokens_[position_].Kind() == kRShiftFirstToken && tokens_[position_ + 1].Kind() == kRShiftSecondToken : position_ < tokens_.size() && tokens_[position_].Kind() == kind;
+			if (binary_fold) position_ += kind == kRShiftFirstToken ? 2 : 1;
+			const NodeId right = binary_fold ? ParseExpression(precedence + 1) : kNoNode;
+			if (binary_fold && right == kNoNode) throw Error("expected fold operand");
+			const std::string operation = kind == kRShiftFirstToken ? ">>" : Spelling(operator_position); const NodeId fold = arena_.Make("fold-expression", operation); arena_.SetSemanticPayload(fold, strings_.Intern(operation));
+			arena_.Add(fold, arena_.Make(binary_fold ? "fold-binary" : "fold-right")); arena_.Add(fold, left);
+			if (binary_fold) arena_.Add(fold, right);
+			left = fold; continue;
+		}
 		const bool right_associative = IsAssignmentOperator(kind);
 		NodeId right = ParseExpression(right_associative ? precedence :
 			precedence + 1);
@@ -1355,6 +1366,15 @@ NodeId Parser::ParsePrimaryExpression()
 		}
 		Rollback(cast_mark);
 		Expect(OP_LPAREN);
+		if (Match(OP_DOTS))
+		{
+			const std::size_t operation_position = position_; const std::uint16_t operation_kind = tokens_[position_++].Kind();
+			if (operation_kind == kRShiftFirstToken) { if (position_ >= tokens_.size() || tokens_[position_].Kind() != kRShiftSecondToken) throw Error("invalid fold operator"); ++position_; }
+			const int precedence = BinaryPrecedence(operation_kind); if (precedence == 0) throw Error("expected fold operator");
+			const NodeId pattern = ParseExpression(precedence + 1); if (pattern == kNoNode) throw Error("expected fold operand");
+			Expect(OP_RPAREN); const std::string operation = operation_kind == kRShiftFirstToken ? ">>" : Spelling(operation_position); const NodeId fold = arena_.Make("fold-expression", operation); arena_.SetSemanticPayload(fold, strings_.Intern(operation));
+			arena_.Add(fold, arena_.Make("fold-left")); arena_.Add(fold, pattern); return fold;
+		}
 		const bool nested_template_argument = angle_stop_depth_ != 0;
 		if (nested_template_argument) --angle_stop_depth_;
 		const NodeId expression = ParseExpression();

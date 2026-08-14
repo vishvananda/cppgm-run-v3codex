@@ -808,6 +808,8 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		analyzer_.ParseNamePath(spelling) :
 		analyzer_.StructuredNamePath(structure);
 	if (path.Empty()) return;
+	if (structure != kNoNode && path.Size() == 1 &&
+		analyzer_.program_->names.Get(path.Last()) == "__type_pack_element") return;
 	if (path.global || path.Size() > 1)
 	{
 		if (SyntaxUsesTemplateParameter(node)) return;

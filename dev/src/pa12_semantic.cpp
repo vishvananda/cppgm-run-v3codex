@@ -791,6 +791,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeUnary(node, scope, target), target);
 	if (arena_->IsTag(node, "binary-expression"))
 		return ApplyTarget(AnalyzeBinary(node, scope), target);
+	if (arena_->IsTag(node, "fold-expression"))
+		return ApplyTarget(AnalyzeFoldExpression(node, scope), target);
 	if (arena_->IsTag(node, "assignment-expression"))
 		return ApplyTarget(AnalyzeAssignment(node, scope), target);
 	if (arena_->IsTag(node, "cast-expression"))
