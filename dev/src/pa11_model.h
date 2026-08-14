@@ -657,7 +657,7 @@ struct BindingRecord
 		static_member_function, has_default_member_initializer,
 		conversion_function, constructor,
 		constructor_base_entry, destructor, destructor_base_entry,
-		inline_function, virtual_function, pure_virtual, final_virtual,
+		inline_function, force_inline, virtual_function, pure_virtual, final_virtual,
 		override_specifier, weak_odr, weak_symbol, object_output_root,
 		emission_demanded;
 	bool explicit_instantiation_suppressed;

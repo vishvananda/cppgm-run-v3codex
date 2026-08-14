@@ -463,6 +463,7 @@ struct Symbol
 	bool referenced;
 	bool object_output_root;
 	bool trivial_lifecycle;
+	bool force_inline;
 
 	Symbol(Kind kind_value, const std::string& name_value,
 		const std::string& object_name_value, bool c_linkage_value,
@@ -476,7 +477,7 @@ struct Symbol
 		  thread_local_storage(false),
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),
 		  declaration_emitted(false), definition_emitted(false), referenced(false),
-		  object_output_root(false), trivial_lifecycle(false) {}
+		  object_output_root(false), trivial_lifecycle(false), force_inline(false) {}
 };
 
 }

@@ -137,6 +137,131 @@ protected:
 		derived.Emit(call);
 	}
 
+	Operand FlatDestructorArrayElement(TypeId element_type,
+		const Operand& address, const Operand& index)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Operand displacement = index;
+		const std::size_t element_size = derived.program_.SizeOf(element_type);
+		if (element_size != 1)
+		{
+			const Operand scaled = derived.Temp(LowI64());
+			Instruction multiply(Instruction::BINARY);
+			multiply.dest = scaled.id;
+			multiply.op = LOW_OP_MUL;
+			multiply.type = LowI64();
+			multiply.first = displacement;
+			multiply.second = Operand(
+				static_cast<std::int64_t>(element_size), LowI64());
+			derived.Emit(multiply);
+			displacement = scaled;
+		}
+		return derived.IndexAddress(LowI8(), derived.DecayAddress(address),
+			displacement, true);
+	}
+
+	Operand DecrementDestructorArrayProgress(const Operand& progress,
+		const Operand& remaining)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const Operand previous = derived.Temp(LowI64());
+		Instruction decrement(Instruction::BINARY);
+		decrement.dest = previous.id;
+		decrement.op = LOW_OP_SUB;
+		decrement.type = LowI64();
+		decrement.first = remaining;
+		decrement.second = Operand(1, LowI64());
+		derived.Emit(decrement);
+		Instruction save(Instruction::STORE);
+		save.type = LowI64();
+		save.first = previous;
+		save.second = progress;
+		derived.Emit(save);
+		return previous;
+	}
+
+	void LowerLoopDestructorArray(TypeId element_type,
+		const Operand& address, BindingId destructor, std::size_t count)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (count > static_cast<std::size_t>(
+			std::numeric_limits<std::int64_t>::max()))
+			throw std::logic_error("destructor array extent exceeds LowIR");
+		const SlotId progress_id = static_cast<SlotId>(
+			derived.function_->slots.size());
+		Slot progress_slot;
+		progress_slot.name = derived.GeneratedSlotName("destructor_array_index");
+		progress_slot.type = LowI64();
+		derived.function_->slots.push_back(progress_slot);
+		const Operand progress(progress_id, LowI64());
+		const BlockId condition = derived.AddBlock(
+			derived.NewLabel("destructor_array_cond"));
+		const BlockId body = derived.AddBlock(
+			derived.NewLabel("destructor_array_body"));
+		const BlockId end = derived.AddBlock(
+			derived.NewLabel("destructor_array_end"));
+		const bool cleanup_needed =
+			!derived.program_.bindings[destructor].nonthrowing;
+		const BlockId cleanup = cleanup_needed ? derived.AddBlock(
+			derived.NewLabel("destructor_array_cleanup")) : BlockId(kNoLowId);
+		const BlockId cleanup_body = cleanup_needed ? derived.AddBlock(
+			derived.NewLabel("destructor_array_cleanup_body")) :
+			BlockId(kNoLowId);
+		const BlockId resume = cleanup_needed ? derived.AddBlock(
+			derived.NewLabel("destructor_array_resume")) : BlockId(kNoLowId);
+		Instruction initialize(Instruction::STORE);
+		initialize.type = LowI64();
+		initialize.first = Operand(static_cast<std::int64_t>(count), LowI64());
+		initialize.second = progress;
+		derived.Emit(initialize);
+		derived.EmitJump(condition);
+		derived.SelectBlock(condition);
+		const Operand remaining = derived.LoadStorage(progress, LowI64());
+		const Operand any = derived.Temp(LowU8());
+		Instruction nonzero(Instruction::CMP);
+		nonzero.dest = any.id;
+		nonzero.op = LOW_OP_NE;
+		nonzero.type = LowI64();
+		nonzero.first = remaining;
+		nonzero.second = Operand(0, LowI64());
+		derived.Emit(nonzero);
+		derived.EmitBranch(any, body, end);
+		derived.SelectBlock(body);
+		const Operand previous =
+			DecrementDestructorArrayProgress(progress, remaining);
+		if (cleanup_needed)
+			derived.EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
+		derived.EmitDestructorCall(destructor,
+			FlatDestructorArrayElement(element_type, address, previous));
+		if (cleanup_needed) derived.Emit(Instruction(Instruction::EH_END));
+		derived.EmitJump(condition);
+		if (cleanup_needed)
+		{
+			derived.SelectBlock(cleanup);
+			const Operand cleanup_remaining =
+				derived.LoadStorage(progress, LowI64());
+			const Operand cleanup_any = derived.Temp(LowU8());
+			Instruction cleanup_nonzero(Instruction::CMP);
+			cleanup_nonzero.dest = cleanup_any.id;
+			cleanup_nonzero.op = LOW_OP_NE;
+			cleanup_nonzero.type = LowI64();
+			cleanup_nonzero.first = cleanup_remaining;
+			cleanup_nonzero.second = Operand(0, LowI64());
+			derived.Emit(cleanup_nonzero);
+			derived.EmitBranch(cleanup_any, cleanup_body, resume);
+			derived.SelectBlock(cleanup_body);
+			const Operand cleanup_previous =
+				DecrementDestructorArrayProgress(progress, cleanup_remaining);
+			derived.EmitDestructorCall(destructor,
+				FlatDestructorArrayElement(
+					element_type, address, cleanup_previous));
+			derived.EmitJump(cleanup);
+			derived.SelectBlock(resume);
+			derived.EmitExceptionResume();
+		}
+		derived.SelectBlock(end);
+	}
+
 	void LowerDestructorObject(TypeId type, const Operand& address,
 		BindingId destructor, bool base_subobject = false)
 	{
@@ -165,73 +290,7 @@ protected:
 		}
 		if (count > kDestructorArrayInlineLimit)
 		{
-			if (count > static_cast<std::size_t>(
-				std::numeric_limits<std::int64_t>::max()))
-				throw std::logic_error("destructor array extent exceeds LowIR");
-			const SlotId progress_id = static_cast<SlotId>(
-				derived.function_->slots.size());
-			Slot progress_slot;
-			progress_slot.name = derived.GeneratedSlotName("destructor_array_index");
-			progress_slot.type = LowI64();
-			derived.function_->slots.push_back(progress_slot);
-			const Operand progress(progress_id, LowI64());
-			const BlockId condition = derived.AddBlock(
-				derived.NewLabel("destructor_array_cond"));
-			const BlockId body = derived.AddBlock(
-				derived.NewLabel("destructor_array_body"));
-			const BlockId end = derived.AddBlock(
-				derived.NewLabel("destructor_array_end"));
-			Instruction initialize(Instruction::STORE);
-			initialize.type = LowI64();
-			initialize.first = Operand(static_cast<std::int64_t>(count), LowI64());
-			initialize.second = progress;
-			derived.Emit(initialize);
-			derived.EmitJump(condition);
-			derived.SelectBlock(condition);
-			const Operand remaining = derived.LoadStorage(progress, LowI64());
-			const Operand any = derived.Temp(LowU8());
-			Instruction nonzero(Instruction::CMP);
-			nonzero.dest = any.id;
-			nonzero.op = LOW_OP_NE;
-			nonzero.type = LowI64();
-			nonzero.first = remaining;
-			nonzero.second = Operand(0, LowI64());
-			derived.Emit(nonzero);
-			derived.EmitBranch(any, body, end);
-			derived.SelectBlock(body);
-			const Operand previous = derived.Temp(LowI64());
-			Instruction decrement(Instruction::BINARY);
-			decrement.dest = previous.id;
-			decrement.op = LOW_OP_SUB;
-			decrement.type = LowI64();
-			decrement.first = remaining;
-			decrement.second = Operand(1, LowI64());
-			derived.Emit(decrement);
-			Instruction save(Instruction::STORE);
-			save.type = LowI64();
-			save.first = previous;
-			save.second = progress;
-			derived.Emit(save);
-			Operand displacement = previous;
-			const std::size_t element_size =
-				derived.program_.SizeOf(element_type);
-			if (element_size != 1)
-			{
-				const Operand scaled = derived.Temp(LowI64());
-				Instruction multiply(Instruction::BINARY);
-				multiply.dest = scaled.id;
-				multiply.op = LOW_OP_MUL;
-				multiply.type = LowI64();
-				multiply.first = displacement;
-				multiply.second = Operand(
-					static_cast<std::int64_t>(element_size), LowI64());
-				derived.Emit(multiply);
-				displacement = scaled;
-			}
-			derived.EmitDestructorCall(destructor, derived.IndexAddress(
-				LowI8(), derived.DecayAddress(address), displacement, true));
-			derived.EmitJump(condition);
-			derived.SelectBlock(end);
+			LowerLoopDestructorArray(element_type, address, destructor, count);
 			return;
 		}
 		const Operand base = derived.DecayAddress(address);

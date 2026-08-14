@@ -18,27 +18,29 @@ and no host-compiler fallback.
   zero-length arrays, and unused IA32 intrinsic wrappers pass with ordinary errors preserved.
 - Typed constant objects are complete: wait-status constexpr object reinterpretation and
   full-width int128 initializer/member cases pass.
-- Runtime object actions own 2 run failures: always-inline codegen and large-array lifecycle.
-- ABI/source spelling owns 4 run failures: nested-template ABI-tag suppression and the
+- Runtime object actions are complete: canonical always-inline expansion and throwing
+  large-array destruction pass in compile-only, direct-link, and staged-link paths.
+- ABI/source identity owns the remaining 4 run failures: nested-template ABI-tag suppression and the
   three inline/owner-template pretty-function cases.
-- Audit course compile is 2/2. PA34 is 363/369 tests, while
+- Audit course compile is 2/2. PA34 is 365/369 tests, while
   PA1-PA33 remain 4387/4387.
 
-## Active Checkpoint — Runtime Object Actions
+## Active Checkpoint — ABI and Source Identity Completion
 
-Complete callable and array lifetime actions at the typed-effect boundary. Under `spec.md` §§3,
-7-10, attributes remain binding-owned semantic facts, demanded functions have one canonical body,
-and aggregate construction/destruction lowers to explicit control flow before native selection.
+Complete the remaining canonical-name boundary under `spec.md` §§1-4 and 6-7. Parsed lexical
+identity must retain inline-namespace transparency and elaborated/template-owner arguments;
+canonical semantic identity must attach declaration attributes exactly once without deriving ABI
+or pretty-function text from backend spellings.
 
-Semantics owns `always_inline` on the canonical function binding and demand owns body availability;
-PA15/PA16 own explicit call and counted array-lifetime actions; typed LowIR carries those actions to
-the native backend. Data flows declaration attribute or array object fact -> canonical binding/dump
-fact -> demand and typed action -> control-flow/native instruction selection.
+Parser/template replay owns structured source names and arguments, semantic bindings own canonical
+owners and ABI tags, and lowering only materializes the resulting string/object identity. Data flows
+syntax name/template arguments -> instantiated owner and canonical binding -> ABI/pretty-function
+fact -> typed constant or object symbol.
 
-Expected work is O(demanded function bodies + emitted lifecycle actions), with O(1) binding lookup
-and counted loops rather than source-size unrolling. Validate both remaining runtime-object reducers,
-attribute redeclarations and unused functions, array counts around the unroll threshold, constructor
-failure cleanup, and 1/8/64 representative object batches before all stage gates.
+Expected work is O(name path + template argument count) per demanded entity with interned lookup and
+no namespace/template rescans during rendering. Validate all 4 reducers, redeclared out-of-class
+members, aliases and inline namespaces, defaulted owner/function template arguments, malformed tag
+forms, and 1/8/64 identity batches before all stage gates.
 
 ## Performance Evidence
 
@@ -64,6 +66,7 @@ failure cleanup, and 1/8/64 representative object batches before all stage gates
 | Dependent callable/type replay | Recursive 1/8/64 vector-alias/partial requests compiled in 0.00/0.00/0.01 s with 8,340/8,216/9,824 KiB RSS; assertions passed, while zero lanes and unequal-width conversion rejected |
 | Canonical declarations | 1/8/64 extern-array/zero-member/intrinsic-wrapper groups produced 20/83/587 semantic nodes, 19/110/838 declarations, and 21/112/840 lookups; semantic time 0.304/0.805/4.966 ms, peak 40,408/156,054/1,187,387 bytes, RSS 8,472/8,248/8,864 KiB, with constant 10-instruction LowIR |
 | Typed constant objects | 1/8/64 wide-constant batches compiled in 0.00/0.00/0.01 s with 8,644/8,348/9,872 KiB RSS; boundary/static linked probes passed and overflow/out-of-bounds probes rejected |
+| Runtime object actions | 1/8/64 template/action batches produced 99/274/1,611 semantic nodes and 79/611/602 LowIR instructions in 0.00/0.01/0.02 s with 8,600/9,740/9,868 KiB RSS; linked probes passed, and counted arrays remain fixed-size above the 8-element inline threshold |
 
 ## Completed Checkpoints
 
@@ -96,3 +99,4 @@ failure cleanup, and 1/8/64 representative object batches before all stage gates
 | Dependent callable and type replay | Structured destructor template-ids, static call operators, lexical lambda enum facts, dependent vector lanes/deduction, and scalarized vector builtins; +4 | reducers 4/4; malformed vector probes reject; PA34 356/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Canonical declaration types and demand | Distinct zero-length arrays, compatible array composites, canonical object symbol types, and typed IA32 `emms` recognition; +3 | focused/negative/link/scaling probes; PA34 359/369; PA1-33 4387/4387; audit pass |
 | Typed constant objects | Two-limb int128 facts/operators/static data and bounded binding-address scalar loads; +4 | reducers 4/4; boundary/link/negative/scaling probes; PA34 363/369; PA1-33 4387/4387; audit pass |
+| Runtime object actions | Canonical always-inline facts with per-TU CFG expansion; EH-resumable counted array destruction; +2 | reducers 2/2; redeclaration/standard/recursive/EH and 8/9/64 probes; PA34 365/369; PA1-33 4387/4387; scaling/audit pass |

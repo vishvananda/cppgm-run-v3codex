@@ -1,5 +1,6 @@
 #include "lowir_native.h"
 
+#include "lowir_force_inline.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_program.h"
 #include "lowir_native_session.h"
@@ -12,6 +13,7 @@ namespace lowir_native {
 
 struct ProgramLoweringSession::Impl
 {
+  std::unique_ptr<lowir_model::LowirProgram> rewritten;
   const lowir_model::LowirProgram & source;
   Stats * stats;
   mir_model::MirProgram shell;
@@ -21,7 +23,8 @@ struct ProgramLoweringSession::Impl
 
   Impl(const lowir_model::LowirProgram & program, const std::string & target,
        Stats * output_stats)
-    : source(program), stats(output_stats)
+    : rewritten(force_inline::rewrite_program(program)),
+      source(rewritten ? *rewritten : program), stats(output_stats)
   {
     std::chrono::steady_clock::time_point started;
     if(stats) started = std::chrono::steady_clock::now();

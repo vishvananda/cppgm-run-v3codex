@@ -2580,6 +2580,7 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	binding.unnamed_namespace_linkage =
 		source_binding_copy.unnamed_namespace_linkage;
 	binding.inline_function = source_binding_copy.inline_function;
+	binding.force_inline = source_binding_copy.force_inline;
 	binding.weak_odr = source_binding_copy.weak_odr;
 	binding.weak_symbol = source_binding_copy.weak_symbol;
 	binding.object_output_root = source_binding_copy.object_output_root;
@@ -2629,6 +2630,7 @@ void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	target.destructor = original.destructor;
 	target.destructor_base_entry = original.destructor_base_entry;
 	target.inline_function = original.inline_function;
+	target.force_inline = original.force_inline;
 }
 
 void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const

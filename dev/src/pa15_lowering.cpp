@@ -365,6 +365,7 @@ private:
 				canonical_binding.object_section_name != 0)
 				symbol.section_name = program_.names.Get(canonical_binding.object_section_name);
 			symbol.object_output_root |= binding.object_output_root;
+			symbol.force_inline |= binding.force_inline || canonical_binding.force_inline;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function,
 				binding.hosted_memory_intrinsic);
@@ -391,6 +392,7 @@ private:
 		if (canonical_binding.object_section_name != 0)
 			output_.symbols.back().section_name = program_.names.Get(canonical_binding.object_section_name);
 		output_.symbols.back().object_output_root = binding.object_output_root;
+		output_.symbols.back().force_inline = binding.force_inline || canonical_binding.force_inline;
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;
 	}
@@ -664,7 +666,6 @@ private:
 		}
 		return Operand::Floating(output_.literals.Intern(numeric), type);
 	}
-
 	void BeginSyntheticFunction(Function* function)
 	{
 		function_ = function;

@@ -195,6 +195,7 @@ bool ConsumeLeadingStandardObjectAttribute(
 		!At(tokens, *position + 1, OP_LSQUARE)) return false;
 	*position += 2;
 	bool no_unique_address = false;
+	bool always_inline = false;
 	while (!At(tokens, *position, OP_RSQUARE) ||
 		!At(tokens, *position + 1, OP_RSQUARE))
 	{
@@ -205,6 +206,8 @@ bool ConsumeLeadingStandardObjectAttribute(
 			const std::string& name = strings.Get(tokens[*position].spelling);
 			no_unique_address = no_unique_address ||
 				name == "no_unique_address" || name == "__no_unique_address__";
+			always_inline = always_inline ||
+				name == "always_inline" || name == "__always_inline__";
 		}
 		++*position;
 	}
@@ -213,6 +216,12 @@ bool ConsumeLeadingStandardObjectAttribute(
 	{
 		const NodeId attribute =
 			arena.Make("standard-attribute", "no_unique_address");
+		arena.AddFlags(attribute, SYNTAX_FLAG_SEMANTIC_ONLY);
+		attributes->push_back(attribute);
+	}
+	if (always_inline)
+	{
+		const NodeId attribute = arena.Make("standard-attribute", "always_inline");
 		arena.AddFlags(attribute, SYNTAX_FLAG_SEMANTIC_ONLY);
 		attributes->push_back(attribute);
 	}

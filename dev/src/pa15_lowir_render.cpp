@@ -561,6 +561,7 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	if (symbol.object_output_root) output << ", object_root=yes";
 	if (function && symbol.trivial_lifecycle)
 		output << ", trivial_lifecycle=yes";
+	if (function && symbol.force_inline) output << ", force_inline=yes";
 	output << ']';
 }
 

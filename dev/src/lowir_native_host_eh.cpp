@@ -146,9 +146,11 @@ public:
       throw std::logic_error("host EH protected-region stack underflow");
     std::size_t parent = states_[state].parent;
     // Consumed landing frames preserve unwind ownership without introducing
-    // an extra source-level region for a later EH_END to close.
-    while(parent != 0 && states_[parent].consumed)
-      parent = states_[parent].parent;
+    // an extra source-level region for a later EH_END to close.  A nested
+    // region still returns to that consumed frame when it closes.
+    if(states_[state].consumed)
+      while(parent != 0 && states_[parent].consumed)
+        parent = states_[parent].parent;
     return parent;
   }
 

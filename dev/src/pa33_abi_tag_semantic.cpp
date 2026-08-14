@@ -67,6 +67,34 @@ void CollectFunctionAbiTags(const SyntaxArena& arena, Program* program,
 	CollectDirectAbiTags(arena, program, declarator, tags);
 }
 
+bool HasDirectAlwaysInline(const SyntaxArena& arena, NodeId owner)
+{
+	if (owner == kNoNode) return false;
+	for (std::uint32_t edge = arena.FirstEdge(owner); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId attribute = arena.EdgeChild(edge);
+		if (!arena.IsTag(attribute, "gnu-attribute") &&
+			!arena.IsTag(attribute, "standard-attribute")) continue;
+		const std::string name = arena.SemanticPayload(attribute);
+		if (name == "always_inline" || name == "__always_inline__") return true;
+	}
+	return false;
+}
+
+bool HasFunctionAlwaysInline(const SyntaxArena& arena, NodeId declaration)
+{
+	if (HasDirectAlwaysInline(arena, declaration)) return true;
+	for (std::uint32_t edge = arena.FirstEdge(declaration); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId child = arena.EdgeChild(edge);
+		if (arena.IsTag(child, "declarator"))
+			return HasDirectAlwaysInline(arena, child);
+	}
+	return false;
+}
+
 void MergeAbiTags(Program* program, const std::vector<NameId>& additions,
 	std::uint32_t* begin, std::uint32_t* count)
 {
@@ -113,14 +141,19 @@ void SemanticAnalyzer::ApplyFunctionAbiTagAttributes(
 {
 	if (binding == kNoBinding || binding >= program_->bindings.size())
 		throw std::logic_error("ABI-tagged function has no semantic binding");
-	std::vector<NameId> tags;
-	CollectFunctionAbiTags(*arena_, program_, declaration, &tags);
-	if (tags.empty()) return;
 	BindingRecord& record = program_->bindings[binding];
 	if (record.canonical == kNoBinding ||
 		record.canonical >= program_->bindings.size())
-		throw std::logic_error("ABI-tagged function has no canonical binding");
+		throw std::logic_error("attributed function has no canonical binding");
 	BindingRecord& canonical = program_->bindings[record.canonical];
+	if (HasFunctionAlwaysInline(*arena_, declaration))
+	{
+		record.force_inline = true;
+		canonical.force_inline = true;
+	}
+	std::vector<NameId> tags;
+	CollectFunctionAbiTags(*arena_, program_, declaration, &tags);
+	if (tags.empty()) return;
 	MergeAbiTags(program_, tags,
 		&canonical.abi_tag_begin, &canonical.abi_tag_count);
 	record.abi_tag_begin = canonical.abi_tag_begin;

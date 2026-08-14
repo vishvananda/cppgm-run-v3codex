@@ -8,6 +8,7 @@
 #include "pa30_lowir_adapter.h"
 #include "pa30_object.h"
 #include "pa30_elf_object.h"
+#include "lowir_force_inline.h"
 #include "lowir_native.h"
 #include "preprocessor.h"
 #include "tool_help_text.h"
@@ -672,6 +673,9 @@ cppgm::pa30::CompilerObject compile_source_object(
   cppgm::pa30::CompilerObject object;
   object.target = target;
   object.lowir = cppgm::AdaptTypedLowIRForNative(typed);
+	std::unique_ptr<lowir_model::LowirProgram> rewritten =
+		lowir_native::force_inline::rewrite_program(object.lowir);
+	if (rewritten) object.lowir = std::move(*rewritten);
 	uint64_t adapt_nanoseconds = 0;
 	if(collect_stats) adapt_nanoseconds = static_cast<uint64_t>(
 		chrono::duration_cast<chrono::nanoseconds>(

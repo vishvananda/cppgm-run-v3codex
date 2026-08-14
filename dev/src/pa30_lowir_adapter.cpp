@@ -173,6 +173,7 @@ void AdaptSymbolFacts(const Symbol& source,
 	symbol->section_name = source.section_name;
 	symbol->object_output_root = source.object_output_root;
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
+	symbol->force_inline = source.force_inline;
 	if (boundary)
 	{
 		boundary->effects = source.effects == Symbol::EFFECTS_READNONE ?
