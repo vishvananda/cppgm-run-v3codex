@@ -12,30 +12,30 @@ owns all changes; no hosted-only route is introduced.
 
 ## Current Failure Map
 
-PA35 is 98/120 with 22 failures. The complete set groups by first owner:
-retained declaration/class lookup and access 3; expression/call/template demand
-10; parser/local semantics 2; stream/heap stability 6; and native
-object/register lowering 1.
+PA35 is 99/121 with 22 failures. The complete set groups by first owner:
+retained template-parameter classification 2; retained declaration/class lookup
+and access 3; expression/call/template demand 14; parser/local semantics 2; and
+native object/register lowering 1.
 
 ## Active Checkpoint
 
-**Growth-stable hosted token and syntax storage.** Per `spec.md` §§1, 2, 5,
-8, and 9, token expansion and retained syntax must keep stable spelling and node
-identity while temporary containers grow. Data flows include/macro tokens ->
-post-token retained buffers and interned ranges -> syntax tag queries ->
-template demand. `MacroProcessor` token queues and the interner/syntax arena own
-the boundary: current regex cases corrupt a deque during `Drain`, while stream
-cases fault in `InternedStringTable::InternRange` through `SyntaxArena::IsTag`.
-Expected work is O(source bytes + expansion tokens) with amortized O(1) growth
-and O(1) average intern lookup. Validate all six crash cases, token-burst and
-deep-template 8/16 probes, PA35, PA1-34, and audit.
+**Retained parameter-context classification.** Per `spec.md` §§2-5, retained
+dependent expressions must classify names against the canonical owning template
+parameter scope before ordinary type/value lookup. Data flows retained
+id-expression -> reconstructed lexical parameter scope -> parameter kind ->
+dependent type/value use -> specialization demand. PA19
+`RetainedTemplateValidator::VisitIdExpression` and specialization parameter
+scope reconstruction own the boundary. Expected work is O(name-path length +
+lexical parameter depth), with O(1) average indexed parameter lookup. Validate
+both regex `_CharT` failures, direct dependent construction and genuine
+type-as-value rejection, 8/16 parameter-depth probes, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-For 8/16 forced-inline 16-byte object transfers, typed LowIR instructions were
-140/268 and selected MIR instructions were 236/452. Five-run median native
-lowering time was 0.458/0.763 ms and encoding time was 0.370/0.531 ms; work and
-peak semantic storage (81,536/102,454 bytes) remained linear.
+For 8/16 fixed-only variadic invocations, preprocessing tokens were 3,591/3,641,
+post-tokens 23/39, macro lookups 10/18, and expansions 8/16; peak rescan stayed
+20 tokens. Five-run median preprocessing time was 1.714/1.720 ms, so the empty
+tail adds constant storage and invocation work remains linear.
 
 ## Completed Checkpoints
 
@@ -67,3 +67,4 @@ peak semantic storage (81,536/102,454 bytes) remained linear.
 | Specialization-local construction convergence | class references remain references; static downcasts complete concrete targets; fixed cv-reference patterns order over forwarding packs; direct-member calls expand packs | PA35 82/113 -> 86/117; six construction and three pack-call barriers advance, four regressions pass; PA1-34 4756/4756; scaling/audit pass |
 | Explicit-id pack partition convergence | explicit function-template prefixes wait for argument-aware deduction, preserving canonical trailing-pack partitions | PA35 86/117 -> 91/119; three handout and two regressions pass; direct piecewise construction advances to native transport; PA1-34 4756/4756; scaling/audit pass |
 | Native scalar aggregate transport | object copy/load/store values stay address-backed until existing ABI call/return chunking; MIR uses bounded byte copies | PA35 91/119 -> 98/120; six handout plus one regression pass; 1/16-byte executable probe, PA1-34 4756/4756, linear MIR scaling, and audit pass |
+| Empty variadic-tail ownership | fixed-only variadic invocations bind a zero-length slice at the raw-token end instead of indexing an absent parsed range | PA35 98/120 -> 99/121; two regex crashes advance under ASan to retained `_CharT`; direct regression and 8/16 scaling pass; PA1-34/audit pass |

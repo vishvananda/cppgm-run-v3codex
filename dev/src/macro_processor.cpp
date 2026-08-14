@@ -2061,9 +2061,8 @@ private:
 		if ((!macro.variadic &&
 			 parsed->arguments.size() != macro.parameters.size()) ||
 			(macro.variadic &&
-			 parsed->arguments.size() < macro.parameters.size()))
-			throw std::runtime_error("wrong number of macro arguments");
-
+				 parsed->arguments.size() < macro.parameters.size()))
+				throw std::runtime_error("wrong number of macro arguments");
 		const std::size_t binding_count = macro.parameters.size() +
 			(macro.variadic ? 1 : 0);
 		pending->raw_tokens.swap(parsed->tokens);
@@ -2077,9 +2076,11 @@ private:
 		{
 			Argument& variadic = pending->arguments.back();
 			const std::size_t first = macro.parameters.size();
-			variadic.raw_begin = parsed->arguments[first].begin;
-			const ParsedArgument& last = parsed->arguments.back();
-			variadic.raw_size = last.begin + last.size - variadic.raw_begin;
+			variadic.raw_begin = first == parsed->arguments.size() ? pending->raw_tokens.size() : parsed->arguments[first].begin;
+			if (first != parsed->arguments.size()) {
+				const ParsedArgument& last = parsed->arguments.back();
+				variadic.raw_size = last.begin + last.size - variadic.raw_begin;
+			}
 		}
 		for (std::size_t i = 0; i < macro.replacement.size(); ++i)
 		{
@@ -2303,7 +2304,6 @@ private:
 				(*result)[0].leading_space || head.leading_space;
 		AnnotateParentheses(result);
 	}
-
 	void AppendReplacementToken(Token token, bool* paste_pending,
 		std::vector<Token>* output)
 	{
