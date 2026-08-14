@@ -143,6 +143,7 @@ struct SemanticAnalysisStats
 	std::size_t default_constructor_emissions;
 	std::size_t semantic_storage_bytes;
 	std::size_t peak_stage_storage_bytes;
+	std::uint64_t parse_nanoseconds;
 	std::uint64_t analysis_nanoseconds;
 	std::uint64_t render_nanoseconds;
 	std::uint64_t elapsed_nanoseconds;

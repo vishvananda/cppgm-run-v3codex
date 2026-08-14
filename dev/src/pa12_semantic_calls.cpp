@@ -854,6 +854,7 @@ bool SemanticAnalyzer::TryAnalyzeVectorIntrinsicCall(
 		result_type, parameter_types, false);
 	const std::uint32_t call = MakeDump(
 		DUMP_CALL_EXPRESSION, result_type, VALUE_PRVALUE);
+	dump_.nodes[call].hosted_vector_intrinsic = intrinsic->kind;
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
 		VALUE_NONE, program_->names.Intern(intrinsic->spelling));
 	dump_.Add(call, callee);

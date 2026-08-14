@@ -1,93 +1,110 @@
-# PA35 Plan
+# PA35 Final Plan
 
 ## Stage Design and Spec Alignment
 
-PA35 keeps source -> streaming preprocessing/post-tokenization -> integrated
-syntax/semantics -> typed LowIR -> native ELF. Relevant `spec.md` requirements
-are canonical identity and phase flow (§§2, 6), demand-owned specialization
-(§4), typed lowering (§§5-7), and bounded, observable heavy-header work (§9).
-Hosted fixed-width vector operations now use canonical signatures and typed
-object lowering; compiler-provided inline wrappers remain demand-owned. Using
-imports converge only when they name the same canonical function entity.
-Braced class targets now complete through the specialization owner before
-list-initialization ranking; synthetic initializer-list layout and semantic
-definition completion remain separate monotonic facts. Promoted unsigned
-constant shifts reduce modulo their canonical width in both narrow and wide
-evaluators while signed overflow remains rejected. A direct lexical alias
-converges same-type namespace imports by canonical type identity without
-weakening imported/imported ambiguity; nested class-conditional arm temporaries
-join the enclosing full-expression cleanup graph. Extended ABI calls retire
-their inputs immediately after call/stack teardown, so result placement sees
-only genuinely live values and can use the existing bounded spill path.
+The PA35 production path is:
 
-## Current Failure Map
+`source bytes -> streamed preprocessing -> compact tokens/SyntaxArena -> canonical
+semantic graph -> typed LowIR -> native LowIR adapter -> function-local MIR ->
+direct ELF64`
 
-No failures remain: PA35 passes all 150 pre-existing tests plus the focused
-extended-call pressure regression. The starting string-compare and hosted
-export-closure failures shared premature call-input ownership in native MIR
-lowering and are resolved at that boundary.
+This is the staged-project adaptation of the integrated front end required by
+`spec.md`. PA10 owns one interned token sequence and syntax arena; PA12 consumes
+that arena once and retains only the parsed template nodes required by later
+demand. Parser, lookup, substitution, and demand scratch are destroyed before
+the graph consumer runs. Semantic identity uses compact `NameId`, `TypeId`,
+`ScopeId`, `EntityId`, `BindingId`, canonical argument-list, and partition IDs.
+Specialization requests are keyed by template, arguments, and partition and
+publish monotonic not-started/in-progress/succeeded/failed states.
 
-## Active Checkpoint
+Function facts are also reached by stable canonical `BindingId`. Function-body
+analysis does not retain a vector element reference across class completion,
+which may append implicit special members; it re-acquires facts by identity and
+snapshots body-role scalars before nested semantic work.
 
-**PA35 complete — extended-call result pressure.** Per `spec.md` §§6-9, typed
-LowIR flows through function-local liveness and ABI argument placement to MIR
-register assignment and bounded spill slots. Native call lowering owns operand
-retirement: after the call and stack teardown, it consumes inputs before result
-allocation; remaining uses stay live and spillable. Work remains O(MIR size log
-live ranges) or better. Validation covers both hosted failures, dead/live call
-arguments, executable behavior, 8/16/32 live values, PA35, PA1-34, and audit.
+Typed lowering consumes selected facts directly. Hosted vector calls now carry
+their registry enum from semantic analysis instead of recovering it from a
+callee spelling. The one native adapter copies typed structures without a text
+round trip. MIR, liveness, register state, and encoding scratch are owned and
+released per function; the ELF writer emits machine code, symbols, relocations,
+and the required compiler-object payload directly. There is no hosted-only
+backend route or host-compiler fallback.
+
+At the front-end boundary, source, compact tokens, syntax, and the semantic
+graph coexist only while the graph is built. At the lowering boundary the
+released syntax storage is replaced by the graph plus accumulating typed
+LowIR. During adaptation, typed and native LowIR coexist once; during native
+emission, only one function's MIR is additionally live. Retained syntax names
+the semantic graph owner, and no later phase pins parser scratch.
 
 ## Performance Evidence
 
-Eight/sixteen/thirty-two values live around an extended call produced
-97/139/223 LowIR and 111/153/237 MIR instructions. Peak stage storage was
-104,222/148,862/268,174 bytes; five-run median native lowering was
-0.435/0.548/0.763 ms and encoding was 0.168/0.246/0.452 ms. Instruction count,
-storage, and time remain proportional to emitted value work; the focused
-dead/live-input executable probe returned zero.
+All measurements used the release compiler, `CPPGM_DRIVER_STATS=1`, and
+`/usr/bin/time`; times are elapsed milliseconds.
 
-## Completed Checkpoints
+| Workload | Semantic work | Phase evidence | Peak RSS |
+| --- | --- | --- | --- |
+| Capturing `std::function<int()>` | 40 demanded functions, 725 template requests / 363 hits, 343 LowIR / 472 MIR instructions | preprocess 199.711, parse 20.110, semantic 95.461, typed lowering 3.397, native lowering 1.377; wall 0.32 s | 20,608 KiB |
+| `std::map` piecewise subscript | 123 demanded functions, 3,111 requests / 2,064 hits, 1,438 LowIR / 1,893 MIR | preprocess 358.470, parse 41.037, semantic 275.119, typed lowering 18.253, native lowering 6.238; wall 0.72 s | 39,056 KiB |
+| `std::regex` | 2,165 demanded functions, 19,954 requests / 13,869 hits, 45,534 LowIR / 60,375 MIR | 3-run medians: preprocess 1,033.882, parse 150.939, semantic 1,589.734, typed lowering 261.858, adapt 59.638, native lowering 181.515, encode 194.324; wall 3.70 s | 225,796 KiB |
 
-| Checkpoint | Result | Validation |
-|---|---|---|
-| Hosted front-end ingress | PA35 6 -> 15/103 | focused utility/probes; PA1-34 and audit pass |
-| Hosted attributed/template syntax | shared syntax barriers removed; PA35 15/103 | decltype-shift; parser scaling linear |
-| Canonical using-function merge | 35 duplicate-import barriers removed; PA35 15/103 | repeated/distinct imports; scaling linear |
-| Hosted class-template registration | 49 registration barriers removed; PA35 15/103 | attributed partial identity; scaling linear |
-| Dependent nested-type lookup | prior 55-case barrier removed; PA35 15 -> 17/103 | focused shape replay and allocator cases advance |
-| Dependent call/type disambiguation | dependent calls remain calls; scalar cast set completed | PA35 17 -> 18/103; qualified-base regressions pass |
-| Explicit-instantiation operator identity | 36 routing barriers removed; PA35 18/103 | operator and genuine template-id targets distinct |
-| Constexpr declaration/completion | 16 owner-literal barriers removed; PA35 18/103 | member/base/object negatives remain rejected |
-| Retained template-default access | 19 access barriers removed; PA35 18/103 | member/friend defaults; external private alias rejected |
-| Canonical retained declarations | tag/control/function/exception facts merge; PA35 18 -> 19/103 | 16 barriers advance; PA1-34, audit, scaling pass |
-| Qualified nested-member replay | canonical current specialization, definition parameters, retained operator call, constexpr string array, and local-class access | PA35 19 -> 21/103; PA1-34 4756/4756; audit/focused/scaling pass |
-| Demand-safe declarations and function-local lowering | incomplete parameter ABI deferred; nested cleanup bounded; shared node/binding slots reset per function; direct class calls retained as objects | PA35 21 -> 36/103; PA1-34 4756/4756; focused/scaling/audit pass |
-| Target-typed casts and bounded hosted shapes | braced casts, specialization-local constexpr, symbolic packs, runtime atomic order, and cv-overloaded special members | PA35 36 -> 41/103; PA1-34 4756/4756; behavior/scaling/audit pass |
-| Retained current-class ownership | canonical owner/member view, enclosing packs, and member-template result calls; audited pack facts use one direct/per-scope index | PA35 41 -> 48/103 compile (48/104 tracked); PA1-34 4756/4756; retained-pack probes linear; file audit pass |
-| Mandatory static-assert evaluation roots | assertion-local suppression, compact provenance with error-only rendering, and compile-path constexpr counters | PA35 48 -> 53/103; five pass and 16 advance; PA1-34 4756/4756; focused/scaling/audit pass |
-| Canonical completed-type trait demand | complete canonical type-edge readiness; specialization-owned member access; lazy defaulted-destructor nonthrowing/boundary facts | PA35 handout 53 -> 60/103 plus composite course regression; all 13 barriers advance; PA1-34 4756/4756; scaling/file audit pass |
-| Canonical qualified/inherited type identity | selected partial names, enclosing packs, identity-only friends, and function references keep canonical ownership | PA35 handout 61 -> 64/104 (65/105 total); 13 barriers removed/advanced; PA1-34 4756/4756; scaling/audit pass |
-| Canonical retained exception equivalence | special-member kind, structural overload shape, ordinal parameter mapping, and deferred exception state select one retained declaration | PA35 65/105 -> 68/107; eight barriers removed, one handout plus two regressions pass; PA1-34 4756/4756; scaling/audit pass |
-| Parameter-owned exception evaluation | declarators carry parameter/`this` scope into ordinary and deferred `noexcept` evaluation | five handout cases advance from unknown names to incomplete construction; direct positive/negative probes and 8/16 scaling pass |
-| Demand-safe unevaluated construction | member typing skips constexpr address/layout work in unevaluated operands; dependent function-template specs rebuild canonical parameter scopes | PA35 68/107 -> 70/108 (one handout plus one regression); four cases advance; PA1-34 4756/4756; scaling/audit pass |
-| Canonical specialization completion re-entry | synthetic initializer-list layout and declaration replay remain distinct; only canonical in-progress replay crosses the duplicate guard | PA35 70/108 -> 73/109 (two handout plus one regression); PA1-34 4756/4756; 8/16 scaling and audit pass |
-| Canonical explicit class target routing | distinct `_Float128`/`__float128` identities and generic type/value/template argument routing remove all seven barriers | PA35 73/109 -> 77/111 (75/109 existing); two handouts pass, five advance, two regressions pass; PA1-34 4756/4756; scaling/audit pass |
-| Retained class/declaration convergence | injected class tags merge through the class-tag index; stale specialization-owned call facts rebuild in the active scope | PA35 77/111 -> 82/113 (80/111 existing); map/codecvt/wide-string and two regressions pass; PA1-34 4756/4756; scaling/audit pass |
-| Specialization-local construction convergence | class references remain references; static downcasts complete concrete targets; fixed cv-reference patterns order over forwarding packs; direct-member calls expand packs | PA35 82/113 -> 86/117; six construction and three pack-call barriers advance, four regressions pass; PA1-34 4756/4756; scaling/audit pass |
-| Explicit-id pack partition convergence | explicit function-template prefixes wait for argument-aware deduction, preserving canonical trailing-pack partitions | PA35 86/117 -> 91/119; three handout and two regressions pass; direct piecewise construction advances to native transport; PA1-34 4756/4756; scaling/audit pass |
-| Native scalar aggregate transport | object copy/load/store values stay address-backed until existing ABI call/return chunking; MIR uses bounded byte copies | PA35 91/119 -> 98/120; six handout plus one regression pass; 1/16-byte executable probe, PA1-34 4756/4756, linear MIR scaling, and audit pass |
-| Empty variadic-tail ownership | fixed-only variadic invocations bind a zero-length slice at the raw-token end instead of indexing an absent parsed range | PA35 98/120 -> 99/121; two regex crashes advance under ASan to retained `_CharT`; direct regression and 8/16 scaling pass; PA1-34/audit pass |
-| Template-argument function-type disambiguation | `bool(T)` retains a function type for an unadorned active type parameter while non-type and qualified-value forms remain expressions | PA35 99/121 -> 102/123; regex iterator passes and member-call advances; positive/negative plus PA24 guards, 8/16 scaling, PA1-34 4756/4756, and audit pass |
-| Canonical function-specialization request ownership | result-type re-entry is retryable substitution failure; successful specialization publishes once | PA35 102/123 -> 105/124; four crashes removed, two handouts plus one regression pass and two advance; 8/16 scaling, PA1-34 4756/4756, and audit pass |
-| Reference-preserving traits and conversions | direct traits retain reference wrappers; reference casts/ties, transitive anonymous aliases, and class-array member actions use canonical destinations | PA35 105/124 -> 111/126; four handouts plus two regressions pass, regex advances; 8/16 scaling, PA1-34 4756/4756, and audit pass |
-| Unevaluated retained-call demand | pending nested calls remain signature-only in `decltype`/`noexcept`; dynamic `typeid` still promotes its operand after evaluatedness is known | PA35 111/126 -> 116/128; three handouts plus positive/negative regressions pass; zero 8/16 body demand, PA1-34 4756/4756, and audit pass |
-| Specialization-owned retained-call replay | active ordinary/static members replace stale specialization facts; lambda special-member ABI and unwind cleanup stop at canonical callable boundaries | PA35 116/128 -> 119/128 existing (122/131 total); three `std::function` cases pass, regex advances, three regressions and 8/16 scaling pass |
-| Demanded-body return convergence | constant control edges retain feasible reachability; standard/GNU noreturn facts terminate direct-call full expressions without changing ABI identity | PA35 122/131 -> 125/133 (120/128 existing); one handout passes, regex advances, two regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
-| Callable-owned lifetime chains | function scopes retain lexical lookup ancestry but reset automatic, temporary, and initializer-list cleanup ancestry | PA35 125/133 -> 128/135 (121/128 existing); vector passes, regex advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
-| Addressable static objects and zero bulk stores | class-retained statics intern one canonical object symbol on first address demand; object-sized zero stores lower to MIR zero-bytes | PA35 128/135 -> 131/137 (122/128 existing); regex and two regressions pass, ABI symbols/runtime probe correct, PA1-34 4756/4756, 8/16 scaling, and audit pass |
-| Hosted fixed-width vector builtin identity | registry-owned v8qi/v4hi/v2si construction and v2si extraction lower as typed eight-byte objects; artificial inline wrappers remain demand-owned | PA35 131/137 -> 134/140; both random barriers advance to using merge; three regressions, PA1-34 4756/4756, lane offsets, 8/16 scaling, and audit pass |
-| Hosted using-function redeclaration convergence | namespace imports skip only identity-equal local declarations while preserving same-signature conflicts between distinct entities | PA35 134/140 -> 137/142 (123/128 existing); address-qualified random passes, Mersenne advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
-| List/constructor candidate convergence | concrete braced targets complete before list classification; initializer-list ABI shells replay semantic members and implicit copy facts on demand | PA35 137/142 -> 141/144 (125/128 existing); both hosted barriers and two regressions pass; narrowing guard and 8/16 scaling pass |
-| Unsigned constant-shift modulo semantics | <=64-bit evaluation matches the existing wide path by normalizing discarded unsigned bits while preserving signed/count diagnostics | PA35 141/144 -> 144/146 (126/128 existing); Mersenne and two regressions pass; signed boundary guards and 8/16 scaling pass |
-| Direct/imported canonical aliases and enclosing conditional cleanup | direct aliases merge same-type namespace imports without weakening imported/imported or base lookup; nested arm temporaries publish into the enclosing lifetime graph | PA35 144/146 -> 148/150; four regressions and runtime lifetime probe pass; hosted export closure advances to backend; 8/16 scaling passes |
-| Extended-call input retirement | call inputs retire after call teardown before result allocation; later uses remain live and spillable | PA35 148/150 -> 151/151; dead/live regression and runtime probe; 8/16/32 scaling linear; PA1-34 and audit pass |
+The dependent composite-template-shape workload at 8/16 families produced
+67/123 template requests, 28/52 cache hits, 101/189 semantic nodes, and
+551/967 declarations. Five-run median semantic time was 3.264/4.965 ms and
+front-end time was 6.134/8.012 ms. The work grew below the doubled input and
+showed no retry, allocation, or lookup cliff. The prior 8/16/32-value extended
+call probe produced 97/139/223 LowIR and 111/153/237 MIR instructions; median
+native lowering was 0.435/0.548/0.763 ms and encoding was
+0.168/0.246/0.452 ms.
+
+## Architecture Review
+
+| Checklist surface | Final disposition |
+| --- | --- |
+| Representation and ownership | One compact syntax owner feeds one canonical graph; phase scratch and function MIR have explicit destruction boundaries; there is no rendered-text transport. |
+| Identity and lookup | Hot semantic keys are compact canonical IDs in indexed/open-addressed tables. Vector intrinsic identity is now a typed enum through lowering; spelling lookup remains only at front-end recognition. |
+| Templates and repeated work | Bodies and retained dependent nodes are shared; environments are parent-linked overlays; complete request keys cache success and failure; worklists publish only monotonic facts. |
+| Lowering and backend | Typed facts flow through one structural adapter to per-function MIR and direct x86-64 ELF. No ordinary-path whole-program validator, serializer round trip, semantic lookup, or external compiler exists. |
+| Allocation and scaling | Arena/vector storage replaces hot per-node ownership, visit sets bound shape traversal, and counters plus 8/16 scaling show work tracking semantic input and emitted output. |
+
+Representative traces close both paths requested by `spec.md`. A hosted vector
+declaration/call moves from registry spelling recognition to canonical function
+and vector types, a `DumpNode` intrinsic enum, typed object operations, MIR lane
+stores/extracts, and ELF symbols with no external builtin relocation. A
+capturing `std::function` moves from retained template syntax through a
+canonical specialization request/state/cache, overload and lifetime facts, a
+40-item demanded-function closure, 343 typed LowIR instructions, 36 emitted
+functions, and direct weak ELF handler/manager/invoke symbols and relocations.
+
+## Final Architecture Review
+
+The final audit found three cross-phase issues and one source-division issue and
+closed each at its ownership boundary. Vector lowering reconstructed a semantic
+operation from a callee name; the semantic node now carries canonical intrinsic
+identity. Ordinary
+function analysis retained a `FunctionInfo` vector reference while class
+completion could append implicit functions; stable `BindingId` re-acquisition
+now prevents that use-after-free. Front-end telemetry omitted parser time and
+finalized total elapsed time after typed lowering; parser time is now explicit
+and semantic publication occurs before the graph consumer. The resulting
+heavy-header profiles account for every major phase. Condition analysis now has
+a responsibility-named source unit, leaving the core semantic unit below the
+file-audit limit. No unexplained slow path remains.
+
+No correctness, architecture, performance, self-containment, or file-audit
+blocker remains. File audit's 22 header-division notices are inherited
+advisories, not PA35 ownership violations.
+
+## Checkpoint Ledger
+
+| Checkpoint commits | Consolidated result |
+| --- | --- |
+| `24f026c6`-`391abff0` | Hosted ingress, retained declarations, nested replay, and demand-safe function-local lowering established the front-end ownership path. |
+| `ab8d37e6`-`56367510` | Canonical class/pack ownership, static assertions, and completed-type demand established bounded retained-template identity and readiness. |
+| `82d69bfd`-`a3b832f3` | Qualified identity, retained exceptions, parameter-owned `noexcept`, and initializer-list definition completion converged canonical declarations. |
+| `1b9b4f5e`-`17c73b33` | Explicit class routing, specialization ownership/local construction, and explicit-id packs completed argument-aware request partitioning. |
+| `c2d511c6`-`cb741298` | Native object transport, empty variadics, function-type arguments, reentrant requests, and reference boundaries preserved typed values. |
+| `f1a47ab8`-`fb626bb3` | Unevaluated demand, specialization-owned calls, noreturn flow, and callable lifetime chains bounded demanded-body emission. |
+| `bc32a966`-`470c9aff` | Addressable statics, vector builtins, using imports, braced specialization, and unsigned shifts completed hosted semantic coverage. |
+| `ca8f9e5e`-`9009b251` | Alias/cleanup convergence and call-input retirement removed the final functional and register-pressure barriers. |
+| Final PA-wide audit | Intrinsic identity remains typed through lowering, function facts are re-acquired by canonical ID across growing work, condition analysis has bounded source ownership, and telemetry separates every major phase. |

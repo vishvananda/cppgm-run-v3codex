@@ -711,7 +711,11 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << stats.force_inline_cloned_instructions
 			 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes
 			 << " typed_bytes=" << stats.typed_storage_bytes
+			 << " preprocess_ns="
+			 << semantic.preprocessing.elapsed_nanoseconds
+			 << " parse_ns=" << semantic.parse_nanoseconds
 			 << " semantic_ns=" << semantic.analysis_nanoseconds
+			 << " frontend_ns=" << semantic.elapsed_nanoseconds
 			 << " lowering_ns=" << stats.lowering_nanoseconds
 			 << " adapt_ns=" << adapt_nanoseconds << '\n';
 	}
@@ -1172,6 +1176,8 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.default_constructor_emissions
            << " semantic_storage_bytes=" << stats.semantic_storage_bytes
            << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
+		   << " preprocess_ns=" << stats.preprocessing.elapsed_nanoseconds
+		   << " parse_ns=" << stats.parse_nanoseconds
            << " analysis_ns=" << stats.analysis_nanoseconds
            << " render_ns=" << stats.render_nanoseconds
            << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
@@ -1497,7 +1503,11 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " semantic_peak_stage_bytes="
 			 << semantic.peak_stage_storage_bytes
 			 << " output_bytes=" << stats.output_bytes
+			 << " preprocess_ns="
+			 << semantic.preprocessing.elapsed_nanoseconds
+			 << " parse_ns=" << semantic.parse_nanoseconds
 			 << " semantic_ns=" << semantic.analysis_nanoseconds
+			 << " frontend_ns=" << semantic.elapsed_nanoseconds
 			 << " lowering_ns=" << stats.lowering_nanoseconds
 			 << " render_ns=" << stats.render_nanoseconds << '\n';
 	}

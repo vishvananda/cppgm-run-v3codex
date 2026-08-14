@@ -146,6 +146,7 @@ struct DumpNode
 	LogicalOperation logical_operation;
 	GnuAsmOperation gnu_asm_operation;
 	CompilerIntrinsicKind compiler_intrinsic;
+	hosted_builtin::VectorIntrinsicKind hosted_vector_intrinsic;
 	hosted_builtin::AtomicIntrinsicKind hosted_atomic_intrinsic;
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
@@ -232,6 +233,7 @@ struct DumpNode
 		  category(VALUE_NONE), logical_operation(LOGICAL_OPERATION_NONE),
 		  gnu_asm_operation(GNU_ASM_NONE),
 		  compiler_intrinsic(COMPILER_INTRINSIC_NONE),
+		  hosted_vector_intrinsic(hosted_builtin::VECTOR_INTRINSIC_NONE),
 		  hosted_atomic_intrinsic(hosted_builtin::ATOMIC_INTRINSIC_NONE),
 		  text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),

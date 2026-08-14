@@ -2326,17 +2326,21 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		binding, parsed, spec.placeholder_cv);
 	ValidateFunctionRefQualifier(binding);
 	ValidateNonmemberOperator(binding);
-	FunctionInfo& function = GetMutableFunction(binding);
-	function.constexpr_function =
-		function.constexpr_function || spec.is_constexpr;
-	function.definition_body = FunctionDefinitionPart(node, "compound-statement");
-	function.function_try_block = FindChild(node, "function-try-block");
+	{
+		FunctionInfo& function = GetMutableFunction(binding);
+		function.constexpr_function =
+			function.constexpr_function || spec.is_constexpr;
+		function.definition_body =
+			FunctionDefinitionPart(node, "compound-statement");
+		function.function_try_block = FindChild(node, "function-try-block");
+	}
 	if (deferred_member_definition)
 	{
 		if (declaration_class == kNoEntity ||
 			program_->bindings[binding].member_owner != declaration_class)
 			throw std::runtime_error(
 				"class template member definition has no declaration");
+		FunctionInfo& function = GetMutableFunction(binding);
 		function.definition_body = FunctionDefinitionPart(node, "compound-statement");
 		function.lexical_scope = semantic_scope;
 		function.deferred = true;
@@ -2347,18 +2351,21 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		structured_owner != kNoScope &&
 		!program_->bindings[binding].inline_function)
 		MarkVtableDemand(program_->bindings[binding].member_owner);
-	function.deferred = spec.is_constexpr || hosted_extension::DeferArtificialFunction(*arena_, node, program_->bindings[binding].force_inline);
-	if (function.deferred)
+	const bool deferred = spec.is_constexpr ||
+		hosted_extension::DeferArtificialFunction(
+			*arena_, node, program_->bindings[binding].force_inline);
+	GetMutableFunction(binding).deferred = deferred;
+	if (deferred)
 	{
 		AnalyzeRetainedPlaceholderFunctionBody(binding);
 		current_class_context_ = previous_class;
 		return;
 	}
-	const bool member = function.member_owner != kNoType;
+	const bool member = GetFunction(binding).member_owner != kNoType;
 	const TypeId output_type = member ?
 		AdaptMemberFunctionType(binding) : parsed.type;
 	const std::uint32_t output_node = MakeDump(DUMP_FUNCTION_DEFINITION,
-		output_type, VALUE_NONE, function.display_name, binding);
+		output_type, VALUE_NONE, GetFunction(binding).display_name, binding);
 	dump_.Add(output_parent, output_node);
 	const ScopeId function_scope = NewScope(owner, SCOPE_FUNCTION, parsed.name,
 		ScopePrefixId(owner));
@@ -2374,8 +2381,12 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
 	{
 		ParameterInfo parameter = parsed.parameters[i];
-		if (parameter.name == 0 && i < function.parameters.size())
-			parameter.name = function.parameters[i].name;
+		if (parameter.name == 0)
+		{
+			const FunctionInfo& current = GetFunction(binding);
+			if (i < current.parameters.size())
+				parameter.name = current.parameters[i].name;
+		}
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
 		BindFunctionParameterPackElement(function_scope, parameter.pack_name, parameter_binding);
@@ -2389,21 +2400,31 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	current_return_type_ = parsed.placeholder_return_kind ==
 		PLACEHOLDER_DECLARATOR_NONE ?
 		program_->types.Get(parsed.type).child : kNoType;
-	current_class_context_ = function.friend_of != kNoEntity ?
-		function.friend_of : program_->bindings[binding].member_owner;
+	EntityId friend_of;
+	NodeId body, function_try_block;
+	bool constructor, destructor;
+	{
+		const FunctionInfo& resolved = GetFunction(binding);
+		friend_of = resolved.friend_of;
+		body = resolved.definition_body;
+		function_try_block = resolved.function_try_block;
+		constructor = resolved.constructor;
+		destructor = resolved.destructor;
+	}
+	current_class_context_ = friend_of != kNoEntity ?
+		friend_of : program_->bindings[binding].member_owner;
 	current_function_context_ = program_->bindings[binding].canonical;
 	BeginFunctionControlFlowFacts();
-	const NodeId body = function.definition_body;
 	if (body != kNoNode)
 	{
-		if (function.function_try_block != kNoNode)
+		if (function_try_block != kNoNode)
 		{
 			const std::uint32_t region = MakeDump(DUMP_TRY_STATEMENT);
 			dump_.Add(output_node, region);
 			AnalyzeCompound(body, function_scope, region);
-			AnalyzeFunctionTryHandlers(function.function_try_block,
-				function_scope, region, function.constructor ?
-					FUNCTION_TRY_BODY_CONSTRUCTOR : function.destructor ?
+			AnalyzeFunctionTryHandlers(function_try_block,
+				function_scope, region, constructor ?
+					FUNCTION_TRY_BODY_CONSTRUCTOR : destructor ?
 					FUNCTION_TRY_BODY_DESTRUCTOR : FUNCTION_TRY_BODY_ORDINARY);
 		}
 		else AnalyzeCompound(body, function_scope, output_node);
@@ -2433,109 +2454,6 @@ void SemanticAnalyzer::AnalyzeSubstatement(NodeId node, ScopeId scope,
 	}
 }
 
-void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
-	std::uint32_t output_parent, bool switch_condition)
-{
-	const std::uint32_t condition = MakeDump(DUMP_CONDITION);
-	dump_.Add(output_parent, condition);
-	NodeId declaration_node = node;
-	const NodeId first_child = FirstSemanticChild(node);
-	if (first_child != kNoNode &&
-		arena_->IsTag(first_child, "condition-declaration"))
-		declaration_node = first_child;
-	const NodeId specifiers = FindChild(declaration_node, "decl-specifier-seq");
-	if (specifiers != kNoNode)
-	{
-		const NodeId declarator = FindChild(declaration_node, "declarator");
-		const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), true);
-		ExpressionInfo placeholder_initializer;
-		DeclaratorInfo parsed = BuildVariableDeclarator(declaration_node,
-			declarator, spec, scope, true, &placeholder_initializer);
-		const BindingId binding = program_->AddBinding(scope, BIND_VARIABLE,
-			parsed.name, parsed.type);
-		const NodeId initializer = FindChild(declaration_node, "initializer");
-		ExpressionInfo value;
-		if (spec.placeholder_auto)
-			value = placeholder_initializer;
-		else
-			value = AnalyzeVariableInitializer(initializer,
-				scope, parsed.type, true);
-		if (constexpr_evaluation_depth_ != 0 && value.constant &&
-			IsIntegral(parsed.type, true))
-		{
-			program_->bindings[binding].constant = true;
-			program_->bindings[binding].value =
-				NormalizeIntegralConstant(parsed.type, value.value);
-		}
-		const std::uint32_t declaration = MakeDump(DUMP_CONDITION_DECLARATION);
-		const std::uint32_t variable = MakeDump(DUMP_VARIABLE, parsed.type,
-			VALUE_NONE, parsed.name, binding);
-		dump_.Add(variable, value.node);
-		dump_.Add(declaration, variable);
-		dump_.Add(condition, declaration);
-		if (switch_condition)
-		{
-			if (!IsIntegral(parsed.type, true) &&
-				EntityOf(parsed.type) == kNoEntity)
-				throw std::runtime_error("invalid switch condition");
-			if (!IsIntegral(parsed.type, true))
-			{
-				ExpressionInfo declared;
-				declared.node = MakeDump(DUMP_ID_EXPRESSION, parsed.type,
-					VALUE_LVALUE, parsed.name, binding);
-				declared.type = parsed.type;
-				declared.category = VALUE_LVALUE;
-				declared.binding = binding;
-				++expression_count_;
-				const ExpressionInfo converted = ApplyExplicitConversion(declared,
-					program_->types.Fundamental(FUND_INT));
-				dump_.Add(condition, converted.node);
-			}
-		}
-		else if (!IsArithmetic(parsed.type) && !IsPointer(parsed.type) && !IsMemberPointer(parsed.type))
-		{
-			ExpressionInfo declared;
-			declared.node = MakeDump(DUMP_ID_EXPRESSION, parsed.type,
-				VALUE_LVALUE, parsed.name, binding);
-			declared.type = parsed.type;
-			declared.category = VALUE_LVALUE;
-			declared.binding = binding;
-			++expression_count_;
-			const ExpressionInfo converted = ApplyExplicitConversion(declared,
-				program_->types.Fundamental(FUND_BOOL));
-			dump_.Add(condition, converted.node);
-		}
-		RegisterConditionLifetime(scope, binding, parsed.type, value, condition);
-		return;
-	}
-	ExpressionInfo value = AnalyzeExpression(FirstSemanticChild(node), scope);
-	if (switch_condition)
-	{
-		if (!IsIntegral(value.type, true))
-			throw std::runtime_error("invalid switch condition");
-	}
-	else if (!IsArithmetic(value.type) && !IsPointer(value.type) && !IsNullptr(value.type) && !IsMemberPointer(value.type))
-		value = ApplyExplicitConversion(value,
-			program_->types.Fundamental(FUND_BOOL));
-	dump_.Add(condition, value.node);
-	const std::size_t first_cleanup_edge = dump_.edges.size();
-	AppendFullExpressionDestructionActions(value.node, condition);
-	const std::uint32_t first = dump_.nodes[condition].first_edge;
-	if (first != kNoDumpEdge && dump_.edges[first].next != kNoDumpEdge)
-	{
-		dump_.nodes[condition].full_expression_staging = true;
-		MarkFullExpressionCalls(value.node);
-		AppendUnwindDestructionActions(scope, condition);
-	}
-	else if (HasActiveInitializerListBacking(scope))
-	{
-		dump_.nodes[condition].full_expression_staging = true;
-		dump_.nodes[condition].initializer_list_lifetime_observation = true;
-		MarkInitializerListLifetimeCalls(value.node);
-	}
-	else if (dump_.edges.size() == first_cleanup_edge)
-		StageExceptionalFullExpression(value.node, condition, scope);
-}
 void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {

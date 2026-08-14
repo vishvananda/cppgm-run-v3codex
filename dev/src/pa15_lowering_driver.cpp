@@ -422,6 +422,9 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 			semantic.peak_stage_storage_bytes = std::max(
 				semantic.peak_stage_storage_bytes,
 				semantic_stats.peak_stage_storage_bytes);
+			semantic.preprocessing.elapsed_nanoseconds +=
+				semantic_stats.preprocessing.elapsed_nanoseconds;
+			semantic.parse_nanoseconds += semantic_stats.parse_nanoseconds;
 			semantic.analysis_nanoseconds += semantic_stats.analysis_nanoseconds;
 			semantic.elapsed_nanoseconds += semantic_stats.elapsed_nanoseconds;
 		}

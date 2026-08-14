@@ -800,13 +800,12 @@ protected:
 		if (children.empty()) return false;
 		const DumpNode& callee = derived.arena_.nodes[children[0]];
 		if (callee.kind != DUMP_CALLEE) return false;
-		const hosted_builtin::VectorIntrinsic* vector_intrinsic =
-			callee.text == 0 ? 0 : hosted_builtin::FindVectorIntrinsic(
-				derived.program_.names.Get(callee.text));
-		if (vector_intrinsic)
+		if (record.hosted_vector_intrinsic !=
+			hosted_builtin::VECTOR_INTRINSIC_NONE)
 		{
 			const hosted_builtin::VectorIntrinsic& intrinsic =
-				*vector_intrinsic;
+				hosted_builtin::GetVectorIntrinsic(
+					record.hosted_vector_intrinsic);
 			const std::size_t arity = intrinsic.operation ==
 				hosted_builtin::VECTOR_OPERATION_INIT ? intrinsic.lane_count : 2;
 			if (children.size() != arity + 1)

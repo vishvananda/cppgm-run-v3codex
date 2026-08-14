@@ -27,6 +27,7 @@ void PublishDriverStats(const std::string& source,
 	stats->preprocessing = syntax.preprocessing;
 	stats->tokens = syntax.tokens;
 	stats->syntax_nodes = syntax.syntax_nodes;
+	stats->parse_nanoseconds = syntax.parse_nanoseconds;
 	stats->peak_stage_storage_bytes = source.size() +
 		syntax.token_storage_bytes + syntax.syntax_storage_bytes +
 		syntax.parser_storage_bytes + stats->semantic_storage_bytes;
@@ -71,10 +72,10 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 		pa10_syntax_detail::RunSyntaxTranslationUnit(path, source, options,
 			0, &analyzer, stats ? &syntax : 0, &analyzer.SharedStrings());
 	}
+	PublishDriverStats(source, syntax, started, stats);
 	// Token, parser, syntax, substitution, lookup, and demand scratch are dead.
 	// The typed next phase borrows only the canonical graph owner.
 	consumer.Consume(graph.View());
-	PublishDriverStats(source, syntax, started, stats);
 }
 
 SemanticAnalysisStats::SemanticAnalysisStats()
@@ -161,7 +162,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  constexpr_scratch_peak_nodes(0), demand_worklist_pushes(0),
 	  demanded_function_emissions(0), default_constructor_emissions(0),
 	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
-	  analysis_nanoseconds(0), render_nanoseconds(0), elapsed_nanoseconds(0)
+	  parse_nanoseconds(0), analysis_nanoseconds(0), render_nanoseconds(0),
+	  elapsed_nanoseconds(0)
 {
 }
 
