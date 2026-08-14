@@ -29,6 +29,20 @@ enum RetainedCallLookupState
 	RETAINED_CALL_ADL_ELIGIBLE = 2
 };
 
+enum RetainedSpecialMemberKind
+{
+	RETAINED_CONSTRUCTOR,
+	RETAINED_DESTRUCTOR,
+	RETAINED_CONVERSION_FUNCTION
+};
+
+enum RetainedExceptionState
+{
+	RETAINED_EXCEPTION_THROWING,
+	RETAINED_EXCEPTION_NONTHROWING,
+	RETAINED_EXCEPTION_DEFERRED
+};
+
 struct RetainedScope
 {
 	ScopeId semantic_scope;
@@ -79,6 +93,8 @@ public:
 	void Run();
 
 private:
+	typedef std::unordered_map<NameId, std::size_t> TemplateOrdinalMap;
+
 	std::size_t AddScope(ScopeId semantic_scope, std::size_t parent,
 		bool defer_unknown_members, bool unmodeled_fixed_base = false,
 		bool unmodeled_current_class = false);
@@ -123,8 +139,19 @@ private:
 	void ValidateKnownTemplateArgumentKinds(NodeId node, ScopeId scope);
 	const TemplateParameter* TemplateParameterUsedBy(NodeId node) const;
 	void ValidateSpecialMemberExceptionSpecification();
-	bool IsNonthrowingSyntax(NodeId declarator) const;
-	std::size_t ParameterCount(NodeId declarator) const;
+	RetainedSpecialMemberKind SpecialMemberKind(NodeId node) const;
+	NodeId DeclaratorIdentifier(NodeId declarator) const;
+	TemplateOrdinalMap TemplateOrdinals(
+		const std::vector<TemplateParameter>& parameters) const;
+	bool RetainedTypeSyntaxEquivalent(NodeId left, NodeId right,
+		NodeId left_identifier, NodeId right_identifier,
+		const TemplateOrdinalMap& left_parameters,
+		const TemplateOrdinalMap& right_parameters) const;
+	bool ParameterTypesEquivalent(NodeId left, NodeId right,
+		const std::vector<TemplateParameter>& left_parameters) const;
+	bool FunctionQualifiersEquivalent(NodeId left, NodeId right) const;
+	RetainedExceptionState RetainedExceptionSpecificationState(
+		NodeId declarator) const;
 
 	SemanticAnalyzer& analyzer_;
 	NodeId target_;
@@ -1330,25 +1357,182 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 	VisitChildren(node, scope);
 }
 
-bool RetainedTemplateValidator::IsNonthrowingSyntax(NodeId declarator) const
+RetainedExceptionState
+RetainedTemplateValidator::RetainedExceptionSpecificationState(
+	NodeId declarator) const
 {
 	const NodeId qualifier = analyzer_.FindChild(declarator,
 		"function-qualifier");
-	return qualifier != kNoNode &&
-		analyzer_.PayloadSource(qualifier).find("noexcept") == 0;
+	if (qualifier == kNoNode) return RETAINED_EXCEPTION_THROWING;
+	const std::string spelling = analyzer_.PayloadSource(qualifier);
+	if (spelling == "noexcept" || spelling == "throw()")
+		return RETAINED_EXCEPTION_NONTHROWING;
+	if (spelling.compare(0, 8, "noexcept") != 0)
+		return RETAINED_EXCEPTION_DEFERRED;
+	const NodeId expression = analyzer_.FirstSemanticChild(qualifier);
+	if (expression == kNoNode) return RETAINED_EXCEPTION_DEFERRED;
+	FundamentalType type = FT_INT;
+	std::uint64_t value = 0;
+	if (!analyzer_.arena_->ScalarLiteralFact(expression, &type, &value))
+		return RETAINED_EXCEPTION_DEFERRED;
+	return value == 0 ? RETAINED_EXCEPTION_THROWING :
+		RETAINED_EXCEPTION_NONTHROWING;
 }
 
-std::size_t RetainedTemplateValidator::ParameterCount(NodeId declarator) const
+RetainedSpecialMemberKind RetainedTemplateValidator::SpecialMemberKind(
+	NodeId node) const
 {
-	const NodeId clause = FindParameterClause(declarator);
-	std::size_t result = 0;
-	if (clause != kNoNode)
-		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(clause);
-			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
-			if (analyzer_.arena_->IsTag(analyzer_.arena_->EdgeChild(edge),
-				"parameter-declaration"))
-				++result;
+	const NodeId declarator = analyzer_.FindChild(node, "declarator");
+	if (declarator != kNoNode &&
+		analyzer_.FindChild(declarator, "conversion-type-id") != kNoNode)
+		return RETAINED_CONVERSION_FUNCTION;
+	return analyzer_.arena_->Payload(node).find('~') != std::string::npos ?
+		RETAINED_DESTRUCTOR : RETAINED_CONSTRUCTOR;
+}
+
+NodeId RetainedTemplateValidator::DeclaratorIdentifier(NodeId declarator) const
+{
+	const NodeId identifier = analyzer_.FindChild(declarator, "identifier");
+	if (identifier != kNoNode) return identifier;
+	const NodeId nested = analyzer_.FindChild(declarator, "nested-declarator");
+	return nested == kNoNode ? kNoNode :
+		DeclaratorIdentifier(analyzer_.FirstSemanticChild(nested));
+}
+
+RetainedTemplateValidator::TemplateOrdinalMap
+RetainedTemplateValidator::TemplateOrdinals(
+	const std::vector<TemplateParameter>& parameters) const
+{
+	TemplateOrdinalMap result;
+	for (std::size_t i = 0; i < parameters.size(); ++i)
+		if (parameters[i].name != 0) result[parameters[i].name] = i;
 	return result;
+}
+
+bool RetainedTemplateValidator::RetainedTypeSyntaxEquivalent(NodeId left,
+	NodeId right, NodeId left_identifier, NodeId right_identifier,
+	const TemplateOrdinalMap& left_parameters,
+	const TemplateOrdinalMap& right_parameters) const
+{
+	if (analyzer_.arena_->TagId(left) != analyzer_.arena_->TagId(right))
+		return false;
+	const std::string& left_payload = analyzer_.arena_->SemanticPayload(left);
+	const std::string& right_payload = analyzer_.arena_->SemanticPayload(right);
+	if (!left_payload.empty() || !right_payload.empty())
+	{
+		const NameId left_name = left_payload.empty() ? 0 :
+			analyzer_.program_->names.Intern(left_payload);
+		const NameId right_name = right_payload.empty() ? 0 :
+			analyzer_.program_->names.Intern(right_payload);
+		const TemplateOrdinalMap::const_iterator left_parameter =
+			left_parameters.find(left_name);
+		const TemplateOrdinalMap::const_iterator right_parameter =
+			right_parameters.find(right_name);
+		if (left_parameter != left_parameters.end() ||
+			right_parameter != right_parameters.end())
+		{
+			if (left_parameter == left_parameters.end() ||
+				right_parameter == right_parameters.end() ||
+				left_parameter->second != right_parameter->second)
+				return false;
+		}
+		else if (left_payload != right_payload) return false;
+	}
+	std::uint32_t left_edge = analyzer_.arena_->FirstEdge(left);
+	std::uint32_t right_edge = analyzer_.arena_->FirstEdge(right);
+	while (true)
+	{
+		while (left_edge != kNoEdge)
+		{
+			const NodeId child = analyzer_.arena_->EdgeChild(left_edge);
+			if (child != left_identifier &&
+				!analyzer_.arena_->IsTag(child, "initializer")) break;
+			left_edge = analyzer_.arena_->NextEdge(left_edge);
+		}
+		while (right_edge != kNoEdge)
+		{
+			const NodeId child = analyzer_.arena_->EdgeChild(right_edge);
+			if (child != right_identifier &&
+				!analyzer_.arena_->IsTag(child, "initializer")) break;
+			right_edge = analyzer_.arena_->NextEdge(right_edge);
+		}
+		if (left_edge == kNoEdge || right_edge == kNoEdge)
+			return left_edge == right_edge;
+		if (!RetainedTypeSyntaxEquivalent(
+			analyzer_.arena_->EdgeChild(left_edge),
+			analyzer_.arena_->EdgeChild(right_edge), left_identifier,
+			right_identifier, left_parameters, right_parameters))
+			return false;
+		left_edge = analyzer_.arena_->NextEdge(left_edge);
+		right_edge = analyzer_.arena_->NextEdge(right_edge);
+	}
+}
+
+bool RetainedTemplateValidator::ParameterTypesEquivalent(NodeId left,
+	NodeId right, const std::vector<TemplateParameter>& left_parameters) const
+{
+	const NodeId left_clause = FindParameterClause(left);
+	const NodeId right_clause = FindParameterClause(right);
+	if (left_clause == kNoNode || right_clause == kNoNode)
+		return left_clause == right_clause;
+	std::vector<NodeId> left_syntax;
+	std::vector<NodeId> right_syntax;
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(left_clause);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		left_syntax.push_back(analyzer_.arena_->EdgeChild(edge));
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(right_clause);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		right_syntax.push_back(analyzer_.arena_->EdgeChild(edge));
+	if (left_syntax.size() != right_syntax.size()) return false;
+	const TemplateOrdinalMap left_ordinals =
+		TemplateOrdinals(left_parameters);
+	const TemplateOrdinalMap right_ordinals = TemplateOrdinals(parameters_);
+	for (std::size_t i = 0; i < left_syntax.size(); ++i)
+	{
+		const NodeId left_declarator = analyzer_.FindChild(
+			left_syntax[i], "declarator");
+		const NodeId right_declarator = analyzer_.FindChild(
+			right_syntax[i], "declarator");
+		if (!RetainedTypeSyntaxEquivalent(left_syntax[i], right_syntax[i],
+			left_declarator == kNoNode ? kNoNode :
+				DeclaratorIdentifier(left_declarator),
+			right_declarator == kNoNode ? kNoNode :
+				DeclaratorIdentifier(right_declarator),
+			left_ordinals, right_ordinals))
+			return false;
+	}
+	return true;
+}
+
+bool RetainedTemplateValidator::FunctionQualifiersEquivalent(NodeId left,
+	NodeId right) const
+{
+	std::vector<NodeId> left_qualifiers;
+	std::vector<NodeId> right_qualifiers;
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(left);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const NodeId child = analyzer_.arena_->EdgeChild(edge);
+		if (analyzer_.arena_->IsTag(child, "cv-qualifier") ||
+			analyzer_.arena_->IsTag(child, "ref-qualifier"))
+			left_qualifiers.push_back(child);
+	}
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(right);
+		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+	{
+		const NodeId child = analyzer_.arena_->EdgeChild(edge);
+		if (analyzer_.arena_->IsTag(child, "cv-qualifier") ||
+			analyzer_.arena_->IsTag(child, "ref-qualifier"))
+			right_qualifiers.push_back(child);
+	}
+	if (left_qualifiers.size() != right_qualifiers.size()) return false;
+	for (std::size_t i = 0; i < left_qualifiers.size(); ++i)
+		if (analyzer_.arena_->TagId(left_qualifiers[i]) !=
+				analyzer_.arena_->TagId(right_qualifiers[i]) ||
+			analyzer_.arena_->SemanticPayload(left_qualifiers[i]) !=
+				analyzer_.arena_->SemanticPayload(right_qualifiers[i]))
+			return false;
+	return true;
 }
 
 void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
@@ -1373,19 +1557,45 @@ void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
 	const std::size_t index = analyzer_.FindClassTemplate(lexical_scope_, owner);
 	if (index >= analyzer_.class_templates_.size()) return;
 	const ClassTemplatePattern& pattern = analyzer_.class_templates_[index];
+	const NodeId class_declaration = class_declaration_ == kNoNode ?
+		pattern.declaration : class_declaration_;
+	const std::vector<TemplateParameter>* declaration_parameters =
+		&pattern.parameters;
+	for (std::size_t partial = 0;
+		partial < pattern.partial_specializations.size(); ++partial)
+		if (pattern.partial_specializations[partial].declaration ==
+			class_declaration)
+		{
+			declaration_parameters =
+				&pattern.partial_specializations[partial].parameters;
+			break;
+		}
+	const RetainedSpecialMemberKind kind = SpecialMemberKind(target_);
 	const NameId terminal = path.Last();
-	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(pattern.declaration);
+	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(class_declaration);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId member = analyzer_.arena_->EdgeChild(edge);
 		if (!analyzer_.arena_->IsTag(member, "special-member-declaration") &&
 			!analyzer_.arena_->IsTag(member, "special-member-definition"))
 			continue;
+		if (SpecialMemberKind(member) != kind) continue;
 		const NodeId prior = analyzer_.FindChild(member, "declarator");
 		if (prior == kNoNode || analyzer_.DeclaratorName(prior) != terminal ||
-			ParameterCount(prior) != ParameterCount(declarator))
+			!ParameterTypesEquivalent(
+				prior, declarator, *declaration_parameters) ||
+			!FunctionQualifiersEquivalent(prior, declarator))
 			continue;
-		if (IsNonthrowingSyntax(prior) != IsNonthrowingSyntax(declarator))
+		const RetainedExceptionState prior_exception =
+			RetainedExceptionSpecificationState(prior);
+		const RetainedExceptionState target_exception =
+			RetainedExceptionSpecificationState(declarator);
+		// A dependent exception expression is finalized during concrete replay.
+		// Declaration-time validation rejects only a proven throwing/nonthrowing
+		// mismatch; it must not guess from the presence of `noexcept` alone.
+		if (prior_exception != RETAINED_EXCEPTION_DEFERRED &&
+			target_exception != RETAINED_EXCEPTION_DEFERRED &&
+			prior_exception != target_exception)
 			throw std::runtime_error(
 				"conflicting retained special-member exception specification");
 		return;
