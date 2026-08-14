@@ -13,40 +13,33 @@ and no host-compiler fallback.
 ## Current Failure Map
 
 - Preprocess is complete: 45/45.
-- Hosted configuration/runtime adapters own 4 compile and 6 run failures:
-  wait-status constants, exception/RTTI/no-exception predefines,
-  standard-layout/POD, null adaptation, and the cmath/constructor/csignal/
-  cstdio/cstring hosted paths.
-- Template declaration/deduction/replay owns 17 compile and 1 run failure:
-  placeholder return, the three deduction-guide forms, vector deduction,
-  special-member/control-flow replay, integer-sequence casts, template-id
-  destructors, instantiation compatibility, alias conversion, GNU `decltype`/
-  `typeof`, char-traits/coroutine contexts, local aliases, static call operators,
+- Template declaration/deduction/replay owns 14 compile and 1 run failures:
+  placeholder return and deduction guides, vector deduction, special-member/control-flow
+  replay, integer-sequence casts, template-id destructors, instantiation compatibility,
+  alias conversion, char-traits/coroutine contexts, local aliases, static call operators,
   and local-lambda invoke-result packs.
-- Object/layout/constant/lifetime owns 6 compile and 2 run failures: deferred GNU
-  inline emission, extern arrays, local/global/static
-  int128 constants, zero-length members, always-inline codegen, and large-array
-  lifecycle.
-- ABI/source spelling owns 1 compile and 4 run failures: constexpr
-  `__PRETTY_FUNCTION__`, nested-template ABI-tag suppression, and the three inline/
-  owner-template pretty-function cases.
-- Audit course compile is 2/2. Handout compile is 253/281 and run is 28/41;
-  PA34 is 328/369 overall (326/367 handout), while PA1-PA33 remain 4387/4387.
+- Object/layout/constant/lifetime owns 7 compile and 2 run failures: wait-status constexpr
+  reinterpretation, deferred GNU inline emission, extern arrays, int128 constants,
+  zero-length members, always-inline codegen, and large-array lifecycle.
+- ABI/source spelling owns 4 run failures: nested-template ABI-tag suppression and the
+  three inline/owner-template pretty-function cases.
+- Audit course compile is 2/2. PA34 is 341/369 overall (339/367 handout), while
+  PA1-PA33 remain 4387/4387.
 
-## Active Checkpoint — Hosted Configuration and Runtime Adapters
+## Active Checkpoint — Template Declaration and Dependent Replay
 
-Complete the remaining hosted configuration facts and C runtime adapters at the shared
-preprocessing/type/call boundaries: exception/RTTI mode macros, wait-status constants,
-standard-layout/POD compatibility, null adaptation, and the cmath/csignal/cstdio/cstring
-paths. Under `spec.md` §§1-3 and 6, preprocessing owns immutable target facts while
-semantics owns canonical types and conversions; under §§7-10, typed LowIR owns effects and
-the native boundary alone maps ABI symbols.
+Unify the remaining declaration-shape and replay failures at the retained-template
+boundary: deduction-guide publication, placeholder result state, dependent special-member
+and control-flow bodies, and compatibility lookups used by library templates. Under
+`spec.md` §§2-3 and 6-8, syntax owns structured dependent forms, canonical declaration
+records own identity and lookup, and instantiation replays typed recipes into demand-owned
+specializations without reparsing spellings.
 
-Ownership/data flow is target configuration -> interned macro/type facts -> ordinary typed
-header declarations/calls -> effect-bearing LowIR -> ABI symbol adaptation. Expected work is
-O(tokens + declarations + calls), with bounded metadata lookup and one conversion pass per
-call. Validate each remaining reducer, invalid mode/type combinations, 1/8/64 header-call
-batches, then all stage gates.
+Ownership/data flow is parsed declaration -> retained template recipe -> indexed lookup and
+deduction -> cached specialization -> ordinary semantic demand. Expected work is O(recipe
+nodes + candidate set + instantiated body), with one specialization cache entry per
+canonical argument list. Validate declaration reducers first, then replay/control-flow and
+1/8/64 unique-specialization batches before all stage gates.
 
 ## Performance Evidence
 
@@ -65,6 +58,7 @@ batches, then all stage gates.
 | Fold and indexed pack replay | Width 1/8/64 mixed fold/integer/type-pack cases recorded 31/66/346 semantic nodes, 51/128/744 lookups, constant 3 template requests and 6 candidates; semantic time 0.587/0.915/3.216 ms, peak 78,971/187,906/928,290 bytes, RSS 8,376/8,460/9,216 KiB, and one backend instruction |
 | Aggregate designation/decomposition | 1/8/64-member trailing-designator plus `auto&` decomposition emitted 19/26/82 semantic nodes, 17/31/143 declarations, 24/45/213 lookups, 17/38/206 LowIR and 24/53/277 MIR; semantic time 0.314/0.356/0.619 ms, peak 38,024/44,762/190,388 bytes, RSS 8,228/8,216/9,056 KiB; all linked probes passed |
 | Compiler function builtins/invoke | 1/8/64 mixed overflow/member-invoke/`offsetof` batches emitted 61/243/1,699 semantic nodes, 63/280/2,016 lookups, 55/237/1,693 LowIR and 76/321/2,281 MIR; semantic time 0.529/0.850/4.250 ms, peak 56,176/124,227/756,406 bytes, RSS 8,468/9,356/14,552 KiB; all linked probes passed |
+| Hosted configuration/runtime | 1/8/64 cmath/cstring/cstdlib batches emitted 4,419/4,706/7,002 semantic nodes, 5,772/6,157/9,237 lookups, 45/339/2,691 LowIR and 87/633/5,001 MIR; 0.32/0.32/0.36 s wall, 18,012/18,160/22,772 KiB RSS; all linked probes passed |
 
 ## Completed Checkpoints
 
@@ -90,3 +84,4 @@ batches, then all stage gates.
 | Fold and indexed pack replay | Structured left/right/binary folds, bounded integer/type-pack builtins, and multi-argument direct-initializer recovery; +12 | focused 12/12; PA34 311/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Aggregate designation and decomposition | Binding-owned hidden objects and member projections, ordered designators, zero-filled holes, active unions, and compound-literal storage; +7 | focused 7/7; linked/template/range/reference/invalid probes pass; PA34 318/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Compiler function builtins and invoke | Typed `offsetof`, source/predefined values, string/format/allocation aliases, widened exact overflow, and direct/pointer-like invocation; +10 | focused compile/link/invalid probes; PA34 328/369; PA1-33 4387/4387; proportional scaling; audit pass |
+| Hosted configuration and runtime adapters | Mode-aware exception/RTTI facts, host scalar/keyword normalization, standard-layout/POD, GNU null/typeof/restrict forms, and declaration-backed C/math aliases; +13 | all 3 compile and 6 linked reducers pass; malformed suffix/alias reject; PA34 341/369; PA1-33 4387/4387; proportional scaling; audit pass |

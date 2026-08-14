@@ -41,7 +41,9 @@ const SimpleEntry kSimpleEntries[] = {
 	{">>", OP_RSHIFT}, {">>=", OP_RSHIFTASS}, {"?", OP_QMARK},
 	{"[", OP_LSQUARE}, {"]", OP_RSQUARE}, {"^", OP_XOR},
 	{"^=", OP_XORASS}, {"__alignof", KW_ALIGNOF},
-	{"__alignof__", KW_ALIGNOF}, {"alignas", KW_ALIGNAS},
+	{"__alignof__", KW_ALIGNOF}, {"__decltype", KW_DECLTYPE},
+	{"__typeof", KW_DECLTYPE}, {"__typeof__", KW_DECLTYPE},
+	{"alignas", KW_ALIGNAS},
 	{"alignof", KW_ALIGNOF}, {"and", OP_LAND},
 	{"and_eq", OP_BANDASS}, {"asm", KW_ASM}, {"auto", KW_AUTO},
 	{"bitand", OP_AMP}, {"bitor", OP_BOR}, {"bool", KW_BOOL},
@@ -435,6 +437,7 @@ bool ParseFloatingSuffix(const std::string& text, std::size_t position,
 	else if (suffix == "l" || suffix == "L") *type = FT_LONG_DOUBLE;
 	else if (suffix == "q" || suffix == "Q") *type = FT_LONG_DOUBLE;
 	else if (suffix == "f16" || suffix == "F16") *type = FT_FLOAT16;
+	else if (suffix == "bf16" || suffix == "BF16") *type = FT_FLOAT16;
 	else if (suffix == "f32" || suffix == "F32") *type = FT_FLOAT32;
 	else if (suffix == "f32x" || suffix == "F32x") *type = FT_FLOAT32X;
 	else if (suffix == "f64" || suffix == "F64") *type = FT_FLOAT64;
@@ -1608,9 +1611,10 @@ const char* FundamentalTypeName(FundamentalType type)
 		"unsigned char", "unsigned short int", "unsigned int",
 		"unsigned long int", "unsigned long long int", "wchar_t", "char",
 		"char16_t", "char32_t", "bool", "float", "double", "long double",
-		"void", "nullptr_t"
+		"void", "nullptr_t", "_Float16", "_Float32", "_Float32x",
+		"_Float64", "_Float64x", "_Float128"
 	};
-	if (type < FT_SIGNED_CHAR || type > FT_NULLPTR_T)
+	if (type < FT_SIGNED_CHAR || type > FT_FLOAT128)
 		throw std::logic_error("unknown fundamental type");
 	return names[type];
 }

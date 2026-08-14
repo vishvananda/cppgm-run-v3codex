@@ -370,14 +370,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 		else if ((trait == TYPE_TRAIT_IS_TRIVIAL || trait == TYPE_TRAIT_IS_POD ||
 			trait == TYPE_TRAIT_IS_STANDARD_LAYOUT ||
 			trait == TYPE_TRAIT_IS_LITERAL_TYPE) && operands.size() == 1)
-			value = IsFundamentalIntegral(shape) || IsFundamentalFloating(shape) ||
-				shape.kind == TYPE_COMPLEX ||
-				shape.kind == TYPE_POINTER || shape.kind == TYPE_MEMBER_POINTER ||
-				(named && IsClassEntity(*named) &&
-				 EvaluateBuiltinTriviallyCopyable(first) &&
-				 (trait == TYPE_TRAIT_IS_STANDARD_LAYOUT ||
-				  trait == TYPE_TRAIT_IS_LITERAL_TYPE ||
-				  named->trivial_default_constructor));
+			value = EvaluateBuiltinTrivialLayoutTrait(
+				trait, first, shape, named);
 		else if ((trait == TYPE_TRAIT_IS_CONSTRUCTIBLE ||
 			trait == TYPE_TRAIT_IS_NOTHROW_CONSTRUCTIBLE ||
 			trait == TYPE_TRAIT_IS_TRIVIALLY_CONSTRUCTIBLE))

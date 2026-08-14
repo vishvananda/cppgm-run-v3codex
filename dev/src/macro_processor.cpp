@@ -1318,7 +1318,13 @@ private:
 		if (name == "__has_builtin")
 			return IsSupportedBuiltinProbe(operand);
 		if (name == "__has_feature" || name == "__has_extension")
+		{
+			if (operand == "cxx_exceptions")
+				return IsMacroDefined(spellings_.Intern("__EXCEPTIONS"));
+			if (operand == "cxx_rtti")
+				return IsMacroDefined(spellings_.Intern("__GXX_RTTI"));
 			return IsSupportedFeatureProbe(operand);
+		}
 		if (name == "__has_attribute")
 			return IsSupportedAttributeProbe(operand);
 		if (name == "__is_identifier")

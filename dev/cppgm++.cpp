@@ -392,6 +392,8 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
 		if(args[i] == "-fno-exceptions") {
 			invocation.macro_actions.push_back(
 				DriverInvocation::MacroAction(false, "__EXCEPTIONS"));
+			invocation.macro_actions.push_back(
+				DriverInvocation::MacroAction(false, "__cpp_exceptions"));
       continue;
     }
     if(args[i] == "--target") {

@@ -59,7 +59,7 @@ FundamentalKind FloatingSpellingKind(const std::string& spelling,
 std::size_t FloatingNumericEnd(const std::string& spelling)
 {
 	static const char* const suffixes[] = {
-		"F128", "f128", "F32x", "f32x", "F64x", "f64x",
+		"BF16", "bf16", "F128", "f128", "F32x", "f32x", "F64x", "f64x",
 		"F16", "f16", "F32", "f32", "F64", "f64",
 		"F", "f", "L", "l", "Q", "q"
 	};

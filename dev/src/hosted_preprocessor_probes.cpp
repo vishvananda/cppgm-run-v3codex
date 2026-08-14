@@ -46,6 +46,7 @@ bool IsSupportedFeatureProbe(const std::string& value)
 		"cxx_default_function_template_args",
 		"cxx_defaulted_functions",
 		"cxx_deleted_functions",
+		"cxx_exceptions",
 		"cxx_explicit_conversions",
 		"cxx_generalized_initializers",
 		"cxx_inline_namespaces",
@@ -57,6 +58,7 @@ bool IsSupportedFeatureProbe(const std::string& value)
 		"cxx_range_for",
 		"cxx_raw_string_literals",
 		"cxx_reference_qualified_functions",
+		"cxx_rtti",
 		"cxx_rvalue_references",
 		"cxx_static_assert",
 		"cxx_strong_enums",
@@ -64,7 +66,10 @@ bool IsSupportedFeatureProbe(const std::string& value)
 		"cxx_unicode_literals",
 		"cxx_unrestricted_unions",
 		"cxx_user_literals",
-		"cxx_variadic_templates"
+		"cxx_variadic_templates",
+		"is_constructible",
+		"is_pod",
+		"is_trivially_constructible"
 	};
 	return IsSortedMetadataEntry(value, entries,
 		sizeof(entries) / sizeof(entries[0]));

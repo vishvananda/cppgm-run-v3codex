@@ -47,6 +47,49 @@ ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
 	return ApplyTarget(MakeStringLiteral(QuoteNarrowString(name)), target);
 }
 
+bool SemanticAnalyzer::TryAnalyzeCompilerPredefinedValue(
+	const std::string& spelling, NodeId syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	if (spelling == "__func__" || spelling == "__PRETTY_FUNCTION__")
+	{
+		*result = AnalyzePredefinedFunctionName(syntax, target);
+		return true;
+	}
+	if (spelling != "__null") return false;
+	*result = MakeLiteral(program_->types.Fundamental(FUND_NULLPTR_T),
+		program_->names.Intern("nullptr"));
+	result->constant = true;
+	result->value = 0;
+	*result = ApplyTarget(*result, target);
+	return true;
+}
+
+bool SemanticAnalyzer::TryAnalyzeTypeofFunctionalCast(NodeId callee,
+	const std::vector<NodeId>& arguments, ScopeId scope,
+	TypeId target, ExpressionInfo* result)
+{
+	if (!arena_->IsTag(callee, "id-expression") ||
+		arena_->Payload(callee).compare(0, 8, "__typeof") != 0) return false;
+	const NodeId decltype_name = arena_->IsTag(callee, "id-expression") ?
+		FindChild(callee, "decltype-name") : kNoNode;
+	if (decltype_name == kNoNode ||
+		FindChild(decltype_name, "qualified-name") != kNoNode) return false;
+	const TypeId cast_type = DecltypeType(
+		FirstSemanticChild(decltype_name), scope);
+	if (CandidateSubstitutionFailed() || cast_type == kNoType)
+	{
+		*result = ExpressionInfo();
+		return true;
+	}
+	if (arguments.size() != 1)
+		throw std::runtime_error("typeof cast requires one argument");
+	*result = ApplyTarget(
+		AnalyzeUntypedCallArgument(arguments[0], scope), cast_type);
+	if (target != kNoType) *result = ApplyTarget(*result, target);
+	return true;
+}
+
 ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinOffsetof(
 	NodeId syntax, ScopeId scope, TypeId target)
 {
@@ -205,6 +248,30 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 			ConstexprScalarValue(static_cast<std::int64_t>(0)));
 		*result = ApplyTarget(*result, target);
 		return true;
+	}
+	if (spelling.compare(0, 10, "__builtin_") == 0 &&
+		!hosted_builtin::FindIntegerIntrinsic(spelling) &&
+		!hosted_builtin::FindFloatingIntrinsic(spelling) &&
+		!hosted_builtin::FindMemoryIntrinsic(spelling) &&
+		!hosted_builtin::FindAtomicIntrinsic(spelling))
+	{
+		const std::string alias = spelling.substr(10);
+		std::vector<BindingId> candidates = FunctionCandidates(
+			program_->GlobalScope(), alias, 0, kNoNode, true);
+		if (!candidates.empty())
+		{
+			std::vector<ExpressionInfo> arguments;
+			for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+				arguments.push_back(
+					AnalyzeUntypedCallArgument(argument_syntax[i], scope));
+			std::vector<CallConversionFact> conversions;
+			const BindingId selected = SelectOverload(scope, argument_syntax,
+				arguments, candidates, 0, 0, &conversions);
+			if (selected == kNoBinding) return false;
+			*result = BuildResolvedCall(selected, scope, argument_syntax,
+				arguments, 0, target, kNoEntity, 0, &conversions);
+			return true;
+		}
 	}
 	if (spelling != "__builtin_addressof") return false;
 	if (argument_syntax.size() != 1)

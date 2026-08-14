@@ -140,7 +140,9 @@ bool IsTypeAnnotation(const std::string& spelling)
 		"_Nonnull",
 		"_Null_unspecified",
 		"_Nullable",
-		"_Nullable_result"
+		"_Nullable_result",
+		"__restrict",
+		"__restrict__"
 	};
 	return Contains(spelling, entries);
 }

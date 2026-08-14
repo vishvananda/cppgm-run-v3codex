@@ -399,6 +399,74 @@ bool SemanticAnalyzer::EvaluateBuiltinTriviallyCopyable(TypeId type) const
 	return eligible;
 }
 
+bool SemanticAnalyzer::EvaluateBuiltinStandardLayout(TypeId type) const
+{
+	type = program_->types.RemoveTopCv(EffectiveType(type));
+	const EntityId entity = EntityOf(type);
+	if (entity == kNoEntity) return true;
+	const EntityRecord& owner = program_->entities[entity];
+	if (!IsClassEntity(owner) || !owner.complete || owner.polymorphic_class ||
+		owner.virtual_base_count != 0 ||
+		entity >= entity_data_members_.size()) return false;
+	bool has_access = false;
+	AccessKind member_access = ACCESS_PUBLIC;
+	for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
+	{
+		const BindingRecord& member =
+			program_->bindings[entity_data_members_[entity][i]];
+		if (!has_access)
+		{
+			member_access = member.access;
+			has_access = true;
+		}
+		else if (member.access != member_access) return false;
+		TypeId member_type = member.type;
+		TypeRecord shape = program_->types.Get(member_type);
+		while (shape.kind == TYPE_ARRAY || shape.kind == TYPE_QUALIFIED)
+		{
+			member_type = shape.child;
+			shape = program_->types.Get(member_type);
+		}
+		if (shape.kind == TYPE_LVALUE_REFERENCE ||
+			shape.kind == TYPE_RVALUE_REFERENCE) return false;
+		if (shape.kind == TYPE_NAMED &&
+			IsClassEntity(program_->entities[shape.entity]) &&
+			!EvaluateBuiltinStandardLayout(member_type)) return false;
+	}
+	bool base_has_members = false;
+	for (std::size_t i = 0; i < owner.direct_base_count; ++i)
+	{
+		const DirectBaseEdge& edge = program_->DirectBase(entity, i);
+		if (edge.virtual_base ||
+			!EvaluateBuiltinStandardLayout(program_->entities[edge.entity].type))
+			return false;
+		const bool has_members = edge.entity < entity_data_members_.size() &&
+			!entity_data_members_[edge.entity].empty();
+		if (has_members && (base_has_members || has_access)) return false;
+		base_has_members = base_has_members || has_members;
+	}
+	return true;
+}
+
+bool SemanticAnalyzer::EvaluateBuiltinTrivialLayoutTrait(
+	hosted_builtin::TypeTraitKind trait, TypeId type,
+	const TypeRecord& shape, const EntityRecord* named) const
+{
+	bool value = IsIntegral(type, true) || IsFloating(type) ||
+		shape.kind == TYPE_COMPLEX || shape.kind == TYPE_POINTER ||
+		shape.kind == TYPE_MEMBER_POINTER;
+	if (!named || !IsClassEntity(*named)) return value;
+	const bool copyable = EvaluateBuiltinTriviallyCopyable(type);
+	if (trait == hosted_builtin::TYPE_TRAIT_IS_STANDARD_LAYOUT)
+		return EvaluateBuiltinStandardLayout(type);
+	if (trait == hosted_builtin::TYPE_TRAIT_IS_POD)
+		return copyable && named->trivial_default_constructor &&
+			EvaluateBuiltinStandardLayout(type);
+	return copyable &&
+		(trait == hosted_builtin::TYPE_TRAIT_IS_LITERAL_TYPE ||
+		 named->trivial_default_constructor);
+}
+
 bool SemanticAnalyzer::EvaluateBuiltinNothrowCopy(TypeId type)
 {
 	type = program_->types.RemoveTopCv(EffectiveType(type));

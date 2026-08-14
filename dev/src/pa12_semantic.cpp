@@ -759,8 +759,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	if (arena_->IsTag(node, "id-expression"))
 	{
 		const std::string spelling = arena_->Payload(node);
-		if (spelling == "__func__")
-			return AnalyzePredefinedFunctionName(node, target);
+		ExpressionInfo compiler_value;
+		if (TryAnalyzeCompilerPredefinedValue(spelling, node, target, &compiler_value)) return compiler_value;
 		ExpressionInfo local;
 		if (FindChild(node, "structured-type-name") == kNoNode &&
 			spelling.find("::") == std::string::npos &&
@@ -1297,9 +1297,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		if (direct_callee_syntax == kNoNode)
 			throw std::runtime_error("empty parenthesized callee");
 	}
-	NodeId arguments_node = kNoNode;
-	std::vector<NodeId> argument_syntax = CollectCallArgumentSyntax(node, &arguments_node);
+	NodeId arguments_node = kNoNode; std::vector<NodeId> argument_syntax = CollectCallArgumentSyntax(node, &arguments_node);
 	if (NeedsBracedCallContext(argument_syntax)) return AnalyzeCallInBracedContext(node, scope, target);
+	ExpressionInfo typeof_cast;
+	if (TryAnalyzeTypeofFunctionalCast(direct_callee_syntax, argument_syntax, scope, target, &typeof_cast)) return typeof_cast;
 	std::vector<ExpressionInfo> analyzed_arguments;
 	bool arguments_analyzed = false;
 	ExpressionInfo member_call;

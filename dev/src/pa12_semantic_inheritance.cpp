@@ -478,9 +478,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		program_->types.IsFunction(unqualified_target_record.child);
 	const bool compound_literal =
 		arena_->IsTag(operand_node, "braced-init-list");
+	const bool c_style_cast =
+		arena_->Payload(node).compare(0, 10, "OP_LPAREN:") == 0;
 	ExpressionInfo operand = AnalyzeExpression(operand_node, scope,
 		program_->types.IsFunction(EffectiveType(target)) ||
-		function_pointer_target ||
+		(function_pointer_target &&
+		 (!c_style_cast || arena_->IsTag(operand_node, "id-expression"))) ||
 		unqualified_target_record.kind == TYPE_MEMBER_POINTER || compound_literal ?
 		target : kNoType);
 	if (CandidateSubstitutionFailed()) return ExpressionInfo();

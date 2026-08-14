@@ -930,6 +930,10 @@ private:
 	bool BuiltinAssignmentIsTrivial(BindingId selected,
 		const std::vector<CallConversionFact>& argument_conversions) const;
 	bool EvaluateBuiltinTriviallyCopyable(TypeId type) const;
+	bool EvaluateBuiltinStandardLayout(TypeId type) const;
+	bool EvaluateBuiltinTrivialLayoutTrait(
+		hosted_builtin::TypeTraitKind trait, TypeId type,
+		const TypeRecord& shape, const EntityRecord* named) const;
 	bool EvaluateBuiltinNothrowCopy(TypeId type);
 	bool EvaluateBuiltinInvocability(const std::vector<TypeId>& operands,
 		ScopeId scope, bool* nonthrowing);
@@ -1043,6 +1047,11 @@ private:
 	bool TryAnalyzeCompilerFunctionBuiltin(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		NodeId call_syntax, TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeCompilerPredefinedValue(const std::string& spelling,
+		NodeId syntax, TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeTypeofFunctionalCast(NodeId callee,
+		const std::vector<NodeId>& arguments, ScopeId scope,
+		TypeId target, ExpressionInfo* result);
 	ExpressionInfo AnalyzePredefinedFunctionName(NodeId syntax, TypeId target);
 	ExpressionInfo AnalyzeBuiltinOffsetof(NodeId syntax, ScopeId scope,
 		TypeId target);
