@@ -1804,6 +1804,8 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 					builder->AddTemplateArgumentPack(first + fixed,
 						entity.template_argument_count - fixed));
 		}
+		else if (i == 0 && component.function.name == "std")
+			component.function.kind = ABI_FUNCTION_RECORD_NAME_STD;
 		else component.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
 		facts->records.push_back(component);
 	}
