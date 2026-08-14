@@ -19,6 +19,27 @@ bool HasGnuAttribute(const pa10_syntax_detail::SyntaxArena& arena,
 	return false;
 }
 
+bool DeferArtificialFunction(const pa10_syntax_detail::SyntaxArena& arena,
+	pa10_syntax_detail::NodeId declaration, bool force_inline)
+{
+	using namespace pa10_syntax_detail;
+	if (!force_inline) return false;
+	const auto artificial = [&arena](NodeId owner) {
+		return HasGnuAttribute(arena, owner, "artificial") ||
+			HasGnuAttribute(arena, owner, "__artificial__");
+	};
+	if (artificial(declaration)) return true;
+	for (std::uint32_t edge = arena.FirstEdge(declaration); edge != kNoEdge;
+		edge = arena.NextEdge(edge))
+	{
+		const NodeId child = arena.EdgeChild(edge);
+		if ((arena.IsTag(child, "declarator") ||
+			 arena.IsTag(child, "decl-specifier-seq")) && artificial(child))
+			return true;
+	}
+	return false;
+}
+
 bool HasStandardAttribute(const pa10_syntax_detail::SyntaxArena& arena,
 	pa10_syntax_detail::NodeId node, const std::string& name)
 {

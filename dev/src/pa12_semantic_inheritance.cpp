@@ -579,11 +579,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		EntityOf(operand.type) != kNoEntity &&
 		ConvertingFunction(operand, target, true).rank != CONVERSION_INVALID)
 		return ApplyExplicitConversion(operand, target);
+	const TypeId explicit_source_type = program_->types.RemoveTopCv(
+		EffectiveType(operand.type));
+	const TypeKind explicit_source_kind =
+		program_->types.Get(explicit_source_type).kind;
+	const TypeId explicit_target_type = program_->types.RemoveTopCv(target);
+	const TypeKind explicit_target_kind =
+		program_->types.Get(explicit_target_type).kind;
+	const bool vector_target = explicit_target_kind == TYPE_VECTOR;
 	if (!IsVoid(target) && !IsArithmetic(target) && !IsPointer(target) &&
 		!IsNullptr(target) && target_record.kind != TYPE_LVALUE_REFERENCE &&
 		target_record.kind != TYPE_RVALUE_REFERENCE &&
 		target_record.kind != TYPE_MEMBER_POINTER &&
-		program_->types.Get(program_->types.RemoveTopCv(target)).kind != TYPE_NAMED)
+		explicit_target_kind != TYPE_NAMED && !vector_target)
 		throw std::runtime_error("unsupported cast target");
 	const ValueCategory category = target_record.kind == TYPE_LVALUE_REFERENCE ?
 		VALUE_LVALUE : target_record.kind == TYPE_RVALUE_REFERENCE ?
@@ -671,6 +679,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 		cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
 		cast_kind.find("REINTER") != std::string::npos;
 	const TypeId decayed_operand_type = Decay(operand.type);
+	const bool equal_width_vector_cast =
+		(vector_target || explicit_source_kind == TYPE_VECTOR) &&
+		(vector_target || IsArithmetic(explicit_target_type)) &&
+		(explicit_source_kind == TYPE_VECTOR ||
+		 IsArithmetic(explicit_source_type)) &&
+		program_->SizeOf(explicit_target_type) ==
+			program_->SizeOf(explicit_source_type);
 	if ((cast_kind.compare(0, 10, "OP_LPAREN:") == 0 ||
 		 cast_kind.find("STATIC") != std::string::npos) &&
 		IsPointer(target) && IsPointer(decayed_operand_type))
@@ -711,6 +726,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			(IsPointer(decayed_operand_type) || IsNullptr(operand.type))) ||
 		(IsNullptr(target) && (IsNullptr(operand.type) ||
 			operand.integer_literal_zero)) ||
+		equal_width_vector_cast ||
 		(permits_reinterpretation &&
 			((IsPointer(target) && IsIntegral(operand.type)) ||
 			 (IsIntegral(target) && IsPointer(decayed_operand_type))));

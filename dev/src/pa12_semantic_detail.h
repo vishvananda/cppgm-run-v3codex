@@ -1119,6 +1119,9 @@ private:
 	bool TryAnalyzeMemoryIntrinsicCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeVectorIntrinsicCall(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		TypeId target, ExpressionInfo* result);
 	bool TryAnalyzeAtomicIntrinsicCall(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		TypeId target, ExpressionInfo* result);

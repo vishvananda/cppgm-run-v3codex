@@ -217,6 +217,38 @@ struct MemoryIntrinsic
 	MemoryIntrinsicLowering lowering;
 };
 
+enum VectorIntrinsicKind
+{
+	VECTOR_INTRINSIC_NONE,
+	VECTOR_INTRINSIC_IA32_VEC_EXT_V2SI,
+	VECTOR_INTRINSIC_IA32_VEC_INIT_V2SI,
+	VECTOR_INTRINSIC_IA32_VEC_INIT_V4HI,
+	VECTOR_INTRINSIC_IA32_VEC_INIT_V8QI,
+	VECTOR_INTRINSIC_COUNT
+};
+
+enum VectorIntrinsicOperation
+{
+	VECTOR_OPERATION_INIT,
+	VECTOR_OPERATION_EXTRACT
+};
+
+enum VectorIntrinsicElement
+{
+	VECTOR_ELEMENT_I8,
+	VECTOR_ELEMENT_I16,
+	VECTOR_ELEMENT_I32
+};
+
+struct VectorIntrinsic
+{
+	const char* spelling;
+	VectorIntrinsicKind kind;
+	VectorIntrinsicOperation operation;
+	VectorIntrinsicElement element;
+	unsigned lane_count;
+};
+
 enum AtomicIntrinsicKind
 {
 	ATOMIC_INTRINSIC_NONE,
@@ -305,6 +337,8 @@ const FloatingIntrinsic* FindFloatingIntrinsic(const std::string& spelling);
 const FloatingIntrinsic& GetFloatingIntrinsic(FloatingIntrinsicKind kind);
 const MemoryIntrinsic* FindMemoryIntrinsic(const std::string& spelling);
 const MemoryIntrinsic& GetMemoryIntrinsic(MemoryIntrinsicKind kind);
+const VectorIntrinsic* FindVectorIntrinsic(const std::string& spelling);
+const VectorIntrinsic& GetVectorIntrinsic(VectorIntrinsicKind kind);
 const AtomicIntrinsic* FindAtomicIntrinsic(const std::string& spelling);
 const AtomicIntrinsic& GetAtomicIntrinsic(AtomicIntrinsicKind kind);
 

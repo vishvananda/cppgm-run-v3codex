@@ -238,6 +238,8 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeMemoryIntrinsicCall(
 		spelling, scope, argument_syntax, target, result)) return true;
+	if (TryAnalyzeVectorIntrinsicCall(
+		spelling, scope, argument_syntax, target, result)) return true;
 	if (TryAnalyzeAtomicIntrinsicCall(
 		spelling, scope, argument_syntax, target, result)) return true;
 	if (spelling == "__builtin_expect")
@@ -817,6 +819,60 @@ bool SemanticAnalyzer::TryAnalyzeMemoryIntrinsicCall(
 	if (readonly_search_source) result_type = parameter_types[0];
 	*result = BuildMemoryIntrinsicCall(
 		intrinsic->kind, arguments, result_type, target);
+	return true;
+}
+
+bool SemanticAnalyzer::TryAnalyzeVectorIntrinsicCall(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
+	using namespace hosted_builtin;
+	const VectorIntrinsic* intrinsic = FindVectorIntrinsic(spelling);
+	if (!intrinsic) return false;
+	const std::size_t arity = intrinsic->operation == VECTOR_OPERATION_INIT ?
+		intrinsic->lane_count : 2;
+	if (argument_syntax.size() != arity)
+		throw std::runtime_error("invalid vector intrinsic arity");
+	const FundamentalKind element_kind =
+		intrinsic->element == VECTOR_ELEMENT_I8 ? FUND_SIGNED_CHAR :
+		intrinsic->element == VECTOR_ELEMENT_I16 ? FUND_SHORT_INT : FUND_INT;
+	const TypeId element = program_->types.Fundamental(element_kind);
+	const TypeId vector = program_->types.Vector(
+		element, intrinsic->lane_count * program_->SizeOf(element));
+	std::vector<TypeId> parameter_types;
+	TypeId result_type = vector;
+	if (intrinsic->operation == VECTOR_OPERATION_INIT)
+		parameter_types.assign(intrinsic->lane_count, element);
+	else
+	{
+		parameter_types.push_back(vector);
+		parameter_types.push_back(program_->types.Fundamental(FUND_INT));
+		result_type = element;
+	}
+	const TypeId function_type = program_->types.Function(
+		result_type, parameter_types, false);
+	const std::uint32_t call = MakeDump(
+		DUMP_CALL_EXPRESSION, result_type, VALUE_PRVALUE);
+	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function_type,
+		VALUE_NONE, program_->names.Intern(intrinsic->spelling));
+	dump_.Add(call, callee);
+	for (std::size_t i = 0; i < argument_syntax.size(); ++i)
+	{
+		ExpressionInfo argument = AnalyzeUntypedCallArgument(
+			argument_syntax[i], scope);
+		argument = ApplyCallArgument(argument, parameter_types[i]);
+		if (intrinsic->operation == VECTOR_OPERATION_EXTRACT && i == 1 &&
+			(!argument.constant || argument.value < 0 ||
+			 static_cast<std::uint64_t>(argument.value) >= intrinsic->lane_count))
+			throw std::runtime_error("vector extraction lane is not constant");
+		dump_.Add(call, argument.node);
+	}
+	result->node = call;
+	result->type = result_type;
+	result->category = VALUE_PRVALUE;
+	++expression_count_;
+	*result = ApplyTarget(*result, target);
 	return true;
 }
 

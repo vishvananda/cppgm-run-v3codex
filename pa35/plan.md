@@ -5,35 +5,37 @@
 PA35 keeps source -> streaming preprocessing/post-tokenization -> integrated
 syntax/semantics -> typed LowIR -> native ELF. Relevant `spec.md` requirements
 are canonical identity and phase flow (§§2, 6), demand-owned specialization
-(§4), and bounded, observable heavy-header work (§9). Lexical ancestry supports
-lookup; lifetime state is callable-owned; class-retained statics acquire one
-canonical object symbol only when an address is demanded.
+(§4), typed lowering (§§5-7), and bounded, observable heavy-header work (§9).
+Hosted fixed-width vector operations now use canonical signatures and typed
+object lowering; compiler-provided inline wrappers remain demand-owned.
 
 ## Current Failure Map
 
-PA35 is 131/137 (122/128 pre-existing tests) with six failures. The complete set
-groups by owner: hosted vector builtin lookup 2; list/constructor selection 2;
-retained local lookup 1; and reactive register allocation 1.
+PA35 is 134/140 (122/128 pre-existing tests) with six failures. The complete set
+groups by owner: hosted using-function redeclaration convergence 2;
+list/constructor selection 2; retained local lookup 1; and reactive register
+allocation 1.
 
 ## Active Checkpoint
 
-**Hosted vector-construction builtin identity.** Per `spec.md` §§2, 5-7, hosted
-compiler builtin declarations must enter the same canonical call pipeline as
-ordinary functions, while target-specific vector construction remains an
-explicit lowering operation. Data flows hosted builtin registry -> PA11 binding
-and signature -> PA12 call fact -> typed LowIR/native vector value. The hosted
-registry owns spelling/signature and PA15/native lowering owns representation.
-Expected work is O(1) registry lookup and O(call count), with no header scan.
-Validate both `__builtin_ia32_vec_init_v2si` failures, lane order and width,
-wrong-arity/type negatives, 8/16 calls, PA35, PA1-34, and audit.
+**Hosted using-function redeclaration convergence.** Per `spec.md` §§2, 4, 6,
+lookup/imports must resolve to canonical declarations before call demand.
+Data flows retained namespace declaration -> using-declaration import ->
+structural function identity -> one overload binding consumed by PA12 calls.
+Declaration/using merge owns identity; call analysis only consumes the merged
+set. Preserve distinct overloads while coalescing equivalent hosted declarations
+in expected O(1) indexed lookup and O(import count) total work. Validate both
+random-library failures, distinct-overload negatives, 8/16 imports, PA35,
+PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen static-address and zero-object rows produced 226/450 semantic
-nodes, 253/501 declarations, 240/480 lookup-scope visits, and 176/352 LowIR
-instructions. Peak semantic storage was 440,757/873,100 bytes; five-run median
-semantic analysis was 2.019/3.648 ms and lowering was 0.494/0.680 ms. First-use
-owner-path work and repeated indexed probes remain bounded near linearly.
+Eight/sixteen vector-construction calls produced 66/130 semantic nodes, 29/53
+declarations, 34/66 lookup-scope visits, and 64/128 LowIR instructions. Peak
+semantic storage was 88,264/168,169 bytes; five-run median semantic analysis was
+0.379/0.595 ms and lowering was 0.225/0.296 ms. Direct LowIR inspection showed
+v8qi offsets 0..7, v4hi 0/2/4/6, v2si 0/4, and v2si lane-1 extraction at 4;
+work remains bounded near linearly.
 
 ## Completed Checkpoints
 
@@ -74,3 +76,4 @@ owner-path work and repeated indexed probes remain bounded near linearly.
 | Demanded-body return convergence | constant control edges retain feasible reachability; standard/GNU noreturn facts terminate direct-call full expressions without changing ABI identity | PA35 122/131 -> 125/133 (120/128 existing); one handout passes, regex advances, two regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
 | Callable-owned lifetime chains | function scopes retain lexical lookup ancestry but reset automatic, temporary, and initializer-list cleanup ancestry | PA35 125/133 -> 128/135 (121/128 existing); vector passes, regex advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
 | Addressable static objects and zero bulk stores | class-retained statics intern one canonical object symbol on first address demand; object-sized zero stores lower to MIR zero-bytes | PA35 128/135 -> 131/137 (122/128 existing); regex and two regressions pass, ABI symbols/runtime probe correct, PA1-34 4756/4756, 8/16 scaling, and audit pass |
+| Hosted fixed-width vector builtin identity | registry-owned v8qi/v4hi/v2si construction and v2si extraction lower as typed eight-byte objects; artificial inline wrappers remain demand-owned | PA35 131/137 -> 134/140; both random barriers advance to using merge; three regressions, PA1-34 4756/4756, lane offsets, 8/16 scaling, and audit pass |

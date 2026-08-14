@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "hosted_extension_semantic.h"
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -11,8 +12,7 @@
 #include <unordered_set>
 #include <vector>
 namespace cppgm { namespace pa12_semantic_detail {
-namespace
-{
+namespace {
 bool SyntaxUsesAnyIdentifier(const SyntaxArena& arena, NodeId node,
 	const std::unordered_set<NameId>& identifiers)
 {
@@ -2347,7 +2347,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		structured_owner != kNoScope &&
 		!program_->bindings[binding].inline_function)
 		MarkVtableDemand(program_->bindings[binding].member_owner);
-	function.deferred = spec.is_constexpr;
+	function.deferred = spec.is_constexpr || hosted_extension::DeferArtificialFunction(*arena_, node, program_->bindings[binding].force_inline);
 	if (function.deferred)
 	{
 		AnalyzeRetainedPlaceholderFunctionBody(binding);

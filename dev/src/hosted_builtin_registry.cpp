@@ -107,6 +107,20 @@ const MemoryIntrinsic kMemoryIntrinsics[] = {
 		MEMORY_EFFECT_READONLY, MEMORY_LOWER_EXTERNAL}
 };
 
+const VectorIntrinsic kVectorIntrinsics[] = {
+	{"__builtin_ia32_vec_ext_v2si", VECTOR_INTRINSIC_IA32_VEC_EXT_V2SI,
+		VECTOR_OPERATION_EXTRACT, VECTOR_ELEMENT_I32, 2},
+	{"__builtin_ia32_vec_init_v2si",
+		VECTOR_INTRINSIC_IA32_VEC_INIT_V2SI,
+		VECTOR_OPERATION_INIT, VECTOR_ELEMENT_I32, 2},
+	{"__builtin_ia32_vec_init_v4hi",
+		VECTOR_INTRINSIC_IA32_VEC_INIT_V4HI,
+		VECTOR_OPERATION_INIT, VECTOR_ELEMENT_I16, 4},
+	{"__builtin_ia32_vec_init_v8qi",
+		VECTOR_INTRINSIC_IA32_VEC_INIT_V8QI,
+		VECTOR_OPERATION_INIT, VECTOR_ELEMENT_I8, 8}
+};
+
 const AtomicIntrinsic kAtomicIntrinsics[] = {
 	{"__atomic_add_fetch", ATOMIC_INTRINSIC_ADD_FETCH,
 		ATOMIC_SHAPE_FETCH_UPDATE, ATOMIC_UPDATE_ADD, 3, true, false},
@@ -351,6 +365,29 @@ const MemoryIntrinsic& GetMemoryIntrinsic(MemoryIntrinsicKind kind)
 	if (kind <= MEMORY_INTRINSIC_NONE || kind >= MEMORY_INTRINSIC_COUNT)
 		throw std::logic_error("invalid hosted memory intrinsic kind");
 	return kMemoryIntrinsics[static_cast<std::size_t>(kind) - 1];
+}
+
+const VectorIntrinsic* FindVectorIntrinsic(const std::string& spelling)
+{
+	std::size_t first = 0;
+	std::size_t count = sizeof(kVectorIntrinsics) /
+		sizeof(kVectorIntrinsics[0]);
+	while (first < count)
+	{
+		const std::size_t middle = first + (count - first) / 2;
+		const int order = spelling.compare(kVectorIntrinsics[middle].spelling);
+		if (order < 0) count = middle;
+		else if (order > 0) first = middle + 1;
+		else return &kVectorIntrinsics[middle];
+	}
+	return 0;
+}
+
+const VectorIntrinsic& GetVectorIntrinsic(VectorIntrinsicKind kind)
+{
+	if (kind <= VECTOR_INTRINSIC_NONE || kind >= VECTOR_INTRINSIC_COUNT)
+		throw std::logic_error("invalid hosted vector intrinsic kind");
+	return kVectorIntrinsics[static_cast<std::size_t>(kind) - 1];
 }
 
 const AtomicIntrinsic* FindAtomicIntrinsic(const std::string& spelling)

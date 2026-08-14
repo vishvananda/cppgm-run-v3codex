@@ -800,6 +800,53 @@ protected:
 		if (children.empty()) return false;
 		const DumpNode& callee = derived.arena_.nodes[children[0]];
 		if (callee.kind != DUMP_CALLEE) return false;
+		const hosted_builtin::VectorIntrinsic* vector_intrinsic =
+			callee.text == 0 ? 0 : hosted_builtin::FindVectorIntrinsic(
+				derived.program_.names.Get(callee.text));
+		if (vector_intrinsic)
+		{
+			const hosted_builtin::VectorIntrinsic& intrinsic =
+				*vector_intrinsic;
+			const std::size_t arity = intrinsic.operation ==
+				hosted_builtin::VECTOR_OPERATION_INIT ? intrinsic.lane_count : 2;
+			if (children.size() != arity + 1)
+				throw std::logic_error("invalid vector intrinsic call");
+			const LowType element =
+				intrinsic.element == hosted_builtin::VECTOR_ELEMENT_I8 ? LowI8() :
+				intrinsic.element == hosted_builtin::VECTOR_ELEMENT_I16 ? LowI16() :
+				LowI32();
+			const LowType vector = LowObject(8, 8);
+			if (intrinsic.operation == hosted_builtin::VECTOR_OPERATION_EXTRACT)
+			{
+				const Operand source = derived.LowerValue(children[1], vector);
+				const DumpNode& lane = derived.arena_.nodes[children[2]];
+				if (!lane.constant_value && !lane.constant)
+					throw std::logic_error("vector extraction lost its lane");
+				const Operand address = derived.IndexAddress(LowI8(), source,
+					Operand(static_cast<std::int64_t>(lane.constant_value *
+						(element.width / 8)), LowI64()), false);
+				*result = derived.LoadStorage(address, element);
+				return true;
+			}
+			const LowType type = derived.LowerType(record.type);
+			if (!SameType(type, vector))
+				throw std::logic_error("invalid vector intrinsic result type");
+			const Operand storage(derived.EnsureGeneratedSlot(
+				children[0], "vector", type), type);
+			const Operand base = derived.AddressOfStorage(storage);
+			for (std::size_t lane = 0; lane < intrinsic.lane_count; ++lane)
+			{
+				Instruction store(Instruction::STORE);
+				store.type = element;
+				store.first = derived.LowerValue(children[lane + 1], element);
+				store.second = derived.IndexAddress(LowI8(), base,
+					Operand(static_cast<std::int64_t>(lane *
+						(element.width / 8)), LowI64()), false);
+				derived.Emit(store);
+			}
+			*result = storage;
+			return true;
+		}
 		if (record.compiler_intrinsic != COMPILER_INTRINSIC_NONE)
 		{
 			if (children.size() != 4)
