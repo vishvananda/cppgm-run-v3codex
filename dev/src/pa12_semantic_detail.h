@@ -841,6 +841,11 @@ private:
 		const std::vector<TemplateArgument>& arguments,
 		const std::vector<std::uint32_t>& parameter_offsets,
 		std::vector<TemplateArgument>* completed);
+	bool ReuseFunctionTemplateSpecialization(
+		const TemplateSpecializationKey& specialization_key,
+		bool needs_defaults,
+		const TemplateSpecializationKey& default_request_key,
+		BindingId* result);
 	ScopeId BindFunctionTemplateArguments(
 		const FunctionTemplatePattern& pattern,
 		const std::vector<TemplateArgument>& arguments,

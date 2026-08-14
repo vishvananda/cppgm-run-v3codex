@@ -2,38 +2,40 @@
 
 ## Stage Design and Spec Alignment
 
-PA35 keeps the source -> streaming preprocessing/post-tokenization -> integrated
-syntax/semantics -> typed LowIR -> native ELF architecture. Relevant `spec.md`
-requirements are canonical identity and phase flow (§2, §6), demand-owned
-template specialization (§4), and bounded, observable heavy-header work (§9).
-Retained syntax is shared, but concrete declaration, construction, lookup, and
-access facts belong to the canonical specialization owner. The shared front end
-owns all changes; no hosted-only route is introduced.
+PA35 keeps source -> streaming preprocessing/post-tokenization -> integrated
+syntax/semantics -> typed LowIR -> native ELF. Relevant `spec.md` requirements
+are canonical identity and phase flow (§§2, 6), demand-owned specialization
+(§4), and bounded, observable heavy-header work (§9). Retained syntax is shared;
+concrete type, lookup, conversion, and lowering facts belong to their canonical
+owner in the shared front end.
 
 ## Current Failure Map
 
-PA35 is 102/123 with 21 failures. The complete set groups by shared owner:
-trait/specialization selection 3; call/construction/conversion demand 6; hosted
-vector-builtin lookup 2; reference conversion 2; parser/local/class lookup 2;
-lowering/allocation 2; and recursive stream-call stability 4.
+PA35 is 105/124 with 19 failures. The complete set groups by shared owner:
+trait readiness/specialization selection 3; retained overload/construction 5;
+hosted vector-builtin lookup 2; reference and derived conversion 5;
+parser/local/class lookup 2; and lowering/allocation 2.
 
 ## Active Checkpoint
 
-**Bounded hosted stream-call demand.** Per `spec.md` §§4, 5, and 9, retained
-operator calls must reuse canonical lookup/deduction results and terminate a
-re-entrant specialization cycle. Data flows retained stream call -> ordinary
-and ADL candidate set -> deduction -> specialization demand -> typed call.
-PA12 call analysis and PA19 deduction/instantiation own the boundary. Expected
-work is O(unique call shapes x candidates), with one tri-state demand record per
-specialization. Validate all four no-diagnostic stream failures, direct
-re-entrant candidate cycles, 8/16 overload chains, PA35, PA1-34, and audit.
+**Reference-preserving specialization conversions.** Per `spec.md` §§2, 4-6,
+alias-expanded specialization and call results must retain canonical reference
+category, cv state, and base identity through implicit conversion. Data flows
+specialization declarator -> canonical result type -> typed call/reference cast
+-> conversion sequence. PA12 call/conversion analysis and PA19 specialization
+typing own the boundary. Expected work is O(type depth + cached base-path probes)
+per candidate, without rebuilding a specialization. Validate the two stream,
+two shared-pointer, and regex conversion failures; positive/negative lvalue,
+rvalue, and base-reference probes; 8/16 conversion shapes; PA35, PA1-34, and
+audit.
 
 ## Performance Evidence
 
-For 8/16 nested function-type aliases, tokens were 207/383, syntax nodes
-270/494, template scans 17/33, and scan tokens 103/207; maximum scan stayed 11
-tokens. Peak stage storage was 40,307/47,257 bytes and five-run median parse
-time was 0.158/0.185 ms, preserving linear work and bounded lookahead.
+Eight/sixteen isolated alias-mediated recursive operator chains completed with a
+2 MiB stack. Specialization requests were 88/176, cache hits 48/96, overload
+candidates 56/112, deduction visits 48/96, and peak stage storage
+575,702/1,144,384 bytes. Five-run median analysis was 2.89/5.45 ms and elapsed
+time 4.17/7.66 ms, showing finite demand and near-linear scaling.
 
 ## Completed Checkpoints
 
@@ -67,3 +69,4 @@ time was 0.158/0.185 ms, preserving linear work and bounded lookahead.
 | Native scalar aggregate transport | object copy/load/store values stay address-backed until existing ABI call/return chunking; MIR uses bounded byte copies | PA35 91/119 -> 98/120; six handout plus one regression pass; 1/16-byte executable probe, PA1-34 4756/4756, linear MIR scaling, and audit pass |
 | Empty variadic-tail ownership | fixed-only variadic invocations bind a zero-length slice at the raw-token end instead of indexing an absent parsed range | PA35 98/120 -> 99/121; two regex crashes advance under ASan to retained `_CharT`; direct regression and 8/16 scaling pass; PA1-34/audit pass |
 | Template-argument function-type disambiguation | `bool(T)` retains a function type for an unadorned active type parameter while non-type and qualified-value forms remain expressions | PA35 99/121 -> 102/123; regex iterator passes and member-call advances; positive/negative plus PA24 guards, 8/16 scaling, PA1-34 4756/4756, and audit pass |
+| Canonical function-specialization request ownership | result-type re-entry is retryable substitution failure; successful specialization publishes once | PA35 102/123 -> 105/124; four crashes removed, two handouts plus one regression pass and two advance; 8/16 scaling, PA1-34 4756/4756, and audit pass |

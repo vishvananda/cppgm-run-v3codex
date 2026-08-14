@@ -29,6 +29,41 @@ private:
 	EntityId previous_;
 };
 
+class ScopedFunctionTemplateRequest
+{
+public:
+	ScopedFunctionTemplateRequest() : table_(0), key_(), active_(false) {}
+	~ScopedFunctionTemplateRequest()
+	{
+		if (active_) table_->ResetInProgressRequest(key_);
+	}
+	void Begin(TemplateSpecializationTable* table,
+		const TemplateSpecializationKey& key)
+	{
+		if (active_ || table == 0)
+			throw std::logic_error("invalid function template request");
+		table_ = table;
+		key_ = key;
+		table_->SetRequest(key_, TEMPLATE_REQUEST_IN_PROGRESS);
+		active_ = true;
+	}
+	void Complete(BindingId binding)
+	{
+		if (!active_)
+			throw std::logic_error("inactive function template request");
+		table_->SetRequest(key_, TEMPLATE_REQUEST_SUCCEEDED, binding);
+		active_ = false;
+	}
+
+private:
+	ScopedFunctionTemplateRequest(const ScopedFunctionTemplateRequest&);
+	ScopedFunctionTemplateRequest& operator=(
+		const ScopedFunctionTemplateRequest&);
+	TemplateSpecializationTable* table_;
+	TemplateSpecializationKey key_;
+	bool active_;
+};
+
 bool FunctionTemplateNeedsPartitionIdentity(
 	const std::vector<TemplateParameter>& parameters)
 {
@@ -1855,6 +1890,35 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 	return true;
 }
 
+bool SemanticAnalyzer::ReuseFunctionTemplateSpecialization(
+	const TemplateSpecializationKey& specialization_key,
+	bool needs_defaults,
+	const TemplateSpecializationKey& default_request_key,
+	BindingId* result)
+{
+	BindingId old = kNoBinding;
+	const TemplateRequestState state =
+		template_instantiations_.FindRequest(specialization_key, &old);
+	if (state == TEMPLATE_REQUEST_NOT_STARTED) return false;
+	++template_specialization_cache_hits_;
+	if (state == TEMPLATE_REQUEST_SUCCEEDED)
+	{
+		AnalyzeRetainedPlaceholderFunctionBody(old);
+		if (needs_defaults)
+			function_template_default_requests_.SetRequest(default_request_key,
+				TEMPLATE_REQUEST_SUCCEEDED, old);
+		*result = old;
+	}
+	else
+	{
+		if (needs_defaults)
+			function_template_default_requests_.ResetInProgressRequest(
+				default_request_key);
+		*result = kNoBinding;
+	}
+	return true;
+}
+
 BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const std::vector<TemplateArgument>& arguments,
 	const std::vector<std::uint32_t>& parameter_offsets)
@@ -1927,16 +1991,11 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	const TemplateSpecializationKey cache_key =
 		CanonicalTemplateSpecializationKey(
 			index, completed, identity_offsets);
-	BindingId old = template_instantiations_.Find(cache_key);
-	if (old != kNoBinding)
-	{
-		++template_specialization_cache_hits_;
-		AnalyzeRetainedPlaceholderFunctionBody(old);
-		if (needs_defaults)
-			function_template_default_requests_.SetRequest(
-				request_key, TEMPLATE_REQUEST_SUCCEEDED, old);
-		return old;
-	}
+	BindingId old = kNoBinding;
+	if (ReuseFunctionTemplateSpecialization(
+		cache_key, needs_defaults, request_key, &old)) return old;
+	ScopedFunctionTemplateRequest specialization_request;
+	specialization_request.Begin(&template_instantiations_, cache_key);
 	ScopeId template_scope = kNoScope;
 	SpecInfo spec;
 	EntityId member_owner = kNoEntity;
@@ -2067,7 +2126,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 	function.lexical_scope = template_scope;
 	if (pattern.defined) function.definition_body = pattern.definition_body;
 	PublishFunctionTemplateFriendGrants(pattern, binding);
-	template_instantiations_.Insert(cache_key, binding);
+	specialization_request.Complete(binding);
 	if (needs_defaults)
 		function_template_default_requests_.SetRequest(
 			request_key, TEMPLATE_REQUEST_SUCCEEDED, binding);
