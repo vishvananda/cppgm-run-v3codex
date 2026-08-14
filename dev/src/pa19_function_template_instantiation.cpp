@@ -978,7 +978,7 @@ void SemanticAnalyzer::ConfigureFunctionTemplateException(
 			SyntaxUsesAnyTemplateParameter(expression, names);
 	}
 	pattern->nonthrowing = pattern->dependent_exception_specification ?
-		false : IsNonthrowing(declarator, pattern->owner);
+		false : IsNonthrowing(declarator, shape.parameter_scope);
 }
 
 void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
@@ -1962,7 +1962,6 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 				request_key, TEMPLATE_REQUEST_FAILED);
 		return kNoBinding;
 	}
-	const ScopeId exception_specification_scope = pattern.dependent_exception_specification ? parsed.trailing_return_scope : kNoScope;
 	if (CandidateSubstitutionActive())
 	{
 		const TypeRecord& function_type = program_->types.Get(parsed.type);
@@ -2046,8 +2045,7 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		function.deleted_function || pattern.deleted_function;
 	if (pattern.dependent_exception_specification)
 	{
-		function.exception_specification_scope =
-			exception_specification_scope;
+		function.exception_specification_scope = kNoScope;
 		function.exception_specification_state =
 			EXCEPTION_SPECIFICATION_DEFERRED;
 	}

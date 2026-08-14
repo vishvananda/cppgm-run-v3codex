@@ -2303,8 +2303,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		FindChild(declarator, "virt-specifier") != kNoNode)
 		throw std::runtime_error(
 			"virtual specifier is only allowed in a class definition");
-	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type,
-		semantic_scope, spec.placeholder_auto);
+	DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, semantic_scope,
+		spec.placeholder_auto, declaration_class != kNoEntity && spec.storage_class != STORAGE_CLASS_STATIC);
 	parsed.placeholder_return_cv = spec.placeholder_cv;
 	parsed.name = path.Last();
 	if (!program_->types.IsFunction(parsed.type))
@@ -2316,8 +2316,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		ValidateConstexprCallableType(parsed.type, false);
 	const BindingId binding = DeclareFunction(owner, parsed.name,
 		parsed.type, parsed.parameters, true, false, spec.storage_class,
-		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
-	ConfigureFunctionExceptionSpecification(binding, declarator, semantic_scope);
+		current_language_linkage_, IsNonthrowing(declarator, parsed.parameter_scope));
+	ConfigureFunctionExceptionSpecification(binding, declarator, parsed.parameter_scope);
 	ApplyFunctionAsmLabel(declarator, binding);
 	ApplyFunctionAbiTagAttributes(node, binding);
 	PublishInlineFunctionFacts(

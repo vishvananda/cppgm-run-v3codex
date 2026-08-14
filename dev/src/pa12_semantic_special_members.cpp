@@ -1246,7 +1246,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		BuildTypeId(conversion_type, semantic_scope) :
 		program_->types.Fundamental(FUND_VOID);
 	const DeclaratorInfo parsed = BuildDeclarator(declarator,
-		conversion_target, semantic_scope);
+		conversion_target, semantic_scope, false, true);
 	BindingId special = kNoBinding;
 	if (conversion_definition && entity < entity_conversion_functions_.size())
 		for (std::size_t i = 0;
@@ -1273,8 +1273,10 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	}
 	else special = DeclareFunction(owner, path.Last(),
 		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
-		current_language_linkage_, IsNonthrowing(declarator, semantic_scope));
-	ConfigureFunctionExceptionSpecification(special, declarator, semantic_scope);
+		current_language_linkage_,
+		IsNonthrowing(declarator, parsed.parameter_scope));
+	ConfigureFunctionExceptionSpecification(
+		special, declarator, parsed.parameter_scope);
 	FunctionInfo& info = GetMutableFunction(special);
 	if (parsed.parameters.size() != info.parameters.size())
 		throw std::logic_error(

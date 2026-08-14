@@ -103,9 +103,9 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 		const BindingId binding = DeclareFunction(declared_owner, parsed.name,
 			parsed.type, parsed.parameters, definition, false,
 			STORAGE_CLASS_NONE, current_language_linkage_,
-			IsNonthrowing(declarators[i], class_scope), false);
+			IsNonthrowing(declarators[i], parsed.parameter_scope), false);
 		ConfigureFunctionExceptionSpecification(
-			binding, declarators[i], class_scope);
+			binding, declarators[i], parsed.parameter_scope);
 		FunctionInfo& info = GetMutableFunction(binding);
 		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
 		PublishInlineFunctionFacts(

@@ -523,11 +523,14 @@ private:
 	TypeId BuildArrayDeclaratorType(NodeId suffix, TypeId element,
 		ScopeId scope,
 		const std::unordered_set<NameId>* template_parameter_names);
+	void BindDeclaratorImplicitObject(
+		ScopeId scope, std::uint8_t function_cv, bool enabled);
 	TypeId BuildBitIntSpecifierType(
 		NodeId specifier, ScopeId scope, bool is_unsigned);
 	std::vector<ParameterInfo> BuildParameters(NodeId node, ScopeId scope,
 		bool* variadic,
-		const std::unordered_set<NameId>* template_parameter_names = 0);
+		const std::unordered_set<NameId>* template_parameter_names = 0,
+		ScopeId* parameter_scope = 0);
 	bool SyntaxUsesAnyTemplateParameter(NodeId node,
 		const std::unordered_set<NameId>& names) const;
 	bool SyntaxUsesUnqualifiedValueName(NodeId node,

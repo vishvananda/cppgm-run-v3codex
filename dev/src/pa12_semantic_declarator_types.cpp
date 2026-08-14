@@ -52,6 +52,17 @@ TypeId SemanticAnalyzer::BuildIdentityOnlyTypeId(NodeId node, ScopeId scope)
 	}
 }
 
+void SemanticAnalyzer::BindDeclaratorImplicitObject(
+	ScopeId scope, std::uint8_t function_cv, bool enabled)
+{
+	if (!enabled || current_class_context_ == kNoEntity) return;
+	TypeId object = program_->entities[current_class_context_].type;
+	if (function_cv != CV_NONE)
+		object = program_->types.Qualify(object, function_cv);
+	program_->AddBinding(scope, BIND_PARAMETER,
+		program_->names.Intern("this"), program_->types.Pointer(object));
+}
+
 TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 	TypeId element, ScopeId scope,
 	const std::unordered_set<NameId>* template_parameter_names)

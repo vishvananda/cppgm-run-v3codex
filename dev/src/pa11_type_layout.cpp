@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <string>
 
 namespace cppgm
 {
@@ -71,7 +72,9 @@ std::size_t Program::SizeOf(TypeId type) const
 		{
 			const EntityRecord& entity = entities[record.entity];
 			if (!entity.complete)
-				throw std::runtime_error("incomplete named type");
+				throw std::runtime_error(std::string("incomplete named type: ") +
+					names.Get(entity.name) + " (" +
+					names.Get(entity.identity_name) + ")");
 			if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
 				size = SizeOf(entity.underlying);
 			else
@@ -130,7 +133,9 @@ std::size_t Program::AlignOf(TypeId type) const
 	{
 		const EntityRecord& entity = entities[record->entity];
 		if (!entity.complete)
-			throw std::runtime_error("incomplete named type");
+			throw std::runtime_error(std::string("incomplete named type: ") +
+				names.Get(entity.name) + " (" +
+				names.Get(entity.identity_name) + ")");
 		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
 			alignment = AlignOf(entity.underlying);
 		else

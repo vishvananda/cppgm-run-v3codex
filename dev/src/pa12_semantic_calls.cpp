@@ -2075,7 +2075,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.type = type;
 	result.category = member_category;
 	result.binding = found.ordinary;
-	if (member_binding.non_static_data_member)
+	if (member_binding.non_static_data_member && unevaluated_depth_ == 0)
 	{
 		std::uint32_t object_address = source_operation == "->" ?
 			ExpressionAddress(object) : LvalueAddress(&object);

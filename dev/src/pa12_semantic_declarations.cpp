@@ -991,8 +991,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			ValidateConstexprCallableType(parsed.type, false);
 		const BindingId function = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
-			current_language_linkage_, IsNonthrowing(declarator, scope));
-		ConfigureFunctionExceptionSpecification(function, declarator, scope);
+			current_language_linkage_, IsNonthrowing(declarator, parsed.parameter_scope));
+		ConfigureFunctionExceptionSpecification(function, declarator, parsed.parameter_scope);
 		ApplyFunctionAsmLabel(declarator, function);
 		ApplyFunctionAbiTagAttributes(node, function);
 		FunctionInfo& info = GetMutableFunction(function);
@@ -1053,8 +1053,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				ValidateConstexprCallableType(parsed.type, false);
 			const BindingId function = DeclareFunction(scope, parsed.name,
 				parsed.type, parsed.parameters, false, false, STORAGE_CLASS_NONE,
-				current_language_linkage_, IsNonthrowing(declarator, scope));
-			ConfigureFunctionExceptionSpecification(function, declarator, scope);
+				current_language_linkage_, IsNonthrowing(declarator, parsed.parameter_scope));
+			ConfigureFunctionExceptionSpecification(function, declarator, parsed.parameter_scope);
 			ApplyFunctionAsmLabel(declarator, function);
 			ApplyFunctionAbiTagAttributes(item, function);
 			BindingRecord& binding = program_->bindings[function];
@@ -1323,7 +1323,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		if (declarator == kNoNode)
 			throw std::runtime_error("destructor is missing its declarator");
 		const DeclaratorInfo parsed = BuildDeclarator(declarator,
-			program_->types.Fundamental(FUND_VOID), scope);
+			program_->types.Fundamental(FUND_VOID), scope, false, true);
 		if (!program_->types.IsFunction(parsed.type) ||
 			!parsed.parameters.empty())
 			throw std::runtime_error("destructor must have no parameters");
@@ -1346,8 +1346,9 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		const BindingId destructor = DeclareFunction(scope, parsed.name,
 			parsed.type, parsed.parameters, source_definition || defaulted,
 			false, STORAGE_CLASS_NONE, current_language_linkage_,
-			IsNonthrowing(declarator, scope));
-		ConfigureFunctionExceptionSpecification(destructor, declarator, scope);
+			IsNonthrowing(declarator, parsed.parameter_scope));
+		ConfigureFunctionExceptionSpecification(
+			destructor, declarator, parsed.parameter_scope);
 		ApplyFunctionAbiTagAttributes(node, destructor);
 		BindingRecord& binding = program_->bindings[destructor];
 		binding.member_owner = entity;
@@ -1416,7 +1417,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	if (declarator == kNoNode)
 		throw std::runtime_error("constructor is missing its declarator");
 	const DeclaratorInfo parsed = BuildDeclarator(declarator,
-		program_->types.Fundamental(FUND_VOID), scope);
+		program_->types.Fundamental(FUND_VOID), scope, false, true);
 	if (!program_->types.IsFunction(parsed.type))
 		throw std::runtime_error("constructor declarator is not a function");
 	const NodeId initializer = FindChild(node, "initializer");
@@ -1431,8 +1432,10 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 	const bool definition = source_definition || defaulted;
 	const BindingId constructor = DeclareFunction(scope, parsed.name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
-		current_language_linkage_, IsNonthrowing(declarator, scope));
-	ConfigureFunctionExceptionSpecification(constructor, declarator, scope);
+		current_language_linkage_,
+		IsNonthrowing(declarator, parsed.parameter_scope));
+	ConfigureFunctionExceptionSpecification(
+		constructor, declarator, parsed.parameter_scope);
 	ApplyFunctionAbiTagAttributes(node, constructor);
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;
@@ -1880,11 +1883,13 @@ NameId SemanticAnalyzer::DeclaratorName(NodeId node)
 
 std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 	ScopeId scope, bool* variadic,
-	const std::unordered_set<NameId>* template_parameter_names)
+	const std::unordered_set<NameId>* template_parameter_names,
+	ScopeId* result_scope)
 {
 	std::vector<ParameterInfo> result;
 	*variadic = false;
 	const ScopeId parameter_scope = NewScope(scope, SCOPE_FUNCTION, 0, ScopePrefixId(scope));
+	if (result_scope) *result_scope = parameter_scope;
 	std::unordered_set<NameId> dependent_parameter_names = template_parameter_names ? *template_parameter_names : std::unordered_set<NameId>();
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge; edge = arena_->NextEdge(edge))
 	{
@@ -2118,6 +2123,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 	NodeId trailing_parameter_clause = kNoNode;
 	std::vector<ParameterInfo> trailing_parameters;
 	bool trailing_variadic = false;
+	ScopeId trailing_parameter_scope = kNoScope;
 	if (trailing != kNoNode)
 	{
 		for (std::size_t i = 0; i < suffixes.size(); ++i)
@@ -2125,7 +2131,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			{
 				trailing_parameter_clause = suffixes[i];
 				trailing_parameters = BuildParameters(suffixes[i], scope,
-					&trailing_variadic, template_parameter_names);
+					&trailing_variadic, template_parameter_names,
+					&trailing_parameter_scope);
 				break;
 			}
 		ScopeId return_scope = scope;
@@ -2145,16 +2152,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 					BindFunctionParameterPackElement(return_scope,
 						trailing_parameters[i].pack_name, parameter);
 				}
-			if (member_implicit_object && current_class_context_ != kNoEntity)
-			{
-				TypeId object =
-					program_->entities[current_class_context_].type;
-				if (function_cv != CV_NONE)
-					object = program_->types.Qualify(object, function_cv);
-				program_->AddBinding(return_scope, BIND_PARAMETER,
-					program_->names.Intern("this"),
-					program_->types.Pointer(object));
-			}
+			BindDeclaratorImplicitObject(
+				return_scope, function_cv, member_implicit_object);
 		}
 		result.trailing_return_scope = return_scope;
 		if (!defer_trailing_return)
@@ -2179,13 +2178,17 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		{
 			bool variadic = false;
 			std::vector<ParameterInfo> parameters;
+			ScopeId parameter_scope = kNoScope;
 			if (suffix == trailing_parameter_clause)
 			{
 				parameters = trailing_parameters;
 				variadic = trailing_variadic;
+				parameter_scope = trailing_parameter_scope;
 			}
 			else parameters = BuildParameters(suffix, scope, &variadic,
-				template_parameter_names);
+				template_parameter_names, &parameter_scope);
+			BindDeclaratorImplicitObject(
+				parameter_scope, function_cv, member_implicit_object);
 			std::vector<TypeId> function_parameters;
 			for (std::size_t p = 0; p < parameters.size(); ++p)
 				function_parameters.push_back(parameters[p].function_type);
@@ -2205,6 +2208,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				"invalid function return type");
 			if (CandidateSubstitutionFailed()) return result;
 			result.parameters = parameters;
+			result.parameter_scope = parameter_scope;
 		}
 	}
 	type = ApplyGnuVectorAttributes(node, type, scope);
@@ -2214,6 +2218,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			false, member_implicit_object, defer_trailing_return,
 			template_parameter_names);
 		if (!result.parameters.empty()) inner.parameters = result.parameters;
+		if (inner.parameter_scope == kNoScope)
+			inner.parameter_scope = result.parameter_scope;
 		if (inner.trailing_return_scope == kNoScope)
 			inner.trailing_return_scope = result.trailing_return_scope;
 		if (inner.placeholder_return_kind == PLACEHOLDER_DECLARATOR_NONE)

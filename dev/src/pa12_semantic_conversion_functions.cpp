@@ -33,7 +33,8 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 			if (value == "inline") inline_specifier = true;
 		}
 	const EntityId entity = EntityOf(owner_type);
-	DeclaratorInfo parsed = BuildDeclarator(declarator, target, scope);
+	DeclaratorInfo parsed = BuildDeclarator(
+		declarator, target, scope, false, true);
 	if (!program_->types.IsFunction(parsed.type) || !parsed.parameters.empty() ||
 		program_->types.Get(parsed.type).child != target)
 		throw std::runtime_error("invalid conversion function declarator");
@@ -51,8 +52,10 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 	const NameId conversion_name = DeclaratorNamePath(declarator).Last();
 	const BindingId function = DeclareFunction(scope, conversion_name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,
-		current_language_linkage_, IsNonthrowing(declarator, scope));
-	ConfigureFunctionExceptionSpecification(function, declarator, scope);
+		current_language_linkage_,
+		IsNonthrowing(declarator, parsed.parameter_scope));
+	ConfigureFunctionExceptionSpecification(
+		function, declarator, parsed.parameter_scope);
 	BindingRecord& binding = program_->bindings[function];
 	binding.member_owner = entity;
 	binding.access = access;

@@ -403,12 +403,14 @@ struct DeclaratorInfo
 {
 	NameId name;
 	TypeId type;
+	ScopeId parameter_scope;
 	ScopeId trailing_return_scope;
 	PlaceholderDeclaratorKind placeholder_return_kind;
 	std::uint8_t placeholder_return_cv;
 	std::vector<ParameterInfo> parameters;
 	DeclaratorInfo()
-		: name(0), type(kNoType), trailing_return_scope(kNoScope),
+		: name(0), type(kNoType), parameter_scope(kNoScope),
+		  trailing_return_scope(kNoScope),
 		  placeholder_return_kind(PLACEHOLDER_DECLARATOR_NONE),
 		  placeholder_return_cv(CV_NONE) {}
 };

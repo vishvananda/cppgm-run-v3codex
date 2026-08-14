@@ -27,8 +27,10 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
 		ValidateConstexprCallableType(parsed.type, false);
 	const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 		parsed.type, parsed.parameters, false, false, spec.storage_class,
-		current_language_linkage_, IsNonthrowing(declarator, syntax_scope));
-	ConfigureFunctionExceptionSpecification(function, declarator, syntax_scope);
+		current_language_linkage_,
+		IsNonthrowing(declarator, parsed.parameter_scope));
+	ConfigureFunctionExceptionSpecification(
+		function, declarator, parsed.parameter_scope);
 	ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 	ApplyFunctionAsmLabel(declarator, function);
 	ApplyFunctionAbiTagAttributes(item, function);

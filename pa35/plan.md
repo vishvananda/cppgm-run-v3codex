@@ -16,30 +16,31 @@ lowering; there is no rendered-name or hosted-only fallback.
 
 ## Current Failure Map
 
-PA35 is 68/107 with 39 failures. The complete set groups by first owner:
-explicit specialization/instantiation identity 7; retained name/declaration
-lookup 10; expression/call/body demand and overload selection 14; stream/heap
-stability 5; and native object/register lowering 3.
+PA35 is 70/108 with 38 failures. The complete set groups by first owner:
+explicit specialization/instantiation routing 7; retained declaration/class
+lookup and completion 6; expression/call/template demand 14; parser/local
+semantics 2; stream/heap stability 5; and native object/register lowering 4.
 
 ## Active Checkpoint
 
-**Parameter-owned retained exception evaluation.** Per `spec.md` §§2-5,
-function parameters must be published in the declaration's function scope
-before a retained `noexcept` expression is evaluated. Data should flow from
-selected retained declarator -> immutable owner substitution -> parameter
-bindings -> contextual constant evaluation -> canonical exception fact ->
-function-entity merge. PA12 declarator/function scopes own parameter bindings;
-PA19 replay owns demand. Expected work is O(parameters + exception-expression
-nodes + newly demanded facts), once per declaration, with repeat demand O(1)
-average. Validate the five `__umap`/`__uset` cases, direct renamed-parameter and
-negative-scope probes, full PA35, PA1-34, audit, and 8/16 exception families.
+**Canonical specialization completion re-entry.** Per `spec.md` §4 and §9,
+repeated or recursive class-specialization demand must converge on one
+canonical entity and one monotone completion state. Data flows unevaluated
+member/call typing -> canonical template request key -> pending/in-progress/
+succeeded state -> one declaration replay -> cached member lookup. PA12 lookup
+requests completion and PA19 owns the state machine. Expected work is O(new
+specialization declarations + member edges) once, with repeat/re-entrant demand
+O(1) average. Validate the two cases now reporting duplicate class definition,
+direct recursive/repeated-completion probes, full PA35, PA1-34, audit, and 8/16
+re-entry families.
 
 ## Performance Evidence
 
-For 8/16 retained exception families, template requests/cache hits were 16/32
-and 8/16, lookup queries were 190/350, and overload candidates were 160/320.
-Median semantic time was 1.88/3.25 ms and peak semantic storage was
-0.392/0.712 MB. Doubling families kept work and storage at or below 2x.
+For 8/16 retained exception families after parameter-scope publication,
+template requests/cache hits were 16/32 and 8/16, lookup queries were 190/350,
+and overload candidates were 160/320. Median semantic time was 1.93/3.35 ms
+and peak semantic storage was 0.396/0.720 MB. Doubling families kept work and
+storage at or below 2x.
 
 ## Completed Checkpoints
 
@@ -63,3 +64,5 @@ Median semantic time was 1.88/3.25 ms and peak semantic storage was
 | Canonical completed-type trait demand | complete canonical type-edge readiness; specialization-owned member access; lazy defaulted-destructor nonthrowing/boundary facts | PA35 handout 53 -> 60/103 plus composite course regression; all 13 barriers advance; PA1-34 4756/4756; scaling/file audit pass |
 | Canonical qualified/inherited type identity | selected partial names, enclosing packs, identity-only friends, and function references keep canonical ownership | PA35 handout 61 -> 64/104 (65/105 total); 13 barriers removed/advanced; PA1-34 4756/4756; scaling/audit pass |
 | Canonical retained exception equivalence | special-member kind, structural overload shape, ordinal parameter mapping, and deferred exception state select one retained declaration | PA35 65/105 -> 68/107; eight barriers removed, one handout plus two regressions pass; PA1-34 4756/4756; scaling/audit pass |
+| Parameter-owned exception evaluation | declarators carry parameter/`this` scope into ordinary and deferred `noexcept` evaluation | five handout cases advance from unknown names to incomplete construction; direct positive/negative probes and 8/16 scaling pass |
+| Demand-safe unevaluated construction | member typing skips constexpr address/layout work in unevaluated operands; dependent function-template specs rebuild canonical parameter scopes | PA35 68/107 -> 70/108 (one handout plus one regression); four cases advance; PA1-34 4756/4756; scaling/audit pass |
