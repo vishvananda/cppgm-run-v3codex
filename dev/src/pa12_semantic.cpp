@@ -2536,10 +2536,10 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	else if (dump_.edges.size() == first_cleanup_edge)
 		StageExceptionalFullExpression(value.node, condition, scope);
 }
-
 void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
+	if (AnalyzeHostedSelectionStatement(node, scope, output_parent)) return;
 	if (AnalyzeGnuAsmStatement(node, scope, output_parent)) return;
 	if (arena_->IsTag(node, "compound-statement"))
 	{

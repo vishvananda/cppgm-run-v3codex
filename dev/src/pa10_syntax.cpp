@@ -12,6 +12,7 @@
 #include "pa34_gnu_asm_syntax.h"
 #include "pa34_aggregate_syntax.h"
 #include "pa34_template_syntax.h"
+#include "pa34_control_flow_syntax.h"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -35,17 +36,19 @@ class Parser : private ParserNameFacts<Parser>,
 	private pa30_syntax_detail::RegionSyntax<Parser>,
 	private pa34_syntax_detail::GnuAsmSyntax<Parser>,
 	private pa34_syntax_detail::AggregateSyntax<Parser>,
-	private pa34_syntax_detail::TemplateSyntax<Parser>
+	private pa34_syntax_detail::TemplateSyntax<Parser>,
+	private pa34_syntax_detail::ControlFlowSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>; friend class hosted_builtin::Syntax<Parser>;
 friend class hosted_extension::Syntax<Parser>; friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>; friend class pa30_syntax_detail::RegionSyntax<Parser>;
 friend class pa34_syntax_detail::GnuAsmSyntax<Parser>; friend class pa34_syntax_detail::AggregateSyntax<Parser>;
-friend class pa34_syntax_detail::TemplateSyntax<Parser>; public:
+friend class pa34_syntax_detail::TemplateSyntax<Parser>; friend class pa34_syntax_detail::ControlFlowSyntax<Parser>; public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
 		: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats),
 		  position_(0), angle_stop_depth_(0), compound_depth_(0), retained_template_argument_depth_(0),
+		  template_declaration_depth_(0),
 		  name_fact_revision_(1), angle_matches_(tokens.size())
 	{
 		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
@@ -704,7 +707,8 @@ private:
 	StringTable& strings_;
 	SyntaxArena& arena_;
 	SyntaxStats* stats_;
-	std::size_t position_, angle_stop_depth_, compound_depth_, retained_template_argument_depth_;
+	std::size_t position_, angle_stop_depth_, compound_depth_, retained_template_argument_depth_,
+		template_declaration_depth_;
 	std::uint32_t name_fact_revision_;
 	std::vector<std::uint8_t> name_facts_;
 	std::vector<NameFactChange> name_fact_changes_;
@@ -1516,6 +1520,8 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 NodeId Parser::ParseUnaryExpression()
 {
 	if (MatchHostedExtensionMarker()) return ParseUnaryExpression();
+	const NodeId coroutine_await = TryParseCoroutineAwaitExpression();
+	if (coroutine_await != kNoNode) return coroutine_await;
 	if (AtIdentifier() && (Spelling(position_) == "__real__" ||
 		Spelling(position_) == "__imag__"))
 	{
@@ -1859,27 +1865,8 @@ NodeId Parser::ParseStatement()
 		arena_.Add(statement, child);
 		return statement;
 	}
-	if (Match(KW_IF))
-	{
-		const NodeId statement = arena_.Make("if-statement");
-		Expect(OP_LPAREN);
-		arena_.Add(statement, ParseCondition());
-		Expect(OP_RPAREN);
-		const NodeId then_node = arena_.Make("then");
-		const NodeId then_statement = ParseStatement();
-		if (then_statement == kNoNode) throw Error("expected if body");
-		arena_.Add(then_node, then_statement);
-		arena_.Add(statement, then_node);
-		if (Match(KW_ELSE))
-		{
-			const NodeId else_node = arena_.Make("else");
-			const NodeId else_statement = ParseStatement();
-			if (else_statement == kNoNode) throw Error("expected else body");
-			arena_.Add(else_node, else_statement);
-			arena_.Add(statement, else_node);
-		}
-		return statement;
-	}
+	const NodeId if_statement = TryParseHostedIfStatement();
+	if (if_statement != kNoNode) return if_statement;
 	if (Match(KW_SWITCH))
 	{
 		const NodeId statement = arena_.Make("switch-statement");
@@ -1970,6 +1957,8 @@ NodeId Parser::ParseStatement()
 		Expect(OP_SEMICOLON);
 		return arena_.Make("goto-statement", name);
 	}
+	const NodeId coroutine_statement = TryParseCoroutineStatement();
+	if (coroutine_statement != kNoNode) return coroutine_statement;
 	if (Match(KW_RETURN))
 	{
 		const NodeId statement = arena_.Make("return-statement");
@@ -2230,7 +2219,9 @@ NodeId Parser::ParseTemplate(bool in_class)
 	ExpectCloseAngle();
 	arena_.Add(declaration, clause);
 	last_declared_names_.clear();
+	++template_declaration_depth_;
 	const NodeId target = ParseDeclaration(in_class);
+	--template_declaration_depth_;
 	if (target == kNoNode) throw Error("expected templated declaration");
 	arena_.Add(declaration, target);
 	while (active_non_type_parameter_names_.size() > parameter_mark)

@@ -13,31 +13,29 @@ and no host-compiler fallback.
 ## Current Failure Map
 
 - Preprocess is complete: 45/45.
-- Dependent template replay owns 9 compile and 1 run failures: vector deduction,
-  special-member/control-flow replay, integer-sequence casts, template-id destructors,
-  alias conversion, char-traits/coroutine contexts, local aliases, static call operators,
-  and local-lambda invoke-result packs.
+- Dependent type formation/replay owns 6 compile and 1 run failures: vector deduction,
+  integer-sequence casts, template-id destructors, alias conversion, char-traits lookup,
+  static call operators, and local-lambda invoke-result packs.
 - Object/layout/constant/lifetime owns 7 compile and 2 run failures: wait-status constexpr
   reinterpretation, deferred GNU inline emission, extern arrays, int128 constants,
   zero-length members, always-inline codegen, and large-array lifecycle.
 - ABI/source spelling owns 4 run failures: nested-template ABI-tag suppression and the
   three inline/owner-template pretty-function cases.
-- Audit course compile is 2/2. PA34 is 346/369 overall (344/367 handout), while
+- Audit course compile is 2/2. PA34 is 349/369 overall (347/367 handout), while
   PA1-PA33 remain 4387/4387.
 
-## Active Checkpoint — Dependent Template Replay
+## Active Checkpoint — Dependent Type Formation and Lookup
 
-Complete retained dependent forms exposed by hosted templates: scalar/vector deduction,
-cast-valued builtin arguments, template-id destructors, block-local aliases and contextual
-operators, and local-lambda packs. Under `spec.md` §§2-3 and 6-8, syntax owns structured
-recipes, canonical lookup owns identity, and specialization demand replays typed nodes
-without source-spelling recovery.
+Unify cast-valued non-type arguments, alias-mediated partial selection, and dependent member
+types at canonical type formation. Under `spec.md` §§2-3 and 6-8, structured argument nodes
+own syntax, canonical template arguments own identity, indexed partial selection owns
+matching, and parameter-bound lookup resolves dependent members without spelling recovery.
 
-Data flows from retained syntax -> parameter-bound replay scope -> indexed deduction/lookup
--> cached specialization -> ordinary semantic demand. Expected work is O(recipe nodes +
-candidates + instantiated body), one cache entry per canonical argument list. Validate
-focused reducers and malformed dependent forms, then 1/8/64 unique-specialization batches
-before all stage gates.
+Data flows from retained type/argument syntax -> bound replay scope -> canonical argument
+list -> candidate index -> cached specialization/member lookup. Expected work is O(argument
+nodes + viable partials + lookup depth), with one cache entry per canonical argument list.
+Validate the cast, alias-conversion, and dependent-member reducers, malformed substitutions,
+and 1/8/64 unique type-formation batches before all stage gates.
 
 ## Performance Evidence
 
@@ -58,6 +56,7 @@ before all stage gates.
 | Compiler function builtins/invoke | 1/8/64 mixed overflow/member-invoke/`offsetof` batches emitted 61/243/1,699 semantic nodes, 63/280/2,016 lookups, 55/237/1,693 LowIR and 76/321/2,281 MIR; semantic time 0.529/0.850/4.250 ms, peak 56,176/124,227/756,406 bytes, RSS 8,468/9,356/14,552 KiB; all linked probes passed |
 | Hosted configuration/runtime | 1/8/64 cmath/cstring/cstdlib batches emitted 4,419/4,706/7,002 semantic nodes, 5,772/6,157/9,237 lookups, 45/339/2,691 LowIR and 87/633/5,001 MIR; 0.32/0.32/0.36 s wall, 18,012/18,160/22,772 KiB RSS; all linked probes passed |
 | Hosted declarations | 1/8/64 guide/conditional-explicit/placeholder groups produced 14/77/581 declarations and 9/37/261 lookups, zero template requests or demands; semantic time 0.254/0.760/4.631 ms, RSS 7,880/8,436/8,956 KiB, constant backend output |
+| Hosted selection replay | 1/8/64 selected/discarded specializations produced 25/130/970 semantic nodes, 25/130/970 lookups, and 3/24/192 template requests; semantic time 0.434/0.842/4.224 ms, RSS 8,568/8,388/9,048 KiB; linked probes passed and invalid discarded branches created no work |
 
 ## Completed Checkpoints
 
@@ -85,3 +84,4 @@ before all stage gates.
 | Compiler function builtins and invoke | Typed `offsetof`, source/predefined values, string/format/allocation aliases, widened exact overflow, and direct/pointer-like invocation; +10 | focused compile/link/invalid probes; PA34 328/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Hosted configuration and runtime adapters | Mode-aware exception/RTTI facts, host scalar/keyword normalization, standard-layout/POD, GNU null/typeof/restrict forms, and declaration-backed C/math aliases; +13 | all 3 compile and 6 linked reducers pass; malformed suffix/alias reject; PA34 341/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Hosted declaration compatibility | Structured guide declarations and conditional `explicit`; canonical deleted placeholder overloads; +5 | guide/placeholder/instantiation reducers pass; malformed forms reject; PA34 346/369; proportional scaling; prior/audit gates pass |
+| Hosted selection and contextual control | Typed `if constexpr` branch selection, alias/declaration init scopes, ordinary runtime init lowering, and template-only contextual coroutine recipes; +3 | focused 3/3 plus linked/negative probes; PA34 349/369; PA1-33 4387/4387; proportional scaling; audit pass |

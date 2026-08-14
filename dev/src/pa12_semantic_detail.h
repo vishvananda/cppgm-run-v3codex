@@ -364,6 +364,8 @@ private:
 		std::uint32_t output_parent);
 	void AnalyzeStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
+	bool AnalyzeHostedSelectionStatement(NodeId node, ScopeId scope,
+		std::uint32_t output_parent);
 	bool AnalyzeGnuAsmStatement(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
 	bool AnalyzeControlFlowLabelOrGoto(NodeId node, ScopeId scope,
