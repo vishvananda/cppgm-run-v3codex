@@ -11,33 +11,36 @@ object lowering; compiler-provided inline wrappers remain demand-owned. Using
 imports converge only when they name the same canonical function entity.
 Braced class targets now complete through the specialization owner before
 list-initialization ranking; synthetic initializer-list layout and semantic
-definition completion remain separate monotonic facts.
+definition completion remain separate monotonic facts. Promoted unsigned
+constant shifts reduce modulo their canonical width in both narrow and wide
+evaluators while signed overflow remains rejected.
 
 ## Current Failure Map
 
-PA35 is 141/144 (125/128 pre-existing tests) with three failures. The complete
-set groups by owner: constant-shift representability 1 (constant evaluator),
-retained local lookup 1 (PA11/specialization replay), and reactive register
-allocation 1 (native backend).
+PA35 is 144/146 (126/128 pre-existing tests) with two failures. The complete
+set groups by owner: callable-local retained lookup 1 (PA11/demand replay) and
+reactive register allocation 1 (native backend).
 
 ## Active Checkpoint
 
-**Wide constant-shift representability.** Per `spec.md` §§2, 6, 9, constant
-values retain canonical typed width/signedness and overflow is diagnosed by the
-language operation, not a narrower host intermediate. Data flows typed operands
--> integral promotions -> constant shift -> representability fact -> retained
-expression/LowIR constant. The constant evaluator owns the operation and PA12
-semantic typing supplies the promoted type. Expected work is O(1) per shift.
-Validate the Mersenne header failure, signed/unsigned boundary negatives,
-representative 32/64-bit shifts, PA35, PA1-34, and audit.
+**Callable-local retained lookup identity.** Per `spec.md` §§2-4, 6, demanded
+ordinary and lambda bodies retain their canonical callable and lexical scope;
+replay must not merge same-spelling locals from another callable. Data flows
+selected call -> emission/export demand -> retained body and callable owner ->
+PA11 indexed lexical lookup -> canonical binding -> typed lowering. PA11 owns
+lookup/ambiguity and demand replay supplies the active callable scope. Expected
+work is O(lexical depth + same-name declarations), with no whole-program scan.
+Validate the hosted export-closure failure, same-spelling locals and lambda
+captures across functions, 8/16 unreachable inline callees, PA35, PA1-34, and
+audit.
 
 ## Performance Evidence
 
-Eight/sixteen braced-target candidates produced 65/129 overload-candidate
-visits, 35/67 specialization requests, 319/591 declarations, and 225/409 scope
-visits. Peak semantic storage was 489,686/829,252 bytes; five-run median
-semantic analysis was 2.031/3.228 ms and lowering was 0.404/0.556 ms. Completion
-is candidate-owned and measured work remains bounded near linearly.
+Eight/sixteen unsigned modulo-shift assertions produced 53/101 semantic nodes
+and 122/234 tokens, with no specialization requests or demand pushes. Peak
+semantic storage was 45,613/69,175 bytes; five-run median semantic analysis was
+0.201/0.268 ms and lowering was 0.052/0.057 ms. Each typed shift performs fixed
+work, and measured front-end growth remains bounded near linearly.
 
 ## Completed Checkpoints
 
@@ -81,3 +84,4 @@ is candidate-owned and measured work remains bounded near linearly.
 | Hosted fixed-width vector builtin identity | registry-owned v8qi/v4hi/v2si construction and v2si extraction lower as typed eight-byte objects; artificial inline wrappers remain demand-owned | PA35 131/137 -> 134/140; both random barriers advance to using merge; three regressions, PA1-34 4756/4756, lane offsets, 8/16 scaling, and audit pass |
 | Hosted using-function redeclaration convergence | namespace imports skip only identity-equal local declarations while preserving same-signature conflicts between distinct entities | PA35 134/140 -> 137/142 (123/128 existing); address-qualified random passes, Mersenne advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
 | List/constructor candidate convergence | concrete braced targets complete before list classification; initializer-list ABI shells replay semantic members and implicit copy facts on demand | PA35 137/142 -> 141/144 (125/128 existing); both hosted barriers and two regressions pass; narrowing guard and 8/16 scaling pass |
+| Unsigned constant-shift modulo semantics | <=64-bit evaluation matches the existing wide path by normalizing discarded unsigned bits while preserving signed/count diagnostics | PA35 141/144 -> 144/146 (126/128 existing); Mersenne and two regressions pass; signed boundary guards and 8/16 scaling pass |

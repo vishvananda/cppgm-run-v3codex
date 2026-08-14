@@ -314,7 +314,7 @@ std::int64_t SemanticAnalyzer::ApplyConstantBinary(
 			const std::uint64_t maximum = width == 64 ?
 				std::numeric_limits<std::uint64_t>::max() :
 				(std::uint64_t(1) << width) - 1;
-			if (unsigned_left > (maximum >> right))
+			if (!unsigned_type && unsigned_left > (maximum >> right))
 				throw std::runtime_error("constant left shift overflow");
 			value = static_cast<std::int64_t>(unsigned_left << right);
 		}
