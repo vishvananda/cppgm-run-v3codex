@@ -1747,13 +1747,44 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	}
 
 	const BindingId destructor = DestructorForType(destroyed_type);
-	LookupResult destructor_type = LookupSpelling(
-		scope, spelling.substr(1), LOOKUP_TYPE);
+	const NodeId structure = FindChild(identifier, "structured-type-name");
+	NamePath destructor_path = structure == kNoNode ?
+		ParseNamePath(spelling.substr(1)) : StructuredNamePath(structure);
+	if (structure != kNoNode && !destructor_path.Empty())
+	{
+		const std::string terminal = program_->names.Get(destructor_path.Last());
+		destructor_path.Pop();
+		destructor_path.Push(program_->names.Intern(
+			terminal.empty() || terminal[0] != '~' ? terminal : terminal.substr(1)));
+	}
+	LookupResult destructor_type;
+	NamePath ignored_path;
+	std::vector<NodeId> explicit_syntax;
+	if (structure != kNoNode && CollectExplicitTemplateArguments(
+		identifier, &ignored_path, &explicit_syntax))
+	{
+		const std::size_t pattern = FindClassTemplate(scope, destructor_path);
+		if (pattern < class_templates_.size())
+		{
+			std::vector<TemplateArgument> explicit_arguments;
+			const ClassTemplatePattern& class_pattern = class_templates_[pattern];
+			if (BuildTemplateArguments(class_pattern.parameters, explicit_syntax,
+				scope, class_pattern.lexical_scope, &explicit_arguments))
+			{
+				const BindingId explicit_specialization =
+					InstantiateClassTemplate(pattern, explicit_arguments);
+				if (explicit_specialization != kNoBinding)
+					destructor_type.type =
+						program_->bindings[explicit_specialization].type;
+			}
+		}
+	}
+	else destructor_type = LookupPath(scope, destructor_path, LOOKUP_TYPE);
 	if (destructor_type.type == kNoType ||
 		program_->types.RemoveTopCv(EffectiveType(destructor_type.type)) !=
 			destroyed_type)
 		destructor_type = program_->LookupMember(entity,
-			ParseNamePath(spelling.substr(1)).Last(), LOOKUP_TYPE);
+			destructor_path.Last(), LOOKUP_TYPE);
 	if (destructor == kNoBinding || destructor_type.type == kNoType ||
 		program_->types.RemoveTopCv(EffectiveType(destructor_type.type)) !=
 			destroyed_type)

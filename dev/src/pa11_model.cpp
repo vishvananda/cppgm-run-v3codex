@@ -488,7 +488,7 @@ TypeId TypeTable::TryVector(TypeId element, std::uint64_t bytes)
 {
 	element = RemoveTopCv(element);
 	const TypeRecord& lane = Get(element);
-	if (lane.kind != TYPE_FUNDAMENTAL || lane.fundamental == FUND_BOOL ||
+	if (lane.kind != TYPE_FUNDAMENTAL ||
 		lane.fundamental == FUND_VOID || lane.fundamental == FUND_NULLPTR_T ||
 		lane.fundamental == FUND_LONG_DOUBLE || bytes == 0 ||
 		(bytes & (bytes - 1)) != 0) return kNoType;
@@ -2756,8 +2756,12 @@ void Program::AppendType(std::string& output, TypeId type,
 			break;
 		case TYPE_VECTOR:
 			output += "vector of ";
-			output += std::to_string(record.bound);
-			output += " bytes of ";
+			if (record.dependent_bound_parameter == kNoTemplateParameter)
+			{
+				output += std::to_string(record.bound);
+				output += " bytes of ";
+			}
+			else output += "dependent lanes of ";
 			tasks.Push(Task(record.child, true));
 			break;
 		case TYPE_INVALID:

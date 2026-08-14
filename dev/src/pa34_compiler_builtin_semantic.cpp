@@ -156,6 +156,78 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 	const std::vector<NodeId>& argument_syntax, NodeId call_syntax,
 	TypeId target, ExpressionInfo* result)
 {
+	const bool vector_convert = spelling == "__builtin_convertvector";
+	const bool vector_reduce_or = spelling == "__builtin_reduce_or";
+	const bool bit_cast = spelling == "__builtin_bit_cast";
+	if (vector_convert || vector_reduce_or || bit_cast)
+	{
+		const std::size_t expected = vector_reduce_or ? 1 : 2;
+		if (argument_syntax.size() != expected)
+			throw std::runtime_error("invalid scalarized vector builtin arity");
+		TypeId result_type = kNoType;
+		NodeId value_syntax = argument_syntax[0];
+		if (vector_convert || bit_cast)
+		{
+			const NodeId type_syntax = argument_syntax[vector_convert ? 1 : 0];
+			value_syntax = argument_syntax[vector_convert ? 0 : 1];
+			if (arena_->IsTag(type_syntax, "type-id"))
+				result_type = BuildTypeId(type_syntax, scope);
+			else if (arena_->IsTag(type_syntax, "id-expression"))
+			{
+				const NodeId structure = FindChild(
+					type_syntax, "structured-type-name");
+				const LookupResult found = structure == kNoNode ?
+					LookupSpelling(scope, PayloadSource(type_syntax), LOOKUP_TYPE) :
+					LookupStructuredName(type_syntax, scope, LOOKUP_TYPE);
+				result_type = found.type;
+			}
+			if (CandidateSubstitutionFailed() || result_type == kNoType)
+				return true;
+		}
+		ExpressionInfo value = AnalyzeUntypedCallArgument(value_syntax, scope);
+		const TypeId value_type = program_->types.RemoveTopCv(
+			EffectiveType(value.type));
+		if (vector_reduce_or)
+		{
+			const TypeRecord& vector = program_->types.Get(value_type);
+			if (vector.kind != TYPE_VECTOR ||
+				vector.bound != program_->SizeOf(vector.child))
+				throw std::runtime_error(
+					"__builtin_reduce_or requires a scalarized vector operand");
+			result_type = program_->types.Fundamental(FUND_BOOL);
+		}
+		else if (vector_convert)
+		{
+			const TypeId converted = program_->types.RemoveTopCv(
+				EffectiveType(result_type));
+			const TypeRecord& source = program_->types.Get(value_type);
+			const TypeRecord& destination = program_->types.Get(converted);
+			if (source.kind != TYPE_VECTOR || destination.kind != TYPE_VECTOR ||
+				source.bound != program_->SizeOf(source.child) ||
+				destination.bound != program_->SizeOf(destination.child) ||
+				source.bound != destination.bound)
+				throw std::runtime_error(
+					"__builtin_convertvector requires equal-width scalarized vectors");
+			result_type = converted;
+		}
+		else if (!IsIntegral(value_type, true) ||
+			!IsIntegral(result_type, true) ||
+			program_->SizeOf(value_type) != program_->SizeOf(result_type))
+			throw std::runtime_error(
+				"scalarized __builtin_bit_cast requires equal-width integer types");
+
+		const std::uint32_t cast = MakeDump(
+			DUMP_CAST_EXPRESSION, result_type, VALUE_PRVALUE);
+		dump_.nodes[cast].operand_type = value_type;
+		dump_.Add(cast, value.node);
+		result->node = cast;
+		result->type = result_type;
+		result->category = VALUE_PRVALUE;
+		RecordExpressionFacts(*result);
+		++expression_count_;
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
 	CompilerIntrinsicKind overflow = COMPILER_INTRINSIC_NONE;
 	if (spelling == "__builtin_add_overflow")
 		overflow = COMPILER_INTRINSIC_ADD_OVERFLOW;

@@ -1574,6 +1574,7 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 	if (index >= alias_templates_.size())
 		throw std::logic_error("invalid alias template pattern");
 	const AliasTemplatePattern& pattern = alias_templates_[index];
+	const NodeId alias_declaration = pattern.declaration;
 	const std::size_t fixed = FixedTemplateParameterCount(pattern.parameters);
 	if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
 		 arguments.size() != pattern.parameters.size()) ||
@@ -1650,6 +1651,9 @@ TypeId SemanticAnalyzer::InstantiateAliasTemplate(std::size_t index,
 		try
 		{
 			result = BuildTypeId(pattern.type_id, substitution_scope);
+			if (result != kNoType)
+				result = ApplyGnuVectorAttributes(
+					alias_declaration, result, substitution_scope);
 		}
 		catch (...)
 		{

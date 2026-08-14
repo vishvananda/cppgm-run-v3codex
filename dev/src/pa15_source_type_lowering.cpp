@@ -27,7 +27,11 @@ LowType SourceTypeLowering::Lower(TypeId type) const
 	if (record->kind == TYPE_MEMBER_POINTER)
 		return program_.types.IsFunction(record->child) ? LowI128() : LowI64();
 	if (record->kind == TYPE_VECTOR)
+	{
+		if (program_.SizeOf(type) == program_.SizeOf(record->child))
+			return Lower(record->child);
 		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
+	}
 	if (record->kind == TYPE_COMPLEX)
 		return LowObject(program_.SizeOf(type), program_.AlignOf(type));
 	if (record->kind == TYPE_BITINT)

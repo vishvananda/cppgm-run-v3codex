@@ -227,6 +227,10 @@ public:
 	TypeId Array(TypeId type, std::uint64_t bound);
 	TypeId TryVector(TypeId element, std::uint64_t bytes);
 	TypeId Vector(TypeId element, std::uint64_t bytes);
+	TypeId TryDependentVector(TypeId element, TypeId lane_count_type,
+		std::uint32_t parameter);
+	TypeId DependentVector(TypeId element, TypeId lane_count_type,
+		std::uint32_t parameter);
 	TypeId TryBitInt(bool is_unsigned, std::uint64_t width);
 	TypeId BitInt(bool is_unsigned, std::uint64_t width);
 	TypeId TryComplex(TypeId element);

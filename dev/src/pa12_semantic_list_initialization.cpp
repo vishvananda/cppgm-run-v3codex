@@ -342,7 +342,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	{
 		const std::size_t lanes = static_cast<std::size_t>(array.bound) /
 			program_->SizeOf(array.child);
-		if (values.size() != 1 && values.size() != lanes)
+		if (!values.empty() && values.size() != 1 && values.size() != lanes)
 			throw std::runtime_error(
 				"GNU vector initializer requires one or all lane values");
 	}
@@ -353,11 +353,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBracedInit(NodeId node, ScopeId scope,
 	result.node = list;
 	result.type = type;
 	result.category = VALUE_LVALUE;
-	if (values.empty() && IsArithmetic(type))
+	if (values.empty() && (IsArithmetic(type) || array.kind == TYPE_VECTOR))
 	{
 		dump_.nodes[list].value_initialization = true;
-		SetExpressionScalar(&result, NormalizeScalarConstant(type,
-			ConstexprScalarValue(static_cast<std::int64_t>(0))));
+		if (IsArithmetic(type))
+			SetExpressionScalar(&result, NormalizeScalarConstant(type,
+				ConstexprScalarValue(static_cast<std::int64_t>(0))));
 	}
 	RecordExpressionFacts(result);
 	++expression_count_;

@@ -82,9 +82,12 @@ bool SemanticAnalyzer::FunctionTemplateTypeIsDependent(TypeId type) const
 	case TYPE_BLOCK_POINTER:
 	case TYPE_LVALUE_REFERENCE:
 	case TYPE_RVALUE_REFERENCE:
-	case TYPE_VECTOR:
 	case TYPE_COMPLEX:
 		dependent = FunctionTemplateTypeIsDependent(record.child);
+		break;
+	case TYPE_VECTOR:
+		dependent = record.dependent_bound_parameter != kNoTemplateParameter ||
+			FunctionTemplateTypeIsDependent(record.child);
 		break;
 	case TYPE_ARRAY:
 		dependent = record.dependent_bound_parameter != kNoTemplateParameter ||
@@ -174,7 +177,7 @@ bool SemanticAnalyzer::FunctionTemplateTypeUsesUnspecifiedParameter(
 		record.kind == TYPE_RVALUE_REFERENCE)
 		return FunctionTemplateTypeUsesUnspecifiedParameter(
 			record.child, parameters, explicitly_specified);
-	if (record.kind == TYPE_ARRAY)
+	if (record.kind == TYPE_ARRAY || record.kind == TYPE_VECTOR)
 	{
 		const std::size_t bound = record.dependent_bound_parameter;
 		if (bound != kNoTemplateParameter && bound < parameters.size() &&
@@ -837,9 +840,36 @@ bool SemanticAnalyzer::DeduceFunctionTemplatePackType(TypeId pattern,
 			argument_record.child, parameters, deduced);
 	}
 	case TYPE_VECTOR:
-		return pattern_record.bound == argument_record.bound &&
-			DeduceFunctionTemplatePackType(pattern_record.child,
-				argument_record.child, parameters, deduced);
+	{
+		if (pattern_record.dependent_bound_parameter != kNoTemplateParameter)
+		{
+			const std::size_t dependent =
+				pattern_record.dependent_bound_parameter;
+			if (dependent >= parameters.size() ||
+				parameters[dependent].kind != TEMPLATE_ARGUMENT_INTEGRAL ||
+				argument_record.dependent_bound_parameter != kNoTemplateParameter ||
+				argument_record.bound == 0) return false;
+			const std::size_t lane_bytes =
+				program_->SizeOf(argument_record.child);
+			if (lane_bytes == 0 || argument_record.bound % lane_bytes != 0)
+				return false;
+			const TemplateArgument pattern_lanes(TEMPLATE_ARGUMENT_INTEGRAL,
+				pattern_record.dependent_bound_type, 0,
+				static_cast<std::uint32_t>(dependent));
+			const TemplateArgument argument_lanes(TEMPLATE_ARGUMENT_INTEGRAL,
+				pattern_record.dependent_bound_type,
+				NormalizeIntegralConstant(pattern_record.dependent_bound_type,
+					static_cast<std::int64_t>(
+						argument_record.bound / lane_bytes)));
+			if (!DeduceFunctionTemplatePackArgument(
+				pattern_lanes, argument_lanes, parameters, deduced)) return false;
+		}
+		else if (argument_record.dependent_bound_parameter !=
+			kNoTemplateParameter || pattern_record.bound != argument_record.bound)
+			return false;
+		return DeduceFunctionTemplatePackType(pattern_record.child,
+			argument_record.child, parameters, deduced);
+	}
 	case TYPE_BITINT:
 	{
 		if (pattern_record.bitint_unsigned != argument_record.bitint_unsigned)

@@ -554,7 +554,7 @@ void RetainedTemplateValidator::DeclareEnumValues(NodeId node,
 		const NodeId enumerator = analyzer_.arena_->EdgeChild(edge);
 		if (!analyzer_.arena_->IsTag(enumerator, "enumerator")) continue;
 		Declare(scope, analyzer_.program_->names.Intern(
-			analyzer_.arena_->Payload(enumerator)), RETAINED_VALUE_NAME);
+			analyzer_.arena_->Payload(enumerator)), RETAINED_VALUE_NAME, true);
 	}
 }
 
@@ -860,7 +860,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 		if (type.type != kNoType)
 		{
 			if (unknown_callee) return;
-			throw std::runtime_error("type name used as retained value");
+			throw std::runtime_error("type name used as retained value: " + spelling);
 		}
 		const std::vector<std::size_t> templates = structure != kNoNode ?
 			analyzer_.FindFunctionTemplates(
@@ -895,7 +895,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	if ((local & RETAINED_TYPE_NAME) != 0)
 	{
 		if (unknown_callee) return;
-		throw std::runtime_error("type name used as retained value");
+		throw std::runtime_error("type name used as retained value: " + spelling);
 	}
 	const LookupResult ordinary = analyzer_.program_->LookupName(
 		scopes_[scope].semantic_scope, name, LOOKUP_ORDINARY);
@@ -912,7 +912,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	if (type.type != kNoType)
 	{
 		if (unknown_callee) return;
-		throw std::runtime_error("type name used as retained value");
+		throw std::runtime_error("type name used as retained value: " + spelling);
 	}
 	const std::vector<std::size_t> templates =
 		analyzer_.FindFunctionTemplates(
@@ -994,10 +994,30 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 	{
 		const std::uint32_t first = analyzer_.arena_->FirstEdge(node);
 		if (first == kNoEdge) return;
-		Visit(analyzer_.arena_->EdgeChild(first), scope, true);
+		const NodeId callee = analyzer_.arena_->EdgeChild(first);
+		const std::string spelling = analyzer_.PayloadSource(callee);
+		Visit(callee, scope, true);
+		std::size_t ordinal = 0;
 		for (std::uint32_t edge = analyzer_.arena_->NextEdge(first);
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
-			Visit(analyzer_.arena_->EdgeChild(edge), scope);
+		{
+			const NodeId holder = analyzer_.arena_->EdgeChild(edge);
+			if (analyzer_.arena_->IsTag(holder, "argument-list") ||
+				analyzer_.arena_->IsTag(holder, "paren-argument-list"))
+				for (std::uint32_t argument = analyzer_.arena_->FirstEdge(holder);
+					argument != kNoEdge;
+					argument = analyzer_.arena_->NextEdge(argument), ++ordinal)
+					Visit(analyzer_.arena_->EdgeChild(argument), scope,
+						(spelling == "__builtin_bit_cast" && ordinal == 0) ||
+						(spelling == "__builtin_convertvector" && ordinal == 1));
+			else Visit(holder, scope);
+		}
+		return;
+	}
+	if (analyzer_.arena_->IsTag(node, "enum-specifier"))
+	{
+		DeclareEnumValues(node, scope);
+		VisitChildren(node, scope);
 		return;
 	}
 	if (analyzer_.arena_->IsTag(node, "sizeof-expression"))

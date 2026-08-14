@@ -2190,9 +2190,8 @@ bool SemanticAnalyzer::DeduceTemplatePartialType(TypeId pattern,
 			argument_record.child, parameters, deduced);
 	}
 	case TYPE_VECTOR:
-		return pattern_record.bound == argument_record.bound &&
-			DeduceTemplatePartialType(pattern_record.child,
-				argument_record.child, parameters, deduced);
+		return DeduceTemplatePartialVectorType(
+			pattern_record, argument_record, parameters, deduced);
 	case TYPE_BITINT:
 		return DeduceTemplatePartialBitIntType(
 			pattern_record, argument_record, parameters, deduced);

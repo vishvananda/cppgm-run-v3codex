@@ -1489,12 +1489,13 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 		{
 			const std::size_t operation = position_++;
 			const bool dependent_template = Match(KW_TEMPLATE);
+			const bool destructor_member = At(OP_COMPL);
 			std::string member;
 			NodeId structure = kNoNode;
 			const bool qualified_member = AtIdentifier() && AtOffset(1, OP_COLON2);
 			const bool known_template_member = StartsKnownTemplateId();
 			if (!ParseName(&member, qualified_member || known_template_member, true,
-				dependent_template || qualified_member || known_template_member,
+				dependent_template || qualified_member || known_template_member || destructor_member,
 				&structure))
 				throw Error("expected member name");
 			if (dependent_template) member = "template " + member;

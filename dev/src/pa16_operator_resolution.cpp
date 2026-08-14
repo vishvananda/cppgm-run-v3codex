@@ -1587,9 +1587,11 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		++overload_candidates_;
 		const FunctionInfo& function = GetFunction(candidates[c]);
 		const TypeRecord function_type = program_->types.Get(function.type);
-		const bool member = function.member_owner != kNoType;
-		const std::size_t argument_begin = member ? 1 : 0;
-		if (member)
+		const bool class_member =
+			program_->bindings[candidates[c]].member_owner != kNoEntity;
+		const bool nonstatic_member = function.member_owner != kNoType;
+		const std::size_t argument_begin = class_member ? 1 : 0;
+		if (nonstatic_member)
 		{
 			if (!RefQualifierViable(object, function_type))
 			{
@@ -1701,8 +1703,10 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 		const FunctionInfo& rfunction = GetFunction(candidates[right]);
 		const TypeRecord& ltype = program_->types.Get(lfunction.type);
 		const TypeRecord& rtype = program_->types.Get(rfunction.type);
-		const bool lmember = lfunction.member_owner != kNoType;
-		const bool rmember = rfunction.member_owner != kNoType;
+		const bool lmember =
+			program_->bindings[candidates[left]].member_owner != kNoEntity;
+		const bool rmember =
+			program_->bindings[candidates[right]].member_owner != kNoEntity;
 		const TypeId* lparameters =
 			program_->types.Parameters(lfunction.type);
 		const TypeId* rparameters =
@@ -1749,8 +1753,10 @@ BindingId SemanticAnalyzer::SelectOperatorOverload(ScopeId scope,
 			if (quiet) return kNoBinding;
 			throw std::runtime_error("ambiguous overloaded operator");
 		}
-	*selected_member = GetFunction(candidates[champion]).member_owner != kNoType;
-	if (*selected_member && object_conversion)
+	*selected_member =
+		program_->bindings[candidates[champion]].member_owner != kNoEntity;
+	if (GetFunction(candidates[champion]).member_owner != kNoType &&
+		object_conversion)
 	{
 		object_conversion->rank = actual_object_ranks[champion];
 		if (object_conversion->rank == CONVERSION_DERIVED_TO_BASE)
@@ -1819,7 +1825,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 			const std::vector<BindingId> functions =
 				FunctionSet(member.ordinary);
 			for (std::size_t i = 0; i < functions.size(); ++i)
-				if (GetFunction(functions[i]).member_owner != kNoType)
+				if (program_->bindings[functions[i]].member_owner != kNoEntity)
 					AddCandidate(functions[i], &candidates);
 		}
 		const LookupResult member_templates = program_->LookupMember(
@@ -1847,7 +1853,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 			DeduceFunctionTemplatePatterns(
 				patterns, arguments, &specializations);
 			for (std::size_t i = 0; i < specializations.size(); ++i)
-				if (GetFunction(specializations[i]).member_owner != kNoType)
+				if (program_->bindings[specializations[i]].member_owner != kNoEntity)
 					AddCandidate(specializations[i], &candidates);
 			if (naming_class == kNoEntity)
 				naming_class = member_templates.naming_class;
@@ -1882,10 +1888,12 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 		competing_builtin_ranks->size() == operands.size())
 	{
 		bool no_worse = true;
-		bool strictly_better = false;
-		for (std::size_t i = 0; i < operands.size(); ++i)
-		{
-			const ConversionRank overloaded_rank = selected_member && i == 0 ?
+			bool strictly_better = false;
+			for (std::size_t i = 0; i < operands.size(); ++i)
+			{
+				if (selected_member && i == 0 &&
+					GetFunction(selected).member_owner == kNoType) continue;
+				const ConversionRank overloaded_rank = selected_member && i == 0 ?
 				object_conversion.rank :
 				argument_conversions[i - (selected_member ? 1 : 0)].rank;
 			const ConversionRank builtin_rank = (*competing_builtin_ranks)[i];
@@ -1896,10 +1904,12 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 	}
 	if (GetFunction(selected).deleted_special_member)
 		throw std::runtime_error("selected special member is deleted");
+	const bool selected_nonstatic_member =
+		GetFunction(selected).member_owner != kNoType;
 	std::vector<NodeId> arguments_syntax;
 	std::vector<ExpressionInfo> arguments;
 	ExpressionInfo selected_object = object;
-	if (selected_member && operands[0].category == VALUE_PRVALUE &&
+	if (selected_nonstatic_member && operands[0].category == VALUE_PRVALUE &&
 		dump_.nodes[operands[0].node].kind != DUMP_TEMPORARY_OBJECT)
 	{
 		const EntityId entity = EntityOf(operands[0].type);
@@ -1918,9 +1928,10 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 			operand_syntax[i] : kNoNode);
 	}
 	*result = BuildResolvedCall(selected, scope, arguments_syntax, arguments,
-		selected_member ? &selected_object : 0, target,
+		selected_nonstatic_member ? &selected_object : 0, target,
 		selected_member ? naming_class : kNoEntity,
-		selected_member ? &object_conversion : 0, &argument_conversions);
+		selected_nonstatic_member ? &object_conversion : 0,
+		&argument_conversions);
 	return true;
 }
 

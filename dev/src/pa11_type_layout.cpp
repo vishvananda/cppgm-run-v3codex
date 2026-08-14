@@ -42,9 +42,10 @@ std::size_t Program::SizeOf(TypeId type) const
 			size = types.IsFunction(record.child) ? 16 : 8;
 			break;
 		case TYPE_VECTOR:
-			if (record.bound == 0 ||
+			if (record.dependent_bound_parameter != kNoTemplateParameter ||
+				record.bound == 0 ||
 				record.bound > std::numeric_limits<std::size_t>::max())
-				throw std::runtime_error("invalid GNU vector size");
+				throw std::runtime_error("dependent or invalid GNU vector size");
 			size = static_cast<std::size_t>(record.bound);
 			break;
 		case TYPE_BITINT:

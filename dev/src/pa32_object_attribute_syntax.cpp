@@ -19,10 +19,11 @@ struct GnuObjectAttributeSyntaxFact
 {
 	TextId name;
 	std::vector<std::vector<TextId> > arguments;
+	TextId identifier_argument;
 	bool literal_argument_list;
 
 	GnuObjectAttributeSyntaxFact()
-		: name(0), literal_argument_list(true) {}
+		: name(0), identifier_argument(0), literal_argument_list(true) {}
 };
 
 bool At(const std::vector<SyntaxToken>& tokens, std::size_t position,
@@ -70,6 +71,9 @@ bool ConsumeGnuObjectAttributeFacts(
 			++*position;
 			std::size_t depth = 1;
 			std::vector<TextId> argument;
+			TextId direct_identifier = 0;
+			std::size_t direct_tokens = 0;
+			bool direct_comma = false;
 			bool saw_argument_token = false;
 			while (depth != 0)
 			{
@@ -93,6 +97,7 @@ bool ConsumeGnuObjectAttributeFacts(
 				}
 				else if (depth == 1 && At(tokens, *position, OP_COMMA))
 				{
+					direct_comma = true;
 					saw_argument_token = true;
 					if (argument.empty()) fact.literal_argument_list = false;
 					else
@@ -104,16 +109,22 @@ bool ConsumeGnuObjectAttributeFacts(
 				else if (depth == 1 &&
 					tokens[*position].Kind() == kLiteralToken)
 				{
+					++direct_tokens;
 					saw_argument_token = true;
 					argument.push_back(tokens[*position].spelling);
 				}
 				else if (depth == 1)
 				{
+					++direct_tokens;
+					if (tokens[*position].Kind() == kIdentifierToken)
+						direct_identifier = tokens[*position].spelling;
 					saw_argument_token = true;
 					fact.literal_argument_list = false;
 				}
 				++*position;
 			}
+			if (!direct_comma && direct_tokens == 1)
+				fact.identifier_argument = direct_identifier;
 		}
 		facts->push_back(fact);
 		if (At(tokens, *position, OP_COMMA)) ++*position;
@@ -138,6 +149,14 @@ bool ConsumeLeadingGnuObjectAttribute(
 		const NodeId attribute = arena.Make(
 			"gnu-attribute", strings.Get(facts[i].name));
 		arena.AddFlags(attribute, SYNTAX_FLAG_SEMANTIC_ONLY);
+		if (facts[i].identifier_argument != 0)
+		{
+			const NodeId identifier = arena.Make(
+				"gnu-attribute-identifier-argument",
+				strings.Get(facts[i].identifier_argument));
+			arena.AddFlags(identifier, SYNTAX_FLAG_SEMANTIC_ONLY);
+			arena.Add(attribute, identifier);
+		}
 		if (!facts[i].literal_argument_list)
 		{
 			const NodeId invalid = arena.Make(

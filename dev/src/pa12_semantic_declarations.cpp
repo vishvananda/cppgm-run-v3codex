@@ -1801,50 +1801,12 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		result.type = program_->types.Fundamental(kind);
 	}
 	if (is_complex) result.type = BuildComplexSpecifierType(result.type);
-	result.type = ApplyGnuVectorAttributes(node, result.type);
+	result.type = ApplyGnuVectorAttributes(node, result.type, scope);
 	// Cv-qualifiers applied through a typedef-name (including a bound template
 	// type parameter) do not create a cv-qualified function type.
 	if (!program_->types.IsFunction(result.type))
 		result.type = program_->types.Qualify(result.type, cv);
 	return result;
-}
-
-TypeId SemanticAnalyzer::ApplyGnuVectorAttributes(NodeId node, TypeId type)
-{
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId attribute = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(attribute, "gnu-attribute")) continue;
-		const std::string name = arena_->SemanticPayload(attribute);
-		if (name != "vector_size" && name != "__vector_size__") continue;
-		NodeId argument = kNoNode;
-		for (std::uint32_t argument_edge = arena_->FirstEdge(attribute);
-			argument_edge != kNoEdge; argument_edge = arena_->NextEdge(argument_edge))
-		{
-			const NodeId child = arena_->EdgeChild(argument_edge);
-			if (!arena_->IsTag(child, "gnu-attribute-argument") ||
-				argument != kNoNode)
-				throw std::runtime_error(
-					"GNU vector_size requires one integer literal");
-			argument = child;
-		}
-		if (argument == kNoNode)
-			throw std::runtime_error(
-				"GNU vector_size requires one integer literal");
-		const std::int64_t width = ParseInteger(arena_->SemanticPayload(argument));
-		if (width <= 0)
-			throw std::runtime_error("GNU vector_size byte width must be positive");
-		const TypeRecord& top = program_->types.Get(type);
-		const std::uint8_t cv = top.kind == TYPE_QUALIFIED ? top.cv : CV_NONE;
-		const TypeId vector = program_->types.TryVector(
-			program_->types.RemoveTopCv(type), static_cast<std::uint64_t>(width));
-		if (vector == kNoType)
-			throw std::runtime_error(
-				"invalid GNU vector_size element type or byte width");
-		type = program_->types.Qualify(vector, cv);
-	}
-	return type;
 }
 
 TypeId SemanticAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
@@ -2223,7 +2185,7 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			result.parameters = parameters;
 		}
 	}
-	type = ApplyGnuVectorAttributes(node, type);
+	type = ApplyGnuVectorAttributes(node, type, scope);
 	if (nested != kNoNode)
 	{
 		DeclaratorInfo inner = BuildDeclarator(nested, type, scope,
@@ -2672,7 +2634,7 @@ void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const
 {
 	const BindingRecord& record = program_->bindings[binding];
 	const FunctionInfo& function = GetFunction(binding);
-	if (function.member_owner != kNoType) return;
+	if (function.member_owner != kNoType || (record.member_owner != kNoEntity && record.static_member_function && (record.operator_kind == OPERATOR_CALL || record.operator_kind == OPERATOR_INDEX))) return;
 	if (record.operator_kind == OPERATOR_NONE ||
 		record.operator_kind == OPERATOR_LITERAL ||
 		record.operator_kind == OPERATOR_NEW ||

@@ -477,7 +477,7 @@ private:
 	TypeId BuildTypeId(NodeId node, ScopeId scope);
 	TypeId BuildBuiltinTransformType(NodeId node, ScopeId scope);
 	TypeId BuildIdentityOnlyTypeId(NodeId node, ScopeId scope);
-	TypeId ApplyGnuVectorAttributes(NodeId node, TypeId type);
+	TypeId ApplyGnuVectorAttributes(NodeId node, TypeId type, ScopeId scope);
 	DeclaratorInfo BuildDeclarator(NodeId node, TypeId base, ScopeId scope,
 		bool placeholder_auto = false,
 		bool member_implicit_object = false,
@@ -751,6 +751,10 @@ private:
 		const std::vector<TemplateParameter>& parameters,
 		FunctionTemplateDeduction* deduced) const;
 	bool DeduceTemplatePartialBitIntType(const TypeRecord& pattern,
+		const TypeRecord& argument,
+		const std::vector<TemplateParameter>& parameters,
+		FunctionTemplateDeduction* deduced) const;
+	bool DeduceTemplatePartialVectorType(const TypeRecord& pattern,
 		const TypeRecord& argument,
 		const std::vector<TemplateParameter>& parameters,
 		FunctionTemplateDeduction* deduced) const;

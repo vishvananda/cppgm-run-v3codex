@@ -506,7 +506,12 @@ bool SemanticAnalyzer::PrepareBuiltinComparison(const std::string& operation,
 		EffectiveType(right->type));
 	const EntityId comparison_enum = left_unqualified == right_unqualified ?
 		EntityOf(left_unqualified) : kNoEntity;
-	if (comparison_enum != kNoEntity &&
+	const TypeRecord& left_record = program_->types.Get(left_unqualified);
+	const TypeRecord& right_record = program_->types.Get(right_unqualified);
+	if (left_record.kind == TYPE_VECTOR && right_record.kind == TYPE_VECTOR &&
+		left_unqualified == right_unqualified)
+		*operand_type = left_unqualified;
+	else if (comparison_enum != kNoEntity &&
 		(program_->entities[comparison_enum].flavor == NAMED_ENUM ||
 		 program_->entities[comparison_enum].flavor == NAMED_ENUM_CLASS))
 		*operand_type = left_unqualified;
@@ -657,7 +662,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	{
 		if (!PrepareBuiltinComparison(
 			operation, &left, &right, &operand_type)) return ExpressionInfo();
-		result_type = program_->types.Fundamental(FUND_BOOL);
+		result_type = operand_type != kNoType && program_->types.Get(operand_type).kind == TYPE_VECTOR ? operand_type : program_->types.Fundamental(FUND_BOOL);
 	}
 	else if (operation == ",")
 	{
