@@ -185,7 +185,7 @@ void SemanticAnalyzer::CompleteDefaultedDestructor(EntityId entity,
 			!CanAccessMember(selected, subobject, entity))
 			deleted = true;
 		if (selected == kNoBinding ||
-			!program_->bindings[selected].nonthrowing)
+			!FunctionIsNonthrowing(selected))
 			nonthrowing = false;
 		if (variant && !program_->entities[subobject].trivial_destructor)
 			deleted = true;

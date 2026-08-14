@@ -1378,6 +1378,15 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		info.defaulted_destructor =
 			info.defaulted_destructor || defaulted;
 		info.deleted_destructor = info.deleted_destructor || deleted;
+		if (defaulted &&
+			FindChild(declarator, "function-qualifier") == kNoNode)
+		{
+			// The implicit exception specification is a completed-class fact.
+			// Retain it on the canonical destructor until noexcept or another
+			// consumer demands the base/member result after layout.
+			info.exception_specification_state =
+				EXCEPTION_SPECIFICATION_DEFERRED;
+		}
 		if (source_definition)
 			info.definition_body =
 				FunctionDefinitionPart(node, "compound-statement");

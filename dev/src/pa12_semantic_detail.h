@@ -28,6 +28,10 @@ class RetainedTemplateValidator;
 
 bool TemplateArgumentsNeedInternalEmission(const Program& program,
 	const std::vector<TemplateArgument>& arguments);
+bool TypeContainsDependentTemplateShape(const Program& program, TypeId type,
+	std::size_t depth);
+bool ClassTemplateArgumentsHaveDependentShape(const Program& program,
+	const std::vector<TemplateArgument>& arguments);
 void PublishFunctionTemplateInternalEmission(Program* program,
 	BindingId binding, BindingId canonical,
 	const std::vector<TemplateArgument>& arguments);

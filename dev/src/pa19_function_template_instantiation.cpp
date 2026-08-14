@@ -2127,7 +2127,30 @@ void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 	const FunctionInfo function = GetFunction(binding);
 	try
 	{
-		if (function.inherited_constructor_source != kNoBinding &&
+		if (function.defaulted_destructor &&
+			function.template_pattern == kNoDumpEdge)
+		{
+			const EntityId owner = program_->bindings[binding].member_owner;
+			if (owner == kNoEntity || owner >= program_->entities.size())
+				throw std::logic_error(
+					"defaulted destructor has no class owner");
+			if (!program_->entities[owner].layout_complete)
+			{
+				// A query during recursive class formation is conservative and
+				// leaves the fact available for the first post-layout demand.
+				GetMutableFunction(binding).exception_specification_state =
+					EXCEPTION_SPECIFICATION_DEFERRED;
+				return;
+			}
+			const bool trivial =
+				program_->entities[owner].trivial_destructor;
+			ScopedEntityContext class_context(
+				&current_class_context_, owner);
+			CompleteDefaultedDestructor(owner, binding);
+			program_->entities[owner].trivial_destructor = trivial &&
+				!GetFunction(binding).deleted_destructor;
+		}
+		else if (function.inherited_constructor_source != kNoBinding &&
 			function.template_pattern == kNoDumpEdge)
 		{
 			const BindingId source = program_->bindings[
