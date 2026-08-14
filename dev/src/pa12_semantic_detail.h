@@ -1948,7 +1948,7 @@ private:
 	};
 	IndexedSequenceTable function_template_using_fact_sets_;
 	std::vector<FunctionTemplateUsingFact> function_template_using_facts_;
-	IndexedSequenceTable template_argument_pack_bindings_;
+	TemplateArgumentPackBindingTable template_argument_pack_bindings_;
 	std::vector<TemplateArgument> template_argument_pack_values_;
 	IndexedSequenceTable function_parameter_pack_bindings_;
 	IndexedSequenceTable retained_call_function_sets_;

@@ -8,15 +8,25 @@ requirements are canonical typed identity and phase flow (§2, §6), demand-owne
 template specialization (§4), and bounded, observable heavy-header work (§9).
 The shared front end owns all changes; no hosted-only route is introduced.
 
+Retained enclosing packs are published once under their canonical `(scope,
+name)` key. The binding table provides both direct lookup and a dense-scope
+secondary index; result-identity requests walk lexical owners once and use a
+flat request-local binding map. Immutable parent overlays remain reserved for
+alias/default substitution. This keeps work proportional to result syntax,
+visible pack facts, and bound values, and the result-identity counters include
+both discovery and substitution work.
+
 ## Current Failure Map
 
-Current PA35 is 48/103. The 55 failures group by first diagnostic and owning
-boundary: constexpr/static evaluation 24; explicit specialization or
+Current PA35 is 48/104 tracked: the required compile report is 48/103 with 55
+failures, while the single PA35 run test is outside that compile-only target.
+The compile failures group by first diagnostic and owning boundary:
+constexpr/static evaluation 24; explicit specialization or
 instantiation identity 7; inherited partial-specialization aliases 6;
 expression/call/access lookup 9; stream-path stability 5; native object/register
 lowering 3; and retained special-member exception identity 1.
 
-## Active Checkpoint
+## Next Substantial Checkpoint
 
 **Constant-expression trait closure.** Per `spec.md` §§2, 4, and 6, deferred
 trait expressions must retain canonical declaration/specialization identity
@@ -30,15 +40,13 @@ families, PA35, PA1-34, audit, and doubled independent trait families.
 
 ## Performance Evidence
 
-For 256/512 combined retained-cast, two-pack, constexpr-shape, runtime-atomic,
-and cv-special-member families, semantic nodes were 2,574/5,134, instructions
-1,030/2,054, and typed storage 0.437/0.871 MB. Semantic/lowering time was
-79.9/163.2 ms and 2.36/4.41 ms (2.04x/1.87x); wall time was 0.13/0.26 s and
-peak RSS 19.3/30.9 MB.
-
-For 256/512 declaration-only retained-owner families whose function result
-expands an enclosing class pack, wall time was 0.10/0.20 s (2.00x) and peak RSS
-was 15.2/24.1 MB (1.58x); both completed without identity-growth failures.
+A nested retained-owner probe referenced every independent enclosing pack in
+one member-template result. At depths 32/64, result environment probes changed
+from 695/2,472 before audit to 162/322 after audit. The corrected syntax counter,
+which now includes the formerly uncounted discovery walk, was 202/394. Median
+semantic time was 18.85/67.93 ms, wall time 0.02/0.08 s, peak RSS 8.7/10.6 MiB,
+and semantic peak storage 1.17/3.80 MB. The affected lookup work is linear in
+pack depth; total work still follows the probe's 1,329/4,689 generated scopes.
 
 ## Completed Checkpoints
 
@@ -57,4 +65,4 @@ was 15.2/24.1 MB (1.58x); both completed without identity-growth failures.
 | Qualified nested-member replay | canonical current specialization, definition parameters, retained operator call, constexpr string array, and local-class access | PA35 19 -> 21/103; PA1-34 4756/4756; audit/focused/scaling pass |
 | Demand-safe declarations and function-local lowering | incomplete parameter ABI deferred; nested cleanup bounded; shared node/binding slots reset per function; direct class calls retained as objects | PA35 21 -> 36/103; PA1-34 4756/4756; focused/scaling/audit pass |
 | Target-typed casts and bounded hosted shapes | braced casts, specialization-local constexpr, symbolic packs, runtime atomic order, and cv-overloaded special members | PA35 36 -> 41/103; PA1-34 4756/4756; behavior/scaling/audit pass |
-| Retained current-class ownership | canonical owner/member view, enclosing packs, and member-template result calls | PA35 41 -> 48/103; PA1-34 4756/4756; 2x scaling and audit pass |
+| Retained current-class ownership | canonical owner/member view, enclosing packs, and member-template result calls; audited pack facts use one direct/per-scope index | PA35 41 -> 48/103 compile (48/104 tracked); PA1-34 4756/4756; retained-pack probes linear; file audit pass |

@@ -138,6 +138,107 @@ std::size_t CompactIndexSequence::StorageBytes() const
 	return overflow_.capacity() * sizeof(std::size_t);
 }
 
+TemplateArgumentPackBindingTable::Entry::Entry(
+	std::uint64_t key_value, std::uint32_t next_value)
+	: key(key_value), next_in_scope(next_value)
+{
+}
+
+TemplateArgumentPackBindingTable::TemplateArgumentPackBindingTable()
+	: slots_(32, 0)
+{
+}
+
+std::size_t TemplateArgumentPackBindingTable::Hash(std::uint64_t key)
+{
+	return MixHash(static_cast<std::size_t>(key >> 32),
+		static_cast<std::uint32_t>(key));
+}
+
+void TemplateArgumentPackBindingTable::Rehash(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < entries_.size(); ++i)
+	{
+		std::size_t slot = Hash(entries_[i].key) & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	slots_.swap(replacement);
+}
+
+CompactIndexSequence& TemplateArgumentPackBindingTable::Insert(
+	ScopeId scope, NameId name)
+{
+	if (scope == kNoScope || name == 0)
+		throw std::logic_error("template argument pack key is invalid");
+	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
+		Rehash(slots_.size() * 2);
+	const std::uint64_t key =
+		(static_cast<std::uint64_t>(scope) << 32) | name;
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = Hash(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		if (entries_[slots_[slot] - 1].key == key)
+			throw std::logic_error(
+				"template argument pack rebound in one scope");
+		slot = (slot + 1) & mask;
+	}
+	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many template argument pack bindings");
+	if (scope_heads_.size() <= scope)
+		scope_heads_.resize(static_cast<std::size_t>(scope) + 1, 0);
+	entries_.push_back(Entry(key, scope_heads_[scope]));
+	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
+	scope_heads_[scope] = static_cast<std::uint32_t>(entries_.size());
+	return entries_.back().values;
+}
+
+const CompactIndexSequence* TemplateArgumentPackBindingTable::Find(
+	std::uint64_t key) const
+{
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = Hash(key) & mask;
+	while (slots_[slot] != 0)
+	{
+		const Entry& entry = entries_[slots_[slot] - 1];
+		if (entry.key == key) return &entry.values;
+		slot = (slot + 1) & mask;
+	}
+	return 0;
+}
+
+void TemplateArgumentPackBindingTable::CopyNames(
+	ScopeId scope, std::vector<NameId>* names) const
+{
+	names->clear();
+	if (scope >= scope_heads_.size()) return;
+	for (std::uint32_t link = scope_heads_[scope]; link != 0;)
+	{
+		if (link > entries_.size())
+			throw std::logic_error(
+				"template argument pack scope index is invalid");
+		const Entry& entry = entries_[link - 1];
+		if (static_cast<ScopeId>(entry.key >> 32) != scope)
+			throw std::logic_error(
+				"template argument pack scope index owner is invalid");
+		names->push_back(static_cast<NameId>(entry.key));
+		link = entry.next_in_scope;
+	}
+}
+
+std::size_t TemplateArgumentPackBindingTable::StorageBytes() const
+{
+	std::size_t bytes = entries_.capacity() * sizeof(Entry) +
+		slots_.capacity() * sizeof(std::uint32_t) +
+		scope_heads_.capacity() * sizeof(std::uint32_t);
+	for (std::size_t i = 0; i < entries_.size(); ++i)
+		bytes += entries_[i].values.StorageBytes();
+	return bytes;
+}
+
 IndexedSequenceTable::Entry::Entry(std::uint64_t key_value)
 	: key(key_value)
 {

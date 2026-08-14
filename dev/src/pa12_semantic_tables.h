@@ -130,6 +130,34 @@ private:
 	std::size_t size_;
 };
 
+// One canonical (scope, name) pack fact with both direct and per-scope access.
+// The secondary links avoid either rescanning all packs or duplicating their
+// names in a separate reverse table.
+class TemplateArgumentPackBindingTable
+{
+public:
+	TemplateArgumentPackBindingTable();
+	CompactIndexSequence& Insert(ScopeId scope, NameId name);
+	const CompactIndexSequence* Find(std::uint64_t key) const;
+	void CopyNames(ScopeId scope, std::vector<NameId>* names) const;
+	std::size_t StorageBytes() const;
+
+private:
+	struct Entry
+	{
+		std::uint64_t key;
+		CompactIndexSequence values;
+		std::uint32_t next_in_scope;
+		Entry(std::uint64_t key_value, std::uint32_t next_value);
+	};
+	static std::size_t Hash(std::uint64_t key);
+	void Rehash(std::size_t capacity);
+
+	std::vector<Entry> entries_;
+	std::vector<std::uint32_t> slots_;
+	std::vector<std::uint32_t> scope_heads_;
+};
+
 class IndexedSequenceTable
 {
 public:

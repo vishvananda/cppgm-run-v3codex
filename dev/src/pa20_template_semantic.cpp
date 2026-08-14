@@ -1338,11 +1338,8 @@ void SemanticAnalyzer::BindTemplateArgumentPack(ScopeId scope,
 	if (first > last || last > arguments.size())
 		throw std::logic_error("template argument pack range is invalid");
 	if (parameter.name == 0) return;
-	const std::uint64_t key =
-		(static_cast<std::uint64_t>(scope) << 32) | parameter.name;
-	CompactIndexSequence& values = template_argument_pack_bindings_.Ensure(key);
-	if (values.Size() != 0)
-		throw std::logic_error("template argument pack rebound in one scope");
+	CompactIndexSequence& values =
+		template_argument_pack_bindings_.Insert(scope, parameter.name);
 	for (std::size_t i = first; i < last; ++i)
 	{
 		if (arguments[i].kind != parameter.kind)
