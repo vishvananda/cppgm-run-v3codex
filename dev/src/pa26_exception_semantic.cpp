@@ -578,18 +578,28 @@ bool SemanticAnalyzer::CollectTemporaryObjects(std::uint32_t node,
 		direct_branch_root =
 			root.logical_operation != LOGICAL_OPERATION_NONE;
 	return CollectTemporaryObjectsImpl(node, temporaries, false,
-		direct_branch_root ? node : kNoDumpEdge, kNoDumpEdge, 0, false);
+		direct_branch_root ? node : kNoDumpEdge, kNoDumpEdge, 0, false,
+		!direct_branch_root);
 }
 
 bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 	std::vector<std::uint32_t>* temporaries, bool conditionally_evaluated,
 	std::uint32_t branch_owner, std::uint32_t branch_child,
-	std::size_t branch_depth, bool projected_subobject)
+	std::size_t branch_depth, bool projected_subobject,
+	bool collect_conditional_arms)
 {
 	if (node == kNoDumpEdge || node >= dump_.nodes.size()) return false;
 	++temporary_dependency_visits_;
 	DumpNode& record = dump_.nodes[node];
-	if (record.kind == DUMP_CONDITIONAL_ARM) return false;
+	if (record.kind == DUMP_CONDITIONAL_ARM)
+	{
+		if (!collect_conditional_arms || record.first_edge == kNoDumpEdge)
+			return false;
+		return CollectTemporaryObjectsImpl(
+			dump_.edges[record.first_edge].child, temporaries,
+			conditionally_evaluated, branch_owner, branch_child, branch_depth,
+			projected_subobject, collect_conditional_arms);
+	}
 	const bool short_circuit = record.kind == DUMP_BINARY_EXPRESSION &&
 		record.logical_operation != LOGICAL_OPERATION_NONE;
 	bool control_dependent = record.kind == DUMP_CONDITIONAL_EXPRESSION ||
@@ -608,7 +618,8 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 			branch_depth + (branch_only ? 1 : 0),
 			projected_subobject ||
 				(record.kind == DUMP_CAST_EXPRESSION &&
-				 record.base_projection_count != 0)) || control_dependent;
+				 record.base_projection_count != 0), collect_conditional_arms) ||
+			control_dependent;
 	}
 	if (record.kind == DUMP_TEMPORARY_OBJECT)
 	{

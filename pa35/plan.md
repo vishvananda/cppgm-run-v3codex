@@ -13,34 +13,36 @@ Braced class targets now complete through the specialization owner before
 list-initialization ranking; synthetic initializer-list layout and semantic
 definition completion remain separate monotonic facts. Promoted unsigned
 constant shifts reduce modulo their canonical width in both narrow and wide
-evaluators while signed overflow remains rejected.
+evaluators while signed overflow remains rejected. A direct lexical alias
+converges same-type namespace imports by canonical type identity without
+weakening imported/imported ambiguity; nested class-conditional arm temporaries
+join the enclosing full-expression cleanup graph.
 
 ## Current Failure Map
 
-PA35 is 144/146 (126/128 pre-existing tests) with two failures. The complete
-set groups by owner: callable-local retained lookup 1 (PA11/demand replay) and
-reactive register allocation 1 (native backend).
+PA35 is 148/150 (126/128 pre-existing tests) with two failures. Both now group
+under reactive GPR allocation in the native backend.
 
 ## Active Checkpoint
 
-**Callable-local retained lookup identity.** Per `spec.md` §§2-4, 6, demanded
-ordinary and lambda bodies retain their canonical callable and lexical scope;
-replay must not merge same-spelling locals from another callable. Data flows
-selected call -> emission/export demand -> retained body and callable owner ->
-PA11 indexed lexical lookup -> canonical binding -> typed lowering. PA11 owns
-lookup/ambiguity and demand replay supplies the active callable scope. Expected
-work is O(lexical depth + same-name declarations), with no whole-program scan.
-Validate the hosted export-closure failure, same-spelling locals and lambda
-captures across functions, 8/16 unreachable inline callees, PA35, PA1-34, and
-audit.
+**Bounded reactive GPR spilling.** Per `spec.md` §§6-9, typed LowIR lowers to
+function-local MIR whose allocator must preserve every live value across calls
+and constrained instructions without exhausting the finite register set. Data
+flows MIR blocks -> liveness/use positions -> register assignment -> bounded
+spill/reload slots -> encoded instructions. The native allocator owns pressure
+resolution; lowering and ABI call facts are immutable inputs. Expected work is
+O(MIR size log live ranges) or better with function-local storage. Validate both
+hosted failures, call-clobber and address/value pressure probes, 8/16/32 live
+values, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen unsigned modulo-shift assertions produced 53/101 semantic nodes
-and 122/234 tokens, with no specialization requests or demand pushes. Peak
-semantic storage was 45,613/69,175 bytes; five-run median semantic analysis was
-0.201/0.268 ms and lowering was 0.052/0.057 ms. Each typed shift performs fixed
-work, and measured front-end growth remains bounded near linearly.
+Eight/sixteen same-type namespace imports produced 25/41 semantic nodes, 15/23
+declarations, 18/26 lookup queries, and 23/39 scope visits, with no
+specialization or demand work. Peak semantic storage was 44,445/76,057 bytes;
+five-run median semantic analysis was 0.246/0.309 ms and lowering was
+0.131/0.129 ms. Indexed-edge traversal and O(1) canonical comparisons keep
+measured work bounded near linearly.
 
 ## Completed Checkpoints
 
@@ -85,3 +87,4 @@ work, and measured front-end growth remains bounded near linearly.
 | Hosted using-function redeclaration convergence | namespace imports skip only identity-equal local declarations while preserving same-signature conflicts between distinct entities | PA35 134/140 -> 137/142 (123/128 existing); address-qualified random passes, Mersenne advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
 | List/constructor candidate convergence | concrete braced targets complete before list classification; initializer-list ABI shells replay semantic members and implicit copy facts on demand | PA35 137/142 -> 141/144 (125/128 existing); both hosted barriers and two regressions pass; narrowing guard and 8/16 scaling pass |
 | Unsigned constant-shift modulo semantics | <=64-bit evaluation matches the existing wide path by normalizing discarded unsigned bits while preserving signed/count diagnostics | PA35 141/144 -> 144/146 (126/128 existing); Mersenne and two regressions pass; signed boundary guards and 8/16 scaling pass |
+| Direct/imported canonical aliases and enclosing conditional cleanup | direct aliases merge same-type namespace imports without weakening imported/imported or base lookup; nested arm temporaries publish into the enclosing lifetime graph | PA35 144/146 -> 148/150; four regressions and runtime lifetime probe pass; hosted export closure advances to backend; 8/16 scaling passes |

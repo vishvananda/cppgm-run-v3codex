@@ -1228,6 +1228,7 @@ protected:
 		if (derived.arena_.nodes[node].kind != DUMP_CONDITIONAL_ARM ||
 			children.empty())
 			throw std::logic_error("invalid class conditional arm");
+		const bool enclosing_cleanup = derived.full_expression_cleanup_active_;
 		if (children.size() != 1)
 		{
 			bool has_enclosing_unwind = false;
@@ -1243,10 +1244,11 @@ protected:
 					(void)derived.PrepareTemporaryObjectStorage(
 						action.lifetime_object);
 			}
-			BeginFullExpressionCleanup(children, 1);
+			if (!enclosing_cleanup) BeginFullExpressionCleanup(children, 1);
 		}
 		LowerClassDestination(children[0], destination);
-		if (children.size() != 1) CompleteFullExpressionCleanup();
+		if (children.size() != 1 && !enclosing_cleanup)
+			CompleteFullExpressionCleanup();
 	}
 
 	void LowerClassConditionalResult(std::uint32_t node,

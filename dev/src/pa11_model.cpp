@@ -1954,7 +1954,8 @@ LookupResult Program::DirectLookup(ScopeId scope, NameId name,
 }
 
 bool Program::MergeLookup(LookupResult* result,
-	const LookupResult& candidate, bool tolerate_ambiguity) const
+	const LookupResult& candidate, bool tolerate_ambiguity,
+	bool merge_equivalent_namespace_types) const
 {
 	if (candidate.Empty()) return true;
 	if (candidate.HasFunctionTemplateLookup())
@@ -1990,8 +1991,9 @@ bool Program::MergeLookup(LookupResult* result,
 	}
 	if (result->name_space != candidate.name_space ||
 		result->type != candidate.type ||
-		result->type_declaration_canonical !=
-			candidate.type_declaration_canonical)
+		(result->type_declaration_canonical !=
+			candidate.type_declaration_canonical &&
+			(!merge_equivalent_namespace_types || result->type == kNoType)))
 	{
 		if (tolerate_ambiguity) return false;
 		throw std::runtime_error("ambiguous PA11 lookup");
@@ -2210,6 +2212,7 @@ LookupResult Program::LookupUnqualifiedCandidate(ScopeId scope, NameId name,
 
 		++lookup_scope_visits;
 		result = DirectLookup(current, name, kind);
+		const bool direct_type_result = result.type != kNoType;
 		const EntityId scope_entity = scopes_[current].entity;
 		if (result.Empty() && scope_entity != kNoEntity &&
 			(entities[scope_entity].flavor == NAMED_STRUCT ||
@@ -2238,8 +2241,8 @@ LookupResult Program::LookupUnqualifiedCandidate(ScopeId scope, NameId name,
 			const LookupResult candidate = LookupGraphCandidate(
 				lookup_pending_targets_[pending], name, kind,
 				ambiguous ? &graph_ambiguous : 0);
-			if (graph_ambiguous ||
-				!MergeLookup(&result, candidate, ambiguous != 0))
+			if (graph_ambiguous || !MergeLookup(&result, candidate,
+				ambiguous != 0, direct_type_result))
 			{
 				*ambiguous = true;
 				collecting_lookup_dependencies_ = false;
