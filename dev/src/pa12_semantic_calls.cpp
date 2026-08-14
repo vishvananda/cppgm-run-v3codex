@@ -1879,6 +1879,41 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 		program_->types.RemoveTopCv(EffectiveType(destructor_type.type)) !=
 			destroyed_type)
 		throw std::runtime_error("class has no matching destructor");
+	if (host_object_emission_ &&
+		program_->entities[entity].trivial_destructor)
+	{
+		const FunctionInfo& function = GetFunction(destructor);
+		if (function.deleted_function || function.deleted_special_member)
+		{
+			if (CandidateSubstitutionActive())
+			{
+				*result = CandidateSubstitutionFailure();
+				return true;
+			}
+			throw std::runtime_error("selected function is deleted");
+		}
+		if (!CanAccessMember(destructor, entity, entity))
+		{
+			if (CandidateSubstitutionActive())
+			{
+				*result = CandidateSubstitutionFailure();
+				return true;
+			}
+			throw std::runtime_error("inaccessible member function");
+		}
+		const TypeId void_type =
+			program_->types.Fundamental(FUND_VOID);
+		const std::uint32_t discarded = MakeDump(DUMP_CAST_EXPRESSION,
+			void_type, VALUE_PRVALUE);
+		dump_.nodes[discarded].pseudo_destructor_call = true;
+		dump_.Add(discarded, object.node);
+		result->node = discarded;
+		result->type = void_type;
+		result->category = VALUE_PRVALUE;
+		++expression_count_;
+		*result = ApplyTarget(*result, target);
+		return true;
+	}
 	ExpressionInfo object_pointer = object;
 	if (arrow)
 	{
