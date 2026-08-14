@@ -2503,8 +2503,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		if (!template_patterns.empty())
 			program_->PublishFunctionTemplateName(scope, name);
 		CompactIndexSequence& aliases = function_sets_.Ensure(key);
-		CompactIndexSequence& ordinary_aliases =
-			ordinary_function_sets_.Ensure(key);
+		CompactIndexSequence& ordinary_aliases = ordinary_function_sets_.Ensure(key);
 		CompactIndexSequence& ordinary_nontemplate_aliases =
 			ordinary_nontemplate_function_sets_.Ensure(key);
 		for (std::size_t i = 0; i < functions.size(); ++i)
@@ -2512,14 +2511,15 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 			const FunctionInfo& function = GetFunction(functions[i]);
 			if (!CanAccessMember(functions[i], ordinary.naming_class))
 				throw std::runtime_error("inaccessible using function");
-			const FunctionSignatureKey signature_key(scope, name,
-				function.signature);
+			const FunctionSignatureKey signature_key(scope, name, function.signature);
 			++function_signature_lookups_;
-			if (function_declarations_.Find(signature_key) != kNoBinding)
+			const BindingId local_declaration = function_declarations_.Find(signature_key);
+			if (local_declaration != kNoBinding)
 			{
-				if (class_owner != kNoEntity) continue;
-				throw std::runtime_error(
-					"using function conflicts with declaration");
+				if (class_owner != kNoEntity ||
+					program_->bindings[local_declaration].canonical ==
+					program_->bindings[function.binding].canonical) continue;
+				throw std::runtime_error("using function conflicts with declaration");
 			}
 			const UsingFunctionIdentityKey identity(
 				scope, name, function.binding);
