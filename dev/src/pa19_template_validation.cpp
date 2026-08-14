@@ -1646,8 +1646,7 @@ void RetainedTemplateValidator::Run()
 			analyzer_.FindClassTemplate(lexical_scope_, owner);
 		if (pattern < analyzer_.class_templates_.size())
 		{
-			Declare(root, analyzer_.class_templates_[pattern].name,
-				RETAINED_TYPE_NAME);
+			DeclareClassType(root, analyzer_.class_templates_[pattern].name, false);
 			const ClassTemplatePattern& class_pattern =
 				analyzer_.class_templates_[pattern];
 			for (std::size_t i = 0; i < class_pattern.parameters.size(); ++i)
@@ -1841,6 +1840,20 @@ std::vector<BindingId> SemanticAnalyzer::RetainedFunctionCallCandidates(
 			++function_candidate_index_visits_;
 			result.push_back(static_cast<BindingId>((*retained_functions)[i]));
 		}
+	}
+	// Class-template specializations replay one retained syntax graph. A member
+	// function template in each specialization therefore shares callee NodeIds,
+	// while its nondependent alias lookup belongs to the concrete class owner.
+	// Reject a fact whose member owner is unreachable from its recorded naming
+	// class and rebuild that one call from the active specialization scope.
+	for (std::size_t i = 0; *naming_class != kNoEntity && i < result.size(); ++i)
+	{
+		const EntityId owner = program_->bindings[result[i]].member_owner;
+		if (owner == kNoEntity || program_->QueryBasePath(
+			*naming_class, owner, 0, 0, 0, 0)) continue;
+		*retained_lookup = false;
+		return FunctionCallCandidates(
+			scope, spelling, naming_class, callee, true);
 	}
 	return result;
 }
