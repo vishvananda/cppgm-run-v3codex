@@ -1328,14 +1328,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		if (callee_path.Empty()) callee_path = ParseNamePath(spelling);
 		const bool qualified_callee = callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
-		// Closed intrinsic handlers own builtin identity.  The PA34 handler runs
-		// afterward because its generic fallback may resolve __builtin_x as x.
+		// Closed intrinsic handlers own builtin identity.  Only after all of them
+		// decline may the PA34 compatibility fallback resolve __builtin_x as x.
 		if (TryAnalyzeImmediateBuiltinCall(
 			spelling, scope, argument_syntax, target, &builtin))
 			return builtin;
+		if (spelling == "__builtin_invoke")
+			return AnalyzeBuiltinInvoke(scope, argument_syntax,
+				arguments_analyzed ? &analyzed_arguments : 0, target);
 		if (TryAnalyzeCompilerFunctionBuiltin(spelling, scope,
 			argument_syntax, node, target, &builtin)) return builtin;
-		if (spelling == "__builtin_invoke") return AnalyzeBuiltinInvoke(scope, argument_syntax, arguments_analyzed ? &analyzed_arguments : 0, target);
+		if (TryAnalyzeCompilerFunctionAlias(spelling, scope, argument_syntax, target, &builtin)) return builtin;
 		EntityId function_naming_class = kNoEntity;
 		bool retained_lookup = false;
 		std::vector<BindingId> candidates = RetainedFunctionCallCandidates(

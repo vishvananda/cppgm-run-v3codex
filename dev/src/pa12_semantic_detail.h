@@ -1092,6 +1092,9 @@ private:
 	bool TryAnalyzeCompilerFunctionBuiltin(const std::string& spelling,
 		ScopeId scope, const std::vector<NodeId>& argument_syntax,
 		NodeId call_syntax, TypeId target, ExpressionInfo* result);
+	bool TryAnalyzeCompilerFunctionAlias(const std::string& spelling,
+		ScopeId scope, const std::vector<NodeId>& argument_syntax,
+		TypeId target, ExpressionInfo* result);
 	bool TryAnalyzeCompilerPredefinedValue(const std::string& spelling,
 		NodeId syntax, TypeId target, ExpressionInfo* result);
 	bool TryAnalyzeTypeofFunctionalCast(NodeId callee,

@@ -1,0 +1,22 @@
+int target(int value)
+{
+  return value + 1;
+}
+
+int invoke(int (*)(int), int)
+{
+  return 90;
+}
+
+int * addressof(int &)
+{
+  return 0;
+}
+
+int main()
+{
+  int value = 4;
+  const int invoked = __builtin_invoke(&target, value);
+  int * const addressed = __builtin_addressof(value);
+  return invoked == 5 && addressed == &value ? 0 : 1;
+}

@@ -388,6 +388,32 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 		*result = ApplyTarget(*result, target);
 		return true;
 	}
+	if (spelling != "__builtin_addressof") return false;
+	if (argument_syntax.size() != 1)
+		throw std::runtime_error("addressof requires one argument");
+	ExpressionInfo operand = AnalyzeExpression(argument_syntax[0], scope);
+	if (operand.category != VALUE_LVALUE)
+		throw std::runtime_error("addressof requires an lvalue");
+	if (operand.binding != kNoBinding &&
+		program_->bindings[operand.binding].bit_field)
+		throw std::runtime_error("addressof cannot address a bit-field");
+	const TypeId result_type = program_->types.Pointer(EffectiveType(operand.type));
+	const std::uint32_t expression = MakeDump(DUMP_UNARY_EXPRESSION,
+		result_type, VALUE_PRVALUE, program_->names.Intern("&"));
+	dump_.Add(expression, operand.node);
+	result->node = expression;
+	result->type = result_type;
+	result->category = VALUE_PRVALUE;
+	++expression_count_;
+	*result = ApplyTarget(*result, target);
+	return true;
+}
+
+bool SemanticAnalyzer::TryAnalyzeCompilerFunctionAlias(
+	const std::string& spelling, ScopeId scope,
+	const std::vector<NodeId>& argument_syntax, TypeId target,
+	ExpressionInfo* result)
+{
 	if (spelling.compare(0, 10, "__builtin_") == 0 &&
 		!hosted_builtin::FindIntegerIntrinsic(spelling) &&
 		!hosted_builtin::FindFloatingIntrinsic(spelling) &&
@@ -412,25 +438,7 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 			return true;
 		}
 	}
-	if (spelling != "__builtin_addressof") return false;
-	if (argument_syntax.size() != 1)
-		throw std::runtime_error("addressof requires one argument");
-	ExpressionInfo operand = AnalyzeExpression(argument_syntax[0], scope);
-	if (operand.category != VALUE_LVALUE)
-		throw std::runtime_error("addressof requires an lvalue");
-	if (operand.binding != kNoBinding &&
-		program_->bindings[operand.binding].bit_field)
-		throw std::runtime_error("addressof cannot address a bit-field");
-	const TypeId result_type = program_->types.Pointer(EffectiveType(operand.type));
-	const std::uint32_t expression = MakeDump(DUMP_UNARY_EXPRESSION,
-		result_type, VALUE_PRVALUE, program_->names.Intern("&"));
-	dump_.Add(expression, operand.node);
-	result->node = expression;
-	result->type = result_type;
-	result->category = VALUE_PRVALUE;
-	++expression_count_;
-	*result = ApplyTarget(*result, target);
-	return true;
+	return false;
 }
 
 }
