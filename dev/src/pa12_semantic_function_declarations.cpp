@@ -22,12 +22,14 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
 	if (spec.is_constexpr)
 		parsed.type = ApplyConstexprDeclaredFunctionType(parsed.type,
 			declaration_scope, parsed.name, function_owner);
-	if (spec.is_constexpr)
+	if (spec.is_constexpr && parsed.placeholder_return_kind ==
+		PLACEHOLDER_DECLARATOR_NONE)
 		ValidateConstexprCallableType(parsed.type, false);
 	const BindingId function = DeclareFunction(declaration_scope, parsed.name,
 		parsed.type, parsed.parameters, false, false, spec.storage_class,
 		current_language_linkage_, IsNonthrowing(declarator, syntax_scope));
 	ConfigureFunctionExceptionSpecification(function, declarator, syntax_scope);
+	ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 	ApplyFunctionAsmLabel(declarator, function);
 	ApplyFunctionAbiTagAttributes(item, function);
 	PublishInlineFunctionFacts(

@@ -1753,8 +1753,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	if (clause != kNoNode && list == kNoNode && target != kNoNode &&
 		AnalyzeExplicitTemplateSpecialization(target, scope, member_access))
 		return;
-	if (target != kNoNode &&
-		!arena_->IsTag(target, "template-declaration"))
+	if (target != kNoNode && arena_->IsTag(target, "deduction-guide-declaration")) return;
+	if (target != kNoNode && !arena_->IsTag(target, "template-declaration"))
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	if (target != kNoNode && arena_->IsTag(target, "alias-declaration"))
 	{
@@ -1894,7 +1894,7 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	std::uint32_t output_parent, bool local)
 {
-	if (arena_->IsTag(node, "empty-declaration")) return;
+	if (arena_->IsTag(node, "empty-declaration") || arena_->IsTag(node, "deduction-guide-declaration")) return;
 	if (arena_->IsTag(node, "layout-pack-push"))
 	{
 		const std::int64_t parsed = ParseInteger(arena_->Payload(node));

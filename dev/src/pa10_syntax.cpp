@@ -11,6 +11,7 @@
 #include "pa30_region_syntax.h"
 #include "pa34_gnu_asm_syntax.h"
 #include "pa34_aggregate_syntax.h"
+#include "pa34_template_syntax.h"
 #include <algorithm>
 #include <chrono>
 #include <cctype>
@@ -33,12 +34,14 @@ class Parser : private ParserNameFacts<Parser>,
 	private pa25_syntax_detail::RangeForSyntax<Parser>,
 	private pa30_syntax_detail::RegionSyntax<Parser>,
 	private pa34_syntax_detail::GnuAsmSyntax<Parser>,
-	private pa34_syntax_detail::AggregateSyntax<Parser>
+	private pa34_syntax_detail::AggregateSyntax<Parser>,
+	private pa34_syntax_detail::TemplateSyntax<Parser>
 {
 friend class ParserNameFacts<Parser>; friend class hosted_builtin::Syntax<Parser>;
 friend class hosted_extension::Syntax<Parser>; friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>; friend class pa30_syntax_detail::RegionSyntax<Parser>;
-friend class pa34_syntax_detail::GnuAsmSyntax<Parser>; friend class pa34_syntax_detail::AggregateSyntax<Parser>; public:
+friend class pa34_syntax_detail::GnuAsmSyntax<Parser>; friend class pa34_syntax_detail::AggregateSyntax<Parser>;
+friend class pa34_syntax_detail::TemplateSyntax<Parser>; public:
 	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
 		SyntaxArena& arena, SyntaxStats* stats)
 		: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats),
@@ -2296,10 +2299,7 @@ NodeId Parser::ParseCtorInitializer()
 NodeId Parser::ParseSpecialMember(bool)
 {
 	const Mark mark = Checkpoint();
-	std::vector<std::size_t> specifiers;
-	while (At(KW_INLINE) || At(KW_VIRTUAL) || At(KW_EXPLICIT) ||
-		At(KW_CONSTEXPR) || At(KW_FRIEND) || At(KW_STATIC))
-		specifiers.push_back(position_++);
+	const std::vector<NodeId> specifiers = ParseSpecialMemberSpecifiers();
 	SkipAttributes();
 	const std::size_t name_start = position_;
 	std::string name;
@@ -2397,13 +2397,7 @@ NodeId Parser::ParseSpecialMember(bool)
 	{
 		const NodeId set = arena_.Make("member-specifiers");
 		for (std::size_t i = 0; i < specifiers.size(); ++i)
-		{
-			const std::size_t specifier = specifiers[i];
-			if (tokens_[specifier].Kind() ==
-				static_cast<std::uint16_t>(KW_EXPLICIT))
-				arena_.Add(set, arena_.Make("specifier", "explicit"));
-			else arena_.Add(set, MakeTokenNode("specifier", specifier));
-		}
+			arena_.Add(set, specifiers[i]);
 		arena_.Add(member, set);
 	}
 	arena_.Add(member, declarator);
@@ -2936,6 +2930,8 @@ NodeId Parser::ParseDeclarationCore(bool in_class)
 		(StartsStandaloneEnumDeclaration() ? ParseEnum() :
 		 ParseSimpleOrFunction(in_class));
 	if (At(KW_STATIC_ASSERT)) return ParseStaticAssert();
+	const NodeId guide = TryParseDeductionGuideDeclaration();
+	if (guide != kNoNode) return guide;
 	const Mark special_mark = Checkpoint();
 	const NodeId special = ParseSpecialMember(true);
 	if (special != kNoNode) return special;

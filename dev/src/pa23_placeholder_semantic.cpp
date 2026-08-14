@@ -29,8 +29,11 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	NodeId item, NodeId declarator, const SpecInfo& spec, ScopeId scope,
 	bool local, ExpressionInfo* prepared_initializer)
 {
-	if (!spec.placeholder_auto)
-		return BuildDeclarator(declarator, spec.type, scope);
+	const bool function =
+		FindChild(declarator, "parameter-clause") != kNoNode;
+	if (!spec.placeholder_auto || function)
+		return BuildDeclarator(declarator, spec.type, scope,
+			spec.placeholder_auto);
 	if (!prepared_initializer)
 		throw std::logic_error(
 			"placeholder variable deduction has no result owner");
