@@ -538,6 +538,11 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			if (!candidate_names.Find(name)) continue;
 			++environment_probes;
 			if (root_bindings.Find(name)) continue;
+			// Enclosing class packs participate in the result's immutable
+			// environment even though they are not parameters of this function
+			// template. Mark them dependent before canonical type formation so
+			// the structural walk consumes the bound canonical arguments below.
+			dependent_names.insert(name);
 			const std::uint64_t key =
 				(static_cast<std::uint64_t>(scope) << 32) | name;
 			const CompactIndexSequence* values =

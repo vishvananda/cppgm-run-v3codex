@@ -1741,8 +1741,7 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 	std::vector<TemplateParameter> parameters;
 	std::vector<NameId> parameter_name_list;
 	std::vector<NodeId> defaults;
-	ParseTemplateParameters(list, scope, &parameters,
-		&parameter_name_list, &defaults);
+	ParseTemplateParameters(list, scope, &parameters, &parameter_name_list, &defaults);
 	NodeId target = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -1754,10 +1753,9 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		AnalyzeExplicitTemplateSpecialization(target, scope, member_access))
 		return;
 	if (target != kNoNode && arena_->IsTag(target, "deduction-guide-declaration")) return;
-	if (target != kNoNode && !arena_->IsTag(target, "template-declaration"))
-		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	if (target != kNoNode && arena_->IsTag(target, "alias-declaration"))
 	{
+		ValidateRetainedTemplateDefinition(target, scope, parameters);
 		RegisterAliasTemplate(target, scope, member_access, parameters);
 		return;
 	}
@@ -1765,6 +1763,8 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		AnalyzeFriendClassTemplate(target, scope, parameters)) return;
 	if (target != kNoNode && class_template_member_replay_depth_ == 0 &&
 		AnalyzeClassTemplateMember(target, scope, parameters)) return;
+	if (target != kNoNode && !arena_->IsTag(target, "template-declaration"))
+		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	if (target != kNoNode &&
 		(arena_->IsTag(target, "class-specifier") ||
 		 arena_->IsTag(target, "class-forward-declaration")))

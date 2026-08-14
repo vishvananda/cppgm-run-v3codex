@@ -873,6 +873,29 @@ bool SemanticAnalyzer::AnalyzeClassTemplateMember(NodeId declaration,
 			return false;
 	}
 	SelectClassTemplateMemberOwner(pattern_index, &member);
+	if (!arena_->IsTag(declaration, "template-declaration"))
+	{
+		// Owner selection can instantiate nested templates and grow the pattern
+		// table, so reacquire the record instead of retaining a vector reference
+		// across that boundary.
+		const ClassTemplatePattern& selected_owner_pattern =
+			class_templates_[pattern_index];
+		NodeId class_declaration = selected_owner_pattern.declaration;
+		if (member.owner_partial_pattern != kNoDumpEdge)
+		{
+			if (member.owner_partial_pattern >=
+				selected_owner_pattern.partial_specializations.size())
+				throw std::logic_error(
+					"class template member partial owner is invalid");
+			class_declaration = selected_owner_pattern.partial_specializations[
+				member.owner_partial_pattern].declaration;
+		}
+		// Declaration-time validation borrows the selected pattern's member
+		// names. Concrete replay still resolves those names in the canonical
+		// specialization scope and publishes the substituted type identities.
+		ValidateRetainedTemplateDefinition(
+			declaration, scope, parameters, class_declaration);
+	}
 
 	const bool demand_definition =
 		arena_->IsTag(described_declaration, "simple-declaration");

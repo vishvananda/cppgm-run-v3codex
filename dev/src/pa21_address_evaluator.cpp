@@ -157,16 +157,20 @@ std::uint32_t SemanticAnalyzer::LvalueAddress(ExpressionInfo* expression)
 			}
 		}
 		const BindingId canonical = binding.canonical;
-		const bool function = binding.kind == BIND_FUNCTION;
 		const TypeRecord storage = program_->types.Get(
 			program_->types.RemoveTopCv(EffectiveType(binding.type)));
-		if (!function && storage.kind == TYPE_ARRAY && storage.bound == 0)
+		const bool function_binding = binding.kind == BIND_FUNCTION;
+		const bool function_storage = storage.kind == TYPE_FUNCTION;
+		if (!function_storage && storage.kind == TYPE_ARRAY &&
+			storage.bound == 0)
 			return kNoConstexprAddress;
-		const std::int64_t extent = function ? 0 :
+		// A parameter can be a reference to a function. Its binding remains a
+		// parameter identity, but the referred function has no object extent.
+		const std::int64_t extent = function_storage ? 0 :
 			static_cast<std::int64_t>(program_->SizeOf(
 				EffectiveType(binding.type)));
 		const std::uint32_t address = InternConstexprAddress(
-			ConstexprAddressValue(function ? CONSTEXPR_ADDRESS_FUNCTION :
+			ConstexprAddressValue(function_binding ? CONSTEXPR_ADDRESS_FUNCTION :
 				CONSTEXPR_ADDRESS_BINDING, canonical, 0, 0, extent));
 		SetExpressionLvalueAddress(expression, address);
 		return address;

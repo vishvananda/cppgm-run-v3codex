@@ -278,7 +278,8 @@ private:
 		bool definition);
 	bool ConstructorSubobjectsAreEmpty(BindingId constructor);
 	void ValidateRetainedTemplateDefinition(NodeId target, ScopeId scope,
-		const std::vector<TemplateParameter>& parameters);
+		const std::vector<TemplateParameter>& parameters,
+		NodeId class_declaration = kNoNode);
 	void RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 		const std::string& spelling, bool adl_eligible);
 	void PublishRetainedCallLookup(NodeId callee,

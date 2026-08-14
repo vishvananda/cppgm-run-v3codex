@@ -157,9 +157,26 @@ void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
 	const std::string spelling = arena_->Payload(declaration);
 	const NamePath path = ParseNamePath(spelling);
 	const NodeId structure = FindChild(declaration, "structured-type-name");
-	const LookupResult found = structure != kNoNode ?
-		LookupStructuredName(declaration, class_scope, LOOKUP_TYPE) :
-		LookupSpelling(class_scope, spelling, LOOKUP_TYPE);
+	LookupResult found;
+	if (structure != kNoNode)
+	{
+		// Friendship needs the canonical class identity, not its definition or
+		// layout. In particular, mutually befriending class specializations may
+		// contain one another after the first specialization completes.
+		++class_template_completion_suppressed_depth_;
+		try
+		{
+			found = LookupStructuredName(
+				declaration, class_scope, LOOKUP_TYPE);
+		}
+		catch (...)
+		{
+			--class_template_completion_suppressed_depth_;
+			throw;
+		}
+		--class_template_completion_suppressed_depth_;
+	}
+	else found = LookupSpelling(class_scope, spelling, LOOKUP_TYPE);
 	TypeId friend_type = found.type;
 	if (friend_type != kNoType && found.type_declaration != kNoBinding &&
 		!CanAccessMember(found.type_declaration, found.naming_class))

@@ -71,9 +71,10 @@ class RetainedTemplateValidator
 {
 public:
 	RetainedTemplateValidator(SemanticAnalyzer& analyzer, NodeId target,
-		ScopeId lexical_scope, const std::vector<TemplateParameter>& parameters)
+		ScopeId lexical_scope, const std::vector<TemplateParameter>& parameters,
+		NodeId class_declaration)
 		: analyzer_(analyzer), target_(target), lexical_scope_(lexical_scope),
-		  parameters_(parameters) {}
+		  parameters_(parameters), class_declaration_(class_declaration) {}
 
 	void Run();
 
@@ -129,6 +130,7 @@ private:
 	NodeId target_;
 	ScopeId lexical_scope_;
 	const std::vector<TemplateParameter>& parameters_;
+	NodeId class_declaration_;
 	std::unordered_set<NameId> parameter_names_;
 	std::unordered_set<NodeId> template_argument_validation_visited_;
 	std::vector<RetainedScope> scopes_;
@@ -1444,7 +1446,8 @@ void RetainedTemplateValidator::Run()
 					scopes_[root].names[class_pattern.parameters[i].name] |=
 						class_pattern.parameters[i].kind == TEMPLATE_ARGUMENT_INTEGRAL ?
 							RETAINED_VALUE_NAME : RETAINED_TYPE_NAME;
-			PredeclareClassMembers(class_pattern.declaration, root);
+			PredeclareClassMembers(class_declaration_ == kNoNode ?
+				class_pattern.declaration : class_declaration_, root);
 		}
 	}
 	while (analyzer_.function_template_shape_parameters_.size() <
@@ -1501,9 +1504,11 @@ void RetainedTemplateValidator::Run()
 }
 
 void SemanticAnalyzer::ValidateRetainedTemplateDefinition(NodeId target,
-	ScopeId scope, const std::vector<TemplateParameter>& parameters)
+	ScopeId scope, const std::vector<TemplateParameter>& parameters,
+	NodeId class_declaration)
 {
-	RetainedTemplateValidator(*this, target, scope, parameters).Run();
+	RetainedTemplateValidator(
+		*this, target, scope, parameters, class_declaration).Run();
 }
 
 void SemanticAnalyzer::PublishRetainedCallLookup(NodeId callee,
