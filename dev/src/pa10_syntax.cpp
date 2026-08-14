@@ -793,8 +793,8 @@ NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 		if (!saw_type && At(KW_DECLTYPE))
 		{
 			const std::size_t first = position_++;
-			Expect(OP_LPAREN);
-			const NodeId expression = ParseExpression();
+			Expect(OP_LPAREN); const bool nested_template_argument = angle_stop_depth_ != 0; if (nested_template_argument) --angle_stop_depth_;
+			const NodeId expression = ParseExpression(); if (nested_template_argument) ++angle_stop_depth_;
 			if (expression == kNoNode) throw Error("expected decltype expression");
 			Expect(OP_RPAREN);
 			const NodeId qualified =
@@ -2628,7 +2628,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	const std::size_t first = position_++;
 	std::size_t key = std::numeric_limits<std::size_t>::max();
 	if (At(KW_CLASS) || At(KW_STRUCT)) key = position_++;
-	std::string name;
+	SkipAttributes(); std::string name;
 	if (AtIdentifier())
 	{
 		if (!ParseName(&name, true, false)) throw Error("expected enum name");
@@ -2911,7 +2911,7 @@ NodeId Parser::ParseDeclarationCore(bool in_class)
 		// already-parsed specifier to the ordinary declaration tail.
 		const Mark class_mark = Checkpoint();
 		const std::size_t specifier_first = position_;
-		const NodeId class_specifier = ParseClass(false);
+		const NodeId class_specifier = ParseClass(false); SkipAttributes();
 		const NodeId specifiers = arena_.Make("decl-specifier-seq");
 		arena_.Add(specifiers, class_specifier);
 		while (At(KW_CONST) || At(KW_VOLATILE))

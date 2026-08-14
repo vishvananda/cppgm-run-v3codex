@@ -94,7 +94,10 @@ protected:
 		Derived& parser = static_cast<Derived&>(*this);
 		const std::size_t first = parser.position_++;
 		parser.Expect(OP_LPAREN);
+		const bool nested_template_argument = parser.angle_stop_depth_ != 0;
+		if (nested_template_argument) --parser.angle_stop_depth_;
 		const NodeId operand = parser.ParseExpression();
+		if (nested_template_argument) ++parser.angle_stop_depth_;
 		if (operand == kNoNode)
 			throw parser.Error("expected decltype expression");
 		parser.Expect(OP_RPAREN);
@@ -201,7 +204,7 @@ protected:
 			first_argument_kind == static_cast<std::uint16_t>(KW_ENUM) ||
 			first_argument_kind == static_cast<std::uint16_t>(KW_CONST) ||
 			first_argument_kind == static_cast<std::uint16_t>(KW_VOLATILE);
-		if (!qualified_candidate && known_non_template &&
+		if (!explicitly_templated && !qualified_candidate && known_non_template &&
 			(!known_template || active_non_type_parameter) &&
 			!unambiguous_type_argument)
 		{
@@ -210,7 +213,7 @@ protected:
 				parser.name_fact_revision_;
 			return kNoNode;
 		}
-		const bool trusted = qualified_candidate || known_template ||
+		const bool trusted = explicitly_templated || qualified_candidate || known_template ||
 			unambiguous_type_argument ||
 			(!known_non_template && candidate.find('T') != std::string::npos);
 		const typename Derived::Mark mark = parser.Checkpoint();

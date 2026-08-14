@@ -24,6 +24,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		friend_function_grants_.StorageBytes() +
 		function_declarations_.StorageBytes() +
 		using_function_declarations_.StorageBytes() +
+		using_function_identities_.StorageBytes() +
 		function_template_specialization_declarations_.StorageBytes() +
 		member_ref_qualifier_shapes_.StorageBytes() +
 		function_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
@@ -78,6 +79,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		function_templates_.size() * sizeof(FunctionTemplatePattern) +
 		function_template_shape_parameters_.capacity() * sizeof(TypeId) +
 		dependent_template_argument_shapes_.capacity() * sizeof(TypeId) +
+		dependent_qualified_type_shapes_.capacity() * sizeof(TypeId) +
 		template_function_sets_.StorageBytes() +
 		function_template_using_fact_sets_.StorageBytes() +
 		function_template_using_facts_.capacity() *

@@ -33,6 +33,16 @@ void PublishFunctionTemplateInternalEmission(Program* program,
 	const std::vector<TemplateArgument>& arguments);
 bool IsExtendedFloatingFundamental(FundamentalKind kind);
 int FloatingConversionRank(FundamentalKind kind);
+std::uint32_t NextComparableTemplateSyntaxEdge(const SyntaxArena& arena,
+	std::uint32_t edge, bool ignore_global_qualifier);
+bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
+	NodeId left, NodeId right,
+	const std::vector<TemplateParameter>& left_parameters,
+	const std::vector<TemplateParameter>& right_parameters,
+	NodeId left_global_owner = kNoNode,
+	NodeId right_global_owner = kNoNode,
+	Program* program = 0, ScopeId left_scope = kNoScope,
+	ScopeId right_scope = kNoScope);
 
 struct SemanticGraphStorage
 {
@@ -182,7 +192,10 @@ private:
 	LookupResult LookupPath(ScopeId scope, const NamePath& path,
 		LookupKind kind);
 	LookupResult LookupStructuredName(NodeId syntax, ScopeId scope,
-		LookupKind kind, ScopeId* terminal_owner = 0);
+		LookupKind kind, ScopeId* terminal_owner = 0,
+		bool defer_dependent_type = false,
+		bool defer_dependent_specialization = false);
+	TypeId DependentQualifiedTypeShape(NodeId syntax);
 	LookupResult LookupExplicitUnqualifiedTemplateName(
 		ScopeId scope, NameId name, LookupKind kind);
 	NamePath StructuredNamePath(NodeId syntax);
@@ -278,7 +291,8 @@ private:
 		const LookupResult& found, NameId requested) const;
 	bool IsUnqualifiedAliasTemplateName(ScopeId scope, const NamePath& path);
 	LookupResult LookupStructuredTypeSpecifier(
-		NodeId syntax, ScopeId scope, TypeId deferred_type);
+		NodeId syntax, ScopeId scope, TypeId deferred_type,
+		bool typename_specifier);
 	TypeId InstantiateAliasTemplate(std::size_t index,
 		const std::vector<TemplateArgument>& arguments);
 	bool BuildTemplateTemplateArgument(NodeId syntax, ScopeId scope,
@@ -1123,6 +1137,7 @@ private:
 		const std::string& spelling, NodeId syntax = kNoNode);
 	bool IsClassObjectType(TypeId type) const;
 	bool IsConstexprLiteralType(TypeId type) const;
+	bool IsConstexprConstructorOwnerType(EntityId entity) const;
 	bool IsConstexprDefaultConstructibleType(TypeId type) const;
 	bool IsConstexprImplicitDefaultConstructor(EntityId entity) const;
 	bool IsVolatileSubobjectType(TypeId type) const;
@@ -1840,6 +1855,7 @@ private:
 	IndexedSequenceTable friend_function_grants_;
 	FunctionSignatureTable function_declarations_;
 	FunctionSignatureTable using_function_declarations_;
+	UsingFunctionIdentityTable using_function_identities_;
 	FunctionSignatureTable function_template_specialization_declarations_;
 	FunctionSignatureTable member_ref_qualifier_shapes_;
 	std::vector<std::uint32_t> function_fact_by_binding_;
@@ -1907,6 +1923,7 @@ private:
 	std::deque<FunctionTemplatePattern> function_templates_;
 	std::vector<TypeId> function_template_shape_parameters_;
 	std::vector<TypeId> dependent_template_argument_shapes_;
+	std::vector<TypeId> dependent_qualified_type_shapes_;
 	TypeId function_template_dependent_result_shape_;
 	TypeId function_template_nondeduced_type_shape_;
 	TypeId class_template_nondeduced_type_shape_;

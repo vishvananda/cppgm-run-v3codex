@@ -39,6 +39,35 @@ struct FunctionSignatureHash
 	}
 };
 
+struct UsingFunctionIdentityKey
+{
+	ScopeId owner;
+	NameId name;
+	BindingId canonical;
+
+	UsingFunctionIdentityKey(ScopeId owner_value, NameId name_value,
+		BindingId canonical_value)
+		: owner(owner_value), name(name_value), canonical(canonical_value) {}
+	bool operator==(const UsingFunctionIdentityKey& other) const
+	{
+		return owner == other.owner && name == other.name &&
+			canonical == other.canonical;
+	}
+};
+
+class UsingFunctionIdentityTable
+{
+public:
+	UsingFunctionIdentityTable();
+	bool Insert(const UsingFunctionIdentityKey& key);
+	std::size_t StorageBytes() const;
+
+private:
+	void Rehash(std::size_t capacity);
+	std::vector<UsingFunctionIdentityKey> entries_;
+	std::vector<std::uint32_t> slots_;
+};
+
 struct EnumOperatorCandidateKey
 {
 	ScopeId owner;

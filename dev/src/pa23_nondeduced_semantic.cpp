@@ -107,7 +107,8 @@ LookupResult SemanticAnalyzer::ResolveClassDirectBase(
 	LookupResult result;
 	const NodeId structured = FindChild(base_name, "structured-type-name");
 	if (structured != kNoNode)
-		result.type = ResolveStructuredTypeName(structured, scope);
+		result = LookupStructuredName(
+			structured, scope, LOOKUP_TYPE, 0, true, true);
 	else
 	{
 		const NodeId expression = FirstSemanticChild(base_name);

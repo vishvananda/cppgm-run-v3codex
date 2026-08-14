@@ -410,7 +410,8 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 }
 
 LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
-	ScopeId scope, LookupKind kind, ScopeId* terminal_owner)
+	ScopeId scope, LookupKind kind, ScopeId* terminal_owner,
+	bool defer_dependent_type, bool defer_dependent_specialization)
 {
 	TypeId builtin_pack_type = kNoType; if (kind == LOOKUP_TYPE && (TryResolveBuiltinTypePackElement(syntax, scope, &builtin_pack_type) || TryResolveBuiltinMakeIntegerSequence(syntax, scope, &builtin_pack_type))) { LookupResult result; result.type = builtin_pack_type; return result; }
 	if (terminal_owner) *terminal_owner = kNoScope;
@@ -534,6 +535,17 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 		if (terminal) return found;
 		if (found.type != kNoType)
 		{
+			const TypeRecord& carrier_type = program_->types.Get(found.type);
+			if (defer_dependent_type && kind == LOOKUP_TYPE &&
+				carrier_type.kind == TYPE_NAMED &&
+				(program_->entities[carrier_type.entity].flavor ==
+					NAMED_TYPENAME_PARAMETER ||
+				 (defer_dependent_specialization &&
+				  FunctionTemplateTypeIsDependent(found.type))))
+			{
+				found.type = DependentQualifiedTypeShape(structure);
+				return found;
+			}
 			EnsureClassDefinition(found.type);
 			carrier = program_->ScopeForType(found.type);
 		}
@@ -1153,31 +1165,12 @@ bool SemanticAnalyzer::EquivalentNondeducedTypeArgumentShape(NodeId left,
 	const std::vector<TemplateParameter>& left_parameters, NodeId right,
 	const std::vector<TemplateParameter>& right_parameters)
 {
-	NodeId left_type = arena_->IsTag(left, "type-id") ? left :
+	const NodeId left_type = arena_->IsTag(left, "type-id") ? left :
 		FindChild(left, "type-id");
-	NodeId right_type = arena_->IsTag(right, "type-id") ? right :
+	const NodeId right_type = arena_->IsTag(right, "type-id") ? right :
 		FindChild(right, "type-id");
-	const NodeId left_specs = FindChild(left_type, "type-specifier-seq");
-	const NodeId right_specs = FindChild(right_type, "type-specifier-seq");
-	const NodeId left_name = FirstSemanticChild(left_specs);
-	const NodeId right_name = FirstSemanticChild(right_specs);
-	const NamePath left_path = StructuredNamePath(left_name);
-	const NamePath right_path = StructuredNamePath(right_name);
-	if (left_path.global != right_path.global ||
-		left_path.Size() != right_path.Size() || left_path.Empty()) return false;
-	for (std::size_t component = 0; component < left_path.Size(); ++component)
-	{
-		if (left_path[component] == right_path[component]) continue;
-		std::size_t left_parameter = left_parameters.size();
-		std::size_t right_parameter = right_parameters.size();
-		for (std::size_t p = 0; p < left_parameters.size(); ++p)
-			if (left_parameters[p].name == left_path[component]) left_parameter = p;
-		for (std::size_t p = 0; p < right_parameters.size(); ++p)
-			if (right_parameters[p].name == right_path[component]) right_parameter = p;
-		if (left_parameter != right_parameter ||
-			left_parameter == left_parameters.size()) return false;
-	}
-	return true;
+	return EquivalentNormalizedTemplateSyntax(*arena_, left_type, right_type,
+		left_parameters, right_parameters);
 }
 
 void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
@@ -1232,26 +1225,33 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 				prior.parameters, prior.arguments, prior.lexical_scope,
 				&prior.canonical_arguments, &prior.canonical_argument_state) ||
 				partial.canonical_argument_state != 1) continue;
-			FunctionTemplateDeduction prior_from_new(prior.parameters);
-			FunctionTemplateDeduction new_from_prior(partial.parameters);
-			if (!MatchTemplatePartialArguments(prior.parameters,
-				prior.canonical_arguments, partial.canonical_arguments,
-				&prior_from_new) ||
-				!MatchTemplatePartialArguments(partial.parameters,
-					partial.canonical_arguments, prior.canonical_arguments,
-					&new_from_prior)) continue;
-			bool same_nondeduced_shapes = true;
+			if (prior.canonical_arguments.size() !=
+				partial.canonical_arguments.size()) continue;
+			bool same_canonical_shape = true;
 			for (std::size_t argument = 0;
 				argument < partial.canonical_arguments.size(); ++argument)
+			{
+				if (prior.canonical_arguments[argument] !=
+					partial.canonical_arguments[argument])
+				{
+					same_canonical_shape = false;
+					break;
+				}
 				if (partial.canonical_arguments[argument].kind ==
 						TEMPLATE_ARGUMENT_TYPE &&
-					partial.canonical_arguments[argument].type ==
-						class_template_nondeduced_type_shape_ &&
+					(partial.canonical_arguments[argument].type ==
+						class_template_nondeduced_type_shape_ ||
+					 FunctionTemplateTypeIsDependent(
+						partial.canonical_arguments[argument].type)) &&
 					!EquivalentNondeducedTypeArgumentShape(
 						prior.arguments[argument], prior.parameters,
 						partial.arguments[argument], partial.parameters))
-					same_nondeduced_shapes = false;
-			if (!same_nondeduced_shapes) continue;
+				{
+					same_canonical_shape = false;
+					break;
+				}
+			}
+			if (!same_canonical_shape) continue;
 			const bool prior_definition =
 				(arena_->Flags(prior.declaration) & SYNTAX_FLAG_DEFINITION) != 0;
 			const bool definition =

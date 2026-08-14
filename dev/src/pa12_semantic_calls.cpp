@@ -1483,14 +1483,30 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	FundamentalKind kind = FUND_INT;
 	if (spelling == "bool") kind = FUND_BOOL;
 	else if (spelling == "char") kind = FUND_CHAR;
-	else if (spelling == "short" || spelling == "short int")
+	else if (spelling == "signed char") kind = FUND_SIGNED_CHAR;
+	else if (spelling == "unsigned char") kind = FUND_UNSIGNED_CHAR;
+	else if (spelling == "wchar_t") kind = FUND_WCHAR_T;
+	else if (spelling == "char16_t") kind = FUND_CHAR16_T;
+	else if (spelling == "char32_t") kind = FUND_CHAR32_T;
+	else if (spelling == "short" || spelling == "short int" ||
+		spelling == "signed short" || spelling == "signed short int")
 		kind = FUND_SHORT_INT;
-	else if (spelling == "int") kind = FUND_INT;
-	else if (spelling == "long" || spelling == "long int")
+	else if (spelling == "unsigned short" ||
+		spelling == "unsigned short int") kind = FUND_UNSIGNED_SHORT_INT;
+	else if (spelling == "int" || spelling == "signed" ||
+		spelling == "signed int") kind = FUND_INT;
+	else if (spelling == "long" || spelling == "long int" ||
+		spelling == "signed long" || spelling == "signed long int")
 		kind = FUND_LONG_INT;
 	else if (spelling == "unsigned" || spelling == "unsigned int")
 		kind = FUND_UNSIGNED_INT;
-	else if (spelling == "unsigned long") kind = FUND_UNSIGNED_LONG_INT;
+	else if (spelling == "unsigned long" ||
+		spelling == "unsigned long int") kind = FUND_UNSIGNED_LONG_INT;
+	else if (spelling == "long long" || spelling == "long long int" ||
+		spelling == "signed long long" ||
+		spelling == "signed long long int") kind = FUND_LONG_LONG_INT;
+	else if (spelling == "unsigned long long" ||
+		spelling == "unsigned long long int") kind = FUND_UNSIGNED_LONG_LONG_INT;
 	else if (spelling == "float") kind = FUND_FLOAT;
 	else if (spelling == "double") kind = FUND_DOUBLE;
 	else if (spelling == "long double") kind = FUND_LONG_DOUBLE;

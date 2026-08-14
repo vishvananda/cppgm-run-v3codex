@@ -151,6 +151,25 @@ bool SemanticAnalyzer::IsConstexprLiteralType(TypeId type) const
 	return true;
 }
 
+bool SemanticAnalyzer::IsConstexprConstructorOwnerType(EntityId entity) const
+{
+	if (entity == kNoEntity || entity >= program_->entities.size()) return false;
+	const EntityRecord& owner = program_->entities[entity];
+	if (owner.virtual_base_count != 0) return false;
+	for (std::size_t i = 0; i < owner.direct_base_count; ++i)
+		if (!IsConstexprLiteralType(program_->entities[
+			program_->DirectBase(entity, i).entity].type)) return false;
+	if (entity < entity_data_members_.size())
+		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
+		{
+			const TypeId type =
+				program_->bindings[entity_data_members_[entity][i]].type;
+			if (IsVolatileSubobjectType(type) || !IsConstexprLiteralType(type))
+				return false;
+		}
+	return true;
+}
+
 bool SemanticAnalyzer::IsConstexprDefaultConstructibleType(TypeId type) const
 {
 	const TypeRecord& top = program_->types.Get(type);
@@ -293,6 +312,8 @@ void SemanticAnalyzer::ValidateConstexprClassDeclarations(
 	const TypeId owner_type = program_->entities[entity].type;
 	const bool template_specialization =
 		IsClassTemplateSpecializationContext(entity);
+	const bool constructor_owner_suitable =
+		IsConstexprConstructorOwnerType(entity);
 	if (entity < entity_constructors_.size())
 		for (std::size_t i = 0; i < entity_constructors_[entity].size(); ++i)
 		{
@@ -302,15 +323,15 @@ void SemanticAnalyzer::ValidateConstexprClassDeclarations(
 			{
 				if (template_specialization &&
 					(!IsConstexprCallableType(constructor.type, true) ||
-					 !IsConstexprLiteralType(owner_type)))
+					 !constructor_owner_suitable))
 				{
 					constructor.constexpr_function = false;
 					continue;
 				}
 				ValidateConstexprCallableType(constructor.type, true);
-				if (!IsConstexprLiteralType(owner_type))
+				if (!constructor_owner_suitable)
 					throw std::runtime_error(
-						"constexpr constructor owner is not a literal type");
+						"constexpr constructor has non-literal subobjects");
 			}
 		}
 	if (entity < entity_member_functions_.size())

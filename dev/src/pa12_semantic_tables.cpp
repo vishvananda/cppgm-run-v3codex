@@ -8,6 +8,50 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+UsingFunctionIdentityTable::UsingFunctionIdentityTable()
+	: slots_(32, 0)
+{
+}
+
+bool UsingFunctionIdentityTable::Insert(const UsingFunctionIdentityKey& key)
+{
+	if ((entries_.size() + 1) * 10 > slots_.size() * 7)
+		Rehash(slots_.size() * 2);
+	const std::size_t mask = slots_.size() - 1;
+	std::size_t slot = MixHash(MixHash(key.owner, key.name), key.canonical) & mask;
+	while (slots_[slot] != 0)
+	{
+		if (entries_[slots_[slot] - 1] == key) return false;
+		slot = (slot + 1) & mask;
+	}
+	if (entries_.size() >= std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many using-function identities");
+	entries_.push_back(key);
+	slots_[slot] = static_cast<std::uint32_t>(entries_.size());
+	return true;
+}
+
+void UsingFunctionIdentityTable::Rehash(std::size_t capacity)
+{
+	std::vector<std::uint32_t> replacement(capacity, 0);
+	const std::size_t mask = capacity - 1;
+	for (std::size_t i = 0; i < entries_.size(); ++i)
+	{
+		const UsingFunctionIdentityKey& key = entries_[i];
+		std::size_t slot =
+			MixHash(MixHash(key.owner, key.name), key.canonical) & mask;
+		while (replacement[slot] != 0) slot = (slot + 1) & mask;
+		replacement[slot] = static_cast<std::uint32_t>(i + 1);
+	}
+	slots_.swap(replacement);
+}
+
+std::size_t UsingFunctionIdentityTable::StorageBytes() const
+{
+	return entries_.capacity() * sizeof(UsingFunctionIdentityKey) +
+		slots_.capacity() * sizeof(std::uint32_t);
+}
+
 FlatBindingIdSet::FlatBindingIdSet()
 	: slots_(8, 0), size_(0)
 {

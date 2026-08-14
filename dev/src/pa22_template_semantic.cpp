@@ -1526,8 +1526,26 @@ bool SemanticAnalyzer::IsUnqualifiedAliasTemplateName(
 		NoAliasTemplatePattern();
 }
 
+TypeId SemanticAnalyzer::DependentQualifiedTypeShape(NodeId syntax)
+{
+	if (dependent_qualified_type_shapes_.size() <= syntax)
+		dependent_qualified_type_shapes_.resize(
+			static_cast<std::size_t>(syntax) + 1, kNoType);
+	TypeId& result = dependent_qualified_type_shapes_[syntax];
+	if (result != kNoType) return result;
+	const NameId name = program_->names.Intern(
+		"__dependent_qualified_type_shape_" + std::to_string(syntax));
+	const EntityId entity = program_->NewEntity(name,
+		NAMED_TYPENAME_PARAMETER, false, kNoType,
+		program_->GlobalScope(), name);
+	program_->entities[entity].deferred_template_completion = true;
+	result = program_->types.Named(entity);
+	return result;
+}
+
 LookupResult SemanticAnalyzer::LookupStructuredTypeSpecifier(
-	NodeId syntax, ScopeId scope, TypeId deferred_type)
+	NodeId syntax, ScopeId scope, TypeId deferred_type,
+	bool typename_specifier)
 {
 	const NamePath path = StructuredNamePath(syntax);
 	const bool nondeduced_parameter = deferred_type != kNoType &&
@@ -1541,13 +1559,15 @@ LookupResult SemanticAnalyzer::LookupStructuredTypeSpecifier(
 	}
 	LookupResult found;
 	if (deferred_type == kNoType)
-		found = LookupStructuredName(syntax, scope, LOOKUP_TYPE);
+		found = LookupStructuredName(
+			syntax, scope, LOOKUP_TYPE, 0, typename_specifier);
 	else
 	{
 		candidate_substitution_failures_.push_back(0);
 		try
 		{
-			found = LookupStructuredName(syntax, scope, LOOKUP_TYPE);
+			found = LookupStructuredName(
+				syntax, scope, LOOKUP_TYPE, 0, typename_specifier);
 		}
 		catch (...)
 		{
@@ -1720,13 +1740,6 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 	const NamePath path = DeclaratorNamePath(declarator);
 	if (path.Empty()) return false;
 	std::string function_name = program_->names.Get(path.Last());
-	if (structure == kNoNode &&
-		function_name.compare(0, 8, "operator") == 0)
-	{
-		const std::size_t arguments = function_name.find('<');
-		if (arguments != std::string::npos)
-			function_name.erase(arguments);
-	}
 	const NodeId identifier = FindChild(declarator, "identifier");
 	const NodeId name_syntax = structure != kNoNode ? structure : identifier;
 	if (name_syntax == kNoNode) return false;
@@ -1752,6 +1765,8 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 	std::vector<NodeId> explicit_arguments;
 	const bool explicit_template_id = CollectExplicitTemplateArguments(
 		name_syntax, &explicit_base, &explicit_arguments);
+	if (explicit_template_id && !explicit_base.Empty())
+		function_name = program_->names.Get(explicit_base.Last());
 	if (explicit_template_id)
 		candidates = FunctionCandidates(
 			scope, function_name, 0, name_syntax);

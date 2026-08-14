@@ -288,7 +288,9 @@ bool SemanticAnalyzer::CollectClassDirectBases(NodeId clause, ScopeId scope,
 				program_->entities[base].flavor == NAMED_UNION || program_->entities[base].final_class)
 			{
 				if (base != kNoEntity &&
-					FunctionTemplateTypeIsDependent(base_lookup.type))
+					(FunctionTemplateTypeIsDependent(base_lookup.type) ||
+					 (program_->entities[base].flavor == NAMED_TYPENAME_PARAMETER &&
+					  program_->entities[base].deferred_template_completion)))
 					return false;
 				throw std::runtime_error(
 					"direct base must name a complete non-union class");
@@ -1654,7 +1656,8 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		if (structured_name != kNoNode)
 		{
 			const LookupResult found = LookupStructuredTypeSpecifier(
-				structured_name, scope, deferred_type);
+				structured_name, scope, deferred_type,
+				(arena_->Flags(child) & SYNTAX_FLAG_TYPENAME) != 0);
 			result.type = found.type;
 			if (deferred_type != kNoType && result.type == deferred_type) continue;
 			if (result.type == kNoType)
@@ -2486,9 +2489,9 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 				throw std::runtime_error(
 					"using function conflicts with declaration");
 			}
-			++function_signature_lookups_;
-			if (using_function_declarations_.Find(signature_key) != kNoBinding)
-				throw std::runtime_error("duplicate using function");
+			const UsingFunctionIdentityKey identity(
+				scope, name, function.binding);
+			if (!using_function_identities_.Insert(identity)) continue;
 			const BindingId alias = program_->AddBinding(scope, BIND_FUNCTION,
 				name, function.type, false, 0, NAMED_NONE, 0, function.binding);
 			if (class_owner != kNoEntity)
