@@ -8,7 +8,6 @@
 #include "pa30_lowir_adapter.h"
 #include "pa30_object.h"
 #include "pa30_elf_object.h"
-#include "lowir_force_inline.h"
 #include "lowir_native.h"
 #include "preprocessor.h"
 #include "tool_help_text.h"
@@ -673,9 +672,6 @@ cppgm::pa30::CompilerObject compile_source_object(
   cppgm::pa30::CompilerObject object;
   object.target = target;
   object.lowir = cppgm::AdaptTypedLowIRForNative(typed);
-	std::unique_ptr<lowir_model::LowirProgram> rewritten =
-		lowir_native::force_inline::rewrite_program(object.lowir);
-	if (rewritten) object.lowir = std::move(*rewritten);
 	uint64_t adapt_nanoseconds = 0;
 	if(collect_stats) adapt_nanoseconds = static_cast<uint64_t>(
 		chrono::duration_cast<chrono::nanoseconds>(
@@ -699,6 +695,14 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " instructions=" << stats.instructions
+			 << " force_inline_candidates=" << stats.force_inline_candidates
+			 << " force_inline_recursive_candidates="
+			 << stats.force_inline_recursive_candidates
+			 << " force_inline_call_probes=" << stats.force_inline_call_probes
+			 << " force_inline_calls=" << stats.force_inline_calls
+			 << " force_inline_blocks=" << stats.force_inline_blocks
+			 << " force_inline_cloned_instructions="
+			 << stats.force_inline_cloned_instructions
 			 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes
 			 << " typed_bytes=" << stats.typed_storage_bytes
 			 << " semantic_ns=" << semantic.analysis_nanoseconds
@@ -1475,6 +1479,14 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << stats.exception_selector_table_growth
 			 << " exception_selector_assignments="
 			 << stats.exception_selector_assignments
+			 << " force_inline_candidates=" << stats.force_inline_candidates
+			 << " force_inline_recursive_candidates="
+			 << stats.force_inline_recursive_candidates
+			 << " force_inline_call_probes=" << stats.force_inline_call_probes
+			 << " force_inline_calls=" << stats.force_inline_calls
+			 << " force_inline_blocks=" << stats.force_inline_blocks
+			 << " force_inline_cloned_instructions="
+			 << stats.force_inline_cloned_instructions
 			 << " typed_storage_bytes=" << stats.typed_storage_bytes
 			 << " semantic_peak_stage_bytes="
 			 << semantic.peak_stage_storage_bytes

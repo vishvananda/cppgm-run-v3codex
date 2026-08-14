@@ -1,6 +1,7 @@
 #include "pa15_lowering.h"
 
 #include "pa12_semantic.h"
+#include "pa15_force_inline.h"
 #include "pa15_graph_lowering.h"
 #include "pa15_lowir_model.h"
 #include "pa15_lowir_render.h"
@@ -195,7 +196,10 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  statement_scheduler_entries(0), statement_scheduler_nested_entries(0),
 	  statement_scheduler_tasks(0), statement_scheduler_peak_tasks(0),
 	  exception_selector_resets(0), exception_selector_table_growth(0),
-	  exception_selector_assignments(0),
+	  exception_selector_assignments(0), force_inline_candidates(0),
+	  force_inline_recursive_candidates(0), force_inline_call_probes(0),
+	  force_inline_calls(0), force_inline_blocks(0),
+	  force_inline_cloned_instructions(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {
@@ -425,6 +429,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	std::chrono::steady_clock::time_point coalesce_started;
 	if (stats) coalesce_started = std::chrono::steady_clock::now();
 	CoalesceLifecycleFunctions(&program, stats);
+	pa15_force_inline::RewriteProgram(&program, stats);
 	if (stats)
 		stats->lowering_nanoseconds += static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(

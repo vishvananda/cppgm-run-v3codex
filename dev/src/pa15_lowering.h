@@ -64,6 +64,12 @@ struct LowIRLoweringStats
 	std::size_t exception_selector_resets;
 	std::size_t exception_selector_table_growth;
 	std::size_t exception_selector_assignments;
+	std::size_t force_inline_candidates;
+	std::size_t force_inline_recursive_candidates;
+	std::size_t force_inline_call_probes;
+	std::size_t force_inline_calls;
+	std::size_t force_inline_blocks;
+	std::size_t force_inline_cloned_instructions;
 	std::size_t typed_storage_bytes;
 	std::size_t output_bytes;
 	std::uint64_t lowering_nanoseconds;

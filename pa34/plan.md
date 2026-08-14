@@ -1,104 +1,96 @@
-# PA34 Plan
+# PA34 Final Plan
 
 ## Stage Design and Spec Alignment
 
-PA34 extends the shared source-to-object pipeline at existing boundaries. Hosted
-configuration feeds the streaming preprocessor; parser extensions publish canonical
-syntax/type facts; semantics owns typed operands, lookup, demand, and compact builtin
-IDs; typed LowIR owns effects and value behavior; native lowering alone selects host
-symbols. This follows `spec.md` §§1-3 and 6-10: interned inputs, bounded registries, no
-spelling recovery after semantics, demand-driven emission, linear lowering/allocation,
-and no host-compiler fallback.
+PA34 extends the existing compiler rather than adding a hosted-only path. The
+production flow is:
 
-## Current Failure Map
+```text
+immutable source buffers
+  -> streaming hosted preprocessor/post-token sink
+  -> interned compact syntax tokens and syntax arena
+  -> canonical typed semantic graph and demand worklists
+  -> direct typed LowIR and typed-ID local transforms
+  -> native adapter and bounded per-function MIR
+  -> direct ELF64 relocatable writer
+```
 
-- Preprocess is complete: 45/45.
-- Dependent callable/type replay is complete: all 4 reducers pass.
-- Canonical declaration types/demand is complete: compatible extern arrays, distinct GNU
-  zero-length arrays, and unused IA32 intrinsic wrappers pass with ordinary errors preserved.
-- Typed constant objects are complete: wait-status constexpr object reinterpretation and
-  full-width int128 initializer/member cases pass.
-- Runtime object actions are complete: canonical always-inline expansion and throwing
-  large-array destruction pass in compile-only, direct-link, and staged-link paths.
-- ABI/source identity is complete: nested-template owner mangling and canonical
-  inline/owner-template pretty-function presentation pass.
-- Audit course compile is 2/2. PA34 is 369/369 tests, while
-  PA1-PA33 remain 4387/4387.
+The parser/semantic boundary is the existing PA syntax-arena surface: semantics
+borrows that arena without rendering or reparsing text, and parser,
+substitution, lookup, and demand scratch are destroyed before typed lowering
+borrows the semantic graph. Identifier, type, scope, entity, binding,
+specialization, symbol, temporary, slot, and block identities are compact IDs.
+The hosted probe configuration is generated at build time; the running compiler
+does not invoke a host compiler, assembler, reference tool, or prior stage.
 
-## Active Checkpoint — ABI and Source Identity Completion
-
-The canonical-name boundary is complete under `spec.md` §§1-4 and 6-7. Parsed lexical
-identity must retain inline-namespace transparency and elaborated/template-owner arguments;
-canonical semantic identity must attach declaration attributes exactly once without deriving ABI
-or pretty-function text from backend spellings.
-
-Parser/template replay owns structured source names and arguments, semantic bindings own canonical
-owners and ABI tags, and lowering only materializes the resulting string/object identity. Data flows
-syntax name/template arguments -> instantiated owner and canonical binding -> ABI/pretty-function
-fact -> typed constant or object symbol.
-
-Work is O(name path + template argument count) per demanded entity with interned lookup and no
-namespace/template rescans during rendering. Validation covers all 4 reducers, redeclared
-out-of-class and nested specialized members, aliases and inline namespaces, defaulted owner/function
-template arguments, malformed and out-of-scope forms, and 1/8/64 identity batches.
+Hosted parser concessions and compiler builtins publish typed facts at their
+owning syntax/semantic boundary. PA34's bounded hosted primary shims attach once
+to canonical class-template declarations; subsequent specialization, lookup,
+lowering, and ABI work uses canonical IDs. Object compilation and
+`--emit-lowir` share `BuildTypedLowIRProgram`, including always-inline CFG
+expansion, so the rendered LowIR remains a view of what object emission uses.
 
 ## Performance Evidence
 
-| Boundary | Representative scaling evidence |
+Final-audit measurements use release binaries and 1/8/64 generated workloads on
+the same machine.
+
+| Surface | 1 / 8 / 64 evidence |
 | --- | --- |
-| Hosted input/type queries | 1→8 preprocessing produced 8x counters in 6.98x time; 8→64 type queries produced 8x work in 6.27x time |
-| Integer/memory/atomic builtins | 1/8/64 probes emitted exact proportional LowIR/MIR; 64-case times were 0.07/0.04/0.04 s |
-| Floating builtins | 1/8/64 emitted 411/3,288/26,304 native instructions; 0.00/0.01/0.07 s |
-| Layout/asm | 1/8/64 empty-member visits and asm LowIR were linear; layout 0.49/0.58/1.43 ms, asm RSS ~8.2 MiB |
-| Vector/block/lambda | Nodes/lookups were linear; lambda requests 1/8/64 had 0/7/63 cache hits and one emitted specialization |
-| Numeric scalars | 1/8/64 emitted 9/65/513 LowIR and 15/85/645 MIR; 64 cases took 0.02 s, 10,472 KiB RSS |
-| GNU complex | 1/8/64 repeated compiles took 0.00/0.05/0.40 s with 8,328/8,552/8,568 KiB RSS; pair construction is two fixed stores |
-| Construction/conversion traits | 1/8/64 unique template query sets compiled in 0.00/0.00/0.01 s with 8,088/8,212/9,644 KiB RSS |
-| Trait packs and assignment | 1/8/64 unique pack/operator sets recorded 5/40/320 candidates, 8/64/512 template requests, 13/69/517 nodes, and 90,239/467,809/3,661,927 peak semantic bytes; 0.690/2.400/16.499 ms semantic time, 8,264/8,680/10,060 KiB RSS, constant backend output |
-| Retained variable-template traits | 1/8/64 unique groups recorded 7/56/448 requests and 3/24/192 candidates; semantic time 0.535/1.319/8.313 ms, peak 73,899/250,858/1,911,348 bytes, RSS 8,560/8,408/9,552 KiB, and one backend instruction |
-| Fold and indexed pack replay | Width 1/8/64 mixed fold/integer/type-pack cases recorded 31/66/346 semantic nodes, 51/128/744 lookups, constant 3 template requests and 6 candidates; semantic time 0.587/0.915/3.216 ms, peak 78,971/187,906/928,290 bytes, RSS 8,376/8,460/9,216 KiB, and one backend instruction |
-| Aggregate designation/decomposition | 1/8/64-member trailing-designator plus `auto&` decomposition emitted 19/26/82 semantic nodes, 17/31/143 declarations, 24/45/213 lookups, 17/38/206 LowIR and 24/53/277 MIR; semantic time 0.314/0.356/0.619 ms, peak 38,024/44,762/190,388 bytes, RSS 8,228/8,216/9,056 KiB; all linked probes passed |
-| Compiler function builtins/invoke | 1/8/64 mixed overflow/member-invoke/`offsetof` batches emitted 61/243/1,699 semantic nodes, 63/280/2,016 lookups, 55/237/1,693 LowIR and 76/321/2,281 MIR; semantic time 0.529/0.850/4.250 ms, peak 56,176/124,227/756,406 bytes, RSS 8,468/9,356/14,552 KiB; all linked probes passed |
-| Hosted configuration/runtime | 1/8/64 cmath/cstring/cstdlib batches emitted 4,419/4,706/7,002 semantic nodes, 5,772/6,157/9,237 lookups, 45/339/2,691 LowIR and 87/633/5,001 MIR; 0.32/0.32/0.36 s wall, 18,012/18,160/22,772 KiB RSS; all linked probes passed |
-| Hosted declarations | 1/8/64 guide/conditional-explicit/placeholder groups produced 14/77/581 declarations and 9/37/261 lookups, zero template requests or demands; semantic time 0.254/0.760/4.631 ms, RSS 7,880/8,436/8,956 KiB, constant backend output |
-| Hosted selection replay | 1/8/64 selected/discarded specializations produced 25/130/970 semantic nodes, 25/130/970 lookups, and 3/24/192 template requests; semantic time 0.434/0.842/4.224 ms, RSS 8,568/8,388/9,048 KiB; linked probes passed and invalid discarded branches created no work |
-| Hosted type formation | 1/8/64 unique 8-element sequence specializations produced 1/8/64 requests, 12/61/453 semantic nodes, and 43/224/1,714 KiB peak semantic storage; semantic time 0.408/1.251/8.398 ms, RSS 8,360/8,352/9,496 KiB, constant backend output |
-| Dependent callable/type replay | Recursive 1/8/64 vector-alias/partial requests compiled in 0.00/0.00/0.01 s with 8,340/8,216/9,824 KiB RSS; assertions passed, while zero lanes and unequal-width conversion rejected |
-| Canonical declarations | 1/8/64 extern-array/zero-member/intrinsic-wrapper groups produced 20/83/587 semantic nodes, 19/110/838 declarations, and 21/112/840 lookups; semantic time 0.304/0.805/4.966 ms, peak 40,408/156,054/1,187,387 bytes, RSS 8,472/8,248/8,864 KiB, with constant 10-instruction LowIR |
-| Typed constant objects | 1/8/64 wide-constant batches compiled in 0.00/0.00/0.01 s with 8,644/8,348/9,872 KiB RSS; boundary/static linked probes passed and overflow/out-of-bounds probes rejected |
-| Runtime object actions | 1/8/64 template/action batches produced 99/274/1,611 semantic nodes and 79/611/602 LowIR instructions in 0.00/0.01/0.02 s with 8,600/9,740/9,868 KiB RSS; linked probes passed, and counted arrays remain fixed-size above the 8-element inline threshold |
-| ABI and source identity | 1/8/64 nested-owner/defaulted-template batches produced 60/326/2,454 semantic nodes, 147/917/7,077 lookups, and 22/106/778 LowIR instructions in 0.00/0.01/0.04 s with 8,732/9,228/12,988 KiB RSS; all linked probes passed |
+| Hosted preprocessing | 82/208/1,216 post-tokens and 22/148/1,156 expansions; peak rescan 18/42/46 tokens; 2.325/2.189/2.640 ms; 6,796/7,064/6,964 KiB RSS |
+| Demanded templates | 10/80/640 specialization requests, 8/64/512 cache hits, and exactly 1/8/64 demand pushes/emissions; 44/233/1,745 semantic nodes; 0.683/1.745/11.670 ms semantic time; 72,700/314,790/2,400,006 peak bytes |
+| Typed always-inline transform | 1/8/64 candidates and calls, 36/246/1,926 probes, 3/24/192 added blocks, and 20/139/1,091 final instructions; lowering plus adaptation 0.250/0.609/4.554 ms; 8,772/8,924/13,332 KiB RSS |
+| No-inline control at 64 | Zero transform probes/copies, 515 instructions, 1.749 ms lowering plus adaptation, and 10,144 KiB RSS |
+| Force-inline before/after at 64 | The former post-adapter whole-program rewrite used 10.789 ms lowering plus adaptation and 18,020 KiB RSS. Typed-ID rewriting uses 4.554 ms and 13,332 KiB: 57.8% less phase time and 26.0% less peak RSS while producing the same 1,091 instructions. |
 
-## Completed Checkpoints
+The template workload emitted 1/8/64 functions once, and the 8-case ELF trace
+contains eight canonical weak `read_box<N>` symbols and two relocations to each
+called specialization. The nontrivial CFG trace emitted a valid x86-64 ELF
+relocatable, linked and ran successfully, expanded ordinary and nested
+always-inline calls, and retained only the recursive call.
 
-| Checkpoint | Result | Validation |
+## Architecture Review
+
+| Checklist area | Review result |
+| --- | --- |
+| Representation and ownership | Source and intern tables have translation-unit ownership; syntax is borrowed by semantics; semantic scratch dies before graph consumption; typed LowIR is constructed directly; no text is rendered and parsed back. |
+| Identity and lookup | Canonical `NameId`, `TypeId`, `ScopeId`, `EntityId`, `BindingId`, and `SymbolId` keys drive semantic and lowering work. Type interning and scope lookup use flat hash slots with dependency-indexed invalidation. Strings are limited to source/presentation, ABI output, and explicit textual-LowIR adapters. |
+| Templates and repeated work | Specializations use canonical pattern/argument/partition keys. Request tables distinguish not-started, in-progress, succeeded, and failed states. Deferred member/default/function queues advance with monotonic cursors; no whole-program retry loop was found. |
+| Lowering and backend | The semantic graph lowers directly to typed LowIR. Always-inline rewriting now runs there by dense symbol ID and Tarjan SCC state. The native adapter runs once, MIR is lowered and encoded one function at a time, and ELF sections/relocations are written directly. |
+| Allocation and scaling | Front-end graphs use contiguous vectors/arenas and compact slices. Hot indexes are flat/dense. The typed inliner scans input/output a bounded number of times and allocates only output-proportional CFG, slot, and operand storage. Counters show proportional preprocessing, specialization, demand, and IR growth. |
+| Self-containment | Runtime source compilation contains no shell-out or test/source-path/reference lookup. The legacy string-keyed force-inline pass remains only as an adapter for explicit textual LowIR and now avoids any speculative copy when no forced definition exists. |
+
+## Final Architecture Review
+
+The audit found and closed one cross-layer blocker. Source compilation formerly
+adapted canonical IDs to string-keyed LowIR, copied the complete program to
+expand `always_inline`, and then entered a native session that attempted the
+same rewrite again. Expansion now occurs once in typed LowIR using dense IDs,
+explicit SCC handling, and output-work counters; source compilation clears the
+consumed attribute before adaptation. Ordinary no-inline compilation performs
+zero inliner probes and no program copy.
+
+Representative declaration and demanded-template traces, static source/file
+checks, focused compile/link/run probes, scaling telemetry, and the cumulative
+test report found no remaining PA34 correctness, architecture, performance,
+self-containment, or file-audit blocker. The file audit's 22 header-division
+warnings are inherited advisory findings and do not involve the new audit
+module.
+
+## Checkpoint Ledger
+
+| Commits | Owned stage surface | Final audit result |
 | --- | --- | --- |
-| Hosted preprocessing boundary | Configuration, probes, directives, literals; +51 | preprocess 45/45; PA34 121/367; prior/audit pass |
-| Hosted builtin type queries | Traits/transforms, structural constants, null adaptation; +46 | PA34 167/367; prior/audit pass |
-| Hosted annotations | GNU aliases/int128 and declaration/type-id attributes; +20 | PA34 187/367; prior/audit pass |
-| Integer bit intrinsics | Registry IDs, constexpr semantics, typed lowering; +8 | focused 8/8; PA34 195/367; prior/audit pass |
-| Memory/string intrinsics | Typed effects, ABI symbols, identity lowering; +9 | PA34 204/367; linked/scaling/prior/audit pass |
-| C11/GNU atomic and sync | Canonical atomic types and first-class atomic LowIR; +12 | PA34 216/367; linked/scaling/prior/audit pass |
-| Scalar floating and abort | Width-aware values/predicates and nonreturning abort; +6 | PA34 222/367; scaling/prior/audit pass |
-| Class layout attributes | Aligned/packed/no-unique facts and template replay; +5 | PA34 227/367; linked/scaling/prior/audit pass |
-| GNU asm and labels | Structured effects and binding-owned ABI labels; +10 | PA34 237/367; linked/scaling/prior/audit pass |
-| Scalar GNU vectors | Canonical lane/width identity and object lowering; +2 | PA34 239/367; focused/scaling/prior/audit pass |
-| Canonical block pointers | Distinct callable type, mangling, invoke lowering; +4 | PA34 243/367; linked/scaling/prior/audit pass |
-| Generic lambdas | Retained templates, cached demand, local ABI identity; +7 | PA34 250/367; linked/scaling/prior/audit pass |
-| Hosted numeric scalars | Canonical `_BitInt`/extended floats, traits, ABI; +6 | PA34 256/367; linked/scaling/prior/audit pass |
-| GNU complex scalars | Canonical pair type, components/builtin, `C<element>` ABI, by-address object boundary; +2 | focused 2/2; linked/invalid/traits/mangling/scaling; PA34 258/367; PA1-33 4387/4387; audit pass |
-| Construction/conversion traits | `declval` categories, direct constructor/implicit conversion selection, nothrow/trivial special-member facts; +20 | focused 10/10; PA34 278/367; scaling; PA1-33 4387/4387; audit pass |
-| Trait packs and assignment | Ordered operand expansion, indexed member-template/ref-qualified selection, and distinct user-provided/trivial/body-copy facts; +14 handout, +2 audit regressions | focused 24/24; PA34 handout 292/367 and total 294/369; PA1-33 4387/4387; proportional scaling; audit/file gates pass |
-| Retained variable-template traits | Demand-state replay, final/rank/virtual-destructor facts, compiler-identifier probing, and typed global nothrow shorthands; +5 | focused 7/7; PA34 299/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Fold and indexed pack replay | Structured left/right/binary folds, bounded integer/type-pack builtins, and multi-argument direct-initializer recovery; +12 | focused 12/12; PA34 311/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Aggregate designation and decomposition | Binding-owned hidden objects and member projections, ordered designators, zero-filled holes, active unions, and compound-literal storage; +7 | focused 7/7; linked/template/range/reference/invalid probes pass; PA34 318/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Compiler function builtins and invoke | Typed `offsetof`, source/predefined values, string/format/allocation aliases, widened exact overflow, and direct/pointer-like invocation; +10 | focused compile/link/invalid probes; PA34 328/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Hosted configuration and runtime adapters | Mode-aware exception/RTTI facts, host scalar/keyword normalization, standard-layout/POD, GNU null/typeof/restrict forms, and declaration-backed C/math aliases; +13 | all 3 compile and 6 linked reducers pass; malformed suffix/alias reject; PA34 341/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Hosted declaration compatibility | Structured guide declarations and conditional `explicit`; canonical deleted placeholder overloads; +5 | guide/placeholder/instantiation reducers pass; malformed forms reject; PA34 346/369; proportional scaling; prior/audit gates pass |
-| Hosted selection and contextual control | Typed `if constexpr` branch selection, alias/declaration init scopes, ordinary runtime init lowering, and template-only contextual coroutine recipes; +3 | focused 3/3 plus linked/negative probes; PA34 349/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Hosted type formation and primary shims | Canonical `__make_integer_seq`, re-entrant partial selection, pointed-class conversion demand, and undefined `char_traits` primary members; +3 | focused 3/3 plus malformed-count rejection; PA34 352/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Dependent callable and type replay | Structured destructor template-ids, static call operators, lexical lambda enum facts, dependent vector lanes/deduction, and scalarized vector builtins; +4 | reducers 4/4; malformed vector probes reject; PA34 356/369; PA1-33 4387/4387; proportional scaling; audit pass |
-| Canonical declaration types and demand | Distinct zero-length arrays, compatible array composites, canonical object symbol types, and typed IA32 `emms` recognition; +3 | focused/negative/link/scaling probes; PA34 359/369; PA1-33 4387/4387; audit pass |
-| Typed constant objects | Two-limb int128 facts/operators/static data and bounded binding-address scalar loads; +4 | reducers 4/4; boundary/link/negative/scaling probes; PA34 363/369; PA1-33 4387/4387; audit pass |
-| Runtime object actions | Canonical always-inline facts with per-TU CFG expansion; EH-resumable counted array destruction; +2 | reducers 2/2; redeclaration/standard/recursive/EH and 8/9/64 probes; PA34 365/369; PA1-33 4387/4387; scaling/audit pass |
-| ABI and source identity | Template-safe predefined function names, canonical source type/substitution rendering, and typed nested-specialization owners; +4 | reducers 4/4; composite/default/inline/nested/negative/scaling probes; PA34 369/369; PA1-33 4387/4387; audit pass |
+| `17cba749`, `822c5e06`, `12f77862` | Hosted preprocessing, type queries, extension annotations | Pass: streaming/configuration and canonical syntax/semantic facts |
+| `256ec8ed`, `e376846b`, `8e13c7c1`, `6e49ff4c` | Integer, memory, atomic, floating, and abort builtins | Pass: bounded registries, typed effects/values, direct lowering |
+| `1534ea89`, `ea8089a5`, `20e91bac`, `71c6a55f` | Layout attributes, GNU asm, vectors, block pointers | Pass: canonical layout/type identities and structured lowering |
+| `db73c970`, `e2240028`, `91a7f96f` | Generic lambdas, numeric scalars, GNU complex | Pass: retained demand, canonical scalar/pair types, ABI facts |
+| `9ac4482f`, `e8c174e9`, `b336b679`, `dc9a6846` | Construction/assignment/retained traits and ownership audit | Pass: shared overload/special-member facts and cached replay |
+| `e3a3bb7c`, `d08e1253`, `9b251086` | Fold/pack replay, aggregates, compiler function builtins | Pass: bounded replay, binding-owned projections, typed calls/constants |
+| `92d88ba6`, `e733c57c` | Hosted runtime/configuration and declaration compatibility | Pass: declaration-backed aliases and canonical overload/declaration state |
+| `c6e310d3`, `fc68d159`, `2dd03fc5` | Selection replay, hosted type formation, dependent callables | Pass: selected-branch demand and canonical specialization/type replay |
+| `91d55cb8`, `2e32615f`, `c73800f6` | Declaration types, wide constants, runtime object actions | Pass after final typed-ID force-inline ownership refactor |
+| `c6db9b6d` | ABI and source identity | Pass: canonical owner/substitution rendering and object names |
+
+Final ledger: PA34 369/369; through PA34 4,756/4,756; all 34 tracked
+stages pass; file audit passes.

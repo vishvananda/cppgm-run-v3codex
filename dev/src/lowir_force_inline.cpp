@@ -390,6 +390,25 @@ private:
 
 std::unique_ptr<LowirProgram> rewrite_program(const LowirProgram & source)
 {
+	bool has_forced_definition = false;
+	for(std::size_t i = 0; i < source.functions.size(); ++i)
+		if(source.functions[i].metadata.force_inline &&
+		   source.functions[i].boundary.arity != lowir_model::CAM_VARIADIC) {
+			has_forced_definition = true;
+			break;
+		}
+	if(!has_forced_definition) {
+		std::unordered_set<std::string> forced_declarations;
+		for(std::size_t i = 0; i < source.function_declarations.size(); ++i)
+			if(source.function_declarations[i].metadata.force_inline)
+				forced_declarations.insert(source.function_declarations[i].name);
+		for(std::size_t i = 0;
+			!has_forced_definition && i < source.functions.size(); ++i)
+			has_forced_definition =
+				forced_declarations.count(source.functions[i].name) != 0 &&
+				source.functions[i].boundary.arity != lowir_model::CAM_VARIADIC;
+	}
+	if(!has_forced_definition) return std::unique_ptr<LowirProgram>();
   std::unique_ptr<LowirProgram> result(new LowirProgram(source));
   Inliner inliner(result.get());
   if(!inliner.has_candidates()) return std::unique_ptr<LowirProgram>();
