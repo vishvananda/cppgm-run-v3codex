@@ -2872,7 +2872,6 @@ void SemanticAnalyzer::UpgradeClassTemplateSpecializations(std::size_t index)
 			CompleteClassTemplateSpecialization(index, binding, arguments);
 	}
 }
-
 void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 	ScopeId scope, bool definition)
 {
@@ -2889,15 +2888,17 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 		throw std::runtime_error(
 			"explicit instantiation target is not a supported template");
 	}
-	NamePath base;
-	std::vector<TypeId> arguments;
-	if (!ParseExplicitTemplateArguments(target, scope, &base, &arguments))
-		throw std::runtime_error(
-			"explicit class instantiation requires a simple-template-id");
+	NamePath base; std::vector<NodeId> argument_syntax;
+	if (!CollectExplicitTemplateArguments(target, &base, &argument_syntax))
+		throw std::runtime_error("explicit class instantiation requires a simple-template-id");
 	const std::size_t pattern_index = FindClassTemplate(scope, base);
 	if (pattern_index == NoTemplatePattern())
 		throw std::runtime_error("explicit class instantiation target was not found");
 	const ClassTemplatePattern& pattern = class_templates_[pattern_index];
+	std::vector<TemplateArgument> arguments;
+	if (!BuildTemplateArguments(pattern.parameters, argument_syntax, scope,
+		pattern.lexical_scope, &arguments))
+		throw std::runtime_error("invalid explicit class template arguments");
 	const ScopeKind scope_kind = program_->KindOfScope(scope);
 	if (scope_kind != SCOPE_NAMESPACE)
 		throw std::runtime_error(
@@ -2995,6 +2996,5 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 	if (entity < entity_destructor_by_entity_.size())
 		demand_member(entity_destructor_by_entity_[entity]);
 }
-
 }
 }

@@ -567,7 +567,10 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 				class_template_explicit_specialization_states_[binding] : 0;
 			if (target_definition && (prior_explicit_state & 2U) != 0)
 				throw std::runtime_error(
-					"duplicate explicit class specialization definition");
+					"duplicate explicit class specialization definition: " +
+					program_->names.Get(pattern.name) + " at " +
+					arena_->SourceFile(target) + ":" +
+					std::to_string(arena_->SourceLine(target)));
 			if (program_->entities[entity].complete)
 			{
 				if (prior_explicit_state != 0 && !target_definition)

@@ -350,7 +350,7 @@ bool is_builtin_name(const string & name)
     "short", "ushort", "int", "uint", "long", "ulong", "longlong", "ulonglong",
     "int128", "uint128",
     "float", "double", "longdouble", "float16", "float32", "float32x",
-    "float64", "float64x", "float128", "complex-float",
+    "float64", "float64x", "stdfloat128", "float128", "complex-float",
     "complex-double", "complex-longdouble", "nullptr"
   };
   for(const char * candidate : names) {
@@ -818,7 +818,8 @@ string builtin_code(const string & name)
     {"float", "f"}, {"double", "d"}, {"longdouble", "e"},
     {"float16", "DF16_"}, {"float32", "DF32_"},
     {"float32x", "DF32x"}, {"float64", "DF64_"},
-    {"float64x", "DF64x"}, {"float128", "g"},
+    {"float64x", "DF64x"}, {"stdfloat128", "DF128_"},
+    {"float128", "g"},
     {"complex-float", "Cf"}, {"complex-double", "Cd"},
     {"complex-longdouble", "Ce"}, {"nullptr", "Dn"}
   };

@@ -53,6 +53,7 @@ bool IsFundamentalIntegral(const TypeRecord& record)
 		record.fundamental != FUND_FLOAT32X &&
 		record.fundamental != FUND_FLOAT64 &&
 		record.fundamental != FUND_FLOAT64X &&
+		record.fundamental != FUND_STDFLOAT128 &&
 		record.fundamental != FUND_FLOAT128;
 }
 
@@ -67,6 +68,7 @@ bool IsFundamentalFloating(const TypeRecord& record)
 		 record.fundamental == FUND_FLOAT32X ||
 		 record.fundamental == FUND_FLOAT64 ||
 		 record.fundamental == FUND_FLOAT64X ||
+		 record.fundamental == FUND_STDFLOAT128 ||
 		 record.fundamental == FUND_FLOAT128);
 }
 
@@ -79,7 +81,7 @@ bool IsSignedFundamental(FundamentalKind kind)
 		kind == FUND_LONG_DOUBLE || kind == FUND_FLOAT16 ||
 		kind == FUND_FLOAT32 || kind == FUND_FLOAT32X ||
 		kind == FUND_FLOAT64 || kind == FUND_FLOAT64X ||
-		kind == FUND_FLOAT128;
+		kind == FUND_STDFLOAT128 || kind == FUND_FLOAT128;
 }
 
 FundamentalKind SignednessKind(FundamentalKind kind, bool make_unsigned)

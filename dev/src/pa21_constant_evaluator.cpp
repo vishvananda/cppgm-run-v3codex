@@ -118,6 +118,7 @@ ConstexprScalarValue SemanticAnalyzer::ConvertScalarConstant(
 			break;
 		case FUND_LONG_DOUBLE:
 		case FUND_FLOAT64X:
+		case FUND_STDFLOAT128:
 		case FUND_FLOAT128: break;
 		default: throw std::logic_error("invalid floating constant target");
 		}

@@ -42,6 +42,7 @@ const char* FundamentalName(FundamentalKind kind)
 	case FUND_FLOAT32X: return "_Float32x";
 	case FUND_FLOAT64: return "_Float64";
 	case FUND_FLOAT64X: return "_Float64x";
+	case FUND_STDFLOAT128: return "_Float128";
 	case FUND_FLOAT128: return "__float128";
 	}
 	throw std::logic_error("invalid fundamental type");
@@ -62,7 +63,7 @@ std::size_t FundamentalObjectSize(FundamentalKind kind)
 	case FUND_LONG_LONG_INT: case FUND_UNSIGNED_LONG_LONG_INT:
 	case FUND_DOUBLE: case FUND_FLOAT32X: case FUND_FLOAT64: return 8;
 	case FUND_LONG_DOUBLE: case FUND_INT128: case FUND_UINT128:
-	case FUND_FLOAT64X: case FUND_FLOAT128: return 16;
+	case FUND_FLOAT64X: case FUND_STDFLOAT128: case FUND_FLOAT128: return 16;
 	case FUND_NULLPTR_T: return 8;
 	case FUND_VOID: break;
 	}

@@ -8,39 +8,36 @@ requirements are canonical typed identity and phase flow (§2, §6), demand-owne
 template specialization (§4), and bounded, observable heavy-header work (§9).
 The shared front end owns all changes; no hosted-only route is introduced.
 
-Retained member identity is specialization-owned: the selected pattern supplies
-syntax, owner template parameters are normalized by ordinal, structural
-signature identity selects an overload, and known/deferred exception state is
-finalized during concrete replay. Indexed canonical facts feed overload and
-lowering; there is no rendered-name or hosted-only fallback.
+Canonical source identity distinguishes ISO `_Float128` from GNU `__float128`
+through type analysis and ABI naming. Explicit class targets collect syntax,
+resolve one primary owner, build all type/value/template arguments through the
+shared builder, and publish state under the canonical specialization key.
 
 ## Current Failure Map
 
-PA35 is 73/109 with 36 failures. The complete set groups by first owner:
-explicit specialization/instantiation routing 7; retained declaration/class
-lookup and completion 4; expression/call/template demand 14; parser/local
-semantics 2; stream/heap stability 5; and native object/register lowering 4.
+PA35 is 77/111 with 34 failures. The complete set groups by first owner:
+retained declaration/class lookup and access 6; expression/call/template demand
+16; parser/local semantics 2; stream/heap stability 6; and native
+object/register lowering 4.
 
 ## Active Checkpoint
 
-**Canonical explicit class target routing.** Per `spec.md` §§2 and 4, explicit
-specialization and instantiation syntax must resolve to one primary-template
-identity plus a canonical argument key; definition/demand state belongs to that
-binding rather than a rendered target. Data flows structured target syntax ->
-owner/primary lookup -> canonical request key -> explicit state -> completion
-or demand. PA19 owns class instantiation and PA20 owns explicit-specialization
-routing. Expected work is O(path components + arguments + matching primaries)
-once, followed by O(1) average indexed state lookup. Validate all seven routing
-failures, qualified/alias targets and duplicate-definition negatives, full
-PA35, PA1-34, audit, and 8/16 target families.
+**Retained class/declaration convergence.** Per `spec.md` §§2, 4, and 6,
+retained template declarations must converge on structural owner and signature
+identity before access, completion, or demand. Data flows retained syntax ->
+normalized owner/parameter ordinals -> canonical declaration index -> merge and
+access lookup -> concrete replay. PA19/PA20 template semantics and PA24 retained
+integration own the boundary. Expected work is O(owner depth + signature shape)
+per new declaration followed by O(1) average indexed reuse. Validate the six
+current duplicate/access/lookup failures, true duplicate and private-access
+negatives, full PA35, PA1-34, audit, and 8/16 declaration families.
 
 ## Performance Evidence
 
-For 8/16 initializer-list re-entry families, template requests/cache hits were
-32/64 and 16/32, lookup queries were 448/880, overload candidates were 96/192,
-and demand pushes were 16/32. Median semantic time was 2.31/4.31 ms and peak
-semantic storage was 0.471/0.872 MB. Doubling families kept every measured
-work and storage counter at or below 2x.
+For 8/16 explicit value-argument families, semantic nodes were 17/33, lookup
+queries stayed 25/25, template requests stayed 2/2, and peak semantic storage
+was 49,412/60,972 bytes. Five-run median semantic time was 0.295/0.311 ms.
+Emitted `_Float128`/`__float128` symbols matched GCC's `DF128_`/`g` ABI codes.
 
 ## Completed Checkpoints
 
@@ -67,3 +64,4 @@ work and storage counter at or below 2x.
 | Parameter-owned exception evaluation | declarators carry parameter/`this` scope into ordinary and deferred `noexcept` evaluation | five handout cases advance from unknown names to incomplete construction; direct positive/negative probes and 8/16 scaling pass |
 | Demand-safe unevaluated construction | member typing skips constexpr address/layout work in unevaluated operands; dependent function-template specs rebuild canonical parameter scopes | PA35 68/107 -> 70/108 (one handout plus one regression); four cases advance; PA1-34 4756/4756; scaling/audit pass |
 | Canonical specialization completion re-entry | synthetic initializer-list layout and declaration replay remain distinct; only canonical in-progress replay crosses the duplicate guard | PA35 70/108 -> 73/109 (two handout plus one regression); PA1-34 4756/4756; 8/16 scaling and audit pass |
+| Canonical explicit class target routing | distinct `_Float128`/`__float128` identities and generic type/value/template argument routing remove all seven barriers | PA35 73/109 -> 77/111 (75/109 existing); two handouts pass, five advance, two regressions pass; PA1-34 4756/4756; scaling/audit pass |

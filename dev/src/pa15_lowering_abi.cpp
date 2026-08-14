@@ -168,6 +168,7 @@ bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
 	case FUND_FLOAT32X: result->name = "float32x"; break;
 	case FUND_FLOAT64: result->name = "float64"; break;
 	case FUND_FLOAT64X: result->name = "float64x"; break;
+	case FUND_STDFLOAT128: result->name = "stdfloat128"; break;
 	case FUND_FLOAT128: result->name = "float128"; break;
 	case FUND_WCHAR_T: result->name = "wchar"; break;
 	case FUND_CHAR16_T: result->name = "char16"; break;
