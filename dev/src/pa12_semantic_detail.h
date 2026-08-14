@@ -1497,6 +1497,8 @@ private:
 	ExpressionInfo AnalyzeCallInBracedContext(
 		NodeId call, ScopeId scope, TypeId target);
 	ExpressionInfo AnalyzeUntypedCallArgument(NodeId argument, ScopeId scope);
+	ExpressionInfo MaterializeFunctionalCastArgument(NodeId syntax,
+		ScopeId scope, TypeId target, const ExpressionInfo& prepared);
 	CallConversionFact UntypedCallArgumentConversion(
 		NodeId argument, ScopeId scope, TypeId target);
 	ExpressionInfo MaterializeCallArgument(NodeId syntax, ScopeId scope,

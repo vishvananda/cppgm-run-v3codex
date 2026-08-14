@@ -195,6 +195,17 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUntypedCallArgument(
 	return ExpressionInfo();
 }
 
+ExpressionInfo SemanticAnalyzer::MaterializeFunctionalCastArgument(
+	NodeId syntax, ScopeId scope, TypeId target,
+	const ExpressionInfo& prepared)
+{
+	if (prepared.type != kNoType) return prepared;
+	if (!arena_->IsTag(syntax, "braced-init-list"))
+		return CandidateExpressionFailure(
+			"functional cast argument has no type");
+	return AnalyzeBracedInit(syntax, scope, target);
+}
+
 CallConversionFact SemanticAnalyzer::UntypedCallArgumentConversion(
 	NodeId argument, ScopeId scope, TypeId target)
 {

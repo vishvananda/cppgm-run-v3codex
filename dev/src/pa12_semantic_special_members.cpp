@@ -264,8 +264,15 @@ void SemanticAnalyzer::RegisterClassSpecialMember(BindingId binding)
 		&facts.move_constructor : kind == SPECIAL_MEMBER_COPY_ASSIGNMENT ?
 		&facts.copy_assignment : &facts.move_assignment;
 	if (*slot != kNoBinding && *slot != binding)
-		throw std::runtime_error("duplicate class special member");
-	*slot = binding;
+	{
+		const TypeRecord& prior_type =
+			program_->types.Get(GetFunction(*slot).type);
+		if (GetFunction(*slot).type == function.type)
+			throw std::runtime_error("duplicate class special member");
+		if (prior_type.cv != CV_NONE && function_type.cv == CV_NONE)
+			*slot = binding;
+	}
+	else *slot = binding;
 	function.special_member = kind;
 	if (function.constructor)
 	{

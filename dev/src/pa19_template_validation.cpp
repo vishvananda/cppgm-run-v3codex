@@ -1429,6 +1429,23 @@ void RetainedTemplateValidator::Run()
 	{
 		DeclareParameter(root, parameters_[i]);
 		if (parameters_[i].name == 0) continue;
+		if (parameters_[i].pack)
+		{
+			TypeId shape = parameters_[i].dependent_type ?
+				analyzer_.program_->types.Fundamental(FUND_INT) :
+				parameters_[i].value_type;
+			if (parameters_[i].kind == TEMPLATE_ARGUMENT_TYPE)
+				shape = analyzer_.function_template_shape_parameters_[i];
+			else if (parameters_[i].kind == TEMPLATE_ARGUMENT_TEMPLATE)
+				shape = analyzer_.CreateTemplateTemplateParameterProxy(
+					semantic, parameters_[i], i);
+			std::vector<TemplateArgument> symbolic(1, TemplateArgument(
+				parameters_[i].kind, shape, static_cast<std::int64_t>(i),
+				static_cast<std::uint32_t>(i)));
+			analyzer_.BindTemplateArgumentPack(
+				semantic, parameters_[i], symbolic, 0, symbolic.size());
+			continue;
+		}
 		if (parameters_[i].kind == TEMPLATE_ARGUMENT_TYPE)
 			analyzer_.program_->AddBinding(semantic, BIND_TYPE_ALIAS,
 				parameters_[i].name,

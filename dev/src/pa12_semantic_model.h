@@ -174,6 +174,7 @@ struct DumpNode
 	bool enum_arithmetic_conversion;
 	bool template_layout_constant;
 	bool template_parameter_constant;
+	bool runtime_atomic_order;
 	bool boolean_conversion;
 	bool user_conversion_call;
 	bool explicit_user_conversion_call;
@@ -250,7 +251,7 @@ struct DumpNode
 		  target_typed_scalar_immediate(false),
 		  integer_narrowing_conversion(false),
 		  enum_arithmetic_conversion(false), template_layout_constant(false),
-		  template_parameter_constant(false),
+		  template_parameter_constant(false), runtime_atomic_order(false),
 		  boolean_conversion(false), user_conversion_call(false),
 		  explicit_user_conversion_call(false),
 		  allocation_may_return_null(false),

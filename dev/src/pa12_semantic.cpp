@@ -1422,7 +1422,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 				dump_.nodes[zero.node].value_initialization = true;
 				return ApplyTarget(zero, target);
 			}
-			ExpressionInfo operand = analyzed_arguments[0];
+			ExpressionInfo operand = MaterializeFunctionalCastArgument(
+				argument_syntax[0], scope, cast_type, analyzed_arguments[0]);
+			if (CandidateSubstitutionFailed()) return ExpressionInfo();
 			if (arguments_node != kNoNode &&
 				arena_->IsTag(arguments_node, "braced-init-list") &&
 				IsBracedNarrowing(operand, cast_type))

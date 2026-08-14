@@ -436,11 +436,16 @@ protected:
 	}
 
 	std::uint8_t AtomicOrderAt(const NodeChildren& children,
-		std::size_t index, std::uint8_t fallback) const
+		std::size_t index, std::uint8_t fallback)
 	{
-		const Derived& derived = static_cast<const Derived&>(*this);
+		Derived& derived = static_cast<Derived&>(*this);
 		if (index >= children.size()) return fallback;
 		const DumpNode& order = derived.arena_.nodes[children[index]];
+		if (order.runtime_atomic_order)
+		{
+			(void)derived.LowerValue(children[index], LowI32());
+			return 5;
+		}
 		if (!order.constant || order.constant_value < 0 ||
 			order.constant_value > 5)
 			throw std::logic_error("atomic order lost its semantic constant fact");

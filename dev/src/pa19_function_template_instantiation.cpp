@@ -1143,10 +1143,6 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 		shape_declarator.type = ApplyConstexprMemberFunctionType(
 			shape_declarator.type, member_owner,
 			shape_spec.storage_class == STORAGE_CLASS_STATIC);
-	if (shape_spec.is_constexpr && shape_declarator.placeholder_return_kind ==
-		PLACEHOLDER_DECLARATOR_NONE)
-		ValidateConstexprCallableType(
-			shape_declarator.type, pattern.constructor_template);
 	pattern.shape_type = shape_declarator.type;
 	pattern.result_type_dependent = FunctionTemplateTypeIsDependent(program_->types.Get(pattern.shape_type).child);
 	CaptureFunctionParameterMetadata(&pattern, shape_declarator);

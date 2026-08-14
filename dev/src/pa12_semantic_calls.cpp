@@ -824,9 +824,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAtomicOrderArgument(
 	NodeId syntax, ScopeId scope)
 {
 	ExpressionInfo order = AnalyzeExpression(syntax, scope);
-	if (!order.constant || !IsIntegral(order.type, true))
-		throw std::runtime_error("atomic memory order is not constant");
+	if (!IsIntegral(order.type, true))
+		throw std::runtime_error("atomic memory order is not integral");
 	order = ApplyCallArgument(order, program_->types.Fundamental(FUND_INT));
+	if (!order.constant)
+	{
+		dump_.nodes[order.node].runtime_atomic_order = true;
+		return order;
+	}
 	const std::int64_t value = ExpressionScalar(order).integral;
 	if (value < 0 || value > 5)
 		throw std::runtime_error("atomic memory order is out of range");
