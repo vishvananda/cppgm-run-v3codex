@@ -316,7 +316,12 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 						kind == LOOKUP_TYPE && found.type == kNoType &&
 						template_arguments != kNoNode &&
 						!FindVariableTemplates(scope, direct).empty();
-					if (inherited_variable_template) break;
+					const bool inherited_function_template =
+						kind == LOOKUP_TYPE && found.type == kNoType &&
+						template_arguments != kNoNode &&
+						!FindFunctionTemplates(scope, direct).empty();
+					if (inherited_variable_template ||
+						inherited_function_template) break;
 					if ((kind == LOOKUP_TYPE && found.type == kNoType) ||
 						(kind == LOOKUP_SCOPE_CARRIER &&
 						 found.type == kNoType && found.name_space == kNoScope))

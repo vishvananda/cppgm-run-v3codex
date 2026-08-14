@@ -485,7 +485,7 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 		if (argument_list == kNoNode &&
 			found.type_declaration != kNoBinding &&
 			!CanAccessMember(found.type_declaration, found.naming_class))
-			throw std::runtime_error("inaccessible qualified type");
+			throw std::runtime_error("inaccessible qualified type: " + program_->names.Get(component));
 
 		if (argument_list != kNoNode && !terminal_template)
 		{

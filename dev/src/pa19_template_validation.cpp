@@ -51,6 +51,20 @@ struct RetainedScope
 		  unmodeled_current_class(current_class) {}
 };
 
+class ScopedRetainedClassContext
+{
+public:
+	ScopedRetainedClassContext(EntityId* slot, EntityId value)
+		: slot_(slot), previous_(*slot) { *slot_ = value; }
+	~ScopedRetainedClassContext() { *slot_ = previous_; }
+
+private:
+	ScopedRetainedClassContext(const ScopedRetainedClassContext&);
+	ScopedRetainedClassContext& operator=(const ScopedRetainedClassContext&);
+	EntityId* slot_;
+	EntityId previous_;
+};
+
 }
 
 class RetainedTemplateValidator
@@ -1378,6 +1392,16 @@ void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
 
 void RetainedTemplateValidator::Run()
 {
+	EntityId class_context = analyzer_.current_class_context_;
+	for (ScopeId owner = lexical_scope_; owner != kNoScope;
+		owner = analyzer_.program_->ParentScope(owner))
+		if (analyzer_.program_->KindOfScope(owner) == SCOPE_CLASS)
+		{
+			class_context = analyzer_.program_->EntityForScope(owner);
+			break;
+		}
+	ScopedRetainedClassContext retained_class_context(
+		&analyzer_.current_class_context_, class_context);
 	const bool definition =
 		(analyzer_.arena_->Flags(target_) & SYNTAX_FLAG_DEFINITION) != 0 ||
 		analyzer_.arena_->IsTag(target_, "function-definition") ||
@@ -1409,8 +1433,19 @@ void RetainedTemplateValidator::Run()
 		const std::size_t pattern =
 			analyzer_.FindClassTemplate(lexical_scope_, owner);
 		if (pattern < analyzer_.class_templates_.size())
+		{
 			Declare(root, analyzer_.class_templates_[pattern].name,
 				RETAINED_TYPE_NAME);
+			const ClassTemplatePattern& class_pattern =
+				analyzer_.class_templates_[pattern];
+			for (std::size_t i = 0; i < class_pattern.parameters.size(); ++i)
+				if (class_pattern.parameters[i].name != 0 &&
+					parameter_names_.count(class_pattern.parameters[i].name) == 0)
+					scopes_[root].names[class_pattern.parameters[i].name] |=
+						class_pattern.parameters[i].kind == TEMPLATE_ARGUMENT_INTEGRAL ?
+							RETAINED_VALUE_NAME : RETAINED_TYPE_NAME;
+			PredeclareClassMembers(class_pattern.declaration, root);
+		}
 	}
 	while (analyzer_.function_template_shape_parameters_.size() <
 		parameters_.size())

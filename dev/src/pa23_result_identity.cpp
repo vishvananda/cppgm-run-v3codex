@@ -23,12 +23,15 @@ struct ResultSyntaxReference
 	NodeId node;
 	ScopeId scope;
 	const ResultSyntaxEnvironment* environment;
+	TemplateArgumentListId bound_argument;
 
 	ResultSyntaxReference(NodeId node_value = kNoNode,
 		ScopeId scope_value = kNoScope,
-		const ResultSyntaxEnvironment* environment_value = 0)
+		const ResultSyntaxEnvironment* environment_value = 0,
+		TemplateArgumentListId bound_argument_value = kNoTemplateArgumentList)
 		: node(node_value), scope(scope_value),
-		  environment(environment_value) {}
+		  environment(environment_value),
+		  bound_argument(bound_argument_value) {}
 };
 
 struct ResultSyntaxEnvironment
@@ -93,7 +96,8 @@ enum ResultIdentityAtomKind
 	RESULT_IDENTITY_ARGUMENT_BEGIN,
 	RESULT_IDENTITY_ARGUMENT_END,
 	RESULT_IDENTITY_ARGUMENTS_END,
-	RESULT_IDENTITY_PACK_EXPANSION
+	RESULT_IDENTITY_PACK_EXPANSION,
+	RESULT_IDENTITY_BOUND_ARGUMENT
 };
 
 std::uint64_t ResultIdentityAtom(ResultIdentityAtomKind kind,
@@ -201,7 +205,14 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const ResultSyntaxReference& reference,
 		std::vector<std::uint64_t>* atoms, std::size_t* visits,
 		std::size_t* expansions) -> bool {
-		if (++*visits > visit_limit || reference.node == kNoNode) return false;
+		if (++*visits > visit_limit) return false;
+		if (reference.bound_argument != kNoTemplateArgumentList)
+		{
+			atoms->push_back(ResultIdentityAtom(
+				RESULT_IDENTITY_BOUND_ARGUMENT, reference.bound_argument));
+			return true;
+		}
+		if (reference.node == kNoNode) return false;
 		if (arena_->IsTag(reference.node, "parameter-pack"))
 		{
 			atoms->push_back(ResultIdentityAtom(
@@ -424,14 +435,16 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 				{
 					atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_ARGUMENT_BEGIN));
-					const bool pack_expansion = arena_->IsTag(
-						arguments[a].node, "pack-expansion-expression");
+					const bool pack_expansion =
+						arguments[a].bound_argument == kNoTemplateArgumentList &&
+						arena_->IsTag(arguments[a].node,
+							"pack-expansion-expression");
 					if (pack_expansion) atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_PACK_EXPANSION));
-					const NodeId argument_node = pack_expansion ?
-						FirstSemanticChild(arguments[a].node) : arguments[a].node;
-					if (!build(ResultSyntaxReference(argument_node,
-						arguments[a].scope, arguments[a].environment),
+					ResultSyntaxReference argument = arguments[a];
+					if (pack_expansion)
+						argument.node = FirstSemanticChild(argument.node);
+					if (!build(argument,
 						atoms, visits, expansions))
 						return false;
 					atoms->push_back(ResultIdentityAtom(
@@ -481,8 +494,52 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 
 	std::vector<std::uint64_t> atoms;
 	std::size_t visits = 0, expansions = 0;
+	std::vector<std::pair<NameId, std::vector<TemplateArgument> > > bound_packs;
+	std::unordered_set<NameId> inspected_names;
+	std::vector<NodeId> pending(1, pattern->result_root_structure);
+	while (!pending.empty())
+	{
+		const NodeId node = pending.back();
+		pending.pop_back();
+		const bool can_name_pack = arena_->IsTag(node, "id-expression") ||
+			arena_->IsTag(node, "type-name") ||
+			arena_->IsTag(node, "decl-specifier") ||
+			arena_->IsTag(node, "name-component");
+		const NameId name = can_name_pack ? arena_->SemanticPayloadId(node) : 0;
+		if (name != 0 && inspected_names.insert(name).second &&
+			root_parameter(name) == pattern->parameters.size())
+		{
+			std::vector<TemplateArgument> values;
+			if (LookupTemplateArgumentPack(
+				pattern->lexical_scope, name, &values))
+				bound_packs.push_back(std::make_pair(name, values));
+		}
+		for (std::uint32_t edge = arena_->FirstEdge(node);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+			pending.push_back(arena_->EdgeChild(edge));
+	}
+	std::vector<ResultSyntaxEnvironment> root_frames;
+	root_frames.reserve(bound_packs.size());
+	const ResultSyntaxEnvironment* root_environment = 0;
+	for (std::size_t pack = 0; pack < bound_packs.size(); ++pack)
+	{
+		root_frames.push_back(ResultSyntaxEnvironment(
+			root_environment, bound_packs[pack].first));
+		IndexResultSyntaxBinding(&environment_names, bound_packs[pack].first);
+		ResultSyntaxEnvironment& frame = root_frames.back();
+		for (std::size_t value = 0; value < bound_packs[pack].second.size(); ++value)
+		{
+			std::vector<TemplateArgument> singleton(
+				1, bound_packs[pack].second[value]);
+			frame.values.push_back(ResultSyntaxReference(kNoNode,
+				pattern->lexical_scope, 0,
+				program_->InternTemplateArgumentList(singleton)));
+		}
+		root_environment = &frame;
+	}
 	if (!build(ResultSyntaxReference(pattern->result_root_structure,
-		pattern->lexical_scope), &atoms, &visits, &expansions)) return;
+		pattern->lexical_scope, root_environment),
+		&atoms, &visits, &expansions)) return;
 	if (stats_)
 	{
 		stats_->function_template_result_identity_syntax_visits += visits;
