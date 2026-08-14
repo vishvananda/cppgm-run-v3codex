@@ -313,7 +313,7 @@ TypeRecord::TypeRecord()
 	  dependent_bound_parameter(kNoTemplateParameter),
 	  parameter_offset(0), parameter_count(0), cv(CV_NONE),
 	  ref_qualifier(FUNCTION_REF_NONE), variadic(false),
-	  bitint_unsigned(false),
+	  bitint_unsigned(false), zero_length_array(false),
 	  fundamental(FUND_INT)
 {
 }
@@ -356,7 +356,8 @@ TypeId TypeTable::TryQualify(TypeId type, std::uint8_t cv)
 		const TypeId qualified_child = TryQualify(record.child, cv);
 		if (qualified_child == kNoType) return kNoType;
 		return record.dependent_bound_parameter == kNoTemplateParameter ?
-			TryArray(qualified_child, record.bound) :
+			(record.zero_length_array ? TryZeroLengthArray(qualified_child) :
+			 TryArray(qualified_child, record.bound)) :
 			TryDependentArray(qualified_child,
 				record.dependent_bound_type,
 				record.dependent_bound_parameter);
@@ -637,6 +638,7 @@ std::size_t TypeTable::Hash(const TypeRecord& record,
 	hash = MixHash(hash, record.ref_qualifier);
 	hash = MixHash(hash, record.variadic ? 1 : 0);
 	hash = MixHash(hash, record.bitint_unsigned ? 1 : 0);
+	hash = MixHash(hash, record.zero_length_array ? 1 : 0);
 	hash = MixHash(hash, record.fundamental);
 	for (std::size_t i = 0; i < count; ++i)
 		hash = MixHash(hash, parameters[i]);
@@ -656,6 +658,7 @@ bool TypeTable::Equal(const TypeRecord& existing,
 		existing.ref_qualifier != candidate.ref_qualifier ||
 		existing.variadic != candidate.variadic ||
 		existing.bitint_unsigned != candidate.bitint_unsigned ||
+		existing.zero_length_array != candidate.zero_length_array ||
 		existing.fundamental != candidate.fundamental ||
 		existing.parameter_count != count) return false;
 	for (std::size_t i = 0; i < count; ++i)
@@ -1477,6 +1480,7 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 	NameId display_type_name, BindingId canonical, bool merge_redeclaration)
 {
 	NameEntry* entry = EnsureEntry(owner, name);
+	bool composite_variable_type = false;
 	if (entry->name_space != kNoScope)
 		throw std::runtime_error("binding conflicts with namespace");
 	if (merge_redeclaration && canonical == kNoBinding &&
@@ -1486,6 +1490,17 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 		const BindingRecord& previous = bindings[entry->ordinary];
 		if (previous.kind == kind && previous.type == type)
 			canonical = previous.canonical;
+		else if (previous.kind == BIND_VARIABLE && kind == BIND_VARIABLE)
+		{
+			TypeId composite = kNoType;
+			if (types.TryCompositeArrayType(
+				previous.type, type, &composite))
+			{
+				canonical = previous.canonical;
+				type = composite;
+				composite_variable_type = true;
+			}
+		}
 	}
 	if (bindings.size() >= kNoBinding)
 		throw std::runtime_error("too many PA11 bindings");
@@ -1508,6 +1523,8 @@ BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
 			entities[named.entity].declaration = binding;
 	}
 	record.canonical = canonical == kNoBinding ? binding : canonical;
+	if (composite_variable_type)
+		bindings[record.canonical].type = type;
 	ScopeRecord& scope = scopes_[owner];
 	if (scope.first_binding == kNoBinding) scope.first_binding = binding;
 	else bindings[scope.last_binding].next = binding;

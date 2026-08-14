@@ -647,7 +647,7 @@ ExpressionInfo SemanticAnalyzer::MaterializeConstexprObject(
 	{
 		const TypeRecord& requested = program_->types.Get(unqualified);
 		const TypeRecord& completed = program_->types.Get(value.type);
-		if (requested.kind != TYPE_ARRAY || requested.bound != 0 ||
+		if (!requested.IsIncompleteArray() ||
 			completed.kind != TYPE_ARRAY ||
 			requested.child != completed.child)
 			throw std::logic_error(

@@ -2160,6 +2160,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		const BindingId binding = program_->AddBinding(declaration_scope,
 			BIND_VARIABLE,
 			parsed.name, parsed.type);
+		parsed.type = program_->bindings[binding].type;
 		PublishVariableDeclarationFacts(binding, declaration_scope,
 			parsed.name, parsed.type, spec, local);
 		ApplyVariableObjectAttributes(node, binding);
@@ -2187,8 +2188,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 				initializer = AnalyzeConstantAwareVariableInitializer(initializer_node,
 					semantic_scope, parsed.type, local, require_constant,
 					preserve_runtime_recipe);
-			if (program_->types.Get(parsed.type).kind == TYPE_ARRAY &&
-				program_->types.Get(parsed.type).bound == 0)
+			if (program_->types.Get(parsed.type).IsIncompleteArray())
 			{
 				parsed.type = initializer.type;
 				program_->bindings[binding].type = parsed.type;

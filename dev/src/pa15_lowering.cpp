@@ -344,8 +344,10 @@ private:
 			((source_ordinal_ + 1) << 32) |
 				(static_cast<std::size_t>(binding.member_owner) + 1) :
 			internal ? source_ordinal_ + 1 : 0;
+		const TypeId identity_source_type = binding.kind == BIND_VARIABLE ?
+			canonical_binding.type : node.type;
 		const IdentityTypeId source_type = output_.identities.InternType(
-			program_, node.type, identity_type_cache_);
+			program_, identity_source_type, identity_type_cache_);
 		SymbolId found = kNoLowId;
 		if (output_.symbol_index.Find(identity, &found))
 		{
@@ -577,7 +579,7 @@ private:
 		const TypeRecord& type = program_.types.Get(
 			RemoveTopQualifiers(record.type));
 		declaration.typed = !record.declaration_only &&
-			(type.kind != TYPE_ARRAY || type.bound != 0);
+			!type.IsIncompleteArray();
 		if (declaration.typed) declaration.type = LowerStorageType(record.type);
 		return declaration;
 	}
@@ -2226,11 +2228,11 @@ private:
 		const TypeRecord& array = program_.types.Get(
 			ExpressionObjectType(record.type));
 		if (array.kind != TYPE_ARRAY ||
-			(array.bound == 0 &&
+			(array.IsIncompleteArray() &&
 			 (record.storage_size == 0 || !values.empty())) ||
 			values.size() > array.bound)
 			throw std::runtime_error("invalid PA15 bounded array initializer");
-		if (array.bound == 0)
+		if (array.IsIncompleteArray())
 		{
 			(void)AddressOfStorage(StorageFor(
 				record.binding, LowerVariableStorage(record)));
@@ -2356,7 +2358,7 @@ private:
 		const TypeRecord& array = program_.types.Get(
 			ExpressionObjectType(type));
 		const NodeChildren values = Children(list_node);
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
+		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
 			values.size() > array.bound)
 			throw std::runtime_error("invalid runtime array initializer");
 		const Operand base = compact_addressing ?
@@ -2501,7 +2503,7 @@ private:
 	{
 		const TypeRecord& array = program_.types.Get(ExpressionObjectType(type));
 		const NodeChildren values = Children(list_node);
-		if (array.kind != TYPE_ARRAY || array.bound == 0 ||
+		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
 			values.size() > array.bound)
 			throw std::runtime_error("invalid constructor array initializer");
 		const LowType element = LowerExpressionType(array.child);

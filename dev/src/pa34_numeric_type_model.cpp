@@ -7,6 +7,45 @@ namespace cppgm
 namespace pa11
 {
 
+TypeId TypeTable::TryZeroLengthArray(TypeId type)
+{
+	const TypeRecord& record = Get(type);
+	if (record.kind == TYPE_LVALUE_REFERENCE ||
+		record.kind == TYPE_RVALUE_REFERENCE || record.kind == TYPE_FUNCTION ||
+		(record.kind == TYPE_FUNDAMENTAL &&
+		 record.fundamental == FUND_VOID))
+		return kNoType;
+	TypeRecord candidate;
+	candidate.kind = TYPE_ARRAY;
+	candidate.child = type;
+	candidate.zero_length_array = true;
+	return Intern(candidate, 0, 0);
+}
+
+TypeId TypeTable::ZeroLengthArray(TypeId type)
+{
+	const TypeId result = TryZeroLengthArray(type);
+	if (result == kNoType)
+		throw std::runtime_error("invalid zero-length array element type");
+	return result;
+}
+
+bool TypeTable::TryCompositeArrayType(TypeId prior, TypeId declared,
+	TypeId* composite) const
+{
+	const TypeRecord& prior_type = Get(prior);
+	const TypeRecord& declared_type = Get(declared);
+	if (prior_type.kind != TYPE_ARRAY || declared_type.kind != TYPE_ARRAY ||
+		prior_type.dependent_bound_parameter != kNoTemplateParameter ||
+		declared_type.dependent_bound_parameter != kNoTemplateParameter ||
+		prior_type.child != declared_type.child ||
+		(!prior_type.IsIncompleteArray() &&
+		 !declared_type.IsIncompleteArray())) return false;
+	if (composite)
+		*composite = declared_type.IsIncompleteArray() ? prior : declared;
+	return true;
+}
+
 TypeId TypeTable::TryBitInt(bool is_unsigned, std::uint64_t width)
 {
 	if (width > 128 || width < (is_unsigned ? 1U : 2U)) return kNoType;

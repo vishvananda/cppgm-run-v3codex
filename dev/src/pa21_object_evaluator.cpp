@@ -18,8 +18,8 @@ TypeId SemanticAnalyzer::CompleteQualifiedStaticArrayType(
 	const TypeRecord completed = program_->types.Get(prior_type);
 	const TypeRecord candidate = program_->types.Get(declared);
 	return completed.kind == TYPE_ARRAY && candidate.kind == TYPE_ARRAY &&
-		completed.child == candidate.child && completed.bound != 0 &&
-		candidate.bound == 0 ? prior_type : declared;
+		completed.child == candidate.child && !completed.IsIncompleteArray() &&
+		candidate.IsIncompleteArray() ? prior_type : declared;
 }
 
 bool SemanticAnalyzer::IsStaticConstantDefinition(
@@ -51,13 +51,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
 	const std::uint32_t list = MakeDump(DUMP_BRACED_INIT_LIST,
 		type, VALUE_LVALUE);
 	std::vector<ConstexprObjectElement> constant_elements;
-	if (array.bound != 0 && array.bound <=
+	if (!array.IsIncompleteArray() && array.bound <=
 		std::numeric_limits<std::size_t>::max())
 		constant_elements.reserve(static_cast<std::size_t>(array.bound));
 	bool constant_object = true;
 	std::size_t count = 0;
 	while (*element_edge != kNoEdge &&
-		(array.bound == 0 || count < array.bound))
+		(array.IsIncompleteArray() || count < array.bound))
 	{
 		const std::uint32_t before = *element_edge;
 		const ExpressionInfo value = AnalyzeAggregateElement(
@@ -73,7 +73,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeArrayAggregateInit(TypeId type,
 		else constant_object = false;
 		++count;
 	}
-	if (array.bound != 0)
+	if (!array.IsIncompleteArray())
 	{
 		while (count < array.bound)
 		{

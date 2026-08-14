@@ -14,26 +14,28 @@ and no host-compiler fallback.
 
 - Preprocess is complete: 45/45.
 - Dependent callable/type replay is complete: all 4 reducers pass.
-- Object/layout/constant/lifetime owns 7 compile and 2 run failures: wait-status constexpr
-  reinterpretation, deferred GNU inline emission, extern arrays, int128 constants,
-  zero-length members, always-inline codegen, and large-array lifecycle.
+- Canonical declaration types/demand is complete: compatible extern arrays, distinct GNU
+  zero-length arrays, and unused IA32 intrinsic wrappers pass with ordinary errors preserved.
+- Typed constants own 4 compile failures: wait-status constexpr object reinterpretation and
+  three full-width int128 initializer/member cases.
+- Runtime object actions own 2 run failures: always-inline codegen and large-array lifecycle.
 - ABI/source spelling owns 4 run failures: nested-template ABI-tag suppression and the
   three inline/owner-template pretty-function cases.
-- Audit course compile is 2/2. PA34 is 356/369 overall (354/367 handout), while
+- Audit course compile is 2/2. PA34 is 359/369 overall (357/367 handout), while
   PA1-PA33 remain 4387/4387.
 
-## Active Checkpoint — Object, Constant, and Lifetime Completion
+## Active Checkpoint — Typed Constant Object Completion
 
-Unify the remaining constant/layout facts and runtime object actions at the typed semantic to
-LowIR boundary. Under `spec.md` §§2-3 and 6-9, canonical full-width constants and object types
-own identity, demand owns inline/global emission, and typed LowIR owns ordered construction,
-destruction, and loop effects.
+Complete constants at the semantic object boundary. Under `spec.md` §§2-3 and 6-9, integer
+constants retain their canonical source width, object constants retain addressable byte state for
+permitted reinterpretation, and static/runtime lowering consumes typed facts without recovering
+source spelling or narrowing through host-sized intermediates.
 
-Data flows from parsed declarations/expressions -> typed constant and layout facts -> canonical
-binding/object identity -> demand -> initializer/lifetime LowIR -> native allocation. Expected
-work is O(expression nodes + demanded declarations + emitted runtime actions), with loops kept
-compact rather than element-unrolled. Validate all seven compile and two run reducers, malformed
-bounds/constants, and 1/8/64 object/lifetime batches before all stage gates.
+Data flows from literal/operator evaluation -> fixed-width scalar limbs or object bytes -> canonical
+binding constants -> initializer LowIR/native immediates. Expected work is O(expression nodes +
+materialized bytes), with int128 represented by two fixed limbs and no declaration rescans. Validate
+all four constant reducers, signed/unsigned boundaries, invalid reinterpretations, and 1/8/64
+constant batches before all stage gates.
 
 ## Performance Evidence
 
@@ -57,6 +59,7 @@ bounds/constants, and 1/8/64 object/lifetime batches before all stage gates.
 | Hosted selection replay | 1/8/64 selected/discarded specializations produced 25/130/970 semantic nodes, 25/130/970 lookups, and 3/24/192 template requests; semantic time 0.434/0.842/4.224 ms, RSS 8,568/8,388/9,048 KiB; linked probes passed and invalid discarded branches created no work |
 | Hosted type formation | 1/8/64 unique 8-element sequence specializations produced 1/8/64 requests, 12/61/453 semantic nodes, and 43/224/1,714 KiB peak semantic storage; semantic time 0.408/1.251/8.398 ms, RSS 8,360/8,352/9,496 KiB, constant backend output |
 | Dependent callable/type replay | Recursive 1/8/64 vector-alias/partial requests compiled in 0.00/0.00/0.01 s with 8,340/8,216/9,824 KiB RSS; assertions passed, while zero lanes and unequal-width conversion rejected |
+| Canonical declarations | 1/8/64 extern-array/zero-member/intrinsic-wrapper groups produced 20/83/587 semantic nodes, 19/110/838 declarations, and 21/112/840 lookups; semantic time 0.304/0.805/4.966 ms, peak 40,408/156,054/1,187,387 bytes, RSS 8,472/8,248/8,864 KiB, with constant 10-instruction LowIR |
 
 ## Completed Checkpoints
 
@@ -87,3 +90,4 @@ bounds/constants, and 1/8/64 object/lifetime batches before all stage gates.
 | Hosted selection and contextual control | Typed `if constexpr` branch selection, alias/declaration init scopes, ordinary runtime init lowering, and template-only contextual coroutine recipes; +3 | focused 3/3 plus linked/negative probes; PA34 349/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Hosted type formation and primary shims | Canonical `__make_integer_seq`, re-entrant partial selection, pointed-class conversion demand, and undefined `char_traits` primary members; +3 | focused 3/3 plus malformed-count rejection; PA34 352/369; PA1-33 4387/4387; proportional scaling; audit pass |
 | Dependent callable and type replay | Structured destructor template-ids, static call operators, lexical lambda enum facts, dependent vector lanes/deduction, and scalarized vector builtins; +4 | reducers 4/4; malformed vector probes reject; PA34 356/369; PA1-33 4387/4387; proportional scaling; audit pass |
+| Canonical declaration types and demand | Distinct zero-length arrays, compatible array composites, canonical object symbol types, and typed IA32 `emms` recognition; +3 | focused/negative/link/scaling probes; PA34 359/369; PA1-33 4387/4387; audit pass |

@@ -148,7 +148,7 @@ LowType SourceTypeLowering::LowerStorage(TypeId type) const
 	const TypeId object = RemoveTopQualifiers(type);
 	const TypeRecord& record = program_.types.Get(object);
 	if (record.kind == TYPE_ARRAY)
-		return record.bound == 0 ? LowPtr() :
+		return record.IsIncompleteArray() ? LowPtr() :
 			LowObject(program_.SizeOf(object), program_.AlignOf(object));
 	return Lower(type);
 }

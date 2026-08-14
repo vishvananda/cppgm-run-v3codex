@@ -82,8 +82,12 @@ TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 	if (CandidateSubstitutionFailed()) return kNoType;
 	if (expression.constant)
 	{
-		if (expression.value <= 0)
+		if (expression.value < 0)
 			return CandidateTypeFormation(kNoType, "invalid array bound");
+		if (expression.value == 0)
+			return CandidateTypeFormation(
+				program_->types.TryZeroLengthArray(element),
+				"invalid zero-length array element type");
 		return CandidateTypeFormation(program_->types.TryArray(element,
 			static_cast<std::uint64_t>(expression.value)),
 			"invalid array element type");

@@ -22,6 +22,12 @@ std::size_t Program::SizeOf(TypeId type) const
 		}
 		if (record.kind == TYPE_ARRAY)
 		{
+			if (record.zero_length_array)
+			{
+				multiplier = 0;
+				type = record.child;
+				continue;
+			}
 			if (record.dependent_bound_parameter != kNoTemplateParameter ||
 				record.bound == 0 ||
 				record.bound > std::numeric_limits<std::size_t>::max() ||
@@ -78,6 +84,7 @@ std::size_t Program::SizeOf(TypeId type) const
 		}
 		default: throw std::runtime_error("invalid sizeof operand type");
 		}
+		if (multiplier == 0) return 0;
 		if (multiplier > std::numeric_limits<std::size_t>::max() / size)
 			throw std::runtime_error("object type is too large");
 		return multiplier * size;

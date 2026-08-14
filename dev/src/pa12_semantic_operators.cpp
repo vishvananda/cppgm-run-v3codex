@@ -28,15 +28,20 @@ bool SemanticAnalyzer::IsMeasurableObjectType(
 		const TypeRecord record = program_->types.Get(type);
 		if (record.kind == TYPE_ARRAY)
 		{
-			if (!alignment_query &&
-				(record.dependent_bound_parameter != kNoTemplateParameter ||
-				 record.bound == 0 ||
-				 record.bound > std::numeric_limits<std::size_t>::max() ||
-				 multiplier > std::numeric_limits<std::size_t>::max() /
-					static_cast<std::size_t>(record.bound)))
-				return false;
 			if (!alignment_query)
-				multiplier *= static_cast<std::size_t>(record.bound);
+			{
+				if (record.dependent_bound_parameter != kNoTemplateParameter ||
+					record.IsIncompleteArray() ||
+					record.bound > std::numeric_limits<std::size_t>::max())
+					return false;
+				if (record.zero_length_array) multiplier = 0;
+				else
+				{
+					if (multiplier > std::numeric_limits<std::size_t>::max() /
+						static_cast<std::size_t>(record.bound)) return false;
+					multiplier *= static_cast<std::size_t>(record.bound);
+				}
+			}
 			type = record.child;
 			continue;
 		}
@@ -86,7 +91,7 @@ bool SemanticAnalyzer::IsPointerToCompleteObject(TypeId type)
 			EnsureClassDefinition(type);
 			return program_->entities[record.entity].complete;
 		}
-		if (record.bound == 0 ||
+		if (record.IsIncompleteArray() ||
 			record.dependent_bound_parameter != kNoTemplateParameter)
 			return false;
 		type = record.child;

@@ -1539,7 +1539,7 @@ public:
 						AddTemplateParameterExpression(
 							record->dependent_bound_parameter);
 				}
-				else if (record->bound != 0)
+				else if (record->bound != 0 || record->zero_length_array)
 					modifier.array_bound.value = std::to_string(record->bound);
 			}
 			else modifier.kind = record->kind == TYPE_POINTER ? ABI_TYPE_POINTER :
@@ -1917,6 +1917,8 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	case BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC:
 		symbol->effects = Symbol::EFFECTS_READNONE; break;
 	case BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC: break;
+	case BUILTIN_FUNCTION_IA32_EMMS:
+		symbol->effects = Symbol::EFFECTS_READWRITE; break;
 	case BUILTIN_FUNCTION_ABORT:
 		symbol->noreturn = true; break;
 	case BUILTIN_FUNCTION_ALLOCA:

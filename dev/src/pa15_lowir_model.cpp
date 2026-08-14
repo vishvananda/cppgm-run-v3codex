@@ -266,6 +266,7 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 	key.cv = source.cv;
 	key.ref_qualifier = source.ref_qualifier;
 	key.variadic = source.variadic;
+	key.zero_length_array = source.zero_length_array;
 	if (source.kind == TYPE_NAMED || source.kind == TYPE_MEMBER_POINTER)
 	{
 		const EntityRecord& entity = program.entities[source.entity];

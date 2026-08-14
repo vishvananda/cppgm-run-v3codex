@@ -202,9 +202,15 @@ struct TypeRecord
 	std::uint8_t ref_qualifier;
 	bool variadic;
 	bool bitint_unsigned;
+	bool zero_length_array;
 	FundamentalKind fundamental;
 
 	TypeRecord();
+	bool IsIncompleteArray() const
+	{
+		return kind == TYPE_ARRAY && bound == 0 && !zero_length_array &&
+			dependent_bound_parameter == kNoTemplateParameter;
+	}
 };
 
 class TypeTable
@@ -225,6 +231,10 @@ public:
 	TypeId Reference(TypeKind kind, TypeId type);
 	TypeId TryArray(TypeId type, std::uint64_t bound);
 	TypeId Array(TypeId type, std::uint64_t bound);
+	TypeId TryZeroLengthArray(TypeId type);
+	TypeId ZeroLengthArray(TypeId type);
+	bool TryCompositeArrayType(TypeId prior, TypeId declared,
+		TypeId* composite) const;
 	TypeId TryVector(TypeId element, std::uint64_t bytes);
 	TypeId Vector(TypeId element, std::uint64_t bytes);
 	TypeId TryDependentVector(TypeId element, TypeId lane_count_type,
@@ -385,6 +395,7 @@ enum BuiltinFunctionKind
 	BUILTIN_FUNCTION_HOSTED_INTEGER_INTRINSIC,
 	BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC,
 	BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC,
+	BUILTIN_FUNCTION_IA32_EMMS,
 	BUILTIN_FUNCTION_ABORT,
 	BUILTIN_FUNCTION_OPERATOR_NEW,
 	BUILTIN_FUNCTION_OPERATOR_DELETE,

@@ -1135,8 +1135,9 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				const TypeRecord completed_array = program_->types.Get(
 					program_->types.RemoveTopCv(value.type));
 				if (declared_array.kind == TYPE_ARRAY &&
-					declared_array.bound == 0 && completed_array.kind == TYPE_ARRAY &&
-					completed_array.bound != 0)
+					declared_array.IsIncompleteArray() &&
+					completed_array.kind == TYPE_ARRAY &&
+					!completed_array.IsIncompleteArray())
 				{
 					member_type = spec.is_constexpr ?
 						program_->types.Qualify(value.type, CV_CONST) : value.type;

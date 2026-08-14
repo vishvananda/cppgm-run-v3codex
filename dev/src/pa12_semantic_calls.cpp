@@ -1338,6 +1338,8 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 	case BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC:
 	case BUILTIN_FUNCTION_HOSTED_MEMORY_INTRINSIC:
 		break;
+	case BUILTIN_FUNCTION_IA32_EMMS:
+		spelling = "__builtin_ia32_emms"; break;
 	case BUILTIN_FUNCTION_ABORT:
 		spelling = "__builtin_abort"; break;
 	case BUILTIN_FUNCTION_OPERATOR_NEW:
@@ -1393,6 +1395,8 @@ bool SemanticAnalyzer::AnalyzeBuiltinCall(const std::string& spelling,
 	else if (spelling == "__builtin_alloca") kind = BUILTIN_FUNCTION_ALLOCA;
 	else if (spelling == "__builtin_vsnprintf")
 		kind = BUILTIN_FUNCTION_VSNPRINTF;
+	else if (spelling == "__builtin_ia32_emms")
+		kind = BUILTIN_FUNCTION_IA32_EMMS;
 	else if (spelling == "__builtin_operator_new")
 		kind = BUILTIN_FUNCTION_OPERATOR_NEW;
 	else if (spelling == "__builtin_operator_delete")
