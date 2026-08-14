@@ -237,6 +237,21 @@ bool ClassOwnerHasAbiTags(const Program& program, EntityId entity)
 	return false;
 }
 
+bool ClassOwnerHasSpecializedAncestor(const Program& program, EntityId entity)
+{
+	bool first = true;
+	for (std::size_t depth = 0;
+		entity != kNoEntity && entity < program.entities.size() &&
+			depth < program.entities.size(); ++depth)
+	{
+		const EntityRecord& record = program.entities[entity];
+		if (!first && IsClassTemplateSpecialization(record)) return true;
+		first = false;
+		entity = record.enclosing_class;
+	}
+	return false;
+}
+
 bool IsFundamentalType(const Program& program, TypeId type,
 	FundamentalKind fundamental)
 {
@@ -2220,13 +2235,18 @@ std::string MangleFunction(const pa11::Program& program,
 		program.entities[binding.member_owner].local_context != kNoBinding;
 	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
 		ClassOwnerHasAbiTags(program, binding.member_owner);
+	const bool nested_specialized_class_owner =
+		binding.member_owner != kNoEntity &&
+		ClassOwnerHasSpecializedAncestor(program, binding.member_owner);
 	const bool structured_class_owner = binding.member_owner != kNoEntity &&
 		!structured_local_owner && !tagged_class_owner &&
+		!nested_specialized_class_owner &&
 		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
 	const bool structured_owner =
 		structured_local_owner || structured_class_owner;
 	const bool typed_class_owner = binding.member_owner != kNoEntity &&
-		!structured_local_owner && tagged_class_owner;
+		!structured_local_owner &&
+		(tagged_class_owner || nested_specialized_class_owner);
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_FUNCTION;
@@ -2426,11 +2446,14 @@ std::string MangleVariable(const pa11::Program& program,
 	AbiFactBuilder facts(program, file.cases[0]);
 	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
 		ClassOwnerHasAbiTags(program, binding.member_owner);
+	const bool nested_specialized_class_owner =
+		binding.member_owner != kNoEntity &&
+		ClassOwnerHasSpecializedAncestor(program, binding.member_owner);
 	const bool structured_class_owner = binding.member_owner != kNoEntity &&
-		!tagged_class_owner &&
+		!tagged_class_owner && !nested_specialized_class_owner &&
 		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
 	const bool typed_class_owner = binding.member_owner != kNoEntity &&
-		tagged_class_owner;
+		(tagged_class_owner || nested_specialized_class_owner);
 	const bool member_variable_template =
 		(structured_class_owner || typed_class_owner) &&
 		binding.variable_template_specialization;

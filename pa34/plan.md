@@ -20,14 +20,14 @@ and no host-compiler fallback.
   full-width int128 initializer/member cases pass.
 - Runtime object actions are complete: canonical always-inline expansion and throwing
   large-array destruction pass in compile-only, direct-link, and staged-link paths.
-- ABI/source identity owns the remaining 4 run failures: nested-template ABI-tag suppression and the
-  three inline/owner-template pretty-function cases.
-- Audit course compile is 2/2. PA34 is 365/369 tests, while
+- ABI/source identity is complete: nested-template owner mangling and canonical
+  inline/owner-template pretty-function presentation pass.
+- Audit course compile is 2/2. PA34 is 369/369 tests, while
   PA1-PA33 remain 4387/4387.
 
 ## Active Checkpoint — ABI and Source Identity Completion
 
-Complete the remaining canonical-name boundary under `spec.md` §§1-4 and 6-7. Parsed lexical
+The canonical-name boundary is complete under `spec.md` §§1-4 and 6-7. Parsed lexical
 identity must retain inline-namespace transparency and elaborated/template-owner arguments;
 canonical semantic identity must attach declaration attributes exactly once without deriving ABI
 or pretty-function text from backend spellings.
@@ -37,10 +37,10 @@ owners and ABI tags, and lowering only materializes the resulting string/object 
 syntax name/template arguments -> instantiated owner and canonical binding -> ABI/pretty-function
 fact -> typed constant or object symbol.
 
-Expected work is O(name path + template argument count) per demanded entity with interned lookup and
-no namespace/template rescans during rendering. Validate all 4 reducers, redeclared out-of-class
-members, aliases and inline namespaces, defaulted owner/function template arguments, malformed tag
-forms, and 1/8/64 identity batches before all stage gates.
+Work is O(name path + template argument count) per demanded entity with interned lookup and no
+namespace/template rescans during rendering. Validation covers all 4 reducers, redeclared
+out-of-class and nested specialized members, aliases and inline namespaces, defaulted owner/function
+template arguments, malformed and out-of-scope forms, and 1/8/64 identity batches.
 
 ## Performance Evidence
 
@@ -67,6 +67,7 @@ forms, and 1/8/64 identity batches before all stage gates.
 | Canonical declarations | 1/8/64 extern-array/zero-member/intrinsic-wrapper groups produced 20/83/587 semantic nodes, 19/110/838 declarations, and 21/112/840 lookups; semantic time 0.304/0.805/4.966 ms, peak 40,408/156,054/1,187,387 bytes, RSS 8,472/8,248/8,864 KiB, with constant 10-instruction LowIR |
 | Typed constant objects | 1/8/64 wide-constant batches compiled in 0.00/0.00/0.01 s with 8,644/8,348/9,872 KiB RSS; boundary/static linked probes passed and overflow/out-of-bounds probes rejected |
 | Runtime object actions | 1/8/64 template/action batches produced 99/274/1,611 semantic nodes and 79/611/602 LowIR instructions in 0.00/0.01/0.02 s with 8,600/9,740/9,868 KiB RSS; linked probes passed, and counted arrays remain fixed-size above the 8-element inline threshold |
+| ABI and source identity | 1/8/64 nested-owner/defaulted-template batches produced 60/326/2,454 semantic nodes, 147/917/7,077 lookups, and 22/106/778 LowIR instructions in 0.00/0.01/0.04 s with 8,732/9,228/12,988 KiB RSS; all linked probes passed |
 
 ## Completed Checkpoints
 
@@ -100,3 +101,4 @@ forms, and 1/8/64 identity batches before all stage gates.
 | Canonical declaration types and demand | Distinct zero-length arrays, compatible array composites, canonical object symbol types, and typed IA32 `emms` recognition; +3 | focused/negative/link/scaling probes; PA34 359/369; PA1-33 4387/4387; audit pass |
 | Typed constant objects | Two-limb int128 facts/operators/static data and bounded binding-address scalar loads; +4 | reducers 4/4; boundary/link/negative/scaling probes; PA34 363/369; PA1-33 4387/4387; audit pass |
 | Runtime object actions | Canonical always-inline facts with per-TU CFG expansion; EH-resumable counted array destruction; +2 | reducers 2/2; redeclaration/standard/recursive/EH and 8/9/64 probes; PA34 365/369; PA1-33 4387/4387; scaling/audit pass |
+| ABI and source identity | Template-safe predefined function names, canonical source type/substitution rendering, and typed nested-specialization owners; +4 | reducers 4/4; composite/default/inline/nested/negative/scaling probes; PA34 369/369; PA1-33 4387/4387; audit pass |

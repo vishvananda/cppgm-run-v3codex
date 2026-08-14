@@ -822,6 +822,7 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 	std::size_t scope, bool unknown_callee)
 {
 	const std::string spelling = analyzer_.PayloadSource(node);
+	if (spelling == "__func__" || spelling == "__PRETTY_FUNCTION__") return;
 	const NodeId structure = analyzer_.FindChild(
 		node, "structured-type-name");
 	const NamePath path = structure == kNoNode ?

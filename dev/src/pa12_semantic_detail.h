@@ -1060,7 +1060,8 @@ private:
 	bool TryAnalyzeTypeofFunctionalCast(NodeId callee,
 		const std::vector<NodeId>& arguments, ScopeId scope,
 		TypeId target, ExpressionInfo* result);
-	ExpressionInfo AnalyzePredefinedFunctionName(NodeId syntax, TypeId target);
+	ExpressionInfo AnalyzePredefinedFunctionName(
+		NodeId syntax, TypeId target, bool pretty);
 	ExpressionInfo AnalyzeBuiltinOffsetof(NodeId syntax, ScopeId scope,
 		TypeId target);
 	bool TryAnalyzeImmediateBuiltinCall(const std::string& spelling,

@@ -1,7 +1,10 @@
 #include "pa12_semantic_detail.h"
+#include "pa34_source_identity.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace cppgm
 {
@@ -33,17 +36,80 @@ std::string QuoteNarrowString(const std::string& value)
 	return result;
 }
 
+void AppendTemplateSubstitutions(const Program& program,
+	const std::vector<TemplateParameter>& parameters,
+	std::uint32_t first, std::uint32_t count,
+	std::vector<pa34_source_identity::TemplateBinding>* output)
+{
+	if (count == 0) return;
+	if (parameters.empty() || first > program.canonical_template_arguments.size() ||
+		count > program.canonical_template_arguments.size() - first)
+		throw std::logic_error("pretty-function template arguments are invalid");
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const TemplateParameter& parameter =
+			TemplateParameterForArgument(parameters, i);
+		if (parameter.name != 0)
+			output->push_back(pa34_source_identity::TemplateBinding(
+				parameter.name, program.canonical_template_arguments[first + i]));
+	}
+}
+
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
-	NodeId syntax, TypeId target)
+	NodeId syntax, TypeId target, bool pretty)
 {
 	if (current_function_context_ == kNoBinding)
 		throw std::runtime_error("__func__ outside function scope");
-	const FunctionInfo& function = GetFunction(
-		program_->bindings[current_function_context_].canonical);
-	const std::string name = function.display_name == 0 ? std::string() :
-		program_->names.Get(function.display_name);
+	const BindingId binding =
+		program_->bindings[current_function_context_].canonical;
+	const FunctionInfo& function = GetFunction(binding);
+	std::string name;
+	if (!pretty)
+		name = function.display_name == 0 ? std::string() :
+			program_->names.Get(function.display_name);
+	else
+	{
+		std::vector<pa34_source_identity::TemplateBinding> substitutions;
+		const BindingRecord& record = program_->bindings[binding];
+		std::vector<EntityId> owners;
+		for (EntityId owner = record.member_owner; owner != kNoEntity;)
+		{
+			if (owner >= program_->entities.size())
+				throw std::logic_error("pretty-function owner is invalid");
+			owners.push_back(owner);
+			owner = program_->entities[owner].enclosing_class;
+		}
+		std::reverse(owners.begin(), owners.end());
+		for (std::size_t i = 0; i < owners.size(); ++i)
+		{
+			const EntityId owner = owners[i];
+			if (owner >= class_template_pattern_by_entity_.size()) continue;
+			const std::uint32_t pattern =
+				class_template_pattern_by_entity_[owner];
+			if (pattern == kNoDumpEdge) continue;
+			if (pattern >= class_templates_.size())
+				throw std::logic_error("pretty-function class pattern is invalid");
+			const EntityRecord& entity = program_->entities[owner];
+			if (entity.template_argument_begin != kNoBinding)
+				AppendTemplateSubstitutions(*program_,
+					class_templates_[pattern].parameters,
+					entity.template_argument_begin,
+					entity.template_argument_count, &substitutions);
+		}
+		if (function.template_pattern != kNoDumpEdge)
+		{
+			if (function.template_pattern >= function_templates_.size())
+				throw std::logic_error("pretty-function pattern is invalid");
+			AppendTemplateSubstitutions(*program_,
+				function_templates_[function.template_pattern].parameters,
+				record.template_argument_begin,
+				record.template_argument_count, &substitutions);
+		}
+		name = pa34_source_identity::RenderFunction(
+			*program_, binding, function.type, substitutions);
+	}
 	return ApplyTarget(MakeStringLiteral(QuoteNarrowString(name)), target);
 }
 
@@ -53,7 +119,8 @@ bool SemanticAnalyzer::TryAnalyzeCompilerPredefinedValue(
 {
 	if (spelling == "__func__" || spelling == "__PRETTY_FUNCTION__")
 	{
-		*result = AnalyzePredefinedFunctionName(syntax, target);
+		*result = AnalyzePredefinedFunctionName(
+			syntax, target, spelling == "__PRETTY_FUNCTION__");
 		return true;
 	}
 	if (spelling != "__null") return false;
