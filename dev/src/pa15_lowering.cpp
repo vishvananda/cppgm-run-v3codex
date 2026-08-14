@@ -5,6 +5,7 @@
 #include "pa15_lowering_support.h"
 #include "pa15_scalar_unary_lowering.h"
 #include "pa15_source_type_lowering.h"
+#include "pa15_static_member_symbol_lowering.h"
 #include "pa11_model.h"
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
@@ -52,6 +53,7 @@ class GraphLowerer :
 	private pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>,
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
 	private pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>,
+	private pa15_lowering_detail::StaticMemberSymbolLowering<GraphLowerer>,
 	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
 	private pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>,
 	private pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>,
@@ -192,6 +194,7 @@ private:
 	friend class pa28_lowering_detail::VirtualBaseContractLookup<GraphLowerer>;
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
 	friend class pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>;
+	friend class pa15_lowering_detail::StaticMemberSymbolLowering<GraphLowerer>;
 	friend class pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::BitFieldValueLowering<GraphLowerer>;
 	friend class pa17_lowering_detail::ControlExpressionLowering<GraphLowerer>;
@@ -449,18 +452,7 @@ private:
 			{
 				const BindingId canonical =
 					program_.bindings[record.binding].canonical;
-				if (global_symbols_[canonical] == kNoLowId)
-				{
-					const std::string name = SanitizeSymbol(program_.names.Get(
-						program_.bindings[record.binding].qualified_name != 0 ?
-						program_.bindings[record.binding].qualified_name : record.text));
-					global_symbols_[canonical] = InternSymbol(record,
-						Symbol::GLOBAL_SYMBOL, name,
-						pa15_lowering_abi::MangleVariable(program_, record));
-				}
-				global_symbols_[record.binding] = global_symbols_[canonical];
-				output_.symbols[global_symbols_[canonical]].thread_local_storage =
-					program_.bindings[record.binding].thread_local_storage;
+				(void)RegisterGlobalVariable(record);
 				const bool declaration_only = pa15_lowering_abi::IsVariableDeclarationOnly(
 						program_, record, !Children(current).empty());
 				if (!declaration_only || global_node_[canonical] == kNoDumpEdge)
@@ -914,7 +906,8 @@ private:
 		if (stats_) ++stats_->instructions;
 	}
 
-	Operand StorageFor(BindingId binding, const LowType& type)
+	Operand StorageFor(BindingId binding, const LowType& type,
+		NameId expression_name = 0)
 	{
 		if (stats_) ++stats_->binding_index_probes;
 		if (binding < binding_indirect_parameters_.size() &&
@@ -923,7 +916,10 @@ private:
 		if (binding < binding_slots_.size() && binding_slots_[binding] != kNoLowId)
 			return Operand(binding_slots_[binding], type);
 		if (binding < program_.bindings.size())
+		{
+			RegisterAddressableStaticDataMember(binding, expression_name);
 			binding = program_.bindings[binding].canonical;
+		}
 		if (binding < global_symbols_.size() && global_symbols_[binding] != kNoLowId)
 		{
 			const SymbolId global = global_symbols_[binding];
@@ -1063,7 +1059,8 @@ private:
 				return Operand(
 					binding_indirect_parameters_[record.binding], LowPtr());
 			const Operand storage = StorageFor(record.binding,
-				LowerStorageType(program_.bindings[record.binding].type));
+				LowerStorageType(program_.bindings[record.binding].type),
+				record.text);
 			return BindingIsReference(record.binding) ?
 				LoadStorage(storage, LowPtr()) : storage;
 		}

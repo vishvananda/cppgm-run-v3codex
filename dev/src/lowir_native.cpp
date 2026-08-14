@@ -2,6 +2,7 @@
 #include "lowir_native_abi.h"
 #include "lowir_native_address_lowering.h"
 #include "lowir_native_analysis.h"
+#include "lowir_native_bulk_lowering.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_intrinsic_lowering.h"
@@ -31,10 +32,12 @@ using allocation::is_callee_saved;
 using namespace build;
 using namespace selection;
 class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
-                        private AddressLowering<FunctionLowerer>
+                        private AddressLowering<FunctionLowerer>,
+                        private bulk_detail::BulkLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
   friend class AddressLowering<FunctionLowerer>;
+  friend class bulk_detail::BulkLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
                   const std::unordered_set<std::string> & pointer_globals,
@@ -2013,82 +2016,6 @@ private:
       out.push_back(machine_instruction(MirInstruction::MI_MFENCE));
     consume(instruction.first);
   }
-  void append_object_copy(std::size_t bytes, std::size_t alignment,
-                          std::vector<MirInstruction> & out)
-  {
-    MirInstruction copy = machine_instruction(MirInstruction::MI_COPY_BYTES);
-    copy.byte_count = bytes;
-    copy.byte_alignment = alignment;
-    append_operand(copy, reg_operand(XR_RDI));
-    append_operand(copy, reg_operand(XR_RSI));
-    out.push_back(copy);
-  }
-  void emit_object_copy(const Operand & source, const Operand & destination,
-                        std::size_t bytes, std::size_t alignment,
-                        std::vector<MirInstruction> & out)
-  {
-    if(aliases_same_object(source, destination)) {
-      consume(source);
-      consume(destination);
-      return;
-    }
-    X64Register saved_source = XR_RSP;
-    bool allocated_saved_source = false;
-    if(source.kind == Operand::OP_TEMP) {
-      const MirOperand resolved_source = resolve(source);
-      if(resolved_source.kind == MirOperand::OP_REG &&
-         resolved_source.reg == XR_RDI) {
-        allocated_saved_source = registers_.try_allocate(false, saved_source);
-        if(!allocated_saved_source) saved_source = XR_R11;
-        append_move(out, reg_operand(saved_source), resolved_source);
-      }
-    }
-    emit_operand_address(out, XR_RDI, destination);
-    if(saved_source != XR_RSP)
-      append_move(out, reg_operand(XR_RSI), reg_operand(saved_source));
-    else
-      emit_operand_address(out, XR_RSI, source);
-    append_object_copy(bytes, alignment, out);
-    if(allocated_saved_source) registers_.release(saved_source);
-    consume(source);
-    consume(destination);
-  }
-  void emit_object_value(const std::string & name, const LowType & type,
-                         const Operand & source,
-                         std::vector<MirInstruction> & out)
-  {
-    const MirOperand home = allocate_temp_home(name, type);
-    // Resolve the source before assigning RDI: an incoming object address may
-    // itself still reside in RDI.  The frame destination cannot alias RSI.
-    emit_operand_address(out, XR_RSI, source);
-    append_address(out, XR_RDI, home);
-    append_object_copy(type.storage_size, type.alignment, out);
-    consume(source);
-    define_object_result(name, type, 0, home);
-  }
-  void emit_object_load(const Instruction & instruction,
-                        std::vector<MirInstruction> & out)
-  {
-    emit_object_value(instruction.dest, instruction.type,
-                      instruction.first, out);
-  }
-  void emit_bulk(const Instruction & instruction,
-                 std::vector<MirInstruction> & out)
-  {
-    const bool copying = instruction.kind == Instruction::IK_COPYOBJ;
-    if(copying) {
-      emit_object_copy(instruction.first, instruction.second,
-                       instruction.byte_count, instruction.byte_alignment, out);
-      return;
-    }
-    emit_operand_address(out, XR_RDI, instruction.first);
-    MirInstruction bulk = machine_instruction(MirInstruction::MI_ZERO_BYTES);
-    bulk.byte_count = instruction.byte_count;
-    bulk.byte_alignment = instruction.byte_alignment;
-    append_operand(bulk, reg_operand(XR_RDI));
-    out.push_back(bulk);
-    consume(instruction.first);
-  }
   std::vector<lowir_model::LowirParameter> call_parameters(
       const Instruction & instruction) const
   {
@@ -2864,9 +2791,7 @@ private:
         emit_float_store(instruction, out);
         return;
       }
-      if(instruction.type.kind == lowir_model::LTK_OBJECT)
-        return emit_object_copy(instruction.first, instruction.second,
-          instruction.type.storage_size, instruction.type.alignment, out);
+      if(emit_object_store(instruction, out)) return;
       if(instruction.second.kind == Operand::OP_GLOBAL &&
          tls_wrappers_.count(instruction.second.text)) {
         MirOperand value = resolve(instruction.first);

@@ -35,7 +35,7 @@ protected:
 				throw std::runtime_error(
 					"member expression is not a data-member lvalue");
 			const Operand storage = derived.StorageFor(record.binding,
-				derived.LowerStorageType(member.type));
+				derived.LowerStorageType(member.type), record.text);
 			return derived.IsReferenceType(member.type) ?
 				derived.LoadStorage(storage, LowPtr()) : storage;
 		}

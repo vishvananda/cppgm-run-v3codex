@@ -6,34 +6,34 @@ PA35 keeps source -> streaming preprocessing/post-tokenization -> integrated
 syntax/semantics -> typed LowIR -> native ELF. Relevant `spec.md` requirements
 are canonical identity and phase flow (§§2, 6), demand-owned specialization
 (§4), and bounded, observable heavy-header work (§9). Lexical ancestry supports
-lookup, while automatic lifetime state and lowered storage remain callable-owned.
+lookup; lifetime state is callable-owned; class-retained statics acquire one
+canonical object symbol only when an address is demanded.
 
 ## Current Failure Map
 
-PA35 is 128/135 (121/128 pre-existing tests) with seven failures. The complete
-set groups by owner: hosted vector builtin lookup 2; list/constructor selection
-2; static data-member addressability 1; retained local lookup 1; and reactive
-register allocation 1.
+PA35 is 131/137 (122/128 pre-existing tests) with six failures. The complete set
+groups by owner: hosted vector builtin lookup 2; list/constructor selection 2;
+retained local lookup 1; and reactive register allocation 1.
 
 ## Active Checkpoint
 
-**Addressable static data-member identity.** Per `spec.md` §§2, 5-6, an odr-used
-class static has one canonical object identity even when its declaration is
-retained inside a class rather than emitted at translation-unit depth. Data
-flows class declaration -> canonical PA12 binding -> PA15 global-symbol index ->
-typed address/relocation. PA12 owns constant and odr-use facts; PA15 owns one
-symbol per canonical binding. Expected work is amortized O(1) per use with no
-translation-unit rescan. Validate the regex `ctype_base::digit` reference,
-by-value constant use, declaration/definition coalescing, local-static
-separation, 8/16 references, PA35, PA1-34, and audit.
+**Hosted vector-construction builtin identity.** Per `spec.md` §§2, 5-7, hosted
+compiler builtin declarations must enter the same canonical call pipeline as
+ordinary functions, while target-specific vector construction remains an
+explicit lowering operation. Data flows hosted builtin registry -> PA11 binding
+and signature -> PA12 call fact -> typed LowIR/native vector value. The hosted
+registry owns spelling/signature and PA15/native lowering owns representation.
+Expected work is O(1) registry lookup and O(call count), with no header scan.
+Validate both `__builtin_ia32_vec_init_v2si` failures, lane order and width,
+wrong-arity/type negatives, 8/16 calls, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen callable-lifetime rows produced 360/712 semantic nodes, 149/285
-declarations, 416/832 lookup-scope visits, and 320/640 LowIR instructions. Peak
-semantic storage was 391,553/763,235 bytes; five-run median semantic analysis
-was 1.522/2.870 ms and lowering was 0.701/1.136 ms. Doubling demanded local
-classes and cleanup boundaries keeps work and storage near linear.
+Eight/sixteen static-address and zero-object rows produced 226/450 semantic
+nodes, 253/501 declarations, 240/480 lookup-scope visits, and 176/352 LowIR
+instructions. Peak semantic storage was 440,757/873,100 bytes; five-run median
+semantic analysis was 2.019/3.648 ms and lowering was 0.494/0.680 ms. First-use
+owner-path work and repeated indexed probes remain bounded near linearly.
 
 ## Completed Checkpoints
 
@@ -73,3 +73,4 @@ classes and cleanup boundaries keeps work and storage near linear.
 | Specialization-owned retained-call replay | active ordinary/static members replace stale specialization facts; lambda special-member ABI and unwind cleanup stop at canonical callable boundaries | PA35 116/128 -> 119/128 existing (122/131 total); three `std::function` cases pass, regex advances, three regressions and 8/16 scaling pass |
 | Demanded-body return convergence | constant control edges retain feasible reachability; standard/GNU noreturn facts terminate direct-call full expressions without changing ABI identity | PA35 122/131 -> 125/133 (120/128 existing); one handout passes, regex advances, two regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
 | Callable-owned lifetime chains | function scopes retain lexical lookup ancestry but reset automatic, temporary, and initializer-list cleanup ancestry | PA35 125/133 -> 128/135 (121/128 existing); vector passes, regex advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
+| Addressable static objects and zero bulk stores | class-retained statics intern one canonical object symbol on first address demand; object-sized zero stores lower to MIR zero-bytes | PA35 128/135 -> 131/137 (122/128 existing); regex and two regressions pass, ABI symbols/runtime probe correct, PA1-34 4756/4756, 8/16 scaling, and audit pass |

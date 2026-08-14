@@ -2461,7 +2461,8 @@ std::string MangleFunction(const pa11::Program& program,
 }
 
 std::string MangleVariable(const pa11::Program& program,
-	const pa12_semantic_detail::DumpNode& node)
+	const pa12_semantic_detail::DumpNode& node,
+	const std::string& qualified_name_override)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -2505,8 +2506,9 @@ std::string MangleVariable(const pa11::Program& program,
 		binding.storage_class == STORAGE_CLASS_STATIC &&
 		binding.member_owner == kNoEntity &&
 		!binding.unnamed_namespace_linkage;
-	target.target.qualified_name = program.names.Get(
-		binding.qualified_name != 0 ? binding.qualified_name : node.text);
+	target.target.qualified_name = qualified_name_override.empty() ?
+		program.names.Get(binding.qualified_name != 0 ?
+			binding.qualified_name : node.text) : qualified_name_override;
 	if (typed_class_owner)
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];
