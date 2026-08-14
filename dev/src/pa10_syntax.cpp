@@ -598,9 +598,14 @@ private:
 			At(KW_VOLATILE)) return true;
 		if (position_ < tokens_.size() &&
 			IsFundamentalKind(tokens_[position_].Kind()))
-			return !At(KW_BOOL) || !AtOffset(1, OP_LPAREN) ||
-				AtOffset(2, OP_RPAREN) ||
-				StartsParenthesizedMemberPointerDeclarator(1);
+		{
+			const std::size_t parameter = position_ + 2;
+			return !At(KW_BOOL) || !AtOffset(1, OP_LPAREN) || AtOffset(2, OP_RPAREN) ||
+				StartsParenthesizedMemberPointerDeclarator(1) ||
+				(parameter < tokens_.size() && !HasNameFact(tokens_[parameter].spelling, kActiveNonTypeParameter) &&
+				 (IsTypeSpecifierStartKind(tokens_[parameter].Kind()) || StartsHostedType(parameter) ||
+				  (tokens_[parameter].Kind() == kIdentifierToken && parameter + 1 < tokens_.size() && tokens_[parameter + 1].Kind() == static_cast<std::uint16_t>(OP_RPAREN) && HasNameFact(tokens_[parameter].spelling, kKnownType))));
+		}
 		if (At(OP_COLON2) ||
 			(AtIdentifier() && AtOffset(1, OP_COLON2)))
 			return !StartsQualifiedCallExpression() && QualifiedStartsType();
@@ -2731,7 +2736,6 @@ NodeId Parser::ParseSimpleOrFunction(bool, bool)
 	return FinishSimpleOrFunction(
 		mark, specifier_first, specifier_last, specifiers);
 }
-
 NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 	std::size_t specifier_first, std::size_t specifier_last,
 	NodeId specifiers)
@@ -2833,7 +2837,6 @@ NodeId Parser::ParseDeclaration(bool in_class)
 			arena_.Add(declaration, attributes[i]);
 	return declaration;
 }
-
 NodeId Parser::ParseDeclarationCore(bool in_class)
 {
 	if (position_ < tokens_.size() &&
@@ -2943,7 +2946,6 @@ NodeId Parser::ParseDeclarationCore(bool in_class)
 	Rollback(special_mark);
 	return ParseSimpleOrFunction(in_class);
 }
-
 }
 namespace pa10_syntax_detail
 {
@@ -2994,7 +2996,5 @@ void RunSyntaxTranslationUnit(const std::string& path,
 				finished - started).count());
 	}
 }
-
 }
-
 }
