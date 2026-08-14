@@ -36,6 +36,18 @@ bool SemanticAnalyzer::IsInitializerListType(
 	return true;
 }
 
+bool SemanticAnalyzer::InitializerListDefinitionReplayInProgress(
+	EntityId entity) const
+{
+	if (entity >= class_template_pattern_by_entity_.size()) return false;
+	const std::uint32_t pattern = class_template_pattern_by_entity_[entity];
+	if (pattern == kNoDumpEdge || pattern >= class_templates_.size() ||
+		!class_templates_[pattern].initializer_list_template) return false;
+	const BindingId binding = program_->entities[entity].declaration;
+	return binding < class_template_specialization_states_.size() &&
+		class_template_specialization_states_[binding] == 1;
+}
+
 bool SemanticAnalyzer::IsInitializerListFunction(TypeId type) const
 {
 	const TypeRecord& function = program_->types.Get(type);

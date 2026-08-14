@@ -322,8 +322,11 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 	NameId name, NameId lookup_name, ScopeId specialization_owner,
 	NameId specialization_identity, NameId emission_name)
 {
-		if (program_->entities[entity].complete)
-			throw std::runtime_error("duplicate class definition");
+		if (program_->entities[entity].complete &&
+			!InitializerListDefinitionReplayInProgress(entity))
+			throw std::runtime_error("duplicate class definition: " +
+				program_->names.Get(program_->entities[entity].name) + " (" +
+				program_->names.Get(program_->entities[entity].identity_name) + ")");
 		program_->entities[entity].packing_alignment = current_pack_alignment_;
 		if (hosted_extension::HasGnuAttribute(*arena_, node, "packed") ||
 			hosted_extension::HasGnuAttribute(*arena_, node, "__packed__"))

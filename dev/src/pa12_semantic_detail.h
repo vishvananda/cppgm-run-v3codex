@@ -737,6 +737,7 @@ private:
 		const std::vector<TemplateArgument>& arguments);
 	bool IsInitializerListType(TypeId type,
 		TypeId* element_type = 0) const;
+	bool InitializerListDefinitionReplayInProgress(EntityId entity) const;
 	bool IsInitializerListFunction(TypeId type) const;
 	bool IsStandardInitializerListTemplate(NameId name, ScopeId owner,
 		const std::vector<TemplateParameter>& parameters) const;

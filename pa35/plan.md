@@ -16,31 +16,31 @@ lowering; there is no rendered-name or hosted-only fallback.
 
 ## Current Failure Map
 
-PA35 is 70/108 with 38 failures. The complete set groups by first owner:
+PA35 is 73/109 with 36 failures. The complete set groups by first owner:
 explicit specialization/instantiation routing 7; retained declaration/class
-lookup and completion 6; expression/call/template demand 14; parser/local
+lookup and completion 4; expression/call/template demand 14; parser/local
 semantics 2; stream/heap stability 5; and native object/register lowering 4.
 
 ## Active Checkpoint
 
-**Canonical specialization completion re-entry.** Per `spec.md` §4 and §9,
-repeated or recursive class-specialization demand must converge on one
-canonical entity and one monotone completion state. Data flows unevaluated
-member/call typing -> canonical template request key -> pending/in-progress/
-succeeded state -> one declaration replay -> cached member lookup. PA12 lookup
-requests completion and PA19 owns the state machine. Expected work is O(new
-specialization declarations + member edges) once, with repeat/re-entrant demand
-O(1) average. Validate the two cases now reporting duplicate class definition,
-direct recursive/repeated-completion probes, full PA35, PA1-34, audit, and 8/16
-re-entry families.
+**Canonical explicit class target routing.** Per `spec.md` §§2 and 4, explicit
+specialization and instantiation syntax must resolve to one primary-template
+identity plus a canonical argument key; definition/demand state belongs to that
+binding rather than a rendered target. Data flows structured target syntax ->
+owner/primary lookup -> canonical request key -> explicit state -> completion
+or demand. PA19 owns class instantiation and PA20 owns explicit-specialization
+routing. Expected work is O(path components + arguments + matching primaries)
+once, followed by O(1) average indexed state lookup. Validate all seven routing
+failures, qualified/alias targets and duplicate-definition negatives, full
+PA35, PA1-34, audit, and 8/16 target families.
 
 ## Performance Evidence
 
-For 8/16 retained exception families after parameter-scope publication,
-template requests/cache hits were 16/32 and 8/16, lookup queries were 190/350,
-and overload candidates were 160/320. Median semantic time was 1.93/3.35 ms
-and peak semantic storage was 0.396/0.720 MB. Doubling families kept work and
-storage at or below 2x.
+For 8/16 initializer-list re-entry families, template requests/cache hits were
+32/64 and 16/32, lookup queries were 448/880, overload candidates were 96/192,
+and demand pushes were 16/32. Median semantic time was 2.31/4.31 ms and peak
+semantic storage was 0.471/0.872 MB. Doubling families kept every measured
+work and storage counter at or below 2x.
 
 ## Completed Checkpoints
 
@@ -66,3 +66,4 @@ storage at or below 2x.
 | Canonical retained exception equivalence | special-member kind, structural overload shape, ordinal parameter mapping, and deferred exception state select one retained declaration | PA35 65/105 -> 68/107; eight barriers removed, one handout plus two regressions pass; PA1-34 4756/4756; scaling/audit pass |
 | Parameter-owned exception evaluation | declarators carry parameter/`this` scope into ordinary and deferred `noexcept` evaluation | five handout cases advance from unknown names to incomplete construction; direct positive/negative probes and 8/16 scaling pass |
 | Demand-safe unevaluated construction | member typing skips constexpr address/layout work in unevaluated operands; dependent function-template specs rebuild canonical parameter scopes | PA35 68/107 -> 70/108 (one handout plus one regression); four cases advance; PA1-34 4756/4756; scaling/audit pass |
+| Canonical specialization completion re-entry | synthetic initializer-list layout and declaration replay remain distinct; only canonical in-progress replay crosses the duplicate guard | PA35 70/108 -> 73/109 (two handout plus one regression); PA1-34 4756/4756; 8/16 scaling and audit pass |
