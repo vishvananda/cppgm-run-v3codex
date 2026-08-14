@@ -913,13 +913,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		result.indirect_constant_designator = true;
 		dump_.nodes[result.node].binding = result.binding;
 	}
-	dump_.nodes[result.node].constant = result.constant &&
-		result.constexpr_object == kNoConstexprObject &&
-		result.constexpr_address == kNoConstexprAddress;
-	if (!result.floating_constant &&
-		result.constexpr_object == kNoConstexprObject &&
-		result.constexpr_address == kNoConstexprAddress)
-		dump_.nodes[result.node].constant_value = result.value;
+	RecordExpressionFacts(result);
 	++expression_count_;
 	return ApplyTarget(result, target);
 }

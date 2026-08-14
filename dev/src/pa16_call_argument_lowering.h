@@ -1218,7 +1218,8 @@ protected:
 				Operand::FUNCTION, derived.function_symbols_[binding], LowPtr())));
 		}
 		const LowType type = derived.LowerExpressionType(record.type);
-		if (record.constant) return Operand(record.constant_value, type);
+		if (record.constant) return Operand(
+			record.constant_value, record.constant_high, type);
 		if (binding != kNoBinding &&
 			derived.program_.bindings[binding].bit_field)
 			return derived.LoadBitField(binding, derived.LowerStorage(node));

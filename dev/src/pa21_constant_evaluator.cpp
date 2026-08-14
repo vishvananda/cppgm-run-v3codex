@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa34_wide_constant_semantic.h"
 
 #include <algorithm>
 #include <cmath>
@@ -43,9 +44,15 @@ ConstexprScalarValue SemanticAnalyzer::ExpressionScalar(
 {
 	if (IsMemberPointer(value.type))
 		return ConstexprScalarValue(value.binding, value.value);
-	return value.floating_constant ?
-		ConstexprScalarValue(value.floating_value) :
-		ConstexprScalarValue(value.value);
+	if (value.floating_constant)
+		return ConstexprScalarValue(value.floating_value);
+	if (value.integral_high_valid)
+		return ConstexprScalarValue::IntegralBits(
+			static_cast<std::uint64_t>(value.value), value.integral_high);
+	return ConstexprScalarValue::IntegralBits(
+		static_cast<std::uint64_t>(value.value),
+		IsIntegral(value.type, true) && IsUnsignedIntegral(value.type) ? 0 :
+		value.value < 0 ? ~std::uint64_t(0) : 0);
 }
 
 ConstexprScalarValue SemanticAnalyzer::ConvertScalarConstant(
@@ -79,9 +86,21 @@ ConstexprScalarValue SemanticAnalyzer::ConvertScalarConstant(
 		long double converted = 0.0L;
 		if (value.kind == CONSTEXPR_SCALAR_FLOATING)
 			converted = value.floating;
-		else if (IsUnsignedIntegral(source_type))
-			converted = static_cast<long double>(
-				static_cast<std::uint64_t>(value.integral));
+		else if (IsIntegral(source_type, true))
+		{
+			const std::size_t source_width = IntegralWidth(source_type);
+			const ConstexprScalarValue source = NormalizeWideConstant(value,
+				source_width, IsUnsignedIntegral(source_type) || source_width == 1);
+			const bool negative = !IsUnsignedIntegral(source_type) &&
+				source.integral_high >> 63 != 0;
+			ConstexprScalarValue magnitude = source;
+			if (negative) magnitude = NegateWideConstant(source, 128, true);
+			converted = std::ldexp(
+				static_cast<long double>(magnitude.integral_high), 64) +
+				static_cast<long double>(
+					static_cast<std::uint64_t>(magnitude.integral));
+			if (negative) converted = -converted;
+		}
 		else converted = static_cast<long double>(value.integral);
 		switch (FundamentalOf(target_type))
 		{
@@ -132,8 +151,11 @@ ConstexprScalarValue SemanticAnalyzer::ConvertScalarConstant(
 		return ConstexprScalarValue(
 			NormalizeIntegralConstant(target_type, converted));
 	}
-	return ConstexprScalarValue(
-		NormalizeIntegralConstant(target_type, value.integral));
+	const std::size_t source_width = IntegralWidth(source_type);
+	const ConstexprScalarValue source = NormalizeWideConstant(value,
+		source_width, IsUnsignedIntegral(source_type) || source_width == 1);
+	return NormalizeWideConstant(source, IntegralWidth(target_type),
+		IsUnsignedIntegral(target_type));
 }
 
 ConstexprScalarValue SemanticAnalyzer::NormalizeScalarConstant(
@@ -150,11 +172,17 @@ void SemanticAnalyzer::SetExpressionScalar(ExpressionInfo* expression,
 	expression->constexpr_complete_object = kNoConstexprObject;
 	expression->constexpr_address = kNoConstexprAddress;
 	expression->floating_constant = value.kind == CONSTEXPR_SCALAR_FLOATING;
+	expression->integral_high_valid =
+		value.kind == CONSTEXPR_SCALAR_INTEGRAL;
 	if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
 		expression->binding = value.member_pointer;
 	if (expression->floating_constant)
 		expression->floating_value = value.floating;
-	else expression->value = value.integral;
+	else
+	{
+		expression->value = value.integral;
+		expression->integral_high = value.integral_high;
+	}
 }
 
 void SemanticAnalyzer::SetExpressionObject(ExpressionInfo* expression,
@@ -245,13 +273,15 @@ ConstexprScalarValue SemanticAnalyzer::BindingScalar(BindingId binding) const
 		return ConstexprScalarValue(member,
 			program_->bindings[owner].value);
 	}
-	if ((owner >= floating_constant_fact_by_binding_.size() ||
-		floating_constant_fact_by_binding_[owner] == 0) &&
+	BindingId floating_owner = binding;
+	if ((floating_owner >= floating_constant_fact_by_binding_.size() ||
+		floating_constant_fact_by_binding_[floating_owner] == 0) &&
 		record.canonical != binding)
-		owner = record.canonical;
-	if (owner < floating_constant_fact_by_binding_.size())
+		floating_owner = record.canonical;
+	if (floating_owner < floating_constant_fact_by_binding_.size())
 	{
-		const std::uint32_t fact = floating_constant_fact_by_binding_[owner];
+		const std::uint32_t fact =
+			floating_constant_fact_by_binding_[floating_owner];
 		if (fact != 0)
 		{
 			if (fact > floating_constant_values_.size())
@@ -259,7 +289,21 @@ ConstexprScalarValue SemanticAnalyzer::BindingScalar(BindingId binding) const
 			return ConstexprScalarValue(floating_constant_values_[fact - 1]);
 		}
 	}
-	return ConstexprScalarValue(record.value);
+	owner = binding;
+	if ((owner >= integral_constant_fact_by_binding_.size() ||
+		integral_constant_fact_by_binding_[owner] == 0) &&
+		record.canonical != binding &&
+		record.canonical < integral_constant_fact_by_binding_.size() &&
+		integral_constant_fact_by_binding_[record.canonical] != 0)
+		owner = record.canonical;
+	const BindingRecord& integral_record = program_->bindings[owner];
+	return ConstexprScalarValue::IntegralBits(
+		static_cast<std::uint64_t>(integral_record.value),
+		owner < integral_constant_fact_by_binding_.size() &&
+			integral_constant_fact_by_binding_[owner] != 0 ?
+			integral_constant_high_by_binding_[owner] :
+			IsUnsignedIntegral(integral_record.type) ? 0 :
+			integral_record.value < 0 ? ~std::uint64_t(0) : 0);
 }
 
 std::uint32_t SemanticAnalyzer::BindingObject(BindingId binding) const
@@ -302,6 +346,14 @@ void SemanticAnalyzer::PublishBindingScalar(BindingId binding,
 	if (value.kind == CONSTEXPR_SCALAR_INTEGRAL)
 	{
 		record.value = value.integral;
+		if (integral_constant_high_by_binding_.size() <= binding)
+			integral_constant_high_by_binding_.resize(
+				static_cast<std::size_t>(binding) + 1, 0);
+		if (integral_constant_fact_by_binding_.size() <= binding)
+			integral_constant_fact_by_binding_.resize(
+				static_cast<std::size_t>(binding) + 1, 0);
+		integral_constant_high_by_binding_[binding] = value.integral_high;
+		integral_constant_fact_by_binding_[binding] = 1;
 		return;
 	}
 	if (floating_constant_fact_by_binding_.size() <= binding)
@@ -476,10 +528,13 @@ std::uint32_t SemanticAnalyzer::InternConstexprObject(TypeId type,
 		{
 			hash = MixConstexprHash(hash,
 				std::hash<int>()(static_cast<int>(element.scalar.kind)));
-			hash = MixConstexprHash(hash,
-				element.scalar.kind == CONSTEXPR_SCALAR_FLOATING ?
-				std::hash<long double>()(element.scalar.floating) :
-				std::hash<std::int64_t>()(element.scalar.integral));
+				hash = MixConstexprHash(hash,
+					element.scalar.kind == CONSTEXPR_SCALAR_FLOATING ?
+					std::hash<long double>()(element.scalar.floating) :
+					std::hash<std::int64_t>()(element.scalar.integral));
+			if (element.scalar.kind != CONSTEXPR_SCALAR_FLOATING)
+				hash = MixConstexprHash(hash,
+					std::hash<std::uint64_t>()(element.scalar.integral_high));
 			if (element.scalar.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
 				hash = MixConstexprHash(hash, std::hash<BindingId>()(
 					element.scalar.member_pointer));
@@ -713,7 +768,8 @@ bool SemanticAnalyzer::ScalarTruth(const ConstexprScalarValue& value) const
 	if (value.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
 		return value.member_pointer != kNoBinding || value.integral != 0;
 	return value.kind == CONSTEXPR_SCALAR_FLOATING ?
-		value.floating != 0.0L : value.integral != 0;
+		value.floating != 0.0L :
+		value.integral != 0 || value.integral_high != 0;
 }
 
 ConstexprScalarValue SemanticAnalyzer::ApplyConstantScalarBinary(
@@ -763,6 +819,10 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantScalarBinary(
 		return NormalizeScalarConstant(
 			operand_type, ConstexprScalarValue(calculated));
 	}
+	if (operand_type != kNoType && IsIntegral(operand_type, true) &&
+		IntegralWidth(operand_type) > 64)
+		return ApplyWideConstantBinary(operation, left, right,
+			IntegralWidth(operand_type), IsUnsignedIntegral(operand_type));
 	return ConstexprScalarValue(ApplyConstantBinary(operation,
 		left.integral, right.integral, operand_type));
 }
@@ -771,7 +831,16 @@ NameId SemanticAnalyzer::InternScalar(TypeId type,
 	const ConstexprScalarValue& value)
 {
 	if (value.kind != CONSTEXPR_SCALAR_FLOATING)
-		return InternNumber(value.integral);
+	{
+		if (!IsIntegral(type, true) || IntegralWidth(type) <= 64)
+			return InternNumber(value.integral);
+		std::ostringstream spelling;
+		spelling << "0x" << std::hex << std::setfill('0')
+			<< std::setw(16) << value.integral_high
+			<< std::setw(16)
+			<< static_cast<std::uint64_t>(value.integral);
+		return program_->names.Intern(spelling.str());
+	}
 	std::ostringstream spelling;
 	spelling.imbue(std::locale::classic());
 	const FundamentalKind kind = FundamentalOf(type);
@@ -1069,7 +1138,11 @@ bool SemanticAnalyzer::TryAnalyzeConstexprLocal(
 	if (!result->floating_constant &&
 		result->constexpr_object == kNoConstexprObject &&
 		result->constexpr_address == kNoConstexprAddress)
+	{
 		dump_.nodes[result->node].constant_value = result->value;
+		dump_.nodes[result->node].constant_high =
+			ExpressionScalar(*result).integral_high;
+	}
 	++expression_count_;
 	*result = ApplyTarget(*result, target);
 	return true;

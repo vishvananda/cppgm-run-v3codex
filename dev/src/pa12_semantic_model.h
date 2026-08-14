@@ -150,6 +150,7 @@ struct DumpNode
 	NameId text;
 	BindingId binding, object_binding, selected_binding;
 	std::int64_t constant_value;
+	std::uint64_t constant_high;
 	std::int64_t dynamic_cast_hint;
 	std::uint64_t array_count;
 	std::uint64_t storage_size;
@@ -233,7 +234,8 @@ struct DumpNode
 		  hosted_atomic_intrinsic(hosted_builtin::ATOMIC_INTRINSIC_NONE),
 		  text(0), binding(kNoBinding),
 		  object_binding(kNoBinding), selected_binding(kNoBinding),
-		  constant_value(0), dynamic_cast_hint(-1), array_count(0), storage_size(0),
+		  constant_value(0), constant_high(0), dynamic_cast_hint(-1),
+		  array_count(0), storage_size(0),
 		  direct_base_offset(0), base_projection_offset(0),
 		  first_edge(kNoDumpEdge),
 		  last_edge(kNoDumpEdge), base_projection_count(0),
@@ -421,26 +423,40 @@ struct ConstexprScalarValue
 {
 	ConstexprScalarKind kind;
 	std::int64_t integral;
+	std::uint64_t integral_high;
 	long double floating;
 	BindingId member_pointer;
 
 	ConstexprScalarValue()
-		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(0), floating(0.0L),
+		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(0), integral_high(0),
+		  floating(0.0L),
 		  member_pointer(kNoBinding) {}
 	explicit ConstexprScalarValue(std::int64_t value)
-		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(value), floating(0.0L),
+		: kind(CONSTEXPR_SCALAR_INTEGRAL), integral(value),
+		  integral_high(value < 0 ? ~std::uint64_t(0) : 0), floating(0.0L),
 		  member_pointer(kNoBinding) {}
 	explicit ConstexprScalarValue(long double value)
-		: kind(CONSTEXPR_SCALAR_FLOATING), integral(0), floating(value),
+		: kind(CONSTEXPR_SCALAR_FLOATING), integral(0), integral_high(0),
+		  floating(value),
 		  member_pointer(kNoBinding) {}
 	ConstexprScalarValue(BindingId member, std::int64_t value)
-		: kind(CONSTEXPR_SCALAR_MEMBER_POINTER), integral(value), floating(0.0L),
+		: kind(CONSTEXPR_SCALAR_MEMBER_POINTER), integral(value),
+		  integral_high(value < 0 ? ~std::uint64_t(0) : 0), floating(0.0L),
 		  member_pointer(member) {}
+	static ConstexprScalarValue IntegralBits(std::uint64_t low,
+		std::uint64_t high)
+	{
+		ConstexprScalarValue result;
+		result.integral = static_cast<std::int64_t>(low);
+		result.integral_high = high;
+		return result;
+	}
 
 	bool operator==(const ConstexprScalarValue& other) const
 	{
 		return kind == other.kind && (kind == CONSTEXPR_SCALAR_FLOATING ?
 			floating == other.floating : integral == other.integral &&
+			integral_high == other.integral_high &&
 			(kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
 			 member_pointer == other.member_pointer));
 	}
@@ -556,6 +572,8 @@ struct ExpressionInfo
 	std::size_t constexpr_local;
 	bool constant;
 	std::int64_t value;
+	std::uint64_t integral_high;
+	bool integral_high_valid;
 	bool floating_constant;
 	long double floating_value;
 	std::uint32_t constexpr_object, constexpr_complete_object;
@@ -570,7 +588,8 @@ struct ExpressionInfo
 		  converted_scalar_target(kNoType), category(VALUE_PRVALUE),
 		  binding(kNoBinding),
 		  constexpr_local(std::numeric_limits<std::size_t>::max()),
-		  constant(false), value(0), floating_constant(false),
+		  constant(false), value(0), integral_high(0),
+		  integral_high_valid(false), floating_constant(false),
 		  floating_value(0.0L), constexpr_object(kNoConstexprObject),
 		  constexpr_complete_object(kNoConstexprObject),
 		  constexpr_address(kNoConstexprAddress),
@@ -734,6 +753,10 @@ struct ConstexprCallKeyHash
 					std::hash<std::int64_t>()(argument.scalar.integral);
 				hash ^= value_hash +
 					0x9e3779b9u + (hash << 6) + (hash >> 2);
+				if (argument.scalar.kind != CONSTEXPR_SCALAR_FLOATING)
+					hash ^= std::hash<std::uint64_t>()(
+						argument.scalar.integral_high) +
+						0x9e3779b9u + (hash << 6) + (hash >> 2);
 				if (argument.scalar.kind ==
 					CONSTEXPR_SCALAR_MEMBER_POINTER)
 					hash ^= std::hash<BindingId>()(

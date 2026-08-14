@@ -391,7 +391,6 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 			 program_->types.Get(program_->types.RemoveTopCv(result_type)).kind ==
 				TYPE_NAMED))
 			result_type = program_->types.Fundamental(FUND_INT);
-		if (constant && IsIntegral(result_type, true) && IntegralWidth(result_type) > 64) constant = false;
 		if (constant)
 		{
 			if (IsFloating(result_type))
@@ -400,19 +399,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 				scalar = NormalizeScalarConstant(result_type, scalar);
 			}
 			else if (operation == "-")
-			{
-				const std::size_t width = IntegralWidth(result_type);
-				const std::int64_t minimum = width == 64 ? INT64_MIN :
-					- static_cast<std::int64_t>(
-						std::uint64_t(1) << (width - 1));
-				if (!IsUnsignedIntegral(result_type) && scalar.integral == minimum)
-					throw std::runtime_error(
-						"signed constant unary negation overflow");
-				scalar.integral = static_cast<std::int64_t>(
-					- static_cast<std::uint64_t>(scalar.integral));
-			}
-			else if (operation == "~") scalar.integral = ~scalar.integral;
-			if (IsIntegral(result_type, true))
+				scalar = ApplyConstantIntegralUnary(
+					operation, scalar, result_type);
+			else if (operation == "~")
+				scalar = ApplyConstantIntegralUnary(
+					operation, scalar, result_type);
+			else if (IsIntegral(result_type, true))
 				scalar = NormalizeScalarConstant(result_type, scalar);
 		}
 	}
@@ -465,6 +457,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 				if (element) SetExpressionObjectElement(&result, *element);
 			}
 		}
+		ConstexprScalarValue loaded;
+		if (TryLoadConstexprIntegralAddress(
+			lvalue_address, result_type, &loaded))
+			SetExpressionScalar(&result, loaded);
 	}
 	++expression_count_;
 	return result;
@@ -737,7 +733,6 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 		((operation == "&&" && !ExpressionTruth(left)) ||
 		 (operation == "||" && ExpressionTruth(left)));
 	result.constant = constant_evaluation_suppressed_depth_ == 0 && (short_circuit || (left.constant && right.constant));
-	if (result.constant && operand_type != kNoType && IsIntegral(operand_type, true) && IntegralWidth(operand_type) > 64) result.constant = false;
 	if (result.constant)
 	{
 		if (operation == ",")

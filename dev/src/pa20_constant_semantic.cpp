@@ -132,7 +132,11 @@ void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 	if (!value.floating_constant &&
 		value.constexpr_object == kNoConstexprObject &&
 		(value.constexpr_address == kNoConstexprAddress || null_address))
+	{
 		node.constant_value = null_address ? 0 : value.value;
+		node.constant_high = null_address ? 0 :
+			ExpressionScalar(value).integral_high;
+	}
 }
 
 bool SemanticAnalyzer::IsUnsignedIntegral(TypeId type) const

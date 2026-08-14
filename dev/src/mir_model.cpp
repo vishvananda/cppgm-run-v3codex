@@ -257,7 +257,9 @@ void render_global(std::ostringstream & out, const GlobalDefinition & global)
         out << item.type << ' ';
         if(item.kind == GlobalDefinition::DataItem::ITEM_FLOAT)
           out << item.literal_text;
-        else out << item.int_value;
+		else if (item.type == "i128" && !item.literal_text.empty())
+		  out << item.literal_text;
+		else out << item.int_value;
         out << '\n';
       }
     }
@@ -272,7 +274,10 @@ void render_global(std::ostringstream & out, const GlobalDefinition & global)
   } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
     out << global.type << ' ' << global.literal_text;
   } else {
-    out << global.type << ' ' << global.int_value;
+    out << global.type << ' ';
+	if(global.type == "i128" && !global.literal_text.empty())
+	  out << global.literal_text;
+	else out << global.int_value;
   }
   out << '\n';
 }

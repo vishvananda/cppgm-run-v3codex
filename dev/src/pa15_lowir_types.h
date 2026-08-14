@@ -135,23 +135,28 @@ struct Operand
 	} kind;
 	std::uint32_t id;
 	std::int64_t integer_value;
+	std::uint64_t integer_high;
 	LowType type;
 
-	Operand() : kind(NONE), id(kNoLowId), integer_value(0) {}
+	Operand() : kind(NONE), id(kNoLowId), integer_value(0), integer_high(0) {}
 	Operand(TempId id_value, const LowType& type_value)
-		: kind(TEMP), id(id_value), integer_value(0), type(type_value) {}
+		: kind(TEMP), id(id_value), integer_value(0), integer_high(0), type(type_value) {}
 	Operand(ParameterId id_value, const LowType& type_value)
-		: kind(PARAMETER), id(id_value), integer_value(0), type(type_value) {}
+		: kind(PARAMETER), id(id_value), integer_value(0), integer_high(0), type(type_value) {}
 	Operand(SlotId id_value, const LowType& type_value)
-		: kind(SLOT), id(id_value), integer_value(0), type(type_value) {}
+		: kind(SLOT), id(id_value), integer_value(0), integer_high(0), type(type_value) {}
 	Operand(Kind kind_value, SymbolId id_value, const LowType& type_value)
-		: kind(kind_value), id(id_value), integer_value(0), type(type_value)
+		: kind(kind_value), id(id_value), integer_value(0), integer_high(0), type(type_value)
 	{
 		if (kind != GLOBAL && kind != FUNCTION)
 			throw std::logic_error("invalid PA15 symbol operand kind");
 	}
 	Operand(std::int64_t value, const LowType& type_value)
-		: kind(INTEGER), id(kNoLowId), integer_value(value), type(type_value) {}
+		: kind(INTEGER), id(kNoLowId), integer_value(value),
+		  integer_high(value < 0 ? ~std::uint64_t(0) : 0), type(type_value) {}
+	Operand(std::int64_t low, std::uint64_t high, const LowType& type_value)
+		: kind(INTEGER), id(kNoLowId), integer_value(low),
+		  integer_high(high), type(type_value) {}
 	static Operand Floating(InternedStringId spelling, const LowType& type_value)
 	{
 		Operand result;
@@ -380,24 +385,28 @@ struct Global
 		enum Kind { INTEGER_ITEM, FLOATING_ITEM, ADDRESS_ITEM, ZERO_ITEM } kind;
 		LowType type;
 		std::int64_t integer_value;
+		std::uint64_t integer_high;
 		InternedStringId floating_spelling;
 		SymbolId symbol;
 		std::int64_t offset;
 		std::size_t zero_bytes;
 
-		DataItem() : kind(INTEGER_ITEM), integer_value(0), floating_spelling(0),
+		DataItem() : kind(INTEGER_ITEM), integer_value(0), integer_high(0),
+			floating_spelling(0),
 			symbol(kNoLowId),
 			offset(0), zero_bytes(0) {}
 	};
 	SymbolId symbol;
 	LowType type;
 	std::int64_t initializer;
+	std::uint64_t initializer_high;
 	InternedStringId floating_initializer;
 	SymbolId address_symbol;
 	std::int64_t address_offset;
 	std::vector<DataItem> items;
 
 	Global() : initializer_kind(ZERO), symbol(kNoLowId), initializer(0),
+		initializer_high(0),
 		floating_initializer(0),
 		address_symbol(kNoLowId), address_offset(0) {}
 };

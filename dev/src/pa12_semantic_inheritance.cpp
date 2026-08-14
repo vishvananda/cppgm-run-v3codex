@@ -757,11 +757,24 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	ExpressionInfo result;
 	result.node = cast;
 	result.type = target;
-	result.constant = operand.constant;
-	result.value = operand.value;
-	if (result.constant && IsIntegral(target, true) &&
-		IsIntegral(operand.type, true))
-		result.value = NormalizeIntegralConstant(target, result.value);
+	const std::uint32_t operand_address = ExpressionAddress(operand);
+	if (IsPointer(target) && operand_address != kNoConstexprAddress)
+		SetExpressionAddress(&result, operand_address);
+	else if (operand.constant &&
+		(IsIntegral(target, true) || IsFloating(target)) &&
+		(IsIntegral(operand.type, true) || IsFloating(operand.type)))
+	{
+		SetExpressionScalar(&result, ConvertScalarConstant(
+			operand.type, target, ExpressionScalar(operand)));
+	}
+	else
+	{
+		result.constant = operand.constant;
+		result.value = operand.value;
+		result.integral_high = operand.integral_high;
+		result.integral_high_valid = operand.integral_high_valid;
+	}
+	RecordExpressionFacts(result);
 	++expression_count_;
 	return result;
 }
@@ -848,9 +861,11 @@ bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 		left.category = VALUE_PRVALUE;
 		left.binding = kNoBinding;
 		left.node = MakeDump(DUMP_LITERAL, left.type, VALUE_PRVALUE,
-			InternNumber(left.value));
+			InternScalar(left.type, ExpressionScalar(left)));
 		dump_.nodes[left.node].constant = true;
 		dump_.nodes[left.node].constant_value = left.value;
+		dump_.nodes[left.node].constant_high =
+			ExpressionScalar(left).integral_high;
 		++expression_count_;
 	}
 	ExpressionInfo right = AnalyzeExpression(right_syntax, scope);
@@ -1137,8 +1152,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		const ExpressionInfo& selected = condition_truth ? yes : no;
 		if ((IsIntegral(selected.type, true) || IsFloating(selected.type)) &&
 			(IsIntegral(type, true) || IsFloating(type)))
+		{
 			SetExpressionScalar(&result, ConvertScalarConstant(
 				selected.type, type, ExpressionScalar(selected)));
+		}
 		else if (ExpressionAddress(selected) != kNoConstexprAddress)
 			SetExpressionAddress(&result, ExpressionAddress(selected));
 		else if (selected.constexpr_lvalue_address != kNoConstexprAddress)

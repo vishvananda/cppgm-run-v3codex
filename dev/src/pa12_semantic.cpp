@@ -1444,8 +1444,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 			result.node = cast;
 			result.type = cast_type;
 			result.category = cast_category;
-			result.constant = operand.constant;
-			result.value = operand.value;
+			SetFunctionalScalarCast(&result, operand, cast_type);
 			++expression_count_;
 			return ApplyTarget(result, target);
 		}
@@ -1638,8 +1637,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 			constexpr_locals_[local].value = assigned;
 			SetExpressionScalar(&result, assigned);
 			dump_.nodes[expression].constant = true;
-			if (assigned.kind == CONSTEXPR_SCALAR_INTEGRAL)
-				dump_.nodes[expression].constant_value = assigned.integral;
+			if (assigned.kind == CONSTEXPR_SCALAR_INTEGRAL) { dump_.nodes[expression].constant_value = assigned.integral; dump_.nodes[expression].constant_high = assigned.integral_high; }
 		}
 	}
 	++expression_count_;

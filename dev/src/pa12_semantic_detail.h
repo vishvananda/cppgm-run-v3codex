@@ -1764,6 +1764,13 @@ private:
 	ConstexprScalarValue ApplyConstantScalarBinary(
 		const std::string& operation, const ConstexprScalarValue& left,
 		const ConstexprScalarValue& right, TypeId operand_type) const;
+	ConstexprScalarValue ApplyConstantIntegralUnary(
+		const std::string& operation, const ConstexprScalarValue& value,
+		TypeId type) const;
+	bool TryLoadConstexprIntegralAddress(std::uint32_t address, TypeId target,
+		ConstexprScalarValue* value) const;
+	void SetFunctionalScalarCast(ExpressionInfo* result,
+		const ExpressionInfo& operand, TypeId target) const;
 	NameId InternScalar(TypeId type, const ConstexprScalarValue& value);
 	bool TryEvaluateConstexprFunction(BindingId function,
 		const std::vector<ExpressionInfo>& arguments,
@@ -1994,6 +2001,8 @@ private:
 	// Binding-indexed O(1) access with dense payloads for non-integral facts.
 	std::vector<std::uint32_t> floating_constant_fact_by_binding_;
 	std::vector<long double> floating_constant_values_;
+	std::vector<std::uint64_t> integral_constant_high_by_binding_;
+	std::vector<std::uint8_t> integral_constant_fact_by_binding_;
 	std::vector<BindingId> constexpr_member_pointer_by_binding_;
 	// Completed object values are immutable and structurally interned. Bindings
 	// carry only a compact object identity; elements remain dense by ordinal.

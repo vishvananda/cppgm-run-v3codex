@@ -2,6 +2,7 @@
 
 #include "lowir_native_mir.h"
 
+#include <cstdint>
 #include <stdexcept>
 
 namespace lowir_native {
@@ -400,4 +401,13 @@ void append_atomic_compare_exchange(const MirOperand & object,
 }
 
 }  // namespace wide
+
+void parse_wide_literal_words(const std::string & text,
+                              std::uint64_t * low, std::uint64_t * high)
+{
+  const wide::Value value = wide::literal_value(text);
+  *low = value.words.low;
+  *high = value.words.high;
+}
+
 }  // namespace lowir_native

@@ -2,6 +2,8 @@
 
 #include <cerrno>
 #include <cstdlib>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
@@ -17,6 +19,16 @@ std::string Percent(const std::string& value) { return "%" + value; }
 std::string Dollar(const std::string& value) { return "$" + value; }
 std::string Temp(std::uint32_t value) { return "%t" + std::to_string(value); }
 std::string Label(const std::string& value) { return "^" + value; }
+
+std::string IntegerText(std::int64_t low, std::uint64_t high,
+	const LowType& type)
+{
+	if (type.kind != LOW_I128) return std::to_string(low);
+	std::ostringstream result;
+	result << "0x" << std::hex << std::setfill('0') << std::setw(16) << high
+		<< std::setw(16) << static_cast<std::uint64_t>(low);
+	return result.str();
+}
 
 lowir_model::LowType AdaptType(const LowType& type)
 {
@@ -94,7 +106,8 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		result.kind = lowir_model::Operand::OP_INTEGER;
 		result.int_value = operand.integer_value;
 		result.has_int_value = true;
-		result.text = std::to_string(operand.integer_value);
+		result.text = IntegerText(operand.integer_value,
+			operand.integer_high, operand.type);
 		break;
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
@@ -211,6 +224,20 @@ void AdaptSymbolFacts(const Symbol& source,
 	}
 }
 
+void AdaptProjection(IndexProjection source, lowir_model::Instruction* target)
+{
+	switch (source)
+	{
+	case INDEX_PROJECTION_NONE: break;
+	case INDEX_PROJECTION_ARRAY_ELEMENT:
+		target->index_projection = lowir_model::IPK_ARRAY_ELEMENT; break;
+	case INDEX_PROJECTION_FIELD:
+		target->index_projection = lowir_model::IPK_FIELD; break;
+	case INDEX_PROJECTION_BASE_SUBOBJECT:
+		target->index_projection = lowir_model::IPK_BASE_SUBOBJECT; break;
+	}
+}
+
 lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	const TypedProgram& program, const Function& function)
 {
@@ -223,16 +250,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	target.first = AdaptOperand(source.first, program, function);
 	target.second = AdaptOperand(source.second, program, function);
 	target.third = AdaptOperand(source.third, program, function);
-	switch (source.projection)
-	{
-	case INDEX_PROJECTION_NONE: break;
-	case INDEX_PROJECTION_ARRAY_ELEMENT:
-		target.index_projection = lowir_model::IPK_ARRAY_ELEMENT; break;
-	case INDEX_PROJECTION_FIELD:
-		target.index_projection = lowir_model::IPK_FIELD; break;
-	case INDEX_PROJECTION_BASE_SUBOBJECT:
-		target.index_projection = lowir_model::IPK_BASE_SUBOBJECT; break;
-	}
+	AdaptProjection(source.projection, &target);
 	switch (source.kind)
 	{
 	case Instruction::CONST: target.kind = lowir_model::Instruction::IK_CONST; break;
@@ -555,7 +573,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 						data.literal_operand.kind = lowir_model::Operand::OP_INTEGER;
 						data.literal_operand.int_value = value.integer_value;
 						data.literal_operand.has_int_value = true;
-						data.literal_operand.text = std::to_string(value.integer_value);
+						data.literal_operand.text = IntegerText(value.integer_value,
+							value.integer_high, value.type);
 					}
 				}
 				result.data_items.push_back(data);
@@ -583,7 +602,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				result.init_operand.kind = lowir_model::Operand::OP_INTEGER;
 				result.init_operand.int_value = item.initializer;
 				result.init_operand.has_int_value = true;
-				result.init_operand.text = std::to_string(item.initializer);
+				result.init_operand.text = IntegerText(item.initializer,
+					item.initializer_high, item.type);
 			}
 		}
 		target.globals.push_back(result);

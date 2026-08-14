@@ -1382,7 +1382,7 @@ private:
     if(unresolved_right.kind == MirOperand::OP_IMM && comparison.type.bit_width == 64 &&
        (unresolved_right.imm < INT32_MIN || unresolved_right.imm > INT32_MAX) &&
        (left.kind != MirOperand::OP_REG || left.reg != XR_RAX)) {
-      append_move(out, reg_operand(XR_RAX), left);
+      move_value_to_register(out, XR_RAX, left, comparison.type);
       left = reg_operand(XR_RAX);
     }
     const MirOperand right = direct_compare_right(comparison.second, comparison.type, out);

@@ -95,4 +95,7 @@ void write_linux_relocatable(const std::string & path,
                              const std::vector<unsigned char> & compiler_payload,
                              Stats * stats = 0);
 
+void parse_wide_literal_words(const std::string & text,
+                              std::uint64_t * low, std::uint64_t * high);
+
 }  // namespace lowir_native

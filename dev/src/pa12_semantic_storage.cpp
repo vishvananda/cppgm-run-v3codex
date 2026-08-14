@@ -164,6 +164,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		constexpr_block_offsets_.capacity() * sizeof(ConstexprBlockOffset) +
 		floating_constant_fact_by_binding_.capacity() * sizeof(std::uint32_t) +
 		floating_constant_values_.capacity() * sizeof(long double) +
+		integral_constant_high_by_binding_.capacity() * sizeof(std::uint64_t) +
+		integral_constant_fact_by_binding_.capacity() * sizeof(std::uint8_t) +
 		constexpr_member_pointer_by_binding_.capacity() * sizeof(BindingId) +
 		constexpr_object_by_binding_.capacity() * sizeof(std::uint32_t) +
 		constexpr_address_by_binding_.capacity() * sizeof(std::uint32_t) +

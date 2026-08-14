@@ -245,7 +245,11 @@ bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 		InternScalar(*type, ExpressionScalar(*initializer)));
 	dump_.nodes[initializer->node].constant = true;
 	if (!initializer->floating_constant)
+	{
 		dump_.nodes[initializer->node].constant_value = initializer->value;
+		dump_.nodes[initializer->node].constant_high =
+			ExpressionScalar(*initializer).integral_high;
+	}
 	++expression_count_;
 	return true;
 }

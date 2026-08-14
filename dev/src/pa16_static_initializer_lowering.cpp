@@ -430,6 +430,7 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 		{
 			item.kind = Global::DataItem::INTEGER_ITEM;
 			item.integer_value = value.constant_value;
+			item.integer_high = value.constant_high;
 			items->push_back(item);
 		}
 		return true;
@@ -684,6 +685,7 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	{
 		global->initializer_kind = Global::INTEGER_VALUE;
 		global->initializer = initializer.constant_value;
+		global->initializer_high = initializer.constant_high;
 		return true;
 	}
 	return false;

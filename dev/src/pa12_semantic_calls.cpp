@@ -2093,7 +2093,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (!result.floating_constant &&
 		result.constexpr_object == kNoConstexprObject &&
 		result.constexpr_address == kNoConstexprAddress)
+	{
 		dump_.nodes[expression].constant_value = result.value;
+		dump_.nodes[expression].constant_high =
+			ExpressionScalar(result).integral_high;
+	}
 	++expression_count_;
 	return result;
 }

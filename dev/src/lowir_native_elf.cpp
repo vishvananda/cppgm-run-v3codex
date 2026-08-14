@@ -2437,15 +2437,15 @@ std::size_t type_size(const std::string & type)
   throw std::logic_error("unsupported native data type: " + type);
 }
 
-void emit_integer_data(CodeBuffer & out, long long value, std::size_t size)
+void emit_integer_data(CodeBuffer & out, long long value, std::size_t size, const std::string& literal_text)
 {
   if(size <= 8) {
     out.little(static_cast<std::uint64_t>(value), static_cast<unsigned>(size));
     return;
   }
   if(size != 16) throw std::logic_error("unsupported wide integer data size");
-  out.little(static_cast<std::uint64_t>(value), 8);
-  out.little(value < 0 ? UINT64_MAX : 0, 8);
+	std::uint64_t low, high; parse_wide_literal_words(literal_text.empty() ? std::to_string(value) : literal_text, &low, &high);
+	out.little(low, 8); out.little(high, 8);
 }
 
 void emit_float_data(CodeBuffer & out, const std::string & text,
@@ -2491,7 +2491,7 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
     } else if(global.init_kind == mir_model::MirGlobalDefinition::GI_FLOAT) {
       emit_float_data(out, global.literal_text, global.type);
     } else {
-      emit_integer_data(out, global.int_value, size);
+      emit_integer_data(out, global.int_value, size, global.literal_text);
     }
     return;
   }
@@ -2506,7 +2506,7 @@ void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global
     if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR)
       out.absolute64(item.symbol, item.addr_addend);
     else if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER)
-      emit_integer_data(out, item.int_value, size);
+      emit_integer_data(out, item.int_value, size, item.literal_text);
     else if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT)
       emit_float_data(out, item.literal_text, item.type);
     else throw std::logic_error("unsupported native global data item");

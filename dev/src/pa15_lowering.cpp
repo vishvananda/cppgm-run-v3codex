@@ -1164,9 +1164,8 @@ private:
 		if (canonicalize_immediate && value.kind == Operand::INTEGER &&
 			IsInteger(value.type) && IsInteger(target))
 		{
-			value.integer_value = CanonicalIntegerImmediate(
-				value.integer_value, target.width, target.is_signed);
-			value.type = target;
+			value.integer_value = CanonicalIntegerImmediate(value.integer_value, target.width, target.is_signed);
+			value.integer_high = target.is_signed && value.integer_value < 0 ? ~std::uint64_t(0) : 0; value.type = target;
 			return value;
 		}
 		if ((IsInteger(value.type) && target.kind == LOW_PTR) ||
@@ -1291,7 +1290,7 @@ private:
 			{
 				if (!record.constant)
 					throw std::runtime_error("literal is missing its PA12 constant fact");
-				result = Operand(record.constant_value, type);
+				result = Operand(record.constant_value, record.constant_high, type);
 			}
 		}
 		else if (record.kind == DUMP_ID_EXPRESSION)
@@ -1299,7 +1298,7 @@ private:
 			if (record.constant && record.binding != kNoBinding &&
 				(program_.IsStaticDataMember(record.binding) ||
 				 program_.bindings[record.binding].kind == BIND_PARAMETER))
-				result = Operand(record.constant_value, LowerExpressionType(record.type));
+				result = Operand(record.constant_value, record.constant_high, LowerExpressionType(record.type));
 			else if (record.binding != kNoBinding && record.binding < function_symbols_.size() &&
 				function_symbols_[record.binding] != kNoLowId)
 			{
@@ -1335,7 +1334,7 @@ private:
 			Instruction constant(Instruction::CONST);
 			constant.dest = result.id;
 			constant.type = type;
-			constant.first = Operand(record.constant_value, type);
+			constant.first = Operand(record.constant_value, record.constant_high, type);
 			Emit(constant);
 		}
 		else if (record.kind == DUMP_BINARY_EXPRESSION)
