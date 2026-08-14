@@ -1813,26 +1813,29 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		DemandClassTemplateMemberDefinitions(entity);
 	QueueClassTemplateMemberDefinitions(index, binding);
 }
-
 void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 {
 	if (type == kNoType) return;
 	const TypeRecord* record = &program_->types.Get(type);
-	while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_ARRAY)
-	{
+	while (record->kind == TYPE_QUALIFIED || record->kind == TYPE_ARRAY) {
 		type = record->child;
 		record = &program_->types.Get(type);
 	}
 	if (record->kind != TYPE_NAMED) return;
 	const EntityId entity = record->entity;
-	if (program_->entities[entity].complete) return;
-
+	const BindingId declaration = program_->entities[entity].declaration;
+	const bool initializer_list_replay = IsInitializerListType(type) && (
+		declaration >= class_template_specialization_states_.size() ||
+		 class_template_specialization_states_[declaration] == 0 ||
+		 class_template_specialization_states_[declaration] ==
+		 kClassTemplateCompletionPendingDefinition);
+	if (program_->entities[entity].complete && !initializer_list_replay) return;
 	if (entity < class_template_pattern_by_entity_.size() &&
 		class_template_pattern_by_entity_[entity] != kNoDumpEdge)
 	{
 		const std::size_t index = class_template_pattern_by_entity_[entity];
-		if (index >= class_templates_.size())
-			throw std::logic_error("invalid class specialization owner index");
+		if (index >= class_templates_.size()) throw std::logic_error(
+			"invalid class specialization owner index");
 		const ClassTemplatePattern& pattern = class_templates_[index];
 		if (entity == pattern.marker_entity) return;
 		const EntityRecord& specialization = program_->entities[entity];
@@ -1847,13 +1850,10 @@ void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 			first > program_->template_arguments.size() ||
 			count > program_->template_arguments.size() - first)
 			throw std::logic_error("class specialization arguments are truncated");
-		const std::vector<TemplateArgument> arguments =
-			StoredTemplateArguments(first, count);
-		CompleteClassTemplateSpecialization(index,
-			program_->entities[entity].declaration, arguments);
+		const std::vector<TemplateArgument> arguments = StoredTemplateArguments(first, count);
+		CompleteClassTemplateSpecialization(index, declaration, arguments);
 		return;
 	}
-
 	if (entity < deferred_class_definition_by_entity_.size() &&
 		deferred_class_definition_by_entity_[entity] != kNoNode)
 	{

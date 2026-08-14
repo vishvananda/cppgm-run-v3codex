@@ -9,32 +9,35 @@ are canonical identity and phase flow (§§2, 6), demand-owned specialization
 Hosted fixed-width vector operations now use canonical signatures and typed
 object lowering; compiler-provided inline wrappers remain demand-owned. Using
 imports converge only when they name the same canonical function entity.
+Braced class targets now complete through the specialization owner before
+list-initialization ranking; synthetic initializer-list layout and semantic
+definition completion remain separate monotonic facts.
 
 ## Current Failure Map
 
-PA35 is 137/142 (123/128 pre-existing tests) with five failures. The complete
-set groups by owner: list/constructor candidate selection 2; retained local
-lookup 1; constant-shift representability 1; and reactive register allocation 1.
+PA35 is 141/144 (125/128 pre-existing tests) with three failures. The complete
+set groups by owner: constant-shift representability 1 (constant evaluator),
+retained local lookup 1 (PA11/specialization replay), and reactive register
+allocation 1 (native backend).
 
 ## Active Checkpoint
 
-**List/constructor candidate convergence.** Per `spec.md` §§2, 4, 6, retained
-braced arguments must preserve non-deduced shape until specialization and then
-enter ordinary initialization/constructor ranking once with canonical completed
-types. Data flows retained braced syntax -> specialization-owned argument facts
--> list-initialization sequence -> constructor/overload ranking -> typed action.
-PA19 owns replay/deduction and PA12 owns initialization/ranking. Expected work is
-O(candidate count + element count), reusing candidate caches rather than
-reanalyzing headers. Validate both hosted failures, narrowing/non-deduced
-negatives, 8/16 candidates, PA35, PA1-34, and audit.
+**Wide constant-shift representability.** Per `spec.md` §§2, 6, 9, constant
+values retain canonical typed width/signedness and overflow is diagnosed by the
+language operation, not a narrower host intermediate. Data flows typed operands
+-> integral promotions -> constant shift -> representability fact -> retained
+expression/LowIR constant. The constant evaluator owns the operation and PA12
+semantic typing supplies the promoted type. Expected work is O(1) per shift.
+Validate the Mersenne header failure, signed/unsigned boundary negatives,
+representative 32/64-bit shifts, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen function-import round trips produced 17/33 semantic nodes, 20/36
-declarations, 108/212 lookup queries, and 72/144 scope visits. Peak semantic
-storage was 60,513/114,319 bytes; five-run median semantic analysis was
-0.288/0.445 ms and lowering was 0.069/0.071 ms. Canonical comparisons use the
-existing signature index, and measured work remains bounded near linearly.
+Eight/sixteen braced-target candidates produced 65/129 overload-candidate
+visits, 35/67 specialization requests, 319/591 declarations, and 225/409 scope
+visits. Peak semantic storage was 489,686/829,252 bytes; five-run median
+semantic analysis was 2.031/3.228 ms and lowering was 0.404/0.556 ms. Completion
+is candidate-owned and measured work remains bounded near linearly.
 
 ## Completed Checkpoints
 
@@ -77,3 +80,4 @@ existing signature index, and measured work remains bounded near linearly.
 | Addressable static objects and zero bulk stores | class-retained statics intern one canonical object symbol on first address demand; object-sized zero stores lower to MIR zero-bytes | PA35 128/135 -> 131/137 (122/128 existing); regex and two regressions pass, ABI symbols/runtime probe correct, PA1-34 4756/4756, 8/16 scaling, and audit pass |
 | Hosted fixed-width vector builtin identity | registry-owned v8qi/v4hi/v2si construction and v2si extraction lower as typed eight-byte objects; artificial inline wrappers remain demand-owned | PA35 131/137 -> 134/140; both random barriers advance to using merge; three regressions, PA1-34 4756/4756, lane offsets, 8/16 scaling, and audit pass |
 | Hosted using-function redeclaration convergence | namespace imports skip only identity-equal local declarations while preserving same-signature conflicts between distinct entities | PA35 134/140 -> 137/142 (123/128 existing); address-qualified random passes, Mersenne advances, positive/negative regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |
+| List/constructor candidate convergence | concrete braced targets complete before list classification; initializer-list ABI shells replay semantic members and implicit copy facts on demand | PA35 137/142 -> 141/144 (125/128 existing); both hosted barriers and two regressions pass; narrowing guard and 8/16 scaling pass |

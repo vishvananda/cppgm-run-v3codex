@@ -611,6 +611,8 @@ CallConversionFact SemanticAnalyzer::BracedInitializationConversion(
 	}
 	if (top.kind == TYPE_LVALUE_REFERENCE || top.kind == TYPE_RVALUE_REFERENCE)
 		object = program_->types.RemoveTopCv(top.child);
+	const EntityId object_entity = EntityOf(object);
+	if (IsClassEntity(*program_, object_entity)) EnsureClassDefinition(object);
 	const TypeRecord record = program_->types.Get(object);
 
 	TypeId initializer_element = kNoType;
