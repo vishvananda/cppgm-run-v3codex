@@ -915,8 +915,6 @@ protected:
 			ResetFullExpressionCleanup();
 			return;
 		}
-		const bool segment_active =
-			derived.full_expression_cleanup_dispatch_ != kNoLowId;
 		for (std::size_t i = 0;
 			i < derived.full_expression_cleanup_actions_.size(); ++i)
 			if (!derived.arena_.nodes[
@@ -925,7 +923,8 @@ protected:
 					derived.full_expression_cleanup_actions_[i]))
 				LowerFullExpressionDestructorAction(
 					derived.full_expression_cleanup_actions_[i]);
-		if (segment_active) CloseFullExpressionCleanupSegment();
+		if (derived.full_expression_cleanup_dispatch_ != kNoLowId)
+			CloseFullExpressionCleanupSegment();
 		ResetFullExpressionCleanup();
 	}
 
@@ -938,6 +937,12 @@ protected:
 			return result;
 		const Operand slot(derived.EnsureGeneratedSlot(
 			node, "call", result.type), result.type);
+		if (result.type.kind == LOW_OBJECT)
+		{
+			derived.EmitClassObjectCopy(
+				record.type, result, derived.AddressOfStorage(slot));
+			return slot;
+		}
 		Instruction store(Instruction::STORE);
 		store.type = result.type;
 		store.first = result;

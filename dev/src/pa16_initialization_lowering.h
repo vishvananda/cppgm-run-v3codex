@@ -49,6 +49,21 @@ public:
 			derived.program_.entities[entity].trivial_default_constructor;
 	}
 protected:
+	Operand MaterializeDirectClassCallStorage(std::uint32_t node,
+		const DumpNode& call, const NodeChildren& children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const bool retained = derived.full_expression_cleanup_active_ &&
+			call.full_expression_staging;
+		const Operand value = derived.LowerCall(node, call, children);
+		const LowType type = derived.LowerStorageType(call.type);
+		const Operand slot(derived.EnsureGeneratedSlot(
+			node, retained ? "call" : "callobj", type), type);
+		if (!retained) derived.EmitClassObjectCopy(
+			call.type, value, derived.AddressOfStorage(slot));
+		return slot;
+	}
+
 	Operand TemporaryObjectStorageSlot(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);

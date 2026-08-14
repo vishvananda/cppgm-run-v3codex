@@ -1569,6 +1569,7 @@ private:
 	void AddDestructorSubobjectActions(EntityId entity, BindingId destructor,
 		std::uint32_t body);
 	ScopeId CompoundCleanupStop(ScopeId scope) const;
+	ScopeId FunctionCleanupStop(ScopeId scope) const;
 	void AddLifetimeObligation(ScopeId scope, BindingId object, TypeId type,
 		bool allow_elision = true);
 	void AddTemporaryLifetimeObligation(ScopeId scope,

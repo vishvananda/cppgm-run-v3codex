@@ -19,6 +19,8 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type);
 bool IsFunctionEmissionDemanded(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	bool host_object_emission = false);
+bool IsFunctionDeclarationBoundaryComplete(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& node);
 bool IsVariableDeclarationOnly(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node, bool has_initializer);
 bool HasWeakLinkage(

@@ -489,7 +489,7 @@ private:
 					function_declaration_[record.binding] == current)
 				{
 					const SymbolId symbol = function_symbols_[record.binding];
-					if (!output_.symbols[symbol].declaration_emitted)
+					if (!output_.symbols[symbol].declaration_emitted && pa15_lowering_abi::IsFunctionDeclarationBoundaryComplete(program_, record))
 						{
 							output_.declarations.push_back(LowerDeclaration(current));
 							output_.symbols[symbol].declaration_emitted = true;
@@ -675,7 +675,7 @@ private:
 		temp_counter_ = 0;
 		block_counter_ = 0;
 		generated_slot_ordinal_ = 0;
-		ResetControlFlowReachability();
+		ResetFunctionSlots(); ResetControlFlowReachability();
 		ResetFullExpressionFunctionState();
 		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
 		break_targets_.clear();
@@ -742,7 +742,7 @@ private:
 	{
 		if (generated_slots_[node] != kNoLowId)
 			return generated_slots_[node];
-		generated_slots_[node] = CreateGeneratedSlot(prefix, type);
+		generated_slots_[node] = CreateGeneratedSlot(prefix, type); generated_slot_nodes_.push_back(node);
 		return generated_slots_[node];
 	}
 
@@ -797,7 +797,7 @@ private:
 		assigned_names_.Clear();
 		slot_name_counts_.Clear();
 		generated_slot_ordinal_ = 0;
-		ResetControlFlowReachability();
+		ResetFunctionSlots(); ResetControlFlowReachability();
 		ResetLifetimeFunctionState(); ResetFullExpressionFunctionState();
 		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
 		parameter_slot_index_ = current_indirect_result_ ? 1 : 0;
@@ -1117,9 +1117,9 @@ private:
 			return LowerConditionalAddress(node, children);
 		if (record.kind == DUMP_ASSIGNMENT_EXPRESSION)
 			return LowerAssignmentCore(record, children, true);
-		if (record.kind == DUMP_CALL_EXPRESSION && (IsReferenceType(record.type) ||
-			UsesIndirectClassResult(record.type, record.binding)))
+		if (record.kind == DUMP_CALL_EXPRESSION && (IsReferenceType(record.type) || UsesIndirectClassResult(record.type, record.binding)))
 			return LowerCall(node, record, children);
+		if (record.kind == DUMP_CALL_EXPRESSION && IsClassObjectType(record.type)) return MaterializeDirectClassCallStorage(node, record, children);
 		if (record.kind == DUMP_CAST_EXPRESSION && children.size() == 1 &&
 			(record.category == VALUE_LVALUE || record.category == VALUE_XVALUE ||
 			 arena_.nodes[children[0]].kind == DUMP_TEMPORARY_OBJECT))
@@ -2942,8 +2942,8 @@ private:
 	std::size_t generated_slot_ordinal_;
 	pa18_lowering_detail::PolymorphismLoweringState polymorphism_;
 	std::vector<SlotId> binding_slots_;
-	std::vector<ParameterId> binding_indirect_parameters_;
-	std::vector<SlotId> generated_slots_;
+	std::vector<ParameterId> binding_indirect_parameters_; std::vector<BindingId> function_slot_bindings_;
+	std::vector<SlotId> generated_slots_; std::vector<std::uint32_t> generated_slot_nodes_;
 	FlatIdMap temporary_lifetime_slots_;
 	std::vector<BlockId> switch_case_blocks_;
 	std::vector<std::uint32_t> block_incoming_;

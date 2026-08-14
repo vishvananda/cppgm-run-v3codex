@@ -37,6 +37,28 @@ bool IsTrivialLifecycleBinding(const pa11::Program& program,
 		 program.entities[record.member_owner].trivial_destructor);
 }
 
+bool IsCompleteBoundaryObject(const pa11::Program& program, pa11::TypeId type)
+{
+	using namespace pa11;
+	const TypeRecord* record = &program.types.Get(type);
+	while (record->kind == TYPE_QUALIFIED)
+	{
+		type = record->child;
+		record = &program.types.Get(type);
+	}
+	if (record->kind == TYPE_NAMED)
+		return record->entity < program.entities.size() &&
+			program.entities[record->entity].complete;
+	if (record->kind == TYPE_ARRAY)
+		return !record->IsIncompleteArray() &&
+			IsCompleteBoundaryObject(program, record->child);
+	if (record->kind == TYPE_COMPLEX)
+		return IsCompleteBoundaryObject(program, record->child);
+	if (record->kind == TYPE_VECTOR || record->kind == TYPE_BITINT)
+		return record->dependent_bound_parameter == kNoTemplateParameter;
+	return record->kind != TYPE_INVALID && record->kind != TYPE_FUNCTION;
+}
+
 }
 
 void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
@@ -1873,6 +1895,20 @@ bool IsFunctionEmissionDemanded(const pa11::Program& program,
 		IsTrivialLifecycleBinding(program, binding)) return false;
 	return !program.bindings[binding].inline_function ||
 		program.bindings[binding].emission_demanded;
+}
+
+bool IsFunctionDeclarationBoundaryComplete(const pa11::Program& program,
+	const pa12_semantic_detail::DumpNode& node)
+{
+	using namespace pa11;
+	if (node.kind != pa12_semantic_detail::DUMP_FUNCTION_DECLARATION)
+		return true;
+	const TypeRecord& function = program.types.Get(node.type);
+	if (function.kind != TYPE_FUNCTION) return false;
+	const TypeId* parameters = program.types.Parameters(node.type);
+	for (std::size_t i = 0; i < function.parameter_count; ++i)
+		if (!IsCompleteBoundaryObject(program, parameters[i])) return false;
+	return true;
 }
 
 bool IsVariableDeclarationOnly(const pa11::Program& program,

@@ -2681,6 +2681,14 @@ ScopeId SemanticAnalyzer::CompoundCleanupStop(ScopeId scope) const
 		scope_parents_[scope] : scope;
 }
 
+ScopeId SemanticAnalyzer::FunctionCleanupStop(ScopeId scope) const
+{
+	while (scope != kNoScope &&
+		program_->KindOfScope(scope) != SCOPE_FUNCTION)
+		scope = scope_parents_[scope];
+	return scope == kNoScope ? kNoScope : scope_parents_[scope];
+}
+
 void SemanticAnalyzer::AddLifetimeObligation(ScopeId scope,
 	BindingId object, TypeId type, bool allow_elision)
 {
@@ -2819,6 +2827,8 @@ void SemanticAnalyzer::AddNamespaceObjectAction(std::uint32_t variable,
 void SemanticAnalyzer::AppendScopeDestructionActions(ScopeId scope,
 	std::uint32_t output_parent, ScopeId stop_exclusive)
 {
+	if (stop_exclusive == kNoScope)
+		stop_exclusive = FunctionCleanupStop(scope);
 	for (ScopeId current = scope; current != kNoScope &&
 		current != stop_exclusive; current = scope_parents_[current])
 	{

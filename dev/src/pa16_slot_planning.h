@@ -23,6 +23,21 @@ template <class Derived>
 class SlotPlanning
 {
 protected:
+	void ResetFunctionSlots()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		for (std::size_t i = 0; i < derived.generated_slot_nodes_.size(); ++i)
+			derived.generated_slots_[derived.generated_slot_nodes_[i]] = kNoLowId;
+		derived.generated_slot_nodes_.clear();
+		for (std::size_t i = 0; i < derived.function_slot_bindings_.size(); ++i)
+		{
+			const BindingId binding = derived.function_slot_bindings_[i];
+			derived.binding_slots_[binding] = kNoLowId;
+			derived.binding_indirect_parameters_[binding] = kNoLowId;
+		}
+		derived.function_slot_bindings_.clear();
+	}
+
 	LowType LowerVariableStorage(const DumpNode& record) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
@@ -125,6 +140,7 @@ protected:
 				{
 					derived.binding_indirect_parameters_[record.binding] =
 						pa15_lowir_detail::ParameterId(0);
+					derived.function_slot_bindings_.push_back(record.binding);
 				}
 				else if (derived.binding_slots_[record.binding] == kNoLowId)
 				{
@@ -138,6 +154,7 @@ protected:
 					const std::string name = derived.UniqueSlotName(requested);
 					derived.binding_slots_[record.binding] =
 						static_cast<SlotId>(derived.function_->slots.size());
+					derived.function_slot_bindings_.push_back(record.binding);
 					Slot slot;
 					slot.name = name;
 					slot.type = record.kind == DUMP_VARIABLE ?

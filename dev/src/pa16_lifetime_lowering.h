@@ -38,7 +38,10 @@ protected:
 			direct_return_slot_ = derived.EnsureGeneratedSlot(
 				node, "retobj", derived.current_result_);
 		else if (derived.generated_slots_[node] == kNoLowId)
+		{
 			derived.generated_slots_[node] = direct_return_slot_;
+			derived.generated_slot_nodes_.push_back(node);
+		}
 		return direct_return_slot_;
 	}
 

@@ -221,6 +221,7 @@ protected:
 		{
 			derived.binding_indirect_parameters_[source.binding] =
 				pa15_lowir_detail::ParameterId(parameter_index);
+			derived.function_slot_bindings_.push_back(source.binding);
 			return;
 		}
 		if (derived.IsClassValueType(source.type))
