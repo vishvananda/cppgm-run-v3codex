@@ -67,7 +67,8 @@ void CollectFunctionAbiTags(const SyntaxArena& arena, Program* program,
 	CollectDirectAbiTags(arena, program, declarator, tags);
 }
 
-bool HasDirectAlwaysInline(const SyntaxArena& arena, NodeId owner)
+bool HasDirectFunctionAttribute(const SyntaxArena& arena, NodeId owner,
+	const char* name, const char* alternate)
 {
 	if (owner == kNoNode) return false;
 	for (std::uint32_t edge = arena.FirstEdge(owner); edge != kNoEdge;
@@ -76,21 +77,27 @@ bool HasDirectAlwaysInline(const SyntaxArena& arena, NodeId owner)
 		const NodeId attribute = arena.EdgeChild(edge);
 		if (!arena.IsTag(attribute, "gnu-attribute") &&
 			!arena.IsTag(attribute, "standard-attribute")) continue;
-		const std::string name = arena.SemanticPayload(attribute);
-		if (name == "always_inline" || name == "__always_inline__") return true;
+		const std::string spelling = arena.SemanticPayload(attribute);
+		if (spelling == name || spelling == alternate) return true;
 	}
 	return false;
 }
 
-bool HasFunctionAlwaysInline(const SyntaxArena& arena, NodeId declaration)
+bool HasFunctionAttribute(const SyntaxArena& arena, NodeId declaration,
+	const char* name, const char* alternate)
 {
-	if (HasDirectAlwaysInline(arena, declaration)) return true;
+	if (HasDirectFunctionAttribute(arena, declaration, name, alternate))
+		return true;
 	for (std::uint32_t edge = arena.FirstEdge(declaration); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, "declarator"))
-			return HasDirectAlwaysInline(arena, child);
+		if (arena.IsTag(child, "declarator") ||
+			arena.IsTag(child, "decl-specifier-seq"))
+		{
+			if (HasDirectFunctionAttribute(arena, child, name, alternate))
+				return true;
+		}
 	}
 	return false;
 }
@@ -146,7 +153,9 @@ void SemanticAnalyzer::ApplyFunctionAbiTagAttributes(
 		record.canonical >= program_->bindings.size())
 		throw std::logic_error("attributed function has no canonical binding");
 	BindingRecord& canonical = program_->bindings[record.canonical];
-	if (HasFunctionAlwaysInline(*arena_, declaration))
+	ApplyFunctionNoreturnAttribute(declaration, binding);
+	if (HasFunctionAttribute(*arena_, declaration,
+		"always_inline", "__always_inline__"))
 	{
 		record.force_inline = true;
 		canonical.force_inline = true;
@@ -158,6 +167,21 @@ void SemanticAnalyzer::ApplyFunctionAbiTagAttributes(
 		&canonical.abi_tag_begin, &canonical.abi_tag_count);
 	record.abi_tag_begin = canonical.abi_tag_begin;
 	record.abi_tag_count = canonical.abi_tag_count;
+}
+
+void SemanticAnalyzer::ApplyFunctionNoreturnAttribute(
+	NodeId declaration, BindingId binding)
+{
+	if (binding == kNoBinding || binding >= program_->bindings.size())
+		throw std::logic_error("attributed function has no semantic binding");
+	BindingRecord& record = program_->bindings[binding];
+	if (record.canonical == kNoBinding ||
+		record.canonical >= program_->bindings.size())
+		throw std::logic_error("attributed function has no canonical binding");
+	if (!HasFunctionAttribute(*arena_, declaration,
+		"noreturn", "__noreturn__")) return;
+	record.noreturn_function = true;
+	program_->bindings[record.canonical].noreturn_function = true;
 }
 
 }

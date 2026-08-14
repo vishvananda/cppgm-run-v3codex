@@ -90,8 +90,10 @@ protected:
 		branch.target = yes;
 		branch.alternate = no;
 		derived.Emit(branch);
-		RecordBlockIncoming(yes);
-		RecordBlockIncoming(no);
+		if (condition.kind != Operand::INTEGER || condition.integer_value != 0)
+			RecordBlockIncoming(yes);
+		if (condition.kind != Operand::INTEGER || condition.integer_value == 0)
+			RecordBlockIncoming(no);
 	}
 };
 

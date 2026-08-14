@@ -106,6 +106,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			IsNonthrowing(declarators[i], parsed.parameter_scope), false);
 		ConfigureFunctionExceptionSpecification(
 			binding, declarators[i], parsed.parameter_scope);
+		ApplyFunctionNoreturnAttribute(node, binding); ApplyFunctionNoreturnAttribute(declarators[i], binding);
 		FunctionInfo& info = GetMutableFunction(binding);
 		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
 		PublishInlineFunctionFacts(

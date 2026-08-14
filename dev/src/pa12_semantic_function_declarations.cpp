@@ -7,8 +7,9 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
-void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
-	NodeId declarator, ScopeId syntax_scope, ScopeId declaration_scope,
+void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaration,
+	NodeId item, NodeId declarator, ScopeId syntax_scope,
+	ScopeId declaration_scope,
 	std::uint32_t output_parent, const NamePath& declared_path,
 	const SpecInfo& spec, DeclaratorInfo parsed)
 {
@@ -33,6 +34,7 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId item,
 		function, declarator, parsed.parameter_scope);
 	ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 	ApplyFunctionAsmLabel(declarator, function);
+	ApplyFunctionNoreturnAttribute(source_declaration, function);
 	ApplyFunctionAbiTagAttributes(item, function);
 	PublishInlineFunctionFacts(
 		function, spec.inline_specifier || spec.is_constexpr);

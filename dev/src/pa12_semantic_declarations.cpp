@@ -1064,7 +1064,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				current_language_linkage_, IsNonthrowing(declarator, parsed.parameter_scope));
 			ConfigureFunctionExceptionSpecification(function, declarator, parsed.parameter_scope);
 			ApplyFunctionAsmLabel(declarator, function);
-			ApplyFunctionAbiTagAttributes(item, function);
+			ApplyFunctionNoreturnAttribute(node, function); ApplyFunctionAbiTagAttributes(item, function);
 			BindingRecord& binding = program_->bindings[function];
 			ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 			binding.member_owner = EntityOf(owner_type);

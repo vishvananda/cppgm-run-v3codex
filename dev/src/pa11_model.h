@@ -651,7 +651,7 @@ struct BindingRecord
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
 	AccessKind access;
-	bool constant, nonthrowing, unnamed_namespace_linkage,
+	bool constant, nonthrowing, noreturn_function, unnamed_namespace_linkage,
 		thread_local_storage, non_static_data_member,
 		mutable_member, bit_field, potentially_overlapping_member,
 		anonymous_union_storage,

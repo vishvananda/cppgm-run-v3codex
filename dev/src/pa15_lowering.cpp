@@ -358,6 +358,8 @@ private:
 				symbol.object_name != object_name)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
+			symbol.noreturn = symbol.noreturn || binding.noreturn_function ||
+				canonical_binding.noreturn_function;
 			symbol.weak_linkage |=
 				weak_linkage && !prefer_local && !symbol.internal_linkage;
 			symbol.prefer_local_object_binding |= prefer_local;
@@ -381,6 +383,8 @@ private:
 		output_.symbols.push_back(Symbol(kind, name,
 			object_name, c_linkage,
 			internal, binding.nonthrowing));
+		output_.symbols.back().noreturn = binding.noreturn_function ||
+			canonical_binding.noreturn_function;
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function, binding.hosted_memory_intrinsic);
 		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
@@ -1418,6 +1422,26 @@ private:
 		if (record.kind == DUMP_BINARY_EXPRESSION) { (void)LowerBinary(node, record, Children(node), true); return; }
 		if ((record.category == VALUE_LVALUE || record.category == VALUE_XVALUE) && !IsFunctionType(RemoveReference(record.type))) (void)LowerStorage(node);
 		else (void)LowerValue(node); }
+	bool IsDirectNoreturnCall(std::uint32_t node) const
+	{
+		if (node >= arena_.nodes.size() ||
+			arena_.nodes[node].kind != DUMP_CALL_EXPRESSION) return false;
+		const NodeChildren children = Children(node);
+		if (children.empty()) return false;
+		const DumpNode& callee = arena_.nodes[children[0]];
+		if (callee.kind != DUMP_CALLEE || callee.binding == kNoBinding ||
+			callee.binding >= program_.bindings.size()) return false;
+		const BindingRecord& binding = program_.bindings[callee.binding];
+		return binding.noreturn_function ||
+			(binding.canonical < program_.bindings.size() &&
+			 program_.bindings[binding.canonical].noreturn_function);
+	}
+	void TerminateAfterNoreturnCall()
+	{
+		if (CurrentBlock().terminated)
+			throw std::logic_error("noreturn call follows a terminator");
+		CurrentBlock().terminated = true;
+	}
 	Operand LowerBinary(std::uint32_t node, const DumpNode& record,
 		const NodeChildren& children, bool discarded = false)
 	{

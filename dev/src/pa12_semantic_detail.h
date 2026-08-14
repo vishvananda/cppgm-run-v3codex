@@ -350,7 +350,8 @@ private:
 		std::uint32_t output_parent, bool local, bool range_variable);
 	ScopeId ResolveStructuredDeclaratorOwner(
 		NodeId declarator, ScopeId scope, bool routed_owner = false);
-	void AnalyzeSimpleFunctionDeclaration(NodeId item, NodeId declarator,
+	void AnalyzeSimpleFunctionDeclaration(NodeId source_declaration, NodeId item,
+		NodeId declarator,
 		ScopeId syntax_scope, ScopeId declaration_scope,
 		std::uint32_t output_parent, const NamePath& declared_path,
 		const SpecInfo& spec, DeclaratorInfo parsed);
@@ -369,6 +370,7 @@ private:
 	void ApplyVariableObjectAttributes(NodeId declaration, BindingId binding);
 	void ApplyClassAbiTagAttributes(NodeId declaration, EntityId entity);
 	void ApplyFunctionAbiTagAttributes(NodeId declaration, BindingId binding);
+	void ApplyFunctionNoreturnAttribute(NodeId declaration, BindingId binding);
 	void ApplyFunctionAsmLabel(NodeId declarator, BindingId binding);
 	std::uint32_t MakeVariableDeclarationDump(TypeId type, NameId name,
 		BindingId binding, bool local, bool has_initializer,

@@ -1029,11 +1029,26 @@ protected:
 		if (managed_cleanup)
 		{
 			BeginFullExpressionCleanup(children, 1, lexical_unwind);
+			const bool noreturn = !children.empty() &&
+				derived.IsDirectNoreturnCall(children[0]);
 			if (!children.empty()) derived.LowerDiscardedValue(children[0]);
+			if (noreturn)
+			{
+				FinishNoreturnFullExpressionCleanup();
+				derived.TerminateAfterNoreturnCall();
+				return;
+			}
 			CompleteFullExpressionCleanup();
 			return;
 		}
+		const bool noreturn = !children.empty() &&
+			derived.IsDirectNoreturnCall(children[0]);
 		if (!children.empty()) derived.LowerDiscardedValue(children[0]);
+		if (noreturn)
+		{
+			derived.TerminateAfterNoreturnCall();
+			return;
+		}
 		for (std::size_t i = 1; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)

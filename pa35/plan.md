@@ -11,30 +11,30 @@ owner in the shared front end.
 
 ## Current Failure Map
 
-PA35 is 122/131 (119/128 pre-existing tests) with nine failures. The complete
-set groups by shared owner and diagnostic: deferred-body return convergence 2;
-hosted vector builtin lookup 2; list/constructor selection 2; bound storage
-lowering 1; retained local lookup 1; and reactive register allocation 1.
+PA35 is 125/133 (120/128 pre-existing tests) with eight failures. The complete
+set groups by shared owner and diagnostic: function-local storage lowering 2;
+hosted vector builtin lookup 2; list/constructor selection 2; retained local
+lookup 1; and reactive register allocation 1.
 
 ## Active Checkpoint
 
-**Demanded-body return convergence.** Per `spec.md` §§2, 4-6, each canonical
-function specialization owns one body and control-flow graph. Data flows
-retained definition NodeId -> active function/substitution scope -> statement
-regions and reachability -> typed LowIR. PA12 demanded-body emission owns graph
-formation; PA30 region semantics and PA15 lowering consume it. Expected work is
-O(body nodes + edges) per newly demanded function, with canonical demand caching
-and no translation-unit rescans. Validate both current missing-return failures,
-a genuine missing-return negative, deferred/unreachable positives, 8/16 demanded
-bodies, PA35, PA1-34, and audit.
+**Function-local storage ownership convergence.** Per `spec.md` §§2, 4-6, a
+demanded function's parameters, locals, and retained expressions share one
+canonical lexical owner. Data flows semantic expression binding -> active
+function declaration/parameter/local owner -> per-function slot planning ->
+typed LowIR address. PA12 owns lexical binding identity; PA15 owns bounded slot
+collection and materialization. Expected work is O(body nodes + owned bindings)
+per demanded function with no global fallback or translation-unit rescan.
+Validate both current missing-storage failures, shadowed/local-class bindings, a
+cross-function leak negative, 8/16 owned bodies, PA35, PA1-34, and audit.
 
 ## Performance Evidence
 
-Eight/sixteen specialization-owned static replays used 24/48 overload
-candidates, 32/64 specialization requests, and 16/32 cache hits. Peak semantic
-storage was 439,944/865,082 bytes; five-run median analysis was 2.01/3.71 ms.
-All counters scale near-linearly and candidate work doubles without a global
-declaration scan.
+Eight/sixteen control rows produced 261/517 semantic nodes, 61/117 declarations,
+320/640 lookup-scope visits, and 145/289 LowIR instructions. Peak semantic
+storage was 280,723/554,274 bytes; five-run median semantic analysis was
+1.039/1.941 ms and lowering was 0.363/0.546 ms. Work and storage remain bounded
+near linearly with doubled attributed functions and CFGs.
 
 ## Completed Checkpoints
 
@@ -72,3 +72,4 @@ declaration scan.
 | Reference-preserving traits and conversions | direct traits retain reference wrappers; reference casts/ties, transitive anonymous aliases, and class-array member actions use canonical destinations | PA35 105/124 -> 111/126; four handouts plus two regressions pass, regex advances; 8/16 scaling, PA1-34 4756/4756, and audit pass |
 | Unevaluated retained-call demand | pending nested calls remain signature-only in `decltype`/`noexcept`; dynamic `typeid` still promotes its operand after evaluatedness is known | PA35 111/126 -> 116/128; three handouts plus positive/negative regressions pass; zero 8/16 body demand, PA1-34 4756/4756, and audit pass |
 | Specialization-owned retained-call replay | active ordinary/static members replace stale specialization facts; lambda special-member ABI and unwind cleanup stop at canonical callable boundaries | PA35 116/128 -> 119/128 existing (122/131 total); three `std::function` cases pass, regex advances, three regressions and 8/16 scaling pass |
+| Demanded-body return convergence | constant control edges retain feasible reachability; standard/GNU noreturn facts terminate direct-call full expressions without changing ABI identity | PA35 122/131 -> 125/133 (120/128 existing); one handout passes, regex advances, two regressions, PA1-34 4756/4756, 8/16 scaling, and audit pass |

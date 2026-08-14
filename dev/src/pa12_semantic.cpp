@@ -2132,7 +2132,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 		}
 		if (program_->types.IsFunction(parsed.type))
 		{
-			AnalyzeSimpleFunctionDeclaration(item, declarator, scope,
+			AnalyzeSimpleFunctionDeclaration(node, item, declarator, scope,
 				declaration_scope, owner, declared_path, spec, parsed);
 			continue;
 		}
