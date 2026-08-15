@@ -279,12 +279,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 	TypeId result_type = program_->types.Fundamental(FUND_BOOL);
 	if (!dependent)
 	{
-		for (std::size_t i = 0; i < operands.size(); ++i)
-		{
-			const EntityId entity = DirectNamedEntity(program_->types, operands[i]);
-			if (entity != kNoEntity && IsClassEntity(program_->entities[entity]))
-				EnsureClassDefinition(operands[i]);
-		}
+		if (trait != TYPE_TRAIT_IS_SAME)
+			for (std::size_t i = 0; i < operands.size(); ++i)
+			{
+				const EntityId entity = DirectNamedEntity(program_->types, operands[i]);
+				if (entity != kNoEntity &&
+					IsClassEntity(program_->entities[entity]))
+					EnsureClassDefinition(operands[i]);
+			}
 		const TypeId first = operands[0];
 		const TypeId unqualified = program_->types.RemoveTopCv(first);
 		const TypeRecord shape = program_->types.Get(unqualified);

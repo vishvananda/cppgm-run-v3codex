@@ -798,19 +798,23 @@ protected:
 		if (!derived.program_.QueryBasePath(
 			owner, target, 0, 0, 0, 0, &path)) return false;
 		EntityId current = owner;
+		bool found = false;
 		for (std::size_t i = 0; i < path.size(); ++i)
 		{
 			const DirectBaseEdge& edge =
 				derived.program_.DirectBase(current, path[i]);
 			current = edge.entity;
-			if (!edge.virtual_base) continue;
-			*anchor = current;
-			if (current == target) *relative_offset = 0;
-			else if (!derived.program_.FindVirtualBase(
-				current, target, relative_offset)) return false;
-			return true;
+			if (edge.virtual_base)
+			{
+				*anchor = current;
+				*relative_offset = 0;
+				found = true;
+				if (current == target || derived.program_.FindVirtualBase(
+					current, target, relative_offset)) return true;
+			}
+			else if (found) *relative_offset += edge.offset;
 		}
-		return false;
+		return found;
 	}
 
 	bool CurrentVirtualBasePathAddressForExpression(std::uint32_t expression,
@@ -978,14 +982,18 @@ protected:
 			owner >= derived.graph_.class_polymorphism.size() ||
 			(derived.graph_.class_polymorphism[owner].slots.empty() &&
 			 derived.graph_.class_polymorphism[owner].views.empty())) return false;
+		EntityId anchor = kNoEntity;
+		std::uint64_t relative_offset = 0;
+		if (!VirtualBasePathAnchor(
+			owner, target, &anchor, &relative_offset)) return false;
 		const EntityRecord& record = derived.program_.entities[owner];
 		for (std::size_t ordinal = 0;
 			ordinal < record.virtual_base_count; ++ordinal)
 		{
-			if (derived.program_.VirtualBase(owner, ordinal).entity != target)
+			if (derived.program_.VirtualBase(owner, ordinal).entity != anchor)
 				continue;
 			*address = derived.ProjectBaseSubobjectOffset(
-				RuntimeVirtualBaseAddress(view, owner, ordinal), 0);
+				RuntimeVirtualBaseAddress(view, owner, ordinal), relative_offset);
 			return true;
 		}
 		return false;
@@ -1057,6 +1065,7 @@ protected:
 	}
 
 	void AppendCallVirtualBaseArguments(const DumpNode& callee,
+		TypeId function_type,
 		const NodeChildren& call_children, const CallArguments& lowered,
 		CallArguments* arguments, CallArgumentFlags* references)
 	{
@@ -1069,10 +1078,10 @@ protected:
 		const BindingRecord* binding = callee.binding == kNoBinding ? 0 :
 			&derived.program_.bindings[callee.binding];
 		std::size_t hidden_remaining =
-			VirtualBaseParameterCount(callee.binding, callee.type);
+			VirtualBaseParameterCount(callee.binding, function_type);
 		if (hidden_remaining == 0) return;
-		const TypeRecord& function = derived.program_.types.Get(callee.type);
-		const TypeId* parameters = derived.program_.types.Parameters(callee.type);
+		const TypeRecord& function = derived.program_.types.Get(function_type);
+		const TypeId* parameters = derived.program_.types.Parameters(function_type);
 		for (std::size_t i = 0; i < lowered.size(); ++i)
 		{
 			const bool implicit = member && i == 0;

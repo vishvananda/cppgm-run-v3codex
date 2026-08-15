@@ -1777,7 +1777,7 @@ private:
 			i < arguments.size(); ++i)
 			lowered_boundary_arguments.Push(arguments[i]);
 		const std::size_t boundary_argument_begin = arguments.size();
-		AppendCallVirtualBaseArguments(callee, children,
+		AppendCallVirtualBaseArguments(callee, function_type_id, children,
 			lowered_boundary_arguments, &arguments, &argument_references);
 		call.virtual_base_argument_count = static_cast<std::uint32_t>(
 			arguments.size() - boundary_argument_begin);
