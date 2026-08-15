@@ -304,11 +304,10 @@ bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
 		(pattern.function_parameter_pack ? 1 : 0);
 	const std::size_t exemplar_fixed = exemplar_type.parameter_count -
 		(exemplar.function_parameter_pack ? 1 : 0);
-	const std::size_t common = std::min(pattern_fixed, exemplar_fixed);
-	for (std::size_t i = 0; i < common; ++i)
+	const auto parameter_accepts = [this, &pattern, &exemplar](
+		std::size_t pattern_index, TypeId pattern_parameter,
+		TypeId exemplar_parameter) -> bool
 	{
-		TypeId pattern_parameter = pattern_types[i];
-		TypeId exemplar_parameter = exemplar_types[i];
 		const TypeKind pattern_kind =
 			program_->types.Get(pattern_parameter).kind;
 		const TypeKind exemplar_kind =
@@ -328,12 +327,15 @@ bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
 			pattern_parameter = program_->types.RemoveTopCv(pattern_parameter);
 			exemplar_parameter = program_->types.RemoveTopCv(exemplar_parameter);
 		}
-		if ((i >= pattern.function_parameter_nondeduced.size() ||
-			pattern.function_parameter_nondeduced[i] == 0) &&
-			!FunctionTemplatePatternAccepts(
-				pattern_parameter, exemplar_parameter,
-				pattern.parameters, exemplar.parameters)) return false;
-	}
+		if (pattern_index < pattern.function_parameter_nondeduced.size() &&
+			pattern.function_parameter_nondeduced[pattern_index] != 0) return true;
+		return FunctionTemplatePatternAccepts(pattern_parameter,
+			exemplar_parameter, pattern.parameters, exemplar.parameters);
+	};
+	const std::size_t common = std::min(pattern_fixed, exemplar_fixed);
+	for (std::size_t i = 0; i < common; ++i)
+		if (!parameter_accepts(i, pattern_types[i], exemplar_types[i]))
+			return false;
 	if (pattern_fixed > exemplar_fixed &&
 		pattern.required_parameter_count > exemplar_fixed) return false;
 	if (pattern_fixed < exemplar_fixed)
@@ -342,12 +344,10 @@ bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
 			return !exemplar.function_parameter_pack &&
 				exemplar.required_parameter_count <= pattern_fixed;
 		const std::size_t pack_index = pattern_fixed;
-		if (pack_index >= pattern.function_parameter_nondeduced.size() ||
-			pattern.function_parameter_nondeduced[pack_index] == 0)
-			for (std::size_t i = pattern_fixed; i < exemplar_fixed; ++i)
-				if (!FunctionTemplatePatternAccepts(pattern_types[pack_index],
-					exemplar_types[i], pattern.parameters,
-					exemplar.parameters)) return false;
+		for (std::size_t i = pattern_fixed; i < exemplar_fixed; ++i)
+			if (!parameter_accepts(
+				pack_index, pattern_types[pack_index], exemplar_types[i]))
+				return false;
 	}
 	if (exemplar.function_parameter_pack)
 	{
@@ -360,11 +360,8 @@ bool SemanticAnalyzer::FunctionTemplateParameterListAccepts(
 			return pattern.required_parameter_count <= exemplar_fixed;
 		}
 		const std::size_t pack_index = pattern_fixed;
-		if ((pack_index >= pattern.function_parameter_nondeduced.size() ||
-			pattern.function_parameter_nondeduced[pack_index] == 0) &&
-			!FunctionTemplatePatternAccepts(pattern_types[pack_index],
-				exemplar_types[exemplar_fixed], pattern.parameters,
-				exemplar.parameters)) return false;
+		if (!parameter_accepts(pack_index, pattern_types[pack_index],
+				exemplar_types[exemplar_fixed])) return false;
 	}
 	return true;
 }

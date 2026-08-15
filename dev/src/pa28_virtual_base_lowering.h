@@ -1036,7 +1036,8 @@ protected:
 			}
 		}
 		const bool known_complete_object = source == owner &&
-			((derived.arena_.nodes[expression].kind == DUMP_ID_EXPRESSION &&
+			((derived.arena_.nodes[expression].kind == DUMP_TEMPORARY_OBJECT) ||
+			 (derived.arena_.nodes[expression].kind == DUMP_ID_EXPRESSION &&
 			  expression_shape.kind == TYPE_NAMED) || reference_to_pointer ||
 			 ((derived.current_this_binding_ != kNoBinding &&
 			 BoundaryBindingForExpression(expression) ==

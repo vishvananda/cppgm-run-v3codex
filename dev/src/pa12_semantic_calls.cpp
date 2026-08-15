@@ -1264,8 +1264,7 @@ int SemanticAnalyzer::CompareReferenceBindings(
 		left_kind == TYPE_RVALUE_REFERENCE;
 	const bool right_reference = right_kind == TYPE_LVALUE_REFERENCE ||
 		right_kind == TYPE_RVALUE_REFERENCE;
-	if (argument.category == VALUE_LVALUE &&
-		left_reference && right_reference)
+	if (argument.type != kNoType && left_reference && right_reference)
 	{
 		const TypeId source = EffectiveType(argument.type);
 		const TypeId left_target = left_kind == TYPE_LVALUE_REFERENCE ||
@@ -1320,7 +1319,8 @@ int SemanticAnalyzer::CompareReferenceBindings(
 			if (left_less_qualified && !right_less_qualified) return 1;
 			if (right_less_qualified && !left_less_qualified) return -1;
 		}
-		if (left_similar || right_similar) return 0;
+		if (argument.category == VALUE_LVALUE &&
+			(left_similar || right_similar)) return 0;
 	}
 	if (left_kind == TYPE_RVALUE_REFERENCE &&
 		right_kind == TYPE_LVALUE_REFERENCE)

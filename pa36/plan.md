@@ -15,23 +15,22 @@ local aliases needed for coherent per-TU selection.
 
 ## Current Failure Map
 
-PA36 is 78/80. The complete non-overlapping failure map is:
+PA36 is 79/80. The complete non-overlapping failure map is:
 
 | Failures | Shared behavior | Primary owner |
 | ---: | --- | --- |
-| 1 | contained-virtual-base tuple `get` reports an ambiguous overload | template candidate identity and overload selection |
 | 1 | hosted floating `signbit` returns the wrong runtime classification | numeric builtin lowering |
 
 ## Active Checkpoint
 
-Next: contained-virtual-base tuple candidate identity. `spec.md` §§2-4 and 8
-require canonical specialization identities, indexed lookup, retained
-conversion ranks, and no lookup during lowering. Template materialization owns
-the canonical `std::get` candidates; overload selection consumes those facts
-and publishes one selected binding into typed LowIR. Expected work is
-O(materialized candidates + viable conversions), with O(1)-average identity
-deduplication. Validate tuple value/reference overloads, contained virtual-base
-member invocation, neighboring PA19/22/28 cases, then stage, prior, and audit.
+Next: typed floating sign classification. `spec.md` §§2, 6, 7, and 9 require
+the retained builtin operation and operand `LowType` to flow directly into
+typed LowIR and bounded native lowering. `FloatingIntrinsicSignbit` owns the
+format-specific sign extraction; it must classify signed zero and signed NaN
+without value comparisons, then publish the integer predicate consumed by the
+call expression. Work and staging are O(1) per intrinsic for f32/f64/f80.
+Validate all three formats over positive/negative zero and negative NaN,
+neighboring PA34 predicates, then stage, prior, and audit.
 
 ## Performance Evidence
 
@@ -41,7 +40,10 @@ iostream 1.35 s/65,472 KiB RSS; the iostream object has exactly one published
 complete constructor. Recursive `std::function` changed from a 0.40 s/
 23,788 KiB semantic failure to a passing 0.42 s/23,812 KiB compile. A reduced
 two-word union swap now passes and emits direct reference calls with no argument
-materialization slots. The broader prior profiles remain stable.
+materialization slots. The tuple fixture passes in 1.13 s/59,224 KiB; normalized
+reference comparison adds constant work per candidate pair, and a complete
+virtual-base temporary now emits one static projection instead of a vptr load,
+row lookup, and dynamic projection. The broader prior profiles remain stable.
 
 ## Completed Checkpoints
 
@@ -54,3 +56,4 @@ materialization slots. The broader prior profiles remain stable.
 | Hosted container specialization and preserved native forwarding | Completed conversion/layout/constexpr/inherited-constructor facts and preserved call-live values; PA36 70 -> 75/80 | Container focus 5/5; PA16/17/29 focus; through PA35 4,907/4,907; audit |
 | Canonical hosted special-member entry ownership | Unified nested-owner substitutions, D0 weak ownership, and complete-entry publication; PA36 75 -> 77/80 | ABI/TLS focus 3/3; PA36 77/80; through PA35 4,907/4,907; audit |
 | Callable cleanup domains and union-reference preservation | Separated lexical lookup from cleanup ownership and retained union xvalue calls as addresses; PA36 77 -> 78/80 | Recursive `std::function`; two-word union swap; PA36 78/80; through PA35 4,907/4,907; audit |
+| Canonical tuple reference ordering and complete temporary vbase projection | Ranked xvalue cv bindings, normalized forwarding packs, and used static complete-object offsets; PA36 78 -> 79/80 | Tuple/reference/tie focus; PA36 79/80; through PA35 4,907/4,907; audit |
