@@ -83,6 +83,9 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	const bool complete_entry =
 		(binding.constructor && !binding.constructor_base_entry) ||
 		(binding.destructor && !binding.destructor_base_entry);
+	if (complete_entry && binding.member_owner != kNoEntity &&
+		program.entities[binding.member_owner].virtual_base_count != 0)
+		record.keep_internal_object_alias = false;
 	const bool shared_base_entry = complete_entry &&
 		binding.member_owner != kNoEntity &&
 		program.entities[binding.member_owner].virtual_base_count == 0 &&
@@ -273,6 +276,12 @@ bool ClassOwnerHasSpecializedAncestor(const Program& program, EntityId entity)
 		entity = record.enclosing_class;
 	}
 	return false;
+}
+
+bool ClassOwnerIsNested(const Program& program, EntityId entity)
+{
+	return entity != kNoEntity && entity < program.entities.size() &&
+		program.entities[entity].enclosing_class != kNoEntity;
 }
 
 bool IsFundamentalType(const Program& program, TypeId type,
@@ -2286,7 +2295,8 @@ std::string MangleFunction(const pa11::Program& program,
 		structured_local_owner || structured_class_owner;
 	const bool typed_class_owner = binding.member_owner != kNoEntity &&
 		!structured_local_owner &&
-		(tagged_class_owner || nested_specialized_class_owner);
+		(tagged_class_owner || nested_specialized_class_owner ||
+		 ClassOwnerIsNested(program, binding.member_owner));
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_FUNCTION;
@@ -2327,8 +2337,7 @@ std::string MangleFunction(const pa11::Program& program,
 	const TypeId* parameters = program.types.Parameters(node.type);
 	AppendFunctionTemplateArgumentsAndResult(program, binding, function_type,
 		recipe, &facts, &file.cases[0]);
-	const bool member = binding.member_owner != kNoEntity &&
-		!binding.static_member_function;
+	const bool member = binding.member_owner != kNoEntity && !binding.static_member_function;
 	if (member)
 	{
 		const TypeRecord& declared_type = program.types.Get(binding.type);
@@ -2494,7 +2503,8 @@ std::string MangleVariable(const pa11::Program& program,
 		!tagged_class_owner && !nested_specialized_class_owner &&
 		IsClassTemplateSpecialization(program.entities[binding.member_owner]);
 	const bool typed_class_owner = binding.member_owner != kNoEntity &&
-		(tagged_class_owner || nested_specialized_class_owner);
+		(tagged_class_owner || nested_specialized_class_owner ||
+		 ClassOwnerIsNested(program, binding.member_owner));
 	const bool member_variable_template =
 		(structured_class_owner || typed_class_owner) &&
 		binding.variable_template_specialization;

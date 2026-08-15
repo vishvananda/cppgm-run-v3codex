@@ -1054,6 +1054,12 @@ private:
 			function_symbols_[destructor] != kNoLowId)
 			output_.symbols[symbol].weak_linkage = output_.symbols[
 				function_symbols_[destructor]].weak_linkage;
+		// A locally synthesized deleting entry is part of the vtable's ODR
+		// ownership even when its complete entry resolves to an external strong
+		// declaration (as with an extern-instantiated hosted class template).
+		if (!IsFunctionLocalEntity(program_, entity) &&
+			VtableHasWeakLinkage(entity))
+			output_.symbols[symbol].weak_linkage = true;
 		if (external)
 		{
 			output_.symbols[symbol].declaration_emitted = true;

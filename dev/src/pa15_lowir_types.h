@@ -453,6 +453,7 @@ struct Symbol
 	bool internal_linkage;
 	bool weak_linkage;
 	bool prefer_local_object_binding;
+	bool keep_internal_object_alias;
 	bool nonthrowing;
 	bool noreturn;
 	bool thread_local_storage;
@@ -473,6 +474,7 @@ struct Symbol
 		  object_name(object_name_value),
 		  c_linkage(c_linkage_value), internal_linkage(internal_linkage_value),
 		  weak_linkage(false), prefer_local_object_binding(false),
+		  keep_internal_object_alias(true),
 		  nonthrowing(nonthrowing_value), noreturn(false),
 		  thread_local_storage(false),
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),

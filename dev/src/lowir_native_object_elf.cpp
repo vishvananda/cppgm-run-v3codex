@@ -629,12 +629,20 @@ void collect_host_symbols(
 {
   std::unordered_map<std::string, std::size_t> local_index;
   std::unordered_map<std::string, std::size_t> global_index;
+  std::unordered_set<std::string> object_only_labels;
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
+    const ir_model::ExportedSymbol & exported = program.exported_symbols[i];
+    if(!exported.object_symbol.empty() && !exported.keep_internal_alias)
+      object_only_labels.insert(
+        native_object_symbol(exported.object_symbol));
+  }
   std::unordered_map<std::size_t, std::uint64_t> function_sizes;
   function_sizes.reserve(functions.size());
   for(std::size_t i = 0; i < functions.size(); ++i)
     function_sizes[functions[i].offset] = functions[i].size;
   for(std::unordered_map<std::string, std::size_t>::const_iterator it =
         text.labels.begin(); it != text.labels.end(); ++it) {
+    if(object_only_labels.count(it->first)) continue;
     HostSymbol symbol;
     symbol.name = it->first;
     symbol.section = text_section_index;
@@ -647,6 +655,7 @@ void collect_host_symbols(
     for(std::unordered_map<std::string, std::size_t>::const_iterator it =
           data_sections[section].labels.begin();
         it != data_sections[section].labels.end(); ++it) {
+      if(object_only_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
       symbol.section = data_section_indexes[section];
