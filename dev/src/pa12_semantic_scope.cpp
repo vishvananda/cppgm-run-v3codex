@@ -83,6 +83,8 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 			static_cast<std::size_t>(scope) + 1, kNoScope);
 		scope_nontrivial_object_lifetime_prefixes_.resize(
 			static_cast<std::size_t>(scope) + 1, 0);
+		scope_lifetime_domains_.resize(
+			static_cast<std::size_t>(scope) + 1, kNoScope);
 	}
 	scope_prefixes_[scope] = prefix;
 	scope_parents_[scope] = parent;
@@ -99,6 +101,9 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 		lifetime_parent != kNoScope && lifetime_parent <
 			scope_nontrivial_object_lifetime_prefixes_.size() ?
 			scope_nontrivial_object_lifetime_prefixes_[lifetime_parent] : 0;
+	scope_lifetime_domains_[scope] = kind == SCOPE_FUNCTION ? scope :
+		parent != kNoScope && parent < scope_lifetime_domains_.size() ?
+			scope_lifetime_domains_[parent] : kNoScope;
 	return scope;
 }
 

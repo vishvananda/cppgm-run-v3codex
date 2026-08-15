@@ -774,8 +774,14 @@ bool SemanticAnalyzer::HasEnclosingNontrivialObjectLifetime(
 	const std::uint32_t active =
 		scope < scope_nontrivial_object_lifetime_prefixes_.size() ?
 			scope_nontrivial_object_lifetime_prefixes_[scope] : 0;
+	const ScopeId active_domain =
+		scope < scope_lifetime_domains_.size() ?
+			scope_lifetime_domains_[scope] : kNoScope;
+	const bool same_domain = stop_exclusive != kNoScope &&
+		stop_exclusive < scope_lifetime_domains_.size() &&
+		scope_lifetime_domains_[stop_exclusive] == active_domain;
 	const std::uint32_t stopped =
-		stop_exclusive != kNoScope &&
+		same_domain &&
 		stop_exclusive < scope_nontrivial_object_lifetime_prefixes_.size() ?
 			scope_nontrivial_object_lifetime_prefixes_[stop_exclusive] : 0;
 	if (active < stopped)

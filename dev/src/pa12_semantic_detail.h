@@ -2033,6 +2033,9 @@ private:
 	// Children copy the active automatic-object count on scope entry; local
 	// declarations increment only their scope's compact prefix entry.
 	std::vector<std::uint32_t> scope_nontrivial_object_lifetime_prefixes_;
+	// Lexically nested callables retain lookup parents but own independent
+	// automatic-object cleanup domains.
+	std::vector<ScopeId> scope_lifetime_domains_;
 	std::vector<NamespaceObjectAction>& namespace_objects_;
 	std::vector<LocalStaticObjectAction>& local_static_objects_;
 	std::vector<std::uint32_t> local_static_count_by_function_;

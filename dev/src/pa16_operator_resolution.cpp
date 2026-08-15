@@ -1495,24 +1495,6 @@ ExpressionInfo SemanticAnalyzer::ApplyCallArgument(
 		}
 		return value;
 	}
-	if ((target_top.kind == TYPE_LVALUE_REFERENCE ||
-		target_top.kind == TYPE_RVALUE_REFERENCE) &&
-		dump_.nodes[value.node].kind == DUMP_CALL_EXPRESSION)
-	{
-		const TypeId referred = program_->types.RemoveTopCv(target_top.child);
-		const TypeRecord& object = program_->types.Get(referred);
-		if (object.kind == TYPE_NAMED &&
-			program_->entities[object.entity].flavor == NAMED_UNION)
-		{
-			const std::uint32_t temporary = MakeDump(
-				DUMP_TEMPORARY_OBJECT, referred, VALUE_XVALUE);
-			dump_.Add(temporary, value.node);
-			value.node = temporary;
-			value.type = referred;
-			value.category = VALUE_XVALUE;
-			++expression_count_;
-		}
-	}
 	const EntityId materialized_entity = EntityOf(value.type);
 	const TypeRecord& materialized_top = program_->types.Get(value.type);
 	const bool materialized_class = materialized_entity != kNoEntity &&
