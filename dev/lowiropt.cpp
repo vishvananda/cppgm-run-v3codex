@@ -147,9 +147,15 @@ int run_lowiropt_mode(const vector<string> & args)
          << " input_instructions=" << stats.input_instructions
          << " output_instructions=" << stats.output_instructions
          << " instruction_visits=" << stats.instruction_visits
+         << " block_visits=" << stats.block_visits
          << " cfg_edge_visits=" << stats.cfg_edge_visits
          << " worklist_pushes=" << stats.worklist_pushes
-         << " rewrites=" << stats.rewrites << '\n';
+         << " dataflow_updates=" << stats.dataflow_updates
+         << " inline_call_visits=" << stats.inline_call_visits
+         << " inline_calls=" << stats.inline_calls
+         << " budget_skips=" << stats.budget_skips
+         << " rewrites=" << stats.rewrites
+         << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
   }
   return EXIT_SUCCESS;
 }

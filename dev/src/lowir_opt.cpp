@@ -2,11 +2,11 @@
 #include "lowir_inline_o1.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
-#include <functional>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -28,6 +28,7 @@ using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
 typedef std::unordered_map<std::string, std::size_t> BlockIndex;
+const std::size_t kNoBlock = static_cast<std::size_t>(-1);
 
 bool same_operand(const Operand & a, const Operand & b)
 {
@@ -330,11 +331,7 @@ void add_edge(Graph * graph, std::size_t from, const Operand & target,
   if(target.kind != Operand::OP_LABEL) return;
   const BlockIndex::const_iterator found = graph->index.find(target.text);
   if(found == graph->index.end()) return;
-  std::vector<std::size_t> & edges = graph->successors[from];
-  if(std::find(edges.begin(), edges.end(), found->second) == edges.end()) {
-    edges.push_back(found->second);
-    graph->predecessors[found->second].push_back(from);
-  }
+  graph->successors[from].push_back(found->second);
   if(stats) ++stats->cfg_edge_visits;
 }
 
@@ -357,7 +354,8 @@ Graph build_graph(const Function & function, Stats * stats)
     }
     if(block.instructions.empty()) continue;
     const Instruction & term = block.instructions.back();
-    if(term.kind == Instruction::IK_JUMP) add_edge(&result, i, term.first, stats);
+    if(term.kind == Instruction::IK_JUMP)
+      add_edge(&result, i, term.first, stats);
     else if(term.kind == Instruction::IK_BRANCH) {
       add_edge(&result, i, term.second, stats);
       add_edge(&result, i, term.third, stats);
@@ -367,34 +365,135 @@ Graph build_graph(const Function & function, Stats * stats)
         add_edge(&result, i, term.args[j], stats);
     }
   }
+  for(std::size_t i = 0; i < result.successors.size(); ++i) {
+    std::vector<std::size_t> & edges = result.successors[i];
+    std::sort(edges.begin(), edges.end());
+    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    for(std::size_t j = 0; j < edges.size(); ++j)
+      result.predecessors[edges[j]].push_back(i);
+  }
   return result;
 }
 
-std::vector<std::vector<unsigned char> > dominators(const Graph & graph)
+struct DominatorTree
+{
+  std::vector<std::size_t> immediate;
+  std::vector<std::size_t> preorder;
+  std::vector<std::size_t> postorder;
+
+  bool dominates(std::size_t parent, std::size_t child) const
+  {
+    if(parent == child) return true;
+    return parent < preorder.size() && child < preorder.size() &&
+      preorder[parent] != 0 && preorder[child] != 0 &&
+      preorder[parent] <= preorder[child] &&
+      postorder[child] <= postorder[parent];
+  }
+};
+
+std::size_t evaluate_dominator(
+    std::size_t node, std::vector<std::size_t> * ancestor,
+    std::vector<std::size_t> * label,
+    const std::vector<std::size_t> & semi)
+{
+  if((*ancestor)[node] == kNoBlock) return (*label)[node];
+  std::vector<std::size_t> path;
+  std::size_t cursor = node;
+  while((*ancestor)[cursor] != kNoBlock &&
+        (*ancestor)[(*ancestor)[cursor]] != kNoBlock) {
+    path.push_back(cursor);
+    cursor = (*ancestor)[cursor];
+  }
+  for(std::size_t i = path.size(); i > 0; --i) {
+    const std::size_t value = path[i - 1];
+    const std::size_t parent = (*ancestor)[value];
+    if(semi[(*label)[parent]] < semi[(*label)[value]])
+      (*label)[value] = (*label)[parent];
+    (*ancestor)[value] = (*ancestor)[parent];
+  }
+  return (*label)[node];
+}
+
+DominatorTree dominators(const Graph & graph, Stats * stats)
 {
   const std::size_t count = graph.successors.size();
-  std::vector<std::vector<unsigned char> > dom(
-    count, std::vector<unsigned char>(count, 1));
-  if(!count) return dom;
-  std::fill(dom[0].begin(), dom[0].end(), 0);
-  dom[0][0] = 1;
-  bool changed = true;
-  while(changed) {
-    changed = false;
-    for(std::size_t block = 1; block < count; ++block) {
-      std::vector<unsigned char> next(count, 1);
-      if(graph.predecessors[block].empty())
-        std::fill(next.begin(), next.end(), 0);
-      else for(std::size_t p = 0; p < graph.predecessors[block].size(); ++p) {
-        const std::vector<unsigned char> & parent =
-          dom[graph.predecessors[block][p]];
-        for(std::size_t i = 0; i < count; ++i) next[i] &= parent[i];
-      }
-      next[block] = 1;
-      if(next != dom[block]) { dom[block].swap(next); changed = true; }
+  DominatorTree result;
+  result.immediate.assign(count, kNoBlock);
+  result.preorder.assign(count, 0);
+  result.postorder.assign(count, 0);
+  if(!count) return result;
+
+  std::vector<std::size_t> semi(count, kNoBlock), parent(count, kNoBlock),
+    ancestor(count, kNoBlock), label(count, kNoBlock), vertex;
+  struct DfsFrame { std::size_t block; std::size_t edge; };
+  std::vector<DfsFrame> dfs;
+  semi[0] = 0;
+  label[0] = 0;
+  vertex.push_back(0);
+  dfs.push_back(DfsFrame{0, 0});
+  while(!dfs.empty()) {
+    DfsFrame & frame = dfs.back();
+    if(frame.edge == graph.successors[frame.block].size()) {
+      dfs.pop_back();
+      continue;
+    }
+    const std::size_t next = graph.successors[frame.block][frame.edge++];
+    if(semi[next] != kNoBlock) continue;
+    parent[next] = frame.block;
+    semi[next] = vertex.size();
+    label[next] = next;
+    vertex.push_back(next);
+    dfs.push_back(DfsFrame{next, 0});
+  }
+
+  std::vector<std::vector<std::size_t> > bucket(count);
+  for(std::size_t reverse = vertex.size(); reverse > 1; --reverse) {
+    const std::size_t block = vertex[reverse - 1];
+    for(std::size_t i = 0; i < graph.predecessors[block].size(); ++i) {
+      const std::size_t predecessor = graph.predecessors[block][i];
+      if(semi[predecessor] == kNoBlock) continue;
+      const std::size_t candidate = evaluate_dominator(
+        predecessor, &ancestor, &label, semi);
+      semi[block] = std::min(semi[block], semi[candidate]);
+    }
+    bucket[vertex[semi[block]]].push_back(block);
+    ancestor[block] = parent[block];
+    std::vector<std::size_t> & pending = bucket[parent[block]];
+    for(std::size_t i = 0; i < pending.size(); ++i) {
+      const std::size_t candidate = evaluate_dominator(
+        pending[i], &ancestor, &label, semi);
+      result.immediate[pending[i]] = semi[candidate] < semi[pending[i]] ?
+        candidate : parent[block];
+    }
+    pending.clear();
+    if(stats) ++stats->block_visits;
+  }
+  result.immediate[0] = 0;
+  for(std::size_t i = 1; i < vertex.size(); ++i) {
+    const std::size_t block = vertex[i];
+    if(result.immediate[block] != vertex[semi[block]])
+      result.immediate[block] = result.immediate[result.immediate[block]];
+  }
+
+  std::vector<std::vector<std::size_t> > children(count);
+  for(std::size_t i = 1; i < vertex.size(); ++i)
+    children[result.immediate[vertex[i]]].push_back(vertex[i]);
+  std::size_t ordinal = 0;
+  dfs.clear();
+  result.preorder[0] = ++ordinal;
+  dfs.push_back(DfsFrame{0, 0});
+  while(!dfs.empty()) {
+    DfsFrame & frame = dfs.back();
+    if(frame.edge < children[frame.block].size()) {
+      const std::size_t child = children[frame.block][frame.edge++];
+      result.preorder[child] = ++ordinal;
+      dfs.push_back(DfsFrame{child, 0});
+    } else {
+      result.postorder[frame.block] = ordinal;
+      dfs.pop_back();
     }
   }
-  return dom;
+  return result;
 }
 
 struct Fact
@@ -406,15 +505,14 @@ struct Fact
 Operand resolve_operand(Operand value,
                         const std::unordered_map<std::string, Fact> & facts,
                         std::size_t block,
-                        const std::vector<std::vector<unsigned char> > & dom)
+                        const DominatorTree & dom)
 {
   std::unordered_set<std::string> seen;
   while(value.kind == Operand::OP_TEMP && seen.insert(value.text).second) {
     const std::unordered_map<std::string, Fact>::const_iterator found =
       facts.find(value.text);
-    if(found == facts.end() || block >= dom.size() ||
-       found->second.block >= dom[block].size() ||
-       !dom[block][found->second.block]) break;
+    if(found == facts.end() ||
+       !dom.dominates(found->second.block, block)) break;
     value = found->second.value;
   }
   return value;
@@ -423,7 +521,7 @@ Operand resolve_operand(Operand value,
 void resolve_instruction_operands(Instruction * ins,
                                   const std::unordered_map<std::string, Fact> & facts,
                                   std::size_t block,
-                                  const std::vector<std::vector<unsigned char> > & dom)
+                                  const DominatorTree & dom)
 {
   Operand * values[] = {&ins->first, &ins->second, &ins->third};
   for(std::size_t i = 0; i < 3; ++i) {
@@ -489,7 +587,7 @@ bool simplify_values(Function * function, Stats * stats)
 {
   if(function->blocks.empty()) return false;
   const Graph graph = build_graph(*function, stats);
-  const std::vector<std::vector<unsigned char> > dom = dominators(graph);
+  const DominatorTree dom = dominators(graph, stats);
   const bool function_has_eh = has_eh(*function);
   std::unordered_map<std::string, LowType> types;
   std::unordered_set<std::string> storage_temporaries;
@@ -529,7 +627,8 @@ bool simplify_values(Function * function, Stats * stats)
         replacement = ins.first;
         replace = true;
       } else if(ins.kind == Instruction::IK_COPY &&
-                ins.dest.compare(0, 5, "%dbg_") != 0) {
+                ins.dest.compare(0, 5, "%dbg_") != 0 &&
+                !storage_temporaries.count(ins.dest)) {
         const std::unordered_map<std::string, LowType>::const_iterator source =
           types.find(ins.first.text);
         replace = ins.first.kind != Operand::OP_TEMP || source == types.end() ||
@@ -572,7 +671,7 @@ bool simplify_values(Function * function, Stats * stats)
           (ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX) &&
           found != expressions.end() && found->second.block != block;
         if(found != expressions.end() && !cross_block_guard &&
-           found->second.block < dom[block].size() && dom[block][found->second.block]) {
+           dom.dominates(found->second.block, block)) {
           facts[ins.dest] = Fact{found->second.value, block};
           changed = true;
           if(stats) { ++stats->rewrites; ++stats->worklist_pushes; }
@@ -619,53 +718,135 @@ bool eliminate_dead_code(Function * function,
                            FunctionBoundaryMetadata> & boundaries,
                          Stats * stats)
 {
-  bool any = false;
-  bool changed = true;
-  while(changed) {
-    changed = false;
-    std::unordered_map<std::string, std::size_t> uses;
-    for(std::size_t i = 0; i < function->blocks.size(); ++i)
-      for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-        const Instruction & ins = function->blocks[i].instructions[j];
-        count_operand_use(ins.first, &uses);
-        count_operand_use(ins.second, &uses);
-        count_operand_use(ins.third, &uses);
-        for(std::size_t k = 0; k < ins.args.size(); ++k)
-          count_operand_use(ins.args[k], &uses);
-      }
-    for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-      std::vector<Instruction> kept;
-      kept.reserve(function->blocks[i].instructions.size());
-      for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-        const Instruction & ins = function->blocks[i].instructions[j];
-        if(!ins.dest.empty() && uses[ins.dest] == 0 &&
-           (is_pure(ins.kind) || ins.kind == Instruction::IK_LOAD ||
-            call_is_removable(ins, boundaries))) {
-          changed = any = true;
-          if(stats) ++stats->rewrites;
-          continue;
-        }
-        kept.push_back(ins);
-      }
-      function->blocks[i].instructions.swap(kept);
+  typedef std::pair<std::size_t, std::size_t> Location;
+  std::unordered_map<std::string, Location> definitions;
+  std::unordered_map<std::string, std::size_t> uses;
+  std::vector<std::vector<unsigned char> > dead(function->blocks.size());
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    dead[i].assign(function->blocks[i].instructions.size(), 0);
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[i].instructions[j];
+      if(!ins.dest.empty()) definitions[ins.dest] = Location(i, j);
+      count_operand_use(ins.first, &uses);
+      count_operand_use(ins.second, &uses);
+      count_operand_use(ins.third, &uses);
+      for(std::size_t k = 0; k < ins.args.size(); ++k)
+        count_operand_use(ins.args[k], &uses);
+      if(stats) ++stats->instruction_visits;
     }
   }
-  return any;
+
+  std::deque<Location> work;
+  for(std::unordered_map<std::string, Location>::const_iterator it =
+        definitions.begin(); it != definitions.end(); ++it) {
+    const Instruction & ins =
+      function->blocks[it->second.first].instructions[it->second.second];
+    const std::unordered_map<std::string, std::size_t>::const_iterator used =
+      uses.find(it->first);
+    if((used == uses.end() || used->second == 0) &&
+       (is_pure(ins.kind) || ins.kind == Instruction::IK_LOAD ||
+        call_is_removable(ins, boundaries))) {
+      work.push_back(it->second);
+      if(stats) ++stats->worklist_pushes;
+    }
+  }
+
+  const auto release_operand = [&](const Operand & operand) {
+    if(operand.kind != Operand::OP_TEMP) return;
+    std::unordered_map<std::string, std::size_t>::iterator used =
+      uses.find(operand.text);
+    if(used == uses.end() || used->second == 0) return;
+    --used->second;
+    if(used->second != 0) return;
+    const std::unordered_map<std::string, Location>::const_iterator found =
+      definitions.find(operand.text);
+    if(found == definitions.end()) return;
+    const Instruction & producer =
+      function->blocks[found->second.first].instructions[found->second.second];
+    if(is_pure(producer.kind) || producer.kind == Instruction::IK_LOAD ||
+       call_is_removable(producer, boundaries)) {
+      work.push_back(found->second);
+      if(stats) ++stats->worklist_pushes;
+    }
+  };
+
+  std::size_t removed = 0;
+  while(!work.empty()) {
+    const Location location = work.front();
+    work.pop_front();
+    if(dead[location.first][location.second]) continue;
+    dead[location.first][location.second] = 1;
+    ++removed;
+    const Instruction & ins =
+      function->blocks[location.first].instructions[location.second];
+    release_operand(ins.first);
+    release_operand(ins.second);
+    release_operand(ins.third);
+    for(std::size_t i = 0; i < ins.args.size(); ++i)
+      release_operand(ins.args[i]);
+  }
+  if(!removed) return false;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    std::vector<Instruction> kept;
+    kept.reserve(function->blocks[i].instructions.size());
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j)
+      if(!dead[i][j]) kept.push_back(function->blocks[i].instructions[j]);
+    function->blocks[i].instructions.swap(kept);
+  }
+  if(stats) stats->rewrites += removed;
+  return true;
 }
 
-std::string bypass_target(const Function & function, const Graph & graph,
-                          std::string target)
+std::vector<std::string> bypass_targets(const Function & function,
+                                        const Graph & graph)
 {
-  std::unordered_set<std::string> seen;
-  while(seen.insert(target).second && !graph.eh_targets.count(target)) {
-    const BlockIndex::const_iterator found = graph.index.find(target);
-    if(found == graph.index.end()) break;
-    const Block & block = function.blocks[found->second];
-    if(block.instructions.size() != 1 ||
-       block.instructions[0].kind != Instruction::IK_JUMP) break;
-    target = block.instructions[0].first.text;
+  const std::size_t count = function.blocks.size();
+  std::vector<std::size_t> next(count, kNoBlock);
+  for(std::size_t i = 0; i < count; ++i) {
+    const Block & block = function.blocks[i];
+    if(graph.eh_targets.count(block.label) || block.instructions.size() != 1 ||
+       block.instructions[0].kind != Instruction::IK_JUMP) continue;
+    const BlockIndex::const_iterator found =
+      graph.index.find(block.instructions[0].first.text);
+    if(found != graph.index.end()) next[i] = found->second;
   }
-  return target;
+  std::vector<std::string> result(count);
+  std::vector<unsigned char> state(count, 0);
+  for(std::size_t start = 0; start < count; ++start) {
+    if(state[start] == 2) continue;
+    std::vector<std::size_t> path;
+    std::size_t cursor = start;
+    while(state[cursor] == 0 && next[cursor] != kNoBlock) {
+      state[cursor] = 1;
+      path.push_back(cursor);
+      cursor = next[cursor];
+    }
+    if(state[cursor] == 0) {
+      state[cursor] = 2;
+      result[cursor] = function.blocks[cursor].label;
+    }
+    if(state[cursor] == 1) {
+      std::size_t cycle = 0;
+      while(cycle < path.size() && path[cycle] != cursor) ++cycle;
+      for(std::size_t i = cycle; i < path.size(); ++i) {
+        result[path[i]] = function.blocks[path[i]].label;
+        state[path[i]] = 2;
+      }
+      for(std::size_t i = cycle; i > 0; --i) {
+        result[path[i - 1]] = function.blocks[cursor].label;
+        state[path[i - 1]] = 2;
+      }
+      continue;
+    }
+    std::string target = result[cursor];
+    for(std::size_t i = path.size(); i > 0; --i) {
+      result[path[i - 1]] = target;
+      state[path[i - 1]] = 2;
+    }
+  }
+  for(std::size_t i = 0; i < count; ++i)
+    if(result[i].empty()) result[i] = function.blocks[i].label;
+  return result;
 }
 
 bool cleanup_cfg(Function * function, Stats * stats)
@@ -713,6 +894,7 @@ bool cleanup_cfg(Function * function, Stats * stats)
   }
 
   if(changed) graph = build_graph(*function, stats);
+  const std::vector<std::string> bypass = bypass_targets(*function, graph);
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       Instruction & ins = function->blocks[i].instructions[j];
@@ -724,7 +906,9 @@ bool cleanup_cfg(Function * function, Stats * stats)
         targets[count++] = &ins.second; targets[count++] = &ins.third;
       } else if(ins.kind == Instruction::IK_SWITCH) targets[count++] = &ins.second;
       for(std::size_t k = 0; k < count; ++k) {
-        const std::string target = bypass_target(*function, graph, targets[k]->text);
+        const BlockIndex::const_iterator found = graph.index.find(targets[k]->text);
+        const std::string target = found == graph.index.end() ?
+          targets[k]->text : bypass[found->second];
         if(target != targets[k]->text &&
            ins.kind != Instruction::IK_EH_TRY &&
            ins.kind != Instruction::IK_EH_CLEANUP) {
@@ -734,9 +918,21 @@ bool cleanup_cfg(Function * function, Stats * stats)
       }
       if(ins.kind == Instruction::IK_SWITCH)
         for(std::size_t k = 1; k < ins.args.size(); k += 2) {
-          const std::string target = bypass_target(*function, graph, ins.args[k].text);
+          const BlockIndex::const_iterator found = graph.index.find(ins.args[k].text);
+          const std::string target = found == graph.index.end() ?
+            ins.args[k].text : bypass[found->second];
           if(target != ins.args[k].text) { ins.args[k].text = target; changed = true; }
         }
+      if(ins.kind == Instruction::IK_BRANCH &&
+         ins.second.text == ins.third.text) {
+        const Operand selected = ins.second;
+        const lowir_model::InstructionDebugLocation debug = ins.debug_location;
+        ins = Instruction();
+        ins.kind = Instruction::IK_JUMP;
+        ins.first = selected;
+        ins.debug_location = debug;
+        changed = true;
+      }
     }
   }
 
@@ -759,10 +955,19 @@ bool cleanup_cfg(Function * function, Stats * stats)
   // the entry before pruning that edge.
   struct Definition { std::size_t block; Instruction instruction; };
   std::unordered_map<std::string, Definition> definitions;
+  std::unordered_map<std::string, std::vector<std::string> > dependencies;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
-      if(!ins.dest.empty()) definitions[ins.dest] = Definition{i, ins};
+      if(ins.dest.empty()) continue;
+      definitions[ins.dest] = Definition{i, ins};
+      const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+      for(std::size_t k = 0; k < 3; ++k)
+        if(operands[k]->kind == Operand::OP_TEMP)
+          dependencies[ins.dest].push_back(operands[k]->text);
+      for(std::size_t k = 0; k < ins.args.size(); ++k)
+        if(ins.args[k].kind == Operand::OP_TEMP)
+          dependencies[ins.dest].push_back(ins.args[k].text);
     }
   std::unordered_set<std::string> available;
   for(std::size_t i = 0; i < function->params.size(); ++i)
@@ -773,28 +978,40 @@ bool cleanup_cfg(Function * function, Stats * stats)
     if(!function->blocks[0].instructions[i].dest.empty())
       available.insert(function->blocks[0].instructions[i].dest);
   std::vector<Instruction> rematerialized;
-  std::unordered_set<std::string> visiting;
-  std::function<bool(const std::string &)> rematerialize =
-    [&](const std::string & name) -> bool {
-      if(available.count(name)) return true;
-      const std::unordered_map<std::string, Definition>::const_iterator found =
-        definitions.find(name);
-      if(found == definitions.end() || reachable[found->second.block] ||
-         !is_pure(found->second.instruction.kind) ||
-         !visiting.insert(name).second) return false;
-      const Instruction & source = found->second.instruction;
-      const Operand * operands[] = {&source.first, &source.second, &source.third};
-      for(std::size_t i = 0; i < 3; ++i)
-        if(operands[i]->kind == Operand::OP_TEMP &&
-           !rematerialize(operands[i]->text)) return false;
-      for(std::size_t i = 0; i < source.args.size(); ++i)
-        if(source.args[i].kind == Operand::OP_TEMP &&
-           !rematerialize(source.args[i].text)) return false;
-      rematerialized.push_back(source);
-      available.insert(name);
-      visiting.erase(name);
-      return true;
-    };
+  const auto eligible_definition = [&](const std::string & name) {
+    const std::unordered_map<std::string, Definition>::const_iterator found =
+      definitions.find(name);
+    return found != definitions.end() && !reachable[found->second.block] &&
+      is_pure(found->second.instruction.kind);
+  };
+  const auto rematerialize = [&](const std::string & name) {
+    if(available.count(name)) return true;
+    if(!eligible_definition(name)) return false;
+    struct Frame { std::string name; std::size_t dependency; };
+    std::vector<Frame> stack(1, Frame{name, 0});
+    std::unordered_set<std::string> active;
+    active.insert(name);
+    while(!stack.empty()) {
+      Frame & frame = stack.back();
+      const std::vector<std::string> & required = dependencies[frame.name];
+      while(frame.dependency < required.size() &&
+            available.count(required[frame.dependency]))
+        ++frame.dependency;
+      if(frame.dependency < required.size()) {
+        const std::string dependency = required[frame.dependency++];
+        if(active.count(dependency) || !eligible_definition(dependency))
+          return false;
+        active.insert(dependency);
+        stack.push_back(Frame{dependency, 0});
+        continue;
+      }
+      rematerialized.push_back(definitions.find(frame.name)->second.instruction);
+      available.insert(frame.name);
+      active.erase(frame.name);
+      stack.pop_back();
+    }
+    return true;
+  };
   for(std::size_t i = 0; i < function->blocks.size(); ++i) if(reachable[i])
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
@@ -827,35 +1044,58 @@ bool cleanup_cfg(Function * function, Stats * stats)
   function->blocks.swap(live);
 
   graph = build_graph(*function, stats);
+  std::vector<unsigned char> block_has_eh(function->blocks.size(), 0);
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    Block & block = function->blocks[i];
+    const Block & block = function->blocks[i];
+    for(std::size_t j = 0; j < block.instructions.size(); ++j)
+      block_has_eh[i] = block_has_eh[i] ||
+        is_eh_instruction(block.instructions[j].kind);
+  }
+  std::vector<std::size_t> merge_next(function->blocks.size(), kNoBlock),
+    merge_parent(function->blocks.size(), kNoBlock);
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    const Block & block = function->blocks[i];
     if(block.instructions.empty() ||
        block.instructions.back().kind != Instruction::IK_JUMP) continue;
     const BlockIndex::const_iterator target =
       graph.index.find(block.instructions.back().first.text);
-    bool target_has_eh = false;
-    bool source_has_eh = false;
-    for(std::size_t j = 0; j < block.instructions.size(); ++j)
-      source_has_eh = source_has_eh || is_eh_instruction(block.instructions[j].kind);
-    if(target != graph.index.end())
-      for(std::size_t j = 0;
-          j < function->blocks[target->second].instructions.size(); ++j)
-        target_has_eh = target_has_eh ||
-          is_eh_instruction(function->blocks[target->second].instructions[j].kind);
     if(target == graph.index.end() || target->second == i ||
-       source_has_eh || target_has_eh ||
+       block_has_eh[i] || block_has_eh[target->second] ||
        graph.eh_targets.count(block.label) ||
        graph.eh_targets.count(block.instructions.back().first.text) ||
        graph.predecessors[target->second].size() != 1) continue;
-    const Block merged = function->blocks[target->second];
-    block.instructions.pop_back();
-    block.instructions.insert(block.instructions.end(),
-      merged.instructions.begin(), merged.instructions.end());
-    function->blocks.erase(function->blocks.begin() + target->second);
-    changed = true;
-    break;
+    merge_next[i] = target->second;
+    merge_parent[target->second] = i;
   }
-  if(changed && stats) ++stats->rewrites;
+  std::vector<unsigned char> consumed(function->blocks.size(), 0);
+  std::vector<Block> merged(function->blocks.size());
+  std::size_t merged_edges = 0;
+  for(std::size_t head = 0; head < function->blocks.size(); ++head) {
+    if(merge_next[head] == kNoBlock || merge_parent[head] != kNoBlock) continue;
+    merged[head] = function->blocks[head];
+    std::size_t cursor = head;
+    while(merge_next[cursor] != kNoBlock) {
+      const std::size_t target = merge_next[cursor];
+      consumed[target] = 1;
+      merged[head].instructions.pop_back();
+      merged[head].instructions.insert(merged[head].instructions.end(),
+        function->blocks[target].instructions.begin(),
+        function->blocks[target].instructions.end());
+      cursor = target;
+      ++merged_edges;
+    }
+  }
+  if(merged_edges) {
+    std::vector<Block> compact;
+    compact.reserve(function->blocks.size() - merged_edges);
+    for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+      if(consumed[i]) continue;
+      compact.push_back(merged[i].label.empty() ? function->blocks[i] : merged[i]);
+    }
+    function->blocks.swap(compact);
+    changed = true;
+    if(stats) stats->rewrites += merged_edges;
+  }
   return changed;
 }
 
@@ -881,49 +1121,80 @@ void normal_successors(const Function & function, const Graph & graph,
   }
 }
 
+bool exceeds_state_budget(std::size_t blocks, std::size_t facts,
+                          std::size_t instructions)
+{
+  const std::size_t scale = blocks + facts + instructions + 1;
+  const std::size_t budget = scale >
+      std::numeric_limits<std::size_t>::max() / 16 ?
+    std::numeric_limits<std::size_t>::max() : scale * 16;
+  return facts != 0 && blocks > budget / facts;
+}
+
 bool eliminate_dead_slot_stores(Function * function, Stats * stats)
 {
   if(function->slots.empty() || function->blocks.empty()) return false;
+  std::size_t instruction_total = 0;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    instruction_total += function->blocks[i].instructions.size();
+  if(exceeds_state_budget(function->blocks.size(), function->slots.size(),
+                          instruction_total)) {
+    if(stats) ++stats->budget_skips;
+    return false;
+  }
   const Graph graph = build_graph(*function, stats);
   typedef std::unordered_set<std::string> LiveSlots;
   std::vector<LiveSlots> live_in(function->blocks.size());
-  bool fixed_changed = true;
-  while(fixed_changed) {
-    fixed_changed = false;
-    for(std::size_t reverse = function->blocks.size(); reverse > 0; --reverse) {
-      const std::size_t block = reverse - 1;
-      LiveSlots live;
-      std::vector<std::size_t> successors;
-      normal_successors(*function, graph, block, &successors);
-      for(std::size_t i = 0; i < successors.size(); ++i)
-        live.insert(live_in[successors[i]].begin(), live_in[successors[i]].end());
-      const std::vector<Instruction> & instructions =
-        function->blocks[block].instructions;
-      for(std::size_t index = instructions.size(); index > 0; --index) {
-        const Instruction & ins = instructions[index - 1];
-        if((ins.kind == Instruction::IK_EH_TRY ||
-            ins.kind == Instruction::IK_EH_CLEANUP) &&
-           graph.index.count(ins.first.text)) {
-          const LiveSlots & handler = live_in[graph.index.find(ins.first.text)->second];
-          live.insert(handler.begin(), handler.end());
-        }
-        if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
-          live.insert(ins.first.text);
-        else if(ins.kind == Instruction::IK_STORE &&
-                ins.second.kind == Operand::OP_SLOT)
-          live.erase(ins.second.text);
-        else {
-          const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-          for(std::size_t i = 0; i < 3; ++i)
-            if(operands[i]->kind == Operand::OP_SLOT) live.insert(operands[i]->text);
-          for(std::size_t i = 0; i < ins.args.size(); ++i)
-            if(ins.args[i].kind == Operand::OP_SLOT) live.insert(ins.args[i].text);
-        }
+  const auto transfer = [&](std::size_t block) {
+    LiveSlots live;
+    std::vector<std::size_t> successors;
+    normal_successors(*function, graph, block, &successors);
+    for(std::size_t i = 0; i < successors.size(); ++i)
+      live.insert(live_in[successors[i]].begin(), live_in[successors[i]].end());
+    const std::vector<Instruction> & instructions =
+      function->blocks[block].instructions;
+    for(std::size_t index = instructions.size(); index > 0; --index) {
+      const Instruction & ins = instructions[index - 1];
+      if((ins.kind == Instruction::IK_EH_TRY ||
+          ins.kind == Instruction::IK_EH_CLEANUP) &&
+         graph.index.count(ins.first.text)) {
+        const LiveSlots & handler = live_in[graph.index.find(ins.first.text)->second];
+        live.insert(handler.begin(), handler.end());
       }
-      if(live != live_in[block]) {
-        live_in[block].swap(live);
-        fixed_changed = true;
+      if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
+        live.insert(ins.first.text);
+      else if(ins.kind == Instruction::IK_STORE &&
+              ins.second.kind == Operand::OP_SLOT)
+        live.erase(ins.second.text);
+      else {
+        const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t i = 0; i < 3; ++i)
+          if(operands[i]->kind == Operand::OP_SLOT) live.insert(operands[i]->text);
+        for(std::size_t i = 0; i < ins.args.size(); ++i)
+          if(ins.args[i].kind == Operand::OP_SLOT) live.insert(ins.args[i].text);
       }
+      if(stats) ++stats->instruction_visits;
+    }
+    return live;
+  };
+  std::deque<std::size_t> work;
+  std::vector<unsigned char> queued(function->blocks.size(), 1);
+  for(std::size_t reverse = function->blocks.size(); reverse > 0; --reverse)
+    work.push_back(reverse - 1);
+  while(!work.empty()) {
+    const std::size_t block = work.front();
+    work.pop_front();
+    queued[block] = 0;
+    LiveSlots live = transfer(block);
+    if(live == live_in[block]) continue;
+    live_in[block].swap(live);
+    if(stats) ++stats->dataflow_updates;
+    for(std::size_t i = 0; i < graph.predecessors[block].size(); ++i) {
+      const std::size_t predecessor = graph.predecessors[block][i];
+      if(queued[predecessor]) continue;
+      queued[predecessor] = 1;
+      work.push_back(predecessor);
+      if(stats) ++stats->worklist_pushes;
     }
   }
 
@@ -1072,10 +1343,14 @@ bool forward_single_store_slots(Function * function, Stats * stats)
   {
     std::size_t stores = 0;
     std::size_t store_block = 0;
+    std::size_t store_instruction = 0;
     Operand value;
     bool escaped = false;
+    bool dominates_loads = true;
   };
   std::unordered_map<std::string, SlotFact> facts;
+  std::unordered_set<std::string> storage_temporaries;
+  std::size_t first_exception_edge = kNoBlock;
   for(std::size_t i = 0; i < function->slots.size(); ++i)
     if(function->slots[i].second.kind != lowir_model::LTK_OBJECT)
       facts[function->slots[i].first] = SlotFact();
@@ -1087,8 +1362,20 @@ bool forward_single_store_slots(Function * function, Stats * stats)
         SlotFact & fact = facts[ins.second.text];
         ++fact.stores;
         fact.store_block = b;
+        fact.store_instruction = j;
         fact.value = ins.first;
       }
+      if(b == 0 && (ins.kind == Instruction::IK_EH_TRY ||
+                    ins.kind == Instruction::IK_EH_CLEANUP))
+        first_exception_edge = std::min(first_exception_edge, j);
+      if((ins.kind == Instruction::IK_LOAD ||
+          ins.kind == Instruction::IK_ATOMIC_LOAD) &&
+         ins.first.kind == Operand::OP_TEMP)
+        storage_temporaries.insert(ins.first.text);
+      if((ins.kind == Instruction::IK_STORE ||
+          ins.kind == Instruction::IK_ATOMIC_STORE) &&
+         ins.second.kind == Operand::OP_TEMP)
+        storage_temporaries.insert(ins.second.text);
       const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(operands[k]->kind == Operand::OP_SLOT && facts.count(operands[k]->text) &&
@@ -1099,18 +1386,34 @@ bool forward_single_store_slots(Function * function, Stats * stats)
         if(ins.args[k].kind == Operand::OP_SLOT && facts.count(ins.args[k].text))
           facts[ins.args[k].text].escaped = true;
     }
+  for(std::size_t b = 0; b < function->blocks.size(); ++b)
+    for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[b].instructions[j];
+      if(ins.kind != Instruction::IK_LOAD || ins.first.kind != Operand::OP_SLOT)
+        continue;
+      std::unordered_map<std::string, SlotFact>::iterator fact =
+        facts.find(ins.first.text);
+      if(fact == facts.end() || fact->second.stores != 1 ||
+         fact->second.store_block != 0 || fact->second.escaped)
+        continue;
+      if((b == 0 && j < fact->second.store_instruction) ||
+         (b != 0 && first_exception_edge < fact->second.store_instruction))
+        fact->second.dominates_loads = false;
+    }
   std::unordered_set<std::string> forwarded;
   for(std::unordered_map<std::string, SlotFact>::const_iterator it = facts.begin();
       it != facts.end(); ++it)
     if(it->second.stores == 1 && it->second.store_block == 0 &&
-       !it->second.escaped) forwarded.insert(it->first);
+       !it->second.escaped && it->second.dominates_loads)
+      forwarded.insert(it->first);
   if(forwarded.empty()) return false;
 
   std::unordered_map<std::string, Operand> aliases;
   for(std::size_t b = 0; b < function->blocks.size(); ++b)
     for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[b].instructions[j];
-      if(ins.kind == Instruction::IK_LOAD && forwarded.count(ins.first.text))
+      if(ins.kind == Instruction::IK_LOAD && forwarded.count(ins.first.text) &&
+         !storage_temporaries.count(ins.dest))
         aliases[ins.dest] = facts[ins.first.text].value;
     }
   const auto resolve_alias = [&](Operand value) {
@@ -1124,6 +1427,18 @@ bool forward_single_store_slots(Function * function, Stats * stats)
     std::vector<Instruction> kept;
     for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
       Instruction ins = function->blocks[b].instructions[j];
+      if(ins.kind == Instruction::IK_LOAD && forwarded.count(ins.first.text) &&
+         storage_temporaries.count(ins.dest)) {
+        ins.first = resolve_alias(facts[ins.first.text].value);
+        ins.kind = ins.first.kind == Operand::OP_INTEGER ||
+          ins.first.kind == Operand::OP_FLOAT ?
+            Instruction::IK_CONST : Instruction::IK_COPY;
+        ins.second = Operand();
+        ins.third = Operand();
+        kept.push_back(ins);
+        if(stats) ++stats->rewrites;
+        continue;
+      }
       if((ins.kind == Instruction::IK_LOAD && forwarded.count(ins.first.text)) ||
          (ins.kind == Instruction::IK_STORE && forwarded.count(ins.second.text))) {
         if(stats) ++stats->rewrites;
@@ -1181,6 +1496,21 @@ Operand abstract_resolve(Operand value, const AbstractState & state)
   return value;
 }
 
+void strip_local_facts(AbstractState * state,
+                       const std::vector<std::string> & local_temporaries)
+{
+  if(local_temporaries.empty()) return;
+  const std::unordered_set<std::string> locals(
+    local_temporaries.begin(), local_temporaries.end());
+  for(std::unordered_map<std::string, Operand>::iterator it =
+        state->values.begin(); it != state->values.end();) {
+    if(locals.count(it->first) ||
+       (it->second.kind == Operand::OP_TEMP && locals.count(it->second.text)))
+      it = state->values.erase(it);
+    else ++it;
+  }
+}
+
 bool promote_slots(Function * function, Stats * stats)
 {
   if(function->blocks.empty() || function->slots.empty()) return false;
@@ -1199,8 +1529,16 @@ bool promote_slots(Function * function, Stats * stats)
           eligible.erase(values[k]->text);
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_SLOT) eligible.erase(ins.args[k].text);
-    }
+  }
   if(eligible.empty()) return false;
+  std::size_t instruction_total = 0;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    instruction_total += function->blocks[i].instructions.size();
+  if(exceeds_state_budget(function->blocks.size(), eligible.size(),
+                          instruction_total)) {
+    if(stats) ++stats->budget_skips;
+    return false;
+  }
 
   std::unordered_set<std::string> storage_temporaries;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
@@ -1219,24 +1557,20 @@ bool promote_slots(Function * function, Stats * stats)
   const Graph graph = build_graph(*function, stats);
   std::vector<AbstractState> incoming(function->blocks.size());
   incoming[0].executable = true;
-  for(std::size_t i = 0; i < function->params.size(); ++i) {
-    Operand parameter;
-    parameter.kind = Operand::OP_TEMP;
-    parameter.text = function->params[i].name;
-    parameter.literal_type = function->params[i].type;
-    incoming[0].values[parameter.text] = parameter;
-  }
   std::deque<std::size_t> work;
   std::vector<unsigned char> queued(function->blocks.size(), 0);
   work.push_back(0); queued[0] = 1;
+  if(stats) ++stats->worklist_pushes;
   std::vector<std::unordered_map<std::string, Operand> > replacements(
     function->blocks.size());
   while(!work.empty()) {
     const std::size_t block_index = work.front(); work.pop_front();
     queued[block_index] = 0;
     AbstractState state = incoming[block_index];
+    replacements[block_index].clear();
     const Block & block = function->blocks[block_index];
     std::vector<std::pair<std::size_t, AbstractState> > exceptional;
+    std::vector<std::string> local_temporaries;
     for(std::size_t i = 0; i < block.instructions.size(); ++i) {
       Instruction ins = block.instructions[i];
       const Operand original_first = ins.first;
@@ -1248,9 +1582,12 @@ bool promote_slots(Function * function, Stats * stats)
         ins.args[j] = abstract_resolve(ins.args[j], state);
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
-         graph.index.count(ins.first.text))
-        exceptional.push_back(std::make_pair(graph.index.find(ins.first.text)->second,
-                                              state));
+         graph.index.count(ins.first.text)) {
+        AbstractState handler = state;
+        strip_local_facts(&handler, local_temporaries);
+        exceptional.push_back(std::make_pair(
+          graph.index.find(ins.first.text)->second, handler));
+      }
       if(ins.kind == Instruction::IK_STORE &&
          original_second.kind == Operand::OP_SLOT &&
          eligible.count(original_second.text))
@@ -1262,6 +1599,7 @@ bool promote_slots(Function * function, Stats * stats)
           state.values.find(original_first.text);
         if(value != state.values.end()) {
           state.values[ins.dest] = value->second;
+          local_temporaries.push_back(ins.dest);
           replacements[block_index][ins.dest] = value->second;
         }
       } else if(!ins.dest.empty()) {
@@ -1273,9 +1611,13 @@ bool promote_slots(Function * function, Stats * stats)
           ins.kind == Instruction::IK_BINARY ? fold_binary(ins, &folded) :
           ins.kind == Instruction::IK_CMP ? fold_compare(ins, &folded) :
           ins.kind == Instruction::IK_CONVERT ? fold_convert(ins, &folded) : false;
-        if(known) state.values[ins.dest] = folded;
+        if(known) {
+          state.values[ins.dest] = folded;
+          local_temporaries.push_back(ins.dest);
+        }
         else state.values.erase(ins.dest);
       }
+      if(stats) ++stats->instruction_visits;
     }
     std::vector<std::size_t> normal;
     if(!block.instructions.empty()) {
@@ -1310,65 +1652,77 @@ bool promote_slots(Function * function, Stats * stats)
               normal.push_back(graph.index.find(term.args[i].text)->second);
       }
     }
+    strip_local_facts(&state, local_temporaries);
     for(std::size_t i = 0; i < exceptional.size(); ++i) {
       if(meet_state(&incoming[exceptional[i].first], exceptional[i].second) &&
          !queued[exceptional[i].first]) {
         work.push_back(exceptional[i].first); queued[exceptional[i].first] = 1;
+        if(stats) { ++stats->worklist_pushes; ++stats->dataflow_updates; }
       }
     }
     for(std::size_t i = 0; i < normal.size(); ++i)
       if(meet_state(&incoming[normal[i]], state) && !queued[normal[i]]) {
         work.push_back(normal[i]); queued[normal[i]] = 1;
+        if(stats) { ++stats->worklist_pushes; ++stats->dataflow_updates; }
       }
   }
 
+  std::unordered_set<std::string> slots_with_loads;
+  std::unordered_set<std::string> slots_with_unresolved_loads;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[i].instructions[j];
+      if(ins.kind != Instruction::IK_LOAD || ins.first.kind != Operand::OP_SLOT ||
+         !eligible.count(ins.first.text))
+        continue;
+      slots_with_loads.insert(ins.first.text);
+      if(!replacements[i].count(ins.dest))
+        slots_with_unresolved_loads.insert(ins.first.text);
+    }
   std::unordered_set<std::string> promoted;
   for(std::unordered_set<std::string>::const_iterator slot = eligible.begin();
-      slot != eligible.end(); ++slot) {
-    bool all_loads = true;
-    bool has_load = false;
-    for(std::size_t i = 0; i < function->blocks.size(); ++i)
-      for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-        const Instruction & ins = function->blocks[i].instructions[j];
-        if(ins.kind == Instruction::IK_LOAD && ins.first.text == *slot) {
-          has_load = true;
-          if(!replacements[i].count(ins.dest)) all_loads = false;
-        }
-      }
-    if(all_loads && has_load) promoted.insert(*slot);
-  }
+      slot != eligible.end(); ++slot)
+    if(slots_with_loads.count(*slot) && !slots_with_unresolved_loads.count(*slot))
+      promoted.insert(*slot);
   if(promoted.empty()) return false;
-	std::unordered_map<std::string, Operand> load_aliases;
-	for(std::size_t i = 0; i < replacements.size(); ++i)
-		for(std::unordered_map<std::string, Operand>::const_iterator it =
-		      replacements[i].begin(); it != replacements[i].end(); ++it)
-			load_aliases[it->first] = it->second;
+  std::unordered_map<std::string, Operand> load_aliases;
+  for(std::size_t i = 0; i < replacements.size(); ++i)
+    for(std::unordered_map<std::string, Operand>::const_iterator it =
+          replacements[i].begin(); it != replacements[i].end(); ++it)
+      load_aliases[it->first] = it->second;
+  const auto resolve_load_alias = [&load_aliases](Operand value) {
+    std::unordered_set<std::string> seen;
+    while(value.kind == Operand::OP_TEMP && load_aliases.count(value.text) &&
+          seen.insert(value.text).second)
+      value = load_aliases.find(value.text)->second;
+    return value;
+  };
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-	std::unordered_map<std::string, Operand> aliases = load_aliases;
+    std::unordered_map<std::string, Operand> aliases = load_aliases;
     for(std::unordered_set<std::string>::const_iterator it =
           storage_temporaries.begin(); it != storage_temporaries.end(); ++it)
       aliases.erase(*it);
-	const auto resolve_alias = [&aliases](Operand value) {
-	  std::unordered_set<std::string> seen;
-	  while(value.kind == Operand::OP_TEMP && aliases.count(value.text) &&
-	        seen.insert(value.text).second)
-	    value = aliases.find(value.text)->second;
-	  return value;
-	};
+    const auto resolve_alias = [&aliases](Operand value) {
+      std::unordered_set<std::string> seen;
+      while(value.kind == Operand::OP_TEMP && aliases.count(value.text) &&
+            seen.insert(value.text).second)
+        value = aliases.find(value.text)->second;
+      return value;
+    };
     std::vector<Instruction> kept;
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       Instruction ins = function->blocks[i].instructions[j];
       Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
-		*operands[k] = resolve_alias(*operands[k]);
+        *operands[k] = resolve_alias(*operands[k]);
       for(std::size_t k = 0; k < ins.args.size(); ++k)
-		ins.args[k] = resolve_alias(ins.args[k]);
+        ins.args[k] = resolve_alias(ins.args[k]);
       if(ins.kind == Instruction::IK_LOAD && promoted.count(ins.first.text) &&
          storage_temporaries.count(ins.dest)) {
-		ins.first = load_aliases.find(ins.dest)->second;
-		ins.kind = ins.first.kind == Operand::OP_INTEGER ||
-		  ins.first.kind == Operand::OP_FLOAT ?
-		    Instruction::IK_CONST : Instruction::IK_COPY;
+        ins.first = resolve_load_alias(load_aliases.find(ins.dest)->second);
+        ins.kind = ins.first.kind == Operand::OP_INTEGER ||
+          ins.first.kind == Operand::OP_FLOAT ?
+            Instruction::IK_CONST : Instruction::IK_COPY;
         ins.second = Operand();
         ins.third = Operand();
         kept.push_back(ins);
@@ -1417,6 +1771,8 @@ std::size_t instruction_count(const LowirProgram & program)
 void optimize(LowirProgram & program, int level, Stats * stats)
 {
   if(level < 0 || level > 2) throw std::logic_error("invalid LowIR optimization level");
+  const std::chrono::steady_clock::time_point started =
+    std::chrono::steady_clock::now();
   Stats local;
   Stats * observed = stats ? stats : &local;
   *observed = Stats();
@@ -1424,35 +1780,43 @@ void optimize(LowirProgram & program, int level, Stats * stats)
   observed->input_instructions = instruction_count(program);
   if(level == 0) {
     observed->output_instructions = observed->input_instructions;
+    observed->elapsed_nanoseconds = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count());
     return;
   }
   const std::unordered_map<std::string, FunctionBoundaryMetadata> boundaries =
     function_boundaries(program);
   std::unordered_set<std::string> inlined_functions;
-  observed->rewrites += inline_o1_calls(program, &inlined_functions);
+  observed->rewrites += inline_o1_calls(program, &inlined_functions, observed);
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     Function & function = program.functions[i];
-    for(unsigned round = 0; round < 8; ++round) {
-      bool changed = false;
-      changed |= simplify_values(&function, observed);
-      changed |= eliminate_dead_code(&function, boundaries, observed);
-      changed |= cleanup_cfg(&function, observed);
-      if(inlined_functions.count(function.name)) {
-        changed |= forward_single_store_slots(&function, observed);
-        changed |= local_slot_forward(&function, observed);
-      }
-      changed |= eliminate_dead_code(&function, boundaries, observed);
-      changed |= remove_dead_slots(&function, observed);
-      if(!changed) break;
-    }
+    // This is an explicit bounded pass schedule, not a whole-function
+    // fixed-point retry.  The individual propagation and liveness analyses
+    // use their own dirty worklists.
+    simplify_values(&function, observed);
+    eliminate_dead_code(&function, boundaries, observed);
+    cleanup_cfg(&function, observed);
+    simplify_values(&function, observed);
+    eliminate_dead_code(&function, boundaries, observed);
+    if(inlined_functions.count(function.name) || level >= 2)
+      forward_single_store_slots(&function, observed);
+    if(inlined_functions.count(function.name))
+      local_slot_forward(&function, observed);
+    simplify_values(&function, observed);
+    eliminate_dead_code(&function, boundaries, observed);
+    cleanup_cfg(&function, observed);
+    remove_dead_slots(&function, observed);
+    cleanup_cfg(&function, observed);
+    eliminate_dead_code(&function, boundaries, observed);
+    cleanup_cfg(&function, observed);
     if(level >= 2 && promote_slots(&function, observed)) {
-      for(unsigned round = 0; round < 8; ++round) {
-        bool changed = simplify_values(&function, observed);
-        changed |= eliminate_dead_code(&function, boundaries, observed);
-        changed |= cleanup_cfg(&function, observed);
-        changed |= remove_dead_slots(&function, observed);
-        if(!changed) break;
-      }
+      simplify_values(&function, observed);
+      eliminate_dead_code(&function, boundaries, observed);
+      cleanup_cfg(&function, observed);
+      simplify_values(&function, observed);
+      eliminate_dead_code(&function, boundaries, observed);
+      remove_dead_slots(&function, observed);
     }
     if(level >= 2 && eliminate_dead_slot_stores(&function, observed)) {
       eliminate_dead_code(&function, boundaries, observed);
@@ -1460,6 +1824,9 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     }
   }
   observed->output_instructions = instruction_count(program);
+  observed->elapsed_nanoseconds = static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
 }
 
 }  // namespace lowir_opt

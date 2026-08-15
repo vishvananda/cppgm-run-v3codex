@@ -1,9 +1,11 @@
 #include "lowir_inline_o1.h"
+#include "lowir_opt.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <cstdlib>
+#include <deque>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -96,8 +98,9 @@ struct Names
   std::unordered_set<std::string> slots;
   std::unordered_set<std::string> labels;
   std::unordered_set<std::size_t> site_ids;
+  std::size_t next_site_id;
 
-  explicit Names(const Function & function)
+  explicit Names(const Function & function) : next_site_id(0)
   {
     for(std::size_t i = 0; i < function.params.size(); ++i) {
       values.insert(function.params[i].name);
@@ -120,10 +123,9 @@ struct Names
 
   std::size_t next_site()
   {
-    std::size_t result = 0;
-    while(site_ids.count(result)) ++result;
-    site_ids.insert(result);
-    return result;
+    while(site_ids.count(next_site_id)) ++next_site_id;
+    site_ids.insert(next_site_id);
+    return next_site_id++;
   }
 
   std::string unique_slot(const std::string & stem, const LowType &,
@@ -171,25 +173,34 @@ Instruction clone_instruction(const Instruction & source,
   return result;
 }
 
-void replace_value(Function * function, const std::string & name,
-                   const Operand & replacement)
+Operand resolve_replacement(Operand value, const ValueMap & replacements)
 {
+  std::unordered_set<std::string> seen;
+  while(value.kind == Operand::OP_TEMP && replacements.count(value.text) &&
+        seen.insert(value.text).second)
+    value = replacements.find(value.text)->second;
+  return value;
+}
+
+void replace_values(Function * function, const ValueMap & replacements)
+{
+  if(replacements.empty()) return;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       Instruction & ins = function->blocks[i].instructions[j];
       Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
-        if(operands[k]->kind == Operand::OP_TEMP && operands[k]->text == name)
-          *operands[k] = replacement;
+        *operands[k] = resolve_replacement(*operands[k], replacements);
       for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_TEMP && ins.args[k].text == name)
-          ins.args[k] = replacement;
+        ins.args[k] = resolve_replacement(ins.args[k], replacements);
     }
 }
 
+typedef std::unordered_map<std::string, std::size_t> BlockIndex;
+
 std::vector<std::size_t> normal_successors(const Function & function,
                                             std::size_t block,
-                                            const NameMap & index)
+                                            const BlockIndex & index)
 {
   std::vector<std::size_t> result;
   if(function.blocks[block].instructions.empty()) return result;
@@ -200,68 +211,95 @@ std::vector<std::size_t> normal_successors(const Function & function,
     targets[0] = &term.second; targets[1] = &term.third;
   }
   for(std::size_t i = 0; i < 2; ++i) if(targets[i]) {
-    const NameMap::const_iterator found = index.find(targets[i]->text);
-    if(found != index.end()) result.push_back(
-      static_cast<std::size_t>(std::strtoull(found->second.c_str(), 0, 10)));
+    const BlockIndex::const_iterator found = index.find(targets[i]->text);
+    if(found != index.end()) result.push_back(found->second);
   }
   if(term.kind == Instruction::IK_SWITCH) {
-    const NameMap::const_iterator fallback = index.find(term.second.text);
-    if(fallback != index.end()) result.push_back(
-      static_cast<std::size_t>(std::strtoull(fallback->second.c_str(), 0, 10)));
+    const BlockIndex::const_iterator fallback = index.find(term.second.text);
+    if(fallback != index.end()) result.push_back(fallback->second);
     for(std::size_t i = 1; i < term.args.size(); i += 2) {
-      const NameMap::const_iterator found = index.find(term.args[i].text);
-      if(found != index.end()) result.push_back(
-        static_cast<std::size_t>(std::strtoull(found->second.c_str(), 0, 10)));
+      const BlockIndex::const_iterator found = index.find(term.args[i].text);
+      if(found != index.end()) result.push_back(found->second);
     }
   }
   return result;
 }
 
-bool call_inside_eh(const Function & function, std::size_t call_block,
-                    std::size_t call_instruction)
+struct EhContext
 {
-  NameMap index;
+  std::vector<unsigned char> incoming;
+  std::unordered_set<std::string> landing_blocks;
+};
+
+EhContext analyze_eh_context(const Function & function, Stats * stats)
+{
+  EhContext result;
+  BlockIndex index;
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    index[function.blocks[i].label] = std::to_string(i);
-  std::vector<unsigned char> active(function.blocks.size(), 0), known(
-    function.blocks.size(), 0);
-  if(!function.blocks.empty()) known[0] = 1;
-  bool changed = true;
-  while(changed) {
-    changed = false;
-    for(std::size_t block = 0; block < function.blocks.size(); ++block) {
-      if(!known[block]) continue;
-      bool state = active[block] != 0;
-      for(std::size_t i = 0; i < function.blocks[block].instructions.size(); ++i) {
-        if(block == call_block && i == call_instruction) return state;
-        const Instruction::Kind kind = function.blocks[block].instructions[i].kind;
-        if(kind == Instruction::IK_EH_TRY || kind == Instruction::IK_EH_CLEANUP)
-          state = true;
-        else if(kind == Instruction::IK_EH_END) state = false;
-      }
-      const std::vector<std::size_t> successors =
-        normal_successors(function, block, index);
-      for(std::size_t i = 0; i < successors.size(); ++i)
-        if(!known[successors[i]] || (state && !active[successors[i]])) {
-          known[successors[i]] = 1;
-          active[successors[i]] = state;
-          changed = true;
-        }
+    index[function.blocks[i].label] = i;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function.blocks[i].instructions[j];
+      if(ins.kind == Instruction::IK_EH_TRY ||
+         ins.kind == Instruction::IK_EH_CLEANUP)
+        result.landing_blocks.insert(ins.first.text);
     }
   }
-  return false;
+  if(function.blocks.empty()) return result;
+  std::vector<unsigned char> incoming(function.blocks.size(), 0), queued(
+    function.blocks.size(), 0);
+  std::deque<std::size_t> work;
+  incoming[0] = 1;
+  queued[0] = 1;
+  work.push_back(0);
+  if(stats) ++stats->worklist_pushes;
+  while(!work.empty()) {
+    const std::size_t block = work.front();
+    work.pop_front();
+    queued[block] = 0;
+    bool active = incoming[block] == 2;
+    for(std::size_t i = 0; i < function.blocks[block].instructions.size(); ++i) {
+      const Instruction::Kind kind = function.blocks[block].instructions[i].kind;
+      if(kind == Instruction::IK_EH_TRY || kind == Instruction::IK_EH_CLEANUP)
+        active = true;
+      else if(kind == Instruction::IK_EH_END) active = false;
+    }
+    const unsigned char outgoing = active ? 2 : 1;
+    const std::vector<std::size_t> successors =
+      normal_successors(function, block, index);
+    for(std::size_t i = 0; i < successors.size(); ++i) {
+      const std::size_t successor = successors[i];
+      if(incoming[successor] >= outgoing) continue;
+      incoming[successor] = outgoing;
+      if(stats) ++stats->dataflow_updates;
+      if(!queued[successor]) {
+        queued[successor] = 1;
+        work.push_back(successor);
+        if(stats) ++stats->worklist_pushes;
+      }
+    }
+  }
+  result.incoming = incoming;
+  return result;
 }
 
 class Inliner
 {
 public:
   Inliner(LowirProgram * program,
-          std::unordered_set<std::string> * rewritten_functions)
+          std::unordered_set<std::string> * rewritten_functions,
+          Stats * stats)
     : program_(*program), rewritten_functions_(rewritten_functions),
-      tarjan_next_(0), rewrites_(0)
+      stats_(stats), rewrites_(0)
   {
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
       definition_[program_.functions[i].name] = i;
+    contains_eh_.resize(program_.functions.size(), 0);
+    instruction_counts_.resize(program_.functions.size(), 0);
+    for(std::size_t i = 0; i < program_.functions.size(); ++i) {
+      contains_eh_[i] = contains_eh(program_.functions[i]);
+      instruction_counts_[i] = instruction_count(program_.functions[i]);
+    }
     infer_no_unwind();
     mark_recursive();
     state_.assign(program_.functions.size(), 0);
@@ -276,13 +314,11 @@ public:
 private:
   LowirProgram & program_;
   std::unordered_set<std::string> * rewritten_functions_;
+  Stats * stats_;
   std::unordered_map<std::string, std::size_t> definition_;
   std::unordered_set<std::string> no_unwind_;
-  std::vector<unsigned char> recursive_, state_;
-  std::vector<int> tarjan_index_, tarjan_low_;
-  std::vector<unsigned char> tarjan_stacked_;
-  std::vector<std::size_t> tarjan_stack_;
-  int tarjan_next_;
+  std::vector<unsigned char> recursive_, state_, contains_eh_;
+  std::vector<std::size_t> instruction_counts_;
   std::size_t rewrites_;
 
   std::size_t callee(const Instruction & instruction) const
@@ -302,99 +338,130 @@ private:
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
       if(program_.functions[i].boundary.unwind == lowir_model::CUM_NO)
         no_unwind_.insert(program_.functions[i].name);
-    bool changed = true;
-    while(changed) {
-      changed = false;
-      for(std::size_t i = 0; i < program_.functions.size(); ++i) {
-        const Function & function = program_.functions[i];
-        if(no_unwind_.count(function.name)) continue;
-        bool safe = !contains_eh(function);
-        for(std::size_t b = 0; safe && b < function.blocks.size(); ++b)
-          for(std::size_t j = 0; safe && j < function.blocks[b].instructions.size(); ++j) {
-            const Instruction & ins = function.blocks[b].instructions[j];
-            if(ins.kind == Instruction::IK_THROW || ins.kind == Instruction::IK_RESUME)
-              safe = false;
-            else if(ins.kind == Instruction::IK_CALL) {
-              std::string target;
-              safe = direct_call(ins, &target) && no_unwind_.count(target);
+    std::vector<std::size_t> unresolved(program_.functions.size(), 0);
+    std::vector<unsigned char> unsafe(program_.functions.size(), 0);
+    std::unordered_map<std::string, std::vector<std::size_t> > dependents;
+    for(std::size_t i = 0; i < program_.functions.size(); ++i) {
+      const Function & function = program_.functions[i];
+      if(no_unwind_.count(function.name)) continue;
+      unsafe[i] = contains_eh_[i];
+      for(std::size_t b = 0; b < function.blocks.size(); ++b)
+        for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
+          const Instruction & ins = function.blocks[b].instructions[j];
+          if(ins.kind == Instruction::IK_THROW || ins.kind == Instruction::IK_RESUME)
+            unsafe[i] = 1;
+          else if(ins.kind == Instruction::IK_CALL) {
+            std::string target;
+            if(!direct_call(ins, &target)) {
+              unsafe[i] = 1;
+              continue;
             }
+            if(no_unwind_.count(target)) continue;
+            ++unresolved[i];
+            dependents[target].push_back(i);
           }
-        if(safe) { no_unwind_.insert(function.name); changed = true; }
+        }
+    }
+    std::deque<std::size_t> work;
+    for(std::size_t i = 0; i < program_.functions.size(); ++i)
+      if(!unsafe[i] && unresolved[i] == 0 &&
+         no_unwind_.insert(program_.functions[i].name).second) {
+        work.push_back(i);
+        if(stats_) ++stats_->worklist_pushes;
+      }
+    while(!work.empty()) {
+      const std::size_t resolved = work.front();
+      work.pop_front();
+      const std::unordered_map<std::string,
+        std::vector<std::size_t> >::const_iterator found =
+          dependents.find(program_.functions[resolved].name);
+      if(found == dependents.end()) continue;
+      for(std::size_t i = 0; i < found->second.size(); ++i) {
+        const std::size_t caller = found->second[i];
+        if(unsafe[caller] || unresolved[caller] == 0) continue;
+        --unresolved[caller];
+        if(stats_) ++stats_->dataflow_updates;
+        if(unresolved[caller] == 0 &&
+           no_unwind_.insert(program_.functions[caller].name).second) {
+          work.push_back(caller);
+          if(stats_) ++stats_->worklist_pushes;
+        }
       }
     }
-  }
-
-  void visit(std::size_t function_index)
-  {
-    tarjan_index_[function_index] = tarjan_next_;
-    tarjan_low_[function_index] = tarjan_next_++;
-    tarjan_stack_.push_back(function_index);
-    tarjan_stacked_[function_index] = 1;
-    bool self = false;
-    const Function & function = program_.functions[function_index];
-    for(std::size_t b = 0; b < function.blocks.size(); ++b)
-      for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
-        const std::size_t next = callee(function.blocks[b].instructions[j]);
-        if(next == kNoFunction) continue;
-        self = self || next == function_index;
-        if(tarjan_index_[next] < 0) {
-          visit(next);
-          tarjan_low_[function_index] = std::min(
-            tarjan_low_[function_index], tarjan_low_[next]);
-        } else if(tarjan_stacked_[next])
-          tarjan_low_[function_index] = std::min(
-            tarjan_low_[function_index], tarjan_index_[next]);
-      }
-    if(tarjan_low_[function_index] != tarjan_index_[function_index]) return;
-    std::vector<std::size_t> component;
-    for(;;) {
-      const std::size_t member = tarjan_stack_.back();
-      tarjan_stack_.pop_back();
-      tarjan_stacked_[member] = 0;
-      component.push_back(member);
-      if(member == function_index) break;
-    }
-    if(self || component.size() > 1)
-      for(std::size_t i = 0; i < component.size(); ++i)
-        recursive_[component[i]] = 1;
   }
 
   void mark_recursive()
   {
     const std::size_t count = program_.functions.size();
     recursive_.assign(count, 0);
-    tarjan_index_.assign(count, -1);
-    tarjan_low_.assign(count, -1);
-    tarjan_stacked_.assign(count, 0);
-    for(std::size_t i = 0; i < count; ++i)
-      if(tarjan_index_[i] < 0) visit(i);
-  }
-
-  bool landing_block(const Function & function, const std::string & label) const
-  {
-    for(std::size_t b = 0; b < function.blocks.size(); ++b)
-      for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
-        const Instruction & ins = function.blocks[b].instructions[j];
-        if((ins.kind == Instruction::IK_EH_TRY ||
-            ins.kind == Instruction::IK_EH_CLEANUP) && ins.first.text == label)
-          return true;
+    std::vector<std::vector<std::size_t> > edges(count), reverse(count);
+    std::vector<unsigned char> self(count, 0);
+    for(std::size_t i = 0; i < count; ++i) {
+      const Function & function = program_.functions[i];
+      for(std::size_t b = 0; b < function.blocks.size(); ++b)
+        for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
+          const std::size_t target = callee(function.blocks[b].instructions[j]);
+          if(target == kNoFunction) continue;
+          edges[i].push_back(target);
+          reverse[target].push_back(i);
+          self[i] = self[i] || target == i;
+        }
+    }
+    struct Frame { std::size_t node; std::size_t edge; };
+    std::vector<unsigned char> seen(count, 0);
+    std::vector<std::size_t> order;
+    for(std::size_t root = 0; root < count; ++root) {
+      if(seen[root]) continue;
+      std::vector<Frame> stack;
+      seen[root] = 1;
+      stack.push_back(Frame{root, 0});
+      while(!stack.empty()) {
+        Frame & frame = stack.back();
+        if(frame.edge < edges[frame.node].size()) {
+          const std::size_t next = edges[frame.node][frame.edge++];
+          if(!seen[next]) {
+            seen[next] = 1;
+            stack.push_back(Frame{next, 0});
+          }
+        } else {
+          order.push_back(frame.node);
+          stack.pop_back();
+        }
       }
-    return false;
+    }
+    std::fill(seen.begin(), seen.end(), 0);
+    for(std::size_t cursor = order.size(); cursor > 0; --cursor) {
+      const std::size_t root = order[cursor - 1];
+      if(seen[root]) continue;
+      std::vector<std::size_t> component, stack(1, root);
+      seen[root] = 1;
+      while(!stack.empty()) {
+        const std::size_t node = stack.back();
+        stack.pop_back();
+        component.push_back(node);
+        for(std::size_t i = 0; i < reverse[node].size(); ++i)
+          if(!seen[reverse[node][i]]) {
+            seen[reverse[node][i]] = 1;
+            stack.push_back(reverse[node][i]);
+          }
+      }
+      if(component.size() > 1 || self[root])
+        for(std::size_t i = 0; i < component.size(); ++i)
+          recursive_[component[i]] = 1;
+    }
   }
 
-  bool candidate(std::size_t caller, std::size_t block,
-                 std::size_t instruction, std::size_t target) const
+  bool candidate(std::size_t caller, std::size_t target,
+                 bool landing, bool inside_eh) const
   {
     if(target == kNoFunction || recursive_[target] || target == caller) return false;
     const Function & callee_function = program_.functions[target];
     if(callee_function.boundary.arity == lowir_model::CAM_VARIADIC ||
-       contains_eh(callee_function)) return false;
-    if(instruction_count(callee_function) > 40 &&
+       contains_eh_[target]) return false;
+    if(instruction_counts_[target] > 40 &&
        !callee_function.metadata.prefer_local_object_binding) return false;
-    const Function & caller_function = program_.functions[caller];
-    if(landing_block(caller_function, caller_function.blocks[block].label))
-      return false;
-    return !call_inside_eh(caller_function, block, instruction) ||
+    if(landing) return false;
+    return !inside_eh ||
       no_unwind_.count(callee_function.name);
   }
 
@@ -437,6 +504,9 @@ private:
       if(rewritten_functions_)
         rewritten_functions_->insert(program_.functions[function_index].name);
     }
+    contains_eh_[function_index] = contains_eh(program_.functions[function_index]);
+    instruction_counts_[function_index] =
+      instruction_count(program_.functions[function_index]);
     state_[function_index] = 2;
   }
 
@@ -470,9 +540,54 @@ private:
     }
   }
 
+  bool leaf_inline_shape(const Function & function) const
+  {
+    if(function.blocks.size() != 1) return false;
+    std::size_t returns = 0;
+    for(std::size_t i = 0; i < function.blocks[0].instructions.size(); ++i) {
+      if(function.blocks[0].instructions[i].kind == Instruction::IK_CALL)
+        return false;
+      if(function.blocks[0].instructions[i].kind == Instruction::IK_RETURN)
+        ++returns;
+    }
+    return returns == 1;
+  }
+
+  void inline_leaf_call(std::size_t caller_index, const Instruction & call,
+                        const Function & callee_function, Names * names,
+                        ValueMap * replacements,
+                        std::vector<Instruction> * output)
+  {
+    const Block & source = callee_function.blocks[0];
+    const std::string prefix = "__o1inl" +
+      std::to_string(names->next_site()) + "__";
+    ValueMap values;
+    NameMap slots, labels;
+    build_maps(callee_function, call, prefix, names, &values, &slots, &labels);
+    Function & caller = program_.functions[caller_index];
+    for(std::size_t i = 0; i < callee_function.slots.size(); ++i)
+      caller.slots.push_back(std::make_pair(
+        slots.find(callee_function.slots[i].first)->second,
+        callee_function.slots[i].second));
+
+    for(std::size_t i = 0; i < source.instructions.size(); ++i) {
+      const Instruction & instruction = source.instructions[i];
+      if(instruction.kind != Instruction::IK_RETURN) {
+        output->push_back(clone_instruction(instruction, values, slots, labels));
+        continue;
+      }
+      if(call.call_returns_void) continue;
+      Operand returned = instruction.first;
+      rename_operand(&returned, values, slots, labels);
+      (*replacements)[call.dest] = returned;
+    }
+  }
+
   void inline_call(std::size_t caller_index, std::size_t block_index,
                    std::size_t instruction_index, const Function & callee_function,
-                   Names * names)
+                   Names * names, ValueMap * replacements,
+                   std::unordered_map<std::string, unsigned char> * block_eh,
+                   bool inside_eh)
   {
     Function & caller = program_.functions[caller_index];
     const Instruction call = caller.blocks[block_index].instructions[instruction_index];
@@ -481,6 +596,8 @@ private:
     ValueMap values;
     NameMap slots, labels;
     build_maps(callee_function, call, prefix, names, &values, &slots, &labels);
+    for(NameMap::const_iterator it = labels.begin(); it != labels.end(); ++it)
+      (*block_eh)[it->second] = inside_eh ? 1 : 0;
     for(std::size_t i = 0; i < callee_function.slots.size(); ++i)
       caller.slots.push_back(std::make_pair(
         slots.find(callee_function.slots[i].first)->second,
@@ -544,17 +661,19 @@ private:
         caller.blocks.insert(caller.blocks.begin() + block_index + 1,
           continuation_block);
         names->labels.insert(wrapper_continuation);
+        (*block_eh)[wrapper_continuation] = inside_eh ? 1 : 0;
       } else caller.blocks[block_index].instructions.insert(
           caller.blocks[block_index].instructions.end(), tail.begin(), tail.end());
-      if(have_single_object_return) replace_value(
-        &caller, call.dest, single_object_return);
-      if(have_single_scalar_return) replace_value(
-        &caller, call.dest, single_scalar_return);
+      if(have_single_object_return)
+        (*replacements)[call.dest] = single_object_return;
+      if(have_single_scalar_return)
+        (*replacements)[call.dest] = single_scalar_return;
       return;
     }
 
     const std::string continuation = "^" + prefix + "cont";
     names->labels.insert(continuation);
+    (*block_eh)[continuation] = inside_eh ? 1 : 0;
     caller.blocks[block_index].instructions.push_back(jump_to(
       labels.find(callee_function.blocks[0].label)->second));
     std::vector<Block> inserted;
@@ -614,32 +733,115 @@ private:
     if(has_result && object_result) {
       const Operand replacement = returns > 1 ?
         named_operand(Operand::OP_SLOT, merge_slot, call.type) : single_object_return;
-      replace_value(&caller, call.dest, replacement);
+      (*replacements)[call.dest] = replacement;
     }
     if(has_result && !object_result && returns == 1 && have_single_scalar_return)
-      replace_value(&caller, call.dest, single_scalar_return);
+      (*replacements)[call.dest] = single_scalar_return;
+  }
+
+  bool batch_inline_leaf_calls(std::size_t function_index,
+                               std::size_t block_index,
+                               const EhContext & eh,
+                               const std::unordered_map<std::string,
+                                 unsigned char> & block_eh,
+                               Names * names, ValueMap * replacements)
+  {
+    Function & function = program_.functions[function_index];
+    std::vector<Instruction> source;
+    source.swap(function.blocks[block_index].instructions);
+    const std::string label = function.blocks[block_index].label;
+    const bool landing = eh.landing_blocks.count(label) != 0;
+    bool active = block_eh.find(label)->second != 0;
+    bool batch_safe = true;
+    for(std::size_t i = 0; batch_safe && i < source.size(); ++i) {
+      const std::size_t target = callee(source[i]);
+      if(target != kNoFunction &&
+         candidate(function_index, target, landing, active) &&
+         !leaf_inline_shape(program_.functions[target]))
+        batch_safe = false;
+      if(source[i].kind == Instruction::IK_EH_TRY ||
+         source[i].kind == Instruction::IK_EH_CLEANUP) active = true;
+      else if(source[i].kind == Instruction::IK_EH_END) active = false;
+    }
+    if(!batch_safe) {
+      function.blocks[block_index].instructions.swap(source);
+      return false;
+    }
+
+    std::vector<Instruction> rebuilt;
+    rebuilt.reserve(source.size());
+    active = block_eh.find(label)->second != 0;
+    bool changed = false;
+    for(std::size_t i = 0; i < source.size(); ++i) {
+      const Instruction & ins = source[i];
+      const std::size_t target = callee(ins);
+      if(target != kNoFunction && candidate(function_index, target, landing, active) &&
+         leaf_inline_shape(program_.functions[target])) {
+        inline_leaf_call(function_index, ins, program_.functions[target],
+          names, replacements, &rebuilt);
+        ++rewrites_;
+        changed = true;
+        if(stats_) {
+          ++stats_->inline_call_visits;
+          ++stats_->inline_calls;
+        }
+        continue;
+      }
+      if(ins.kind == Instruction::IK_EH_TRY ||
+         ins.kind == Instruction::IK_EH_CLEANUP) active = true;
+      else if(ins.kind == Instruction::IK_EH_END) active = false;
+      rebuilt.push_back(ins);
+    }
+    function.blocks[block_index].instructions.swap(rebuilt);
+    return changed;
   }
 
   void inline_calls(std::size_t function_index)
   {
     Names names(program_.functions[function_index]);
-    bool changed = true;
-    while(changed) {
-      changed = false;
-      Function & caller = program_.functions[function_index];
-      for(std::size_t b = 0; b < caller.blocks.size() && !changed; ++b)
-        for(std::size_t j = 0; j < caller.blocks[b].instructions.size(); ++j) {
-          const std::size_t target = callee(caller.blocks[b].instructions[j]);
-          if(!candidate(function_index, b, j, target)) continue;
-          const Function callee_copy = program_.functions[target];
-          inline_call(function_index, b, j, callee_copy, &names);
-          ++rewrites_;
-          if(rewritten_functions_)
-            rewritten_functions_->insert(program_.functions[function_index].name);
-          changed = true;
-          break;
+    const EhContext eh = analyze_eh_context(
+      program_.functions[function_index], stats_);
+    std::unordered_map<std::string, unsigned char> block_eh;
+    for(std::size_t b = 0; b < program_.functions[function_index].blocks.size(); ++b)
+      block_eh[program_.functions[function_index].blocks[b].label] =
+        b < eh.incoming.size() && eh.incoming[b] == 2 ? 1 : 0;
+    ValueMap replacements;
+    bool changed = false;
+    for(std::size_t b = 0;
+        b < program_.functions[function_index].blocks.size(); ++b) {
+      changed |= batch_inline_leaf_calls(function_index, b, eh, block_eh,
+        &names, &replacements);
+      bool active = block_eh[
+        program_.functions[function_index].blocks[b].label] != 0;
+      std::size_t j = 0;
+      while(j < program_.functions[function_index].blocks[b].instructions.size()) {
+        const Instruction & ins =
+          program_.functions[function_index].blocks[b].instructions[j];
+        const std::size_t target = callee(ins);
+        if(target != kNoFunction) {
+          if(stats_) ++stats_->inline_call_visits;
+          if(candidate(function_index, target,
+               eh.landing_blocks.count(
+                 program_.functions[function_index].blocks[b].label) != 0,
+               active)) {
+            inline_call(function_index, b, j, program_.functions[target],
+              &names, &replacements, &block_eh, active);
+            ++rewrites_;
+            changed = true;
+            if(stats_) ++stats_->inline_calls;
+            continue;
+          }
         }
+        const Instruction::Kind kind = ins.kind;
+        if(kind == Instruction::IK_EH_TRY || kind == Instruction::IK_EH_CLEANUP)
+          active = true;
+        else if(kind == Instruction::IK_EH_END) active = false;
+        ++j;
+      }
     }
+    replace_values(&program_.functions[function_index], replacements);
+    if(changed && rewritten_functions_)
+      rewritten_functions_->insert(program_.functions[function_index].name);
   }
 };
 
@@ -647,9 +849,10 @@ private:
 
 std::size_t inline_o1_calls(
   LowirProgram & program,
-  std::unordered_set<std::string> * rewritten_functions)
+  std::unordered_set<std::string> * rewritten_functions,
+  Stats * stats)
 {
-  Inliner inliner(&program, rewritten_functions);
+  Inliner inliner(&program, rewritten_functions, stats);
   return inliner.run();
 }
 

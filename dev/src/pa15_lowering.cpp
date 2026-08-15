@@ -101,7 +101,7 @@ public:
 		  full_expression_uses_linked_dispatch_(false), full_expression_uses_branch_cleanup_(false),
 		  full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
 		  full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
-		  source_types_(program_),
+		  presentation_names_(program_), source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
 			function_definition_, polymorphism_.class_vtable_symbols)
@@ -410,8 +410,9 @@ private:
 		if (function_symbols_[record.binding] == kNoLowId)
 		{
 			const BindingRecord& binding = program_.bindings[record.binding];
-			const std::string base = SanitizeSymbol(program_.names.Get(
-				binding.qualified_name != 0 ? binding.qualified_name : record.text));
+			const std::string base = SanitizeSymbol(presentation_names_.Apply(
+				program_.names.Get(binding.qualified_name != 0 ?
+					binding.qualified_name : record.text)));
 			const std::uint32_t ordinal =
 				program_.bindings[record.binding].overload_ordinal;
 			const std::string name = ordinal <= 1 ? base :
@@ -2976,6 +2977,7 @@ private:
 		full_expression_branch_cleanup_tails_;
 	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;
 	std::vector<IdentityTypeId> identity_type_cache_;
+	PresentationNameMap presentation_names_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;
 };

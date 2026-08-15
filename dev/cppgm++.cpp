@@ -704,71 +704,8 @@ void canonicalize_frontend_symbol(const string & name,
 		metadata->object_symbol.clear();
 }
 
-void canonicalize_frontend_lowir(
-    lowir_model::LowirProgram * program,
-    const lowir_model::LowirProgram & presentation)
+void canonicalize_frontend_lowir(lowir_model::LowirProgram * program)
 {
-	unordered_map<string, const lowir_model::Function *> by_object;
-	for(size_t i = 0; i < presentation.functions.size(); ++i)
-		if(!presentation.functions[i].metadata.object_symbol.empty())
-			by_object[presentation.functions[i].metadata.object_symbol] =
-				&presentation.functions[i];
-	unordered_map<string, string> renamed;
-	for(size_t i = 0; i < program->functions.size(); ++i) {
-		const unordered_map<string, const lowir_model::Function *>::const_iterator found =
-			by_object.find(program->functions[i].metadata.object_symbol);
-		if(found == by_object.end()) continue;
-		renamed[program->functions[i].name] = found->second->name;
-		program->functions[i].name = found->second->name;
-		const lowir_model::SymbolMetadata retained = program->functions[i].metadata;
-		program->functions[i].metadata = found->second->metadata;
-		program->functions[i].metadata.role = retained.role;
-		program->functions[i].metadata.keep_internal_alias =
-			retained.keep_internal_alias;
-	}
-	for(size_t i = 0; i < program->function_declarations.size(); ++i)
-		for(size_t j = 0; j < presentation.function_declarations.size(); ++j)
-			if(!program->function_declarations[i].metadata.object_symbol.empty() &&
-			   program->function_declarations[i].metadata.object_symbol ==
-			   presentation.function_declarations[j].metadata.object_symbol) {
-				renamed[program->function_declarations[i].name] =
-					presentation.function_declarations[j].name;
-				program->function_declarations[i].name =
-					presentation.function_declarations[j].name;
-				break;
-			}
-	for(size_t i = 0; i < program->globals.size(); ++i) {
-		lowir_model::GlobalDefinition & global = program->globals[i];
-		if(global.init_operand.kind == lowir_model::Operand::OP_GLOBAL &&
-		   renamed.count(global.init_operand.text))
-			global.init_operand.text = renamed[global.init_operand.text];
-		for(size_t j = 0; j < global.data_items.size(); ++j)
-			if(global.data_items[j].kind ==
-				   lowir_model::GlobalDefinition::DataItem::ITEM_ADDR &&
-			   renamed.count(global.data_items[j].symbol))
-				global.data_items[j].symbol = renamed[global.data_items[j].symbol];
-	}
-	for(size_t i = 0; i < program->functions.size(); ++i)
-		for(size_t b = 0; b < program->functions[i].blocks.size(); ++b)
-			for(size_t j = 0;
-				j < program->functions[i].blocks[b].instructions.size(); ++j) {
-				lowir_model::Instruction & ins =
-					program->functions[i].blocks[b].instructions[j];
-				lowir_model::Operand * operands[] =
-					{&ins.first, &ins.second, &ins.third};
-				for(size_t k = 0; k < 3; ++k)
-					if(operands[k]->kind == lowir_model::Operand::OP_GLOBAL &&
-					   renamed.count(operands[k]->text))
-						operands[k]->text = renamed[operands[k]->text];
-				for(size_t k = 0; k < ins.args.size(); ++k)
-					if(ins.args[k].kind == lowir_model::Operand::OP_GLOBAL &&
-					   renamed.count(ins.args[k].text))
-						ins.args[k].text = renamed[ins.args[k].text];
-			}
-	for(size_t i = 0; i < program->object_aliases.size(); ++i)
-		if(renamed.count(program->object_aliases[i].target))
-			program->object_aliases[i].target = renamed[program->object_aliases[i].target];
-
 	unordered_set<string> referenced;
 	for(size_t i = 0; i < program->globals.size(); ++i) {
 		const lowir_model::GlobalDefinition & global = program->globals[i];
@@ -850,14 +787,20 @@ void canonicalize_frontend_lowir(
 	program->functions.swap(ordered_functions);
 
 	vector<lowir_model::ObjectAlias> ordered_aliases;
+	unordered_map<string, vector<size_t> > aliases_by_target;
+	for(size_t i = 0; i < program->object_aliases.size(); ++i)
+		aliases_by_target[program->object_aliases[i].target].push_back(i);
 	vector<unsigned char> alias_used(program->object_aliases.size(), 0);
-	for(size_t i = 0; i < program->functions.size(); ++i)
-		for(size_t j = 0; j < program->object_aliases.size(); ++j)
-			if(!alias_used[j] &&
-			   program->object_aliases[j].target == program->functions[i].name) {
-				alias_used[j] = 1;
-				ordered_aliases.push_back(program->object_aliases[j]);
-			}
+	for(size_t i = 0; i < program->functions.size(); ++i) {
+		const unordered_map<string, vector<size_t> >::const_iterator found =
+			aliases_by_target.find(program->functions[i].name);
+		if(found == aliases_by_target.end()) continue;
+		for(size_t j = 0; j < found->second.size(); ++j) {
+			const size_t alias = found->second[j];
+			alias_used[alias] = 1;
+			ordered_aliases.push_back(program->object_aliases[alias]);
+		}
+	}
 	for(size_t i = 0; i < program->object_aliases.size(); ++i)
 		if(!alias_used[i]) ordered_aliases.push_back(program->object_aliases[i]);
 	program->object_aliases.swap(ordered_aliases);
@@ -892,24 +835,8 @@ size_t first_source_column(const string & line)
 	return found == string::npos ? 1 : found + 1;
 }
 
-bool source_word_at(const string & line, const string & word, size_t * at)
-{
-	size_t found = line.find(word);
-	while(found != string::npos) {
-		const bool left = found == 0 ||
-			!(isalnum(static_cast<unsigned char>(line[found - 1])) ||
-			  line[found - 1] == '_');
-		const size_t end = found + word.size();
-		const bool right = end == line.size() ||
-			!(isalnum(static_cast<unsigned char>(line[end])) || line[end] == '_');
-		if(left && right) { if(at) *at = found; return true; }
-		found = line.find(word, found + 1);
-	}
-	return false;
-}
-
 void attach_line_table_debug(lowir_model::LowirProgram * program,
-                             const string & path, const string & source)
+	const string & path, const string & source)
 {
 	vector<string> lines;
 	size_t begin = 0;
@@ -920,20 +847,68 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		if(end == string::npos) break;
 		begin = end + 1;
 	}
+	struct WordOccurrence {
+		size_t line;
+		size_t column;
+		bool followed_by_parenthesis;
+		bool followed_by_semicolon;
+	};
+	unordered_map<string, vector<WordOccurrence> > words;
+	vector<size_t> return_lines;
+	for(size_t line = 0; line < lines.size(); ++line) {
+		const string & text = lines[line];
+		for(size_t at = 0; at < text.size();) {
+			if(!(isalpha(static_cast<unsigned char>(text[at])) || text[at] == '_')) {
+				++at;
+				continue;
+			}
+			const size_t first = at++;
+			while(at < text.size() &&
+				  (isalnum(static_cast<unsigned char>(text[at])) || text[at] == '_'))
+				++at;
+			const string word = text.substr(first, at - first);
+			WordOccurrence occurrence;
+			occurrence.line = line;
+			occurrence.column = first;
+			occurrence.followed_by_parenthesis =
+				text.find('(', at) != string::npos;
+			occurrence.followed_by_semicolon =
+				text.find(';', at) != string::npos;
+			words[word].push_back(occurrence);
+			if(word == "return") return_lines.push_back(line);
+		}
+	}
+	const auto find_word = [&words](const string & word, size_t first_line,
+		bool require_parenthesis, bool require_semicolon, WordOccurrence * result) {
+		const unordered_map<string, vector<WordOccurrence> >::const_iterator found =
+			words.find(word);
+		if(found == words.end()) return false;
+		const vector<WordOccurrence> & occurrences = found->second;
+		size_t first = 0, last = occurrences.size();
+		while(first < last) {
+			const size_t middle = first + (last - first) / 2;
+			if(occurrences[middle].line < first_line) first = middle + 1;
+			else last = middle;
+		}
+		for(; first < occurrences.size(); ++first) {
+			if(require_parenthesis && !occurrences[first].followed_by_parenthesis)
+				continue;
+			if(require_semicolon && !occurrences[first].followed_by_semicolon)
+				continue;
+			*result = occurrences[first];
+			return true;
+		}
+		return false;
+	};
 	for(size_t fi = 0; fi < program->functions.size(); ++fi) {
 		lowir_model::Function & function = program->functions[fi];
 		string source_name = function.name.size() > 1 ? function.name.substr(1) : "";
 		const size_t separator = source_name.find("__");
 		if(separator != string::npos) source_name.erase(separator);
 		size_t function_line = 0;
-		for(size_t line = 0; line < lines.size(); ++line) {
-			size_t at = 0;
-			if(source_word_at(lines[line], source_name, &at) &&
-			   lines[line].find('(', at + source_name.size()) != string::npos) {
-				function_line = line;
-				break;
-			}
-		}
+		WordOccurrence function_occurrence;
+		if(find_word(source_name, 0, true, false, &function_occurrence))
+			function_line = function_occurrence.line;
 		function.debug_location = source_location(path, function_line + 1,
 			first_source_column(lines[function_line]));
 		unordered_set<string> parameters;
@@ -944,10 +919,10 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		for(size_t i = 0; i < function.slots.size(); ++i) {
 			const string name = function.slots[i].first.substr(1);
 			if(parameters.count(name)) continue;
-			for(size_t line = function_line + 1; line < lines.size(); ++line) {
-				size_t at = 0;
-				if(!source_word_at(lines[line], name, &at) ||
-				   lines[line].find(';', at) == string::npos) continue;
+			WordOccurrence local_occurrence;
+			if(find_word(name, function_line + 1, false, true, &local_occurrence)) {
+				const size_t line = local_occurrence.line;
+				const size_t at = local_occurrence.column;
 				LocalLocation location;
 				location.line = line;
 				location.statement = first_source_column(lines[line]);
@@ -958,15 +933,12 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 					location.rhs = rhs == string::npos ? location.statement : rhs + 1;
 				}
 				locals[name] = location;
-				break;
 			}
 		}
 		size_t return_line = function_line;
-		for(size_t line = function_line + 1; line < lines.size(); ++line)
-			if(lines[line].find("return") != string::npos) {
-				return_line = line;
-				break;
-			}
+		vector<size_t>::const_iterator return_at = lower_bound(
+			return_lines.begin(), return_lines.end(), function_line + 1);
+		if(return_at != return_lines.end()) return_line = *return_at;
 		const lowir_model::InstructionDebugLocation function_loc =
 			function.debug_location;
 		const lowir_model::InstructionDebugLocation return_loc =
@@ -1018,6 +990,30 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 	}
 }
 
+void optimize_lowir(lowir_model::LowirProgram * program, int level,
+	const string & input)
+{
+	const bool collect = getenv("CPPGM_LOWIR_OPT_STATS") != 0;
+	lowir_opt::Stats stats;
+	lowir_opt::optimize(*program, level, collect ? &stats : 0);
+	if(!collect) return;
+	cerr << "pa37_opt_stats"
+		 << " input=" << input
+		 << " functions=" << stats.functions
+		 << " input_instructions=" << stats.input_instructions
+		 << " output_instructions=" << stats.output_instructions
+		 << " instruction_visits=" << stats.instruction_visits
+		 << " block_visits=" << stats.block_visits
+		 << " cfg_edge_visits=" << stats.cfg_edge_visits
+		 << " worklist_pushes=" << stats.worklist_pushes
+		 << " dataflow_updates=" << stats.dataflow_updates
+		 << " inline_call_visits=" << stats.inline_call_visits
+		 << " inline_calls=" << stats.inline_calls
+		 << " budget_skips=" << stats.budget_skips
+		 << " rewrites=" << stats.rewrites
+		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+}
+
 cppgm::pa30::CompilerObject compile_source_object(
     const string & path,
     const DriverInvocation & invocation,
@@ -1040,22 +1036,21 @@ cppgm::pa30::CompilerObject compile_source_object(
 		sources.push_back(cppgm::LowIRSource(path, source));
 		const cppgm::PreprocessingOptions options =
 			make_driver_preprocessing_options(invocation);
-		const cppgm::pa15_lowir_detail::TypedProgram typed =
-			cppgm::BuildTypedLowIRProgram(sources,
-				options,
-				collect_stats ? &stats : 0, true, true);
-		object.lowir = cppgm::AdaptTypedLowIRForNative(typed);
+		{
+			const cppgm::pa15_lowir_detail::TypedProgram typed =
+				cppgm::BuildTypedLowIRProgram(sources,
+					options,
+					collect_stats ? &stats : 0, true, true);
+			object.lowir = cppgm::AdaptTypedLowIRForNative(typed);
+		}
 		if(invocation.has_optimization_level) {
-			const cppgm::pa15_lowir_detail::TypedProgram presentation_typed =
-				cppgm::BuildTypedLowIRProgram(sources, options, 0);
-			canonicalize_frontend_lowir(&object.lowir,
-				cppgm::AdaptTypedLowIRForNative(presentation_typed));
+			canonicalize_frontend_lowir(&object.lowir);
 			if(invocation.line_tables)
 				attach_line_table_debug(&object.lowir, path, source);
 		}
 	}
 	if(lowir_input || invocation.has_optimization_level) {
-		lowir_opt::optimize(object.lowir, invocation.optimization_level);
+		optimize_lowir(&object.lowir, invocation.optimization_level, path);
 		lowir_model::normalize_lowir_object_model(object.lowir);
 	}
 	uint64_t adapt_nanoseconds = 0;
@@ -1606,18 +1601,18 @@ int run_emit_lowir_mode(const vector<string> & args)
 			getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
 	} else {
 		cppgm::ConfigureHostedPreprocessing(&options, true);
-		const cppgm::pa15_lowir_detail::TypedProgram typed =
-			cppgm::BuildTypedLowIRProgram(sources, options,
-				getenv("CPPGM_FRONTEND_STATS") ? &stats : 0, true, true);
-		lowir_model::LowirProgram program = cppgm::AdaptTypedLowIRForNative(typed);
-		const cppgm::pa15_lowir_detail::TypedProgram presentation_typed =
-			cppgm::BuildTypedLowIRProgram(sources, options, 0);
-		const lowir_model::LowirProgram presentation =
-			cppgm::AdaptTypedLowIRForNative(presentation_typed);
-		canonicalize_frontend_lowir(&program, presentation);
+		lowir_model::LowirProgram program;
+		{
+			const cppgm::pa15_lowir_detail::TypedProgram typed =
+				cppgm::BuildTypedLowIRProgram(sources, options,
+					getenv("CPPGM_FRONTEND_STATS") ? &stats : 0, true, true);
+			program = cppgm::AdaptTypedLowIRForNative(typed);
+		}
+		canonicalize_frontend_lowir(&program);
 		if(invocation.line_tables && sources.size() == 1)
 			attach_line_table_debug(&program, sources[0].path, sources[0].source);
-		lowir_opt::optimize(program, invocation.optimization_level);
+		optimize_lowir(&program, invocation.optimization_level,
+			sources.size() == 1 ? sources[0].path : "<translation-unit>");
 		output << lowir_model::serialize_lowir_program(program);
 	}
 	if(getenv("CPPGM_FRONTEND_STATS")) {

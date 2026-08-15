@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <streambuf>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace cppgm
@@ -33,6 +34,16 @@ pa11::EntityId LambdaClosureEntity(
 	const pa11::Program& program, pa11::TypeId type);
 bool IsLambdaCaptureMember(
 	const pa11::Program& program, pa11::BindingId binding);
+
+class PresentationNameMap
+{
+public:
+	explicit PresentationNameMap(const pa11::Program& program);
+	std::string Apply(const std::string& qualified) const;
+
+private:
+	std::unordered_map<std::string, std::string> names_;
+};
 
 class FlatIdMap
 {

@@ -1667,6 +1667,22 @@ void SemanticAnalyzer::ApplyDemandedClassTemplateMemberDefinitions(
 	QueueClassTemplateMemberDefinitions(pattern, specialization);
 }
 
+void SemanticAnalyzer::PublishClassTemplatePresentationName(
+	EntityId entity, const std::string& presentation)
+{
+	if (entity != kNoEntity && host_object_emission_)
+		program_->entities[entity].presentation_name =
+			program_->names.Intern(presentation);
+}
+
+std::string SemanticAnalyzer::ClassTemplateInstantiationName(
+	std::size_t pattern, const TemplateSpecializationKey& key,
+	const std::string& presentation) const
+{
+	return host_object_emission_ ? ClassTemplateSpecializationStorageName(
+		pattern, key.arguments, key.partition) : presentation;
+}
+
 void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	BindingId binding, const std::vector<TemplateArgument>& arguments)
 {
@@ -1767,10 +1783,14 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		program_->entities[specialization_entity].layout_complete = false;
 	const TemplateArgumentListId specialization_arguments =
 		program_->entities[specialization_entity].template_argument_list;
+	const std::string presentation_name =
+		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
+	PublishClassTemplatePresentationName(
+		specialization_entity, presentation_name);
 	const std::string specialization_name = host_object_emission_ ?
 		ClassTemplateSpecializationStorageName(
 			index, specialization_arguments, kEmptyTemplateArgumentPartition) :
-		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
+		presentation_name;
 	const NameId specialization_emission_name =
 		TemplateArgumentsNeedInternalEmission(*program_, arguments) ?
 			program_->bindings[binding].name :
@@ -1780,6 +1800,7 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		pattern.name, true, program_->bindings[binding].name,
 		specialization_emission_name);
 	const EntityId entity = EntityOf(completed);
+	PublishClassTemplatePresentationName(entity, presentation_name);
 	if (entity != kNoEntity)
 		program_->entities[entity].template_argument_pack_begin =
 			HasTrailingTemplateParameterPack(pattern.parameters) ?
@@ -2709,10 +2730,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	const std::size_t selected_partial = SelectClassTemplatePartial(
 		pattern, arguments, &partial_bindings);
 
-	const std::string specialization_name = host_object_emission_ ?
-		ClassTemplateSpecializationStorageName(
-			index, key.arguments, key.partition) :
+	const std::string presentation_name =
 		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
+	const std::string specialization_name = ClassTemplateInstantiationName(index, key, presentation_name);
 	ScopeId template_scope = BindClassTemplateArguments(pattern, arguments);
 	NodeId selected_declaration = pattern.declaration;
 	if (selected_partial != NoTemplatePattern())
@@ -2741,6 +2761,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		pattern.name, false,
 		specialization_lookup_name);
 	const EntityId entity = EntityOf(shell);
+	PublishClassTemplatePresentationName(entity, presentation_name);
 	if (entity == kNoEntity || program_->entities[entity].declaration == kNoBinding)
 		throw std::logic_error("class template shell has no declaration");
 	if (class_template_pattern_by_entity_.size() <= entity)

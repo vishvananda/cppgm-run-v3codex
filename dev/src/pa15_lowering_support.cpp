@@ -9,6 +9,41 @@ namespace cppgm
 namespace pa15_lowering_support
 {
 
+PresentationNameMap::PresentationNameMap(const pa11::Program& program)
+{
+	for (std::size_t i = 0; i < program.entities.size(); ++i)
+	{
+		const pa11::EntityRecord& entity = program.entities[i];
+		if (entity.presentation_name == 0 || entity.name == 0 ||
+			entity.presentation_name == entity.name) continue;
+		const std::string internal = program.names.Get(entity.name);
+		const std::size_t separator = internal.rfind("::");
+		names_[separator == std::string::npos ? internal :
+			internal.substr(separator + 2)] =
+			program.names.Get(entity.presentation_name);
+	}
+}
+
+std::string PresentationNameMap::Apply(const std::string& qualified) const
+{
+	if (names_.empty()) return qualified;
+	std::string result;
+	std::size_t begin = 0;
+	while (begin <= qualified.size())
+	{
+		const std::size_t end = qualified.find("::", begin);
+		const std::string component = qualified.substr(begin,
+			end == std::string::npos ? std::string::npos : end - begin);
+		const std::unordered_map<std::string, std::string>::const_iterator found =
+			names_.find(component);
+		result += found == names_.end() ? component : found->second;
+		if (end == std::string::npos) break;
+		result += "::";
+		begin = end + 2;
+	}
+	return result;
+}
+
 bool NeedsAggregateStorageAddress(bool namespace_object, bool has_leaf,
 	const pa11::BindingRecord& binding)
 {

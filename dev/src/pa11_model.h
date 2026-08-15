@@ -429,7 +429,7 @@ struct VirtualBaseLayout
 
 struct EntityRecord
 {
-	NameId name, identity_name;
+	NameId name, identity_name, presentation_name;
 	ScopeId owner, member_scope;
 	EntityId direct_base, enclosing_class;
 	BindingId local_context, lambda_call_operator;
