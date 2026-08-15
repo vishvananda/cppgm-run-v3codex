@@ -23,6 +23,7 @@ struct Stats
   std::size_t machine_opt_cfg_edge_visits = 0;
   std::size_t machine_opt_worklist_pushes = 0;
   std::size_t machine_opt_rewrites = 0;
+  std::size_t machine_opt_peak_analysis_bytes = 0;
   std::size_t eh_region_states = 0;
   std::size_t eh_region_edges = 0;
   std::size_t eh_call_sites = 0;

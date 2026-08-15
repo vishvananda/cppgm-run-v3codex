@@ -6,6 +6,7 @@
 #include "lowir_native_program.h"
 #include "lowir_native_session.h"
 
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <utility>
@@ -117,6 +118,9 @@ struct ProgramLoweringSession::Impl
       stats->machine_opt_cfg_edge_visits += opt_stats.cfg_edge_visits;
       stats->machine_opt_worklist_pushes += opt_stats.worklist_pushes;
       stats->machine_opt_rewrites += opt_stats.rewrites;
+      stats->machine_opt_peak_analysis_bytes = std::max(
+        stats->machine_opt_peak_analysis_bytes,
+        opt_stats.peak_analysis_bytes);
       stats->machine_opt_nanoseconds += opt_stats.elapsed_nanoseconds;
       for(std::size_t i = 0; i < result.blocks.size(); ++i)
         stats->mir_instructions += result.blocks[i].instructions.size();

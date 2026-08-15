@@ -17,6 +17,7 @@ struct Stats
   std::size_t cfg_edge_visits = 0;
   std::size_t worklist_pushes = 0;
   std::size_t rewrites = 0;
+  std::size_t peak_analysis_bytes = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };
 

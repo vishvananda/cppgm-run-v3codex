@@ -1,78 +1,144 @@
-# PA38 Plan
+# PA38 Final Audit Plan and Ledger
 
-## Stage Design and Spec Alignment
+## Current Stage Design and Spec Alignment
 
-The PA38 path is `typed LowIR -> function-local physical-register MIR ->
-machine_opt(level) -> direct ELF encoding`. `lowir2native` retains a complete
-MIR program only when its explicit dump/executable interface requires both
-views; `cppgm++` lowers, optimizes, encodes, and releases one function at a
-time. The optimized MIR is authoritative: `ret`, bulk-memory, branch, frame,
-and call operands consumed by the encoder are the same facts serialized by
-`--dump-machine-ir`.
+The shared path is `typed LowIR -> function-local physical-register MIR ->
+machine_opt(level) -> direct ELF encoding`. `ProgramLoweringSession` lowers,
+optimizes, encodes, and releases one function at a time for ordinary `cppgm++`
+object and executable output. The explicit `lowir2native` dump tool retains a
+whole MIR program because its interface can request a dump and executable from
+the same optimized value.
 
-This applies `spec.md` §6's typed one-way lowering boundary; §7's small,
-explicit O1/O2 budgets, function-local lifetime, near-linear allocation, and
-worklist fixed points; §8's short-lived per-function analysis ownership; §9's
-O(n) or O(n log n) backend bound and work counters; and §10's self-contained
-object path. PA38 changes no LowIR semantics and introduces no later-stage
-interprocedural behavior.
+O1 uses fixed physical-register masks and per-block value facts for copy,
+immediate, frame-address, zero-test, ABI, and branch cleanup. O2 first lays out
+unconditional-jump traces and then finalizes the save set and stack reservation.
+The optimized MIR is authoritative at encoding: branch, return, atomic,
+bulk-memory, frame, and call operands and the final `stack_size` are the facts
+serialized by the dump and consumed by the encoder. Lowering-only frame
+requirements are combined with the surviving save set before that boundary;
+the encoder does not reconstruct a different frame from binding names.
 
-## Current Failure Map
+This matches `spec.md` §§6-10: typed one-way lowering, a small explicit pass
+budget, per-function ownership, indexed/monotonic dataflow, direct ELF output,
+near-linear work, opt-in telemetry, and no external compiler or reference path.
+PA38 performs no source-language, lookup, or template work.
 
-The turn-start provider baseline was 2/32 and the checked primary lane was
-2/24. All 32 primary/debug cases now pass. The closed failures shared three
-owners:
+## Findings
 
-| Behavior group | Failing surface | Owner/data flow |
+| ID | Audit finding | Resolution |
 | --- | --- | --- |
-| Local value cleanup | integer/float copies, return and call-result shuffles, immediate rematerialization, frame-address folding | per-block MIR value facts -> explicit operand rewrite -> register liveness |
-| CFG and ABI safety | fallthrough jumps, conditional tails, zero tests, bulk-copy setup, cross-block live copies, ordinary call arguments | block successor index -> fixed-register liveness; encoder consumes rewritten operands |
-| O2 finalization | jump-trace layout, unused callee-save pruning, final frame reservation | whole-function block order and surviving physical/frame facts |
+| F1 | `xchg`/`xadd` register outputs and `cmpxchg`'s implicit RAX result were absent from MIR effects; alias rewriting changed atomic results. | Model read/write operands and implicit RAX uses/defs; do not rewrite an exchanged output as a read-only input. |
+| F2 | Scalar `f32`/`f64` returns were implicit, so dead-definition removal discarded the final XMM value. | O1/O2 canonicalize scalar returns to explicit `ret xmmN`; the encoder validates the function ABI and moves that operand to XMM0. O0 remains PA29-compatible. |
+| F3 | Native encoding recomputed stack space from named bindings and ignored MIR scratch/pressure capacity; the first audit repair then preserved alignment padding too conservatively at O2. | Make `stack_size` the encoder authority and retain typed local/floor requirements only until O2 recombines them with surviving saves. |
+| F4 | A zero-only structured global had alignment one, so code-size changes made its address unstable; mixed zero padding must still not raise typed-data alignment. | Use typed items for mixed data; for wholly zero storage use the natural power-of-two divisor of total size, capped at 16. |
+| F5 | CFG successor deduplication linearly searched a growing vector, making one K-way switch O(K^2). | Use one dense target-mark vector, keeping edge construction O(B+E). |
+| F6 | Optimizer telemetry had visits and time but no peak analysis storage, and `lowir2native` paid collection overhead when stats were not requested. | Add peak function-analysis bytes and make tool telemetry opt-in; compiler-driver telemetry was already opt-in. |
+| F7 | The final data-layout repair pushed the monolithic ELF emitter over the PA38 file-size ceiling. | Move native scalar-size and global-alignment policy to the responsibility-named `lowir_native_data_layout` module and link it into both consumers. |
 
-The missing level consumer, structural mismatches, behavior checks, and debug
-locations are closed. No current-PA failure remains.
+No correctness, architecture, performance, self-containment, or file-audit
+finding remains open.
 
-## Active Checkpoint
+## Changes
 
-Completed: the shared post-lowering machine optimizer is wired with the explicit
-level through `lowir2native` and both streaming `cppgm++` object/executable
-paths. O1 uses fixed-size physical-register facts, indexed CFG edges, and a
-monotonic predecessor worklist to coalesce safe local copies, rematerialize
-supported constants, fold frame addresses, preserve call/bulk/cross-block
-requirements, form direct zero tests, and clean branch fallthroughs. O2 first
-builds deterministic unconditional-jump traces, then runs O1 and prunes
-unused preservation/frame state. Debug/source-position facts from removed
-instructions are retained on a surviving instruction.
-
-The implemented complexity is O(I + (B + E)R), where physical register count
-R is the fixed x86-64 constant. Each liveness bit and predecessor causes only
-bounded work. The encoder now consumes rewritten return and bulk-memory
-operands, and MIR lowering/serialization preserves source locations through
-fused and removed instructions. Validation covers all O1/O2 structural and
-executable cases, both debug lanes, the shared-driver path, the cumulative
-through-PA37 report, file audit, and controlled scaling.
+- Corrected atomic use/def and rewrite ownership across optimizer and encoder.
+- Made optimized scalar-float return values explicit and ABI-checked.
+- Removed encoder-side frame reconstruction; added exact O2 frame finalization
+  from lowering requirements and surviving saves.
+- Preserved deterministic zero-only global alignment without changing mixed
+  typed-data padding rules.
+- Replaced quadratic high-fanout CFG deduplication with indexed marks.
+- Added separable peak-memory telemetry through `lowir2native` and both
+  `cppgm++` native output paths.
+- Split global data-layout policy from the ELF byte emitter and registered the
+  module in both tool source sets.
 
 ## Performance Evidence
 
-The release `lowir_native_opt.o` was exercised directly on a deterministic
-four-instruction-per-block jump chain. `/usr/bin/time` measured process RSS;
-optimizer telemetry measured only the pass:
+Release binaries were driven from generated LowIR through `/dev/stdin`.
+`machine_opt_ns` and counters isolate the optimizer; process RSS includes the
+parser, typed LowIR, explicit dump path, and optimizer.
 
-| Blocks | Input / output MIR | Visits / CFG edges / pushes | Rewrites | Optimizer time | RSS |
+O2 four-operation jump-chain workload:
+
+| Blocks | MIR input/output | Visits / CFG edges / pushes | Peak analysis | Optimizer | RSS |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1,000 | 4,000 / 2,001 | 10,002 / 1,998 / 1,000 | 2,999 | 1.62 ms | 5,360 KiB |
-| 2,000 | 8,000 / 4,001 | 20,002 / 3,998 / 2,000 | 5,999 | 3.91 ms | 7,152 KiB |
-| 4,000 | 16,000 / 8,001 | 40,002 / 7,998 / 4,000 | 11,999 | 7.08 ms | 10,480 KiB |
-| 8,000 | 32,000 / 16,001 | 80,002 / 15,998 / 8,000 | 23,999 | 19.33 ms | 17,132 KiB |
+| 1,000 | 3,001 / 2,002 | 7,005 / 1,998 / 1,000 | 184,856 B | 2.97 ms | 12,332 KiB |
+| 2,000 | 6,001 / 4,002 | 14,005 / 3,998 / 2,000 | 370,840 B | 5.23 ms | 20,504 KiB |
+| 4,000 | 12,001 / 8,002 | 28,005 / 7,998 / 4,000 | 744,680 B | 10.49 ms | 36,000 KiB |
+| 8,000 | 24,001 / 16,002 | 56,005 / 15,998 / 8,000 | 1,490,168 B | 22.61 ms | 67,232 KiB |
 
-Every work counter and live-memory measurement grows linearly; the small
-wall-time variation does not hide repeated scans. A `cppgm++ -O1` LowIR-input
-link also reported one machine-optimizer function, 2 input/2 output MIR
-instructions, 6 visits, one worklist push, and a successful executable,
-confirming reuse outside `lowir2native`.
+The high-fanout switch profile located F5. Before the indexed fix, 8,000 and
+16,000 cases took 24.85 ms and 75.16 ms in the optimizer. After the fix:
 
-## Completed Checkpoints
+| Cases | MIR input | Visits / CFG edges / pushes | Peak analysis | Optimizer | RSS |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 5,005 | 15,015 / 2,002 / 1,002 | 185,760 B | 3.92 ms | 9,452 KiB |
+| 2,000 | 10,005 | 30,015 / 4,002 / 2,002 | 372,312 B | 6.09 ms | 14,216 KiB |
+| 4,000 | 20,005 | 60,015 / 8,002 / 4,002 | 747,288 B | 11.10 ms | 23,680 KiB |
+| 8,000 | 40,005 | 120,015 / 16,002 / 8,002 | 1,495,048 B | 26.99 ms | 42,972 KiB |
+| 16,000 | 80,005 | 240,015 / 32,002 / 16,002 | 2,991,424 B | 54.01 ms | 81,312 KiB |
+
+All work and live-storage counters are linear. A source-input `cppgm++ -O2`
+link independently reported 2 input/2 output MIR instructions, 6 visits, one
+worklist push, and a functioning generated executable, confirming reuse outside
+the dump tool.
+
+## Architecture Review
+
+- Representation/ownership: no LowIR or MIR text round trip exists in the
+  production source path. MIR and analysis allocations are per function; the
+  full MIR owner exists only for the explicit dump interface.
+- Identity/lookup: physical registers use fixed bit IDs. Label strings are
+  indexed once per function into dense block IDs; CFG and liveness hot paths use
+  those IDs and dense vectors. Deterministic order is a final vector order.
+- Templates/repeated work: not a PA38 surface. No semantic/template search,
+  completion, retry, or cache is invoked by machine optimization.
+- Lowering/backend: each function is selected and optimized once. No
+  per-function pass scans other functions or globals. Machine bytes,
+  relocations, ELF sections, and executable images are emitted directly.
+- Allocation/scaling: value facts are fixed arrays, vectors grow geometrically,
+  CFG edges are indexed, and liveness uses a dirty predecessor worklist with a
+  fixed-register monotonic mask. Telemetry is optional and observes the same
+  path.
+- Self-containment: the backend contains no shell-out, host compiler,
+  assembler, reference binary, fixture lookup, filename recognition, or cached
+  answer path.
+
+## Final Architecture Review
+
+Representative end-to-end traces were checked for (1) atomic exchange under
+loop pressure, from LowIR atomic selection through read/write MIR effects to
+x86 `xchg`; (2) scalar-float return across an integer call, from XMM value facts
+through explicit return liveness to ABI encoding; and (3) O2 callee-save
+removal, from local copy cleanup through final `stack_size` to prologue
+allocation. MIR dumps and executable behavior agree in each trace.
+
+The final implementation has one forward typed data flow, bounded
+function-local analyses, direct ELF output, and O(I + (B+E)R) optimization with
+fixed x86-64 register count R. The high-fanout edge path is O(E), frame output
+has a single authority, and telemetry can be removed from the ordinary path by
+leaving its environment switch unset. Final gate status is recorded below.
+
+## Validation
+
+- PA38 primary: 24/24 pass.
+- PA38 debug metadata: 8/8 pass.
+- Independent optimized PA29 replay: 366/366 O1/O2 build/status/stdout checks
+  pass, including atomic, scalar-float return, global alignment, and frame
+  witnesses.
+- Shared source-driver O2 path: compile/link succeeds and reports machine-pass
+  telemetry from the shared session.
+- Required file audit: pass (23 pre-existing nonfatal division warnings).
+- Required cumulative report: 5,089/5,089 tests and 38/38 stages pass.
+
+## Checkpoint Ledger
 
 | Checkpoint | Result |
 | --- | --- |
-| PA38 shared machine optimizer | O1 local value/ABI/CFG cleanup, O2 trace/frame finalization, explicit encoder operands, debug preservation, production telemetry, shared-driver integration, and linear scaling completed; 24/24 primary, 8/8 debug, and 5,065/5,065 prior tests pass. |
+| Provider baseline | fileAudit pass reused; 5,089/5,089 tests and 38/38 stages reported passing. |
+| Contract reconstruction | `spec.md`, PA38 README/tests, stage commit, changed ownership paths, prior cumulative log, and plan reviewed independently. |
+| Correctness audit | F1-F4 and exact O2 frame finalization fixed; 366/366 optimized PA29 behavior checks pass. |
+| Performance audit | F5 fixed; jump-chain and high-fanout counters, peak bytes, isolated optimizer time, and RSS scale linearly. |
+| Architecture/self-containment audit | Function ownership, typed facts, direct ELF, shared driver reuse, telemetry separation, and forbidden fallback search pass. |
+| PA38 lanes | 24/24 primary and 8/8 debug tests pass. |
+| Final required gates | `cppgm_file_audit.pl --stage pa38 --paths dev/src` passes; `make test-report-through-pa38` passes 5,089/5,089 across 38/38 stages. |

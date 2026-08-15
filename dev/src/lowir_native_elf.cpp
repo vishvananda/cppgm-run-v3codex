@@ -1,4 +1,5 @@
 #include "lowir_native.h"
+#include "lowir_native_data_layout.h"
 #include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_object_elf.h"
@@ -29,6 +30,8 @@ using object_elf_detail::host_symbol_spelling;
 using object_elf_detail::make_linux_relocatable_image;
 using float_bits::extended;
 using float_bits::scalar;
+using data_layout::global_alignment;
+using data_layout::type_size;
 
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
@@ -496,22 +499,12 @@ void emit_i128_division(CodeBuffer & out,
   emit_stack_adjust(out, false, scratch_bytes);
 }
 
-std::size_t function_frame_bytes(const mir_model::MirFunction & function)
-{
-  std::size_t bytes = 0;
-  for(std::size_t i = 0; i < function.frame_bindings.size(); ++i)
-    if(function.frame_bindings[i].offset < 0)
-      bytes = std::max(bytes,
-        static_cast<std::size_t>(-function.frame_bindings[i].offset));
-  return bytes;
-}
-
 std::size_t function_stack_adjustment(const mir_model::MirFunction & function)
 {
   const std::size_t preserved = function.callee_saved_regs.size() * 8;
-  const std::size_t required = preserved + function_frame_bytes(function);
-  const std::size_t aligned = (required + 15) / 16 * 16;
-  return aligned - preserved;
+  if(function.stack_size < preserved)
+    throw std::logic_error("MIR stack reservation is smaller than its saves");
+  return function.stack_size - preserved;
 }
 
 long long actual_frame_offset(const mir_model::MirFunction & function,
@@ -1512,7 +1505,8 @@ void emit_test_register(CodeBuffer & out, X64Register reg)
 }
 
 bool prepare_explicit_operands(CodeBuffer & out,
-                               const mir_model::MirInstruction & instruction)
+                               const mir_model::MirInstruction & instruction,
+                               const mir_model::MirFunction * function)
 {
   if(instruction.opcode == mir_model::MirInstruction::MI_TEST) {
     require_operands(instruction, 2);
@@ -1546,8 +1540,19 @@ bool prepare_explicit_operands(CodeBuffer & out,
     if(instruction.operands.size() > 1)
       throw std::logic_error("native return has too many operands");
     if(!instruction.operands.empty()) {
-      const X64Register result = require_register(instruction.operands[0]);
-      if(result != XR_RAX) emit_register_move(out, XR_RAX, result);
+      const mir_model::MirOperand & result = instruction.operands[0];
+      if(result.kind == mir_model::MirOperand::OP_REG) {
+        if(result.reg != XR_RAX) emit_register_move(out, XR_RAX, result.reg);
+      } else if(result.kind == mir_model::MirOperand::OP_XMM) {
+        if(!function ||
+           (function->return_type != "f32" && function->return_type != "f64"))
+          throw std::logic_error("native xmm return lacks a scalar-float ABI");
+        if(result.xmm != XMM_0)
+          emit_xmm_register_move(out, XMM_0, result.xmm,
+                                 function->return_type);
+      } else {
+        throw std::logic_error("native return result is not a register");
+      }
     }
   }
   return false;
@@ -1818,7 +1823,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
                       const mir_model::MirFunction * function) {
   if(emit_eh_instruction(out, instruction, function) || emit_atomic_instruction(out, instruction, function) ||
      emit_i128_instruction(out, instruction)) return;
-  if(prepare_explicit_operands(out, instruction)) return;
+  if(prepare_explicit_operands(out, instruction, function)) return;
   switch(instruction.opcode) {
   case mir_model::MirInstruction::MI_MOV:
     emit_move(out, instruction);
@@ -2421,17 +2426,6 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
   }
 }
 
-std::size_t type_size(const std::string & type)
-{
-  if(type == "i1" || type == "i8" || type == "u8") return 1;
-  if(type == "i16" || type == "u16") return 2;
-  if(type == "i32" || type == "u32" || type == "f32") return 4;
-  if(type == "i64" || type == "f64" || type == "ptr") return 8;
-  if(type == "i128") return 16;
-  if(type == "f80") return 16;
-  throw std::logic_error("unsupported native data type: " + type);
-}
-
 void emit_integer_data(CodeBuffer & out, long long value, std::size_t size, const std::string& literal_text)
 {
   if(size <= 8) {
@@ -2455,19 +2449,6 @@ void emit_float_data(CodeBuffer & out, const std::string & text,
   }
   out.little(scalar(text, type),
              static_cast<unsigned>(type_size(type)));
-}
-
-std::size_t global_alignment(const mir_model::MirGlobalDefinition & global)
-{
-  std::size_t global_alignment = 1;
-  if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR)
-    global_alignment = type_size(global.type);
-  else {
-    for(std::size_t i = 0; i < global.data_items.size(); ++i)
-      if(global.data_items[i].kind != mir_model::MirGlobalDefinition::DataItem::ITEM_ZERO)
-        global_alignment = std::max(global_alignment, type_size(global.data_items[i].type));
-  }
-  return global_alignment;
 }
 
 void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global)

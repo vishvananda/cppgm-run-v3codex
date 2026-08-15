@@ -1150,6 +1150,8 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " machine_opt_pushes="
          << native_stats.machine_opt_worklist_pushes
          << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
+         << " machine_opt_peak_bytes="
+         << native_stats.machine_opt_peak_analysis_bytes
          << " eh_region_states=" << native_stats.eh_region_states
          << " eh_region_edges=" << native_stats.eh_region_edges
          << " eh_call_sites=" << native_stats.eh_call_sites
@@ -1221,6 +1223,8 @@ int run_link_driver(const DriverInvocation & invocation,
 		 << " machine_opt_pushes="
 		 << native_stats.machine_opt_worklist_pushes
 		 << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
+		 << " machine_opt_peak_bytes="
+		 << native_stats.machine_opt_peak_analysis_bytes
 		 << " output_bytes=" << native_stats.output_bytes
 		 << " input_ns=" << input_nanoseconds
 		 << " link_ns=" << link_stats.link_nanoseconds

@@ -21,6 +21,27 @@ using mir_model::MirOperand;
 
 typedef std::uint64_t RegisterMask;
 
+void note_peak_analysis_bytes(Stats * stats, std::size_t bytes)
+{
+  if(stats) stats->peak_analysis_bytes =
+    std::max(stats->peak_analysis_bytes, bytes);
+}
+
+std::size_t bit_vector_bytes(const std::vector<bool> & values)
+{
+  return (values.capacity() + 7) / 8;
+}
+
+std::size_t label_index_bytes(
+    const std::unordered_map<std::string, std::size_t> & labels)
+{
+  std::size_t bytes = labels.bucket_count() * sizeof(void *);
+  for(std::unordered_map<std::string, std::size_t>::const_iterator label =
+        labels.begin(); label != labels.end(); ++label)
+    bytes += sizeof(*label) + label->first.capacity() + 1;
+  return bytes;
+}
+
 const RegisterMask kAllGprs = (RegisterMask(1) << 16) - 1;
 const RegisterMask kAllXmms = ((RegisterMask(1) << 8) - 1) << 16;
 const RegisterMask kCallArguments =
@@ -124,6 +145,18 @@ RegisterMask instruction_defs(const MirInstruction & instruction)
     if(destination.kind == MirOperand::OP_XMM) defs |= xmm_bit(destination.xmm);
   }
   switch(instruction.opcode) {
+  case MirInstruction::MI_LOCK_XADD:
+  case MirInstruction::MI_XCHG:
+    // xadd and xchg replace their explicit register operand with the prior
+    // memory value.  The address is operand zero and the exchanged register is
+    // operand one.
+    if(instruction.operands.size() > 1)
+      defs |= operand_registers(instruction.operands[1]) & kAllGprs;
+    break;
+  case MirInstruction::MI_LOCK_CMPXCHG:
+    // cmpxchg replaces rax with the observed memory value on failure.
+    defs |= gpr_bit(XR_RAX);
+    break;
   case MirInstruction::MI_CQO:
     defs |= gpr_bit(XR_RDX);
     break;
@@ -171,6 +204,9 @@ RegisterMask instruction_uses(const MirInstruction & instruction)
     uses |= operand_registers(instruction.operands[i]);
   }
   switch(instruction.opcode) {
+  case MirInstruction::MI_LOCK_CMPXCHG:
+    uses |= gpr_bit(XR_RAX);
+    break;
   case MirInstruction::MI_CQO:
     uses |= gpr_bit(XR_RAX);
     break;
@@ -307,6 +343,13 @@ bool immediate_operand_supported(const MirInstruction & instruction,
 
 bool operand_is_read_only(const MirInstruction & instruction, std::size_t index)
 {
+  // The memory address is operand zero for these atomics, while operand one is
+  // both an input and the register receiving the old memory value.  Replacing
+  // that register with an alias without also rewriting its later users changes
+  // the observable result of the atomic operation.
+  if(index == 1 &&
+     (instruction.opcode == MirInstruction::MI_LOCK_XADD ||
+      instruction.opcode == MirInstruction::MI_XCHG)) return false;
   if(index != 0) return true;
   return !is_write_only_destination(instruction.opcode) &&
     !is_read_write_destination(instruction.opcode);
@@ -449,17 +492,46 @@ struct ControlFlow
   std::vector<std::vector<std::size_t> > predecessors;
 };
 
-void append_unique(std::vector<std::size_t> & values, std::size_t value)
+std::size_t control_flow_bytes(const ControlFlow & cfg)
 {
-  if(std::find(values.begin(), values.end(), value) == values.end())
-    values.push_back(value);
+  std::size_t bytes =
+    cfg.successors.capacity() * sizeof(std::vector<std::size_t>) +
+    cfg.predecessors.capacity() * sizeof(std::vector<std::size_t>);
+  for(std::size_t i = 0; i < cfg.successors.size(); ++i) {
+    bytes += cfg.successors[i].capacity() * sizeof(std::size_t);
+    bytes += cfg.predecessors[i].capacity() * sizeof(std::size_t);
+  }
+  return bytes;
 }
 
-ControlFlow build_control_flow(const MirFunction & function, Stats * stats)
+std::size_t preserve_bytes(const std::vector<std::vector<bool> > & preserve)
+{
+  std::size_t bytes = preserve.capacity() * sizeof(std::vector<bool>);
+  for(std::size_t i = 0; i < preserve.size(); ++i)
+    bytes += bit_vector_bytes(preserve[i]);
+  return bytes;
+}
+
+void append_successor(std::vector<std::size_t> & values,
+                      std::vector<std::size_t> & seen_by_block,
+                      std::size_t block, std::size_t value)
+{
+  if(seen_by_block[value] == block) return;
+  seen_by_block[value] = block;
+  values.push_back(value);
+}
+
+ControlFlow build_control_flow(const MirFunction & function, Stats * stats,
+                               std::size_t analysis_base_bytes)
 {
   ControlFlow cfg;
   cfg.successors.resize(function.blocks.size());
   cfg.predecessors.resize(function.blocks.size());
+  // A switch may contribute many outgoing conditional edges from one block.
+  // Indexed marks keep duplicate suppression O(1) per edge instead of
+  // repeatedly scanning the growing successor vector.
+  std::vector<std::size_t> seen_by_block(function.blocks.size(),
+                                         function.blocks.size());
   std::unordered_map<std::string, std::size_t> labels;
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
     labels[function.blocks[i].label] = i;
@@ -474,19 +546,24 @@ ControlFlow build_control_flow(const MirFunction & function, Stats * stats)
         if(is_label_operand(instruction, &label)) {
           const std::unordered_map<std::string, std::size_t>::const_iterator found =
             labels.find(label);
-          if(found != labels.end()) append_unique(cfg.successors[i], found->second);
+          if(found != labels.end())
+            append_successor(cfg.successors[i], seen_by_block, i, found->second);
         }
       }
       if(instruction.opcode == MirInstruction::MI_JMP ||
          is_control_barrier(instruction.opcode)) falls_through = false;
     }
     if(falls_through && i + 1 < function.blocks.size())
-      append_unique(cfg.successors[i], i + 1);
+      append_successor(cfg.successors[i], seen_by_block, i, i + 1);
     for(std::size_t j = 0; j < cfg.successors[i].size(); ++j) {
       cfg.predecessors[cfg.successors[i][j]].push_back(i);
       if(stats) ++stats->cfg_edge_visits;
     }
   }
+  if(stats)
+    note_peak_analysis_bytes(stats, analysis_base_bytes +
+      control_flow_bytes(cfg) +
+      seen_by_block.capacity() * sizeof(std::size_t) + label_index_bytes(labels));
   return cfg;
 }
 
@@ -497,7 +574,7 @@ struct Liveness
 };
 
 Liveness compute_liveness(const MirFunction & function, const ControlFlow & cfg,
-                          Stats * stats)
+                          Stats * stats, std::size_t analysis_base_bytes)
 {
   const std::size_t count = function.blocks.size();
   std::vector<RegisterMask> uses(count, 0), defs(count, 0);
@@ -519,6 +596,13 @@ Liveness compute_liveness(const MirFunction & function, const ControlFlow & cfg,
     queued[i - 1] = true;
     if(stats) ++stats->worklist_pushes;
   }
+  if(stats)
+    note_peak_analysis_bytes(stats, analysis_base_bytes +
+      uses.capacity() * sizeof(RegisterMask) +
+      defs.capacity() * sizeof(RegisterMask) +
+      live.in.capacity() * sizeof(RegisterMask) +
+      live.out.capacity() * sizeof(RegisterMask) +
+      bit_vector_bytes(queued) + count * sizeof(std::size_t));
   while(!worklist.empty()) {
     const std::size_t block = worklist.front();
     worklist.pop_front();
@@ -681,6 +765,10 @@ void trace_layout(MirFunction & function, Stats * stats)
   }
   bool changed = false;
   for(std::size_t i = 0; i < order.size(); ++i) changed = changed || order[i] != i;
+  if(stats)
+    note_peak_analysis_bytes(stats, label_index_bytes(labels) +
+      bit_vector_bytes(placed) + order.capacity() * sizeof(std::size_t) +
+      (changed ? function.blocks.size() * sizeof(MirBlock) : 0));
   if(!changed) return;
   std::vector<MirBlock> blocks;
   blocks.reserve(function.blocks.size());
@@ -729,13 +817,11 @@ void finalize_frame(MirFunction & function, Stats * stats)
     [referenced](X64Register reg) { return (referenced & gpr_bit(reg)) == 0; }),
     function.callee_saved_regs.end());
   if(function.callee_saved_regs.size() == old_saved) return;
-  std::size_t frame_bytes = function.frame_bytes;
-  for(std::size_t i = 0; i < function.frame_bindings.size(); ++i)
-    if(function.frame_bindings[i].offset < 0)
-      frame_bytes = std::max(frame_bytes,
-        static_cast<std::size_t>(-function.frame_bindings[i].offset));
-  function.stack_size = align_up(frame_bytes + function.scratch_bytes +
-    function.callee_saved_regs.size() * 8, 16);
+  // Lowering records the local-frame requirement separately from an
+  // ABI-driven total-stack floor.  Recombine those facts with the surviving
+  // saves, then publish one final stack_size for both MIR and the encoder.
+  function.stack_size = align_up(std::max(function.stack_floor_bytes,
+    function.stack_frame_bytes + function.callee_saved_regs.size() * 8), 16);
   if(stats) ++stats->rewrites;
 }
 
@@ -745,6 +831,22 @@ std::size_t instruction_count(const MirFunction & function)
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
     count += function.blocks[i].instructions.size();
   return count;
+}
+
+void make_scalar_float_returns_explicit(MirFunction & function, Stats * stats)
+{
+  if(function.return_type != "f32" && function.return_type != "f64") return;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      MirInstruction & instruction = function.blocks[i].instructions[j];
+      if(instruction.opcode != MirInstruction::MI_RET ||
+         !instruction.operands.empty()) continue;
+      MirOperand result;
+      result.kind = MirOperand::OP_XMM;
+      result.xmm = XMM_0;
+      instruction.operands.push_back(result);
+      if(stats) ++stats->rewrites;
+    }
 }
 
 }  // namespace
@@ -760,14 +862,24 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
     ++stats->functions;
     stats->input_instructions += instruction_count(function);
   }
+  // PA29 MIR encoded scalar floating returns only through the ABI metadata and
+  // an implicit xmm0 convention.  Make that dependency explicit at the PA38
+  // optimization boundary so liveness, copy propagation, MIR serialization,
+  // and native encoding all consume the same return fact.  O0 remains the
+  // preserved PA29 representation.
+  make_scalar_float_returns_explicit(function, stats);
   if(level >= 2) trace_layout(function, stats);
   std::vector<std::vector<bool> > preserve(function.blocks.size());
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
     rewrite_local_operands(function.blocks[i], preserve[i], stats);
   form_zero_tests(function, stats);
   clean_branches(function, stats);
-  const ControlFlow cfg = build_control_flow(function, stats);
-  const Liveness liveness = compute_liveness(function, cfg, stats);
+  const std::size_t local_storage = stats ? preserve_bytes(preserve) : 0;
+  const ControlFlow cfg = build_control_flow(function, stats, local_storage);
+  const std::size_t persistent_analysis_storage = stats ?
+    local_storage + control_flow_bytes(cfg) : 0;
+  const Liveness liveness = compute_liveness(
+    function, cfg, stats, persistent_analysis_storage);
   remove_dead_definitions(function, preserve, liveness, stats);
   // Removing value shuffles can expose one more natural branch tail.
   clean_branches(function, stats);

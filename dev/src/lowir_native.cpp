@@ -96,7 +96,6 @@ public:
     }
     target_.callee_saved_regs = registers_.preserves();
     target_.has_dynamic_stack = facts_.has_dynamic_stack;
-    target_.frame_bytes = frame_bytes_;
     const bool needs_call_scratch = uses_scalar_float_ ||
       (source_.metadata.keep_internal_alias && !facts_.calls.empty());
     target_.scratch_bytes = needs_call_scratch ? 48 : 0;
@@ -107,13 +106,17 @@ public:
       const std::size_t float_frame_bytes = source_.params.empty() ||
         !facts_.zero_index_parameters.empty() ? frame_bytes_ :
         std::max<std::size_t>(frame_bytes_, 16);
-      target_.stack_size = align_up(float_frame_bytes + target_.callee_saved_regs.size() * 8 +
-                                    target_.scratch_bytes, 16);
-    } else
-      target_.stack_size = align_up(
-        std::max(direct_parameter_bytes,
-                 frame_bytes_ + target_.callee_saved_regs.size() * 8), 16);
-    if(constrained_wide_pressure()) target_.stack_size += 16;
+      target_.stack_frame_bytes = float_frame_bytes + target_.scratch_bytes;
+    } else {
+      target_.stack_frame_bytes = frame_bytes_;
+      target_.stack_floor_bytes = direct_parameter_bytes;
+    }
+    if(constrained_wide_pressure()) {
+      target_.stack_frame_bytes += 16;
+      target_.stack_floor_bytes += 16;
+    }
+    target_.stack_size = align_up(std::max(target_.stack_floor_bytes,
+      target_.stack_frame_bytes + target_.callee_saved_regs.size() * 8), 16);
     host_eh_detail::collect_host_eh_clauses(&target_);
     return target_;
   }

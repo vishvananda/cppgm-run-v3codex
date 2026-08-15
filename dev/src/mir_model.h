@@ -288,7 +288,11 @@ struct Function
   std::string object_symbol;
   std::vector<ParamBinding> params;
   std::string return_type;
-  std::size_t frame_bytes = 0;
+  // Lowering-to-optimizer frame requirements.  The optimizer combines these
+  // with the surviving save set and publishes the authoritative encoded total
+  // in stack_size; native encoding does not consume these transient inputs.
+  std::size_t stack_frame_bytes = 0;
+  std::size_t stack_floor_bytes = 0;
   std::size_t stack_size = 0;
   std::size_t scratch_bytes = 0;
   bool has_dynamic_stack = false;

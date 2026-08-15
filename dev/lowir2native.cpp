@@ -159,29 +159,34 @@ int run_lowir2native_mode(const vector<string> & args)
 
   const LowIR2NativeInvocation invocation =
       parse_lowir2native_invocation(args);
+  const bool report_stats = getenv("CPPGM_LOWIR_NATIVE_STATS") != 0;
   const string target = invocation.output_target.empty() ? "linux" :
                                                      invocation.output_target;
-  const chrono::steady_clock::time_point parse_start = chrono::steady_clock::now();
+  chrono::steady_clock::time_point parse_start;
+  if(report_stats) parse_start = chrono::steady_clock::now();
   const lowir_model::LowirProgram lowir =
       lowir_model::parse_lowir_program_files(
         invocation.srcfiles,
         invocation.outfile.empty() ? lowir_model::LEP_ALLOW_HELPERS_ONLY :
                                      lowir_model::LEP_REQUIRE_ENTRY);
-  const chrono::steady_clock::time_point lower_start = chrono::steady_clock::now();
+  chrono::steady_clock::time_point lower_start;
+  if(report_stats) lower_start = chrono::steady_clock::now();
   lowir_native::Stats stats;
   const mir_model::MirProgram mir = lowir_native::lower_program(
-      lowir, target, invocation.optimization_level, &stats);
-  const chrono::steady_clock::time_point output_start = chrono::steady_clock::now();
+      lowir, target, invocation.optimization_level, report_stats ? &stats : 0);
+  chrono::steady_clock::time_point output_start;
+  if(report_stats) output_start = chrono::steady_clock::now();
   if(!invocation.machine_ir_file.empty())
     mir_model::write_mir_program_file(invocation.machine_ir_file, mir);
   if(!invocation.outfile.empty())
-    lowir_native::write_linux_executable(invocation.outfile, mir, &stats);
-  const chrono::steady_clock::time_point end = chrono::steady_clock::now();
-  stats.lower_nanoseconds = chrono::duration_cast<chrono::nanoseconds>(
-      output_start - lower_start).count();
-  stats.write_nanoseconds = chrono::duration_cast<chrono::nanoseconds>(
-      end - output_start).count();
-  if(getenv("CPPGM_LOWIR_NATIVE_STATS")) {
+    lowir_native::write_linux_executable(invocation.outfile, mir,
+                                         report_stats ? &stats : 0);
+  if(report_stats) {
+    const chrono::steady_clock::time_point end = chrono::steady_clock::now();
+    stats.lower_nanoseconds = chrono::duration_cast<chrono::nanoseconds>(
+        output_start - lower_start).count();
+    stats.write_nanoseconds = chrono::duration_cast<chrono::nanoseconds>(
+        end - output_start).count();
     cerr << "lowir2native_stats"
          << " source_bytes=" << lowir.source_bytes
          << " tokens=" << lowir.token_count
@@ -196,6 +201,8 @@ int run_lowir2native_mode(const vector<string> & args)
          << " machine_opt_cfg_edges=" << stats.machine_opt_cfg_edge_visits
          << " machine_opt_pushes=" << stats.machine_opt_worklist_pushes
          << " machine_opt_rewrites=" << stats.machine_opt_rewrites
+         << " machine_opt_peak_bytes="
+         << stats.machine_opt_peak_analysis_bytes
          << " fixups=" << stats.fixups
          << " output_bytes=" << stats.output_bytes
          << " parse_ns=" << chrono::duration_cast<chrono::nanoseconds>(
