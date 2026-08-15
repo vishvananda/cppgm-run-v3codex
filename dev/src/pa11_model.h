@@ -733,7 +733,8 @@ public:
 	ScopeId GlobalScope() const;
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		EntityId entity = kNoEntity, ScopeId output_parent = kNoScope);
-	ScopeId OpenNamespace(ScopeId parent, NameId name, bool is_inline);
+	ScopeId OpenNamespace(ScopeId parent, NameId name, bool is_inline,
+		bool internal_linkage = false);
 	void SetScopeEmissionName(ScopeId scope, NameId name);
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
@@ -794,6 +795,7 @@ public:
 	ScopeId ParentScope(ScopeId scope) const;
 	ScopeKind KindOfScope(ScopeId scope) const;
 	bool IsInlineNamespace(ScopeId scope) const;
+	bool HasInternalLinkageScope(ScopeId scope) const;
 	bool IsStandardNamespace(ScopeId scope) const;
 	bool IsInStandardNamespace(ScopeId scope) const;
 	NameId NameOfScope(ScopeId scope) const;

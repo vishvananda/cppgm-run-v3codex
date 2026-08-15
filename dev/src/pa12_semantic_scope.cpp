@@ -109,13 +109,7 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 
 bool SemanticAnalyzer::HasInternalLinkageScope(ScopeId scope) const
 {
-	const NameId unnamed = program_->names.Intern("<unnamed>");
-	for (ScopeId current = scope; current != kNoScope;
-		current = program_->ParentScope(current))
-		if (program_->KindOfScope(current) == SCOPE_NAMESPACE &&
-			program_->NameOfScope(current) == unnamed)
-			return true;
-	return false;
+	return program_->HasInternalLinkageScope(scope);
 }
 
 void SemanticAnalyzer::PublishInlineFunctionFacts(BindingId binding,

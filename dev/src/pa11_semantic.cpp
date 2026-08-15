@@ -323,9 +323,12 @@ void TypeAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope)
 
 void TypeAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope)
 {
-	const NameId name = program_->names.Intern(arena_->Payload(node));
+	const std::string spelling = arena_->Payload(node);
+	const bool unnamed = spelling.empty() || spelling == "<unnamed>";
+	const NameId name = program_->names.Intern(
+		unnamed ? "<unnamed>" : spelling);
 	const ScopeId child = program_->OpenNamespace(scope, name,
-		FindChild(node, "inline") != kNoNode);
+		FindChild(node, "inline") != kNoNode, unnamed);
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{

@@ -283,8 +283,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 					append_capture(pack[pack_index], name, by_reference);
 				continue;
 			}
-			const LookupResult found = LookupSpelling(scope,
-				program_->names.Get(name), LOOKUP_ORDINARY);
+			NamePath lookup_name;
+			lookup_name.Push(name);
+			const LookupResult found =
+				LookupPath(scope, lookup_name, LOOKUP_ORDINARY);
 			for (std::size_t found_index = 0;
 				found_index < found.OrdinaryCount(); ++found_index)
 			{
@@ -638,8 +640,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		else
 		{
 			BindingId capture_source = capture.source;
-			const LookupResult active = LookupSpelling(scope,
-				program_->names.Get(capture.name), LOOKUP_ORDINARY);
+			NamePath lookup_name;
+			lookup_name.Push(capture.name);
+			const LookupResult active =
+				LookupPath(scope, lookup_name, LOOKUP_ORDINARY);
 			for (std::size_t active_index = 0;
 				active_index < active.OrdinaryCount(); ++active_index)
 			{

@@ -1902,7 +1902,8 @@ void SemanticAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope,
 	if (unnamed) spelling = "<unnamed>";
 	const NameId name = program_->names.Intern(spelling);
 	const bool is_inline = FindChild(node, "inline") != kNoNode;
-	const ScopeId child = program_->OpenNamespace(scope, name, is_inline);
+	const ScopeId child = program_->OpenNamespace(
+		scope, name, is_inline, unnamed);
 	program_->SetScopeEmissionName(child, unnamed ?
 		program_->names.Intern("_GLOBAL__N_1") : name);
 	if (scope_prefixes_.size() <= child)
@@ -2808,6 +2809,10 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		while (function_demand < demanded_functions_.size())
 			EmitDemandedFunction(demanded_functions_[function_demand++]);
 	}
+	// The typed production path publishes linkage identity once, after all
+	// template-demand work has completed. Textual semantic output preserves
+	// the assignment's historical rendering contract and has no graph consumer.
+	if (!render_output_) PublishInternalIdentityFacts(&program);
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	if (render_output_) Render();

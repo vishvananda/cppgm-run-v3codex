@@ -1,4 +1,5 @@
 #include "pa10_syntax.h"
+#include "pa10_brace_matching.h"
 #include "pa10_syntax_driver_detail.h"
 #include "pa10_syntax_model.h"
 #include "pa10_parser_name_facts.h"
@@ -23,10 +24,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-namespace cppgm
-{
-namespace
-{
+namespace cppgm { namespace {
 using namespace pa10_syntax_detail;
 class Parser : private ParserNameFacts<Parser>,
 	private hosted_builtin::Syntax<Parser>,
@@ -47,10 +45,9 @@ friend class pa34_syntax_detail::TemplateSyntax<Parser>; friend class pa34_synta
 		Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings, SyntaxArena& arena, SyntaxStats* stats, bool mock_name_convention)
 			: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats), mock_name_convention_(mock_name_convention),
 			  position_(0), angle_stop_depth_(0), compound_depth_(0), retained_template_argument_depth_(0), template_declaration_depth_(0),
-		  name_fact_revision_(1), angle_matches_(tokens.size())
+		  name_fact_revision_(1), angle_matches_(tokens.size()),
+		  brace_matches_(BuildBraceMatches(tokens))
 	{
-		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
-			throw std::runtime_error("too many syntax tokens");
 		SetNameFact("nullptr_t", kKnownType);
 	}
 	NodeId ParseTranslationUnit()
@@ -74,6 +71,7 @@ friend class pa34_syntax_detail::TemplateSyntax<Parser>; friend class pa34_synta
 			name_facts_.capacity() * sizeof(std::uint8_t) +
 			name_fact_changes_.capacity() * sizeof(NameFactChange) +
 			angle_matches_.capacity() * sizeof(AngleMatch) +
+			brace_matches_.capacity() * sizeof(std::uint32_t) +
 			(last_declared_names_.capacity() + parameter_names_.capacity() +
 			 active_non_type_parameter_names_.capacity() +
 			 current_classes_.capacity()) * sizeof(TextId);
@@ -721,6 +719,7 @@ private:
 	std::vector<std::uint8_t> name_facts_;
 	std::vector<NameFactChange> name_fact_changes_;
 	std::vector<AngleMatch> angle_matches_;
+	std::vector<std::uint32_t> brace_matches_;
 		std::vector<TextId> last_declared_names_, parameter_names_, active_non_type_parameter_names_, current_classes_;
 };
 NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)

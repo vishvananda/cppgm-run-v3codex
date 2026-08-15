@@ -4,7 +4,6 @@
 #include "pa15_conditional_lowering.h"
 #include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
-#include "pa15_internal_identity.h"
 #include "pa15_scalar_unary_lowering.h"
 #include "pa15_source_type_lowering.h"
 #include "pa15_static_member_symbol_lowering.h"
@@ -104,7 +103,7 @@ public:
 		  full_expression_uses_linked_dispatch_(false), full_expression_uses_branch_cleanup_(false),
 		  full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
 		  full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
-		  internal_identities_(program_), presentation_names_(program_),
+		  presentation_names_(program_),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
@@ -358,8 +357,7 @@ private:
 		const bool internal = binding.unnamed_namespace_linkage ||
 			canonical_binding.unnamed_namespace_linkage ||
 			(binding.storage_class == STORAGE_CLASS_STATIC &&
-			 binding.member_owner == kNoEntity) ||
-			internal_identities_.BindingHasInternalIdentity(node.binding);
+			 binding.member_owner == kNoEntity);
 		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
 		identity.kind = kind;
@@ -2970,7 +2968,6 @@ private:
 		full_expression_branch_cleanup_tails_;
 	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;
 	std::vector<IdentityTypeId> identity_type_cache_;
-	pa15_lowering_detail::InternalIdentityClassifier internal_identities_;
 	PresentationNameMap presentation_names_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;

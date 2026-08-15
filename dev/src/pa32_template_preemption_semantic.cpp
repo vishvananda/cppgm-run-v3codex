@@ -41,11 +41,7 @@ bool TypesContainLocalContext(const Program& program,
 					"template emission entity identity is invalid");
 			const EntityRecord& entity = program.entities[record.entity];
 			if (entity.local_context != kNoBinding) return true;
-			for (ScopeId scope = entity.owner; scope != kNoScope;
-				scope = program.ParentScope(scope))
-				if (program.KindOfScope(scope) == SCOPE_NAMESPACE &&
-					program.names.Get(program.NameOfScope(scope)) == "<unnamed>")
-					return true;
+			if (program.HasInternalLinkageScope(entity.owner)) return true;
 			const std::size_t first = entity.template_argument_begin;
 			if (first == kNoBinding) continue;
 			if (first > program.template_arguments.size() ||

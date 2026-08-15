@@ -755,7 +755,7 @@ struct Program::ScopeRecord
 	std::uint32_t last_child;
 	std::uint32_t first_incoming_using;
 	std::uint32_t first_visible_name;
-	bool inline_namespace;
+	bool inline_namespace, internal_linkage;
 
 	ScopeRecord()
 		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), emission_name(0),
@@ -765,7 +765,7 @@ struct Program::ScopeRecord
 		  last_child(std::numeric_limits<std::uint32_t>::max()),
 		  first_incoming_using(std::numeric_limits<std::uint32_t>::max()),
 		  first_visible_name(std::numeric_limits<std::uint32_t>::max()),
-		  inline_namespace(false) {}
+		  inline_namespace(false), internal_linkage(false) {}
 };
 
 struct Program::NameEntry
@@ -1095,6 +1095,8 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	record.emission_name = name;
 	record.entity = entity;
 	record.depth = parent == kNoScope ? 0 : scopes_[parent].depth + 1;
+	record.internal_linkage = parent != kNoScope &&
+		scopes_[parent].internal_linkage;
 	lookup_marks_.push_back(0);
 	lookup_dependency_marks_.push_back(0);
 	using_name_invalidation_marks_.push_back(0);
@@ -1117,7 +1119,8 @@ ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	return scope;
 }
 
-ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline)
+ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline,
+	bool internal_linkage)
 {
 	NameEntry* entry = EnsureEntry(parent, name);
 	if (entry->ordinary != kNoBinding || entry->type != kNoType)
@@ -1135,6 +1138,8 @@ ScopeId Program::OpenNamespace(ScopeId parent, NameId name, bool is_inline)
 		scopes_[entry->name_space].inline_namespace = true;
 		AddUsingEdge(parent, entry->name_space);
 	}
+	if (internal_linkage)
+		scopes_[entry->name_space].internal_linkage = true;
 	return entry->name_space;
 }
 
@@ -1613,6 +1618,11 @@ ScopeKind Program::KindOfScope(ScopeId scope) const
 bool Program::IsInlineNamespace(ScopeId scope) const
 {
 	return scope < scopes_.size() && scopes_[scope].inline_namespace;
+}
+
+bool Program::HasInternalLinkageScope(ScopeId scope) const
+{
+	return scope < scopes_.size() && scopes_[scope].internal_linkage;
 }
 
 NameId Program::NameOfScope(ScopeId scope) const

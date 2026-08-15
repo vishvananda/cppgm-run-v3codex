@@ -40,28 +40,22 @@ protected:
 	{
 		Derived& parser = static_cast<Derived&>(*this);
 		std::size_t scan = parser.position_;
-		std::size_t brace_depth = 0;
 		while (scan < parser.tokens_.size())
 		{
 			const std::uint16_t kind = parser.tokens_[scan].Kind();
 			if (kind == static_cast<std::uint16_t>(OP_RBRACE))
-			{
-				if (brace_depth == 0) return;
-				--brace_depth;
-				++scan;
-				continue;
-			}
+				return;
 			if (kind == static_cast<std::uint16_t>(OP_LBRACE))
 			{
-				++brace_depth;
-				++scan;
+				const std::uint32_t close = parser.brace_matches_[scan];
+				if (close == std::numeric_limits<std::uint32_t>::max()) return;
+				scan = static_cast<std::size_t>(close) + 1;
 				continue;
 			}
-			if (brace_depth != 0 ||
-				(kind != static_cast<std::uint16_t>(KW_CLASS) &&
+			if (kind != static_cast<std::uint16_t>(KW_CLASS) &&
 				 kind != static_cast<std::uint16_t>(KW_STRUCT) &&
 				 kind != static_cast<std::uint16_t>(KW_UNION) &&
-				 kind != static_cast<std::uint16_t>(KW_ENUM)))
+				 kind != static_cast<std::uint16_t>(KW_ENUM))
 			{
 				++scan;
 				continue;

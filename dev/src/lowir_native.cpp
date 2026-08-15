@@ -883,8 +883,9 @@ private:
   {
     if(control_flow_.CurrentBlockIsCyclic()) return false;
     const LiveLocationCounts live_locations = live_location_counts();
-    for(std::unordered_map<std::string, ValueFact>::iterator value = values_.begin();
-        value != values_.end(); ++value) {
+    for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      std::unordered_map<std::string, ValueFact>::iterator value = values_.find(source_.params[i].name);
+      if(value == values_.end()) continue;
       if(!value->second.parameter || value->second.fixed_register_home ||
          value->second.location.kind != MirOperand::OP_REG ||
          !managed_register(value->second.location.reg) ||
@@ -892,8 +893,7 @@ private:
         continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator uses =
         facts_.uses.find(value->first);
-      if(uses == facts_.uses.end() || uses->second != 0 ||
-         facts_.edge_live.count(value->first) ||
+      if(uses == facts_.uses.end() || uses->second != 0 || facts_.edge_live.count(value->first) ||
          !control_flow_.SpillIsSafe(value->first, position_) ||
          has_live_location_alias(value->first, value->second.location,
                                  live_locations)) continue;

@@ -36,6 +36,7 @@ bool ClassTemplateArgumentsHaveDependentShape(const Program& program,
 void PublishFunctionTemplateInternalEmission(Program* program,
 	BindingId binding, BindingId canonical,
 	const std::vector<TemplateArgument>& arguments);
+void PublishInternalIdentityFacts(Program* program);
 bool IsExtendedFloatingFundamental(FundamentalKind kind);
 int FloatingConversionRank(FundamentalKind kind);
 std::uint32_t NextComparableTemplateSyntaxEdge(const SyntaxArena& arena,
