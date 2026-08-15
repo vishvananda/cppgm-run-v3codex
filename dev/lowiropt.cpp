@@ -1,8 +1,11 @@
 // Student-facing scaffold for the PA37 `lowiropt` binary.
 
 #include "exceptions.h"
+#include "lowir_model.h"
+#include "lowir_opt.h"
 #include "tool_help_text.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -132,8 +135,23 @@ int run_lowiropt_mode(const vector<string> & args)
   }
 
   const LowIROptInvocation invocation = parse_lowiropt_invocation(args);
-  (void)invocation;
-  throw NotImplementedException();
+  lowir_model::LowirProgram program = lowir_model::parse_lowir_program_files(
+      invocation.inputs, lowir_model::LEP_ALLOW_HELPERS_ONLY);
+  lowir_opt::Stats stats;
+  lowir_opt::optimize(program, invocation.optimization_level,
+                      getenv("CPPGM_LOWIR_OPT_STATS") ? &stats : 0);
+  lowir_model::write_lowir_program_file(invocation.outfile, program);
+  if(getenv("CPPGM_LOWIR_OPT_STATS")) {
+    cerr << "pa37_opt_stats"
+         << " functions=" << stats.functions
+         << " input_instructions=" << stats.input_instructions
+         << " output_instructions=" << stats.output_instructions
+         << " instruction_visits=" << stats.instruction_visits
+         << " cfg_edge_visits=" << stats.cfg_edge_visits
+         << " worklist_pushes=" << stats.worklist_pushes
+         << " rewrites=" << stats.rewrites << '\n';
+  }
+  return EXIT_SUCCESS;
 }
 
 }  // namespace

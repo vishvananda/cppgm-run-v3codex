@@ -18,6 +18,7 @@ namespace {
 struct Token
 {
   std::string text;
+  std::size_t line;
 };
 
 bool is_punctuation(char c)
@@ -30,10 +31,12 @@ bool is_punctuation(char c)
 void lex_text(const std::string & text, std::vector<Token> & out)
 {
   std::size_t i = 0;
+  std::size_t line = 1;
   while(i < text.size()) {
     const char c = text[i];
     if(c == '\n') {
       ++i;
+      ++line;
       continue;
     }
     if(c == ' ' || c == '\t' || c == '\r' || c == '\f') {
@@ -45,12 +48,12 @@ void lex_text(const std::string & text, std::vector<Token> & out)
       continue;
     }
     if(c == '-' && i + 1 < text.size() && text[i + 1] == '>') {
-      out.push_back(Token{"->"});
+      out.push_back(Token{"->", line});
       i += 2;
       continue;
     }
     if(is_punctuation(c)) {
-      out.push_back(Token{std::string(1, c)});
+      out.push_back(Token{std::string(1, c), line});
       ++i;
       continue;
     }
@@ -61,7 +64,7 @@ void lex_text(const std::string & text, std::vector<Token> & out)
       ++i;
     }
     if(i == begin) ++i;
-    out.push_back(Token{text.substr(begin, i - begin)});
+    out.push_back(Token{text.substr(begin, i - begin), line});
   }
 }
 
@@ -180,6 +183,12 @@ private:
     return tokens_[at_ + offset].text;
   }
 
+  std::size_t peek_line(std::size_t offset = 0) const
+  {
+    if(at_ + offset >= tokens_.size()) throw ParseError("unexpected end of LowIR");
+    return tokens_[at_ + offset].line;
+  }
+
   std::string take()
   {
     const std::string text = peek();
@@ -238,20 +247,30 @@ private:
     else if(starts_with(result.text, '$')) result.kind = Operand::OP_SLOT;
     else if(starts_with(result.text, '@')) result.kind = Operand::OP_GLOBAL;
     else if(starts_with(result.text, '^')) result.kind = Operand::OP_LABEL;
-    else if(result.text.find_first_of(".eEpP") != std::string::npos ||
+    else if(result.text == "nullptr") {
+      result.kind = Operand::OP_INTEGER;
+      result.int_value = 0;
+      result.has_int_value = true;
+    }
+    else if(result.text == "inf" || result.text == "+inf" ||
+            result.text == "-inf" || result.text == "INFINITY" ||
+            result.text == "+INFINITY" || result.text == "-INFINITY" ||
+            result.text == "nan" || result.text == "NAN" ||
+            result.text.find_first_of(".eEpP") != std::string::npos ||
             (!result.text.empty() && (result.text.back() == 'f' || result.text.back() == 'L')))
+    {
       result.kind = Operand::OP_FLOAT;
+      errno = 0;
+      char * end = 0;
+      result.float_value = std::strtold(result.text.c_str(), &end);
+      if(errno || !end || *end) result.float_value = 0.0L;
+    }
     else {
       result.kind = Operand::OP_INTEGER;
-      if(result.text == "nullptr") {
-        result.int_value = 0;
-        result.has_int_value = true;
-      } else {
-        errno = 0;
-        char * end = 0;
-        result.int_value = std::strtoll(result.text.c_str(), &end, 0);
-        result.has_int_value = !errno && end && !*end;
-      }
+      errno = 0;
+      char * end = 0;
+      result.int_value = std::strtoll(result.text.c_str(), &end, 0);
+      result.has_int_value = !errno && end && !*end;
     }
     return result;
   }
@@ -259,16 +278,18 @@ private:
   Metadata metadata()
   {
     Metadata result;
-    if(!accept("[")) return result;
     std::unordered_set<std::string> keys;
-    do {
-      const std::string key = take();
-      expect("=");
-      const std::string value = take();
-      if(!keys.insert(key).second) throw ParseError("duplicate metadata key: " + key);
-      result.push_back(std::make_pair(key, value));
-    } while(accept(","));
-    expect("]");
+    while(accept("[")) {
+      do {
+        const std::string key = take();
+        expect("=");
+        const std::string value = take();
+        if(!keys.insert(key).second)
+          throw ParseError("duplicate metadata key: " + key);
+        result.push_back(std::make_pair(key, value));
+      } while(accept(","));
+      expect("]");
+    }
     return result;
   }
 
@@ -278,6 +299,7 @@ private:
     if(!accept("!dbg")) return result;
     expect("(");
     result.file = take();
+    while(peek() != ",") result.file += take();
     expect(",");
     result.line = parse_positive_size(signed_literal());
     expect(",");
@@ -349,7 +371,11 @@ private:
       if(!function_symbol) throw ParseError("tls_for metadata requires a function");
       out.tls_for_symbol = value;
     } else if(key == "keep_alias") out.keep_internal_alias = yes_no(value);
-    else if(key == "prefer_local") out.prefer_local_object_binding = yes_no(value);
+    else if(key == "prefer_local") {
+      out.prefer_local_object_binding = yes_no(value);
+      if(out.prefer_local_object_binding && out.binding == SBM_DEFAULT)
+        out.binding = SBM_STRONG;
+    }
     else if(key == "object_root") out.object_output_root = yes_no(value);
     else if(key == "trivial_lifecycle") {
       if(!function_symbol) throw ParseError("trivial_lifecycle metadata requires a function");
@@ -586,7 +612,11 @@ private:
         expect(":");
         function.slots.push_back(std::make_pair(name, type()));
       } else if(accept("block")) {
-        if(block && !terminated) throw ParseError("block has no terminator");
+        if(block && !terminated &&
+           (block->instructions.empty() ||
+            (block->instructions.back().kind != Instruction::IK_CALL &&
+             block->instructions.back().kind != Instruction::IK_EH_END)))
+          throw ParseError("block has no terminator: " + block->label);
         function.blocks.push_back(Block());
         block = &function.blocks.back();
         block->label = named('^', "block name");
@@ -599,7 +629,11 @@ private:
         terminated = is_terminator(block->instructions.back().kind);
       }
     }
-    if(block && !terminated) throw ParseError("block has no terminator");
+    if(block && !terminated &&
+       (block->instructions.empty() ||
+        (block->instructions.back().kind != Instruction::IK_CALL &&
+         block->instructions.back().kind != Instruction::IK_EH_END)))
+      throw ParseError("block has no terminator: " + block->label);
   }
 
   bool is_terminator(Instruction::Kind kind) const
@@ -757,6 +791,7 @@ private:
 
   void parse_void_instruction(Instruction & out)
   {
+    const std::size_t instruction_line = peek_line();
     const std::string op = take();
     if(op == "store") {
       out.kind = Instruction::IK_STORE; out.type = type(); out.first = operand();
@@ -774,9 +809,38 @@ private:
     } else if(op == "call") {
       expect("void"); parse_call(out, true);
     } else if(op == "copyobj" || op == "zeroinit") parse_bulk(out, op);
-    else if(op == "eh_try" || op == "eh_cleanup") {
-      out.kind = op == "eh_try" ? Instruction::IK_EH_TRY : Instruction::IK_EH_CLEANUP;
+    else if(op == "eh_try") {
+      out.kind = Instruction::IK_EH_TRY;
       out.first = operand();
+    } else if(op == "eh_cleanup") {
+      if(!done() && peek_line() == instruction_line && starts_with(peek(), '^')) {
+        out.kind = Instruction::IK_EH_CLEANUP;
+        out.first = operand();
+      } else out.kind = Instruction::IK_EH_CLEANUP_CLAUSE;
+    } else if(op == "eh_catch") {
+      out.kind = Instruction::IK_EH_CATCH;
+      out.first = operand();
+      if(accept(",")) {
+        const Operand selector = operand();
+        if(!selector.has_int_value) throw ParseError("invalid catch selector");
+        out.has_eh_selector = true;
+        out.eh_selector = selector.int_value;
+      }
+    } else if(op == "eh_filter") {
+      out.kind = Instruction::IK_EH_FILTER;
+      while(!done() && peek_line() == instruction_line && peek() != "!dbg") {
+        accept(",");
+        if(done() || peek_line() != instruction_line || peek() == "!dbg") break;
+        out.args.push_back(operand());
+      }
+    } else if(op == "eh_catch_all") {
+      out.kind = Instruction::IK_EH_CATCH_ALL;
+      if(accept(",")) {
+        const Operand selector = operand();
+        if(!selector.has_int_value) throw ParseError("invalid catch-all selector");
+        out.has_eh_selector = true;
+        out.eh_selector = selector.int_value;
+      }
     } else if(op == "eh_end") out.kind = Instruction::IK_EH_END;
     else if(op == "throw") {
       out.kind = Instruction::IK_THROW; out.type = type(); out.first = operand();
@@ -1030,6 +1094,35 @@ private:
         values[ins.dest] = &result_type(ins);
       }
     }
+	std::size_t terminal = block.instructions.size();
+	while(terminal != 0 &&
+	      block.instructions[terminal - 1].kind == Instruction::IK_EH_END)
+	  --terminal;
+	const bool trailing_handler_pops = terminal != block.instructions.size();
+	const bool terminated = trailing_handler_pops ?
+	  terminal != 0 && instruction_terminates(block.instructions[terminal - 1]) :
+	  instruction_terminates(block.instructions.back());
+	if(!terminated)
+	  throw ParseError("block has no terminator: " + block.label);
+  }
+
+  bool instruction_terminates(const Instruction & ins) const
+  {
+    if(ins.kind == Instruction::IK_JUMP ||
+       ins.kind == Instruction::IK_BRANCH ||
+       ins.kind == Instruction::IK_SWITCH ||
+       ins.kind == Instruction::IK_RETURN ||
+       ins.kind == Instruction::IK_THROW ||
+       ins.kind == Instruction::IK_RESUME)
+      return true;
+    if(ins.kind != Instruction::IK_CALL) return false;
+    FunctionBoundaryMetadata boundary = ins.call_boundary;
+    if(ins.first.kind == Operand::OP_GLOBAL) {
+      const std::unordered_map<std::string, FunctionInfo>::const_iterator found =
+        functions_.find(ins.first.text);
+      if(found != functions_.end()) boundary = *found->second.boundary;
+    }
+    return boundary.returns == CRM_NORETURN;
   }
 
   void validate_operand(const Operand & operand,
@@ -1144,6 +1237,7 @@ private:
     const std::size_t src_i = integer_width(ins.source_type);
     const std::size_t dst_f = float_width(ins.type);
     const std::size_t src_f = float_width(ins.source_type);
+    if(same_lowir_type(ins.type, ins.source_type)) return;
     if((ins.op == "sext" || ins.op == "zext") && dst_i && src_i && dst_i > src_i) return;
     if(ins.op == "trunc" && dst_i && src_i && dst_i < src_i) return;
     if((ins.op == "sitofp" || ins.op == "uitofp") && dst_f && src_i) return;
@@ -1198,6 +1292,86 @@ std::string read_file(const std::string & path)
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
+ir_model::SymbolLinkage exported_linkage(SymbolBindingMode binding)
+{
+  return binding == SBM_INTERNAL ? ir_model::SL_INTERNAL :
+    binding == SBM_WEAK ? ir_model::SL_WEAK : ir_model::SL_EXTERNAL;
+}
+
+void append_export(Program & program, const std::string & name,
+                   const SymbolMetadata & metadata)
+{
+  ir_model::ExportedSymbol result;
+  result.internal_symbol = name;
+  result.object_symbol = metadata.object_symbol;
+  result.keep_internal_alias = metadata.keep_internal_alias;
+  result.prefer_local_object_binding = metadata.prefer_local_object_binding;
+  result.linkage = exported_linkage(metadata.binding);
+  program.exported_symbols.push_back(result);
+}
+
+void derive_exports(Program & program)
+{
+  std::unordered_map<std::string, ir_model::SymbolLinkage> linkage;
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+    linkage[program.global_declarations[i].name] =
+      exported_linkage(program.global_declarations[i].metadata.binding);
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+    linkage[program.function_declarations[i].name] =
+      exported_linkage(program.function_declarations[i].metadata.binding);
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    linkage[program.globals[i].name] =
+      exported_linkage(program.globals[i].metadata.binding);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    linkage[program.functions[i].name] =
+      exported_linkage(program.functions[i].metadata.binding);
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
+    const ObjectAlias & object_alias = program.object_aliases[i];
+    ir_model::ExportedSymbol alias;
+    alias.internal_symbol = object_alias.target;
+    alias.object_symbol = object_alias.object_symbol;
+    const std::unordered_map<std::string,
+      ir_model::SymbolLinkage>::const_iterator found =
+        linkage.find(alias.internal_symbol);
+    if(found != linkage.end()) alias.linkage = found->second;
+    program.exported_symbols.push_back(alias);
+  }
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+    append_export(program, program.global_declarations[i].name,
+                  program.global_declarations[i].metadata);
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+    append_export(program, program.function_declarations[i].name,
+                  program.function_declarations[i].metadata);
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    append_export(program, program.globals[i].name, program.globals[i].metadata);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    append_export(program, program.functions[i].name,
+                  program.functions[i].metadata);
+}
+
+void propagate_direct_call_boundaries(Program & program)
+{
+  std::unordered_map<std::string, FunctionBoundaryMetadata> boundaries;
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+    boundaries[program.function_declarations[i].name] =
+      program.function_declarations[i].boundary;
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    boundaries[program.functions[i].name] = program.functions[i].boundary;
+  for(std::size_t f = 0; f < program.functions.size(); ++f)
+    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
+      for(std::size_t i = 0;
+          i < program.functions[f].blocks[b].instructions.size(); ++i) {
+        Instruction & ins = program.functions[f].blocks[b].instructions[i];
+        if(ins.kind != Instruction::IK_CALL || ins.has_call_signature ||
+           ins.first.kind != Operand::OP_GLOBAL)
+          continue;
+        const std::unordered_map<std::string,
+          FunctionBoundaryMetadata>::const_iterator found =
+            boundaries.find(ins.first.text);
+        if(found != boundaries.end()) ins.call_boundary = found->second;
+      }
+}
+
 Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
 {
   Program program;
@@ -1219,24 +1393,87 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
       if(function.metadata.role != SR_NONE) continue;
       if(function.name == "@main") {
         function.metadata.role = SR_ENTRY;
+        function.metadata.inferred_legacy_role = true;
         has_entry = true;
       } else if(!has_init && function.name == "@__cppgm_init") {
         function.metadata.role = SR_INIT;
+        function.metadata.inferred_legacy_role = true;
         has_init = true;
       } else if(!has_fini && function.name == "@__cppgm_fini") {
         function.metadata.role = SR_FINI;
+        function.metadata.inferred_legacy_role = true;
         has_fini = true;
       }
     }
   }
   const std::size_t token_count = tokens.size();
   std::vector<Token>().swap(tokens);
+  propagate_direct_call_boundaries(program);
   Validator(program, entry_policy).Validate();
   program.token_count = token_count;
+  normalize_lowir_object_model(program);
   return program;
 }
 
 }  // namespace
+
+void clear_serialized_operand_type(Operand & operand)
+{
+  operand.literal_type = LowType();
+  operand.address_binding = Operand::ADDRESS_LOCAL;
+  if(operand.kind != Operand::OP_INTEGER) {
+    operand.has_int_value = false;
+    operand.int_value = 0;
+  }
+}
+
+void normalize_lowir_object_model(LowirProgram & program)
+{
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    if(program.globals[i].structured)
+      program.globals[i].type = LowType();
+    clear_serialized_operand_type(program.globals[i].init_operand);
+    for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
+      clear_serialized_operand_type(
+        program.globals[i].data_items[j].literal_operand);
+  }
+  for(std::size_t f = 0; f < program.functions.size(); ++f)
+    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
+      for(std::size_t i = 0;
+          i < program.functions[f].blocks[b].instructions.size(); ++i) {
+        Instruction & instruction =
+          program.functions[f].blocks[b].instructions[i];
+        clear_serialized_operand_type(instruction.first);
+        clear_serialized_operand_type(instruction.second);
+        clear_serialized_operand_type(instruction.third);
+        for(std::size_t j = 0; j < instruction.args.size(); ++j)
+          clear_serialized_operand_type(instruction.args[j]);
+        if(instruction.kind == Instruction::IK_COPYOBJ ||
+           instruction.kind == Instruction::IK_ZEROINIT ||
+           instruction.kind == Instruction::IK_VA_START)
+          instruction.type = LowType();
+        if(instruction.kind == Instruction::IK_EH_CLEANUP_CLAUSE)
+          instruction.first = Operand();
+        else if(instruction.kind == Instruction::IK_EH_CATCH)
+          instruction.second = Operand();
+        else if(instruction.kind == Instruction::IK_EH_CATCH_ALL)
+          instruction.first = Operand();
+        else if(instruction.kind == Instruction::IK_EH_FILTER &&
+                instruction.has_eh_selector) {
+          Operand selector;
+          selector.kind = Operand::OP_INTEGER;
+          selector.text = std::to_string(instruction.eh_selector);
+          selector.int_value = instruction.eh_selector;
+          selector.has_int_value = true;
+          instruction.args.push_back(selector);
+          instruction.has_eh_selector = false;
+          instruction.eh_selector = 0;
+        }
+      }
+  propagate_direct_call_boundaries(program);
+  program.exported_symbols.clear();
+  derive_exports(program);
+}
 
 const LowType & builtin_lowir_type(LowTypeKind kind)
 {
@@ -1287,12 +1524,13 @@ bool same_lowir_type(const LowType & left, const LowType & right)
 }
 
 LowirProgram parse_lowir_program_text(const std::string & text,
-                                      const std::string & source_name)
+                                      const std::string & source_name,
+                                      LowirEntryPolicy entry_policy)
 {
   (void) source_name;
   std::vector<Token> tokens;
   lex_text(text, tokens);
-  Program program = parse_tokens(tokens, LEP_REQUIRE_ENTRY);
+  Program program = parse_tokens(tokens, entry_policy);
   program.source_bytes = text.size();
   return program;
 }

@@ -37,6 +37,26 @@ bool IsTrivialLifecycleBinding(const pa11::Program& program,
 		 program.entities[record.member_owner].trivial_destructor);
 }
 
+bool HasTrivialLifecycleMetadata(const pa11::Program& program,
+	pa11::BindingId binding)
+{
+	using namespace pa11;
+	if (binding == kNoBinding || binding >= program.bindings.size())
+		return false;
+	const BindingRecord& record = program.bindings[binding];
+	if (record.member_owner == kNoEntity ||
+		record.member_owner >= program.entities.size() ||
+		record.type == kNoType || !program.types.IsFunction(record.type))
+		return false;
+	const TypeRecord& function = program.types.Get(record.type);
+	if (function.parameter_count != 0) return false;
+	const EntityRecord& owner = program.entities[record.member_owner];
+	return (record.constructor && !record.constructor_base_entry &&
+			(!owner.has_user_declared_constructor ||
+			 owner.trivial_default_constructor)) ||
+		(record.destructor && owner.trivial_destructor);
+}
+
 bool IsCompleteBoundaryObject(const pa11::Program& program, pa11::TypeId type)
 {
 	using namespace pa11;
@@ -72,11 +92,11 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	const TypeRecord& function = program.types.Get(node.type);
 	if (function.kind != TYPE_FUNCTION)
 		throw std::logic_error("lifecycle ABI metadata has non-function type");
-	const bool trivial_constructor = IsTrivialLifecycleBinding(
+	const bool trivial_constructor = HasTrivialLifecycleMetadata(
 		program, node.binding) && binding.constructor &&
 		!binding.constructor_base_entry && binding.member_owner != kNoEntity &&
 		function.parameter_count == 1;
-	const bool trivial_destructor = IsTrivialLifecycleBinding(
+	const bool trivial_destructor = HasTrivialLifecycleMetadata(
 		program, node.binding) && binding.destructor;
 	Symbol& record = output->symbols[symbol];
 	record.trivial_lifecycle = trivial_constructor || trivial_destructor;

@@ -1186,8 +1186,8 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 		EmptyDefaultConstructorChain(selected, &empty_base_entries);
 	const bool elide_defaulted_empty = constructor.defaulted_constructor &&
 		program_->entities[entity].empty_class;
-	const bool elide_implicit_subobject_chain = constructor.implicit_constructor &&
-		!empty_base_entries.empty();
+	const bool elide_implicit_subobject_chain = !host_object_emission_ &&
+		constructor.implicit_constructor && !empty_base_entries.empty();
 	if (empty_constructor_chain &&
 		(elide_defaulted_empty || elide_implicit_subobject_chain))
 	{

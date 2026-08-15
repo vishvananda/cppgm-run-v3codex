@@ -793,6 +793,7 @@ BindingId SemanticAnalyzer::DeclareImplicitAssignment(EntityId entity,
 	declaration.member_owner = entity;
 	declaration.access = ACCESS_PUBLIC;
 	declaration.inline_function = true;
+	declaration.weak_odr = true;
 	FunctionInfo& function = GetMutableFunction(assignment);
 	function.member_owner = owner.type;
 	function.special_member = kind;
@@ -1058,7 +1059,8 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 						"synthesized member constructor is missing");
 				if (member_entity != kNoEntity &&
 					program_->entities[member_entity].empty_class &&
-					GetFunction(selected).trivial_special_member)
+					GetFunction(selected).trivial_special_member &&
+					!host_object_emission_)
 					continue;
 				const std::uint32_t step = MakeDump(
 					DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, type,
@@ -1205,6 +1207,14 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 				if (member_entity != kNoEntity && selected == kNoBinding)
 					throw std::logic_error(
 						"synthesized member assignment is missing");
+				if (selected != kNoBinding &&
+					(host_object_emission_ ||
+					 !GetFunction(selected).trivial_special_member))
+				{
+					if (!GetFunction(selected).defined)
+						GetMutableFunction(selected).deferred = true;
+					DemandFunction(selected);
+				}
 				if (member_entity != kNoEntity &&
 					program_->entities[member_entity].empty_class &&
 					GetFunction(selected).trivial_special_member)
@@ -1229,13 +1239,6 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 				}
 				dump_.nodes[step].selected_binding = selected;
 				dump_.Add(assignment, step);
-				if (selected != kNoBinding &&
-					!GetFunction(selected).trivial_special_member)
-				{
-					if (!GetFunction(selected).defined)
-						GetMutableFunction(selected).deferred = true;
-					DemandFunction(selected);
-				}
 			}
 	}
 	const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);

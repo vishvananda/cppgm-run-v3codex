@@ -1388,7 +1388,15 @@ private:
       move_value_to_register(out, XR_RAX, left, comparison.type);
       left = reg_operand(XR_RAX);
     }
-    const MirOperand right = direct_compare_right(comparison.second, comparison.type, out);
+    MirOperand right = direct_compare_right(comparison.second, comparison.type, out);
+    const bool left_memory = left.kind == MirOperand::OP_FRAME ||
+      left.kind == MirOperand::OP_GLOBAL || left.kind == MirOperand::OP_DEREF;
+    const bool right_memory = right.kind == MirOperand::OP_FRAME ||
+      right.kind == MirOperand::OP_GLOBAL || right.kind == MirOperand::OP_DEREF;
+    if(left_memory && right_memory) {
+      move_value_to_register(out, XR_RDX, right, comparison.type);
+      right = reg_operand(XR_RDX);
+    }
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
                                                  comparison.type.text);
     append_operand(compare, left);

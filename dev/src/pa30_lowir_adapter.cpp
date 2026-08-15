@@ -171,6 +171,8 @@ void AdaptSymbolFacts(const Symbol& source,
 		source.weak_linkage ? lowir_model::SBM_WEAK : lowir_model::SBM_STRONG;
 	symbol->object_symbol = source.object_name;
 	symbol->section_name = source.section_name;
+	symbol->keep_internal_alias = false;
+	symbol->prefer_local_object_binding = source.prefer_local_object_binding;
 	symbol->object_output_root = source.object_output_root;
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	symbol->force_inline = source.force_inline;
