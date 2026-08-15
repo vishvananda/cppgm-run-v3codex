@@ -43,6 +43,7 @@ struct HostFunctionLayout
     std::size_t start = 0;
     std::size_t length = 0;
     std::string landing_pad;
+    std::string action_pad;
   };
 
   std::string internal_symbol;

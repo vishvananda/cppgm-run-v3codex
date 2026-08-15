@@ -531,6 +531,8 @@ BindingId SemanticAnalyzer::EnsureFloatingIntrinsicFunction(
 		parameter_types.assign(5, integer);
 		parameter_types.push_back(long_double);
 	}
+	else if (intrinsic.operation == FLOATING_OPERATION_EXTERNAL_CEIL)
+		parameter_types.push_back(result);
 	else if (intrinsic.arity != 0)
 		parameter_types.push_back(long_double);
 	std::vector<ParameterInfo> parameters;
@@ -545,6 +547,9 @@ BindingId SemanticAnalyzer::EnsureFloatingIntrinsicFunction(
 	program_->bindings[binding].builtin_function =
 		BUILTIN_FUNCTION_HOSTED_FLOATING_INTRINSIC;
 	program_->bindings[binding].hosted_floating_intrinsic = kind;
+	if (intrinsic.operation == FLOATING_OPERATION_EXTERNAL_CEIL)
+		program_->bindings[binding].assembly_name = program_->names.Intern(
+			std::string(intrinsic.spelling).substr(10));
 	floating_intrinsic_functions_[kind] = binding;
 	return binding;
 }
@@ -563,6 +568,9 @@ ExpressionInfo SemanticAnalyzer::BuildFloatingIntrinsicCall(
 	dump_.Add(call, callee);
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		dump_.Add(call, arguments[i].node);
+	if (hosted_builtin::GetFloatingIntrinsic(kind).operation ==
+		hosted_builtin::FLOATING_OPERATION_EXTERNAL_CEIL)
+		DemandFunction(binding);
 	ExpressionInfo result;
 	result.node = call;
 	result.type = result_type;
@@ -602,6 +610,11 @@ bool SemanticAnalyzer::TryAnalyzeFloatingIntrinsicCall(
 			if (!IsFloating(argument.type))
 				throw std::runtime_error(
 					"floating intrinsic operand is not floating");
+			if (intrinsic->operation == FLOATING_OPERATION_EXTERNAL_CEIL)
+			{
+				arguments.push_back(ApplyCallArgument(argument, parameter_types[i]));
+				continue;
+			}
 			// Retain the source width: classification of a subnormal value must
 			// happen before any widening conversion makes it normal.
 			arguments.push_back(argument);
@@ -1814,7 +1827,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 			&object, scope, arena_->EdgeChild(object_edge));
 	destroyed_type = program_->types.RemoveTopCv(EffectiveType(destroyed_type));
 	EnsureClassDefinition(destroyed_type);
-	const EntityId entity = EntityOf(destroyed_type);
+	const EntityId entity = DestructedEntity(destroyed_type);
 	if (entity == kNoEntity)
 	{
 		const LookupResult named = LookupSpelling(scope, spelling.substr(1),
@@ -2110,11 +2123,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	const NodeId identifier = arena_->EdgeChild(second);
 	const NodeId member_structure = FindChild(
 		identifier, "structured-type-name");
-	const NameId name = member_structure == kNoNode ?
-		ParseNamePath(arena_->Payload(identifier)).Last() :
-		StructuredNamePath(member_structure).Last();
-	const LookupResult found = program_->LookupMember(
-		entity, name, LOOKUP_ORDINARY);
+	const std::string member_spelling = arena_->Payload(identifier);
+	const NamePath member_path = member_structure == kNoNode ?
+		ParseNamePath(member_spelling) : StructuredNamePath(member_structure);
+	const NameId name = member_path.Last();
+	const bool explicitly_qualified =
+		(member_path.global || member_path.Size() > 1) &&
+		member_spelling.compare(0, 8, "operator") != 0;
+	const LookupResult found = explicitly_qualified ?
+		LookupStructuredName(identifier, scope, LOOKUP_ORDINARY) :
+		program_->LookupMember(entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 	{
 		if (CandidateSubstitutionActive())
@@ -2184,6 +2202,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 				static_cast<std::uint64_t>(
 					std::numeric_limits<std::int64_t>::max()))
 		{
+			// Computing the constexpr subobject bound below needs the complete
+			// member type.  A class-template specialization may still only be a
+			// shell here, notably when it is reached through a reference data
+			// member such as `const std::vector<T>&`.
+			EnsureClassDefinition(EffectiveType(member_binding.type));
 			const std::uint32_t member_address = OffsetConstexprAddress(
 				object_address,
 				static_cast<std::int64_t>(member_binding.member_offset), true,

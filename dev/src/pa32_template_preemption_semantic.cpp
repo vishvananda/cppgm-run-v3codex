@@ -124,6 +124,7 @@ void SemanticAnalyzer::RegisterClassDataMember(
 void SemanticAnalyzer::SetClassExplicitInstantiationSuppression(
 	EntityId entity, bool suppressed)
 {
+	program_->entities[entity].explicit_instantiation_suppressed = suppressed;
 	const auto mark = [this, suppressed](BindingId binding) {
 		if (binding == kNoBinding) return;
 		binding = program_->bindings[binding].canonical;

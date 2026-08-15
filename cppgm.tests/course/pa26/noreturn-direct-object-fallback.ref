@@ -1,0 +1,29 @@
+declare global @__external_rtti__int [binding=strong, object=_ZTIi]
+declare global @__external_rtti_vtable____fundamental_type_info [binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
+declare function @__external_runtime____cxa_allocate_exception(%arg0 : i64) -> ptr [role=eh_allocate_exception, linkage=c, binding=strong, object=__cxa_allocate_exception]
+declare function @__external_runtime____cxa_throw(%arg0 : ptr, %arg1 : ptr, %arg2 : ptr) -> void [return=noreturn, role=eh_throw, linkage=c, binding=strong, object=__cxa_throw]
+declare function @__external_runtime____gxx_personality_v0() -> void [role=eh_personality, linkage=c, binding=strong, object=__gxx_personality_v0]
+
+global @__typeinfo_name__int [storage=readonly, binding=weak, object=_ZTSi] = {
+  i8 105
+  i8 0
+}
+global @__rtti_int [storage=readonly, binding=weak, object=_ZTIi] = {
+  ptr addr @__external_rtti_vtable____fundamental_type_info + 16
+  ptr addr @__typeinfo_name__int
+}
+global @__ehobj_int [binding=weak, object=@__ehobj_int] = {
+  zero 4
+}
+
+function @fail_result() -> obj<16x8> [binding=strong, object=_Z11fail_resultv] {
+  slot $retobj__1 : obj<16x8>
+
+  block ^entry:
+    %t1 = call ptr @__external_runtime____cxa_allocate_exception(4)
+    store i32 1, %t1
+    %t2 = addr @__external_rtti__int
+    call void @__external_runtime____cxa_throw(%t1, %t2, 0)
+    zeroinit 16x8 $retobj__1
+    return obj<16x8> $retobj__1
+}

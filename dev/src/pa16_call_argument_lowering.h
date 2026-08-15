@@ -234,17 +234,20 @@ protected:
 			FloatingIntrinsicLiteral("INFINITY", value.type), value.type);
 		const Operand negative_infinity = EmitIntegerIntrinsicUnary(
 			LOW_OP_NEG, infinity, value.type);
-		return FloatingIntrinsicOr(
-			EmitFloatingIntrinsicCompare(LOW_OP_EQ, value, infinity),
-			EmitFloatingIntrinsicCompare(
-				LOW_OP_EQ, value, negative_infinity));
+		const Operand positive =
+			EmitFloatingIntrinsicCompare(LOW_OP_EQ, value, infinity);
+		const Operand negative =
+			EmitFloatingIntrinsicCompare(LOW_OP_EQ, value, negative_infinity);
+		return FloatingIntrinsicOr(positive, negative);
 	}
 
 	Operand FloatingIntrinsicIsFinite(const Operand& value)
 	{
-		return FloatingIntrinsicAnd(
-			FloatingIntrinsicNot(FloatingIntrinsicIsNan(value)),
-			FloatingIntrinsicNot(FloatingIntrinsicIsInf(value)));
+		const Operand nan = FloatingIntrinsicIsNan(value);
+		const Operand not_nan = FloatingIntrinsicNot(nan);
+		const Operand inf = FloatingIntrinsicIsInf(value);
+		const Operand not_inf = FloatingIntrinsicNot(inf);
+		return FloatingIntrinsicAnd(not_nan, not_inf);
 	}
 
 	Operand FloatingIntrinsicIsNormal(const Operand& value)
@@ -258,11 +261,14 @@ protected:
 		const Operand positive = derived.FloatingOperand(minimum, value.type);
 		const Operand negative = EmitIntegerIntrinsicUnary(
 			LOW_OP_NEG, positive, value.type);
-		const Operand magnitude = FloatingIntrinsicOr(
-			EmitFloatingIntrinsicCompare(LOW_OP_GE, value, positive),
-			EmitFloatingIntrinsicCompare(LOW_OP_LE, value, negative));
-		return FloatingIntrinsicAnd(
-			FloatingIntrinsicIsFinite(value), magnitude);
+		const Operand positive_magnitude =
+			EmitFloatingIntrinsicCompare(LOW_OP_GE, value, positive);
+		const Operand negative_magnitude =
+			EmitFloatingIntrinsicCompare(LOW_OP_LE, value, negative);
+		const Operand magnitude =
+			FloatingIntrinsicOr(positive_magnitude, negative_magnitude);
+		const Operand finite = FloatingIntrinsicIsFinite(value);
+		return FloatingIntrinsicAnd(finite, magnitude);
 	}
 
 	Operand FloatingIntrinsicSignbit(const Operand& value)
@@ -308,6 +314,9 @@ protected:
 				binding.hosted_floating_intrinsic);
 		if (children.size() != intrinsic.arity + 1)
 			throw std::logic_error("invalid floating intrinsic call");
+		if (intrinsic.operation ==
+			hosted_builtin::FLOATING_OPERATION_EXTERNAL_CEIL)
+			return false;
 		if (intrinsic.operation ==
 			hosted_builtin::FLOATING_OPERATION_ROUNDING_MODE)
 		{
@@ -359,24 +368,30 @@ protected:
 		{
 			const Operand nan = FloatingIntrinsicIsNan(value);
 			const Operand inf = FloatingIntrinsicIsInf(value);
-			const Operand finite = FloatingIntrinsicAnd(
-				FloatingIntrinsicNot(nan), FloatingIntrinsicNot(inf));
+			const Operand not_nan = FloatingIntrinsicNot(nan);
+			const Operand not_inf = FloatingIntrinsicNot(inf);
+			const Operand finite = FloatingIntrinsicAnd(not_nan, not_inf);
+			const Operand zero_value = derived.FloatingOperand(
+				FloatingIntrinsicLiteral("0.0", value.type), value.type);
 			const Operand zero = EmitFloatingIntrinsicCompare(LOW_OP_EQ,
-				value, derived.FloatingOperand(
-					FloatingIntrinsicLiteral("0.0", value.type), value.type));
+				value, zero_value);
 			const Operand normal = FloatingIntrinsicIsNormal(value);
-			const Operand subnormal = FloatingIntrinsicAnd(finite,
-				FloatingIntrinsicAnd(FloatingIntrinsicNot(zero),
-					FloatingIntrinsicNot(normal)));
+			const Operand not_zero = FloatingIntrinsicNot(zero);
+			const Operand not_normal = FloatingIntrinsicNot(normal);
+			const Operand nonzero_abnormal =
+				FloatingIntrinsicAnd(not_zero, not_normal);
+			const Operand subnormal =
+				FloatingIntrinsicAnd(finite, nonzero_abnormal);
 			const Operand predicates[] = {nan, inf, normal, subnormal, zero};
 			classified = Operand(0, LowI32());
 			for (std::size_t i = 0; i < 5; ++i)
 			{
 				const Operand control =
 					derived.LowerValue(children[i + 1], LowI32());
-				classified = EmitIntegerIntrinsicBinary(LOW_OP_ADD, classified,
-					EmitIntegerIntrinsicBinary(LOW_OP_MUL, control,
-						predicates[i], LowI32()), LowI32());
+				const Operand selected = EmitIntegerIntrinsicBinary(
+					LOW_OP_MUL, control, predicates[i], LowI32());
+				classified = EmitIntegerIntrinsicBinary(
+					LOW_OP_ADD, classified, selected, LowI32());
 			}
 			break;
 		}
@@ -384,6 +399,7 @@ protected:
 		case hosted_builtin::FLOATING_OPERATION_INFINITY:
 		case hosted_builtin::FLOATING_OPERATION_NAN:
 		case hosted_builtin::FLOATING_OPERATION_SNAN:
+		case hosted_builtin::FLOATING_OPERATION_EXTERNAL_CEIL:
 			throw std::logic_error("invalid floating intrinsic dispatch");
 		}
 		*result = derived.Convert(classified, derived.LowerType(record.type));

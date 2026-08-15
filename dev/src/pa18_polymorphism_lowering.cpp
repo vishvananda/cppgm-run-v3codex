@@ -657,8 +657,9 @@ private:
 	bool VtableIsExternal(EntityId entity) const
 	{
 		const EntityRecord& owner = program_.entities[entity];
-		if (owner.template_argument_count != 0 ||
-			IsFunctionLocalEntity(program_, entity)) return false;
+		if (IsFunctionLocalEntity(program_, entity)) return false;
+		if (owner.explicit_instantiation_suppressed) return true;
+		if (owner.template_argument_count != 0) return false;
 		const BindingId key = VtableKeyFunction(entity);
 		return key != kNoBinding &&
 			(key >= local_function_definitions_.size() ||
@@ -699,6 +700,21 @@ private:
 		const SymbolId symbol = AddSyntheticSymbol(Symbol::GLOBAL_SYMBOL,
 			"__external_vtable__" + ClassStem(entity),
 			"_ZTV" + TypeInfoEncoding(entity), false);
+		Symbol& record = output_.symbols[symbol];
+		record.declaration_emitted = true;
+		record.referenced = true;
+		GlobalDeclaration declaration;
+		declaration.symbol = symbol;
+		declaration.typed = false;
+		output_.global_declarations.push_back(declaration);
+		return symbol;
+	}
+
+	SymbolId AddExternalVtt(EntityId entity)
+	{
+		const SymbolId symbol = AddSyntheticSymbol(Symbol::GLOBAL_SYMBOL,
+			"__external_vtt__" + ClassStem(entity),
+			"_ZTT" + TypeInfoEncoding(entity), false);
 		Symbol& record = output_.symbols[symbol];
 		record.declaration_emitted = true;
 		record.referenced = true;
@@ -1175,6 +1191,35 @@ private:
 		}
 	}
 
+	void AdvanceExternalConstructionVtt(EntityId base,
+		std::uint64_t* vtt_offset) const
+	{
+		*vtt_offset += 8;
+		const EntityRecord& owner = program_.entities[base];
+		for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
+		{
+			const DirectBaseEdge& edge = program_.DirectBase(base, ordinal);
+			if (ConstructionBaseEligible(edge))
+				AdvanceExternalConstructionVtt(edge.entity, vtt_offset);
+		}
+		const ClassPolymorphismFacts& facts = graph_.class_polymorphism[base];
+		for (std::size_t view = 0; view < facts.views.size(); ++view)
+			if (facts.views[view].stores_vptr) *vtt_offset += 8;
+	}
+
+	void RegisterExternalConstructionVttOffsets(EntityId entity)
+	{
+		std::uint64_t vtt_offset = 8;
+		const EntityRecord& owner = program_.entities[entity];
+		for (std::size_t ordinal = 0; ordinal < owner.direct_base_count; ++ordinal)
+		{
+			const DirectBaseEdge& edge = program_.DirectBase(entity, ordinal);
+			if (!ConstructionBaseEligible(edge)) continue;
+			state_.class_construction_vtt_offsets[entity][ordinal] = vtt_offset;
+			AdvanceExternalConstructionVtt(edge.entity, &vtt_offset);
+		}
+	}
+
 	void RegisterViewSymbols(EntityId entity,
 		const ClassPolymorphismFacts& facts)
 	{
@@ -1183,7 +1228,15 @@ private:
 			state_.class_vtable_external[entity] = 1;
 			const SymbolId symbol = AddExternalVtable(entity);
 			state_.class_vtable_symbols[entity] = symbol;
-			std::uint64_t offset = facts.address_point;
+			const std::uint64_t primary_address_point = facts.address_point -
+				facts.virtual_call_offsets.size() * 8;
+			state_.class_vtable_address_points[entity] = primary_address_point;
+			if (program_.entities[entity].virtual_base_count != 0)
+			{
+				state_.class_vtt_symbols[entity] = AddExternalVtt(entity);
+				RegisterExternalConstructionVttOffsets(entity);
+			}
+			std::uint64_t offset = primary_address_point;
 			const std::vector<VirtualSlotFact>& primary = PrimarySlots(entity);
 			for (std::size_t slot = 0; slot < primary.size(); ++slot)
 				offset += program_.bindings[primary[slot].function].destructor ?
@@ -1191,6 +1244,7 @@ private:
 			for (std::size_t view = 0; view < facts.views.size(); ++view)
 			{
 				state_.class_view_vtable_symbols[entity][view] = symbol;
+				if (!facts.views[view].stores_vptr) continue;
 				state_.class_view_address_points[entity][view] =
 					offset + facts.views[view].address_point;
 				offset += facts.views[view].address_point;

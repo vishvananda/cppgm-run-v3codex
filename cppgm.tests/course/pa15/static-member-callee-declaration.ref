@@ -1,0 +1,7 @@
+declare function @std__ios_base__sync_with_stdio(%arg0 : u8) -> u8 [binding=strong, object=_ZNSt8ios_base15sync_with_stdioEb]
+
+function @call_sync() -> void [binding=strong, object=_Z9call_syncv] {
+  block ^entry:
+    %t1 = call u8 @std__ios_base__sync_with_stdio(0)
+    return void
+}

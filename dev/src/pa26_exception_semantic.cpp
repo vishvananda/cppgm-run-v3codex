@@ -630,8 +630,18 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 			record.conditionally_constructed = true;
 			// One root guard edge gives lowering a stable path-local cleanup
 			// boundary. Deeper dependence retains runtime lifetime state.
+			bool direct_branch_child = false;
+			if (branch_owner != kNoDumpEdge &&
+				branch_owner < dump_.nodes.size())
+				for (std::uint32_t edge = dump_.nodes[branch_owner].first_edge;
+					edge != kNoDumpEdge; edge = dump_.edges[edge].next)
+					if (dump_.edges[edge].child == branch_child)
+					{
+						direct_branch_child = true;
+						break;
+					}
 			if (branch_owner != kNoDumpEdge && branch_depth == 1 &&
-				branch_child != kNoDumpEdge)
+				branch_child != kNoDumpEdge && direct_branch_child)
 			{
 				record.lifetime_branch_owner = branch_owner;
 				record.lifetime_branch_child = branch_child;

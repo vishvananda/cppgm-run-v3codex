@@ -1,0 +1,35 @@
+1 translation units
+start translation unit 1
+translation-unit
+  template-declaration
+    template-parameter-clause
+      template-parameter-list
+        type-parameter
+          parameter-key KW_CLASS:class
+          identifier T
+    class-specifier type
+      class-key KW_STRUCT:struct
+  enum-specifier value_kind
+    enumerator VALUE_FIRST
+    enumerator VALUE_LAST
+  function-definition
+    decl-specifier-seq
+      decl-specifier KW_BOOL:bool
+    declarator
+      identifier outside_range
+      parameter-clause
+        parameter-declaration
+          decl-specifier-seq
+            decl-specifier TT_IDENTIFIER:value_kind
+          declarator
+            identifier type
+    compound-statement
+      return-statement
+        binary-expression OP_LOR:||
+          binary-expression OP_LT:<
+            id-expression type
+            id-expression VALUE_FIRST
+          binary-expression OP_GT:>
+            id-expression type
+            id-expression VALUE_LAST
+end translation unit

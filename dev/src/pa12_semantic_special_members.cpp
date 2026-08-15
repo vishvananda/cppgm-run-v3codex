@@ -382,6 +382,8 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 	BindingRecord& declaration = program_->bindings[binding];
 	declaration.inline_function = declaration.inline_function ||
 		(defaulted && defaulted_inline);
+	declaration.weak_odr = declaration.weak_odr ||
+		(defaulted && defaulted_inline);
 	const EntityId entity = declaration.member_owner;
 	if (defaulted && entity != kNoEntity &&
 		program_->entities[entity].layout_complete)
@@ -732,6 +734,7 @@ BindingId SemanticAnalyzer::DeclareImplicitCopyMoveConstructor(
 	declaration.access = ACCESS_PUBLIC;
 	declaration.constructor = true;
 	declaration.inline_function = true;
+	declaration.weak_odr = true;
 	FunctionInfo& function = GetMutableFunction(constructor);
 	function.member_owner = owner.type;
 	function.constructor = true;
@@ -1268,15 +1271,32 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	if (!path.global && path.Size() <= 1)
 		throw std::runtime_error(
 			"unqualified special member definition outside a class");
+	const ScopeId path_owner = declaration_scope == kNoScope ?
+		ResolveOwner(scope, path) : program_->ParentScope(declaration_scope);
 	ScopeId structured_owner = kNoScope;
 	const NodeId structure = DeclaratorNameStructure(declarator);
 	if (declaration_scope == kNoScope && structure != kNoNode)
-		(void)LookupStructuredName(structure, scope,
-			LOOKUP_ORDINARY, &structured_owner);
+	{
+		const EntityId previous_context = current_class_context_;
+		const EntityId provisional_class = path_owner == kNoScope ?
+			kNoEntity : program_->EntityForScope(path_owner);
+		if (provisional_class != kNoEntity)
+			current_class_context_ = provisional_class;
+		try
+		{
+			(void)LookupStructuredName(structure, scope,
+				LOOKUP_ORDINARY, &structured_owner);
+		}
+		catch (...)
+		{
+			current_class_context_ = previous_context;
+			throw;
+		}
+		current_class_context_ = previous_context;
+	}
 	const ScopeId owner = declaration_scope == kNoScope ?
-		(structured_owner != kNoScope ? structured_owner :
-			ResolveOwner(scope, path)) :
-		program_->ParentScope(declaration_scope);
+		(structured_owner != kNoScope ? structured_owner : path_owner) :
+		path_owner;
 	const EntityId entity = owner == kNoScope ? kNoEntity :
 		program_->EntityForScope(owner);
 	if (entity == kNoEntity)

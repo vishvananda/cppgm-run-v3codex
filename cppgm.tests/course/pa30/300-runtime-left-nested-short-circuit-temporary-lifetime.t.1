@@ -1,0 +1,31 @@
+int alive;
+int destroyed;
+int observed_alive;
+
+struct Probe
+{
+  Probe() { ++alive; }
+  ~Probe() { --alive; ++destroyed; }
+};
+
+bool use(const Probe&) noexcept { return false; }
+
+bool observe() noexcept
+{
+  observed_alive = alive;
+  return true;
+}
+
+int main()
+{
+  bool gate = true;
+  bool result = (gate || use(Probe())) || observe();
+  if (!result || alive != 0 || destroyed != 0 || observed_alive != 0)
+    return 1;
+
+  gate = false;
+  result = (gate || use(Probe())) || observe();
+  if (!result || observed_alive != 1 || alive != 0 || destroyed != 1)
+    return 2;
+  return 0;
+}

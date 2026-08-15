@@ -1,0 +1,29 @@
+declare function @element__operator_(%arg0 : ptr, %arg1 : ptr [pass=reference]) -> ptr [binding=strong, object=_ZN7elementaSERKS_]
+
+function @assign(%left : ptr [pass=reference], %right : ptr [pass=reference]) -> ptr [binding=strong, object=_Z6assignR6holderRKS_] {
+  slot $left : ptr
+  slot $right : ptr
+
+  block ^entry:
+    store ptr %left, $left
+    store ptr %right, $right
+    %t1 = load ptr $left
+    %t2 = load ptr $right
+    %t3 = call ptr @holder__operator_(%t1, %t2)
+    return ptr %t3
+}
+function @holder__operator_(%this : ptr, %__param1 : ptr [pass=reference]) -> ptr [binding=weak, object=_ZN6holderaSERKS_] {
+  slot $this : ptr
+  slot $__param1 : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %__param1, $__param1
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr $__param1
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = call ptr @element__operator_(%t2, %t4)
+    %t6 = load ptr $this
+    return ptr %t6
+}

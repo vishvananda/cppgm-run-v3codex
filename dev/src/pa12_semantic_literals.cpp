@@ -143,6 +143,45 @@ std::size_t CharacterUnitCount(const std::string& spelling,
 
 }
 
+bool StringLiteralTokenEnd(const std::string& spelling, std::size_t* end)
+{
+	std::size_t position = 0;
+	if (spelling.compare(0, 2, "u8") == 0) position = 2;
+	else if (!spelling.empty() &&
+		(spelling[0] == 'L' || spelling[0] == 'u' || spelling[0] == 'U'))
+		position = 1;
+	const bool raw = position < spelling.size() && spelling[position] == 'R';
+	if (raw) ++position;
+	if (position >= spelling.size() || spelling[position] != '"') return false;
+	if (raw)
+	{
+		const std::size_t delimiter_begin = position + 1;
+		const std::size_t open = spelling.find('(', delimiter_begin);
+		if (open == std::string::npos || open - delimiter_begin > 16)
+			return false;
+		const std::string close = ")" +
+			spelling.substr(delimiter_begin, open - delimiter_begin) + "\"";
+		const std::size_t close_position = spelling.find(close, open + 1);
+		if (close_position == std::string::npos) return false;
+		*end = close_position + close.size();
+		return true;
+	}
+	for (++position; position < spelling.size(); ++position)
+	{
+		if (spelling[position] == '\\')
+		{
+			if (++position >= spelling.size()) return false;
+			continue;
+		}
+		if (spelling[position] == '"')
+		{
+			*end = position + 1;
+			return true;
+		}
+	}
+	return false;
+}
+
 std::int64_t SemanticAnalyzer::ParseInteger(const std::string& spelling) const
 {
 	const std::size_t quote = spelling.find('\'');
@@ -463,20 +502,10 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
 	const std::string& spelling, ScopeId scope, TypeId target,
 	ExpressionInfo* result)
 {
-	if (spelling.empty() || spelling[0] != '"') return false;
-	std::size_t close = 1;
-	for (; close < spelling.size(); ++close)
-	{
-		if (spelling[close] == '\\')
-		{
-			if (++close >= spelling.size())
-				throw std::runtime_error("unterminated string literal escape");
-			continue;
-		}
-		if (spelling[close] == '"') break;
-	}
-	if (close >= spelling.size() || close + 1 == spelling.size()) return false;
-	const std::string suffix = spelling.substr(close + 1);
+	std::size_t literal_end = 0;
+	if (!StringLiteralTokenEnd(spelling, &literal_end) ||
+		literal_end == spelling.size()) return false;
+	const std::string suffix = spelling.substr(literal_end);
 	if (!suffix.empty() && suffix[0] == ' ') return false;
 	if (suffix.empty() || suffix[0] != '_')
 		throw std::runtime_error("invalid user-defined literal suffix");
@@ -488,7 +517,7 @@ bool SemanticAnalyzer::TryAnalyzeUserDefinedStringLiteral(
 	std::size_t character_count = 0;
 	std::vector<ExpressionInfo> arguments;
 	arguments.push_back(MakeStringLiteral(
-		spelling.substr(0, close + 1), &character_count));
+		spelling.substr(0, literal_end), &character_count));
 	ExpressionInfo count = MakeLiteral(
 		program_->types.Fundamental(FUND_INT),
 		InternNumber(static_cast<std::int64_t>(character_count)));

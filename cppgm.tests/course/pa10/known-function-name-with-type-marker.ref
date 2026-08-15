@@ -1,0 +1,57 @@
+1 translation units
+start translation unit 1
+translation-unit
+  class-specifier Text
+    class-key KW_STRUCT:struct
+  class-specifier HeaderScanner
+    class-key KW_STRUCT:struct
+    simple-declaration
+      decl-specifier-seq
+        decl-specifier TT_IDENTIFIER:Text
+      init-declarator-list
+        init-declarator
+          declarator
+            ptr-operator OP_AMP:&
+            identifier StartTokenSpelling
+            parameter-clause
+    simple-declaration
+      decl-specifier-seq
+        decl-specifier KW_VOID:void
+      init-declarator-list
+        init-declarator
+          declarator
+            identifier AppendTake
+            parameter-clause
+              parameter-declaration
+                decl-specifier-seq
+                  decl-specifier TT_IDENTIFIER:Text
+                declarator
+                  ptr-operator OP_STAR:*
+    function-definition
+      decl-specifier-seq
+        decl-specifier KW_BOOL:bool
+      declarator
+        identifier ScanHeaderName
+        parameter-clause
+      compound-statement
+        simple-declaration
+          decl-specifier-seq
+            decl-specifier TT_IDENTIFIER:Text
+          init-declarator-list
+            init-declarator
+              declarator
+                ptr-operator OP_AMP:&
+                identifier spelling
+              initializer
+                call-expression
+                  id-expression StartTokenSpelling
+                  argument-list
+        expression-statement
+          call-expression
+            id-expression AppendTake
+            argument-list
+              unary-expression OP_AMP:&
+                id-expression spelling
+        return-statement
+          keyword-literal KW_TRUE:true
+end translation unit

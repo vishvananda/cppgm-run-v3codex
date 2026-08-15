@@ -1,8 +1,10 @@
 #include "pa15_lowering.h"
 #include "pa15_graph_lowering.h"
 #include "pa15_control_flow_lowering.h"
+#include "pa15_conditional_lowering.h"
 #include "pa15_lowering_abi.h"
 #include "pa15_lowering_support.h"
+#include "pa15_internal_identity.h"
 #include "pa15_scalar_unary_lowering.h"
 #include "pa15_source_type_lowering.h"
 #include "pa15_static_member_symbol_lowering.h"
@@ -52,6 +54,7 @@ typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
 class GraphLowerer :
 	private pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>,
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
+	private pa15_lowering_detail::ConditionalLowering<GraphLowerer>,
 	private pa15_lowering_detail::ScalarUnaryLowering<GraphLowerer>,
 	private pa15_lowering_detail::StaticMemberSymbolLowering<GraphLowerer>,
 	private pa18_lowering_detail::PolymorphismActionLowering<GraphLowerer>,
@@ -101,7 +104,8 @@ public:
 		  full_expression_uses_linked_dispatch_(false), full_expression_uses_branch_cleanup_(false),
 		  full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
 		  full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
-		  presentation_names_(program_), source_types_(program_),
+		  internal_identities_(program_), presentation_names_(program_),
+		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,
 			function_definition_, polymorphism_.class_vtable_symbols)
@@ -163,9 +167,25 @@ public:
 	{
 		RegisterAggregateHelpers();
 		ScanTop(graph_.root);
+		std::vector<std::uint32_t> callee_nodes_by_symbol(output_.symbols.size(),
+			kNoDumpEdge);
 		for (std::size_t node = 0; node < arena_.nodes.size(); ++node)
 			if (arena_.nodes[node].kind == DUMP_CALLEE && arena_.nodes[node].binding != kNoBinding &&
-				function_symbols_[arena_.nodes[node].binding] == kNoLowId) RegisterFunction(node);
+				function_symbols_[arena_.nodes[node].binding] == kNoLowId)
+				RegisterFunction(node);
+		for (std::size_t node = 0; node < arena_.nodes.size(); ++node)
+			if (arena_.nodes[node].kind == DUMP_CALLEE &&
+				arena_.nodes[node].binding != kNoBinding)
+			{
+				const SymbolId symbol =
+					function_symbols_[arena_.nodes[node].binding];
+				if (callee_nodes_by_symbol.size() <= symbol)
+					callee_nodes_by_symbol.resize(
+						static_cast<std::size_t>(symbol) + 1, kNoDumpEdge);
+				if (callee_nodes_by_symbol[symbol] == kNoDumpEdge)
+					callee_nodes_by_symbol[symbol] =
+						static_cast<std::uint32_t>(node);
+			}
 		RegisterLocalStaticObjects();
 		pa18_lowering_detail::PreparePolymorphism(graph_, output_, stats_,
 			source_ordinal_, function_symbols_, &polymorphism_);
@@ -187,9 +207,21 @@ public:
 			EmitThreadLocalInitializers();
 		EmitDynamicInitializer();
 		EmitDynamicFinalizer();
+		for (std::size_t symbol = 0;
+			symbol < callee_nodes_by_symbol.size(); ++symbol)
+			if (callee_nodes_by_symbol[symbol] != kNoDumpEdge &&
+				output_.symbols[symbol].referenced &&
+				!output_.symbols[symbol].declaration_emitted &&
+				!output_.symbols[symbol].definition_emitted)
+			{
+				output_.declarations.push_back(
+					LowerDeclaration(callee_nodes_by_symbol[symbol]));
+				output_.symbols[symbol].declaration_emitted = true;
+			}
 	}
 private:
 	friend class pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>;
+	friend class pa15_lowering_detail::ConditionalLowering<GraphLowerer>;
 	friend class pa28_lowering_detail::VirtualBaseBoundaryShape<GraphLowerer>;
 	friend class pa28_lowering_detail::VirtualBaseContractLookup<GraphLowerer>;
 	friend class pa15_lowering_detail::ControlFlowLowering<GraphLowerer>;
@@ -326,7 +358,8 @@ private:
 		const bool internal = binding.unnamed_namespace_linkage ||
 			canonical_binding.unnamed_namespace_linkage ||
 			(binding.storage_class == STORAGE_CLASS_STATIC &&
-			 binding.member_owner == kNoEntity);
+			 binding.member_owner == kNoEntity) ||
+			internal_identities_.BindingHasInternalIdentity(node.binding);
 		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
 		identity.kind = kind;
@@ -567,7 +600,7 @@ private:
 		FunctionDeclaration declaration;
 		declaration.symbol = function_symbols_[record.binding];
 		FillBoundary(node, &declaration.parameters, &declaration.result,
-			&declaration.variadic);
+			&declaration.variadic, true);
 		return declaration;
 	}
 	GlobalDeclaration LowerGlobalDeclaration(std::uint32_t node) const
@@ -1828,23 +1861,41 @@ private:
 		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
 		EmitBranch(condition, then_block, else_block);
 		SelectBlock(then_block);
-		Instruction yes_store(Instruction::STORE);
-		yes_store.type = type;
-		yes_store.first = LowerConvertedValue(children[1], type, false);
-		yes_store.second = slot;
-		Emit(yes_store);
-		LowerBranchCleanupActions(node, children[1]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitJump(end_block);
+		if (arena_.nodes[children[1]].kind == DUMP_THROW_EXPRESSION)
+			(void)LowerValue(children[1]);
+		else
+		{
+			Instruction yes_store(Instruction::STORE);
+			yes_store.type = type;
+			yes_store.first = LowerConvertedValue(children[1], type, false);
+			yes_store.second = slot;
+			Emit(yes_store);
+		}
+		if (!CurrentBlock().terminated)
+		{
+			LowerBranchCleanupActions(node, children[1]);
+			if (full_expression_cleanup_active_)
+				PauseFullExpressionCleanupSegment();
+			EmitJump(end_block);
+		}
 		SelectBlock(else_block);
-		Instruction no_store(Instruction::STORE);
-		no_store.type = type;
-		no_store.first = LowerConvertedValue(children[2], type, false);
-		no_store.second = slot;
-		Emit(no_store);
-		LowerBranchCleanupActions(node, children[2]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitJump(end_block);
+		if (arena_.nodes[children[2]].kind == DUMP_THROW_EXPRESSION)
+			(void)LowerValue(children[2]);
+		else
+		{
+			Instruction no_store(Instruction::STORE);
+			no_store.type = type;
+			no_store.first = LowerConvertedValue(children[2], type, false);
+			no_store.second = slot;
+			Emit(no_store);
+		}
+		if (!CurrentBlock().terminated)
+		{
+			LowerBranchCleanupActions(node, children[2]);
+			if (full_expression_cleanup_active_)
+				PauseFullExpressionCleanupSegment();
+			EmitJump(end_block);
+		}
 		SelectBlock(end_block);
 		const Operand result = Temp(type);
 		Instruction load(Instruction::LOAD);
@@ -1853,64 +1904,6 @@ private:
 		load.first = slot;
 		Emit(load);
 		return result;
-	}
-
-	Operand LowerDiscardedConditional(std::uint32_t node,
-		const NodeChildren& children)
-	{
-		const BlockId then_block = AddBlock(NewLabel("discard_cond_then"));
-		const BlockId else_block = AddBlock(NewLabel("discard_cond_else"));
-		const BlockId end_block = AddBlock(NewLabel("discard_cond_end"));
-		const Operand condition = LowerCondition(children[0]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitBranch(condition, then_block, else_block);
-		SelectBlock(then_block);
-		(void)LowerValue(children[1]);
-		LowerBranchCleanupActions(node, children[1]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitJump(end_block);
-		SelectBlock(else_block);
-		(void)LowerValue(children[2]);
-		LowerBranchCleanupActions(node, children[2]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitJump(end_block);
-		SelectBlock(end_block);
-		return Operand(0, LowVoid());
-	}
-
-	Operand LowerConditionalAddress(std::uint32_t node,
-		const NodeChildren& children)
-	{
-		if (children.size() != 3)
-			throw std::runtime_error("invalid semantic address conditional");
-		const Operand slot(EnsureGeneratedSlot(node, "condaddr", LowPtr()),
-			LowPtr());
-		const BlockId then_block = AddBlock(NewLabel("condaddr_then"));
-		const BlockId else_block = AddBlock(NewLabel("condaddr_else"));
-		const BlockId end_block = AddBlock(NewLabel("condaddr_end"));
-		const Operand condition = LowerCondition(children[0]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitBranch(condition, then_block, else_block);
-		SelectBlock(then_block);
-		Instruction yes_store(Instruction::STORE);
-		yes_store.type = LowPtr();
-		yes_store.first = AddressOfStorage(LowerStorage(children[1]));
-		yes_store.second = slot;
-		Emit(yes_store);
-		LowerBranchCleanupActions(node, children[1]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitJump(end_block);
-		SelectBlock(else_block);
-		Instruction no_store(Instruction::STORE);
-		no_store.type = LowPtr();
-		no_store.first = AddressOfStorage(LowerStorage(children[2]));
-		no_store.second = slot;
-		Emit(no_store);
-		LowerBranchCleanupActions(node, children[2]);
-		if (full_expression_cleanup_active_) PauseFullExpressionCleanupSegment();
-		EmitJump(end_block);
-		SelectBlock(end_block);
-		return LoadStorage(slot, LowPtr());
 	}
 
 	void PushStatementNode(std::uint32_t node)
@@ -2977,6 +2970,7 @@ private:
 		full_expression_branch_cleanup_tails_;
 	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;
 	std::vector<IdentityTypeId> identity_type_cache_;
+	pa15_lowering_detail::InternalIdentityClassifier internal_identities_;
 	PresentationNameMap presentation_names_;
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	pa16_lowering_detail::StaticInitializerLowering static_initializers_;

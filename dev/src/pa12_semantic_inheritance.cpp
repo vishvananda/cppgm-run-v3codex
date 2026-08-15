@@ -39,7 +39,13 @@ bool SemanticAnalyzer::HasClassPrivilege(EntityId owner) const
 		const EntityId member_owner = program_->bindings[function].member_owner;
 		for (EntityId context = member_owner; context != kNoEntity;
 			context = program_->entities[context].enclosing_class)
+		{
 			if (context == owner) return true;
+			const std::uint64_t class_key =
+				(static_cast<std::uint64_t>(owner) << 32) | context;
+			++access_grant_probes_;
+			if (friend_class_grants_.Find(class_key)) return true;
+		}
 		const std::uint64_t key =
 			(static_cast<std::uint64_t>(owner) << 32) | function;
 		++access_grant_probes_;
@@ -56,6 +62,18 @@ bool SemanticAnalyzer::HasDerivedClassPrivilege(EntityId base) const
 	for (EntityId context = current_class_context_; context != kNoEntity;
 		context = program_->entities[context].enclosing_class)
 		if (AccessIsBaseOf(base, context)) return true;
+	for (BindingId function = current_function_context_;
+		function != kNoBinding;)
+	{
+		function = program_->bindings[function].canonical;
+		for (EntityId context = program_->bindings[function].member_owner;
+			context != kNoEntity;
+			context = program_->entities[context].enclosing_class)
+			if (AccessIsBaseOf(base, context)) return true;
+		if (function >= function_fact_by_binding_.size() ||
+			function_fact_by_binding_[function] == kNoDumpEdge) break;
+		function = GetFunction(function).lexical_access_function;
+	}
 	return false;
 }
 
@@ -121,17 +139,13 @@ bool SemanticAnalyzer::CanAccessMember(BindingId member,
 		(declaration.kind == BIND_FUNCTION &&
 		 declaration.member_owner != kNoEntity &&
 		 !declaration.static_member_function);
-	if (binding.access_owner != kNoEntity)
-	{
-		if (binding.access == ACCESS_PUBLIC) return true;
-		if (binding.access == ACCESS_PRIVATE)
-			return HasClassPrivilege(binding.access_owner);
-		const bool permitted = HasClassPrivilege(binding.access_owner) ||
-			HasDerivedClassPrivilege(binding.access_owner);
-		return permitted && (!object_member || object_class == kNoEntity ||
-			HasProtectedObjectPrivilege(binding.access_owner, object_class));
-	}
-	const EntityId owner = binding.member_owner;
+	// A class-scope using-declaration owns the access it republishes, while the
+	// canonical member still belongs to its original class.  Treat that access
+	// owner as the effective member owner so a later naming class can traverse
+	// inheritance (including a private edge for which it has friendship) before
+	// applying the using-declaration's access.
+	const EntityId owner = binding.access_owner != kNoEntity ?
+		binding.access_owner : binding.member_owner;
 	if (owner == kNoEntity) return true;
 	if (naming_class == kNoEntity) naming_class = owner;
 	bool all_public = false;
@@ -1061,7 +1075,25 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		(program_->entities[conditional_entity].flavor == NAMED_STRUCT ||
 		 program_->entities[conditional_entity].flavor == NAMED_CLASS ||
 		 program_->entities[conditional_entity].flavor == NAMED_UNION);
-	if (yes_object == no_object && class_conditional)
+	const bool yes_throw = dump_.nodes[yes.node].kind == DUMP_THROW_EXPRESSION;
+	const bool no_throw = dump_.nodes[no.node].kind == DUMP_THROW_EXPRESSION;
+	if (yes_throw && !no_throw)
+	{
+		if (IsClassObjectType(no.type) && no.category == VALUE_PRVALUE)
+			return BuildClassConditional(
+				condition.node, yes, no, no.type, false);
+		type = no.type;
+		category = no.category;
+	}
+	else if (no_throw && !yes_throw)
+	{
+		if (IsClassObjectType(yes.type) && yes.category == VALUE_PRVALUE)
+			return BuildClassConditional(
+				condition.node, yes, no, yes.type, false);
+		type = yes.type;
+		category = yes.category;
+	}
+	else if (yes_object == no_object && class_conditional)
 	{
 		const bool same_glvalue = yes.category == no.category &&
 			(yes.category == VALUE_LVALUE || yes.category == VALUE_XVALUE) &&
@@ -1083,6 +1115,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 	{
 		type = EffectiveType(yes.type);
 		category = yes.category == no.category ? yes.category : VALUE_PRVALUE;
+	}
+	else if (yes_object == no_object &&
+		(IsArithmetic(yes.type) || IsPointer(yes.type) ||
+		 IsMemberPointer(yes.type) || IsNullptr(yes.type)) &&
+		(yes.category != no.category || yes.category == VALUE_PRVALUE))
+	{
+		// When either scalar arm undergoes lvalue-to-rvalue conversion, its
+		// top-level cv-qualification is discarded before the conditional's
+		// same-type test.  In particular, an enum must not be promoted merely
+		// because its other arm is a const lvalue of that enum type.
+		type = yes_object;
+		category = VALUE_PRVALUE;
 	}
 	else if (IsArithmetic(yes.type) && IsArithmetic(no.type))
 		type = CommonArithmeticType(yes.type, no.type);
@@ -1147,7 +1191,18 @@ ExpressionInfo SemanticAnalyzer::AnalyzeConditional(NodeId node, ScopeId scope)
 		type = DependentFunctionTemplateResultShape();
 		category = VALUE_PRVALUE;
 	}
-	if (type == kNoType) throw std::runtime_error("incompatible conditional arms");
+	if (type == kNoType)
+		throw std::runtime_error("incompatible conditional arms at " +
+			arena_->SourceFile(node) + ":" +
+			std::to_string(arena_->SourceLine(node)) + ":" +
+			std::to_string(arena_->SourceColumn(node)) + " (" +
+			program_->RenderType(yes.type) + " and " +
+			program_->RenderType(no.type) + ") in " +
+			(current_function_context_ == kNoBinding ? std::string("<namespace>") :
+			 program_->names.Get(program_->bindings[current_function_context_].name)) +
+			" (" + arena_->Tag(children[1]) + ": " +
+			PayloadSource(children[1]) + "; " + arena_->Tag(children[2]) + ": " +
+			PayloadSource(children[2]) + ")");
 	if (IsPointer(type))
 	{
 		if (yes.integer_literal_zero || IsNullptr(yes.type))

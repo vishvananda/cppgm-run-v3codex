@@ -20,6 +20,77 @@ template <class Derived>
 class ParserNameFacts
 {
 protected:
+	bool StartsConditionDeclaration() const
+	{
+		const Derived& parser = static_cast<const Derived&>(*this);
+		return parser.At(KW_TYPENAME) || parser.At(KW_CLASS) ||
+			parser.At(KW_STRUCT) || parser.At(KW_UNION) ||
+			parser.At(KW_ENUM) || parser.At(KW_DECLTYPE) ||
+			(parser.At(OP_LSQUARE) && parser.AtOffset(1, OP_LSQUARE)) ||
+			parser.StartsHostedDeclaration(parser.position_) ||
+			(parser.position_ < parser.tokens_.size() &&
+			 IsDeclSpecifierKeyword(parser.tokens_[parser.position_].Kind())) ||
+			(parser.IsLikelyTypeIdentifier(parser.position_) &&
+			 !parser.AtOffset(1, OP_COLON2)) ||
+			(((parser.AtIdentifier() && parser.AtOffset(1, OP_COLON2)) ||
+			  parser.At(OP_COLON2)) && parser.QualifiedStartsType());
+	}
+
+	void PredeclareClassTypeNames()
+	{
+		Derived& parser = static_cast<Derived&>(*this);
+		std::size_t scan = parser.position_;
+		std::size_t brace_depth = 0;
+		while (scan < parser.tokens_.size())
+		{
+			const std::uint16_t kind = parser.tokens_[scan].Kind();
+			if (kind == static_cast<std::uint16_t>(OP_RBRACE))
+			{
+				if (brace_depth == 0) return;
+				--brace_depth;
+				++scan;
+				continue;
+			}
+			if (kind == static_cast<std::uint16_t>(OP_LBRACE))
+			{
+				++brace_depth;
+				++scan;
+				continue;
+			}
+			if (brace_depth != 0 ||
+				(kind != static_cast<std::uint16_t>(KW_CLASS) &&
+				 kind != static_cast<std::uint16_t>(KW_STRUCT) &&
+				 kind != static_cast<std::uint16_t>(KW_UNION) &&
+				 kind != static_cast<std::uint16_t>(KW_ENUM)))
+			{
+				++scan;
+				continue;
+			}
+			std::size_t name = scan + 1;
+			if (kind == static_cast<std::uint16_t>(KW_ENUM) &&
+				name < parser.tokens_.size() &&
+				(parser.tokens_[name].Kind() == static_cast<std::uint16_t>(KW_CLASS) ||
+				 parser.tokens_[name].Kind() == static_cast<std::uint16_t>(KW_STRUCT)))
+				++name;
+			if (name >= parser.tokens_.size() ||
+				parser.tokens_[name].Kind() != kIdentifierToken)
+			{
+				++scan;
+				continue;
+			}
+			std::size_t after = name + 1;
+			if (after < parser.tokens_.size() &&
+				parser.tokens_[after].Kind() == kIdentifierToken &&
+				parser.Spelling(after) == "final") ++after;
+			if (after < parser.tokens_.size() &&
+				(parser.tokens_[after].Kind() == static_cast<std::uint16_t>(OP_LBRACE) ||
+				 parser.tokens_[after].Kind() == static_cast<std::uint16_t>(OP_COLON) ||
+				 parser.tokens_[after].Kind() == static_cast<std::uint16_t>(OP_SEMICOLON)))
+				parser.SetNameFact(parser.tokens_[name].spelling, parser.kKnownType);
+			++scan;
+		}
+	}
+
 	bool IsLikelyTypeIdentifier(std::size_t position) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);
@@ -27,7 +98,11 @@ protected:
 			parser.tokens_[position].Kind() != kIdentifierToken) return false;
 		const std::string& name = parser.Spelling(position);
 		if (parser.HasNameFact(parser.tokens_[position].spelling,
+			parser.kActiveNonTypeParameter)) return false;
+		if (parser.HasNameFact(parser.tokens_[position].spelling,
 			parser.kKnownType) || name == "__builtin_va_list") return true;
+		if (parser.HasNameFact(parser.tokens_[position].spelling,
+			parser.kKnownNonTemplate) || !parser.mock_name_convention_) return false;
 		return name.find('C') != std::string::npos ||
 			name.find('T') != std::string::npos ||
 			name.find('Y') != std::string::npos ||
@@ -205,8 +280,8 @@ protected:
 			first_argument_kind == static_cast<std::uint16_t>(KW_CONST) ||
 			first_argument_kind == static_cast<std::uint16_t>(KW_VOLATILE);
 		if (!explicitly_templated && !qualified_candidate && known_non_template &&
-			(!known_template || active_non_type_parameter) &&
-			!unambiguous_type_argument)
+			(active_non_type_parameter ||
+			 (!known_template && !unambiguous_type_argument)))
 		{
 			parser.angle_matches_[opener].close = no_match;
 			parser.angle_matches_[opener].fact_revision =
@@ -215,7 +290,8 @@ protected:
 		}
 		const bool trusted = explicitly_templated || qualified_candidate || known_template ||
 			unambiguous_type_argument ||
-			(!known_non_template && candidate.find('T') != std::string::npos);
+			(parser.mock_name_convention_ && !known_non_template &&
+			 candidate.find('T') != std::string::npos);
 		const typename Derived::Mark mark = parser.Checkpoint();
 		++parser.position_;
 		const std::size_t scan_start = parser.position_;
@@ -489,6 +565,9 @@ protected:
 			qualified = true;
 			++scan;
 		}
+		if (!qualified && last != parser.tokens_.size() &&
+			parser.HasNameFact(parser.tokens_[last].spelling,
+				Derived::kActiveNonTypeParameter)) return false;
 		const bool terminal_template = last != parser.tokens_.size() &&
 			parser.HasNameFact(parser.tokens_[last].spelling,
 				Derived::kKnownTemplate);

@@ -166,9 +166,10 @@ std::uint32_t SemanticAnalyzer::LvalueAddress(ExpressionInfo* expression)
 			return kNoConstexprAddress;
 		// A parameter can be a reference to a function. Its binding remains a
 		// parameter identity, but the referred function has no object extent.
-		const std::int64_t extent = function_storage ? 0 :
-			static_cast<std::int64_t>(program_->SizeOf(
-				EffectiveType(binding.type)));
+		const TypeId object_type = EffectiveType(binding.type);
+		const std::int64_t extent = function_storage ||
+			!IsMeasurableObjectType(object_type, false) ? 0 :
+			static_cast<std::int64_t>(program_->SizeOf(object_type));
 		const std::uint32_t address = InternConstexprAddress(
 			ConstexprAddressValue(function_binding ? CONSTEXPR_ADDRESS_FUNCTION :
 				CONSTEXPR_ADDRESS_BINDING, canonical, 0, 0, extent));

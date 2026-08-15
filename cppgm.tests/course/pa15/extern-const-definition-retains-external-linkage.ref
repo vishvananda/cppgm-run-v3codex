@@ -1,0 +1,7 @@
+global @marker : u32 [binding=strong, object=_Z6marker] = 9
+
+function @read_marker() -> u32 [binding=strong, object=_Z11read_markerv] {
+  block ^entry:
+    %t1 = load u32 @marker
+    return u32 %t1
+}

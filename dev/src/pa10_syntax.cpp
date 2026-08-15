@@ -44,11 +44,9 @@ friend class hosted_extension::Syntax<Parser>; friend class pa25_syntax_detail::
 friend class pa25_syntax_detail::RangeForSyntax<Parser>; friend class pa30_syntax_detail::RegionSyntax<Parser>;
 friend class pa34_syntax_detail::GnuAsmSyntax<Parser>; friend class pa34_syntax_detail::AggregateSyntax<Parser>;
 friend class pa34_syntax_detail::TemplateSyntax<Parser>; friend class pa34_syntax_detail::ControlFlowSyntax<Parser>; public:
-	Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings,
-		SyntaxArena& arena, SyntaxStats* stats)
-		: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats),
-		  position_(0), angle_stop_depth_(0), compound_depth_(0), retained_template_argument_depth_(0),
-		  template_declaration_depth_(0),
+		Parser(const std::vector<SyntaxToken>& tokens, StringTable& strings, SyntaxArena& arena, SyntaxStats* stats, bool mock_name_convention)
+			: tokens_(tokens), strings_(strings), arena_(arena), stats_(stats), mock_name_convention_(mock_name_convention),
+			  position_(0), angle_stop_depth_(0), compound_depth_(0), retained_template_argument_depth_(0), template_declaration_depth_(0),
 		  name_fact_revision_(1), angle_matches_(tokens.size())
 	{
 		if (tokens.size() >= std::numeric_limits<std::uint32_t>::max() - 1)
@@ -173,7 +171,7 @@ private:
 		arena_.AppendImmediateParameterNames(declarator, &parameter_names_);
 		for (std::size_t i = 0; i < parameter_names_.size(); ++i)
 		{ SetNameFact(parameter_names_[i], kKnownType, false);
-			SetNameFact(parameter_names_[i], kKnownNonTemplate); } }
+			SetNameFact(parameter_names_[i], kKnownNonTemplate); SetNameFact(parameter_names_[i], kActiveNonTypeParameter); } }
 	std::runtime_error Error(const std::string& message) const
 	{
 		const std::string location = position_ < tokens_.size() &&
@@ -717,14 +715,13 @@ private:
 	StringTable& strings_;
 	SyntaxArena& arena_;
 	SyntaxStats* stats_;
-	std::size_t position_, angle_stop_depth_, compound_depth_, retained_template_argument_depth_,
-		template_declaration_depth_;
+	bool mock_name_convention_;
+	std::size_t position_, angle_stop_depth_, compound_depth_, retained_template_argument_depth_, template_declaration_depth_;
 	std::uint32_t name_fact_revision_;
 	std::vector<std::uint8_t> name_facts_;
 	std::vector<NameFactChange> name_fact_changes_;
 	std::vector<AngleMatch> angle_matches_;
-	std::vector<TextId> last_declared_names_, parameter_names_,
-		active_non_type_parameter_names_, current_classes_;
+		std::vector<TextId> last_declared_names_, parameter_names_, active_non_type_parameter_names_, current_classes_;
 };
 NodeId Parser::ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type)
 {
@@ -1789,22 +1786,26 @@ NodeId Parser::ParseCondition(SimpleTokenKind terminator)
 {
 	const NodeId condition = arena_.Make("condition");
 	const Mark declaration_mark = Checkpoint();
-	std::string type_name;
-	const NodeId declaration = arena_.Make("condition-declaration");
-	const NodeId specifiers = ParseDeclSpecifierSeq(false, &type_name);
-	if (specifiers != kNoNode)
+	const bool declaration_start = StartsConditionDeclaration();
+	if (declaration_start)
 	{
-		std::string name;
-		const NodeId declarator = ParseDeclarator(false, &name);
-		const NodeId initializer = declarator == kNoNode ? kNoNode :
-			ParseInitializer();
-		if (declarator != kNoNode && initializer != kNoNode && At(terminator))
+		std::string type_name;
+		const NodeId declaration = arena_.Make("condition-declaration");
+		const NodeId specifiers = ParseDeclSpecifierSeq(false, &type_name);
+		if (specifiers != kNoNode)
 		{
-			arena_.Add(declaration, specifiers);
-			arena_.Add(declaration, declarator);
-			arena_.Add(declaration, initializer);
-			arena_.Add(condition, declaration);
-			return condition;
+			std::string name;
+			const NodeId declarator = ParseDeclarator(false, &name);
+			const NodeId initializer = declarator == kNoNode ? kNoNode :
+				ParseInitializer();
+			if (declarator != kNoNode && initializer != kNoNode && At(terminator))
+			{
+				arena_.Add(declaration, specifiers);
+				arena_.Add(declaration, declarator);
+				arena_.Add(declaration, initializer);
+				arena_.Add(condition, declaration);
+				return condition;
+			}
 		}
 	}
 	Rollback(declaration_mark);
@@ -2543,6 +2544,7 @@ NodeId Parser::ParseClass(bool require_semicolon)
 		arena_.Add(declaration, clause);
 	}
 	Expect(OP_LBRACE);
+	PredeclareClassTypeNames();
 	current_classes_.push_back(class_identifier);
 	while (!At(OP_RBRACE))
 	{
@@ -2949,10 +2951,8 @@ NodeId Parser::ParseDeclarationCore(bool in_class)
 }
 namespace pa10_syntax_detail
 {
-void RunSyntaxTranslationUnit(const std::string& path,
-	const std::string& source, const PreprocessingOptions& options,
-	std::ostream* output, SyntaxTreeConsumer* consumer, SyntaxStats* stats,
-	InternedStringTable* retained_strings)
+void RunSyntaxTranslationUnit(const std::string& path, const std::string& source, const PreprocessingOptions& options, std::ostream* output, SyntaxTreeConsumer* consumer,
+	SyntaxStats* stats, InternedStringTable* retained_strings)
 {
 	const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 	if (stats) *stats = SyntaxStats();
@@ -2961,7 +2961,7 @@ void RunSyntaxTranslationUnit(const std::string& path,
 	PreprocessFile(path, source, sink, options,
 		stats ? &stats->preprocessing : 0);
 	SyntaxArena arena(strings, sink.Tokens(), sink.LiteralFacts());
-	Parser parser(sink.Tokens(), strings, arena, stats);
+	Parser parser(sink.Tokens(), strings, arena, stats, output != 0);
 	const std::chrono::steady_clock::time_point parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();
 	const std::size_t rollback_storage = arena.RollbackStorageBytes();

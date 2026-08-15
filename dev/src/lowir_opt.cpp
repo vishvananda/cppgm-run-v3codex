@@ -1134,6 +1134,20 @@ bool exceeds_state_budget(std::size_t blocks, std::size_t facts,
 bool eliminate_dead_slot_stores(Function * function, Stats * stats)
 {
   if(function->slots.empty() || function->blocks.empty()) return false;
+  std::unordered_set<std::string> escaped;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[i].instructions[j];
+      const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+      for(std::size_t k = 0; k < 3; ++k)
+        if(operands[k]->kind == Operand::OP_SLOT &&
+           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
+             (ins.kind == Instruction::IK_STORE && k == 1)))
+          escaped.insert(operands[k]->text);
+      for(std::size_t k = 0; k < ins.args.size(); ++k)
+        if(ins.args[k].kind == Operand::OP_SLOT)
+          escaped.insert(ins.args[k].text);
+    }
   std::size_t instruction_total = 0;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     instruction_total += function->blocks[i].instructions.size();
@@ -1164,7 +1178,8 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
         live.insert(ins.first.text);
       else if(ins.kind == Instruction::IK_STORE &&
-              ins.second.kind == Operand::OP_SLOT)
+              ins.second.kind == Operand::OP_SLOT &&
+              !escaped.count(ins.second.text))
         live.erase(ins.second.text);
       else {
         const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
@@ -1219,7 +1234,9 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
       }
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
         live.insert(ins.first.text);
-      else if(ins.kind == Instruction::IK_STORE && ins.second.kind == Operand::OP_SLOT) {
+      else if(ins.kind == Instruction::IK_STORE &&
+              ins.second.kind == Operand::OP_SLOT &&
+              !escaped.count(ins.second.text)) {
         if(!live.count(ins.second.text)) {
           changed = true;
           if(stats) ++stats->rewrites;

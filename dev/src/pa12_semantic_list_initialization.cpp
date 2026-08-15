@@ -856,16 +856,19 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 			viable[c] = false;
 			continue;
 		}
-		const TypeId* parameters = program_->types.Parameters(constructor.type);
 		for (std::size_t a = 0; a < arity; ++a)
 		{
 			CallConversionFact conversion;
 			conversion.rank = CONVERSION_ELLIPSIS;
 			if (a < function_type.parameter_count)
 			{
+				// Conversion analysis can instantiate templates and intern function
+				// types.  Snapshot this parameter before that work can reallocate
+				// TypeTable's parameter storage.
+				const TypeId parameter =
+					program_->types.Parameters(constructor.type)[a];
 				if (arguments[a].type == kNoType)
 				{
-					const TypeId parameter = parameters[a];
 					if (arena_->IsTag(argument_syntax[a], "braced-init-list"))
 					{
 						conversion = BracedInitializationConversion(
@@ -892,13 +895,13 @@ BindingId SemanticAnalyzer::SelectConstructor(ScopeId scope,
 				}
 				else
 				{
-					conversion = CallConversion(arguments[a], parameters[a],
+					conversion = CallConversion(arguments[a], parameter,
 						&conversion_cache, a);
 					if (ChainsUserConversion(constructor, conversion))
 						conversion = CallConversionFact();
 					if (list_initialization && source_list != kNoNode &&
 						IsBracedNarrowing(
-							arguments[a], parameters[a], &conversion))
+							arguments[a], parameter, &conversion))
 						conversion.rank = CONVERSION_INVALID;
 				}
 			}

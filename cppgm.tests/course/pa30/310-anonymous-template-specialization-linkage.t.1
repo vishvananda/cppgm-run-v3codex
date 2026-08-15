@@ -1,0 +1,19 @@
+namespace
+{
+struct Item
+{
+	int value;
+	explicit Item(int source) : value(source) {}
+};
+}
+
+template <class T>
+__attribute__((noinline)) int item_size(T*)
+{
+	return sizeof(T);
+}
+
+int main()
+{
+	return item_size(static_cast<Item*>(0)) == sizeof(Item) ? 0 : 1;
+}

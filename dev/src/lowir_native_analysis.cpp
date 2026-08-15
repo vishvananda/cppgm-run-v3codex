@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <queue>
+#include <set>
 
 namespace lowir_native {
 namespace analysis {
@@ -114,6 +115,147 @@ void note_instruction_operands(FunctionFacts & facts,
     note_operand(facts, instruction.args[i], position);
 }
 
+void extend_loop_liveness(FunctionFacts & facts,
+    const lowir_model::LowirFunction & function,
+    const std::unordered_set<std::string> & parameter_names,
+    const std::unordered_map<std::string, std::size_t> & definition_blocks,
+    const std::vector<std::pair<std::string, std::size_t> > & block_uses,
+    const std::vector<std::size_t> & block_first_position,
+    const std::vector<std::size_t> & block_last_position,
+    const std::vector<std::vector<std::size_t> > & clobber_positions)
+{
+  const std::size_t block_count = function.blocks.size();
+  std::unordered_map<std::string, std::size_t> block_index;
+  for(std::size_t i = 0; i < block_count; ++i)
+    block_index[function.blocks[i].label] = i;
+  std::vector<std::vector<std::size_t> > loop_ends_at(block_count);
+  for(std::size_t i = 0; i < block_count; ++i) {
+    if(function.blocks[i].instructions.empty()) continue;
+    const Instruction & terminal = function.blocks[i].instructions.back();
+    std::vector<std::string> targets;
+    if(terminal.kind == Instruction::IK_JUMP) targets.push_back(terminal.first.text);
+    else if(terminal.kind == Instruction::IK_BRANCH) {
+      targets.push_back(terminal.second.text);
+      targets.push_back(terminal.third.text);
+    } else if(terminal.kind == Instruction::IK_SWITCH) {
+      targets.push_back(terminal.second.text);
+      for(std::size_t k = 1; k < terminal.args.size(); k += 2)
+        targets.push_back(terminal.args[k].text);
+    }
+    for(std::size_t j = 0; j < targets.size(); ++j) {
+      const std::unordered_map<std::string, std::size_t>::const_iterator found =
+        block_index.find(targets[j]);
+      if(found != block_index.end() && found->second <= i)
+        loop_ends_at[found->second].push_back(i);
+    }
+  }
+  std::vector<std::vector<std::size_t> > call_loop_ends_at(block_count);
+  for(std::size_t start = 0; start < block_count; ++start)
+    for(std::size_t i = 0; i < loop_ends_at[start].size(); ++i) {
+      const std::size_t end = loop_ends_at[start][i];
+      const std::vector<std::size_t>::const_iterator call = std::lower_bound(
+        facts.calls.begin(), facts.calls.end(), block_first_position[start]);
+      if(call != facts.calls.end() && *call <= block_last_position[end])
+        call_loop_ends_at[start].push_back(end);
+    }
+  std::vector<std::size_t> loop_end_for_block(block_count, 0);
+  std::vector<std::size_t> loop_start_for_block(block_count, block_count);
+  std::vector<std::size_t> call_loop_start_for_block(block_count, block_count);
+  std::vector<std::vector<std::size_t> > loop_starts_expiring_at(
+    block_count + 1);
+  std::vector<std::vector<std::size_t> > call_loop_starts_expiring_at(
+    block_count + 1);
+  std::multiset<std::size_t> active_loop_starts;
+  std::multiset<std::size_t> active_call_loop_starts;
+  std::priority_queue<std::size_t> active_loop_ends;
+  for(std::size_t block = 0; block < block_count; ++block) {
+    for(std::size_t i = 0; i < loop_starts_expiring_at[block].size(); ++i) {
+      const std::multiset<std::size_t>::iterator active =
+        active_loop_starts.find(loop_starts_expiring_at[block][i]);
+      if(active != active_loop_starts.end()) active_loop_starts.erase(active);
+    }
+    for(std::size_t i = 0;
+        i < call_loop_starts_expiring_at[block].size(); ++i) {
+      const std::multiset<std::size_t>::iterator active =
+        active_call_loop_starts.find(call_loop_starts_expiring_at[block][i]);
+      if(active != active_call_loop_starts.end())
+        active_call_loop_starts.erase(active);
+    }
+    for(std::size_t i = 0; i < loop_ends_at[block].size(); ++i) {
+      active_loop_ends.push(loop_ends_at[block][i]);
+      active_loop_starts.insert(block);
+      if(loop_ends_at[block][i] + 1 < loop_starts_expiring_at.size())
+        loop_starts_expiring_at[loop_ends_at[block][i] + 1].push_back(block);
+    }
+    for(std::size_t i = 0; i < call_loop_ends_at[block].size(); ++i) {
+      active_call_loop_starts.insert(block);
+      if(call_loop_ends_at[block][i] + 1 <
+         call_loop_starts_expiring_at.size())
+        call_loop_starts_expiring_at[call_loop_ends_at[block][i] + 1].
+          push_back(block);
+    }
+    while(!active_loop_ends.empty() && active_loop_ends.top() < block)
+      active_loop_ends.pop();
+    loop_end_for_block[block] = active_loop_ends.empty() ? block :
+      active_loop_ends.top();
+    if(!active_loop_starts.empty())
+      loop_start_for_block[block] = *active_loop_starts.rbegin();
+    if(!active_call_loop_starts.empty())
+      call_loop_start_for_block[block] = *active_call_loop_starts.rbegin();
+  }
+  for(std::size_t i = 0; i < block_uses.size(); ++i) {
+    const std::size_t use_block = block_uses[i].second;
+    const std::size_t loop_end = loop_end_for_block[use_block];
+    const std::unordered_map<std::string, std::size_t>::const_iterator definition =
+      definition_blocks.find(block_uses[i].first);
+    const bool parameter = parameter_names.count(block_uses[i].first) != 0;
+    const bool loop_invariant =
+      loop_start_for_block[use_block] != block_count &&
+      definition != definition_blocks.end() &&
+      (parameter || definition->second < loop_start_for_block[use_block]);
+    if(loop_invariant) {
+      facts.loop_invariant_values.insert(block_uses[i].first);
+      facts.last_use[block_uses[i].first] = std::max(
+        facts.last_use[block_uses[i].first], block_last_position[loop_end]);
+    }
+    if(call_loop_start_for_block[use_block] != block_count &&
+       definition != definition_blocks.end() &&
+       (parameter ||
+        definition->second < call_loop_start_for_block[use_block]))
+      facts.live_across_call.insert(block_uses[i].first);
+  }
+  for(std::unordered_map<std::string, std::size_t>::const_iterator value =
+      facts.last_use.begin(); value != facts.last_use.end(); ++value) {
+    const std::unordered_map<std::string, std::size_t>::const_iterator definition =
+      facts.definition.find(value->first);
+    if(definition == facts.definition.end()) continue;
+    const std::size_t start = facts.parameters.count(value->first) ? 0 :
+      definition->second + 1;
+    const std::size_t end = value->second;
+    if(start >= end) continue;
+    unsigned mask = 0;
+    for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg) {
+      const std::vector<std::size_t>::const_iterator clobber = std::lower_bound(
+        clobber_positions[reg].begin(), clobber_positions[reg].end(), start);
+      if(clobber != clobber_positions[reg].end() && *clobber < end)
+        mask |= 1u << reg;
+    }
+    if(mask) facts.live_across_clobbers[value->first] |= mask;
+    const std::vector<std::size_t>::const_iterator call = std::lower_bound(
+      facts.calls.begin(), facts.calls.end(), start);
+    if(call != facts.calls.end() && *call < end)
+      facts.live_across_call.insert(value->first);
+  }
+  for(std::size_t i = 0; i < block_count; ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const Instruction & instruction = function.blocks[i].instructions[j];
+      if(instruction.kind == Instruction::IK_INDEX &&
+         parameter_names.count(instruction.first.text) &&
+         facts.live_across_call.count(instruction.dest))
+        facts.forwarded_parameters_across_call.insert(instruction.first.text);
+    }
+}
+
 }  // namespace
 
 unsigned register_mask(X64Register reg)
@@ -129,6 +271,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   std::unordered_set<std::string> parameter_names;
   std::unordered_map<std::string, std::size_t> definition_blocks;
   std::vector<std::pair<std::string, std::size_t> > block_uses;
+  std::vector<std::size_t> block_first_position(function.blocks.size(), 0);
   std::vector<std::size_t> block_last_position(function.blocks.size(), 0);
   std::vector<std::vector<std::size_t> > clobber_positions(16);
   std::size_t position = 0;
@@ -139,6 +282,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
     definition_blocks[function.params[i].name] = 0;
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    block_first_position[i] = position;
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j, ++position) {
       const Instruction & instruction = function.blocks[i].instructions[j];
       note_instruction_operands(facts, instruction, position);
@@ -216,10 +360,21 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
          instruction.first.kind != Operand::OP_TEMP) continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator branch_definition =
         definitions.find(instruction.first.text);
+      bool return_register_preserved = branch_definition != definitions.end();
+      if(return_register_preserved) {
+        const std::vector<std::size_t> & rax_clobbers =
+          clobber_positions[static_cast<unsigned>(XR_RAX)];
+        const std::vector<std::size_t>::const_iterator clobber =
+          std::lower_bound(rax_clobbers.begin(), rax_clobbers.end(),
+                           block_start + branch_definition->second + 1);
+        return_register_preserved =
+          clobber == rax_clobbers.end() || *clobber >= block_start + j;
+      }
       if(branch_definition != definitions.end() &&
          instructions[branch_definition->second].kind == Instruction::IK_CALL &&
          facts.uses.find(instruction.first.text) != facts.uses.end() &&
-         facts.uses.find(instruction.first.text)->second == 1)
+         facts.uses.find(instruction.first.text)->second == 1 &&
+         return_register_preserved)
         facts.direct_branch_call_results.insert(instruction.first.text);
       const std::unordered_map<std::string, std::size_t>::const_iterator comparison =
         comparisons.find(instruction.first.text);
@@ -249,7 +404,11 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
         else if(operand == 0 && definition->second + 2 == comparison->second &&
                 instructions[definition->second + 1].kind == Instruction::IK_LOAD &&
                 source.second.kind == Operand::OP_TEMP &&
-                instructions[definition->second + 1].dest == source.second.text)
+                instructions[definition->second + 1].dest == source.second.text &&
+                (instructions[definition->second + 1].first.kind ==
+                   Operand::OP_SLOT ||
+                 instructions[definition->second + 1].first.kind ==
+                   Operand::OP_GLOBAL))
           facts.direct_compare_rax_values.insert(producer.dest);
       }
       if(comparison->second + 1 == j) continue;
@@ -268,84 +427,14 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
     }
   }
 
-  const std::size_t block_count = function.blocks.size();
   // LowIR validation gives every temporary one definition before its uses.
   // Model those values as linearized live intervals, extending uses through
   // source-order loop ranges.  Per-register clobber indexes then answer each
   // interval query without materializing the values x blocks liveness
   // relation.  The register set is fixed at 16, so this remains O(IR log IR)
   // time and O(IR) storage for instructions, operands, blocks, and CFG edges.
-  std::unordered_map<std::string, std::size_t> block_index;
-  for(std::size_t i = 0; i < block_count; ++i)
-    block_index[function.blocks[i].label] = i;
-  std::vector<std::vector<std::size_t> > loop_ends_at(block_count);
-  for(std::size_t i = 0; i < block_count; ++i) {
-    if(function.blocks[i].instructions.empty()) continue;
-    const Instruction & terminal = function.blocks[i].instructions.back();
-    std::vector<std::string> targets;
-    if(terminal.kind == Instruction::IK_JUMP) targets.push_back(terminal.first.text);
-    else if(terminal.kind == Instruction::IK_BRANCH) {
-      targets.push_back(terminal.second.text);
-      targets.push_back(terminal.third.text);
-    } else if(terminal.kind == Instruction::IK_SWITCH) {
-      targets.push_back(terminal.second.text);
-      for(std::size_t k = 1; k < terminal.args.size(); k += 2)
-        targets.push_back(terminal.args[k].text);
-    }
-    for(std::size_t j = 0; j < targets.size(); ++j) {
-      const std::unordered_map<std::string, std::size_t>::const_iterator found =
-        block_index.find(targets[j]);
-      if(found != block_index.end() && found->second <= i)
-        loop_ends_at[found->second].push_back(i);
-    }
-  }
-  std::vector<std::size_t> loop_end_for_block(block_count, 0);
-  std::priority_queue<std::size_t> active_loop_ends;
-  for(std::size_t block = 0; block < block_count; ++block) {
-    for(std::size_t i = 0; i < loop_ends_at[block].size(); ++i)
-      active_loop_ends.push(loop_ends_at[block][i]);
-    while(!active_loop_ends.empty() && active_loop_ends.top() < block)
-      active_loop_ends.pop();
-    loop_end_for_block[block] = active_loop_ends.empty() ? block :
-      active_loop_ends.top();
-  }
-  for(std::size_t i = 0; i < block_uses.size(); ++i) {
-    const std::size_t use_block = block_uses[i].second;
-    const std::size_t loop_end = loop_end_for_block[use_block];
-    if(loop_end != use_block)
-      facts.last_use[block_uses[i].first] = std::max(
-        facts.last_use[block_uses[i].first], block_last_position[loop_end]);
-  }
-  for(std::unordered_map<std::string, std::size_t>::const_iterator value =
-      facts.last_use.begin(); value != facts.last_use.end(); ++value) {
-    const std::unordered_map<std::string, std::size_t>::const_iterator definition =
-      facts.definition.find(value->first);
-    if(definition == facts.definition.end()) continue;
-    const std::size_t start = facts.parameters.count(value->first) ? 0 :
-      definition->second + 1;
-    const std::size_t end = value->second;
-    if(start >= end) continue;
-    unsigned mask = 0;
-    for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg) {
-      const std::vector<std::size_t>::const_iterator clobber = std::lower_bound(
-        clobber_positions[reg].begin(), clobber_positions[reg].end(), start);
-      if(clobber != clobber_positions[reg].end() && *clobber < end)
-        mask |= 1u << reg;
-    }
-    if(mask) facts.live_across_clobbers[value->first] |= mask;
-    const std::vector<std::size_t>::const_iterator call = std::lower_bound(
-      facts.calls.begin(), facts.calls.end(), start);
-    if(call != facts.calls.end() && *call < end)
-      facts.live_across_call.insert(value->first);
-  }
-  for(std::size_t i = 0; i < block_count; ++i)
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-      const Instruction & instruction = function.blocks[i].instructions[j];
-      if(instruction.kind == Instruction::IK_INDEX &&
-         parameter_names.count(instruction.first.text) &&
-         facts.live_across_call.count(instruction.dest))
-        facts.forwarded_parameters_across_call.insert(instruction.first.text);
-    }
+  extend_loop_liveness(facts, function, parameter_names, definition_blocks,
+    block_uses, block_first_position, block_last_position, clobber_positions);
   for(std::unordered_set<std::string>::iterator value =
         facts.destructive_parameters.begin(); value != facts.destructive_parameters.end(); )
     if(facts.uses[*value] != 1) value = facts.destructive_parameters.erase(value);

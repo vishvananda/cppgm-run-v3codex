@@ -18,4 +18,16 @@ struct ValueFact
   std::string forwarded_parameter;
 };
 
+struct GprMove
+{
+  X64Register destination = XR_RDI;
+  mir_model::MirOperand source;
+  lowir_model::LowType type;
+  bool source_is_address = false;
+  bool object_chunk = false;
+  lowir_model::Operand object_source;
+  std::size_t chunk_offset = 0;
+  bool pending = true;
+};
+
 }  // namespace lowir_native

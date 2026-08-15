@@ -328,8 +328,10 @@ HostSection make_host_lsda(
       append_uleb128(call_table, sites[site].start);
       append_uleb128(call_table, sites[site].length);
       append_uleb128(call_table, landing->second - function.offset);
+      const std::string & action_pad = sites[site].action_pad.empty() ?
+        sites[site].landing_pad : sites[site].action_pad;
       const std::map<std::string, std::size_t>::const_iterator action =
-        action_offsets.find(sites[site].landing_pad);
+        action_offsets.find(action_pad);
       append_uleb128(call_table,
         action == action_offsets.end() ? 0 : action->second);
       cursor = std::max(cursor, sites[site].start + sites[site].length);

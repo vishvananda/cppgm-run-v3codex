@@ -457,6 +457,7 @@ struct EntityRecord
 	bool nonlinear_base_graph;
 	bool has_nonzero_base_subobject_offset;
 	bool deferred_template_completion;
+	bool explicit_instantiation_suppressed;
 	bool explicit_template_specialization;
 	bool unnamed_class, lambda_closure;
 	std::uint32_t local_name_ordinal, lambda_ordinal, lambda_capture_count;

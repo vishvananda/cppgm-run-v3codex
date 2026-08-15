@@ -1,0 +1,11 @@
+declare function @consume(%arg0 : ptr [pass=reference]) -> void [binding=strong, object=_Z7consumeRKj]
+
+function @call() -> void [binding=strong, object=_Z4callv] {
+  slot $refarg__1 : u32
+
+  block ^entry:
+    store u32 0, $refarg__1
+    %t1 = addr $refarg__1
+    call void @consume(%t1)
+    return void
+}

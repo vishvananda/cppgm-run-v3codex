@@ -1427,15 +1427,40 @@ void clear_serialized_operand_type(Operand & operand)
   }
 }
 
+void restore_address_binding(Operand& operand,
+                             const std::unordered_set<std::string>& local)
+{
+  if(operand.kind != Operand::OP_GLOBAL) return;
+  operand.address_binding = local.count(operand.text) ?
+    Operand::ADDRESS_LOCAL : Operand::ADDRESS_PREEMPTIBLE;
+}
+
 void normalize_lowir_object_model(LowirProgram & program)
 {
+  // Address binding is not part of serialized LowIR syntax.  Re-derive it
+  // from canonical symbol metadata after clearing transient operand facts so
+  // imported addresses remain GOT-relative in relocatable output.
+  std::unordered_set<std::string> local_definitions;
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    if(program.globals[i].metadata.binding != SBM_WEAK)
+      local_definitions.insert(program.globals[i].name);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    if(program.functions[i].metadata.binding != SBM_WEAK)
+      local_definitions.insert(program.functions[i].name);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     if(program.globals[i].structured)
       program.globals[i].type = LowType();
     clear_serialized_operand_type(program.globals[i].init_operand);
+    restore_address_binding(
+      program.globals[i].init_operand, local_definitions);
     for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
+    {
       clear_serialized_operand_type(
         program.globals[i].data_items[j].literal_operand);
+      restore_address_binding(
+        program.globals[i].data_items[j].literal_operand,
+        local_definitions);
+    }
   }
   for(std::size_t f = 0; f < program.functions.size(); ++f)
     for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
@@ -1446,8 +1471,14 @@ void normalize_lowir_object_model(LowirProgram & program)
         clear_serialized_operand_type(instruction.first);
         clear_serialized_operand_type(instruction.second);
         clear_serialized_operand_type(instruction.third);
+        restore_address_binding(instruction.first, local_definitions);
+        restore_address_binding(instruction.second, local_definitions);
+        restore_address_binding(instruction.third, local_definitions);
         for(std::size_t j = 0; j < instruction.args.size(); ++j)
+        {
           clear_serialized_operand_type(instruction.args[j]);
+          restore_address_binding(instruction.args[j], local_definitions);
+        }
         if(instruction.kind == Instruction::IK_COPYOBJ ||
            instruction.kind == Instruction::IK_ZEROINIT ||
            instruction.kind == Instruction::IK_VA_START)

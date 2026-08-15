@@ -1,0 +1,32 @@
+function @destroy(%value : ptr) -> void [binding=strong, object=_Z7destroyP10value_kind] {
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = load ptr $value
+    return void
+}
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $value : i32
+  slot $cond__1 : i32
+
+  block ^entry:
+    store i32 7, $value
+    %t1 = addr $value
+    call void @destroy(%t1)
+    %t2 = load i32 $value
+    %t3 = cmp eq i32 %t2, 7
+    branch %t3, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t4 = load i32 $cond__1
+    return i32 %t4
+}

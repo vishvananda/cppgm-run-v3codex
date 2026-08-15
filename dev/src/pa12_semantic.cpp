@@ -711,17 +711,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		if (spelling.compare(0, 11, "TT_LITERAL:") == 0)
 			spelling.erase(0, 11);
 		ExpressionInfo result;
-		const std::size_t literal_prefix =
-			!spelling.empty() && spelling[0] == 'u' && spelling.size() > 1 &&
-			spelling[1] == '8' ? 2 :
-			!spelling.empty() && (spelling[0] == 'L' || spelling[0] == 'u' ||
-				spelling[0] == 'U') ? 1 : 0;
-		if (literal_prefix < spelling.size() &&
-			spelling[literal_prefix] == '"')
+		std::size_t string_literal_end = 0;
+		if (StringLiteralTokenEnd(spelling, &string_literal_end))
 		{
-			if (!spelling.empty() && spelling[0] == '"' &&
-				TryAnalyzeUserDefinedStringLiteral(
-				spelling, scope, target, &result)) return result;
+			if (TryAnalyzeUserDefinedStringLiteral(
+					spelling, scope, target, &result)) return result;
 			result = MakeStringLiteral(spelling);
 		}
 		else
@@ -825,7 +819,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return AnalyzeDeleteExpression(node, scope, target);
 	if (arena_->IsTag(node, "member-expression"))
 		return ApplyTarget(AnalyzeMember(node, scope), target);
-	throw std::runtime_error("unsupported PA12 expression: " + arena_->Tag(node));
+	const NodeId first_child = FirstSemanticChild(node);
+	throw std::runtime_error("unsupported PA12 expression " + arena_->Tag(node) +
+		" at " + arena_->SourceFile(node) + ":" +
+		std::to_string(arena_->SourceLine(node)) + ":" +
+		std::to_string(arena_->SourceColumn(node)) + " in " +
+		(current_function_context_ == kNoBinding ? std::string("<namespace>") :
+		 program_->names.Get(program_->bindings[current_function_context_].name)) +
+		(first_child == kNoNode ? std::string() :
+		 " (child " + arena_->Tag(first_child) + ": " +
+		 PayloadSource(first_child) + ")"));
 }
 
 BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
@@ -1025,7 +1028,24 @@ BindingId SemanticAnalyzer::SelectOverload(ScopeId scope,
 		}
 		if (better(c, champion)) champion = c;
 	}
-	if (viable_count == 0) return CandidateOverloadFailure("no viable overload");
+	if (viable_count == 0)
+	{
+		if (!CandidateSubstitutionActive() && !candidates.empty())
+		{
+			std::string diagnostic = "no viable overload for " +
+				program_->names.Get(program_->bindings[candidates[0]].name) +
+				" in " + (current_function_context_ == kNoBinding ?
+				std::string("<namespace>") : program_->names.Get(
+					program_->bindings[current_function_context_].name)) +
+				" candidate=" + program_->RenderType(
+					GetFunction(candidates[0]).type) + " object=" +
+				(object ? program_->RenderType(object->type) : "<none>");
+			for (std::size_t i = 0; i < arguments.size(); ++i)
+				diagnostic += " argument=" + program_->RenderType(arguments[i].type);
+			throw std::runtime_error(diagnostic);
+		}
+		return CandidateOverloadFailure("no viable overload");
+	}
 	if (viable_count != 1)
 		for (std::size_t other = 0; other < candidates.size(); ++other)
 		{
@@ -1081,11 +1101,29 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 		if (object_shape.kind == TYPE_POINTER) object_type = object_shape.child;
 		object_class = EntityOf(object_type);
 	}
-	if (!CanAccessMember(selected, naming_class, object_class))
+	// A replayed dependent member-function-template call can retain the static
+	// object type while its original lookup result has no naming-class marker.
+	// For an unqualified member access that object class is the naming class;
+	// an explicitly qualified access already supplies a nonempty marker.
+	const EntityId access_naming_class = naming_class == kNoEntity ?
+		object_class : naming_class;
+	if (!CanAccessMember(selected, access_naming_class, object_class))
 	{
 		if (CandidateSubstitutionActive())
 			return CandidateSubstitutionFailure();
-		throw std::runtime_error("inaccessible member function");
+		throw std::runtime_error("inaccessible member function " +
+			program_->names.Get(program_->bindings[selected].name) + " on " +
+			(object ? program_->RenderType(object->type) :
+			 std::string("<no object>")) + " in " +
+			(current_function_context_ == kNoBinding ? std::string("<namespace>") :
+			 program_->names.Get(program_->bindings[current_function_context_].name)) +
+			" [member-owner=" + std::to_string(
+				program_->bindings[selected].member_owner) +
+			" access-owner=" + std::to_string(
+				program_->bindings[selected].access_owner) +
+			" naming-class=" + std::to_string(access_naming_class) +
+			" object-class=" + std::to_string(object_class) +
+			" access=" + std::to_string(program_->bindings[selected].access) + "]");
 	}
 	const FunctionInfo function = GetFunction(selected);
 	const bool nonstatic_member = function.member_owner != kNoType &&
@@ -2293,16 +2331,33 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const NamePath path = DeclaratorNamePath(declarator);
 	ScopeId structured_owner = kNoScope;
 	const NodeId structure = DeclaratorNameStructure(declarator);
+	const ScopeId path_owner = deferred_member_definition ?
+		program_->ParentScope(scope) : ResolveOwner(scope, path);
+	const EntityId previous_class = current_class_context_;
 	if (!deferred_member_definition && structure != kNoNode &&
 		(path.global || path.Size() > 1))
-		(void)LookupStructuredName(structure, scope,
-			LOOKUP_ORDINARY, &structured_owner);
+	{
+		const EntityId provisional_class = path_owner == kNoScope ?
+			kNoEntity : program_->EntityForScope(path_owner);
+		if (provisional_class != kNoEntity)
+			current_class_context_ = provisional_class;
+		try
+		{
+			(void)LookupStructuredName(structure, scope,
+				LOOKUP_ORDINARY, &structured_owner);
+		}
+		catch (...)
+		{
+			current_class_context_ = previous_class;
+			throw;
+		}
+		current_class_context_ = previous_class;
+	}
 	const ScopeId owner = deferred_member_definition ?
-		program_->ParentScope(scope) :
+		path_owner :
 		structured_owner != kNoScope ? structured_owner :
-		ResolveOwner(scope, path);
+		path_owner;
 	if (owner == kNoScope) throw std::runtime_error("function owner not found");
-	const EntityId previous_class = current_class_context_;
 	const EntityId declaration_class = program_->EntityForScope(owner);
 	if (declaration_class != kNoEntity)
 		current_class_context_ = declaration_class;

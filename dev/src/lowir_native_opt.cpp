@@ -407,8 +407,17 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
         const MirOperand replacement = facts.canonical(base, &definition);
         if(replacement.kind == MirOperand::OP_REG) operand.reg = replacement.reg;
         else if(replacement.kind == MirOperand::OP_FRAME) {
-          operand.kind = MirOperand::OP_FRAME;
-          operand.offset += replacement.offset;
+          const long long folded_offset = operand.offset + replacement.offset;
+          // Negative frame operands name local storage and are adjusted past
+          // callee saves by the encoder.  Nonnegative frame operands name the
+          // caller's frame and deliberately receive no such adjustment.  A
+          // register derived from a local may nevertheless point at abstract
+          // offset zero (for example, one past a local array), so do not lose
+          // that provenance by folding it into the caller-frame namespace.
+          if(folded_offset < 0) {
+            operand.kind = MirOperand::OP_FRAME;
+            operand.offset = folded_offset;
+          }
         }
       } else if(operand.kind == MirOperand::OP_REG ||
                 operand.kind == MirOperand::OP_XMM) {
@@ -541,9 +550,16 @@ ControlFlow build_control_flow(const MirFunction & function, Stats * stats,
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
       const MirInstruction & instruction = block.instructions[j];
       if(instruction.opcode == MirInstruction::MI_JCC ||
-         instruction.opcode == MirInstruction::MI_JMP) {
+         instruction.opcode == MirInstruction::MI_JMP ||
+         instruction.opcode == MirInstruction::MI_EH_PUSH) {
         std::string label;
-        if(is_label_operand(instruction, &label)) {
+        const bool has_label = instruction.opcode == MirInstruction::MI_EH_PUSH ?
+          !instruction.operands.empty() &&
+            instruction.operands[0].kind == MirOperand::OP_LABEL :
+          is_label_operand(instruction, &label);
+        if(instruction.opcode == MirInstruction::MI_EH_PUSH && has_label)
+          label = instruction.operands[0].text;
+        if(has_label) {
           const std::unordered_map<std::string, std::size_t>::const_iterator found =
             labels.find(label);
           if(found != labels.end())

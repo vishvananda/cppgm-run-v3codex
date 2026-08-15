@@ -129,7 +129,8 @@ protected:
 
 	void FillBoundary(std::uint32_t node,
 		std::vector<pa15_lowir_detail::Parameter>* parameters,
-		pa15_lowir_detail::LowType* result, bool* variadic) const
+		pa15_lowir_detail::LowType* result, bool* variadic,
+		bool declaration = false) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const pa12_semantic_detail::DumpNode& record =
@@ -170,7 +171,8 @@ protected:
 			parameter.name = child.text == 0 ? std::string() :
 				derived.program_.names.Get(child.text);
 			if (parameter.name.empty()) parameter.name =
-				(record.kind == pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
+				(declaration || record.kind ==
+					pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
 			const pa11::TypeId* source_parameters =
 				derived.program_.types.Parameters(record.type);
@@ -193,7 +195,8 @@ protected:
 		{
 			pa15_lowir_detail::Parameter parameter;
 			parameter.name =
-				(record.kind == pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
+				(declaration || record.kind ==
+					pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
 			const bool by_address =
 				UsesIndirectClassParameter(source_parameters[parameter_index]);

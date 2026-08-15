@@ -1,0 +1,7 @@
+extern "C" int imported_increment(int);
+
+int main()
+{
+	int (*function)(int) = &imported_increment;
+	return function(41) == 42 ? 0 : 1;
+}

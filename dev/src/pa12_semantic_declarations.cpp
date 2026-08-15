@@ -157,8 +157,10 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			kNoType, owner, specialization_identity == 0 ?
 				(typedef_linkage_name == 0 ? name : typedef_linkage_name) :
 				specialization_identity);
+		const BindingId local_context = LocalTypeContext(
+			*program_, owner, current_function_context_);
 		if (program_->entities[entity].enclosing_class == kNoEntity &&
-			current_function_context_ != kNoBinding)
+			local_context != kNoBinding)
 		{
 			const BindingId function =
 				program_->bindings[current_function_context_].canonical;
@@ -166,8 +168,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				program_->entities[entity].enclosing_class =
 					program_->bindings[function].member_owner;
 		}
-		program_->entities[entity].local_context = LocalTypeContext(
-			*program_, owner, current_function_context_);
+		program_->entities[entity].local_context = local_context;
 		program_->entities[entity].unnamed_class = unnamed_class;
 		RegisterLocalTypeAbiIdentity(entity);
 		program_->SetTypeName(owner, lookup_name,
@@ -562,7 +563,13 @@ void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	for (std::size_t i = 0; i < members.size(); ++i)
 	{
-		TypeId member_type = program_->bindings[members[i]].type;
+		const BindingRecord& member_binding = program_->bindings[members[i]];
+		// A user-provided destructor owns the active variant of an anonymous
+		// union.  The unnamed storage's otherwise-deleted implicit destructor
+		// is not invoked as a separate member subobject destructor.
+		if (member_binding.anonymous_union_storage && !defaulted_destructor)
+			continue;
+		TypeId member_type = member_binding.type;
 		const TypeRecord* member_record = &program_->types.Get(member_type);
 		while (member_record->kind == TYPE_ARRAY ||
 			member_record->kind == TYPE_QUALIFIED)
@@ -1114,8 +1121,8 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 			{
 				if (!spec.is_constexpr &&
 					!(IsConst(member_type) && IsIntegral(member_type, true)))
-					throw std::runtime_error(
-						"invalid in-class static data member initializer");
+					throw std::runtime_error("invalid in-class static data member initializer for " +
+						strings_.Get(parsed.name));
 				const ExpressionInfo value = spec.placeholder_auto ? placeholder_initializer :
 					AnalyzeInClassStaticInitializer(
 						FindChild(item, "initializer"), scope, member_type);
@@ -1242,6 +1249,10 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	const SpecInfo& spec, bool local)
 {
 	BindingRecord& record = program_->bindings[binding];
+	const bool previously_external = record.canonical != binding &&
+		program_->bindings[record.canonical].storage_class !=
+			STORAGE_CLASS_STATIC &&
+		!program_->bindings[record.canonical].unnamed_namespace_linkage;
 	record.language_linkage = current_language_linkage_;
 	record.storage_class = spec.storage_class;
 	if (!local && direct_linkage_declaration_depth_ != 0 &&
@@ -1255,7 +1266,8 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 	record.thread_local_storage = spec.thread_local_storage;
 	const TypeRecord top_type = program_->types.Get(type);
 	if (!local && record.storage_class == STORAGE_CLASS_NONE &&
-		top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0)
+		top_type.kind == TYPE_QUALIFIED && (top_type.cv & CV_CONST) != 0 &&
+		!previously_external)
 		record.storage_class = STORAGE_CLASS_STATIC;
 	InheritVariableRedeclarationFacts(binding);
 	BindingRecord& canonical = program_->bindings[record.canonical];

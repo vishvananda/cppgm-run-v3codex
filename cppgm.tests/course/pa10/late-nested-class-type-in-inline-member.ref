@@ -1,0 +1,51 @@
+1 translation units
+start translation unit 1
+translation-unit
+  class-specifier Container
+    class-key KW_CLASS:class
+    access-specifier KW_PUBLIC:public
+    function-definition
+      decl-specifier-seq
+        decl-specifier KW_VOID:void
+      declarator
+        identifier assign
+        parameter-clause
+      compound-statement
+        simple-declaration
+          decl-specifier-seq
+            decl-specifier TT_IDENTIFIER:Slot
+          init-declarator-list
+            init-declarator
+              declarator
+                ptr-operator OP_AMP:&
+                identifier slot
+              initializer
+                subscript-expression
+                  id-expression slots_
+                  literal 0
+        expression-statement
+          assignment-expression OP_ASS:=
+            member-expression OP_DOT:.
+              id-expression slot
+              identifier value
+            literal 1
+    access-specifier KW_PRIVATE:private
+    class-specifier Slot
+      class-key KW_STRUCT:struct
+      simple-declaration
+        decl-specifier-seq
+          decl-specifier KW_INT:int
+        init-declarator-list
+          init-declarator
+            declarator
+              identifier value
+    simple-declaration
+      decl-specifier-seq
+        decl-specifier TT_IDENTIFIER:Slot
+      init-declarator-list
+        init-declarator
+          declarator
+            identifier slots_
+            array-suffix
+              literal 1
+end translation unit

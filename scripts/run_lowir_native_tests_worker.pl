@@ -17,6 +17,7 @@ use CppgmBatchWorker qw(
 	note_progress_state
 	open_worker
 	print_test_run_summary
+	read_word_list
 	run_command_capture
 	submit_cli_request
 	write_file
@@ -53,6 +54,7 @@ sub process_one_test
 	write_file($impl_stderr, '');
 
 	my @args;
+	push @args, read_word_list("$test_base.flags");
 	if (defined($ENV{LOWIR_NATIVE_TARGET}) && $ENV{LOWIR_NATIVE_TARGET} ne '')
 	{
 		push @args, '--target', $ENV{LOWIR_NATIVE_TARGET};

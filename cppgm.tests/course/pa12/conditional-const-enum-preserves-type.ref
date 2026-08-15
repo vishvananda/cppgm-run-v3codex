@@ -1,0 +1,18 @@
+1 translation units
+start translation unit 1
+translation-unit
+  function-declaration accept function of (enum choice) returning void
+  function-definition select function of (bool) returning void
+    parameter condition bool
+    compound-statement
+      simple-declaration
+        variable selected const enum choice
+          literal prvalue enum choice 1
+      expression-statement
+        call-expression prvalue void
+          callee accept function of (enum choice) returning void
+          conditional-expression prvalue enum choice
+            id-expression lvalue bool condition
+            id-expression lvalue const enum choice selected
+            literal prvalue enum choice 0
+end translation unit

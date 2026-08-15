@@ -22,6 +22,7 @@ struct FunctionFacts
   std::vector<std::size_t> calls;
   std::unordered_set<std::string> live_across_call;
   std::unordered_set<std::string> edge_live;
+  std::unordered_set<std::string> loop_invariant_values;
   std::unordered_set<std::string> only_call_arguments;
   std::unordered_set<std::string> direct_branch_sources;
   std::unordered_set<std::string> direct_compare_storage_values;

@@ -3,7 +3,6 @@
 #include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_object_elf.h"
-
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -17,10 +16,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
 namespace lowir_native {
 namespace {
-
 using object_elf_detail::EncodedFixup;
 using object_elf_detail::EncodedSection;
 using object_elf_detail::HostFunctionLayout;
@@ -32,12 +29,10 @@ using float_bits::extended;
 using float_bits::scalar;
 using data_layout::global_alignment;
 using data_layout::type_size;
-
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
 const std::size_t kProgramHeaderSize = 56;
 const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
-
 std::string native_object_symbol(const std::string & symbol)
 {
   return symbol.empty() || symbol[0] == '@' ? symbol : "@" + symbol;
@@ -367,6 +362,13 @@ void emit_stack_adjust(CodeBuffer & out, bool subtract, unsigned bytes)
   if(bytes <= 127) out.byte(bytes);
   else out.little(bytes, 4);
 }
+
+struct HostEhStackCleanup
+{
+  std::string label;
+  std::string landing_pad;
+  std::size_t stack_bytes = 0;
+};
 
 void emit_i128_shift(CodeBuffer & out, mir_model::MirInstruction::Opcode opcode)
 {
@@ -2628,7 +2630,8 @@ void emit_host_instruction(
     const mir_model::MirInstruction & instruction,
     const mir_model::MirFunction & function,
     const std::string & landing_pad,
-    HostFunctionLayout & layout)
+    HostFunctionLayout & layout,
+    std::vector<HostEhStackCleanup> & stack_cleanups)
 {
   if(instruction.opcode == mir_model::MirInstruction::MI_EH_PUSH) {
     require_operands(instruction, 2);
@@ -2668,7 +2671,18 @@ void emit_host_instruction(
     HostFunctionLayout::CallSite site;
     site.start = start - layout.offset;
     site.length = out.size() - start;
-    site.landing_pad = landing_pad;
+    site.action_pad = landing_pad;
+    if(instruction.call_stack_bytes) {
+      HostEhStackCleanup cleanup;
+      cleanup.label = ".__host_eh_stack_cleanup_" +
+        std::to_string(stack_cleanups.size());
+      cleanup.landing_pad = landing_pad;
+      cleanup.stack_bytes = instruction.call_stack_bytes;
+      site.landing_pad = cleanup.label;
+      stack_cleanups.push_back(cleanup);
+    } else {
+      site.landing_pad = landing_pad;
+    }
     layout.call_sites.push_back(site);
   }
 }
@@ -2697,6 +2711,7 @@ HostFunctionLayout emit_host_function(
     out.label(object_symbol);
   emit_function_prologue(out, function);
   const std::string no_landing_pad;
+  std::vector<HostEhStackCleanup> stack_cleanups;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(function.name + "::" + block.label);
@@ -2714,8 +2729,15 @@ HostFunctionLayout emit_host_function(
       emit_host_instruction(out, block.instructions[j], function,
         landing_block ? function.blocks[landing_block - 1].label :
                         no_landing_pad,
-        layout);
+        layout, stack_cleanups);
     }
+  }
+  for(std::size_t i = 0; i < stack_cleanups.size(); ++i) {
+    out.label(function.name + "::" + stack_cleanups[i].label);
+    emit_stack_adjust(out, false,
+      static_cast<unsigned>(stack_cleanups[i].stack_bytes));
+    out.byte(0xe9);
+    out.relative32(function.name + "::" + stack_cleanups[i].landing_pad);
   }
   layout.size = out.size() - layout.offset;
   return layout;

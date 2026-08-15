@@ -1,0 +1,4 @@
+function @demand_from_discarded_arm() -> u8 [binding=strong, object=_Z25demand_from_discarded_armv] {
+  block ^entry:
+    return u8 1
+}

@@ -232,6 +232,7 @@ struct Instruction
   bool call_unwind_no = false;
   bool call_returns_noreturn = false;
   bool call_variadic = false;
+  std::size_t call_stack_bytes = 0;
   bool has_source_position = false;
   std::size_t source_position = 0;
   InstructionDebugLocation debug_location;

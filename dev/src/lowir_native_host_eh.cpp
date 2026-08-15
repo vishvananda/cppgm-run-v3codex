@@ -264,7 +264,26 @@ HostEhRegionPlan analyze_host_eh_regions(
   worklist.reserve(function.blocks.size());
   std::vector<bool> catch_dispatch_blocks(function.blocks.size(), false);
   std::vector<bool> catch_entry_blocks(function.blocks.size(), false);
+  std::vector<bool> cleanup_landing_blocks(function.blocks.size(), false);
   std::vector<std::size_t> catch_entry_states(function.blocks.size(), unknown);
+
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const mir_model::MirInstruction & instruction =
+        function.blocks[i].instructions[j];
+      if(instruction.opcode != mir_model::MirInstruction::MI_EH_PUSH ||
+         instruction.operands.size() != 2 ||
+         instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL)
+        continue;
+      const std::unordered_map<std::string, std::size_t>::const_iterator landing =
+        block_index.find(instruction.operands[0].text);
+      if(landing == block_index.end()) continue;
+      cleanup_landing_blocks[landing->second] =
+        instruction.operands[1].kind == mir_model::MirOperand::OP_IMM &&
+        (instruction.operands[1].imm != 0 ||
+         landing_pad_has_cleanup_clause(function.blocks[landing->second]) ||
+         !landing_pad_has_catches(function.blocks[landing->second]));
+    }
 
   const auto merge_entry = [&](std::size_t block, std::size_t state,
                                std::vector<std::size_t> * pending) {
@@ -272,9 +291,23 @@ HostEhRegionPlan analyze_host_eh_regions(
       entries[block] = state;
       pending->push_back(block);
     } else if(entries[block] != state) {
+      const mir_model::MirBlock & target = function.blocks[block];
+      const std::size_t existing_active = states.Active(entries[block]);
+      const std::size_t incoming_active = states.Active(state);
+      if((cleanup_landing_blocks[block] &&
+          existing_active == incoming_active) ||
+         (target.instructions.size() == 1 &&
+          target.instructions[0].opcode ==
+            mir_model::MirInstruction::MI_RESUME &&
+          existing_active == 0 && incoming_active == 0))
+        return;
       throw std::logic_error(
-        "host EH protected-region state mismatch at MIR block: " +
-        function.blocks[block].label);
+        "host EH protected-region state mismatch in " + function.name +
+        " at MIR block " + function.blocks[block].label +
+        " (existing state " + std::to_string(entries[block]) +
+        ", incoming state " + std::to_string(state) +
+        ", existing active " + std::to_string(existing_active) +
+        ", incoming active " + std::to_string(incoming_active) + ")");
     }
   };
   const auto merge_label = [&](const std::string & label, std::size_t state,

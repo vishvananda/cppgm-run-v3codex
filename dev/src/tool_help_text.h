@@ -31,7 +31,7 @@ inline const char * cppgm_help_text()
       "  -include <file>\n"
       "  -L <dir> / -L<dir>\n"
       "  -l <name> / -l<name>\n"
-      "  -O0 / -O1 / -O2\n"
+      "  -O0 / -O1 / -O2 / -O3\n"
       "  -stdlib <name> / -stdlib=<name>\n"
       "  --witness <logfile>\n"
       "  --witness-debug <logfile>\n"

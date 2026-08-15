@@ -24,6 +24,7 @@ using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
 const std::size_t kNoFunction = static_cast<std::size_t>(-1);
+const std::size_t kInlineInstructionBudget = 128;
 typedef std::unordered_map<std::string, Operand> ValueMap;
 typedef std::unordered_map<std::string, std::string> NameMap;
 
@@ -465,6 +466,18 @@ private:
       no_unwind_.count(callee_function.name);
   }
 
+  bool consume_inline_budget(std::size_t target, std::size_t * remaining)
+  {
+    const std::size_t cost = std::max<std::size_t>(
+      instruction_counts_[target], 1);
+    if(cost > *remaining) {
+      if(stats_) ++stats_->budget_skips;
+      return false;
+    }
+    *remaining -= cost;
+    return true;
+  }
+
   bool strip_explicit_no_unwind_eh(Function * function)
   {
     if(function->boundary.unwind != lowir_model::CUM_NO) return false;
@@ -744,7 +757,8 @@ private:
                                const EhContext & eh,
                                const std::unordered_map<std::string,
                                  unsigned char> & block_eh,
-                               Names * names, ValueMap * replacements)
+                               Names * names, ValueMap * replacements,
+                               std::size_t * inline_budget)
   {
     Function & function = program_.functions[function_index];
     std::vector<Instruction> source;
@@ -776,7 +790,8 @@ private:
       const Instruction & ins = source[i];
       const std::size_t target = callee(ins);
       if(target != kNoFunction && candidate(function_index, target, landing, active) &&
-         leaf_inline_shape(program_.functions[target])) {
+         leaf_inline_shape(program_.functions[target]) &&
+         consume_inline_budget(target, inline_budget)) {
         inline_leaf_call(function_index, ins, program_.functions[target],
           names, replacements, &rebuilt);
         ++rewrites_;
@@ -807,10 +822,11 @@ private:
         b < eh.incoming.size() && eh.incoming[b] == 2 ? 1 : 0;
     ValueMap replacements;
     bool changed = false;
+    std::size_t inline_budget = kInlineInstructionBudget;
     for(std::size_t b = 0;
         b < program_.functions[function_index].blocks.size(); ++b) {
       changed |= batch_inline_leaf_calls(function_index, b, eh, block_eh,
-        &names, &replacements);
+        &names, &replacements, &inline_budget);
       bool active = block_eh[
         program_.functions[function_index].blocks[b].label] != 0;
       std::size_t j = 0;
@@ -823,7 +839,7 @@ private:
           if(candidate(function_index, target,
                eh.landing_blocks.count(
                  program_.functions[function_index].blocks[b].label) != 0,
-               active)) {
+               active) && consume_inline_budget(target, &inline_budget)) {
             inline_call(function_index, b, j, program_.functions[target],
               &names, &replacements, &block_eh, active);
             ++rewrites_;

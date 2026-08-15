@@ -1,0 +1,33 @@
+1 translation units
+start translation unit 1
+translation-unit
+  simple-declaration
+    decl-specifier-seq
+      decl-specifier KW_INT:int
+    init-declarator-list
+      init-declarator
+        declarator
+          identifier category
+  class-specifier locale
+    class-key KW_STRUCT:struct
+    simple-declaration
+      decl-specifier-seq
+        decl-specifier KW_TYPEDEF:typedef
+        decl-specifier KW_INT:int
+      init-declarator-list
+        init-declarator
+          declarator
+            identifier category
+    simple-declaration
+      decl-specifier-seq
+        decl-specifier KW_STATIC:static
+        decl-specifier TT_IDENTIFIER:category
+      init-declarator-list
+        init-declarator
+          declarator
+            identifier normalize
+            parameter-clause
+              parameter-declaration
+                decl-specifier-seq
+                  decl-specifier TT_IDENTIFIER:category
+end translation unit

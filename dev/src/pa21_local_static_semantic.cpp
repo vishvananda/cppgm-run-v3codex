@@ -18,6 +18,9 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
 	const NodeId expression_node = FirstSemanticChild(qualifier);
 	if (expression_node == kNoNode)
 		throw std::logic_error("missing noexcept expression");
+	const std::size_t outer_suppression =
+		constant_evaluation_suppressed_depth_;
+	constant_evaluation_suppressed_depth_ = 0;
 	++constant_expression_required_depth_;
 	ExpressionInfo expression;
 	try
@@ -28,9 +31,11 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
 	catch (...)
 	{
 		--constant_expression_required_depth_;
+		constant_evaluation_suppressed_depth_ = outer_suppression;
 		throw;
 	}
 	--constant_expression_required_depth_;
+	constant_evaluation_suppressed_depth_ = outer_suppression;
 	if (!expression.constant || !IsIntegral(expression.type, true))
 		throw std::runtime_error("nonconstant noexcept expression");
 	return expression.value != 0;

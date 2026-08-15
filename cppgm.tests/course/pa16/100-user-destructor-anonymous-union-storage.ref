@@ -1,0 +1,16 @@
+function @use_holder() -> void [binding=strong, object=_Z10use_holderv] {
+  slot $value : obj<1x1>
+
+  block ^entry:
+    %t1 = addr $value
+    call void @holder__holder(%t1)
+    return void
+}
+function @holder__holder(%this : ptr) -> void [binding=weak, object=_ZN6holderC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+alias object _ZN6holderC2Ev = @holder__holder

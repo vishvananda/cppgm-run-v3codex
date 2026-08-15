@@ -52,6 +52,26 @@ private:
 	bool active_;
 };
 
+class ScopedConstantEvaluationRoot
+{
+public:
+	explicit ScopedConstantEvaluationRoot(std::size_t* suppression)
+		: suppression_(suppression), previous_(*suppression)
+	{
+		*suppression_ = 0;
+	}
+	~ScopedConstantEvaluationRoot()
+	{
+		*suppression_ = previous_;
+	}
+
+private:
+	ScopedConstantEvaluationRoot(const ScopedConstantEvaluationRoot&);
+	ScopedConstantEvaluationRoot& operator=(const ScopedConstantEvaluationRoot&);
+	std::size_t* suppression_;
+	std::size_t previous_;
+};
+
 TypeId RetainedIntegralLiteralType(const SyntaxArena& arena, NodeId syntax,
 	Program* program, std::int64_t* value)
 {
@@ -1471,6 +1491,12 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 			return false;
 		const bool dependent_target =
 			FunctionTemplateTypeIsDependent(argument.type);
+		// A non-type template argument is an independent constant-expression
+		// root even when the enclosing template-id is formed in a discarded or
+		// short-circuited expression arm.  Its own operators still establish
+		// local suppression for their unevaluated operands.
+		ScopedConstantEvaluationRoot constant_root(
+			&constant_evaluation_suppressed_depth_);
 		ExpressionInfo expression;
 		if (arena_->IsTag(source, "type-id"))
 		{
@@ -1590,7 +1616,16 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 			}
 			throw std::runtime_error(
 				"non-type template argument is not an integral constant: " +
-				PayloadSource(source));
+				PayloadSource(source) + " at " + arena_->SourceFile(source) +
+				":" + std::to_string(arena_->SourceLine(source)) + ":" +
+				std::to_string(arena_->SourceColumn(source)) + " in " +
+				(current_function_context_ == kNoBinding ?
+				 std::string("<namespace>") : program_->names.Get(
+					program_->bindings[current_function_context_].name)) +
+				" [parameter=" + program_->RenderType(argument.type) +
+				" expression=" + program_->RenderType(expression.type) +
+				" constant=" + (expression.constant ? "yes" : "no") +
+				" binding=" + std::to_string(expression.binding) + "]");
 		}
 	}
 	arguments->push_back(argument);

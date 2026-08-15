@@ -72,9 +72,27 @@ std::size_t Program::SizeOf(TypeId type) const
 		{
 			const EntityRecord& entity = entities[record.entity];
 			if (!entity.complete)
-				throw std::runtime_error(std::string("incomplete named type: ") +
+			{
+				std::string message = std::string("incomplete named type: ") +
 					names.Get(entity.name) + " (" +
-					names.Get(entity.identity_name) + ")");
+					names.Get(entity.identity_name) + ")";
+				if (entity.template_argument_count != 0)
+				{
+					message += " arguments [";
+					for (std::uint32_t i = 0;
+						i < entity.template_argument_count; ++i)
+					{
+						if (i != 0) message += ", ";
+						const TemplateArgument& argument = canonical_template_arguments[
+							entity.template_argument_begin + i];
+						message += argument.kind == TEMPLATE_ARGUMENT_TYPE ?
+							RenderType(argument.type) :
+							std::to_string(argument.value);
+					}
+					message += "]";
+				}
+				throw std::runtime_error(message);
+			}
 			if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
 				size = SizeOf(entity.underlying);
 			else

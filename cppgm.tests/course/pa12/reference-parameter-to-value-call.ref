@@ -1,0 +1,12 @@
+1 translation units
+start translation unit 1
+translation-unit
+  function-declaration accept function of (unsigned int) returning void
+  function-definition pass function of (lvalue-reference to const unsigned int) returning void
+    parameter value lvalue-reference to const unsigned int
+    compound-statement
+      expression-statement
+        call-expression prvalue void
+          callee accept function of (unsigned int) returning void
+          id-expression lvalue const unsigned int value
+end translation unit

@@ -1,0 +1,31 @@
+struct state
+{
+  int value;
+
+  __attribute__((noinline)) void fail()
+  {
+    try
+    {
+      throw 1;
+    }
+    catch (...)
+    {
+      value = 7;
+      throw;
+    }
+  }
+};
+
+int main()
+{
+  state value = {0};
+  try
+  {
+    value.fail();
+  }
+  catch (...)
+  {
+    return value.value != 7;
+  }
+  return 2;
+}

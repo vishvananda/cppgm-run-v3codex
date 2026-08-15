@@ -1,0 +1,33 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $value : obj<1x1>
+
+  block ^entry:
+    %t1 = addr $value
+    %t2 = addr $value
+    %t3 = call i32 @owner__run(%t2)
+    return i32 %t3
+}
+function @owner__run(%this : ptr) -> i32 [binding=weak, object=_ZN5owner3runEv] {
+  slot $this : ptr
+  slot $value : obj<4x4>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $value
+    %t2 = addr $value
+    %t3 = index i8 [projection=field] %t2, 0
+    store i32 0, %t3
+    %t4 = addr $value
+    %t5 = call i32 @consume(%t4)
+    return i32 %t5
+}
+function @consume(%value : ptr) -> i32 [binding=weak, object=_Z7consumeI3boxIZN5owner3runEvE5localEEiPT_] {
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = load ptr $value
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i32 %t2
+    return i32 %t3
+}

@@ -1,0 +1,15 @@
+#include <string>
+
+std::string choose(bool first, bool second)
+{
+  const std::string left = first ? "left" :
+    std::string("right") + std::string("tail");
+  const std::string right = second ? "up" :
+    std::string("down") + std::string("tail");
+  return left + right;
+}
+
+int main()
+{
+  return choose(true, false) == "leftdowntail" ? 0 : 1;
+}

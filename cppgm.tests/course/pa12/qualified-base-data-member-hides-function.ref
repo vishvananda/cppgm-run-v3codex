@@ -1,0 +1,10 @@
+1 translation units
+start translation unit 1
+translation-unit
+  function-definition read function of (lvalue-reference to struct derived) returning int
+    parameter object lvalue-reference to struct derived
+    compound-statement
+      return-statement
+        member-expression lvalue int OP_DOT:value
+          id-expression lvalue struct derived object
+end translation unit

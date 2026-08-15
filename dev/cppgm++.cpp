@@ -133,7 +133,7 @@ int parse_optimization_level(const string & arg)
 {
   if(arg == "-O0") return 0;
   if(arg == "-O1") return 1;
-  if(arg == "-O2") return 2;
+  if(arg == "-O2" || arg == "-O3") return 2;
   throw logic_error("unsupported optimization level: " + arg);
 }
 

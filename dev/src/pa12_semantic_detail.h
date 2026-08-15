@@ -26,6 +26,7 @@ using namespace pa11;
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
 
+bool StringLiteralTokenEnd(const std::string& spelling, std::size_t* end);
 bool TemplateArgumentsNeedInternalEmission(const Program& program,
 	const std::vector<TemplateArgument>& arguments);
 bool TypeContainsDependentTemplateShape(const Program& program, TypeId type,

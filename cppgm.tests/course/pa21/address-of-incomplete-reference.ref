@@ -1,0 +1,11 @@
+declare function @consume(%arg0 : ptr) -> void [binding=strong, object=_Z7consumeP6opaque]
+
+function @relay(%value : ptr [pass=reference]) -> void [binding=strong, object=_Z5relayR6opaque] {
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = load ptr $value
+    call void @consume(%t1)
+    return void
+}

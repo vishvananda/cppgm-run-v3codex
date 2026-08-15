@@ -688,6 +688,7 @@ EntityRecord::EntityRecord()
 	  nonlinear_base_graph(false),
 	  has_nonzero_base_subobject_offset(false),
 	  deferred_template_completion(false),
+	  explicit_instantiation_suppressed(false),
 	  explicit_template_specialization(false), unnamed_class(false),
 	  lambda_closure(false),
 	  local_name_ordinal(0), lambda_ordinal(0), lambda_capture_count(0),

@@ -108,7 +108,17 @@ protected:
 		}
 		Instruction instruction(Instruction::RETURN_VALUE);
 		instruction.type = derived.current_result_;
-		instruction.first = IsFloating(derived.current_result_) ?
+		if (derived.current_result_.kind == LOW_OBJECT)
+		{
+			const Operand slot(derived.CreateGeneratedSlot(
+				"retobj", derived.current_result_), derived.current_result_);
+			Instruction zero(Instruction::ZERO_OBJECT);
+			zero.type = derived.current_result_;
+			zero.first = slot;
+			derived.Emit(zero);
+			instruction.first = slot;
+		}
+		else instruction.first = IsFloating(derived.current_result_) ?
 			derived.FloatingOperand("0.0", derived.current_result_) :
 			Operand(0, derived.current_result_);
 		derived.Emit(instruction);

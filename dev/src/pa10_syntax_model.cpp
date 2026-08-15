@@ -243,8 +243,13 @@ NodeId SyntaxArena::Make(const char* tag, const std::string& payload)
 	if (nodes_.size() >= kNoNode)
 		throw std::runtime_error("too many syntax nodes");
 	const NodeId id = static_cast<NodeId>(nodes_.size());
-	nodes_.push_back(SyntaxNode(strings_.Intern(tag),
-		payload.empty() ? 0 : strings_.Intern(payload)));
+	// The payload may refer to a spelling already owned by strings_.  Interning
+	// the tag can grow that table and invalidate the reference, so capture the
+	// payload identity before performing any other interning operation.
+	const TextId payload_id =
+		payload.empty() ? 0 : strings_.Intern(payload);
+	const TextId tag_id = strings_.Intern(tag);
+	nodes_.push_back(SyntaxNode(tag_id, payload_id));
 	return id;
 }
 

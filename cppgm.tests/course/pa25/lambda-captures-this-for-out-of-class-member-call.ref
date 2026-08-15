@@ -1,0 +1,49 @@
+function @owner__value(%this : ptr, %input : i32) -> i32 [binding=strong, object=_ZNK5owner5valueEi] {
+  slot $this : ptr
+  slot $input : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %input, $input
+    %t1 = load i32 $input
+    return i32 %t1
+}
+
+function @owner__call(%this : ptr) -> i32 [binding=strong, object=_ZNK5owner4callEv] {
+  slot $this : ptr
+  slot $invoke : obj<8x8>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $invoke
+    %t2 = load ptr $this
+    store ptr %t2, %t1
+    %t3 = addr $invoke
+    %t4 = call i32 @owner____lambda_owner__call_t49_53__operator__(%t3, 7)
+    return i32 %t4
+}
+
+function @use() -> i32 [binding=strong, object=_Z3usev] {
+  slot $object : obj<1x1>
+
+  block ^entry:
+    %t1 = addr $object
+    %t2 = addr $object
+    %t3 = call i32 @owner__call(%t2)
+    return i32 %t3
+}
+
+function @owner____lambda_owner__call_t49_53__operator__(%this : ptr, %input : i32) -> i32 [binding=internal, object=_ZZN5owner4callEvENKUliE_clEi] {
+  slot $this : ptr
+  slot $input : i32
+
+  block ^entry:
+    store ptr %this, $this
+    store i32 %input, $input
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    %t4 = load i32 $input
+    %t5 = call i32 @owner__value(%t3, %t4)
+    return i32 %t5
+}

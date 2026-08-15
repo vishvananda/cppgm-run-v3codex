@@ -1,0 +1,40 @@
+1 translation units
+start translation unit 1
+translation-unit
+  simple-declaration
+    decl-specifier-seq
+      decl-specifier KW_BOOL:bool
+    init-declarator-list
+      init-declarator
+        declarator
+          identifier check
+          parameter-clause
+            parameter-declaration
+              decl-specifier-seq
+                decl-specifier KW_INT:int
+  function-definition
+    decl-specifier-seq
+      decl-specifier KW_INT:int
+    declarator
+      identifier test
+      parameter-clause
+        parameter-declaration
+          decl-specifier-seq
+            decl-specifier KW_BOOL:bool
+          declarator
+            identifier success
+    compound-statement
+      if-statement
+        condition
+          binary-expression OP_LAND:&&
+            id-expression success
+            call-expression
+              id-expression check
+              argument-list
+                literal 0
+        then
+          return-statement
+            literal 1
+      return-statement
+        literal 0
+end translation unit

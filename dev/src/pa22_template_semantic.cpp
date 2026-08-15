@@ -283,8 +283,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 					append_capture(pack[pack_index], name, by_reference);
 				continue;
 			}
-			const LookupResult found = program_->LookupName(
-				scope, name, LOOKUP_ORDINARY);
+			const LookupResult found = LookupSpelling(scope,
+				program_->names.Get(name), LOOKUP_ORDINARY);
 			for (std::size_t found_index = 0;
 				found_index < found.OrdinaryCount(); ++found_index)
 			{
@@ -292,11 +292,46 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 				if (automatic_capture(binding))
 					append_capture(binding, 0, by_reference);
 				const BindingRecord& record = program_->bindings[binding];
-				if (record.member_owner != kNoEntity &&
-					((record.kind == BIND_FUNCTION &&
-					  !record.static_member_function) ||
-					 record.non_static_data_member))
+				const bool injected_capture =
+					binding < injected_fact_by_binding_.size() &&
+					injected_fact_by_binding_[binding] != kNoDumpEdge;
+				const bool nonstatic_member_function =
+					record.kind == BIND_FUNCTION && !record.static_member_function &&
+					GetFunction(binding).member_owner != kNoType;
+				if (!injected_capture && (nonstatic_member_function ||
+					(record.member_owner != kNoEntity &&
+					 record.non_static_data_member)))
 					captures_this = true;
+			}
+			// A lambda's syntactic free-name pass runs before its call operator
+			// has the enclosing member function's implicit-object context.  Use
+			// the retained lexical function edge to recognize unqualified member
+			// names that therefore require an implicit capture of this.
+			for (BindingId lexical = found.Empty() ? enclosing : kNoBinding;
+				lexical != kNoBinding && !captures_this;)
+			{
+				const FunctionInfo& context = GetFunction(lexical);
+				const EntityId context_owner = context.member_owner == kNoType ?
+					kNoEntity : EntityOf(context.member_owner);
+				if (context_owner != kNoEntity)
+				{
+					const LookupResult member = program_->LookupMember(
+						context_owner, name, LOOKUP_ORDINARY);
+					for (std::size_t member_index = 0;
+						member_index < member.OrdinaryCount(); ++member_index)
+					{
+						const BindingRecord& record = program_->bindings[
+							member.OrdinaryAt(member_index)];
+						if ((record.kind == BIND_FUNCTION &&
+							 !record.static_member_function) ||
+							record.non_static_data_member)
+						{
+							captures_this = true;
+							break;
+						}
+					}
+				}
+				lexical = context.lexical_access_function;
 			}
 			NamePath path;
 			path.Push(name);
@@ -602,12 +637,30 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		if (capture.captures_this) source = AnalyzeThisExpression(scope);
 		else
 		{
-			if (capture.source == kNoBinding ||
-				capture.source >= program_->bindings.size())
+			BindingId capture_source = capture.source;
+			const LookupResult active = LookupSpelling(scope,
+				program_->names.Get(capture.name), LOOKUP_ORDINARY);
+			for (std::size_t active_index = 0;
+				active_index < active.OrdinaryCount(); ++active_index)
+			{
+				const BindingId candidate = active.OrdinaryAt(active_index);
+				const BindingRecord& candidate_record =
+					program_->bindings[candidate];
+				if ((candidate_record.kind == BIND_PARAMETER ||
+					 candidate_record.kind == BIND_VARIABLE) &&
+					SimilarUnqualified(EffectiveType(candidate_record.type),
+						capture.value_type))
+				{
+					capture_source = candidate;
+					break;
+				}
+			}
+			if (capture_source == kNoBinding ||
+				capture_source >= program_->bindings.size())
 				throw std::logic_error("lambda capture source is invalid");
 			const std::uint32_t injected_fact =
-				capture.source < injected_fact_by_binding_.size() ?
-				injected_fact_by_binding_[capture.source] : kNoDumpEdge;
+				capture_source < injected_fact_by_binding_.size() ?
+				injected_fact_by_binding_[capture_source] : kNoDumpEdge;
 			if (injected_fact != kNoDumpEdge)
 			{
 				const InjectedMemberInfo& injected =
@@ -632,9 +685,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			else
 			{
 				const BindingRecord& captured =
-					program_->bindings[capture.source];
+					program_->bindings[capture_source];
 				const BindingId source_binding = captured.kind == BIND_PARAMETER ?
-					captured.canonical : capture.source;
+					captured.canonical : capture_source;
 				source.node = MakeDump(DUMP_ID_EXPRESSION, capture.value_type,
 					VALUE_LVALUE, captured.name, source_binding);
 				source.type = capture.value_type;

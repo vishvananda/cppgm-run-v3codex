@@ -1,0 +1,28 @@
+function @replay(%value : ptr [pass=reference]) -> u32 [binding=strong, object=_Z6replayRKj] {
+  slot $value : ptr
+  slot $add : obj<8x8>
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = addr $add
+    %t2 = load ptr $value
+    store ptr %t2, %t1
+    %t3 = addr $add
+    %t4 = call u32 @__lambda_replay_t17_22__operator__(%t3, 1)
+    return u32 %t4
+}
+function @__lambda_replay_t17_22__operator__(%this : ptr, %increment : u32) -> u32 [binding=strong, object=_ZZ6replayRKjENK3$_0clEj, prefer_local=yes] {
+  slot $this : ptr
+  slot $increment : u32
+
+  block ^entry:
+    store ptr %this, $this
+    store u32 %increment, $increment
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=reference_field] %t1, 0
+    %t3 = load ptr %t2
+    %t4 = load u32 %t3
+    %t5 = load u32 $increment
+    %t6 = binary add u32 %t4, %t5
+    return u32 %t6
+}

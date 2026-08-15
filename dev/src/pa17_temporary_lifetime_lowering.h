@@ -1246,8 +1246,11 @@ protected:
 			}
 			if (!enclosing_cleanup) BeginFullExpressionCleanup(children, 1);
 		}
-		LowerClassDestination(children[0], destination);
-		if (children.size() != 1 && !enclosing_cleanup)
+		if (derived.arena_.nodes[children[0]].kind == DUMP_THROW_EXPRESSION)
+			(void)derived.LowerValue(children[0]);
+		else LowerClassDestination(children[0], destination);
+		if (!derived.CurrentBlock().terminated &&
+			children.size() != 1 && !enclosing_cleanup)
 			CompleteFullExpressionCleanup();
 	}
 
@@ -1275,16 +1278,22 @@ protected:
 		if (derived.full_expression_cleanup_active_)
 			EnsureFullExpressionCleanupSegment();
 		LowerClassConditionalArm(children[1], destination);
-		if (derived.full_expression_cleanup_active_)
-			PauseFullExpressionCleanupSegment();
-		derived.EmitJump(end_block);
+		if (!derived.CurrentBlock().terminated)
+		{
+			if (derived.full_expression_cleanup_active_)
+				PauseFullExpressionCleanupSegment();
+			derived.EmitJump(end_block);
+		}
 		derived.SelectBlock(else_block);
 		if (derived.full_expression_cleanup_active_)
 			EnsureFullExpressionCleanupSegment();
 		LowerClassConditionalArm(children[2], destination);
-		if (derived.full_expression_cleanup_active_)
-			PauseFullExpressionCleanupSegment();
-		derived.EmitJump(end_block);
+		if (!derived.CurrentBlock().terminated)
+		{
+			if (derived.full_expression_cleanup_active_)
+				PauseFullExpressionCleanupSegment();
+			derived.EmitJump(end_block);
+		}
 		derived.SelectBlock(end_block);
 	}
 

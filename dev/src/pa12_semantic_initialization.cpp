@@ -1,6 +1,5 @@
 #include "pa12_semantic_detail.h"
 #include "post_tokenizer.h"
-
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
@@ -8,11 +7,9 @@ namespace cppgm
 {
 namespace pa12_semantic_detail
 {
-
 namespace
 {
 const std::size_t kDestructorArrayInlineLimit = 8;
-
 bool IsClassEntity(const Program& program, EntityId entity)
 {
 	if (entity == kNoEntity) return false;
@@ -20,7 +17,6 @@ bool IsClassEntity(const Program& program, EntityId entity)
 	return flavor == NAMED_STRUCT || flavor == NAMED_CLASS ||
 		flavor == NAMED_UNION;
 }
-
 std::vector<unsigned char> DecodeStringInitializer(
 	const std::string& spelling)
 {
@@ -171,7 +167,8 @@ ExpressionInfo SemanticAnalyzer::BuildClassConditional(
 				recipe = child;
 		}
 		const DumpKind recipe_kind = dump_.nodes[recipe].kind;
-		const bool direct = recipe != source.node ||
+		const bool direct = recipe_kind == DUMP_THROW_EXPRESSION ||
+			recipe != source.node ||
 			(source.category == VALUE_PRVALUE &&
 			 (recipe_kind == DUMP_CALL_EXPRESSION ||
 			  recipe_kind == DUMP_CONSTRUCTOR_ACTION ||
@@ -653,9 +650,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 			for (std::uint32_t argument = arena_->FirstEdge(expression);
 				argument != kNoEdge; argument = arena_->NextEdge(argument))
 				arguments.push_back(arena_->EdgeChild(argument));
+			std::vector<ExpressionInfo> prepared;
+			const bool expanded = ExpandCallArgumentPacks(
+				arguments, scope, &arguments, &prepared);
 			initializer.node = BuildConstructorAction(type, scope, arguments,
 				PayloadSource(initializer_node) == "copy", true, false, true,
-				expression);
+				expression, expanded ? &prepared : 0);
 			if (arguments.empty() &&
 				!program_->entities[class_entity].has_user_provided_constructor &&
 				!DefaultInitializationOverwritesObject(class_entity))
@@ -857,6 +857,25 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 			(member_kind == TYPE_ARRAY ||
 			 program_->entities[member_entity].is_aggregate))
 			value = AnalyzeBracedInit(initializer, scope, member.type).node;
+		else if (member_kind == TYPE_ARRAY &&
+			arena_->IsTag(initializer, "paren-argument-list"))
+		{
+			if (arena_->FirstEdge(initializer) != kNoEdge)
+				throw std::runtime_error(
+					"array member initializer has arguments");
+			value = BuildDefaultConstructorAction(member.type, scope);
+			std::uint32_t element = value;
+			while (dump_.nodes[element].kind ==
+				DUMP_CONSTRUCTOR_ARRAY_ACTION)
+			{
+				const std::uint32_t edge = dump_.nodes[element].first_edge;
+				if (edge == kNoDumpEdge)
+					throw std::logic_error(
+						"constructor array has no element action");
+				element = dump_.edges[edge].child;
+			}
+			dump_.nodes[element].value_initialization = true;
+		}
 		else
 		{
 			std::vector<NodeId> arguments;
@@ -2214,6 +2233,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 				program_->names.Intern("0"));
 			zero.constant = true;
 			zero.value = 0;
+			RecordExpressionFacts(zero);
 			construction = zero.node;
 		}
 		else if (arena_->IsTag(initializer, "paren-initializer"))
@@ -2236,6 +2256,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 						program_->names.Intern("0"));
 					zero.constant = true;
 					zero.value = 0;
+					RecordExpressionFacts(zero);
 					construction = zero.node;
 				}
 				else construction = ApplyTarget(
@@ -2250,6 +2271,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 					program_->names.Intern("0"));
 				zero.constant = true;
 				zero.value = 0;
+				RecordExpressionFacts(zero);
 				construction = zero.node;
 			}
 			else
@@ -2870,7 +2892,9 @@ void SemanticAnalyzer::AddDestructorSubobjectActions(EntityId entity,
 	for (std::size_t i = members.size(); i != 0; --i)
 	{
 		const BindingId member = members[i - 1];
-		const TypeId type = program_->bindings[member].type;
+		const BindingRecord& member_binding = program_->bindings[member];
+		if (member_binding.anonymous_union_storage) continue;
+		const TypeId type = member_binding.type;
 		const EntityId subobject = DestructedEntity(type);
 		if (subobject == kNoEntity ||
 			program_->entities[subobject].trivial_destructor) continue;
