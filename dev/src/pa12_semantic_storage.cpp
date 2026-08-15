@@ -48,6 +48,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		polymorphic_virtual_view_marks_.capacity() * sizeof(std::uint32_t) +
 		polymorphic_virtual_view_indices_.capacity() * sizeof(std::uint32_t) +
 		entity_constructors_.capacity() * sizeof(std::vector<BindingId>) +
+		pending_inherited_default_constructors_.capacity() *
+			sizeof(std::vector<BindingId>) +
 		entity_conversion_functions_.capacity() *
 			sizeof(std::vector<BindingId>) +
 		entity_conversion_function_templates_.capacity() *

@@ -1563,10 +1563,12 @@ private:
        incoming_parameter_registers_.count(instruction.first.text))
       base = reg_operand(incoming_parameter_registers_.find(instruction.first.text)->second);
     MirOperand destination;
+    const bool forwarded_alias = offset == 0 &&
+      instruction.first.kind == Operand::OP_TEMP &&
+      facts_.forwarded_parameters_across_call.count(instruction.first.text);
     const bool safe_reuse = base.kind == MirOperand::OP_REG &&
       constant_index && (can_reuse(instruction.first) ||
-      (offset == 0 && instruction.first.kind == Operand::OP_TEMP &&
-       facts_.forwarded_parameters_across_call.count(instruction.first.text))) &&
+      forwarded_alias) &&
       (!result_crosses_call(instruction.dest) || is_callee_saved(base.reg));
     if(safe_reuse) destination = base;
     else destination = reg_operand(allocate_result(
@@ -1610,6 +1612,8 @@ private:
     consume(instruction.first, destination.reg);
     consume(instruction.second, destination.reg);
     define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR), destination);
+    if(safe_reuse && forwarded_alias)
+      values_[instruction.dest].parameter = true;
   }
   struct GprMove
   {
@@ -2719,10 +2723,11 @@ private:
             value.location = reg_operand(
               incoming_parameter_registers_.find(parameter)->second);
           else if(load_position > facts_.calls.front()) {
-            X64Register forwarded = XR_R9;
-            if(nonparameter_value_live_in_register(forwarded))
+            const bool preserved = result_crosses_call(instruction.dest);
+            X64Register forwarded = preserved ? allocate_result(instruction.dest, out) : XR_R9;
+            if(!preserved && nonparameter_value_live_in_register(forwarded))
               forwarded = registers_.allocate(false);
-            else if(!registers_.is_used(forwarded)) registers_.reserve(forwarded);
+            else if(!preserved && !registers_.is_used(forwarded)) registers_.reserve(forwarded);
             append_move(out, reg_operand(forwarded), value.location);
             value.location = reg_operand(forwarded);
             value.forwarded_parameter = parameter;

@@ -1759,6 +1759,12 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	if (specialization_entity == kNoEntity || specialization_entity >=
 		program_->entities.size())
 		throw std::logic_error("class specialization has no canonical entity");
+	// initializer_list shells have their ABI size installed before the standard
+	// header's definition is available.  Reopen that provisional layout for the
+	// single definition replay so its data-member offsets come from the ordinary
+	// class layout pass rather than retaining their zero-initialized shell values.
+	if (pattern.initializer_list_template)
+		program_->entities[specialization_entity].layout_complete = false;
 	const TemplateArgumentListId specialization_arguments =
 		program_->entities[specialization_entity].template_argument_list;
 	const std::string specialization_name = host_object_emission_ ?
@@ -1862,43 +1868,6 @@ void SemanticAnalyzer::EnsureClassDefinition(TypeId type)
 		deferred_class_definition_by_entity_[entity] = kNoNode;
 		(void)AnalyzeClass(definition, scope, std::string(), false);
 	}
-}
-
-bool SemanticAnalyzer::ClassTemplateSpecializationArgumentsComplete(
-	EntityId entity) const
-{
-	if (entity >= class_template_pattern_by_entity_.size() ||
-		class_template_pattern_by_entity_[entity] == kNoDumpEdge ||
-		program_->entities[entity].template_argument_begin == kNoBinding)
-		return true;
-	const std::size_t index = class_template_pattern_by_entity_[entity];
-	if (index >= class_templates_.size())
-		throw std::logic_error("invalid class specialization owner index");
-	const EntityRecord& specialization = program_->entities[entity];
-	const std::size_t first = specialization.template_argument_begin;
-	const ClassTemplatePattern& pattern = class_templates_[index];
-	const std::size_t count = specialization.template_argument_count;
-	if ((!HasTrailingTemplateParameterPack(pattern.parameters) &&
-		 count != pattern.parameters.size()) ||
-		(HasTrailingTemplateParameterPack(pattern.parameters) &&
-		 count < FixedTemplateParameterCount(pattern.parameters)) ||
-		first > program_->template_arguments.size() ||
-		count > program_->template_arguments.size() - first)
-		throw std::logic_error("class specialization arguments are truncated");
-	for (std::size_t i = 0; i < count; ++i)
-	{
-		if (first + i < program_->canonical_template_arguments.size() &&
-			program_->canonical_template_arguments[first + i].kind !=
-				TEMPLATE_ARGUMENT_TYPE)
-			continue;
-		const TypeId argument = program_->types.RemoveTopCv(
-			program_->template_arguments[first + i]);
-		const TypeRecord& record = program_->types.Get(argument);
-		if (record.kind == TYPE_NAMED &&
-			!program_->entities[record.entity].complete)
-			return false;
-	}
-	return true;
 }
 
 bool SemanticAnalyzer::IsClassTemplateSpecializationEntity(

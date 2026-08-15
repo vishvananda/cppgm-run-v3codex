@@ -1182,7 +1182,15 @@ CallConversionFact SemanticAnalyzer::CallConversion(
 	CallConversionTable* cache, std::size_t source_ordinal)
 {
 	CallConversionFact result;
-	const ConversionRank standard = Conversion(source, target);
+	ConversionRank standard = Conversion(source, target);
+	const EntityId source_entity = EntityOf(source.type);
+	if (standard == CONVERSION_INVALID && source_entity != kNoEntity &&
+		IsClassObjectType(source.type) &&
+		!program_->entities[source_entity].complete)
+	{
+		EnsureClassDefinition(EffectiveType(source.type));
+		standard = Conversion(source, target);
+	}
 	if (standard != CONVERSION_INVALID)
 	{
 		result.rank = standard;

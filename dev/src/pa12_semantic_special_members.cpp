@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -46,8 +47,42 @@ EntityId SubobjectClass(const Program& program, TypeId type,
 
 }
 
+BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
+{
+	if (entity >= implicit_constructor_by_entity_.size())
+		implicit_constructor_by_entity_.resize(
+			static_cast<std::size_t>(entity) + 1, kNoBinding);
+	if (implicit_constructor_by_entity_[entity] != kNoBinding)
+		return implicit_constructor_by_entity_[entity];
+	EntityRecord& owner = program_->entities[entity];
+	if (!owner.default_constructible)
+		throw std::runtime_error("class has no usable implicit constructor");
+	const NameId name = owner.identity_name;
+	const TypeId type = program_->types.Function(
+		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
+	const BindingId constructor = DeclareFunction(owner.member_scope, name,
+		type, std::vector<ParameterInfo>(), true, false, STORAGE_CLASS_NONE,
+		LANGUAGE_LINKAGE_CPP, owner.trivial_default_constructor, false);
+	BindingRecord& binding = program_->bindings[constructor];
+	binding.member_owner = entity;
+	binding.constructor = true;
+	binding.overload_ordinal = 1;
+	PublishInlineFunctionFacts(constructor, true);
+	FunctionInfo& info = GetMutableFunction(constructor);
+	info.member_owner = owner.type;
+	info.constructor = true;
+	info.implicit_constructor = true;
+	info.deferred = true;
+	implicit_constructor_by_entity_[entity] = constructor;
+	if (entity_constructors_.size() <= entity)
+		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
+	entity_constructors_[entity].push_back(constructor);
+	return constructor;
+}
+
 void SemanticAnalyzer::InheritConstructors(EntityId entity,
-	const std::vector<BindingId>& constructors)
+	const std::vector<BindingId>& constructors,
+	bool materialize_default_constructors)
 {
 	EntityRecord& derived = program_->entities[entity];
 	derived.is_aggregate = false;
@@ -56,7 +91,24 @@ void SemanticAnalyzer::InheritConstructors(EntityId entity,
 	for (std::size_t i = 0; i < constructors.size(); ++i)
 	{
 		const FunctionInfo source = GetFunction(constructors[i]);
-		if (!source.constructor || source.parameters.empty()) continue;
+		if (!source.constructor) continue;
+		if (source.parameters.empty() && !materialize_default_constructors &&
+			!derived.complete)
+		{
+			if (pending_inherited_default_constructors_.size() <= entity)
+				pending_inherited_default_constructors_.resize(
+					static_cast<std::size_t>(entity) + 1);
+			std::vector<BindingId>& pending =
+				pending_inherited_default_constructors_[entity];
+			if (std::find(pending.begin(), pending.end(), source.binding) ==
+				pending.end()) pending.push_back(source.binding);
+			if (!source.deleted_constructor)
+				derived.default_constructible = true;
+			continue;
+		}
+		if (source.parameters.empty() &&
+			!derived.has_user_declared_constructor)
+			continue;
 		const FunctionSignatureKey signature_key(derived.member_scope,
 			derived.identity_name, source.signature);
 		++function_signature_lookups_;

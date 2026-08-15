@@ -1460,7 +1460,8 @@ private:
 	void CompleteClassLayout(EntityId entity);
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,
-		const std::vector<BindingId>& constructors);
+		const std::vector<BindingId>& constructors,
+		bool materialize_default_constructors = false);
 	void PublishStableFunctionTemplateResultAbi(
 		const FunctionTemplatePattern& pattern, TypeId function_type,
 		EntityId member_owner, BindingId canonical_binding);
@@ -1901,6 +1902,8 @@ private:
 	std::vector<std::uint32_t> zero_offset_subobject_marks_;
 	std::vector<EntityId> zero_offset_subobject_scratch_;
 	std::vector<std::vector<BindingId> > entity_constructors_;
+	std::vector<std::vector<BindingId> >
+		pending_inherited_default_constructors_;
 	std::vector<std::vector<BindingId> > entity_conversion_functions_;
 	std::vector<std::vector<std::size_t> >
 		entity_conversion_function_templates_;

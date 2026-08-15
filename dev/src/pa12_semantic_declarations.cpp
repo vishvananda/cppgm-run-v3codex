@@ -541,6 +541,12 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		if (!program_->entities[entity].has_user_declared_constructor &&
 			program_->entities[entity].default_constructible)
 			EnsureImplicitConstructor(entity);
+		else if (entity < pending_inherited_default_constructors_.size())
+		{
+			InheritConstructors(entity,
+				pending_inherited_default_constructors_[entity], true);
+			pending_inherited_default_constructors_[entity].clear();
+		}
 		if (!program_->entities[entity].has_user_declared_destructor)
 			EnsureImplicitDestructor(entity);
 		program_->entities[entity].complete = true;
@@ -843,39 +849,6 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	FinalizeClassVirtualBaseLayout(entity, packing_alignment, &size,
 		&alignment, &natural_alignment, &empty_class);
 }
-BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
-{
-	if (entity >= implicit_constructor_by_entity_.size())
-		implicit_constructor_by_entity_.resize(
-			static_cast<std::size_t>(entity) + 1, kNoBinding);
-	if (implicit_constructor_by_entity_[entity] != kNoBinding)
-		return implicit_constructor_by_entity_[entity];
-	EntityRecord& owner = program_->entities[entity];
-	if (!owner.default_constructible)
-		throw std::runtime_error("class has no usable implicit constructor");
-	const NameId name = owner.identity_name;
-	const TypeId type = program_->types.Function(
-		program_->types.Fundamental(FUND_VOID), std::vector<TypeId>(), false);
-	const BindingId constructor = DeclareFunction(owner.member_scope, name,
-		type, std::vector<ParameterInfo>(), true, false, STORAGE_CLASS_NONE,
-		LANGUAGE_LINKAGE_CPP, owner.trivial_default_constructor, false);
-	BindingRecord& binding = program_->bindings[constructor];
-	binding.member_owner = entity;
-	binding.constructor = true;
-	binding.overload_ordinal = 1;
-	PublishInlineFunctionFacts(constructor, true);
-	FunctionInfo& info = GetMutableFunction(constructor);
-	info.member_owner = owner.type;
-	info.constructor = true;
-	info.implicit_constructor = true;
-	info.deferred = true;
-	implicit_constructor_by_entity_[entity] = constructor;
-	if (entity_constructors_.size() <= entity)
-		entity_constructors_.resize(static_cast<std::size_t>(entity) + 1);
-	entity_constructors_[entity].push_back(constructor);
-	return constructor;
-}
-
 BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 {
 	if (entity_destructor_by_entity_.size() <= entity)
@@ -1579,8 +1552,22 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		std::int64_t value = next;
 		if (initializer != kNoNode)
 		{
-			const ExpressionInfo expression =
-				AnalyzeExpression(initializer, value_scope);
+			// A specialization demanded from a discarded expression arm still
+			// analyzes its enumerators as independent constant-expression roots.
+			const std::size_t outer_suppression =
+				constant_evaluation_suppressed_depth_;
+			constant_evaluation_suppressed_depth_ = 0;
+			ExpressionInfo expression;
+			try
+			{
+				expression = AnalyzeExpression(initializer, value_scope);
+			}
+			catch (...)
+			{
+				constant_evaluation_suppressed_depth_ = outer_suppression;
+				throw;
+			}
+			constant_evaluation_suppressed_depth_ = outer_suppression;
 			if (!expression.constant)
 				throw std::runtime_error("nonconstant enumerator");
 			value = expression.value;

@@ -2,65 +2,55 @@
 
 ## Stage Design and Spec Alignment
 
-PA36 keeps the semantic graph -> typed LowIR -> per-function MIR -> direct ELF
-pipeline. Per `spec.md` §§2-6 and §8, canonical entities own class/template and
-selected-callable facts; semantic demand completes each fact once; lowering
-consumes recorded `TypeId`, `BindingId`, base-path, and ABI facts without lookup.
-Builtin spelling and ABI `std` identity remain semantic-ingress classifications.
+PA36 retains the `spec.md` semantic graph -> typed LowIR -> per-function MIR ->
+direct ELF pipeline. Canonical entities own specialization, layout, constexpr,
+selected-callable, and ABI-entry facts; demand completes those facts once, and
+lowering consumes recorded `TypeId`/`BindingId` facts without semantic lookup.
 
-Type identity does not demand class layout, so `is_same` compares canonical
-types without completing its operands. Indirect calls normalize pointer/reference
-callees to one function `TypeId` before hidden-argument lowering. A virtual-base
-projection preserves the first carried virtual anchor; when the target is a
-non-virtual suffix, runtime projection reads that anchor from the vtable and
-adds the recorded direct-edge offsets. This keeps semantic ownership distinct
-from lowering and preserves the PA28 boundary contract.
+Hosted containers now cross that pipeline through monotonic class completion:
+conversion demand may complete an object type once, specialization replay resets
+provisional layout, constant-expression roots do not inherit suppression, and an
+inherited default constructor is materialized only when the derived class's own
+declarations suppress its implicit default. Native forwarding preserves values
+across calls and keeps zero-offset aliases under their parameter register owner.
 
 ## Current Failure Map
 
-PA36 is 70/80. Four hosted-container instantiation failures share template
-completion/selection ownership: unordered pointer insertion and unordered range
-construction report no viable overload, recursive map/unique_ptr reports no
-zero-argument constructor, and recursive vector reports a nonconstant enumerator.
-Two remaining semantic failures are separate: recursive `std::function` rejects
-its lifetime prefix and tuple `get` is ambiguous. Two ABI/link failures are the
-unowned locale `_Impl` copy constructor and duplicate strong stringbuf destructor.
-Two runtime failures remain: floating `signbit` returns 1 and braced vector
-temporary destruction aborts with 134.
+PA36 is 75/80. Two semantic failures have separate owners: recursive
+`std::function` violates enclosing-lifetime monotonicity, and contained-virtual-
+base tuple `get` is ambiguous. Two ABI-entry failures share callable identity and
+object ownership: locale `_Impl` leaves its qualified copy constructor undefined,
+while stringbuf emits a deleting destructor strongly in two objects. The final
+runtime failure is hosted floating `signbit` classification.
 
 ## Active Checkpoint
 
-Next: close the four hosted-container instantiation failures at the canonical
-specialization/completion boundary. `spec.md` §§2-5 require one specialization
-identity, memoized completion/demand, and candidate facts derived from substituted
-types; §6 requires the selected constructor/call to flow into typed lowering.
-Ownership is template request -> canonical class/function specialization ->
-completed constexpr/overload facts -> selected typed expression. Expected work
-is O(new specialization facts + visited candidates + constexpr steps), with no
-completion retry after a terminal state. Validate all four cases, neighboring
-vector/pair and PA35 container fixtures, then full gates. Profile recursive map
-and vector representatives, recording template requests/cache hits, lookup
-visits, constexpr steps, demand pushes, and peak memory.
+Next: canonical hosted special-member entry ownership for the locale and
+stringbuf link failures. `spec.md` §§2-3 and §§6-8 require one canonical callable
+identity, explicit complete/base/deleting entry relationships, selected bindings
+carried into lowering, and at most one owning object definition per emitted
+symbol. Data flows from semantic special-member selection -> canonical lifecycle
+entry -> demand -> LowIR function metadata -> ELF binding/coalescing. Expected
+cost is O(demanded entries + relocations), with O(1) canonical entry lookup.
+Validate both failures, neighboring locale/iostream fixtures, PA17 lifecycle and
+PA32 weak-ODR coverage, then the PA36, through-PA35, and audit gates.
 
 ## Performance Evidence
 
-The vector/pair representative ran in 1.40/1.41/1.39 s at
-30,608/30,744/30,836 KiB RSS. All runs retained 66,517 tokens, 21,141 lookup
-queries, 1,088 template requests/593 hits, 11 demand pushes, 138 LowIR
-instructions, and 28,567,431 semantic peak bytes; objects were SHA-256 identical
-(`3d080b...aa58`). The iostream representative ran in 3.21/3.23/3.76 s at
-75,584/75,700/75,588 KiB RSS with stable 147,006 tokens, 48,195 lookups, 3,317
-template requests/2,413 hits, 291 pushes, 6,409 LowIR and 9,301 MIR instructions,
-and 77,557,789 semantic peak bytes; objects were identical (`24ed40...ea6`).
-Identity handling is O(operands) without layout demand, callable normalization is
-O(1), and runtime base projection is one cached base query plus O(path length +
-owner virtual bases).
+Current representative one-shot compiles measured recursive map/`unique_ptr` at
+1.28 s and 56,356 KiB RSS, and unordered-set construction at 1.41 s and 73,120
+KiB RSS. The checkpoint adds one terminal completion retry, constant-root state
+save/restore, and indexed constructor fact per affected identity; native
+live-across-call and alias-ownership tests are O(1) over precomputed facts. The
+earlier vector/pair and iostream profiles remained stable across repeated runs
+(1.39-1.41 s/30.6 MiB and 3.21-3.76 s/75.6 MiB, with identical objects).
 
 ## Completed Checkpoints
 
 | Checkpoint | Result | Validation |
 | --- | --- | --- |
-| Closed builtin ownership before hosted alias fallback (`1f918c84` plus audit repair) | Removed observed `alloca` relocations and raised PA36 26 -> 43/80 | Collision and PA33/34 focus pass; through PA35 4,907/4,907; audit pass |
-| Canonical structured `std` owner identity (`03e47d62` plus audit repair) | Emitted canonical `St`, removed substitution pollution, and raised PA36 43 -> 56/80 | Standard-owner focus 16/16; stable profile; through PA35 and audit pass |
-| Canonical trivial explicit-destructor calls (`79dce1ac`) | Preserved object evaluation, pruned trivial host calls, and raised PA36 56 -> 65/80 | Destructor focus 9/9; PA17/32 focus; stable profiles; through PA35 and audit pass |
-| Canonical hosted completion, callable, and virtual-base boundaries | Removed false identity completion, normalized indirect callees, followed virtual anchors through non-virtual suffixes, and raised PA36 65 -> 70/80 | Checkpoint 5/5; PA28 focus 3/3; stable profiles; PA36 70/80; through PA35 4,907/4,907; audit pass |
+| Builtin ownership before hosted alias fallback | Removed observed `alloca` relocations; PA36 26 -> 43/80 | Collision and PA33/34 focus; through PA35; audit |
+| Canonical structured `std` owner identity | Removed substitution pollution; PA36 43 -> 56/80 | Standard-owner focus 16/16; stable profile; through PA35; audit |
+| Canonical trivial explicit-destructor calls | Preserved evaluation while pruning trivial host calls; PA36 56 -> 65/80 | Destructor focus 9/9; PA17/32 focus; through PA35; audit |
+| Hosted completion, callable, and virtual-base boundaries | Normalized type/call identities and followed virtual anchors; PA36 65 -> 70/80 | Checkpoint 5/5; PA28 focus 3/3; through PA35; audit |
+| Hosted container specialization and preserved native forwarding | Completed conversion/layout/constexpr/inherited-constructor facts and preserved call-live values; PA36 70 -> 75/80 | Container focus 5/5; PA16/17/29 focus; through PA35 4,907/4,907; audit |

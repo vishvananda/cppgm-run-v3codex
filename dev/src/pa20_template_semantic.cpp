@@ -235,6 +235,8 @@ void SemanticAnalyzer::ResetClassTemplateSpecializationDefinition(
 		entity_layout_members_[entity].clear();
 	if (entity < entity_constructors_.size())
 		entity_constructors_[entity].clear();
+	if (entity < pending_inherited_default_constructors_.size())
+		pending_inherited_default_constructors_[entity].clear();
 	if (entity < entity_conversion_functions_.size())
 		entity_conversion_functions_[entity].clear();
 	if (entity < entity_member_functions_.size())
