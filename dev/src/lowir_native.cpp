@@ -50,6 +50,9 @@ public:
     target_.name = source.name;
     target_.object_symbol = source.metadata.object_symbol;
     target_.return_type = source.return_type.text;
+    target_.debug_location.file = source.debug_location.file;
+    target_.debug_location.line = source.debug_location.line;
+    target_.debug_location.column = source.debug_location.column;
     if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
     storage_facts_ = analyze_storage(source_, facts_, tls_wrappers_);
     plan_variadic_register_save();
@@ -64,12 +67,36 @@ public:
       block.label = source_.blocks[i].label;
       if(i == 0) block.instructions.insert(block.instructions.end(),
                                            parameter_moves_.begin(), parameter_moves_.end());
-      for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_)
+      for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_) {
+        const std::size_t first_machine_instruction = block.instructions.size();
         lower_instruction(source_.blocks[i], j, block.instructions);
+        const lowir_model::Instruction * debug_source =
+          &source_.blocks[i].instructions[j];
+        if(j + 1 < source_.blocks[i].instructions.size() &&
+           source_.blocks[i].instructions[j + 1].kind == Instruction::IK_BRANCH)
+          for(std::size_t k = first_machine_instruction;
+              k < block.instructions.size(); ++k)
+            if(block.instructions[k].opcode == MirInstruction::MI_JCC ||
+               block.instructions[k].opcode == MirInstruction::MI_JMP) {
+              debug_source = &source_.blocks[i].instructions[j + 1];
+              break;
+            }
+        const lowir_model::InstructionDebugLocation & debug =
+          debug_source->debug_location;
+        for(std::size_t k = first_machine_instruction;
+            k < block.instructions.size(); ++k) {
+          block.instructions[k].has_source_position = true;
+          block.instructions[k].source_position = position_;
+          block.instructions[k].debug_location.file = debug.file;
+          block.instructions[k].debug_location.line = debug.line;
+          block.instructions[k].debug_location.column = debug.column;
+        }
+      }
       target_.blocks.push_back(block);
     }
     target_.callee_saved_regs = registers_.preserves();
     target_.has_dynamic_stack = facts_.has_dynamic_stack;
+    target_.frame_bytes = frame_bytes_;
     const bool needs_call_scratch = uses_scalar_float_ ||
       (source_.metadata.keep_internal_alias && !facts_.calls.empty());
     target_.scratch_bytes = needs_call_scratch ? 48 : 0;

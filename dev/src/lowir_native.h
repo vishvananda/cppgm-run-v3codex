@@ -16,12 +16,20 @@ struct Stats
   std::size_t blocks = 0;
   std::size_t lowir_instructions = 0;
   std::size_t mir_instructions = 0;
+  std::size_t machine_opt_functions = 0;
+  std::size_t machine_opt_input_instructions = 0;
+  std::size_t machine_opt_output_instructions = 0;
+  std::size_t machine_opt_instruction_visits = 0;
+  std::size_t machine_opt_cfg_edge_visits = 0;
+  std::size_t machine_opt_worklist_pushes = 0;
+  std::size_t machine_opt_rewrites = 0;
   std::size_t eh_region_states = 0;
   std::size_t eh_region_edges = 0;
   std::size_t eh_call_sites = 0;
   std::size_t fixups = 0;
   std::size_t output_bytes = 0;
   std::uint64_t lower_nanoseconds = 0;
+  std::uint64_t machine_opt_nanoseconds = 0;
   std::uint64_t encode_nanoseconds = 0;
   std::uint64_t write_nanoseconds = 0;
 };
@@ -57,7 +65,8 @@ class ProgramLoweringSession
 {
 public:
   ProgramLoweringSession(const lowir_model::LowirProgram & program,
-                         const std::string & target, Stats * stats = 0);
+                         const std::string & target, int optimization_level = 0,
+                         Stats * stats = 0);
   ~ProgramLoweringSession();
 
   std::size_t function_count() const;
@@ -74,6 +83,7 @@ private:
 
 mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
                                     const std::string & target,
+                                    int optimization_level = 0,
                                     Stats * stats = 0);
 
 void write_linux_executable(const std::string & path,
@@ -87,12 +97,14 @@ void write_linux_executable(const std::string & path,
                             const lowir_model::LowirProgram & program,
                             const std::string & target,
                             const std::vector<RelocatableObject> & objects,
+                            int optimization_level,
                             Stats * stats = 0);
 
 void write_linux_relocatable(const std::string & path,
                              const lowir_model::LowirProgram & program,
                              const std::string & target,
                              const std::vector<unsigned char> & compiler_payload,
+                             int optimization_level,
                              Stats * stats = 0);
 
 void parse_wide_literal_words(const std::string & text,

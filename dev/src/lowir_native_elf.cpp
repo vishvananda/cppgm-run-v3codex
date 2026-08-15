@@ -1,4 +1,5 @@
 #include "lowir_native.h"
+#include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_object_elf.h"
 
@@ -26,6 +27,8 @@ using object_elf_detail::declaration_object_symbols;
 using object_elf_detail::host_external_global_definitions;
 using object_elf_detail::host_symbol_spelling;
 using object_elf_detail::make_linux_relocatable_image;
+using float_bits::extended;
+using float_bits::scalar;
 
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
@@ -637,57 +640,6 @@ void emit_xmm_to_gpr(CodeBuffer & out, X64Register destination,
   emit_modrm(out, 3, xmm_index(source), destination);
 }
 
-std::string unsuffixed_float_text(const std::string & text)
-{
-  if(!text.empty() && (text.back() == 'f' || text.back() == 'F' ||
-                       text.back() == 'l' || text.back() == 'L'))
-    return text.substr(0, text.size() - 1);
-  return text;
-}
-
-std::uint64_t scalar_float_bits(const std::string & text, const std::string & type)
-{
-  const std::string number = unsuffixed_float_text(text);
-  if(number == "snan" && type == "f32") return UINT64_C(0x7fa00000);
-  if(number == "snan" && type == "f64") return UINT64_C(0x7ff4000000000000);
-  errno = 0;
-  char * end = 0;
-  if(type == "f32") {
-    const float value = std::strtof(number.c_str(), &end);
-    if(errno || !end || *end) throw std::runtime_error("invalid f32 literal: " + text);
-    std::uint32_t bits = 0;
-    std::memcpy(&bits, &value, sizeof(bits));
-    return bits;
-  }
-  if(type == "f64") {
-    const double value = std::strtod(number.c_str(), &end);
-    if(errno || !end || *end) throw std::runtime_error("invalid f64 literal: " + text);
-    std::uint64_t bits = 0;
-    std::memcpy(&bits, &value, sizeof(bits));
-    return bits;
-  }
-  throw std::logic_error("floating literal requires f32 or f64");
-}
-
-std::pair<std::uint64_t, std::uint64_t> extended_float_words(const std::string & text)
-{
-  const std::string number = unsuffixed_float_text(text);
-  if(number == "snan") return std::make_pair(UINT64_C(0xa000000000000000), UINT64_C(0x7fff));
-  errno = 0;
-  char * end = 0;
-  const long double value = std::strtold(number.c_str(), &end);
-  if(errno || !end || *end) throw std::runtime_error("invalid f80 literal: " + text);
-  unsigned char bytes[16] = {};
-  unsigned char native[sizeof(long double)] = {};
-  std::memcpy(native, &value, sizeof(value));
-  const std::size_t payload = std::min<std::size_t>(10, sizeof(value));
-  std::copy(native, native + payload, bytes);
-  std::uint64_t low = 0, high = 0;
-  std::memcpy(&low, bytes, 8);
-  std::memcpy(&high, bytes + 8, 8);
-  return std::make_pair(low, high);
-}
-
 mir_model::MirOperand memory_operand(X64Register reg, long long offset = 0)
 {
   mir_model::MirOperand operand;
@@ -706,7 +658,7 @@ void emit_extended_immediate_store(CodeBuffer & out,
   long long displacement = 0;
   float_address(out, destination, function, base, displacement);
   const std::pair<std::uint64_t, std::uint64_t> words =
-    extended_float_words(text);
+    extended(text);
   emit_immediate_move(out, XR_R10, words.first);
   emit_store(out, base, displacement, XR_R10, 64);
   emit_immediate_move(out, XR_R10, words.second);
@@ -768,7 +720,7 @@ void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
   } else {
     const std::string text = source.kind == mir_model::MirOperand::OP_FLOAT_IMM ?
       source.text : std::to_string(source.imm);
-    emit_immediate_move(out, XR_R10, scalar_float_bits(text, type));
+    emit_immediate_move(out, XR_R10, scalar(text, type));
     emit_store(out, XR_RSP, 0, XR_R10, type == "f32" ? 32 : 64);
   }
   emit_x87_load_memory(out, scratch, type, function);
@@ -834,11 +786,11 @@ void materialize_float_operand(CodeBuffer & out, XmmRegister destination,
     if(source.xmm != destination)
       emit_xmm_register_move(out, destination, source.xmm, type);
   } else if(source.kind == mir_model::MirOperand::OP_FLOAT_IMM) {
-    emit_immediate_move(out, XR_R11, scalar_float_bits(source.text, type));
+    emit_immediate_move(out, XR_R11, scalar(source.text, type));
     emit_gpr_to_xmm(out, destination, XR_R11, type == "f32" ? 32 : 64);
   } else if(source.kind == mir_model::MirOperand::OP_IMM) {
     emit_immediate_move(out, XR_R11,
-      scalar_float_bits(std::to_string(source.imm), type));
+      scalar(std::to_string(source.imm), type));
     emit_gpr_to_xmm(out, destination, XR_R11, type == "f32" ? 32 : 64);
   } else {
     emit_xmm_load(out, destination, source, type, function);
@@ -1559,6 +1511,48 @@ void emit_test_register(CodeBuffer & out, X64Register reg)
   emit_modrm(out, 3, reg, reg);
 }
 
+bool prepare_explicit_operands(CodeBuffer & out,
+                               const mir_model::MirInstruction & instruction)
+{
+  if(instruction.opcode == mir_model::MirInstruction::MI_TEST) {
+    require_operands(instruction, 2);
+    const X64Register left = require_register(instruction.operands[0]);
+    const X64Register right = require_register(instruction.operands[1]);
+    if(left != right)
+      throw std::logic_error("native zero test requires one repeated register");
+    emit_test_register(out, left);
+    return true;
+  }
+  if(instruction.opcode == mir_model::MirInstruction::MI_COPY_BYTES) {
+    require_operands(instruction, 2);
+    const X64Register destination = require_register(instruction.operands[0]);
+    const X64Register source = require_register(instruction.operands[1]);
+    if(destination == XR_RSI && source == XR_RDI) {
+      emit_register_move(out, XR_R11, XR_RDI);
+      emit_register_move(out, XR_RDI, XR_RSI);
+      emit_register_move(out, XR_RSI, XR_R11);
+    } else if(source == XR_RDI && destination != XR_RDI) {
+      emit_register_move(out, XR_RSI, XR_RDI);
+      emit_register_move(out, XR_RDI, destination);
+    } else {
+      if(destination != XR_RDI) emit_register_move(out, XR_RDI, destination);
+      if(source != XR_RSI) emit_register_move(out, XR_RSI, source);
+    }
+  } else if(instruction.opcode == mir_model::MirInstruction::MI_ZERO_BYTES) {
+    require_operands(instruction, 1);
+    const X64Register destination = require_register(instruction.operands[0]);
+    if(destination != XR_RDI) emit_register_move(out, XR_RDI, destination);
+  } else if(instruction.opcode == mir_model::MirInstruction::MI_RET) {
+    if(instruction.operands.size() > 1)
+      throw std::logic_error("native return has too many operands");
+    if(!instruction.operands.empty()) {
+      const X64Register result = require_register(instruction.operands[0]);
+      if(result != XR_RAX) emit_register_move(out, XR_RAX, result);
+    }
+  }
+  return false;
+}
+
 void emit_compare_immediate(CodeBuffer & out, X64Register reg, unsigned value)
 {
   emit_rex(out, true, XR_RAX, reg);
@@ -1824,6 +1818,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
                       const mir_model::MirFunction * function) {
   if(emit_eh_instruction(out, instruction, function) || emit_atomic_instruction(out, instruction, function) ||
      emit_i128_instruction(out, instruction)) return;
+  if(prepare_explicit_operands(out, instruction)) return;
   switch(instruction.opcode) {
   case mir_model::MirInstruction::MI_MOV:
     emit_move(out, instruction);
@@ -2453,12 +2448,12 @@ void emit_float_data(CodeBuffer & out, const std::string & text,
 {
   if(type == "f80") {
     const std::pair<std::uint64_t, std::uint64_t> words =
-      extended_float_words(text);
+      extended(text);
     out.little(words.first, 8);
     out.little(words.second, 8);
     return;
   }
-  out.little(scalar_float_bits(text, type),
+  out.little(scalar(text, type),
              static_cast<unsigned>(type_size(type)));
 }
 
@@ -2834,9 +2829,10 @@ void write_linux_executable(const std::string & path,
                             const lowir_model::LowirProgram & source,
                             const std::string & target,
                             const std::vector<RelocatableObject> & objects,
+                            int optimization_level,
                             Stats * stats)
 {
-  ProgramLoweringSession lowering(source, target, stats);
+  ProgramLoweringSession lowering(source, target, optimization_level, stats);
   mir_model::MirProgram program = lowering.take_program_shell();
   if(program.startup.empty())
     throw std::runtime_error("native executable has no startup entry");
@@ -2869,11 +2865,12 @@ void write_linux_relocatable(
     const lowir_model::LowirProgram & source,
     const std::string & target,
     const std::vector<unsigned char> & compiler_payload,
+    int optimization_level,
     Stats * stats)
 {
   if(target != "linux")
     throw std::runtime_error("ELF object writer requires linux target");
-  ProgramLoweringSession lowering(source, target, stats);
+  ProgramLoweringSession lowering(source, target, optimization_level, stats);
   mir_model::MirProgram program = lowering.take_program_shell();
   CodeBuffer text(0, true);
   std::vector<HostFunctionLayout> functions;

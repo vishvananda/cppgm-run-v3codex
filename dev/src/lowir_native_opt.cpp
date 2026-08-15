@@ -1,0 +1,790 @@
+#include "lowir_native_opt.h"
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cstdint>
+#include <deque>
+#include <stdexcept>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace lowir_native {
+namespace machine_opt {
+namespace {
+
+using mir_model::MirBlock;
+using mir_model::MirFunction;
+using mir_model::MirInstruction;
+using mir_model::MirOperand;
+
+typedef std::uint64_t RegisterMask;
+
+const RegisterMask kAllGprs = (RegisterMask(1) << 16) - 1;
+const RegisterMask kAllXmms = ((RegisterMask(1) << 8) - 1) << 16;
+const RegisterMask kCallArguments =
+  (RegisterMask(1) << XR_RDI) | (RegisterMask(1) << XR_RSI) |
+  (RegisterMask(1) << XR_RDX) | (RegisterMask(1) << XR_RCX) |
+  (RegisterMask(1) << XR_R8) | (RegisterMask(1) << XR_R9) | kAllXmms;
+const RegisterMask kCallClobbers =
+  (RegisterMask(1) << XR_RAX) | (RegisterMask(1) << XR_RCX) |
+  (RegisterMask(1) << XR_RDX) | (RegisterMask(1) << XR_RSI) |
+  (RegisterMask(1) << XR_RDI) | (RegisterMask(1) << XR_R8) |
+  (RegisterMask(1) << XR_R9) | (RegisterMask(1) << XR_R10) |
+  (RegisterMask(1) << XR_R11) | kAllXmms;
+
+RegisterMask gpr_bit(X64Register reg)
+{
+  return RegisterMask(1) << static_cast<unsigned>(reg);
+}
+
+RegisterMask xmm_bit(XmmRegister reg)
+{
+  return RegisterMask(1) << (16 + static_cast<unsigned>(reg));
+}
+
+RegisterMask operand_registers(const MirOperand & operand)
+{
+  if(operand.kind == MirOperand::OP_REG) return gpr_bit(operand.reg);
+  if(operand.kind == MirOperand::OP_XMM) return xmm_bit(operand.xmm);
+  if(operand.kind == MirOperand::OP_DEREF) return gpr_bit(operand.reg);
+  return 0;
+}
+
+bool is_write_only_destination(MirInstruction::Opcode opcode)
+{
+  switch(opcode) {
+  case MirInstruction::MI_MOV:
+  case MirInstruction::MI_LOAD:
+  case MirInstruction::MI_LEA:
+  case MirInstruction::MI_FMOV:
+  case MirInstruction::MI_FNEG:
+  case MirInstruction::MI_FADD:
+  case MirInstruction::MI_FSUB:
+  case MirInstruction::MI_FMUL:
+  case MirInstruction::MI_FDIV:
+  case MirInstruction::MI_FEQ:
+  case MirInstruction::MI_FNE:
+  case MirInstruction::MI_FLT:
+  case MirInstruction::MI_FGT:
+  case MirInstruction::MI_FLE:
+  case MirInstruction::MI_FGE:
+  case MirInstruction::MI_SITOFP:
+  case MirInstruction::MI_UITOFP:
+  case MirInstruction::MI_FPTOSI:
+  case MirInstruction::MI_FPTOUI:
+  case MirInstruction::MI_FPEXT:
+  case MirInstruction::MI_FPTRUNC:
+  case MirInstruction::MI_SETCC:
+  case MirInstruction::MI_MOVZX:
+  case MirInstruction::MI_TLS_ADDR:
+  case MirInstruction::MI_LOAD_EXCEPTION:
+  case MirInstruction::MI_LOAD_EXCEPTION_SELECTOR:
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool is_read_write_destination(MirInstruction::Opcode opcode)
+{
+  switch(opcode) {
+  case MirInstruction::MI_LOCK_XADD:
+  case MirInstruction::MI_XCHG:
+  case MirInstruction::MI_LOCK_CMPXCHG:
+  case MirInstruction::MI_ADD:
+  case MirInstruction::MI_SUB:
+  case MirInstruction::MI_IMUL:
+  case MirInstruction::MI_AND:
+  case MirInstruction::MI_OR:
+  case MirInstruction::MI_XOR:
+  case MirInstruction::MI_NEG:
+  case MirInstruction::MI_NOT:
+  case MirInstruction::MI_BSWAP:
+  case MirInstruction::MI_SEXT:
+  case MirInstruction::MI_ZEXT:
+  case MirInstruction::MI_SHL_CL:
+  case MirInstruction::MI_SHR_CL:
+  case MirInstruction::MI_SAR_CL:
+    return true;
+  default:
+    return false;
+  }
+}
+
+RegisterMask instruction_defs(const MirInstruction & instruction)
+{
+  RegisterMask defs = 0;
+  if(!instruction.operands.empty() &&
+     (is_write_only_destination(instruction.opcode) ||
+      is_read_write_destination(instruction.opcode))) {
+    const MirOperand & destination = instruction.operands[0];
+    if(destination.kind == MirOperand::OP_REG) defs |= gpr_bit(destination.reg);
+    if(destination.kind == MirOperand::OP_XMM) defs |= xmm_bit(destination.xmm);
+  }
+  switch(instruction.opcode) {
+  case MirInstruction::MI_CQO:
+    defs |= gpr_bit(XR_RDX);
+    break;
+  case MirInstruction::MI_MUL:
+  case MirInstruction::MI_IDIV:
+  case MirInstruction::MI_DIV:
+    defs |= gpr_bit(XR_RAX) | gpr_bit(XR_RDX);
+    break;
+  case MirInstruction::MI_CALL:
+  case MirInstruction::MI_CALL_INDIRECT:
+  case MirInstruction::MI_THROW:
+    defs |= kCallClobbers;
+    break;
+  case MirInstruction::MI_COPY_BYTES:
+    defs |= gpr_bit(XR_RDI) | gpr_bit(XR_RSI) | gpr_bit(XR_RCX);
+    break;
+  case MirInstruction::MI_ZERO_BYTES:
+    defs |= gpr_bit(XR_RAX) | gpr_bit(XR_RDI) | gpr_bit(XR_RCX);
+    break;
+  case MirInstruction::MI_LOCK_CMPXCHG16B:
+  case MirInstruction::MI_I128_SHL:
+  case MirInstruction::MI_I128_SHR:
+  case MirInstruction::MI_I128_SAR:
+  case MirInstruction::MI_I128_UDIV:
+  case MirInstruction::MI_I128_UMOD:
+  case MirInstruction::MI_I128_SDIV:
+  case MirInstruction::MI_I128_SMOD:
+    defs |= kAllGprs;
+    break;
+  default:
+    break;
+  }
+  return defs;
+}
+
+RegisterMask instruction_uses(const MirInstruction & instruction)
+{
+  RegisterMask uses = 0;
+  for(std::size_t i = 0; i < instruction.operands.size(); ++i) {
+    if(i == 0 && is_write_only_destination(instruction.opcode)) {
+      if(instruction.operands[i].kind == MirOperand::OP_DEREF)
+        uses |= operand_registers(instruction.operands[i]);
+      continue;
+    }
+    uses |= operand_registers(instruction.operands[i]);
+  }
+  switch(instruction.opcode) {
+  case MirInstruction::MI_CQO:
+    uses |= gpr_bit(XR_RAX);
+    break;
+  case MirInstruction::MI_MUL:
+  case MirInstruction::MI_IDIV:
+  case MirInstruction::MI_DIV:
+    uses |= gpr_bit(XR_RAX) | gpr_bit(XR_RDX);
+    break;
+  case MirInstruction::MI_SHL_CL:
+  case MirInstruction::MI_SHR_CL:
+  case MirInstruction::MI_SAR_CL:
+    uses |= gpr_bit(XR_RCX);
+    break;
+  case MirInstruction::MI_CALL:
+  case MirInstruction::MI_CALL_INDIRECT:
+    // The MIR call target is explicit, while SysV register arguments are
+    // physical live-ins to the call instruction.
+    uses |= kCallArguments;
+    break;
+  case MirInstruction::MI_RET:
+    if(instruction.operands.empty())
+      uses |= gpr_bit(XR_RAX) | gpr_bit(XR_RDX);
+    break;
+  case MirInstruction::MI_EXIT:
+    uses |= gpr_bit(XR_RDI);
+    break;
+  case MirInstruction::MI_LOCK_CMPXCHG16B:
+  case MirInstruction::MI_I128_SHL:
+  case MirInstruction::MI_I128_SHR:
+  case MirInstruction::MI_I128_SAR:
+  case MirInstruction::MI_I128_UDIV:
+  case MirInstruction::MI_I128_UMOD:
+  case MirInstruction::MI_I128_SDIV:
+  case MirInstruction::MI_I128_SMOD:
+    uses |= kAllGprs;
+    break;
+  default:
+    break;
+  }
+  return uses;
+}
+
+bool is_control_barrier(MirInstruction::Opcode opcode)
+{
+  return opcode == MirInstruction::MI_JMP ||
+    opcode == MirInstruction::MI_JMP_INDIRECT ||
+    opcode == MirInstruction::MI_RET || opcode == MirInstruction::MI_FRET ||
+    opcode == MirInstruction::MI_EXIT || opcode == MirInstruction::MI_THROW ||
+    opcode == MirInstruction::MI_RESUME;
+}
+
+struct ValueFact
+{
+  bool valid = false;
+  MirOperand value;
+  std::size_t definition = 0;
+};
+
+struct LocalFacts
+{
+  std::array<ValueFact, 16> gprs;
+  std::array<ValueFact, 8> xmms;
+
+  void invalidate(RegisterMask defs)
+  {
+    for(std::size_t i = 0; i < gprs.size(); ++i) {
+      if(defs & (RegisterMask(1) << i)) gprs[i].valid = false;
+      if(gprs[i].valid && gprs[i].value.kind == MirOperand::OP_REG &&
+         (defs & gpr_bit(gprs[i].value.reg))) gprs[i].valid = false;
+      if(gprs[i].valid && gprs[i].value.kind == MirOperand::OP_DEREF &&
+         (defs & gpr_bit(gprs[i].value.reg))) gprs[i].valid = false;
+    }
+    for(std::size_t i = 0; i < xmms.size(); ++i) {
+      if(defs & (RegisterMask(1) << (16 + i))) xmms[i].valid = false;
+      if(xmms[i].valid && xmms[i].value.kind == MirOperand::OP_XMM &&
+         (defs & xmm_bit(xmms[i].value.xmm))) xmms[i].valid = false;
+    }
+  }
+
+  MirOperand canonical(const MirOperand & operand, std::size_t * definition = 0) const
+  {
+    MirOperand current = operand;
+    std::size_t last_definition = 0;
+    for(std::size_t depth = 0; depth != 16; ++depth) {
+      if(current.kind == MirOperand::OP_REG) {
+        const ValueFact & fact = gprs[static_cast<std::size_t>(current.reg)];
+        if(!fact.valid) break;
+        current = fact.value;
+        last_definition = fact.definition;
+        continue;
+      }
+      if(current.kind == MirOperand::OP_XMM) {
+        const ValueFact & fact = xmms[static_cast<std::size_t>(current.xmm)];
+        if(!fact.valid) break;
+        current = fact.value;
+        last_definition = fact.definition;
+        continue;
+      }
+      break;
+    }
+    if(definition) *definition = last_definition;
+    return current;
+  }
+
+  MirOperand canonical_xmm_alias(const MirOperand & operand,
+                                 std::size_t * definition = 0) const
+  {
+    MirOperand current = operand;
+    std::size_t last_definition = 0;
+    for(std::size_t depth = 0; depth != 8 && current.kind == MirOperand::OP_XMM;
+        ++depth) {
+      const ValueFact & fact = xmms[static_cast<std::size_t>(current.xmm)];
+      if(!fact.valid || fact.value.kind != MirOperand::OP_XMM) break;
+      current = fact.value;
+      last_definition = fact.definition;
+    }
+    if(definition) *definition = last_definition;
+    return current;
+  }
+};
+
+bool immediate_operand_supported(const MirInstruction & instruction,
+                                 std::size_t index)
+{
+  if(instruction.opcode == MirInstruction::MI_MOV && index == 1) return true;
+  if(index != 1) return false;
+  return instruction.opcode == MirInstruction::MI_ADD ||
+    instruction.opcode == MirInstruction::MI_SUB ||
+    instruction.opcode == MirInstruction::MI_IMUL ||
+    instruction.opcode == MirInstruction::MI_AND ||
+    instruction.opcode == MirInstruction::MI_OR ||
+    instruction.opcode == MirInstruction::MI_XOR;
+}
+
+bool operand_is_read_only(const MirInstruction & instruction, std::size_t index)
+{
+  if(index != 0) return true;
+  return !is_write_only_destination(instruction.opcode) &&
+    !is_read_write_destination(instruction.opcode);
+}
+
+bool has_call_before_redefinition(const MirBlock & block, std::size_t start,
+                                  X64Register reg)
+{
+  const RegisterMask bit = gpr_bit(reg);
+  for(std::size_t i = start; i < block.instructions.size(); ++i) {
+    const MirInstruction & instruction = block.instructions[i];
+    if(instruction.opcode == MirInstruction::MI_CALL ||
+       instruction.opcode == MirInstruction::MI_CALL_INDIRECT) return true;
+    if(instruction_defs(instruction) & bit) return false;
+    if(is_control_barrier(instruction.opcode)) return false;
+  }
+  return false;
+}
+
+bool same_operand(const MirOperand & left, const MirOperand & right)
+{
+  if(left.kind != right.kind) return false;
+  if(left.kind == MirOperand::OP_REG) return left.reg == right.reg;
+  if(left.kind == MirOperand::OP_XMM) return left.xmm == right.xmm;
+  if(left.kind == MirOperand::OP_IMM) return left.imm == right.imm;
+  if(left.kind == MirOperand::OP_FRAME) return left.offset == right.offset;
+  if(left.kind == MirOperand::OP_FLOAT_IMM || left.kind == MirOperand::OP_SYMBOL ||
+     left.kind == MirOperand::OP_GLOBAL || left.kind == MirOperand::OP_LABEL)
+    return left.text == right.text;
+  if(left.kind == MirOperand::OP_DEREF)
+    return left.reg == right.reg && left.offset == right.offset;
+  return false;
+}
+
+void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
+                            Stats * stats)
+{
+  LocalFacts facts;
+  preserve.assign(block.instructions.size(), false);
+  for(std::size_t i = 0; i < block.instructions.size(); ++i) {
+    MirInstruction & instruction = block.instructions[i];
+    if(stats) ++stats->instruction_visits;
+    for(std::size_t operand_index = 0;
+        operand_index < instruction.operands.size(); ++operand_index) {
+      MirOperand & operand = instruction.operands[operand_index];
+      if(!operand_is_read_only(instruction, operand_index)) {
+        if(operand.kind != MirOperand::OP_DEREF) continue;
+      }
+      const MirOperand original = operand;
+      std::size_t definition = 0;
+      if(operand.kind == MirOperand::OP_DEREF) {
+        MirOperand base;
+        base.kind = MirOperand::OP_REG;
+        base.reg = operand.reg;
+        const MirOperand replacement = facts.canonical(base, &definition);
+        if(replacement.kind == MirOperand::OP_REG) operand.reg = replacement.reg;
+        else if(replacement.kind == MirOperand::OP_FRAME) {
+          operand.kind = MirOperand::OP_FRAME;
+          operand.offset += replacement.offset;
+        }
+      } else if(operand.kind == MirOperand::OP_REG ||
+                operand.kind == MirOperand::OP_XMM) {
+        const MirOperand replacement = operand.kind == MirOperand::OP_XMM ?
+          facts.canonical_xmm_alias(operand, &definition) :
+          facts.canonical(operand, &definition);
+        bool allowed = replacement.kind == operand.kind;
+        if(operand.kind == MirOperand::OP_REG &&
+           replacement.kind == MirOperand::OP_IMM)
+          allowed = immediate_operand_supported(instruction, operand_index);
+        if(operand.kind == MirOperand::OP_REG &&
+           (replacement.kind == MirOperand::OP_SYMBOL ||
+            replacement.kind == MirOperand::OP_GLOBAL))
+          allowed = instruction.opcode == MirInstruction::MI_MOV &&
+            operand_index == 1;
+        if(allowed) operand = replacement;
+      }
+      if(!same_operand(original, operand)) {
+        if(stats) ++stats->rewrites;
+        if(instruction.opcode == MirInstruction::MI_MOV &&
+           operand_index == 1 && operand.kind == MirOperand::OP_IMM &&
+           !instruction.operands.empty() &&
+           instruction.operands[0].kind == MirOperand::OP_REG &&
+           has_call_before_redefinition(block, i + 1,
+             instruction.operands[0].reg) && definition < preserve.size())
+          preserve[definition] = true;
+      }
+    }
+
+    const RegisterMask defs = instruction_defs(instruction);
+    facts.invalidate(defs);
+    if(instruction.opcode == MirInstruction::MI_MOV &&
+       instruction.operands.size() == 2 &&
+       instruction.operands[0].kind == MirOperand::OP_REG) {
+      const MirOperand & source = instruction.operands[1];
+      if(source.kind == MirOperand::OP_REG || source.kind == MirOperand::OP_IMM ||
+         source.kind == MirOperand::OP_SYMBOL || source.kind == MirOperand::OP_GLOBAL) {
+        ValueFact & fact = facts.gprs[static_cast<std::size_t>(
+          instruction.operands[0].reg)];
+        fact.valid = true;
+        fact.value = source;
+        fact.definition = i;
+      }
+    } else if(instruction.opcode == MirInstruction::MI_FMOV &&
+              instruction.operands.size() == 2 &&
+              instruction.operands[0].kind == MirOperand::OP_XMM) {
+      const MirOperand & source = instruction.operands[1];
+      if(source.kind == MirOperand::OP_XMM ||
+         source.kind == MirOperand::OP_FLOAT_IMM ||
+         source.kind == MirOperand::OP_IMM) {
+        ValueFact & fact = facts.xmms[static_cast<std::size_t>(
+          instruction.operands[0].xmm)];
+        fact.valid = true;
+        fact.value = source;
+        fact.definition = i;
+      }
+    } else if(instruction.opcode == MirInstruction::MI_LEA &&
+              instruction.operands.size() == 2 &&
+              instruction.operands[0].kind == MirOperand::OP_REG &&
+              instruction.operands[1].kind == MirOperand::OP_FRAME) {
+      ValueFact & fact = facts.gprs[static_cast<std::size_t>(
+        instruction.operands[0].reg)];
+      fact.valid = true;
+      fact.value = instruction.operands[1];
+      fact.definition = i;
+    }
+  }
+}
+
+bool is_label_operand(const MirInstruction & instruction, std::string * label)
+{
+  if(instruction.operands.size() != 1 ||
+     instruction.operands[0].kind != MirOperand::OP_LABEL) return false;
+  *label = instruction.operands[0].text;
+  return true;
+}
+
+struct ControlFlow
+{
+  std::vector<std::vector<std::size_t> > successors;
+  std::vector<std::vector<std::size_t> > predecessors;
+};
+
+void append_unique(std::vector<std::size_t> & values, std::size_t value)
+{
+  if(std::find(values.begin(), values.end(), value) == values.end())
+    values.push_back(value);
+}
+
+ControlFlow build_control_flow(const MirFunction & function, Stats * stats)
+{
+  ControlFlow cfg;
+  cfg.successors.resize(function.blocks.size());
+  cfg.predecessors.resize(function.blocks.size());
+  std::unordered_map<std::string, std::size_t> labels;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    labels[function.blocks[i].label] = i;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const MirBlock & block = function.blocks[i];
+    bool falls_through = true;
+    for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const MirInstruction & instruction = block.instructions[j];
+      if(instruction.opcode == MirInstruction::MI_JCC ||
+         instruction.opcode == MirInstruction::MI_JMP) {
+        std::string label;
+        if(is_label_operand(instruction, &label)) {
+          const std::unordered_map<std::string, std::size_t>::const_iterator found =
+            labels.find(label);
+          if(found != labels.end()) append_unique(cfg.successors[i], found->second);
+        }
+      }
+      if(instruction.opcode == MirInstruction::MI_JMP ||
+         is_control_barrier(instruction.opcode)) falls_through = false;
+    }
+    if(falls_through && i + 1 < function.blocks.size())
+      append_unique(cfg.successors[i], i + 1);
+    for(std::size_t j = 0; j < cfg.successors[i].size(); ++j) {
+      cfg.predecessors[cfg.successors[i][j]].push_back(i);
+      if(stats) ++stats->cfg_edge_visits;
+    }
+  }
+  return cfg;
+}
+
+struct Liveness
+{
+  std::vector<RegisterMask> in;
+  std::vector<RegisterMask> out;
+};
+
+Liveness compute_liveness(const MirFunction & function, const ControlFlow & cfg,
+                          Stats * stats)
+{
+  const std::size_t count = function.blocks.size();
+  std::vector<RegisterMask> uses(count, 0), defs(count, 0);
+  for(std::size_t i = 0; i < count; ++i) {
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const MirInstruction & instruction = function.blocks[i].instructions[j];
+      if(stats) ++stats->instruction_visits;
+      uses[i] |= instruction_uses(instruction) & ~defs[i];
+      defs[i] |= instruction_defs(instruction);
+    }
+  }
+  Liveness live;
+  live.in.assign(count, 0);
+  live.out.assign(count, 0);
+  std::deque<std::size_t> worklist;
+  std::vector<bool> queued(count, false);
+  for(std::size_t i = count; i != 0; --i) {
+    worklist.push_back(i - 1);
+    queued[i - 1] = true;
+    if(stats) ++stats->worklist_pushes;
+  }
+  while(!worklist.empty()) {
+    const std::size_t block = worklist.front();
+    worklist.pop_front();
+    queued[block] = false;
+    RegisterMask new_out = 0;
+    for(std::size_t i = 0; i < cfg.successors[block].size(); ++i) {
+      new_out |= live.in[cfg.successors[block][i]];
+      if(stats) ++stats->cfg_edge_visits;
+    }
+    const RegisterMask new_in = uses[block] | (new_out & ~defs[block]);
+    if(new_out == live.out[block] && new_in == live.in[block]) continue;
+    live.out[block] = new_out;
+    live.in[block] = new_in;
+    for(std::size_t i = 0; i < cfg.predecessors[block].size(); ++i) {
+      const std::size_t predecessor = cfg.predecessors[block][i];
+      if(queued[predecessor]) continue;
+      queued[predecessor] = true;
+      worklist.push_back(predecessor);
+      if(stats) ++stats->worklist_pushes;
+    }
+  }
+  return live;
+}
+
+bool is_removable_definition(const MirInstruction & instruction,
+                              RegisterMask live)
+{
+  if(instruction.opcode != MirInstruction::MI_MOV &&
+     instruction.opcode != MirInstruction::MI_FMOV &&
+     instruction.opcode != MirInstruction::MI_LEA) return false;
+  const RegisterMask defs = instruction_defs(instruction);
+  return defs != 0 && (defs & live) == 0;
+}
+
+void retain_debug(const MirInstruction & removed, MirInstruction * survivor)
+{
+  if(!survivor) return;
+  if(!survivor->debug_location.present() && removed.debug_location.present())
+    survivor->debug_location = removed.debug_location;
+  if(!survivor->has_source_position && removed.has_source_position) {
+    survivor->has_source_position = true;
+    survivor->source_position = removed.source_position;
+  }
+}
+
+void remove_dead_definitions(MirFunction & function,
+                             const std::vector<std::vector<bool> > & preserve,
+                             const Liveness & liveness, Stats * stats)
+{
+  for(std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    MirBlock & block = function.blocks[block_index];
+    RegisterMask live = liveness.out[block_index];
+    std::vector<MirInstruction> reverse;
+    reverse.reserve(block.instructions.size());
+    for(std::size_t i = block.instructions.size(); i != 0; --i) {
+      const std::size_t index = i - 1;
+      const MirInstruction & instruction = block.instructions[index];
+      if(stats) ++stats->instruction_visits;
+      if(index < preserve[block_index].size() && !preserve[block_index][index] &&
+         is_removable_definition(instruction, live)) {
+        retain_debug(instruction, reverse.empty() ? 0 : &reverse.back());
+        if(stats) ++stats->rewrites;
+        continue;
+      }
+      live &= ~instruction_defs(instruction);
+      live |= instruction_uses(instruction);
+      reverse.push_back(instruction);
+    }
+    std::reverse(reverse.begin(), reverse.end());
+    block.instructions.swap(reverse);
+  }
+}
+
+X86Condition inverse_condition(X86Condition condition)
+{
+  return static_cast<X86Condition>(static_cast<unsigned>(condition) ^ 1U);
+}
+
+bool jump_targets(const MirInstruction & instruction, const std::string & label)
+{
+  return instruction.operands.size() == 1 &&
+    instruction.operands[0].kind == MirOperand::OP_LABEL &&
+    instruction.operands[0].text == label;
+}
+
+void clean_branches(MirFunction & function, Stats * stats)
+{
+  for(std::size_t i = 0; i + 1 < function.blocks.size(); ++i) {
+    MirBlock & block = function.blocks[i];
+    const std::string & fallthrough = function.blocks[i + 1].label;
+    if(block.instructions.empty()) continue;
+    MirInstruction & last = block.instructions.back();
+    if(last.opcode == MirInstruction::MI_JMP && jump_targets(last, fallthrough)) {
+      if(block.instructions.size() > 1)
+        retain_debug(last, &block.instructions[block.instructions.size() - 2]);
+      block.instructions.pop_back();
+      if(stats) ++stats->rewrites;
+      continue;
+    }
+    if(last.opcode != MirInstruction::MI_JMP || block.instructions.size() < 2)
+      continue;
+    MirInstruction & branch = block.instructions[block.instructions.size() - 2];
+    if(branch.opcode != MirInstruction::MI_JCC ||
+       !jump_targets(branch, fallthrough)) continue;
+    branch.condition = inverse_condition(branch.condition);
+    branch.operands[0] = last.operands[0];
+    retain_debug(last, &branch);
+    block.instructions.pop_back();
+    if(stats) ++stats->rewrites;
+  }
+}
+
+void form_zero_tests(MirFunction & function, Stats * stats)
+{
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      MirInstruction & instruction = function.blocks[i].instructions[j];
+      if(instruction.opcode != MirInstruction::MI_CMP ||
+         instruction.operands.size() != 2 ||
+         instruction.operands[0].kind != MirOperand::OP_REG ||
+         instruction.operands[1].kind != MirOperand::OP_IMM ||
+         instruction.operands[1].imm != 0) continue;
+      instruction.opcode = MirInstruction::MI_TEST;
+      instruction.operands[1] = instruction.operands[0];
+      if(stats) ++stats->rewrites;
+    }
+}
+
+void trace_layout(MirFunction & function, Stats * stats)
+{
+  if(function.blocks.size() < 2) return;
+  std::unordered_map<std::string, std::size_t> labels;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    labels[function.blocks[i].label] = i;
+  std::vector<bool> placed(function.blocks.size(), false);
+  std::vector<std::size_t> order;
+  order.reserve(function.blocks.size());
+  for(std::size_t seed = 0; seed < function.blocks.size(); ++seed) {
+    std::size_t current = seed;
+    while(!placed[current]) {
+      placed[current] = true;
+      order.push_back(current);
+      const MirBlock & block = function.blocks[current];
+      if(block.instructions.empty() ||
+         block.instructions.back().opcode != MirInstruction::MI_JMP) break;
+      bool conditional_tail = false;
+      for(std::size_t i = block.instructions.size() - 1; i != 0; --i) {
+        const MirInstruction::Opcode opcode = block.instructions[i - 1].opcode;
+        if(opcode == MirInstruction::MI_JCC) conditional_tail = true;
+        if(opcode != MirInstruction::MI_JCC) break;
+      }
+      if(conditional_tail) break;
+      std::string target;
+      if(!is_label_operand(block.instructions.back(), &target)) break;
+      const std::unordered_map<std::string, std::size_t>::const_iterator next =
+        labels.find(target);
+      if(next == labels.end() || placed[next->second]) break;
+      current = next->second;
+    }
+  }
+  bool changed = false;
+  for(std::size_t i = 0; i < order.size(); ++i) changed = changed || order[i] != i;
+  if(!changed) return;
+  std::vector<MirBlock> blocks;
+  blocks.reserve(function.blocks.size());
+  for(std::size_t i = 0; i < order.size(); ++i)
+    blocks.push_back(std::move(function.blocks[order[i]]));
+  function.blocks.swap(blocks);
+  if(stats) ++stats->rewrites;
+}
+
+bool has_implicit_callee_saved_use(const MirFunction & function)
+{
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const MirInstruction::Opcode opcode =
+        function.blocks[i].instructions[j].opcode;
+      if(opcode == MirInstruction::MI_LOCK_CMPXCHG16B ||
+         opcode == MirInstruction::MI_I128_SHL ||
+         opcode == MirInstruction::MI_I128_SHR ||
+         opcode == MirInstruction::MI_I128_SAR ||
+         opcode == MirInstruction::MI_I128_UDIV ||
+         opcode == MirInstruction::MI_I128_UMOD ||
+         opcode == MirInstruction::MI_I128_SDIV ||
+         opcode == MirInstruction::MI_I128_SMOD) return true;
+    }
+  return false;
+}
+
+std::size_t align_up(std::size_t value, std::size_t alignment)
+{
+  return (value + alignment - 1) / alignment * alignment;
+}
+
+void finalize_frame(MirFunction & function, Stats * stats)
+{
+  if(has_implicit_callee_saved_use(function)) return;
+  RegisterMask referenced = 0;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
+      for(std::size_t k = 0;
+          k < function.blocks[i].instructions[j].operands.size(); ++k)
+        referenced |= operand_registers(
+          function.blocks[i].instructions[j].operands[k]);
+  const std::size_t old_saved = function.callee_saved_regs.size();
+  function.callee_saved_regs.erase(std::remove_if(
+    function.callee_saved_regs.begin(), function.callee_saved_regs.end(),
+    [referenced](X64Register reg) { return (referenced & gpr_bit(reg)) == 0; }),
+    function.callee_saved_regs.end());
+  if(function.callee_saved_regs.size() == old_saved) return;
+  std::size_t frame_bytes = function.frame_bytes;
+  for(std::size_t i = 0; i < function.frame_bindings.size(); ++i)
+    if(function.frame_bindings[i].offset < 0)
+      frame_bytes = std::max(frame_bytes,
+        static_cast<std::size_t>(-function.frame_bindings[i].offset));
+  function.stack_size = align_up(frame_bytes + function.scratch_bytes +
+    function.callee_saved_regs.size() * 8, 16);
+  if(stats) ++stats->rewrites;
+}
+
+std::size_t instruction_count(const MirFunction & function)
+{
+  std::size_t count = 0;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    count += function.blocks[i].instructions.size();
+  return count;
+}
+
+}  // namespace
+
+void optimize_function(MirFunction & function, int level, Stats * stats)
+{
+  if(level < 0 || level > 2)
+    throw std::logic_error("unsupported machine optimization level");
+  if(level == 0) return;
+  const std::chrono::steady_clock::time_point started =
+    std::chrono::steady_clock::now();
+  if(stats) {
+    ++stats->functions;
+    stats->input_instructions += instruction_count(function);
+  }
+  if(level >= 2) trace_layout(function, stats);
+  std::vector<std::vector<bool> > preserve(function.blocks.size());
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    rewrite_local_operands(function.blocks[i], preserve[i], stats);
+  form_zero_tests(function, stats);
+  clean_branches(function, stats);
+  const ControlFlow cfg = build_control_flow(function, stats);
+  const Liveness liveness = compute_liveness(function, cfg, stats);
+  remove_dead_definitions(function, preserve, liveness, stats);
+  // Removing value shuffles can expose one more natural branch tail.
+  clean_branches(function, stats);
+  if(level >= 2) finalize_frame(function, stats);
+  if(stats) {
+    stats->output_instructions += instruction_count(function);
+    stats->elapsed_nanoseconds += static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count());
+  }
+}
+
+void optimize(mir_model::MirProgram & program, int level, Stats * stats)
+{
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    optimize_function(program.functions[i], level, stats);
+}
+
+}  // namespace machine_opt
+}  // namespace lowir_native

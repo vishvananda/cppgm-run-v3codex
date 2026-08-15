@@ -2,6 +2,7 @@
 
 #include "lowir_force_inline.h"
 #include "lowir_native_eh.h"
+#include "lowir_native_opt.h"
 #include "lowir_native_program.h"
 #include "lowir_native_session.h"
 
@@ -16,15 +17,17 @@ struct ProgramLoweringSession::Impl
   std::unique_ptr<lowir_model::LowirProgram> rewritten;
   const lowir_model::LowirProgram & source;
   Stats * stats;
+  int optimization_level;
   mir_model::MirProgram shell;
   std::unordered_map<std::string, std::string> tls_wrappers;
   std::unordered_set<std::string> pointer_globals;
   abi::FunctionSignatureIndex signatures;
 
   Impl(const lowir_model::LowirProgram & program, const std::string & target,
-       Stats * output_stats)
+       int level, Stats * output_stats)
     : rewritten(force_inline::rewrite_program(program)),
-      source(rewritten ? *rewritten : program), stats(output_stats)
+      source(rewritten ? *rewritten : program), stats(output_stats),
+      optimization_level(level)
   {
     std::chrono::steady_clock::time_point started;
     if(stats) started = std::chrono::steady_clock::now();
@@ -103,7 +106,18 @@ struct ProgramLoweringSession::Impl
     if(stats) started = std::chrono::steady_clock::now();
     mir_model::MirFunction result = session_detail::lower_native_function(
       source.functions[index], pointer_globals, tls_wrappers, signatures);
+    machine_opt::Stats opt_stats;
+    machine_opt::optimize_function(result, optimization_level,
+                                   stats ? &opt_stats : 0);
     if(stats) {
+      stats->machine_opt_functions += opt_stats.functions;
+      stats->machine_opt_input_instructions += opt_stats.input_instructions;
+      stats->machine_opt_output_instructions += opt_stats.output_instructions;
+      stats->machine_opt_instruction_visits += opt_stats.instruction_visits;
+      stats->machine_opt_cfg_edge_visits += opt_stats.cfg_edge_visits;
+      stats->machine_opt_worklist_pushes += opt_stats.worklist_pushes;
+      stats->machine_opt_rewrites += opt_stats.rewrites;
+      stats->machine_opt_nanoseconds += opt_stats.elapsed_nanoseconds;
       for(std::size_t i = 0; i < result.blocks.size(); ++i)
         stats->mir_instructions += result.blocks[i].instructions.size();
       stats->lower_nanoseconds += static_cast<std::uint64_t>(
@@ -116,8 +130,8 @@ struct ProgramLoweringSession::Impl
 
 ProgramLoweringSession::ProgramLoweringSession(
     const lowir_model::LowirProgram & program, const std::string & target,
-    Stats * stats)
-  : impl_(new Impl(program, target, stats)) {}
+    int optimization_level, Stats * stats)
+  : impl_(new Impl(program, target, optimization_level, stats)) {}
 
 ProgramLoweringSession::~ProgramLoweringSession()
 {
@@ -141,9 +155,10 @@ mir_model::MirProgram ProgramLoweringSession::take_program_shell()
 
 mir_model::MirProgram lower_program(const lowir_model::LowirProgram & program,
                                     const std::string & target,
+                                    int optimization_level,
                                     Stats * stats)
 {
-  ProgramLoweringSession lowering(program, target, stats);
+  ProgramLoweringSession lowering(program, target, optimization_level, stats);
   mir_model::MirProgram result = lowering.take_program_shell();
   result.functions.reserve(lowering.function_count());
   for(std::size_t i = 0; i < lowering.function_count(); ++i)

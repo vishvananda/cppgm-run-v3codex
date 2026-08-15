@@ -1132,18 +1132,31 @@ int run_compile_driver(const DriverInvocation & invocation,
   lowir_native::Stats native_stats;
   lowir_native::write_linux_relocatable(
       invocation.output, object.lowir, target, compiler_payload,
+      invocation.optimization_level,
       getenv("CPPGM_DRIVER_STATS") ? &native_stats : 0);
   if(getenv("CPPGM_DRIVER_STATS")) {
     cerr << "pa31_object_stats"
          << " functions=" << native_stats.functions
          << " lowir_instructions=" << native_stats.lowir_instructions
          << " mir_instructions=" << native_stats.mir_instructions
+         << " machine_opt_input="
+         << native_stats.machine_opt_input_instructions
+         << " machine_opt_output="
+         << native_stats.machine_opt_output_instructions
+         << " machine_opt_visits="
+         << native_stats.machine_opt_instruction_visits
+         << " machine_opt_cfg_edges="
+         << native_stats.machine_opt_cfg_edge_visits
+         << " machine_opt_pushes="
+         << native_stats.machine_opt_worklist_pushes
+         << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
          << " eh_region_states=" << native_stats.eh_region_states
          << " eh_region_edges=" << native_stats.eh_region_edges
          << " eh_call_sites=" << native_stats.eh_call_sites
          << " fixups=" << native_stats.fixups
          << " output_bytes=" << native_stats.output_bytes
          << " lower_ns=" << native_stats.lower_nanoseconds
+         << " machine_opt_ns=" << native_stats.machine_opt_nanoseconds
          << " encode_ns=" << native_stats.encode_nanoseconds
          << " write_ns=" << native_stats.write_nanoseconds << '\n';
   }
@@ -1184,7 +1197,8 @@ int run_link_driver(const DriverInvocation & invocation,
       collect_stats ? &link_stats : 0);
   lowir_native::Stats native_stats;
   lowir_native::write_linux_executable(invocation.output, lowir, target,
-      foreign_objects, collect_stats ? &native_stats : 0);
+      foreign_objects, invocation.optimization_level,
+      collect_stats ? &native_stats : 0);
   if(collect_stats) {
     cerr << "pa30_driver_stats"
          << " objects=" << link_stats.objects
@@ -1196,10 +1210,22 @@ int run_link_driver(const DriverInvocation & invocation,
          << " functions=" << native_stats.functions
          << " lowir_instructions=" << native_stats.lowir_instructions
          << " mir_instructions=" << native_stats.mir_instructions
+		 << " machine_opt_input="
+		 << native_stats.machine_opt_input_instructions
+		 << " machine_opt_output="
+		 << native_stats.machine_opt_output_instructions
+		 << " machine_opt_visits="
+		 << native_stats.machine_opt_instruction_visits
+		 << " machine_opt_cfg_edges="
+		 << native_stats.machine_opt_cfg_edge_visits
+		 << " machine_opt_pushes="
+		 << native_stats.machine_opt_worklist_pushes
+		 << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
 		 << " output_bytes=" << native_stats.output_bytes
 		 << " input_ns=" << input_nanoseconds
 		 << " link_ns=" << link_stats.link_nanoseconds
 		 << " lower_ns=" << native_stats.lower_nanoseconds
+		 << " machine_opt_ns=" << native_stats.machine_opt_nanoseconds
 		 << " encode_ns=" << native_stats.encode_nanoseconds
 		 << " write_ns=" << native_stats.write_nanoseconds << '\n';
   }

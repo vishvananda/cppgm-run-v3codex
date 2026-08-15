@@ -169,7 +169,8 @@ int run_lowir2native_mode(const vector<string> & args)
                                      lowir_model::LEP_REQUIRE_ENTRY);
   const chrono::steady_clock::time_point lower_start = chrono::steady_clock::now();
   lowir_native::Stats stats;
-  const mir_model::MirProgram mir = lowir_native::lower_program(lowir, target, &stats);
+  const mir_model::MirProgram mir = lowir_native::lower_program(
+      lowir, target, invocation.optimization_level, &stats);
   const chrono::steady_clock::time_point output_start = chrono::steady_clock::now();
   if(!invocation.machine_ir_file.empty())
     mir_model::write_mir_program_file(invocation.machine_ir_file, mir);
@@ -188,11 +189,19 @@ int run_lowir2native_mode(const vector<string> & args)
          << " blocks=" << stats.blocks
          << " lowir_instructions=" << stats.lowir_instructions
          << " mir_instructions=" << stats.mir_instructions
+         << " machine_opt_functions=" << stats.machine_opt_functions
+         << " machine_opt_input=" << stats.machine_opt_input_instructions
+         << " machine_opt_output=" << stats.machine_opt_output_instructions
+         << " machine_opt_visits=" << stats.machine_opt_instruction_visits
+         << " machine_opt_cfg_edges=" << stats.machine_opt_cfg_edge_visits
+         << " machine_opt_pushes=" << stats.machine_opt_worklist_pushes
+         << " machine_opt_rewrites=" << stats.machine_opt_rewrites
          << " fixups=" << stats.fixups
          << " output_bytes=" << stats.output_bytes
          << " parse_ns=" << chrono::duration_cast<chrono::nanoseconds>(
               lower_start - parse_start).count()
          << " lower_ns=" << stats.lower_nanoseconds
+         << " machine_opt_ns=" << stats.machine_opt_nanoseconds
          << " encode_ns=" << stats.encode_nanoseconds
          << " write_ns=" << stats.write_nanoseconds << '\n';
   }

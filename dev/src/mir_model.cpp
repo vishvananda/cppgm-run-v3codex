@@ -228,10 +228,22 @@ std::string instruction_text(const Instruction & instruction)
       instruction.opcode == Instruction::MI_XCHG ||
       instruction.opcode == Instruction::MI_LOCK_CMPXCHG ||
       instruction.opcode == Instruction::MI_CMP ||
+      instruction.opcode == Instruction::MI_TEST ||
       instruction.opcode == Instruction::MI_SEXT ||
       instruction.opcode == Instruction::MI_ZEXT) && !instruction.type.empty())
     out << '.' << instruction.type;
   render_operands(out, instruction);
+  return out.str();
+}
+
+std::string rendered_instruction_text(const Instruction & instruction)
+{
+  std::ostringstream out;
+  out << instruction_text(instruction);
+  if(instruction.debug_location.present())
+    out << " !dbg(" << instruction.debug_location.file << ", "
+        << instruction.debug_location.line << ", "
+        << instruction.debug_location.column << ')';
   return out.str();
 }
 
@@ -319,7 +331,8 @@ void render_function(std::ostringstream & out, const Function & function)
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out << "\n  block " << function.blocks[i].label << '\n';
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
-      out << "    " << instruction_text(function.blocks[i].instructions[j]) << '\n';
+      out << "    " << rendered_instruction_text(
+        function.blocks[i].instructions[j]) << '\n';
   }
 }
 
@@ -332,7 +345,7 @@ std::string serialize_mir_program(const MirProgram & program)
   if(!program.startup.empty()) {
     out << "\nstartup\n";
     for(std::size_t i = 0; i < program.startup.size(); ++i)
-      out << "    " << instruction_text(program.startup[i]) << '\n';
+      out << "    " << rendered_instruction_text(program.startup[i]) << '\n';
   }
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     out << '\n';
