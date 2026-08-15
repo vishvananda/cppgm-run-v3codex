@@ -268,20 +268,32 @@ protected:
 	Operand FloatingIntrinsicSignbit(const Operand& value)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const Operand zero = derived.FloatingOperand(
-			FloatingIntrinsicLiteral("0.0", value.type), value.type);
-		const Operand negative =
-			EmitFloatingIntrinsicCompare(LOW_OP_LT, value, zero);
-		const Operand is_zero =
-			EmitFloatingIntrinsicCompare(LOW_OP_EQ, value, zero);
-		const Operand reciprocal = EmitIntegerIntrinsicBinary(LOW_OP_DIV,
-			derived.FloatingOperand(
-				FloatingIntrinsicLiteral("1.0", value.type), value.type),
-			value, value.type);
-		const Operand reciprocal_negative =
-			EmitFloatingIntrinsicCompare(LOW_OP_LT, reciprocal, zero);
-		return FloatingIntrinsicOr(negative,
-			FloatingIntrinsicAnd(is_zero, reciprocal_negative));
+		LowType word_type;
+		std::int64_t word_offset = 0;
+		if (value.type.width == 32) word_type = LowU32();
+		else if (value.type.width == 64) word_type = LowU64();
+		else if (value.type.width == 80)
+		{
+			word_type = LowU16();
+			word_offset = 8;
+		}
+		else throw std::logic_error("invalid floating signbit width");
+
+		const Operand slot(derived.CreateGeneratedSlot(
+			"floating_signbit", value.type), value.type);
+		const Operand address = derived.AddressOfStorage(slot);
+		Instruction store(Instruction::STORE);
+		store.type = value.type;
+		store.first = value;
+		store.second = address;
+		derived.Emit(store);
+		const Operand word_address = word_offset == 0 ? address :
+			derived.IndexAddress(LowI8(), address,
+				Operand(word_offset, LowI64()), false);
+		const Operand word = derived.LoadStorage(word_address, word_type);
+		const Operand sign = EmitIntegerIntrinsicBinary(LOW_OP_USHR, word,
+			Operand(word_type.width - 1, word_type), word_type);
+		return derived.Convert(sign, LowI32());
 	}
 
 	bool TryLowerFloatingIntrinsicCall(const DumpNode& record,

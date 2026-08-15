@@ -11,26 +11,23 @@ Hosted ABI entries now preserve canonical owner types for nested members,
 complete/base/deleting lifecycle relationships, vtable-derived weak ownership,
 and explicit native object-publication policy. Distinct virtual-base lifecycle
 entries publish one object symbol, while weak shared-entry families retain the
-local aliases needed for coherent per-TU selection.
+local aliases needed for coherent per-TU selection. Hosted floating predicates
+lower from their retained operand `LowType`; sign classification stages the
+value once and extracts the f32/f64 IEEE or f80 x87 sign field directly.
 
 ## Current Failure Map
 
-PA36 is 79/80. The complete non-overlapping failure map is:
-
-| Failures | Shared behavior | Primary owner |
-| ---: | --- | --- |
-| 1 | hosted floating `signbit` returns the wrong runtime classification | numeric builtin lowering |
+PA36 is 80/80. No current-stage failures remain.
 
 ## Active Checkpoint
 
-Next: typed floating sign classification. `spec.md` §§2, 6, 7, and 9 require
-the retained builtin operation and operand `LowType` to flow directly into
-typed LowIR and bounded native lowering. `FloatingIntrinsicSignbit` owns the
-format-specific sign extraction; it must classify signed zero and signed NaN
-without value comparisons, then publish the integer predicate consumed by the
-call expression. Work and staging are O(1) per intrinsic for f32/f64/f80.
-Validate all three formats over positive/negative zero and negative NaN,
-neighboring PA34 predicates, then stage, prior, and audit.
+Complete: typed floating sign classification. In alignment with `spec.md`
+§§2, 6, 7, and 9, the retained builtin operation and operand `LowType` flow
+directly into typed LowIR and bounded native lowering. Numeric builtin lowering
+stages the value once, selects its format-owned sign word, and returns the
+integer predicate consumed by the call expression in O(1) work and storage.
+Validation covers positive/negative zero and negative NaN for f32/f64/f80,
+neighboring PA34 predicates, PA36, all prior stages, and file audit.
 
 ## Performance Evidence
 
@@ -43,7 +40,9 @@ two-word union swap now passes and emits direct reference calls with no argument
 materialization slots. The tuple fixture passes in 1.13 s/59,224 KiB; normalized
 reference comparison adds constant work per candidate pair, and a complete
 virtual-base temporary now emits one static projection instead of a vptr load,
-row lookup, and dynamic projection. The broader prior profiles remain stable.
+row lookup, and dynamic projection. The nine-call signbit fixture compiles in
+0.00 s/8,472 KiB RSS and emits nine fixed shifts, one per call; only f80 adds a
+constant byte-index step. The broader prior profiles remain stable.
 
 ## Completed Checkpoints
 
@@ -57,3 +56,4 @@ row lookup, and dynamic projection. The broader prior profiles remain stable.
 | Canonical hosted special-member entry ownership | Unified nested-owner substitutions, D0 weak ownership, and complete-entry publication; PA36 75 -> 77/80 | ABI/TLS focus 3/3; PA36 77/80; through PA35 4,907/4,907; audit |
 | Callable cleanup domains and union-reference preservation | Separated lexical lookup from cleanup ownership and retained union xvalue calls as addresses; PA36 77 -> 78/80 | Recursive `std::function`; two-word union swap; PA36 78/80; through PA35 4,907/4,907; audit |
 | Canonical tuple reference ordering and complete temporary vbase projection | Ranked xvalue cv bindings, normalized forwarding packs, and used static complete-object offsets; PA36 78 -> 79/80 | Tuple/reference/tie focus; PA36 79/80; through PA35 4,907/4,907; audit |
+| Typed floating sign-field extraction | Replaced comparison classification with single-evaluation f32/f64/f80 sign extraction; PA36 79 -> 80/80 | Signbit 1/1; PA34 predicates 1/1; PA36 80/80; through PA35 4,907/4,907; audit |
