@@ -2915,6 +2915,8 @@ void RunSyntaxTranslationUnit(const std::string& path, const std::string& source
 	const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 	if (stats) *stats = SyntaxStats();
 	StringTable local_strings; StringTable& strings = retained_strings ? *retained_strings : local_strings;
+	const std::size_t reserve_limit = 1024 * 1024;
+	strings.Reserve(std::min(reserve_limit, source.size() / 2 + 32));
 	InternStatsAttachment intern_stats(strings,
 		stats ? &stats->interning.table : 0);
 	SyntaxTokenSink sink(strings, stats ? &stats->interning : 0);

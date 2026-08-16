@@ -154,13 +154,7 @@ private:
 
 NodeId TypeAnalyzer::FindChild(NodeId node, const char* tag) const
 {
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, tag)) return child;
-	}
-	return kNoNode;
+	return arena_->FindDirectChildTag(node, tag);
 }
 
 NodeId TypeAnalyzer::FirstSemanticChild(NodeId node) const

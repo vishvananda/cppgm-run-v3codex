@@ -557,6 +557,19 @@ void SyntaxArena::SetPayload(NodeId node, const std::string& payload)
 	nodes_[node].payload = payload.empty() ? 0 : strings_.Intern(payload);
 }
 
+NodeId SyntaxArena::FindDirectChildTag(NodeId node, const char* tag) const
+{
+	if (stats_) ++stats_->syntax_tag_query_calls;
+	const TextId identity = InternTag(tag);
+	for (std::uint32_t edge = nodes_[node].first_edge;
+		edge != kNoEdge; edge = edges_[edge].next)
+	{
+		const NodeId child = edges_[edge].child;
+		if (nodes_[child].tag == identity) return child;
+	}
+	return kNoNode;
+}
+
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 {
 	if (stats_) ++stats_->syntax_tag_query_calls;

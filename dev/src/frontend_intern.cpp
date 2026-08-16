@@ -112,6 +112,16 @@ InternedStringId InternedStringTable::InternRange(const std::string& text,
 	return id;
 }
 
+void InternedStringTable::Reserve(std::size_t expected_texts)
+{
+	if (expected_texts >= std::numeric_limits<InternedStringId>::max())
+		expected_texts = std::numeric_limits<InternedStringId>::max() - 1;
+	texts_.reserve(expected_texts + 1);
+	std::size_t capacity = slots_.size();
+	while (expected_texts + 1 > capacity * 7 / 10) capacity *= 2;
+	if (capacity > slots_.size()) Rehash(capacity);
+}
+
 const std::string& InternedStringTable::Get(InternedStringId id) const
 {
 	return texts_[id];

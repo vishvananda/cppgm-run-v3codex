@@ -37,6 +37,7 @@ public:
 	InternedStringId Intern(const std::string& text);
 	InternedStringId InternRange(const std::string& text,
 		std::size_t first, std::size_t count);
+	void Reserve(std::size_t expected_texts);
 	const std::string& Get(InternedStringId id) const;
 	std::size_t Size() const;
 	std::size_t SpellingBytes() const;

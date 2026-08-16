@@ -171,6 +171,7 @@ public:
 	void AppendImmediateParameterNames(NodeId declarator,
 		std::vector<TextId>* result) const;
 	void SetPayload(NodeId node, const std::string& payload);
+	NodeId FindDirectChildTag(NodeId node, const char* tag) const;
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
 	bool HasDescendantTag(NodeId node, const char* tag) const;
 	std::uint32_t FirstEdge(NodeId node) const;
