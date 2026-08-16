@@ -2116,7 +2116,16 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	if (program_->types.Get(program_->types.RemoveTopCv(object_type)).kind ==
 		TYPE_ARRAY)
 		throw std::runtime_error("array new is outside PA16");
-	EnsureClassDefinition(object_type);
+	// A synthetic template-parameter shape is not a complete object type, and
+	// its allocation validity cannot be decided while materializing a partial
+	// specialization.  Let the candidate become a non-deduced shape so PA23's
+	// concrete replay can check the retained new-expression after deduction.
+	if (CandidateSubstitutionActive() &&
+		FunctionTemplateTypeIsDependent(object_type))
+		return CandidateSubstitutionFailure();
+	if (!IsMeasurableObjectType(object_type, false))
+		return CandidateExpressionFailure(
+			"new-expression requires a complete object type");
 	const EntityId object_entity = EntityOf(object_type);
 	if (object_entity != kNoEntity &&
 		program_->entities[object_entity].abstract_class)
