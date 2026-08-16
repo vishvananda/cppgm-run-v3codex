@@ -199,47 +199,51 @@ class PhysicalCursor
 {
 public:
 	PhysicalCursor(const std::string& source, PPTokenizationStats* stats)
-		: source_(source), position_(0), saw_character_(false),
-		  last_code_point_(kEndOfFile), emitted_final_newline_(false),
-		  line_(1), column_(1), stats_(stats)
+		: source_(source), position_(0), final_newline_pending_(false),
+		  line_(1), column_(1), last_line_(1), last_column_(1), stats_(stats)
 	{
 		if (source_.size() >= 3 &&
 			static_cast<unsigned char>(source_[0]) == 0xEF &&
 			static_cast<unsigned char>(source_[1]) == 0xBB &&
 			static_cast<unsigned char>(source_[2]) == 0xBF)
 			position_ = 3;
+		final_newline_pending_ = position_ < source_.size() &&
+			source_[source_.size() - 1] != '\n';
 	}
 
-	LocatedCodePoint Next()
+	int Next()
 	{
 		if (position_ < source_.size())
 		{
 			const int code_point = DecodeOne();
-			const std::size_t source_line = line_;
-			const std::size_t source_column = column_;
+			last_line_ = line_;
+			last_column_ = column_;
 			if (code_point == '\n')
 			{
 				++line_;
 				column_ = 1;
 			}
 			else ++column_;
-			saw_character_ = true;
-			last_code_point_ = code_point;
 			if (stats_)
 				++stats_->decoded_code_points;
-			return LocatedCodePoint(code_point, source_line, source_column);
+			return code_point;
 		}
-		if (saw_character_ && last_code_point_ != '\n' &&
-			!emitted_final_newline_)
+		if (final_newline_pending_)
 		{
-			emitted_final_newline_ = true;
-			const LocatedCodePoint result('\n', line_, column_);
+			final_newline_pending_ = false;
+			last_line_ = line_;
+			last_column_ = column_;
 			++line_;
 			column_ = 1;
-			return result;
+			return '\n';
 		}
-		return LocatedCodePoint(kEndOfFile, line_, column_);
+		last_line_ = line_;
+		last_column_ = column_;
+		return kEndOfFile;
 	}
+
+	std::size_t LastLine() const { return last_line_; }
+	std::size_t LastColumn() const { return last_column_; }
 
 private:
 	static int DecodeWindows1252Byte(int byte)
@@ -313,10 +317,8 @@ private:
 
 	const std::string& source_;
 	std::size_t position_;
-	bool saw_character_;
-	int last_code_point_;
-	bool emitted_final_newline_;
-	std::size_t line_, column_;
+	bool final_newline_pending_;
+	std::size_t line_, column_, last_line_, last_column_;
 	PPTokenizationStats* stats_;
 };
 
@@ -350,11 +352,11 @@ public:
 	{
 		if (!apply_translation_)
 		{
-			const LocatedCodePoint current = physical_.Next();
-			last_line_ = current.line;
-			last_column_ = current.column;
-			CountTranslated(current.value);
-			return current.value;
+			const int current = physical_.Next();
+			last_line_ = physical_.LastLine();
+			last_column_ = physical_.LastColumn();
+			CountTranslated(current);
+			return current;
 		}
 		while (true)
 		{
@@ -364,15 +366,16 @@ public:
 			if (physical_pending_.empty() && phase1_pending_.empty() &&
 				ucn_pending_.empty())
 			{
-				const LocatedCodePoint direct = physical_.Next();
-				if (direct.value != '?' && direct.value != '\\')
+				const int direct = physical_.Next();
+				if (direct != '?' && direct != '\\')
 				{
-					last_line_ = direct.line;
-					last_column_ = direct.column;
-					CountTranslated(direct.value);
-					return direct.value;
+					last_line_ = physical_.LastLine();
+					last_column_ = physical_.LastColumn();
+					CountTranslated(direct);
+					return direct;
 				}
-				physical_pending_.push_back(direct);
+				physical_pending_.push_back(LocatedCodePoint(direct,
+					physical_.LastLine(), physical_.LastColumn()));
 			}
 			const LocatedCodePoint current = TakeUCN();
 			if (current.value != '\\' || PeekUCN().value != '\n')
@@ -394,11 +397,11 @@ public:
 		if (!physical_pending_.empty() || !phase1_pending_.empty() ||
 			!ucn_pending_.empty())
 			throw std::logic_error("raw mode entered with translated lookahead");
-		const LocatedCodePoint result = physical_.Next();
-		last_line_ = result.line;
-		last_column_ = result.column;
-		CountTranslated(result.value);
-		return result.value;
+		const int result = physical_.Next();
+		last_line_ = physical_.LastLine();
+		last_column_ = physical_.LastColumn();
+		CountTranslated(result);
+		return result;
 	}
 
 private:
@@ -411,7 +414,11 @@ private:
 	LocatedCodePoint TakePhysical()
 	{
 		if (physical_pending_.empty())
-			return physical_.Next();
+		{
+			const int value = physical_.Next();
+			return LocatedCodePoint(value,
+				physical_.LastLine(), physical_.LastColumn());
+		}
 		const LocatedCodePoint result = physical_pending_.front();
 		physical_pending_.pop_front();
 		return result;
@@ -424,7 +431,9 @@ private:
 			if (!physical_pending_.empty() &&
 				physical_pending_.back().value == kEndOfFile)
 				return physical_pending_.back();
-			physical_pending_.push_back(physical_.Next());
+			const int value = physical_.Next();
+			physical_pending_.push_back(LocatedCodePoint(value,
+				physical_.LastLine(), physical_.LastColumn()));
 		}
 		return physical_pending_[offset];
 	}
