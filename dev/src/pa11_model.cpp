@@ -21,6 +21,13 @@ std::size_t PairHash(std::uint32_t left, std::uint32_t right)
 	return static_cast<std::size_t>(mixed);
 }
 
+inline void CombineTypeHash(std::size_t* seed, std::uint64_t value)
+{
+	*seed ^= static_cast<std::size_t>(value) +
+		static_cast<std::size_t>(0x9e3779b9U) +
+		(*seed << 6) + (*seed >> 2);
+}
+
 const char* FundamentalName(FundamentalKind kind)
 {
 	switch (kind)
@@ -541,20 +548,21 @@ std::size_t TypeTable::StorageBytes() const
 std::size_t TypeTable::Hash(const TypeRecord& record,
 	const TypeId* parameters, std::size_t count) const
 {
-	std::size_t hash = MixHash(0, record.kind);
-	hash = MixHash(hash, record.child);
-	hash = MixHash(hash, record.entity);
-	hash = MixHash(hash, record.bound);
-	hash = MixHash(hash, record.dependent_bound_type);
-	hash = MixHash(hash, record.dependent_bound_parameter);
-	hash = MixHash(hash, record.cv);
-	hash = MixHash(hash, record.ref_qualifier);
-	hash = MixHash(hash, record.variadic ? 1 : 0);
-	hash = MixHash(hash, record.bitint_unsigned ? 1 : 0);
-	hash = MixHash(hash, record.zero_length_array ? 1 : 0);
-	hash = MixHash(hash, record.fundamental);
+	std::size_t hash = 0;
+	CombineTypeHash(&hash, record.kind);
+	CombineTypeHash(&hash, record.child);
+	CombineTypeHash(&hash, record.entity);
+	CombineTypeHash(&hash, record.bound);
+	CombineTypeHash(&hash, record.dependent_bound_type);
+	CombineTypeHash(&hash, record.dependent_bound_parameter);
+	CombineTypeHash(&hash, record.cv);
+	CombineTypeHash(&hash, record.ref_qualifier);
+	CombineTypeHash(&hash, record.variadic ? 1 : 0);
+	CombineTypeHash(&hash, record.bitint_unsigned ? 1 : 0);
+	CombineTypeHash(&hash, record.zero_length_array ? 1 : 0);
+	CombineTypeHash(&hash, record.fundamental);
 	for (std::size_t i = 0; i < count; ++i)
-		hash = MixHash(hash, parameters[i]);
+		CombineTypeHash(&hash, parameters[i]);
 	return hash;
 }
 
