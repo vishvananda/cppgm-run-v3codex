@@ -1,5 +1,6 @@
 #include "pa30_lowir_adapter.h"
 
+#include "decimal_spelling.h"
 #include "lowir_float_literal.h"
 
 #include <cerrno>
@@ -17,11 +18,23 @@ namespace
 
 using namespace pa15_lowir_detail;
 
-std::string At(const std::string& value) { return "@" + value; }
-std::string Percent(const std::string& value) { return "%" + value; }
-std::string Dollar(const std::string& value) { return "$" + value; }
-std::string Temp(std::uint32_t value) { return "%t" + std::to_string(value); }
-std::string Label(const std::string& value) { return "^" + value; }
+std::string Prefix(char prefix, const std::string& value)
+{
+	std::string result;
+	result.reserve(value.size() + 1);
+	result.push_back(prefix);
+	result.append(value);
+	return result;
+}
+
+std::string At(const std::string& value) { return Prefix('@', value); }
+std::string Percent(const std::string& value) { return Prefix('%', value); }
+std::string Dollar(const std::string& value) { return Prefix('$', value); }
+std::string Temp(std::uint32_t value)
+{
+	return detail::PrefixedUnsignedDecimal("%t", 2, value);
+}
+std::string Label(const std::string& value) { return Prefix('^', value); }
 
 std::string IntegerText(std::int64_t low, std::uint64_t high,
 	const LowType& type)

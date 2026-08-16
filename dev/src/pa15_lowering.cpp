@@ -1,4 +1,5 @@
 #include "pa15_lowering.h"
+#include "decimal_spelling.h"
 #include "pa15_graph_lowering.h"
 #include "pa15_control_flow_lowering.h"
 #include "pa15_conditional_lowering.h"
@@ -920,7 +921,8 @@ private:
 			if (temp_counter_ + 1 >= kNoLowId)
 				throw std::runtime_error("too many PA15 LowIR temporaries");
 			const TempId candidate = static_cast<TempId>(++temp_counter_);
-			if (!used_names_["t" + std::to_string(candidate)]) return candidate;
+			if (!used_names_[detail::PrefixedUnsignedDecimal("t", 1, candidate)])
+				return candidate;
 		}
 	}
 
