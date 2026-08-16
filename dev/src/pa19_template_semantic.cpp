@@ -1462,9 +1462,10 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 			definitions[definition_index];
 		if (definition.concrete_owner != kNoBinding &&
 			definition.concrete_owner != specialization) continue;
-		const std::uint32_t selected_partial = specialization <
-			class_template_partial_selections_.size() ?
-			class_template_partial_selections_[specialization].pattern : kNoDumpEdge;
+		const ClassTemplatePartialSelection* selection =
+			FindClassTemplatePartialSelection(specialization);
+		const std::uint32_t selected_partial = selection ?
+			selection->pattern : kNoDumpEdge;
 		if (definition.owner_partial_pattern != selected_partial) continue;
 		FunctionTemplateDeduction owner_bindings(definition.parameters);
 		if (!MatchTemplatePartialArguments(definition.parameters,
@@ -1706,14 +1707,11 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 		 arguments.size() < FixedTemplateParameterCount(pattern.parameters)))
 		throw std::logic_error("class template completion argument mismatch");
 	if (CompleteHostedTraitTemplateSpecialization(index, binding, arguments)) return;
-	if (class_template_partial_selections_.size() <= binding)
-		class_template_partial_selections_.resize(
-			static_cast<std::size_t>(binding) + 1);
 	FunctionTemplateDeduction refreshed(pattern.parameters);
 	const std::size_t selected_partial = SelectClassTemplatePartial(
 		pattern, arguments, &refreshed);
 	ClassTemplatePartialSelection& selection =
-		class_template_partial_selections_[binding];
+		EnsureClassTemplatePartialSelection(binding);
 	selection.pattern = selected_partial == NoTemplatePattern() ?
 		kNoDumpEdge : static_cast<std::uint32_t>(selected_partial);
 	selection.revision = selected_partial == NoTemplatePattern() ? 0 :
@@ -2796,14 +2794,11 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	if (class_template_specialization_states_.size() <= binding)
 		class_template_specialization_states_.resize(
 			static_cast<std::size_t>(binding) + 1, 0);
-	if (class_template_partial_selections_.size() <= binding)
-		class_template_partial_selections_.resize(
-			static_cast<std::size_t>(binding) + 1);
 	if (selected_partial != NoTemplatePattern() && selected_partial >
 		std::numeric_limits<std::uint32_t>::max())
 		throw std::runtime_error("too many class template partial patterns");
 	ClassTemplatePartialSelection& selection =
-		class_template_partial_selections_[binding];
+		EnsureClassTemplatePartialSelection(binding);
 	selection.pattern = selected_partial == NoTemplatePattern() ?
 		kNoDumpEdge : static_cast<std::uint32_t>(selected_partial);
 	selection.revision = selected_partial == NoTemplatePattern() ? 0 :

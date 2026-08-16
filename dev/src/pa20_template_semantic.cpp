@@ -666,10 +666,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		if (class_template_specialization_states_.size() <= binding)
 			class_template_specialization_states_.resize(
 				static_cast<std::size_t>(binding) + 1, 0);
-		if (class_template_partial_selections_.size() <= binding)
-			class_template_partial_selections_.resize(
-				static_cast<std::size_t>(binding) + 1);
-		class_template_partial_selections_[binding] =
+		EnsureClassTemplatePartialSelection(binding) =
 			ClassTemplatePartialSelection();
 		class_template_specialization_states_[binding] = 2;
 		if (class_template_explicit_specialization_states_.size() <= binding)

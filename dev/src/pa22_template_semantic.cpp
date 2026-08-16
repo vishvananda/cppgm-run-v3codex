@@ -1097,10 +1097,9 @@ void SemanticAnalyzer::SelectClassTemplateMemberOwner(
 		if (member->concrete_owner == kNoBinding)
 			throw std::runtime_error(
 				"invalid concrete class template member owner");
-		if (member->concrete_owner <
-			class_template_partial_selections_.size())
-			member->owner_partial_pattern = class_template_partial_selections_[
-				member->concrete_owner].pattern;
+		const ClassTemplatePartialSelection* selection =
+			FindClassTemplatePartialSelection(member->concrete_owner);
+		if (selection) member->owner_partial_pattern = selection->pattern;
 		return;
 	}
 	for (std::size_t partial_index = 0;

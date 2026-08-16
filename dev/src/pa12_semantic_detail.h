@@ -775,6 +775,10 @@ private:
 		const std::vector<TemplateArgument>& pattern_arguments,
 		const std::vector<TemplateArgument>& arguments,
 		FunctionTemplateDeduction* bindings) const;
+	const ClassTemplatePartialSelection* FindClassTemplatePartialSelection(
+		BindingId binding) const;
+	ClassTemplatePartialSelection& EnsureClassTemplatePartialSelection(
+		BindingId binding);
 	bool DeduceTemplatePartialArgument(const TemplateArgument& pattern,
 		const TemplateArgument& argument,
 		const std::vector<TemplateParameter>& parameters,
@@ -2019,8 +2023,8 @@ private:
 	std::vector<std::uint8_t> class_template_specialization_use_states_;
 	// A specialization shell retains the selected partial declaration and its
 	// narrow substitution overlay until definition completion consumes them.
-	std::vector<ClassTemplatePartialSelection>
-		class_template_partial_selections_;
+	std::vector<std::uint32_t> class_template_partial_selection_indices_;
+	std::vector<ClassTemplatePartialSelection> class_template_partial_selections_;
 	std::vector<std::uint8_t> class_template_explicit_instantiation_states_;
 	std::vector<std::uint8_t> class_template_explicit_specialization_states_;
 	std::vector<std::uint8_t> function_explicit_instantiation_states_;
