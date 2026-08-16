@@ -18,7 +18,7 @@ namespace pa12_semantic_detail
 using namespace pa10_syntax_detail;
 using namespace pa11;
 
-enum ValueCategory
+enum ValueCategory : std::uint8_t
 {
 	VALUE_NONE,
 	VALUE_LVALUE,
@@ -52,7 +52,7 @@ enum CompilerIntrinsicKind : std::uint8_t
 	COMPILER_INTRINSIC_MUL_OVERFLOW
 };
 
-enum DumpKind
+enum DumpKind : std::uint8_t
 {
 	DUMP_TRANSLATION_UNIT,
 	DUMP_NAMESPACE,
@@ -167,64 +167,64 @@ struct DumpNode
 	std::uint32_t lifetime_branch_child;
 	std::uint32_t virtual_slot;
 	std::uint32_t storage_alignment;
-	bool constant;
-	bool integer_literal_zero;
-	bool null_member_pointer_constant;
-	bool target_typed_scalar_immediate;
-	bool integer_narrowing_conversion;
-	bool enum_arithmetic_conversion;
-	bool template_layout_constant;
-	bool template_parameter_constant;
-	bool runtime_atomic_order;
-	bool boolean_conversion;
-	bool user_conversion_call;
-	bool explicit_user_conversion_call;
-	bool allocation_may_return_null;
-	bool array_action;
-	bool array_cookie;
-	bool array_count_constant;
-	bool value_initialization;
-	bool elide_empty_constructor;
-	bool trivial_special_member_action;
-	bool storage_unit_transfer;
-	bool argument_materialization;
-	bool discarded_materialization;
-	bool reference_call_materialization;
-	bool range_for_materialization;
-	bool initializer_list_backing;
-	bool initializer_list_lifetime_observation;
-	bool contains_temporary_object;
-	bool temporary_implicit_object;
-	bool pending_constructor_demand;
-	bool pending_runtime_call_demand;
-	bool runtime_call_demand_scanned;
-	bool class_argument_staging;
-	bool elided_temporary_storage;
-	bool variadic_class_argument;
-	bool direct_return_slot;
-	bool declaration_only;
-	bool unwind_only;
-	bool exception_handler_exit;
-	bool exception_cleanup_region_exit;
-	bool full_expression_staging;
-	bool managed_full_expression_cleanup;
-	bool eager_full_expression_cleanup;
-	bool enclosing_lifetime_cleanup;
-	bool conditionally_constructed;
-	bool lifetime_branch_statically_unreachable;
-	bool default_argument;
-	bool control_dependent_temporary;
-	bool projected_subobject_temporary;
-	bool virtual_call;
-	bool member_pointer_conversion;
-	bool has_base_projection_offset;
-	bool inverse_base_projection;
-	bool has_direct_base_offset;
-	bool pseudo_destructor_call;
-	bool complete_object_destruction;
-	bool reverse_pointer_compound_assignment;
-	bool dynamic_type_query;
-	bool dynamic_cast_reference;
+	bool constant : 1;
+	bool integer_literal_zero : 1;
+	bool null_member_pointer_constant : 1;
+	bool target_typed_scalar_immediate : 1;
+	bool integer_narrowing_conversion : 1;
+	bool enum_arithmetic_conversion : 1;
+	bool template_layout_constant : 1;
+	bool template_parameter_constant : 1;
+	bool runtime_atomic_order : 1;
+	bool boolean_conversion : 1;
+	bool user_conversion_call : 1;
+	bool explicit_user_conversion_call : 1;
+	bool allocation_may_return_null : 1;
+	bool array_action : 1;
+	bool array_cookie : 1;
+	bool array_count_constant : 1;
+	bool value_initialization : 1;
+	bool elide_empty_constructor : 1;
+	bool trivial_special_member_action : 1;
+	bool storage_unit_transfer : 1;
+	bool argument_materialization : 1;
+	bool discarded_materialization : 1;
+	bool reference_call_materialization : 1;
+	bool range_for_materialization : 1;
+	bool initializer_list_backing : 1;
+	bool initializer_list_lifetime_observation : 1;
+	bool contains_temporary_object : 1;
+	bool temporary_implicit_object : 1;
+	bool pending_constructor_demand : 1;
+	bool pending_runtime_call_demand : 1;
+	bool runtime_call_demand_scanned : 1;
+	bool class_argument_staging : 1;
+	bool elided_temporary_storage : 1;
+	bool variadic_class_argument : 1;
+	bool direct_return_slot : 1;
+	bool declaration_only : 1;
+	bool unwind_only : 1;
+	bool exception_handler_exit : 1;
+	bool exception_cleanup_region_exit : 1;
+	bool full_expression_staging : 1;
+	bool managed_full_expression_cleanup : 1;
+	bool eager_full_expression_cleanup : 1;
+	bool enclosing_lifetime_cleanup : 1;
+	bool conditionally_constructed : 1;
+	bool lifetime_branch_statically_unreachable : 1;
+	bool default_argument : 1;
+	bool control_dependent_temporary : 1;
+	bool projected_subobject_temporary : 1;
+	bool virtual_call : 1;
+	bool member_pointer_conversion : 1;
+	bool has_base_projection_offset : 1;
+	bool inverse_base_projection : 1;
+	bool has_direct_base_offset : 1;
+	bool pseudo_destructor_call : 1;
+	bool complete_object_destruction : 1;
+	bool reverse_pointer_compound_assignment : 1;
+	bool dynamic_type_query : 1;
+	bool dynamic_cast_reference : 1;
 	FunctionTryBodyKind function_try_body;
 	std::uint32_t exception_control_exit_count;
 

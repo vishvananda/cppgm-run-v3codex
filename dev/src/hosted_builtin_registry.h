@@ -222,7 +222,7 @@ struct MemoryIntrinsic
 	MemoryIntrinsicLowering lowering;
 };
 
-enum VectorIntrinsicKind
+enum VectorIntrinsicKind : std::uint8_t
 {
 	VECTOR_INTRINSIC_NONE,
 	VECTOR_INTRINSIC_IA32_VEC_EXT_V2SI,
@@ -254,7 +254,7 @@ struct VectorIntrinsic
 	unsigned lane_count;
 };
 
-enum AtomicIntrinsicKind
+enum AtomicIntrinsicKind : std::uint8_t
 {
 	ATOMIC_INTRINSIC_NONE,
 	ATOMIC_INTRINSIC_ADD_FETCH,
