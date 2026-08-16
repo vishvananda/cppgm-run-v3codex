@@ -1,0 +1,657 @@
+# Performance Plan: Sub-15-Second Frozen Compile
+
+Status: planning and measurement baseline
+
+Date: 2026-08-16
+
+Baseline commit: `f3ac28a4dec1535bc5a698c056905a9ae365a238`
+
+## 1. Objective
+
+Reduce the default compilation time of the PA39 frozen
+`semantic_overload.cpp` benchmark to less than 15 seconds without PGO, while
+preserving the staged compiler's correctness and the performance requirements
+in `spec.md`.
+
+The engineering target is a median wall time of at most 14.5 seconds on a calm
+host. The margin matters: a result that only occasionally rounds below 15
+seconds is not complete.
+
+This plan treats the Fable `PLAN-PERF.md` and `PLAN-PERF2.md` documents as an
+idea bank, not as a list of patches to transplant. Their durable lessons are:
+
+- establish an A/A noise floor before trusting A/B timing;
+- combine timings with exact work counters and output checks;
+- use interleaved baseline/candidate runs on a variably loaded host;
+- make representation and allocation costs visible before redesigning them;
+- use verify-on-hit before trusting a risky cache;
+- keep changes small, independently testable, and independently revertible;
+- record rejected experiments so they are not rediscovered; and
+- defer whole-compiler inception runs until a meaningful batch is ready.
+
+The actual priorities below come from this compiler's profile, not Fable's.
+
+## 2. Non-negotiable constraints
+
+The following constraints apply to every optimization:
+
+1. No PGO during this project. PGO can be evaluated separately after the
+   intrinsic costs have been fixed.
+2. No filename, benchmark, source-text, or expected-output special cases.
+3. No shelling out to a host compiler, reference compiler, or prior solution.
+4. No persistent or process-global semantic cache. Each invocation must be
+   self-contained and deterministic.
+5. Preserve the compact-ID, direct-index, explicit-worklist, bounded-backend,
+   and near-linear-allocation requirements in `spec.md`.
+6. A failure first observed in PA36, PA37, PA38, or inception must be reduced
+   to the earliest assignment that owns the broken behavior. It must not be
+   left only as a late-stage or PA39 regression.
+7. Every accepted optimization is its own cohesive, tested commit. Do not
+   accumulate several unrelated performance edits in one commit.
+8. The checked-out extended-source repository is read-only for this work. All
+   scripts, tests, and implementation changes belong in this repository.
+
+## 3. Current baseline
+
+### 3.1 Correctness state
+
+At the baseline commit, the cumulative checked-in test report is clean. A full
+inception run passed before the final file-audit refactor, but inception was
+intentionally not rerun after that refactor. Therefore, the baseline commit is
+not recorded as a freshly verified inception anchor.
+
+### 3.2 Frozen compile
+
+Source:
+
+`~/cppgm-extended-pa39-source-layout/benchmarks/self_compile/stable/semantic_overload.cpp`
+
+One provisional default-optimization run on a loaded host produced:
+
+| Metric | Baseline |
+| --- | ---: |
+| Wall time | 29.10 s |
+| User time | 27.32 s |
+| System time | 1.77 s |
+| Peak RSS | 938,608 KiB |
+| Object size | 93,544,200 bytes |
+| Object SHA-256 | `c379baae6ae84b4d66f304337dbf789704c1c73a5a6c361f8a30280304c02a2a` |
+
+This is a provisional profile point, not the final statistical baseline. The
+host load was approximately 6.6 on 32 logical CPUs and had nonzero CPU
+pressure. Phase counters and flat-profile rankings are still useful; absolute
+wall time must be established with the protocol in section 4.
+
+### 3.3 Phase telemetry
+
+The current counters reported:
+
+| Phase | Time | Selected work |
+| --- | ---: | --- |
+| Preprocess | 2.714 s | 491,395 tokens |
+| Parse | 0.547 s | 282,540 semantic nodes |
+| Semantic analysis | 9.294 s | 993,003 lookups; 1,834,009 scope visits |
+| Typed-to-LowIR lowering | 1.467 s | 282,097 LowIR instructions |
+| PA37 LowIR optimization | 5.018 s | 2,684,871 instruction visits |
+| Native lowering | 7.577 s | 331,925 input MIR instructions |
+| Machine optimization | 0.215 s | 965,863 instruction visits |
+| Encoding | 0.974 s | 70,790 fixups |
+| Payload serialization | 0.362 s | 80,529,393 payload bytes |
+
+The existing `adapt_ns` field overlaps other stages and must not be added to
+these times. Phase 0 will replace overlapping totals with clearly documented,
+non-overlapping measurements.
+
+Other useful observations:
+
+- semantic analysis created 575,344 declarations and considered 417,638
+  overload candidates;
+- template work had 97,266 requests and 69,519 reported cache hits;
+- semantic peak accounting reported about 1.16 GB;
+- PA37 visited each input instruction about 9.5 times;
+- PA37 ran slot-related passes 43,811 times over 9,390 functions;
+- native lowering emitted 283,341 optimized MIR instructions; and
+- payload reservation grew once, with no full-buffer copies.
+
+### 3.4 Flat CPU profile
+
+A separate `perf` sample placed the following symbols near the top:
+
+| Approx. CPU share | Symbol or cost family |
+| ---: | --- |
+| 9.47% | native `FunctionLowerer::spill_one` |
+| 7.30% | `InternedStringTable::InternRange` |
+| 6.40% | allocator `_int_malloc` |
+| 6.11% | native `has_live_location_alias` |
+| 3.41% | `memcmp` |
+| 2.91% | `std::_Hash_bytes` |
+| 2.11% | allocator free/merge path |
+| 2.04% | native `reclaim_dead_parameter_register` |
+| 1.72% | semantic `LookupUnqualifiedCandidate` |
+| 1.58% | lexer `Peek` |
+| 1.40% | string-keyed unordered-table lookup |
+
+The three named native register/value routines alone account for about 17.6%
+of sampled CPU. General allocation and string hashing/comparison costs form a
+second large family. These are the first targets.
+
+## 4. Measurement protocol for an intermittently loaded host
+
+### 4.1 Immutable executables
+
+Each timing comparison uses two immutable compiler executables copied from
+clean commits:
+
+- A: the relevant accepted baseline;
+- B: the candidate commit.
+
+Both are built with the same toolchain and flags. Profiling, statistics, and
+sanitizer builds are never used for headline timing.
+
+### 4.2 A/A calibration
+
+At the beginning of a measurement session, run the same executable in both A
+and B positions for at least two ABBA blocks. This establishes the session's
+paired timing noise and detects systematic order effects.
+
+Record for every run:
+
+- wall, user, and system time;
+- peak RSS;
+- output size and SHA-256;
+- load average and CPU pressure before the block; and
+- compiler commit, host compiler version, and command line.
+
+Do not discard a slow result after seeing it. A block may be deferred only by
+a predeclared pre-run screen, such as severe load or CPU pressure. Once an
+ABBA block begins, retain all four observations.
+
+### 4.3 A/B acceptance
+
+Use interleaved ABBA order to prevent host drift from consistently favoring a
+candidate. Compare paired ratios and report medians rather than a best run.
+
+- Screening a large expected change: two ABBA blocks.
+- Accepting a clear change above roughly 8%: at least three ABBA blocks.
+- Accepting a marginal change: at least five ABBA blocks.
+
+A candidate is retained only when:
+
+1. a relevant structural counter improves or the implementation removes a
+   demonstrably unnecessary operation;
+2. median user-time improvement exceeds both 3% and the measured A/A noise;
+3. wall time agrees in direction or is statistically neutral under host load;
+4. most paired observations favor the candidate; and
+5. correctness, determinism, and memory gates pass.
+
+User time is the more stable relative signal. The final under-15-second claim
+is based on wall time: five candidate-only runs in a predeclared calm-host
+window, with median at most 14.5 seconds and no run silently discarded.
+
+### 4.4 Output gates
+
+For representation-only, allocation-only, lookup-only, and scheduling changes
+that are intended to be observationally neutral, the benchmark object bytes
+must match the accepted baseline exactly.
+
+A legitimate optimizer or backend decision change may alter object bytes. In
+that case it must:
+
+- produce identical bytes across repeated candidate runs;
+- have an explained and reviewed reason for the change;
+- pass the owning assignment's object/behavior tests; and
+- receive an earliest-owning-PA regression when it exposes a prior coverage
+  gap.
+
+Object hashes are diagnostic gates, not a replacement for assignment tests.
+
+### 4.5 Benchmark set
+
+The frozen `semantic_overload.cpp` compile is the primary measurement. Smaller
+proxies are used to shorten iteration, but cannot declare the goal complete:
+
+- `semantic_model.cpp` for frontend and semantic experiments;
+- a version-matched O0 LowIR replay generated by the same candidate frontend
+  for isolated PA37/native measurements;
+- small lexer/parser tests for interning and syntax-tag changes; and
+- a backend-heavy translation unit selected by phase counters, if needed.
+
+Never use a stale LowIR fixture as performance evidence for a changed
+frontend. It may remain a correctness fixture only if its contract requires
+fixed textual input.
+
+### 4.6 Profiling discipline
+
+Timing and profiling are separate activities:
+
+- counters identify repeated work and prove its removal;
+- flat `perf` identifies CPU owners;
+- call-graph or callgrind runs are used only when flat ownership is ambiguous;
+- allocation census data identifies counts, bytes, growth, and peak live
+  ownership; and
+- clean non-instrumented ABBA runs confirm the actual result.
+
+After a large hotspot is fixed, reprofile. Do not keep optimizing from an old
+ranking.
+
+## 5. Correctness, reducer, and commit loop
+
+### 5.1 During a change
+
+Use the narrowest owner test while editing, for example:
+
+```sh
+make -C paN check TEST=path/to/test
+```
+
+Then use selected cumulative reports as the fast cross-stage signal:
+
+```sh
+make test-report ACTIVE_TEST_REPORT_PAS='paN pa36 pa37 pa38'
+```
+
+The exact list depends on the affected stages. PA names are passed explicitly
+so a frontend edit does not pay for unrelated reports at every iteration.
+
+### 5.2 Before each accepted commit
+
+For the earliest owning PA `N`:
+
+1. run `make test-paN`;
+2. run `make test-report-through-paN`;
+3. run selected later reports for every downstream stage directly affected;
+4. run `perl scripts/cppgm_file_audit.pl --stage pa39 --paths dev/src` and
+   require zero fatal findings; and
+5. run the relevant performance proxy and ABBA gate.
+
+Shared frontend/IR representation changes also require a full through-PA38
+report before acceptance. Otherwise, run the full through-PA38 report at least
+every two or three performance commits so failures stay close to their cause.
+
+### 5.3 Reducer rule
+
+When a failure appears:
+
+1. preserve the failing input and command;
+2. identify whether the failure is frontend semantics, LowIR optimization,
+   native lowering, encoding, or driver behavior;
+3. reduce source or LowIR while keeping the same failure and exit/behavior;
+4. identify the earliest assignment whose public contract includes the bug;
+5. add the reduced regression there before or with the fix; and
+6. run that PA's cumulative report plus the originally failing late stage.
+
+A PA37 or inception discovery is not automatically a PA37 test. For example,
+a name-lookup bug found while self-hosting belongs to its earliest semantic PA;
+a LowIR rewrite bug belongs to PA37; and an x86 lowering bug belongs to its
+earliest backend PA.
+
+### 5.4 Commit policy
+
+Commit each validated changeset immediately. A commit should contain one
+performance hypothesis, its implementation, its counters or reducer tests,
+and any directly necessary documentation. Keep measurement infrastructure and
+compiler behavior changes in separate commits.
+
+If an experiment loses or is neutral, revert only that experiment and record
+the result in the experiment ledger. Do not leave speculative code behind and
+do not hide a loss inside a later win.
+
+### 5.5 Inception cadence
+
+Inception is not part of the per-commit loop. Plan for no more than three
+scheduled runs unless a failure requires a focused investigation:
+
+1. after the first high-risk native/IR batch, or when the benchmark reaches
+   roughly 20--22 seconds;
+2. after a frontend representation/semantic batch that changes the code used
+   to compile the compiler itself; and
+3. on the final clean sub-15-second commit.
+
+Run inception only from a clean committed tree. If it fails, reduce the issue
+and place the regression at the earliest owning PA before continuing.
+
+## 6. Phase budget
+
+The current 29-second compile cannot reach the goal through one micro-tweak.
+The following budgets set priorities and make the required cumulative savings
+explicit:
+
+| Phase | Provisional baseline | Target budget |
+| --- | ---: | ---: |
+| Preprocess | 2.71 s | 1.25 s |
+| Parse | 0.55 s | 0.45 s |
+| Semantic analysis | 9.29 s | 5.75 s |
+| Typed-to-LowIR | 1.47 s | 1.00 s |
+| PA37 LowIR optimization | 5.02 s | 1.80 s |
+| Native lowering | 7.58 s | 2.50 s |
+| Machine optimization | 0.22 s | 0.18 s |
+| Encoding | 0.97 s | 0.70 s |
+| Payload serialization | 0.36 s | 0.25 s |
+| Other/preparation/write margin | about 0.9 s | 0.6 s |
+| **Total** | **about 29.1 s** | **about 14.5 s** |
+
+These are directional budgets, not mandates to distort the compiler. After
+each batch, replace them with new measurements. If one phase beats its budget,
+the saved margin can cover a harder phase.
+
+## 7. Staged changesets
+
+### Phase 0: Reproducible measurement and observability
+
+#### 0A. Repository-owned GNU-time A/B harness
+
+Add a script in this repository that:
+
+- runs immutable A and B executables in ABBA order;
+- invokes the frozen source without modifying the extended checkout;
+- records wall/user/system/RSS, hashes, sizes, load, and CPU pressure;
+- rejects mismatched exit status immediately;
+- distinguishes exact-byte and deterministic-byte modes; and
+- writes machine-readable results plus a concise summary.
+
+Do not copy Fable's BSD `time -lp` assumption; this host uses GNU time.
+
+Acceptance: validate the script with an A/A session and a deliberately
+different executable or harmless wrapper fixture.
+
+#### 0B. Non-overlapping phase timers
+
+Document and enforce non-overlapping timer boundaries for frontend,
+typed-to-LowIR, PA37, native lowering, machine optimization, encoding, and
+writing. Remove or rename overlapping totals such as the current ambiguous
+`adapt_ns` display.
+
+Acceptance: the sum is within a documented small margin of compiler user time,
+and disabled counters add no meaningful timing noise.
+
+#### 0C. Exact work counters
+
+Add low-overhead, disabled-by-default counters needed by the first tracks:
+
+- interner calls, hits, misses, input bytes, probe lengths, comparisons,
+  rehashes, and table capacity;
+- native value-state entries, full-map scans, scanned entries, alias queries,
+  live-location updates, spill candidates, and spill decisions;
+- PA37 pass eligibility, dirty blocks/functions, visits by pass, and skip
+  reasons; and
+- semantic lookup-cache hits/misses, invalidations, dependency edges, template
+  retries or candidate work, and allocation ownership already available in
+  `SemanticAnalysisStats`.
+
+Acceptance: counters explain the existing profile and remain consistent across
+repeat runs.
+
+### Phase 1: Native value/register bookkeeping
+
+Likely earliest owners: PA29/PA30, depending on the exact invariant changed.
+
+This is first because measured native register/value maintenance is the
+largest concentrated CPU owner and its current operations scan all live values
+inside other scans.
+
+#### 1A. Incremental location occupancy
+
+Replace `live_location_counts()` rescans with exact per-location live counts
+maintained when a value is defined, moved, spilled, consumed, or retired.
+Centralize transitions so every mutation updates the index once.
+
+`has_live_location_alias` should become an O(1) lookup while preserving its
+current semantics exactly.
+
+Gates:
+
+- exact object bytes for the frozen benchmark;
+- counters show full live-value scans removed from alias checks;
+- regressions for multiple names sharing a location, parameter retirement,
+  edge-live values, calls/clobbers, and cyclic moves; and
+- PA29/PA30 plus selected PA36/PA37/PA38 reports.
+
+#### 1B. Reverse occupant and spill-candidate indexes
+
+Maintain the values occupying each GPR/XMM location and a compact set of
+eligible spill candidates. Make `spill_one` examine viable candidates rather
+than the entire string-keyed value table.
+
+Preserve the existing farthest-use choice and deterministic tie order. Any
+change in chosen register or spill is treated as a backend behavior change,
+not dismissed as harmless.
+
+Gates: reduce scanned spill candidates sharply, retain exact bytes unless a
+reviewed decision correction is intentional, and add owner-level reducers for
+every changed corner case.
+
+#### 1C. Dense per-function value IDs
+
+Intern LowIR value names once per function, assign dense IDs, and use vectors
+for value facts, use counts, last uses, spill state, and location ownership.
+Keep original spellings only where diagnostics or serialized output require
+them.
+
+Do this after 1A/1B so the invariant changes are separately reviewable.
+
+Phase target: native lowering at or below 2.5 seconds, with the named native
+hotspots no longer prominent and with bounded work per MIR instruction.
+
+### Phase 2: PA37 pass eligibility and incremental scheduling
+
+Earliest owner: PA37 for optimizer transformations. A source-semantic bug found
+by these tests still belongs to its earlier semantic PA.
+
+#### 2A. Per-function eligibility summaries
+
+Compute cheap function facts once and skip passes that cannot apply. The first
+target is slot optimization: the current run invokes slot-family passes 43,811
+times over 9,390 functions, many of which have no relevant slot behavior.
+
+Also summarize presence of branches, calls, phis, memory operations, and
+rewriteable value forms where those facts provably rule out a pass.
+
+Gates: exact LowIR and object bytes; counters must attribute every skip to a
+sound eligibility fact.
+
+#### 2B. Compact value, slot, block, and def/use facts
+
+Assign dense function-local identities and retain reusable block, def/use, and
+slot facts. Avoid rebuilding string-keyed sets and maps in each pass.
+
+Gates: unchanged transform decisions and output order, lower allocation and
+hash counts, and exact optimized LowIR bytes.
+
+#### 2C. Dirty worklists instead of whole-function reruns
+
+When a rewrite changes a block or value, revisit only the dependent blocks and
+facts. Fuse adjacent analysis walks only when their current ordering and
+observable decisions remain identical. Preserve a bounded convergence policy;
+do not introduce unbounded fixpoint retry.
+
+This is higher risk. Add reduced PA37 tests for every dependency edge that can
+reenable simplify, DCE, CFG, or slot work.
+
+#### 2D. Inliner follow-up
+
+Only after reprofiling, cache immutable callee summaries and remove measured
+inliner scans/copies. The current inliner is about 0.73 seconds, so it is not a
+reason to delay 2A--2C.
+
+Phase target: PA37 at or below 1.8 seconds and instruction visits below roughly
+four times input, unless counters demonstrate necessary work not represented
+by that ratio.
+
+### Phase 3: Frontend interning and syntax identities
+
+Likely earliest owners: PA4 for token/interner identity, PA9/PA10 for syntax
+representation, followed by semantic downstream tests.
+
+#### 3A. Split interner traffic by caller and purpose
+
+Use the Phase 0 counters to distinguish:
+
+- first-time token spellings;
+- repeated token lookups;
+- grammar/syntax tag strings;
+- identifier/type/member strings; and
+- substring/range cases that require hashing bytes.
+
+Do not redesign the table until this split identifies the dominant source of
+the measured 7.3% `InternRange` cost.
+
+#### 3B. Preinterned token and grammar-tag IDs
+
+Give fixed token kinds and grammar tags stable IDs within an invocation. Syntax
+`Make`, `IsTag`, `HasDirectChildTag`, and `HasDescendantTag` must compare IDs,
+not reintern a string literal in a hot traversal.
+
+Preserve first-use ordering for dynamically interned source spellings when that
+ordering is observable.
+
+Gates: exact token/syntax behavior, PA4 and PA9/PA10 regressions, exact frozen
+object bytes, and a measured fall in interner calls and input bytes.
+
+#### 3C. Range interner mechanics
+
+After 3A/3B, improve only mechanisms still shown hot: reuse a hash already
+computed by tokenization, strengthen hash finalization if probe histograms show
+clustering, tune capacity/reservation, or avoid redundant byte comparison on a
+proven miss path.
+
+Every hash-table change must report maximum and percentile probe lengths and
+must preserve canonical equality. A faster average with pathological probes is
+not acceptable.
+
+#### 3D. Frontend allocation census and reservation
+
+Measure token, syntax node, edge, string-byte, and temporary-buffer growth.
+Reserve exact or high-confidence capacities and eliminate repeated literal
+string construction only where counts show meaningful ownership.
+
+Phase target: preprocessing at or below 1.25 seconds, parse at or below 0.45
+seconds, and `InternRange` below roughly 2% of samples.
+
+### Phase 4: Semantic lookup, cache maintenance, and allocation
+
+Likely owners span PA11 and later semantic assignments. Each change must name
+its earliest contract owner before editing tests.
+
+This compiler already has compact `NameId` values, a scope-aware lookup cache,
+dependency tracking, and extensive semantic counters. Fable's recommendation
+to add a scope index is therefore not directly applicable.
+
+#### 4A. Publish existing semantic counters
+
+Expose the full available lookup, overload, template, dependency, invalidation,
+and allocation statistics through the production driver's opt-in stats mode.
+Measure `semantic_model.cpp` and the primary frozen source.
+
+#### 4B. Audit cache value versus maintenance cost
+
+The profile contains lookup-cache dependency and invalidation routines, but a
+hot cache is not necessarily a useful cache. Build measurement-only modes that
+disable a cache or verify every hit by recomputing the uncached answer.
+
+Use verify-on-hit before any risky key reduction or dependency simplification.
+Keep a cache only when avoided lookup work exceeds keying, dependency, and
+invalidation work on the actual benchmark set.
+
+#### 4C. Make invalidation and dependencies precise
+
+If counters show broad invalidation, index dependencies by compact scope/name
+identity and update only affected entries. If they instead show low reuse,
+remove or narrow the unprofitable cache rather than optimizing its machinery.
+
+#### 4D. Semantic allocation ownership
+
+The provisional semantic peak exceeds 1 GB. Attribute bytes and live peaks to
+declarations, type objects, overload candidates, lookup entries, template
+state, and scratch collections. Prefer per-analysis arenas, slabs, dense
+side-table vectors, reusable scratch buffers, and proven `reserve()` changes.
+
+Do not retain whole semantic objects merely to improve cache hit rate, and do
+not add a process-global cache.
+
+Phase target: semantic analysis at or below 5.75 seconds with lower or
+well-justified peak RSS.
+
+### Phase 5: Lowering, encoding, and remaining allocation
+
+Reprofile before choosing work here. Candidate investigations include:
+
+- dense IDs in typed-to-LowIR maps that still hash stable string names;
+- per-function and per-block MIR capacity reservation;
+- earlier release/reuse of function-local transient state;
+- avoiding measured `Instruction` vector reallocations and moves;
+- compact fixup bookkeeping; and
+- eliminating repeated encoding-size work only if counters prove it.
+
+Do not optimize payload reservation first: the current serializer grows once
+and reports no full-buffer copies. Its measured 0.36 seconds cannot explain
+the goal gap.
+
+Targets: typed lowering at or below 1.0 seconds, encoding at or below 0.7
+seconds, and payload serialization at or below 0.25 seconds.
+
+### Phase 6: Reprofile and close the measured gap
+
+At roughly 20--22 seconds and again near 16--18 seconds:
+
+1. freeze a clean accepted commit;
+2. rerun exact phase counters and a flat CPU profile;
+3. run callgrind or allocation census only for ambiguous new leaders;
+4. replace the priority list and phase budgets with the new evidence; and
+5. choose only work large enough to move the remaining gap.
+
+Possible final work is deliberately not prescribed now. The dominant profile
+after Phases 1--4 is more reliable than the current profile for selecting it.
+
+## 8. Explicitly deferred or rejected strategies
+
+These are outside the current goal unless new evidence and a separate decision
+change the scope:
+
+- PGO;
+- benchmark-specific dispatch or precomputed output;
+- persistent cross-run caches;
+- host compiler or reference-compiler assistance;
+- stale LowIR performance fixtures;
+- `-march=native` as a substitute for algorithmic improvement;
+- LTO as the primary optimization plan;
+- parallel compilation of one translation unit;
+- switching the global allocator before an ownership census;
+- broad memoization without completeness and invalidation proofs; and
+- rewrites justified only by fewer lines of code or a microbenchmark.
+
+PGO may be evaluated after the intrinsic sub-15-second goal is met, but its
+result is reported separately and never used to qualify this plan.
+
+## 9. Experiment ledger
+
+Update this table after every accepted or rejected experiment. Times are
+medians from the protocol above, not isolated best runs.
+
+| Commit/experiment | Hypothesis and change | Structural result | User / wall / RSS | Output gate | Tests | Decision |
+| --- | --- | --- | --- | --- | --- | --- |
+| `f3ac28a` provisional | Unified default O2 path and prior correctness fixes | Baseline counters in section 3 | 27.32 s / 29.10 s / 938,608 KiB, single loaded-host run | SHA in section 3 | Cumulative report clean; inception predates final refactor | Establish statistical baseline in Phase 0 |
+
+For a rejected experiment, record the temporary commit or patch identifier,
+the counter movement, and the reason for rejection even after reverting it.
+
+## 10. Completion criteria
+
+The project is complete only when one clean commit satisfies all of the
+following:
+
+1. five frozen benchmark runs in a predeclared calm-host window have median
+   wall time at most 14.5 seconds;
+2. interleaved comparison against the original baseline demonstrates that the
+   gain is not host-load noise;
+3. output is deterministic, and every intentional byte change is explained
+   and covered at its owning PA;
+4. peak RSS does not regress by more than 3% without a documented and measured
+   tradeoff;
+5. `make test-report-through-pa38` is clean;
+6. the file audit has no fatal findings;
+7. root `make inception` passes from that exact clean commit;
+8. all reducers live at the earliest owning assignments; and
+9. the plan ledger, final counters, commands, and commit hashes are current.
+
+The final commit is then pushed only after the tests, audit, benchmark, and
+inception evidence all refer to that same tree.
