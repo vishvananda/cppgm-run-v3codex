@@ -457,11 +457,20 @@ sub build_wrapped_text_request
 		my @mode_args = ($suffix eq 'pp') ? ('-E') : ();
 		my $test_base = $test;
 		$test_base =~ s/\.t$//;
+		my $env = read_env_file("$test_base.env");
+		my @include_args;
+		if (exists($env->{CPPGM_STDINC_PATHS}))
+		{
+			my $paths = delete($env->{CPPGM_STDINC_PATHS});
+			@include_args = ('-nostdinc', map { ('-isystem', $_) }
+				grep { $_ ne '' } split(/:/, $paths));
+		}
 		return ("$test_out.stdout",
 		        "$test_out.stdout",
 		        "-",
-		        read_env_file("$test_base.env"),
+		        $env,
 		        @mode_args,
+		        @include_args,
 		        "-o",
 		        $test_out,
 		        $test);
