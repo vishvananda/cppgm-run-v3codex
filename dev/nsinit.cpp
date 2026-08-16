@@ -82,13 +82,15 @@ int main(int argc, char** argv)
 	try
 	{
 		std::ios_base::sync_with_stdio(false);
-		if (argc < 4 || std::string(argv[1]) != "-o")
+		const bool report_stats = argc > 1 &&
+			std::string(argv[argc - 1]) == "--stats";
+		const int input_end = report_stats ? argc - 1 : argc;
+		if (input_end < 4 || std::string(argv[1]) != "-o")
 			throw std::logic_error("invalid usage");
-		const bool report_stats = std::getenv("CPPGM_FRONTEND_STATS") != 0;
 		cppgm::InitializationStats stats;
 		cppgm::InitializationProgram program(report_stats ? &stats : 0);
 		const cppgm::PreprocessingOptions options = BuildOptions();
-		for (int i = 3; i < argc; ++i)
+		for (int i = 3; i < input_end; ++i)
 		{
 			const std::string path(argv[i]);
 			program.AddTranslationUnit(path, ReadSource(path), options);

@@ -20,6 +20,7 @@ namespace {
 struct LowIR2NativeInvocation
 {
   bool has_optimization_level = false;
+  bool report_stats = false;
   int optimization_level = 0;
   string output_target;
   string outfile;
@@ -94,6 +95,10 @@ LowIR2NativeInvocation parse_lowir2native_invocation(const vector<string> & args
 
   for(size_t i = 0; i < args.size(); ++i) {
     int optimization_level = 0;
+    if(args[i] == "--stats") {
+      invocation.report_stats = true;
+      continue;
+    }
     if(is_optimization_level(args[i], optimization_level)) {
       if(invocation.has_optimization_level) {
         throw logic_error("multiple optimization levels provided");
@@ -159,7 +164,7 @@ int run_lowir2native_mode(const vector<string> & args)
 
   const LowIR2NativeInvocation invocation =
       parse_lowir2native_invocation(args);
-  const bool report_stats = getenv("CPPGM_LOWIR_NATIVE_STATS") != 0;
+  const bool report_stats = invocation.report_stats;
   const string target = invocation.output_target.empty() ? "linux" :
                                                      invocation.output_target;
   chrono::steady_clock::time_point parse_start;

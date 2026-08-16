@@ -77,9 +77,12 @@ struct DriverInvocation
   vector<string> forced_includes;
   int optimization_level;
   bool line_tables;
+  bool collect_stats;
+  bool hosted_system_includes;
 
   DriverInvocation()
-      : mode(DriverMode::Link), optimization_level(2), line_tables(false)
+      : mode(DriverMode::Link), optimization_level(2), line_tables(false),
+        collect_stats(false), hosted_system_includes(true)
   {
   }
 };
@@ -245,6 +248,7 @@ struct SourceOutputInvocation
   bool has_optimization_level = false;
   bool has_debug_info = false;
   bool line_tables = false;
+  bool collect_stats = false;
 };
 
 SourceOutputInvocation parse_source_output_invocation(
@@ -257,6 +261,10 @@ SourceOutputInvocation parse_source_output_invocation(
     if(args[i] == "-o") {
       consume_required_option_argument(args, i, "-o", "output file");
       invocation.output = args[i];
+      continue;
+    }
+    if(args[i] == "--stats") {
+      invocation.collect_stats = true;
       continue;
     }
     if(allow_lowir_options && is_optimization_flag(args[i])) {
@@ -339,6 +347,14 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
     }
     if(args[i] == "-E") {
       preprocess_only = true;
+      continue;
+    }
+    if(args[i] == "--stats") {
+      invocation.collect_stats = true;
+      continue;
+    }
+    if(args[i] == "-nostdinc") {
+      invocation.hosted_system_includes = false;
       continue;
     }
     if(args[i] == "-o") {
@@ -616,20 +632,8 @@ cppgm::PreprocessingOptions make_driver_preprocessing_options(
   cppgm::PreprocessingOptions options = make_preprocessing_options();
   options.include_search_paths = invocation.include_paths;
   options.system_include_search_paths = invocation.system_include_paths;
-	const char * override_paths = getenv("CPPGM_STDINC_PATHS");
-	cppgm::ConfigureHostedPreprocessing(&options, override_paths == 0);
-	if(override_paths) {
-		const string paths(override_paths);
-		size_t begin = 0;
-		while(begin <= paths.size()) {
-			const size_t end = paths.find(':', begin);
-			const string path = paths.substr(begin,
-				end == string::npos ? string::npos : end - begin);
-			if(!path.empty()) options.system_include_search_paths.push_back(path);
-			if(end == string::npos) break;
-			begin = end + 1;
-		}
-	}
+	cppgm::ConfigureHostedPreprocessing(
+		&options, invocation.hosted_system_includes);
 	for(size_t i = 0; i < invocation.macro_actions.size(); ++i) {
 		options.macro_actions.push_back(cppgm::PreprocessingOptions::MacroAction(
 			invocation.macro_actions[i].define,
@@ -656,7 +660,7 @@ int run_preprocess_driver(const DriverInvocation & invocation)
 		make_driver_preprocessing_options(invocation);
 	DriverPreprocessorOutput tokens(*output);
 	*output << "preproc " << invocation.inputs.size() << '\n';
-	const bool collect_stats = getenv("CPPGM_DRIVER_STATS") != 0;
+	const bool collect_stats = invocation.collect_stats;
 	for(size_t i = 0; i < invocation.inputs.size(); ++i) {
 		const string & path = invocation.inputs[i];
 		const string source = read_source_file(path);
@@ -865,9 +869,8 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 }
 
 void optimize_lowir(lowir_model::LowirProgram * program, int level,
-	const string & input)
+	const string & input, bool collect)
 {
-	const bool collect = getenv("CPPGM_LOWIR_OPT_STATS") != 0;
 	lowir_opt::Stats stats;
 	lowir_opt::optimize(*program, level, collect ? &stats : 0);
 	if(!collect) return;
@@ -923,7 +926,7 @@ cppgm::pa30::CompilerObject compile_source_object(
     const DriverInvocation & invocation,
     const string & target)
 {
-	const bool collect_stats = getenv("CPPGM_DRIVER_STATS") != 0;
+	const bool collect_stats = invocation.collect_stats;
   const string source = read_source_file(path);
 	cppgm::LowIRLoweringStats stats;
 	chrono::steady_clock::time_point adapt_started;
@@ -952,7 +955,8 @@ cppgm::pa30::CompilerObject compile_source_object(
 		if(invocation.line_tables)
 			attach_line_table_debug(&object.lowir, path, source);
 	}
-	optimize_lowir(&object.lowir, invocation.optimization_level, path);
+	optimize_lowir(&object.lowir, invocation.optimization_level, path,
+		collect_stats);
 	uint64_t adapt_nanoseconds = 0;
 	if(collect_stats) adapt_nanoseconds = static_cast<uint64_t>(
 		chrono::duration_cast<chrono::nanoseconds>(
@@ -1102,13 +1106,13 @@ int run_compile_driver(const DriverInvocation & invocation,
 	cppgm::pa30::ObjectSerializationStats serialization_stats;
   const vector<unsigned char> compiler_payload =
 		cppgm::pa30::SerializeCompilerObject(object,
-			getenv("CPPGM_DRIVER_STATS") ? &serialization_stats : 0);
+			invocation.collect_stats ? &serialization_stats : 0);
   lowir_native::Stats native_stats;
   lowir_native::write_linux_relocatable(
       invocation.output, object.lowir, target, compiler_payload,
       invocation.optimization_level,
-      getenv("CPPGM_DRIVER_STATS") ? &native_stats : 0);
-  if(getenv("CPPGM_DRIVER_STATS")) {
+      invocation.collect_stats ? &native_stats : 0);
+  if(invocation.collect_stats) {
     cerr << "pa31_object_stats"
          << " functions=" << native_stats.functions
          << " lowir_instructions=" << native_stats.lowir_instructions
@@ -1166,7 +1170,7 @@ int run_link_driver(const DriverInvocation & invocation,
                     const string & target)
 {
   if(invocation.output.empty()) throw logic_error("link mode requires -o");
-  const bool collect_stats = getenv("CPPGM_DRIVER_STATS") != 0;
+  const bool collect_stats = invocation.collect_stats;
   vector<cppgm::pa30::CompilerObject> objects;
   vector<lowir_native::RelocatableObject> foreign_objects;
 	chrono::steady_clock::time_point input_started;
@@ -1294,8 +1298,8 @@ int run_emit_ast_mode(const vector<string> & args)
     output << "start translation unit " << i + 1 << '\n';
     cppgm::SyntaxStats stats;
     cppgm::WriteSyntaxTranslationUnit(path, source, options, output,
-        getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
-    if(getenv("CPPGM_FRONTEND_STATS")) {
+        invocation.collect_stats ? &stats : 0);
+    if(invocation.collect_stats) {
       cerr << "pa10_stats file=" << path
            << " tokens=" << stats.tokens
            << " syntax_nodes=" << stats.syntax_nodes
@@ -1351,8 +1355,8 @@ int run_emit_types_mode(const vector<string> & args)
     output << "start translation unit " << i + 1 << '\n';
     cppgm::TypeAnalysisStats stats;
     cppgm::WriteTypeTranslationUnit(path, source, options, output,
-        getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
-    if(getenv("CPPGM_FRONTEND_STATS")) {
+        invocation.collect_stats ? &stats : 0);
+    if(invocation.collect_stats) {
       cerr << "pa11_stats file=" << path
            << " tokens=" << stats.tokens
            << " syntax_nodes=" << stats.syntax_nodes
@@ -1405,8 +1409,8 @@ int run_emit_semantics_mode(const vector<string> & args)
     output << "start translation unit " << i + 1 << '\n';
     cppgm::SemanticAnalysisStats stats;
     cppgm::WriteSemanticTranslationUnit(path, source, options, output,
-        getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
-    if(getenv("CPPGM_FRONTEND_STATS")) {
+        invocation.collect_stats ? &stats : 0);
+    if(invocation.collect_stats) {
       cerr << "pa12_stats file=" << path
            << " tokens=" << stats.tokens
            << " syntax_nodes=" << stats.syntax_nodes
@@ -1619,6 +1623,9 @@ int run_emit_semantics_mode(const vector<string> & args)
   return EXIT_SUCCESS;
 }
 
+void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats);
+void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats);
+
 int run_emit_lowir_mode(const vector<string> & args)
 {
 	const SourceOutputInvocation invocation =
@@ -1641,25 +1648,34 @@ int run_emit_lowir_mode(const vector<string> & args)
 		invocation.optimization_level != 0;
 	if(!object_capable_output) {
 		cppgm::WriteLowIRProgram(sources, options, output,
-			getenv("CPPGM_FRONTEND_STATS") ? &stats : 0);
+			invocation.collect_stats ? &stats : 0);
 	} else {
 		cppgm::ConfigureHostedPreprocessing(&options, true);
 		lowir_model::LowirProgram program;
 		{
 			const cppgm::pa15_lowir_detail::TypedProgram typed =
 				cppgm::BuildTypedLowIRProgram(sources, options,
-					getenv("CPPGM_FRONTEND_STATS") ? &stats : 0, true, true);
+					invocation.collect_stats ? &stats : 0, true, true);
 			program = cppgm::AdaptTypedLowIRForNative(typed);
 		}
 		if(invocation.line_tables && sources.size() == 1)
 			attach_line_table_debug(&program, sources[0].path, sources[0].source);
 		optimize_lowir(&program, invocation.optimization_level,
-			sources.size() == 1 ? sources[0].path : "<translation-unit>");
+			sources.size() == 1 ? sources[0].path : "<translation-unit>",
+			invocation.collect_stats);
 		output << lowir_model::serialize_lowir_program(program);
 	}
-	if(getenv("CPPGM_FRONTEND_STATS")) {
-		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
-		cerr << "pa15_stats"
+	if(invocation.collect_stats) {
+		report_lowir_semantic_stats(stats);
+		report_lowir_lowering_stats(stats);
+	}
+	return EXIT_SUCCESS;
+}
+
+void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats)
+{
+	const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+	cerr << "pa15_stats"
 			 << " source_bytes=" << stats.source_bytes
 			 << " tokens=" << semantic.tokens
 			 << " scopes=" << semantic.scopes
@@ -1832,8 +1848,13 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " template_partial_shape_materializations="
 			 << semantic.template_partial_shape_materializations
 			 << " template_partial_shape_cache_hits="
-			 << semantic.template_partial_shape_cache_hits
-				 << " template_partial_deduction_visits="
+			 << semantic.template_partial_shape_cache_hits;
+}
+
+void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
+{
+	const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+	cerr << " template_partial_deduction_visits="
 				 << semantic.template_partial_deduction_visits
 				 << " function_template_deduction_visits="
 				 << semantic.function_template_deduction_visits
@@ -1957,8 +1978,6 @@ int run_emit_lowir_mode(const vector<string> & args)
 			 << " frontend_ns=" << semantic.elapsed_nanoseconds
 			 << " lowering_ns=" << stats.lowering_nanoseconds
 			 << " render_ns=" << stats.render_nanoseconds << '\n';
-	}
-	return EXIT_SUCCESS;
 }
 
 int run_driver_mode(const vector<string> & args)

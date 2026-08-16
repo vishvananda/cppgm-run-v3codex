@@ -72,6 +72,7 @@ int main(int argc, char** argv)
 		std::ios_base::sync_with_stdio(false);
 		std::string output_path;
 		std::vector<std::string> source_paths;
+		bool report_stats = false;
 		for (int i = 1; i < argc; ++i)
 		{
 			const std::string argument(argv[i]);
@@ -86,6 +87,7 @@ int main(int argc, char** argv)
 				if (++i >= argc) throw std::logic_error("invalid usage");
 				// PA9's optional target selector does not change the x86-64 ELF path.
 			}
+			else if (argument == "--stats") report_stats = true;
 			else
 			{
 				source_paths.push_back(argument);
@@ -94,7 +96,6 @@ int main(int argc, char** argv)
 		if (output_path.empty() || source_paths.empty())
 			throw std::logic_error("invalid usage");
 
-		const bool report_stats = std::getenv("CPPGM_FRONTEND_STATS") != 0;
 		cppgm::Cy86Stats stats;
 		cppgm::Cy86Program program(report_stats ? &stats : 0);
 		const cppgm::PreprocessingOptions options = BuildOptions();

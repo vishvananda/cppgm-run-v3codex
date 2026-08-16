@@ -2,6 +2,7 @@
 #include <exception>
 #include <iostream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 
 #include "macro_processor.h"
@@ -98,16 +99,16 @@ private:
 
 int main(int argc, char** argv)
 {
-	(void)argc;
-	(void)argv;
 	try
 	{
+		if (argc > 2 || (argc == 2 && std::string(argv[1]) != "--stats"))
+			throw std::logic_error("invalid usage");
 		std::ios_base::sync_with_stdio(false);
 		std::cin.tie(0);
 		const std::string source((std::istreambuf_iterator<char>(std::cin)),
 			std::istreambuf_iterator<char>());
 		DebugPostTokenStream output(std::cout);
-		const bool report_stats = std::getenv("CPPGM_FRONTEND_STATS") != 0;
+		const bool report_stats = argc == 2;
 		cppgm::MacroProcessingStats stats;
 		cppgm::ProcessMacros(source, output, report_stats ? &stats : 0);
 		if (report_stats)

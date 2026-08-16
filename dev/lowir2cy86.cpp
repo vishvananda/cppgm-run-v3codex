@@ -52,9 +52,15 @@ int run_lowir2cy86_mode(const vector<string> & args)
     return EXIT_SUCCESS;
   }
 
+  vector<string> invocation_args;
+  bool report_stats = false;
+  for(size_t i = 0; i < args.size(); ++i) {
+    if(args[i] == "--stats") report_stats = true;
+    else invocation_args.push_back(args[i]);
+  }
   string outfile;
   vector<string> srcfiles;
-  parse_output_invocation(args, outfile, srcfiles);
+  parse_output_invocation(invocation_args, outfile, srcfiles);
 
   const chrono::steady_clock::time_point parse_start = chrono::steady_clock::now();
   const lowir_model::LowirProgram program = lowir_model::parse_lowir_program_files(srcfiles);
@@ -68,7 +74,7 @@ int run_lowir2cy86_mode(const vector<string> & args)
   if(!stream) throw runtime_error("unable to write output file: " + outfile);
   stream.close();
 
-  if(getenv("CPPGM_LOWIR_STATS")) {
+  if(report_stats) {
     const chrono::steady_clock::time_point end = chrono::steady_clock::now();
     cerr << "lowir2cy86_stats source_bytes=" << program.source_bytes
          << " tokens=" << program.token_count

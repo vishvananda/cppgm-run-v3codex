@@ -4,6 +4,7 @@
 #include <exception>
 #include <iostream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 
 using namespace std;
@@ -22,15 +23,15 @@ bool PA3Mock_IsDefinedIdentifier(const string& identifier)
 
 int main(int argc, char** argv)
 {
-	(void)argc;
-	(void)argv;
 	try
 	{
+		if (argc > 2 || (argc == 2 && std::string(argv[1]) != "--stats"))
+			throw std::logic_error("invalid usage");
 		ios_base::sync_with_stdio(false);
 		cin.tie(0);
 		const string source((istreambuf_iterator<char>(cin)),
 			istreambuf_iterator<char>());
-		const bool report_stats = getenv("CPPGM_FRONTEND_STATS") != 0;
+		const bool report_stats = argc == 2;
 		cppgm::ControlExpressionStats stats;
 		cppgm::EvaluateControllingExpressions(source, cout,
 			PA3Mock_IsDefinedIdentifier, report_stats ? &stats : 0);

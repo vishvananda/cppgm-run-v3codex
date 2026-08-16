@@ -18,6 +18,7 @@ namespace {
 struct LowIROptInvocation
 {
   bool has_optimization_level = false;
+  bool report_stats = false;
   int optimization_level = 0;
   string outfile;
   vector<string> inputs;
@@ -90,6 +91,10 @@ LowIROptInvocation parse_lowiropt_invocation(const vector<string> & args)
 
   for(size_t i = 0; i < args.size(); ++i) {
     int optimization_level = 0;
+    if(args[i] == "--stats") {
+      invocation.report_stats = true;
+      continue;
+    }
     if(is_optimization_level(args[i], optimization_level)) {
       if(invocation.has_optimization_level) {
         throw logic_error("multiple optimization levels provided");
@@ -139,9 +144,9 @@ int run_lowiropt_mode(const vector<string> & args)
       invocation.inputs, lowir_model::LEP_ALLOW_HELPERS_ONLY);
   lowir_opt::Stats stats;
   lowir_opt::optimize(program, invocation.optimization_level,
-                      getenv("CPPGM_LOWIR_OPT_STATS") ? &stats : 0);
+                      invocation.report_stats ? &stats : 0);
   lowir_model::write_lowir_program_file(invocation.outfile, program);
-  if(getenv("CPPGM_LOWIR_OPT_STATS")) {
+  if(invocation.report_stats) {
     cerr << "pa37_opt_stats"
          << " functions=" << stats.functions
          << " input_instructions=" << stats.input_instructions

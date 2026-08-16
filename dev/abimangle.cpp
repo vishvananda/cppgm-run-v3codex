@@ -17,6 +17,7 @@ struct AbimangleInvocation
 {
   string outfile;
   vector<string> inputs;
+  bool collect_stats = false;
 };
 
 bool has_help_arg(int argc, char ** argv)
@@ -47,6 +48,10 @@ AbimangleInvocation parse_invocation(int argc, char ** argv)
       invocation.outfile = argv[++i];
       continue;
     }
+    if(arg == "--stats") {
+      invocation.collect_stats = true;
+      continue;
+    }
     invocation.inputs.push_back(arg);
   }
   if(invocation.outfile.empty() || invocation.inputs.empty()) {
@@ -67,7 +72,7 @@ int run_abimangle(int argc, char ** argv)
     throw logic_error("unable to open output file '" + invocation.outfile + "'");
   }
   abi_mangle::AbiMangleStats stats;
-  const bool collect_stats = getenv("CPPGM_ABIMANGLE_STATS") != nullptr;
+  const bool collect_stats = invocation.collect_stats;
   abi_mangle::mangle_fact_files_to_stream(invocation.inputs, out,
                                           collect_stats ? &stats : nullptr);
   out.close();
