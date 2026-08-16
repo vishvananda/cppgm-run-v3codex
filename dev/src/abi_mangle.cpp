@@ -1281,11 +1281,16 @@ private:
     } else if(type.kind == ABI_TYPE_MEMBER
               || type.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION) {
       encode_prefix_type(type.children.at(0));
-      output_ += source_name(graph_.strings.get(type.symbol));
-      emit_tags(type.tags);
-      if(type.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION) {
-        substitutions_.add(member_template_prefix_key(type));
-        output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
+      // Recursive encoding can resolve an entity reference and grow the
+      // canonical type graph.  Reacquire the indexed node instead of reading
+      // through a reference invalidated by vector reallocation.
+      const TypeNode & resolved = graph_.type(id);
+      output_ += source_name(graph_.strings.get(resolved.symbol));
+      emit_tags(resolved.tags);
+      if(resolved.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION) {
+        substitutions_.add(member_template_prefix_key(resolved));
+        const vector<size_t> arguments = resolved.arguments;
+        output_ += 'I'; encode_arguments(arguments); output_ += 'E';
       }
     } else {
       encode_new_type(id, type);
