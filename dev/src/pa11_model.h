@@ -269,6 +269,7 @@ public:
 	std::size_t Size() const;
 	std::size_t IndexProbes() const;
 	std::size_t StorageBytes() const;
+	void ReserveStorage(std::size_t expected_types);
 
 private:
 	TypeId Unary(TypeKind kind, TypeId child);

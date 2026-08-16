@@ -28,6 +28,13 @@ inline void CombineTypeHash(std::size_t* seed, std::uint64_t value)
 		(*seed << 6) + (*seed >> 2);
 }
 
+std::size_t IndexCapacityFor(std::size_t entries, std::size_t minimum)
+{
+	std::size_t capacity = minimum;
+	while (entries + 1 > capacity * 7 / 10) capacity *= 2;
+	return capacity;
+}
+
 const char* FundamentalName(FundamentalKind kind)
 {
 	switch (kind)
@@ -545,6 +552,15 @@ std::size_t TypeTable::StorageBytes() const
 		slots_.capacity() * sizeof(TypeId);
 }
 
+void TypeTable::ReserveStorage(std::size_t expected_types)
+{
+	types_.reserve(expected_types + 1);
+	parameters_.reserve(expected_types);
+	const std::size_t capacity =
+		IndexCapacityFor(expected_types + 1, slots_.size());
+	if (capacity > slots_.size()) Rehash(capacity);
+}
+
 std::size_t TypeTable::Hash(const TypeRecord& record,
 	const TypeId* parameters, std::size_t count) const
 {
@@ -946,6 +962,12 @@ void Program::ReserveSemanticStorage(std::size_t syntax_nodes)
 	visible_names_.reserve(syntax_nodes);
 	entries_.reserve(syntax_nodes);
 	bindings.reserve(syntax_nodes);
+	types.ReserveStorage(syntax_nodes / 4);
+	const std::size_t index_capacity =
+		IndexCapacityFor(syntax_nodes, entry_slots_.size());
+	if (index_capacity > entry_slots_.size()) RehashEntries(index_capacity);
+	if (index_capacity > visible_name_slots_.size())
+		RehashVisibleNames(index_capacity);
 }
 
 ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
