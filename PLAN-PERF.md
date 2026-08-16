@@ -1,6 +1,6 @@
 # Performance Plan: Sub-15-Second Frozen Compile
 
-Status: planning and measurement baseline
+Status: implementation and local gates complete
 
 Date: 2026-08-16
 
@@ -134,6 +134,67 @@ A separate `perf` sample placed the following symbols near the top:
 The three named native register/value routines alone account for about 17.6%
 of sampled CPU. General allocation and string hashing/comparison costs form a
 second large family. These are the first targets.
+
+### 3.5 Final measured candidate
+
+The final compiler candidate is commit `d74971d5`. Its immutable executable
+has SHA-256
+`3b1b69f6bfbe53cddc68b3b0592e0bae161db27018652f392d7dc4ab086ee60d`.
+No PGO was used.
+
+A predeclared five-run window started at load average 2.40 on 32 logical CPUs,
+with CPU `some avg10=0.00`, no competing self-compile or Valgrind child, and
+no swap activity. No observation was discarded:
+
+| Run | Wall | User | System | Peak RSS |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 14.45 s | 13.09 s | 1.34 s | 963,672 KiB |
+| 2 | 14.45 s | 13.15 s | 1.29 s | 963,656 KiB |
+| 3 | 14.39 s | 13.12 s | 1.27 s | 963,728 KiB |
+| 4 | 14.23 s | 13.01 s | 1.21 s | 963,772 KiB |
+| 5 | 13.97 s | 12.69 s | 1.27 s | 963,528 KiB |
+| **Median** | **14.39 s** | **13.09 s** | **1.27 s** | **963,672 KiB** |
+
+This is 50.5% below the provisional 29.10-second wall baseline. Peak RSS is
+2.67% above that provisional baseline and remains within the 3% guardrail.
+Every run emitted exactly 93,544,200 bytes with SHA-256
+`c379baae6ae84b4d66f304337dbf789704c1c73a5a6c361f8a30280304c02a2a`.
+
+Two direct ABBA blocks against the immutable `f3ac28a` executable corroborate
+the cumulative result under the same host conditions. The original compiler's
+four-run medians were 27.885 s wall, 26.160 s user, and 940,392 KiB RSS; the
+final compiler's were 14.430 s wall, 13.080 s user, and 962,786 KiB RSS. The
+paired medians are -48.55% wall, -50.22% user, and +2.38% RSS. All eight
+objects were exact and deterministic.
+
+The retained command shape was:
+
+```sh
+/usr/bin/time -f '%e %U %S %M' /tmp/v3codex-final2-cppgm++ \
+  -I dev/src -c -o /tmp/v3codex-final2-calm-N.o \
+  benchmarks/self_compile/stable/semantic_overload.cpp
+```
+
+The final explicit telemetry run reported:
+
+| Phase or counter | Final result |
+| --- | ---: |
+| Preprocess | 1.405 s |
+| Parse | 0.275 s |
+| Semantic analysis | 4.671 s |
+| Typed-to-LowIR lowering | 1.196 s |
+| PA37 LowIR optimization | 3.275 s |
+| Native lowering | 1.532 s |
+| Machine optimization | 0.207 s |
+| Encoding | 1.019 s |
+| Payload serialization | 0.347 s |
+| Interner rehashes / rehash hash bytes | 0 / 0 |
+| Interner occupied probes | 2,846,493 |
+| Live-location scans / visits | 0 / 0 |
+| Spill value visits | 41,639 |
+
+The phase timings come from an instrumented run and are structural evidence,
+not a replacement for the non-instrumented five-run wall-time gate.
 
 ## 4. Measurement protocol for an intermittently loaded host
 
@@ -648,6 +709,11 @@ medians from the protocol above, not isolated best runs.
 | `8ac2226d` compact LowIR graph storage | Keep the common first two CFG edges inline and avoid moving every instruction when a single-block dead-store pass makes no change | Common CFG nodes no longer allocate an inner vector; the dead-store pass uses one byte mask and compacts only after one of its 131 changes | Shared loaded-host screening with the prior row reached 14.70 s / 13.46 s in a normal direct run; its ABBA session is excluded because unrelated self-host/Valgrind work raised runs to 31--39 seconds | Exact 93,544,200-byte object and baseline SHA | PA37 86/86; through PA38 5,153/5,153 | Accepted for eliminated allocations and unchanged work/output; final cumulative timing must corroborate it |
 | `7d9484ab` small-scope name index | Answer lookups in scopes with at most four names from an intrusive local list before touching the large global scope/name hash table | Empty and tiny scopes avoid the global table; every entry remains in that table so crossing the threshold requires no rebuild and preserves lookup order | Two ABBA blocks versus the prior compiler: paired user -2.67%, wall -2.26%, RSS +0.12%; a reversed-order screen also favored the candidate by 1.53% user | Exact 93,544,200-byte object and baseline SHA | PA11 68/68 plus course 2/2; PA12 166/166 plus course 14/14; through PA38 5,153/5,153 | Accepted; retain the global index as the exact fallback for larger scopes |
 | `00baa1a7` semantic model reservation | Use syntax-node count as a general scale hint for binding, name-entry, visible-name, scope, and child-edge vectors; use a two-thirds hint for scopes to avoid excess capacity | Frozen final sizes fit without growth (575,345 bindings, 513,199 name entries, 526,444 visible names, and 334,770 scopes); ordinary growth remains available for expansion-heavy inputs | Initial all-vector hint over two ABBA blocks: paired user -1.39%, wall -0.84%, RSS -0.04%; final tighter scope hint direct screen 13.55 s user / 14.94 s wall | Exact 93,544,200-byte object and baseline SHA | PA11 68/68 plus course 2/2; PA12 166/166 plus course 14/14 | Accepted for removing known vector reallocations with bounded memory; include in the next cumulative gate |
+| `56035dff` local type hashing | Keep the unchanged canonical-type hash combine in the TypeTable implementation so hot callers inline it without exposing implementation through the header | Removes repeated out-of-line `MixHash` calls while retaining the exact hash and insertion order | One ABBA block: paired user and wall about -1.2%, RSS +0.03% | Exact 93,544,200-byte object and baseline SHA | PA11 and PA12 owner suites clean | Accepted as a local hot-path reduction with exact hash behavior |
+| `90c1e7de` semantic index sizing | Pre-size entry, visible-name, and canonical-type open-address indexes from syntax-node count | Avoids every intermediate index rehash and type-vector growth; ordinary growth remains available | Entry/name stage over two ABBA blocks: paired user -1.04%, wall -0.82%, RSS -0.12%; added type reserve produced 14.45 s wall / 13.25 s user candidate medians and paired wall -1.16% | Exact 93,544,200-byte object and baseline SHA | PA11 and PA12 owner suites clean | Accepted for eliminating measured growth and preserving open-address behavior |
+| `23343174`, `e692961b` explicit tool control and audit separation | Replace hidden statistics/include-path environment behavior with `--stats`, `-nostdinc`, and `-isystem`; have the PA34 harness translate its legacy reference sidecar into explicit options | File audit falls to zero fatal findings; PA37/PA30/PA31 telemetry remains available only when requested; the existing PA34 include-next owner test exercises explicit include roots | No intended compiler performance change; post-refactor direct screen 15.05 s wall / 13.73 s user under host variation | Exact frozen object and baseline SHA | Affected PA3--9, PA14, PA28/29/37 suites clean; PA34 370/370; through PA38 5,153/5,153 | Accepted as the required file-audit and reproducibility cleanup |
+| `f597c4ef` transient PA37 arenas | Give short-lived simplify, DCE, slot, and forwarding hash nodes a stack-backed monotonic arena while retaining their existing key, hash, and traversal types | PA37 elapsed falls from about 3.75 s to 3.27 s; simplify falls from 0.96 s to 0.75 s and DCE from 0.315 s to 0.173 s with identical pass counts and 198,087 rewrites | Two ABBA blocks on the core arena candidate: paired wall -1.55%, user -2.59%, RSS +0.17%; candidate medians 14.645 s wall / 13.195 s user | Exact 93,544,200-byte object and baseline SHA | PA37 86/86; through PA38 5,153/5,153 | Accepted; transient allocations are released at each pass boundary and never become semantic state |
+| `d74971d5` child tag reuse and interner sizing | Intern a direct-child query tag once per scan and size the translation-unit spelling index from source scale before preprocessing | Removes 540,488 redundant tag-cache probes; interner rehashes fall 13 to 0, rehash hash bytes 7,087,253 to 0, and occupied probes 3,596,705 to 2,846,493 | Final five-run gate: median 13.09 s user / 14.39 s wall / 963,672 KiB RSS; direct two-block comparison against `f3ac28a`: paired wall -48.55%, user -50.22%, RSS +2.38% | All candidate and comparison objects exactly 93,544,200 bytes with baseline SHA | PA10 164/164; through PA10 583/583; selected PA11/12/37/38 362/362; through PA38 5,153/5,153 | Accepted; final non-PGO target and 14.5-second safety margin are met |
 | Rejected: inline `MixHash` | Put the unchanged semantic-table hash body in the header so callers can inline it | Removed the 1.16% standalone profile symbol, but expanded the body across semantic callers | Three ABBA blocks versus Phase 2A: paired median user -1.07%, wall -1.12%, RSS effectively unchanged; one candidate outlier dominated its raw median | Exact 93,544,200-byte object and baseline SHA | Exact frozen compile only; reverted before assignment reports | Rejected as below the 3% noise/acceptance threshold |
 | Rejected: syntax access microcache | Add a last-tag entry, cheaper pointer indexing, and inline trivial syntax-arena accessors | Targeted the 2.48% `InternTag`/`IsTag` pair plus small accessor symbols, but did not reduce aggregate CPU work | Three ABBA blocks versus Phase 2A: paired median user -0.10%, wall +1.10%, RSS effectively unchanged | Exact 93,544,200-byte object and baseline SHA | Exact frozen compile only; reverted before assignment reports | Rejected; call-site patterns and code-size effects erased the local savings |
 | Rejected: dense LowIR value index | Build one name index per function and use vector facts for simplification and DCE; skip a CFG visit made redundant by the following DCE/CFG pair | LowIR stats elapsed fell from 3.75 s to 3.52 s and DCE from 0.29 s to 0.19 s; a custom expression table subexperiment regressed and was removed before the paired run | Three ABBA blocks versus Phase 2A: paired median user -0.31%, wall -0.03%, RSS +0.18% | Exact 93,544,200-byte object and baseline SHA | PA37 86/86 after an existing CFG test caught and localized a C++11 insertion-order bug | Rejected; building and probing the shared index offset the allocator savings end to end |
@@ -655,6 +721,7 @@ medians from the protocol above, not isolated best runs.
 | Rejected: compact syntax tag cache | Shrink the pointer-keyed tag cache from 4,096 to 512 entries so its working set fits L1 | Storage shrank, but the 169 live tag pointers incurred more open-address probes | Two ABBA blocks: paired user +4.21%, wall +4.07%, RSS -0.12% | Exact 93,544,200-byte object and baseline SHA | Exact frozen compile only; reverted | Rejected; collision probes dominate the footprint reduction |
 | Rejected: syntax tag fingerprints and literal slots | Filter tag mismatches with a node fingerprint, then try a compile-time literal hash into a separate direct cache | The fingerprint removed about 36.3 million pointer-cache probes; the literal cache reduced ordinary tag-cache hits from 44.7 million to 9.4 million, but expanded hot call-site code and added up to 512 KiB | Fingerprint two-block result: paired user -0.86%, wall -0.59%; literal-cache result: paired user +1.37%, wall +1.01% | Exact 93,544,200-byte object and baseline SHA | Exact frozen compile only; both variants reverted | Rejected; large structural counter movement did not become end-to-end speedup |
 | Rejected: merged LowIR type/definition facts | Fold the simplifier's string-keyed type map into its definition map | Simplifier telemetry fell from about 0.887 s to 0.857 s, but constructing large definition records during the type census offset the removed table | Direct whole-compile screening showed no improvement | Exact 93,544,200-byte object and baseline SHA | Exact frozen compile only; reverted | Rejected; retain compact type records and separate availability order |
+| Rejected: cheaper tag-cache pointer hash | Replace the mixed pointer hash with shifts only | Preserved exact output, but did not improve the direct whole-compile screen and reduced collision protection | Single direct screen 13.39 s user / 14.82 s wall; no structural benefit supported retaining it | Exact 93,544,200-byte object and baseline SHA | Exact frozen compile only; reverted | Rejected before assignment reports; retain the measured robust mixer |
 
 For a rejected experiment, record the temporary commit or patch identifier,
 the counter movement, and the reason for rejection even after reverting it.
