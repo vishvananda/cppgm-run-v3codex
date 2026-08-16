@@ -108,6 +108,37 @@ class BenchmarkHarnessTest(unittest.TestCase):
             self.assertIn("a output is not deterministic", report["validation_errors"])
             self.assertIn("b output is not deterministic", report["validation_errors"])
 
+    def test_load_screen_failure_writes_partial_report(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            compiler = self.make_compiler(root, "baseline-compiler")
+            source = root / "input.cpp"
+            source.write_text("int main() {}\n", encoding="utf-8")
+            prefix = root / "screened"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--repo-root", str(root),
+                    "--compiler-a", str(compiler),
+                    "--compiler-b", str(compiler),
+                    "--source", str(source),
+                    "--abba-blocks", "1",
+                    "--output-prefix", str(prefix),
+                    "--max-load1", "-1",
+                    "--screen-timeout-sec", "0",
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(proc.returncode, 2)
+            report = json.loads(
+                prefix.with_suffix(".json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(report["status"], "screen-error")
+            self.assertEqual(report["runs"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

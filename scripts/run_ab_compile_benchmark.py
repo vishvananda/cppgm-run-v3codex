@@ -73,13 +73,21 @@ def screen_allows_run(snapshot, args):
 
 def wait_for_screen(args):
     started = time.monotonic()
+    next_notice = started
     while True:
         snapshot = load_snapshot()
         if screen_allows_run(snapshot, args):
             return snapshot
+        now = time.monotonic()
+        if now >= next_notice:
+            print("waiting for load screen: load1=%s cpu-some-avg10=%s" % (
+                format_number(snapshot.get("load1")),
+                format_number(snapshot.get("some_avg10")),
+            ), flush=True)
+            next_notice = now + 30.0
         if args.screen_timeout_sec <= 0:
             raise RuntimeError("host load screen rejected the benchmark block")
-        if time.monotonic() - started >= args.screen_timeout_sec:
+        if now - started >= args.screen_timeout_sec:
             raise RuntimeError("timed out waiting for the host load screen")
         time.sleep(min(5.0, args.screen_timeout_sec))
 
@@ -297,6 +305,12 @@ def print_summary(report):
         print("  paired %-14s %s" % (metric + ":", format_number(delta, "%")))
 
 
+def write_report(path, report):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Run GNU-time compiler measurements in interleaved ABBA order."
@@ -345,8 +359,17 @@ def main():
 
     output_dir = Path(args.output_prefix + "-objects")
     output_dir.mkdir(parents=True, exist_ok=True)
+    report_path = Path(args.output_prefix + ".json")
     runs = []
     block_loads = []
+
+    def checkpoint(status, errors=None):
+        report = build_report(args, repo_root, compiler_identities, runs, block_loads)
+        report["status"] = status
+        report["validation_errors"] = errors or []
+        write_report(report_path, report)
+        return report
+
     try:
         for block in range(args.abba_blocks):
             snapshot = wait_for_screen(args)
@@ -369,25 +392,31 @@ def main():
                     output_dir,
                 )
                 runs.append(run)
+                checkpoint("running")
                 print("    %s wall=%s user=%s rss=%s" % (
                     run["status"],
                     format_number(run.get("wall_seconds"), "s"),
                     format_number(run.get("user_seconds"), "s"),
                     format_number(run.get("max_rss_kib"), " KiB"),
                 ), flush=True)
+    except KeyboardInterrupt:
+        checkpoint("interrupted")
+        print("\nbenchmark interrupted; partial report: %s" % report_path,
+              file=sys.stderr)
+        return 130
     except RuntimeError as exc:
+        checkpoint("screen-error", [str(exc)])
         print("benchmark error: %s" % exc, file=sys.stderr)
+        print("partial report: %s" % report_path, file=sys.stderr)
         return 2
 
     report = build_report(args, repo_root, compiler_identities, runs, block_loads)
     errors = validate_runs(
         runs, args.output_mode, compiler_identities, compilers
     )
+    report["status"] = "complete"
     report["validation_errors"] = errors
-    report_path = Path(args.output_prefix + ".json")
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
-                           encoding="utf-8")
+    write_report(report_path, report)
     print_summary(report)
     print("  report: %s" % report_path)
     if errors:
