@@ -2762,6 +2762,12 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	if (&arena.SharedStrings() != &strings_)
 		throw std::logic_error("semantic analyzer does not own syntax strings");
 	Program& program = *program_;
+	// Most declarations have an owning syntax node.  Use that already-known
+	// count to avoid repeatedly moving the comparatively large BindingRecord;
+	// expansion-heavy translation units retain the vector's ordinary growth.
+	const std::size_t syntax_nodes = arena.Nodes();
+	if (syntax_nodes < static_cast<std::size_t>(kNoBinding))
+		program.bindings.reserve(syntax_nodes);
 	scope_prefixes_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
 	scope_prefix_segments_.resize(
 		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);

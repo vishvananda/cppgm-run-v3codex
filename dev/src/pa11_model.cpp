@@ -11,6 +11,16 @@ namespace pa11
 namespace
 {
 
+std::size_t PairHash(std::uint32_t left, std::uint32_t right)
+{
+	std::uint64_t mixed =
+		(static_cast<std::uint64_t>(left) << 32) | right;
+	mixed ^= mixed >> 30;
+	mixed *= 0xbf58476d1ce4e5b9ULL;
+	mixed ^= mixed >> 27;
+	return static_cast<std::size_t>(mixed);
+}
+
 const char* FundamentalName(FundamentalKind kind)
 {
 	switch (kind)
@@ -993,7 +1003,7 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 	if ((using_edges_.size() + 1) * 10 > using_edge_slots_.size() * 7)
 		RehashUsingEdges(using_edge_slots_.size() * 2);
 	const std::size_t mask = using_edge_slots_.size() - 1;
-	std::size_t slot = MixHash(owner, target) & mask;
+	std::size_t slot = PairHash(owner, target) & mask;
 	while (using_edge_slots_[slot] != 0)
 	{
 		++using_index_probes;
@@ -1064,7 +1074,7 @@ void Program::RehashUsingEdges(std::size_t capacity)
 	for (std::size_t i = 0; i < using_edges_.size(); ++i)
 	{
 		const UsingEdge& edge = using_edges_[i];
-		std::size_t slot = MixHash(edge.owner, edge.target) & mask;
+		std::size_t slot = PairHash(edge.owner, edge.target) & mask;
 		while (replacement[slot] != 0) slot = (slot + 1) & mask;
 		replacement[slot] = static_cast<std::uint32_t>(i + 1);
 	}
@@ -1078,7 +1088,7 @@ void Program::RehashVisibleNames(std::size_t capacity)
 	for (std::size_t i = 0; i < visible_names_.size(); ++i)
 	{
 		const ScopeVisibleName& fact = visible_names_[i];
-		std::size_t slot = MixHash(fact.scope, fact.name) & mask;
+		std::size_t slot = PairHash(fact.scope, fact.name) & mask;
 		while (visible_name_slots_[slot] != 0) slot = (slot + 1) & mask;
 		visible_name_slots_[slot] = static_cast<std::uint32_t>(i + 1);
 	}
@@ -1087,7 +1097,7 @@ void Program::RehashVisibleNames(std::size_t capacity)
 std::uint32_t Program::FindVisibleName(ScopeId scope, NameId name) const
 {
 	const std::size_t mask = visible_name_slots_.size() - 1;
-	std::size_t slot = MixHash(scope, name) & mask;
+	std::size_t slot = PairHash(scope, name) & mask;
 	while (visible_name_slots_[slot] != 0)
 	{
 		const std::uint32_t fact = visible_name_slots_[slot] - 1;
@@ -1105,7 +1115,7 @@ std::uint32_t Program::EnsureVisibleName(ScopeId scope, NameId name,
 	if ((visible_names_.size() + 1) * 10 > visible_name_slots_.size() * 7)
 		RehashVisibleNames(visible_name_slots_.size() * 2);
 	const std::size_t mask = visible_name_slots_.size() - 1;
-	std::size_t slot = MixHash(scope, name) & mask;
+	std::size_t slot = PairHash(scope, name) & mask;
 	while (visible_name_slots_[slot] != 0)
 	{
 		const std::uint32_t fact = visible_name_slots_[slot] - 1;
@@ -1136,7 +1146,7 @@ void Program::RehashUsingNameRelations(std::size_t capacity)
 	for (std::size_t i = 0; i < using_name_relations_.size(); ++i)
 	{
 		const UsingNameRelation& relation = using_name_relations_[i];
-		std::size_t slot = MixHash(relation.edge, relation.name) & mask;
+		std::size_t slot = PairHash(relation.edge, relation.name) & mask;
 		while (using_name_relation_slots_[slot] != 0)
 			slot = (slot + 1) & mask;
 		using_name_relation_slots_[slot] = static_cast<std::uint32_t>(i + 1);
@@ -1147,7 +1157,7 @@ std::uint32_t Program::FindUsingNameRelation(std::uint32_t edge,
 	NameId name) const
 {
 	const std::size_t mask = using_name_relation_slots_.size() - 1;
-	std::size_t slot = MixHash(edge, name) & mask;
+	std::size_t slot = PairHash(edge, name) & mask;
 	while (using_name_relation_slots_[slot] != 0)
 	{
 		const std::uint32_t relation =
@@ -1184,7 +1194,7 @@ bool Program::AddUsingNameRelation(std::uint32_t edge, NameId name,
 		edge, name, visible_names_[visible].first_relation));
 	visible_names_[visible].first_relation = relation;
 	const std::size_t mask = using_name_relation_slots_.size() - 1;
-	std::size_t slot = MixHash(edge, name) & mask;
+	std::size_t slot = PairHash(edge, name) & mask;
 	while (using_name_relation_slots_[slot] != 0) slot = (slot + 1) & mask;
 	using_name_relation_slots_[slot] = relation + 1;
 	return true;
@@ -1574,7 +1584,7 @@ Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
 	if ((entries_.size() + 1) * 10 > entry_slots_.size() * 7)
 		RehashEntries(entry_slots_.size() * 2);
 	const std::size_t mask = entry_slots_.size() - 1;
-	std::size_t slot = MixHash(scope, name) & mask;
+	std::size_t slot = PairHash(scope, name) & mask;
 	while (entry_slots_[slot] != 0)
 	{
 		++name_index_probes;
@@ -1596,7 +1606,7 @@ const Program::NameEntry* Program::FindEntry(ScopeId scope,
 	NameId name) const
 {
 	const std::size_t mask = entry_slots_.size() - 1;
-	std::size_t slot = MixHash(scope, name) & mask;
+	std::size_t slot = PairHash(scope, name) & mask;
 	while (entry_slots_[slot] != 0)
 	{
 		++name_index_probes;
@@ -1614,7 +1624,7 @@ void Program::RehashEntries(std::size_t capacity)
 	const std::size_t mask = capacity - 1;
 	for (std::size_t i = 0; i < entries_.size(); ++i)
 	{
-		std::size_t slot = MixHash(entries_[i].scope, entries_[i].name) & mask;
+		std::size_t slot = PairHash(entries_[i].scope, entries_[i].name) & mask;
 		while (replacement[slot] != 0) slot = (slot + 1) & mask;
 		replacement[slot] = static_cast<std::uint32_t>(i + 1);
 	}
