@@ -723,6 +723,8 @@ struct Program::ScopeRecord
 	std::uint32_t last_child;
 	std::uint32_t first_incoming_using;
 	std::uint32_t first_visible_name;
+	std::uint32_t first_name_entry;
+	std::uint32_t name_entry_count;
 	bool inline_namespace, internal_linkage;
 
 	ScopeRecord()
@@ -733,6 +735,8 @@ struct Program::ScopeRecord
 		  last_child(std::numeric_limits<std::uint32_t>::max()),
 		  first_incoming_using(std::numeric_limits<std::uint32_t>::max()),
 		  first_visible_name(std::numeric_limits<std::uint32_t>::max()),
+		  first_name_entry(std::numeric_limits<std::uint32_t>::max()),
+		  name_entry_count(0),
 		  inline_namespace(false), internal_linkage(false) {}
 };
 
@@ -744,11 +748,13 @@ struct Program::NameEntry
 	TypeId type;
 	BindingId type_declaration;
 	BindingId ordinary;
+	std::uint32_t next_in_scope;
 	bool function_template, variable_template;
 
 	NameEntry()
 		: scope(kNoScope), name(0), name_space(kNoScope), type(kNoType),
 		  type_declaration(kNoBinding), ordinary(kNoBinding),
+		  next_in_scope(std::numeric_limits<std::uint32_t>::max()),
 		  function_template(false), variable_template(false) {}
 };
 
@@ -1581,6 +1587,12 @@ DirectBaseEdge& Program::MutableDirectBase(EntityId derived,
 
 Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
 {
+	ScopeRecord& owner = scopes_[scope];
+	if (owner.name_entry_count <= 4)
+		for (std::uint32_t entry = owner.first_name_entry;
+			entry != std::numeric_limits<std::uint32_t>::max();
+			entry = entries_[entry].next_in_scope)
+			if (entries_[entry].name == name) return &entries_[entry];
 	if ((entries_.size() + 1) * 10 > entry_slots_.size() * 7)
 		RehashEntries(entry_slots_.size() * 2);
 	const std::size_t mask = entry_slots_.size() - 1;
@@ -1597,6 +1609,9 @@ Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
 	NameEntry& entry = entries_.back();
 	entry.scope = scope;
 	entry.name = name;
+	entry.next_in_scope = owner.first_name_entry;
+	owner.first_name_entry = static_cast<std::uint32_t>(entries_.size() - 1);
+	++owner.name_entry_count;
 	entry_slots_[slot] = static_cast<std::uint32_t>(entries_.size());
 	PublishUsingName(scope, name);
 	return &entry;
@@ -1605,6 +1620,15 @@ Program::NameEntry* Program::EnsureEntry(ScopeId scope, NameId name)
 const Program::NameEntry* Program::FindEntry(ScopeId scope,
 	NameId name) const
 {
+	const ScopeRecord& owner = scopes_[scope];
+	if (owner.name_entry_count <= 4)
+	{
+		for (std::uint32_t entry = owner.first_name_entry;
+			entry != std::numeric_limits<std::uint32_t>::max();
+			entry = entries_[entry].next_in_scope)
+			if (entries_[entry].name == name) return &entries_[entry];
+		return 0;
+	}
 	const std::size_t mask = entry_slots_.size() - 1;
 	std::size_t slot = PairHash(scope, name) & mask;
 	while (entry_slots_[slot] != 0)
