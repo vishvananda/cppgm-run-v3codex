@@ -1009,6 +1009,8 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " semantic_nodes=" << semantic.semantic_nodes
 			 << " semantic_edges=" << semantic.semantic_edges
 			 << " declarations=" << semantic.declarations
+			 << " canonical_types=" << semantic.canonical_types
+			 << " scopes=" << semantic.scopes
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
 			 << " lookup_edge_visits=" << semantic.lookup_edge_visits
