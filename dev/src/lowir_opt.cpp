@@ -1032,12 +1032,16 @@ bool eliminate_dead_code(Function * function,
   }
   if(!removed) return false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::vector<Instruction> kept;
-    kept.reserve(function->blocks[i].instructions.size());
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j)
-      if(!dead[i][j])
-        kept.push_back(std::move(function->blocks[i].instructions[j]));
-    function->blocks[i].instructions.swap(kept);
+    std::vector<Instruction> & instructions =
+      function->blocks[i].instructions;
+    const std::size_t original_size = instructions.size();
+    std::size_t kept = 0;
+    for(std::size_t j = 0; j < original_size; ++j)
+      if(!dead[i][j]) {
+        if(kept != j) instructions[kept] = std::move(instructions[j]);
+        ++kept;
+      }
+    instructions.resize(kept);
   }
   if(stats) stats->rewrites += removed;
   return true;
@@ -1605,9 +1609,12 @@ bool remove_dead_slots(Function * function, Stats * stats)
       dead.insert(function->slots[i].first);
   if(dead.empty()) return false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::vector<Instruction> kept;
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[i].instructions[j];
+    std::vector<Instruction> & instructions =
+      function->blocks[i].instructions;
+    const std::size_t original_size = instructions.size();
+    std::size_t kept = 0;
+    for(std::size_t j = 0; j < original_size; ++j) {
+      Instruction & ins = instructions[j];
       if((ins.kind == Instruction::IK_LOAD &&
           dead.count(ins.first.text)) ||
          (ins.kind == Instruction::IK_STORE &&
@@ -1615,15 +1622,20 @@ bool remove_dead_slots(Function * function, Stats * stats)
         if(stats) ++stats->rewrites;
         continue;
       }
-      kept.push_back(std::move(function->blocks[i].instructions[j]));
+      if(kept != j) instructions[kept] = std::move(ins);
+      ++kept;
     }
-    function->blocks[i].instructions.swap(kept);
+    instructions.resize(kept);
   }
-  std::vector<std::pair<std::string, LowType> > slots;
-  for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(!dead.count(function->slots[i].first))
-      slots.push_back(std::move(function->slots[i]));
-  function->slots.swap(slots);
+  const std::size_t original_slots = function->slots.size();
+  std::size_t kept_slots = 0;
+  for(std::size_t i = 0; i < original_slots; ++i)
+    if(!dead.count(function->slots[i].first)) {
+      if(kept_slots != i)
+        function->slots[kept_slots] = std::move(function->slots[i]);
+      ++kept_slots;
+    }
+  function->slots.resize(kept_slots);
   return true;
 }
 
@@ -1657,9 +1669,12 @@ bool local_slot_forward(Function * function, Stats * stats)
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     std::unordered_map<std::string, Operand> values;
     std::unordered_map<std::string, Operand> aliases;
-    std::vector<Instruction> kept;
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      Instruction ins = std::move(function->blocks[i].instructions[j]);
+    std::vector<Instruction> & instructions =
+      function->blocks[i].instructions;
+    const std::size_t original_size = instructions.size();
+    std::size_t kept = 0;
+    for(std::size_t j = 0; j < original_size; ++j) {
+      Instruction & ins = instructions[j];
       Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(operands[k]->kind == Operand::OP_TEMP && aliases.count(operands[k]->text))
@@ -1683,7 +1698,6 @@ bool local_slot_forward(Function * function, Stats * stats)
         values.clear();
       if(ins.kind == Instruction::IK_STORE && ins.second.kind == Operand::OP_SLOT) {
         values[ins.second.text] = ins.first;
-        kept.push_back(std::move(ins));
       } else if(ins.kind == Instruction::IK_LOAD &&
                 ins.first.kind == Operand::OP_SLOT && values.count(ins.first.text) &&
                 (!use_blocks.count(ins.dest) ||
@@ -1692,14 +1706,16 @@ bool local_slot_forward(Function * function, Stats * stats)
         aliases[ins.dest] = values[ins.first.text];
         changed = true;
         if(stats) ++stats->rewrites;
+        continue;
       } else {
         if(ins.kind == Instruction::IK_CALL || ins.kind == Instruction::IK_COPYOBJ ||
            ins.kind == Instruction::IK_ZEROINIT || is_eh_instruction(ins.kind))
           values.clear();
-        kept.push_back(std::move(ins));
       }
+      if(kept != j) instructions[kept] = std::move(ins);
+      ++kept;
     }
-    function->blocks[i].instructions.swap(kept);
+    instructions.resize(kept);
   }
   return changed;
 }
@@ -1821,9 +1837,12 @@ bool forward_single_store_slots(Function * function, Stats * stats)
     return value;
   };
   for(std::size_t b = 0; b < function->blocks.size(); ++b) {
-    std::vector<Instruction> kept;
-    for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
-      Instruction ins = std::move(function->blocks[b].instructions[j]);
+    std::vector<Instruction> & instructions =
+      function->blocks[b].instructions;
+    const std::size_t original_size = instructions.size();
+    std::size_t kept = 0;
+    for(std::size_t j = 0; j < original_size; ++j) {
+      Instruction & ins = instructions[j];
       const std::size_t loaded_slot = ins.kind == Instruction::IK_LOAD ?
         find_slot(ins.first) : kNoBlock;
       const std::size_t stored_slot = ins.kind == Instruction::IK_STORE ?
@@ -1836,28 +1855,32 @@ bool forward_single_store_slots(Function * function, Stats * stats)
             Instruction::IK_CONST : Instruction::IK_COPY;
         ins.second = Operand();
         ins.third = Operand();
-        kept.push_back(std::move(ins));
         if(stats) ++stats->rewrites;
-        continue;
-      }
-      if((loaded_slot != kNoBlock && forwarded[loaded_slot]) ||
+      } else if((loaded_slot != kNoBlock && forwarded[loaded_slot]) ||
          (stored_slot != kNoBlock && forwarded[stored_slot])) {
         if(stats) ++stats->rewrites;
         continue;
+      } else {
+        Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t k = 0; k < 3; ++k)
+          *operands[k] = resolve_alias(*operands[k]);
+        for(std::size_t k = 0; k < ins.args.size(); ++k)
+          ins.args[k] = resolve_alias(ins.args[k]);
       }
-      Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k) *operands[k] = resolve_alias(*operands[k]);
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        ins.args[k] = resolve_alias(ins.args[k]);
-      kept.push_back(std::move(ins));
+      if(kept != j) instructions[kept] = std::move(ins);
+      ++kept;
     }
-    function->blocks[b].instructions.swap(kept);
+    instructions.resize(kept);
   }
-  std::vector<std::pair<std::string, LowType> > slots;
-  for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(!forwarded[i])
-      slots.push_back(std::move(function->slots[i]));
-  function->slots.swap(slots);
+  const std::size_t original_slots = function->slots.size();
+  std::size_t kept_slots = 0;
+  for(std::size_t i = 0; i < original_slots; ++i)
+    if(!forwarded[i]) {
+      if(kept_slots != i)
+        function->slots[kept_slots] = std::move(function->slots[i]);
+      ++kept_slots;
+    }
+  function->slots.resize(kept_slots);
   return true;
 }
 
@@ -1910,6 +1933,80 @@ void strip_local_facts(AbstractState * state,
       it = state->values.erase(it);
     else ++it;
   }
+}
+
+void rewrite_promoted_slots(Function * function,
+                            const std::unordered_set<std::string> & promoted,
+                            const std::unordered_set<std::string> & storage,
+                            const std::unordered_map<std::string, Operand> & loads,
+                            Stats * stats)
+{
+  const auto resolve_load = [&loads](Operand value) {
+    for(std::size_t step = 0;
+        step < loads.size() && value.kind == Operand::OP_TEMP; ++step) {
+      const std::unordered_map<std::string, Operand>::const_iterator found =
+        loads.find(value.text);
+      if(found == loads.end()) break;
+      value = found->second;
+    }
+    return value;
+  };
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    std::unordered_map<std::string, Operand> aliases = loads;
+    for(std::unordered_set<std::string>::const_iterator it = storage.begin();
+        it != storage.end(); ++it)
+      aliases.erase(*it);
+    const auto resolve = [&aliases](Operand value) {
+      for(std::size_t step = 0;
+          step < aliases.size() && value.kind == Operand::OP_TEMP; ++step) {
+        const std::unordered_map<std::string, Operand>::const_iterator found =
+          aliases.find(value.text);
+        if(found == aliases.end()) break;
+        value = found->second;
+      }
+      return value;
+    };
+    std::vector<Instruction> & instructions =
+      function->blocks[i].instructions;
+    const std::size_t original_size = instructions.size();
+    std::size_t kept = 0;
+    for(std::size_t j = 0; j < original_size; ++j) {
+      Instruction & ins = instructions[j];
+      Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+      for(std::size_t k = 0; k < 3; ++k)
+        *operands[k] = resolve(*operands[k]);
+      for(std::size_t k = 0; k < ins.args.size(); ++k)
+        ins.args[k] = resolve(ins.args[k]);
+      if(ins.kind == Instruction::IK_LOAD && promoted.count(ins.first.text) &&
+         storage.count(ins.dest)) {
+        ins.first = resolve_load(loads.find(ins.dest)->second);
+        ins.kind = ins.first.kind == Operand::OP_INTEGER ||
+          ins.first.kind == Operand::OP_FLOAT ?
+            Instruction::IK_CONST : Instruction::IK_COPY;
+        ins.second = Operand();
+        ins.third = Operand();
+        if(stats) ++stats->rewrites;
+      } else if((ins.kind == Instruction::IK_LOAD &&
+                 promoted.count(ins.first.text)) ||
+                (ins.kind == Instruction::IK_STORE &&
+                 promoted.count(ins.second.text))) {
+        if(stats) ++stats->rewrites;
+        continue;
+      }
+      if(kept != j) instructions[kept] = std::move(ins);
+      ++kept;
+    }
+    instructions.resize(kept);
+  }
+  const std::size_t original_slots = function->slots.size();
+  std::size_t kept_slots = 0;
+  for(std::size_t i = 0; i < original_slots; ++i)
+    if(!promoted.count(function->slots[i].first)) {
+      if(kept_slots != i)
+        function->slots[kept_slots] = std::move(function->slots[i]);
+      ++kept_slots;
+    }
+  function->slots.resize(kept_slots);
 }
 
 bool promote_slots(Function * function, Stats * stats)
@@ -2091,65 +2188,8 @@ bool promote_slots(Function * function, Stats * stats)
     for(std::unordered_map<std::string, Operand>::const_iterator it =
           replacements[i].begin(); it != replacements[i].end(); ++it)
       load_aliases[it->first] = it->second;
-  const auto resolve_load_alias = [&load_aliases](Operand value) {
-    for(std::size_t step = 0;
-        step < load_aliases.size() && value.kind == Operand::OP_TEMP; ++step) {
-      const std::unordered_map<std::string, Operand>::const_iterator found =
-        load_aliases.find(value.text);
-      if(found == load_aliases.end()) break;
-      value = found->second;
-    }
-    return value;
-  };
-  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::unordered_map<std::string, Operand> aliases = load_aliases;
-    for(std::unordered_set<std::string>::const_iterator it =
-          storage_temporaries.begin(); it != storage_temporaries.end(); ++it)
-      aliases.erase(*it);
-    const auto resolve_alias = [&aliases](Operand value) {
-      for(std::size_t step = 0;
-          step < aliases.size() && value.kind == Operand::OP_TEMP; ++step) {
-        const std::unordered_map<std::string, Operand>::const_iterator found =
-          aliases.find(value.text);
-        if(found == aliases.end()) break;
-        value = found->second;
-      }
-      return value;
-    };
-    std::vector<Instruction> kept;
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      Instruction ins = std::move(function->blocks[i].instructions[j]);
-      Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        *operands[k] = resolve_alias(*operands[k]);
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        ins.args[k] = resolve_alias(ins.args[k]);
-      if(ins.kind == Instruction::IK_LOAD && promoted.count(ins.first.text) &&
-         storage_temporaries.count(ins.dest)) {
-        ins.first = resolve_load_alias(load_aliases.find(ins.dest)->second);
-        ins.kind = ins.first.kind == Operand::OP_INTEGER ||
-          ins.first.kind == Operand::OP_FLOAT ?
-            Instruction::IK_CONST : Instruction::IK_COPY;
-        ins.second = Operand();
-        ins.third = Operand();
-        kept.push_back(std::move(ins));
-        if(stats) ++stats->rewrites;
-        continue;
-      }
-      if((ins.kind == Instruction::IK_LOAD && promoted.count(ins.first.text)) ||
-         (ins.kind == Instruction::IK_STORE && promoted.count(ins.second.text))) {
-        if(stats) ++stats->rewrites;
-        continue;
-      }
-      kept.push_back(std::move(ins));
-    }
-    function->blocks[i].instructions.swap(kept);
-  }
-  std::vector<std::pair<std::string, LowType> > slots;
-  for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(!promoted.count(function->slots[i].first))
-      slots.push_back(std::move(function->slots[i]));
-  function->slots.swap(slots);
+  rewrite_promoted_slots(function, promoted, storage_temporaries,
+    load_aliases, stats);
   return true;
 }
 
