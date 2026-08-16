@@ -8,13 +8,29 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
-bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
+bool SemanticAnalyzer::ShouldDeferClassTemplateMemberExceptionSpecification(
+	NodeId declarator) const
+{
+	if (current_class_context_ == kNoEntity ||
+		!IsClassTemplateSpecializationContext(current_class_context_))
+		return false;
+	const NodeId qualifier = FindChild(declarator, "function-qualifier");
+	return qualifier != kNoNode &&
+		FirstSemanticChild(qualifier) != kNoNode;
+}
+
+bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope,
+	bool force_evaluation)
 {
 	const NodeId qualifier = FindChild(declarator, "function-qualifier");
 	if (qualifier == kNoNode) return false;
 	const std::string spelling = PayloadSource(qualifier);
 	if (spelling == "noexcept" || spelling == "throw()") return true;
 	if (spelling.compare(0, 8, "noexcept") != 0) return false;
+	if (!force_evaluation && current_class_context_ != kNoEntity &&
+		IsClassTemplateSpecializationContext(current_class_context_) &&
+		FirstSemanticChild(qualifier) != kNoNode)
+		return false;
 	const NodeId expression_node = FirstSemanticChild(qualifier);
 	if (expression_node == kNoNode)
 		throw std::logic_error("missing noexcept expression");
@@ -42,10 +58,26 @@ bool SemanticAnalyzer::IsNonthrowing(NodeId declarator, ScopeId scope)
 }
 
 void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
-	BindingId binding, NodeId declarator, ScopeId scope)
+	BindingId binding, NodeId declarator, ScopeId scope,
+	bool force_evaluation)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
+	FunctionInfo& function = GetMutableFunction(binding);
+	if (!force_evaluation &&
+		ShouldDeferClassTemplateMemberExceptionSpecification(declarator))
+	{
+		if (function.exception_specification_state ==
+				EXCEPTION_SPECIFICATION_FIXED &&
+			!function.exception_specification_configured)
+		{
+			function.exception_specification_declarator = declarator;
+			function.exception_specification_scope = scope;
+			function.exception_specification_state =
+				EXCEPTION_SPECIFICATION_DEFERRED;
+		}
+		return;
+	}
 	const NodeId qualifier = FindChild(declarator, "function-qualifier");
 	FunctionExceptionBoundaryKind boundary =
 		program_->bindings[binding].nonthrowing ?
@@ -84,7 +116,6 @@ void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
 		boundary = allowed.empty() ? FUNCTION_EXCEPTION_BOUNDARY_TERMINATE :
 			FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED;
 	}
-	FunctionInfo& function = GetMutableFunction(binding);
 	BindingRecord& record = program_->bindings[binding];
 	if (function.exception_specification_configured)
 	{

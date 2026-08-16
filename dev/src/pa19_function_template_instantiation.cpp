@@ -996,6 +996,12 @@ void SemanticAnalyzer::ConfigureFunctionTemplateException(
 		pattern->nonthrowing = false;
 		return;
 	}
+	if (ShouldDeferClassTemplateMemberExceptionSpecification(declarator))
+	{
+		pattern->dependent_exception_specification = true;
+		pattern->nonthrowing = false;
+		return;
+	}
 	const EntityId member_owner = program_->EntityForScope(pattern->owner);
 	const EntityId access_owner = member_owner != kNoEntity ? member_owner :
 		pattern->friend_owners.empty() ? kNoEntity : pattern->friend_owners.front();
@@ -2226,6 +2232,19 @@ void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 			program_->bindings[binding].nonthrowing =
 				program_->bindings[source].nonthrowing;
 		}
+		else if (function.exception_specification_declarator != kNoNode)
+		{
+			const EntityId owner = program_->bindings[binding].member_owner;
+			ScopedEntityContext class_context(
+				&current_class_context_, owner);
+			const bool nonthrowing = IsNonthrowing(
+				function.exception_specification_declarator,
+				function.exception_specification_scope, true);
+			program_->bindings[binding].nonthrowing = nonthrowing;
+			ConfigureFunctionExceptionSpecification(binding,
+				function.exception_specification_declarator,
+				function.exception_specification_scope, true);
+		}
 		else
 		{
 			if (function.template_pattern >= function_templates_.size())
@@ -2247,10 +2266,10 @@ void SemanticAnalyzer::EnsureFunctionExceptionSpecification(BindingId binding)
 				GetMutableFunction(binding).exception_specification_scope = scope;
 			}
 			const bool nonthrowing = IsNonthrowing(
-				pattern.declarator, scope);
+				pattern.declarator, scope, true);
 			program_->bindings[binding].nonthrowing = nonthrowing;
 			ConfigureFunctionExceptionSpecification(binding,
-				pattern.declarator, scope);
+				pattern.declarator, scope, true);
 		}
 	}
 	catch (const std::runtime_error&)

@@ -243,6 +243,32 @@ protected:
 	BlockId InternConditionalCleanupDispatch()
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.ExceptionCleanupContext() != 0)
+		{
+			const BlockId original = derived.current_block_;
+			const BlockId landing = derived.AddBlock(
+				derived.NewLabel("conditional_cleanup_landing"));
+			const BlockId terminal = derived.AddBlock(
+				derived.NewLabel("conditional_cleanup_route"));
+
+			derived.SelectBlock(landing);
+			const bool routes_to_try =
+				derived.BeginExceptionTryCleanupDispatch();
+			derived.FinishExceptionUnwindCleanupPrefix();
+
+			derived.SelectBlock(terminal);
+			derived.FinishExceptionCleanupDispatch(routes_to_try);
+
+			BlockId tail = terminal;
+			for (std::size_t i = derived.full_expression_segment_actions_.size();
+				i != 0; --i)
+				tail = InternCleanupAction(
+					derived.full_expression_segment_actions_[i - 1], tail);
+			derived.SelectBlock(landing);
+			derived.EmitJump(tail);
+			derived.SelectBlock(original);
+			return landing;
+		}
 		if (derived.conditional_cleanup_resume_ == kNoLowId)
 		{
 			const BlockId original = derived.current_block_;

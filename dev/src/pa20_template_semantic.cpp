@@ -493,11 +493,11 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		function.constexpr_function = function.constexpr_function ||
 			member_spec.is_constexpr;
 		const bool nonthrowing =
-			IsNonthrowing(declarator, parsed.parameter_scope);
+			IsNonthrowing(declarator, parsed.parameter_scope, true);
 		program_->bindings[selected].explicit_instantiation_suppressed = false;
 		program_->bindings[selected].nonthrowing = nonthrowing;
 		ConfigureFunctionExceptionSpecification(
-			selected, declarator, parsed.parameter_scope);
+			selected, declarator, parsed.parameter_scope, true);
 		FunctionInfo& completed = GetMutableFunction(selected);
 		completed.exception_specification_scope = kNoScope;
 		completed.exception_specification_state =
@@ -792,10 +792,10 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	function.definition_body = FindChild(target, "compound-statement");
 	function.lexical_scope = specialization_semantic_scope;
 	const bool nonthrowing =
-		IsNonthrowing(declarator, parsed.parameter_scope);
+		IsNonthrowing(declarator, parsed.parameter_scope, true);
 	program_->bindings[selected].nonthrowing = nonthrowing;
 	ConfigureFunctionExceptionSpecification(
-		selected, declarator, parsed.parameter_scope);
+		selected, declarator, parsed.parameter_scope, true);
 	FunctionInfo& completed = GetMutableFunction(selected);
 	completed.exception_specification_scope = kNoScope;
 	completed.exception_specification_state =

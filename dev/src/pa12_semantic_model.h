@@ -900,6 +900,7 @@ struct FunctionInfo
 	// A dependent exception specification is a specialization-owned demand
 	// fact, separate from declaration formation and body/emission demand.
 	ScopeId lexical_scope, exception_specification_scope;
+	NodeId exception_specification_declarator;
 	std::vector<ParameterInfo> parameters;
 	NodeId definition_body, constructor_initializer, function_try_block;
 	std::uint32_t retained_definition_semantics;
@@ -954,6 +955,7 @@ struct FunctionInfo
 		  lambda_this_capture_member(kNoBinding),
 		  lexical_scope(kNoScope),
 		  exception_specification_scope(kNoScope),
+		  exception_specification_declarator(kNoNode),
 		  definition_body(kNoNode), constructor_initializer(kNoNode),
 		  function_try_block(kNoNode),
 		  retained_definition_semantics(kNoDumpEdge),

@@ -940,7 +940,7 @@ private:
 	void EnsureFunctionExceptionSpecification(BindingId binding);
 	bool FunctionIsNonthrowing(BindingId binding);
 	void ConfigureFunctionExceptionSpecification(BindingId binding,
-		NodeId declarator, ScopeId scope);
+		NodeId declarator, ScopeId scope, bool force_evaluation = false);
 	void DemandDefaultConstructor(EntityId entity);
 	void DemandConstructorDefinition(BindingId binding);
 	void DemandMaterializedConstructorActions(std::uint32_t node,
@@ -1694,7 +1694,10 @@ private:
 	bool TryAnalyzeUserDefinedNumericLiteral(const std::string& spelling,
 		ScopeId scope, TypeId target, ExpressionInfo* result);
 	ExpressionInfo AnalyzeThisExpression(ScopeId scope);
-	bool IsNonthrowing(NodeId declarator, ScopeId scope);
+	bool ShouldDeferClassTemplateMemberExceptionSpecification(
+		NodeId declarator) const;
+	bool IsNonthrowing(NodeId declarator, ScopeId scope,
+		bool force_evaluation = false);
 	ExpressionInfo AnalyzeNoexcept(NodeId node, ScopeId scope);
 	void RecordExpressionFacts(const ExpressionInfo& value);
 	ExpressionInfo ApplyTarget(ExpressionInfo value, TypeId target,

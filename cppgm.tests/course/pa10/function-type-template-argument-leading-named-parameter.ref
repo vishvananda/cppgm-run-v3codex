@@ -1,0 +1,52 @@
+1 translation units
+start translation unit 1
+translation-unit
+  template-declaration
+    template-parameter-clause
+      template-parameter-list
+        type-parameter
+          parameter-key KW_CLASS:class
+    class-specifier function
+      class-key KW_STRUCT:struct
+  template-declaration
+    template-parameter-clause
+      template-parameter-list
+        type-parameter
+          parameter-key KW_CLASS:class
+        type-parameter
+          parameter-key KW_CLASS:class
+    class-specifier pair
+      class-key KW_STRUCT:struct
+  template-declaration
+    template-parameter-clause
+      template-parameter-list
+        type-parameter
+          parameter-key KW_CLASS:class
+    class-specifier vector
+      class-key KW_STRUCT:struct
+  class-specifier string
+    class-key KW_STRUCT:struct
+  simple-declaration
+    decl-specifier-seq
+      decl-specifier KW_TYPEDEF:typedef
+      decl-specifier KW_UNSIGNED:unsigned
+      decl-specifier KW_LONG:long
+    init-declarator-list
+      init-declarator
+        declarator
+          identifier size_t
+  simple-declaration
+    decl-specifier-seq
+      decl-specifier function<bool(size_t,const string&,size_t&)>
+    init-declarator-list
+      init-declarator
+        declarator
+          identifier callback
+  simple-declaration
+    decl-specifier-seq
+      decl-specifier function<bool(size_t,vector<pair<size_t,size_t>>&)>
+    init-declarator-list
+      init-declarator
+        declarator
+          identifier range_callback
+end translation unit

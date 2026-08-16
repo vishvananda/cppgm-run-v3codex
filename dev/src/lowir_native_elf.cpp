@@ -1201,8 +1201,28 @@ void emit_integer_to_float(CodeBuffer & out,
                            const mir_model::MirInstruction & instruction,
                            const mir_model::MirFunction & function)
 {
-  require_operands(instruction, 2);
   const std::pair<std::string, std::string> types = conversion_types(instruction.type);
+  if(types.first == "i128") {
+    require_operands(instruction, 3);
+    const mir_model::MirOperand & low = instruction.operands[1];
+    const mir_model::MirOperand & high = instruction.operands[2];
+    if(instruction.opcode == mir_model::MirInstruction::MI_UITOFP)
+      emit_x87_load_unsigned_integer(out, high, 64, function);
+    else
+      emit_x87_load_signed_integer(out, high, 64, function);
+    mir_model::MirOperand two64;
+    two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
+    two64.text = "18446744073709551616.0L";
+    emit_x87_load(out, two64, "f80", function);
+    out.byte(0xde);
+    out.byte(0xc9); // fmulp st1, st0
+    emit_x87_load_unsigned_integer(out, low, 64, function);
+    out.byte(0xde);
+    out.byte(0xc1); // faddp st1, st0
+    emit_x87_store_pop(out, instruction.operands[0], types.second, function);
+    return;
+  }
+  require_operands(instruction, 2);
   const unsigned source_width = type_width(types.first);
   const mir_model::MirOperand & destination = instruction.operands[0];
   if(types.second == "f80") {
@@ -1231,8 +1251,69 @@ void emit_float_to_integer(CodeBuffer & out,
                            const mir_model::MirInstruction & instruction,
                            const mir_model::MirFunction & function)
 {
-  require_operands(instruction, 2);
   const std::pair<std::string, std::string> types = conversion_types(instruction.type);
+  if(types.second == "i128") {
+    require_operands(instruction, 3);
+    const X64Register low = require_register(instruction.operands[0]);
+    const X64Register high = require_register(instruction.operands[1]);
+    emit_x87_load(out, instruction.operands[2], types.first, function);
+
+    const bool signed_conversion =
+      instruction.opcode == mir_model::MirInstruction::MI_FPTOSI;
+    const std::string magnitude = out.internal_label("fptoi128_magnitude");
+    const std::string done = out.internal_label("fptoi128_done");
+    if(signed_conversion) {
+      emit_immediate_move(out, XR_R11, 0);
+      out.byte(0xd9);
+      out.byte(0xe4); // ftst
+      out.byte(0xdf);
+      out.byte(0xe0); // fnstsw ax
+      out.byte(0x9e); // sahf
+      emit_near_jump(out, XC_AE, magnitude);
+      out.byte(0xd9);
+      out.byte(0xe0); // fchs
+      emit_immediate_move(out, XR_R11, 1);
+      out.label(magnitude);
+    }
+
+    out.byte(0xd9);
+    out.byte(0xc0); // fld st0
+    mir_model::MirOperand two64;
+    two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
+    two64.text = "18446744073709551616.0L";
+    emit_x87_load(out, two64, "f80", function);
+    out.byte(0xde);
+    out.byte(0xf9); // fdivp st1, st0
+    emit_x87_store_truncated_unsigned(out, high, 64, function);
+    emit_x87_load_unsigned_integer(out,
+      instruction.operands[1], 64, function);
+    emit_x87_load(out, two64, "f80", function);
+    out.byte(0xde);
+    out.byte(0xc9); // fmulp st1, st0
+    out.byte(0xde);
+    out.byte(0xe9); // fsubp st1, st0
+    emit_x87_store_truncated_unsigned(out, low, 64, function);
+
+    if(signed_conversion) {
+      emit_rex(out, true, XR_R11, XR_R11);
+      out.byte(0x85);
+      emit_modrm(out, 3, XR_R11, XR_R11);
+      emit_near_jump(out, XC_E, done);
+      emit_rex(out, true, static_cast<X64Register>(3), low);
+      out.byte(0xf7);
+      emit_modrm(out, 3, 3, low); // neg low
+      emit_rex(out, true, static_cast<X64Register>(2), high);
+      out.byte(0x83);
+      emit_modrm(out, 3, 2, high);
+      out.byte(0); // adc high, 0
+      emit_rex(out, true, static_cast<X64Register>(3), high);
+      out.byte(0xf7);
+      emit_modrm(out, 3, 3, high); // neg high
+      out.label(done);
+    }
+    return;
+  }
+  require_operands(instruction, 2);
   const X64Register destination = require_register(instruction.operands[0]);
   if(types.first == "f80") {
     emit_x87_load(out, instruction.operands[1], types.first, function);

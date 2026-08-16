@@ -586,6 +586,57 @@ private:
 		}
 		return true;
 	}
+	bool BoolFunctionTypeHasUnambiguousLaterParameter() const
+	{
+		if (!At(KW_BOOL) || !AtOffset(1, OP_LPAREN)) return false;
+		const std::size_t limit = std::min(tokens_.size(), position_ + 66);
+		std::size_t nested = 0;
+		std::size_t angle_depth = 0;
+		for (std::size_t i = position_ + 2; i < limit; ++i)
+		{
+			const std::uint16_t kind = tokens_[i].Kind();
+			if (kind == static_cast<std::uint16_t>(OP_LT))
+			{
+				++angle_depth;
+				continue;
+			}
+			if (kind == static_cast<std::uint16_t>(OP_GT) ||
+				kind == kRShiftFirstToken || kind == kRShiftSecondToken)
+			{
+				if (angle_depth != 0) --angle_depth;
+				continue;
+			}
+			if (kind == static_cast<std::uint16_t>(OP_LPAREN) ||
+				kind == static_cast<std::uint16_t>(OP_LSQUARE) ||
+				kind == static_cast<std::uint16_t>(OP_LBRACE))
+			{
+				++nested;
+				continue;
+			}
+			if (kind == static_cast<std::uint16_t>(OP_RPAREN) ||
+				kind == static_cast<std::uint16_t>(OP_RSQUARE) ||
+				kind == static_cast<std::uint16_t>(OP_RBRACE))
+			{
+				if (nested == 0) return false;
+				--nested;
+				continue;
+			}
+			if (nested == 0 && angle_depth == 0 &&
+				kind == static_cast<std::uint16_t>(OP_COMMA) &&
+				i + 1 < tokens_.size() &&
+				(tokens_[i + 1].Kind() == static_cast<std::uint16_t>(KW_CONST) ||
+				 tokens_[i + 1].Kind() == static_cast<std::uint16_t>(KW_VOLATILE)))
+				return true;
+			if (angle_depth == 0 &&
+				(kind == static_cast<std::uint16_t>(OP_AMP) ||
+				 kind == static_cast<std::uint16_t>(OP_LAND)) &&
+				i + 1 < tokens_.size() &&
+				(tokens_[i + 1].Kind() == static_cast<std::uint16_t>(OP_COMMA) ||
+				 tokens_[i + 1].Kind() == static_cast<std::uint16_t>(OP_RPAREN)))
+				return true;
+		}
+		return false;
+	}
 	bool TemplateArgumentStartsType()
 	{
 		if (StartsHostedType(position_)) return true;
@@ -597,10 +648,14 @@ private:
 		{
 			const std::size_t parameter = position_ + 2;
 			return !At(KW_BOOL) || !AtOffset(1, OP_LPAREN) || AtOffset(2, OP_RPAREN) ||
+				BoolFunctionTypeHasUnambiguousLaterParameter() ||
 				StartsParenthesizedMemberPointerDeclarator(1) ||
 				(parameter < tokens_.size() && !HasNameFact(tokens_[parameter].spelling, kActiveNonTypeParameter) &&
 				 (IsTypeSpecifierStartKind(tokens_[parameter].Kind()) || StartsHostedType(parameter) ||
-				  (tokens_[parameter].Kind() == kIdentifierToken && parameter + 1 < tokens_.size() && tokens_[parameter + 1].Kind() == static_cast<std::uint16_t>(OP_RPAREN) && HasNameFact(tokens_[parameter].spelling, kKnownType))));
+				  (tokens_[parameter].Kind() == kIdentifierToken &&
+				   parameter + 1 < tokens_.size() &&
+				   tokens_[parameter + 1].Kind() == static_cast<std::uint16_t>(OP_RPAREN) &&
+				   HasNameFact(tokens_[parameter].spelling, kKnownType))));
 		}
 		if (At(OP_COLON2) ||
 			(AtIdentifier() && AtOffset(1, OP_COLON2)))

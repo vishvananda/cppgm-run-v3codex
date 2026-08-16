@@ -1298,6 +1298,29 @@ private:
     if(destination_wide && is_integer_or_pointer(instruction.source_type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.source_type); normalize_integer(instruction.source_type, reg_operand(XR_RAX), out); if(instruction.op == "sext") out.push_back(machine_instruction(MirInstruction::MI_CQO)); else append_move(out, reg_operand(XR_RDX), immediate(0)); append_store(out, destination, reg_operand(XR_RAX), "i64"); MirOperand high = destination; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), "i64"); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
     const bool source_float = is_floating(instruction.source_type);
     const bool destination_float = is_floating(instruction.type);
+    if(destination_wide && source_float) {
+      uses_scalar_float_ = true;
+      const MirOperand destination =
+        allocate_temp_home(instruction.dest, instruction.type);
+      MirInstruction::Opcode opcode;
+      if(instruction.op == "fptosi") opcode = MirInstruction::MI_FPTOSI;
+      else if(instruction.op == "fptoui") opcode = MirInstruction::MI_FPTOUI;
+      else throw std::runtime_error(
+        "floating-to-i128 conversion is not implemented: " + instruction.op);
+      MirInstruction conversion = machine_instruction(
+        opcode, instruction.source_type.text + ".i128");
+      append_operand(conversion, reg_operand(XR_RAX));
+      append_operand(conversion, reg_operand(XR_RDX));
+      append_operand(conversion, resolve(instruction.first));
+      out.push_back(conversion);
+      append_store(out, destination, reg_operand(XR_RAX), "i64");
+      MirOperand high = destination;
+      high.offset += 8;
+      append_store(out, high, reg_operand(XR_RDX), "i64");
+      consume(instruction.first);
+      define(instruction.dest, instruction.type, destination);
+      return;
+    }
     if(source_float || destination_float) {
       uses_scalar_float_ = true;
       MirInstruction::Opcode opcode = MirInstruction::MI_SITOFP;
@@ -1327,7 +1350,15 @@ private:
       MirInstruction conversion = machine_instruction(
         opcode, source_name + "." + destination_name);
       append_operand(conversion, destination);
-      append_operand(conversion, resolve(instruction.first));
+      if(source_wide && destination_float) {
+        const wide::Value source = wide_value(instruction.first);
+        wide::append_word_to_register(
+          source, 0, XR_RAX, XR_R11, out);
+        wide::append_word_to_register(
+          source, 1, XR_RDX, XR_R11, out);
+        append_operand(conversion, reg_operand(XR_RAX));
+        append_operand(conversion, reg_operand(XR_RDX));
+      } else append_operand(conversion, resolve(instruction.first));
       out.push_back(conversion);
       consume(instruction.first);
       if(pressure_home.kind == MirOperand::OP_FRAME)
@@ -2797,12 +2828,22 @@ private:
               incoming_parameter_registers_.find(parameter)->second);
           else if(load_position > facts_.calls.front()) {
             const bool preserved = result_crosses_call(instruction.dest);
-            X64Register forwarded = preserved ? allocate_result(instruction.dest, out) : XR_R9;
-            if(!preserved && nonparameter_value_live_in_register(forwarded))
-              forwarded = registers_.allocate(false);
-            else if(!preserved && !registers_.is_used(forwarded)) registers_.reserve(forwarded);
-            append_move(out, reg_operand(forwarded), value.location);
-            value.location = reg_operand(forwarded);
+            X64Register forwarded = XR_R9;
+            bool allocated = true;
+            if(preserved)
+              allocated = try_allocate_result(instruction.dest, out, &forwarded);
+            else if(nonparameter_value_live_in_register(forwarded))
+              allocated = registers_.try_allocate(false, forwarded);
+            else if(!registers_.is_used(forwarded))
+              registers_.reserve(forwarded);
+            // Storage analysis has already required a stable cross-call home
+            // for the parameter.  Under local pressure the forwarded load can
+            // alias that home: call lowering reads it directly, so a failing
+            // speculative register copy must not make lowering fail.
+            if(allocated) {
+              append_move(out, reg_operand(forwarded), value.location);
+              value.location = reg_operand(forwarded);
+            }
             value.forwarded_parameter = parameter;
           }
         }
