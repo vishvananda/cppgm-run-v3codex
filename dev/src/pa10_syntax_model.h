@@ -163,7 +163,11 @@ public:
 	TextId TagId(NodeId node) const;
 	const std::string& Tag(NodeId node) const;
 	bool IsTag(NodeId node, const char* tag) const;
-	bool IsTag(NodeId node, SyntaxTagCode tag) const;
+	bool IsTag(NodeId node, SyntaxTagCode tag) const
+	{
+		if (stats_) ++stats_->syntax_tag_query_calls;
+		return nodes_[node].tag_code == tag;
+	}
 	TextId PayloadId(NodeId node) const;
 	const std::string& Payload(NodeId node) const;
 	const std::string& SemanticPayload(NodeId node) const;
@@ -176,14 +180,33 @@ public:
 		std::vector<TextId>* result) const;
 	void SetPayload(NodeId node, const std::string& payload);
 	NodeId FindDirectChildTag(NodeId node, const char* tag) const;
-	NodeId FindDirectChildTag(NodeId node, SyntaxTagCode tag) const;
+	NodeId FindDirectChildTag(NodeId node, SyntaxTagCode tag) const
+	{
+		if (stats_) ++stats_->syntax_tag_query_calls;
+		for (std::uint32_t edge = nodes_[node].first_edge;
+			edge != kNoEdge; edge = edges_[edge].next)
+		{
+			const NodeId child = edges_[edge].child;
+			if (nodes_[child].tag_code == tag) return child;
+		}
+		return kNoNode;
+	}
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
 	bool HasDirectChildTag(NodeId node, SyntaxTagCode tag) const;
 	bool HasDescendantTag(NodeId node, const char* tag) const;
 	bool HasDescendantTag(NodeId node, SyntaxTagCode tag) const;
-	std::uint32_t FirstEdge(NodeId node) const;
-	std::uint32_t NextEdge(std::uint32_t edge) const;
-	NodeId EdgeChild(std::uint32_t edge) const;
+	std::uint32_t FirstEdge(NodeId node) const
+	{
+		return nodes_[node].first_edge;
+	}
+	std::uint32_t NextEdge(std::uint32_t edge) const
+	{
+		return edges_[edge].next;
+	}
+	NodeId EdgeChild(std::uint32_t edge) const
+	{
+		return edges_[edge].child;
+	}
 	void SetTokenRange(NodeId node, std::size_t first, std::size_t last);
 	std::size_t TokenFirst(NodeId node) const;
 	std::size_t TokenLast(NodeId node) const;

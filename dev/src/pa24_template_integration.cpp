@@ -13,10 +13,10 @@ bool SemanticAnalyzer::AnalyzeExplicitVariableInstantiation(
 {
 	if (definition || !arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION) ||
 		program_->KindOfScope(scope) != SCOPE_NAMESPACE) return false;
-	const NodeId list = FindChild(target, "init-declarator-list");
+	const NodeId list = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 	const NodeId item = list == kNoNode ? kNoNode : FirstSemanticChild(list);
 	const NodeId declarator = item == kNoNode ? kNoNode :
-		FindChild(item, "declarator");
+		FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	if (declarator == kNoNode) return false;
 	const std::uint32_t first = arena_->FirstEdge(list);
 	if (first != kNoEdge && arena_->NextEdge(first) != kNoEdge)

@@ -59,7 +59,7 @@ NodeId AsmOperandExpression(const SyntaxArena& arena, NodeId operand)
 void SemanticAnalyzer::ApplyFunctionAsmLabel(
 	NodeId declarator, BindingId binding)
 {
-	const NodeId syntax = FindChild(declarator, "gnu-asm-label");
+	const NodeId syntax = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_GNU_ASM_LABEL);
 	if (syntax == kNoNode) return;
 	const std::string label = DecodeAsmString(
 		*arena_, syntax, "invalid GNU asm label");

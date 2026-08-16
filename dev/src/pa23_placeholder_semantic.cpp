@@ -30,14 +30,14 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	bool local, ExpressionInfo* prepared_initializer)
 {
 	const bool function =
-		FindChild(declarator, "parameter-clause") != kNoNode;
+		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE) != kNoNode;
 	if (!spec.placeholder_auto || function)
 		return BuildDeclarator(declarator, spec.type, scope,
 			spec.placeholder_auto);
 	if (!prepared_initializer)
 		throw std::logic_error(
 			"placeholder variable deduction has no result owner");
-	NodeId initializer = FindChild(item, "initializer");
+	NodeId initializer = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
 	if (initializer == kNoNode)
 		throw std::runtime_error("placeholder variable requires initializer");
 	NodeId expression = FirstSemanticChild(initializer);
@@ -196,7 +196,7 @@ DeclaratorInfo SemanticAnalyzer::BuildMemberDeclarator(NodeId item,
 	ExpressionInfo* prepared_initializer)
 {
 	const bool function = definition ||
-		FindChild(declarator, "parameter-clause") != kNoNode;
+		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE) != kNoNode;
 	DeclaratorInfo parsed = spec.placeholder_auto && !function ?
 		BuildVariableDeclarator(item, declarator, spec, scope, false,
 			prepared_initializer) :
@@ -570,11 +570,11 @@ bool SemanticAnalyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,
 	if (program_->types.IsReference(type))
 		return arena_->HasDescendantTag(initializer, ::cppgm::pa10_syntax_detail::STAG_CONDITIONAL_EXPRESSION);
 	if (!IsClassObjectType(type)) return false;
-	const NodeId paren = FindChild(initializer, "paren-initializer");
+	const NodeId paren = FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_PAREN_INITIALIZER);
 	const NodeId expression = paren == kNoNode ? initializer : paren;
-	const NodeId call = FindChild(expression, "call-expression");
+	const NodeId call = FindChild(expression, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION);
 	const NodeId arguments = call == kNoNode ? kNoNode :
-		FindChild(call, "argument-list");
+		FindChild(call, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST);
 	return arguments != kNoNode && arena_->FirstEdge(arguments) != kNoEdge;
 }
 

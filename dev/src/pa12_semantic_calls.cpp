@@ -24,9 +24,9 @@ void SemanticAnalyzer::PublishCallImplicitObject(
 std::vector<NodeId> SemanticAnalyzer::CollectCallArgumentSyntax(
 	NodeId call, NodeId* arguments_node) const
 {
-	*arguments_node = FindChild(call, "argument-list");
+	*arguments_node = FindChild(call, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST);
 	if (*arguments_node == kNoNode)
-		*arguments_node = FindChild(call, "braced-init-list");
+		*arguments_node = FindChild(call, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
 	if (*arguments_node == kNoNode)
 	{
 		std::uint32_t edge = arena_->FirstEdge(call);
@@ -1514,7 +1514,7 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	const std::string& spelling, NodeId syntax)
 {
 	const NodeId structure = syntax == kNoNode ? kNoNode :
-		FindChild(syntax, "structured-type-name");
+		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	const TypeId specialization = structure == kNoNode ? kNoType :
 		ResolveStructuredTypeName(structure, scope);
 	if (specialization != kNoType) return specialization;
@@ -1646,7 +1646,7 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const NodeId identifier = arena_->EdgeChild(name_edge);
 	const std::string member_spelling = arena_->Payload(identifier);
 	const NodeId member_structure = FindChild(
-		identifier, "structured-type-name");
+		identifier, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	const NamePath member_path = member_structure == kNoNode ?
 		ParseNamePath(member_spelling) : StructuredNamePath(member_structure);
 	const NameId name = member_path.Last();
@@ -1851,7 +1851,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	}
 
 	const BindingId destructor = DestructorForType(destroyed_type);
-	const NodeId structure = FindChild(identifier, "structured-type-name");
+	const NodeId structure = FindChild(identifier, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	NamePath destructor_path = structure == kNoNode ?
 		ParseNamePath(spelling.substr(1)) : StructuredNamePath(structure);
 	if (structure != kNoNode && !destructor_path.Empty())
@@ -2056,7 +2056,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		return explicit_candidates;
 	}
 	const LookupResult found = syntax != kNoNode &&
-		FindChild(syntax, "structured-type-name") != kNoNode ?
+		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode ?
 		LookupStructuredName(syntax, scope, LOOKUP_ORDINARY) :
 		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY);
 	if (naming_class) *naming_class = found.naming_class;
@@ -2123,7 +2123,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	}
 	const NodeId identifier = arena_->EdgeChild(second);
 	const NodeId member_structure = FindChild(
-		identifier, "structured-type-name");
+		identifier, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	const std::string member_spelling = arena_->Payload(identifier);
 	const NamePath member_path = member_structure == kNoNode ?
 		ParseNamePath(member_spelling) : StructuredNamePath(member_structure);

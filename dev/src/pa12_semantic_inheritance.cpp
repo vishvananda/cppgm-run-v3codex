@@ -451,7 +451,7 @@ bool SemanticAnalyzer::ApplyQualifiedMemberNamingTarget(ExpressionInfo* value,
 
 ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 {
-	const NodeId type_id = FindChild(node, "type-id");
+	const NodeId type_id = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 	if (type_id == kNoNode) throw std::runtime_error("cast without type-id");
 	NodeId operand_node = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
@@ -837,7 +837,7 @@ void SemanticAnalyzer::AppendParenthesizedCallArguments(NodeId node,
 bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
 {
-	const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
+	const NodeId specifiers = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
 	if (name == kNoNode || !arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
@@ -874,7 +874,7 @@ bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 	NodeId type_id, NodeId operand, ScopeId scope, ExpressionInfo* result)
 {
-	const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
+	const NodeId specifiers = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
 	if (name == kNoNode || !arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
@@ -883,7 +883,7 @@ bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 	const std::string operation = PayloadSource(operand);
 	if (operation != "+" && operation != "-") return false;
 	const std::string spelling = PayloadSource(name);
-	const LookupResult found = FindChild(name, "structured-type-name") != kNoNode ?
+	const LookupResult found = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode ?
 		LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
 		LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding) return false;

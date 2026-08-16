@@ -12,7 +12,7 @@ namespace pa12_semantic_detail
 bool SemanticAnalyzer::IsStructuredBindingDeclarator(NodeId declarator) const
 {
 	return declarator != kNoNode &&
-		FindChild(declarator, "structured-binding") != kNoNode;
+		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_BINDING) != kNoNode;
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
@@ -67,7 +67,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
 		}
 		else
 		{
-			const NodeId initializer = FindChild(designated, "initializer");
+			const NodeId initializer = FindChild(designated, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
 			if (initializer == kNoNode)
 				throw std::runtime_error(
 					"designated member has no initializer");
@@ -152,7 +152,7 @@ void SemanticAnalyzer::EmitStructuredBindingStorage(
 	DeclaratorInfo parsed, ExpressionInfo initializer, ScopeId scope,
 	std::uint32_t output_parent, bool local, bool range_variable)
 {
-	const NodeId bindings = FindChild(declarator, "structured-binding");
+	const NodeId bindings = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_BINDING);
 	if (bindings == kNoNode)
 		throw std::logic_error("structured binding has no binding list");
 	EnsureClassDefinition(parsed.type);

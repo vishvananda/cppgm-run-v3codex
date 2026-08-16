@@ -258,8 +258,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeRangeForAdlCall(
 void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 	ExpressionInfo initializer, ScopeId scope, std::uint32_t output_parent)
 {
-	const NodeId specifiers = FindChild(declaration, "decl-specifier-seq");
-	const NodeId declarator = FindChild(declaration, "declarator");
+	const NodeId specifiers = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId declarator = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	if (specifiers == kNoNode || declarator == kNoNode)
 		throw std::runtime_error("invalid range declaration");
 	const SpecInfo spec = BuildSpecifiers(
@@ -354,8 +354,8 @@ void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
-	const NodeId declaration = FindChild(node, "range-declaration");
-	const NodeId initializer_node = FindChild(node, "range-initializer");
+	const NodeId declaration = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_RANGE_DECLARATION);
+	const NodeId initializer_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_RANGE_INITIALIZER);
 	const NodeId initializer_syntax = FirstSemanticChild(initializer_node);
 	if (declaration == kNoNode || initializer_syntax == kNoNode)
 		throw std::runtime_error("invalid range-for statement");

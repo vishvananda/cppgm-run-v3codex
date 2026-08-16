@@ -153,13 +153,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
 	++lambda_closure_requests_;
-	const NodeId introducer = FindChild(node, "lambda-introducer");
+	const NodeId introducer = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_INTRODUCER);
 	if (introducer == kNoNode)
 		throw std::runtime_error("lambda expression has no capture introducer");
 	const pa25_semantic_detail::LambdaCaptureUseTable::Fact& capture_uses =
 		lambda_capture_uses_.FindOrBuild(*arena_, node);
-	const NodeId declarator = FindChild(node, "lambda-declarator");
-	const NodeId body = FindChild(node, "compound-statement");
+	const NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_DECLARATOR);
+	const NodeId body = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
 	if (body == kNoNode)
 		throw std::logic_error("lambda expression has no retained body");
 	ScopeId namespace_owner = scope;
@@ -203,19 +203,19 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		if (declarator != kNoNode)
 		{
 			const NodeId template_clause = FindChild(
-				declarator, "template-parameter-clause");
+				declarator, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_CLAUSE);
 			if (template_clause != kNoNode)
 			{
 				std::vector<NameId> template_names;
 				std::vector<NodeId> template_defaults;
 				ParseTemplateParameters(FindChild(template_clause,
-					"template-parameter-list"), scope, &call_template_parameters,
+					::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_LIST), scope, &call_template_parameters,
 					&template_names, &template_defaults);
 				EnsureFunctionTemplateShapeParameters(
 					call_template_parameters.size());
 				generic_call = true;
 			}
-			parameter_clause = FindChild(declarator, "parameter-clause");
+			parameter_clause = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE);
 			if (parameter_clause == kNoNode)
 				throw std::logic_error(
 					"lambda declarator has no parameter clause");
@@ -226,11 +226,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 				call_parameter_pack_name =
 					FunctionParameterPackName(parameter_clause);
 			}
-			trailing_return = FindChild(declarator, "trailing-return-type");
+			trailing_return = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_TRAILING_RETURN_TYPE);
 			mutable_call =
-				FindChild(declarator, "lambda-specifier") != kNoNode;
+				FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_SPECIFIER) != kNoNode;
 			const NodeId exception = FindChild(
-				declarator, "noexcept-specification");
+				declarator, ::cppgm::pa10_syntax_detail::STAG_NOEXCEPT_SPECIFICATION);
 			if (exception != kNoNode)
 			{
 				if (FirstSemanticChild(exception) != kNoNode)
@@ -490,7 +490,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			const std::size_t pattern = function_templates_.size();
 			RegisterFunctionTemplatePattern(node, member_scope, ACCESS_PUBLIC,
 				call_template_parameters,
-				FindChild(declarator, "decl-specifier-seq"), declarator,
+				FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ), declarator,
 				true, false, kNoType, false);
 			if (function_templates_.size() != pattern + 1)
 				throw std::logic_error(
@@ -520,7 +520,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 					BindFunctionParameterPackElement(return_scope,
 						call_parameters[i].pack_name, parameter);
 				}
-			const NodeId type_id = FindChild(trailing_return, "type-id");
+			const NodeId type_id = FindChild(trailing_return, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 			if (type_id == kNoNode)
 				throw std::runtime_error(
 					"lambda trailing return type is missing its type-id");
@@ -1160,9 +1160,9 @@ bool SemanticAnalyzer::RouteClassTemplateMemberDefinition(
 
 	const NodeId declaration = definition.declaration;
 	if (!arena_->IsTag(declaration, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION)) return false;
-	const NodeId clause = FindChild(declaration, "template-parameter-clause");
+	const NodeId clause = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_CLAUSE);
 	const NodeId list = clause == kNoNode ? kNoNode :
-		FindChild(clause, "template-parameter-list");
+		FindChild(clause, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_LIST);
 	if (list == kNoNode) return false;
 	std::vector<TemplateParameter> parameters;
 	std::vector<NameId> parameter_names;
@@ -1208,7 +1208,7 @@ bool SemanticAnalyzer::RouteClassTemplateMemberDefinition(
 	std::uint8_t owner_shape_state = 0;
 	ClassTemplatePattern& pattern = class_templates_[pattern_index];
 	if (pattern.defined && !declared_owner_path.empty() &&
-		FindChild(pattern.declaration, "base-clause") == kNoNode &&
+		FindChild(pattern.declaration, ::cppgm::pa10_syntax_detail::STAG_BASE_CLAUSE) == kNoNode &&
 		!RetainedClassDeclaresNestedPath(
 			pattern.declaration, declared_owner_path))
 		throw std::runtime_error(
@@ -1378,13 +1378,13 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	const TemplateParameter& parameter, TemplateArgument* argument)
 {
 	NodeId type_id = arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? syntax :
-		FindChild(syntax, "type-id");
+		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 	if (type_id == kNoNode) return false;
-	const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
+	const NodeId specifiers = FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
 	if (name == kNoNode) return false;
-	const NodeId structured = FindChild(name, "structured-type-name");
+	const NodeId structured = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	const LookupResult found = structured == kNoNode ?
 		LookupSpelling(lookup_scope, PayloadSource(name), LOOKUP_TYPE) :
 		LookupStructuredName(name, lookup_scope, LOOKUP_TYPE);
@@ -1485,7 +1485,7 @@ void SemanticAnalyzer::RegisterAliasTemplate(NodeId declaration,
 {
 	const NameId name =
 		program_->names.UseInterned(arena_->PayloadId(declaration));
-	const NodeId type_id = FindChild(declaration, "type-id");
+	const NodeId type_id = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 	if (name == 0 || type_id == kNoNode)
 		throw std::runtime_error("invalid alias template declaration");
 	const LookupResult old = program_->LookupDirect(scope, name, LOOKUP_TYPE);
@@ -1779,14 +1779,14 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 		throw std::runtime_error(
 			"explicit function instantiation must appear at namespace scope");
 
-	NodeId declarator = FindChild(target, "declarator");
+	NodeId declarator = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	if (arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 	{
-		const NodeId list = FindChild(target, "init-declarator-list");
+		const NodeId list = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 		const NodeId item = list == kNoNode ? kNoNode :
 			FirstSemanticChild(list);
 		declarator = item == kNoNode ? kNoNode :
-			FindChild(item, "declarator");
+			FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		if (item != kNoNode)
 		{
 			const std::uint32_t first = arena_->FirstEdge(list);
@@ -1800,7 +1800,7 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 	const NamePath path = DeclaratorNamePath(declarator);
 	if (path.Empty()) return false;
 	std::string function_name = program_->names.Get(path.Last());
-	const NodeId identifier = FindChild(declarator, "identifier");
+	const NodeId identifier = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
 	const NodeId name_syntax = structure != kNoNode ? structure : identifier;
 	if (name_syntax == kNoNode) return false;
 
@@ -1810,7 +1810,7 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 		spec.type = program_->types.Fundamental(FUND_VOID);
 	else
 	{
-		const NodeId specifiers = FindChild(target, "decl-specifier-seq");
+		const NodeId specifiers = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
 		if (specifiers == kNoNode) return false;
 		spec = BuildSpecifiers(specifiers, scope, std::string(), true);
 	}

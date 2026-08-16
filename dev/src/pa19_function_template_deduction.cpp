@@ -1920,7 +1920,7 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 		return true;
 	}
 	if (member_target != kNoType &&
-		FindChild(node, "structured-type-name") != kNoNode)
+		FindChild(node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode)
 	{
 		const ScopeId naming_scope = naming_class == kNoEntity ? kNoScope :
 			program_->entities[naming_class].member_scope;

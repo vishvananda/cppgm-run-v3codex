@@ -40,7 +40,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 	const TypeId result_type = program_->types.Qualify(
 		program_->types.RemoveTopCv(type_info.type), CV_CONST);
 
-	const NodeId type_id = FindChild(node, "type-id");
+	const NodeId type_id = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 	TypeId queried = kNoType;
 	ExpressionInfo operand;
 	bool dynamic = false;

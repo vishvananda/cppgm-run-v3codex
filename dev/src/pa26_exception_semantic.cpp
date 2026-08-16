@@ -892,15 +892,15 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 		scope, SCOPE_BLOCK, 0, ScopePrefixId(scope));
 	const std::uint32_t handler = MakeDump(DUMP_HANDLER);
 	dump_.Add(output_parent, handler);
-	const NodeId declaration = FindChild(node, "exception-declaration");
+	const NodeId declaration = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_EXCEPTION_DECLARATION);
 	if (declaration == kNoNode)
 		throw std::runtime_error("exception handler has no declaration");
-	if (FindChild(declaration, "ellipsis") == kNoNode)
+	if (FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_ELLIPSIS) == kNoNode)
 	{
-		const NodeId specifiers = FindChild(declaration, "decl-specifier-seq");
+		const NodeId specifiers = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
 		if (specifiers == kNoNode)
 			throw std::runtime_error("exception handler has no type");
-		const NodeId declarator = FindChild(declaration, "declarator");
+		const NodeId declarator = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		const SpecInfo spec = BuildSpecifiers(specifiers, handler_scope,
 			std::string(), declarator != kNoNode, true);
 		DeclaratorInfo parsed;
@@ -953,7 +953,7 @@ void SemanticAnalyzer::AnalyzeExceptionHandler(NodeId node, ScopeId scope,
 			AddLifetimeObligation(handler_scope, binding, parsed.type);
 		}
 	}
-	const NodeId body = FindChild(node, "compound-statement");
+	const NodeId body = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
 	if (body == kNoNode)
 		throw std::runtime_error("exception handler has no body");
 	++exception_handler_depth_;
@@ -989,9 +989,9 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 		}
 		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_HANDLER))
 		{
-			const NodeId declaration = FindChild(child, "exception-declaration");
+			const NodeId declaration = FindChild(child, ::cppgm::pa10_syntax_detail::STAG_EXCEPTION_DECLARATION);
 			catches_all = catches_all || (declaration != kNoNode &&
-				FindChild(declaration, "ellipsis") != kNoNode);
+				FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_ELLIPSIS) != kNoNode);
 			AnalyzeExceptionHandler(child, scope, statement);
 			++handler_count;
 		}

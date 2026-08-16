@@ -478,12 +478,6 @@ bool SyntaxArena::IsTag(NodeId node, const char* tag) const
 	return nodes_[node].tag == InternTag(tag);
 }
 
-bool SyntaxArena::IsTag(NodeId node, SyntaxTagCode tag) const
-{
-	if (stats_) ++stats_->syntax_tag_query_calls;
-	return nodes_[node].tag_code == tag;
-}
-
 const std::string& SyntaxArena::Payload(NodeId node) const
 {
 	return strings_.Get(nodes_[node].payload);
@@ -585,18 +579,6 @@ NodeId SyntaxArena::FindDirectChildTag(NodeId node, const char* tag) const
 	return kNoNode;
 }
 
-NodeId SyntaxArena::FindDirectChildTag(NodeId node, SyntaxTagCode tag) const
-{
-	if (stats_) ++stats_->syntax_tag_query_calls;
-	for (std::uint32_t edge = nodes_[node].first_edge;
-		edge != kNoEdge; edge = edges_[edge].next)
-	{
-		const NodeId child = edges_[edge].child;
-		if (nodes_[child].tag_code == tag) return child;
-	}
-	return kNoNode;
-}
-
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 {
 	if (stats_) ++stats_->syntax_tag_query_calls;
@@ -653,21 +635,6 @@ bool SyntaxArena::HasDescendantTag(NodeId node, SyntaxTagCode tag) const
 		}
 	}
 	return false;
-}
-
-std::uint32_t SyntaxArena::FirstEdge(NodeId node) const
-{
-	return nodes_[node].first_edge;
-}
-
-std::uint32_t SyntaxArena::NextEdge(std::uint32_t edge) const
-{
-	return edges_[edge].next;
-}
-
-NodeId SyntaxArena::EdgeChild(std::uint32_t edge) const
-{
-	return edges_[edge].child;
 }
 
 void SyntaxArena::SetTokenRange(NodeId node, std::size_t first,

@@ -348,7 +348,7 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 	RegisterClassSpecialMember(binding);
 	FunctionInfo& function = GetMutableFunction(binding);
 	const NodeId special = initializer == kNoNode ? kNoNode :
-		FindChild(initializer, "special-initializer");
+		FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_INITIALIZER);
 	if (!IsAssignmentSpecialMember(function.special_member))
 	{
 		if (special == kNoNode) return;
@@ -422,8 +422,8 @@ void SemanticAnalyzer::ConfigureAssignmentSpecialMember(BindingId binding,
 bool SemanticAnalyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 	ScopeId scope, std::uint32_t output_parent)
 {
-	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
-	const NodeId list = FindChild(node, "init-declarator-list");
+	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 	const NodeId specifier = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
 	if (specifier == kNoNode || list == kNoNode) return false;
@@ -431,13 +431,13 @@ bool SemanticAnalyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 	if (spelling.find("::operator=") == std::string::npos) return false;
 	const NodeId item = FirstSemanticChild(list);
 	const NodeId declarator = item == kNoNode ? kNoNode :
-		FindChild(item, "declarator");
+		FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	const NodeId nested = declarator == kNoNode ? kNoNode :
-		FindChild(declarator, "nested-declarator");
+		FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_NESTED_DECLARATOR);
 	const NodeId argument_declarator = nested == kNoNode ? kNoNode :
 		FirstSemanticChild(nested);
 	const NodeId identifier = argument_declarator == kNoNode ? kNoNode :
-		FindChild(argument_declarator, "identifier");
+		FindChild(argument_declarator, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
 	if (identifier == kNoNode)
 		throw std::runtime_error(
 			"unsupported qualified assignment argument syntax");
@@ -1258,12 +1258,12 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	ScopeId scope, ScopeId declaration_scope, bool defer_demand)
 {
-	const NodeId declarator = FindChild(node, "declarator");
+	const NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	if (declarator == kNoNode)
 		throw std::runtime_error(
 			"out-of-class special member is missing its declarator");
-	const NodeId member_specifiers = FindChild(node, "member-specifiers");
-	if (FindChild(declarator, "virt-specifier") != kNoNode)
+	const NodeId member_specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_MEMBER_SPECIFIERS);
+	if (FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_VIRT_SPECIFIER) != kNoNode)
 		throw std::runtime_error(
 			"virt-specifier is only allowed in a class definition");
 	if (member_specifiers != kNoNode)
@@ -1309,7 +1309,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 	const std::string terminal = program_->names.Get(path.Last());
 	const std::string class_name = program_->names.Get(
 		program_->entities[entity].identity_name);
-	const NodeId conversion_type = FindChild(declarator, "conversion-type-id");
+	const NodeId conversion_type = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_CONVERSION_TYPE_ID);
 	const bool conversion_definition = conversion_type != kNoNode;
 	const bool constructor_definition = terminal == class_name;
 	const bool destructor_definition = terminal == "~" + class_name;
@@ -1386,15 +1386,15 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		throw std::runtime_error(
 			"qualified conversion definition has a mismatched target");
 	ValidateFunctionRefQualifier(special);
-	const NodeId initializer = FindChild(node, "initializer");
+	const NodeId initializer = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
 	const NodeId special_initializer = initializer == kNoNode ? kNoNode :
-		FindChild(initializer, "special-initializer");
+		FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_INITIALIZER);
 	const bool defaulted = special_initializer != kNoNode &&
 		arena_->Payload(special_initializer) == "default";
 	const bool deleted = special_initializer != kNoNode &&
 		arena_->Payload(special_initializer) == "delete";
 	info.definition_body = FunctionDefinitionPart(node, "compound-statement");
-	info.function_try_block = FindChild(node, "function-try-block");
+	info.function_try_block = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_TRY_BLOCK);
 	if (conversion_definition)
 	{
 		if (defaulted)

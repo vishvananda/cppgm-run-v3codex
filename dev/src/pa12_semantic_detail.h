@@ -191,6 +191,7 @@ public:
 private:
 	friend class RetainedTemplateValidator;
 	NodeId FindChild(NodeId node, const char* tag) const;
+	NodeId FindChild(NodeId node, SyntaxTagCode tag) const;
 	bool HasDeclSpecifier(NodeId specifiers, const char* spelling) const;
 	NodeId FirstSemanticChild(NodeId node) const;
 	const std::string& PayloadSource(NodeId node) const;

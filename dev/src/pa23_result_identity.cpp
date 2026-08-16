@@ -164,13 +164,13 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		-> const std::vector<ResultSyntaxReference>* {
 		if (reference.node == kNoNode) return 0;
 		NodeId type = arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ?
-			reference.node : FindChild(reference.node, "type-id");
+			reference.node : FindChild(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 		if (type != kNoNode)
 		{
-			NodeId declarator = FindChild(type, "abstract-declarator");
+			NodeId declarator = FindChild(type, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
 			if (declarator == kNoNode)
-				declarator = FindChild(type, "declarator");
-			const NodeId specifiers = FindChild(type, "type-specifier-seq");
+				declarator = FindChild(type, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
+			const NodeId specifiers = FindChild(type, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 			const NodeId name = specifiers == kNoNode ? kNoNode :
 				FirstSemanticChild(specifiers);
 			const NamePath path = StructuredNamePath(name);
@@ -178,7 +178,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 				path.Last() : name == kNoNode ? 0 :
 				arena_->SemanticPayloadId(name);
 			if (declarator != kNoNode &&
-				FindChild(declarator, "parameter-pack") != kNoNode &&
+				FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode &&
 				direct_name != 0)
 				return FindResultSyntaxBinding(
 					reference.environment, direct_name, environment_names,
@@ -285,7 +285,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 				if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 					components.push_back(arena_->EdgeChild(edge));
 			if (components.size() == 1 &&
-				FindChild(components[0], "template-type-argument-list") == kNoNode)
+				FindChild(components[0], ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) == kNoNode)
 			{
 				const NameId name = arena_->SemanticPayloadId(components[0]);
 				const std::vector<ResultSyntaxReference>* bound =
@@ -323,7 +323,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 						alias_templates_[alias];
 					std::vector<ResultSyntaxReference> arguments;
 					const NodeId terminal_list = FindChild(
-						components.back(), "template-type-argument-list");
+						components.back(), ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
 					collect_arguments(terminal_list, reference, &arguments);
 					std::vector<ResultSyntaxEnvironment> frames;
 					frames.reserve(alias_pattern.parameters.size());
@@ -364,10 +364,10 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 
 			atoms->push_back(ResultIdentityAtom(
 				RESULT_IDENTITY_QUALIFIED_BEGIN,
-				FindChild(reference.node, "global-qualifier") != kNoNode));
+				FindChild(reference.node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode));
 			NamePath component_path;
 			component_path.global =
-				FindChild(reference.node, "global-qualifier") != kNoNode;
+				FindChild(reference.node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode;
 			bool resolved_type_prefix = false;
 			for (std::size_t c = 0; c < components.size(); ++c)
 			{
@@ -397,7 +397,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 					atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_ENTITY, EntityOf(marker.type)));
 				const NodeId list = FindChild(
-					components[c], "template-type-argument-list");
+					components[c], ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST);
 				if (list == kNoNode) continue;
 				std::vector<ResultSyntaxReference> arguments;
 				collect_arguments(list, reference, &arguments);

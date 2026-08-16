@@ -105,12 +105,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	TypeId measured = kNoType;
 	if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 	{
-		const NodeId specifiers = FindChild(operand, "type-specifier-seq");
+		const NodeId specifiers = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 		const NodeId name = specifiers == kNoNode ? kNoNode :
 			FirstSemanticChild(specifiers);
-		const NodeId declarator = FindChild(operand, "abstract-declarator");
+		const NodeId declarator = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
 		const NodeId clause = declarator == kNoNode ? kNoNode :
-			FindChild(declarator, "parameter-clause");
+			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE);
 		NamePath base;
 		std::vector<TypeId> explicit_arguments;
 		const bool ambiguous_function_call = name != kNoNode &&
@@ -136,7 +136,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 		if (measured == kNoType && name != kNoNode &&
 			arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME))
 		{
-			const NodeId structure = FindChild(name, "structured-type-name");
+			const NodeId structure = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 			const LookupResult value = structure != kNoNode ?
 				LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
 				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY);
@@ -163,7 +163,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	else if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		const std::string spelling = arena_->Payload(operand);
-		const NodeId structure = FindChild(operand, "structured-type-name");
+		const NodeId structure = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 		const LookupResult ordinary = structure != kNoNode ?
 			LookupStructuredName(operand, scope, LOOKUP_ORDINARY) :
 			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);

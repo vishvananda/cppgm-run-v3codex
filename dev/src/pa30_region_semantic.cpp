@@ -30,7 +30,7 @@ NodeId SemanticAnalyzer::FunctionDefinitionPart(
 {
 	const NodeId direct = FindChild(node, tag);
 	if (direct != kNoNode) return direct;
-	const NodeId function_try = FindChild(node, "function-try-block");
+	const NodeId function_try = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_TRY_BLOCK);
 	return function_try == kNoNode ? kNoNode : FindChild(function_try, tag);
 }
 
@@ -47,7 +47,7 @@ std::uint32_t SemanticAnalyzer::BeginFunctionTryRegion(
 ExpressionInfo SemanticAnalyzer::AnalyzeStatementExpression(
 	NodeId node, ScopeId scope, TypeId target)
 {
-	const NodeId body = FindChild(node, "compound-statement");
+	const NodeId body = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
 	if (body == kNoNode)
 		throw std::runtime_error("statement expression has no body");
 	std::vector<NodeId> items;
@@ -99,9 +99,9 @@ void SemanticAnalyzer::AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
 	{
 		const NodeId child = arena_->EdgeChild(edge);
 		if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_HANDLER)) continue;
-		const NodeId declaration = FindChild(child, "exception-declaration");
+		const NodeId declaration = FindChild(child, ::cppgm::pa10_syntax_detail::STAG_EXCEPTION_DECLARATION);
 		catches_all = catches_all || (declaration != kNoNode &&
-			FindChild(declaration, "ellipsis") != kNoNode);
+			FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_ELLIPSIS) != kNoNode);
 		AnalyzeExceptionHandler(child, scope, output_parent);
 		++handlers;
 	}

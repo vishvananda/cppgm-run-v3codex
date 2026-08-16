@@ -694,9 +694,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeVariableInitializer(
 			}
 			else
 			{
-				NodeId argument_list = FindChild(expression, "argument-list");
+				NodeId argument_list = FindChild(expression, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST);
 				if (argument_list == kNoNode)
-					argument_list = FindChild(expression, "braced-init-list");
+					argument_list = FindChild(expression, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
 				if (argument_list != kNoNode)
 					for (std::uint32_t argument = arena_->FirstEdge(argument_list);
 						argument != kNoEdge; argument = arena_->NextEdge(argument))
@@ -920,9 +920,9 @@ void SemanticAnalyzer::AddMemberInitializationAction(BindingId member_id,
 				}
 				else
 				{
-					NodeId list = FindChild(initializer, "argument-list");
+					NodeId list = FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST);
 					if (list == kNoNode)
-						list = FindChild(initializer, "braced-init-list");
+						list = FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
 					if (list != kNoNode)
 						for (std::uint32_t edge = arena_->FirstEdge(list);
 							edge != kNoEdge; edge = arena_->NextEdge(edge))
@@ -1034,7 +1034,7 @@ void SemanticAnalyzer::CollectConstructorInitializers(
 	{
 		const NodeId initializer = arena_->EdgeChild(edge);
 		if (!arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_MEM_INITIALIZER)) continue;
-		if (FindChild(initializer, "pack-expansion") == kNoNode)
+		if (FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION) == kNoNode)
 		{
 			syntax->push_back(initializer);
 			scopes->push_back(function_scope);
@@ -1099,7 +1099,7 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			const NodeId initializer = initializer_syntax[initializer_index];
 			const ScopeId initializer_scope =
 				initializer_scopes[initializer_index];
-			const NodeId id = FindChild(initializer, "mem-initializer-id");
+			const NodeId id = FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_MEM_INITIALIZER_ID);
 			if (id == kNoNode)
 				throw std::runtime_error("member initializer has no target");
 			const NameId name = program_->names.UseInterned(arena_->PayloadId(id));
@@ -1116,7 +1116,7 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			if (value == kNoNode)
 				throw std::runtime_error("member initializer has no value");
 			LookupResult target_type;
-			const NodeId structured = FindChild(id, "structured-type-name");
+			const NodeId structured = FindChild(id, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 			if (structured != kNoNode)
 			{
 				const NamePath target_path = StructuredNamePath(structured);
@@ -1903,10 +1903,10 @@ BindingId SemanticAnalyzer::SelectUsualDeallocation(ScopeId scope,
 ExpressionInfo SemanticAnalyzer::AnalyzeArrayNewExpression(NodeId node,
 	NodeId type_node, ScopeId scope, TypeId target)
 {
-	const NodeId specifiers = FindChild(type_node, "type-specifier-seq");
+	const NodeId specifiers = FindChild(type_node, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 	const SpecInfo spec = BuildSpecifiers(
 		specifiers, scope, std::string(), false);
-	const NodeId declarator = FindChild(type_node, "abstract-declarator");
+	const NodeId declarator = FindChild(type_node, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
 	if (declarator == kNoNode)
 		throw std::logic_error("array new has no abstract declarator");
 	TypeId leaf_type = spec.type;
@@ -2014,7 +2014,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeArrayNewExpression(NodeId node,
 	}
 	std::vector<NodeId> argument_syntax(1, kNoNode);
 	std::vector<ExpressionInfo> arguments(1, allocation_size);
-	const bool explicit_global = FindChild(node, "global-scope") != kNoNode;
+	const bool explicit_global = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_SCOPE) != kNoNode;
 	std::vector<BindingId> candidates;
 	EntityId naming_class = kNoEntity;
 	if (!explicit_global && class_elements)
@@ -2096,12 +2096,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeArrayNewExpression(NodeId node,
 ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
-	const NodeId type_node = FindChild(node, "type-id");
+	const NodeId type_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 	if (type_node == kNoNode)
 		throw std::runtime_error("new-expression has no allocated type");
-	const NodeId new_declarator = FindChild(type_node, "abstract-declarator");
+	const NodeId new_declarator = FindChild(type_node, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
 	if (new_declarator != kNoNode &&
-		FindChild(new_declarator, "array-suffix") != kNoNode)
+		FindChild(new_declarator, ::cppgm::pa10_syntax_detail::STAG_ARRAY_SUFFIX) != kNoNode)
 		return AnalyzeArrayNewExpression(node, type_node, scope, target);
 	TypeId object_type = BuildTypeId(type_node, scope);
 	bool parsed_empty_initializer = false;
@@ -2122,9 +2122,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 		program_->entities[object_entity].abstract_class)
 		return CandidateExpressionFailure(
 			"cannot allocate an abstract class object");
-	const NodeId placement = FindChild(node, "placement");
+	const NodeId placement = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_PLACEMENT);
 	const NodeId placement_arguments = placement == kNoNode ? kNoNode :
-		FindChild(placement, "paren-argument-list");
+		FindChild(placement, ::cppgm::pa10_syntax_detail::STAG_PAREN_ARGUMENT_LIST);
 	std::vector<NodeId> argument_syntax;
 	std::vector<ExpressionInfo> arguments;
 	ExpressionInfo size = MakeLiteral(program_->types.Fundamental(FUND_INT),
@@ -2144,7 +2144,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 			arguments.push_back(AnalyzeExpression(argument, scope));
 		}
 	const EntityId entity = EntityOf(object_type);
-	const bool explicit_global = FindChild(node, "global-scope") != kNoNode;
+	const bool explicit_global = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_SCOPE) != kNoNode;
 	std::vector<BindingId> candidates;
 	EntityId naming_class = kNoEntity;
 	if (!explicit_global && IsClassEntity(*program_, entity))
@@ -2171,7 +2171,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	ExpressionInfo allocation = BuildResolvedCall(selected, scope,
 		argument_syntax, arguments, 0, kNoType, naming_class, 0,
 		&argument_conversions);
-	const NodeId initializer_node = FindChild(node, "initializer");
+	const NodeId initializer_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
 	NodeId initializer = initializer_node == kNoNode ? kNoNode :
 		FirstSemanticChild(initializer_node);
 	std::uint32_t construction = kNoDumpEdge;
@@ -2322,7 +2322,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 	ScopeId scope, TypeId target)
 {
-	const bool array = FindChild(node, "array-delete") != kNoNode;
+	const bool array = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ARRAY_DELETE) != kNoNode;
 	NodeId operand_syntax = kNoNode;
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
@@ -2377,7 +2377,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDeleteExpression(NodeId node,
 			DemandFunction(destructor);
 		}
 	}
-	const bool explicit_global = FindChild(node, "global-scope") != kNoNode;
+	const bool explicit_global = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_SCOPE) != kNoNode;
 	const BindingId deallocation = SelectUsualDeallocation(
 		scope, entity, explicit_global, array, leaf_type);
 	const TypeId void_type = program_->types.Fundamental(FUND_VOID);

@@ -23,18 +23,18 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 	std::vector<NodeId> declarators;
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION))
 	{
-		const NodeId declarator = FindChild(node, "declarator");
+		const NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		if (declarator != kNoNode) declarators.push_back(declarator);
 	}
 	else
 	{
-		const NodeId list = FindChild(node, "init-declarator-list");
+		const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 		if (list != kNoNode)
 			for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
 				edge = arena_->NextEdge(edge))
 			{
 				const NodeId declarator =
-					FindChild(arena_->EdgeChild(edge), "declarator");
+					FindChild(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 				if (declarator != kNoNode) declarators.push_back(declarator);
 			}
 	}
@@ -56,7 +56,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			ResolveOwner(class_scope, declared_name) : friend_owner;
 		if (declared_owner == kNoScope)
 			throw std::runtime_error("qualified friend owner not found");
-		const NodeId identifier = FindChild(declarators[i], "identifier");
+		const NodeId identifier = FindChild(declarators[i], ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
 		NamePath template_base;
 		std::vector<NodeId> explicit_arguments;
 		if (CollectExplicitTemplateArguments(
@@ -128,7 +128,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 		info.lexical_scope = class_scope;
 		if (definition)
 		{
-			info.definition_body = FindChild(node, "compound-statement");
+			info.definition_body = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
 			info.deferred = true;
 			if (!qualified_friend)
 			{
@@ -150,14 +150,14 @@ void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
 	const EntityId owner = EntityOf(owner_type);
 	if (owner == kNoEntity)
 		throw std::logic_error("friend class declaration has no owner");
-	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
+	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
 	const NodeId declaration = specifiers == kNoNode ? kNoNode :
-		FindChild(specifiers, "class-forward-declaration");
+		FindChild(specifiers, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION);
 	if (declaration == kNoNode)
 		throw std::runtime_error("friend class declaration has no class");
 	const std::string spelling = arena_->Payload(declaration);
 	const NamePath path = ParseNamePath(spelling);
-	const NodeId structure = FindChild(declaration, "structured-type-name");
+	const NodeId structure = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	LookupResult found;
 	if (structure != kNoNode)
 	{

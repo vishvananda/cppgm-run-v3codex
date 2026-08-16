@@ -13,7 +13,7 @@ bool SemanticAnalyzer::SyntaxNamesUnboundTemplateParameter(
 {
 	if (syntax == kNoNode) return false;
 	if (arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
-		FindChild(syntax, "structured-type-name") == kNoNode)
+		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode)
 	{
 		const NameId name =
 			program_->names.UseInterned(arena_->SemanticPayloadId(syntax));
@@ -43,7 +43,7 @@ bool SemanticAnalyzer::TryExpandBuiltinIntegerPack(NodeId operand,
 	const NodeId callee = FirstSemanticChild(operand);
 	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
 		PayloadSource(callee) != "__integer_pack") return false;
-	const NodeId list = FindChild(operand, "argument-list");
+	const NodeId list = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST);
 	NodeId count_syntax = kNoNode;
 	for (std::uint32_t edge = list == kNoNode ? kNoEdge :
 		arena_->FirstEdge(list); edge != kNoEdge; edge = arena_->NextEdge(edge))
@@ -136,15 +136,15 @@ bool SemanticAnalyzer::TryResolveBuiltinMakeIntegerSequence(
 	if (source.size() != 3)
 		throw std::runtime_error("__make_integer_seq requires three arguments");
 	const NodeId type_id = arena_->IsTag(source[0], ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? source[0] :
-		FindChild(source[0], "type-id");
+		FindChild(source[0], ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 	const NodeId specifiers = type_id == kNoNode ? kNoNode :
-		FindChild(type_id, "type-specifier-seq");
+		FindChild(type_id, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
 	if (name == kNoNode)
 		throw std::runtime_error("__make_integer_seq target is not a class template");
 	const NodeId structured = name == kNoNode ? kNoNode :
-		FindChild(name, "structured-type-name");
+		FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	const NamePath target_path = structured == kNoNode ? NamePath() :
 		StructuredNamePath(structured);
 	const std::size_t target = structured == kNoNode ?

@@ -79,12 +79,12 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 		std::uint64_t value = 0;
 		if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 		{
-			const NodeId specifiers = FindChild(operand, "type-specifier-seq");
+			const NodeId specifiers = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 			const NodeId name = specifiers == kNoNode ? kNoNode :
 				FirstSemanticChild(specifiers);
 			const LookupResult constant = name != kNoNode &&
 				arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ?
-				FindChild(name, "structured-type-name") != kNoNode ?
+				FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode ?
 					LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
 				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY) :
 				LookupResult();

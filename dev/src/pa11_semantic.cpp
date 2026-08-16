@@ -104,7 +104,7 @@ public:
 	}
 
 private:
-	NodeId FindChild(NodeId node, const char* tag) const;
+	NodeId FindChild(NodeId node, SyntaxTagCode tag) const;
 	NodeId FirstSemanticChild(NodeId node) const;
 	std::string PayloadSource(NodeId node) const;
 	bool CanContainBlockOrDeclaration(NodeId node) const;
@@ -152,7 +152,7 @@ private:
 	Program* program_;
 };
 
-NodeId TypeAnalyzer::FindChild(NodeId node, const char* tag) const
+NodeId TypeAnalyzer::FindChild(NodeId node, SyntaxTagCode tag) const
 {
 	return arena_->FindDirectChildTag(node, tag);
 }
@@ -322,7 +322,7 @@ void TypeAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope)
 	const NameId name = program_->names.Intern(
 		unnamed ? "<unnamed>" : spelling);
 	const ScopeId child = program_->OpenNamespace(scope, name,
-		FindChild(node, "inline") != kNoNode, unnamed);
+		FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INLINE) != kNoNode, unnamed);
 	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))
 	{
@@ -335,13 +335,13 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 {
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 	{
-		const NodeId type_id = FindChild(node, "type-id");
+		const NodeId type_id = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 		const TypeId type = BuildTypeId(type_id, scope);
 		const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 		program_->AddBinding(scope, BIND_TYPE_ALIAS, name, type);
 		return;
 	}
-	const NodeId target_node = FindChild(node, "target");
+	const NodeId target_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TARGET);
 	if (target_node == kNoNode) throw std::runtime_error("missing using target");
 	const std::string target = arena_->Payload(target_node);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION))
@@ -392,9 +392,9 @@ void TypeAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 {
 	const ScopeId parameters = program_->NewScope(scope,
 		SCOPE_TEMPLATE_PARAMETERS, 0);
-	const NodeId clause = FindChild(node, "template-parameter-clause");
+	const NodeId clause = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_CLAUSE);
 	const NodeId list = clause == kNoNode ? kNoNode :
-		FindChild(clause, "template-parameter-list");
+		FindChild(clause, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_PARAMETER_LIST);
 	if (list != kNoNode)
 	{
 		for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
@@ -403,12 +403,12 @@ void TypeAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 			const NodeId parameter = arena_->EdgeChild(edge);
 			if (!arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_TYPE_PARAMETER))
 				throw std::runtime_error("non-type template parameter in PA11");
-			const NodeId identifier = FindChild(parameter, "identifier");
+			const NodeId identifier = FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
 			if (identifier == kNoNode) continue;
 			const NameId name =
 				program_->names.UseInterned(arena_->PayloadId(identifier));
 			const NamedFlavor flavor =
-				FindChild(parameter, "template-template-parameter") != kNoNode ?
+				FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TEMPLATE_PARAMETER) != kNoNode ?
 				NAMED_TEMPLATE_PARAMETER : NAMED_TYPENAME_PARAMETER;
 			const EntityId entity = program_->NewEntity(name, flavor, true,
 				kNoType, parameters);
@@ -427,7 +427,7 @@ void TypeAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 
 NamedFlavor TypeAnalyzer::ClassFlavor(NodeId node) const
 {
-	const NodeId key = FindChild(node, "class-key");
+	const NodeId key = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_KEY);
 	if (key == kNoNode) throw std::runtime_error("class without class-key");
 	const std::string spelling = PayloadSource(key);
 	if (spelling == "struct") return NAMED_STRUCT;
@@ -545,7 +545,7 @@ TypeId TypeAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 	std::string spelling = arena_->Payload(node);
 	if (spelling.empty()) spelling = hint;
 	if (spelling.empty()) throw std::runtime_error("unnamed enum has no owner");
-	const bool scoped = FindChild(node, "enum-key") != kNoNode;
+	const bool scoped = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_KEY) != kNoNode;
 	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
 	const bool definition =
 		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0;
@@ -556,7 +556,7 @@ TypeId TypeAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 	const ScopeId semantic_owner = ResolveOwner(scope, declared_name);
 	if (semantic_owner == kNoScope)
 		throw std::runtime_error("qualified enum owner was not found");
-	const NodeId underlying_node = FindChild(node, "type-id");
+	const NodeId underlying_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 	const bool explicit_underlying = underlying_node != kNoNode;
 	const TypeId underlying = explicit_underlying ?
 		BuildTypeId(underlying_node, semantic_owner) :
@@ -770,13 +770,13 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 TypeId TypeAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("missing type-id");
-	NodeId specifiers = FindChild(node, "type-specifier-seq");
+	NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 	if (specifiers == kNoNode)
-		specifiers = FindChild(node, "decl-specifier-seq");
+		specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
 	if (specifiers == kNoNode) throw std::runtime_error("type-id has no type");
 	const SpecInfo spec = BuildSpecifiers(specifiers, scope, std::string(), false);
-	NodeId declarator = FindChild(node, "abstract-declarator");
-	if (declarator == kNoNode) declarator = FindChild(node, "declarator");
+	NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
+	if (declarator == kNoNode) declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	return declarator == kNoNode ? spec.type :
 		BuildDeclarator(declarator, spec.type, scope).type;
 }
@@ -788,10 +788,10 @@ NameId TypeAnalyzer::DeclaratorName(NodeId node)
 
 NamePath TypeAnalyzer::DeclaratorNamePath(NodeId node)
 {
-	const NodeId identifier = FindChild(node, "identifier");
+	const NodeId identifier = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
 	if (identifier != kNoNode)
 		return ParseNamePath(arena_->Payload(identifier));
-	const NodeId nested = FindChild(node, "nested-declarator");
+	const NodeId nested = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_NESTED_DECLARATOR);
 	return nested == kNoNode ? NamePath() :
 		DeclaratorNamePath(FirstSemanticChild(nested));
 }
@@ -811,8 +811,8 @@ std::vector<ParameterInfo> TypeAnalyzer::BuildParameters(NodeId node,
 			continue;
 		}
 		if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) continue;
-		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
-		const NodeId declarator = FindChild(child, "declarator");
+		const NodeId specifiers = FindChild(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+		const NodeId declarator = FindChild(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		const SpecInfo spec = BuildSpecifiers(specifiers, scope,
 			std::string(), declarator != kNoNode);
 		if (declarator == kNoNode)
@@ -921,14 +921,14 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 
 void TypeAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope)
 {
-	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
-	const NodeId list = FindChild(node, "init-declarator-list");
+	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 	std::string hint;
 	if (list != kNoNode)
 	{
 		const NodeId item = FirstSemanticChild(list);
 		const NodeId declarator = item == kNoNode ? kNoNode :
-			FindChild(item, "declarator");
+			FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		if (declarator != kNoNode)
 			hint = program_->names.Get(DeclaratorName(declarator));
 	}
@@ -939,7 +939,7 @@ void TypeAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope)
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId item = arena_->EdgeChild(edge);
-		const NodeId declarator = FindChild(item, "declarator");
+		const NodeId declarator = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
 		if (parsed.name == 0) throw std::runtime_error("unnamed declaration");
 		if (spec.is_typedef)
@@ -954,7 +954,7 @@ void TypeAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope)
 		}
 		if (spec.is_constexpr)
 			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
-		const NodeId initializer = FindChild(item, "initializer");
+		const NodeId initializer = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
 		bool constant = false;
 		std::int64_t value = 0;
 		const TypeRecord& top = program_->types.Get(parsed.type);
@@ -975,8 +975,8 @@ void TypeAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope)
 
 void TypeAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope)
 {
-	const NodeId specifiers = FindChild(node, "decl-specifier-seq");
-	const NodeId declarator = FindChild(node, "declarator");
+	const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+	const NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	const NamePath full_name = DeclaratorNamePath(declarator);
 	ScopeId owner = scope;
 	if (full_name.global || full_name.Size() > 1)
@@ -1000,7 +1000,7 @@ void TypeAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope)
 	for (std::size_t i = 0; i < parsed.parameters.size(); ++i)
 		program_->AddBinding(function_scope, BIND_PARAMETER,
 			parsed.parameters[i].name, parsed.parameters[i].type);
-	const NodeId body = FindChild(node, "compound-statement");
+	const NodeId body = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
 	if (body != kNoNode) AnalyzeCompound(body, function_scope);
 }
 
@@ -1221,7 +1221,7 @@ ConstantValue TypeAnalyzer::Evaluate(NodeId node, ScopeId scope)
 		return EvaluateTrait(node, scope);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CAST_EXPRESSION))
 	{
-		const NodeId type_id = FindChild(node, "type-id");
+		const NodeId type_id = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
 		ConstantValue result;
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))

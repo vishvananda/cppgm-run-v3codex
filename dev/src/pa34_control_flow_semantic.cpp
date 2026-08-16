@@ -11,8 +11,8 @@ bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
 	if (!arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IF_STATEMENT)) return false;
-	const NodeId marker = FindChild(node, "constexpr-selection");
-	const NodeId init_syntax = FindChild(node, "selection-init-statement");
+	const NodeId marker = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_CONSTEXPR_SELECTION);
+	const NodeId init_syntax = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_SELECTION_INIT_STATEMENT);
 	if (marker == kNoNode && init_syntax == kNoNode) return false;
 	const ScopeId control = NewScope(scope, SCOPE_BLOCK, 0,
 		ScopePrefixId(scope));
@@ -63,7 +63,7 @@ bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
 	}
 	else
 	{
-		const NodeId condition_syntax = FindChild(node, "condition");
+		const NodeId condition_syntax = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_CONDITION);
 		const NodeId expression_syntax = condition_syntax == kNoNode ?
 			kNoNode : FirstSemanticChild(condition_syntax);
 		if (expression_syntax == kNoNode ||

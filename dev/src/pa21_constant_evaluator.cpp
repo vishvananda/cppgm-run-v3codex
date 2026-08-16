@@ -1570,13 +1570,13 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 	{
 		if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 		{
-			const TypeId type = BuildTypeId(FindChild(node, "type-id"), scope);
+			const TypeId type = BuildTypeId(FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID), scope);
 			valid = AddConstexprTypeAlias(
 				program_->names.UseInterned(arena_->PayloadId(node)), type);
 		}
 		else if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 		{
-			const NodeId target = FindChild(node, "target");
+			const NodeId target = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TARGET);
 			const ScopeId target_scope = target == kNoNode ? kNoScope :
 				ResolveScopeSpelling(scope, arena_->Payload(target));
 			if (target_scope == kNoScope)
@@ -1592,8 +1592,8 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 		}
 		else if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 		{
-			const NodeId specifiers = FindChild(node, "decl-specifier-seq");
-			const NodeId list = FindChild(node, "init-declarator-list");
+			const NodeId specifiers = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
+			const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 			const SpecInfo spec = BuildSpecifiers(
 				specifiers, scope, std::string(), list != kNoNode);
 			valid = list != kNoNode &&
@@ -1603,7 +1603,7 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 				edge != kNoEdge && valid; edge = arena_->NextEdge(edge))
 			{
 				const NodeId item = arena_->EdgeChild(edge);
-				const NodeId declarator = FindChild(item, "declarator");
+				const NodeId declarator = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 				DeclaratorInfo parsed = BuildDeclarator(
 					declarator, spec.type, scope);
 				parsed.name = DeclaratorNamePath(declarator).Last();
@@ -1613,7 +1613,7 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 					valid = AddConstexprTypeAlias(parsed.name, parsed.type);
 				else
 				{
-					const NodeId initializer = FindChild(item, "initializer");
+					const NodeId initializer = FindChild(item, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
 					ExpressionInfo value;
 					valid = parsed.name != 0 && initializer != kNoNode &&
 						AnalyzeConstexprInitializer(initializer, scope,
@@ -1663,17 +1663,17 @@ bool SemanticAnalyzer::EvaluateConstexprCondition(
 	const NodeId first = FirstSemanticChild(node);
 	const NodeId declaration = first != kNoNode &&
 		arena_->IsTag(first, ::cppgm::pa10_syntax_detail::STAG_CONDITION_DECLARATION) ? first : node;
-	const NodeId specifiers = FindChild(declaration, "decl-specifier-seq");
+	const NodeId specifiers = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ);
 	if (specifiers != kNoNode)
 	{
 		const SpecInfo spec = BuildSpecifiers(
 			specifiers, scope, std::string(), true);
-		const NodeId declarator = FindChild(declaration, "declarator");
+		const NodeId declarator = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		DeclaratorInfo parsed = BuildDeclarator(declarator, spec.type, scope);
 		parsed.name = DeclaratorNamePath(declarator).Last();
 		if (spec.is_constexpr)
 			parsed.type = program_->types.Qualify(parsed.type, CV_CONST);
-		const NodeId initializer = FindChild(declaration, "initializer");
+		const NodeId initializer = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER);
 		ExpressionInfo evaluated;
 		if (parsed.name == 0 || initializer == kNoNode ||
 			(!IsIntegral(parsed.type, true) && !IsFloating(parsed.type) &&
@@ -2166,11 +2166,11 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 		const std::size_t base_count = plan->base_initializers.size();
 		bool positional_base_pack = raw_initializers.size() == 1 &&
 			base_count == argument_count && base_count != 0 &&
-			FindChild(raw_initializers[0], "pack-expansion") != kNoNode;
+			FindChild(raw_initializers[0], ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION) != kNoNode;
 		if (positional_base_pack)
 		{
 			const NodeId id = FindChild(
-				raw_initializers[0], "mem-initializer-id");
+				raw_initializers[0], ::cppgm::pa10_syntax_detail::STAG_MEM_INITIALIZER_ID);
 			NodeId value = kNoNode;
 			for (std::uint32_t child = arena_->FirstEdge(raw_initializers[0]);
 				child != kNoEdge; child = arena_->NextEdge(child))
@@ -2196,7 +2196,7 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 		{
 			const NodeId initializer = syntax[index];
 			const ScopeId initializer_scope = scopes[index];
-			const NodeId id = FindChild(initializer, "mem-initializer-id");
+			const NodeId id = FindChild(initializer, ::cppgm::pa10_syntax_detail::STAG_MEM_INITIALIZER_ID);
 			if (id == kNoNode) return false;
 			const LookupResult found = program_->LookupDirect(
 				program_->entities[entity].member_scope,
@@ -2212,7 +2212,7 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 			if (value == kNoNode) return false;
 
 			LookupResult target_type;
-			const NodeId structured = FindChild(id, "structured-type-name");
+			const NodeId structured = FindChild(id, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 			if (structured != kNoNode)
 				target_type.type = ResolveStructuredTypeName(
 					structured, initializer_scope);

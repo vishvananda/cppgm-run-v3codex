@@ -143,6 +143,36 @@
 	APPLY(STAG_USING_DECLARATION, "using-declaration") \
 	APPLY(STAG_USING_DIRECTIVE, "using-directive") \
 	APPLY(STAG_VIRT_SPECIFIER, "virt-specifier") \
+	APPLY(STAG_BASE_CLAUSE, "base-clause") \
+	APPLY(STAG_CLASS_KEY, "class-key") \
+	APPLY(STAG_CLASS_VIRT_SPECIFIER, "class-virt-specifier") \
+	APPLY(STAG_CONSTEXPR_SELECTION, "constexpr-selection") \
+	APPLY(STAG_CONVERSION_TYPE_ID, "conversion-type-id") \
+	APPLY(STAG_CTOR_INITIALIZER, "ctor-initializer") \
+	APPLY(STAG_DECLTYPE_NAME, "decltype-name") \
+	APPLY(STAG_DEFAULT_ARGUMENT, "default-argument") \
+	APPLY(STAG_ELLIPSIS, "ellipsis") \
+	APPLY(STAG_ENUM_KEY, "enum-key") \
+	APPLY(STAG_EXCEPTION_TYPE_LIST, "exception-type-list") \
+	APPLY(STAG_FUNCTION_QUALIFIER, "function-qualifier") \
+	APPLY(STAG_FUNCTION_TRY_BLOCK, "function-try-block") \
+	APPLY(STAG_GNU_ASM_LABEL, "gnu-asm-label") \
+	APPLY(STAG_INLINE, "inline") \
+	APPLY(STAG_LAMBDA_SPECIFIER, "lambda-specifier") \
+	APPLY(STAG_MEM_INITIALIZER_ID, "mem-initializer-id") \
+	APPLY(STAG_MEMBER_SPECIFIERS, "member-specifiers") \
+	APPLY(STAG_NOEXCEPT_SPECIFICATION, "noexcept-specification") \
+	APPLY(STAG_PLACEMENT, "placement") \
+	APPLY(STAG_QUALIFIED_NAME, "qualified-name") \
+	APPLY(STAG_QUALIFIED_TYPE_NAME, "qualified-type-name") \
+	APPLY(STAG_SELECTION_INIT_STATEMENT, "selection-init-statement") \
+	APPLY(STAG_SPECIAL_INITIALIZER, "special-initializer") \
+	APPLY(STAG_TEMPLATE_PARAMETER_LIST, "template-parameter-list") \
+	APPLY(STAG_TEMPLATE_TEMPLATE_PARAMETER, "template-template-parameter") \
+	APPLY(STAG_TEMPLATE_TYPE_ARGUMENT_LIST, "template-type-argument-list") \
+	APPLY(STAG_TRAILING_RETURN_TYPE, "trailing-return-type") \
+	APPLY(STAG_TYPE_PACK_EXPANSION, "type-pack-expansion") \
+	APPLY(STAG_VIRTUAL, "virtual") \
 	APPLY(STAG_WHILE_STATEMENT, "while-statement") \
 	/**/
 

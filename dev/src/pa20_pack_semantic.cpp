@@ -65,9 +65,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeofPackExpression(
 
 ExpressionInfo SemanticAnalyzer::AnalyzeFoldExpression(NodeId node, ScopeId scope)
 {
-	const bool unary_left = FindChild(node, "fold-left") != kNoNode;
-	const bool unary_right = FindChild(node, "fold-right") != kNoNode;
-	const bool binary = FindChild(node, "fold-binary") != kNoNode;
+	const bool unary_left = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_FOLD_LEFT) != kNoNode;
+	const bool unary_right = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_FOLD_RIGHT) != kNoNode;
+	const bool binary = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_FOLD_BINARY) != kNoNode;
 	if ((!unary_left && !unary_right && !binary) ||
 		(unary_left && unary_right))
 		throw std::logic_error("fold expression has invalid direction");
@@ -200,9 +200,9 @@ NameId SemanticAnalyzer::FunctionParameterPackName(NodeId declarator)
 	if (declarator == kNoNode) return 0;
 	if (arena_->IsTag(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION))
 	{
-		const NodeId parameter = FindChild(declarator, "declarator");
+		const NodeId parameter = FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		if (parameter != kNoNode &&
-			FindChild(parameter, "parameter-pack") != kNoNode)
+			FindChild(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode)
 			return DeclaratorName(parameter);
 	}
 	for (std::uint32_t edge = arena_->FirstEdge(declarator); edge != kNoEdge;
@@ -228,11 +228,11 @@ void SemanticAnalyzer::CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
 		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_PACK_EXPRESSION)) return;
 	if (!root && arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 	{
-		NodeId declarator = FindChild(node, "abstract-declarator");
+		NodeId declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR);
 		if (declarator == kNoNode)
-			declarator = FindChild(node, "declarator");
+			declarator = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 		if (declarator != kNoNode &&
-			FindChild(declarator, "parameter-pack") != kNoNode) return;
+			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) != kNoNode) return;
 	}
 	const bool can_name_pack =
 		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
