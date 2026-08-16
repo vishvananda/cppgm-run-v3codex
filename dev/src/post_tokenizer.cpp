@@ -526,6 +526,21 @@ bool ParseFloatingSpelling(const std::string& text, bool allow_suffix,
 }
 
 template <typename T>
+void StoreFloatingObjectBytes(const T& value, unsigned char* bytes)
+{
+	std::memcpy(bytes, &value, sizeof(value));
+#if defined(__x86_64__) && defined(__BYTE_ORDER__) && \
+	__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	// The x86 extended format carries 80 value bits in a 16-byte object.
+	// Host conversions do not specify the trailing six padding bytes, but the
+	// phase-7 dump is deterministic and therefore must not expose them.
+	if (sizeof(T) == 16 && std::numeric_limits<T>::digits == 64 &&
+		std::numeric_limits<T>::max_exponent == 16384)
+		std::memset(bytes + 10, 0, sizeof(T) - 10);
+#endif
+}
+
+template <typename T>
 bool DecodeFloatingValue(const std::string& spelling,
 	unsigned char* bytes, std::size_t* size)
 {
@@ -539,7 +554,7 @@ bool DecodeFloatingValue(const std::string& spelling,
 		if (!end || *end != '\0')
 			return false;
 		value = static_cast<T>(parsed);
-		std::memcpy(bytes, &value, sizeof(value));
+		StoreFloatingObjectBytes(value, bytes);
 		*size = sizeof(value);
 		return true;
 	}
@@ -559,7 +574,7 @@ bool DecodeFloatingValue(const std::string& spelling,
 			return false;
 		value = static_cast<T>(parsed);
 	}
-	std::memcpy(bytes, &value, sizeof(value));
+	StoreFloatingObjectBytes(value, bytes);
 	*size = sizeof(value);
 	return true;
 }
