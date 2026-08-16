@@ -210,6 +210,7 @@ int run_lowir2native_mode(const vector<string> & args)
          << " spill_attempts=" << stats.spill_attempts
          << " spill_value_visits=" << stats.spill_value_visits
          << " spill_candidates=" << stats.spill_candidates
+         << " spill_full_scan_fallbacks=" << stats.spill_full_scan_fallbacks
          << " spills=" << stats.spills
          << " reclaim_attempts=" << stats.reclaim_attempts
          << " reclaim_parameter_visits=" << stats.reclaim_parameter_visits

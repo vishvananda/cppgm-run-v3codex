@@ -1088,6 +1088,8 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " spill_attempts=" << native_stats.spill_attempts
          << " spill_value_visits=" << native_stats.spill_value_visits
          << " spill_candidates=" << native_stats.spill_candidates
+         << " spill_full_scan_fallbacks="
+         << native_stats.spill_full_scan_fallbacks
          << " spills=" << native_stats.spills
          << " reclaim_attempts=" << native_stats.reclaim_attempts
          << " reclaim_parameter_visits="
@@ -1182,6 +1184,8 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << " spill_attempts=" << native_stats.spill_attempts
 			 << " spill_value_visits=" << native_stats.spill_value_visits
 			 << " spill_candidates=" << native_stats.spill_candidates
+			 << " spill_full_scan_fallbacks="
+			 << native_stats.spill_full_scan_fallbacks
 			 << " spills=" << native_stats.spills
 			 << " reclaim_attempts=" << native_stats.reclaim_attempts
 			 << " reclaim_parameter_visits="
