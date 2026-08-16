@@ -903,6 +903,7 @@ private:
 		NameId name) const;
 	bool AddUsingNameRelation(std::uint32_t edge, NameId name,
 		bool* owner_became_visible);
+	void IndexDirectUsingNames(ScopeId scope);
 	void PublishUsingName(ScopeId scope, NameId name);
 	void PropagateUsingName(ScopeId scope, NameId name);
 	LookupResult DirectLookup(ScopeId scope, NameId name,

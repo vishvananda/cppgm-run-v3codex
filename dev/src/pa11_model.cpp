@@ -1084,6 +1084,9 @@ void Program::AddUsingEdge(ScopeId owner, ScopeId target)
 	const ScopeId injection = left;
 	const std::uint32_t edge =
 		static_cast<std::uint32_t>(using_edges_.size());
+	if (scopes_[target].first_incoming_using ==
+		std::numeric_limits<std::uint32_t>::max())
+		IndexDirectUsingNames(target);
 	using_edges_.push_back(UsingEdge(owner, target, injection,
 		scopes_[target].first_incoming_using));
 	using_edge_slots_[slot] = edge + 1;
@@ -1269,8 +1272,26 @@ void Program::PropagateUsingName(ScopeId scope, NameId name)
 	}
 }
 
+void Program::IndexDirectUsingNames(ScopeId scope)
+{
+	std::vector<NameId> names;
+	names.reserve(scopes_[scope].name_entry_count);
+	for (std::uint32_t entry = scopes_[scope].first_name_entry;
+		entry != std::numeric_limits<std::uint32_t>::max();
+		entry = entries_[entry].next_in_scope)
+		names.push_back(entries_[entry].name);
+	for (std::vector<NameId>::const_reverse_iterator name = names.rbegin();
+		name != names.rend(); ++name)
+	{
+		bool created = false;
+		(void)EnsureVisibleName(scope, *name, &created);
+	}
+}
+
 void Program::PublishUsingName(ScopeId scope, NameId name)
 {
+	if (scopes_[scope].first_incoming_using ==
+		std::numeric_limits<std::uint32_t>::max()) return;
 	bool created = false;
 	(void)EnsureVisibleName(scope, name, &created);
 	if (created) PropagateUsingName(scope, name);
