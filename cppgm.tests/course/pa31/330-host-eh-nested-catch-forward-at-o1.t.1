@@ -1,0 +1,41 @@
+struct Error {};
+struct FirstError {};
+
+int condition;
+int caught;
+
+void may_throw()
+{
+  if(condition) {
+    Error error;
+    throw error;
+  }
+}
+
+void may_throw_inner()
+{
+  if(condition) {
+    FirstError error;
+    throw error;
+  }
+}
+
+void probe()
+{
+  try {
+    try {
+      may_throw_inner();
+    } catch(const FirstError &) {
+      may_throw();
+    }
+  } catch(const Error &) {
+    ++caught;
+  }
+}
+
+int main()
+{
+  condition = 1;
+  probe();
+  return caught == 1 ? 0 : 1;
+}

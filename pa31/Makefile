@@ -37,6 +37,7 @@ VPATH = $(SRC)
 RDEPDIR = $(OBJ)/release/.d
 DDEPDIR = $(OBJ)/debug/.d
 COURSE_TEST_ROOT = $(wildcard course/pa31)
+COURSE_O1_TEST = $(wildcard course/pa31/330-host-eh-nested-catch-forward-at-o1.t)
 
 $(shell mkdir -p $(RDEPDIR) $(DDEPDIR) >/dev/null)
 
@@ -112,6 +113,10 @@ else
 	@scripts/run_all_tests.pl $(CPPGM_TEST_APP) my $(COURSE_TEST_ROOT)
 endif
 	@scripts/compare_results.pl ref my $(COURSE_TEST_ROOT)
+ifneq ($(COURSE_O1_TEST),)
+	@CPPGM_APP_ARGS='-O1' perl ../scripts/run_cpphostinterop_tests_worker.pl $(CPPGM_TEST_APP) my $(COURSE_O1_TEST)
+	@scripts/compare_results.pl ref my $(COURSE_O1_TEST)
+endif
 endif
 
 ref-test:

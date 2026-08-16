@@ -339,7 +339,34 @@ HostEhRegionPlan analyze_host_eh_regions(
           instruction.operands[0].text);
       catch_entry_blocks[target->second] = true;
     }
+    if(i + 1 < function.blocks.size() &&
+       (function.blocks[i].instructions.empty() ||
+        !is_unconditional_exit(function.blocks[i].instructions.back())))
+      catch_entry_blocks[i + 1] = true;
   }
+
+  const auto merge_control_flow_edge =
+      [&](std::size_t source, std::size_t target, std::size_t state,
+          std::vector<std::size_t> * pending) {
+    if(catch_dispatch_blocks[source]) {
+      if(catch_entry_states[target] == unknown)
+        catch_entry_states[target] = state;
+      else if(catch_entry_states[target] != state)
+        throw std::logic_error(
+          "host EH catch-entry state mismatch at MIR block: " +
+          function.blocks[target].label);
+      merge_entry(target, state, pending);
+    } else if(catch_entry_blocks[target]) {
+      // A failed inner catch enters the enclosing catch through the same
+      // compiler-generated entry block as its dispatch landing pad.  The
+      // dispatch edge is authoritative: it has already consumed the
+      // enclosing protected region represented by this forwarded edge.
+      if(catch_entry_states[target] != unknown)
+        merge_entry(target, catch_entry_states[target], pending);
+    } else {
+      merge_entry(target, state, pending);
+    }
+  };
 
   merge_entry(0, 0, &worklist);
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
@@ -426,24 +453,7 @@ HostEhRegionPlan analyze_host_eh_regions(
             "host EH control-flow target has no MIR block: " +
             instruction.operands[0].text);
         const std::size_t target = target_entry->second;
-        if(catch_dispatch_blocks[block_number]) {
-          if(catch_entry_states[target] == unknown)
-            catch_entry_states[target] = state;
-          else if(catch_entry_states[target] != state)
-            throw std::logic_error(
-              "host EH catch-entry state mismatch at MIR block: " +
-              function.blocks[target].label);
-          merge_entry(target, state, &worklist);
-        } else if(catch_entry_blocks[target]) {
-          // A failed inner catch enters the enclosing catch through the same
-          // compiler-generated entry block as its dispatch landing pad.  The
-          // dispatch edge is authoritative: it has already consumed the
-          // enclosing protected region represented by this forwarded edge.
-          if(catch_entry_states[target] != unknown)
-            merge_entry(target, catch_entry_states[target], &worklist);
-        } else {
-          merge_entry(target, state, &worklist);
-        }
+        merge_control_flow_edge(block_number, target, state, &worklist);
       }
       if(is_function_exit(instruction) && state != 0)
         throw std::logic_error(
@@ -452,7 +462,8 @@ HostEhRegionPlan analyze_host_eh_regions(
     }
     if(!unconditional_exit && block_number + 1 < function.blocks.size()) {
       ++result.edge_count;
-      merge_entry(block_number + 1, state, &worklist);
+      merge_control_flow_edge(block_number, block_number + 1, state,
+                              &worklist);
     }
   }
   result.state_count = states.size() - 1;
