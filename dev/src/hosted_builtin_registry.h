@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace cppgm
@@ -74,7 +75,7 @@ enum TypeTransformKind
 	TYPE_TRANSFORM_UNDERLYING_TYPE
 };
 
-enum IntegerIntrinsicKind
+enum IntegerIntrinsicKind : std::uint8_t
 {
 	INTEGER_INTRINSIC_NONE,
 	INTEGER_INTRINSIC_BSWAP16,
@@ -120,7 +121,7 @@ struct IntegerIntrinsic
 	unsigned arity;
 };
 
-enum FloatingIntrinsicKind
+enum FloatingIntrinsicKind : std::uint8_t
 {
 	FLOATING_INTRINSIC_NONE,
 	FLOATING_INTRINSIC_CEIL,
@@ -180,7 +181,7 @@ struct FloatingIntrinsic
 	unsigned arity;
 };
 
-enum MemoryIntrinsicKind
+enum MemoryIntrinsicKind : std::uint8_t
 {
 	MEMORY_INTRINSIC_NONE,
 	MEMORY_INTRINSIC_ASSUME_ALIGNED,

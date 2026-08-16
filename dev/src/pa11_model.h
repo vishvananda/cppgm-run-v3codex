@@ -296,7 +296,7 @@ enum ScopeKind
 	SCOPE_BLOCK
 };
 
-enum NamedFlavor
+enum NamedFlavor : std::uint8_t
 {
 	NAMED_NONE,
 	NAMED_STRUCT,
@@ -308,7 +308,7 @@ enum NamedFlavor
 	NAMED_TEMPLATE_PARAMETER
 };
 
-enum BindingKind
+enum BindingKind : std::uint8_t
 {
 	BIND_TYPE,
 	BIND_TYPE_ALIAS,
@@ -318,12 +318,21 @@ enum BindingKind
 	BIND_PARAMETER
 };
 
-enum LanguageLinkage { LANGUAGE_LINKAGE_CPP, LANGUAGE_LINKAGE_C };
+enum LanguageLinkage : std::uint8_t
+{
+	LANGUAGE_LINKAGE_CPP,
+	LANGUAGE_LINKAGE_C
+};
 
-enum StorageClass { STORAGE_CLASS_NONE, STORAGE_CLASS_EXTERN,
+enum StorageClass : std::uint8_t { STORAGE_CLASS_NONE, STORAGE_CLASS_EXTERN,
 	STORAGE_CLASS_STATIC };
 
-enum AccessKind { ACCESS_PUBLIC, ACCESS_PROTECTED, ACCESS_PRIVATE };
+enum AccessKind : std::uint8_t
+{
+	ACCESS_PUBLIC,
+	ACCESS_PROTECTED,
+	ACCESS_PRIVATE
+};
 
 enum FunctionExceptionBoundaryKind : std::uint8_t
 {
@@ -332,7 +341,7 @@ enum FunctionExceptionBoundaryKind : std::uint8_t
 	FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED
 };
 
-enum OperatorKind
+enum OperatorKind : std::uint8_t
 {
 	OPERATOR_NONE,
 	OPERATOR_PLUS,
@@ -379,7 +388,7 @@ enum OperatorKind
 	OPERATOR_LITERAL
 };
 
-enum BuiltinFunctionKind
+enum BuiltinFunctionKind : std::uint8_t
 {
 	BUILTIN_FUNCTION_NONE,
 	BUILTIN_FUNCTION_STRLEN,
@@ -652,25 +661,26 @@ struct BindingRecord
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
 	AccessKind access;
-	bool constant, nonthrowing, noreturn_function, unnamed_namespace_linkage,
-		thread_local_storage, non_static_data_member,
-		mutable_member, bit_field, potentially_overlapping_member,
-		anonymous_union_storage,
-		static_member_function, has_default_member_initializer,
-		conversion_function, constructor,
-		constructor_base_entry, destructor, destructor_base_entry,
-		inline_function, force_inline, virtual_function, pure_virtual, final_virtual,
-		override_specifier, weak_odr, weak_symbol, object_output_root,
-		emission_demanded;
-	bool explicit_instantiation_suppressed;
-	bool template_parameter_constant;
-	bool variable_template_specialization;
+	bool constant : 1, nonthrowing : 1, noreturn_function : 1,
+		unnamed_namespace_linkage : 1, thread_local_storage : 1,
+		non_static_data_member : 1, mutable_member : 1, bit_field : 1,
+		potentially_overlapping_member : 1, anonymous_union_storage : 1,
+		static_member_function : 1, has_default_member_initializer : 1,
+		conversion_function : 1, constructor : 1,
+		constructor_base_entry : 1, destructor : 1,
+		destructor_base_entry : 1, inline_function : 1, force_inline : 1,
+		virtual_function : 1, pure_virtual : 1, final_virtual : 1,
+		override_specifier : 1, weak_odr : 1, weak_symbol : 1,
+		object_output_root : 1, emission_demanded : 1;
+	bool explicit_instantiation_suppressed : 1;
+	bool template_parameter_constant : 1;
+	bool variable_template_specialization : 1;
 	// A canonical callable specialization owns boundary exceptions that cannot
 	// be inferred from its result type alone.  Keeping this on the binding
 	// prevents one call site from mutating the ABI of every function returning
 	// the same class entity.
-	bool force_indirect_class_result_abi;
-	bool closure_template_specialization;
+	bool force_indirect_class_result_abi : 1;
+	bool closure_template_specialization : 1;
 
 	BindingRecord();
 };
