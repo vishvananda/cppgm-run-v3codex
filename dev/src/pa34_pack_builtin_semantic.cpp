@@ -15,7 +15,8 @@ bool SemanticAnalyzer::SyntaxNamesUnboundTemplateParameter(
 	if (arena_->IsTag(syntax, "id-expression") &&
 		FindChild(syntax, "structured-type-name") == kNoNode)
 	{
-		const NameId name = program_->names.Intern(PayloadSource(syntax));
+		const NameId name =
+			program_->names.UseInterned(arena_->SemanticPayloadId(syntax));
 		const LookupResult found = program_->LookupName(
 			scope, name, LOOKUP_ORDINARY);
 		if (found.ordinary != kNoBinding)

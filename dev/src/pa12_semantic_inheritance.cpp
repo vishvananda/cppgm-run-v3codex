@@ -645,7 +645,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 			if (projection_offset != 0)
 			{
 				const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
-					category, program_->names.Intern(arena_->Payload(node)));
+					category,
+					program_->names.UseInterned(arena_->PayloadId(node)));
 				dump_.nodes[cast].base_projection_count = 1;
 				dump_.nodes[cast].base_projection_offset = projection_offset;
 				dump_.nodes[cast].has_base_projection_offset = true;
@@ -747,7 +748,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCast(NodeId node, ScopeId scope)
 	if (!valid) return CandidateExpressionFailure(
 		"invalid explicit conversion");
 	const std::uint32_t cast = MakeDump(DUMP_CAST_EXPRESSION, target,
-		VALUE_PRVALUE, program_->names.Intern(arena_->Payload(node)));
+		VALUE_PRVALUE, program_->names.UseInterned(arena_->PayloadId(node)));
 	if (cast_kind.find("REINTER") == std::string::npos && IsPointer(target) &&
 		IsPointer(decayed_operand_type))
 	{

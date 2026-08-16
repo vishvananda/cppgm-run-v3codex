@@ -415,7 +415,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 	else throw std::runtime_error("unsupported unary operator");
 	const std::uint32_t expression = MakeDump(postfix ?
 		DUMP_POSTFIX_EXPRESSION : DUMP_UNARY_EXPRESSION,
-		result_type, category, program_->names.Intern(arena_->Payload(node)));
+		result_type, category,
+		program_->names.UseInterned(arena_->PayloadId(node)));
 	if (member_pointer_address)
 		RecordMemberPointerAddressFacts(expression, selected_member);
 	dump_.Add(expression, operand.node);
@@ -435,39 +436,42 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 	if (operation == "*" && operand_object != kNoConstexprObject)
 		SetExpressionSubobject(
 			&result, operand_object, operand_complete_object);
-	if (operation == "*" && lvalue_address != kNoConstexprAddress)
-	{
-		const ConstexprAddressValue* pointed =
-			ConstexprAddressAt(lvalue_address);
-		if (pointed && pointed->kind == CONSTEXPR_ADDRESS_BINDING &&
-			pointed->identity < program_->bindings.size() &&
-			program_->bindings[static_cast<BindingId>(pointed->identity)].constant &&
-			program_->types.Get(program_->types.RemoveTopCv(EffectiveType(
-				program_->bindings[static_cast<BindingId>(
-					pointed->identity)].type))).kind == TYPE_ARRAY &&
-			pointed->offset >= 0)
-		{
-			const std::uint32_t object = BindingObject(
-				static_cast<BindingId>(pointed->identity));
-			const std::int64_t step = static_cast<std::int64_t>(
-				program_->SizeOf(result_type));
-			if (object != kNoConstexprObject && step > 0 &&
-				pointed->offset < pointed->upper_bound &&
-				pointed->offset % step == 0)
-			{
-				const ConstexprObjectElement* element =
-					ConstexprObjectElementAt(object,
-						static_cast<std::size_t>(pointed->offset / step));
-				if (element) SetExpressionObjectElement(&result, *element);
-			}
-		}
-		ConstexprScalarValue loaded;
-		if (TryLoadConstexprIntegralAddress(
-			lvalue_address, result_type, &loaded))
-			SetExpressionScalar(&result, loaded);
-	}
+	RecordUnaryDereferenceConstant(
+		operation, lvalue_address, result_type, &result);
 	++expression_count_;
 	return result;
+}
+
+void SemanticAnalyzer::RecordUnaryDereferenceConstant(
+	const std::string& operation, std::uint32_t lvalue_address,
+	TypeId result_type, ExpressionInfo* result)
+{
+	if (operation != "*" || lvalue_address == kNoConstexprAddress) return;
+	const ConstexprAddressValue* pointed = ConstexprAddressAt(lvalue_address);
+	if (pointed && pointed->kind == CONSTEXPR_ADDRESS_BINDING &&
+		pointed->identity < program_->bindings.size() &&
+		program_->bindings[static_cast<BindingId>(pointed->identity)].constant &&
+		program_->types.Get(program_->types.RemoveTopCv(EffectiveType(
+			program_->bindings[static_cast<BindingId>(
+				pointed->identity)].type))).kind == TYPE_ARRAY &&
+		pointed->offset >= 0)
+	{
+		const std::uint32_t object = BindingObject(
+			static_cast<BindingId>(pointed->identity));
+		const std::int64_t step = static_cast<std::int64_t>(
+			program_->SizeOf(result_type));
+		if (object != kNoConstexprObject && step > 0 &&
+			pointed->offset < pointed->upper_bound &&
+			pointed->offset % step == 0)
+		{
+			const ConstexprObjectElement* element = ConstexprObjectElementAt(
+				object, static_cast<std::size_t>(pointed->offset / step));
+			if (element) SetExpressionObjectElement(result, *element);
+		}
+	}
+	ConstexprScalarValue loaded;
+	if (TryLoadConstexprIntegralAddress(lvalue_address, result_type, &loaded))
+		SetExpressionScalar(result, loaded);
 }
 
 ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)

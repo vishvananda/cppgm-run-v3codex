@@ -1573,7 +1573,7 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 		{
 			const TypeId type = BuildTypeId(FindChild(node, "type-id"), scope);
 			valid = AddConstexprTypeAlias(
-				program_->names.Intern(arena_->Payload(node)), type);
+				program_->names.UseInterned(arena_->PayloadId(node)), type);
 		}
 		else if (arena_->IsTag(node, "using-directive"))
 		{
@@ -2201,7 +2201,7 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 			if (id == kNoNode) return false;
 			const LookupResult found = program_->LookupDirect(
 				program_->entities[entity].member_scope,
-				program_->names.Intern(arena_->Payload(id)), LOOKUP_ORDINARY);
+				program_->names.UseInterned(arena_->PayloadId(id)), LOOKUP_ORDINARY);
 			NodeId value = kNoNode;
 			for (std::uint32_t child = arena_->FirstEdge(initializer);
 				child != kNoEdge; child = arena_->NextEdge(child))

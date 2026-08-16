@@ -1422,7 +1422,7 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 		!CanAccessMember(found.type_declaration, found.naming_class))
 		throw std::runtime_error("inaccessible template argument");
 	const NameId requested = structured == kNoNode ?
-		program_->names.Intern(PayloadSource(name)) :
+		program_->names.UseInterned(arena_->SemanticPayloadId(name)) :
 		StructuredNamePath(structured).Last();
 	const std::size_t class_index =
 		FindClassTemplateIndex(found, requested);
@@ -1481,7 +1481,8 @@ void SemanticAnalyzer::RegisterAliasTemplate(NodeId declaration,
 	ScopeId scope, AccessKind member_access,
 	const std::vector<TemplateParameter>& parameters)
 {
-	const NameId name = program_->names.Intern(arena_->Payload(declaration));
+	const NameId name =
+		program_->names.UseInterned(arena_->PayloadId(declaration));
 	const NodeId type_id = FindChild(declaration, "type-id");
 	if (name == 0 || type_id == kNoNode)
 		throw std::runtime_error("invalid alias template declaration");

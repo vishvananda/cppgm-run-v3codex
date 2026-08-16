@@ -1127,7 +1127,8 @@ bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
 		const FunctionInfo& function = GetFunction(current_function_context_);
 		if (function.parameters.empty() ||
 			!arena_->IsTag(argument_syntax[1], "id-expression") ||
-			program_->names.Intern(arena_->Payload(argument_syntax[1])) !=
+			program_->names.UseInterned(
+				arena_->PayloadId(argument_syntax[1])) !=
 				function.parameters.back().name)
 			throw std::runtime_error("va_start marker is not the last parameter");
 	}

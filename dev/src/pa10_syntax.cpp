@@ -1388,7 +1388,7 @@ NodeId Parser::ParsePostfixExpression() {
 NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	while (true) {
 		if (At(OP_LBRACE) && arena_.IsTag(value, "id-expression") &&
-			(HasNameFact(strings_.Intern(arena_.Payload(value)), kKnownType) ||
+			(HasNameFact(arena_.PayloadId(value), kKnownType) ||
 			 IsFundamentalTypeSpelling(arena_.Payload(value)) ||
 			 arena_.FirstEdge(value) != kNoEdge ||
 			 (arena_.Flags(value) & SYNTAX_FLAG_TYPENAME) != 0)) {

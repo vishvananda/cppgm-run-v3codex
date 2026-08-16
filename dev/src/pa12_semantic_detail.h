@@ -1276,6 +1276,9 @@ private:
 		BindingId* member) const;
 	void RecordMemberPointerAddressFacts(NodeId expression,
 		BindingId selected);
+	void RecordUnaryDereferenceConstant(const std::string& operation,
+		std::uint32_t lvalue_address, TypeId result_type,
+		ExpressionInfo* result);
 	ExpressionInfo AnalyzeBinary(NodeId node, ScopeId scope);
 	bool TryAnalyzeMemberPointerApplication(const std::string& operation,
 		const std::string& display_operation, const ExpressionInfo& left,

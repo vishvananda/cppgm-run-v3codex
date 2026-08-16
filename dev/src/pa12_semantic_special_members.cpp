@@ -448,7 +448,7 @@ bool SemanticAnalyzer::AnalyzeQualifiedAssignmentStatement(NodeId node,
 	if (candidates.empty())
 		throw std::runtime_error("qualified assignment operator was not found");
 	const NameId argument_name =
-		program_->names.Intern(arena_->Payload(identifier));
+		program_->names.UseInterned(arena_->PayloadId(identifier));
 	const LookupResult found_argument =
 		program_->LookupName(scope, argument_name, LOOKUP_ORDINARY);
 	if (found_argument.ordinary == kNoBinding)

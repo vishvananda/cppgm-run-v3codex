@@ -1203,7 +1203,7 @@ void SemanticAnalyzer::ParseTemplateParametersWithDependentNames(
 			}
 			const NodeId identifier = FindChild(parameter, "identifier");
 			record.name = identifier == kNoNode ? 0 :
-				program_->names.Intern(arena_->Payload(identifier));
+				program_->names.UseInterned(arena_->PayloadId(identifier));
 		}
 		else if (arena_->IsTag(parameter, "non-type-template-parameter"))
 		{

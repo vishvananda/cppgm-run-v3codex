@@ -277,7 +277,8 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 		return false;
 	const NamePath path = StructuredNamePath(expression);
 	const NameId name = path.Empty() ?
-		program_->names.Intern(PayloadSource(expression)) : path.Last();
+		program_->names.UseInterned(arena_->SemanticPayloadId(expression)) :
+		path.Last();
 	const LookupResult found = program_->LookupMember(
 		entity, name, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)

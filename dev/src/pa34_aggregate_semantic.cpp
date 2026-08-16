@@ -32,7 +32,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
 	const auto selected_member = [this, entity, &members](NodeId syntax)
 		-> BindingId
 	{
-		const NameId name = program_->names.Intern(arena_->Payload(syntax));
+		const NameId name =
+			program_->names.UseInterned(arena_->PayloadId(syntax));
 		const LookupResult found =
 			program_->LookupMember(entity, name, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding ||

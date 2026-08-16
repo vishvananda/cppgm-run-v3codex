@@ -1102,7 +1102,7 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 			const NodeId id = FindChild(initializer, "mem-initializer-id");
 			if (id == kNoNode)
 				throw std::runtime_error("member initializer has no target");
-			const NameId name = program_->names.Intern(arena_->Payload(id));
+			const NameId name = program_->names.UseInterned(arena_->PayloadId(id));
 			const LookupResult found = program_->LookupDirect(
 				program_->entities[entity].member_scope, name, LOOKUP_ORDINARY);
 			NodeId value = kNoNode;

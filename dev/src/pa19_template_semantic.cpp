@@ -973,7 +973,7 @@ bool SemanticAnalyzer::RetainedClassDeclaresNestedPath(NodeId declaration,
 			const NodeId structure = FindChild(
 				candidate, "structured-type-name");
 			const NameId name = structure == kNoNode ?
-				program_->names.Intern(arena_->Payload(candidate)) :
+				program_->names.UseInterned(arena_->PayloadId(candidate)) :
 				StructuredNamePath(structure).Last();
 			if (name == path[part])
 			{
@@ -1137,7 +1137,7 @@ bool SemanticAnalyzer::AnalyzeFriendClassTemplate(NodeId target,
 	NamePath path;
 	const NodeId structure = FindChild(declaration, "structured-type-name");
 	if (structure != kNoNode) path = StructuredNamePath(structure);
-	else path.Push(program_->names.Intern(arena_->Payload(declaration)));
+	else path.Push(program_->names.UseInterned(arena_->PayloadId(declaration)));
 	if (path.Empty())
 		throw std::runtime_error("friend class template has no name");
 	ScopeId declaration_scope = scope;
@@ -1277,7 +1277,7 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 		declaration, "structured-type-name");
 	if (name_structure != kNoNode)
 		path = StructuredNamePath(name_structure);
-	else path.Push(program_->names.Intern(arena_->Payload(declaration)));
+	else path.Push(program_->names.UseInterned(arena_->PayloadId(declaration)));
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (name == 0 || owner == kNoScope)
@@ -1561,7 +1561,7 @@ void SemanticAnalyzer::ApplyClassTemplateMemberDefinitions(
 		{
 			const NodeId structure = FindChild(node, "structured-type-name");
 			const NameId terminal_name = structure == kNoNode ?
-				program_->names.Intern(arena_->Payload(node)) :
+				program_->names.UseInterned(arena_->PayloadId(node)) :
 				StructuredNamePath(structure).Last();
 			const std::string terminal = program_->names.Get(terminal_name);
 			(void)AnalyzeClass(node, definition_scope, std::string(), false,

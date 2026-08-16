@@ -36,7 +36,7 @@ void SemanticAnalyzer::ValidateConstexprConstructorDefinition(
 				program_->entities[entity].identity_name)) return;
 			const LookupResult found = program_->LookupDirect(
 				program_->entities[entity].member_scope,
-				program_->names.Intern(arena_->Payload(id)), LOOKUP_ORDINARY);
+				program_->names.UseInterned(arena_->PayloadId(id)), LOOKUP_ORDINARY);
 			if (found.ordinary == kNoBinding ||
 				!program_->bindings[found.ordinary].non_static_data_member ||
 				program_->bindings[found.ordinary].member_owner != entity)

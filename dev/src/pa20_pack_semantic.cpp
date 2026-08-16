@@ -41,7 +41,7 @@ bool HasFunctionParameterPack(const SyntaxArena& arena, NodeId node)
 ExpressionInfo SemanticAnalyzer::AnalyzeSizeofPackExpression(
 	NodeId node, ScopeId scope)
 {
-	const NameId name = program_->names.Intern(arena_->Payload(node));
+	const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 	std::vector<TemplateArgument> template_arguments;
 	std::vector<BindingId> function_arguments;
 	std::vector<std::size_t> constexpr_arguments;

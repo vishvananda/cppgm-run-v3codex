@@ -1585,7 +1585,7 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 			value = expression.value;
 		}
 		const NameId enumerator_name =
-			program_->names.Intern(arena_->Payload(enumerator));
+			program_->names.UseInterned(arena_->PayloadId(enumerator));
 		const BindingId binding = program_->AddBinding(value_scope,
 			BIND_ENUMERATOR, enumerator_name, underlying, true, value);
 		enumerators.push_back(binding);
@@ -2406,7 +2406,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	{
 		const TypeId type = BuildIdentityOnlyTypeId(
 			FindChild(node, "type-id"), scope);
-		const NameId name = program_->names.Intern(arena_->Payload(node));
+		const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 		const BindingId binding =
 			program_->AddBinding(scope, BIND_TYPE_ALIAS, name, type);
 		if (class_owner != kNoEntity)
@@ -2428,7 +2428,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		if (target_scope == kNoScope)
 			throw std::runtime_error("namespace alias target not found");
 		program_->AddNamespaceAlias(scope,
-			program_->names.Intern(arena_->Payload(node)), target_scope);
+			program_->names.UseInterned(arena_->PayloadId(node)), target_scope);
 		return;
 	}
 	if (arena_->IsTag(node, "using-directive"))

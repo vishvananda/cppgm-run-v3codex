@@ -337,7 +337,7 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 	{
 		const NodeId type_id = FindChild(node, "type-id");
 		const TypeId type = BuildTypeId(type_id, scope);
-		const NameId name = program_->names.Intern(arena_->Payload(node));
+		const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 		program_->AddBinding(scope, BIND_TYPE_ALIAS, name, type);
 		return;
 	}
@@ -350,7 +350,7 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 		if (target_scope == kNoScope)
 			throw std::runtime_error("namespace alias target is not a namespace");
 		program_->AddNamespaceAlias(scope,
-			program_->names.Intern(arena_->Payload(node)), target_scope);
+			program_->names.UseInterned(arena_->PayloadId(node)), target_scope);
 		return;
 	}
 	if (arena_->IsTag(node, "using-directive"))
@@ -405,7 +405,8 @@ void TypeAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 				throw std::runtime_error("non-type template parameter in PA11");
 			const NodeId identifier = FindChild(parameter, "identifier");
 			if (identifier == kNoNode) continue;
-			const NameId name = program_->names.Intern(arena_->Payload(identifier));
+			const NameId name =
+				program_->names.UseInterned(arena_->PayloadId(identifier));
 			const NamedFlavor flavor =
 				FindChild(parameter, "template-template-parameter") != kNoNode ?
 				NAMED_TEMPLATE_PARAMETER : NAMED_TYPENAME_PARAMETER;
@@ -629,7 +630,7 @@ TypeId TypeAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 		const std::int64_t value = initializer == kNoNode ? next_value :
 			Evaluate(initializer, value_scope).value;
 		const NameId enumerator_name =
-			program_->names.Intern(arena_->Payload(enumerator));
+			program_->names.UseInterned(arena_->PayloadId(enumerator));
 		program_->AddBinding(value_scope, BIND_ENUMERATOR, enumerator_name,
 			type, true, value, qualified ? flavor : NAMED_NONE,
 			qualified ? display_name : 0);

@@ -730,14 +730,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		else if (spelling == "nullptr")
 		{
 			result = MakeLiteral(program_->types.Fundamental(FUND_NULLPTR_T),
-				program_->names.Intern(arena_->Payload(node)));
+				program_->names.UseInterned(arena_->PayloadId(node)));
 			result.constant = true;
 			result.value = 0;
 		}
 		else if (spelling == "true" || spelling == "false")
 		{
 			result = MakeLiteral(program_->types.Fundamental(FUND_BOOL),
-				program_->names.Intern(arena_->Payload(node)));
+				program_->names.UseInterned(arena_->PayloadId(node)));
 			result.constant = true;
 			result.value = spelling == "true";
 		}
@@ -1617,7 +1617,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	}
 	const TypeId result_type = EffectiveType(left.type);
 	const std::uint32_t expression = MakeDump(DUMP_ASSIGNMENT_EXPRESSION,
-		result_type, VALUE_LVALUE, program_->names.Intern(arena_->Payload(node)));
+		result_type, VALUE_LVALUE,
+		program_->names.UseInterned(arena_->PayloadId(node)));
 	dump_.nodes[expression].target_typed_scalar_immediate =
 		HasTargetTypedSpecializedMemberImmediate(left, right);
 	dump_.nodes[expression].reverse_pointer_compound_assignment =

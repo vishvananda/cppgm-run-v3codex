@@ -14,7 +14,7 @@ bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 {
 	if (arena_->IsTag(node, "labeled-statement"))
 	{
-		const NameId name = program_->names.Intern(arena_->Payload(node));
+		const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 		const std::uint32_t statement = MakeDump(DUMP_LABELED_STATEMENT,
 			kNoType, VALUE_NONE, name);
 		dump_.Add(output_parent, statement);
@@ -25,7 +25,7 @@ bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 		return true;
 	}
 	if (!arena_->IsTag(node, "goto-statement")) return false;
-	const NameId name = program_->names.Intern(arena_->Payload(node));
+	const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 	const std::uint32_t statement = MakeDump(DUMP_GOTO_STATEMENT,
 		kNoType, VALUE_NONE, name);
 	dump_.Add(output_parent, statement);
