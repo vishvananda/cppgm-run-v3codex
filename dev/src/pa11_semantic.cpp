@@ -163,7 +163,7 @@ NodeId TypeAnalyzer::FirstSemanticChild(NodeId node) const
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(child, "structured-type-name")) return child;
+		if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME)) return child;
 	}
 	return kNoNode;
 }
@@ -175,18 +175,18 @@ std::string TypeAnalyzer::PayloadSource(NodeId node) const
 
 bool TypeAnalyzer::CanContainBlockOrDeclaration(NodeId node) const
 {
-	return arena_->IsTag(node, "labeled-statement") ||
-		arena_->IsTag(node, "case-statement") ||
-		arena_->IsTag(node, "default-statement") ||
-		arena_->IsTag(node, "if-statement") ||
-		arena_->IsTag(node, "switch-statement") ||
-		arena_->IsTag(node, "while-statement") ||
-		arena_->IsTag(node, "do-statement") ||
-		arena_->IsTag(node, "for-statement") ||
-		arena_->IsTag(node, "for-init-statement") ||
-		arena_->IsTag(node, "try-block") ||
-		arena_->IsTag(node, "handler") ||
-		arena_->IsTag(node, "then") || arena_->IsTag(node, "else");
+	return arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LABELED_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CASE_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DEFAULT_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IF_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SWITCH_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_WHILE_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DO_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOR_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOR_INIT_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TRY_BLOCK) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_HANDLER) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_THEN) || arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ELSE);
 }
 
 NamePath TypeAnalyzer::ParseNamePath(const std::string& spelling)
@@ -240,71 +240,71 @@ ScopeId TypeAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
 
 bool TypeAnalyzer::IsDeclaration(NodeId node) const
 {
-	return arena_->IsTag(node, "simple-declaration") ||
-		arena_->IsTag(node, "function-definition") ||
-		arena_->IsTag(node, "alias-declaration") ||
-		arena_->IsTag(node, "using-declaration") ||
-		arena_->IsTag(node, "using-directive") ||
-		arena_->IsTag(node, "namespace-definition") ||
-		arena_->IsTag(node, "namespace-alias-definition") ||
-		arena_->IsTag(node, "template-declaration") ||
-		arena_->IsTag(node, "class-specifier") ||
-		arena_->IsTag(node, "class-forward-declaration") ||
-		arena_->IsTag(node, "enum-specifier") ||
-		arena_->IsTag(node, "static-assert-declaration") ||
-		arena_->IsTag(node, "empty-declaration") ||
-		arena_->IsTag(node, "linkage-specification");
+	return arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_DEFINITION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_SPECIFIER) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_STATIC_ASSERT_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EMPTY_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LINKAGE_SPECIFICATION);
 }
 
 void TypeAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope)
 {
-	if (arena_->IsTag(node, "empty-declaration")) return;
-	if (arena_->IsTag(node, "namespace-definition"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EMPTY_DECLARATION)) return;
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_DEFINITION))
 	{
 		AnalyzeNamespace(node, scope);
 		return;
 	}
-	if (arena_->IsTag(node, "namespace-alias-definition") ||
-		arena_->IsTag(node, "using-directive") ||
-		arena_->IsTag(node, "using-declaration") ||
-		arena_->IsTag(node, "alias-declaration"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DECLARATION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 	{
 		AnalyzeUsing(node, scope);
 		return;
 	}
-	if (arena_->IsTag(node, "template-declaration"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION))
 	{
 		AnalyzeTemplate(node, scope);
 		return;
 	}
-	if (arena_->IsTag(node, "simple-declaration"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 	{
 		AnalyzeSimple(node, scope);
 		return;
 	}
-	if (arena_->IsTag(node, "function-definition"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION))
 	{
 		AnalyzeFunction(node, scope);
 		return;
 	}
-	if (arena_->IsTag(node, "class-specifier") ||
-		arena_->IsTag(node, "class-forward-declaration"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION))
 	{
 		AnalyzeClass(node, scope, std::string(), false);
 		return;
 	}
-	if (arena_->IsTag(node, "enum-specifier"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_SPECIFIER))
 	{
 		AnalyzeEnum(node, scope, std::string(), false);
 		return;
 	}
-	if (arena_->IsTag(node, "static-assert-declaration"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_STATIC_ASSERT_DECLARATION))
 	{
 		const ConstantValue value = Evaluate(FirstSemanticChild(node), scope);
 		if (value.value == 0) throw std::runtime_error("static assertion failed");
 		return;
 	}
-	if (arena_->IsTag(node, "linkage-specification"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LINKAGE_SPECIFICATION))
 	{
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
@@ -333,7 +333,7 @@ void TypeAnalyzer::AnalyzeNamespace(NodeId node, ScopeId scope)
 
 void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 {
-	if (arena_->IsTag(node, "alias-declaration"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 	{
 		const NodeId type_id = FindChild(node, "type-id");
 		const TypeId type = BuildTypeId(type_id, scope);
@@ -344,7 +344,7 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 	const NodeId target_node = FindChild(node, "target");
 	if (target_node == kNoNode) throw std::runtime_error("missing using target");
 	const std::string target = arena_->Payload(target_node);
-	if (arena_->IsTag(node, "namespace-alias-definition"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION))
 	{
 		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
 		if (target_scope == kNoScope)
@@ -353,7 +353,7 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 			program_->names.UseInterned(arena_->PayloadId(node)), target_scope);
 		return;
 	}
-	if (arena_->IsTag(node, "using-directive"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
 		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
 		if (target_scope == kNoScope)
@@ -401,7 +401,7 @@ void TypeAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope)
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId parameter = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(parameter, "type-parameter"))
+			if (!arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_TYPE_PARAMETER))
 				throw std::runtime_error("non-type template parameter in PA11");
 			const NodeId identifier = FindChild(parameter, "identifier");
 			if (identifier == kNoNode) continue;
@@ -455,7 +455,7 @@ TypeId TypeAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const NamedFlavor flavor = ClassFlavor(node);
 	std::string spelling = arena_->Payload(node);
 	if (spelling.empty()) spelling = hint;
-	const bool definition = arena_->IsTag(node, "class-specifier") &&
+	const bool definition = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) &&
 		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0;
 	if (spelling.empty() && flavor == NAMED_UNION)
 	{
@@ -624,7 +624,7 @@ TypeId TypeAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId enumerator = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(enumerator, "enumerator")) continue;
+		if (!arena_->IsTag(enumerator, ::cppgm::pa10_syntax_detail::STAG_ENUMERATOR)) continue;
 		const NodeId initializer = FirstSemanticChild(enumerator);
 		const ScopeId value_scope = scoped ? enum_scope : scope;
 		const std::int64_t value = initializer == kNoNode ? next_value :
@@ -663,7 +663,7 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "atomic-type-specifier"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ATOMIC_TYPE_SPECIFIER))
 		{
 			const TypeId underlying = BuildTypeId(
 				FirstSemanticChild(child), scope);
@@ -672,16 +672,16 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			result.type = program_->types.Qualify(underlying, CV_ATOMIC);
 			continue;
 		}
-		const bool class_specifier = arena_->IsTag(child, "class-specifier");
+		const bool class_specifier = arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER);
 		const bool class_forward =
-			arena_->IsTag(child, "class-forward-declaration");
+			arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION);
 		if (class_specifier || class_forward)
 		{
 			result.type = AnalyzeClass(child, scope, hint,
 				has_declarators && class_forward);
 			continue;
 		}
-		if (arena_->IsTag(child, "enum-specifier"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ENUM_SPECIFIER))
 		{
 			const bool definition =
 				(arena_->Flags(child) & SYNTAX_FLAG_DEFINITION) != 0;
@@ -689,17 +689,17 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 				has_declarators && !definition && arena_->Payload(child).size() != 0);
 			continue;
 		}
-		if (arena_->IsTag(child, "decltype-specifier") ||
-			(arena_->IsTag(child, "decl-specifier") &&
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLTYPE_SPECIFIER) ||
+			(arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) &&
 			 FirstSemanticChild(child) != kNoNode))
 		{
 			result.type = DecltypeType(FirstSemanticChild(child), scope);
 			continue;
 		}
-		if (arena_->IsTag(child, "cv-qualifier") ||
-			arena_->IsTag(child, "decl-specifier") ||
-			arena_->IsTag(child, "type-specifier") ||
-			arena_->IsTag(child, "type-name"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CV_QUALIFIER) ||
+			arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) ||
+			arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER) ||
+			arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME))
 		{
 			const std::string spelling = PayloadSource(child);
 			if (spelling == "typedef") result.is_typedef = true;
@@ -805,12 +805,12 @@ std::vector<ParameterInfo> TypeAnalyzer::BuildParameters(NodeId node,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "parameter-pack"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK))
 		{
 			*variadic = true;
 			continue;
 		}
-		if (!arena_->IsTag(child, "parameter-declaration")) continue;
+		if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) continue;
 		const NodeId specifiers = FindChild(child, "decl-specifier-seq");
 		const NodeId declarator = FindChild(child, "declarator");
 		const SpecInfo spec = BuildSpecifiers(specifiers, scope,
@@ -848,7 +848,7 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "ptr-operator"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PTR_OPERATOR))
 		{
 			const std::string operation = PayloadSource(child);
 			if (operation == "*") type = program_->types.Pointer(type);
@@ -859,7 +859,7 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				type = program_->types.Reference(TYPE_RVALUE_REFERENCE, type);
 			else throw std::runtime_error("member pointer outside PA11");
 		}
-		else if (arena_->IsTag(child, "cv-qualifier"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CV_QUALIFIER))
 		{
 			const std::string qualifier = PayloadSource(child);
 			const std::uint8_t flag = qualifier == "const" ?
@@ -867,27 +867,27 @@ DeclaratorInfo TypeAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 			if (saw_function_suffix) function_cv |= flag;
 			else type = program_->types.Qualify(type, flag);
 		}
-		else if (arena_->IsTag(child, "ref-qualifier"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_REF_QUALIFIER))
 		{
 			if (function_ref != FUNCTION_REF_NONE)
 				throw std::runtime_error("duplicate function ref-qualifier");
 			function_ref = PayloadSource(child) == "&" ?
 				FUNCTION_REF_LVALUE : FUNCTION_REF_RVALUE;
 		}
-		else if (arena_->IsTag(child, "nested-declarator"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NESTED_DECLARATOR))
 			nested = FirstSemanticChild(child);
-		else if (arena_->IsTag(child, "array-suffix") ||
-			arena_->IsTag(child, "parameter-clause"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ARRAY_SUFFIX) ||
+			arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE))
 		{
 			suffixes.push_back(child);
-			if (arena_->IsTag(child, "parameter-clause"))
+			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE))
 				saw_function_suffix = true;
 		}
 	}
 	for (std::size_t i = suffixes.size(); i != 0; --i)
 	{
 		const NodeId suffix = suffixes[i - 1];
-		if (arena_->IsTag(suffix, "array-suffix"))
+		if (arena_->IsTag(suffix, ::cppgm::pa10_syntax_detail::STAG_ARRAY_SUFFIX))
 		{
 			const NodeId bound_node = FirstSemanticChild(suffix);
 			if (bound_node == kNoNode)
@@ -1012,7 +1012,7 @@ void TypeAnalyzer::AnalyzeCompound(NodeId node, ScopeId scope)
 	{
 		const NodeId child = arena_->EdgeChild(edge);
 		if (IsDeclaration(child)) AnalyzeDeclaration(child, block);
-		else if (arena_->IsTag(child, "compound-statement"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
 			AnalyzeCompound(child, block);
 		else if (CanContainBlockOrDeclaration(child))
 			WalkStatement(child, block);
@@ -1025,7 +1025,7 @@ void TypeAnalyzer::WalkStatement(NodeId node, ScopeId scope)
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "compound-statement"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
 			AnalyzeCompound(child, scope);
 		else if (IsDeclaration(child)) AnalyzeDeclaration(child, scope);
 		else if (CanContainBlockOrDeclaration(child))
@@ -1157,8 +1157,8 @@ ConstantValue TypeAnalyzer::EvaluateTrait(NodeId node, ScopeId scope)
 	const NodeId operand = FirstSemanticChild(node);
 	if (operand == kNoNode) throw std::runtime_error("empty type trait");
 	TypeId type = kNoType;
-	if (arena_->IsTag(operand, "type-id")) type = BuildTypeId(operand, scope);
-	else if (arena_->IsTag(operand, "id-expression"))
+	if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID)) type = BuildTypeId(operand, scope);
+	else if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		const LookupResult named = LookupSpelling(scope,
 			arena_->Payload(operand), LOOKUP_TYPE);
@@ -1167,7 +1167,7 @@ ConstantValue TypeAnalyzer::EvaluateTrait(NodeId node, ScopeId scope)
 	if (type == kNoType) type = Evaluate(operand, scope).type;
 	ConstantValue result;
 	result.type = program_->types.Fundamental(FUND_UNSIGNED_LONG_INT);
-	result.value = arena_->IsTag(node, "sizeof-expression") ?
+	result.value = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_EXPRESSION) ?
 		static_cast<std::int64_t>(program_->SizeOf(type)) :
 		static_cast<std::int64_t>(program_->AlignOf(type));
 	return result;
@@ -1176,14 +1176,14 @@ ConstantValue TypeAnalyzer::EvaluateTrait(NodeId node, ScopeId scope)
 ConstantValue TypeAnalyzer::Evaluate(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("missing constant expression");
-	if (arena_->IsTag(node, "literal"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LITERAL))
 	{
 		ConstantValue result;
 		result.value = ParseInteger(arena_->Payload(node));
 		result.type = program_->types.Fundamental(FUND_INT);
 		return result;
 	}
-	if (arena_->IsTag(node, "keyword-literal"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_KEYWORD_LITERAL))
 	{
 		ConstantValue result;
 		const std::string value = PayloadSource(node);
@@ -1193,7 +1193,7 @@ ConstantValue TypeAnalyzer::Evaluate(NodeId node, ScopeId scope)
 		result.type = program_->types.Fundamental(FUND_BOOL);
 		return result;
 	}
-	if (arena_->IsTag(node, "id-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		const LookupResult found = LookupSpelling(scope,
 			arena_->Payload(node), LOOKUP_ORDINARY);
@@ -1209,17 +1209,17 @@ ConstantValue TypeAnalyzer::Evaluate(NodeId node, ScopeId scope)
 		result.binding = found.ordinary;
 		return result;
 	}
-	if (arena_->IsTag(node, "parenthesized-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		return Evaluate(FirstSemanticChild(node), scope);
-	if (arena_->IsTag(node, "binary-expression") ||
-		arena_->IsTag(node, "assignment-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BINARY_EXPRESSION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ASSIGNMENT_EXPRESSION))
 		return EvaluateBinary(node, scope);
-	if (arena_->IsTag(node, "unary-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_UNARY_EXPRESSION))
 		return EvaluateUnary(node, scope);
-	if (arena_->IsTag(node, "sizeof-expression") ||
-		arena_->IsTag(node, "type-trait-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_EXPRESSION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION))
 		return EvaluateTrait(node, scope);
-	if (arena_->IsTag(node, "cast-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CAST_EXPRESSION))
 	{
 		const NodeId type_id = FindChild(node, "type-id");
 		ConstantValue result;
@@ -1246,12 +1246,12 @@ TypeId TypeAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("empty decltype");
 	bool parenthesized = false;
-	if (arena_->IsTag(node, "parenthesized-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 	{
 		parenthesized = true;
 		node = FirstSemanticChild(node);
 	}
-	if (arena_->IsTag(node, "id-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		const LookupResult found = LookupSpelling(scope,
 			arena_->Payload(node), LOOKUP_ORDINARY);

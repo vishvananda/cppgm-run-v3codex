@@ -1387,7 +1387,7 @@ NodeId Parser::ParsePostfixExpression() {
 }
 NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 	while (true) {
-		if (At(OP_LBRACE) && arena_.IsTag(value, "id-expression") &&
+		if (At(OP_LBRACE) && arena_.IsTag(value, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
 			(HasNameFact(arena_.PayloadId(value), kKnownType) ||
 			 IsFundamentalTypeSpelling(arena_.Payload(value)) ||
 			 arena_.FirstEdge(value) != kNoEdge ||
@@ -1399,7 +1399,7 @@ NodeId Parser::ParsePostfixSuffixes(NodeId value) {
 		if (Match(OP_LPAREN)) {
 			const NodeId call = arena_.Make("call-expression");
 			arena_.Add(call, value);
-			const std::string callee = arena_.IsTag(value, "id-expression") ?
+			const std::string callee = arena_.IsTag(value, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ?
 				arena_.Payload(value) : std::string();
 			bool function_style = false;
 			for (std::uint16_t candidate = 0;
@@ -2272,7 +2272,7 @@ NodeId Parser::ParseSpecialMember(bool)
 			edge != kNoEdge; edge = arena_.NextEdge(edge))
 		{
 			const NodeId child = arena_.EdgeChild(edge);
-			if (arena_.IsTag(child, "name-component"))
+			if (arena_.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 				components.push_back(arena_.SemanticPayloadId(child));
 		}
 		if (components.size() > 1)
@@ -2706,7 +2706,7 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 			return kNoNode;
 		}
 		if ((At(OP_LBRACE) || At(KW_TRY)) && names.empty() &&
-			arena_.HasDescendantTag(declarator, "parameter-clause"))
+			arena_.HasDescendantTag(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE))
 		{
 			const NodeId declaration = arena_.Make("function-definition");
 			arena_.Add(declaration, specifiers);

@@ -41,9 +41,9 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 	if (initializer == kNoNode)
 		throw std::runtime_error("placeholder variable requires initializer");
 	NodeId expression = FirstSemanticChild(initializer);
-	while (expression != kNoNode && arena_->IsTag(expression, "initializer"))
+	while (expression != kNoNode && arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER))
 		expression = FirstSemanticChild(expression);
-	if (expression != kNoNode && arena_->IsTag(expression, "paren-initializer"))
+	if (expression != kNoNode && arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_PAREN_INITIALIZER))
 	{
 		const NodeId first = FirstSemanticChild(expression);
 		const std::uint32_t first_edge = arena_->FirstEdge(expression);
@@ -52,7 +52,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 				"placeholder direct-initializer requires one expression");
 		expression = first;
 	}
-	if (expression != kNoNode && arena_->IsTag(expression, "braced-init-list"))
+	if (expression != kNoNode && arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
 	{
 		std::vector<NodeId> syntax;
 		for (std::uint32_t edge = arena_->FirstEdge(expression);
@@ -99,7 +99,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 		spec.storage_class == STORAGE_CLASS_STATIC ||
 		(spec.placeholder_cv & CV_CONST) != 0;
 	const bool preserve_recipe = !local && spec.is_constexpr &&
-		arena_->HasDescendantTag(initializer, "conditional-expression");
+		arena_->HasDescendantTag(initializer, ::cppgm::pa10_syntax_detail::STAG_CONDITIONAL_EXPRESSION);
 	if (require_constant)
 	{
 		++constant_expression_required_depth_;
@@ -131,7 +131,7 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, "ptr-operator")) continue;
+			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PTR_OPERATOR)) continue;
 			if (!pointer_operator.empty())
 				throw std::runtime_error(
 					"compound placeholder declarator is outside the PA23 boundary");
@@ -568,7 +568,7 @@ bool SemanticAnalyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,
 {
 	if (local || !spec.is_constexpr) return false;
 	if (program_->types.IsReference(type))
-		return arena_->HasDescendantTag(initializer, "conditional-expression");
+		return arena_->HasDescendantTag(initializer, ::cppgm::pa10_syntax_detail::STAG_CONDITIONAL_EXPRESSION);
 	if (!IsClassObjectType(type)) return false;
 	const NodeId paren = FindChild(initializer, "paren-initializer");
 	const NodeId expression = paren == kNoNode ? initializer : paren;

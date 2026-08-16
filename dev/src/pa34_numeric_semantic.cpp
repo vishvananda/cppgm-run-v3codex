@@ -57,7 +57,7 @@ TypeId SemanticAnalyzer::ApplyGnuVectorAttributes(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId attribute = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(attribute, "gnu-attribute")) continue;
+		if (!arena_->IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE)) continue;
 		const std::string name = arena_->SemanticPayload(attribute);
 		const bool byte_width =
 			name == "vector_size" || name == "__vector_size__";
@@ -71,12 +71,12 @@ TypeId SemanticAnalyzer::ApplyGnuVectorAttributes(
 			argument_edge != kNoEdge; argument_edge = arena_->NextEdge(argument_edge))
 		{
 			const NodeId child = arena_->EdgeChild(argument_edge);
-			if (arena_->IsTag(child, "gnu-attribute-nonliteral-argument"))
+			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
 			{
 				nonliteral_argument = true;
 				continue;
 			}
-			const bool literal = arena_->IsTag(child, "gnu-attribute-argument");
+			const bool literal = arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_ARGUMENT);
 			const bool identifier = arena_->IsTag(
 				child, "gnu-attribute-identifier-argument");
 			if (!literal && !identifier) continue;

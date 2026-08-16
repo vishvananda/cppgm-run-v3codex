@@ -44,7 +44,7 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId alignment = arena_->EdgeChild(edge);
-		if (arena_->IsTag(alignment, "gnu-attribute"))
+		if (arena_->IsTag(alignment, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE))
 		{
 			const std::string name = arena_->SemanticPayload(alignment);
 			if (name != "aligned" && name != "__aligned__") continue;
@@ -54,9 +54,9 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 				argument_edge = arena_->NextEdge(argument_edge))
 			{
 				const NodeId child = arena_->EdgeChild(argument_edge);
-				if (arena_->IsTag(child, "gnu-attribute-nonliteral-argument"))
+				if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
 					throw std::runtime_error("invalid aligned attribute argument");
-				if (!arena_->IsTag(child, "gnu-attribute-argument")) continue;
+				if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
 				if (argument != kNoNode)
 					throw std::runtime_error("aligned attribute has multiple arguments");
 				argument = child;
@@ -72,18 +72,18 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 			result = std::max(result, static_cast<std::size_t>(value));
 			continue;
 		}
-		if (!arena_->IsTag(alignment, "alignment-specifier")) continue;
+		if (!arena_->IsTag(alignment, ::cppgm::pa10_syntax_detail::STAG_ALIGNMENT_SPECIFIER)) continue;
 		const NodeId operand = FirstSemanticChild(alignment);
 		if (operand == kNoNode)
 			throw std::runtime_error("empty alignment specifier");
 		std::uint64_t value = 0;
-		if (arena_->IsTag(operand, "type-id"))
+		if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 		{
 			const NodeId specifiers = FindChild(operand, "type-specifier-seq");
 			const NodeId name = specifiers == kNoNode ? kNoNode :
 				FirstSemanticChild(specifiers);
 			const LookupResult constant = name != kNoNode &&
-				arena_->IsTag(name, "type-name") ?
+				arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ?
 				FindChild(name, "structured-type-name") != kNoNode ?
 					LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
 				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY) :
@@ -270,10 +270,10 @@ bool SemanticAnalyzer::TryFoldConstantClassConversion(
 		if (statement != kNoNode) return false;
 		statement = arena_->EdgeChild(edge);
 	}
-	if (statement == kNoNode || !arena_->IsTag(statement, "return-statement"))
+	if (statement == kNoNode || !arena_->IsTag(statement, ::cppgm::pa10_syntax_detail::STAG_RETURN_STATEMENT))
 		return false;
 	const NodeId expression = FirstSemanticChild(statement);
-	if (expression == kNoNode || !arena_->IsTag(expression, "id-expression"))
+	if (expression == kNoNode || !arena_->IsTag(expression, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 		return false;
 	const NamePath path = StructuredNamePath(expression);
 	const NameId name = path.Empty() ?
@@ -409,20 +409,20 @@ void SemanticAnalyzer::ValidateStaticAssertionsInBlock(NodeId block,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "static-assert-declaration"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STATIC_ASSERT_DECLARATION))
 			AnalyzeStaticAssert(child, local);
-		else if (arena_->IsTag(child, "simple-declaration") ||
-			arena_->IsTag(child, "alias-declaration") ||
-			arena_->IsTag(child, "using-declaration"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION) ||
+			arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION) ||
+			arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_USING_DECLARATION))
 			AnalyzeDeclaration(child, local, detached_output, true);
-		else if (arena_->IsTag(child, "compound-statement"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
 			ValidateStaticAssertionsInBlock(child, local, detached_output);
 		else
 			for (std::uint32_t nested = arena_->FirstEdge(child);
 				nested != kNoEdge; nested = arena_->NextEdge(nested))
 			{
 				const NodeId statement = arena_->EdgeChild(nested);
-				if (arena_->IsTag(statement, "compound-statement"))
+				if (arena_->IsTag(statement, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
 					ValidateStaticAssertionsInBlock(
 						statement, local, detached_output);
 			}
@@ -547,7 +547,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		!program_->entities[cast_entity].has_user_provided_constructor &&
 		!has_initializer_list_constructor &&
 		arguments_node != kNoNode &&
-		arena_->IsTag(arguments_node, "braced-init-list"))
+		arena_->IsTag(arguments_node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
 	{
 		ExpressionInfo result = AnalyzeBracedInit(
 			arguments_node, scope, cast_type);
@@ -586,7 +586,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 		!has_initializer_list_constructor &&
 		arguments_node != kNoNode &&
 		!argument_syntax.empty() &&
-		!arena_->IsTag(arguments_node, "braced-init-list"))
+		!arena_->IsTag(arguments_node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
 	{
 		std::uint32_t element_edge = arena_->FirstEdge(arguments_node);
 		ExpressionInfo result = AnalyzeAggregateInit(
@@ -646,9 +646,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeClassFunctionalCast(TypeId cast_type,
 	ExpressionInfo result;
 	result.node = BuildConstructorAction(cast_type, scope, argument_syntax,
 		false, arguments_node != kNoNode &&
-		arena_->IsTag(arguments_node, "braced-init-list"), false, true,
+		arena_->IsTag(arguments_node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST), false, true,
 		arguments_node != kNoNode &&
-		arena_->IsTag(arguments_node, "braced-init-list") ?
+		arena_->IsTag(arguments_node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) ?
 			arguments_node : kNoNode, prepared_arguments);
 	if (result.node == kNoDumpEdge) return ExpressionInfo();
 	result.type = cast_type;

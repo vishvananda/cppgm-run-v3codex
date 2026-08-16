@@ -351,7 +351,7 @@ bool EquivalentFunctionTemplateNondeducedShapes(const SyntaxArena& arena,
 
 bool IsFunctionOnlyDeclSpecifier(const SyntaxArena& arena, NodeId node)
 {
-	if (!arena.IsTag(node, "decl-specifier")) return false;
+	if (!arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER)) return false;
 	const std::string& spelling = arena.Payload(node);
 	return spelling == "friend" || spelling == "inline" ||
 		spelling == "constexpr" || spelling == "virtual" ||
@@ -1845,7 +1845,7 @@ bool SemanticAnalyzer::MaterializeFunctionTemplateDefaults(
 				"empty function template default argument");
 		if (source_parameter.kind == TEMPLATE_ARGUMENT_TYPE)
 		{
-			NodeId type_id = arena_->IsTag(source, "type-id") ? source :
+			NodeId type_id = arena_->IsTag(source, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? source :
 				FindChild(source, "type-id");
 			if (type_id == kNoNode) return false;
 			argument.type = BuildTypeId(type_id, default_scope);

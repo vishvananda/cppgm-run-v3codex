@@ -12,7 +12,7 @@ bool SemanticAnalyzer::SyntaxNamesUnboundTemplateParameter(
 	NodeId syntax, ScopeId scope)
 {
 	if (syntax == kNoNode) return false;
-	if (arena_->IsTag(syntax, "id-expression") &&
+	if (arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
 		FindChild(syntax, "structured-type-name") == kNoNode)
 	{
 		const NameId name =
@@ -39,9 +39,9 @@ bool SemanticAnalyzer::TryExpandBuiltinIntegerPack(NodeId operand,
 	ScopeId scope, const TemplateParameter& destination,
 	ScopeId parameter_scope, std::vector<TemplateArgument>* arguments)
 {
-	if (!arena_->IsTag(operand, "call-expression")) return false;
+	if (!arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION)) return false;
 	const NodeId callee = FirstSemanticChild(operand);
-	if (callee == kNoNode || !arena_->IsTag(callee, "id-expression") ||
+	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
 		PayloadSource(callee) != "__integer_pack") return false;
 	const NodeId list = FindChild(operand, "argument-list");
 	NodeId count_syntax = kNoNode;
@@ -135,7 +135,7 @@ bool SemanticAnalyzer::TryResolveBuiltinMakeIntegerSequence(
 		program_->names.Get(path.Last()) != "__make_integer_seq") return false;
 	if (source.size() != 3)
 		throw std::runtime_error("__make_integer_seq requires three arguments");
-	const NodeId type_id = arena_->IsTag(source[0], "type-id") ? source[0] :
+	const NodeId type_id = arena_->IsTag(source[0], ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? source[0] :
 		FindChild(source[0], "type-id");
 	const NodeId specifiers = type_id == kNoNode ? kNoNode :
 		FindChild(type_id, "type-specifier-seq");

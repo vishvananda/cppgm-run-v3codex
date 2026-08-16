@@ -1568,13 +1568,13 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 	bool valid = false;
 	try
 	{
-		if (arena_->IsTag(node, "alias-declaration"))
+		if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 		{
 			const TypeId type = BuildTypeId(FindChild(node, "type-id"), scope);
 			valid = AddConstexprTypeAlias(
 				program_->names.UseInterned(arena_->PayloadId(node)), type);
 		}
-		else if (arena_->IsTag(node, "using-directive"))
+		else if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 		{
 			const NodeId target = FindChild(node, "target");
 			const ScopeId target_scope = target == kNoNode ? kNoScope :
@@ -1585,12 +1585,12 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 			AddConstexprUsingNamespace(target_scope);
 			valid = true;
 		}
-		else if (arena_->IsTag(node, "static-assert-declaration"))
+		else if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_STATIC_ASSERT_DECLARATION))
 		{
 			AnalyzeStaticAssert(node, scope);
 			valid = true;
 		}
-		else if (arena_->IsTag(node, "simple-declaration"))
+		else if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 		{
 			const NodeId specifiers = FindChild(node, "decl-specifier-seq");
 			const NodeId list = FindChild(node, "init-declarator-list");
@@ -1662,7 +1662,7 @@ bool SemanticAnalyzer::EvaluateConstexprCondition(
 	if (!ConsumeConstexprStep()) return false;
 	const NodeId first = FirstSemanticChild(node);
 	const NodeId declaration = first != kNoNode &&
-		arena_->IsTag(first, "condition-declaration") ? first : node;
+		arena_->IsTag(first, ::cppgm::pa10_syntax_detail::STAG_CONDITION_DECLARATION) ? first : node;
 	const NodeId specifiers = FindChild(declaration, "decl-specifier-seq");
 	if (specifiers != kNoNode)
 	{
@@ -1735,11 +1735,11 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 	std::uint32_t* result_object, std::uint32_t* result_complete_object)
 {
 	if (!ConsumeConstexprStep()) return CONSTEXPR_FLOW_INVALID;
-	if (arena_->IsTag(node, "compound-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
 		return EvaluateConstexprCompound(node, scope, result_type, result,
 			result_has_scalar, result_address, result_object,
 			result_complete_object);
-	if (arena_->IsTag(node, "return-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_RETURN_STATEMENT))
 	{
 		const NodeId expression = FirstSemanticChild(node);
 		if (expression == kNoNode) return CONSTEXPR_FLOW_INVALID;
@@ -1748,7 +1748,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 			result_address,
 			result_object, result_complete_object);
 	}
-	if (arena_->IsTag(node, "expression-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_EXPRESSION_STATEMENT))
 	{
 		const NodeId expression = FirstSemanticChild(node);
 		if (expression == kNoNode) return CONSTEXPR_FLOW_NORMAL;
@@ -1757,7 +1757,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 			expression, scope, kNoType, &value) ?
 			CONSTEXPR_FLOW_NORMAL : CONSTEXPR_FLOW_INVALID;
 	}
-	if (arena_->IsTag(node, "if-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IF_STATEMENT))
 	{
 		PushConstexprBlock();
 		NodeId condition = kNoNode;
@@ -1767,10 +1767,10 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, "condition")) condition = child;
-			else if (arena_->IsTag(child, "then"))
+			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION)) condition = child;
+			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_THEN))
 				then_branch = FirstSemanticChild(child);
-			else if (arena_->IsTag(child, "else"))
+			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ELSE))
 				else_branch = FirstSemanticChild(child);
 		}
 		bool selected = false;
@@ -1788,10 +1788,10 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 		PopConstexprBlock();
 		return flow;
 	}
-	if (arena_->IsTag(node, "while-statement") ||
-		arena_->IsTag(node, "do-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_WHILE_STATEMENT) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DO_STATEMENT))
 	{
-		const bool is_do = arena_->IsTag(node, "do-statement");
+		const bool is_do = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DO_STATEMENT);
 		PushConstexprBlock();
 		NodeId condition = kNoNode;
 		NodeId body = kNoNode;
@@ -1799,7 +1799,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, "condition")) condition = child;
+			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION)) condition = child;
 			else body = child;
 		}
 		for (;;)
@@ -1863,7 +1863,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 			PopConstexprBlock();
 		}
 	}
-	if (arena_->IsTag(node, "for-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOR_STATEMENT))
 	{
 		PushConstexprBlock();
 		NodeId condition = kNoNode;
@@ -1873,7 +1873,7 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, "for-init-statement"))
+			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_FOR_INIT_STATEMENT))
 			{
 				const NodeId initializer = FirstSemanticChild(child);
 				if (initializer != kNoNode)
@@ -1898,8 +1898,8 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 					}
 				}
 			}
-			else if (arena_->IsTag(child, "condition")) condition = child;
-			else if (arena_->IsTag(child, "iteration"))
+			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION)) condition = child;
+			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ITERATION))
 				iteration_expression = FirstSemanticChild(child);
 			else body = child;
 		}
@@ -1956,9 +1956,9 @@ ConstexprFlow SemanticAnalyzer::EvaluateConstexprStatement(
 			PopConstexprBlock();
 		}
 	}
-	if (arena_->IsTag(node, "break-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BREAK_STATEMENT))
 		return CONSTEXPR_FLOW_BREAK;
-	if (arena_->IsTag(node, "continue-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CONTINUE_STATEMENT))
 		return CONSTEXPR_FLOW_CONTINUE;
 	if (IsDeclaration(node))
 		return EvaluateConstexprDeclaration(node, scope) ?
@@ -2037,14 +2037,14 @@ bool SemanticAnalyzer::AddConstexprInvocationArguments(
 bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 	NodeId initializer, ScopeId scope, TypeId type, ExpressionInfo* value)
 {
-	while (initializer != kNoNode && arena_->IsTag(initializer, "initializer"))
+	while (initializer != kNoNode && arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER))
 		initializer = FirstSemanticChild(initializer);
 	if (initializer == kNoNode) return false;
 	const TypeId object_type = program_->types.RemoveTopCv(EffectiveType(type));
 	const TypeRecord& record = program_->types.Get(object_type);
 	const bool argument_list =
-		arena_->IsTag(initializer, "paren-argument-list") ||
-		arena_->IsTag(initializer, "braced-init-list");
+		arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_PAREN_ARGUMENT_LIST) ||
+		arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
 	if (!argument_list)
 		return AnalyzeConstexprExpression(initializer, scope, type, value);
 
@@ -2053,7 +2053,7 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 		edge = arena_->NextEdge(edge))
 		syntax.push_back(arena_->EdgeChild(edge));
 	const bool aggregate_braced = arena_->IsTag(initializer,
-		"braced-init-list") && (record.kind == TYPE_ARRAY ||
+		::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) && (record.kind == TYPE_ARRAY ||
 		(IsConstexprClassEntity(*program_, EntityOf(object_type)) &&
 		 program_->entities[EntityOf(object_type)].is_aggregate));
 	std::vector<ExpressionInfo> prepared;
@@ -2092,22 +2092,22 @@ bool SemanticAnalyzer::AnalyzeConstexprMemberInitializer(
 		 program_->entities[EntityOf(object_type)].is_aggregate))
 	{
 		if (record.kind == TYPE_ARRAY && syntax.empty() &&
-			arena_->IsTag(initializer, "paren-argument-list"))
+			arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_PAREN_ARGUMENT_LIST))
 		{
 			std::uint32_t omitted = kNoEdge;
 			*value = AnalyzeArrayAggregateInit(type, scope, &omitted);
 			SetExpressionDumpObject(value);
 			return value->constant;
 		}
-		if (!arena_->IsTag(initializer, "braced-init-list")) return false;
+		if (!arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST)) return false;
 		*value = AnalyzeBracedInit(initializer, scope, type);
 		SetExpressionDumpObject(value);
 		return value->constant;
 	}
 	if (!IsConstexprClassEntity(*program_, EntityOf(object_type))) return false;
 	value->node = BuildConstructorAction(type, scope, syntax, false,
-		arena_->IsTag(initializer, "braced-init-list"), false, true,
-		arena_->IsTag(initializer, "braced-init-list") ? initializer : kNoNode,
+		arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST), false, true,
+		arena_->IsTag(initializer, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) ? initializer : kNoNode,
 		expanded ? &prepared : 0);
 	value->type = type;
 	value->category = VALUE_NONE;
@@ -2160,7 +2160,7 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 		for (std::uint32_t edge = arena_->FirstEdge(
 			constructor.constructor_initializer); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
-			if (arena_->IsTag(arena_->EdgeChild(edge), "mem-initializer"))
+			if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_MEM_INITIALIZER))
 				raw_initializers.push_back(arena_->EdgeChild(edge));
 
 		const std::size_t base_count = plan->base_initializers.size();
@@ -2177,7 +2177,7 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 			{
 				const NodeId candidate = arena_->EdgeChild(child);
 				if (candidate != id &&
-					!arena_->IsTag(candidate, "pack-expansion")) value = candidate;
+					!arena_->IsTag(candidate, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION)) value = candidate;
 			}
 			positional_base_pack = id != kNoNode && value != kNoNode;
 			for (std::size_t i = 0; positional_base_pack && i < base_count; ++i)
@@ -2207,7 +2207,7 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 			{
 				const NodeId candidate = arena_->EdgeChild(child);
 				if (candidate != id &&
-					!arena_->IsTag(candidate, "pack-expansion")) value = candidate;
+					!arena_->IsTag(candidate, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION)) value = candidate;
 			}
 			if (value == kNoNode) return false;
 
@@ -2355,12 +2355,12 @@ bool SemanticAnalyzer::EvaluateConstexprConstructorInitializers(
 				}
 				NodeId argument_list = plan.base_initializers[i];
 				while (argument_list != kNoNode &&
-					arena_->IsTag(argument_list, "initializer"))
+					arena_->IsTag(argument_list, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER))
 					argument_list = FirstSemanticChild(argument_list);
 				std::vector<NodeId> argument_syntax;
 				if (argument_list != kNoNode &&
-					(arena_->IsTag(argument_list, "paren-argument-list") ||
-					 arena_->IsTag(argument_list, "braced-init-list")))
+					(arena_->IsTag(argument_list, ::cppgm::pa10_syntax_detail::STAG_PAREN_ARGUMENT_LIST) ||
+					 arena_->IsTag(argument_list, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST)))
 					for (std::uint32_t edge = arena_->FirstEdge(argument_list);
 						edge != kNoEdge; edge = arena_->NextEdge(edge))
 						argument_syntax.push_back(arena_->EdgeChild(edge));
@@ -2373,9 +2373,9 @@ bool SemanticAnalyzer::EvaluateConstexprConstructorInitializers(
 				{
 					initialized.node = BuildConstructorAction(base_type,
 						plan.base_scopes[i], argument_syntax, false,
-						arena_->IsTag(argument_list, "braced-init-list"),
+						arena_->IsTag(argument_list, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST),
 						true, false,
-						arena_->IsTag(argument_list, "braced-init-list") ?
+						arena_->IsTag(argument_list, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) ?
 							argument_list : kNoNode, &prepared);
 					initialized.type = base_type;
 					initialized.category = VALUE_NONE;

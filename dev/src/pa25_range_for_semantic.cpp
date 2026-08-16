@@ -274,7 +274,7 @@ void SemanticAnalyzer::AddRangeForLoopVariable(NodeId declaration,
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, "ptr-operator")) continue;
+			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PTR_OPERATOR)) continue;
 			if (!pointer_operator.empty())
 				throw std::runtime_error(
 					"compound placeholder range declarator");
@@ -379,7 +379,7 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 
 	ExpressionInfo range;
 	TypeId range_type = kNoType;
-	const bool braced = arena_->IsTag(initializer_syntax, "braced-init-list");
+	const bool braced = arena_->IsTag(initializer_syntax, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
 	if (braced)
 	{
 		std::vector<ExpressionInfo> elements;
@@ -586,7 +586,7 @@ void SemanticAnalyzer::AnalyzeRangeFor(NodeId node, ScopeId scope,
 	++loop_depth_;
 	break_cleanup_stops_.push_back(control);
 	continue_cleanup_stops_.push_back(control);
-	if (arena_->IsTag(body_syntax, "compound-statement"))
+	if (arena_->IsTag(body_syntax, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
 	{
 		for (std::uint32_t edge = arena_->FirstEdge(body_syntax);
 			edge != kNoEdge; edge = arena_->NextEdge(edge))

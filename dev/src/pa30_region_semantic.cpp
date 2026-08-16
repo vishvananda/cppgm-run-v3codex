@@ -63,7 +63,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeStatementExpression(
 	for (std::size_t i = 0; i < items.size(); ++i)
 	{
 		const bool result_item = i + 1 == items.size() &&
-			arena_->IsTag(items[i], "expression-statement") &&
+			arena_->IsTag(items[i], ::cppgm::pa10_syntax_detail::STAG_EXPRESSION_STATEMENT) &&
 			FirstSemanticChild(items[i]) != kNoNode;
 		if (result_item)
 		{
@@ -98,7 +98,7 @@ void SemanticAnalyzer::AnalyzeFunctionTryHandlers(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(child, "handler")) continue;
+		if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_HANDLER)) continue;
 		const NodeId declaration = FindChild(child, "exception-declaration");
 		catches_all = catches_all || (declaration != kNoNode &&
 			FindChild(declaration, "ellipsis") != kNoNode);

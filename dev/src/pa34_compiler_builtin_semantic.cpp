@@ -136,9 +136,9 @@ bool SemanticAnalyzer::TryAnalyzeTypeofFunctionalCast(NodeId callee,
 	const std::vector<NodeId>& arguments, ScopeId scope,
 	TypeId target, ExpressionInfo* result)
 {
-	if (!arena_->IsTag(callee, "id-expression") ||
+	if (!arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
 		arena_->Payload(callee).compare(0, 8, "__typeof") != 0) return false;
-	const NodeId decltype_name = arena_->IsTag(callee, "id-expression") ?
+	const NodeId decltype_name = arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ?
 		FindChild(callee, "decltype-name") : kNoNode;
 	if (decltype_name == kNoNode ||
 		FindChild(decltype_name, "qualified-name") != kNoNode) return false;
@@ -238,9 +238,9 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 		{
 			const NodeId type_syntax = argument_syntax[vector_convert ? 1 : 0];
 			value_syntax = argument_syntax[vector_convert ? 0 : 1];
-			if (arena_->IsTag(type_syntax, "type-id"))
+			if (arena_->IsTag(type_syntax, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 				result_type = BuildTypeId(type_syntax, scope);
-			else if (arena_->IsTag(type_syntax, "id-expression"))
+			else if (arena_->IsTag(type_syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 			{
 				const NodeId structure = FindChild(
 					type_syntax, "structured-type-name");

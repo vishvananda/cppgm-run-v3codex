@@ -15,7 +15,7 @@ void SemanticAnalyzer::AnalyzeCondition(NodeId node, ScopeId scope,
 	NodeId declaration_node = node;
 	const NodeId first_child = FirstSemanticChild(node);
 	if (first_child != kNoNode &&
-		arena_->IsTag(first_child, "condition-declaration"))
+		arena_->IsTag(first_child, ::cppgm::pa10_syntax_detail::STAG_CONDITION_DECLARATION))
 		declaration_node = first_child;
 	const NodeId specifiers = FindChild(declaration_node, "decl-specifier-seq");
 	if (specifiers != kNoNode)

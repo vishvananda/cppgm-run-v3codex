@@ -16,18 +16,18 @@ namespace
 bool HasFunctionParameterPack(const SyntaxArena& arena, NodeId node)
 {
 	if (node == kNoNode) return false;
-	if (arena.IsTag(node, "parameter-declaration"))
+	if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION))
 	{
 		for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
 			edge = arena.NextEdge(edge))
 		{
 			const NodeId child = arena.EdgeChild(edge);
-			if (!arena.IsTag(child, "declarator")) continue;
+			if (!arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR)) continue;
 			for (std::uint32_t declarator_edge = arena.FirstEdge(child);
 				declarator_edge != kNoEdge;
 				declarator_edge = arena.NextEdge(declarator_edge))
 				if (arena.IsTag(arena.EdgeChild(declarator_edge),
-					"parameter-pack")) return true;
+					::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK)) return true;
 		}
 	}
 	for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
@@ -76,9 +76,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeFoldExpression(NodeId node, ScopeId scop
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(child, "fold-left") &&
-			!arena_->IsTag(child, "fold-right") &&
-			!arena_->IsTag(child, "fold-binary")) operands.push_back(child);
+		if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_FOLD_LEFT) &&
+			!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_FOLD_RIGHT) &&
+			!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_FOLD_BINARY)) operands.push_back(child);
 	}
 	if (operands.size() != (binary ? 2U : 1U))
 		throw std::logic_error("fold expression has invalid operands");
@@ -198,7 +198,7 @@ void SemanticAnalyzer::BindFunctionParameterPackElement(
 NameId SemanticAnalyzer::FunctionParameterPackName(NodeId declarator)
 {
 	if (declarator == kNoNode) return 0;
-	if (arena_->IsTag(declarator, "parameter-declaration"))
+	if (arena_->IsTag(declarator, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION))
 	{
 		const NodeId parameter = FindChild(declarator, "declarator");
 		if (parameter != kNoNode &&
@@ -224,9 +224,9 @@ void SemanticAnalyzer::CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
 	std::vector<NameId>* names, bool root) const
 {
 	if (node == kNoNode ||
-		arena_->IsTag(node, "pack-expansion-expression") ||
-		arena_->IsTag(node, "sizeof-pack-expression")) return;
-	if (!root && arena_->IsTag(node, "type-id"))
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_PACK_EXPRESSION)) return;
+	if (!root && arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 	{
 		NodeId declarator = FindChild(node, "abstract-declarator");
 		if (declarator == kNoNode)
@@ -235,10 +235,10 @@ void SemanticAnalyzer::CollectPackExpansionNamesImpl(NodeId node, ScopeId scope,
 			FindChild(declarator, "parameter-pack") != kNoNode) return;
 	}
 	const bool can_name_pack =
-		arena_->IsTag(node, "id-expression") ||
-		arena_->IsTag(node, "type-name") ||
-		arena_->IsTag(node, "decl-specifier") ||
-		arena_->IsTag(node, "name-component");
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT);
 	if (can_name_pack)
 	{
 		const std::string spelling = PayloadSource(node);
@@ -343,7 +343,7 @@ void SemanticAnalyzer::BindLexicalTypeNames(NodeId pattern,
 	ScopeId lexical_owner, ScopeId target_scope)
 {
 	if (pattern == kNoNode) return;
-	if (arena_->IsTag(pattern, "name-component"))
+	if (arena_->IsTag(pattern, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 	{
 		const NameId name = program_->names.UseInterned(
 			arena_->SemanticPayloadId(pattern));
@@ -367,7 +367,7 @@ void SemanticAnalyzer::ExpandExpressionPack(NodeId expansion, ScopeId scope,
 	std::vector<NodeId>* syntax,
 	std::vector<ExpressionInfo>* expressions)
 {
-	if (!arena_->IsTag(expansion, "pack-expansion-expression"))
+	if (!arena_->IsTag(expansion, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
 		throw std::logic_error("expression pack expansion node is invalid");
 	const NodeId operand = FirstSemanticChild(expansion);
 	if (operand == kNoNode)
@@ -482,7 +482,7 @@ bool SemanticAnalyzer::TryAnalyzeExpandedBracedInit(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "pack-expansion-expression"))
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
 			ExpandExpressionPack(child, scope, &syntax, &values);
 		else
 		{
@@ -625,7 +625,7 @@ bool SemanticAnalyzer::ExpandCallArgumentPacks(
 {
 	bool has_expansion = false;
 	for (std::size_t i = 0; i < original.size(); ++i)
-		if (arena_->IsTag(original[i], "pack-expansion-expression"))
+		if (arena_->IsTag(original[i], ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
 			has_expansion = true;
 	if (!has_expansion) return false;
 	const std::vector<NodeId> input = original;
@@ -633,7 +633,7 @@ bool SemanticAnalyzer::ExpandCallArgumentPacks(
 	arguments->clear();
 	for (std::size_t i = 0; i < input.size(); ++i)
 	{
-		if (!arena_->IsTag(input[i], "pack-expansion-expression"))
+		if (!arena_->IsTag(input[i], ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
 		{
 			syntax->push_back(input[i]);
 			arguments->push_back(AnalyzeUntypedCallArgument(input[i], scope));

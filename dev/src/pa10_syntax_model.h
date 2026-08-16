@@ -2,6 +2,7 @@
 
 #include "frontend_intern.h"
 #include "pa10_syntax.h"
+#include "pa10_syntax_tags.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -116,8 +117,10 @@ struct SyntaxNode
 	std::uint32_t token_first;
 	std::uint32_t token_last;
 	std::uint16_t flags;
+	SyntaxTagCode tag_code;
 
-	SyntaxNode(TextId tag_value, TextId payload_value);
+	SyntaxNode(TextId tag_value, TextId payload_value,
+		SyntaxTagCode tag_code_value);
 };
 
 enum SyntaxNodeFlags
@@ -160,6 +163,7 @@ public:
 	TextId TagId(NodeId node) const;
 	const std::string& Tag(NodeId node) const;
 	bool IsTag(NodeId node, const char* tag) const;
+	bool IsTag(NodeId node, SyntaxTagCode tag) const;
 	TextId PayloadId(NodeId node) const;
 	const std::string& Payload(NodeId node) const;
 	const std::string& SemanticPayload(NodeId node) const;
@@ -172,8 +176,11 @@ public:
 		std::vector<TextId>* result) const;
 	void SetPayload(NodeId node, const std::string& payload);
 	NodeId FindDirectChildTag(NodeId node, const char* tag) const;
+	NodeId FindDirectChildTag(NodeId node, SyntaxTagCode tag) const;
 	bool HasDirectChildTag(NodeId node, const char* tag) const;
+	bool HasDirectChildTag(NodeId node, SyntaxTagCode tag) const;
 	bool HasDescendantTag(NodeId node, const char* tag) const;
+	bool HasDescendantTag(NodeId node, SyntaxTagCode tag) const;
 	std::uint32_t FirstEdge(NodeId node) const;
 	std::uint32_t NextEdge(std::uint32_t edge) const;
 	NodeId EdgeChild(std::uint32_t edge) const;
@@ -193,7 +200,8 @@ private:
 	{
 		const char* spelling;
 		TextId identity;
-		TagCacheEntry() : spelling(0), identity(0) {}
+		SyntaxTagCode code;
+		TagCacheEntry() : spelling(0), identity(0), code(STAG_NONE) {}
 	};
 
 	struct EdgeMutation
@@ -204,7 +212,7 @@ private:
 			std::uint32_t last)
 			: parent(parent_value), first_edge(first), last_edge(last) {}
 	};
-	TextId InternTag(const char* tag) const;
+	TextId InternTag(const char* tag, SyntaxTagCode* code = 0) const;
 
 	StringTable& strings_;
 	SyntaxInterningStats* stats_;

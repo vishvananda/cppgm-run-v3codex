@@ -48,7 +48,7 @@ void SemanticAnalyzer::AnalyzeConversionFunction(NodeId node, ScopeId scope,
 		throw std::runtime_error("conversion function cannot be defaulted");
 	const bool deleted = special != kNoNode &&
 		arena_->Payload(special) == "delete";
-	const bool definition = arena_->IsTag(node, "special-member-definition");
+	const bool definition = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION);
 	const NameId conversion_name = DeclaratorNamePath(declarator).Last();
 	const BindingId function = DeclareFunction(scope, conversion_name,
 		parsed.type, parsed.parameters, definition, false, STORAGE_CLASS_NONE,

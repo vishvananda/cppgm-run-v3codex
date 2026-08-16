@@ -83,7 +83,7 @@ protected:
 			edge != kNoEdge; edge = parser.arena_.NextEdge(edge))
 		{
 			const NodeId child = parser.arena_.EdgeChild(edge);
-			if (!parser.arena_.IsTag(child, "structured-binding")) continue;
+			if (!parser.arena_.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_BINDING)) continue;
 			for (std::uint32_t binding = parser.arena_.FirstEdge(child);
 				binding != kNoEdge; binding = parser.arena_.NextEdge(binding))
 				names->push_back(parser.arena_.Payload(

@@ -1159,7 +1159,7 @@ bool SemanticAnalyzer::RouteClassTemplateMemberDefinition(
 	if (pattern_index == NoAliasTemplatePattern()) return false;
 
 	const NodeId declaration = definition.declaration;
-	if (!arena_->IsTag(declaration, "template-declaration")) return false;
+	if (!arena_->IsTag(declaration, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION)) return false;
 	const NodeId clause = FindChild(declaration, "template-parameter-clause");
 	const NodeId list = clause == kNoNode ? kNoNode :
 		FindChild(clause, "template-parameter-list");
@@ -1377,7 +1377,7 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	ScopeId lookup_scope, ScopeId parameter_scope,
 	const TemplateParameter& parameter, TemplateArgument* argument)
 {
-	NodeId type_id = arena_->IsTag(syntax, "type-id") ? syntax :
+	NodeId type_id = arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ? syntax :
 		FindChild(syntax, "type-id");
 	if (type_id == kNoNode) return false;
 	const NodeId specifiers = FindChild(type_id, "type-specifier-seq");
@@ -1780,7 +1780,7 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 			"explicit function instantiation must appear at namespace scope");
 
 	NodeId declarator = FindChild(target, "declarator");
-	if (arena_->IsTag(target, "simple-declaration"))
+	if (arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 	{
 		const NodeId list = FindChild(target, "init-declarator-list");
 		const NodeId item = list == kNoNode ? kNoNode :
@@ -1805,8 +1805,8 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 	if (name_syntax == kNoNode) return false;
 
 	SpecInfo spec;
-	if (arena_->IsTag(target, "special-member-declaration") ||
-		arena_->IsTag(target, "special-member-definition"))
+	if (arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DECLARATION) ||
+		arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION))
 		spec.type = program_->types.Fundamental(FUND_VOID);
 	else
 	{

@@ -21,7 +21,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 	if (friend_owner == kNoScope)
 		throw std::runtime_error("friend function has no namespace owner");
 	std::vector<NodeId> declarators;
-	if (arena_->IsTag(node, "function-definition"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION))
 	{
 		const NodeId declarator = FindChild(node, "declarator");
 		if (declarator != kNoNode) declarators.push_back(declarator);
@@ -40,7 +40,7 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 	}
 	if (declarators.empty())
 		throw std::runtime_error("friend declaration has no function declarator");
-	const bool definition = arena_->IsTag(node, "function-definition");
+	const bool definition = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION);
 	for (std::size_t i = 0; i < declarators.size(); ++i)
 	{
 		const DeclaratorInfo parsed = BuildDeclarator(

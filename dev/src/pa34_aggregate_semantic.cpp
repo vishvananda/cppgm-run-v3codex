@@ -104,7 +104,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
 			if (*element_edge != kNoEdge)
 			{
 				designated = arena_->EdgeChild(*element_edge);
-				if (!arena_->IsTag(designated, "designated-initializer"))
+				if (!arena_->IsTag(designated, ::cppgm::pa10_syntax_detail::STAG_DESIGNATED_INITIALIZER))
 					throw std::runtime_error(
 						"cannot mix designated and positional initializers");
 				const BindingId selected = selected_member(designated);
@@ -169,7 +169,7 @@ void SemanticAnalyzer::EmitStructuredBindingStorage(
 		edge != kNoEdge; edge = arena_->NextEdge(edge))
 	{
 		const NodeId binding = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(binding, "binding-identifier"))
+		if (!arena_->IsTag(binding, ::cppgm::pa10_syntax_detail::STAG_BINDING_IDENTIFIER))
 			throw std::runtime_error("invalid structured binding identifier");
 		binding_syntax.push_back(binding);
 	}

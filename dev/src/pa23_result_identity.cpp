@@ -163,7 +163,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const ResultSyntaxReference& reference)
 		-> const std::vector<ResultSyntaxReference>* {
 		if (reference.node == kNoNode) return 0;
-		NodeId type = arena_->IsTag(reference.node, "type-id") ?
+		NodeId type = arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ?
 			reference.node : FindChild(reference.node, "type-id");
 		if (type != kNoNode)
 		{
@@ -184,7 +184,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 					reference.environment, direct_name, environment_names,
 					root_bindings, &environment_probes);
 		}
-		if (!arena_->IsTag(reference.node, "pack-expansion-expression"))
+		if (!arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
 			return 0;
 		const NodeId operand = FirstSemanticChild(reference.node);
 		const NameId name = operand == kNoNode ? 0 :
@@ -223,7 +223,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			return true;
 		}
 		if (reference.node == kNoNode) return false;
-		if (arena_->IsTag(reference.node, "parameter-pack"))
+		if (arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK))
 		{
 			atoms->push_back(ResultIdentityAtom(
 				RESULT_IDENTITY_PACK_EXPANSION));
@@ -251,8 +251,8 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const std::size_t parameter = root_parameter(semantic_name);
 		if (parameter < pattern->parameters.size())
 		{
-			if (arena_->IsTag(reference.node, "pack-expansion-expression") ||
-				arena_->HasDescendantTag(reference.node, "parameter-pack"))
+			if (arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION) ||
+				arena_->HasDescendantTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK))
 				atoms->push_back(ResultIdentityAtom(
 					RESULT_IDENTITY_PACK_EXPANSION));
 			atoms->push_back(ResultIdentityAtom(
@@ -260,11 +260,11 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			return true;
 		}
 		if (!reference.environment &&
-			arena_->IsTag(reference.node, "type-id") &&
-			!arena_->HasDescendantTag(reference.node, "parameter-pack") &&
+			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) &&
+			!arena_->HasDescendantTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK) &&
 			!arena_->HasDescendantTag(
 				reference.node, "pack-expansion-expression") &&
-			!arena_->HasDescendantTag(reference.node, "sizeof-pack-expression") &&
+			!arena_->HasDescendantTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_PACK_EXPRESSION) &&
 			!SyntaxUsesAnyTemplateParameter(reference.node, dependent_names))
 		{
 			const TypeId type = BuildCanonicalTemplateTypeArgument(
@@ -277,12 +277,12 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 			}
 		}
 
-		if (arena_->IsTag(reference.node, "structured-type-name"))
+		if (arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME))
 		{
 			std::vector<NodeId> components;
 			for (std::uint32_t edge = arena_->FirstEdge(reference.node);
 				edge != kNoEdge; edge = arena_->NextEdge(edge))
-				if (arena_->IsTag(arena_->EdgeChild(edge), "name-component"))
+				if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 					components.push_back(arena_->EdgeChild(edge));
 			if (components.size() == 1 &&
 				FindChild(components[0], "template-type-argument-list") == kNoNode)
@@ -449,7 +449,7 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 					const bool pack_expansion =
 						arguments[a].bound_argument == kNoTemplateArgumentList &&
 						arena_->IsTag(arguments[a].node,
-							"pack-expansion-expression");
+							::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION);
 					if (pack_expansion) atoms->push_back(ResultIdentityAtom(
 						RESULT_IDENTITY_PACK_EXPANSION));
 					ResultSyntaxReference argument = arguments[a];
@@ -470,15 +470,15 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		}
 
 		const bool transparent =
-			arena_->IsTag(reference.node, "type-id") ||
-			arena_->IsTag(reference.node, "type-specifier-seq") ||
-			arena_->IsTag(reference.node, "default-template-argument") ||
-			(arena_->IsTag(reference.node, "abstract-declarator") &&
-			 arena_->HasDirectChildTag(reference.node, "parameter-pack")) ||
-			(arena_->IsTag(reference.node, "type-name") &&
+			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) ||
+			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ) ||
+			arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_DEFAULT_TEMPLATE_ARGUMENT) ||
+			(arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_ABSTRACT_DECLARATOR) &&
+			 arena_->HasDirectChildTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_PACK)) ||
+			(arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) &&
 			 arena_->HasDirectChildTag(
 				reference.node, "structured-type-name")) ||
-			(arena_->IsTag(reference.node, "decl-specifier") &&
+			(arena_->IsTag(reference.node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) &&
 			 arena_->HasDirectChildTag(
 				reference.node, "structured-type-name"));
 		if (!transparent)
@@ -513,10 +513,10 @@ void SemanticAnalyzer::InternExpandedFunctionTemplateResult(
 		const NodeId node = pending.back();
 		pending.pop_back();
 		++discovery_visits;
-		const bool can_name_pack = arena_->IsTag(node, "id-expression") ||
-			arena_->IsTag(node, "type-name") ||
-			arena_->IsTag(node, "decl-specifier") ||
-			arena_->IsTag(node, "name-component");
+		const bool can_name_pack = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
+			arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
+			arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) ||
+			arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT);
 		const NameId name = can_name_pack ? arena_->SemanticPayloadId(node) : 0;
 		if (name != 0 && !candidate_names.Find(name) &&
 			root_parameter(name) == pattern->parameters.size())

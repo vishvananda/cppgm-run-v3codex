@@ -29,7 +29,7 @@ void SemanticAnalyzer::ValidateConstexprConstructorDefinition(
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId syntax = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(syntax, "mem-initializer")) continue;
+			if (!arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_MEM_INITIALIZER)) continue;
 			const NodeId id = FindChild(syntax, "mem-initializer-id");
 			if (id == kNoNode) continue;
 			if (arena_->Payload(id) == program_->names.Get(

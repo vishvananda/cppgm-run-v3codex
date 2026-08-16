@@ -57,9 +57,9 @@ TypeId SemanticAnalyzer::MemberPointerAddressSyntaxTarget(
 	NodeId syntax, ScopeId scope)
 {
 	while (syntax != kNoNode &&
-		arena_->IsTag(syntax, "parenthesized-expression"))
+		arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		syntax = FirstSemanticChild(syntax);
-	if (syntax == kNoNode || !arena_->IsTag(syntax, "id-expression") ||
+	if (syntax == kNoNode || !arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
 		FindChild(syntax, "structured-type-name") == kNoNode)
 		return kNoType;
 	const LookupResult found = LookupStructuredName(

@@ -32,6 +32,8 @@ static_assert(sizeof(SyntaxToken) == 16,
 	"syntax token provenance must remain four compact 32-bit words");
 static_assert(sizeof(SyntaxLiteralFact) == 16,
 	"scalar literal facts must remain compact");
+static_assert(sizeof(SyntaxNode) == 32,
+	"compact syntax tag codes must occupy existing node padding");
 
 SyntaxToken::SyntaxToken(std::uint16_t kind_value, TextId spelling_value,
 	std::uint32_t literal_fact, TextId source_file_value,
@@ -244,10 +246,12 @@ void SyntaxTokenSink::EmitScalarLiteral(const std::string& source,
 		kLiteralToken, InternTokenSpelling(source), fact));
 }
 
-SyntaxNode::SyntaxNode(TextId tag_value, TextId payload_value)
+SyntaxNode::SyntaxNode(TextId tag_value, TextId payload_value,
+	SyntaxTagCode tag_code_value)
 	: tag(tag_value), payload(payload_value), semantic_payload(0),
 	  first_edge(kNoEdge),
-	  last_edge(kNoEdge), token_first(0), token_last(0), flags(0)
+	  last_edge(kNoEdge), token_first(0), token_last(0), flags(0),
+	  tag_code(tag_code_value)
 {
 }
 
@@ -263,7 +267,7 @@ SyntaxArena::SyntaxArena(StringTable& strings,
 	  literal_facts_(literal_facts), tag_cache_(kSyntaxTagCacheEntries),
 	  rollback_edge_base_(0) {}
 
-TextId SyntaxArena::InternTag(const char* tag) const
+TextId SyntaxArena::InternTag(const char* tag, SyntaxTagCode* code) const
 {
 	// Syntax tags are compiler-owned static spellings. Cache their stable
 	// pointers only after the ordinary interner establishes the identity, so
@@ -280,6 +284,7 @@ TextId SyntaxArena::InternTag(const char* tag) const
 		if (cached.spelling == tag)
 		{
 			if (stats_) ++stats_->syntax_tag_cache_hits;
+			if (code) *code = cached.code;
 			return cached.identity;
 		}
 		if (cached.spelling == 0)
@@ -288,6 +293,8 @@ TextId SyntaxArena::InternTag(const char* tag) const
 			const TextId identity = strings_.Intern(tag);
 			cached.spelling = tag;
 			cached.identity = identity;
+			cached.code = ClassifySyntaxTag(tag);
+			if (code) *code = cached.code;
 			return identity;
 		}
 		slot = (slot + 1) & (kSyntaxTagCacheEntries - 1);
@@ -295,6 +302,7 @@ TextId SyntaxArena::InternTag(const char* tag) const
 	// The source tree currently has far fewer static tag sites than entries,
 	// but retain the ordinary correct path if that invariant ever changes.
 	if (stats_) ++stats_->syntax_tag_cache_misses;
+	if (code) *code = ClassifySyntaxTag(tag);
 	return strings_.Intern(tag);
 }
 
@@ -317,8 +325,9 @@ NodeId SyntaxArena::Make(const char* tag, const std::string& payload)
 		if (!payload.empty()) ++stats_->syntax_payload_calls;
 	}
 	const TextId payload_id = payload.empty() ? 0 : strings_.Intern(payload);
-	const TextId tag_id = InternTag(tag);
-	nodes_.push_back(SyntaxNode(tag_id, payload_id));
+	SyntaxTagCode tag_code = STAG_NONE;
+	const TextId tag_id = InternTag(tag, &tag_code);
+	nodes_.push_back(SyntaxNode(tag_id, payload_id, tag_code));
 	return id;
 }
 
@@ -469,6 +478,12 @@ bool SyntaxArena::IsTag(NodeId node, const char* tag) const
 	return nodes_[node].tag == InternTag(tag);
 }
 
+bool SyntaxArena::IsTag(NodeId node, SyntaxTagCode tag) const
+{
+	if (stats_) ++stats_->syntax_tag_query_calls;
+	return nodes_[node].tag_code == tag;
+}
+
 const std::string& SyntaxArena::Payload(NodeId node) const
 {
 	return strings_.Get(nodes_[node].payload);
@@ -533,7 +548,7 @@ void SyntaxArena::AppendImmediateParameterNames(NodeId declarator,
 			edge = NextEdge(edge))
 		{
 			const NodeId child = EdgeChild(edge);
-			if (!IsTag(child, "parameter-clause"))
+			if (!IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE))
 			{
 				pending.push_back(child);
 				continue;
@@ -542,7 +557,7 @@ void SyntaxArena::AppendImmediateParameterNames(NodeId declarator,
 				item = NextEdge(item))
 			{
 				const NodeId parameter = EdgeChild(item);
-				if (!IsTag(parameter, "parameter-declaration")) continue;
+				if (!IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) continue;
 				const TextId name = nodes_[parameter].semantic_payload;
 				if (name != 0) result->push_back(name);
 			}
@@ -570,6 +585,18 @@ NodeId SyntaxArena::FindDirectChildTag(NodeId node, const char* tag) const
 	return kNoNode;
 }
 
+NodeId SyntaxArena::FindDirectChildTag(NodeId node, SyntaxTagCode tag) const
+{
+	if (stats_) ++stats_->syntax_tag_query_calls;
+	for (std::uint32_t edge = nodes_[node].first_edge;
+		edge != kNoEdge; edge = edges_[edge].next)
+	{
+		const NodeId child = edges_[edge].child;
+		if (nodes_[child].tag_code == tag) return child;
+	}
+	return kNoNode;
+}
+
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 {
 	if (stats_) ++stats_->syntax_tag_query_calls;
@@ -577,6 +604,15 @@ bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 	for (std::uint32_t edge = nodes_[node].first_edge;
 		edge != kNoEdge; edge = edges_[edge].next)
 		if (nodes_[edges_[edge].child].tag == identity) return true;
+	return false;
+}
+
+bool SyntaxArena::HasDirectChildTag(NodeId node, SyntaxTagCode tag) const
+{
+	if (stats_) ++stats_->syntax_tag_query_calls;
+	for (std::uint32_t edge = nodes_[node].first_edge;
+		edge != kNoEdge; edge = edges_[edge].next)
+		if (nodes_[edges_[edge].child].tag_code == tag) return true;
 	return false;
 }
 
@@ -594,6 +630,25 @@ bool SyntaxArena::HasDescendantTag(NodeId node, const char* tag) const
 		{
 			const NodeId child = edges_[edge].child;
 			if (nodes_[child].tag == identity) return true;
+			pending.push_back(child);
+		}
+	}
+	return false;
+}
+
+bool SyntaxArena::HasDescendantTag(NodeId node, SyntaxTagCode tag) const
+{
+	if (stats_) ++stats_->syntax_tag_query_calls;
+	std::vector<NodeId> pending(1, node);
+	while (!pending.empty())
+	{
+		const NodeId current = pending.back();
+		pending.pop_back();
+		for (std::uint32_t edge = nodes_[current].first_edge;
+			edge != kNoEdge; edge = edges_[edge].next)
+		{
+			const NodeId child = edges_[edge].child;
+			if (nodes_[child].tag_code == tag) return true;
 			pending.push_back(child);
 		}
 	}

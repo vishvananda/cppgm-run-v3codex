@@ -1140,7 +1140,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
 	FunctionTemplateDeduction* deduced)
 {
 	TypeId list_element = kNoType;
-	if (syntax != kNoNode && arena_->IsTag(syntax, "braced-init-list") &&
+	if (syntax != kNoNode && arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST) &&
 		IsInitializerListType(parameter, &list_element))
 	{
 		FunctionTemplateDeduction trial = *deduced;
@@ -1164,15 +1164,15 @@ bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
 		return true;
 	}
 	while (syntax != kNoNode &&
-		arena_->IsTag(syntax, "parenthesized-expression"))
+		arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		syntax = FirstSemanticChild(syntax);
-	if (syntax != kNoNode && arena_->IsTag(syntax, "unary-expression") &&
+	if (syntax != kNoNode && arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_UNARY_EXPRESSION) &&
 		PayloadSource(syntax) == "&")
 		syntax = FirstSemanticChild(syntax);
 	while (syntax != kNoNode &&
-		arena_->IsTag(syntax, "parenthesized-expression"))
+		arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		syntax = FirstSemanticChild(syntax);
-	if (syntax == kNoNode || !arena_->IsTag(syntax, "id-expression"))
+	if (syntax == kNoNode || !arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 		return false;
 
 	const std::string spelling = arena_->Payload(syntax);
@@ -1792,15 +1792,15 @@ bool SemanticAnalyzer::HasUniqueFunctionAddressTarget(
 	ScopeId scope, NodeId syntax, TypeId target)
 {
 	while (syntax != kNoNode &&
-		arena_->IsTag(syntax, "parenthesized-expression"))
+		arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		syntax = FirstSemanticChild(syntax);
-	if (syntax != kNoNode && arena_->IsTag(syntax, "unary-expression") &&
+	if (syntax != kNoNode && arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_UNARY_EXPRESSION) &&
 		PayloadSource(syntax) == "&")
 		syntax = FirstSemanticChild(syntax);
 	while (syntax != kNoNode &&
-		arena_->IsTag(syntax, "parenthesized-expression"))
+		arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		syntax = FirstSemanticChild(syntax);
-	if (syntax == kNoNode || !arena_->IsTag(syntax, "id-expression"))
+	if (syntax == kNoNode || !arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 		return false;
 
 	TypeId desired = program_->types.RemoveTopCv(target);

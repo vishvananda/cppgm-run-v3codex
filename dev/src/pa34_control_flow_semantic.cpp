@@ -10,7 +10,7 @@ namespace pa12_semantic_detail
 bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
 	NodeId node, ScopeId scope, std::uint32_t output_parent)
 {
-	if (!arena_->IsTag(node, "if-statement")) return false;
+	if (!arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IF_STATEMENT)) return false;
 	const NodeId marker = FindChild(node, "constexpr-selection");
 	const NodeId init_syntax = FindChild(node, "selection-init-statement");
 	if (marker == kNoNode && init_syntax == kNoNode) return false;
@@ -24,7 +24,7 @@ bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
 		const NodeId value = FirstSemanticChild(init_syntax);
 		if (value == kNoNode)
 			throw std::runtime_error("selection init-statement is empty");
-		if (arena_->IsTag(value, "alias-declaration"))
+		if (arena_->IsTag(value, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 			AnalyzeDeclaration(value, control, owner, true);
 		else
 		{
@@ -49,13 +49,13 @@ bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, "condition"))
+			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CONDITION))
 				AnalyzeCondition(child, control, statement, false);
-			else if (arena_->IsTag(child, "then") ||
-				arena_->IsTag(child, "else"))
+			else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_THEN) ||
+				arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ELSE))
 			{
 				const std::uint32_t branch = MakeDump(
-					arena_->IsTag(child, "then") ? DUMP_THEN : DUMP_ELSE);
+					arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_THEN) ? DUMP_THEN : DUMP_ELSE);
 				dump_.Add(statement, branch);
 				AnalyzeSubstatement(FirstSemanticChild(child), control, branch);
 			}
@@ -67,7 +67,7 @@ bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
 		const NodeId expression_syntax = condition_syntax == kNoNode ?
 			kNoNode : FirstSemanticChild(condition_syntax);
 		if (expression_syntax == kNoNode ||
-			arena_->IsTag(expression_syntax, "condition-declaration"))
+			arena_->IsTag(expression_syntax, ::cppgm::pa10_syntax_detail::STAG_CONDITION_DECLARATION))
 			throw std::runtime_error(
 				"constexpr if requires an expression condition");
 		++constant_expression_required_depth_;
@@ -91,9 +91,9 @@ bool SemanticAnalyzer::AnalyzeHostedSelectionStatement(
 			edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (!arena_->IsTag(child, "then") &&
-				!arena_->IsTag(child, "else")) continue;
-			const bool is_then = arena_->IsTag(child, "then");
+			if (!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_THEN) &&
+				!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_ELSE)) continue;
+			const bool is_then = arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_THEN);
 			if (is_then == select_then)
 				AnalyzeSubstatement(
 					FirstSemanticChild(child), control, owner);

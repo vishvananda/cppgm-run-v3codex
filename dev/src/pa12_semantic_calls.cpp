@@ -1126,7 +1126,7 @@ bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
 			throw std::runtime_error("va_start outside a variadic function");
 		const FunctionInfo& function = GetFunction(current_function_context_);
 		if (function.parameters.empty() ||
-			!arena_->IsTag(argument_syntax[1], "id-expression") ||
+			!arena_->IsTag(argument_syntax[1], ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
 			program_->names.UseInterned(
 				arena_->PayloadId(argument_syntax[1])) !=
 				function.parameters.back().name)
@@ -1138,7 +1138,7 @@ bool SemanticAnalyzer::TryAnalyzeVariadicBuiltinCall(
 	list = ApplyCallArgument(list, va_list_pointer);
 	if (kind == BUILTIN_FUNCTION_VA_ARG)
 	{
-		if (!arena_->IsTag(argument_syntax[1], "type-id"))
+		if (!arena_->IsTag(argument_syntax[1], ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 			throw std::runtime_error("va_arg has no result type");
 		const TypeId type = BuildTypeId(argument_syntax[1], scope);
 		if (type == kNoType)
@@ -1595,9 +1595,9 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 	const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
-	while (arena_->IsTag(callee, "parenthesized-expression"))
+	while (arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		callee = FirstSemanticChild(callee);
-	if (callee == kNoNode || !arena_->IsTag(callee, "member-expression"))
+	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION))
 		return false;
 	const std::uint32_t object_edge = arena_->FirstEdge(callee);
 	const std::uint32_t name_edge = object_edge == kNoEdge ? kNoEdge :
@@ -1805,9 +1805,9 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	ScopeId scope, const std::vector<NodeId>& argument_syntax, TypeId target,
 	ExpressionInfo* result)
 {
-	while (arena_->IsTag(callee, "parenthesized-expression"))
+	while (arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 		callee = FirstSemanticChild(callee);
-	if (callee == kNoNode || !arena_->IsTag(callee, "member-expression"))
+	if (callee == kNoNode || !arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION))
 		return false;
 	const std::uint32_t object_edge = arena_->FirstEdge(callee);
 	const std::uint32_t name_edge = object_edge == kNoEdge ? kNoEdge :

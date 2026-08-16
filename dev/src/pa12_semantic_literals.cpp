@@ -788,7 +788,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId component = arena_->EdgeChild(edge);
-		if (arena_->IsTag(component, "name-component"))
+		if (arena_->IsTag(component, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 		{
 			if (first_template_component ==
 					std::numeric_limits<std::size_t>::max() &&
@@ -951,16 +951,16 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 {
 	if (node == kNoNode) throw std::runtime_error("empty decltype");
 	bool parenthesized = false;
-	if (arena_->IsTag(node, "parenthesized-expression"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 	{
 		parenthesized = true;
 		node = FirstSemanticChild(node);
 	}
 	const bool unparenthesized_member = !parenthesized &&
-		arena_->IsTag(node, "member-expression");
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION);
 	const bool unparenthesized_id = !parenthesized &&
-		arena_->IsTag(node, "id-expression");
-	if (arena_->IsTag(node, "id-expression") &&
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION);
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
 		FindChild(node, "structured-type-name") == kNoNode &&
 		arena_->Payload(node).find("::") == std::string::npos)
 	{

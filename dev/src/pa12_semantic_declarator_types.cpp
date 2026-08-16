@@ -168,7 +168,7 @@ EntityId SemanticAnalyzer::EntityOf(TypeId type) const
 
 bool SemanticAnalyzer::IsCallableDeclaration(NodeId node) const
 {
-	if (arena_->IsTag(node, "function-definition")) return true;
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION)) return true;
 	const NodeId list = FindChild(node, "init-declarator-list");
 	for (std::uint32_t edge = list == kNoNode ? kNoEdge : arena_->FirstEdge(list);
 		edge != kNoEdge; edge = arena_->NextEdge(edge))

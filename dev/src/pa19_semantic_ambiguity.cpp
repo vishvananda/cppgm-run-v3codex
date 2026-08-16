@@ -119,7 +119,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 	const NodeId specifier_node = arena_->EdgeChild(specifier_edge);
 	const NodeId specifier_structure = FirstSemanticChild(specifier_node);
 	if (specifier_structure != kNoNode &&
-		!arena_->IsTag(specifier_structure, "structured-type-name"))
+		!arena_->IsTag(specifier_structure, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME))
 		return false;
 	const std::string spelling = PayloadSource(specifier_node);
 	const NodeId item = arena_->EdgeChild(item_edge);
@@ -318,7 +318,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId parameter = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(parameter, "parameter-declaration")) return false;
+		if (!arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) return false;
 		NodeId declarator = FindChild(parameter, "declarator");
 		if (declarator == kNoNode)
 			declarator = FindChild(parameter, "abstract-declarator");
@@ -435,7 +435,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 		return AnalyzeAmbiguousMultiDirectInitializer(node, scope,
 			output_parent, specifiers, clause, variable_name);
 	const NodeId provisional = arena_->EdgeChild(parameter_edge);
-	if (!arena_->IsTag(provisional, "parameter-declaration")) return false;
+	if (!arena_->IsTag(provisional, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION)) return false;
 	const NodeId call_specifiers =
 		FindChild(provisional, "decl-specifier-seq");
 	const std::uint32_t call_edge = call_specifiers == kNoNode ? kNoEdge :

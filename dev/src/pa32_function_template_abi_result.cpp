@@ -609,14 +609,14 @@ FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
 	const std::vector<ParameterInfo>& parameters)
 {
 	if (syntax == kNoNode) return kNoFunctionTemplateAbiExpression;
-	if (arena.IsTag(syntax, "parenthesized-expression"))
+	if (arena.IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 	{
 		const std::uint32_t edge = arena.FirstEdge(syntax);
 		return edge == kNoEdge ? kNoFunctionTemplateAbiExpression :
 			PublishSyntaxExpression(
 				program, arena, arena.EdgeChild(edge), parameters);
 	}
-	if (arena.IsTag(syntax, "id-expression"))
+	if (arena.IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		const NameId name = arena.SemanticPayloadId(syntax);
 		for (std::size_t i = 0; i < parameters.size(); ++i)
@@ -632,7 +632,7 @@ FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
 	}
 	const std::uint32_t first = arena.FirstEdge(syntax);
 	if (first == kNoEdge) return kNoFunctionTemplateAbiExpression;
-	if (arena.IsTag(syntax, "member-expression"))
+	if (arena.IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION))
 	{
 		const std::uint32_t second = arena.NextEdge(first);
 		if (second == kNoEdge) return kNoFunctionTemplateAbiExpression;
@@ -647,7 +647,7 @@ FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
 			kNoTemplateParameter, OPERATOR_NONE,
 			arena.SemanticPayload(syntax) == "->"));
 	}
-	if (arena.IsTag(syntax, "call-expression"))
+	if (arena.IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION))
 	{
 		const FunctionTemplateAbiExpressionId callee = PublishSyntaxExpression(
 			program, arena, arena.EdgeChild(first), parameters);
@@ -660,7 +660,7 @@ FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
 		return AppendAbiExpression(program, FunctionTemplateAbiExpression(
 			FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL, callee));
 	}
-	if (arena.IsTag(syntax, "binary-expression") &&
+	if (arena.IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_BINARY_EXPRESSION) &&
 		arena.SemanticPayload(syntax) == "-")
 	{
 		const std::uint32_t second = arena.NextEdge(first);

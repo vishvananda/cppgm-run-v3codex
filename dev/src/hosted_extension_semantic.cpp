@@ -13,7 +13,7 @@ bool HasGnuAttribute(const pa10_syntax_detail::SyntaxArena& arena,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, "gnu-attribute") &&
+		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE) &&
 			arena.SemanticPayload(child) == name) return true;
 	}
 	return false;
@@ -33,8 +33,8 @@ bool DeferArtificialFunction(const pa10_syntax_detail::SyntaxArena& arena,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if ((arena.IsTag(child, "declarator") ||
-			 arena.IsTag(child, "decl-specifier-seq")) && artificial(child))
+		if ((arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR) ||
+			 arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ)) && artificial(child))
 			return true;
 	}
 	return false;
@@ -48,7 +48,7 @@ bool HasStandardAttribute(const pa10_syntax_detail::SyntaxArena& arena,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, "standard-attribute") &&
+		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STANDARD_ATTRIBUTE) &&
 			arena.SemanticPayload(child) == name) return true;
 	}
 	return false;

@@ -21,7 +21,7 @@ NodeId FirstResultStructure(const SyntaxArena& arena, NodeId root)
 	for (std::size_t next = 0; next < pending.size(); ++next)
 	{
 		const NodeId node = pending[next];
-		if (arena.IsTag(node, "structured-type-name")) return node;
+		if (arena.IsTag(node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME)) return node;
 		for (std::uint32_t edge = arena.FirstEdge(node); edge != kNoEdge;
 			edge = arena.NextEdge(edge))
 			pending.push_back(arena.EdgeChild(edge));
@@ -53,7 +53,7 @@ bool SemanticAnalyzer::SyntaxUsesUnqualifiedValueName(NodeId node,
 	const std::unordered_set<NameId>& names) const
 {
 	if (node == kNoNode) return false;
-	if (arena_->IsTag(node, "id-expression") &&
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
 		FindChild(node, "structured-type-name") == kNoNode &&
 		PayloadSource(node).find("::") == std::string::npos &&
 		names.count(arena_->SemanticPayloadId(node)) != 0) return true;
@@ -76,7 +76,7 @@ bool SemanticAnalyzer::FunctionTemplateResultUsesDependentParameter(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId parameter = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(parameter, "parameter-declaration") ||
+		if (!arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION) ||
 			!SyntaxUsesAnyTemplateParameter(parameter, template_names)) continue;
 		const NodeId parameter_declarator = FindChild(parameter, "declarator");
 		if (parameter_declarator == kNoNode) continue;
@@ -91,13 +91,13 @@ bool SemanticAnalyzer::IsDirectTemplateParameterExpression(NodeId node,
 	const std::unordered_set<NameId>& names) const
 {
 	while (node != kNoNode &&
-		arena_->IsTag(node, "parenthesized-expression"))
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_PARENTHESIZED_EXPRESSION))
 	{
 		const std::uint32_t edge = arena_->FirstEdge(node);
 		if (edge == kNoEdge || arena_->NextEdge(edge) != kNoEdge) return false;
 		node = arena_->EdgeChild(edge);
 	}
-	return node != kNoNode && arena_->IsTag(node, "id-expression") &&
+	return node != kNoNode && arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
 		names.count(arena_->SemanticPayloadId(node)) != 0;
 }
 
@@ -126,13 +126,13 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 {
 	if (node == kNoNode) return false;
 	if (alias_depth > alias_templates_.size()) return true;
-	if (arena_->IsTag(node, "decltype-specifier") &&
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECLTYPE_SPECIFIER) &&
 		SyntaxUsesAnyTemplateParameter(node, names)) return true;
-	if (arena_->IsTag(node, "decl-specifier") &&
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) &&
 		PayloadSource(node).compare(0, 8, "decltype") == 0 &&
 		SyntaxUsesAnyTemplateParameter(node, names)) return true;
-	const bool type_spelling = arena_->IsTag(node, "decl-specifier") ||
-		arena_->IsTag(node, "type-name");
+	const bool type_spelling = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER) ||
+		arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME);
 	const NodeId structure = type_spelling ?
 		FindChild(node, "structured-type-name") : kNoNode;
 	if (structure != kNoNode)
@@ -140,7 +140,7 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 		std::vector<NodeId> components;
 		for (std::uint32_t edge = arena_->FirstEdge(structure);
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
-			if (arena_->IsTag(arena_->EdgeChild(edge), "name-component"))
+			if (arena_->IsTag(arena_->EdgeChild(edge), ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 				components.push_back(arena_->EdgeChild(edge));
 		if ((arena_->Flags(node) & SYNTAX_FLAG_TYPENAME) != 0)
 			for (std::size_t i = 0; i + 1 < components.size(); ++i)
@@ -158,9 +158,9 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 				{
 					const NodeId argument = arena_->EdgeChild(edge);
 					NodeId direct = argument;
-					if (arena_->IsTag(direct, "pack-expansion-expression"))
+					if (arena_->IsTag(direct, ::cppgm::pa10_syntax_detail::STAG_PACK_EXPANSION_EXPRESSION))
 						direct = FirstSemanticChild(direct);
-					if (!arena_->IsTag(argument, "type-id") &&
+					if (!arena_->IsTag(argument, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID) &&
 						SyntaxUsesAnyTemplateParameter(argument, names) &&
 						!IsDirectTemplateParameterExpression(direct, names))
 						return true;
@@ -209,12 +209,12 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 	{
 		const NodeId current = pending.back();
 		pending.pop_back();
-		if (arena_->IsTag(current, "call-expression"))
+		if (arena_->IsTag(current, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION))
 		{
 			const NodeId callee = FirstSemanticChild(current);
 			const NodeId arguments = FindChild(current, "argument-list");
 			if (arguments != kNoNode && callee != kNoNode &&
-				arena_->IsTag(callee, "id-expression"))
+				arena_->IsTag(callee, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 			{
 				const NameId name = arena_->SemanticPayloadId(callee);
 				const NodeId structure = FindChild(
@@ -274,8 +274,8 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 				}
 			}
 		}
-		if (arena_->IsTag(current, "type-name") ||
-			arena_->IsTag(current, "decl-specifier"))
+		if (arena_->IsTag(current, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
+			arena_->IsTag(current, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER))
 		{
 			const NodeId structure = FindChild(
 				current, "structured-type-name");

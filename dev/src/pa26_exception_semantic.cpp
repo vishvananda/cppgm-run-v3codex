@@ -12,7 +12,7 @@ namespace pa12_semantic_detail
 bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 	ScopeId scope, std::uint32_t output_parent)
 {
-	if (arena_->IsTag(node, "labeled-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LABELED_STATEMENT))
 	{
 		const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 		const std::uint32_t statement = MakeDump(DUMP_LABELED_STATEMENT,
@@ -24,7 +24,7 @@ bool SemanticAnalyzer::AnalyzeControlFlowLabelOrGoto(NodeId node,
 		AnalyzeStatement(child, scope, statement);
 		return true;
 	}
-	if (!arena_->IsTag(node, "goto-statement")) return false;
+	if (!arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_GOTO_STATEMENT)) return false;
 	const NameId name = program_->names.UseInterned(arena_->PayloadId(node));
 	const std::uint32_t statement = MakeDump(DUMP_GOTO_STATEMENT,
 		kNoType, VALUE_NONE, name);
@@ -285,8 +285,8 @@ void SemanticAnalyzer::DemandConstructorUnwindDestructors(
 					const NodeId current = syntax.back();
 					syntax.pop_back();
 					if (current == kNoNode) continue;
-					throwing = arena_->IsTag(current, "throw-expression") ||
-						arena_->IsTag(current, "throw-statement");
+					throwing = arena_->IsTag(current, ::cppgm::pa10_syntax_detail::STAG_THROW_EXPRESSION) ||
+						arena_->IsTag(current, ::cppgm::pa10_syntax_detail::STAG_THROW_STATEMENT);
 					for (std::uint32_t edge = arena_->FirstEdge(current);
 						!throwing && edge != kNoEdge;
 						edge = arena_->NextEdge(edge))
@@ -657,7 +657,7 @@ bool SemanticAnalyzer::CollectTemporaryObjectsImpl(std::uint32_t node,
 bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 	std::uint32_t output_parent)
 {
-	if (arena_->IsTag(node, "throw-statement"))
+	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_THROW_STATEMENT))
 	{
 		const ExpressionInfo expression = AnalyzeThrowExpression(node, scope);
 		AppendFullExpressionDestructionActions(expression.node, expression.node);
@@ -672,7 +672,7 @@ bool SemanticAnalyzer::AnalyzeExceptionStatement(NodeId node, ScopeId scope,
 		dump_.Add(output_parent, expression.node);
 		return true;
 	}
-	if (!arena_->IsTag(node, "try-block")) return false;
+	if (!arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TRY_BLOCK)) return false;
 	AnalyzeTryStatement(node, scope, output_parent);
 	return true;
 }
@@ -978,7 +978,7 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId child = arena_->EdgeChild(edge);
-		if (arena_->IsTag(child, "compound-statement") && !saw_body)
+		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT) && !saw_body)
 		{
 			exception_cleanup_stops_.push_back(scope);
 			PushExceptionControlContext();
@@ -987,7 +987,7 @@ void SemanticAnalyzer::AnalyzeTryStatement(NodeId node, ScopeId scope,
 			exception_cleanup_stops_.pop_back();
 			saw_body = true;
 		}
-		else if (arena_->IsTag(child, "handler"))
+		else if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_HANDLER))
 		{
 			const NodeId declaration = FindChild(child, "exception-declaration");
 			catches_all = catches_all || (declaration != kNoNode &&

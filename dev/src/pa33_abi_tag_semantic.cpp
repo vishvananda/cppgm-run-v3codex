@@ -25,7 +25,7 @@ void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId attribute = arena.EdgeChild(edge);
-		if (!arena.IsTag(attribute, "gnu-attribute")) continue;
+		if (!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE)) continue;
 		const std::string name = arena.SemanticPayload(attribute);
 		if (name != "abi_tag" && name != "__abi_tag__") continue;
 		bool has_argument = false;
@@ -33,9 +33,9 @@ void CollectDirectAbiTags(const SyntaxArena& arena, Program* program,
 			child_edge != kNoEdge; child_edge = arena.NextEdge(child_edge))
 		{
 			const NodeId child = arena.EdgeChild(child_edge);
-			if (arena.IsTag(child, "gnu-attribute-nonliteral-argument"))
+			if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_NONLITERAL_ARGUMENT))
 				throw std::runtime_error("invalid abi_tag attribute argument");
-			if (!arena.IsTag(child, "gnu-attribute-argument")) continue;
+			if (!arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE_ARGUMENT)) continue;
 			has_argument = true;
 			std::string tag;
 			if (!DecodeNarrowStringLiteralSequence(
@@ -58,7 +58,7 @@ void CollectFunctionAbiTags(const SyntaxArena& arena, Program* program,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, "declarator"))
+		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR))
 		{
 			declarator = child;
 			break;
@@ -75,8 +75,8 @@ bool HasDirectFunctionAttribute(const SyntaxArena& arena, NodeId owner,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId attribute = arena.EdgeChild(edge);
-		if (!arena.IsTag(attribute, "gnu-attribute") &&
-			!arena.IsTag(attribute, "standard-attribute")) continue;
+		if (!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE) &&
+			!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_STANDARD_ATTRIBUTE)) continue;
 		const std::string spelling = arena.SemanticPayload(attribute);
 		if (spelling == name || spelling == alternate) return true;
 	}
@@ -92,8 +92,8 @@ bool HasFunctionAttribute(const SyntaxArena& arena, NodeId declaration,
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId child = arena.EdgeChild(edge);
-		if (arena.IsTag(child, "declarator") ||
-			arena.IsTag(child, "decl-specifier-seq"))
+		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR) ||
+			arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ))
 		{
 			if (HasDirectFunctionAttribute(arena, child, name, alternate))
 				return true;

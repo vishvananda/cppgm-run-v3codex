@@ -237,7 +237,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinTypeTrait(
 		edge = arena_->NextEdge(edge))
 	{
 		const NodeId holder = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(holder, "builtin-type-operand")) continue;
+		if (!arena_->IsTag(holder, ::cppgm::pa10_syntax_detail::STAG_BUILTIN_TYPE_OPERAND)) continue;
 		const NodeId type_id = FindChild(holder, "type-id");
 		NodeId declarator = FindChild(type_id, "abstract-declarator");
 		if (declarator == kNoNode)

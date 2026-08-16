@@ -11,7 +11,7 @@ namespace pa12_semantic_detail
 bool SemanticAnalyzer::AnalyzeExplicitVariableInstantiation(
 	NodeId target, ScopeId scope, bool definition)
 {
-	if (definition || !arena_->IsTag(target, "simple-declaration") ||
+	if (definition || !arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION) ||
 		program_->KindOfScope(scope) != SCOPE_NAMESPACE) return false;
 	const NodeId list = FindChild(target, "init-declarator-list");
 	const NodeId item = list == kNoNode ? kNoNode : FirstSemanticChild(list);

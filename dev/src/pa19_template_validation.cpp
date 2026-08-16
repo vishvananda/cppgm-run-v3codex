@@ -345,13 +345,13 @@ bool RetainedTemplateValidator::SyntaxUsesTemplateParameter(NodeId node) const
 	if (node == kNoNode) return false;
 	const bool structured = analyzer_.FindChild(
 		node, "structured-type-name") != kNoNode;
-	if (analyzer_.arena_->IsTag(node, "name-component") ||
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT) ||
 		(!structured &&
-		 (analyzer_.arena_->IsTag(node, "base-name") ||
-		  analyzer_.arena_->IsTag(node, "id-expression") ||
-		  analyzer_.arena_->IsTag(node, "target") ||
-		  analyzer_.arena_->IsTag(node, "type-name") ||
-		  analyzer_.arena_->IsTag(node, "decl-specifier"))))
+		 (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BASE_NAME) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TARGET) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER))))
 	{
 		const NameId name = analyzer_.program_->names.UseInterned(
 			analyzer_.arena_->SemanticPayloadId(node));
@@ -370,13 +370,13 @@ bool RetainedTemplateValidator::SyntaxUsesRetainedType(
 	if (node == kNoNode) return false;
 	const bool structured = analyzer_.FindChild(
 		node, "structured-type-name") != kNoNode;
-	if (analyzer_.arena_->IsTag(node, "name-component") ||
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT) ||
 		(!structured &&
-		 (analyzer_.arena_->IsTag(node, "base-name") ||
-		  analyzer_.arena_->IsTag(node, "id-expression") ||
-		  analyzer_.arena_->IsTag(node, "target") ||
-		  analyzer_.arena_->IsTag(node, "type-name") ||
-		  analyzer_.arena_->IsTag(node, "decl-specifier"))))
+		 (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BASE_NAME) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TARGET) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ||
+		  analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER))))
 	{
 		const NameId name = analyzer_.program_->names.UseInterned(
 			analyzer_.arena_->SemanticPayloadId(node));
@@ -393,7 +393,7 @@ bool RetainedTemplateValidator::SyntaxUsesRetainedValue(
 	NodeId node, std::size_t scope) const
 {
 	if (node == kNoNode) return false;
-	if (analyzer_.arena_->IsTag(node, "id-expression") &&
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
 		analyzer_.FindChild(node, "structured-type-name") == kNoNode)
 	{
 		const NamePath path = analyzer_.ParseNamePath(
@@ -492,13 +492,13 @@ void RetainedTemplateValidator::VisitChildren(NodeId node, std::size_t scope)
 bool RetainedTemplateValidator::VisitControlStatement(
 	NodeId node, std::size_t scope)
 {
-	if (!analyzer_.arena_->IsTag(node, "if-statement") &&
-		!analyzer_.arena_->IsTag(node, "switch-statement") &&
-		!analyzer_.arena_->IsTag(node, "while-statement") &&
-		!analyzer_.arena_->IsTag(node, "do-statement") &&
-		!analyzer_.arena_->IsTag(node, "for-statement") &&
-		!analyzer_.arena_->IsTag(node, "then") &&
-		!analyzer_.arena_->IsTag(node, "else")) return false;
+	if (!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_IF_STATEMENT) &&
+		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SWITCH_STATEMENT) &&
+		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_WHILE_STATEMENT) &&
+		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_DO_STATEMENT) &&
+		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOR_STATEMENT) &&
+		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_THEN) &&
+		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ELSE)) return false;
 	VisitChildren(node, AddChildScope(scope, SCOPE_BLOCK));
 	return true;
 }
@@ -514,7 +514,7 @@ NodeId RetainedTemplateValidator::FindParameterClause(NodeId declarator) const
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		{
 			const NodeId child = analyzer_.arena_->EdgeChild(edge);
-			if (analyzer_.arena_->IsTag(child, "parameter-clause")) return child;
+			if (analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_CLAUSE)) return child;
 			pending.push_back(child);
 		}
 	}
@@ -530,7 +530,7 @@ void RetainedTemplateValidator::BindFunctionParameters(NodeId declarator,
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId parameter = analyzer_.arena_->EdgeChild(edge);
-		if (!analyzer_.arena_->IsTag(parameter, "parameter-declaration"))
+		if (!analyzer_.arena_->IsTag(parameter, ::cppgm::pa10_syntax_detail::STAG_PARAMETER_DECLARATION))
 			continue;
 		const NodeId parameter_declarator =
 			analyzer_.FindChild(parameter, "declarator");
@@ -570,7 +570,7 @@ bool RetainedTemplateValidator::DeclareStructuredBindings(
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId binding = analyzer_.arena_->EdgeChild(edge);
-		if (!analyzer_.arena_->IsTag(binding, "binding-identifier"))
+		if (!analyzer_.arena_->IsTag(binding, ::cppgm::pa10_syntax_detail::STAG_BINDING_IDENTIFIER))
 			throw std::runtime_error("invalid retained structured binding");
 		Declare(scope, analyzer_.program_->names.Intern(
 			analyzer_.arena_->Payload(binding)), RETAINED_VALUE_NAME);
@@ -588,21 +588,21 @@ void RetainedTemplateValidator::PredeclareClassSimple(NodeId node,
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		{
 			const NodeId specifier = analyzer_.arena_->EdgeChild(edge);
-			if (analyzer_.arena_->IsTag(specifier, "enum-specifier"))
+			if (analyzer_.arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_ENUM_SPECIFIER))
 			{
 				DeclareEnumValues(specifier, scope);
 				continue;
 			}
-			if (!analyzer_.arena_->IsTag(specifier, "class-specifier") &&
+			if (!analyzer_.arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) &&
 				!analyzer_.arena_->IsTag(specifier,
-					"class-forward-declaration"))
+					::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION))
 				continue;
 			const std::string spelling = analyzer_.arena_->Payload(specifier);
 			if (!spelling.empty())
 			{
 				embedded_type = analyzer_.program_->names.Intern(spelling);
 				DeclareClassType(scope, embedded_type,
-					analyzer_.arena_->IsTag(specifier, "class-specifier"));
+					analyzer_.arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER));
 			}
 		}
 	const bool type_declaration = IsTypedef(specifiers);
@@ -628,7 +628,7 @@ void RetainedTemplateValidator::DeclareEnumValues(NodeId node,
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId enumerator = analyzer_.arena_->EdgeChild(edge);
-		if (!analyzer_.arena_->IsTag(enumerator, "enumerator")) continue;
+		if (!analyzer_.arena_->IsTag(enumerator, ::cppgm::pa10_syntax_detail::STAG_ENUMERATOR)) continue;
 		Declare(scope, analyzer_.program_->names.Intern(
 			analyzer_.arena_->Payload(enumerator)), RETAINED_VALUE_NAME, true);
 	}
@@ -641,21 +641,21 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId member = analyzer_.arena_->EdgeChild(edge);
-		if (analyzer_.arena_->IsTag(member, "simple-declaration"))
+		if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 			PredeclareClassSimple(member, scope);
-		else if (analyzer_.arena_->IsTag(member, "alias-declaration"))
+		else if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 			Declare(scope, analyzer_.program_->names.Intern(
 				analyzer_.arena_->Payload(member)), RETAINED_TYPE_NAME);
-		else if (analyzer_.arena_->IsTag(member, "class-specifier") ||
-			analyzer_.arena_->IsTag(member, "class-forward-declaration"))
+		else if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
+			analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION))
 		{
 			if (analyzer_.arena_->Payload(member).empty())
 				PredeclareClassMembers(member, scope);
 			else DeclareClassType(scope, analyzer_.program_->names.Intern(
 				analyzer_.arena_->Payload(member)),
-				analyzer_.arena_->IsTag(member, "class-specifier"));
+				analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER));
 		}
-		else if (analyzer_.arena_->IsTag(member, "bit-field-declaration"))
+		else if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_BIT_FIELD_DECLARATION))
 		{
 			for (std::uint32_t field_edge =
 					analyzer_.arena_->FirstEdge(member);
@@ -663,7 +663,7 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 				field_edge = analyzer_.arena_->NextEdge(field_edge))
 			{
 				const NodeId field = analyzer_.arena_->EdgeChild(field_edge);
-				if (!analyzer_.arena_->IsTag(field, "bit-field-declarator"))
+				if (!analyzer_.arena_->IsTag(field, ::cppgm::pa10_syntax_detail::STAG_BIT_FIELD_DECLARATOR))
 					continue;
 				const NodeId declarator =
 					analyzer_.FindChild(field, "declarator");
@@ -672,16 +672,16 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 						RETAINED_VALUE_NAME);
 			}
 		}
-		else if (analyzer_.arena_->IsTag(member, "function-definition") ||
-			analyzer_.arena_->IsTag(member, "special-member-definition") ||
-			analyzer_.arena_->IsTag(member, "special-member-declaration"))
+		else if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION) ||
+			analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION) ||
+			analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DECLARATION))
 		{
 			const NodeId declarator = analyzer_.FindChild(member, "declarator");
 			if (declarator != kNoNode)
 				Declare(scope, analyzer_.DeclaratorName(declarator),
 					RETAINED_VALUE_NAME, true);
 		}
-		else if (analyzer_.arena_->IsTag(member, "template-declaration"))
+		else if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION))
 		{
 			NodeId target = kNoNode;
 			for (std::uint32_t target_edge =
@@ -694,7 +694,7 @@ void RetainedTemplateValidator::PredeclareClassMembers(NodeId node,
 					child, "template-parameter-clause")) target = child;
 			}
 			if (target == kNoNode) continue;
-			if (analyzer_.arena_->IsTag(target, "simple-declaration"))
+			if (analyzer_.arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 				PredeclareClassSimple(target, scope);
 			else
 			{
@@ -717,7 +717,7 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		{
 			const NodeId base = analyzer_.arena_->EdgeChild(edge);
-			if (!analyzer_.arena_->IsTag(base, "base-specifier")) continue;
+			if (!analyzer_.arena_->IsTag(base, ::cppgm::pa10_syntax_detail::STAG_BASE_SPECIFIER)) continue;
 			const NodeId name = analyzer_.FindChild(base, "base-name");
 			if (name != kNoNode && SyntaxUsesTemplateParameter(name))
 				dependent_base = true;
@@ -737,9 +737,9 @@ void RetainedTemplateValidator::VisitClass(NodeId node, std::size_t scope)
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId member = analyzer_.arena_->EdgeChild(edge);
-		if (analyzer_.arena_->IsTag(member, "simple-declaration"))
+		if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 			VisitSimple(member, class_scope, true);
-		else if (analyzer_.arena_->IsTag(member, "alias-declaration"))
+		else if (analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 			VisitChildren(member, class_scope);
 		else Visit(member, class_scope);
 	}
@@ -761,7 +761,7 @@ NodeId RetainedTemplateValidator::RetainedOperatorCallArgument(
 	const NodeId specifier = analyzer_.arena_->EdgeChild(specifier_edge);
 	const NodeId structure = analyzer_.FirstSemanticChild(specifier);
 	if (structure == kNoNode ||
-		!analyzer_.arena_->IsTag(structure, "structured-type-name"))
+		!analyzer_.arena_->IsTag(structure, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME))
 		return kNoNode;
 	const NamePath callee = analyzer_.StructuredNamePath(specifier);
 	if (callee.Empty() || analyzer_.program_->names.Get(callee.Last()).compare(
@@ -812,21 +812,21 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 				edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 			{
 				const NodeId specifier = analyzer_.arena_->EdgeChild(edge);
-				if (analyzer_.arena_->IsTag(specifier, "enum-specifier"))
+				if (analyzer_.arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_ENUM_SPECIFIER))
 				{
 					DeclareEnumValues(specifier, scope);
 					continue;
 				}
-				if (analyzer_.arena_->IsTag(specifier, "class-specifier") ||
+				if (analyzer_.arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
 					analyzer_.arena_->IsTag(specifier,
-						"class-forward-declaration"))
+						::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION))
 				{
 					const std::string spelling =
 						analyzer_.arena_->Payload(specifier);
 					if (!spelling.empty())
 						DeclareClassType(scope,
 							analyzer_.program_->names.Intern(spelling),
-							analyzer_.arena_->IsTag(specifier, "class-specifier"));
+							analyzer_.arena_->IsTag(specifier, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER));
 				}
 			}
 		const bool type_declaration = IsTypedef(specifiers);
@@ -874,7 +874,7 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 
 void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 {
-	if (analyzer_.arena_->IsTag(node, "alias-declaration"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 	{
 		Declare(scope, analyzer_.program_->names.Intern(
 			analyzer_.arena_->Payload(node)), RETAINED_TYPE_NAME);
@@ -884,7 +884,7 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 	const NodeId target_node = analyzer_.FindChild(node, "target");
 	if (target_node == kNoNode) return;
 	const std::string target = analyzer_.arena_->Payload(target_node);
-	if (analyzer_.arena_->IsTag(node, "using-directive"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
 		const ScopeId target_scope = analyzer_.ResolveScopeSpelling(
 			scopes_[scope].semantic_scope, target);
@@ -1075,9 +1075,9 @@ void RetainedTemplateValidator::VisitIdExpression(NodeId node,
 void RetainedTemplateValidator::VisitSizeof(NodeId node, std::size_t scope)
 {
 	const NodeId operand = analyzer_.FirstSemanticChild(node);
-	if (operand == kNoNode || analyzer_.arena_->IsTag(operand, "type-id"))
+	if (operand == kNoNode || analyzer_.arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID))
 		return;
-	if (analyzer_.arena_->IsTag(operand, "id-expression"))
+	if (analyzer_.arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		const std::string spelling = analyzer_.PayloadSource(operand);
 		const NodeId structure = analyzer_.FindChild(
@@ -1121,13 +1121,13 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 {
 	if (node == kNoNode) return;
 	// The parser and specialization demand own type syntax within this boundary.
-	if (analyzer_.arena_->IsTag(node, "builtin-type-operand")) return;
-	if (analyzer_.arena_->IsTag(node, "id-expression"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BUILTIN_TYPE_OPERAND)) return;
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		VisitIdExpression(node, scope, unknown_callee);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "call-expression"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION))
 	{
 		const std::uint32_t first = analyzer_.arena_->FirstEdge(node);
 		if (first == kNoEdge) return;
@@ -1139,8 +1139,8 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 		{
 			const NodeId holder = analyzer_.arena_->EdgeChild(edge);
-			if (analyzer_.arena_->IsTag(holder, "argument-list") ||
-				analyzer_.arena_->IsTag(holder, "paren-argument-list"))
+			if (analyzer_.arena_->IsTag(holder, ::cppgm::pa10_syntax_detail::STAG_ARGUMENT_LIST) ||
+				analyzer_.arena_->IsTag(holder, ::cppgm::pa10_syntax_detail::STAG_PAREN_ARGUMENT_LIST))
 				for (std::uint32_t argument = analyzer_.arena_->FirstEdge(holder);
 					argument != kNoEdge;
 					argument = analyzer_.arena_->NextEdge(argument), ++ordinal)
@@ -1151,18 +1151,18 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		}
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "enum-specifier"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_SPECIFIER))
 	{
 		DeclareEnumValues(node, scope);
 		VisitChildren(node, scope);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "sizeof-expression"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_EXPRESSION))
 	{
 		VisitSizeof(node, scope);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "lambda-expression"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_LAMBDA_EXPRESSION))
 	{
 		std::size_t lambda_parent = scope;
 		std::vector<NameId> introduced;
@@ -1202,7 +1202,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 			parameter_names_.erase(introduced[i]);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "range-for-statement"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_RANGE_FOR_STATEMENT))
 	{
 		const std::size_t control = AddChildScope(scope, SCOPE_BLOCK);
 		const NodeId declaration = analyzer_.FindChild(
@@ -1229,7 +1229,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		}
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "handler"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_HANDLER))
 	{
 		const std::size_t handler_scope = AddChildScope(scope, SCOPE_BLOCK);
 		const NodeId declaration = analyzer_.FindChild(
@@ -1248,13 +1248,13 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		return;
 	}
 	if (VisitControlStatement(node, scope)) return;
-	if (analyzer_.arena_->IsTag(node, "compound-statement"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT))
 	{
 		const std::size_t block = AddChildScope(scope, SCOPE_BLOCK);
 		VisitChildren(node, block);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "template-declaration"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION))
 	{
 		const NodeId clause = analyzer_.FindChild(
 			node, "template-parameter-clause");
@@ -1285,7 +1285,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 			parameter_names_.erase(introduced[i]);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "member-expression"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_MEMBER_EXPRESSION))
 	{
 		const std::uint32_t object_edge = analyzer_.arena_->FirstEdge(node);
 		const std::uint32_t member_edge = object_edge == kNoEdge ? kNoEdge :
@@ -1302,7 +1302,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 					edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 				{
 					const NodeId child = analyzer_.arena_->EdgeChild(edge);
-					if (analyzer_.arena_->IsTag(child, "name-component"))
+					if (analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 						terminal = child;
 				}
 			const bool template_id = terminal != kNoNode &&
@@ -1311,7 +1311,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 			const bool template_keyword = analyzer_.PayloadSource(member).
 				compare(0, 8, "template") == 0;
 			if (template_id && !template_keyword &&
-				analyzer_.arena_->IsTag(object, "id-expression") &&
+				analyzer_.arena_->IsTag(object, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION) &&
 				analyzer_.FindChild(object, "structured-type-name") == kNoNode)
 			{
 				const NameId object_name = analyzer_.program_->names.Intern(
@@ -1324,30 +1324,30 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 		VisitChildren(node, scope);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "class-specifier"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER))
 	{
 		VisitClass(node, scope);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "function-definition") ||
-		analyzer_.arena_->IsTag(node, "special-member-definition"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION) ||
+		analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION))
 	{
 		VisitFunction(node, scope);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "simple-declaration"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIMPLE_DECLARATION))
 	{
 		VisitSimple(node, scope, false);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "alias-declaration") ||
-		analyzer_.arena_->IsTag(node, "using-declaration") ||
-		analyzer_.arena_->IsTag(node, "using-directive"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION) ||
+		analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DECLARATION) ||
+		analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
 		VisitUsing(node, scope);
 		return;
 	}
-	if (analyzer_.arena_->IsTag(node, "condition-declaration"))
+	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CONDITION_DECLARATION))
 	{
 		const NodeId declarator = analyzer_.FindChild(node, "declarator");
 		if (declarator != kNoNode)
@@ -1446,14 +1446,14 @@ bool RetainedTemplateValidator::RetainedTypeSyntaxEquivalent(NodeId left,
 		{
 			const NodeId child = analyzer_.arena_->EdgeChild(left_edge);
 			if (child != left_identifier &&
-				!analyzer_.arena_->IsTag(child, "initializer")) break;
+				!analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER)) break;
 			left_edge = analyzer_.arena_->NextEdge(left_edge);
 		}
 		while (right_edge != kNoEdge)
 		{
 			const NodeId child = analyzer_.arena_->EdgeChild(right_edge);
 			if (child != right_identifier &&
-				!analyzer_.arena_->IsTag(child, "initializer")) break;
+				!analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_INITIALIZER)) break;
 			right_edge = analyzer_.arena_->NextEdge(right_edge);
 		}
 		if (left_edge == kNoEdge || right_edge == kNoEdge)
@@ -1513,16 +1513,16 @@ bool RetainedTemplateValidator::FunctionQualifiersEquivalent(NodeId left,
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId child = analyzer_.arena_->EdgeChild(edge);
-		if (analyzer_.arena_->IsTag(child, "cv-qualifier") ||
-			analyzer_.arena_->IsTag(child, "ref-qualifier"))
+		if (analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CV_QUALIFIER) ||
+			analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_REF_QUALIFIER))
 			left_qualifiers.push_back(child);
 	}
 	for (std::uint32_t edge = analyzer_.arena_->FirstEdge(right);
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId child = analyzer_.arena_->EdgeChild(edge);
-		if (analyzer_.arena_->IsTag(child, "cv-qualifier") ||
-			analyzer_.arena_->IsTag(child, "ref-qualifier"))
+		if (analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_CV_QUALIFIER) ||
+			analyzer_.arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_REF_QUALIFIER))
 			right_qualifiers.push_back(child);
 	}
 	if (left_qualifiers.size() != right_qualifiers.size()) return false;
@@ -1537,7 +1537,7 @@ bool RetainedTemplateValidator::FunctionQualifiersEquivalent(NodeId left,
 
 void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
 {
-	if (!analyzer_.arena_->IsTag(target_, "special-member-definition")) return;
+	if (!analyzer_.arena_->IsTag(target_, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION)) return;
 	const NodeId declarator = analyzer_.FindChild(target_, "declarator");
 	if (declarator == kNoNode) return;
 	const NamePath path = analyzer_.DeclaratorNamePath(declarator);
@@ -1576,8 +1576,8 @@ void RetainedTemplateValidator::ValidateSpecialMemberExceptionSpecification()
 		edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
 	{
 		const NodeId member = analyzer_.arena_->EdgeChild(edge);
-		if (!analyzer_.arena_->IsTag(member, "special-member-declaration") &&
-			!analyzer_.arena_->IsTag(member, "special-member-definition"))
+		if (!analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DECLARATION) &&
+			!analyzer_.arena_->IsTag(member, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION))
 			continue;
 		if (SpecialMemberKind(member) != kind) continue;
 		const NodeId prior = analyzer_.FindChild(member, "declarator");
@@ -1616,8 +1616,8 @@ void RetainedTemplateValidator::Run()
 		&analyzer_.current_class_context_, class_context);
 	const bool definition =
 		(analyzer_.arena_->Flags(target_) & SYNTAX_FLAG_DEFINITION) != 0 ||
-		analyzer_.arena_->IsTag(target_, "function-definition") ||
-		analyzer_.arena_->IsTag(target_, "special-member-definition");
+		analyzer_.arena_->IsTag(target_, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_DEFINITION) ||
+		analyzer_.arena_->IsTag(target_, ::cppgm::pa10_syntax_detail::STAG_SPECIAL_MEMBER_DEFINITION);
 	if (definition) ValidateSpecialMemberExceptionSpecification();
 	const ScopeId semantic = analyzer_.NewScope(lexical_scope_,
 		SCOPE_TEMPLATE_PARAMETERS, 0,
@@ -1707,7 +1707,7 @@ void RetainedTemplateValidator::Run()
 			static_cast<std::int64_t>(i));
 	}
 	ValidateKnownTemplateArgumentKinds(target_, semantic);
-	if (!definition && !analyzer_.arena_->IsTag(target_, "alias-declaration"))
+	if (!definition && !analyzer_.arena_->IsTag(target_, ::cppgm::pa10_syntax_detail::STAG_ALIAS_DECLARATION))
 		return;
 	Visit(target_, root);
 }
@@ -1803,7 +1803,7 @@ void SemanticAnalyzer::RecordRetainedCallLookup(NodeId callee, ScopeId scope,
 			edge != kNoEdge; edge = arena_->NextEdge(edge))
 		{
 			const NodeId child = arena_->EdgeChild(edge);
-			if (arena_->IsTag(child, "name-component"))
+			if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
 				terminal_component = child;
 		}
 	const bool explicit_template_id = terminal_component != kNoNode &&
