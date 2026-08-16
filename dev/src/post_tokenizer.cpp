@@ -939,7 +939,6 @@ public:
 		current_line_ = line;
 		current_column_ = column;
 		has_current_location_ = true;
-		output_.SetSourceLocation(file, line, column);
 	}
 
 	void emit_whitespace_sequence() {}
@@ -1031,6 +1030,7 @@ public:
 	void emit_eof()
 	{
 		FlushStrings();
+		RestoreCurrentLocation();
 		output_.EmitEof();
 	}
 

@@ -27,6 +27,8 @@ struct SyntaxInterningStats
 	std::size_t syntax_payload_update_calls;
 	std::size_t syntax_tag_cache_hits;
 	std::size_t syntax_tag_cache_misses;
+	std::size_t source_file_cache_hits;
+	std::size_t source_file_cache_misses;
 
 	SyntaxInterningStats();
 	void Accumulate(const SyntaxInterningStats& other);

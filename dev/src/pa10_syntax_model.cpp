@@ -68,14 +68,27 @@ std::uint32_t SyntaxToken::LiteralFact() const
 
 SyntaxTokenSink::SyntaxTokenSink(StringTable& strings,
 	SyntaxInterningStats* stats)
-	: strings_(strings), stats_(stats), source_file_(0), source_line_(0),
+	: strings_(strings), stats_(stats), source_file_(0),
+	  cached_source_file_(0), has_cached_source_file_(false), source_line_(0),
 	  source_column_(0) {}
 
 void SyntaxTokenSink::SetSourceLocation(const std::string& file,
 	std::size_t line, std::size_t column)
 {
 	if (stats_) ++stats_->source_location_calls;
-	const TextId source_file = strings_.Intern(file);
+	TextId source_file = cached_source_file_;
+	if (has_cached_source_file_ && cached_source_file_spelling_ == file)
+	{
+		if (stats_) ++stats_->source_file_cache_hits;
+	}
+	else
+	{
+		if (stats_) ++stats_->source_file_cache_misses;
+		source_file = strings_.Intern(file);
+		cached_source_file_spelling_ = file;
+		cached_source_file_ = source_file;
+		has_cached_source_file_ = true;
+	}
 	if (line > std::numeric_limits<std::uint32_t>::max() ||
 		column > std::numeric_limits<std::uint16_t>::max() ||
 		source_file > std::numeric_limits<std::uint16_t>::max())
@@ -201,7 +214,8 @@ const std::vector<SyntaxLiteralFact>& SyntaxTokenSink::LiteralFacts() const
 std::size_t SyntaxTokenSink::StorageBytes() const
 {
 	return tokens_.capacity() * sizeof(SyntaxToken) +
-		literal_facts_.capacity() * sizeof(SyntaxLiteralFact);
+		literal_facts_.capacity() * sizeof(SyntaxLiteralFact) +
+		cached_source_file_spelling_.capacity();
 }
 
 void SyntaxTokenSink::EmitLiteralSpelling(const std::string& source)
@@ -255,20 +269,33 @@ TextId SyntaxArena::InternTag(const char* tag) const
 	// pointers only after the ordinary interner establishes the identity, so
 	// first-use ordering visible in AST dumps remains unchanged.
 	const std::uintptr_t pointer = reinterpret_cast<std::uintptr_t>(tag);
-	const std::size_t slot = static_cast<std::size_t>(
-		((pointer >> 4) ^ (pointer >> 16)) &
-		(kSyntaxTagCacheEntries - 1));
-	TagCacheEntry& cached = tag_cache_[slot];
-	if (cached.spelling == tag)
+	std::size_t mixed = static_cast<std::size_t>(pointer >> 4);
+	mixed ^= mixed >> 17;
+	mixed *= static_cast<std::size_t>(0xed5ad4bbU);
+	mixed ^= mixed >> 11;
+	std::size_t slot = mixed & (kSyntaxTagCacheEntries - 1);
+	for (std::size_t probes = 0; probes != kSyntaxTagCacheEntries; ++probes)
 	{
-		if (stats_) ++stats_->syntax_tag_cache_hits;
-		return cached.identity;
+		TagCacheEntry& cached = tag_cache_[slot];
+		if (cached.spelling == tag)
+		{
+			if (stats_) ++stats_->syntax_tag_cache_hits;
+			return cached.identity;
+		}
+		if (cached.spelling == 0)
+		{
+			if (stats_) ++stats_->syntax_tag_cache_misses;
+			const TextId identity = strings_.Intern(tag);
+			cached.spelling = tag;
+			cached.identity = identity;
+			return identity;
+		}
+		slot = (slot + 1) & (kSyntaxTagCacheEntries - 1);
 	}
+	// The source tree currently has far fewer static tag sites than entries,
+	// but retain the ordinary correct path if that invariant ever changes.
 	if (stats_) ++stats_->syntax_tag_cache_misses;
-	const TextId identity = strings_.Intern(tag);
-	cached.spelling = tag;
-	cached.identity = identity;
-	return identity;
+	return strings_.Intern(tag);
 }
 
 NodeId SyntaxArena::Make(const char* tag)

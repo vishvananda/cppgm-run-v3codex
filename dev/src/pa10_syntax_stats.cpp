@@ -7,7 +7,8 @@ SyntaxInterningStats::SyntaxInterningStats()
 	: source_location_calls(0), token_spelling_calls(0),
 	  syntax_tag_calls(0), syntax_payload_calls(0),
 	  syntax_tag_query_calls(0), syntax_payload_update_calls(0),
-	  syntax_tag_cache_hits(0), syntax_tag_cache_misses(0)
+	  syntax_tag_cache_hits(0), syntax_tag_cache_misses(0),
+	  source_file_cache_hits(0), source_file_cache_misses(0)
 {
 }
 
@@ -22,6 +23,8 @@ void SyntaxInterningStats::Accumulate(const SyntaxInterningStats& other)
 	syntax_payload_update_calls += other.syntax_payload_update_calls;
 	syntax_tag_cache_hits += other.syntax_tag_cache_hits;
 	syntax_tag_cache_misses += other.syntax_tag_cache_misses;
+	source_file_cache_hits += other.source_file_cache_hits;
+	source_file_cache_misses += other.source_file_cache_misses;
 }
 
 SyntaxStats::SyntaxStats()

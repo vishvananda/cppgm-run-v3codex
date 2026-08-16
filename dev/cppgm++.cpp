@@ -997,6 +997,10 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << semantic.interning.syntax_tag_cache_hits
 			 << " syntax_tag_cache_misses="
 			 << semantic.interning.syntax_tag_cache_misses
+			 << " source_file_cache_hits="
+			 << semantic.interning.source_file_cache_hits
+			 << " source_file_cache_misses="
+			 << semantic.interning.source_file_cache_misses
 			 << " semantic_nodes=" << semantic.semantic_nodes
 			 << " declarations=" << semantic.declarations
 			 << " lookup_queries=" << semantic.lookup_queries

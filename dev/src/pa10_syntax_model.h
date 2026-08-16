@@ -98,6 +98,9 @@ private:
 	StringTable& strings_;
 	SyntaxInterningStats* stats_;
 	TextId source_file_;
+	TextId cached_source_file_;
+	std::string cached_source_file_spelling_;
+	bool has_cached_source_file_;
 	std::uint32_t source_line_, source_column_;
 	std::vector<SyntaxToken> tokens_;
 	std::vector<SyntaxLiteralFact> literal_facts_;
