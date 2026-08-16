@@ -2,6 +2,7 @@
 #include "post_tokenizer.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <ostream>
 #include <stdexcept>
@@ -23,6 +24,7 @@ const std::uint32_t kNoLiteralFact =
 	std::numeric_limits<std::uint32_t>::max();
 const NodeId kNoNode = std::numeric_limits<NodeId>::max();
 const std::uint32_t kNoEdge = std::numeric_limits<std::uint32_t>::max();
+const std::size_t kSyntaxTagCacheEntries = 4096;
 
 static_assert(static_cast<unsigned int>(OP_ARROW) + 7 <= 0xffU,
 	"syntax token kinds must fit the packed identity byte");
@@ -244,8 +246,30 @@ SyntaxArena::SyntaxArena(StringTable& strings,
 	const std::vector<SyntaxLiteralFact>& literal_facts,
 	SyntaxInterningStats* stats)
 	: strings_(strings), stats_(stats), tokens_(tokens),
-	  literal_facts_(literal_facts),
+	  literal_facts_(literal_facts), tag_cache_(kSyntaxTagCacheEntries),
 	  rollback_edge_base_(0) {}
+
+TextId SyntaxArena::InternTag(const char* tag) const
+{
+	// Syntax tags are compiler-owned static spellings. Cache their stable
+	// pointers only after the ordinary interner establishes the identity, so
+	// first-use ordering visible in AST dumps remains unchanged.
+	const std::uintptr_t pointer = reinterpret_cast<std::uintptr_t>(tag);
+	const std::size_t slot = static_cast<std::size_t>(
+		((pointer >> 4) ^ (pointer >> 16)) &
+		(kSyntaxTagCacheEntries - 1));
+	TagCacheEntry& cached = tag_cache_[slot];
+	if (cached.spelling == tag)
+	{
+		if (stats_) ++stats_->syntax_tag_cache_hits;
+		return cached.identity;
+	}
+	if (stats_) ++stats_->syntax_tag_cache_misses;
+	const TextId identity = strings_.Intern(tag);
+	cached.spelling = tag;
+	cached.identity = identity;
+	return identity;
+}
 
 NodeId SyntaxArena::Make(const char* tag)
 {
@@ -266,7 +290,7 @@ NodeId SyntaxArena::Make(const char* tag, const std::string& payload)
 		if (!payload.empty()) ++stats_->syntax_payload_calls;
 	}
 	const TextId payload_id = payload.empty() ? 0 : strings_.Intern(payload);
-	const TextId tag_id = strings_.Intern(tag);
+	const TextId tag_id = InternTag(tag);
 	nodes_.push_back(SyntaxNode(tag_id, payload_id));
 	return id;
 }
@@ -415,7 +439,7 @@ TextId SyntaxArena::TagId(NodeId node) const
 bool SyntaxArena::IsTag(NodeId node, const char* tag) const
 {
 	if (stats_) ++stats_->syntax_tag_query_calls;
-	return nodes_[node].tag == strings_.Intern(tag);
+	return nodes_[node].tag == InternTag(tag);
 }
 
 const std::string& SyntaxArena::Payload(NodeId node) const
@@ -509,7 +533,7 @@ void SyntaxArena::SetPayload(NodeId node, const std::string& payload)
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 {
 	if (stats_) ++stats_->syntax_tag_query_calls;
-	const TextId identity = strings_.Intern(tag);
+	const TextId identity = InternTag(tag);
 	for (std::uint32_t edge = nodes_[node].first_edge;
 		edge != kNoEdge; edge = edges_[edge].next)
 		if (nodes_[edges_[edge].child].tag == identity) return true;
@@ -519,7 +543,7 @@ bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 bool SyntaxArena::HasDescendantTag(NodeId node, const char* tag) const
 {
 	if (stats_) ++stats_->syntax_tag_query_calls;
-	const TextId identity = strings_.Intern(tag);
+	const TextId identity = InternTag(tag);
 	std::vector<NodeId> pending(1, node);
 	while (!pending.empty())
 	{
@@ -607,7 +631,8 @@ StringTable& SyntaxArena::SharedStrings() const
 std::size_t SyntaxArena::StorageBytes() const
 {
 	return nodes_.capacity() * sizeof(SyntaxNode) +
-		edges_.capacity() * sizeof(SyntaxEdge);
+		edges_.capacity() * sizeof(SyntaxEdge) +
+		tag_cache_.capacity() * sizeof(TagCacheEntry);
 }
 
 }

@@ -185,6 +185,13 @@ public:
 	std::size_t StorageBytes() const;
 
 private:
+	struct TagCacheEntry
+	{
+		const char* spelling;
+		TextId identity;
+		TagCacheEntry() : spelling(0), identity(0) {}
+	};
+
 	struct EdgeMutation
 	{
 		NodeId parent;
@@ -193,6 +200,7 @@ private:
 			std::uint32_t last)
 			: parent(parent_value), first_edge(first), last_edge(last) {}
 	};
+	TextId InternTag(const char* tag) const;
 
 	StringTable& strings_;
 	SyntaxInterningStats* stats_;
@@ -200,6 +208,7 @@ private:
 	const std::vector<SyntaxLiteralFact>& literal_facts_;
 	std::vector<SyntaxNode> nodes_;
 	std::vector<SyntaxEdge> edges_;
+	mutable std::vector<TagCacheEntry> tag_cache_;
 	std::vector<EdgeMutation> edge_mutations_;
 	std::size_t rollback_edge_base_;
 };

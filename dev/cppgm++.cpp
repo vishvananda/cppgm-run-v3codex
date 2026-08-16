@@ -993,6 +993,10 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << semantic.interning.syntax_tag_query_calls
 			 << " syntax_payload_update_interns="
 			 << semantic.interning.syntax_payload_update_calls
+			 << " syntax_tag_cache_hits="
+			 << semantic.interning.syntax_tag_cache_hits
+			 << " syntax_tag_cache_misses="
+			 << semantic.interning.syntax_tag_cache_misses
 			 << " semantic_nodes=" << semantic.semantic_nodes
 			 << " declarations=" << semantic.declarations
 			 << " lookup_queries=" << semantic.lookup_queries
