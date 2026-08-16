@@ -1005,7 +1005,19 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " declarations=" << semantic.declarations
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
+			 << " lookup_edge_visits=" << semantic.lookup_edge_visits
+			 << " lookup_cache_hits=" << semantic.lookup_cache_hits
+			 << " lookup_cache_misses=" << semantic.lookup_cache_misses
+			 << " lookup_cache_invalidations="
+			 << semantic.lookup_cache_invalidations
+			 << " lookup_cache_dependency_edges="
+			 << semantic.lookup_cache_dependency_edges
+			 << " lookup_cache_invalidation_pushes="
+			 << semantic.lookup_cache_invalidation_pushes
 			 << " overload_candidates=" << semantic.overload_candidates
+			 << " function_candidate_index_visits="
+			 << semantic.function_candidate_index_visits
+			 << " conversion_checks=" << semantic.conversion_checks
 			 << " template_requests=" << semantic.template_specialization_requests
 			 << " template_cache_hits=" << semantic.template_specialization_cache_hits
 			 << " constexpr_call_requests="
