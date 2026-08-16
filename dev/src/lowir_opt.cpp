@@ -482,11 +482,60 @@ bool algebraic_identity(const Instruction & ins, Operand * result)
   return true;
 }
 
+class EdgeList
+{
+public:
+  EdgeList() : first_(0), second_(0), size_(0) {}
+
+  std::size_t size() const { return size_; }
+
+  std::size_t operator[](std::size_t index) const
+  {
+    if(index == 0) return first_;
+    if(index == 1) return second_;
+    return overflow_[index - 2];
+  }
+
+  void push_back(std::size_t value)
+  {
+    if(size_ == 0) first_ = value;
+    else if(size_ == 1) second_ = value;
+    else overflow_.push_back(value);
+    ++size_;
+  }
+
+  void insert_sorted_unique(std::size_t value)
+  {
+    std::size_t position = 0;
+    while(position < size_ && (*this)[position] < value) ++position;
+    if(position < size_ && (*this)[position] == value) return;
+    if(size_ == 0) first_ = value;
+    else if(size_ == 1) {
+      if(position == 0) { second_ = first_; first_ = value; }
+      else second_ = value;
+    } else if(position == 0) {
+      overflow_.insert(overflow_.begin(), second_);
+      second_ = first_;
+      first_ = value;
+    } else if(position == 1) {
+      overflow_.insert(overflow_.begin(), second_);
+      second_ = value;
+    } else {
+      overflow_.insert(overflow_.begin() + (position - 2), value);
+    }
+    ++size_;
+  }
+
+private:
+  std::size_t first_, second_, size_;
+  std::vector<std::size_t> overflow_;
+};
+
 struct Graph
 {
   BlockIndex index;
-  std::vector<std::vector<std::size_t> > successors;
-  std::vector<std::vector<std::size_t> > predecessors;
+  std::vector<EdgeList> successors;
+  std::vector<EdgeList> predecessors;
   std::unordered_set<std::string> eh_targets;
 };
 
@@ -496,7 +545,7 @@ void add_edge(Graph * graph, std::size_t from, const Operand & target,
   if(target.kind != Operand::OP_LABEL) return;
   const BlockIndex::const_iterator found = graph->index.find(target.text);
   if(found == graph->index.end()) return;
-  graph->successors[from].push_back(found->second);
+  graph->successors[from].insert_sorted_unique(found->second);
   if(stats) ++stats->cfg_edge_visits;
 }
 
@@ -531,9 +580,7 @@ Graph build_graph(const Function & function, Stats * stats)
     }
   }
   for(std::size_t i = 0; i < result.successors.size(); ++i) {
-    std::vector<std::size_t> & edges = result.successors[i];
-    std::sort(edges.begin(), edges.end());
-    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    const EdgeList & edges = result.successors[i];
     for(std::size_t j = 0; j < edges.size(); ++j)
       result.predecessors[edges[j]].push_back(i);
   }
@@ -1448,11 +1495,10 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
   if(linear_single_block) {
     typedef std::unordered_set<std::string> LiveSlots;
     LiveSlots live;
-    bool changed = false;
-    std::vector<Instruction> kept_reverse;
     std::vector<Instruction> & instructions =
       function->blocks[0].instructions;
-    kept_reverse.reserve(instructions.size());
+    std::vector<unsigned char> dead(instructions.size(), 0);
+    std::size_t removed = 0;
     for(std::size_t index = instructions.size(); index > 0; --index) {
       Instruction & ins = instructions[index - 1];
       if(ins.kind == Instruction::IK_LOAD &&
@@ -1462,7 +1508,8 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
               ins.second.kind == Operand::OP_SLOT &&
               !escaped.count(ins.second.text)) {
         if(!live.count(ins.second.text)) {
-          changed = true;
+          dead[index - 1] = 1;
+          ++removed;
           if(stats) ++stats->rewrites;
           continue;
         }
@@ -1476,11 +1523,16 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
           if(ins.args[i].kind == Operand::OP_SLOT)
             live.insert(ins.args[i].text);
       }
-      kept_reverse.push_back(std::move(ins));
     }
-    std::reverse(kept_reverse.begin(), kept_reverse.end());
-    instructions.swap(kept_reverse);
-    return changed;
+    if(!removed) return false;
+    std::size_t kept = 0;
+    for(std::size_t index = 0; index < instructions.size(); ++index)
+      if(!dead[index]) {
+        if(kept != index) instructions[kept] = std::move(instructions[index]);
+        ++kept;
+      }
+    instructions.resize(kept);
+    return true;
   }
   const Graph graph = build_graph(*function, stats);
   typedef std::unordered_set<std::string> LiveSlots;
