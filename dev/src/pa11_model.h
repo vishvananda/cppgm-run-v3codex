@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -852,7 +851,6 @@ private:
 	struct ScopeRecord; struct NameEntry;
 	struct UsingEdge; struct UsingNameRelation; struct ScopeVisibleName;
 	struct ChildEdge;
-	struct LookupCacheEntry; struct LookupCache;
 	struct TemplateArgumentListRecord;
 	struct BasePathState
 	{
@@ -905,10 +903,6 @@ private:
 		bool* owner_became_visible);
 	void PublishUsingName(ScopeId scope, NameId name);
 	void PropagateUsingName(ScopeId scope, NameId name);
-	void BeginLookupDependencies();
-	void RecordLookupDependency(ScopeId scope);
-	void InvalidateLookupName(ScopeId scope, NameId name);
-	void InvalidateLookupScope(ScopeId scope);
 	LookupResult DirectLookup(ScopeId scope, NameId name,
 		LookupKind kind) const;
 	bool MergeLookup(LookupResult* result,
@@ -955,8 +949,6 @@ private:
 	std::vector<UsingNameRelation> using_name_relations_;
 	std::vector<std::uint32_t> using_name_relation_slots_;
 	std::vector<ScopeId> using_name_worklist_;
-	std::vector<std::uint32_t> using_name_invalidation_marks_;
-	std::uint32_t using_name_invalidation_generation_;
 	std::vector<NameEntry> entries_;
 	std::vector<std::uint32_t> entry_slots_;
 	std::vector<TemplateArgumentListRecord> template_argument_lists_;
@@ -964,8 +956,6 @@ private:
 	std::vector<std::uint32_t> lookup_marks_;
 	std::vector<ScopeId> lookup_worklist_;
 	std::uint32_t lookup_generation_;
-	std::vector<std::uint32_t> lookup_dependency_marks_;
-	std::vector<ScopeId> lookup_dependencies_;
 	std::vector<std::uint32_t> lookup_pending_heads_;
 	std::vector<std::uint32_t> lookup_pending_head_marks_;
 	std::vector<ScopeId> lookup_pending_targets_;
@@ -986,10 +976,7 @@ private:
 	std::vector<VirtualBaseIndexEntry> virtual_base_index_entries_;
 	std::vector<std::uint32_t> virtual_base_index_slots_;
 	std::vector<std::uint32_t> base_graph_versions_;
-	std::uint32_t lookup_dependency_generation_;
 	std::uint32_t lookup_pending_generation_;
-	bool collecting_lookup_dependencies_;
-	std::unique_ptr<LookupCache> lookup_cache_;
 };
 
 }
