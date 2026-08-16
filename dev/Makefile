@@ -39,6 +39,10 @@ quiet = @if [ "$(V)" != "1" ]; then printf '  %-7s %s\n' '$(1)' '$(2)'; fi
 CPPGM_TEST_RUNNER ?= 1
 CPPGM_STDLIB_FLAGS ?=
 CC_FLAGS ?= -std=gnu++11 -Wall -O3 $(CPPGM_STDLIB_FLAGS)
+# Hosted compiler workloads create and release many translation-unit-lifetime
+# objects. Use the lower-overhead allocator when the Linux runtime package is
+# available, while keeping the handout build portable to hosts without it.
+HOST_ALLOC_LIBS ?= $(if $(wildcard /usr/lib/x86_64-linux-gnu/libjemalloc.so.2),-l:libjemalloc.so.2,)
 TEST_RUNNER_SHARED_FLAGS = $(if $(filter 1,$(CPPGM_TEST_RUNNER)),-DTEST_RUNNER_ENABLE,)
 TEST_RUNNER_ENTRY_FLAGS = $(if $(filter 1,$(CPPGM_TEST_RUNNER)),-Dmain=test_runner_real_main,)
 ENTRY_CC_FLAGS = $(CC_FLAGS) $(TEST_RUNNER_ENTRY_FLAGS)
@@ -67,7 +71,7 @@ all: $(TARGETS)
 define FRONTEND_RULES
 $(1): $(call link_objs,$(1)) $(RUNNER_STATE_STAMP) | $(OBJDIR)
 	$(call quiet,LINK,$$@)
-	$(Q)$(CXX) $(CC_FLAGS) $(INC) -o $$@.tmp $(call link_objs,$(1))
+	$(Q)$(CXX) $(CC_FLAGS) $(INC) -o $$@.tmp $(call link_objs,$(1)) $(HOST_ALLOC_LIBS)
 	@if ! cmp -s $$@.tmp $$@ 2>/dev/null; then mv -f $$@.tmp $$@; else rm -f $$@.tmp; fi
 
 $(call entry_obj,$(1)): $(1).cpp $(COMPILE_CONFIG_STAMP)
