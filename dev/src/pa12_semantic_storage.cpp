@@ -65,7 +65,9 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		static_member_storage_by_binding_.capacity() * sizeof(std::uint32_t) +
 		explicit_static_member_specialization_states_.capacity() *
 			sizeof(std::uint8_t) +
-		static_constant_initializers_by_binding_.capacity() *
+		static_constant_initializer_indices_.capacity() *
+			sizeof(std::uint32_t) +
+		static_constant_initializers_.capacity() *
 			sizeof(StaticConstantInitializerFact) +
 		static_constant_dependency_owner_marks_.capacity() *
 			sizeof(BindingId) +
@@ -234,9 +236,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		bytes += entity_data_members_[i].capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_static_data_members_.size(); ++i)
 		bytes += entity_static_data_members_[i].capacity() * sizeof(BindingId);
-	for (std::size_t i = 0;
-		i < static_constant_initializers_by_binding_.size(); ++i)
-		bytes += static_constant_initializers_by_binding_[i].
+	for (std::size_t i = 0; i < static_constant_initializers_.size(); ++i)
+		bytes += static_constant_initializers_[i].
 			function_dependencies.capacity() * sizeof(BindingId);
 	for (std::size_t i = 0; i < entity_layout_members_.size(); ++i)
 		bytes += entity_layout_members_[i].capacity() *

@@ -1384,11 +1384,8 @@ void SemanticAnalyzer::RecordStaticConstantInitializer(
 		published_binding.non_static_data_member || initializer == kNoDumpEdge)
 		return;
 	const BindingId canonical = published_binding.canonical;
-	if (static_constant_initializers_by_binding_.size() <= canonical)
-		static_constant_initializers_by_binding_.resize(
-			static_cast<std::size_t>(canonical) + 1);
 	StaticConstantInitializerFact& fact =
-		static_constant_initializers_by_binding_[canonical];
+		EnsureStaticConstantInitializer(canonical);
 	if (fact.initializer != kNoDumpEdge) return;
 
 	std::vector<std::uint32_t> pending(1, initializer);
@@ -1444,9 +1441,10 @@ void SemanticAnalyzer::DemandStaticConstantInitializerDependencies(
 	BindingId member)
 {
 	member = program_->bindings[member].canonical;
-	if (member >= static_constant_initializers_by_binding_.size()) return;
-	const std::vector<BindingId>& dependencies =
-		static_constant_initializers_by_binding_[member].function_dependencies;
+	const StaticConstantInitializerFact* fact =
+		FindStaticConstantInitializer(member);
+	if (!fact) return;
+	const std::vector<BindingId>& dependencies = fact->function_dependencies;
 	for (std::size_t i = 0; i < dependencies.size(); ++i)
 		if (!GetFunction(dependencies[i]).trivial_special_member)
 			DemandFunction(dependencies[i]);

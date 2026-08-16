@@ -1957,10 +1957,16 @@ private:
 		StaticConstantInitializerFact()
 			: initializer(kNoDumpEdge), prefer_materialized_definition(false) {}
 	};
+	const StaticConstantInitializerFact* FindStaticConstantInitializer(
+		BindingId binding) const;
+	StaticConstantInitializerFact* FindMutableStaticConstantInitializer(
+		BindingId binding);
+	StaticConstantInitializerFact& EnsureStaticConstantInitializer(
+		BindingId binding);
 	// Canonical member identity owns the immutable initializer recipe and only
 	// the callable edges needed if an ODR-use later demands storage.
-	std::vector<StaticConstantInitializerFact>
-		static_constant_initializers_by_binding_;
+	std::vector<std::uint32_t> static_constant_initializer_indices_;
+	std::vector<StaticConstantInitializerFact> static_constant_initializers_;
 	std::vector<BindingId> static_constant_dependency_owner_marks_;
 	std::vector<BindingId> entity_destructor_by_entity_;
 	std::vector<BindingId> hidden_friend_anchor_by_entity_;

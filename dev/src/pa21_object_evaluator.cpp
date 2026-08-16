@@ -31,10 +31,10 @@ bool SemanticAnalyzer::IsStaticConstantDefinition(
 	const bool definition = declared.canonical != binding &&
 		canonical.member_owner != kNoEntity &&
 		!canonical.non_static_data_member && canonical.constant;
-	const bool already_initialized = declared.canonical <
-		static_constant_initializers_by_binding_.size() &&
-		static_constant_initializers_by_binding_[declared.canonical].initializer !=
-			kNoDumpEdge;
+	const StaticConstantInitializerFact* recorded =
+		FindStaticConstantInitializer(declared.canonical);
+	const bool already_initialized =
+		recorded && recorded->initializer != kNoDumpEdge;
 	if (definition && already_initialized && initializer != kNoNode)
 		throw std::runtime_error(
 			"static constant definition must not have an initializer");
@@ -260,12 +260,12 @@ bool SemanticAnalyzer::MaterializeConstantDefinitionInitializer(
 	const bool prefer_materialized =
 		PreferMaterializedConstantDefinition(canonical) &&
 		(address != kNoConstexprAddress || object != kNoConstexprObject);
-	if (canonical < static_constant_initializers_by_binding_.size() &&
-		static_constant_initializers_by_binding_[canonical].initializer !=
-			kNoDumpEdge && !prefer_materialized)
+	const StaticConstantInitializerFact* recorded =
+		FindStaticConstantInitializer(canonical);
+	if (recorded && recorded->initializer != kNoDumpEdge &&
+		!prefer_materialized)
 	{
-		const std::uint32_t node =
-			static_constant_initializers_by_binding_[canonical].initializer;
+		const std::uint32_t node = recorded->initializer;
 		if (node >= dump_.nodes.size())
 			throw std::logic_error(
 				"static constant initializer fact is out of range");

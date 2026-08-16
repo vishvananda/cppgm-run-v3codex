@@ -581,21 +581,19 @@ bool SemanticAnalyzer::ShouldPreserveRuntimeInitializerRecipe(bool local,
 bool SemanticAnalyzer::PreferMaterializedConstantDefinition(
 	BindingId canonical) const
 {
-	if (canonical >= static_constant_initializers_by_binding_.size())
-		return false;
-	return static_constant_initializers_by_binding_[canonical].
-		prefer_materialized_definition;
+	const StaticConstantInitializerFact* fact =
+		FindStaticConstantInitializer(canonical);
+	return fact && fact->prefer_materialized_definition;
 }
 
 void SemanticAnalyzer::PublishInClassStaticDefinitionPolicy(
 	BindingId binding, TypeId type, const SpecInfo& spec, NodeId initializer)
 {
 	const BindingId canonical = program_->bindings[binding].canonical;
-	if (canonical >= static_constant_initializers_by_binding_.size()) return;
-	StaticConstantInitializerFact& fact =
-		static_constant_initializers_by_binding_[canonical];
-	if (fact.initializer == kNoDumpEdge) return;
-	fact.prefer_materialized_definition =
+	StaticConstantInitializerFact* fact =
+		FindMutableStaticConstantInitializer(canonical);
+	if (!fact || fact->initializer == kNoDumpEdge) return;
+	fact->prefer_materialized_definition =
 		!ShouldPreserveRuntimeInitializerRecipe(
 			false, spec, type, initializer);
 }
@@ -615,11 +613,10 @@ void SemanticAnalyzer::PublishVariableInitializer(BindingId binding,
 		IsClassObjectType(type))
 	{
 		const BindingId canonical = program_->bindings[binding].canonical;
-		if (canonical < static_constant_initializers_by_binding_.size() &&
-			static_constant_initializers_by_binding_[canonical].initializer !=
-				kNoDumpEdge)
-			static_constant_initializers_by_binding_[canonical].
-				prefer_materialized_definition = true;
+		StaticConstantInitializerFact* fact =
+			FindMutableStaticConstantInitializer(canonical);
+		if (fact && fact->initializer != kNoDumpEdge)
+			fact->prefer_materialized_definition = true;
 	}
 	if (preserve_runtime_recipe)
 		DemandRuntimeInitializerFunctions(initializer.node);

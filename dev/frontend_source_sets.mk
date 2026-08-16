@@ -22,6 +22,7 @@ FRONTEND_OBJ_BASENAMES_cppgm++ += pa32_entity_ownership_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa15_force_inline
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa19_internal_identity_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa19_template_partial_storage
+FRONTEND_OBJ_BASENAMES_cppgm++ += pa21_static_constant_storage
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_layout_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_gnu_asm_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_numeric_type_model
