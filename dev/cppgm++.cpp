@@ -1023,9 +1023,19 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " lookup_cache_invalidation_pushes="
 			 << semantic.lookup_cache_invalidation_pushes
 			 << " overload_candidates=" << semantic.overload_candidates
+			 << " overload_order_comparisons="
+			 << semantic.overload_order_comparisons
 			 << " function_candidate_index_visits="
 			 << semantic.function_candidate_index_visits
 			 << " conversion_checks=" << semantic.conversion_checks
+			 << " call_conversion_cache_hits="
+			 << semantic.call_conversion_cache_hits
+			 << " call_conversion_cache_misses="
+			 << semantic.call_conversion_cache_misses
+			 << " braced_fact_cache_hits="
+			 << semantic.braced_fact_cache_hits
+			 << " braced_fact_cache_misses="
+			 << semantic.braced_fact_cache_misses
 			 << " template_requests=" << semantic.template_specialization_requests
 			 << " template_cache_hits=" << semantic.template_specialization_cache_hits
 			 << " constexpr_call_requests="
@@ -1049,6 +1059,16 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << stats.force_inline_cloned_instructions
 			 << " semantic_program_bytes="
 			 << semantic.semantic_program_storage_bytes
+			 << " binding_layout_facts="
+			 << semantic.binding_layout_fact_records
+			 << " binding_template_facts="
+			 << semantic.binding_template_fact_records
+			 << " binding_output_facts="
+			 << semantic.binding_output_fact_records
+			 << " binding_operator_facts="
+			 << semantic.binding_operator_fact_records
+			 << " binding_value_records="
+			 << semantic.binding_value_records
 			 << " semantic_dump_bytes="
 			 << semantic.semantic_dump_storage_bytes
 			 << " semantic_side_bytes="

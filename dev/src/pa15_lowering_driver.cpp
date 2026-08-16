@@ -181,6 +181,11 @@ void AccumulateSemanticStorageStats(SemanticAnalysisStats* target,
 	target->semantic_dump_storage_bytes += source.semantic_dump_storage_bytes;
 	target->semantic_side_storage_bytes += source.semantic_side_storage_bytes;
 	target->semantic_shared_string_bytes += source.semantic_shared_string_bytes;
+	target->binding_layout_fact_records += source.binding_layout_fact_records;
+	target->binding_template_fact_records += source.binding_template_fact_records;
+	target->binding_output_fact_records += source.binding_output_fact_records;
+	target->binding_operator_fact_records += source.binding_operator_fact_records;
+	target->binding_value_records += source.binding_value_records;
 	target->semantic_storage_bytes += source.semantic_storage_bytes;
 	target->peak_stage_storage_bytes = std::max(
 		target->peak_stage_storage_bytes, source.peak_stage_storage_bytes);

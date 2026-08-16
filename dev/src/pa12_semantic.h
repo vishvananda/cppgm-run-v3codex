@@ -143,6 +143,11 @@ struct SemanticAnalysisStats
 	std::size_t demand_worklist_pushes;
 	std::size_t demanded_function_emissions;
 	std::size_t default_constructor_emissions;
+	std::size_t binding_layout_fact_records;
+	std::size_t binding_template_fact_records;
+	std::size_t binding_output_fact_records;
+	std::size_t binding_operator_fact_records;
+	std::size_t binding_value_records;
 	std::size_t semantic_program_storage_bytes;
 	std::size_t semantic_dump_storage_bytes;
 	std::size_t semantic_side_storage_bytes;

@@ -1867,6 +1867,7 @@ private:
 	NameId InternNumber(std::int64_t value);
 	std::size_t SideStorageBytes() const;
 	void ReserveSemanticCapacity(const SyntaxArena& arena);
+	void PublishBindingPopulationStats();
 
 	std::uint32_t MakeDump(DumpKind kind, TypeId type = kNoType,
 		ValueCategory category = VALUE_NONE, NameId text = 0,

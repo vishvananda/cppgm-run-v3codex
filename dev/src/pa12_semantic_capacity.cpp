@@ -25,5 +25,36 @@ void SemanticAnalyzer::ReserveSemanticCapacity(const SyntaxArena& arena)
 	dump_.ReserveNodes((syntax_nodes + 1) / 2);
 }
 
+void SemanticAnalyzer::PublishBindingPopulationStats()
+{
+	for (std::size_t i = 1; i < program_->bindings.size(); ++i)
+	{
+		const BindingRecord& binding = program_->bindings[i];
+		if (binding.member_offset != 0 || binding.requested_alignment != 0 ||
+			binding.bit_offset != 0 || binding.bit_width != 0 ||
+			binding.bit_storage_bits != 0 || binding.member_ordinal != kNoBinding)
+			++stats_->binding_layout_fact_records;
+		if (binding.template_argument_list != kNoTemplateArgumentList ||
+			binding.template_argument_count != 0 || binding.exception_type_count != 0 ||
+			binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe ||
+			binding.exception_boundary != FUNCTION_EXCEPTION_BOUNDARY_NONE)
+			++stats_->binding_template_fact_records;
+		if (binding.qualified_name != 0 || binding.object_section_name != 0 ||
+			binding.assembly_name != 0 || binding.abi_tag_count != 0 ||
+			binding.display_flavor != NAMED_NONE || binding.display_type_name != 0 ||
+			binding.lifecycle_base_entry != kNoBinding)
+			++stats_->binding_output_fact_records;
+		if (binding.conversion_target != kNoType ||
+			binding.operator_kind != OPERATOR_NONE ||
+			binding.builtin_function != BUILTIN_FUNCTION_NONE ||
+			binding.hosted_integer_intrinsic != hosted_builtin::INTEGER_INTRINSIC_NONE ||
+			binding.hosted_floating_intrinsic != hosted_builtin::FLOATING_INTRINSIC_NONE ||
+			binding.hosted_memory_intrinsic != hosted_builtin::MEMORY_INTRINSIC_NONE ||
+			binding.operator_literal_suffix != 0)
+			++stats_->binding_operator_fact_records;
+		if (binding.value != 0) ++stats_->binding_value_records;
+	}
+}
+
 }
 }
