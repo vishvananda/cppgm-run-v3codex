@@ -2630,7 +2630,7 @@ HostFunctionLayout emit_host_function(
   return layout;
 }
 
-EncodedSection encoded_section(const CodeBuffer & source,
+EncodedSection encoded_section(CodeBuffer && source,
                                const std::string & name,
                                std::uint64_t flags,
                                std::size_t alignment)
@@ -2639,7 +2639,7 @@ EncodedSection encoded_section(const CodeBuffer & source,
   result.name = name;
   result.flags = flags;
   result.alignment = alignment;
-  result.bytes = source.bytes();
+  result.bytes = source.take_bytes();
   result.labels = source.labels();
   result.fixups.reserve(source.fixups().size());
   for(std::size_t i = 0; i < source.fixups().size(); ++i) {
@@ -2754,7 +2754,7 @@ void write_linux_relocatable(
     const std::string & path,
     const lowir_model::LowirProgram & source,
     const std::string & target,
-    const std::vector<unsigned char> & compiler_payload,
+    std::vector<unsigned char> compiler_payload,
     int optimization_level,
     Stats * stats)
 {
@@ -2854,13 +2854,13 @@ void write_linux_relocatable(
   encoded_data_sections.reserve(data_sections.size());
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     encoded_data_sections.push_back(encoded_section(
-      data_sections[i].content, data_sections[i].name,
+      std::move(data_sections[i].content), data_sections[i].name,
       data_sections[i].flags, data_sections[i].alignment));
   const std::vector<unsigned char> image = make_linux_relocatable_image(
-    source, encoded_section(text, ".text", 6, 16),
+    source, encoded_section(std::move(text), ".text", 6, 16),
     std::move(encoded_data_sections),
     functions,
-    compiler_payload, relocations);
+    std::move(compiler_payload), relocations);
   if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - image_started).count());

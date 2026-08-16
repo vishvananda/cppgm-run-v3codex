@@ -68,7 +68,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   EncodedSection text,
   std::vector<EncodedSection> data_sections,
   std::vector<HostFunctionLayout> & functions,
-  const std::vector<unsigned char> & compiler_payload,
+  std::vector<unsigned char> compiler_payload,
   std::size_t & relocation_count);
 
 }  // namespace object_elf_detail

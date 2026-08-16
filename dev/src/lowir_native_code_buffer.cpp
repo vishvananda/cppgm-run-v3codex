@@ -2,6 +2,7 @@
 
 #include <climits>
 #include <stdexcept>
+#include <utility>
 
 namespace lowir_native
 {
@@ -213,6 +214,11 @@ void CodeBuffer::resolve()
 const std::vector<unsigned char>& CodeBuffer::bytes() const
 {
 	return bytes_;
+}
+
+std::vector<unsigned char> CodeBuffer::take_bytes()
+{
+	return std::move(bytes_);
 }
 
 const std::unordered_map<std::string, std::size_t>& CodeBuffer::labels() const

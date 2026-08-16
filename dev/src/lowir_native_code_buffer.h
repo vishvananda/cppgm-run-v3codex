@@ -54,6 +54,7 @@ public:
 		long long addend);
 	void resolve();
 	const std::vector<unsigned char>& bytes() const;
+	std::vector<unsigned char> take_bytes();
 	const std::unordered_map<std::string, std::size_t>& labels() const;
 	const std::vector<Fixup>& fixups() const;
 	std::size_t fixup_count() const;

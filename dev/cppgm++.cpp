@@ -1104,12 +1104,12 @@ int run_compile_driver(const DriverInvocation & invocation,
   const cppgm::pa30::CompilerObject object =
       compile_source_object(invocation.inputs[0], invocation, target);
 	cppgm::pa30::ObjectSerializationStats serialization_stats;
-  const vector<unsigned char> compiler_payload =
+	vector<unsigned char> compiler_payload =
 		cppgm::pa30::SerializeCompilerObject(object,
 			invocation.collect_stats ? &serialization_stats : 0);
   lowir_native::Stats native_stats;
   lowir_native::write_linux_relocatable(
-      invocation.output, object.lowir, target, compiler_payload,
+      invocation.output, object.lowir, target, std::move(compiler_payload),
       invocation.optimization_level,
       invocation.collect_stats ? &native_stats : 0);
   if(invocation.collect_stats) {

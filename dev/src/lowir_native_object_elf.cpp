@@ -861,7 +861,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     EncodedSection mutable_text,
     std::vector<EncodedSection> mutable_data,
     std::vector<HostFunctionLayout> & functions,
-    const std::vector<unsigned char> & compiler_payload,
+    std::vector<unsigned char> compiler_payload,
     std::size_t & relocation_count)
 {
   EncodedLabelIndex encoded_labels =
@@ -889,11 +889,11 @@ std::vector<unsigned char> make_linux_relocatable_image(
   };
   std::vector<HostSection> sections(1);
   std::vector<PendingRelocations> pending_relocations;
-  const auto append_section = [&sections](const HostSection & section)
+  const auto append_section = [&sections](HostSection section)
     -> std::uint16_t {
       if(sections.size() >= 0xffff)
         throw std::runtime_error("too many ELF sections");
-      sections.push_back(section);
+      sections.push_back(std::move(section));
       return static_cast<std::uint16_t>(sections.size() - 1);
     };
   const auto append_relocations =
@@ -908,7 +908,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
       section.entry_size = 24;
       section.info = target;
       PendingRelocations pending;
-      pending.section = append_section(section);
+      pending.section = append_section(std::move(section));
       pending.relocations = &relocations;
       pending_relocations.push_back(pending);
     };
@@ -917,9 +917,9 @@ std::vector<unsigned char> make_linux_relocatable_image(
   text_section.name = mutable_text.name;
   text_section.flags = mutable_text.flags;
   text_section.alignment = mutable_text.alignment;
-  text_section.bytes = mutable_text.bytes;
-  const std::uint16_t text_index = append_section(text_section);
-  append_relocations(text_section.name, text_index, text_relocations);
+  text_section.bytes = std::move(mutable_text.bytes);
+  const std::uint16_t text_index = append_section(std::move(text_section));
+  append_relocations(mutable_text.name, text_index, text_relocations);
 
   std::vector<std::uint16_t> data_indexes;
   data_indexes.reserve(mutable_data.size());
@@ -928,10 +928,10 @@ std::vector<unsigned char> make_linux_relocatable_image(
     section.name = mutable_data[i].name;
     section.flags = mutable_data[i].flags;
     section.alignment = mutable_data[i].alignment;
-    section.bytes = mutable_data[i].bytes;
-    const std::uint16_t index = append_section(section);
+    section.bytes = std::move(mutable_data[i].bytes);
+    const std::uint16_t index = append_section(std::move(section));
     data_indexes.push_back(index);
-    append_relocations(section.name, index, data_relocations[i]);
+    append_relocations(mutable_data[i].name, index, data_relocations[i]);
   }
 
   std::vector<HostRelocation> init_array_relocations;
@@ -972,7 +972,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
                        locals, globals);
 
   std::vector<std::pair<std::string, std::uint16_t> > section_symbols;
-  section_symbols.push_back(std::make_pair(text_section.name, text_index));
+  section_symbols.push_back(std::make_pair(mutable_text.name, text_index));
   for(std::size_t i = 0; i < mutable_data.size(); ++i)
     section_symbols.push_back(std::make_pair(mutable_data[i].name,
                                              data_indexes[i]));
@@ -993,11 +993,11 @@ std::vector<unsigned char> make_linux_relocatable_image(
 
   HostSection note;
   note.name = ".note.GNU-stack";
-  append_section(note);
+  append_section(std::move(note));
   HostSection payload;
   payload.name = ".cppgm_object";
-  payload.bytes = compiler_payload;
-  append_section(payload);
+  payload.bytes = std::move(compiler_payload);
+  append_section(std::move(payload));
   HostSection symtab;
   symtab.name = ".symtab";
   symtab.type = 2;
@@ -1006,18 +1006,18 @@ std::vector<unsigned char> make_linux_relocatable_image(
   symtab.info = static_cast<std::uint32_t>(
     1 + section_symbols.size() + locals.size());
   symtab.bytes.swap(symbol_table);
-  const std::uint16_t symtab_index = append_section(symtab);
+  const std::uint16_t symtab_index = append_section(std::move(symtab));
   HostSection strtab;
   strtab.name = ".strtab";
   strtab.type = 3;
   strtab.bytes.swap(strings);
-  const std::uint16_t strtab_index = append_section(strtab);
+  const std::uint16_t strtab_index = append_section(std::move(strtab));
   sections[symtab_index].link = strtab_index;
   HostSection shstrtab;
   shstrtab.name = ".shstrtab";
   shstrtab.type = 3;
   shstrtab.bytes.push_back(0);
-  const std::uint16_t shstrtab_index = append_section(shstrtab);
+  const std::uint16_t shstrtab_index = append_section(std::move(shstrtab));
 
   for(std::size_t i = 0; i < pending_relocations.size(); ++i) {
     HostSection & section = sections[pending_relocations[i].section];
@@ -1056,7 +1056,21 @@ std::vector<unsigned char> make_linux_relocatable_image(
     sections[i].name_offset = add_string(
       sections[shstrtab_index].bytes, sections[i].name);
 
-  std::vector<unsigned char> image(64, 0);
+  std::size_t image_size = 64;
+  for(std::size_t i = 1; i < sections.size(); ++i) {
+    const std::size_t alignment = sections[i].alignment;
+    if(alignment > 1) {
+      const std::size_t remainder = image_size % alignment;
+      if(remainder) image_size += alignment - remainder;
+    }
+    image_size += sections[i].bytes.size();
+  }
+  const std::size_t header_remainder = image_size % 8;
+  if(header_remainder) image_size += 8 - header_remainder;
+  image_size += sections.size() * 64;
+  std::vector<unsigned char> image;
+  image.reserve(image_size);
+  image.resize(64, 0);
   image[0] = 0x7f;
   image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
   image[4] = 2; image[5] = 1; image[6] = 1;
