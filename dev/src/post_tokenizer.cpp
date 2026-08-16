@@ -82,10 +82,38 @@ const SimpleEntry kSimpleEntries[] = {
 	{"||", OP_LOR}, {"}", OP_RBRACE}, {"~", OP_COMPL}
 };
 
+struct SimpleEntryIndex
+{
+	std::size_t first[256];
+	std::size_t end[256];
+
+	SimpleEntryIndex()
+	{
+		const std::size_t entry_count =
+			sizeof(kSimpleEntries) / sizeof(kSimpleEntries[0]);
+		std::fill(first, first + 256, entry_count);
+		std::fill(end, end + 256, entry_count);
+		for (std::size_t i = 0; i < entry_count; ++i)
+		{
+			const unsigned char initial = static_cast<unsigned char>(
+				kSimpleEntries[i].spelling[0]);
+			if (first[initial] == entry_count)
+				first[initial] = i;
+			end[initial] = i + 1;
+		}
+	}
+};
+
+const SimpleEntryIndex kSimpleEntryIndex;
+
 bool FindSimple(const std::string& spelling, SimpleTokenKind* kind)
 {
-	std::size_t first = 0;
-	std::size_t count = sizeof(kSimpleEntries) / sizeof(kSimpleEntries[0]);
+	if (spelling.empty())
+		return false;
+	const unsigned char initial =
+		static_cast<unsigned char>(spelling[0]);
+	std::size_t first = kSimpleEntryIndex.first[initial];
+	std::size_t count = kSimpleEntryIndex.end[initial] - first;
 	while (count != 0)
 	{
 		const std::size_t step = count / 2;

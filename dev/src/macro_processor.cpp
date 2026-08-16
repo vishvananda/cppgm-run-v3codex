@@ -22,6 +22,7 @@
 #include "flat_hash_map.h"
 #include "hosted_preprocessor_probes.h"
 #include "IPPTokenStream.h"
+#include "macro_operator_code.h"
 #include "pp_tokenizer.h"
 
 namespace cppgm
@@ -34,6 +35,7 @@ typedef std::uint32_t PaintId;
 
 using detail::FlatHashMap;
 using detail::MixedHash;
+using namespace macro_detail;
 
 const std::size_t kNoParameter = std::numeric_limits<std::size_t>::max();
 const PaintId kSingletonPaint = UINT32_C(0x80000000);
@@ -65,6 +67,7 @@ struct Token
 	SpellingId physical_file;
 	std::size_t source_line, source_column;
 	std::size_t matching_distance;
+	std::uint8_t tracked_operator;
 	bool leading_space;
 	bool from_variadic;
 	bool parameter_origin;
@@ -74,6 +77,7 @@ struct Token
 		: kind(TK_PLACEMARKER), spelling(0), borrowed_spelling(0), paint(0),
 		  blocked(0), origin(0), source_file(0), physical_file(0),
 		  source_line(0), source_column(0), matching_distance(0),
+		  tracked_operator(TRACKED_OPERATOR_NONE),
 		  leading_space(false),
 		  from_variadic(false), parameter_origin(false), matching_comma(false)
 	{}
@@ -83,6 +87,7 @@ struct Token
 		: kind(token_kind), spelling(token_spelling), borrowed_spelling(0),
 		  paint(0), blocked(0), origin(0), source_file(0), physical_file(0),
 		  source_line(0), source_column(0), matching_distance(0),
+		  tracked_operator(TRACKED_OPERATOR_NONE),
 		  leading_space(has_leading_space), from_variadic(false),
 		  parameter_origin(false), matching_comma(false)
 	{}
@@ -92,7 +97,8 @@ struct Token
 		: kind(token_kind), spelling(0), owned_spelling(token_spelling),
 		  borrowed_spelling(0), paint(0), blocked(0), origin(0),
 		  source_file(0), physical_file(0), source_line(0), source_column(0),
-		  matching_distance(0),
+		  matching_distance(0), tracked_operator(token_kind == TK_OPERATOR ?
+			TrackOperatorSpelling(token_spelling) : TRACKED_OPERATOR_NONE),
 		  leading_space(has_leading_space), from_variadic(false),
 		  parameter_origin(false), matching_comma(false)
 	{}
@@ -841,29 +847,6 @@ private:
 		id_pragma_operator_ = spellings_.Intern("_Pragma");
 	}
 
-	static std::string QuoteString(const std::string& value)
-	{
-		std::string result("\"");
-		for (std::size_t i = 0; i < value.size(); ++i)
-		{
-			const unsigned char byte =
-				static_cast<unsigned char>(value[i]);
-			if (byte == '\\' || byte == '"')
-				result.push_back('\\');
-			if (byte < 0x20 || byte == 0x7F)
-			{
-				result.push_back('\\');
-				result.push_back(static_cast<char>('0' + (byte >> 6)));
-				result.push_back(static_cast<char>('0' + ((byte >> 3) & 7)));
-				result.push_back(static_cast<char>('0' + (byte & 7)));
-			}
-			else
-				result.push_back(static_cast<char>(byte));
-		}
-		result.push_back('"');
-		return result;
-	}
-
 	void AddBuiltinObject(const char* name, TokenKind kind,
 		const std::string& replacement)
 	{
@@ -1111,6 +1094,7 @@ private:
 		result.source_line = source.source_line;
 		result.source_column = source.source_column;
 		result.matching_distance = source.matching_distance;
+		result.tracked_operator = source.tracked_operator;
 		result.leading_space = source.leading_space;
 		result.from_variadic = source.from_variadic;
 		result.parameter_origin = source.parameter_origin;
@@ -1122,12 +1106,11 @@ private:
 	{
 		if (token.kind != TK_OPERATOR)
 			return false;
+		const TrackedOperatorCode expected = ExpectedOperatorCode(spelling);
+		if (expected != TRACKED_OPERATOR_NONE)
+			return token.tracked_operator == expected;
 		const std::string& actual = Spell(token);
-		if (actual == spelling)
-			return true;
-		return (spelling[0] == '#' && spelling[1] == '\0' && actual == "%:") ||
-			(spelling[0] == '#' && spelling[1] == '#' &&
-			 spelling[2] == '\0' && actual == "%:%:");
+		return actual == spelling;
 	}
 
 	bool IsIdentifier(const Token& token, SpellingId spelling) const
