@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace cppgm
 {
@@ -515,7 +516,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
 		AdaptSymbolFacts(symbol, &result.metadata, 0);
-		target.global_declarations.push_back(result);
+		target.global_declarations.push_back(std::move(result));
 	}
 	target.function_declarations.reserve(source.declarations.size());
 	for (std::size_t i = 0; i < source.declarations.size(); ++i)
@@ -532,7 +533,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (symbol.tls_for_symbol != kNoLowId)
 			result.metadata.tls_for_symbol =
 				At(source.symbols[symbol.tls_for_symbol].name);
-		target.function_declarations.push_back(result);
+		target.function_declarations.push_back(std::move(result));
 	}
 	target.globals.reserve(source.globals.size());
 	for (std::size_t i = 0; i < source.globals.size(); ++i)
@@ -548,6 +549,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (item.initializer_kind == Global::STRUCTURED_VALUE)
 		{
 			result.structured = true;
+			result.data_items.reserve(item.items.size());
 			for (std::size_t j = 0; j < item.items.size(); ++j)
 			{
 				const Global::DataItem& value = item.items[j];
@@ -584,7 +586,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 							value.integer_high, value.type);
 					}
 				}
-				result.data_items.push_back(data);
+				result.data_items.push_back(std::move(data));
 			}
 		}
 		else if (item.initializer_kind == Global::ADDRESS_VALUE)
@@ -613,7 +615,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					item.initializer_high, item.type);
 			}
 		}
-		target.globals.push_back(result);
+		target.globals.push_back(std::move(result));
 	}
 	target.functions.reserve(source.functions.size());
 	for (std::size_t i = 0; i < source.functions.size(); ++i)
@@ -637,6 +639,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (symbol.tls_for_symbol != kNoLowId)
 			result.metadata.tls_for_symbol =
 				At(source.symbols[symbol.tls_for_symbol].name);
+		result.slots.reserve(item.slots.size());
 		for (std::size_t j = 0; j < item.slots.size(); ++j)
 			result.slots.push_back(std::make_pair(
 				Dollar(item.slots[j].name), AdaptType(item.slots[j].type)));
@@ -653,10 +656,13 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(
 					block.instructions[j], source, item));
-			result.blocks.push_back(lowered);
+			result.blocks.push_back(std::move(lowered));
 		}
-		target.functions.push_back(result);
+		target.functions.push_back(std::move(result));
 	}
+	target.object_aliases.reserve(source.object_aliases.size());
+	target.exported_symbols.reserve(
+		source.object_aliases.size() + source.symbols.size());
 	for (std::size_t i = 0; i < source.object_aliases.size(); ++i)
 	{
 		lowir_model::ObjectAlias alias;
@@ -664,7 +670,6 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& alias_target =
 			source.symbols[source.object_aliases[i].target];
 		alias.target = At(alias_target.name);
-		target.object_aliases.push_back(alias);
 		// An ABI alias is an additional exported spelling of the same root, so
 		// carry the target's linkage with it across the typed-LowIR boundary.
 		if (source.host_object_emission)
@@ -672,14 +677,15 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			ir_model::ExportedSymbol exported_alias;
 			AppendExport(alias_target, &exported_alias);
 			exported_alias.object_symbol = alias.object_symbol;
-			target.exported_symbols.push_back(exported_alias);
+			target.exported_symbols.push_back(std::move(exported_alias));
 		}
+		target.object_aliases.push_back(std::move(alias));
 	}
 	for (std::size_t i = 0; i < source.symbols.size(); ++i)
 	{
 		ir_model::ExportedSymbol symbol;
 		AppendExport(source.symbols[i], &symbol);
-		target.exported_symbols.push_back(symbol);
+		target.exported_symbols.push_back(std::move(symbol));
 	}
 	canonicalize_frontend_lowir(target, preparation_stats);
 	finalize_lowir_object_model(target, preparation_stats);
