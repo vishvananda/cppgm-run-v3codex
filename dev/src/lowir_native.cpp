@@ -49,9 +49,10 @@ public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
                   const std::unordered_set<std::string> & pointer_globals,
                   const std::unordered_map<std::string, std::string> & tls_wrappers,
-                  const FunctionSignatureIndex & signatures)
+                  const FunctionSignatureIndex & signatures,
+                  lowir_native::Stats * stats)
     : source_(source), pointer_globals_(pointer_globals), tls_wrappers_(tls_wrappers),
-      signatures_(signatures),
+      signatures_(signatures), stats_(stats),
       facts_(analyze_function(source)), control_flow_(source), position_(0)
   {
     target_.name = source.name;
@@ -135,6 +136,7 @@ private:
   const std::unordered_set<std::string> & pointer_globals_;
   const std::unordered_map<std::string, std::string> & tls_wrappers_;
   const FunctionSignatureIndex & signatures_;
+  lowir_native::Stats * stats_;
   FunctionFacts facts_;
   StorageFacts storage_facts_;
   analysis::ControlFlowQueries control_flow_;
@@ -783,6 +785,10 @@ private:
   LiveLocationCounts live_location_counts() const
   {
     LiveLocationCounts result;
+    if(stats_) {
+      ++stats_->live_location_scans;
+      stats_->live_location_value_visits += values_.size();
+    }
     for(std::unordered_map<std::string, ValueFact>::const_iterator value =
           values_.begin(); value != values_.end(); ++value) {
       const std::unordered_map<std::string, std::size_t>::const_iterator uses =
@@ -800,6 +806,7 @@ private:
                                const MirOperand & location,
                                const LiveLocationCounts & counts) const
   {
+    if(stats_) ++stats_->live_location_alias_queries;
     const std::unordered_map<std::string, std::size_t>::const_iterator uses =
       facts_.uses.find(name);
     const std::size_t self =
@@ -851,11 +858,13 @@ private:
   }
   bool spill_one(bool needs_callee_saved, std::vector<MirInstruction> & out)
   {
+    if(stats_) ++stats_->spill_attempts;
     std::unordered_map<std::string, ValueFact>::iterator victim = values_.end();
     std::size_t farthest_use = 0;
     const LiveLocationCounts live_locations = live_location_counts();
     for(std::unordered_map<std::string, ValueFact>::iterator value = values_.begin();
         value != values_.end(); ++value) {
+      if(stats_) ++stats_->spill_value_visits;
       if(value->second.parameter ||
          value->second.location.kind != MirOperand::OP_REG ||
          !managed_register(value->second.location.reg) ||
@@ -867,6 +876,7 @@ private:
       const std::unordered_map<std::string, std::size_t>::const_iterator uses =
         facts_.uses.find(value->first);
       if(uses == facts_.uses.end() || uses->second == 0) continue;
+      if(stats_) ++stats_->spill_candidates;
       const std::size_t last = facts_.last_use.count(value->first) ?
         facts_.last_use.find(value->first)->second : 0;
       if(victim == values_.end() || last >= farthest_use) {
@@ -890,13 +900,16 @@ private:
     const X64Register released = victim->second.location.reg;
     victim->second.location = frame_operand(home);
     registers_.release(released);
+    if(stats_) ++stats_->spills;
     return true;
   }
   bool reclaim_dead_parameter_register(bool needs_callee_saved)
   {
     if(control_flow_.CurrentBlockIsCyclic()) return false;
+    if(stats_) ++stats_->reclaim_attempts;
     const LiveLocationCounts live_locations = live_location_counts();
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
+      if(stats_) ++stats_->reclaim_parameter_visits;
       std::unordered_map<std::string, ValueFact>::iterator value = values_.find(source_.params[i].name);
       if(value == values_.end()) continue;
       if(!value->second.parameter || value->second.fixed_register_home ||
@@ -911,6 +924,7 @@ private:
          has_live_location_alias(value->first, value->second.location,
                                  live_locations)) continue;
       registers_.release(value->second.location.reg);
+      if(stats_) ++stats_->reclaims;
       return true;
     }
     return false;
@@ -2907,10 +2921,11 @@ mir_model::MirFunction session_detail::lower_native_function(
     const lowir_model::LowirFunction & function,
     const std::unordered_set<std::string> & pointer_globals,
     const std::unordered_map<std::string, std::string> & tls_wrappers,
-    const abi::FunctionSignatureIndex & signatures)
+    const abi::FunctionSignatureIndex & signatures,
+    lowir_native::Stats * stats)
 {
   return FunctionLowerer(function, pointer_globals, tls_wrappers,
-                         signatures).lower();
+                         signatures, stats).lower();
 }
 
 }  // namespace lowir_native

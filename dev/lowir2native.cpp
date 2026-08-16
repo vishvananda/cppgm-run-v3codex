@@ -203,6 +203,16 @@ int run_lowir2native_mode(const vector<string> & args)
          << " machine_opt_rewrites=" << stats.machine_opt_rewrites
          << " machine_opt_peak_bytes="
          << stats.machine_opt_peak_analysis_bytes
+         << " live_location_scans=" << stats.live_location_scans
+         << " live_location_value_visits=" << stats.live_location_value_visits
+         << " live_location_alias_queries=" << stats.live_location_alias_queries
+         << " spill_attempts=" << stats.spill_attempts
+         << " spill_value_visits=" << stats.spill_value_visits
+         << " spill_candidates=" << stats.spill_candidates
+         << " spills=" << stats.spills
+         << " reclaim_attempts=" << stats.reclaim_attempts
+         << " reclaim_parameter_visits=" << stats.reclaim_parameter_visits
+         << " reclaims=" << stats.reclaims
          << " fixups=" << stats.fixups
          << " output_bytes=" << stats.output_bytes
          << " parse_ns=" << chrono::duration_cast<chrono::nanoseconds>(

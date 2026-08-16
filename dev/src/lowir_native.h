@@ -24,6 +24,16 @@ struct Stats
   std::size_t machine_opt_worklist_pushes = 0;
   std::size_t machine_opt_rewrites = 0;
   std::size_t machine_opt_peak_analysis_bytes = 0;
+  std::size_t live_location_scans = 0;
+  std::size_t live_location_value_visits = 0;
+  std::size_t live_location_alias_queries = 0;
+  std::size_t spill_attempts = 0;
+  std::size_t spill_value_visits = 0;
+  std::size_t spill_candidates = 0;
+  std::size_t spills = 0;
+  std::size_t reclaim_attempts = 0;
+  std::size_t reclaim_parameter_visits = 0;
+  std::size_t reclaims = 0;
   std::size_t eh_region_states = 0;
   std::size_t eh_region_edges = 0;
   std::size_t eh_call_sites = 0;

@@ -106,7 +106,7 @@ struct ProgramLoweringSession::Impl
     std::chrono::steady_clock::time_point started;
     if(stats) started = std::chrono::steady_clock::now();
     mir_model::MirFunction result = session_detail::lower_native_function(
-      source.functions[index], pointer_globals, tls_wrappers, signatures);
+      source.functions[index], pointer_globals, tls_wrappers, signatures, stats);
     machine_opt::Stats opt_stats;
     machine_opt::optimize_function(result, optimization_level,
                                    stats ? &opt_stats : 0);

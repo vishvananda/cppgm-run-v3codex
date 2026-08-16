@@ -630,6 +630,8 @@ medians from the protocol above, not isolated best runs.
 | Commit/experiment | Hypothesis and change | Structural result | User / wall / RSS | Output gate | Tests | Decision |
 | --- | --- | --- | --- | --- | --- | --- |
 | `f3ac28a` provisional | Unified default O2 path and prior correctness fixes | Baseline counters in section 3 | 27.32 s / 29.10 s / 938,608 KiB, single loaded-host run | SHA in section 3 | Cumulative report clean; inception predates final refactor | Establish statistical baseline in Phase 0 |
+| `82d1a8a7`, `409870e7` | GNU-time ABBA harness with output and interrupted-session gates | Real A/A smoke showed a false 5.2% paired wall-time difference under host drift | A/A runs ranged from 28.06 s to 112.83 s while other host compiles started | Exact bytes | Five harness unit tests; file audit has zero fatal findings | Accepted; use structural counters and predeclared load screens |
+| Phase 0C native counters | Measure live-location, spill, and dead-parameter scans before changing them | 63,977 occupancy scans visited 25,281,680 values; 4,249 spill attempts visited 10,322,866 values for 1,576 candidates and 877 spills | 26.15 s / 27.87 s / 940,536 KiB, single stats run | 93,544,200 bytes | PA29 195/195; through PA29 4,084/4,084; selected PA30/36/37/38 290/290 | Accepted; proceed with incremental occupancy |
 
 For a rejected experiment, record the temporary commit or patch identifier,
 the counter movement, and the reason for rejection even after reverting it.
