@@ -960,15 +960,12 @@ void Program::ReserveSemanticStorage(std::size_t syntax_nodes)
 	const std::size_t scope_hint = syntax_nodes - syntax_nodes / 3;
 	scopes_.reserve(scope_hint);
 	child_edges_.reserve(scope_hint);
-	visible_names_.reserve(syntax_nodes);
 	entries_.reserve(syntax_nodes);
 	bindings.reserve(syntax_nodes);
 	types.ReserveStorage(syntax_nodes / 4);
 	const std::size_t index_capacity =
 		IndexCapacityFor(syntax_nodes, entry_slots_.size());
 	if (index_capacity > entry_slots_.size()) RehashEntries(index_capacity);
-	if (index_capacity > visible_name_slots_.size())
-		RehashVisibleNames(index_capacity);
 }
 
 ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
