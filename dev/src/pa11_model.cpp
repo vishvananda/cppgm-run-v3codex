@@ -749,7 +749,7 @@ struct Program::ScopeRecord
 	std::uint32_t first_visible_name;
 	std::uint32_t first_name_entry;
 	std::uint32_t name_entry_count;
-	bool inline_namespace, internal_linkage;
+	bool inline_namespace, internal_linkage, has_using_name_relations;
 
 	ScopeRecord()
 		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), emission_name(0),
@@ -761,7 +761,8 @@ struct Program::ScopeRecord
 		  first_visible_name(std::numeric_limits<std::uint32_t>::max()),
 		  first_name_entry(std::numeric_limits<std::uint32_t>::max()),
 		  name_entry_count(0),
-		  inline_namespace(false), internal_linkage(false) {}
+		  inline_namespace(false), internal_linkage(false),
+		  has_using_name_relations(false) {}
 };
 
 struct Program::NameEntry
@@ -1142,6 +1143,8 @@ void Program::RehashVisibleNames(std::size_t capacity)
 
 std::uint32_t Program::FindVisibleName(ScopeId scope, NameId name) const
 {
+	if (!scopes_[scope].has_using_name_relations)
+		return std::numeric_limits<std::uint32_t>::max();
 	const std::size_t mask = visible_name_slots_.size() - 1;
 	std::size_t slot = PairHash(scope, name) & mask;
 	while (visible_name_slots_[slot] != 0)
@@ -1239,6 +1242,7 @@ bool Program::AddUsingNameRelation(std::uint32_t edge, NameId name,
 	using_name_relations_.push_back(UsingNameRelation(
 		edge, name, visible_names_[visible].first_relation));
 	visible_names_[visible].first_relation = relation;
+	scopes_[owner].has_using_name_relations = true;
 	const std::size_t mask = using_name_relation_slots_.size() - 1;
 	std::size_t slot = PairHash(edge, name) & mask;
 	while (using_name_relation_slots_[slot] != 0) slot = (slot + 1) & mask;
