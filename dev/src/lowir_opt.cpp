@@ -5,11 +5,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
 #include <iterator>
 #include <limits>
+#include <new>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -31,6 +33,132 @@ using lowir_model::Operand;
 
 typedef std::unordered_map<std::string, std::size_t> BlockIndex;
 const std::size_t kNoBlock = static_cast<std::size_t>(-1);
+
+class PassArena
+{
+public:
+  PassArena() : inline_used_(0), block_count_(0), next_block_size_(4096) {}
+  PassArena(const PassArena &) = delete;
+  PassArena & operator=(const PassArena &) = delete;
+
+  ~PassArena()
+  {
+    for(std::size_t i = 0; i < block_count_; ++i)
+      ::operator delete(inline_blocks_[i].storage);
+    for(std::size_t i = 0; i < overflow_blocks_.size(); ++i)
+      ::operator delete(overflow_blocks_[i].storage);
+  }
+
+  void * allocate(std::size_t bytes, std::size_t alignment)
+  {
+    void * result = allocate_from(inline_storage_, sizeof(inline_storage_),
+                                  &inline_used_, bytes, alignment);
+    if(result) return result;
+    if(block_count_ != 0 || !overflow_blocks_.empty()) {
+      Block & block = overflow_blocks_.empty() ?
+        inline_blocks_[block_count_ - 1] : overflow_blocks_.back();
+      result = allocate_from(block.storage, block.capacity, &block.used,
+                             bytes, alignment);
+      if(result) return result;
+    }
+    std::size_t capacity = next_block_size_;
+    if(bytes > std::numeric_limits<std::size_t>::max() - alignment + 1)
+      throw std::bad_alloc();
+    const std::size_t required = bytes + alignment - 1;
+    if(capacity < required) capacity = required;
+    Block block;
+    block.storage = static_cast<unsigned char *>(::operator new(capacity));
+    block.capacity = capacity;
+    block.used = 0;
+    Block * stored;
+    if(block_count_ != sizeof(inline_blocks_) / sizeof(inline_blocks_[0])) {
+      inline_blocks_[block_count_++] = block;
+      stored = &inline_blocks_[block_count_ - 1];
+    } else {
+      try {
+        overflow_blocks_.push_back(block);
+      } catch(...) {
+        ::operator delete(block.storage);
+        throw;
+      }
+      stored = &overflow_blocks_.back();
+    }
+    if(next_block_size_ < 1024 * 1024) next_block_size_ *= 2;
+    return allocate_from(stored->storage, capacity, &stored->used,
+                         bytes, alignment);
+  }
+
+private:
+  struct Block
+  {
+    unsigned char * storage;
+    std::size_t capacity;
+    std::size_t used;
+  };
+
+  static void * allocate_from(unsigned char * storage, std::size_t capacity,
+                              std::size_t * used, std::size_t bytes,
+                              std::size_t alignment)
+  {
+    const std::uintptr_t address =
+      reinterpret_cast<std::uintptr_t>(storage + *used);
+    const std::size_t padding =
+      (alignment - address % alignment) % alignment;
+    if(bytes > capacity - *used || padding > capacity - *used - bytes)
+      return 0;
+    unsigned char * result = storage + *used + padding;
+    *used += padding + bytes;
+    return result;
+  }
+
+  alignas(std::max_align_t) unsigned char inline_storage_[4096];
+  std::size_t inline_used_;
+  Block inline_blocks_[8];
+  std::size_t block_count_;
+  std::size_t next_block_size_;
+  std::vector<Block> overflow_blocks_;
+};
+
+template <typename T>
+class PassAllocator
+{
+public:
+  typedef T value_type;
+
+  explicit PassAllocator(PassArena * arena = 0) : arena_(arena) {}
+
+  template <typename U>
+  PassAllocator(const PassAllocator<U> & other) : arena_(other.arena()) {}
+
+  T * allocate(std::size_t count)
+  {
+    if(!arena_ || count > std::numeric_limits<std::size_t>::max() / sizeof(T))
+      throw std::bad_alloc();
+    return static_cast<T *>(arena_->allocate(count * sizeof(T), alignof(T)));
+  }
+
+  void deallocate(T *, std::size_t) {}
+  PassArena * arena() const { return arena_; }
+
+  template <typename U> struct rebind { typedef PassAllocator<U> other; };
+
+private:
+  PassArena * arena_;
+};
+
+template <typename T, typename U>
+bool operator==(const PassAllocator<T> & left,
+                const PassAllocator<U> & right)
+{
+  return left.arena() == right.arena();
+}
+
+template <typename T, typename U>
+bool operator!=(const PassAllocator<T> & left,
+                const PassAllocator<U> & right)
+{
+  return !(left == right);
+}
 
 bool same_operand(const Operand & a, const Operand & b)
 {
@@ -714,15 +842,15 @@ struct Fact
   std::size_t block;
 };
 
+template <typename FactMap>
 Operand resolve_operand(Operand value,
-                        const std::unordered_map<std::string, Fact> & facts,
+                        const FactMap & facts,
                         std::size_t block,
                         const DominatorTree & dom)
 {
   for(std::size_t step = 0;
       step < facts.size() && value.kind == Operand::OP_TEMP; ++step) {
-    const std::unordered_map<std::string, Fact>::const_iterator found =
-      facts.find(value.text);
+    const typename FactMap::const_iterator found = facts.find(value.text);
     if(found == facts.end() ||
        !dom.dominates(found->second.block, block)) break;
     value = found->second.value;
@@ -730,8 +858,9 @@ Operand resolve_operand(Operand value,
   return value;
 }
 
+template <typename FactMap>
 void resolve_instruction_operands(Instruction * ins,
-                                  const std::unordered_map<std::string, Fact> & facts,
+                                  const FactMap & facts,
                                   std::size_t block,
                                   const DominatorTree & dom)
 {
@@ -783,13 +912,13 @@ bool same_fact_type(const DefinitionFact & fact, const LowType & type)
       fact.type_alignment == type.alignment));
 }
 
-bool reassociate(Instruction * ins,
-  const std::unordered_map<std::string, DefinitionFact> & definitions)
+template <typename DefinitionMap>
+bool reassociate(Instruction * ins, const DefinitionMap & definitions)
 {
   if(ins->kind != Instruction::IK_BINARY || !commutative(ins->op) ||
      ins->second.kind != Operand::OP_INTEGER || !ins->second.has_int_value ||
      ins->first.kind != Operand::OP_TEMP) return false;
-  const std::unordered_map<std::string, DefinitionFact>::const_iterator found =
+  const typename DefinitionMap::const_iterator found =
     definitions.find(ins->first.text);
   if(found == definitions.end()) return false;
   const DefinitionFact & parent = found->second;
@@ -847,8 +976,18 @@ bool simplify_values(Function * function, Stats * stats)
       (right.kind != lowir_model::LTK_OBJECT ||
        (left.size == right.storage_size && left.alignment == right.alignment));
   };
-  std::unordered_map<std::string, TypeIdentity> types;
-  std::unordered_set<std::string> storage_temporaries;
+  PassArena arena;
+  typedef PassAllocator<std::pair<const std::string, TypeIdentity> >
+    TypeAllocator;
+  typedef PassAllocator<std::string> StringAllocator;
+  std::unordered_map<std::string, TypeIdentity, std::hash<std::string>,
+    std::equal_to<std::string>, TypeAllocator> types(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      TypeAllocator(&arena));
+  std::unordered_set<std::string, std::hash<std::string>,
+    std::equal_to<std::string>, StringAllocator> storage_temporaries(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      StringAllocator(&arena));
   types.reserve(function->params.size() + instruction_total);
   storage_temporaries.reserve(instruction_total / 4 + 1);
   for(std::size_t i = 0; i < function->params.size(); ++i)
@@ -868,9 +1007,23 @@ bool simplify_values(Function * function, Stats * stats)
         storage_temporaries.insert(ins.second.text);
     }
 
-  std::unordered_map<std::string, Fact> facts;
-  std::unordered_map<ExpressionKey, Fact, ExpressionKeyHash> expressions;
-  std::unordered_map<std::string, DefinitionFact> definitions;
+  typedef PassAllocator<std::pair<const std::string, Fact> > FactAllocator;
+  typedef PassAllocator<std::pair<const ExpressionKey, Fact> >
+    ExpressionAllocator;
+  typedef PassAllocator<std::pair<const std::string, DefinitionFact> >
+    DefinitionAllocator;
+  std::unordered_map<std::string, Fact, std::hash<std::string>,
+    std::equal_to<std::string>, FactAllocator> facts(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      FactAllocator(&arena));
+  std::unordered_map<ExpressionKey, Fact, ExpressionKeyHash,
+    std::equal_to<ExpressionKey>, ExpressionAllocator> expressions(
+      0, ExpressionKeyHash(), std::equal_to<ExpressionKey>(),
+      ExpressionAllocator(&arena));
+  std::unordered_map<std::string, DefinitionFact, std::hash<std::string>,
+    std::equal_to<std::string>, DefinitionAllocator> definitions(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      DefinitionAllocator(&arena));
   facts.reserve(instruction_total);
   expressions.reserve(instruction_total / 2 + 1);
   definitions.reserve(instruction_total);
@@ -894,8 +1047,7 @@ bool simplify_values(Function * function, Stats * stats)
       } else if(ins.kind == Instruction::IK_COPY &&
                 ins.dest.compare(0, 5, "%dbg_") != 0 &&
                 !storage_temporaries.count(ins.dest)) {
-        const std::unordered_map<std::string, TypeIdentity>::const_iterator source =
-          types.find(ins.first.text);
+        const auto source = types.find(ins.first.text);
         replace = ins.first.kind != Operand::OP_TEMP || source == types.end() ||
           same_type(source->second, ins.type);
         replacement = ins.first;
@@ -910,9 +1062,7 @@ bool simplify_values(Function * function, Stats * stats)
         if(!replace && (ins.op == "eq" || ins.op == "ne") &&
            ((is_zero(ins.second) && ins.op == "ne") ||
             (is_one(ins.second) && ins.op == "eq"))) {
-          const std::unordered_map<std::string, DefinitionFact>::const_iterator
-            boolean =
-            definitions.find(ins.first.text);
+          const auto boolean = definitions.find(ins.first.text);
           if(boolean != definitions.end() &&
              boolean->second.kind == Instruction::IK_CMP) {
             replacement = ins.first;
@@ -931,9 +1081,7 @@ bool simplify_values(Function * function, Stats * stats)
 
       if(cse_eligible(ins.kind) && !ins.dest.empty()) {
         const ExpressionKey key = expression_key(ins);
-        const std::unordered_map<ExpressionKey, Fact,
-          ExpressionKeyHash>::const_iterator found =
-          expressions.find(key);
+        const auto found = expressions.find(key);
         const bool cross_block_guard = function_has_eh &&
           (ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX) &&
           found != expressions.end() && found->second.block != block;
@@ -1006,7 +1154,13 @@ bool eliminate_dead_code(Function * function,
   std::size_t instruction_total = 0;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     instruction_total += function->blocks[i].instructions.size();
-  std::unordered_map<std::string, ValueLiveness> values;
+  PassArena arena;
+  typedef PassAllocator<std::pair<const std::string, ValueLiveness> >
+    ValueAllocator;
+  std::unordered_map<std::string, ValueLiveness, std::hash<std::string>,
+    std::equal_to<std::string>, ValueAllocator> values(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      ValueAllocator(&arena));
   values.reserve(instruction_total);
   std::vector<std::vector<unsigned char> > dead(function->blocks.size());
   const auto count_use = [&values](const Operand & operand) {
@@ -1447,7 +1601,12 @@ bool exceeds_state_budget(std::size_t blocks, std::size_t facts,
 bool eliminate_dead_slot_stores(Function * function, Stats * stats)
 {
   if(function->slots.empty() || function->blocks.empty()) return false;
-  std::unordered_set<std::string> escaped;
+  PassArena arena;
+  typedef PassAllocator<std::string> StringAllocator;
+  std::unordered_set<std::string, std::hash<std::string>,
+    std::equal_to<std::string>, StringAllocator> escaped(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      StringAllocator(&arena));
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
@@ -1493,8 +1652,10 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     }
   }
   if(linear_single_block) {
-    typedef std::unordered_set<std::string> LiveSlots;
-    LiveSlots live;
+    typedef std::unordered_set<std::string, std::hash<std::string>,
+      std::equal_to<std::string>, StringAllocator> LiveSlots;
+    LiveSlots live(0, std::hash<std::string>(), std::equal_to<std::string>(),
+                   StringAllocator(&arena));
     std::vector<Instruction> & instructions =
       function->blocks[0].instructions;
     std::vector<unsigned char> dead(instructions.size(), 0);
@@ -1639,8 +1800,18 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
 bool remove_dead_slots(Function * function, Stats * stats)
 {
   if(function->slots.empty()) return false;
-  std::unordered_map<std::string, std::size_t> loads;
-  std::unordered_set<std::string> escaped;
+  PassArena arena;
+  typedef PassAllocator<std::pair<const std::string, std::size_t> >
+    SizeAllocator;
+  typedef PassAllocator<std::string> StringAllocator;
+  std::unordered_map<std::string, std::size_t, std::hash<std::string>,
+    std::equal_to<std::string>, SizeAllocator> loads(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      SizeAllocator(&arena));
+  std::unordered_set<std::string, std::hash<std::string>,
+    std::equal_to<std::string>, StringAllocator> escaped(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      StringAllocator(&arena));
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
@@ -1655,7 +1826,10 @@ bool remove_dead_slots(Function * function, Stats * stats)
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_SLOT) escaped.insert(ins.args[k].text);
     }
-  std::unordered_set<std::string> dead;
+  std::unordered_set<std::string, std::hash<std::string>,
+    std::equal_to<std::string>, StringAllocator> dead(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      StringAllocator(&arena));
   for(std::size_t i = 0; i < function->slots.size(); ++i)
     if(!loads[function->slots[i].first] && !escaped.count(function->slots[i].first))
       dead.insert(function->slots[i].first);
@@ -1699,7 +1873,13 @@ bool local_slot_forward(Function * function, Stats * stats)
     std::size_t first = kNoBlock;
     bool multiple = false;
   };
-  std::unordered_map<std::string, UseBlocks> use_blocks;
+  PassArena use_arena;
+  typedef PassAllocator<std::pair<const std::string, UseBlocks> >
+    UseAllocator;
+  std::unordered_map<std::string, UseBlocks, std::hash<std::string>,
+    std::equal_to<std::string>, UseAllocator> use_blocks(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      UseAllocator(&use_arena));
   const auto note_use = [&use_blocks](const std::string & name,
                                       std::size_t block) {
     UseBlocks & uses = use_blocks[name];
@@ -1719,8 +1899,17 @@ bool local_slot_forward(Function * function, Stats * stats)
     }
   bool changed = false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::unordered_map<std::string, Operand> values;
-    std::unordered_map<std::string, Operand> aliases;
+    PassArena block_arena;
+    typedef PassAllocator<std::pair<const std::string, Operand> >
+      OperandAllocator;
+    std::unordered_map<std::string, Operand, std::hash<std::string>,
+      std::equal_to<std::string>, OperandAllocator> values(
+        0, std::hash<std::string>(), std::equal_to<std::string>(),
+        OperandAllocator(&block_arena));
+    std::unordered_map<std::string, Operand, std::hash<std::string>,
+      std::equal_to<std::string>, OperandAllocator> aliases(
+        0, std::hash<std::string>(), std::equal_to<std::string>(),
+        OperandAllocator(&block_arena));
     std::vector<Instruction> & instructions =
       function->blocks[i].instructions;
     const std::size_t original_size = instructions.size();
@@ -1791,12 +1980,24 @@ bool forward_single_store_slots(Function * function, Stats * stats)
     std::size_t slot;
     std::string destination;
   };
-  std::unordered_map<std::string, std::size_t> slot_index;
+  PassArena arena;
+  typedef PassAllocator<std::pair<const std::string, std::size_t> >
+    SizeAllocator;
+  typedef PassAllocator<std::pair<const std::string, Operand> >
+    OperandAllocator;
+  typedef PassAllocator<std::string> StringAllocator;
+  std::unordered_map<std::string, std::size_t, std::hash<std::string>,
+    std::equal_to<std::string>, SizeAllocator> slot_index(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      SizeAllocator(&arena));
   slot_index.reserve(function->slots.size());
   std::vector<SlotFact> facts(function->slots.size());
   std::vector<unsigned char> eligible(function->slots.size(), 0);
   std::vector<LoadFact> loads;
-  std::unordered_set<std::string> storage_temporaries;
+  std::unordered_set<std::string, std::hash<std::string>,
+    std::equal_to<std::string>, StringAllocator> storage_temporaries(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      StringAllocator(&arena));
   std::size_t first_exception_edge = kNoBlock;
   for(std::size_t i = 0; i < function->slots.size(); ++i)
     if(function->slots[i].second.kind != lowir_model::LTK_OBJECT) {
@@ -1873,7 +2074,10 @@ bool forward_single_store_slots(Function * function, Stats * stats)
     }
   if(!forwarded_count) return false;
 
-  std::unordered_map<std::string, Operand> aliases;
+  std::unordered_map<std::string, Operand, std::hash<std::string>,
+    std::equal_to<std::string>, OperandAllocator> aliases(
+      0, std::hash<std::string>(), std::equal_to<std::string>(),
+      OperandAllocator(&arena));
   for(std::size_t i = 0; i < loads.size(); ++i)
     if(forwarded[loads[i].slot] &&
        !storage_temporaries.count(loads[i].destination))
