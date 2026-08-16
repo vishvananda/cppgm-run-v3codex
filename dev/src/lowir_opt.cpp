@@ -829,12 +829,12 @@ bool simplify_values(Function * function, Stats * stats)
   definitions.reserve(instruction_total);
   bool changed = false;
   for(std::size_t block = 0; block < function->blocks.size(); ++block) {
-    std::vector<Instruction> kept;
-    kept.reserve(function->blocks[block].instructions.size());
-    for(std::size_t index = 0;
-        index < function->blocks[block].instructions.size(); ++index) {
-      Instruction ins =
-        std::move(function->blocks[block].instructions[index]);
+    std::vector<Instruction> & instructions =
+      function->blocks[block].instructions;
+    const std::size_t original_size = instructions.size();
+    std::size_t kept = 0;
+    for(std::size_t index = 0; index < original_size; ++index) {
+      Instruction & ins = instructions[index];
       if(stats) ++stats->instruction_visits;
       resolve_instruction_operands(&ins, facts, block, dom);
 
@@ -906,9 +906,10 @@ bool simplify_values(Function * function, Stats * stats)
         definitions[ins.dest] = DefinitionFact{
           ins.kind, ins.op, ins.type.kind, ins.type.storage_size,
           ins.type.alignment, ins.first, ins.second};
-      kept.push_back(std::move(ins));
+      if(kept != index) instructions[kept] = std::move(ins);
+      ++kept;
     }
-    function->blocks[block].instructions.swap(kept);
+    instructions.resize(kept);
   }
   return changed;
 }
