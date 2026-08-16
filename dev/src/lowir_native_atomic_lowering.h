@@ -230,20 +230,31 @@ protected:
 		append_operand(widen, reg_operand(XR_RAX));
 		out.push_back(widen);
 		mir_model::MirOperand destination = reg_operand(XR_RAX);
+		mir_model::MirOperand pressure_home;
 		if (!derived.result_is_immediate_return(
 			block, instruction_index, instruction.dest))
 		{
-			destination = reg_operand(
-				derived.allocate_result(instruction.dest, out));
-			append_move(out, destination, reg_operand(XR_RAX));
+			X64Register result = XR_RSP;
+			if (derived.try_allocate_result(instruction.dest, out, &result))
+			{
+				destination = reg_operand(result);
+				append_move(out, destination, reg_operand(XR_RAX));
+			}
+			else pressure_home =
+				derived.allocate_temp_home(instruction.dest,
+					lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
 		}
 		derived.consume(instruction.first);
 		derived.consume(instruction.second);
 		derived.consume(instruction.third);
 		derived.consume(instruction.args[0]);
 		derived.consume(instruction.args[1]);
+		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
+			append_store(out, pressure_home, reg_operand(XR_RAX), "i64");
 		derived.define(instruction.dest,
-			lowir_model::builtin_lowir_type(lowir_model::LTK_I64), destination);
+			lowir_model::builtin_lowir_type(lowir_model::LTK_I64),
+			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
+			pressure_home : destination);
 	}
 
 	void emit_atomic_fence(const lowir_model::Instruction& instruction,

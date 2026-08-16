@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <deque>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -33,11 +34,11 @@ bool is_eh_instruction(Instruction::Kind kind)
   return kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_EH_END;
 }
 
-bool direct_call(const Instruction & instruction, std::string * target)
+bool direct_call(const Instruction & instruction, const std::string ** target)
 {
   if(instruction.kind != Instruction::IK_CALL ||
      instruction.first.kind != Operand::OP_GLOBAL) return false;
-  if(target) *target = instruction.first.text;
+  if(target) *target = &instruction.first.text;
   return true;
 }
 
@@ -51,12 +52,11 @@ Instruction jump_to(const std::string & label)
 }
 
 Operand named_operand(Operand::Kind kind, const std::string & text,
-                      const LowType & type = LowType())
+                      const LowType & = LowType())
 {
   Operand result;
   result.kind = kind;
   result.text = text;
-  result.literal_type = type;
   return result;
 }
 
@@ -176,10 +176,12 @@ Instruction clone_instruction(const Instruction & source,
 
 Operand resolve_replacement(Operand value, const ValueMap & replacements)
 {
-  std::unordered_set<std::string> seen;
-  while(value.kind == Operand::OP_TEMP && replacements.count(value.text) &&
-        seen.insert(value.text).second)
-    value = replacements.find(value.text)->second;
+  for(std::size_t step = 0;
+      step < replacements.size() && value.kind == Operand::OP_TEMP; ++step) {
+    const ValueMap::const_iterator found = replacements.find(value.text);
+    if(found == replacements.end()) break;
+    value = found->second;
+  }
   return value;
 }
 
@@ -324,10 +326,10 @@ private:
 
   std::size_t callee(const Instruction & instruction) const
   {
-    std::string name;
+    const std::string * name = 0;
     if(!direct_call(instruction, &name)) return kNoFunction;
     const std::unordered_map<std::string, std::size_t>::const_iterator found =
-      definition_.find(name);
+      definition_.find(*name);
     return found == definition_.end() ? kNoFunction : found->second;
   }
 
@@ -352,14 +354,14 @@ private:
           if(ins.kind == Instruction::IK_THROW || ins.kind == Instruction::IK_RESUME)
             unsafe[i] = 1;
           else if(ins.kind == Instruction::IK_CALL) {
-            std::string target;
+            const std::string * target = 0;
             if(!direct_call(ins, &target)) {
               unsafe[i] = 1;
               continue;
             }
-            if(no_unwind_.count(target)) continue;
+            if(no_unwind_.count(*target)) continue;
             ++unresolved[i];
-            dependents[target].push_back(i);
+            dependents[*target].push_back(i);
           }
         }
     }
@@ -453,15 +455,26 @@ private:
   }
 
   bool candidate(std::size_t caller, std::size_t target,
+                 const Instruction & call,
                  bool landing, bool inside_eh) const
   {
     if(target == kNoFunction || recursive_[target] || target == caller) return false;
     const Function & callee_function = program_.functions[target];
+	if(callee_function.metadata.no_inline) return false;
+    // Some pre-PA37 virtual-base ABI wrappers intentionally leave hidden
+    // boundary operands to native lowering.  They are valid backend calls but
+    // are not structurally safe to substitute as ordinary LowIR parameters.
+    if(callee_function.params.size() != call.args.size()) return false;
     if(callee_function.boundary.arity == lowir_model::CAM_VARIADIC ||
        contains_eh_[target]) return false;
     if(instruction_counts_[target] > 40 &&
        !callee_function.metadata.prefer_local_object_binding) return false;
     if(landing) return false;
+    // Preserve externally visible calls inside an EH region.  Earlier object
+    // contracts inspect the call-site table emitted for these calls, and an
+    // inferred no-throw body is not part of that external ABI contract.
+    if(inside_eh && !callee_function.metadata.object_symbol.empty())
+      return false;
     return !inside_eh ||
       no_unwind_.count(callee_function.name);
   }
@@ -485,8 +498,8 @@ private:
       for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
         const Instruction & ins = function->blocks[b].instructions[j];
         if(ins.kind == Instruction::IK_CALL) {
-          std::string target;
-          if(!direct_call(ins, &target) || !no_unwind_.count(target)) return false;
+          const std::string * target = 0;
+          if(!direct_call(ins, &target) || !no_unwind_.count(*target)) return false;
         } else if(ins.kind == Instruction::IK_THROW) return false;
       }
     bool changed = false;
@@ -500,7 +513,7 @@ private:
           changed = true;
           continue;
         }
-        kept.push_back(ins);
+        kept.push_back(std::move(function->blocks[b].instructions[j]));
       }
       function->blocks[b].instructions.swap(kept);
     }
@@ -632,8 +645,9 @@ private:
     }
 
     std::vector<Instruction> tail(
-      caller.blocks[block_index].instructions.begin() + instruction_index + 1,
-      caller.blocks[block_index].instructions.end());
+      std::make_move_iterator(
+        caller.blocks[block_index].instructions.begin() + instruction_index + 1),
+      std::make_move_iterator(caller.blocks[block_index].instructions.end()));
     caller.blocks[block_index].instructions.resize(instruction_index);
 
     Operand single_object_return;
@@ -670,13 +684,15 @@ private:
       if(void_call_wrapper) {
         Block continuation_block;
         continuation_block.label = wrapper_continuation;
-        continuation_block.instructions = tail;
+        continuation_block.instructions = std::move(tail);
         caller.blocks.insert(caller.blocks.begin() + block_index + 1,
-          continuation_block);
+          std::move(continuation_block));
         names->labels.insert(wrapper_continuation);
         (*block_eh)[wrapper_continuation] = inside_eh ? 1 : 0;
       } else caller.blocks[block_index].instructions.insert(
-          caller.blocks[block_index].instructions.end(), tail.begin(), tail.end());
+          caller.blocks[block_index].instructions.end(),
+          std::make_move_iterator(tail.begin()),
+          std::make_move_iterator(tail.end()));
       if(have_single_object_return)
         (*replacements)[call.dest] = single_object_return;
       if(have_single_scalar_return)
@@ -726,7 +742,7 @@ private:
         }
         block.instructions.push_back(jump_to(continuation));
       }
-      inserted.push_back(block);
+      inserted.push_back(std::move(block));
     }
     Block continuation_block;
     continuation_block.label = continuation;
@@ -739,10 +755,12 @@ private:
       continuation_block.instructions.push_back(load);
     }
     continuation_block.instructions.insert(continuation_block.instructions.end(),
-      tail.begin(), tail.end());
-    inserted.push_back(continuation_block);
+      std::make_move_iterator(tail.begin()),
+      std::make_move_iterator(tail.end()));
+    inserted.push_back(std::move(continuation_block));
     caller.blocks.insert(caller.blocks.begin() + block_index + 1,
-      inserted.begin(), inserted.end());
+      std::make_move_iterator(inserted.begin()),
+      std::make_move_iterator(inserted.end()));
     if(has_result && object_result) {
       const Operand replacement = returns > 1 ?
         named_operand(Operand::OP_SLOT, merge_slot, call.type) : single_object_return;
@@ -770,7 +788,7 @@ private:
     for(std::size_t i = 0; batch_safe && i < source.size(); ++i) {
       const std::size_t target = callee(source[i]);
       if(target != kNoFunction &&
-         candidate(function_index, target, landing, active) &&
+         candidate(function_index, target, source[i], landing, active) &&
          !leaf_inline_shape(program_.functions[target]))
         batch_safe = false;
       if(source[i].kind == Instruction::IK_EH_TRY ||
@@ -789,7 +807,8 @@ private:
     for(std::size_t i = 0; i < source.size(); ++i) {
       const Instruction & ins = source[i];
       const std::size_t target = callee(ins);
-      if(target != kNoFunction && candidate(function_index, target, landing, active) &&
+      if(target != kNoFunction &&
+         candidate(function_index, target, ins, landing, active) &&
          leaf_inline_shape(program_.functions[target]) &&
          consume_inline_budget(target, inline_budget)) {
         inline_leaf_call(function_index, ins, program_.functions[target],
@@ -805,7 +824,7 @@ private:
       if(ins.kind == Instruction::IK_EH_TRY ||
          ins.kind == Instruction::IK_EH_CLEANUP) active = true;
       else if(ins.kind == Instruction::IK_EH_END) active = false;
-      rebuilt.push_back(ins);
+      rebuilt.push_back(std::move(source[i]));
     }
     function.blocks[block_index].instructions.swap(rebuilt);
     return changed;
@@ -813,9 +832,25 @@ private:
 
   void inline_calls(std::size_t function_index)
   {
+    bool has_candidate = false;
+    const Function & original = program_.functions[function_index];
+    for(std::size_t b = 0; !has_candidate && b < original.blocks.size(); ++b)
+      for(std::size_t j = 0; j < original.blocks[b].instructions.size(); ++j) {
+        const std::size_t target = callee(original.blocks[b].instructions[j]);
+        if(candidate(function_index, target, original.blocks[b].instructions[j],
+             false, false)) {
+          has_candidate = true;
+          break;
+        }
+      }
+    if(!has_candidate) return;
+
     Names names(program_.functions[function_index]);
-    const EhContext eh = analyze_eh_context(
-      program_.functions[function_index], stats_);
+    EhContext eh;
+    if(contains_eh_[function_index])
+      eh = analyze_eh_context(program_.functions[function_index], stats_);
+    else eh.incoming.assign(
+      program_.functions[function_index].blocks.size(), 1);
     std::unordered_map<std::string, unsigned char> block_eh;
     for(std::size_t b = 0; b < program_.functions[function_index].blocks.size(); ++b)
       block_eh[program_.functions[function_index].blocks[b].label] =
@@ -836,7 +871,7 @@ private:
         const std::size_t target = callee(ins);
         if(target != kNoFunction) {
           if(stats_) ++stats_->inline_call_visits;
-          if(candidate(function_index, target,
+          if(candidate(function_index, target, ins,
                eh.landing_blocks.count(
                  program_.functions[function_index].blocks[b].label) != 0,
                active) && consume_inline_budget(target, &inline_budget)) {

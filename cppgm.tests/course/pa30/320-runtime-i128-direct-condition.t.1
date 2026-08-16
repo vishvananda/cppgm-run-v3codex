@@ -1,0 +1,12 @@
+typedef __uint128_t U128;
+
+U128 runtime_value = (U128)1 << 96;
+
+int main()
+{
+  U128 high = runtime_value;
+  if(high) {
+    return 0;
+  }
+  return 1;
+}

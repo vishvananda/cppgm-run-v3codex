@@ -116,12 +116,15 @@ protected:
 				continue;
 			const BindingRecord& function =
 				derived.program_.bindings[action.function];
-			const bool weak = function.weak_odr ||
-				function.template_argument_count != 0;
+			const Symbol& owner = derived.output_.symbols[
+				derived.function_symbols_[action.function]];
+			const bool weak = !owner.internal_linkage &&
+				(function.weak_odr || function.template_argument_count != 0);
 			const std::string name =
 				LocalStaticSymbolName(action, weak, true);
-			const std::string object_name = weak ? "@" +
-				LocalStaticSymbolName(action, weak, false) : std::string();
+			const std::string object_name = weak ?
+				(derived.output_.host_object_emission ? std::string() : "@") +
+					LocalStaticSymbolName(action, weak, false) : std::string();
 			const SymbolId symbol = derived.AddSyntheticSymbol(
 				Symbol::GLOBAL_SYMBOL, name,
 				object_name, !weak);
@@ -185,10 +188,7 @@ protected:
 			if (dynamic)
 			{
 				derived.local_static_dynamic_[i] = 1;
-				const BindingRecord& function =
-					derived.program_.bindings[action.function];
-				const bool weak = function.weak_odr ||
-					function.template_argument_count != 0;
+				const bool weak = derived.output_.symbols[symbol].weak_linkage;
 				const std::string guard_name =
 					derived.output_.symbols[symbol].name + "__guard";
 				const std::string& object_name =

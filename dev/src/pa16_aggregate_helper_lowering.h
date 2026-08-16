@@ -71,7 +71,7 @@ protected:
 				derived.program_.names.Get(entity.name)) + "__" + SanitizeSymbol(
 				derived.program_.names.Get(entity.identity_name)) + "__aggregate";
 			derived.aggregate_helper_symbols_[i] = derived.AddSyntheticSymbol(
-				Symbol::FUNCTION_SYMBOL, proposed, std::string(), false);
+				Symbol::FUNCTION_SYMBOL, proposed, std::string(), true);
 			derived.output_.symbols[
 				derived.aggregate_helper_symbols_[i]].nonthrowing = true;
 		}

@@ -1,4 +1,5 @@
 #include "pa30_object.h"
+#include "lowir_prepare.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6,7 +7,6 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -21,33 +21,35 @@ namespace
 {
 
 const char kMagic[] = "CPPGMOBJ";
-const std::uint32_t kVersion = 1;
+const std::uint32_t kVersion = 2;
 const std::uint64_t kMaxObjectElements = UINT64_C(1) << 28;
 
 class Writer
 {
 public:
-	explicit Writer(std::ostream& output) : output_(output) {}
+	Writer(std::vector<unsigned char>& output, ObjectSerializationStats* stats)
+		: output_(output), stats_(stats) {}
 
 	void Byte(std::uint8_t value)
 	{
-		output_.put(static_cast<char>(value));
+		Ensure(1);
+		output_.push_back(value);
 	}
 
 	void U32(std::uint32_t value)
 	{
-		char bytes[4];
+		unsigned char bytes[4];
 		for (unsigned i = 0; i < 4; ++i)
-			bytes[i] = static_cast<char>(value >> (i * 8));
-		output_.write(bytes, sizeof(bytes));
+			bytes[i] = static_cast<unsigned char>(value >> (i * 8));
+		Append(bytes, sizeof(bytes));
 	}
 
 	void U64(std::uint64_t value)
 	{
-		char bytes[8];
+		unsigned char bytes[8];
 		for (unsigned i = 0; i < 8; ++i)
-			bytes[i] = static_cast<char>(value >> (i * 8));
-		output_.write(bytes, sizeof(bytes));
+			bytes[i] = static_cast<unsigned char>(value >> (i * 8));
+		Append(bytes, sizeof(bytes));
 	}
 
 	void I64(std::int64_t value) { U64(static_cast<std::uint64_t>(value)); }
@@ -56,13 +58,60 @@ public:
 	void String(const std::string& value)
 	{
 		U64(value.size());
-		if (!value.empty()) output_.write(value.data(),
-			static_cast<std::streamsize>(value.size()));
+		if (!value.empty())
+			Append(reinterpret_cast<const unsigned char*>(value.data()),
+				value.size());
 	}
 
 private:
-	std::ostream& output_;
+	void Ensure(std::size_t additional)
+	{
+		if (additional > output_.max_size() - output_.size())
+			throw std::runtime_error("compiler object is too large");
+		if (output_.size() + additional > output_.capacity() && stats_)
+			++stats_->buffer_growths;
+	}
+
+	void Append(const unsigned char* bytes, std::size_t size)
+	{
+		Ensure(size);
+		output_.insert(output_.end(), bytes, bytes + size);
+	}
+
+	std::vector<unsigned char>& output_;
+	ObjectSerializationStats* stats_;
 };
+
+std::size_t EstimateProgramPayloadSize(const lowir_model::LowirProgram& program)
+{
+	std::size_t instructions = 0;
+	std::size_t arguments = 0;
+	for (std::size_t f = 0; f < program.functions.size(); ++f)
+		for (std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
+			for (std::size_t i = 0;
+				i < program.functions[f].blocks[b].instructions.size(); ++i)
+			{
+				++instructions;
+				arguments += program.functions[f].blocks[b].instructions[i].args.size();
+			}
+	const std::size_t top_level = program.global_declarations.size() +
+		program.globals.size() + program.function_declarations.size() +
+		program.functions.size() + program.object_aliases.size() +
+		program.exported_symbols.size();
+	const std::size_t base = 1024;
+	const std::size_t instruction_bytes = 320;
+	const std::size_t argument_bytes = 44;
+	const std::size_t top_level_bytes = 256;
+	if (instructions > (std::numeric_limits<std::size_t>::max() - base) /
+		instruction_bytes) return 0;
+	std::size_t estimate = base + instructions * instruction_bytes;
+	if (arguments > (std::numeric_limits<std::size_t>::max() - estimate) /
+		argument_bytes) return 0;
+	estimate += arguments * argument_bytes;
+	if (top_level > (std::numeric_limits<std::size_t>::max() - estimate) /
+		top_level_bytes) return 0;
+	return estimate + top_level * top_level_bytes;
+}
 
 class Reader
 {
@@ -200,8 +249,8 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value)
 {
 	WriteEnum(out, value.kind);
 	out.String(value.text);
-	out.I64(value.has_int_value ? value.int_value : 0);
-	WriteType(out, value.literal_type);
+	out.I64(value.kind == lowir_model::Operand::OP_INTEGER && value.has_int_value ?
+		value.int_value : 0);
 }
 
 lowir_model::Operand ReadOperand(Reader& in)
@@ -211,7 +260,6 @@ lowir_model::Operand ReadOperand(Reader& in)
 	value.text = in.String();
 	value.int_value = in.I64();
 	value.has_int_value = value.kind == lowir_model::Operand::OP_INTEGER;
-	value.literal_type = ReadType(in);
 	return value;
 }
 
@@ -230,6 +278,7 @@ void WriteSymbolMetadata(Writer& out,
 	out.Bool(value.object_output_root);
 	out.Bool(value.object_trivial_lifecycle);
 	out.Bool(value.force_inline);
+	out.Bool(value.no_inline);
 }
 
 lowir_model::SymbolMetadata ReadSymbolMetadata(Reader& in)
@@ -247,6 +296,7 @@ lowir_model::SymbolMetadata ReadSymbolMetadata(Reader& in)
 	value.object_output_root = in.Bool();
 	value.object_trivial_lifecycle = in.Bool();
 	value.force_inline = in.Bool();
+	value.no_inline = in.Bool();
 	return value;
 }
 
@@ -820,17 +870,28 @@ void WriteCompilerObject(const std::string& path,
 }
 
 std::vector<unsigned char> SerializeCompilerObject(
-	const CompilerObject& object)
+	const CompilerObject& object, ObjectSerializationStats* stats)
 {
-	std::ostringstream output(std::ios::out | std::ios::binary);
-	output.write(kMagic, sizeof(kMagic) - 1);
-	Writer payload(output);
+	const std::chrono::steady_clock::time_point started =
+		std::chrono::steady_clock::now();
+	if (stats) *stats = ObjectSerializationStats();
+	std::vector<unsigned char> output;
+	const std::size_t reserve = EstimateProgramPayloadSize(object.lowir);
+	if (reserve) output.reserve(reserve);
+	if (stats) stats->reserved_bytes = reserve;
+	output.insert(output.end(), kMagic, kMagic + sizeof(kMagic) - 1);
+	Writer payload(output, stats);
 	payload.U32(kVersion);
 	payload.String(object.target);
 	WriteProgram(payload, object.lowir);
-	if (!output) throw std::runtime_error("unable to serialize compiler object");
-	const std::string bytes = output.str();
-	return std::vector<unsigned char>(bytes.begin(), bytes.end());
+	if (stats)
+	{
+		stats->output_bytes = output.size();
+		stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+			std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - started).count());
+	}
+	return output;
 }
 
 bool IsCompilerObject(const std::string& path)
@@ -861,6 +922,7 @@ CompilerObject ReadCompilerObject(const std::string& path)
 	result.target = input.String();
 	result.lowir = ReadProgram(input);
 	input.RequireEnd();
+	lowir_model::finalize_lowir_object_model(result.lowir);
 	return result;
 }
 
@@ -1007,6 +1069,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 				alias.object_symbol);
 	}
 	result.object_aliases.swap(unique_aliases);
+	lowir_model::finalize_lowir_object_model(result);
 	if (stats)
 	{
 		stats->objects = objects.size();

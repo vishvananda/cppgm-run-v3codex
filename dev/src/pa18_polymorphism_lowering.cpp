@@ -312,6 +312,14 @@ private:
 				entity == kNoEntity || entity >= count ||
 				state_.complete_destructor_bindings[entity] !=
 					binding.canonical) continue;
+			// The compact deleting-destructor builder only has the complete
+			// object's address.  A virtual-base destructor entry also needs its
+			// construction VTT and forwarded virtual-base addresses, so reusing
+			// the complete destructor is the only valid ABI boundary for these
+			// classes.  The older one-argument shortcut happened to work only
+			// while the missing argument registers retained convenient values.
+			if (program_.entities[entity].virtual_base_count != 0)
+				state_.deleting_destructor_calls_complete[entity] = 1;
 			for (std::uint32_t edge = function.first_edge;
 				edge != kNoDumpEdge; edge = graph_.arena.edges[edge].next)
 			{

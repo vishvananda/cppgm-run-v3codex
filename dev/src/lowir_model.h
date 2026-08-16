@@ -215,6 +215,7 @@ struct SymbolMetadata
   bool object_output_root = false;
   bool object_trivial_lifecycle = false;
   bool force_inline = false;
+  bool no_inline = false;
   bool inferred_legacy_role = false;
 };
 
@@ -427,7 +428,6 @@ LowirProgram parse_lowir_program_text(const std::string & text,
 LowirProgram parse_lowir_program_files(
     const std::vector<std::string> & paths,
     LowirEntryPolicy entry_policy = LEP_REQUIRE_ENTRY);
-void normalize_lowir_object_model(LowirProgram & program);
 std::string serialize_lowir_program(const LowirProgram & program);
 void write_lowir_program_file(const std::string & path,
                               const LowirProgram & program);

@@ -170,6 +170,23 @@ RegisterMask instruction_defs(const MirInstruction & instruction)
   case MirInstruction::MI_THROW:
     defs |= kCallClobbers;
     break;
+  case MirInstruction::MI_EH_PUSH:
+    // The compact EH runtime materializes its handler record with rax/r11.
+    // Host-EH emission treats this as a marker, so the conservative clobber is
+    // harmless there and keeps the MIR fact valid for both encoders.
+    defs |= gpr_bit(XR_RAX) | gpr_bit(XR_R11);
+    break;
+  case MirInstruction::MI_EH_POP:
+    defs |= gpr_bit(XR_RAX) | gpr_bit(XR_RCX) | gpr_bit(XR_R11);
+    break;
+  case MirInstruction::MI_EH_CATCH:
+    // Catch selection may call the runtime dynamic-cast helper.
+    defs |= kCallClobbers;
+    break;
+  case MirInstruction::MI_LOAD_EXCEPTION:
+  case MirInstruction::MI_LOAD_EXCEPTION_SELECTOR:
+    defs |= gpr_bit(XR_RAX) | gpr_bit(XR_RCX) | gpr_bit(XR_R11);
+    break;
   case MirInstruction::MI_COPY_BYTES:
     defs |= gpr_bit(XR_RDI) | gpr_bit(XR_RSI) | gpr_bit(XR_RCX);
     break;
@@ -225,6 +242,11 @@ RegisterMask instruction_uses(const MirInstruction & instruction)
     // The MIR call target is explicit, while SysV register arguments are
     // physical live-ins to the call instruction.
     uses |= kCallArguments;
+    break;
+  case MirInstruction::MI_EH_PUSH:
+    // The compact handler record snapshots the callee-saved machine state.
+    uses |= gpr_bit(XR_RBX) | gpr_bit(XR_RBP) | gpr_bit(XR_R12) |
+      gpr_bit(XR_R13) | gpr_bit(XR_R14) | gpr_bit(XR_R15);
     break;
   case MirInstruction::MI_RET:
     if(instruction.operands.empty())

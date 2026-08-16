@@ -100,6 +100,8 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 		program, node.binding) && binding.destructor;
 	Symbol& record = output->symbols[symbol];
 	record.trivial_lifecycle = trivial_constructor || trivial_destructor;
+	record.no_inline = output->host_object_emission &&
+		(binding.constructor_base_entry || binding.destructor_base_entry);
 	const bool complete_entry =
 		(binding.constructor && !binding.constructor_base_entry) ||
 		(binding.destructor && !binding.destructor_base_entry);

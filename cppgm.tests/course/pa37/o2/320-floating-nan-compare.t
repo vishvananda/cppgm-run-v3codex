@@ -1,0 +1,11 @@
+function @probe(%value : f64) -> i64 {
+  block ^entry:
+    %is_nan = cmp ne f64 %value, %value
+    return i64 %is_nan
+}
+
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    %is_signaling_nan = cmp ne f64 snan, snan
+    return i64 %is_signaling_nan
+}

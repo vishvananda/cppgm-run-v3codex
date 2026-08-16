@@ -155,6 +155,37 @@ int run_lowiropt_mode(const vector<string> & args)
          << " inline_calls=" << stats.inline_calls
          << " budget_skips=" << stats.budget_skips
          << " rewrites=" << stats.rewrites
+              << " simplify_runs=" << stats.simplify_runs
+              << " simplify_changes=" << stats.simplify_changes
+              << " simplify_candidate_skips="
+              << stats.simplify_candidate_skips
+              << " dce_runs=" << stats.dce_runs
+              << " dce_changes=" << stats.dce_changes
+              << " dce_candidate_skips=" << stats.dce_candidate_skips
+              << " cfg_runs=" << stats.cfg_runs
+              << " cfg_changes=" << stats.cfg_changes
+              << " slot_runs=" << stats.slot_runs
+              << " slot_changes=" << stats.slot_changes
+              << " forward_slot_runs=" << stats.forward_slot_runs
+              << " forward_slot_changes=" << stats.forward_slot_changes
+              << " local_slot_runs=" << stats.local_slot_runs
+              << " local_slot_changes=" << stats.local_slot_changes
+              << " remove_slot_runs=" << stats.remove_slot_runs
+              << " remove_slot_changes=" << stats.remove_slot_changes
+              << " promote_slot_runs=" << stats.promote_slot_runs
+              << " promote_slot_changes=" << stats.promote_slot_changes
+              << " dead_store_runs=" << stats.dead_store_runs
+              << " dead_store_changes=" << stats.dead_store_changes
+         << " inline_ns=" << stats.inline_nanoseconds
+         << " simplify_ns=" << stats.simplify_nanoseconds
+         << " dce_ns=" << stats.dce_nanoseconds
+         << " cfg_ns=" << stats.cfg_nanoseconds
+              << " slot_ns=" << stats.slot_nanoseconds
+              << " forward_slot_ns=" << stats.forward_slot_nanoseconds
+              << " local_slot_ns=" << stats.local_slot_nanoseconds
+              << " remove_slot_ns=" << stats.remove_slot_nanoseconds
+              << " promote_slot_ns=" << stats.promote_slot_nanoseconds
+              << " dead_store_ns=" << stats.dead_store_nanoseconds
          << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
   }
   return EXIT_SUCCESS;

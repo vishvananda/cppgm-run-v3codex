@@ -1,5 +1,7 @@
 #include "pa30_lowir_adapter.h"
 
+#include "lowir_float_literal.h"
+
 #include <cerrno>
 #include <cstdlib>
 #include <iomanip>
@@ -112,8 +114,8 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
 		result.text = program.literals.Get(operand.id);
-		errno = 0;
-		result.float_value = std::strtold(result.text.c_str(), 0);
+		lowir_model::parse_lowir_floating_literal(
+			result.text, &result.float_value);
 		break;
 	case Operand::NULL_POINTER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
@@ -176,6 +178,7 @@ void AdaptSymbolFacts(const Symbol& source,
 	symbol->object_output_root = source.object_output_root;
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	symbol->force_inline = source.force_inline;
+	symbol->no_inline = source.no_inline;
 	if (boundary)
 	{
 		boundary->effects = source.effects == Symbol::EFFECTS_READNONE ?
@@ -496,7 +499,8 @@ void AppendExport(const Symbol& source, ir_model::ExportedSymbol* target)
 }
 
 lowir_model::LowirProgram AdaptTypedLowIRForNative(
-	const TypedProgram& source)
+	const TypedProgram& source,
+	lowir_model::LowirPreparationStats* preparation_stats)
 {
 	lowir_model::LowirProgram target;
 	target.global_declarations.reserve(source.global_declarations.size());
@@ -677,6 +681,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		AppendExport(source.symbols[i], &symbol);
 		target.exported_symbols.push_back(symbol);
 	}
+	canonicalize_frontend_lowir(target, preparation_stats);
+	finalize_lowir_object_model(target, preparation_stats);
 	return target;
 }
 

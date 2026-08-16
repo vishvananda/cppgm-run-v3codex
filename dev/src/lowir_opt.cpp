@@ -1,5 +1,6 @@
 #include "lowir_opt.h"
 #include "lowir_inline_o1.h"
+#include "lowir_float_literal.h"
 
 #include <algorithm>
 #include <chrono>
@@ -7,6 +8,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -42,7 +44,6 @@ Operand integer_operand(long long value, const LowType & type)
   result.has_int_value = true;
   result.int_value = value;
   result.text = std::to_string(value);
-  result.literal_type = type;
   return result;
 }
 
@@ -51,7 +52,6 @@ Operand floating_operand(long double value, const LowType & type)
   Operand result;
   result.kind = Operand::OP_FLOAT;
   result.float_value = value;
-  result.literal_type = type;
   if(std::isinf(value)) result.text = value < 0 ? "-inf" : "inf";
   else if(std::isnan(value)) result.text = "nan";
   else {
@@ -75,6 +75,31 @@ bool is_integer_type(const LowType & type)
 bool is_float_type(const LowType & type)
 {
   return type.kind >= lowir_model::LTK_F32 && type.kind <= lowir_model::LTK_F80;
+}
+
+typedef __int128 WideSigned;
+typedef unsigned __int128 WideUnsigned;
+
+WideUnsigned wide_mask(const LowType & type)
+{
+  return type.bit_width >= 128 ? ~static_cast<WideUnsigned>(0) :
+    (static_cast<WideUnsigned>(1) << type.bit_width) - 1;
+}
+
+WideUnsigned wide_integer(long long value)
+{
+  return static_cast<WideUnsigned>(static_cast<WideSigned>(value));
+}
+
+bool representable_wide_integer(WideUnsigned value, const LowType & type,
+                                Operand * result)
+{
+  const WideSigned signed_value = static_cast<WideSigned>(value);
+  if(signed_value < static_cast<WideSigned>(std::numeric_limits<long long>::min()) ||
+     signed_value > static_cast<WideSigned>(std::numeric_limits<long long>::max()))
+    return false;
+  *result = integer_operand(static_cast<long long>(signed_value), type);
+  return true;
 }
 
 std::uint64_t width_mask(const LowType & type)
@@ -158,24 +183,90 @@ bool operand_less(const Operand & a, const Operand & b)
   return a.text < b.text;
 }
 
-std::string expression_key(const Instruction & ins)
+struct ExpressionKey
 {
-  Operand first = ins.first;
-  Operand second = ins.second;
+  Instruction::Kind kind;
+  std::string op;
+  LowTypeKind type_kind;
+  std::size_t type_size;
+  std::size_t type_alignment;
+  LowTypeKind source_type_kind;
+  std::size_t source_type_size;
+  std::size_t source_type_alignment;
+  lowir_model::IndexProjectionKind index_projection;
+  Operand::Kind first_kind;
+  std::string first;
+  Operand::Kind second_kind;
+  std::string second;
+
+  bool operator==(const ExpressionKey & other) const
+  {
+    return kind == other.kind && op == other.op &&
+      type_kind == other.type_kind && type_size == other.type_size &&
+      type_alignment == other.type_alignment &&
+      source_type_kind == other.source_type_kind &&
+      source_type_size == other.source_type_size &&
+      source_type_alignment == other.source_type_alignment &&
+      index_projection == other.index_projection &&
+      first_kind == other.first_kind && first == other.first &&
+      second_kind == other.second_kind && second == other.second;
+  }
+};
+
+void combine_hash(std::size_t * seed, std::size_t value)
+{
+  *seed ^= value + static_cast<std::size_t>(0x9e3779b9U) +
+    (*seed << 6) + (*seed >> 2);
+}
+
+struct ExpressionKeyHash
+{
+  std::size_t operator()(const ExpressionKey & key) const
+  {
+    std::size_t result = static_cast<std::size_t>(key.kind);
+    combine_hash(&result, std::hash<std::string>()(key.op));
+    combine_hash(&result, static_cast<std::size_t>(key.type_kind));
+    combine_hash(&result, key.type_size);
+    combine_hash(&result, key.type_alignment);
+    combine_hash(&result, static_cast<std::size_t>(key.source_type_kind));
+    combine_hash(&result, key.source_type_size);
+    combine_hash(&result, key.source_type_alignment);
+    combine_hash(&result, static_cast<std::size_t>(key.index_projection));
+    combine_hash(&result, static_cast<std::size_t>(key.first_kind));
+    combine_hash(&result, std::hash<std::string>()(key.first));
+    combine_hash(&result, static_cast<std::size_t>(key.second_kind));
+    combine_hash(&result, std::hash<std::string>()(key.second));
+    return result;
+  }
+};
+
+ExpressionKey expression_key(const Instruction & ins)
+{
+  const Operand * first = &ins.first;
+  const Operand * second = &ins.second;
   std::string op = ins.op;
   if((ins.kind == Instruction::IK_BINARY && commutative(op)) ||
      (ins.kind == Instruction::IK_CMP && (op == "eq" || op == "ne"))) {
-    if(operand_less(second, first)) std::swap(first, second);
-  } else if(ins.kind == Instruction::IK_CMP && operand_less(second, first)) {
+    if(operand_less(*second, *first)) std::swap(first, second);
+  } else if(ins.kind == Instruction::IK_CMP && operand_less(*second, *first)) {
     std::swap(first, second);
     op = reverse_compare(op);
   }
-  std::ostringstream key;
-  key << static_cast<int>(ins.kind) << '|' << op << '|' << ins.type.text << '|'
-      << ins.source_type.text << '|' << static_cast<int>(ins.index_projection)
-      << '|' << static_cast<int>(first.kind) << ':' << first.text << '|'
-      << static_cast<int>(second.kind) << ':' << second.text;
-  return key.str();
+  ExpressionKey key;
+  key.kind = ins.kind;
+  key.op = std::move(op);
+  key.type_kind = ins.type.kind;
+  key.type_size = ins.type.storage_size;
+  key.type_alignment = ins.type.alignment;
+  key.source_type_kind = ins.source_type.kind;
+  key.source_type_size = ins.source_type.storage_size;
+  key.source_type_alignment = ins.source_type.alignment;
+  key.index_projection = ins.index_projection;
+  key.first_kind = first->kind;
+  key.first = first->text;
+  key.second_kind = second->kind;
+  key.second = second->text;
+  return key;
 }
 
 bool fold_unary(const Instruction & ins, Operand * result)
@@ -186,6 +277,16 @@ bool fold_unary(const Instruction & ins, Operand * result)
   }
   if(ins.first.kind != Operand::OP_INTEGER || !ins.first.has_int_value ||
      !is_integer_type(ins.type)) return false;
+  if(ins.type.bit_width > 64) {
+    const WideUnsigned value = wide_integer(ins.first.int_value);
+    WideUnsigned folded = 0;
+    if(ins.op == "neg") folded = -value;
+    else if(ins.op == "bitnot") folded = ~value;
+    else if(ins.op == "not")
+      return (*result = integer_operand(value == 0, ins.type), true);
+    else return false;
+    return representable_wide_integer(folded, ins.type, result);
+  }
   const std::uint64_t value = static_cast<std::uint64_t>(ins.first.int_value);
   if(ins.op == "neg")
     *result = integer_operand(normalize_integer(UINT64_C(0) - value, ins.type), ins.type);
@@ -202,6 +303,33 @@ bool fold_binary(const Instruction & ins, Operand * result)
   if(ins.first.kind != Operand::OP_INTEGER || !ins.first.has_int_value ||
      ins.second.kind != Operand::OP_INTEGER || !ins.second.has_int_value ||
      !is_integer_type(ins.type)) return false;
+  if(ins.type.bit_width > 64) {
+    const WideUnsigned a = wide_integer(ins.first.int_value);
+    const WideUnsigned b = wide_integer(ins.second.int_value);
+    WideUnsigned value = 0;
+    if(ins.op == "add") value = a + b;
+    else if(ins.op == "sub") value = a - b;
+    else if(ins.op == "mul") value = a * b;
+    else if(ins.op == "and") value = a & b;
+    else if(ins.op == "or") value = a | b;
+    else if(ins.op == "xor") value = a ^ b;
+    else if(ins.op == "shl" && b < 128)
+      value = a << static_cast<unsigned>(b);
+    else if(ins.op == "ushr" && b < 128)
+      value = a >> static_cast<unsigned>(b);
+    else if(ins.op == "shr" && b < 128)
+      value = static_cast<WideUnsigned>(static_cast<WideSigned>(a) >>
+                                       static_cast<unsigned>(b));
+    else if((ins.op == "udiv" || ins.op == "umod") && b)
+      value = ins.op == "udiv" ? a / b : a % b;
+    else if((ins.op == "div" || ins.op == "mod") && b) {
+      const WideSigned signed_a = static_cast<WideSigned>(a);
+      const WideSigned signed_b = static_cast<WideSigned>(b);
+      value = static_cast<WideUnsigned>(ins.op == "div" ?
+        signed_a / signed_b : signed_a % signed_b);
+    } else return false;
+    return representable_wide_integer(value, ins.type, result);
+  }
   const std::uint64_t a = static_cast<std::uint64_t>(ins.first.int_value);
   const std::uint64_t b = static_cast<std::uint64_t>(ins.second.int_value);
   std::uint64_t value = 0;
@@ -235,6 +363,26 @@ bool fold_compare(const Instruction & ins, Operand * result)
      ins.second.kind == Operand::OP_INTEGER && ins.second.has_int_value) {
     const long long a = ins.first.int_value;
     const long long b = ins.second.int_value;
+    if(ins.type.bit_width > 64) {
+      const WideSigned signed_a = static_cast<WideSigned>(a);
+      const WideSigned signed_b = static_cast<WideSigned>(b);
+      const WideUnsigned unsigned_a = static_cast<WideUnsigned>(signed_a);
+      const WideUnsigned unsigned_b = static_cast<WideUnsigned>(signed_b);
+      if(ins.op == "eq") value = unsigned_a == unsigned_b;
+      else if(ins.op == "ne") value = unsigned_a != unsigned_b;
+      else if(ins.op == "lt") value = signed_a < signed_b;
+      else if(ins.op == "le") value = signed_a <= signed_b;
+      else if(ins.op == "gt") value = signed_a > signed_b;
+      else if(ins.op == "ge") value = signed_a >= signed_b;
+      else if(ins.op == "ult") value = unsigned_a < unsigned_b;
+      else if(ins.op == "ule") value = unsigned_a <= unsigned_b;
+      else if(ins.op == "ugt") value = unsigned_a > unsigned_b;
+      else if(ins.op == "uge") value = unsigned_a >= unsigned_b;
+      else return false;
+      *result = integer_operand(value ? 1 : 0,
+        lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
+      return true;
+    }
     const std::uint64_t ua = static_cast<std::uint64_t>(a) & width_mask(ins.type);
     const std::uint64_t ub = static_cast<std::uint64_t>(b) & width_mask(ins.type);
     if(ins.op == "eq") value = ua == ub;
@@ -250,8 +398,10 @@ bool fold_compare(const Instruction & ins, Operand * result)
     else return false;
   } else if(ins.first.kind == Operand::OP_FLOAT &&
             ins.second.kind == Operand::OP_FLOAT) {
-    const long double a = ins.first.float_value;
-    const long double b = ins.second.float_value;
+    long double a = 0.0L, b = 0.0L;
+    if(!lowir_model::parse_lowir_floating_literal(ins.first.text, &a) ||
+       !lowir_model::parse_lowir_floating_literal(ins.second.text, &b))
+      return false;
     if(ins.op == "eq") value = a == b;
     else if(ins.op == "ne") value = a != b;
     else if(ins.op == "lt") value = a < b;
@@ -259,7 +409,8 @@ bool fold_compare(const Instruction & ins, Operand * result)
     else if(ins.op == "gt") value = a > b;
     else if(ins.op == "ge") value = a >= b;
     else return false;
-  } else if(same_operand(ins.first, ins.second)) {
+  } else if(!is_float_type(ins.type) &&
+            same_operand(ins.first, ins.second)) {
     if(ins.op == "eq" || ins.op == "le" || ins.op == "ge" ||
        ins.op == "ule" || ins.op == "uge") value = true;
     else if(ins.op == "ne" || ins.op == "lt" || ins.op == "gt" ||
@@ -279,12 +430,26 @@ bool fold_convert(const Instruction & ins, Operand * result)
   }
   if(ins.first.kind == Operand::OP_INTEGER && ins.first.has_int_value) {
     if(is_integer_type(ins.type)) {
+      if(ins.type.bit_width > 64) {
+        WideUnsigned value = wide_integer(ins.first.int_value);
+        if(ins.op == "zext") value &= wide_mask(ins.source_type);
+        else if(ins.op == "sext" && ins.source_type.bit_width < 128) {
+          const WideUnsigned mask = wide_mask(ins.source_type);
+          value &= mask;
+          if(ins.source_type.bit_width &&
+             (value & (static_cast<WideUnsigned>(1) <<
+                       (ins.source_type.bit_width - 1))))
+            value |= ~mask;
+        } else return false;
+        return representable_wide_integer(value, ins.type, result);
+      }
       std::uint64_t value = static_cast<std::uint64_t>(ins.first.int_value);
       if(ins.op == "zext") value &= width_mask(ins.source_type);
       *result = integer_operand(normalize_integer(value, ins.type), ins.type);
       return true;
     }
-    if(is_float_type(ins.type) && (ins.op == "sitofp" || ins.op == "uitofp")) {
+    if(is_float_type(ins.type) && ins.source_type.bit_width <= 64 &&
+       (ins.op == "sitofp" || ins.op == "uitofp")) {
       const long double value = ins.op == "uitofp" ?
         static_cast<long double>(static_cast<std::uint64_t>(ins.first.int_value) &
                                  width_mask(ins.source_type)) :
@@ -507,8 +672,8 @@ Operand resolve_operand(Operand value,
                         std::size_t block,
                         const DominatorTree & dom)
 {
-  std::unordered_set<std::string> seen;
-  while(value.kind == Operand::OP_TEMP && seen.insert(value.text).second) {
+  for(std::size_t step = 0;
+      step < facts.size() && value.kind == Operand::OP_TEMP; ++step) {
     const std::unordered_map<std::string, Fact>::const_iterator found =
       facts.find(value.text);
     if(found == facts.end() ||
@@ -552,28 +717,39 @@ LowType result_type(const Instruction & ins)
   return ins.type;
 }
 
-bool has_eh(const Function & function)
+struct DefinitionFact
 {
-  for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
-      if(is_eh_instruction(function.blocks[i].instructions[j].kind)) return true;
-  return false;
+  Instruction::Kind kind;
+  std::string op;
+  LowTypeKind type_kind;
+  std::size_t type_size;
+  std::size_t type_alignment;
+  Operand first;
+  Operand second;
+};
+
+bool same_fact_type(const DefinitionFact & fact, const LowType & type)
+{
+  return fact.type_kind == type.kind &&
+    (type.kind != lowir_model::LTK_OBJECT ||
+     (fact.type_size == type.storage_size &&
+      fact.type_alignment == type.alignment));
 }
 
 bool reassociate(Instruction * ins,
-                 const std::unordered_map<std::string, Instruction> & definitions)
+  const std::unordered_map<std::string, DefinitionFact> & definitions)
 {
   if(ins->kind != Instruction::IK_BINARY || !commutative(ins->op) ||
      ins->second.kind != Operand::OP_INTEGER || !ins->second.has_int_value ||
      ins->first.kind != Operand::OP_TEMP) return false;
-  const std::unordered_map<std::string, Instruction>::const_iterator found =
+  const std::unordered_map<std::string, DefinitionFact>::const_iterator found =
     definitions.find(ins->first.text);
   if(found == definitions.end()) return false;
-  const Instruction & parent = found->second;
+  const DefinitionFact & parent = found->second;
   if(parent.kind != Instruction::IK_BINARY || parent.op != ins->op ||
      parent.second.kind != Operand::OP_INTEGER ||
      !parent.second.has_int_value ||
-     !lowir_model::same_lowir_type(parent.type, ins->type)) return false;
+     !same_fact_type(parent, ins->type)) return false;
   Instruction constants = *ins;
   constants.first = parent.second;
   Operand folded;
@@ -586,17 +762,55 @@ bool reassociate(Instruction * ins,
 bool simplify_values(Function * function, Stats * stats)
 {
   if(function->blocks.empty()) return false;
-  const Graph graph = build_graph(*function, stats);
-  const DominatorTree dom = dominators(graph, stats);
-  const bool function_has_eh = has_eh(*function);
-  std::unordered_map<std::string, LowType> types;
+  bool has_candidate = false;
+  for(std::size_t i = 0; !has_candidate && i < function->blocks.size(); ++i)
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j)
+      if(is_pure(function->blocks[i].instructions[j].kind)) {
+        has_candidate = true;
+        break;
+      }
+  if(!has_candidate) {
+    if(stats) ++stats->simplify_candidate_skips;
+    return false;
+  }
+  DominatorTree dom;
+  if(function->blocks.size() == 1) {
+    dom.immediate.assign(1, 0);
+    dom.preorder.assign(1, 1);
+    dom.postorder.assign(1, 1);
+  } else {
+    const Graph graph = build_graph(*function, stats);
+    dom = dominators(graph, stats);
+  }
+  bool function_has_eh = false;
+  std::size_t instruction_total = 0;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    instruction_total += function->blocks[i].instructions.size();
+  struct TypeIdentity
+  {
+    LowTypeKind kind;
+    std::size_t size;
+    std::size_t alignment;
+  };
+  const auto type_identity = [](const LowType & type) {
+    return TypeIdentity{type.kind, type.storage_size, type.alignment};
+  };
+  const auto same_type = [](const TypeIdentity & left, const LowType & right) {
+    return left.kind == right.kind &&
+      (right.kind != lowir_model::LTK_OBJECT ||
+       (left.size == right.storage_size && left.alignment == right.alignment));
+  };
+  std::unordered_map<std::string, TypeIdentity> types;
   std::unordered_set<std::string> storage_temporaries;
+  types.reserve(function->params.size() + instruction_total);
+  storage_temporaries.reserve(instruction_total / 4 + 1);
   for(std::size_t i = 0; i < function->params.size(); ++i)
-    types[function->params[i].name] = function->params[i].type;
+    types[function->params[i].name] = type_identity(function->params[i].type);
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
-      if(!ins.dest.empty()) types[ins.dest] = result_type(ins);
+      function_has_eh = function_has_eh || is_eh_instruction(ins.kind);
+      if(!ins.dest.empty()) types[ins.dest] = type_identity(result_type(ins));
       if((ins.kind == Instruction::IK_LOAD ||
           ins.kind == Instruction::IK_ATOMIC_LOAD) &&
          ins.first.kind == Operand::OP_TEMP)
@@ -608,15 +822,19 @@ bool simplify_values(Function * function, Stats * stats)
     }
 
   std::unordered_map<std::string, Fact> facts;
-  std::unordered_map<std::string, Fact> expressions;
-  std::unordered_map<std::string, Instruction> definitions;
+  std::unordered_map<ExpressionKey, Fact, ExpressionKeyHash> expressions;
+  std::unordered_map<std::string, DefinitionFact> definitions;
+  facts.reserve(instruction_total);
+  expressions.reserve(instruction_total / 2 + 1);
+  definitions.reserve(instruction_total);
   bool changed = false;
   for(std::size_t block = 0; block < function->blocks.size(); ++block) {
     std::vector<Instruction> kept;
     kept.reserve(function->blocks[block].instructions.size());
     for(std::size_t index = 0;
         index < function->blocks[block].instructions.size(); ++index) {
-      Instruction ins = function->blocks[block].instructions[index];
+      Instruction ins =
+        std::move(function->blocks[block].instructions[index]);
       if(stats) ++stats->instruction_visits;
       resolve_instruction_operands(&ins, facts, block, dom);
 
@@ -629,10 +847,10 @@ bool simplify_values(Function * function, Stats * stats)
       } else if(ins.kind == Instruction::IK_COPY &&
                 ins.dest.compare(0, 5, "%dbg_") != 0 &&
                 !storage_temporaries.count(ins.dest)) {
-        const std::unordered_map<std::string, LowType>::const_iterator source =
+        const std::unordered_map<std::string, TypeIdentity>::const_iterator source =
           types.find(ins.first.text);
         replace = ins.first.kind != Operand::OP_TEMP || source == types.end() ||
-          lowir_model::same_lowir_type(source->second, ins.type);
+          same_type(source->second, ins.type);
         replacement = ins.first;
       } else if(ins.kind == Instruction::IK_UNARY)
         replace = fold_unary(ins, &replacement);
@@ -645,7 +863,8 @@ bool simplify_values(Function * function, Stats * stats)
         if(!replace && (ins.op == "eq" || ins.op == "ne") &&
            ((is_zero(ins.second) && ins.op == "ne") ||
             (is_one(ins.second) && ins.op == "eq"))) {
-          const std::unordered_map<std::string, Instruction>::const_iterator boolean =
+          const std::unordered_map<std::string, DefinitionFact>::const_iterator
+            boolean =
             definitions.find(ins.first.text);
           if(boolean != definitions.end() &&
              boolean->second.kind == Instruction::IK_CMP) {
@@ -664,8 +883,9 @@ bool simplify_values(Function * function, Stats * stats)
       }
 
       if(cse_eligible(ins.kind) && !ins.dest.empty()) {
-        const std::string key = expression_key(ins);
-        const std::unordered_map<std::string, Fact>::const_iterator found =
+        const ExpressionKey key = expression_key(ins);
+        const std::unordered_map<ExpressionKey, Fact,
+          ExpressionKeyHash>::const_iterator found =
           expressions.find(key);
         const bool cross_block_guard = function_has_eh &&
           (ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX) &&
@@ -680,21 +900,17 @@ bool simplify_values(Function * function, Stats * stats)
         Operand produced;
         produced.kind = Operand::OP_TEMP;
         produced.text = ins.dest;
-        produced.literal_type = result_type(ins);
         expressions[key] = Fact{produced, block};
       }
-      if(!ins.dest.empty()) definitions[ins.dest] = ins;
-      kept.push_back(ins);
+      if(!ins.dest.empty())
+        definitions[ins.dest] = DefinitionFact{
+          ins.kind, ins.op, ins.type.kind, ins.type.storage_size,
+          ins.type.alignment, ins.first, ins.second};
+      kept.push_back(std::move(ins));
     }
     function->blocks[block].instructions.swap(kept);
   }
   return changed;
-}
-
-void count_operand_use(const Operand & operand,
-                       std::unordered_map<std::string, std::size_t> * uses)
-{
-  if(operand.kind == Operand::OP_TEMP) ++(*uses)[operand.text];
 }
 
 bool call_is_removable(const Instruction & ins,
@@ -718,54 +934,82 @@ bool eliminate_dead_code(Function * function,
                            FunctionBoundaryMetadata> & boundaries,
                          Stats * stats)
 {
+  bool has_candidate = false;
+  for(std::size_t i = 0; !has_candidate && i < function->blocks.size(); ++i)
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[i].instructions[j];
+      if(is_pure(ins.kind) || ins.kind == Instruction::IK_LOAD ||
+         call_is_removable(ins, boundaries)) {
+        has_candidate = true;
+        break;
+      }
+    }
+  if(!has_candidate) {
+    if(stats) ++stats->dce_candidate_skips;
+    return false;
+  }
   typedef std::pair<std::size_t, std::size_t> Location;
-  std::unordered_map<std::string, Location> definitions;
-  std::unordered_map<std::string, std::size_t> uses;
+  struct ValueLiveness
+  {
+    Location definition = Location(0, 0);
+    std::size_t uses = 0;
+    bool defined = false;
+  };
+  std::size_t instruction_total = 0;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    instruction_total += function->blocks[i].instructions.size();
+  std::unordered_map<std::string, ValueLiveness> values;
+  values.reserve(instruction_total);
   std::vector<std::vector<unsigned char> > dead(function->blocks.size());
+  const auto count_use = [&values](const Operand & operand) {
+    if(operand.kind == Operand::OP_TEMP) ++values[operand.text].uses;
+  };
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     dead[i].assign(function->blocks[i].instructions.size(), 0);
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
-      if(!ins.dest.empty()) definitions[ins.dest] = Location(i, j);
-      count_operand_use(ins.first, &uses);
-      count_operand_use(ins.second, &uses);
-      count_operand_use(ins.third, &uses);
+      if(!ins.dest.empty()) {
+        ValueLiveness & value = values[ins.dest];
+        value.definition = Location(i, j);
+        value.defined = true;
+      }
+      count_use(ins.first);
+      count_use(ins.second);
+      count_use(ins.third);
       for(std::size_t k = 0; k < ins.args.size(); ++k)
-        count_operand_use(ins.args[k], &uses);
+        count_use(ins.args[k]);
       if(stats) ++stats->instruction_visits;
     }
   }
 
   std::deque<Location> work;
-  for(std::unordered_map<std::string, Location>::const_iterator it =
-        definitions.begin(); it != definitions.end(); ++it) {
+  for(std::unordered_map<std::string, ValueLiveness>::const_iterator it =
+        values.begin(); it != values.end(); ++it) {
+    if(!it->second.defined) continue;
     const Instruction & ins =
-      function->blocks[it->second.first].instructions[it->second.second];
-    const std::unordered_map<std::string, std::size_t>::const_iterator used =
-      uses.find(it->first);
-    if((used == uses.end() || used->second == 0) &&
+      function->blocks[it->second.definition.first].instructions[
+        it->second.definition.second];
+    if(it->second.uses == 0 &&
        (is_pure(ins.kind) || ins.kind == Instruction::IK_LOAD ||
         call_is_removable(ins, boundaries))) {
-      work.push_back(it->second);
+      work.push_back(it->second.definition);
       if(stats) ++stats->worklist_pushes;
     }
   }
 
   const auto release_operand = [&](const Operand & operand) {
     if(operand.kind != Operand::OP_TEMP) return;
-    std::unordered_map<std::string, std::size_t>::iterator used =
-      uses.find(operand.text);
-    if(used == uses.end() || used->second == 0) return;
-    --used->second;
-    if(used->second != 0) return;
-    const std::unordered_map<std::string, Location>::const_iterator found =
-      definitions.find(operand.text);
-    if(found == definitions.end()) return;
+    std::unordered_map<std::string, ValueLiveness>::iterator found =
+      values.find(operand.text);
+    if(found == values.end() || found->second.uses == 0) return;
+    --found->second.uses;
+    if(found->second.uses != 0 || !found->second.defined) return;
     const Instruction & producer =
-      function->blocks[found->second.first].instructions[found->second.second];
+      function->blocks[found->second.definition.first].instructions[
+        found->second.definition.second];
     if(is_pure(producer.kind) || producer.kind == Instruction::IK_LOAD ||
        call_is_removable(producer, boundaries)) {
-      work.push_back(found->second);
+      work.push_back(found->second.definition);
       if(stats) ++stats->worklist_pushes;
     }
   };
@@ -790,7 +1034,8 @@ bool eliminate_dead_code(Function * function,
     std::vector<Instruction> kept;
     kept.reserve(function->blocks[i].instructions.size());
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j)
-      if(!dead[i][j]) kept.push_back(function->blocks[i].instructions[j]);
+      if(!dead[i][j])
+        kept.push_back(std::move(function->blocks[i].instructions[j]));
     function->blocks[i].instructions.swap(kept);
   }
   if(stats) stats->rewrites += removed;
@@ -853,7 +1098,6 @@ bool cleanup_cfg(Function * function, Stats * stats)
 {
   if(function->blocks.empty()) return false;
   bool changed = false;
-  Graph graph = build_graph(*function, stats);
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     Block & block = function->blocks[i];
     if(block.instructions.empty()) continue;
@@ -893,8 +1137,13 @@ bool cleanup_cfg(Function * function, Stats * stats)
     }
   }
 
-  if(changed) graph = build_graph(*function, stats);
+  // There are no unreachable blocks, bypass chains, or merge candidates in a
+  // one-block function.  Terminal folding above is the complete CFG cleanup.
+  if(function->blocks.size() == 1) return changed;
+
+  Graph graph = build_graph(*function, stats);
   const std::vector<std::string> bypass = bypass_targets(*function, graph);
+  bool graph_targets_changed = false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       Instruction & ins = function->blocks[i].instructions[j];
@@ -914,6 +1163,7 @@ bool cleanup_cfg(Function * function, Stats * stats)
            ins.kind != Instruction::IK_EH_CLEANUP) {
           targets[k]->text = target;
           changed = true;
+          graph_targets_changed = true;
         }
       }
       if(ins.kind == Instruction::IK_SWITCH)
@@ -921,7 +1171,11 @@ bool cleanup_cfg(Function * function, Stats * stats)
           const BlockIndex::const_iterator found = graph.index.find(ins.args[k].text);
           const std::string target = found == graph.index.end() ?
             ins.args[k].text : bypass[found->second];
-          if(target != ins.args[k].text) { ins.args[k].text = target; changed = true; }
+          if(target != ins.args[k].text) {
+            ins.args[k].text = target;
+            changed = true;
+            graph_targets_changed = true;
+          }
         }
       if(ins.kind == Instruction::IK_BRANCH &&
          ins.second.text == ins.third.text) {
@@ -936,7 +1190,7 @@ bool cleanup_cfg(Function * function, Stats * stats)
     }
   }
 
-  graph = build_graph(*function, stats);
+  if(graph_targets_changed) graph = build_graph(*function, stats);
   std::vector<unsigned char> reachable(function->blocks.size(), 0);
   std::deque<std::size_t> work;
   reachable[0] = 1;
@@ -949,15 +1203,19 @@ bool cleanup_cfg(Function * function, Stats * stats)
     }
   }
 
+  const bool has_unreachable =
+    std::find(reachable.begin(), reachable.end(), 0) != reachable.end();
+
   // EH cleanup code can intentionally use an address computed on a source
   // edge which constant folding proves untaken.  The address is still part of
   // the cleanup contract, so rematerialize simple dead-edge definitions at
   // the entry before pruning that edge.
-  struct Definition { std::size_t block; Instruction instruction; };
-  std::unordered_map<std::string, Definition> definitions;
-  std::unordered_map<std::string, std::vector<std::string> > dependencies;
-  for(std::size_t i = 0; i < function->blocks.size(); ++i)
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+  if(has_unreachable) {
+    struct Definition { std::size_t block; Instruction instruction; };
+    std::unordered_map<std::string, Definition> definitions;
+    std::unordered_map<std::string, std::vector<std::string> > dependencies;
+    for(std::size_t i = 0; i < function->blocks.size(); ++i)
+      for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
       if(ins.dest.empty()) continue;
       definitions[ins.dest] = Definition{i, ins};
@@ -968,82 +1226,83 @@ bool cleanup_cfg(Function * function, Stats * stats)
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_TEMP)
           dependencies[ins.dest].push_back(ins.args[k].text);
-    }
-  std::unordered_set<std::string> available;
-  for(std::size_t i = 0; i < function->params.size(); ++i)
-    available.insert(function->params[i].name);
-  const std::size_t entry_end = function->blocks[0].instructions.empty() ? 0 :
-    function->blocks[0].instructions.size() - 1;
-  for(std::size_t i = 0; i < entry_end; ++i)
-    if(!function->blocks[0].instructions[i].dest.empty())
-      available.insert(function->blocks[0].instructions[i].dest);
-  std::vector<Instruction> rematerialized;
-  const auto eligible_definition = [&](const std::string & name) {
-    const std::unordered_map<std::string, Definition>::const_iterator found =
-      definitions.find(name);
-    return found != definitions.end() && !reachable[found->second.block] &&
-      is_pure(found->second.instruction.kind);
-  };
-  const auto rematerialize = [&](const std::string & name) {
-    if(available.count(name)) return true;
-    if(!eligible_definition(name)) return false;
-    struct Frame { std::string name; std::size_t dependency; };
-    std::vector<Frame> stack(1, Frame{name, 0});
-    std::unordered_set<std::string> active;
-    active.insert(name);
-    while(!stack.empty()) {
-      Frame & frame = stack.back();
-      const std::vector<std::string> & required = dependencies[frame.name];
-      while(frame.dependency < required.size() &&
-            available.count(required[frame.dependency]))
-        ++frame.dependency;
-      if(frame.dependency < required.size()) {
-        const std::string dependency = required[frame.dependency++];
-        if(active.count(dependency) || !eligible_definition(dependency))
-          return false;
-        active.insert(dependency);
-        stack.push_back(Frame{dependency, 0});
-        continue;
       }
-      rematerialized.push_back(definitions.find(frame.name)->second.instruction);
-      available.insert(frame.name);
-      active.erase(frame.name);
-      stack.pop_back();
+    std::unordered_set<std::string> available;
+    for(std::size_t i = 0; i < function->params.size(); ++i)
+      available.insert(function->params[i].name);
+    const std::size_t entry_end = function->blocks[0].instructions.empty() ? 0 :
+      function->blocks[0].instructions.size() - 1;
+    for(std::size_t i = 0; i < entry_end; ++i)
+      if(!function->blocks[0].instructions[i].dest.empty())
+        available.insert(function->blocks[0].instructions[i].dest);
+    std::vector<Instruction> rematerialized;
+    const auto eligible_definition = [&](const std::string & name) {
+      const std::unordered_map<std::string, Definition>::const_iterator found =
+        definitions.find(name);
+      return found != definitions.end() && !reachable[found->second.block] &&
+        is_pure(found->second.instruction.kind);
+    };
+    const auto rematerialize = [&](const std::string & name) {
+      if(available.count(name)) return true;
+      if(!eligible_definition(name)) return false;
+      struct Frame { std::string name; std::size_t dependency; };
+      std::vector<Frame> stack(1, Frame{name, 0});
+      std::unordered_set<std::string> active;
+      active.insert(name);
+      while(!stack.empty()) {
+        Frame & frame = stack.back();
+        const std::vector<std::string> & required = dependencies[frame.name];
+        while(frame.dependency < required.size() &&
+              available.count(required[frame.dependency]))
+          ++frame.dependency;
+        if(frame.dependency < required.size()) {
+          const std::string dependency = required[frame.dependency++];
+          if(active.count(dependency) || !eligible_definition(dependency))
+            return false;
+          active.insert(dependency);
+          stack.push_back(Frame{dependency, 0});
+          continue;
+        }
+        rematerialized.push_back(definitions.find(frame.name)->second.instruction);
+        available.insert(frame.name);
+        active.erase(frame.name);
+        stack.pop_back();
+      }
+      return true;
+    };
+    for(std::size_t i = 0; i < function->blocks.size(); ++i) if(reachable[i])
+      for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+        const Instruction & ins = function->blocks[i].instructions[j];
+        const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t k = 0; k < 3; ++k)
+          if(operands[k]->kind == Operand::OP_TEMP &&
+             definitions.count(operands[k]->text) &&
+             !reachable[definitions.find(operands[k]->text)->second.block])
+            rematerialize(operands[k]->text);
+        for(std::size_t k = 0; k < ins.args.size(); ++k)
+          if(ins.args[k].kind == Operand::OP_TEMP &&
+             definitions.count(ins.args[k].text) &&
+             !reachable[definitions.find(ins.args[k].text)->second.block])
+            rematerialize(ins.args[k].text);
+      }
+    if(!rematerialized.empty()) {
+      function->blocks[0].instructions.insert(
+        function->blocks[0].instructions.begin() + entry_end,
+        rematerialized.begin(), rematerialized.end());
+      changed = true;
+      if(stats) stats->rewrites += rematerialized.size();
     }
-    return true;
-  };
-  for(std::size_t i = 0; i < function->blocks.size(); ++i) if(reachable[i])
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[i].instructions[j];
-      const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(operands[k]->kind == Operand::OP_TEMP &&
-           definitions.count(operands[k]->text) &&
-           !reachable[definitions.find(operands[k]->text)->second.block])
-          rematerialize(operands[k]->text);
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_TEMP &&
-           definitions.count(ins.args[k].text) &&
-           !reachable[definitions.find(ins.args[k].text)->second.block])
-          rematerialize(ins.args[k].text);
+
+    std::vector<Block> live;
+    live.reserve(function->blocks.size());
+    for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+      if(reachable[i]) live.push_back(std::move(function->blocks[i]));
+      else changed = true;
     }
-  if(!rematerialized.empty()) {
-    function->blocks[0].instructions.insert(
-      function->blocks[0].instructions.begin() + entry_end,
-      rematerialized.begin(), rematerialized.end());
-    changed = true;
-    if(stats) stats->rewrites += rematerialized.size();
-  }
+    function->blocks.swap(live);
 
-  std::vector<Block> live;
-  live.reserve(function->blocks.size());
-  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    if(reachable[i]) live.push_back(function->blocks[i]);
-    else changed = true;
+    graph = build_graph(*function, stats);
   }
-  function->blocks.swap(live);
-
-  graph = build_graph(*function, stats);
   std::vector<unsigned char> block_has_eh(function->blocks.size(), 0);
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     const Block & block = function->blocks[i];
@@ -1072,15 +1331,15 @@ bool cleanup_cfg(Function * function, Stats * stats)
   std::size_t merged_edges = 0;
   for(std::size_t head = 0; head < function->blocks.size(); ++head) {
     if(merge_next[head] == kNoBlock || merge_parent[head] != kNoBlock) continue;
-    merged[head] = function->blocks[head];
+    merged[head] = std::move(function->blocks[head]);
     std::size_t cursor = head;
     while(merge_next[cursor] != kNoBlock) {
       const std::size_t target = merge_next[cursor];
       consumed[target] = 1;
       merged[head].instructions.pop_back();
       merged[head].instructions.insert(merged[head].instructions.end(),
-        function->blocks[target].instructions.begin(),
-        function->blocks[target].instructions.end());
+        std::make_move_iterator(function->blocks[target].instructions.begin()),
+        std::make_move_iterator(function->blocks[target].instructions.end()));
       cursor = target;
       ++merged_edges;
     }
@@ -1090,7 +1349,9 @@ bool cleanup_cfg(Function * function, Stats * stats)
     compact.reserve(function->blocks.size() - merged_edges);
     for(std::size_t i = 0; i < function->blocks.size(); ++i) {
       if(consumed[i]) continue;
-      compact.push_back(merged[i].label.empty() ? function->blocks[i] : merged[i]);
+      if(merged[i].label.empty())
+        compact.push_back(std::move(function->blocks[i]));
+      else compact.push_back(std::move(merged[i]));
     }
     function->blocks.swap(compact);
     changed = true;
@@ -1156,6 +1417,66 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     if(stats) ++stats->budget_skips;
     return false;
   }
+  bool linear_single_block = function->blocks.size() == 1;
+  if(linear_single_block) {
+    const Block & block = function->blocks[0];
+    for(std::size_t i = 0; i < block.instructions.size(); ++i)
+      if(is_eh_instruction(block.instructions[i].kind)) {
+        linear_single_block = false;
+        break;
+      }
+    if(linear_single_block && !block.instructions.empty()) {
+      const Instruction & term = block.instructions.back();
+      if((term.kind == Instruction::IK_JUMP &&
+          term.first.text == block.label) ||
+         (term.kind == Instruction::IK_BRANCH &&
+          (term.second.text == block.label || term.third.text == block.label)))
+        linear_single_block = false;
+      if(term.kind == Instruction::IK_SWITCH) {
+        linear_single_block = term.second.text != block.label;
+        for(std::size_t i = 1;
+            linear_single_block && i < term.args.size(); i += 2)
+          linear_single_block = term.args[i].text != block.label;
+      }
+    }
+  }
+  if(linear_single_block) {
+    typedef std::unordered_set<std::string> LiveSlots;
+    LiveSlots live;
+    bool changed = false;
+    std::vector<Instruction> kept_reverse;
+    std::vector<Instruction> & instructions =
+      function->blocks[0].instructions;
+    kept_reverse.reserve(instructions.size());
+    for(std::size_t index = instructions.size(); index > 0; --index) {
+      Instruction & ins = instructions[index - 1];
+      if(ins.kind == Instruction::IK_LOAD &&
+         ins.first.kind == Operand::OP_SLOT)
+        live.insert(ins.first.text);
+      else if(ins.kind == Instruction::IK_STORE &&
+              ins.second.kind == Operand::OP_SLOT &&
+              !escaped.count(ins.second.text)) {
+        if(!live.count(ins.second.text)) {
+          changed = true;
+          if(stats) ++stats->rewrites;
+          continue;
+        }
+        live.erase(ins.second.text);
+      } else {
+        const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t i = 0; i < 3; ++i)
+          if(operands[i]->kind == Operand::OP_SLOT)
+            live.insert(operands[i]->text);
+        for(std::size_t i = 0; i < ins.args.size(); ++i)
+          if(ins.args[i].kind == Operand::OP_SLOT)
+            live.insert(ins.args[i].text);
+      }
+      kept_reverse.push_back(std::move(ins));
+    }
+    std::reverse(kept_reverse.begin(), kept_reverse.end());
+    instructions.swap(kept_reverse);
+    return changed;
+  }
   const Graph graph = build_graph(*function, stats);
   typedef std::unordered_set<std::string> LiveSlots;
   std::vector<LiveSlots> live_in(function->blocks.size());
@@ -1165,10 +1486,10 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     normal_successors(*function, graph, block, &successors);
     for(std::size_t i = 0; i < successors.size(); ++i)
       live.insert(live_in[successors[i]].begin(), live_in[successors[i]].end());
-    const std::vector<Instruction> & instructions =
+    std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
     for(std::size_t index = instructions.size(); index > 0; --index) {
-      const Instruction & ins = instructions[index - 1];
+      Instruction & ins = instructions[index - 1];
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
          graph.index.count(ins.first.text)) {
@@ -1222,10 +1543,10 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     for(std::size_t i = 0; i < successors.size(); ++i)
       live.insert(live_in[successors[i]].begin(), live_in[successors[i]].end());
     std::vector<Instruction> kept_reverse;
-    const std::vector<Instruction> & instructions =
+    std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
     for(std::size_t index = instructions.size(); index > 0; --index) {
-      const Instruction & ins = instructions[index - 1];
+      Instruction & ins = instructions[index - 1];
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
          graph.index.count(ins.first.text)) {
@@ -1250,7 +1571,7 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
         for(std::size_t i = 0; i < ins.args.size(); ++i)
           if(ins.args[i].kind == Operand::OP_SLOT) live.insert(ins.args[i].text);
       }
-      kept_reverse.push_back(ins);
+      kept_reverse.push_back(std::move(ins));
     }
     std::reverse(kept_reverse.begin(), kept_reverse.end());
     function->blocks[block].instructions.swap(kept_reverse);
@@ -1260,6 +1581,7 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
 
 bool remove_dead_slots(Function * function, Stats * stats)
 {
+  if(function->slots.empty()) return false;
   std::unordered_map<std::string, std::size_t> loads;
   std::unordered_set<std::string> escaped;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
@@ -1292,30 +1614,43 @@ bool remove_dead_slots(Function * function, Stats * stats)
         if(stats) ++stats->rewrites;
         continue;
       }
-      kept.push_back(ins);
+      kept.push_back(std::move(function->blocks[i].instructions[j]));
     }
     function->blocks[i].instructions.swap(kept);
   }
   std::vector<std::pair<std::string, LowType> > slots;
   for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(!dead.count(function->slots[i].first)) slots.push_back(function->slots[i]);
+    if(!dead.count(function->slots[i].first))
+      slots.push_back(std::move(function->slots[i]));
   function->slots.swap(slots);
   return true;
 }
 
 bool local_slot_forward(Function * function, Stats * stats)
 {
-  std::unordered_map<std::string, std::unordered_set<std::size_t> > use_blocks;
+  if(function->slots.empty()) return false;
+  struct UseBlocks
+  {
+    std::size_t first = kNoBlock;
+    bool multiple = false;
+  };
+  std::unordered_map<std::string, UseBlocks> use_blocks;
+  const auto note_use = [&use_blocks](const std::string & name,
+                                      std::size_t block) {
+    UseBlocks & uses = use_blocks[name];
+    if(uses.first == kNoBlock) uses.first = block;
+    else if(uses.first != block) uses.multiple = true;
+  };
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
       const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(operands[k]->kind == Operand::OP_TEMP)
-          use_blocks[operands[k]->text].insert(i);
+          note_use(operands[k]->text, i);
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_TEMP)
-          use_blocks[ins.args[k].text].insert(i);
+          note_use(ins.args[k].text, i);
     }
   bool changed = false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
@@ -1323,7 +1658,7 @@ bool local_slot_forward(Function * function, Stats * stats)
     std::unordered_map<std::string, Operand> aliases;
     std::vector<Instruction> kept;
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      Instruction ins = function->blocks[i].instructions[j];
+      Instruction ins = std::move(function->blocks[i].instructions[j]);
       Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(operands[k]->kind == Operand::OP_TEMP && aliases.count(operands[k]->text))
@@ -1331,14 +1666,28 @@ bool local_slot_forward(Function * function, Stats * stats)
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_TEMP && aliases.count(ins.args[k].text))
           ins.args[k] = aliases[ins.args[k].text];
+      // Taking a slot's address or storing through an indirect pointer can
+      // change a previously recorded slot value.  Inlining commonly exposes
+      // exactly this shape, so retaining the old value here would turn a real
+      // load into a stale constant before the escape-aware O2 pass sees it.
+      const Operand * slot_operands[] = {&ins.first, &ins.second, &ins.third};
+      for(std::size_t k = 0; k < 3; ++k)
+        if(slot_operands[k]->kind == Operand::OP_SLOT &&
+           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
+             (ins.kind == Instruction::IK_STORE && k == 1)))
+          values.erase(slot_operands[k]->text);
+      if((ins.kind == Instruction::IK_STORE ||
+          ins.kind == Instruction::IK_ATOMIC_STORE) &&
+         ins.second.kind != Operand::OP_SLOT)
+        values.clear();
       if(ins.kind == Instruction::IK_STORE && ins.second.kind == Operand::OP_SLOT) {
         values[ins.second.text] = ins.first;
-        kept.push_back(ins);
+        kept.push_back(std::move(ins));
       } else if(ins.kind == Instruction::IK_LOAD &&
                 ins.first.kind == Operand::OP_SLOT && values.count(ins.first.text) &&
-                use_blocks[ins.dest].size() <= 1 &&
-                (use_blocks[ins.dest].empty() ||
-                 use_blocks[ins.dest].count(i))) {
+                (!use_blocks.count(ins.dest) ||
+                 (!use_blocks.find(ins.dest)->second.multiple &&
+                  use_blocks.find(ins.dest)->second.first == i))) {
         aliases[ins.dest] = values[ins.first.text];
         changed = true;
         if(stats) ++stats->rewrites;
@@ -1346,7 +1695,7 @@ bool local_slot_forward(Function * function, Stats * stats)
         if(ins.kind == Instruction::IK_CALL || ins.kind == Instruction::IK_COPYOBJ ||
            ins.kind == Instruction::IK_ZEROINIT || is_eh_instruction(ins.kind))
           values.clear();
-        kept.push_back(ins);
+        kept.push_back(std::move(ins));
       }
     }
     function->blocks[i].instructions.swap(kept);
@@ -1356,6 +1705,7 @@ bool local_slot_forward(Function * function, Stats * stats)
 
 bool forward_single_store_slots(Function * function, Stats * stats)
 {
+  if(function->slots.empty()) return false;
   struct SlotFact
   {
     std::size_t stores = 0;
@@ -1364,23 +1714,52 @@ bool forward_single_store_slots(Function * function, Stats * stats)
     Operand value;
     bool escaped = false;
     bool dominates_loads = true;
+    std::size_t first_entry_load = kNoBlock;
+    bool has_nonentry_load = false;
   };
-  std::unordered_map<std::string, SlotFact> facts;
+  struct LoadFact
+  {
+    std::size_t slot;
+    std::string destination;
+  };
+  std::unordered_map<std::string, std::size_t> slot_index;
+  slot_index.reserve(function->slots.size());
+  std::vector<SlotFact> facts(function->slots.size());
+  std::vector<unsigned char> eligible(function->slots.size(), 0);
+  std::vector<LoadFact> loads;
   std::unordered_set<std::string> storage_temporaries;
   std::size_t first_exception_edge = kNoBlock;
   for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(function->slots[i].second.kind != lowir_model::LTK_OBJECT)
-      facts[function->slots[i].first] = SlotFact();
+    if(function->slots[i].second.kind != lowir_model::LTK_OBJECT) {
+      slot_index[function->slots[i].first] = i;
+      eligible[i] = 1;
+    }
+  const auto find_slot = [&slot_index](const Operand & operand) {
+    if(operand.kind != Operand::OP_SLOT) return kNoBlock;
+    const std::unordered_map<std::string, std::size_t>::const_iterator found =
+      slot_index.find(operand.text);
+    return found == slot_index.end() ? kNoBlock : found->second;
+  };
   for(std::size_t b = 0; b < function->blocks.size(); ++b)
     for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[b].instructions[j];
-      if(ins.kind == Instruction::IK_STORE &&
-         ins.second.kind == Operand::OP_SLOT && facts.count(ins.second.text)) {
-        SlotFact & fact = facts[ins.second.text];
+      const std::size_t stored_slot = ins.kind == Instruction::IK_STORE ?
+        find_slot(ins.second) : kNoBlock;
+      if(stored_slot != kNoBlock) {
+        SlotFact & fact = facts[stored_slot];
         ++fact.stores;
         fact.store_block = b;
         fact.store_instruction = j;
         fact.value = ins.first;
+      }
+      const std::size_t loaded_slot = ins.kind == Instruction::IK_LOAD ?
+        find_slot(ins.first) : kNoBlock;
+      if(loaded_slot != kNoBlock) {
+        SlotFact & fact = facts[loaded_slot];
+        if(b == 0) fact.first_entry_load =
+          std::min(fact.first_entry_load, j);
+        else fact.has_nonentry_load = true;
+        loads.push_back(LoadFact{loaded_slot, ins.dest});
       }
       if(b == 0 && (ins.kind == Instruction::IK_EH_TRY ||
                     ins.kind == Instruction::IK_EH_CLEANUP))
@@ -1394,70 +1773,74 @@ bool forward_single_store_slots(Function * function, Stats * stats)
          ins.second.kind == Operand::OP_TEMP)
         storage_temporaries.insert(ins.second.text);
       const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(operands[k]->kind == Operand::OP_SLOT && facts.count(operands[k]->text) &&
+      for(std::size_t k = 0; k < 3; ++k) {
+        const std::size_t slot = find_slot(*operands[k]);
+        if(slot != kNoBlock &&
            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
              (ins.kind == Instruction::IK_STORE && k == 1)))
-          facts[operands[k]->text].escaped = true;
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_SLOT && facts.count(ins.args[k].text))
-          facts[ins.args[k].text].escaped = true;
+          facts[slot].escaped = true;
+      }
+      for(std::size_t k = 0; k < ins.args.size(); ++k) {
+        const std::size_t slot = find_slot(ins.args[k]);
+        if(slot != kNoBlock) facts[slot].escaped = true;
+      }
     }
-  for(std::size_t b = 0; b < function->blocks.size(); ++b)
-    for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[b].instructions[j];
-      if(ins.kind != Instruction::IK_LOAD || ins.first.kind != Operand::OP_SLOT)
-        continue;
-      std::unordered_map<std::string, SlotFact>::iterator fact =
-        facts.find(ins.first.text);
-      if(fact == facts.end() || fact->second.stores != 1 ||
-         fact->second.store_block != 0 || fact->second.escaped)
-        continue;
-      if((b == 0 && j < fact->second.store_instruction) ||
-         (b != 0 && first_exception_edge < fact->second.store_instruction))
-        fact->second.dominates_loads = false;
+  for(std::size_t i = 0; i < facts.size(); ++i) {
+    if(!eligible[i]) continue;
+    SlotFact & fact = facts[i];
+    if(fact.stores != 1 || fact.store_block != 0 || fact.escaped) continue;
+    if(fact.first_entry_load < fact.store_instruction ||
+       (fact.has_nonentry_load &&
+        first_exception_edge < fact.store_instruction))
+      fact.dominates_loads = false;
+  }
+  std::vector<unsigned char> forwarded(facts.size(), 0);
+  std::size_t forwarded_count = 0;
+  for(std::size_t i = 0; i < facts.size(); ++i)
+    if(eligible[i] && facts[i].stores == 1 && facts[i].store_block == 0 &&
+       !facts[i].escaped && facts[i].dominates_loads) {
+      forwarded[i] = 1;
+      ++forwarded_count;
     }
-  std::unordered_set<std::string> forwarded;
-  for(std::unordered_map<std::string, SlotFact>::const_iterator it = facts.begin();
-      it != facts.end(); ++it)
-    if(it->second.stores == 1 && it->second.store_block == 0 &&
-       !it->second.escaped && it->second.dominates_loads)
-      forwarded.insert(it->first);
-  if(forwarded.empty()) return false;
+  if(!forwarded_count) return false;
 
   std::unordered_map<std::string, Operand> aliases;
-  for(std::size_t b = 0; b < function->blocks.size(); ++b)
-    for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[b].instructions[j];
-      if(ins.kind == Instruction::IK_LOAD && forwarded.count(ins.first.text) &&
-         !storage_temporaries.count(ins.dest))
-        aliases[ins.dest] = facts[ins.first.text].value;
-    }
+  for(std::size_t i = 0; i < loads.size(); ++i)
+    if(forwarded[loads[i].slot] &&
+       !storage_temporaries.count(loads[i].destination))
+      aliases[loads[i].destination] = facts[loads[i].slot].value;
   const auto resolve_alias = [&](Operand value) {
-    std::unordered_set<std::string> seen;
-    while(value.kind == Operand::OP_TEMP && aliases.count(value.text) &&
-          seen.insert(value.text).second)
-      value = aliases.find(value.text)->second;
+    for(std::size_t step = 0;
+        step < aliases.size() && value.kind == Operand::OP_TEMP; ++step) {
+      const std::unordered_map<std::string, Operand>::const_iterator found =
+        aliases.find(value.text);
+      if(found == aliases.end()) break;
+      value = found->second;
+    }
     return value;
   };
   for(std::size_t b = 0; b < function->blocks.size(); ++b) {
     std::vector<Instruction> kept;
     for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
-      Instruction ins = function->blocks[b].instructions[j];
-      if(ins.kind == Instruction::IK_LOAD && forwarded.count(ins.first.text) &&
+      Instruction ins = std::move(function->blocks[b].instructions[j]);
+      const std::size_t loaded_slot = ins.kind == Instruction::IK_LOAD ?
+        find_slot(ins.first) : kNoBlock;
+      const std::size_t stored_slot = ins.kind == Instruction::IK_STORE ?
+        find_slot(ins.second) : kNoBlock;
+      if(loaded_slot != kNoBlock && forwarded[loaded_slot] &&
          storage_temporaries.count(ins.dest)) {
-        ins.first = resolve_alias(facts[ins.first.text].value);
+        ins.first = resolve_alias(facts[loaded_slot].value);
         ins.kind = ins.first.kind == Operand::OP_INTEGER ||
           ins.first.kind == Operand::OP_FLOAT ?
             Instruction::IK_CONST : Instruction::IK_COPY;
         ins.second = Operand();
         ins.third = Operand();
-        kept.push_back(ins);
+        kept.push_back(std::move(ins));
         if(stats) ++stats->rewrites;
         continue;
       }
-      if((ins.kind == Instruction::IK_LOAD && forwarded.count(ins.first.text)) ||
-         (ins.kind == Instruction::IK_STORE && forwarded.count(ins.second.text))) {
+      if((loaded_slot != kNoBlock && forwarded[loaded_slot]) ||
+         (stored_slot != kNoBlock && forwarded[stored_slot])) {
         if(stats) ++stats->rewrites;
         continue;
       }
@@ -1465,14 +1848,14 @@ bool forward_single_store_slots(Function * function, Stats * stats)
       for(std::size_t k = 0; k < 3; ++k) *operands[k] = resolve_alias(*operands[k]);
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         ins.args[k] = resolve_alias(ins.args[k]);
-      kept.push_back(ins);
+      kept.push_back(std::move(ins));
     }
     function->blocks[b].instructions.swap(kept);
   }
   std::vector<std::pair<std::string, LowType> > slots;
   for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(!forwarded.count(function->slots[i].first))
-      slots.push_back(function->slots[i]);
+    if(!forwarded[i])
+      slots.push_back(std::move(function->slots[i]));
   function->slots.swap(slots);
   return true;
 }
@@ -1502,9 +1885,9 @@ bool meet_state(AbstractState * target, const AbstractState & incoming)
 
 Operand abstract_resolve(Operand value, const AbstractState & state)
 {
-  std::unordered_set<std::string> seen;
-  while((value.kind == Operand::OP_TEMP || value.kind == Operand::OP_SLOT) &&
-        seen.insert(value.text).second) {
+  for(std::size_t step = 0; step < state.values.size() &&
+      (value.kind == Operand::OP_TEMP || value.kind == Operand::OP_SLOT);
+      ++step) {
     const std::unordered_map<std::string, Operand>::const_iterator found =
       state.values.find(value.text);
     if(found == state.values.end()) break;
@@ -1589,14 +1972,16 @@ bool promote_slots(Function * function, Stats * stats)
     std::vector<std::pair<std::size_t, AbstractState> > exceptional;
     std::vector<std::string> local_temporaries;
     for(std::size_t i = 0; i < block.instructions.size(); ++i) {
-      Instruction ins = block.instructions[i];
-      const Operand original_first = ins.first;
-      const Operand original_second = ins.second;
-      ins.first = abstract_resolve(ins.first, state);
-      ins.second = abstract_resolve(ins.second, state);
-      ins.third = abstract_resolve(ins.third, state);
-      for(std::size_t j = 0; j < ins.args.size(); ++j)
-        ins.args[j] = abstract_resolve(ins.args[j], state);
+      const Instruction & source = block.instructions[i];
+      Instruction ins;
+      ins.kind = source.kind;
+      ins.dest = source.dest;
+      ins.type = source.type;
+      ins.source_type = source.source_type;
+      ins.op = source.op;
+      ins.first = abstract_resolve(source.first, state);
+      ins.second = abstract_resolve(source.second, state);
+      ins.third = abstract_resolve(source.third, state);
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
          graph.index.count(ins.first.text)) {
@@ -1606,14 +1991,14 @@ bool promote_slots(Function * function, Stats * stats)
           graph.index.find(ins.first.text)->second, handler));
       }
       if(ins.kind == Instruction::IK_STORE &&
-         original_second.kind == Operand::OP_SLOT &&
-         eligible.count(original_second.text))
-        state.values[original_second.text] = ins.first;
+         source.second.kind == Operand::OP_SLOT &&
+         eligible.count(source.second.text))
+        state.values[source.second.text] = ins.first;
       else if(ins.kind == Instruction::IK_LOAD &&
-              original_first.kind == Operand::OP_SLOT &&
-              eligible.count(original_first.text)) {
+              source.first.kind == Operand::OP_SLOT &&
+              eligible.count(source.first.text)) {
         const std::unordered_map<std::string, Operand>::const_iterator value =
-          state.values.find(original_first.text);
+          state.values.find(source.first.text);
         if(value != state.values.end()) {
           state.values[ins.dest] = value->second;
           local_temporaries.push_back(ins.dest);
@@ -1638,32 +2023,30 @@ bool promote_slots(Function * function, Stats * stats)
     }
     std::vector<std::size_t> normal;
     if(!block.instructions.empty()) {
-      Instruction term = block.instructions.back();
-      term.first = abstract_resolve(term.first, state);
-      if(term.kind == Instruction::IK_JUMP && graph.index.count(term.first.text))
-        normal.push_back(graph.index.find(term.first.text)->second);
+      const Instruction & term = block.instructions.back();
+      const Operand selector = abstract_resolve(term.first, state);
+      if(term.kind == Instruction::IK_JUMP && graph.index.count(selector.text))
+        normal.push_back(graph.index.find(selector.text)->second);
       else if(term.kind == Instruction::IK_BRANCH) {
-        term.first = abstract_resolve(term.first, state);
-        const Operand & selected = term.first.kind == Operand::OP_INTEGER &&
-          term.first.has_int_value ? (term.first.int_value ? term.second : term.third) :
-          term.second;
+        const Operand & selected = selector.kind == Operand::OP_INTEGER &&
+          selector.has_int_value ?
+          (selector.int_value ? term.second : term.third) : term.second;
         if(graph.index.count(selected.text))
           normal.push_back(graph.index.find(selected.text)->second);
-        if(!(term.first.kind == Operand::OP_INTEGER && term.first.has_int_value) &&
+        if(!(selector.kind == Operand::OP_INTEGER && selector.has_int_value) &&
            graph.index.count(term.third.text))
           normal.push_back(graph.index.find(term.third.text)->second);
       } else if(term.kind == Instruction::IK_SWITCH) {
         Operand selected = term.second;
-        term.first = abstract_resolve(term.first, state);
-        if(term.first.kind == Operand::OP_INTEGER && term.first.has_int_value)
+        if(selector.kind == Operand::OP_INTEGER && selector.has_int_value)
           for(std::size_t i = 0; i + 1 < term.args.size(); i += 2) {
             Operand case_value = abstract_resolve(term.args[i], state);
             if(case_value.kind == Operand::OP_INTEGER && case_value.has_int_value &&
-               case_value.int_value == term.first.int_value) selected = term.args[i + 1];
+               case_value.int_value == selector.int_value) selected = term.args[i + 1];
           }
         if(graph.index.count(selected.text))
           normal.push_back(graph.index.find(selected.text)->second);
-        if(!(term.first.kind == Operand::OP_INTEGER && term.first.has_int_value))
+        if(!(selector.kind == Operand::OP_INTEGER && selector.has_int_value))
           for(std::size_t i = 1; i < term.args.size(); i += 2)
             if(graph.index.count(term.args[i].text))
               normal.push_back(graph.index.find(term.args[i].text)->second);
@@ -1708,10 +2091,13 @@ bool promote_slots(Function * function, Stats * stats)
           replacements[i].begin(); it != replacements[i].end(); ++it)
       load_aliases[it->first] = it->second;
   const auto resolve_load_alias = [&load_aliases](Operand value) {
-    std::unordered_set<std::string> seen;
-    while(value.kind == Operand::OP_TEMP && load_aliases.count(value.text) &&
-          seen.insert(value.text).second)
-      value = load_aliases.find(value.text)->second;
+    for(std::size_t step = 0;
+        step < load_aliases.size() && value.kind == Operand::OP_TEMP; ++step) {
+      const std::unordered_map<std::string, Operand>::const_iterator found =
+        load_aliases.find(value.text);
+      if(found == load_aliases.end()) break;
+      value = found->second;
+    }
     return value;
   };
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
@@ -1720,15 +2106,18 @@ bool promote_slots(Function * function, Stats * stats)
           storage_temporaries.begin(); it != storage_temporaries.end(); ++it)
       aliases.erase(*it);
     const auto resolve_alias = [&aliases](Operand value) {
-      std::unordered_set<std::string> seen;
-      while(value.kind == Operand::OP_TEMP && aliases.count(value.text) &&
-            seen.insert(value.text).second)
-        value = aliases.find(value.text)->second;
+      for(std::size_t step = 0;
+          step < aliases.size() && value.kind == Operand::OP_TEMP; ++step) {
+        const std::unordered_map<std::string, Operand>::const_iterator found =
+          aliases.find(value.text);
+        if(found == aliases.end()) break;
+        value = found->second;
+      }
       return value;
     };
     std::vector<Instruction> kept;
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      Instruction ins = function->blocks[i].instructions[j];
+      Instruction ins = std::move(function->blocks[i].instructions[j]);
       Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         *operands[k] = resolve_alias(*operands[k]);
@@ -1742,7 +2131,7 @@ bool promote_slots(Function * function, Stats * stats)
             Instruction::IK_CONST : Instruction::IK_COPY;
         ins.second = Operand();
         ins.third = Operand();
-        kept.push_back(ins);
+        kept.push_back(std::move(ins));
         if(stats) ++stats->rewrites;
         continue;
       }
@@ -1751,13 +2140,14 @@ bool promote_slots(Function * function, Stats * stats)
         if(stats) ++stats->rewrites;
         continue;
       }
-      kept.push_back(ins);
+      kept.push_back(std::move(ins));
     }
     function->blocks[i].instructions.swap(kept);
   }
   std::vector<std::pair<std::string, LowType> > slots;
   for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(!promoted.count(function->slots[i].first)) slots.push_back(function->slots[i]);
+    if(!promoted.count(function->slots[i].first))
+      slots.push_back(std::move(function->slots[i]));
   function->slots.swap(slots);
   return true;
 }
@@ -1783,67 +2173,178 @@ std::size_t instruction_count(const LowirProgram & program)
   return result;
 }
 
+typedef bool (*FunctionPass)(Function *, Stats *);
+
+bool timed_function_pass(FunctionPass pass, Function * function,
+                         Stats * stats, std::size_t Stats::* runs,
+                         std::uint64_t Stats::* nanoseconds)
+{
+  if(!stats) return pass(function, 0);
+  ++(stats->*runs);
+  std::size_t Stats::* detailed_runs = 0;
+  std::size_t Stats::* detailed_changes = 0;
+  std::uint64_t Stats::* detailed_nanoseconds = 0;
+  if(pass == forward_single_store_slots) {
+    detailed_runs = &Stats::forward_slot_runs;
+    detailed_changes = &Stats::forward_slot_changes;
+    detailed_nanoseconds = &Stats::forward_slot_nanoseconds;
+  } else if(pass == local_slot_forward) {
+    detailed_runs = &Stats::local_slot_runs;
+    detailed_changes = &Stats::local_slot_changes;
+    detailed_nanoseconds = &Stats::local_slot_nanoseconds;
+  } else if(pass == remove_dead_slots) {
+    detailed_runs = &Stats::remove_slot_runs;
+    detailed_changes = &Stats::remove_slot_changes;
+    detailed_nanoseconds = &Stats::remove_slot_nanoseconds;
+  } else if(pass == promote_slots) {
+    detailed_runs = &Stats::promote_slot_runs;
+    detailed_changes = &Stats::promote_slot_changes;
+    detailed_nanoseconds = &Stats::promote_slot_nanoseconds;
+  } else if(pass == eliminate_dead_slot_stores) {
+    detailed_runs = &Stats::dead_store_runs;
+    detailed_changes = &Stats::dead_store_changes;
+    detailed_nanoseconds = &Stats::dead_store_nanoseconds;
+  }
+  if(detailed_runs) ++(stats->*detailed_runs);
+  const std::chrono::steady_clock::time_point started =
+    std::chrono::steady_clock::now();
+  const bool changed = pass(function, stats);
+  const std::uint64_t elapsed = static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
+  if(changed) {
+    if(pass == simplify_values) ++stats->simplify_changes;
+    else if(pass == cleanup_cfg) ++stats->cfg_changes;
+    else ++stats->slot_changes;
+    if(detailed_changes) ++(stats->*detailed_changes);
+  }
+  stats->*nanoseconds += elapsed;
+  if(detailed_nanoseconds) stats->*detailed_nanoseconds += elapsed;
+  return changed;
+}
+
+bool timed_dce(Function * function,
+               const std::unordered_map<std::string,
+                 FunctionBoundaryMetadata> & boundaries,
+               Stats * stats)
+{
+  if(!stats) return eliminate_dead_code(function, boundaries, 0);
+  ++stats->dce_runs;
+  const std::chrono::steady_clock::time_point started =
+    std::chrono::steady_clock::now();
+  const bool changed = eliminate_dead_code(function, boundaries, stats);
+  if(changed) ++stats->dce_changes;
+  stats->dce_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
+  return changed;
+}
+
 }  // namespace
 
 void optimize(LowirProgram & program, int level, Stats * stats)
 {
   if(level < 0 || level > 2) throw std::logic_error("invalid LowIR optimization level");
-  const std::chrono::steady_clock::time_point started =
-    std::chrono::steady_clock::now();
-  Stats local;
-  Stats * observed = stats ? stats : &local;
-  *observed = Stats();
-  observed->functions = program.functions.size();
-  observed->input_instructions = instruction_count(program);
+  std::chrono::steady_clock::time_point started;
+  if(stats) {
+    started = std::chrono::steady_clock::now();
+    *stats = Stats();
+    stats->functions = program.functions.size();
+    stats->input_instructions = instruction_count(program);
+  }
   if(level == 0) {
-    observed->output_instructions = observed->input_instructions;
-    observed->elapsed_nanoseconds = static_cast<std::uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - started).count());
+    if(stats) {
+      stats->output_instructions = stats->input_instructions;
+      stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - started).count());
+    }
     return;
   }
   const std::unordered_map<std::string, FunctionBoundaryMetadata> boundaries =
     function_boundaries(program);
   std::unordered_set<std::string> inlined_functions;
-  observed->rewrites += inline_o1_calls(program, &inlined_functions, observed);
+  std::chrono::steady_clock::time_point inline_started;
+  if(stats) inline_started = std::chrono::steady_clock::now();
+  const std::size_t inline_rewrites =
+    inline_o1_calls(program, &inlined_functions, stats);
+  if(stats) {
+    stats->rewrites += inline_rewrites;
+    stats->inline_nanoseconds += static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - inline_started).count());
+  }
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     Function & function = program.functions[i];
-    // This is an explicit bounded pass schedule, not a whole-function
-    // fixed-point retry.  The individual propagation and liveness analyses
-    // use their own dirty worklists.
-    simplify_values(&function, observed);
-    eliminate_dead_code(&function, boundaries, observed);
-    cleanup_cfg(&function, observed);
-    simplify_values(&function, observed);
-    eliminate_dead_code(&function, boundaries, observed);
-    if(inlined_functions.count(function.name) || level >= 2)
-      forward_single_store_slots(&function, observed);
-    if(inlined_functions.count(function.name))
-      local_slot_forward(&function, observed);
-    simplify_values(&function, observed);
-    eliminate_dead_code(&function, boundaries, observed);
-    cleanup_cfg(&function, observed);
-    remove_dead_slots(&function, observed);
-    cleanup_cfg(&function, observed);
-    eliminate_dead_code(&function, boundaries, observed);
-    cleanup_cfg(&function, observed);
-    if(level >= 2 && promote_slots(&function, observed)) {
-      simplify_values(&function, observed);
-      eliminate_dead_code(&function, boundaries, observed);
-      cleanup_cfg(&function, observed);
-      simplify_values(&function, observed);
-      eliminate_dead_code(&function, boundaries, observed);
-      remove_dead_slots(&function, observed);
+    // Keep this an explicit bounded schedule.  A stage is revisited only when
+    // a preceding transform can have exposed work in that stage; the
+    // individual propagation and liveness analyses use their own dirty
+    // worklists.
+    timed_function_pass(simplify_values, &function, stats,
+      &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+    timed_dce(&function, boundaries, stats);
+    const bool initial_cfg_changed = timed_function_pass(
+      cleanup_cfg, &function, stats,
+      &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+    bool post_cfg_values_changed = false;
+    if(initial_cfg_changed) {
+      post_cfg_values_changed = timed_function_pass(
+        simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+      timed_dce(&function, boundaries, stats);
     }
-    if(level >= 2 && eliminate_dead_slot_stores(&function, observed)) {
-      eliminate_dead_code(&function, boundaries, observed);
-      remove_dead_slots(&function, observed);
+    bool slot_values_changed = false;
+    if(inlined_functions.count(function.name) || level >= 2)
+      slot_values_changed = timed_function_pass(
+        forward_single_store_slots, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds);
+    if(inlined_functions.count(function.name))
+      slot_values_changed = timed_function_pass(
+        local_slot_forward, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds) || slot_values_changed;
+    if(slot_values_changed) {
+      timed_function_pass(simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+      timed_dce(&function, boundaries, stats);
+    }
+    if(post_cfg_values_changed || slot_values_changed)
+      timed_function_pass(cleanup_cfg, &function, stats,
+        &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+    if(timed_function_pass(remove_dead_slots, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds)) {
+      timed_function_pass(cleanup_cfg, &function, stats,
+        &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+      timed_dce(&function, boundaries, stats);
+      timed_function_pass(cleanup_cfg, &function, stats,
+        &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+    }
+    if(level >= 2 && timed_function_pass(promote_slots, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds)) {
+      timed_function_pass(simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+      timed_dce(&function, boundaries, stats);
+      if(timed_function_pass(cleanup_cfg, &function, stats,
+          &Stats::cfg_runs, &Stats::cfg_nanoseconds)) {
+        timed_function_pass(simplify_values, &function, stats,
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+        timed_dce(&function, boundaries, stats);
+      }
+      timed_function_pass(remove_dead_slots, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds);
+    }
+    if(level >= 2 && timed_function_pass(eliminate_dead_slot_stores,
+        &function, stats, &Stats::slot_runs, &Stats::slot_nanoseconds)) {
+      timed_dce(&function, boundaries, stats);
+      timed_function_pass(remove_dead_slots, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds);
     }
   }
-  observed->output_instructions = instruction_count(program);
-  observed->elapsed_nanoseconds = static_cast<std::uint64_t>(
-    std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::steady_clock::now() - started).count());
+  if(stats) {
+    stats->output_instructions = instruction_count(program);
+    stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count());
+  }
 }
 
 }  // namespace lowir_opt

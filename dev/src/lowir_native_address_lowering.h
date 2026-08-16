@@ -115,6 +115,22 @@ protected:
 			next.first.text == destination;
 	}
 
+	bool address_is_va_list_operand(const lowir_model::LowirBlock& block,
+		std::size_t instruction_index, const std::string& destination) const
+	{
+		for (std::size_t i = instruction_index + 1;
+			i < block.instructions.size(); ++i)
+		{
+			const lowir_model::Instruction& instruction = block.instructions[i];
+			if ((instruction.kind == lowir_model::Instruction::IK_VA_START ||
+				 instruction.kind == lowir_model::Instruction::IK_VA_ARG) &&
+				instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+				instruction.first.text == destination)
+				return true;
+		}
+		return false;
+	}
+
 	bool address_is_object_result_destination(
 		const lowir_model::LowirBlock& block, std::size_t instruction_index,
 		const std::string& destination) const
@@ -167,6 +183,8 @@ protected:
 				derived.address_is_next_atomic_expected(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_next_va_start(
+					block, instruction_index, instruction.dest) ||
+				derived.address_is_va_list_operand(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_next_bulk_operand(
 					block, instruction_index, instruction.dest) ||

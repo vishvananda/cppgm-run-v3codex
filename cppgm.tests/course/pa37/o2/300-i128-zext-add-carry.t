@@ -1,0 +1,10 @@
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    %wide_minus_one = convert zext i128 i64 -1
+    %wide_rhs = convert zext i128 i64 12346
+    %sum = binary add i128 %wide_minus_one, %wide_rhs
+    %high = binary ushr i128 %sum, 64
+    %result = convert trunc i64 i128 %high
+    %wrong = cmp ne i64 %result, 1
+    return i64 %wrong
+}

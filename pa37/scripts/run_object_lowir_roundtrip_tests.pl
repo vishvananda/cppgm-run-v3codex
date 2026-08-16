@@ -120,18 +120,26 @@ sub check_source {
 
   my $name = safe_name($source);
   my @modes = $debuginfo
-    ? (["-gline-tables-only", "-O0"], ["-gline-tables-only", "-O1"])
-    : ([undef, "-O0"], [undef, "-O1"], [undef, "-O2"]);
+    ? (["-gline-tables-only", "-O0", "O0"],
+       ["-gline-tables-only", "-O1", "O1"])
+    : ([undef, "-O0", "O0"], [undef, "-O1", "O1"],
+       [undef, "-O2", "O2"]);
+  my $checks_default = $test =~ /default-maximum-optimization/;
+  if(!$debuginfo && $checks_default) {
+    push @modes, [undef, undef, "default"], [undef, "-O3", "O3"];
+  }
+  my %direct_by_level;
   for my $mode (@modes) {
-    my ($debug_flag, $opt) = @$mode;
+    my ($debug_flag, $opt, $level_name) = @$mode;
     my $debug_label = defined($debug_flag) ? $debug_flag : "nodebug";
-    my $mode_name = safe_name("$debug_label.$opt");
+    my $mode_name = safe_name("$debug_label.$level_name");
     my $direct = "$temp/$name.$mode_name.direct.o";
     my $lowir = "$temp/$name.$mode_name.lowir";
     my $from_lowir = "$temp/$name.$mode_name.from-lowir.o";
 
     my @debug_flags = defined($debug_flag) ? ($debug_flag) : ("-g0");
-    my @direct_cmd = ($app, "-c", @debug_flags, $opt);
+    my @optimization_flags = defined($opt) ? ($opt) : ();
+    my @direct_cmd = ($app, "-c", @debug_flags, @optimization_flags);
     my $direct_error = run_command(@direct_cmd, "-o", $direct, $source);
     return $direct_error if defined $direct_error;
     my $emit_error = run_command($app,
@@ -145,7 +153,7 @@ sub check_source {
     my $from_lowir_error = run_command($app,
                                        "-c",
                                        @debug_flags,
-                                       $opt,
+                                       @optimization_flags,
                                        "-o",
                                        $from_lowir,
                                        $lowir);
@@ -153,13 +161,22 @@ sub check_source {
 
     my $direct_bytes = read_bytes($direct);
     my $from_lowir_bytes = read_bytes($from_lowir);
-    next if $direct_bytes eq $from_lowir_bytes;
-
-    return "object differs after compiling serialized LowIR: $source $debug_label $opt\n"
-      . "direct bytes: " . length($direct_bytes) . "\n"
-      . "from-lowir bytes: " . length($from_lowir_bytes) . "\n"
-      . "direct symbols:\n" . object_summary($direct)
-      . "from-lowir symbols:\n" . object_summary($from_lowir);
+    if($direct_bytes ne $from_lowir_bytes) {
+      return "object differs after compiling serialized LowIR: $source $debug_label $level_name\n"
+        . "direct bytes: " . length($direct_bytes) . "\n"
+        . "from-lowir bytes: " . length($from_lowir_bytes) . "\n"
+        . "direct symbols:\n" . object_summary($direct)
+        . "from-lowir symbols:\n" . object_summary($from_lowir);
+    }
+    $direct_by_level{$level_name} = $direct_bytes;
+  }
+  if(!$debuginfo && $checks_default) {
+    for my $level ("O2", "O3") {
+      next if $direct_by_level{"default"} eq $direct_by_level{$level};
+      return "default object differs from maximum optimization: $source default/$level\n"
+        . "default bytes: " . length($direct_by_level{"default"}) . "\n"
+        . "$level bytes: " . length($direct_by_level{$level}) . "\n";
+    }
   }
   return undef;
 }

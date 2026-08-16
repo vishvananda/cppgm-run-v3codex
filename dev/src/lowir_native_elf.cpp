@@ -1,4 +1,5 @@
 #include "lowir_native.h"
+#include "lowir_native_code_buffer.h"
 #include "lowir_native_data_layout.h"
 #include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
@@ -29,6 +30,8 @@ using float_bits::extended;
 using float_bits::scalar;
 using data_layout::global_alignment;
 using data_layout::type_size;
+using elf_detail::CodeBuffer;
+using elf_detail::Fixup;
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
 const std::size_t kProgramHeaderSize = 56;
@@ -37,203 +40,6 @@ std::string native_object_symbol(const std::string & symbol)
 {
   return symbol.empty() || symbol[0] == '@' ? symbol : "@" + symbol;
 }
-
-struct Fixup
-{
-  enum Kind { RELATIVE32, ABSOLUTE64, ADDRESS32, TLS_OFFSET32 }
-    kind = RELATIVE32;
-  mir_model::MirOperand::AddressBinding address_binding =
-    mir_model::MirOperand::ADDRESS_LOCAL;
-  std::size_t offset = 0;
-  std::string target;
-  long long addend = 0;
-};
-
-class CodeBuffer
-{
-public:
-  explicit CodeBuffer(std::size_t base_offset = kContentOffset,
-                      bool relocatable_addresses = false)
-    : base_offset_(base_offset),
-      relocatable_addresses_(relocatable_addresses) {}
-
-  void byte(unsigned value) { bytes_.push_back(static_cast<unsigned char>(value)); }
-
-  void zeros(std::size_t count) { bytes_.insert(bytes_.end(), count, 0); }
-
-  void little(std::uint64_t value, unsigned count)
-  {
-    for(unsigned i = 0; i < count; ++i) byte(static_cast<unsigned>(value >> (i * 8)));
-  }
-
-  void patch(std::size_t offset, std::uint64_t value, unsigned count)
-  {
-    if(offset + count > bytes_.size()) throw std::logic_error("invalid ELF patch");
-    for(unsigned i = 0; i < count; ++i)
-      bytes_[offset + i] = static_cast<unsigned char>(value >> (i * 8));
-  }
-
-  void align(std::size_t alignment)
-  {
-    if(!alignment) throw std::logic_error("zero data alignment");
-    while((base_offset_ + bytes_.size()) % alignment) byte(0);
-  }
-
-  void label(const std::string & name)
-  {
-    if(!labels_.emplace(name, bytes_.size()).second)
-      throw std::logic_error("duplicate native label: " + name);
-  }
-
-  void label_at(const std::string & name, std::size_t offset)
-  {
-    if(offset > bytes_.size()) throw std::logic_error("native label is out of bounds");
-    if(!labels_.emplace(name, offset).second)
-      throw std::runtime_error("duplicate native symbol: " + name);
-  }
-
-  void alias(const std::string & name, const std::string & target)
-  {
-    const std::unordered_map<std::string, std::size_t>::const_iterator found =
-      labels_.find(target);
-    if(found == labels_.end())
-      throw std::runtime_error("native alias has undefined target: " + target);
-    label_at(name, found->second);
-  }
-
-  std::size_t size() const { return bytes_.size(); }
-  bool relocatable_addresses() const { return relocatable_addresses_; }
-
-  void append(const std::vector<unsigned char> & bytes)
-  {
-    bytes_.insert(bytes_.end(), bytes.begin(), bytes.end());
-  }
-
-  void relative32(const std::string & target)
-  {
-    Fixup fixup;
-    fixup.kind = Fixup::RELATIVE32;
-    fixup.offset = bytes_.size();
-    fixup.target = target;
-    fixups_.push_back(fixup);
-    zeros(4);
-  }
-
-  void absolute64(const std::string & target, long long addend = 0)
-  {
-    Fixup fixup;
-    fixup.kind = Fixup::ABSOLUTE64;
-    fixup.offset = bytes_.size();
-    fixup.target = target;
-    fixup.addend = addend;
-    fixups_.push_back(fixup);
-    zeros(8);
-  }
-
-  void address32(const std::string & target,
-                 mir_model::MirOperand::AddressBinding address_binding)
-  {
-    Fixup fixup;
-    fixup.kind = Fixup::ADDRESS32;
-    fixup.address_binding = address_binding;
-    fixup.offset = bytes_.size();
-    fixup.target = target;
-    fixups_.push_back(fixup);
-    zeros(4);
-  }
-
-  void tls_offset32(const std::string & target)
-  {
-    Fixup fixup;
-    fixup.kind = Fixup::TLS_OFFSET32;
-    fixup.offset = bytes_.size();
-    fixup.target = target;
-    fixups_.push_back(fixup);
-    zeros(4);
-  }
-
-  void relative32_at(std::size_t offset, const std::string & target,
-                     long long elf_addend)
-  {
-    if(offset > bytes_.size() || 4 > bytes_.size() - offset)
-      throw std::logic_error("native relative relocation is out of bounds");
-    Fixup fixup;
-    fixup.kind = Fixup::RELATIVE32;
-    fixup.offset = offset;
-    fixup.target = target;
-    fixup.addend = elf_addend + 4;
-    fixups_.push_back(fixup);
-  }
-
-  void absolute64_at(std::size_t offset, const std::string & target,
-                     long long addend)
-  {
-    if(offset > bytes_.size() || 8 > bytes_.size() - offset)
-      throw std::logic_error("native absolute relocation is out of bounds");
-    Fixup fixup;
-    fixup.kind = Fixup::ABSOLUTE64;
-    fixup.offset = offset;
-    fixup.target = target;
-    fixup.addend = addend;
-    fixups_.push_back(fixup);
-  }
-
-  void resolve()
-  {
-    for(std::size_t i = 0; i < fixups_.size(); ++i) {
-      const Fixup & fixup = fixups_[i];
-      const std::unordered_map<std::string, std::size_t>::const_iterator target =
-        labels_.find(fixup.target);
-      if(target == labels_.end()) throw std::runtime_error("undefined native symbol: " + fixup.target);
-      if(fixup.kind == Fixup::RELATIVE32 ||
-         fixup.kind == Fixup::ADDRESS32 || fixup.kind == Fixup::TLS_OFFSET32) {
-        const std::int64_t delta = static_cast<std::int64_t>(target->second) -
-                                   static_cast<std::int64_t>(fixup.offset + 4) +
-                                   fixup.addend;
-        if(delta < INT32_MIN || delta > INT32_MAX)
-          throw std::runtime_error("native branch displacement exceeds rel32");
-        patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
-      } else {
-        std::uint64_t address = kLoadAddress + kContentOffset + target->second;
-        if(fixup.addend >= 0) {
-          const std::uint64_t addend = static_cast<std::uint64_t>(fixup.addend);
-          if(UINT64_MAX - address < addend)
-            throw std::runtime_error("native address fixup overflows");
-          address += addend;
-        } else {
-          const std::uint64_t magnitude =
-            static_cast<std::uint64_t>(-(fixup.addend + 1)) + 1;
-          if(address < magnitude)
-            throw std::runtime_error("native address fixup underflows");
-          address -= magnitude;
-        }
-        patch(fixup.offset, address, 8);
-      }
-    }
-  }
-
-  const std::vector<unsigned char> & bytes() const { return bytes_; }
-  const std::unordered_map<std::string, std::size_t> & labels() const
-  {
-    return labels_;
-  }
-  const std::vector<Fixup> & fixups() const { return fixups_; }
-  std::size_t fixup_count() const { return fixups_.size(); }
-
-  std::string internal_label(const char * purpose)
-  {
-    return std::string(".__cppgm_x87_") + purpose + "_" +
-      std::to_string(next_internal_label_++);
-  }
-
-private:
-  std::size_t base_offset_;
-  bool relocatable_addresses_;
-  std::vector<unsigned char> bytes_;
-  std::unordered_map<std::string, std::size_t> labels_;
-  std::vector<Fixup> fixups_;
-  std::size_t next_internal_label_ = 0;
-};
 
 void emit_rex(CodeBuffer & out, bool wide, X64Register reg, X64Register rm,
               bool force = false)

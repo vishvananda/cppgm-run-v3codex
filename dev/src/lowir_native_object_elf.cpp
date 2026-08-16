@@ -713,11 +713,15 @@ void collect_host_symbols(
   for(std::size_t i = 0; i < locals.size(); ++i) defined[locals[i].name] = true;
   for(std::size_t i = 0; i < globals.size(); ++i) defined[globals[i].name] = true;
   std::unordered_set<std::string> declared_tls_symbols;
+	const std::unordered_map<std::string, std::string> declared_objects =
+		declaration_object_symbols(program);
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    if(program.global_declarations[i].storage == lowir_model::GSM_THREAD_LOCAL &&
-       !program.global_declarations[i].metadata.object_symbol.empty())
-      declared_tls_symbols.insert(
-        program.global_declarations[i].metadata.object_symbol);
+    if(program.global_declarations[i].storage == lowir_model::GSM_THREAD_LOCAL) {
+	  const std::unordered_map<std::string, std::string>::const_iterator object =
+		declared_objects.find(program.global_declarations[i].name);
+	  if(object != declared_objects.end())
+		declared_tls_symbols.insert(object->second);
+	}
   std::unordered_set<std::string> section_symbols;
   section_symbols.insert(text.name);
   section_symbols.insert(".gcc_except_table");

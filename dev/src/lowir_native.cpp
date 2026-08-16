@@ -9,6 +9,7 @@
 #include "lowir_native_host_eh.h"
 #include "lowir_native_intrinsic_lowering.h"
 #include "lowir_native_mir.h"
+#include "lowir_native_memory_lowering.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_selection.h"
@@ -36,12 +37,14 @@ using namespace selection;
 class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
                         private AtomicLowering<FunctionLowerer>,
-                        private bulk_detail::BulkLowering<FunctionLowerer>
+                        private bulk_detail::BulkLowering<FunctionLowerer>,
+                        private memory_detail::MemoryLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
   friend class AddressLowering<FunctionLowerer>;
   friend class AtomicLowering<FunctionLowerer>;
   friend class bulk_detail::BulkLowering<FunctionLowerer>;
+  friend class memory_detail::MemoryLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
                   const std::unordered_set<std::string> & pointer_globals,
@@ -456,6 +459,16 @@ private:
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
                      parameter.type.text);
+        value.location = frame_operand(home);
+      } else if(facts_.has_va_start) {
+        // va_start/va_arg use the full SysV argument-register scratch set.
+        // Keep named variadic parameters in stable frame homes so later uses
+        // cannot observe a register clobbered while walking the argument list.
+        const long long home = allocate_frame_binding(
+          mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name,
+          parameter.type);
+        append_store(parameter_moves_, frame_operand(home),
+          reg_operand(binding.reg), parameter.type.text);
         value.location = frame_operand(home);
       } else if(planned != cross_call_homes.end()) {
         value.location = reg_operand(planned->second);
@@ -907,7 +920,13 @@ private:
                            X64Register * result,
                            bool force_preserved = false)
   {
-    const bool across = force_preserved || result_crosses_call(name);
+    // R8 and R9 are the ordinary reactive result registers.  Some lowered
+    // intrinsics (notably va_arg) clobber them without being ABI calls, so a
+    // value live across either clobber needs the same preserved-register
+    // treatment as a value live across a call.
+    const bool across = force_preserved || result_crosses_call(name) ||
+      crosses_register_clobber(name, XR_R8) ||
+      crosses_register_clobber(name, XR_R9);
     if(registers_.try_allocate(across, *result)) return true;
     if(reclaim_dead_parameter_register(across) &&
        registers_.try_allocate(across, *result)) return true;
@@ -2620,9 +2639,18 @@ private:
   }
   void emit_branch(const Instruction & instruction, std::vector<MirInstruction> & out)
   {
-    if(!facts_.direct_branch_call_results.count(instruction.first.text))
+    const LowType & condition_type = operand_type(instruction.first);
+    if(wide::is_integer(condition_type)) {
+      const wide::Value condition = wide_value(instruction.first);
+      wide::append_word_to_register(condition, 0, XR_RAX, XR_R11, out);
+      wide::append_word_to_register(condition, 1, XR_RDX, XR_R11, out);
+      MirInstruction combine = machine_instruction(MirInstruction::MI_OR, "i64");
+      append_operand(combine, reg_operand(XR_RAX));
+      append_operand(combine, reg_operand(XR_RDX));
+      out.push_back(combine);
+    } else if(!facts_.direct_branch_call_results.count(instruction.first.text))
       move_value_to_register(out, XR_RAX, resolve(instruction.first),
-                             operand_type(instruction.first));
+                             condition_type);
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, "i64");
     append_operand(compare, reg_operand(XR_RAX));
     append_operand(compare, immediate(0));
@@ -2809,162 +2837,9 @@ private:
     } else if(instruction.kind == Instruction::IK_COPY) emit_copy(instruction, out);
     else if(instruction.kind == Instruction::IK_ADDR) emit_address_value(block, instruction_index, instruction, out);
     else if(instruction.kind == Instruction::IK_LOAD) {
-      if(instruction.first.kind == Operand::OP_SLOT &&
-         (storage_facts_.promoted_parameter_slots.count(instruction.first.text) ||
-          storage_facts_.forwarded_parameter_slots.count(instruction.first.text))) {
-        const std::string & parameter = storage_facts_.promoted_parameter_slots.count(
-          instruction.first.text) ?
-          storage_facts_.promoted_parameter_slots.find(instruction.first.text)->second :
-          storage_facts_.forwarded_parameter_slots.find(instruction.first.text)->second;
-        ValueFact value = values_.find(parameter)->second;
-        value.type = instruction.type;
-        value.parameter = false;
-        if(!facts_.calls.empty() && incoming_parameter_registers_.count(parameter)) {
-          const std::size_t load_position = facts_.definition[instruction.dest];
-          if(load_position < facts_.calls.front() &&
-             facts_.only_call_arguments.count(instruction.dest) &&
-             !result_crosses_call(instruction.dest))
-            value.location = reg_operand(
-              incoming_parameter_registers_.find(parameter)->second);
-          else if(load_position > facts_.calls.front()) {
-            const bool preserved = result_crosses_call(instruction.dest);
-            X64Register forwarded = XR_R9;
-            bool allocated = true;
-            if(preserved)
-              allocated = try_allocate_result(instruction.dest, out, &forwarded);
-            else if(nonparameter_value_live_in_register(forwarded))
-              allocated = registers_.try_allocate(false, forwarded);
-            else if(!registers_.is_used(forwarded))
-              registers_.reserve(forwarded);
-            // Storage analysis has already required a stable cross-call home
-            // for the parameter.  Under local pressure the forwarded load can
-            // alias that home: call lowering reads it directly, so a failing
-            // speculative register copy must not make lowering fail.
-            if(allocated) {
-              append_move(out, reg_operand(forwarded), value.location);
-              value.location = reg_operand(forwarded);
-            }
-            value.forwarded_parameter = parameter;
-          }
-        }
-        values_[instruction.dest] = value;
-        return;
-      }
-      if(wide::is_integer(instruction.type)) {
-        const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
-        wide::append_copy(destination,
-          wide::storage_value(materialized_storage(instruction.first, out)), out);
-        consume(instruction.first);
-        define(instruction.dest, instruction.type, destination);
-        return;
-      }
-      if(is_floating(instruction.type)) {
-        emit_float_load(instruction, out);
-        return;
-      }
-      if(facts_.direct_compare_storage_values.count(instruction.dest) &&
-         !(instruction.first.kind == Operand::OP_GLOBAL &&
-           tls_wrappers_.count(instruction.first.text))) {
-        define(instruction.dest, instruction.type, storage(instruction.first));
-        return;
-      }
-      if(instruction.type.kind == lowir_model::LTK_OBJECT)
-        return emit_object_load(instruction, out);
-      MirOperand destination;
-      bool pressure_load = constrained_wide_pressure() &&
-        facts_.definition[instruction.dest] > facts_.calls.front();
-      MirOperand pressure_home;
-      if(pressure_load) {
-        pressure_home = allocate_temp_home(instruction.dest, instruction.type);
-        destination = reg_operand(XR_RAX);
-      } else if(facts_.direct_compare_rax_values.count(instruction.dest) ||
-         (selection::result_is_immediately_stored(
-            block, instruction_index, instruction.dest, facts_) ||
-          (result_is_immediate_return(block, instruction_index, instruction.dest) &&
-           (instruction.type.kind == lowir_model::LTK_PTR ||
-            instruction.type.bit_width == 64))))
-        destination = reg_operand(XR_RAX);
-      else {
-        X64Register result = XR_RSP;
-        if(try_allocate_result(instruction.dest, out, &result))
-          destination = reg_operand(result);
-        else {
-          pressure_load = true;
-          pressure_home = allocate_temp_home(instruction.dest, instruction.type);
-          destination = reg_operand(XR_RAX);
-        }
-      }
-      MirInstruction load = machine_instruction(MirInstruction::MI_LOAD,
-                                                instruction.type.text);
-      append_operand(load, destination);
-      append_operand(load, materialized_storage(instruction.first, out));
-      out.push_back(load);
-      if(is_integer_or_pointer(instruction.type))
-        normalize_integer(instruction.type, destination, out);
-      consume(instruction.first, destination.reg);
-      if(pressure_load)
-        append_store(out, pressure_home, destination, instruction.type.text);
-      define(instruction.dest, instruction.type,
-             pressure_load ? pressure_home : destination);
+      emit_load_instruction(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_STORE) {
-      if(instruction.second.kind == Operand::OP_SLOT &&
-         (storage_facts_.promoted_parameter_slots.count(instruction.second.text) ||
-          storage_facts_.forwarded_parameter_slots.count(instruction.second.text)) &&
-         instruction.first.kind == Operand::OP_TEMP &&
-         storage_facts_.promoted_parameters.count(instruction.first.text))
-        return;
-      if(instruction.second.kind == Operand::OP_SLOT &&
-         discarded_slots_.count(instruction.second.text)) {
-        consume(instruction.first);
-        consume(instruction.second);
-        return;
-      }
-      if(is_floating(instruction.type)) {
-        emit_float_store(instruction, out);
-        return;
-      }
-      if(emit_object_store(instruction, out)) return;
-      if(instruction.second.kind == Operand::OP_GLOBAL &&
-         tls_wrappers_.count(instruction.second.text)) {
-        MirOperand value = resolve(instruction.first);
-        X64Register stable = XR_RSP;
-        if(registers_.try_allocate(true, stable)) {
-          move_value_to_register(out, stable, value, operand_type(instruction.first));
-          value = reg_operand(stable);
-        } else if(value.kind != MirOperand::OP_REG) {
-          move_value_to_register(out, XR_RAX, value, operand_type(instruction.first));
-          value = reg_operand(XR_RAX);
-        }
-        append_store(out, materialized_storage(instruction.second, out),
-                     value, instruction.type.text);
-        consume(instruction.first);
-        consume(instruction.second);
-        if(stable != XR_RSP) registers_.release(stable);
-        return;
-      }
-      if(wide::is_integer(instruction.type)) {
-        wide::append_copy(materialized_storage(instruction.second, out),
-                          wide_value(instruction.first), out);
-        consume(instruction.first);
-        consume(instruction.second);
-        return;
-      }
-      MirInstruction store = machine_instruction(MirInstruction::MI_STORE,
-                                                 instruction.type.text);
-      MirOperand value = resolve(instruction.first);
-      if(value.kind != MirOperand::OP_REG) {
-        if(is_frame_address(instruction.first))
-          emit_operand_address(out, XR_RAX, instruction.first);
-        else
-          move_value_to_register(out, XR_RAX, value,
-                                 operand_type(instruction.first));
-        value = reg_operand(XR_RAX);
-      }
-      append_operand(store, materialized_storage(instruction.second, out));
-      append_operand(store, value);
-      out.push_back(store);
-      consume(instruction.first);
-      consume(instruction.second);
+      emit_store_instruction(instruction, out);
     } else if(instruction.kind == Instruction::IK_ATOMIC_LOAD) {
       emit_atomic_load(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_ATOMIC_STORE) {

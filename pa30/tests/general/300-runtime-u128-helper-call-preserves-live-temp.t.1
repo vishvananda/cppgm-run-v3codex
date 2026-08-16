@@ -22,7 +22,8 @@ int main()
   I128 signed_value = static_cast<I128>(raw);
   U128 unsigned_value = -static_cast<U128>(signed_value);
   U128 unsigned_base = static_cast<U128>(3);
-  char buffer[128] = {};
+  // Leave one initialized byte after the digit range as its terminator.
+  char buffer[129] = {};
   char *end = buffer + 127;
 
   while(unsigned_value != static_cast<U128>(0)) {

@@ -31,10 +31,19 @@ struct LinkStats
 	LinkStats();
 };
 
+struct ObjectSerializationStats
+{
+	std::size_t reserved_bytes = 0;
+	std::size_t output_bytes = 0;
+	std::size_t buffer_growths = 0;
+	std::size_t full_buffer_copies = 0;
+	std::uint64_t elapsed_nanoseconds = 0;
+};
+
 void WriteCompilerObject(const std::string& path,
 	const CompilerObject& object);
 std::vector<unsigned char> SerializeCompilerObject(
-	const CompilerObject& object);
+	const CompilerObject& object, ObjectSerializationStats* stats = 0);
 CompilerObject ReadCompilerObject(const std::string& path);
 bool IsCompilerObject(const std::string& path);
 

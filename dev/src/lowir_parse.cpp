@@ -1,4 +1,6 @@
 #include "lowir_model.h"
+#include "lowir_float_literal.h"
+#include "lowir_prepare.h"
 
 #include <algorithm>
 #include <cctype>
@@ -256,14 +258,13 @@ private:
             result.text == "-inf" || result.text == "INFINITY" ||
             result.text == "+INFINITY" || result.text == "-INFINITY" ||
             result.text == "nan" || result.text == "NAN" ||
+            result.text == "snan" || result.text == "SNAN" ||
             result.text.find_first_of(".eEpP") != std::string::npos ||
             (!result.text.empty() && (result.text.back() == 'f' || result.text.back() == 'L')))
     {
       result.kind = Operand::OP_FLOAT;
-      errno = 0;
-      char * end = 0;
-      result.float_value = std::strtold(result.text.c_str(), &end);
-      if(errno || !end || *end) result.float_value = 0.0L;
+      if(!parse_lowir_floating_literal(result.text, &result.float_value))
+        result.float_value = 0.0L;
     }
     else {
       result.kind = Operand::OP_INTEGER;
@@ -383,6 +384,9 @@ private:
     } else if(key == "force_inline") {
       if(!function_symbol) throw ParseError("force_inline metadata requires a function");
       out.force_inline = yes_no(value);
+    } else if(key == "no_inline") {
+      if(!function_symbol) throw ParseError("no_inline metadata requires a function");
+      out.no_inline = yes_no(value);
     }
     else throw ParseError("unknown symbol metadata: " + key);
   }
@@ -1292,86 +1296,6 @@ std::string read_file(const std::string & path)
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
-ir_model::SymbolLinkage exported_linkage(SymbolBindingMode binding)
-{
-  return binding == SBM_INTERNAL ? ir_model::SL_INTERNAL :
-    binding == SBM_WEAK ? ir_model::SL_WEAK : ir_model::SL_EXTERNAL;
-}
-
-void append_export(Program & program, const std::string & name,
-                   const SymbolMetadata & metadata)
-{
-  ir_model::ExportedSymbol result;
-  result.internal_symbol = name;
-  result.object_symbol = metadata.object_symbol;
-  result.keep_internal_alias = metadata.keep_internal_alias;
-  result.prefer_local_object_binding = metadata.prefer_local_object_binding;
-  result.linkage = exported_linkage(metadata.binding);
-  program.exported_symbols.push_back(result);
-}
-
-void derive_exports(Program & program)
-{
-  std::unordered_map<std::string, ir_model::SymbolLinkage> linkage;
-  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    linkage[program.global_declarations[i].name] =
-      exported_linkage(program.global_declarations[i].metadata.binding);
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    linkage[program.function_declarations[i].name] =
-      exported_linkage(program.function_declarations[i].metadata.binding);
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    linkage[program.globals[i].name] =
-      exported_linkage(program.globals[i].metadata.binding);
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    linkage[program.functions[i].name] =
-      exported_linkage(program.functions[i].metadata.binding);
-  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
-    const ObjectAlias & object_alias = program.object_aliases[i];
-    ir_model::ExportedSymbol alias;
-    alias.internal_symbol = object_alias.target;
-    alias.object_symbol = object_alias.object_symbol;
-    const std::unordered_map<std::string,
-      ir_model::SymbolLinkage>::const_iterator found =
-        linkage.find(alias.internal_symbol);
-    if(found != linkage.end()) alias.linkage = found->second;
-    program.exported_symbols.push_back(alias);
-  }
-  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    append_export(program, program.global_declarations[i].name,
-                  program.global_declarations[i].metadata);
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    append_export(program, program.function_declarations[i].name,
-                  program.function_declarations[i].metadata);
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    append_export(program, program.globals[i].name, program.globals[i].metadata);
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    append_export(program, program.functions[i].name,
-                  program.functions[i].metadata);
-}
-
-void propagate_direct_call_boundaries(Program & program)
-{
-  std::unordered_map<std::string, FunctionBoundaryMetadata> boundaries;
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    boundaries[program.function_declarations[i].name] =
-      program.function_declarations[i].boundary;
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    boundaries[program.functions[i].name] = program.functions[i].boundary;
-  for(std::size_t f = 0; f < program.functions.size(); ++f)
-    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
-      for(std::size_t i = 0;
-          i < program.functions[f].blocks[b].instructions.size(); ++i) {
-        Instruction & ins = program.functions[f].blocks[b].instructions[i];
-        if(ins.kind != Instruction::IK_CALL || ins.has_call_signature ||
-           ins.first.kind != Operand::OP_GLOBAL)
-          continue;
-        const std::unordered_map<std::string,
-          FunctionBoundaryMetadata>::const_iterator found =
-            boundaries.find(ins.first.text);
-        if(found != boundaries.end()) ins.call_boundary = found->second;
-      }
-}
-
 Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
 {
   Program program;
@@ -1411,100 +1335,11 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
   propagate_direct_call_boundaries(program);
   Validator(program, entry_policy).Validate();
   program.token_count = token_count;
-  normalize_lowir_object_model(program);
+  finalize_lowir_object_model(program);
   return program;
 }
 
 }  // namespace
-
-void clear_serialized_operand_type(Operand & operand)
-{
-  operand.literal_type = LowType();
-  operand.address_binding = Operand::ADDRESS_LOCAL;
-  if(operand.kind != Operand::OP_INTEGER) {
-    operand.has_int_value = false;
-    operand.int_value = 0;
-  }
-}
-
-void restore_address_binding(Operand& operand,
-                             const std::unordered_set<std::string>& local)
-{
-  if(operand.kind != Operand::OP_GLOBAL) return;
-  operand.address_binding = local.count(operand.text) ?
-    Operand::ADDRESS_LOCAL : Operand::ADDRESS_PREEMPTIBLE;
-}
-
-void normalize_lowir_object_model(LowirProgram & program)
-{
-  // Address binding is not part of serialized LowIR syntax.  Re-derive it
-  // from canonical symbol metadata after clearing transient operand facts so
-  // imported addresses remain GOT-relative in relocatable output.
-  std::unordered_set<std::string> local_definitions;
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    if(program.globals[i].metadata.binding != SBM_WEAK)
-      local_definitions.insert(program.globals[i].name);
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    if(program.functions[i].metadata.binding != SBM_WEAK)
-      local_definitions.insert(program.functions[i].name);
-  for(std::size_t i = 0; i < program.globals.size(); ++i) {
-    if(program.globals[i].structured)
-      program.globals[i].type = LowType();
-    clear_serialized_operand_type(program.globals[i].init_operand);
-    restore_address_binding(
-      program.globals[i].init_operand, local_definitions);
-    for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
-    {
-      clear_serialized_operand_type(
-        program.globals[i].data_items[j].literal_operand);
-      restore_address_binding(
-        program.globals[i].data_items[j].literal_operand,
-        local_definitions);
-    }
-  }
-  for(std::size_t f = 0; f < program.functions.size(); ++f)
-    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
-      for(std::size_t i = 0;
-          i < program.functions[f].blocks[b].instructions.size(); ++i) {
-        Instruction & instruction =
-          program.functions[f].blocks[b].instructions[i];
-        clear_serialized_operand_type(instruction.first);
-        clear_serialized_operand_type(instruction.second);
-        clear_serialized_operand_type(instruction.third);
-        restore_address_binding(instruction.first, local_definitions);
-        restore_address_binding(instruction.second, local_definitions);
-        restore_address_binding(instruction.third, local_definitions);
-        for(std::size_t j = 0; j < instruction.args.size(); ++j)
-        {
-          clear_serialized_operand_type(instruction.args[j]);
-          restore_address_binding(instruction.args[j], local_definitions);
-        }
-        if(instruction.kind == Instruction::IK_COPYOBJ ||
-           instruction.kind == Instruction::IK_ZEROINIT ||
-           instruction.kind == Instruction::IK_VA_START)
-          instruction.type = LowType();
-        if(instruction.kind == Instruction::IK_EH_CLEANUP_CLAUSE)
-          instruction.first = Operand();
-        else if(instruction.kind == Instruction::IK_EH_CATCH)
-          instruction.second = Operand();
-        else if(instruction.kind == Instruction::IK_EH_CATCH_ALL)
-          instruction.first = Operand();
-        else if(instruction.kind == Instruction::IK_EH_FILTER &&
-                instruction.has_eh_selector) {
-          Operand selector;
-          selector.kind = Operand::OP_INTEGER;
-          selector.text = std::to_string(instruction.eh_selector);
-          selector.int_value = instruction.eh_selector;
-          selector.has_int_value = true;
-          instruction.args.push_back(selector);
-          instruction.has_eh_selector = false;
-          instruction.eh_selector = 0;
-        }
-      }
-  propagate_direct_call_boundaries(program);
-  program.exported_symbols.clear();
-  derive_exports(program);
-}
 
 const LowType & builtin_lowir_type(LowTypeKind kind)
 {

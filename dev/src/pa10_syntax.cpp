@@ -2,6 +2,7 @@
 #include "pa10_brace_matching.h"
 #include "pa10_syntax_driver_detail.h"
 #include "pa10_syntax_model.h"
+#include "pa10_parser_cursor.h"
 #include "pa10_parser_name_facts.h"
 #include "pa10_parser_token_classification.h"
 #include "hosted_builtin_syntax.h"
@@ -26,7 +27,8 @@
 #include <vector>
 namespace cppgm { namespace {
 using namespace pa10_syntax_detail;
-class Parser : private ParserNameFacts<Parser>,
+class Parser : private ParserCursor<Parser>,
+	private ParserNameFacts<Parser>,
 	private hosted_builtin::Syntax<Parser>,
 	private hosted_extension::Syntax<Parser>,
 	private pa25_syntax_detail::LambdaCaptureSyntax<Parser>,
@@ -37,7 +39,8 @@ class Parser : private ParserNameFacts<Parser>,
 	private pa34_syntax_detail::TemplateSyntax<Parser>,
 	private pa34_syntax_detail::ControlFlowSyntax<Parser>
 {
-friend class ParserNameFacts<Parser>; friend class hosted_builtin::Syntax<Parser>;
+friend class ParserCursor<Parser>; friend class ParserNameFacts<Parser>;
+friend class hosted_builtin::Syntax<Parser>;
 friend class hosted_extension::Syntax<Parser>; friend class pa25_syntax_detail::LambdaCaptureSyntax<Parser>;
 friend class pa25_syntax_detail::RangeForSyntax<Parser>; friend class pa30_syntax_detail::RegionSyntax<Parser>;
 friend class pa34_syntax_detail::GnuAsmSyntax<Parser>; friend class pa34_syntax_detail::AggregateSyntax<Parser>;
@@ -170,123 +173,6 @@ private:
 		for (std::size_t i = 0; i < parameter_names_.size(); ++i)
 		{ SetNameFact(parameter_names_[i], kKnownType, false);
 			SetNameFact(parameter_names_[i], kKnownNonTemplate); SetNameFact(parameter_names_[i], kActiveNonTypeParameter); } }
-	std::runtime_error Error(const std::string& message) const
-	{
-		const std::string location = position_ < tokens_.size() &&
-			tokens_[position_].source_file != 0 ?
-			" at " + strings_.Get(tokens_[position_].source_file) + ":" +
-			std::to_string(tokens_[position_].source_line) + ":" +
-			std::to_string(tokens_[position_].source_column) : std::string();
-		return std::runtime_error(message + location + " at token " +
-			std::to_string(position_) +
-			(position_ < tokens_.size() ? " (`" + Spelling(position_) + "`)" :
-			 std::string()));
-	}
-	bool At(SimpleTokenKind kind) const
-	{
-		return position_ < tokens_.size() && tokens_[position_].Kind() ==
-			static_cast<std::uint16_t>(kind);
-	}
-	bool AtOffset(std::size_t offset, SimpleTokenKind kind) const
-	{
-		return position_ + offset < tokens_.size() &&
-			tokens_[position_ + offset].Kind() ==
-				static_cast<std::uint16_t>(kind);
-	}
-	bool AtIdentifier() const
-	{
-		return position_ < tokens_.size() &&
-			tokens_[position_].Kind() == kIdentifierToken;
-	}
-	bool AtLiteral() const
-	{
-		return position_ < tokens_.size() &&
-			tokens_[position_].Kind() == kLiteralToken;
-	}
-	bool AtEof() const
-	{
-		return position_ < tokens_.size() &&
-			tokens_[position_].Kind() == kEofToken;
-	}
-	bool AtCloseAngle() const
-	{
-		if (position_ >= tokens_.size()) return false;
-		const std::uint16_t kind = tokens_[position_].Kind();
-		return kind == static_cast<std::uint16_t>(OP_GT) ||
-			kind == kRShiftFirstToken || kind == kRShiftSecondToken;
-	}
-	bool Match(SimpleTokenKind kind)
-	{
-		if (!At(kind)) return false;
-		++position_;
-		return true;
-	}
-	bool MatchCloseAngle()
-	{
-		if (!AtCloseAngle()) return false;
-		++position_;
-		return true;
-	}
-	void Expect(SimpleTokenKind kind)
-	{
-		if (!Match(kind))
-			throw Error(std::string("expected ") + SimpleTokenKindName(kind));
-	}
-	void ExpectCloseAngle()
-	{
-		if (!MatchCloseAngle()) throw Error("expected close angle bracket");
-	}
-	const std::string& Spelling(std::size_t position) const
-	{
-		return strings_.Get(tokens_[position].spelling);
-	}
-	std::string TokenDescription(std::size_t position) const
-	{
-		const SyntaxToken& token = tokens_[position];
-		if (token.Kind() == kIdentifierToken) return "TT_IDENTIFIER:" +
-			Spelling(position);
-		if (token.Kind() == kLiteralToken) return Spelling(position);
-		if (token.Kind() == kRShiftFirstToken ||
-			token.Kind() == kRShiftSecondToken) return "OP_RSHIFT:>>";
-		return std::string(SimpleTokenKindName(
-			static_cast<SimpleTokenKind>(token.Kind()))) + ":" +
-			Spelling(position);
-	}
-	NodeId MakeTokenNode(const char* tag, std::size_t position)
-	{
-		const NodeId node = arena_.Make(tag, TokenDescription(position));
-		arena_.SetSemanticPayload(node, tokens_[position].spelling);
-		return node;
-	}
-	NodeId MakeStructuredNode(const char* tag, const std::string& spelling,
-		NodeId structure)
-	{
-		const NodeId node = arena_.Make(tag, spelling);
-		if (structure != kNoNode) arena_.Add(node, structure);
-		return node;
-	}
-	std::string JoinSpellings(std::size_t first, std::size_t last) const
-	{
-		std::string result;
-		for (std::size_t i = first; i < last; ++i)
-		{
-			if (i != first)
-			{
-				const std::uint16_t previous = tokens_[i - 1].Kind();
-				if (previous == static_cast<std::uint16_t>(KW_CONST) ||
-					previous == static_cast<std::uint16_t>(KW_VOLATILE) ||
-					previous == static_cast<std::uint16_t>(KW_TYPENAME) ||
-					previous == static_cast<std::uint16_t>(KW_TEMPLATE) ||
-					previous == static_cast<std::uint16_t>(KW_CLASS) ||
-					previous == static_cast<std::uint16_t>(KW_STRUCT) ||
-					previous == static_cast<std::uint16_t>(KW_UNION) ||
-					previous == static_cast<std::uint16_t>(KW_ENUM))
-					result += ' ';
-			}
-			result += Spelling(i);
-		}
-		return result;
-	}
 	bool ParseOperatorFunctionSuffix()
 	{
 		if (At(KW_NEW) || At(KW_DELETE))

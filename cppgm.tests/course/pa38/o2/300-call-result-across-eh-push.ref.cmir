@@ -1,0 +1,60 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @value
+  storage scalar i64
+  init i64 0
+
+function @address
+  abi
+    return ptr -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, @value
+    ret rax
+
+function @read
+  abi
+    param %p -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    load.i64 rax, [rdi]
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    temp %host-eh-exception -> [rbp-<off0>] : ptr
+    temp %host-eh-selector -> [rbp-<off1>] : i64
+
+  block ^entry
+    call @address
+    mov r8, rax
+    eh_push ^handler, 0
+    mov rdi, r8
+    call @read
+    mov r9, rax
+    eh_pop
+    mov rdx, 0
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    ret r9
+
+  block ^handler
+    mov rax, 2
+    ret rax
