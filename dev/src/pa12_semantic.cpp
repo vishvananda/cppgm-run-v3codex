@@ -32,7 +32,7 @@ NodeId SemanticAnalyzer::FirstSemanticChild(NodeId node) const
 	const std::uint32_t edge = arena_->FirstEdge(node);
 	return edge == kNoEdge ? kNoNode : arena_->EdgeChild(edge);
 }
-std::string SemanticAnalyzer::PayloadSource(NodeId node) const
+const std::string& SemanticAnalyzer::PayloadSource(NodeId node) const
 {
 	return arena_->SemanticPayload(node);
 }

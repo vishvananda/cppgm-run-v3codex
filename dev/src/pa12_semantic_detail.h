@@ -193,7 +193,7 @@ private:
 	NodeId FindChild(NodeId node, const char* tag) const;
 	bool HasDeclSpecifier(NodeId specifiers, const char* spelling) const;
 	NodeId FirstSemanticChild(NodeId node) const;
-	std::string PayloadSource(NodeId node) const;
+	const std::string& PayloadSource(NodeId node) const;
 	NamePath ParseNamePath(const std::string& spelling);
 	LookupResult LookupPath(ScopeId scope, const NamePath& path,
 		LookupKind kind);
