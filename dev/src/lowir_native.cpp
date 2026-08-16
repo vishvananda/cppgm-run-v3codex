@@ -22,6 +22,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 namespace lowir_native {
 namespace {
@@ -70,9 +71,12 @@ public:
   }
   mir_model::MirFunction lower()
   {
+    target_.blocks.reserve(source_.blocks.size());
     for(std::size_t i = 0; i < source_.blocks.size(); ++i) {
       mir_model::MirBlock block;
       block.label = source_.blocks[i].label;
+      block.instructions.reserve(source_.blocks[i].instructions.size() +
+        (i == 0 ? parameter_moves_.size() : 0));
       control_flow_.SelectBlock(i);
       if(i == 0) block.instructions.insert(block.instructions.end(),
                                            parameter_moves_.begin(), parameter_moves_.end());
@@ -103,7 +107,7 @@ public:
           block.instructions[k].debug_location.column = debug.column;
         }
       }
-      target_.blocks.push_back(block);
+      target_.blocks.push_back(std::move(block));
     }
     target_.callee_saved_regs = registers_.preserves();
     target_.has_dynamic_stack = facts_.has_dynamic_stack;
