@@ -358,6 +358,22 @@ public:
 		}
 		while (true)
 		{
+			// Most source characters cannot begin a trigraph, universal
+			// character name, or line splice. Avoid routing those characters
+			// through all three lookahead queues.
+			if (physical_pending_.empty() && phase1_pending_.empty() &&
+				ucn_pending_.empty())
+			{
+				const LocatedCodePoint direct = physical_.Next();
+				if (direct.value != '?' && direct.value != '\\')
+				{
+					last_line_ = direct.line;
+					last_column_ = direct.column;
+					CountTranslated(direct.value);
+					return direct.value;
+				}
+				physical_pending_.push_back(direct);
+			}
 			const LocatedCodePoint current = TakeUCN();
 			if (current.value != '\\' || PeekUCN().value != '\n')
 			{
@@ -565,36 +581,35 @@ private:
 	{
 		while (lookahead_.size() <= offset)
 		{
-			if (!lookahead_.empty() && lookahead_.back() == kEndOfFile)
+			if (!lookahead_.empty() &&
+				lookahead_.back().value == kEndOfFile)
 				return kEndOfFile;
-			lookahead_.push_back(translation_.Next());
-			lookahead_lines_.push_back(translation_.LastLine());
-			lookahead_columns_.push_back(translation_.LastColumn());
+			const int value = translation_.Next();
+			lookahead_.push_back(LocatedCodePoint(value,
+				translation_.LastLine(), translation_.LastColumn()));
 		}
-		return lookahead_[offset];
+		return lookahead_[offset].value;
 	}
 
 	int Take()
 	{
 		if (lookahead_.empty())
 			return translation_.Next();
-		const int result = lookahead_.front();
+		const int result = lookahead_.front().value;
 		lookahead_.pop_front();
-		lookahead_lines_.pop_front();
-		lookahead_columns_.pop_front();
 		return result;
 	}
 
 	std::size_t PeekLine(std::size_t offset)
 	{
 		Peek(offset);
-		return lookahead_lines_[offset];
+		return lookahead_[offset].line;
 	}
 
 	std::size_t PeekColumn(std::size_t offset)
 	{
 		Peek(offset);
-		return lookahead_columns_[offset];
+		return lookahead_[offset].column;
 	}
 
 	void AppendTake(std::string* spelling)
@@ -1012,9 +1027,7 @@ private:
 	TranslationCursor translation_;
 	IPPTokenStream& output_;
 	PPTokenizationStats* stats_;
-	FixedQueue<int, 4> lookahead_;
-	FixedQueue<std::size_t, 4> lookahead_lines_;
-	FixedQueue<std::size_t, 4> lookahead_columns_;
+	FixedQueue<LocatedCodePoint, 4> lookahead_;
 	std::string spelling_;
 	bool at_line_start_;
 	HeaderContext header_context_;
