@@ -2003,7 +2003,9 @@ private:
 	std::vector<std::uint32_t> lambda_count_by_namespace_;
 	std::deque<ClassTemplatePattern> class_templates_;
 	IndexedSequenceTable demanded_static_member_definitions_;
-	std::vector<AliasTemplatePattern> alias_templates_;
+	// Alias instantiation can discover and register a nested alias while a
+	// caller still borrows the outer pattern's parameter list.
+	std::deque<AliasTemplatePattern> alias_templates_;
 	std::vector<std::uint32_t> alias_template_pattern_by_entity_;
 	TemplateSpecializationTable alias_template_instantiations_;
 	std::vector<std::uint8_t> alias_template_instantiation_states_;
