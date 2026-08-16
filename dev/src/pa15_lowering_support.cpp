@@ -67,7 +67,8 @@ bool IsLambdaCaptureMember(
 	const pa11::Program& program, pa11::BindingId binding)
 {
 	const pa11::BindingRecord& member = program.bindings[binding];
-	return member.member_offset == 0 && member.member_owner != pa11::kNoEntity &&
+	return program.BindingLayout(member).member_offset == 0 &&
+		member.member_owner != pa11::kNoEntity &&
 		member.member_owner < program.entities.size() &&
 		program.entities[member.member_owner].lambda_closure;
 }

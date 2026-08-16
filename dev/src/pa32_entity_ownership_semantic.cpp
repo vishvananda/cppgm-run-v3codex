@@ -74,7 +74,8 @@ bool SemanticAnalyzer::RecordInjectedMemberInitializer(BindingId member,
 	{
 		const std::vector<BindingId>& members = entity_data_members_[owner];
 		const std::uint32_t ordinal =
-			program_->bindings[storage].member_ordinal;
+			program_->BindingLayout(
+				program_->bindings[storage]).member_ordinal;
 		if (ordinal >= members.size() || members[ordinal] != storage)
 			throw std::logic_error(
 				"projected union storage has no canonical ordinal");

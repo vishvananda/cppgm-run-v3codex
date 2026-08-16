@@ -37,19 +37,22 @@ public:
 
 	std::uint64_t BitFieldMask(const BindingRecord& field) const
 	{
-		if (field.bit_width == 0 || field.bit_width > 64)
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(field);
+		if (layout.bit_width == 0 || layout.bit_width > 64)
 			throw std::logic_error("invalid canonical bit-field width");
-		return field.bit_width == 64 ? ~std::uint64_t(0) :
-			(std::uint64_t(1) << field.bit_width) - 1;
+		return layout.bit_width == 64 ? ~std::uint64_t(0) :
+			(std::uint64_t(1) << layout.bit_width) - 1;
 	}
 
 	LowType BitFieldAccessType(const BindingRecord& field) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const LowType declared = derived.LowerExpressionType(field.type);
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(field);
 		if (declared.width < 32 ||
 			(!declared.is_signed && declared.width == 32 &&
-			 field.bit_width < declared.width))
+			 layout.bit_width < declared.width))
 			return LowI32();
 		return declared;
 	}
@@ -67,11 +70,12 @@ public:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& field = derived.program_.bindings[binding];
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(field);
 		Operand normalized = value;
 		const LowType declared = derived.LowerExpressionType(field.type);
-		if (declared.is_signed && field.bit_width < type.width)
+		if (declared.is_signed && layout.bit_width < type.width)
 		{
-			const std::size_t shift_count = type.width - field.bit_width;
+			const std::size_t shift_count = type.width - layout.bit_width;
 			const Operand shifted = derived.Temp(type);
 			Instruction shift_left(Instruction::BINARY);
 			shift_left.dest = shifted.id;
@@ -114,9 +118,10 @@ public:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& field = derived.program_.bindings[binding];
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(field);
 		const LowType type = BitFieldMemoryType(field);
 		Operand value = derived.LoadStorage(storage, type);
-		if (field.bit_offset != 0)
+		if (layout.bit_offset != 0)
 		{
 			const Operand shifted = derived.Temp(type);
 			Instruction shift(Instruction::BINARY);
@@ -124,7 +129,7 @@ public:
 			shift.op = type.is_signed ? LOW_OP_SHR : LOW_OP_USHR;
 			shift.type = type;
 			shift.first = value;
-			shift.second = Operand(field.bit_offset, type);
+			shift.second = Operand(layout.bit_offset, type);
 			derived.Emit(shift);
 			value = shifted;
 		}
@@ -137,6 +142,7 @@ public:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& field = derived.program_.bindings[binding];
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(field);
 		value = derived.Convert(value, type, false);
 		const Operand masked = derived.Temp(type);
 		Instruction mask(Instruction::BINARY);
@@ -151,7 +157,7 @@ public:
 		if (normalized_value)
 			*normalized_value = FinishBitFieldValue(binding, masked, type);
 		Operand positioned = masked;
-		if (field.bit_offset != 0)
+		if (layout.bit_offset != 0)
 		{
 			positioned = derived.Temp(type);
 			Instruction shift(Instruction::BINARY);
@@ -159,7 +165,7 @@ public:
 			shift.op = LOW_OP_SHL;
 			shift.type = type;
 			shift.first = masked;
-			shift.second = Operand(field.bit_offset, type);
+			shift.second = Operand(layout.bit_offset, type);
 			derived.Emit(shift);
 		}
 		return positioned;
@@ -170,12 +176,13 @@ public:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& field = derived.program_.bindings[binding];
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(field);
 		const Operand old = derived.LoadStorage(storage, type);
-		const std::uint64_t unit_mask = field.bit_storage_bits == 64 ?
+		const std::uint64_t unit_mask = layout.bit_storage_bits == 64 ?
 			~std::uint64_t(0) :
-			(std::uint64_t(1) << field.bit_storage_bits) - 1;
+			(std::uint64_t(1) << layout.bit_storage_bits) - 1;
 		const std::uint64_t clear_mask = unit_mask &
-			~(BitFieldMask(field) << field.bit_offset);
+			~(BitFieldMask(field) << layout.bit_offset);
 		const Operand cleared = derived.Temp(type);
 		Instruction clear(Instruction::BINARY);
 		clear.dest = cleared.id;
@@ -247,12 +254,13 @@ public:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const BindingRecord& member = derived.program_.bindings[binding];
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(member);
 		const bool preserve = derived.initialized_bit_field_unit_valid_ &&
 			derived.initialized_bit_field_owner_ == member.member_owner &&
-			derived.initialized_bit_field_offset_ == member.member_offset;
+			derived.initialized_bit_field_offset_ == layout.member_offset;
 		derived.initialized_bit_field_unit_valid_ = true;
 		derived.initialized_bit_field_owner_ = member.member_owner;
-		derived.initialized_bit_field_offset_ = member.member_offset;
+		derived.initialized_bit_field_offset_ = layout.member_offset;
 		return preserve;
 	}
 

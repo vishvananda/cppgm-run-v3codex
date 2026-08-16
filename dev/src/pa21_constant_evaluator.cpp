@@ -662,7 +662,8 @@ const ConstexprObjectElement* SemanticAnalyzer::ConstexprClassMemberAt(
 		return 0;
 	}
 	const ConstexprObjectElement* element =
-		ConstexprObjectElementAt(object, binding.member_ordinal);
+		ConstexprObjectElementAt(
+			object, program_->BindingLayout(binding).member_ordinal);
 	return element && element->member == member ? element : 0;
 }
 
@@ -2234,7 +2235,8 @@ bool SemanticAnalyzer::PlanConstexprConstructorInitializers(
 					plan->active_union_member != kNoBinding &&
 					plan->active_union_member != found.ordinary) return false;
 				const std::size_t ordinal =
-					program_->bindings[found.ordinary].member_ordinal;
+					program_->BindingLayout(
+						program_->bindings[found.ordinary]).member_ordinal;
 				if (ordinal >= members.size() ||
 					members[ordinal] != found.ordinary ||
 					plan->member_initializers[ordinal] != kNoNode) return false;

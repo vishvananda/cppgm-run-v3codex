@@ -42,7 +42,8 @@ void SemanticAnalyzer::ValidateConstexprConstructorDefinition(
 				program_->bindings[found.ordinary].member_owner != entity)
 				continue;
 			const std::size_t ordinal =
-				program_->bindings[found.ordinary].member_ordinal;
+				program_->BindingLayout(
+					program_->bindings[found.ordinary]).member_ordinal;
 			if (ordinal < members.size() && members[ordinal] == found.ordinary)
 				initialized[ordinal] = 1;
 		}

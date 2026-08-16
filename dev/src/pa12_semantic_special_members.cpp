@@ -661,6 +661,7 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 	for (std::size_t i = 0; i < members.size(); ++i)
 	{
 		const BindingRecord& member = program_->bindings[members[i]];
+		const BindingLayoutFact& layout = program_->BindingLayout(member);
 		bool is_const = false;
 		bool is_reference = false;
 		const EntityId subobject = SubobjectClass(
@@ -671,8 +672,8 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 		if (is_reference || empty_subobject)
 		{
 			function->synthesized_memberwise_copy = true;
-			if (member.member_offset == 0) return;
-			function->synthesized_prefix_size = member.member_offset;
+			if (layout.member_offset == 0) return;
+			function->synthesized_prefix_size = layout.member_offset;
 			function->synthesized_prefix_alignment =
 				static_cast<std::uint32_t>(owner.object_alignment);
 			function->synthesized_prefix_members =
@@ -685,8 +686,8 @@ void SemanticAnalyzer::ConfigureSynthesizedStoragePrefix(EntityId entity,
 		if (selected == kNoBinding ||
 			GetFunction(selected).trivial_special_member)
 			continue;
-		if (member.member_offset == 0) return;
-		function->synthesized_prefix_size = member.member_offset;
+		if (layout.member_offset == 0) return;
+		function->synthesized_prefix_size = layout.member_offset;
 		function->synthesized_prefix_alignment =
 			static_cast<std::uint32_t>(owner.object_alignment);
 		function->synthesized_prefix_members =
@@ -1233,9 +1234,13 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 							entity_data_members_[entity][i - 1]];
 						const BindingRecord& current =
 							program_->bindings[member];
+						const BindingLayoutFact& previous_layout =
+							program_->BindingLayout(previous);
+						const BindingLayoutFact& current_layout =
+							program_->BindingLayout(current);
 						if (previous.bit_field &&
-							previous.member_offset == current.member_offset &&
-							previous.bit_storage_bits == current.bit_storage_bits)
+							previous_layout.member_offset == current_layout.member_offset &&
+							previous_layout.bit_storage_bits == current_layout.bit_storage_bits)
 							continue;
 					}
 					dump_.nodes[step].storage_unit_transfer = true;

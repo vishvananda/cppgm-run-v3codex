@@ -465,7 +465,8 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 					storage_record.access = member_access;
 					storage_record.non_static_data_member = true;
 					storage_record.anonymous_union_storage = true;
-					storage_record.member_ordinal = static_cast<std::uint32_t>(
+					program_->MutableBindingLayout(storage_record).member_ordinal =
+						static_cast<std::uint32_t>(
 						entity_data_members_[entity].size());
 					entity_data_members_[entity].push_back(storage);
 					entity_layout_members_[entity].push_back(
@@ -488,10 +489,9 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 						alias_record.non_static_data_member = true;
 						alias_record.mutable_member = source.mutable_member;
 						alias_record.bit_field = source.bit_field;
-						alias_record.member_offset = source.member_offset;
-						alias_record.bit_offset = source.bit_offset;
-						alias_record.bit_width = source.bit_width;
-						alias_record.bit_storage_bits = source.bit_storage_bits;
+						if (source.layout_fact != kNoBindingLayoutFact)
+							program_->MutableBindingLayout(alias_record) =
+								program_->BindingLayout(source);
 						alias_record.has_default_member_initializer =
 							source.has_default_member_initializer;
 						RegisterInjectedStorageMember(alias, storage, source_binding);
@@ -536,7 +536,8 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 				program_->bindings[anonymous_alias_storage[i].first];
 			const BindingRecord& storage =
 				program_->bindings[anonymous_alias_storage[i].second];
-			alias.member_offset += storage.member_offset;
+			program_->MutableBindingLayout(alias).member_offset +=
+				program_->BindingLayout(storage).member_offset;
 		}
 		CompleteClassSpecialMembers(entity);
 		if (!program_->entities[entity].has_user_declared_constructor &&
@@ -598,17 +599,6 @@ void SemanticAnalyzer::CompleteClassMemberDestructionFacts(EntityId entity,
 			!CanAccessMember(destructor, member_record->entity))
 			owner.destructible = false;
 	}
-}
-
-bool SemanticAnalyzer::ClassBasesAreEmpty(EntityId entity) const
-{
-	const EntityRecord& owner = program_->entities[entity];
-	for (std::size_t base_index = 0;
-		base_index < owner.direct_base_count; ++base_index)
-		if (!program_->entities[
-			program_->DirectBase(entity, base_index).entity].empty_class)
-			return false;
-	return true;
 }
 
 void SemanticAnalyzer::InitializeImplicitBaseConstructorFacts(EntityId entity)
@@ -681,6 +671,8 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		EntityRecord& current_owner = program_->entities[entity];
 		BindingRecord* member = layout.binding == kNoBinding ? 0 :
 			&program_->bindings[layout.binding];
+		BindingLayoutFact* member_layout = member ?
+			&program_->MutableBindingLayout(*member) : 0;
 		if (is_union && member && member->has_default_member_initializer)
 		{
 			if (current_owner.union_default_member != kNoBinding &&
@@ -695,7 +687,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		const std::size_t member_size = program_->SizeOf(layout.type);
 		const std::size_t type_alignment = program_->AlignOf(layout.type);
 		const std::size_t requested_member_alignment = member ?
-			static_cast<std::size_t>(member->requested_alignment) : 0;
+			static_cast<std::size_t>(member_layout->requested_alignment) : 0;
 		const std::size_t required_alignment = std::max(type_alignment,
 			requested_member_alignment);
 		std::size_t member_alignment = packing_alignment == 0 ? type_alignment :
@@ -720,11 +712,11 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 				member_size : (declared_width + 7) / 8;
 			if (is_union)
 			{
-				if (member)
+				if (member_layout)
 				{
-					member->member_offset = 0;
-					member->bit_offset = 0;
-					member->bit_storage_bits =
+					member_layout->member_offset = 0;
+					member_layout->bit_offset = 0;
+					member_layout->bit_storage_bits =
 						static_cast<std::uint32_t>(unit_bits);
 				}
 				size = std::max(size, allocation_size);
@@ -737,11 +729,11 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 				if (offset > std::numeric_limits<std::size_t>::max() -
 					allocation_size)
 					throw std::runtime_error("class layout is too large");
-				if (member)
+				if (member_layout)
 				{
-					member->member_offset = offset;
-					member->bit_offset = 0;
-					member->bit_storage_bits =
+					member_layout->member_offset = offset;
+					member_layout->bit_offset = 0;
+					member_layout->bit_storage_bits =
 						static_cast<std::uint32_t>(unit_bits);
 				}
 				size = offset + allocation_size;
@@ -763,11 +755,13 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 				active_bit_used = 0;
 				active_bit_unit = true;
 			}
-			if (member)
+			if (member_layout)
 			{
-				member->member_offset = active_bit_offset;
-				member->bit_offset = static_cast<std::uint32_t>(active_bit_used);
-				member->bit_storage_bits = static_cast<std::uint32_t>(unit_bits);
+				member_layout->member_offset = active_bit_offset;
+				member_layout->bit_offset =
+					static_cast<std::uint32_t>(active_bit_used);
+				member_layout->bit_storage_bits =
+					static_cast<std::uint32_t>(unit_bits);
 			}
 			active_bit_used += layout.bit_width;
 			continue;
@@ -786,11 +780,11 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 			ClassZeroOffsetSubobjectConflict(layout.type, zero_offset_marker);
 		const bool overlaps = overlap_candidate && !overlap_conflict;
 		if (overlaps)
-			member->member_offset = 0;
+			member_layout->member_offset = 0;
 		else if (is_union)
 		{
 			empty_class = false;
-			member->member_offset = 0;
+			member_layout->member_offset = 0;
 			size = std::max(size, member_size);
 		}
 		else
@@ -800,12 +794,12 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 				ClassZeroOffsetSubobjectConflict(
 					layout.type, zero_offset_marker)))) size = 1;
 			size = AlignUp(size, member_alignment);
-			member->member_offset = size;
+			member_layout->member_offset = size;
 			if (size > std::numeric_limits<std::size_t>::max() - member_size)
 				throw std::runtime_error("class layout is too large");
 			size += member_size;
 		}
-		if (member->member_offset == 0)
+		if (member_layout->member_offset == 0)
 			MarkClassZeroOffsetSubobject(layout.type, zero_offset_marker);
 		if (!implicit_default_constructor) continue;
 		if (member->has_default_member_initializer)
@@ -1111,7 +1105,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 						*arena_, node, "no_unique_address");
 				binding.member_owner = EntityOf(owner_type);
 				binding.access = access;
-				binding.requested_alignment = requested_alignment;
+				SetBindingRequestedAlignment(binding, requested_alignment);
 				binding.non_static_data_member = non_static_data_member;
 				binding.has_default_member_initializer =
 					has_default_member_initializer;
@@ -1233,9 +1227,10 @@ void SemanticAnalyzer::AnalyzeBitField(NodeId node, ScopeId scope,
 			binding.access = access;
 			binding.non_static_data_member = true;
 			binding.bit_field = true;
-			binding.bit_width = static_cast<std::uint32_t>(std::min(
+			BindingLayoutFact& layout = program_->MutableBindingLayout(binding);
+			layout.bit_width = static_cast<std::uint32_t>(std::min(
 				static_cast<std::size_t>(width), value_bits));
-			binding.member_ordinal = static_cast<std::uint32_t>(
+			layout.member_ordinal = static_cast<std::uint32_t>(
 				entity_data_members_[entity].size());
 			entity_data_members_[entity].push_back(binding_id);
 		}
@@ -2647,12 +2642,8 @@ void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	const BindingRecord original = program_->bindings[source];
 	target.member_owner = original.member_owner;
 	target.access_owner = program_->EntityForScope(target.owner);
-	target.member_offset = original.member_offset;
-	target.requested_alignment = original.requested_alignment;
-	target.bit_offset = original.bit_offset;
-	target.bit_width = original.bit_width;
-	target.bit_storage_bits = original.bit_storage_bits;
-	target.member_ordinal = original.member_ordinal;
+	if (original.layout_fact != kNoBindingLayoutFact)
+		program_->MutableBindingLayout(target) = program_->BindingLayout(original);
 	target.access = access;
 	target.storage_class = original.storage_class;
 	target.non_static_data_member = original.non_static_data_member;

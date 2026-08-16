@@ -919,6 +919,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 	EntityId naming_class)
 {
 	const BindingRecord& binding = program_->bindings[member_binding];
+	const BindingLayoutFact& layout = program_->BindingLayout(binding);
 	if (!constexpr_frames_.empty() && binding.non_static_data_member &&
 		(constexpr_frames_.back().receiver_object != kNoConstexprObject ||
 		 constexpr_frames_.back().receiver_address != kNoConstexprAddress))
@@ -934,11 +935,11 @@ ExpressionInfo SemanticAnalyzer::AnalyzeImplicitDataMember(
 		const std::uint32_t receiver_address =
 			constexpr_frames_.back().receiver_address;
 		if (receiver_address != kNoConstexprAddress &&
-			binding.member_offset <= static_cast<std::uint64_t>(
+			layout.member_offset <= static_cast<std::uint64_t>(
 				std::numeric_limits<std::int64_t>::max()))
 		{
 			const std::uint32_t address = OffsetConstexprAddress(receiver_address,
-				static_cast<std::int64_t>(binding.member_offset), true,
+				static_cast<std::int64_t>(layout.member_offset), true,
 				static_cast<std::int64_t>(program_->SizeOf(
 					EffectiveType(binding.type))));
 			if (address != kNoConstexprAddress)

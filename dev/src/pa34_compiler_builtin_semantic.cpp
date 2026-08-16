@@ -210,7 +210,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBuiltinOffsetof(
 	result.node = MakeDump(DUMP_SIZEOF_EXPRESSION,
 		result.type, result.category);
 	result.constant = true;
-	result.value = static_cast<std::int64_t>(member.member_offset);
+	result.value = static_cast<std::int64_t>(
+		program_->BindingLayout(member).member_offset);
 	dump_.nodes[result.node].template_layout_constant =
 		IsClassTemplateSpecializationContext(entity);
 	RecordExpressionFacts(result);

@@ -1472,6 +1472,8 @@ private:
 	void CompleteClassMemberDestructionFacts(EntityId entity,
 		bool is_union, bool defaulted_destructor);
 	void CompleteClassLayout(EntityId entity);
+	void SetBindingRequestedAlignment(BindingRecord& binding,
+		std::size_t alignment);
 	std::size_t RequestedAlignment(NodeId node, ScopeId scope);
 	void InheritConstructors(EntityId entity,
 		const std::vector<BindingId>& constructors,

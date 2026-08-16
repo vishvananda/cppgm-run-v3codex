@@ -51,7 +51,8 @@ bool SemanticAnalyzer::VisitZeroOffsetSubobjects(EntityId root,
 		{
 			const ClassLayoutMember& member = members[i];
 			if (member.bit_field || member.binding == kNoBinding ||
-				program_->bindings[member.binding].member_offset != 0)
+				program_->BindingLayout(
+					program_->bindings[member.binding]).member_offset != 0)
 				continue;
 			const EntityId child = ZeroOffsetClassEntity(member.type);
 			if (child != kNoEntity)

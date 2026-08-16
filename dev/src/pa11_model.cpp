@@ -694,9 +694,7 @@ BindingRecord::BindingRecord()
 	  kind(BIND_VARIABLE), type(kNoType),
 	  conversion_target(kNoType),
 	  next(kNoBinding), member_owner(kNoEntity), access_owner(kNoEntity),
-	  member_offset(0), requested_alignment(0), bit_offset(0), bit_width(0),
-	  bit_storage_bits(0),
-	  overload_ordinal(0), member_ordinal(kNoBinding),
+	  overload_ordinal(0), layout_fact(kNoBindingLayoutFact),
 	  template_argument_list(kNoTemplateArgumentList),
 	  template_argument_begin(0), template_argument_count(0),
 	  abi_tag_begin(0), abi_tag_count(0),
@@ -731,6 +729,12 @@ BindingRecord::BindingRecord()
 	  variable_template_specialization(false),
 	  force_indirect_class_result_abi(false),
 	  closure_template_specialization(false)
+{
+}
+
+BindingLayoutFact::BindingLayoutFact()
+	: member_offset(0), requested_alignment(0), bit_offset(0), bit_width(0),
+	  bit_storage_bits(0), member_ordinal(kNoBinding)
 {
 }
 
@@ -1425,6 +1429,26 @@ bool Program::IsStaticDataMember(BindingId binding) const
 	const BindingRecord& record = bindings[bindings[binding].canonical];
 	return record.kind == BIND_VARIABLE && record.member_owner != kNoEntity &&
 		!record.non_static_data_member;
+}
+
+const BindingLayoutFact& Program::BindingLayout(
+	const BindingRecord& binding) const
+{
+	return binding.layout_fact == kNoBindingLayoutFact ?
+		empty_binding_layout_ : binding_layout_facts_[binding.layout_fact];
+}
+
+BindingLayoutFact& Program::MutableBindingLayout(BindingRecord& binding)
+{
+	if (binding.layout_fact == kNoBindingLayoutFact)
+	{
+		if (binding_layout_facts_.size() >= kNoBindingLayoutFact)
+			throw std::runtime_error("too many PA11 binding layout facts");
+		binding.layout_fact = static_cast<std::uint32_t>(
+			binding_layout_facts_.size());
+		binding_layout_facts_.push_back(BindingLayoutFact());
+	}
+	return binding_layout_facts_[binding.layout_fact];
 }
 
 BindingId Program::AddOutputTypeBinding(ScopeId owner, NameId display_name,
@@ -2448,6 +2472,7 @@ std::size_t Program::StorageBytes() const
 		virtual_base_index_entries_.capacity() * sizeof(VirtualBaseIndexEntry) +
 		virtual_base_index_slots_.capacity() * sizeof(std::uint32_t) +
 		base_graph_versions_.capacity() * sizeof(std::uint32_t) +
+		binding_layout_facts_.capacity() * sizeof(BindingLayoutFact) +
 		entities.capacity() * sizeof(EntityRecord) +
 		bindings.capacity() * sizeof(BindingRecord) +
 		function_exception_types.capacity() * sizeof(TypeId) +

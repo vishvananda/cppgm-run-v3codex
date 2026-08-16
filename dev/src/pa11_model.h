@@ -26,6 +26,8 @@ const TypeId kNoType = std::numeric_limits<TypeId>::max();
 const ScopeId kNoScope = std::numeric_limits<ScopeId>::max();
 const EntityId kNoEntity = std::numeric_limits<EntityId>::max();
 const BindingId kNoBinding = std::numeric_limits<BindingId>::max();
+const std::uint32_t kNoBindingLayoutFact =
+	std::numeric_limits<std::uint32_t>::max();
 const TemplateArgumentListId kNoTemplateArgumentList =
 	std::numeric_limits<TemplateArgumentListId>::max();
 const std::uint32_t kNoTemplateParameter =
@@ -638,9 +640,7 @@ struct BindingRecord
 	TypeId type, conversion_target;
 	BindingId next;
 	EntityId member_owner, access_owner;
-	std::uint64_t member_offset, requested_alignment;
-	std::uint32_t bit_offset, bit_width, bit_storage_bits;
-	std::uint32_t overload_ordinal, member_ordinal;
+	std::uint32_t overload_ordinal, layout_fact;
 	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count;
 	std::uint32_t abi_tag_begin, abi_tag_count;
@@ -683,6 +683,14 @@ struct BindingRecord
 	bool closure_template_specialization : 1;
 
 	BindingRecord();
+};
+
+struct BindingLayoutFact
+{
+	std::uint64_t member_offset, requested_alignment;
+	std::uint32_t bit_offset, bit_width, bit_storage_bits, member_ordinal;
+
+	BindingLayoutFact();
 };
 
 struct LookupResult
@@ -764,6 +772,8 @@ public:
 	BindingId AddUnindexedBinding(ScopeId owner, BindingKind kind, NameId name,
 		TypeId type, BindingId canonical = kNoBinding);
 	bool IsStaticDataMember(BindingId binding) const;
+	const BindingLayoutFact& BindingLayout(const BindingRecord& binding) const;
+	BindingLayoutFact& MutableBindingLayout(BindingRecord& binding);
 	BindingId AddOutputTypeBinding(ScopeId owner, NameId display_name,
 		TypeId type, NamedFlavor display);
 	void SetTypeName(ScopeId owner, NameId name, TypeId type);
@@ -989,6 +999,8 @@ private:
 	std::vector<VirtualBaseIndexEntry> virtual_base_index_entries_;
 	std::vector<std::uint32_t> virtual_base_index_slots_;
 	std::vector<std::uint32_t> base_graph_versions_;
+	BindingLayoutFact empty_binding_layout_;
+	std::vector<BindingLayoutFact> binding_layout_facts_;
 	std::uint32_t lookup_pending_generation_;
 };
 

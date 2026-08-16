@@ -2159,6 +2159,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	}
 	const BindingRecord& member_binding =
 		program_->bindings[found.ordinary];
+	const BindingLayoutFact& member_layout =
+		program_->BindingLayout(member_binding);
 	TypeId type = member_binding.type;
 	if (IsConst(owner_type) && !member_binding.mutable_member)
 		type = program_->types.Qualify(type, CV_CONST);
@@ -2199,7 +2201,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		std::uint32_t object_address = source_operation == "->" ?
 			ExpressionAddress(object) : LvalueAddress(&object);
 		if (object_address != kNoConstexprAddress &&
-			member_binding.member_offset <=
+			member_layout.member_offset <=
 				static_cast<std::uint64_t>(
 					std::numeric_limits<std::int64_t>::max()))
 		{
@@ -2210,7 +2212,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 			EnsureClassDefinition(EffectiveType(member_binding.type));
 			const std::uint32_t member_address = OffsetConstexprAddress(
 				object_address,
-				static_cast<std::int64_t>(member_binding.member_offset), true,
+				static_cast<std::int64_t>(member_layout.member_offset), true,
 				static_cast<std::int64_t>(program_->SizeOf(
 					EffectiveType(member_binding.type))));
 			if (member_address != kNoConstexprAddress)

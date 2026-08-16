@@ -443,7 +443,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			member.member_owner = entity;
 			member.access = ACCESS_PRIVATE;
 			member.non_static_data_member = true;
-			member.member_ordinal = static_cast<std::uint32_t>(
+			program_->MutableBindingLayout(member).member_ordinal =
+				static_cast<std::uint32_t>(
 				entity_data_members_[entity].size());
 			entity_data_members_[entity].push_back(this_capture_member);
 			entity_layout_members_[entity].push_back(
@@ -466,7 +467,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			member.member_owner = entity;
 			member.access = ACCESS_PRIVATE;
 			member.non_static_data_member = true;
-			member.member_ordinal = static_cast<std::uint32_t>(
+			program_->MutableBindingLayout(member).member_ordinal =
+				static_cast<std::uint32_t>(
 				entity_data_members_[entity].size());
 			entity_data_members_[entity].push_back(member_id);
 			entity_layout_members_[entity].push_back(

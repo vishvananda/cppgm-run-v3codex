@@ -228,7 +228,7 @@ bool SemanticAnalyzer::FormMemberPointerAddress(
 	std::uint64_t adjustment = 0;
 	if (!MemberPointerBaseAdjustment(source, shape, &adjustment)) return false;
 	const std::uint64_t member_offset = member.non_static_data_member ?
-		member.member_offset : 0;
+		program_->BindingLayout(member).member_offset : 0;
 	if (adjustment > static_cast<std::uint64_t>(
 			std::numeric_limits<std::int64_t>::max()) ||
 		member_offset > static_cast<std::uint64_t>(

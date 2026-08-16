@@ -108,8 +108,9 @@ void SemanticAnalyzer::RegisterClassDataMember(
 {
 	if (entity_data_members_.size() <= entity)
 		entity_data_members_.resize(static_cast<std::size_t>(entity) + 1);
-	program_->bindings[member].member_ordinal = static_cast<std::uint32_t>(
-		entity_data_members_[entity].size());
+	program_->MutableBindingLayout(
+		program_->bindings[member]).member_ordinal =
+		static_cast<std::uint32_t>(entity_data_members_[entity].size());
 	entity_data_members_[entity].push_back(member);
 	if (entity_layout_members_.size() <= entity)
 		entity_layout_members_.resize(static_cast<std::size_t>(entity) + 1);

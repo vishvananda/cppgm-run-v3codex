@@ -331,8 +331,9 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 				action.binding == kNoBinding ||
 				action.binding >= program_.bindings.size()) return false;
 			const BindingRecord& member = program_.bindings[action.binding];
-			if (member.member_offset < cursor) return false;
-			AppendZero(static_cast<std::size_t>(member.member_offset) - cursor,
+			const BindingLayoutFact& layout = program_.BindingLayout(member);
+			if (layout.member_offset < cursor) return false;
+			AppendZero(static_cast<std::size_t>(layout.member_offset) - cursor,
 				items);
 			const NodeChildren values = Children(actions[i]);
 			if (values.empty())
@@ -354,7 +355,7 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 			else if (values.size() != 1 ||
 				!AppendValue(action.type, values[0], items, substitutions, false))
 				return false;
-			cursor = static_cast<std::size_t>(member.member_offset) +
+			cursor = static_cast<std::size_t>(layout.member_offset) +
 				program_.SizeOf(action.type);
 		}
 		const std::size_t object_size = program_.SizeOf(type);
@@ -537,14 +538,15 @@ bool StaticInitializerLowering::AppendConstructorValue(TypeId type,
 			member_action.binding == kNoBinding ||
 			member_action.binding >= program_.bindings.size()) return false;
 		const BindingRecord& member = program_.bindings[member_action.binding];
-		if (member.member_offset < cursor) return false;
-		AppendZero(static_cast<std::size_t>(member.member_offset) - cursor, items);
+		const BindingLayoutFact& layout = program_.BindingLayout(member);
+		if (layout.member_offset < cursor) return false;
+		AppendZero(static_cast<std::size_t>(layout.member_offset) - cursor, items);
 		const NodeChildren values = Children(actions[i]);
 		if (values.empty()) AppendZero(program_.SizeOf(member_action.type), items);
 		else if (values.size() != 1 ||
 			!AppendValue(member_action.type, values[0], items, &substitutions))
 			return false;
-		cursor = static_cast<std::size_t>(member.member_offset) +
+		cursor = static_cast<std::size_t>(layout.member_offset) +
 			program_.SizeOf(member_action.type);
 	}
 	if (require_vptr && !saw_vptr) return false;

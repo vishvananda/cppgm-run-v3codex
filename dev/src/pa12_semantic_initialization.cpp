@@ -1188,7 +1188,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 					throw std::runtime_error(
 						"union constructor initializes multiple variants");
 				const std::uint32_t ordinal =
-					program_->bindings[member].member_ordinal;
+					program_->BindingLayout(
+						program_->bindings[member]).member_ordinal;
 				if (ordinal >= members.size() || members[ordinal] != member)
 					throw std::logic_error(
 						"constructor member has no canonical ordinal");
@@ -1254,7 +1255,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 		if (active != kNoBinding)
 		{
 			const std::uint32_t ordinal =
-				program_->bindings[active].member_ordinal;
+				program_->BindingLayout(
+					program_->bindings[active]).member_ordinal;
 			if (ordinal >= members.size() || members[ordinal] != active)
 				throw std::logic_error("union active member has no canonical ordinal");
 			NodeId initializer = constructor_initializer_scratch_[ordinal];
@@ -1284,7 +1286,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 	{
 		const BindingId member = constructor_initializer_touched_[i];
 		constructor_initializer_scratch_[
-			program_->bindings[member].member_ordinal] = kNoNode;
+			program_->BindingLayout(
+				program_->bindings[member]).member_ordinal] = kNoNode;
 	}
 	ClearInjectedConstructorInitializers();
 }
@@ -2497,22 +2500,6 @@ ExpressionInfo SemanticAnalyzer::MaterializeDiscardedClassResult(
 	discarded = MaterializeDiscardedClassResult(discarded);
 	dump_.edges[edge].child = discarded.node;
 	return value;
-}
-
-void SemanticAnalyzer::DemandDefaultConstructor(EntityId entity)
-{
-	if (entity == kNoEntity) return;
-	if (default_constructor_demand_states_.size() <= entity)
-		default_constructor_demand_states_.resize(
-			static_cast<std::size_t>(entity) + 1, 0);
-	if (default_constructor_demand_states_[entity] != 0) return;
-	default_constructor_demand_states_[entity] = 1;
-	demanded_default_constructor_entities_.push_back(entity);
-	++demand_worklist_pushes_;
-}
-void SemanticAnalyzer::DemandConstructorDefinition(BindingId binding)
-{
-	DemandFunction(binding);
 }
 
 void SemanticAnalyzer::AddDefaultConstructor(std::uint32_t variable,

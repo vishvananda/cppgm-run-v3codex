@@ -40,9 +40,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
 			found.ordinary >= program_->bindings.size())
 			throw std::runtime_error("designated aggregate member not found");
 		const BindingRecord& binding = program_->bindings[found.ordinary];
+		const std::uint32_t ordinal =
+			program_->BindingLayout(binding).member_ordinal;
 		if (!binding.non_static_data_member || binding.member_owner != entity ||
-			binding.member_ordinal >= members.size() ||
-			members[binding.member_ordinal] != found.ordinary)
+			ordinal >= members.size() || members[ordinal] != found.ordinary)
 			throw std::runtime_error(
 				"designator does not name a direct aggregate member");
 		if (!CanAccessMember(found.ordinary, found.naming_class))
@@ -108,7 +109,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeDesignatedAggregateInit(
 						"cannot mix designated and positional initializers");
 				const BindingId selected = selected_member(designated);
 				const std::size_t ordinal =
-					program_->bindings[selected].member_ordinal;
+					program_->BindingLayout(
+						program_->bindings[selected]).member_ordinal;
 				if (ordinal < i)
 					throw std::runtime_error(
 						"aggregate designators are out of declaration order");
