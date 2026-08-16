@@ -304,6 +304,8 @@ struct DumpEdge
 class DumpArena
 {
 public:
+	void ReserveNodes(std::size_t count);
+
 	std::uint32_t Make(DumpKind kind)
 	{
 		if (nodes.size() >= kNoDumpEdge)

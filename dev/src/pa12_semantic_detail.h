@@ -1863,6 +1863,7 @@ private:
 		std::int64_t left, std::int64_t right, TypeId operand_type) const;
 	NameId InternNumber(std::int64_t value);
 	std::size_t SideStorageBytes() const;
+	void ReserveSemanticCapacity(const SyntaxArena& arena);
 
 	std::uint32_t MakeDump(DumpKind kind, TypeId type = kNoType,
 		ValueCategory category = VALUE_NONE, NameId text = 0,

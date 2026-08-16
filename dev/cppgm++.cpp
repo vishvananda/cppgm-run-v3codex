@@ -1005,7 +1005,9 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << semantic.interning.source_file_cache_hits
 			 << " source_file_cache_misses="
 			 << semantic.interning.source_file_cache_misses
+			 << " syntax_nodes=" << semantic.syntax_nodes
 			 << " semantic_nodes=" << semantic.semantic_nodes
+			 << " semantic_edges=" << semantic.semantic_edges
 			 << " declarations=" << semantic.declarations
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
