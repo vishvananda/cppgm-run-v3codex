@@ -2973,10 +2973,15 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		const std::size_t shared_string_storage =
 			arena.SharedStrings().StorageBytes();
 		const std::size_t program_storage = program.StorageBytes();
+		stats_->semantic_program_storage_bytes = program_storage;
+		stats_->semantic_dump_storage_bytes = dump_.StorageBytes();
+		stats_->semantic_side_storage_bytes = SideStorageBytes();
+		stats_->semantic_shared_string_bytes = shared_string_storage;
 		stats_->semantic_storage_bytes =
 			(program_storage >= shared_string_storage ?
 			 program_storage - shared_string_storage : program_storage) +
-			dump_.StorageBytes() + SideStorageBytes();
+			stats_->semantic_dump_storage_bytes +
+			stats_->semantic_side_storage_bytes;
 		stats_->analysis_nanoseconds = static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				render_started - analysis_started).count());

@@ -1043,6 +1043,14 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " force_inline_blocks=" << stats.force_inline_blocks
 			 << " force_inline_cloned_instructions="
 			 << stats.force_inline_cloned_instructions
+			 << " semantic_program_bytes="
+			 << semantic.semantic_program_storage_bytes
+			 << " semantic_dump_bytes="
+			 << semantic.semantic_dump_storage_bytes
+			 << " semantic_side_bytes="
+			 << semantic.semantic_side_storage_bytes
+			 << " semantic_shared_string_bytes="
+			 << semantic.semantic_shared_string_bytes
 			 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes
 			 << " typed_bytes=" << stats.typed_storage_bytes
 			 << " preprocess_ns="

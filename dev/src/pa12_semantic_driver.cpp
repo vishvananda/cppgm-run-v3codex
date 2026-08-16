@@ -162,6 +162,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  constexpr_max_depth(0), constexpr_peak_locals(0),
 	  constexpr_scratch_peak_nodes(0), demand_worklist_pushes(0),
 	  demanded_function_emissions(0), default_constructor_emissions(0),
+	  semantic_program_storage_bytes(0), semantic_dump_storage_bytes(0),
+	  semantic_side_storage_bytes(0), semantic_shared_string_bytes(0),
 	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
 	  parse_nanoseconds(0), analysis_nanoseconds(0), render_nanoseconds(0),
 	  elapsed_nanoseconds(0)

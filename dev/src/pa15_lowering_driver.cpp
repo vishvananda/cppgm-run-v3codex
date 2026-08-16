@@ -173,6 +173,19 @@ void AccumulateVirtualBaseStats(SemanticAnalysisStats* target,
 		source.polymorphic_virtual_view_merges;
 }
 
+void AccumulateSemanticStorageStats(SemanticAnalysisStats* target,
+	const SemanticAnalysisStats& source)
+{
+	target->semantic_program_storage_bytes +=
+		source.semantic_program_storage_bytes;
+	target->semantic_dump_storage_bytes += source.semantic_dump_storage_bytes;
+	target->semantic_side_storage_bytes += source.semantic_side_storage_bytes;
+	target->semantic_shared_string_bytes += source.semantic_shared_string_bytes;
+	target->semantic_storage_bytes += source.semantic_storage_bytes;
+	target->peak_stage_storage_bytes = std::max(
+		target->peak_stage_storage_bytes, source.peak_stage_storage_bytes);
+}
+
 }
 
 LowIRLoweringStats::LowIRLoweringStats()
@@ -418,11 +431,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 				semantic_stats.demanded_function_emissions;
 			semantic.default_constructor_emissions +=
 				semantic_stats.default_constructor_emissions;
-			semantic.semantic_storage_bytes +=
-				semantic_stats.semantic_storage_bytes;
-			semantic.peak_stage_storage_bytes = std::max(
-				semantic.peak_stage_storage_bytes,
-				semantic_stats.peak_stage_storage_bytes);
+				AccumulateSemanticStorageStats(&semantic, semantic_stats);
 			semantic.preprocessing.elapsed_nanoseconds +=
 				semantic_stats.preprocessing.elapsed_nanoseconds;
 			semantic.parse_nanoseconds += semantic_stats.parse_nanoseconds;

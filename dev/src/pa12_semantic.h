@@ -143,6 +143,10 @@ struct SemanticAnalysisStats
 	std::size_t demand_worklist_pushes;
 	std::size_t demanded_function_emissions;
 	std::size_t default_constructor_emissions;
+	std::size_t semantic_program_storage_bytes;
+	std::size_t semantic_dump_storage_bytes;
+	std::size_t semantic_side_storage_bytes;
+	std::size_t semantic_shared_string_bytes;
 	std::size_t semantic_storage_bytes;
 	std::size_t peak_stage_storage_bytes;
 	std::uint64_t parse_nanoseconds;
