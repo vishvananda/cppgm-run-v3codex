@@ -953,6 +953,49 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 		if (!MatchTemplatePartialArguments(candidate.parameters,
 			candidate.canonical_specialization_arguments,
 			arguments, &bindings)) continue;
+		bool replay_nondeduced = false;
+		for (std::size_t argument = 0;
+			argument < candidate.canonical_specialization_arguments.size();
+			++argument)
+			if (candidate.canonical_specialization_arguments[argument].kind ==
+					TEMPLATE_ARGUMENT_TYPE &&
+				candidate.canonical_specialization_arguments[argument].type ==
+					class_template_nondeduced_type_shape_)
+				replay_nondeduced = true;
+		if (replay_nondeduced)
+		{
+			const ScopeId substitution_scope = NewScope(
+				candidate.lexical_scope, SCOPE_TEMPLATE_PARAMETERS, 0,
+				ScopePrefixId(candidate.lexical_scope));
+			for (std::size_t parameter = 0;
+				parameter < candidate.parameters.size(); ++parameter)
+				if (candidate.parameters[parameter].pack)
+					BindTemplateArgumentPack(substitution_scope,
+						candidate.parameters[parameter],
+						bindings.pack_arguments[parameter], 0,
+						bindings.pack_arguments[parameter].size());
+				else BindTemplateArgument(substitution_scope,
+					candidate.parameters[parameter],
+					bindings.fixed_arguments[parameter]);
+			std::vector<TemplateArgument> replayed;
+			bool valid = false;
+			candidate_substitution_failures_.push_back(0);
+			try
+			{
+				valid = BuildTemplateArguments(primary.parameters,
+					candidate.specialization_arguments, substitution_scope,
+					candidate.lexical_scope, &replayed);
+			}
+			catch (...)
+			{
+				candidate_substitution_failures_.pop_back();
+				throw;
+			}
+			const bool substitution_failed = CandidateSubstitutionFailed();
+			candidate_substitution_failures_.pop_back();
+			if (!valid || substitution_failed || replayed != arguments)
+				continue;
+		}
 		matches.push_back(candidate_index);
 	}
 	if (!matches.empty())
