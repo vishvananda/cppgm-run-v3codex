@@ -2421,8 +2421,33 @@ bool promote_slots(Function * function, Stats * stats)
       }
   }
 
+  std::unordered_set<std::string> replacement_temporaries;
+  for(std::size_t block = 0; block < replacements.size(); ++block)
+    for(std::unordered_map<std::string, Operand>::const_iterator replacement =
+          replacements[block].begin(); replacement != replacements[block].end();
+        ++replacement)
+      if(replacement->second.kind == Operand::OP_TEMP)
+        replacement_temporaries.insert(replacement->second.text);
+  std::unordered_map<std::string, std::size_t> replacement_definitions;
+  std::unordered_set<std::string> parameter_temporaries;
+  if(!replacement_temporaries.empty()) {
+    for(std::size_t parameter = 0;
+        parameter < function->params.size(); ++parameter)
+      if(replacement_temporaries.count(function->params[parameter].name))
+        parameter_temporaries.insert(function->params[parameter].name);
+    for(std::size_t block = 0; block < function->blocks.size(); ++block)
+      for(std::size_t instruction = 0;
+          instruction < function->blocks[block].instructions.size();
+          ++instruction) {
+        const std::string & destination =
+          function->blocks[block].instructions[instruction].dest;
+        if(!destination.empty() && replacement_temporaries.count(destination))
+          replacement_definitions[destination] = block;
+      }
+  }
   std::unordered_set<std::string> slots_with_loads;
   std::unordered_set<std::string> slots_with_unresolved_loads;
+  std::unordered_map<std::string, std::string> load_slots;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
@@ -2430,7 +2455,18 @@ bool promote_slots(Function * function, Stats * stats)
          !eligible.count(ins.first.text))
         continue;
       slots_with_loads.insert(ins.first.text);
-      if(!replacements[i].count(ins.dest))
+      load_slots[ins.dest] = ins.first.text;
+      const std::unordered_map<std::string, Operand>::const_iterator replacement =
+        replacements[i].find(ins.dest);
+      bool textually_available = replacement != replacements[i].end();
+      if(textually_available && replacement->second.kind == Operand::OP_TEMP &&
+         !parameter_temporaries.count(replacement->second.text)) {
+        const std::unordered_map<std::string, std::size_t>::const_iterator
+          definition = replacement_definitions.find(replacement->second.text);
+        textually_available = definition != replacement_definitions.end() &&
+          definition->second <= i;
+      }
+      if(!textually_available)
         slots_with_unresolved_loads.insert(ins.first.text);
     }
   std::unordered_set<std::string> promoted;
@@ -2443,7 +2479,9 @@ bool promote_slots(Function * function, Stats * stats)
   for(std::size_t i = 0; i < replacements.size(); ++i)
     for(std::unordered_map<std::string, Operand>::const_iterator it =
           replacements[i].begin(); it != replacements[i].end(); ++it)
-      load_aliases[it->first] = it->second;
+      if(load_slots.count(it->first) &&
+         promoted.count(load_slots.find(it->first)->second))
+        load_aliases[it->first] = it->second;
   rewrite_promoted_slots(function, promoted, storage_temporaries,
     load_aliases, stats);
   return true;
