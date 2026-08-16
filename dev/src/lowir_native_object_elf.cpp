@@ -856,6 +856,21 @@ std::vector<unsigned char> make_relocation_table(
   return table;
 }
 
+std::size_t relocatable_image_size(
+    const std::vector<HostSection> & sections)
+{
+  std::size_t size = 64;
+  for(std::size_t i = 1; i < sections.size(); ++i) {
+    const std::size_t alignment = sections[i].alignment;
+    const std::size_t remainder = alignment > 1 ? size % alignment : 0;
+    if(remainder) size += alignment - remainder;
+    size += sections[i].bytes.size();
+  }
+  const std::size_t header_remainder = size % 8;
+  if(header_remainder) size += 8 - header_remainder;
+  return size + sections.size() * 64;
+}
+
 std::vector<unsigned char> make_linux_relocatable_image(
     const lowir_model::LowirProgram & program,
     EncodedSection mutable_text,
@@ -1056,20 +1071,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
     sections[i].name_offset = add_string(
       sections[shstrtab_index].bytes, sections[i].name);
 
-  std::size_t image_size = 64;
-  for(std::size_t i = 1; i < sections.size(); ++i) {
-    const std::size_t alignment = sections[i].alignment;
-    if(alignment > 1) {
-      const std::size_t remainder = image_size % alignment;
-      if(remainder) image_size += alignment - remainder;
-    }
-    image_size += sections[i].bytes.size();
-  }
-  const std::size_t header_remainder = image_size % 8;
-  if(header_remainder) image_size += 8 - header_remainder;
-  image_size += sections.size() * 64;
   std::vector<unsigned char> image;
-  image.reserve(image_size);
+  image.reserve(relocatable_image_size(sections));
   image.resize(64, 0);
   image[0] = 0x7f;
   image[1] = 'E'; image[2] = 'L'; image[3] = 'F';
