@@ -61,7 +61,7 @@ struct SyntaxToken
 class SyntaxTokenSink : public IPostTokenStream
 {
 public:
-	explicit SyntaxTokenSink(StringTable& strings);
+	SyntaxTokenSink(StringTable& strings, SyntaxInterningStats* stats);
 	void SetSourceLocation(const std::string& file,
 		std::size_t line, std::size_t column);
 	void EmitInvalid(const std::string& source);
@@ -88,6 +88,7 @@ public:
 	std::size_t StorageBytes() const;
 
 private:
+	TextId InternTokenSpelling(const std::string& source);
 	SyntaxToken LocatedToken(std::uint16_t kind, TextId spelling,
 		std::uint32_t literal_fact = kNoLiteralFact) const;
 	void EmitLiteralSpelling(const std::string& source);
@@ -95,6 +96,7 @@ private:
 		const void* data, std::size_t size);
 
 	StringTable& strings_;
+	SyntaxInterningStats* stats_;
 	TextId source_file_;
 	std::uint32_t source_line_, source_column_;
 	std::vector<SyntaxToken> tokens_;
@@ -137,7 +139,8 @@ class SyntaxArena
 {
 public:
 	SyntaxArena(StringTable& strings, const std::vector<SyntaxToken>& tokens,
-		const std::vector<SyntaxLiteralFact>& literal_facts);
+		const std::vector<SyntaxLiteralFact>& literal_facts,
+		SyntaxInterningStats* stats);
 	NodeId Make(const char* tag);
 	NodeId Make(const char* tag, const std::string& payload);
 	void Add(NodeId parent, NodeId child);
@@ -192,6 +195,7 @@ private:
 	};
 
 	StringTable& strings_;
+	SyntaxInterningStats* stats_;
 	const std::vector<SyntaxToken>& tokens_;
 	const std::vector<SyntaxLiteralFact>& literal_facts_;
 	std::vector<SyntaxNode> nodes_;

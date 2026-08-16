@@ -3,6 +3,24 @@
 namespace cppgm
 {
 
+SyntaxInterningStats::SyntaxInterningStats()
+	: source_location_calls(0), token_spelling_calls(0),
+	  syntax_tag_calls(0), syntax_payload_calls(0),
+	  syntax_tag_query_calls(0), syntax_payload_update_calls(0)
+{
+}
+
+void SyntaxInterningStats::Accumulate(const SyntaxInterningStats& other)
+{
+	table.Accumulate(other.table);
+	source_location_calls += other.source_location_calls;
+	token_spelling_calls += other.token_spelling_calls;
+	syntax_tag_calls += other.syntax_tag_calls;
+	syntax_payload_calls += other.syntax_payload_calls;
+	syntax_tag_query_calls += other.syntax_tag_query_calls;
+	syntax_payload_update_calls += other.syntax_payload_update_calls;
+}
+
 SyntaxStats::SyntaxStats()
 	: tokens(0), interned_spellings(0), spelling_bytes(0), syntax_nodes(0),
 	  syntax_edges(0), syntax_output_bytes(0), max_syntax_depth(0),

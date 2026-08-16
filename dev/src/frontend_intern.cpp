@@ -1,5 +1,6 @@
 #include "frontend_intern.h"
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 
@@ -27,8 +28,31 @@ std::size_t HashTextRange(const std::string& text, std::size_t first,
 
 }
 
+InternedStringStats::InternedStringStats()
+	: calls(0), hits(0), misses(0), hash_bytes(0),
+	  occupied_slot_probes(0), text_comparisons(0), rehashes(0),
+	  rehash_entries(0), rehash_hash_bytes(0),
+	  max_occupied_slot_probes(0)
+{
+}
+
+void InternedStringStats::Accumulate(const InternedStringStats& other)
+{
+	calls += other.calls;
+	hits += other.hits;
+	misses += other.misses;
+	hash_bytes += other.hash_bytes;
+	occupied_slot_probes += other.occupied_slot_probes;
+	text_comparisons += other.text_comparisons;
+	rehashes += other.rehashes;
+	rehash_entries += other.rehash_entries;
+	rehash_hash_bytes += other.rehash_hash_bytes;
+	max_occupied_slot_probes =
+		std::max(max_occupied_slot_probes, other.max_occupied_slot_probes);
+}
+
 InternedStringTable::InternedStringTable()
-	: slots_(32, 0), spelling_bytes_(0)
+	: slots_(32, 0), spelling_bytes_(0), stats_(0)
 {
 	texts_.push_back(std::string());
 }
@@ -43,16 +67,40 @@ InternedStringId InternedStringTable::InternRange(const std::string& text,
 {
 	if (first > text.size() || count > text.size() - first)
 		throw std::logic_error("invalid interned spelling range");
+	if (stats_)
+	{
+		++stats_->calls;
+		stats_->hash_bytes += count;
+	}
 	if ((texts_.size() + 1) * 10 > slots_.size() * 7)
 		Rehash(slots_.size() * 2);
 	const std::size_t mask = slots_.size() - 1;
 	std::size_t slot = HashTextRange(text, first, count) & mask;
+	std::size_t occupied_probes = 0;
 	while (slots_[slot] != 0)
 	{
+		++occupied_probes;
+		if (stats_) ++stats_->occupied_slot_probes;
 		const InternedStringId id = slots_[slot];
-		if (texts_[id].size() == count &&
-			text.compare(first, count, texts_[id]) == 0) return id;
+		const bool same_size = texts_[id].size() == count;
+		if (stats_ && same_size) ++stats_->text_comparisons;
+		if (same_size && text.compare(first, count, texts_[id]) == 0)
+		{
+			if (stats_)
+			{
+				++stats_->hits;
+				stats_->max_occupied_slot_probes = std::max(
+					stats_->max_occupied_slot_probes, occupied_probes);
+			}
+			return id;
+		}
 		slot = (slot + 1) & mask;
+	}
+	if (stats_)
+	{
+		++stats_->misses;
+		stats_->max_occupied_slot_probes = std::max(
+			stats_->max_occupied_slot_probes, occupied_probes);
 	}
 	if (texts_.size() > std::numeric_limits<InternedStringId>::max())
 		throw std::runtime_error("too many interned front-end spellings");
@@ -88,8 +136,22 @@ std::size_t InternedStringTable::StorageBytes() const
 	return bytes;
 }
 
+InternedStringStats* InternedStringTable::AttachStats(
+	InternedStringStats* stats)
+{
+	InternedStringStats* previous = stats_;
+	stats_ = stats;
+	return previous;
+}
+
 void InternedStringTable::Rehash(std::size_t capacity)
 {
+	if (stats_)
+	{
+		++stats_->rehashes;
+		stats_->rehash_entries += texts_.size() - 1;
+		stats_->rehash_hash_bytes += spelling_bytes_;
+	}
 	std::vector<InternedStringId> replacement(capacity, 0);
 	const std::size_t mask = capacity - 1;
 	for (InternedStringId id = 1; id < texts_.size(); ++id)

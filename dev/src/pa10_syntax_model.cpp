@@ -64,12 +64,15 @@ std::uint32_t SyntaxToken::LiteralFact() const
 	return encoded == 0 ? kNoLiteralFact : encoded - 1;
 }
 
-SyntaxTokenSink::SyntaxTokenSink(StringTable& strings)
-	: strings_(strings), source_file_(0), source_line_(0), source_column_(0) {}
+SyntaxTokenSink::SyntaxTokenSink(StringTable& strings,
+	SyntaxInterningStats* stats)
+	: strings_(strings), stats_(stats), source_file_(0), source_line_(0),
+	  source_column_(0) {}
 
 void SyntaxTokenSink::SetSourceLocation(const std::string& file,
 	std::size_t line, std::size_t column)
 {
+	if (stats_) ++stats_->source_location_calls;
 	const TextId source_file = strings_.Intern(file);
 	if (line > std::numeric_limits<std::uint32_t>::max() ||
 		column > std::numeric_limits<std::uint16_t>::max() ||
@@ -82,6 +85,12 @@ void SyntaxTokenSink::SetSourceLocation(const std::string& file,
 	source_file_ = source_file;
 	source_line_ = static_cast<std::uint32_t>(line);
 	source_column_ = static_cast<std::uint32_t>(column);
+}
+
+TextId SyntaxTokenSink::InternTokenSpelling(const std::string& source)
+{
+	if (stats_) ++stats_->token_spelling_calls;
+	return strings_.Intern(source);
 }
 
 SyntaxToken SyntaxTokenSink::LocatedToken(std::uint16_t kind,
@@ -108,18 +117,19 @@ void SyntaxTokenSink::EmitSimple(const std::string& source,
 {
 	if (kind == OP_RSHIFT)
 	{
-		const TextId close = strings_.Intern(">");
+		const TextId close = InternTokenSpelling(">");
 		tokens_.push_back(LocatedToken(kRShiftFirstToken, close));
 		tokens_.push_back(LocatedToken(kRShiftSecondToken, close));
 		return;
 	}
 	tokens_.push_back(LocatedToken(static_cast<std::uint16_t>(kind),
-		strings_.Intern(source)));
+		InternTokenSpelling(source)));
 }
 
 void SyntaxTokenSink::EmitIdentifier(const std::string& source)
 {
-	tokens_.push_back(LocatedToken(kIdentifierToken, strings_.Intern(source)));
+	tokens_.push_back(LocatedToken(kIdentifierToken,
+		InternTokenSpelling(source)));
 }
 
 void SyntaxTokenSink::EmitLiteral(const std::string& source, FundamentalType type,
@@ -162,7 +172,7 @@ void SyntaxTokenSink::EmitUserDefinedFloating(const std::string& source,
 void SyntaxTokenSink::EmitPragmaPackPush(std::size_t alignment)
 {
 	tokens_.push_back(LocatedToken(kPragmaPackPushToken,
-		strings_.Intern(std::to_string(alignment))));
+		InternTokenSpelling(std::to_string(alignment))));
 }
 
 void SyntaxTokenSink::EmitPragmaPackPop()
@@ -172,7 +182,8 @@ void SyntaxTokenSink::EmitPragmaPackPop()
 
 void SyntaxTokenSink::EmitEof()
 {
-	tokens_.push_back(LocatedToken(kEofToken, strings_.Intern(std::string())));
+	tokens_.push_back(LocatedToken(kEofToken,
+		InternTokenSpelling(std::string())));
 }
 
 const std::vector<SyntaxToken>& SyntaxTokenSink::Tokens() const
@@ -193,7 +204,8 @@ std::size_t SyntaxTokenSink::StorageBytes() const
 
 void SyntaxTokenSink::EmitLiteralSpelling(const std::string& source)
 {
-	tokens_.push_back(LocatedToken(kLiteralToken, strings_.Intern(source)));
+	tokens_.push_back(LocatedToken(kLiteralToken,
+		InternTokenSpelling(source)));
 }
 
 void SyntaxTokenSink::EmitScalarLiteral(const std::string& source,
@@ -213,7 +225,7 @@ void SyntaxTokenSink::EmitScalarLiteral(const std::string& source,
 		static_cast<std::uint32_t>(literal_facts_.size());
 	literal_facts_.push_back(SyntaxLiteralFact(type, value, value_valid));
 	tokens_.push_back(LocatedToken(
-		kLiteralToken, strings_.Intern(source), fact));
+		kLiteralToken, InternTokenSpelling(source), fact));
 }
 
 SyntaxNode::SyntaxNode(TextId tag_value, TextId payload_value)
@@ -229,8 +241,10 @@ SyntaxEdge::SyntaxEdge(NodeId child_value) : child(child_value), next(kNoEdge)
 
 SyntaxArena::SyntaxArena(StringTable& strings,
 	const std::vector<SyntaxToken>& tokens,
-	const std::vector<SyntaxLiteralFact>& literal_facts)
-	: strings_(strings), tokens_(tokens), literal_facts_(literal_facts),
+	const std::vector<SyntaxLiteralFact>& literal_facts,
+	SyntaxInterningStats* stats)
+	: strings_(strings), stats_(stats), tokens_(tokens),
+	  literal_facts_(literal_facts),
 	  rollback_edge_base_(0) {}
 
 NodeId SyntaxArena::Make(const char* tag)
@@ -246,8 +260,12 @@ NodeId SyntaxArena::Make(const char* tag, const std::string& payload)
 	// The payload may refer to a spelling already owned by strings_.  Interning
 	// the tag can grow that table and invalidate the reference, so capture the
 	// payload identity before performing any other interning operation.
-	const TextId payload_id =
-		payload.empty() ? 0 : strings_.Intern(payload);
+	if (stats_)
+	{
+		++stats_->syntax_tag_calls;
+		if (!payload.empty()) ++stats_->syntax_payload_calls;
+	}
+	const TextId payload_id = payload.empty() ? 0 : strings_.Intern(payload);
 	const TextId tag_id = strings_.Intern(tag);
 	nodes_.push_back(SyntaxNode(tag_id, payload_id));
 	return id;
@@ -396,6 +414,7 @@ TextId SyntaxArena::TagId(NodeId node) const
 
 bool SyntaxArena::IsTag(NodeId node, const char* tag) const
 {
+	if (stats_) ++stats_->syntax_tag_query_calls;
 	return nodes_[node].tag == strings_.Intern(tag);
 }
 
@@ -483,11 +502,13 @@ void SyntaxArena::AppendImmediateParameterNames(NodeId declarator,
 
 void SyntaxArena::SetPayload(NodeId node, const std::string& payload)
 {
+	if (stats_ && !payload.empty()) ++stats_->syntax_payload_update_calls;
 	nodes_[node].payload = payload.empty() ? 0 : strings_.Intern(payload);
 }
 
 bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 {
+	if (stats_) ++stats_->syntax_tag_query_calls;
 	const TextId identity = strings_.Intern(tag);
 	for (std::uint32_t edge = nodes_[node].first_edge;
 		edge != kNoEdge; edge = edges_[edge].next)
@@ -497,6 +518,7 @@ bool SyntaxArena::HasDirectChildTag(NodeId node, const char* tag) const
 
 bool SyntaxArena::HasDescendantTag(NodeId node, const char* tag) const
 {
+	if (stats_) ++stats_->syntax_tag_query_calls;
 	const TextId identity = strings_.Intern(tag);
 	std::vector<NodeId> pending(1, node);
 	while (!pending.empty())

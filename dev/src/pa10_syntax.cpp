@@ -2891,16 +2891,37 @@ NodeId Parser::ParseDeclarationCore(bool in_class)
 }
 namespace pa10_syntax_detail
 {
+namespace
+{
+
+class InternStatsAttachment
+{
+public:
+	InternStatsAttachment(InternedStringTable& strings,
+		InternedStringStats* stats)
+		: strings_(strings), previous_(strings.AttachStats(stats)) {}
+	~InternStatsAttachment() { strings_.AttachStats(previous_); }
+
+private:
+	InternedStringTable& strings_;
+	InternedStringStats* previous_;
+};
+
+}
+
 void RunSyntaxTranslationUnit(const std::string& path, const std::string& source, const PreprocessingOptions& options, std::ostream* output, SyntaxTreeConsumer* consumer,
 	SyntaxStats* stats, InternedStringTable* retained_strings)
 {
 	const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 	if (stats) *stats = SyntaxStats();
 	StringTable local_strings; StringTable& strings = retained_strings ? *retained_strings : local_strings;
-	SyntaxTokenSink sink(strings);
+	InternStatsAttachment intern_stats(strings,
+		stats ? &stats->interning.table : 0);
+	SyntaxTokenSink sink(strings, stats ? &stats->interning : 0);
 	PreprocessFile(path, source, sink, options,
 		stats ? &stats->preprocessing : 0);
-	SyntaxArena arena(strings, sink.Tokens(), sink.LiteralFacts());
+	SyntaxArena arena(strings, sink.Tokens(), sink.LiteralFacts(),
+		stats ? &stats->interning : 0);
 	Parser parser(sink.Tokens(), strings, arena, stats, output != 0);
 	const std::chrono::steady_clock::time_point parse_started = std::chrono::steady_clock::now();
 	const NodeId root = parser.ParseTranslationUnit();

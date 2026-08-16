@@ -224,6 +224,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 		{
 			SemanticAnalysisStats& semantic = stats->semantic;
 			stats->source_bytes += sources[i].source.size();
+			semantic.interning.Accumulate(semantic_stats.interning);
 			semantic.tokens += semantic_stats.tokens;
 			semantic.syntax_nodes += semantic_stats.syntax_nodes;
 			semantic.semantic_nodes += semantic_stats.semantic_nodes;

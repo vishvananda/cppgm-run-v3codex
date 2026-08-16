@@ -1,6 +1,7 @@
 #pragma once
 
 #include "macro_processor.h"
+#include "pa10_syntax.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +19,7 @@ class SemanticGraphConsumer;
 struct SemanticAnalysisStats
 {
 	PreprocessingStats preprocessing;
+	SyntaxInterningStats interning;
 	std::size_t tokens;
 	std::size_t syntax_nodes;
 	std::size_t semantic_nodes;

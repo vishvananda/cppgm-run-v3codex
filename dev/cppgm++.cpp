@@ -963,9 +963,36 @@ cppgm::pa30::CompilerObject compile_source_object(
 	if(collect_stats) {
 		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
 		cerr << "pa30_compile_stats"
-			 << " file=" << path
-			 << " source_bytes=" << stats.source_bytes
+				 << " file=" << path
+				 << " source_bytes=" << stats.source_bytes
 			 << " tokens=" << semantic.tokens
+			 << " intern_calls=" << semantic.interning.table.calls
+			 << " intern_hits=" << semantic.interning.table.hits
+			 << " intern_misses=" << semantic.interning.table.misses
+			 << " intern_hash_bytes=" << semantic.interning.table.hash_bytes
+			 << " intern_slot_probes="
+			 << semantic.interning.table.occupied_slot_probes
+			 << " intern_text_comparisons="
+			 << semantic.interning.table.text_comparisons
+			 << " intern_rehashes=" << semantic.interning.table.rehashes
+			 << " intern_rehash_entries="
+			 << semantic.interning.table.rehash_entries
+			 << " intern_rehash_hash_bytes="
+			 << semantic.interning.table.rehash_hash_bytes
+			 << " intern_max_slot_probes="
+			 << semantic.interning.table.max_occupied_slot_probes
+			 << " source_location_interns="
+			 << semantic.interning.source_location_calls
+			 << " token_spelling_interns="
+			 << semantic.interning.token_spelling_calls
+			 << " syntax_tag_interns="
+			 << semantic.interning.syntax_tag_calls
+			 << " syntax_payload_interns="
+			 << semantic.interning.syntax_payload_calls
+			 << " syntax_tag_query_interns="
+			 << semantic.interning.syntax_tag_query_calls
+			 << " syntax_payload_update_interns="
+			 << semantic.interning.syntax_payload_update_calls
 			 << " semantic_nodes=" << semantic.semantic_nodes
 			 << " declarations=" << semantic.declarations
 			 << " lookup_queries=" << semantic.lookup_queries

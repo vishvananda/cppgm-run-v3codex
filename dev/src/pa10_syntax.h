@@ -5,6 +5,7 @@
 #include <iosfwd>
 #include <string>
 
+#include "frontend_intern.h"
 #include "macro_processor.h"
 
 namespace cppgm
@@ -15,9 +16,24 @@ namespace pa10_syntax_detail
 class SyntaxTreeConsumer;
 }
 
+struct SyntaxInterningStats
+{
+	InternedStringStats table;
+	std::size_t source_location_calls;
+	std::size_t token_spelling_calls;
+	std::size_t syntax_tag_calls;
+	std::size_t syntax_payload_calls;
+	std::size_t syntax_tag_query_calls;
+	std::size_t syntax_payload_update_calls;
+
+	SyntaxInterningStats();
+	void Accumulate(const SyntaxInterningStats& other);
+};
+
 struct SyntaxStats
 {
 	PreprocessingStats preprocessing;
+	SyntaxInterningStats interning;
 	std::size_t tokens;
 	std::size_t interned_spellings;
 	std::size_t spelling_bytes;

@@ -25,6 +25,7 @@ void PublishDriverStats(const std::string& source,
 {
 	if (!stats) return;
 	stats->preprocessing = syntax.preprocessing;
+	stats->interning = syntax.interning;
 	stats->tokens = syntax.tokens;
 	stats->syntax_nodes = syntax.syntax_nodes;
 	stats->parse_nanoseconds = syntax.parse_nanoseconds;
