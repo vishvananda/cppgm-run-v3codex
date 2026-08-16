@@ -144,6 +144,8 @@ private:
   RegisterPool registers_;
   XmmPool xmms_;
   std::unordered_map<std::string, ValueFact> values_;
+  std::size_t live_gpr_counts_[16] = {};
+  std::size_t live_xmm_counts_[8] = {};
   std::unordered_map<std::string, long long> slot_offsets_;
   std::unordered_map<std::string, LowType> slot_types_;
   std::unordered_map<std::string, X64Register> incoming_parameter_registers_;
@@ -317,7 +319,7 @@ private:
         value.location = frame_operand(home);
       }
       target_.params.push_back(binding);
-      values_[parameter.name] = value;
+      set_value(parameter.name, value);
     }
     parameter_moves_.insert(parameter_moves_.end(),
                             gpr_parameter_moves.begin(), gpr_parameter_moves.end());
@@ -342,7 +344,7 @@ private:
         value.has_frame_provenance = true;
         value.frame_provenance = homes[i];
       }
-      values_[parameter.name] = value;
+      set_value(parameter.name, value);
     }
     for(std::unordered_map<std::string, std::string>::const_iterator alias =
         storage_facts_.parameter_slot_aliases.begin();
@@ -445,7 +447,7 @@ private:
                      parameter.type.text);
         value.location = frame_operand(home);
         target_.params.push_back(binding);
-        values_[parameter.name] = value;
+        set_value(parameter.name, value);
         continue;
       }
       binding.location = mir_model::MirParamBinding::PL_REG;
@@ -545,7 +547,7 @@ private:
       if(incoming_pool_reserved[i] &&
          (value.location.kind != MirOperand::OP_REG || value.location.reg != binding.reg))
         registers_.release(binding.reg);
-      values_[parameter.name] = value;
+      set_value(parameter.name, value);
     }
     parameter_moves_.insert(parameter_moves_.end(), register_parameter_moves.begin(),
                             register_parameter_moves.end());
@@ -568,7 +570,7 @@ private:
       registers_.reserve(destination);
       append_move(parameter_moves_, reg_operand(destination),
                   reg_operand(argument_register(index)));
-      values_[name].location = reg_operand(destination);
+      set_value_location(name, reg_operand(destination));
       values_[name].parameter = false;
       values_[name].fixed_register_home =
         storage_facts_.promoted_parameters.count(name);
@@ -739,7 +741,11 @@ private:
     std::unordered_map<std::string, std::size_t>::iterator found = facts_.uses.find(operand.text);
     if(found == facts_.uses.end() || found->second == 0)
       throw std::runtime_error("invalid temporary use count");
+    const bool stops_being_live = found->second == 1 &&
+      !facts_.edge_live.count(operand.text);
     --found->second;
+    if(stops_being_live)
+      remove_live_location(values_.find(operand.text)->second.location);
     if(found->second == 0) {
       const ValueFact & value = values_.find(operand.text)->second;
       if(value.location.kind == MirOperand::OP_REG &&
@@ -772,57 +778,63 @@ private:
   {
     return reg == XR_R8 || reg == XR_R9 || is_callee_saved(reg);
   }
-  struct LiveLocationCounts
+  bool value_is_live(const std::string & name) const
   {
-    LiveLocationCounts()
-    {
-      std::fill(gpr, gpr + 16, 0);
-      std::fill(xmm, xmm + 8, 0);
-    }
-    std::size_t gpr[16];
-    std::size_t xmm[8];
-  };
-  LiveLocationCounts live_location_counts() const
-  {
-    LiveLocationCounts result;
-    if(stats_) {
-      ++stats_->live_location_scans;
-      stats_->live_location_value_visits += values_.size();
-    }
-    for(std::unordered_map<std::string, ValueFact>::const_iterator value =
-          values_.begin(); value != values_.end(); ++value) {
-      const std::unordered_map<std::string, std::size_t>::const_iterator uses =
-        facts_.uses.find(value->first);
-      if((uses == facts_.uses.end() || uses->second == 0) &&
-         !facts_.edge_live.count(value->first)) continue;
-      if(value->second.location.kind == MirOperand::OP_REG)
-        ++result.gpr[value->second.location.reg];
-      else if(value->second.location.kind == MirOperand::OP_XMM)
-        ++result.xmm[value->second.location.xmm];
-    }
-    return result;
-  }
-  bool has_live_location_alias(const std::string & name,
-                               const MirOperand & location,
-                               const LiveLocationCounts & counts) const
-  {
-    if(stats_) ++stats_->live_location_alias_queries;
     const std::unordered_map<std::string, std::size_t>::const_iterator uses =
       facts_.uses.find(name);
-    const std::size_t self =
-      ((uses != facts_.uses.end() && uses->second != 0) ||
-       facts_.edge_live.count(name)) ? 1 : 0;
-    if(location.kind == MirOperand::OP_REG)
-      return counts.gpr[location.reg] > self;
-    if(location.kind == MirOperand::OP_XMM)
-      return counts.xmm[location.xmm] > self;
-    return false;
+    return (uses != facts_.uses.end() && uses->second != 0) ||
+      facts_.edge_live.count(name);
+  }
+  void add_live_location(const MirOperand & location)
+  {
+    if(location.kind == MirOperand::OP_REG) ++live_gpr_counts_[location.reg];
+    else if(location.kind == MirOperand::OP_XMM) ++live_xmm_counts_[location.xmm];
+    else return;
+    if(stats_) ++stats_->live_location_updates;
+  }
+  void remove_live_location(const MirOperand & location)
+  {
+    std::size_t * count = 0;
+    if(location.kind == MirOperand::OP_REG) count = &live_gpr_counts_[location.reg];
+    else if(location.kind == MirOperand::OP_XMM) count = &live_xmm_counts_[location.xmm];
+    if(!count) return;
+    if(*count == 0)
+      throw std::logic_error("native live-location count underflow");
+    --*count;
+    if(stats_) ++stats_->live_location_updates;
+  }
+  void set_value(const std::string & name, const ValueFact & replacement)
+  {
+    std::unordered_map<std::string, ValueFact>::iterator existing =
+      values_.find(name);
+    const bool live = value_is_live(name);
+    if(live && existing != values_.end())
+      remove_live_location(existing->second.location);
+    if(existing == values_.end()) values_.emplace(name, replacement);
+    else existing->second = replacement;
+    if(live) add_live_location(replacement.location);
+  }
+  void set_value_location(const std::string & name,
+                          const MirOperand & replacement)
+  {
+    std::unordered_map<std::string, ValueFact>::iterator value = values_.find(name);
+    if(value == values_.end())
+      throw std::logic_error("cannot move an unknown native value");
+    const bool live = value_is_live(name);
+    if(live) remove_live_location(value->second.location);
+    value->second.location = replacement;
+    if(live) add_live_location(replacement);
   }
   bool has_live_location_alias(const std::string & name,
                                const MirOperand & location) const
   {
-    return has_live_location_alias(
-      name, location, live_location_counts());
+    if(stats_) ++stats_->live_location_alias_queries;
+    const std::size_t self = value_is_live(name) ? 1 : 0;
+    if(location.kind == MirOperand::OP_REG)
+      return live_gpr_counts_[location.reg] > self;
+    if(location.kind == MirOperand::OP_XMM)
+      return live_xmm_counts_[location.xmm] > self;
+    return false;
   }
   void stabilize_edge_live_result(
       const Instruction & instruction,
@@ -853,7 +865,7 @@ private:
         registers_.release(location.reg);
       }
     }
-    value->second.location = frame_operand(home);
+    set_value_location(instruction.dest, frame_operand(home));
     spill_offsets_[instruction.dest] = home;
   }
   bool spill_one(bool needs_callee_saved, std::vector<MirInstruction> & out)
@@ -861,7 +873,6 @@ private:
     if(stats_) ++stats_->spill_attempts;
     std::unordered_map<std::string, ValueFact>::iterator victim = values_.end();
     std::size_t farthest_use = 0;
-    const LiveLocationCounts live_locations = live_location_counts();
     for(std::unordered_map<std::string, ValueFact>::iterator value = values_.begin();
         value != values_.end(); ++value) {
       if(stats_) ++stats_->spill_value_visits;
@@ -869,8 +880,7 @@ private:
          value->second.location.kind != MirOperand::OP_REG ||
          !managed_register(value->second.location.reg) ||
          (needs_callee_saved && !is_callee_saved(value->second.location.reg)) ||
-         has_live_location_alias(value->first, value->second.location,
-                                 live_locations) ||
+         has_live_location_alias(value->first, value->second.location) ||
          current_instruction_uses(value->first)) continue;
       if(!control_flow_.SpillIsSafe(value->first, position_)) continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator uses =
@@ -898,7 +908,7 @@ private:
     append_store(out, frame_operand(home), victim->second.location,
                  victim->second.type.text);
     const X64Register released = victim->second.location.reg;
-    victim->second.location = frame_operand(home);
+    set_value_location(victim->first, frame_operand(home));
     registers_.release(released);
     if(stats_) ++stats_->spills;
     return true;
@@ -907,7 +917,6 @@ private:
   {
     if(control_flow_.CurrentBlockIsCyclic()) return false;
     if(stats_) ++stats_->reclaim_attempts;
-    const LiveLocationCounts live_locations = live_location_counts();
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       if(stats_) ++stats_->reclaim_parameter_visits;
       std::unordered_map<std::string, ValueFact>::iterator value = values_.find(source_.params[i].name);
@@ -921,8 +930,7 @@ private:
         facts_.uses.find(value->first);
       if(uses == facts_.uses.end() || uses->second != 0 || facts_.edge_live.count(value->first) ||
          !control_flow_.SpillIsSafe(value->first, position_) ||
-         has_live_location_alias(value->first, value->second.location,
-                                 live_locations)) continue;
+         has_live_location_alias(value->first, value->second.location)) continue;
       registers_.release(value->second.location.reg);
       if(stats_) ++stats_->reclaims;
       return true;
@@ -976,7 +984,7 @@ private:
     ValueFact value;
     value.location = location;
     value.type = type;
-    values_[name] = value;
+    set_value(name, value);
     if(facts_.uses.count(name)) return;
     if(location.kind == MirOperand::OP_REG && registers_.is_used(location.reg) &&
        !has_live_location_alias(name, location)) {
@@ -1071,7 +1079,7 @@ private:
     else if(found->second.location.kind == MirOperand::OP_XMM &&
             !has_live_location_alias(operand.text, found->second.location))
       xmms_.release(found->second.location.xmm);
-    found->second.location = home;
+    set_value_location(operand.text, home);
     spill_offsets_[operand.text] = home.offset;
     return home;
   }
@@ -2367,7 +2375,7 @@ private:
       value.has_frame_provenance = true;
       value.frame_provenance = home.offset;
     }
-    values_[name] = value;
+    set_value(name, value);
   }
   void emit_extended_call(
       const Instruction & instruction,
@@ -2505,7 +2513,7 @@ private:
       append_store(out, home, argument.location, argument.type.text);
       if(!has_live_location_alias(instruction.args[i].text, argument.location))
         registers_.release(argument.location.reg);
-      argument.location = home;
+      set_value_location(instruction.args[i].text, home);
     }
     const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
     if(!direct) {

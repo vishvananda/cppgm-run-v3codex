@@ -1084,6 +1084,7 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.live_location_value_visits
          << " live_location_alias_queries="
          << native_stats.live_location_alias_queries
+         << " live_location_updates=" << native_stats.live_location_updates
          << " spill_attempts=" << native_stats.spill_attempts
          << " spill_value_visits=" << native_stats.spill_value_visits
          << " spill_candidates=" << native_stats.spill_candidates
@@ -1177,6 +1178,7 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << native_stats.live_location_value_visits
 			 << " live_location_alias_queries="
 			 << native_stats.live_location_alias_queries
+			 << " live_location_updates=" << native_stats.live_location_updates
 			 << " spill_attempts=" << native_stats.spill_attempts
 			 << " spill_value_visits=" << native_stats.spill_value_visits
 			 << " spill_candidates=" << native_stats.spill_candidates

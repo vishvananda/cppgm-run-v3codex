@@ -75,7 +75,7 @@ protected:
 					value.forwarded_parameter = parameter;
 				}
 			}
-			lowerer.values_[instruction.dest] = value;
+				lowerer.set_value(instruction.dest, value);
 			return;
 		}
 		if (wide::is_integer(instruction.type))

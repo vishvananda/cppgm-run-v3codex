@@ -27,6 +27,7 @@ struct Stats
   std::size_t live_location_scans = 0;
   std::size_t live_location_value_visits = 0;
   std::size_t live_location_alias_queries = 0;
+  std::size_t live_location_updates = 0;
   std::size_t spill_attempts = 0;
   std::size_t spill_value_visits = 0;
   std::size_t spill_candidates = 0;
