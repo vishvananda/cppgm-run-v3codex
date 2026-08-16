@@ -930,6 +930,16 @@ ScopeId Program::GlobalScope() const
 	return 0;
 }
 
+void Program::ReserveSemanticStorage(std::size_t syntax_nodes)
+{
+	const std::size_t scope_hint = syntax_nodes - syntax_nodes / 3;
+	scopes_.reserve(scope_hint);
+	child_edges_.reserve(scope_hint);
+	visible_names_.reserve(syntax_nodes);
+	entries_.reserve(syntax_nodes);
+	bindings.reserve(syntax_nodes);
+}
+
 ScopeId Program::NewScope(ScopeId parent, ScopeKind kind, NameId name,
 	EntityId entity, ScopeId output_parent)
 {

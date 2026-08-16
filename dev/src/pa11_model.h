@@ -730,6 +730,7 @@ public:
 	explicit Program(InternedStringTable& strings);
 	~Program();
 	ScopeId GlobalScope() const;
+	void ReserveSemanticStorage(std::size_t syntax_nodes);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		EntityId entity = kNoEntity, ScopeId output_parent = kNoScope);
 	ScopeId OpenNamespace(ScopeId parent, NameId name, bool is_inline,
