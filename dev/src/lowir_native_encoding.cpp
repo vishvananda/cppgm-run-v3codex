@@ -66,10 +66,21 @@ void emit_tls_address(CodeBuffer & out, X64Register destination,
 void emit_memory_modrm(CodeBuffer & out, unsigned reg, X64Register base,
                        long long displacement)
 {
-  emit_modrm(out, 2, reg, base);
-  if((static_cast<unsigned>(base) & 7) == 4)
-    out.byte((0 << 6) | (4 << 3) | (static_cast<unsigned>(base) & 7));
-  out.little(static_cast<std::uint32_t>(displacement), 4);
+  const unsigned base_code = static_cast<unsigned>(base) & 7;
+  unsigned mode = 2;
+  unsigned displacement_bytes = 4;
+  if(displacement == 0 && base_code != 5) {
+    mode = 0;
+    displacement_bytes = 0;
+  } else if(displacement >= -128 && displacement <= 127) {
+    mode = 1;
+    displacement_bytes = 1;
+  }
+  emit_modrm(out, mode, reg, base);
+  if(base_code == 4)
+    out.byte((0 << 6) | (4 << 3) | base_code);
+  if(displacement_bytes)
+    out.little(static_cast<std::uint32_t>(displacement), displacement_bytes);
 }
 
 void emit_size_prefix(CodeBuffer & out, unsigned width)
