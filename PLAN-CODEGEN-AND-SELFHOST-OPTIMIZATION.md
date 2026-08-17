@@ -301,7 +301,7 @@ candidate.
 | C2c | Alpha-equivalent or cross-context cleanup-tail sharing | Potentially broad at O1 | Downstream only | Deferred: exact sharing captured the safe typed subset; cross-context ownership failed the PA36 reducer and alpha-renaming needs a separate SSA/liveness proof |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`, corrected in `5517d984`; all 4,578 frozen functions classified, 74 conservative fallback roots and 78 internal-pruning candidates, exact object SHA preserved, full report 5,178/5,178, timing neutral |
 | D2 | Prune unreachable internal native definitions | 0 required | Native function set changes at O0/O1/O2 | **Deferred**: raw prototype removed 78 definitions and 22,376 bytes, but omitted an ABI-required anonymous-namespace base constructor; the metadata repair moved 49 existing LowIR fixtures, while the nonserialized repair broke 3/7 PA37 object round trips |
-| O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | **In progress**: preparation slice landed in `693e4357`; one reference-agreeing PA37 reducer, frozen object -1,144 bytes, paired wall -0.07% and user +0.68%, full report 5,179/5,179; bottom-up scheduling remains |
+| O1a | Simplify before inlining and dependency scheduling | Intentional at O1 | Downstream only | **In progress**: preparation `693e4357` plus sparse EH dependency worklist `919c2e55`; two reference-agreeing PA37 reducers, frozen object -1,144 bytes overall and byte-identical in the scheduling slice, five-block paired wall +0.41% and user +0.15%, full report 5,180/5,180 |
 | O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | Planned after O1a |
 | O2a | Expanded slot/value promotion | Intentional at O2 | Downstream only | Profile-gated |
 | O2b | Bounded improved register allocation | LowIR unchanged | Intentional at O2 | Profile-gated PA38 work |
@@ -1181,6 +1181,40 @@ fatal findings.  **O0 is unchanged.  No existing checked-in LowIR or MIR
 fixture changes; the sole new exact O1 fixture agrees with the pinned
 reference.**  Bottom-up scheduling and changed-caller worklist consolidation
 remain part of O1a because they should recover the extra preparation work.
+
+### 4.27 O1a no-unwind dependency result
+
+`919c2e55` retains source order and records only calls that would otherwise be
+inline candidates but are blocked by a tiny explicit-no-unwind callee's EH
+markers.  Once that callee has inlined its own leaf, its EH markers and newly
+unreachable landing blocks are removed, and only the recorded callers enter a
+sparse reverse-edge worklist.  The original per-caller 128-instruction budget
+is stored across revisits; a revisit cannot silently acquire a second budget.
+Propagation is restricted to call-free single-block wrappers of at most four
+instructions, and blocked records are collected only for no-unwind candidates
+of at most eight pre-strip instructions.
+
+The reference-agreeing `370-bottom-up-no-unwind-wrapper.t` places `main`
+before an EH-wrapped identity wrapper and its leaf.  The old source-order pass
+left `main` calling the wrapper; the worklist removes that call after the
+wrapper becomes safe.  A global callee-first prototype was rejected because
+it changed two existing PA37 fixtures.  An unrestricted reverse worklist was
+also rejected: it raised frozen call visits from 30,028 to about 44,000,
+performed 40 additional inlines without reducing final native calls, and grew
+the object 416 bytes.
+
+The accepted sparse form records zero blocked edges and performs zero revisits
+on the frozen source, so its object is byte-identical to the O1a preparation
+slice (SHA-256 `1bc0391d...`, 3,611,896 bytes).  Five-block immutable ABBA
+medians are 7.305/7.330 seconds wall, 6.690/6.690 seconds user, and
+382,148/386,980 KiB peak RSS.  Paired deltas are +0.41% wall, +0.15% user,
+and -1.01% RSS; one visibly loaded candidate run is absorbed by the
+interleaved block median.
+
+PA1--PA37 passes 5,154/5,154, the full report passes 5,180/5,180, and the
+PA39 audit has zero fatal findings.  **O0 is unchanged, and no existing LowIR
+or MIR fixture changes.**  The rejected global schedule's two existing O1
+fixture changes are recorded here and were reverted, not rebaselined.
 
 ## 5. Execution plan
 
