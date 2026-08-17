@@ -25,7 +25,21 @@ inline bool is_setup_load_sequence(
     instructions[start + 2].opcode == MirInstruction::MI_LOAD;
 }
 
+inline bool is_copy_store_sequence(
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start)
+{
+  using mir_model::MirInstruction;
+  return start + 1 < instructions.size() &&
+    instructions[start].opcode == MirInstruction::MI_MOV &&
+    instructions[start + 1].opcode == MirInstruction::MI_STORE;
+}
+
 std::size_t emit_dead_setup_load(
+    elf_detail::CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, const mir_model::MirFunction & function);
+std::size_t emit_dead_copy_store(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start, const mir_model::MirFunction & function);

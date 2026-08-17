@@ -44,12 +44,16 @@ bool source_reads_register(const MirInstruction & instruction,
 
 bool overwritten_without_read(
     const std::vector<MirInstruction> & instructions, std::size_t start,
-    X64Register reg)
+    X64Register reg, const MirOperand * forwarded_frame = 0)
 {
   const std::size_t limit = instructions.size() - start > 5 ?
     start + 5 : instructions.size();
   for(std::size_t i = start; i < limit; ++i) {
     const MirInstruction & instruction = instructions[i];
+    if(forwarded_frame && instruction.opcode == MirInstruction::MI_LOAD &&
+       instruction.operands.size() == 2 &&
+       instruction.operands[1].kind == MirOperand::OP_FRAME &&
+       instruction.operands[1].offset == forwarded_frame->offset) return false;
     if(!simple_register_definition(instruction) ||
        source_reads_register(instruction, reg)) return false;
     if(instruction.operands[0].reg == reg) return true;
@@ -156,6 +160,51 @@ std::size_t emit_dead_setup_load(
   emit_load(out, load.operands[0].reg, base, offset,
             data_layout::type_width(load.type));
   return count;
+}
+
+std::size_t emit_dead_copy_store(
+    elf_detail::CodeBuffer & out,
+    const std::vector<MirInstruction> & instructions, std::size_t start,
+    const mir_model::MirFunction & function)
+{
+  if(start > instructions.size() || instructions.size() - start < 2)
+    return 0;
+  const MirInstruction & copy = instructions[start];
+  const MirInstruction & store = instructions[start + 1];
+  if(copy.opcode != MirInstruction::MI_MOV || copy.operands.size() != 2 ||
+     copy.operands[0].kind != MirOperand::OP_REG ||
+     copy.operands[1].kind != MirOperand::OP_REG ||
+     store.opcode != MirInstruction::MI_STORE || store.operands.size() != 2 ||
+     (store.operands[0].kind != MirOperand::OP_FRAME &&
+      store.operands[0].kind != MirOperand::OP_GLOBAL &&
+      store.operands[0].kind != MirOperand::OP_DEREF) ||
+     store.operands[1].kind != MirOperand::OP_REG ||
+     store.operands[1].reg != copy.operands[0].reg) return 0;
+  const X64Register copied = copy.operands[0].reg;
+  const X64Register source = copy.operands[1].reg;
+  const MirOperand * frame = store.operands[0].kind == MirOperand::OP_FRAME ?
+    &store.operands[0] : 0;
+  if(copied != source &&
+     !overwritten_without_read(instructions, start + 2, copied, frame))
+    return 0;
+
+  MirOperand address = store.operands[0];
+  if(address.kind == MirOperand::OP_DEREF && address.reg == copied)
+    address.reg = source;
+  long long offset = address.offset;
+  X64Register base = address.reg;
+  if(address.kind == MirOperand::OP_FRAME) {
+    base = XR_RBP;
+    if(offset < 0) offset -= static_cast<long long>(
+      function.callee_saved_regs.size() * 8);
+  } else if(address.kind == MirOperand::OP_GLOBAL) {
+    if(source == XR_R11) return 0;
+    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
+    base = XR_R11;
+    offset = 0;
+  }
+  emit_store(out, base, offset, source, data_layout::type_width(store.type));
+  return 2;
 }
 
 }  // namespace address_folding
