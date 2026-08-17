@@ -299,6 +299,7 @@ candidate.
 | B7 | Reduce residual copy, frame-home, and address-materialization traffic | 0 preferred | 0 at baseline; intentional only if assigned to PA38 | **Reprofiled after B6**: same-name functions account for about 2.25 MB of the 2.94 MB residual machine-text gap; `mov` and `lea` account for 2.20 MB of the parsed instruction-byte delta, led by register copies, stack homes/reloads, and materialized addresses; prove bounded zero-MIR cases first, then put representation-changing coalescing in PA38 |
 | B7a | Omit a proved redundant 32-bit normalization | 0 existing | 0 existing | **Landed** in `0f01fa1a`; an immediately preceding non-forwarded 32-bit producer proves that the register's upper half is already zero, identical-source O0 self build machine text -41,856 bytes and 16,107 same-register moves, frozen object text -347 bytes, paired compile time neutral |
 | B7b | Extend the proof through frame-load forwarding | 0 existing | 0 existing | **Landed** in `58aa9b65`; ordinary 32-bit frame loads and different-register forwarded reloads normalize their destination, while same-register forwarding retains the required operation; identical-source O0 self machine text -67,536 bytes and 26,719 same-register moves, frozen text -156 bytes, paired compile time neutral |
+| B7c | Fuse register copy followed by 32-bit normalization | 0 existing | 0 existing | **Landed** in `9a929862`; a single 32-bit register move has the exact final value and flags of the adjacent 64-bit copy plus normalization; identical-source O0 self machine text -34,224 bytes and 11,721 same-register moves, frozen text -192 bytes, paired compile time neutral |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -579,6 +580,46 @@ versus 8.810 s wall medians, with paired changes of -0.48% wall, -0.15% user,
 and -0.22% RSS.  PA29 passes all four lanes, PA1--PA29 is 4,102/4,102,
 PA29--PA38 is 1,295/1,295, the full report is 5,186/5,186, and the PA39 audit
 has zero fatal findings (25 warnings).
+
+### 4.3.6 B7c result
+
+`9a929862` recognizes an adjacent 64-bit register copy followed by a 32-bit
+normalization of the copy destination.  One 32-bit register move produces the
+same final value, including zeroed upper bits, and neither form changes
+condition flags.  The encoder consumes the pair in constant time and leaves
+textual MIR unchanged.
+
+The PA29 proposed witness adds a `u32` function return.  Its dumped MIR retains
+`mov r8, rax; zext.i32 r8`, while raw native disassembly contains the single
+`mov %eax,%r8d` encoding and the program exits zero.  Existing active unsigned
+call/extension behavior remains the runtime oracle.
+
+Identical current sources compiled by the B7b and B7c compilers at `-O0`
+measure:
+
+| Identical-source O0 self compiler | B7b | B7c | Change |
+| --- | ---: | ---: | ---: |
+| file bytes | 18,546,464 | 18,509,600 | -36,864 |
+| GNU `size` text | 11,193,869 | 11,159,621 | -34,248 |
+| machine `.text` | 9,063,026 | 9,028,802 | -34,224 |
+| same-register 32-bit moves | 16,198 | 4,477 | -11,721 |
+| `.eh_frame` | 1,260,304 | 1,260,304 | 0 |
+
+The same-source builds took 17.61 s and 17.49 s wall, respectively.  The
+frozen object loses another 192 GNU `size` text bytes.  A timing block that
+crossed a 19.4-to-9.4-second host-load transition was discarded; the stable
+replacement block measured 9.180 s versus 9.090 s wall medians, with paired
+changes of -0.98% wall, -0.12% user, and +1.79% RSS.  PA29 passes all four
+lanes, PA1--PA29 is 4,102/4,102, PA29--PA38 is 1,295/1,295, the full report is
+5,186/5,186, and the PA39 audit has zero fatal findings (25 warnings).
+
+The remaining 4,477 apparent same-register 32-bit moves are no longer one
+uniform local deletion opportunity.  Their leading predecessors are calls,
+64-bit arithmetic, block boundaries, same-register forwarded reloads, and
+sign-extending operations.  Each needs an ABI, flag-liveness, CFG, or source
+width proof.  Further material copy reduction therefore moves to the planned
+PA38 value-placement/register-allocation work rather than broadening the O0
+encoder peephole.
 
 ### 4.4 P0 result
 
