@@ -2576,6 +2576,24 @@ bool timed_dce(Function * function,
   return changed;
 }
 
+bool prepare_for_inlining(Function * function,
+                          const std::unordered_map<std::string,
+                            FunctionBoundaryMetadata> & boundaries,
+                          Stats * stats)
+{
+  timed_function_pass(simplify_values, function, stats,
+    &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+  timed_dce(function, boundaries, stats);
+  if(!timed_function_pass(cleanup_cfg, function, stats,
+       &Stats::cfg_runs, &Stats::cfg_nanoseconds))
+    return false;
+  const bool values_changed = timed_function_pass(
+    simplify_values, function, stats,
+    &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+  timed_dce(function, boundaries, stats);
+  return values_changed;
+}
+
 }  // namespace
 
 void optimize(LowirProgram & program, int level, Stats * stats)
@@ -2599,11 +2617,29 @@ void optimize(LowirProgram & program, int level, Stats * stats)
   }
   const std::unordered_map<std::string, FunctionBoundaryMetadata> boundaries =
     function_boundaries(program);
+  std::unordered_set<std::string> prepared_oversized_functions;
+  std::vector<std::size_t> original_instruction_counts(
+    program.functions.size(), 0);
+  std::vector<unsigned char> post_cfg_values_changed(
+    program.functions.size(), 0);
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    std::size_t original_instructions = 0;
+    for(std::size_t b = 0; b < program.functions[i].blocks.size(); ++b)
+      original_instructions +=
+        program.functions[i].blocks[b].instructions.size();
+    original_instruction_counts[i] = original_instructions;
+    if(original_instructions > 40 &&
+       !program.functions[i].metadata.prefer_local_object_binding)
+      prepared_oversized_functions.insert(program.functions[i].name);
+    post_cfg_values_changed[i] =
+      prepare_for_inlining(&program.functions[i], boundaries, stats) ? 1 : 0;
+  }
   std::unordered_set<std::string> inlined_functions;
   std::chrono::steady_clock::time_point inline_started;
   if(stats) inline_started = std::chrono::steady_clock::now();
   const std::size_t inline_rewrites =
-    inline_o1_calls(program, &inlined_functions, stats);
+    inline_o1_calls(program, prepared_oversized_functions,
+      original_instruction_counts, &inlined_functions, stats);
   if(stats) {
     stats->rewrites += inline_rewrites;
     stats->inline_nanoseconds += static_cast<std::uint64_t>(
@@ -2616,12 +2652,9 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     // a preceding transform can have exposed work in that stage; the
     // individual propagation and liveness analyses use their own dirty
     // worklists.
-    timed_function_pass(simplify_values, &function, stats,
-      &Stats::simplify_runs, &Stats::simplify_nanoseconds);
-    timed_dce(&function, boundaries, stats);
-    const bool initial_cfg_changed = timed_function_pass(
-      cleanup_cfg, &function, stats,
-      &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+    if(inlined_functions.count(function.name))
+      post_cfg_values_changed[i] =
+        prepare_for_inlining(&function, boundaries, stats) ? 1 : 0;
     const std::chrono::steady_clock::time_point cleanup_resume_started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();
@@ -2638,13 +2671,6 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - cleanup_tail_started).count());
-    bool post_cfg_values_changed = false;
-    if(initial_cfg_changed) {
-      post_cfg_values_changed = timed_function_pass(
-        simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds);
-      timed_dce(&function, boundaries, stats);
-    }
     bool slot_values_changed = false;
     if(inlined_functions.count(function.name) || level >= 2)
       slot_values_changed = timed_function_pass(
@@ -2659,7 +2685,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         &Stats::simplify_runs, &Stats::simplify_nanoseconds);
       timed_dce(&function, boundaries, stats);
     }
-    if(post_cfg_values_changed || slot_values_changed)
+    if(post_cfg_values_changed[i] || slot_values_changed)
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds);
     if(timed_function_pass(remove_dead_slots, &function, stats,

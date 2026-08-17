@@ -1,0 +1,8 @@
+function @callee(%x : i64) -> i64 {
+  block ^entry:
+    return i64 %x
+}
+function @caller(%x : i64) -> i64 {
+  block ^entry:
+    return i64 %x
+}

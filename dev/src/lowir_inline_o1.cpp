@@ -290,11 +290,17 @@ class Inliner
 {
 public:
   Inliner(LowirProgram * program,
+          const std::unordered_set<std::string> & prepared_oversized_functions,
+          const std::vector<std::size_t> & original_instruction_counts,
           std::unordered_set<std::string> * rewritten_functions,
           Stats * stats)
     : program_(*program), rewritten_functions_(rewritten_functions),
-      stats_(stats), rewrites_(0)
+      stats_(stats),
+      prepared_oversized_functions_(prepared_oversized_functions),
+      original_instruction_counts_(original_instruction_counts), rewrites_(0)
   {
+    if(original_instruction_counts_.size() != program_.functions.size())
+      throw std::logic_error("inline cost summary count mismatch");
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
       definition_[program_.functions[i].name] = i;
     contains_eh_.resize(program_.functions.size(), 0);
@@ -320,6 +326,8 @@ private:
   Stats * stats_;
   std::unordered_map<std::string, std::size_t> definition_;
   std::unordered_set<std::string> no_unwind_;
+  const std::unordered_set<std::string> & prepared_oversized_functions_;
+  const std::vector<std::size_t> & original_instruction_counts_;
   std::vector<unsigned char> recursive_, state_, contains_eh_;
   std::vector<std::size_t> instruction_counts_;
   std::size_t rewrites_;
@@ -469,6 +477,9 @@ private:
        contains_eh_[target]) return false;
     if(instruction_counts_[target] > 40 &&
        !callee_function.metadata.prefer_local_object_binding) return false;
+    if(prepared_oversized_functions_.count(callee_function.name) &&
+       (instruction_counts_[target] > 4 ||
+        !leaf_inline_shape(callee_function))) return false;
     if(landing) return false;
     // Preserve externally visible calls inside an EH region.  Earlier object
     // contracts inspect the call-site table emitted for these calls, and an
@@ -482,7 +493,8 @@ private:
   bool consume_inline_budget(std::size_t target, std::size_t * remaining)
   {
     const std::size_t cost = std::max<std::size_t>(
-      instruction_counts_[target], 1);
+      std::max(instruction_counts_[target],
+        original_instruction_counts_[target]), 1);
     if(cost > *remaining) {
       if(stats_) ++stats_->budget_skips;
       return false;
@@ -900,10 +912,13 @@ private:
 
 std::size_t inline_o1_calls(
   LowirProgram & program,
+  const std::unordered_set<std::string> & prepared_oversized_functions,
+  const std::vector<std::size_t> & original_instruction_counts,
   std::unordered_set<std::string> * rewritten_functions,
   Stats * stats)
 {
-  Inliner inliner(&program, rewritten_functions, stats);
+  Inliner inliner(&program, prepared_oversized_functions,
+    original_instruction_counts, rewritten_functions, stats);
   return inliner.run();
 }
 
