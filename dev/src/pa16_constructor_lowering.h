@@ -7,7 +7,6 @@
 
 #include <cstdint>
 #include <stdexcept>
-#include <vector>
 
 namespace cppgm
 {
@@ -51,7 +50,7 @@ protected:
 	}
 
 	void InstallConstructorCleanup(
-		const std::vector<DumpNode>& actions, BlockId* active)
+		const DumpNode& action, BlockId* active)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		if (*active != kNoLowId)
@@ -60,10 +59,16 @@ protected:
 		const BlockId cleanup = derived.AddBlock(
 			derived.NewLabel("constructor_cleanup"));
 		derived.SelectBlock(cleanup);
-		for (std::size_t i = actions.size(); i != 0; --i)
-			derived.LowerDestructorAction(actions[i - 1]);
-		derived.Emit(Instruction(Instruction::EH_END));
-		derived.EmitExceptionResume();
+		derived.LowerDestructorAction(action);
+		// Each newly constructed subobject owns one cleanup block.  Reuse the
+		// preceding block as the remaining destructor suffix instead of copying
+		// every earlier action into this block.
+		if (*active == kNoLowId)
+		{
+			derived.Emit(Instruction(Instruction::EH_END));
+			derived.EmitExceptionResume();
+		}
+		else derived.EmitJump(*active);
 		derived.SelectBlock(source);
 		derived.EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
 		*active = cleanup;
@@ -73,7 +78,6 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const NodeChildren children = derived.Children(body);
-		std::vector<DumpNode> cleanup_actions;
 		BlockId active = kNoLowId;
 		for (std::size_t i = 0; i < children.size(); ++i)
 		{
@@ -82,8 +86,7 @@ protected:
 			DumpNode cleanup(DUMP_DESTRUCTOR_ACTION);
 			if (!BuildConstructorCleanup(
 				derived.arena_.nodes[children[i]], &cleanup)) continue;
-			cleanup_actions.push_back(cleanup);
-			InstallConstructorCleanup(cleanup_actions, &active);
+			InstallConstructorCleanup(cleanup, &active);
 		}
 		if (active != kNoLowId && !derived.CurrentBlock().terminated)
 			derived.Emit(Instruction(Instruction::EH_END));
