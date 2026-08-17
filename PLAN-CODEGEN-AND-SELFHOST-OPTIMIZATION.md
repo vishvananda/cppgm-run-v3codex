@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1--B4d7 complete
+Status: in progress; T1, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1--B4d7 complete
 
 Date: 2026-08-17
 
@@ -243,6 +243,31 @@ One reducer should not be forced to prove multiple changesets when separate
 small inputs make a regression attributable.  The old E4 proposed test stays
 proposed unless a genuine active lane can observe the optimization itself.
 
+T1 landed in `ce76bd95`.  E4 remains covered by the existing proposed
+constant-byte-store witness because its only distinguishing property is the
+native encoding.  Five new PA29 course behavior tests cover E5--E9:
+
+- `immediate-frame-reload-forwarding.t` exercises same-register and
+  different-register immediate 64-bit reloads;
+- `single-use-temporary-home-forwarding.t` pairs an adjacent single-use
+  temporary with a second-use negative case whose backing store must remain;
+- `one-instruction-temporary-reload-forwarding.t` places one source-preserving
+  `lea` between a temporary store and reload;
+- `bounded-temporary-reload-forwarding.t` covers exact gaps of two and five,
+  the six-instruction boundary, and a source-register redefinition barrier;
+  and
+- `narrow-frame-reload-forwarding.t` covers i8, u16, and i32 reloads plus
+  their signed and zero-extended consumers.
+
+The PA29 reference compiler accepts and successfully runs all five sources.
+Its raw MIR performs some of these transfers earlier than ours, so these are
+intentionally behavior fixtures without a MIR oracle; this is the existing
+PA29 lane for source correctness without enforcing an interchangeable backend
+layout.  No existing checked-in LowIR fixture changed and no existing
+checked-in MIR fixture changed.  PA29 passes 183/183 assignment tests and
+24/24 course tests, through PA29 passes 4,098/4,098, and the full report passes
+5,176/5,176.
+
 ### 4.3 Live candidate tracker
 
 Update this table immediately after each experiment, including reverted work.
@@ -251,7 +276,7 @@ candidate.
 
 | ID | Candidate | Expected LowIR delta | Expected MIR delta | Initial status |
 | --- | --- | ---: | ---: | --- |
-| T1 | E4--E9 reducer backfill | 0 existing | 0 existing | Planned, tests only |
+| T1 | E4--E9 reducer backfill | 0 existing | 0 existing | **Landed** in `ce76bd95`; five active PA29 behavior reducers reference-agree, E4 byte-shape witness remains proposed, full report 5,176/5,176 |
 | P0 | Retain jemalloc in the PA39 self link | 0 | 0 | Planned build-system parity check |
 | B1 | Compact memory displacements | 0 existing | 0 existing | **Landed** in `e46bde65`; deterministic object -157,352 bytes and text -156,330 bytes; behavior reference agrees while its unrelated MIR layout differs |
 | B2 | Omit encoded jump to next instruction | 0 existing | 0 existing | **Landed** in `acf3d415`; 9,399 jumps and 18,798 text bytes removed with timing neutral |
