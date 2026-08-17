@@ -227,6 +227,13 @@ void emit_immediate_shift(CodeBuffer & out, X64Register destination,
   out.byte(amount);
 }
 
+void emit_register_negate(CodeBuffer & out, X64Register destination)
+{
+  emit_rex(out, true, XR_RAX, destination);
+  out.byte(0xf7);
+  emit_modrm(out, 3, 3, destination);
+}
+
 void emit_immediate_and(CodeBuffer & out, X64Register destination,
                         std::uint64_t mask, X64Register scratch)
 {
@@ -305,11 +312,16 @@ std::size_t emit_power_of_two_division(
   const bool remainder = result_source == XR_RDX;
   if(!remainder && result_source != XR_RAX) return 0;
 
-  const std::uint64_t divisor = static_cast<std::uint64_t>(signed_divisor);
+  std::uint64_t divisor = static_cast<std::uint64_t>(signed_divisor);
+  bool negate_quotient = false;
   if(unsigned_operation) {
     if(!divisor || (divisor & (divisor - 1))) return 0;
-  } else if(signed_divisor <= 0 || (divisor & (divisor - 1))) {
-    return 0;
+  } else {
+    if(!signed_divisor) return 0;
+    negate_quotient = signed_divisor < 0;
+    if(negate_quotient) divisor = UINT64_C(0) - divisor;
+    if((divisor & (divisor - 1)) || (negate_quotient && divisor == 1))
+      return 0;
   }
 
   unsigned shift = 0;
@@ -331,6 +343,7 @@ std::size_t emit_power_of_two_division(
       emit_register_alu(out, 0x29, dividend, XR_R11);
     } else {
       emit_immediate_shift(out, dividend, 7, shift);
+      if(negate_quotient) emit_register_negate(out, dividend);
     }
   }
   return cursor - start + 1;
