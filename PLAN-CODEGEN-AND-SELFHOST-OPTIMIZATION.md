@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1--B4d7 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, and B5 complete
 
 Date: 2026-08-17
 
@@ -294,7 +294,7 @@ candidate.
 | B4d5 | Fold a dead address calculation into its store | 0 existing | 0 existing | **Landed** in `40500a27`; 259 bounded proofs, proposed byte-shape reducer, frozen object -928 bytes, timing neutral |
 | B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, proposed byte-shape reducer, frozen object -544 bytes, timing neutral |
 | B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
-| B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
+| B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
 | C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
 | C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | Planned diagnosis |
@@ -872,6 +872,49 @@ their loaded value or stored address is later overwritten: removing them
 could erase a required fault or other observable access.  Wider alias-aware
 load/store elimination belongs in an explicit optimization level, not in the
 baseline encoder.
+
+### 4.20 B5 result
+
+`236f78e7` coalesces consecutive final-layout LSDA call-site ranges when their
+landing-pad and action identities are equal.  Ordinary instructions and calls
+typed `unwind=no` may lie in the covered gap.  Every potentially unwinding
+call without that protection is recorded as an ordered barrier, so extending
+a range can never give an unprotected call a handler.  Different landing pads
+or action identities also prevent a merge.
+
+The implementation is a single in-place linear scan over call sites and
+barriers already ordered by machine emission; it performs no sort, allocation,
+fixed-point iteration, rendered-text comparison, or whole-object rescan.  The
+scan lives in the separate `lowir_native_lsda.cpp` owner rather than extending
+the already-large native emitter.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  PA31 has no standalone reference binary, so the two new
+representation checks remain under `proposed/pa31/`:
+
+- `adjacent-lsda-call-site-coalescing.t` is an end-to-end destructor-unwind
+  reducer whose four protected calls become two LSDA entries and whose second
+  call still unwinds through the destructor; and
+- `lsda-call-site-coalescing-unit.cpp` proves that a potentially throwing
+  unprotected gap, different landing pad, or different action identity blocks
+  coalescing, while an equal no-throw gap coalesces.
+
+Existing PA31 behavior and inspection fixtures continue to protect typed-catch
+action ordering and `_Unwind_Resume`.  Validation and frozen evidence:
+
+- PA31 report: 22/22; PA31 assignment tests: 17/17; course and targeted tests:
+  5/5;
+- through PA31: 4,218/4,218; full report: 5,176/5,176;
+- PA39 file audit: zero fatal findings;
+- protected call sites: 5,672 input, 3,294 encoded, 2,378 coalesced;
+- object: 3,753,440 to 3,726,504 bytes (-26,936);
+- `.gcc_except_table`: 73,406 to 46,470 bytes (-26,936);
+- `.text`: unchanged at 1,022,764 bytes with identical section SHA-256;
+- `.eh_frame`: unchanged at 145,188 bytes with identical section SHA-256; and
+- final three-block immutable ABBA medians: wall 6.105 to 6.125 seconds, user
+  5.565 to 5.595 seconds, peak RSS 366,068 to 364,814 KiB.  Paired deltas are
+  +0.82%, +0.72%, and -0.39%, respectively, and are timing-neutral under the
+  3% gate.  One 8.93-second candidate outlier was retained.
 
 ## 5. Execution plan
 
