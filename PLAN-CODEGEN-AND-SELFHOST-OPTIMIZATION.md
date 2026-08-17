@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1--B4d7 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1--B4d7 complete
 
 Date: 2026-08-17
 
@@ -277,7 +277,7 @@ candidate.
 | ID | Candidate | Expected LowIR delta | Expected MIR delta | Initial status |
 | --- | --- | ---: | ---: | --- |
 | T1 | E4--E9 reducer backfill | 0 existing | 0 existing | **Landed** in `ce76bd95`; five active PA29 behavior reducers reference-agree, E4 byte-shape witness remains proposed, full report 5,176/5,176 |
-| P0 | Retain jemalloc in the PA39 self link | 0 | 0 | Planned build-system parity check |
+| P0 | Retain jemalloc in the PA39 self link | 0 existing | 0 existing | **Landed** in `c6ee9be9`; exact-object A/B improves self-host frozen wall 1.25%, user 1.71%, and peak RSS 3.17%; 8-way inception matches; full report 5,176/5,176 |
 | B1 | Compact memory displacements | 0 existing | 0 existing | **Landed** in `e46bde65`; deterministic object -157,352 bytes and text -156,330 bytes; behavior reference agrees while its unrelated MIR layout differs |
 | B2 | Omit encoded jump to next instruction | 0 existing | 0 existing | **Landed** in `acf3d415`; 9,399 jumps and 18,798 text bytes removed with timing neutral |
 | B3a | Unsigned power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `65b62af8`; PA29 encoder peephole, active behavior reducer, frozen object byte-identical, timing neutral |
@@ -308,7 +308,39 @@ fixture counts and paths, frozen size/time delta, reference disposition,
 commit, and final decision.  For a deferred row, record the same evidence and
 the reason for deferral.
 
-### 4.4 B1 result
+### 4.4 P0 result
+
+`c6ee9be9` moves `INCEPTION_HOST_ALLOC_LIBS` after every PA39 link's input
+objects.  The old command placed jemalloc before all inputs, so the default
+as-needed link discarded it even though the host-built compiler retained it.
+Both `cppgm++-self` and `cppgm++-inception` now contain a dynamic `NEEDED`
+entry for `libjemalloc.so.2`.
+
+The isolated A/B used binaries linked from the exact same current self-host
+object tree.  The only difference was the position and retention of jemalloc;
+all twelve frozen output objects were byte-identical (SHA-256
+`52db5ca5...`) and 3,753,440 bytes.  Three-block immutable ABBA medians and
+paired deltas were:
+
+| Self-host link | Wall median | User median | Peak RSS median | Paired delta |
+| --- | ---: | ---: | ---: | --- |
+| allocator discarded | 44.895 s | 44.390 s | 380,866 KiB | baseline |
+| jemalloc retained | 44.210 s | 43.520 s | 368,674 KiB | wall -1.25%, user -1.71%, RSS -3.17% |
+
+No checked-in LowIR fixture changed and no checked-in MIR fixture changed;
+this changes only the compiler process's allocator.  The full report passes
+5,176/5,176 and the PA39 file audit has zero fatal findings.  An 8-way
+inception rebuild matched every object and produced byte-identical 24,062,840
+byte checkpoint binaries with SHA-256 `74e86398...`; it took 271.10 seconds
+wall, 1,970.49 seconds user, and 333,528 KiB peak RSS.
+
+One procedural caveat is retained with the evidence: a diagnostic
+`make -C pa39 -n` invoked recursive recipes marked with `+` and refreshed the
+canonical self-host object tree before the timed inception run.  That refresh
+was not treated as clean self-build timing.  The P0 A/B remains valid because
+both isolated links used that one immutable object tree.
+
+### 4.5 B1 result
 
 `e46bde65` selects no displacement or disp8 directly in the shared ModRM/SIB
 encoder, while retaining the required displacement for RBP/R13 and disp32 for
@@ -334,7 +366,7 @@ Validation and frozen evidence:
   deterministic; one candidate timing outlier was retained in the declared
   window.
 
-### 4.5 B2 result
+### 4.6 B2 result
 
 `acf3d415` extends the existing linear per-function branch compaction so an
 unconditional branch whose target label is exactly its following instruction
@@ -359,7 +391,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall +0.08%, user +0.09%, peak
   RSS +0.07%.  All six outputs per compiler were deterministic.
 
-### 4.6 B3a result
+### 4.7 B3a result
 
 `65b62af8` recognizes the existing unsigned constant-division MIR sequence in
 the native encoder.  A power-of-two quotient is emitted as an in-place logical
@@ -390,7 +422,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.97%, user -1.25%, peak
   RSS +0.22%.  All six outputs per compiler were deterministic.
 
-### 4.7 B3b result
+### 4.8 B3b result
 
 `b37a6a93` extends the encoder peephole to signed division and remainder by a
 positive power of two.  It biases negative dividends before an arithmetic
@@ -434,7 +466,7 @@ Validation and final frozen evidence:
   wall +0.25%, user -0.09%, peak RSS +0.26%.  All six outputs per compiler
   were deterministic.
 
-### 4.8 B3n result
+### 4.9 B3n result
 
 `e9cf0de9` applies the B3b bias sequence to negative power-of-two divisors and
 negates only a quotient; remainder is identical to the corresponding positive
@@ -463,7 +495,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.41%, user -0.36%, peak
   RSS +0.02%.  All six outputs per compiler were deterministic.
 
-### 4.9 B4a result
+### 4.10 B4a result
 
 `edd35810` precomputes condition-flag liveness once per MIR block and encodes a
 zero register move as `xor r32,r32` only when no compare/test result is live.
@@ -495,7 +527,7 @@ Validation and frozen evidence:
   -0.41%, user +0.54%, peak RSS +0.23%.  All six outputs per compiler were
   deterministic.
 
-### 4.10 B4b result
+### 4.11 B4b result
 
 `fba50ba6` encodes a register comparison with immediate zero as the
 width-correct `test reg,reg` form.  For the equality, signed, and unsigned x86
@@ -522,7 +554,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall +0.08%, user -0.18%, peak
   RSS +0.06%.  All six outputs per compiler were deterministic.
 
-### 4.11 B4c result
+### 4.12 B4c result
 
 `13fa0a10` emits byte and word zero extension into a 32-bit destination, whose
 x86-64 architectural write semantics clear the upper 32 bits.  It also emits
@@ -549,7 +581,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.33%, user -0.54%, peak
   RSS +0.23%.  All six outputs per compiler were deterministic.
 
-### 4.12 B4d1 result
+### 4.13 B4d1 result
 
 `551e530f` folds an adjacent `lea address, [base+offset]` and
 `load destination, [address+offset]` directly into the load when the address
@@ -595,7 +627,7 @@ findings.  Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.33%, user -0.27%, peak
   RSS +0.09%.  All six outputs per compiler were deterministic.
 
-### 4.13 B4d2 result
+### 4.14 B4d2 result
 
 `014b7594` extends the same encoder-only proof to
 `mov address, original_address` followed by
@@ -639,7 +671,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.17%, user -0.09%, peak
   RSS +0.12%.  All six outputs per compiler were deterministic.
 
-### 4.14 B4d3 result
+### 4.15 B4d3 result
 
 `2a9adc71` recognizes `mov address, base`,
 `lea address, [address+offset]`, and
@@ -680,7 +712,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.33%, user 0.00%, peak RSS
   +0.28%.  All six outputs per compiler were deterministic.
 
-### 4.15 B4d4 result
+### 4.16 B4d4 result
 
 `9082687e` recognizes `mov copied_value, source` followed by a store from
 `copied_value`.  It emits the store from `source` and omits the copy only when
@@ -722,7 +754,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.33%, user -0.81%, peak
   RSS +0.12%.  All six outputs per compiler were deterministic.
 
-### 4.16 B4d5 result
+### 4.17 B4d5 result
 
 `40500a27` recognizes `lea address, [base+offset]` followed by a store through
 `address`.  It emits the store from `base` with the checked sum of the setup
@@ -759,7 +791,7 @@ Validation and frozen evidence:
   at 7.47 seconds; the six-run medians remained 6.105 and 6.115 seconds.  All
   outputs per compiler were deterministic.
 
-### 4.17 B4d6 result
+### 4.18 B4d6 result
 
 `80327487` recognizes `mov address, base` followed by a store through
 `address`.  It emits the store through `base` and omits the address copy when
@@ -794,7 +826,7 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas: wall -0.57%, user -0.54%, peak
   RSS +0.09%.  All six outputs per compiler were deterministic.
 
-### 4.18 B4d7 result
+### 4.19 B4d7 result
 
 `53a6f6ea` recognizes `mov address, base; lea address,
 [address+index]; store [address+offset], value`.  It combines the two checked
