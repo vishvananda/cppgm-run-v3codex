@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1 complete
+Status: in progress; B1 and B2 complete
 
 Date: 2026-08-17
 
@@ -254,7 +254,7 @@ candidate.
 | T1 | E4--E9 reducer backfill | 0 existing | 0 existing | Planned, tests only |
 | P0 | Retain jemalloc in the PA39 self link | 0 | 0 | Planned build-system parity check |
 | B1 | Compact memory displacements | 0 existing | 0 existing | **Landed** in `e46bde65`; deterministic object -157,352 bytes and text -156,330 bytes; behavior reference agrees while its unrelated MIR layout differs |
-| B2 | Omit encoded jump to next instruction | 0 | 0 | Planned |
+| B2 | Omit encoded jump to next instruction | 0 existing | 0 existing | **Landed** in `acf3d415`; 9,399 jumps and 18,798 text bytes removed with timing neutral |
 | B3a | Unsigned power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned |
 | B3b | Signed power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned after B3a |
 | B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | Deferred until B3a/B3b evidence |
@@ -301,6 +301,31 @@ Validation and frozen evidence:
   +0.15%, all below the 3% gate.  All six outputs per compiler were
   deterministic; one candidate timing outlier was retained in the declared
   window.
+
+### 4.5 B2 result
+
+`acf3d415` extends the existing linear per-function branch compaction so an
+unconditional branch whose target label is exactly its following instruction
+emits no bytes.  It reuses the existing offset-translation path for labels,
+fixups, short branches, and EH ranges.  No existing LowIR or MIR fixture
+changed.  The new PA29 reducer has an exact reference MIR oracle and proves
+that the O0 MIR still contains the fallthrough jumps while both encoded
+programs execute successfully.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 15/15 course tests;
+- through PA29: 4,089/4,089;
+- PA29--PA38 report: 1,276/1,276;
+- full report: 5,167/5,167;
+- PA39 file audit: zero fatal findings;
+- eliminated fallthrough jumps: 9,399;
+- object: 3,800,264 to 3,781,392 bytes;
+- `.text`: 1,069,378 to 1,050,580 bytes;
+- `.gcc_except_table`: 73,608 to 73,529 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes; and
+- three-block immutable ABBA paired deltas: wall +0.08%, user +0.09%, peak
+  RSS +0.07%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
