@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, B5, and C1 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, B5, C1, C2a--C2b, D1, and O1a complete
 
 Date: 2026-08-17
 
@@ -301,7 +301,7 @@ candidate.
 | C2c | Alpha-equivalent or cross-context cleanup-tail sharing | Potentially broad at O1 | Downstream only | Deferred: exact sharing captured the safe typed subset; cross-context ownership failed the PA36 reducer and alpha-renaming needs a separate SSA/liveness proof |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`, corrected in `5517d984`; all 4,578 frozen functions classified, 74 conservative fallback roots and 78 internal-pruning candidates, exact object SHA preserved, full report 5,178/5,178, timing neutral |
 | D2 | Prune unreachable internal native definitions | 0 required | Native function set changes at O0/O1/O2 | **Deferred**: raw prototype removed 78 definitions and 22,376 bytes, but omitted an ABI-required anonymous-namespace base constructor; the metadata repair moved 49 existing LowIR fixtures, while the nonserialized repair broke 3/7 PA37 object round trips |
-| O1a | Simplify before inlining and dependency scheduling | Intentional at O1 | Downstream only | **In progress**: preparation `693e4357` plus sparse EH dependency worklist `919c2e55`; two reference-agreeing PA37 reducers, frozen object -1,144 bytes overall and byte-identical in the scheduling slice, five-block paired wall +0.41% and user +0.15%, full report 5,180/5,180 |
+| O1a | Simplify before inlining and dependency scheduling | Intentional at O1 | Downstream only | **Landed** in `693e4357` and `919c2e55`: two reference-agreeing PA37 reducers, frozen object -1,144 bytes overall and byte-identical in the scheduling slice, five-block paired wall +0.41% and user +0.15%; full report 5,180/5,180, zero-fatal audit, and clean 8/32-worker inception lanes pass |
 | O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | **Deferred** in `37ecea4e`: a per-object second closure removed contract-required weak/COMDAT definitions and failed 49 existing PA32/PA33 tests; explicit `-O2` reference opportunity remains in `proposed/pa32` pending cross-object ownership |
 | O2a | Expanded slot/value promotion | Intentional at O2 | Downstream only | Profile-gated |
 | O2b | Bounded improved register allocation | LowIR unchanged | Intentional at O2 | Profile-gated PA38 work |
@@ -1241,6 +1241,37 @@ in `proposed/pa32`.  **The experiment changed native O1/O2/default-max function
 and MIR sets but did not alter serialized LowIR; no existing fixture was
 updated.**  Revisit O1b only with a native cross-object ownership model or a
 proven visibility class narrower than ordinary weak/COMDAT linkage.
+
+### 4.29 O1 milestone self-host result
+
+The post-O1 milestone entered the expensive lane only after a fresh root
+`make test-report` passed 5,180/5,180.  The PA39 file audit then passed with
+zero fatal findings and the same 23 advisory header-division warnings.
+
+The canonical self-host build has a second, internal object-build job setting:
+top-level `make -j8` alone leaves `INCEPTION_OBJECT_BUILD_JOBS` at the 32-CPU
+default.  That diagnostic clean 32-worker self build took 17.89 seconds wall
+and 312,156 KiB maximum RSS.  The comparable clean 8-worker result below sets
+`INCEPTION_OBJECT_BUILD_JOBS=8` explicitly:
+
+| Lane | Wall | User | System | Maximum RSS |
+| --- | ---: | ---: | ---: | ---: |
+| clean `cppgm++-self`, 8 object workers | 37.41 s | 253.75 s | 24.44 s | 326,648 KiB |
+| clean inception compare, 8 workers | 268.92 s | 2,051.53 s | 56.21 s | 296,944 KiB |
+| clean inception compare, 32 workers | 125.58 s | 3,423.96 s | 77.14 s | 292,712 KiB |
+
+Only the inception-generation tree was removed between the 8- and 32-worker
+runs, so both compiled against the exact same self binary.  Each lane produced
+157/157 matching inception objects.  The self and inception binaries are both
+24,304,360 bytes and byte-identical with SHA-256
+`3819ec3c5be4c99609be424ebce37488a98b44265ab88d27c781116667bd597f`.
+No test, build, disassembly, or benchmark workload overlapped any timed lane.
+
+**Fixture record:** O1a changes only explicit PA37 optimized LowIR in its two
+new reference-agreeing fixtures.  It changes no existing checked-in LowIR or
+MIR fixture, and `-O0` is byte-unchanged.  The rejected broad scheduler's two
+existing O1 fixture changes and D2's 49 existing LowIR fixture changes remain
+documented as reverted/deferred experiments; they were not rebaselined.
 
 ## 5. Execution plan
 
