@@ -297,7 +297,8 @@ candidate.
 | B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
 | C1 | Direct cleanup-state suffix interning | Pre-existing LowIR shape | Pre-existing downstream shape | **Already landed** in the PA17/PA26 baseline (`c2b6fd68`, `e05062b1`, `8fd4193d`); exact action/context states and long `(action, tail)` chains are interned; 0 fixture changes in this run |
 | C2a | Share terminal `resume` blocks | Intentional at O1 | Downstream only | **Landed** in `d3b9eca0`; 3 frozen blocks removed, object -120 bytes, PA37 88/88 and full report 5,177/5,177, timing neutral |
-| C2b | General cleanup-tail sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 after the bounded terminal case |
+| C2b | Exact context-compatible cleanup-tail sharing | Intentional at O1 | Downstream only | **Landed** in `9bf96710`; 50 frozen groups, 97 LowIR instructions, 82 resume calls, and 5,984 object bytes removed; full report 5,178/5,178, timing neutral |
+| C2c | Alpha-equivalent or cross-context cleanup-tail sharing | Potentially broad at O1 | Downstream only | Deferred: exact sharing captured the safe typed subset; cross-context ownership failed the PA36 reducer and alpha-renaming needs a separate SSA/liveness proof |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | Planned diagnosis |
 | O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | Planned |
 | O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | Planned after O1a |
@@ -988,6 +989,73 @@ Validation is PA37 88/88, through PA37 5,151/5,151, full report
 5,177/5,177, and a PA39 file audit with zero fatal findings.  Broader
 bottom-up cleanup-tail sharing remains C2b and must receive its own fixture,
 timing, and full-report gate.
+
+### 4.23 C2b result
+
+`9bf96710` extends the PA37 O1 cleanup owner with exact structural suffix
+sharing.  It hash-conses each typed instruction together with the already-
+interned suffix identity, so discovery is an expected-linear reverse scan and
+hash collisions receive a full typed comparison.  The key covers types,
+operands, call signatures and effects, EH selectors, and exact debug locations;
+it never renders LowIR text.  A no-allocation block-count precheck excludes
+functions that cannot contain a pair.
+
+The accepted transform is intentionally narrower than the first prototype:
+
+- blocks must be direct cleanup landing pads, contain no EH structure, and end
+  in `resume`;
+- the shared suffix must exactly equal a complete shorter landing-pad block,
+  so the pass never creates a synthetic block or jumps into the middle of an
+  EH region;
+- a compact typed EH-state walk interns the active protected-region context,
+  and every shared occurrence must have the same context; and
+- each noncanonical landing pad remains as an ownership-preserving wrapper
+  that jumps to the canonical pad.
+
+The importance of the context condition was measured rather than assumed.  An
+initial exact-text prototype changed one nested initializer-list cleanup in
+`main` and failed the existing PA36
+`700-hosted-unordered-set-constructor-runtime.t`: the native verifier reported
+active EH states 1 and 0 converging at one landing pad.  The corrected pass
+keeps that pair separate.  The new PA37 O1
+`350-share-exact-cleanup-tail.t` fixture contains a positive shared destructor
+suffix, a different-operand negative case, and this nested-EH-context negative
+case.  Compiling its optimized LowIR through the native backend also succeeds.
+
+Frozen O1 telemetry is:
+
+| Metric | C2a baseline | C2b | Delta |
+| --- | ---: | ---: | ---: |
+| output LowIR instructions | 151,590 | 151,494 | -96 net |
+| exact suffix groups shared | 0 | 50 | +50 |
+| blocks rewritten | 0 | 83 | +83 |
+| suffix instructions removed | 0 | 97 | -97 |
+| `_Unwind_Resume` call sites | 1,619 | 1,537 | -82 |
+| PLT32 call relocations | 29,772 | 29,593 | -179 |
+| object bytes | 3,619,024 | 3,613,040 | -5,984 |
+| `.text` bytes | 932,744 | 931,070 | -1,674 |
+| `.gcc_except_table` bytes | 45,597 | 45,579 | -18 |
+| `.eh_frame` bytes | 143,776 | 143,776 | 0 |
+
+The net LowIR delta is one smaller than the tail-pass count because the EH
+context correction retains one terminal resume block that C2a had previously
+merged without proving compatible ownership.  On the final frozen run, the
+context-aware terminal pass takes about 4.74 ms and exact tail sharing takes
+about 10.42 ms.
+
+The three-block immutable ABBA ran with host load1 falling from 6.64 to 3.57,
+so only the interleaved paired result is used.  Baseline/candidate medians are
+7.235/7.265 seconds wall, 6.590/6.610 seconds user, and 417,614/409,938 KiB
+peak RSS.  Paired deltas are +0.28% wall, +0.30% user, and -2.42% RSS: timing-
+neutral under the 3% gate.
+
+PA37 passes 89/89, through PA37 passes 5,152/5,152, the PA37 debug lane passes
+14/14, the full report passes 5,178/5,178, and the PA39 file audit has zero
+fatal findings.  **O0 output is unchanged.  No existing checked-in LowIR
+fixture changed and no existing checked-in MIR fixture changed.**  The only
+new exact layout is the PA37 O1 fixture above.  Alpha-equivalent temporary
+renaming and cross-context ownership remain C2c rather than being folded into
+this proven bounded pass.
 
 ## 5. Execution plan
 
