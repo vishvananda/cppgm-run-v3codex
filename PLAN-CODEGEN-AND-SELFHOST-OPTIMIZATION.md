@@ -303,6 +303,7 @@ candidate.
 | B7d | Retain a direct parameter in an unclobbered incoming ABI register | 0 existing | 10 existing PA29 MIR fixtures | **Deferred**: a bounded clobber proof removed 325 MIR instructions and 2,391 text bytes from the O0 `lowir_opt.cpp` sample, and all affected programs remained correct, but it moved 2 strict, 7 structural, and 1 behavior MIR oracles without a PA29 reference workflow that authorizes regeneration |
 | B7e | Fold a consumed transient R11 address setup | 0 existing | 0 existing | **Landed** in `10bdd7ad`; one linear backward use/definition plan per MIR block proves whether an adjacent R11 setup has another reader; O0 `lowir_opt.cpp` text -2,289 bytes and 607 stack LEAs, frozen text -2,626 bytes, timing neutral |
 | B7f | Admit R10 as a persistent register in leaf functions with no R10 scratch operations | 0 existing | 14 existing PA29 MIR fixtures | **Deferred**: the corrected function-wide scratch proof preserved all PA29 behavior but moved 10 strict and 4 structural oracles for only 1,715 text bytes and about 600 push/pop instructions on O0 `lowir_opt.cpp`; this is too little return for baseline MIR movement |
+| B7g | Coalesce local values only in single-block native encoding copies | 0 existing | 0 existing | **Landed** in `a5777d1e`; a linear forward value pass plus backward dead-definition pass removes 5,123 frozen x86 instructions and 14,586 text bytes, an exact nonserialized call-argument mask preserves ABI live-ins, all existing MIR is unchanged, and paired compile time is neutral |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -762,6 +763,60 @@ no external reference workflow and the size return is much smaller than the
 fixture surface, the prototype was reverted.  A future PA38 allocator may use
 the result together with explicit MIR scratch definitions; it is not an O0
 baseline change.
+
+### 4.3.11 B7g single-block native encoding preparation
+
+The first B7g prototype ran the existing full machine optimizer and frame
+finalizer on an encoding-only copy of every O0 function.  It removed 33,893
+frozen text bytes, including 7,849 `mov`, 309 `lea`, 1,117 `push`, and 1,374
+`pop` instructions, and all 5,188 report tests passed.  Its CFG construction,
+worklist, and whole-function copies nevertheless regressed the three-block
+frozen wall median by 5.4%.  That version was rejected rather than accepting a
+compile-time cost in the default lane.
+
+`a5777d1e` narrows the preparation to single-block functions, where live-out
+is empty and no CFG or fixed point is necessary.  One forward local-value pass
+rewrites proved equivalent read operands, one backward register-liveness pass
+removes dead definitions, and the existing frame finalizer drops callee-save
+traffic made dead by those rewrites.  All work is linear in MIR instructions
+and operands.  The streaming C++ compile path prepares the just-lowered
+function in place; only callers that provide a persistent `MirProgram` clone
+an eligible function before emission.
+
+Calls now retain an exact GPR/XMM argument-register mask computed from the
+existing SysV ABI plan.  The mask is deliberately internal and is not emitted
+by the MIR serializer: conservative serialized MIR remains the PA29 contract,
+while encoding-only liveness no longer keeps every possible argument register
+alive at every call.  Variadic calls also record RAX.  Existing native
+address-fold and constant-byte-store groups are marked before rewriting so the
+general pass composes with, rather than dismantles, the smaller encoding
+peepholes already landed in B4d and B7e.
+
+No checked-in LowIR or MIR fixture changes.  The representation-only witness
+`proposed/pa29/single-block-call-argument-coalescing.t` retains
+`mov r8,@value; mov rdi,r8` in its MIR dump but emits the global address
+directly into RDI; active PA29 call-ABI tests remain the behavioral oracle.
+
+Measured evidence:
+
+- O0 `lowir_opt.cpp` object: 2,582,216 to 2,570,352 bytes and GNU text 621,734
+  to 609,742 bytes, with its serialized MIR unchanged;
+- frozen explicit-O0 object: 4,513,368 to 4,498,880 bytes and GNU text
+  1,211,960 to 1,197,374 bytes;
+- parsed frozen x86 instructions: 256,629 to 251,506, including `mov*`
+  116,511 to 112,448, `lea` 28,089 to 28,052, `push` 11,117 to 10,720, and
+  `pop` 16,629 to 16,232;
+- all six frozen objects from each immutable compiler were internally
+  deterministic;
+- three-block immutable ABBA medians: wall 6.340 to 6.315 seconds (-0.39%),
+  user 5.745 to 5.750 seconds (+0.09%), and peak RSS 364,852 to 365,242 KiB
+  (+0.11%);
+- PA29: 183/183 assignment tests and 30/30 course tests;
+- through PA29: 4,104/4,104;
+- full report: 5,188/5,188; and
+- PA39 file audit: zero fatal findings and 23 inherited warnings.  The exact
+  call-mask owner was separated into `lowir_native_abi.cpp`, leaving
+  `lowir_native.cpp` at the 3,000-line boundary.
 
 ### 4.4 P0 result
 
