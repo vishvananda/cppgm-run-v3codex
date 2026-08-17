@@ -74,7 +74,7 @@ bool emit_flag_safe_zero_move(
     const mir_model::MirInstruction & instruction, bool flags_live);
 bool is_redundant_u32_normalization(
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start);
+    std::size_t start, bool frame_load_zero_extends = false);
 void emit_i128_shift(elf_detail::CodeBuffer & out,
                      mir_model::MirInstruction::Opcode opcode);
 void emit_i128_division(elf_detail::CodeBuffer & out,

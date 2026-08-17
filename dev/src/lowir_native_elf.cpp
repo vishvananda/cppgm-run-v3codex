@@ -6,6 +6,7 @@
 #include "lowir_native_host_eh.h"
 #include "lowir_native_lsda.h"
 #include "lowir_native_encoding.h"
+#include "lowir_native_frame_forwarding.h"
 #include "lowir_native_object_elf.h"
 #include <algorithm>
 #include <cerrno>
@@ -1736,154 +1737,9 @@ std::size_t emit_coalesced_constant_byte_stores(
   return stores.size() * 4;
 }
 
-bool parse_forwarded_frame_reload(
-    const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, long long * frame_offset,
-    X64Register * source, X64Register * destination)
-{
-  using mir_model::MirInstruction;
-  using mir_model::MirOperand;
-  if(start > instructions.size() || instructions.size() - start < 2)
-    return false;
-  const MirInstruction & store = instructions[start];
-  const MirInstruction & load = instructions[start + 1];
-  if(store.opcode != MirInstruction::MI_STORE ||
-     load.opcode != MirInstruction::MI_LOAD ||
-     store.type != load.type || type_width(store.type) > 64 ||
-     store.operands.size() != 2 || load.operands.size() != 2 ||
-     store.operands[0].kind != MirOperand::OP_FRAME ||
-     store.operands[1].kind != MirOperand::OP_REG ||
-     load.operands[0].kind != MirOperand::OP_REG ||
-     load.operands[1].kind != MirOperand::OP_FRAME ||
-     store.operands[0].offset != load.operands[1].offset)
-    return false;
-  *frame_offset = store.operands[0].offset;
-  *source = store.operands[1].reg;
-  *destination = load.operands[0].reg;
-  return true;
-}
-
-struct FrameUseFacts
-{
-  std::size_t count = 0;
-  const mir_model::MirInstruction * store = 0;
-  const mir_model::MirInstruction * load = 0;
-  std::size_t store_block = 0;
-  std::size_t store_index = 0;
-  std::size_t load_block = 0;
-  std::size_t load_index = 0;
-};
-
-struct FrameReloadPlan
-{
-  std::unordered_set<long long> adjacent;
-  std::unordered_map<long long, X64Register> delayed;
-};
-
-bool preserves_forwarded_register(
-    const mir_model::MirInstruction & instruction, X64Register source)
-{
-  using mir_model::MirInstruction;
-  using mir_model::MirOperand;
-  if(instruction.opcode != MirInstruction::MI_LOAD &&
-     instruction.opcode != MirInstruction::MI_LEA &&
-     instruction.opcode != MirInstruction::MI_MOV)
-    return false;
-  return !instruction.operands.empty() &&
-    instruction.operands[0].kind == MirOperand::OP_REG &&
-    instruction.operands[0].reg != source;
-}
-
-FrameReloadPlan find_single_use_frame_reloads(
-    const mir_model::MirFunction & function)
-{
-  using mir_model::MirInstruction;
-  using mir_model::MirOperand;
-  std::unordered_map<long long, FrameUseFacts> uses;
-  uses.reserve(function.frame_bindings.size());
-  for(std::size_t i = 0; i < function.frame_bindings.size(); ++i) {
-    const mir_model::MirFrameBinding & binding = function.frame_bindings[i];
-    if(binding.kind == mir_model::MirFrameBinding::FB_TEMP &&
-       (binding.type == "ptr" || binding.type == "i64" ||
-        binding.type == "i32" || binding.type == "u32" ||
-        binding.type == "i16" || binding.type == "u16" ||
-        binding.type == "i8" || binding.type == "u8" ||
-        binding.type == "i1"))
-      uses.emplace(binding.offset, FrameUseFacts());
-  }
-  if(function.host_eh_enabled) {
-    uses.erase(function.host_eh_exception_offset);
-    uses.erase(function.host_eh_selector_offset);
-  }
-  FrameReloadPlan result;
-  if(uses.empty()) return result;
-  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-    const std::vector<mir_model::MirInstruction> & instructions =
-      function.blocks[i].instructions;
-    for(std::size_t j = 0; j < instructions.size(); ++j) {
-      for(std::size_t k = 0;
-          k < instructions[j].operands.size(); ++k) {
-        const mir_model::MirOperand & operand = instructions[j].operands[k];
-        if(operand.kind != mir_model::MirOperand::OP_FRAME) continue;
-        const std::unordered_map<long long, FrameUseFacts>::iterator found =
-          uses.find(operand.offset);
-        if(found != uses.end()) ++found->second.count;
-      }
-      const MirInstruction & instruction = instructions[j];
-      if(instruction.operands.size() != 2) continue;
-      if(instruction.opcode == MirInstruction::MI_STORE &&
-         instruction.operands[0].kind == MirOperand::OP_FRAME &&
-         instruction.operands[1].kind == MirOperand::OP_REG) {
-        const std::unordered_map<long long, FrameUseFacts>::iterator found =
-          uses.find(instruction.operands[0].offset);
-        if(found != uses.end()) {
-          found->second.store = &instruction;
-          found->second.store_block = i;
-          found->second.store_index = j;
-        }
-      } else if(instruction.opcode == MirInstruction::MI_LOAD &&
-                instruction.operands[0].kind == MirOperand::OP_REG &&
-                instruction.operands[1].kind == MirOperand::OP_FRAME) {
-        const std::unordered_map<long long, FrameUseFacts>::iterator found =
-          uses.find(instruction.operands[1].offset);
-        if(found != uses.end()) {
-          found->second.load = &instruction;
-          found->second.load_block = i;
-          found->second.load_index = j;
-        }
-      }
-    }
-  }
-  result.adjacent.reserve(uses.size());
-  result.delayed.reserve(uses.size() / 4);
-  for(std::unordered_map<long long, FrameUseFacts>::const_iterator use =
-        uses.begin(); use != uses.end(); ++use) {
-    const FrameUseFacts & facts = use->second;
-    if(facts.count != 2 || !facts.store || !facts.load ||
-       facts.store_block != facts.load_block ||
-       facts.store->type != facts.load->type ||
-       facts.store_index >= facts.load_index)
-      continue;
-    const std::size_t gap = facts.load_index - facts.store_index - 1;
-    if(gap == 0) {
-      result.adjacent.insert(use->first);
-      continue;
-    }
-    const X64Register source = facts.store->operands[1].reg;
-    bool preserved = gap != 0 && gap <= 5;
-    for(std::size_t i = facts.store_index + 1;
-        preserved && i < facts.load_index; ++i)
-      preserved = preserves_forwarded_register(
-        function.blocks[facts.store_block].instructions[i], source);
-    if(preserved)
-      result.delayed.emplace(use->first, source);
-  }
-  return result;
-}
-
 bool emit_delayed_frame_forwarding(
     CodeBuffer & out, const mir_model::MirInstruction & instruction,
-    const FrameReloadPlan & plan)
+    const frame_forwarding::FrameReloadPlan & plan)
 {
   using mir_model::MirInstruction;
   using mir_model::MirOperand;
@@ -1911,12 +1767,12 @@ std::size_t emit_forwarded_frame_reload(
     CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start, const mir_model::MirFunction & function,
-    const FrameReloadPlan & frame_reload_plan)
+    const frame_forwarding::FrameReloadPlan & frame_reload_plan)
 {
   long long frame_offset = 0;
   X64Register source = XR_RAX;
   X64Register destination = XR_RAX;
-  if(!parse_forwarded_frame_reload(instructions, start, &frame_offset,
+  if(!frame_forwarding::parse_reload(instructions, start, &frame_offset,
        &source, &destination)) return 0;
   if(!frame_reload_plan.adjacent.count(frame_offset))
     emit_instruction(out, instructions[start], &function);
@@ -1938,8 +1794,8 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   if(!object_symbol.empty() && object_symbol != function.name)
     out.label(object_symbol);
   emit_function_prologue(out, function);
-  const FrameReloadPlan frame_reload_plan =
-    find_single_use_frame_reloads(function);
+  const frame_forwarding::FrameReloadPlan frame_reload_plan =
+    frame_forwarding::find_single_use_reloads(function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(function.name + "::" + block.label);
@@ -1980,7 +1836,9 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
       if(emit_flag_safe_zero_move(
            out, block.instructions[j], flags_live[j]))
         continue;
-      if(is_redundant_u32_normalization(block.instructions, j))
+      if(is_redundant_u32_normalization(block.instructions, j,
+           frame_forwarding::load_zero_extends(
+             block.instructions, j, frame_reload_plan)))
         continue;
       emit_instruction(out, block.instructions[j], &function);
     }
@@ -2628,8 +2486,8 @@ HostFunctionLayout emit_host_function(
   if(!object_symbol.empty() && object_symbol != function.name)
     out.label(object_symbol);
   emit_function_prologue(out, function);
-  const FrameReloadPlan frame_reload_plan =
-    find_single_use_frame_reloads(function);
+  const frame_forwarding::FrameReloadPlan frame_reload_plan =
+    frame_forwarding::find_single_use_reloads(function);
   const std::string no_landing_pad;
   std::vector<HostEhStackCleanup> stack_cleanups;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -2680,7 +2538,9 @@ HostFunctionLayout emit_host_function(
       if(emit_flag_safe_zero_move(
            out, block.instructions[j], flags_live[j]))
         continue;
-      if(is_redundant_u32_normalization(block.instructions, j))
+      if(is_redundant_u32_normalization(block.instructions, j,
+           frame_forwarding::load_zero_extends(
+             block.instructions, j, frame_reload_plan)))
         continue;
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;

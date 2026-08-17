@@ -447,7 +447,7 @@ bool emit_flag_safe_zero_move(
 
 bool is_redundant_u32_normalization(
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start)
+    std::size_t start, bool frame_load_zero_extends)
 {
   using mir_model::MirInstruction;
   using mir_model::MirOperand;
@@ -467,9 +467,10 @@ bool is_redundant_u32_normalization(
     return false;
 
   if(producer.opcode == MirInstruction::MI_LOAD &&
-     producer.operands.size() == 2 &&
-     producer.operands[1].kind != MirOperand::OP_FRAME)
-    return data_layout::type_width(producer.type) == 32;
+     producer.operands.size() == 2)
+    return data_layout::type_width(producer.type) == 32 &&
+      (producer.operands[1].kind != MirOperand::OP_FRAME ||
+       frame_load_zero_extends);
   if(producer.opcode == MirInstruction::MI_MOVZX)
     return producer.operands.size() == 2;
   if((producer.opcode == MirInstruction::MI_ZEXT ||

@@ -86,10 +86,11 @@ copy while retaining both textual MIR instructions.  Runtime store behavior
 is already actively covered and PA29 has no native-byte oracle, so it remains
 proposed.
 
-`redundant-u32-normalization-encoding.t` loads a `u32` value from global
-storage and widens it for a 64-bit comparison.  The MIR deliberately retains
-the explicit `zext i32` required by PA29, while the native encoder may omit the
-second normalization because the immediately preceding 32-bit load already
-clears the register's upper half.  Active PA29 tests cover the behavior and
-the harness has no native-byte oracle, so this representation-only witness
-remains proposed.
+`redundant-u32-normalization-encoding.t` loads `u32` values from global and
+frame storage and widens them for 64-bit comparisons.  The MIR deliberately
+retains the explicit `zext i32` required by PA29, while the native encoder may
+omit the second normalization because the immediately preceding 32-bit load
+already clears the register's upper half.  The frame case crosses a call so
+it cannot use store/load forwarding; active narrow and same-register frame
+tests cover forwarding behavior.  PA29 has no native-byte oracle, so this
+representation-only witness remains proposed.
