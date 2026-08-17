@@ -295,6 +295,8 @@ candidate.
 | B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, proposed byte-shape reducer, frozen object -544 bytes, timing neutral |
 | B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
 | B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
+| B6 | Put weak function bodies in real ELF COMDAT groups | 0 existing | 0 existing | **Analyzed; highest priority**: current groups contain only empty marker sections, so the native linker retains 51,540 losing weak bodies (5,302,111 text bytes) plus an estimated 2.07 MB of their unwind records; projected to close about 73% of the current `size` text gap without cross-object compiler metadata |
+| B7 | Reduce residual copy, frame-home, and address-materialization traffic | 0 preferred | 0 at baseline; intentional only if assigned to PA38 | **Profile after B6**: after removing duplicate weak bodies from the profile, `mov` and `lea` account for 2,156,578 bytes, or 73.7% of the remaining normalized instruction-byte delta; prove bounded zero-MIR encoder cases first, then put representation-changing coalescing in PA38 |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -366,6 +368,52 @@ call adds 14 `.text` bytes, one relocation, and 48 total object bytes
 (3,727,048 versus 3,727,000).  This narrow valid selection difference is
 recorded rather than presenting the host/self comparison as exact-object
 parity, and is far too small to explain the compiler execution-time gap.
+
+### 4.3.2 Current `-O0` compiler-size classification
+
+A fresh matched-source build after B3c confirms that the large executable-size
+gap is mostly two structural effects, not readonly data.  The relevant final
+ELF sections are:
+
+| Category | GCC-built compiler | cppgm++-built compiler | cppgm++ excess |
+| --- | ---: | ---: | ---: |
+| machine `.text` | 6,236,307 | 14,430,802 | 8,194,495 |
+| `.eh_frame_hdr` + `.eh_frame` + LSDA | 1,419,968 | 4,079,634 | 2,659,666 |
+| `.rodata` + `.data.rel.ro` + `.data` | 747,148 | 814,028 | 66,880 |
+
+The data payload is therefore comparable in size, although cppgm++ currently
+places most of it in writable `.data`.  Code and the unwind metadata that
+describes that code dominate the gap.
+
+The largest cause is immediately actionable.  In
+`lowir_native_object_elf.cpp`, a weak definition receives an
+`SHF_GROUP` `.cppgm.odr.N` marker, but its bytes and relocations stay in the
+translation unit's monolithic `.text` and `.rela.text`.  GNU objects instead
+place the actual `.text.<symbol>`, relocation section, and applicable LSDA in
+the function's COMDAT group.  Our linker can select the winning weak symbol,
+but the system linker cannot discard a losing cppgm++ body that is not a group
+member.
+
+Across the 157 objects in the compiler build, cppgm++ emits 74,870 weak body
+ranges.  Cross-object equivalence grouping finds 51,540 redundant body
+instances totaling 5,302,111 bytes.  The final cppgm++ executable also has
+89,919 FDEs versus GCC's 29,812.  Discarding those bodies predicts a further
+412,320-byte `.eh_frame_hdr` reduction and approximately 1,657,378 bytes of
+`.eh_frame` reduction.  Real function COMDATs should therefore remove about
+7.37 MB, or 72.6% of the 10,148,482-byte GNU `size` text gap, before any
+instruction-level optimization.  This uses ordinary native ELF ownership and
+does not require serialized cross-object compiler metadata.
+
+After projecting the redundant bodies out, cppgm++ machine `.text` is about
+9,128,691 bytes versus GCC's 6,236,307, leaving about 2.89 MB for later work.
+A normalized disassembly attributes 2,156,578 bytes of the remaining
+instruction-byte delta to `mov` and `lea`: register copies, frame homes and
+reloads, and separately materialized addresses.  That is the next broad
+target, but it is a family of dataflow and allocation improvements rather than
+one safe deletion.  Repeated prologues and epilogues are visible too, but their
+measured `push`/`pop` contribution is only about 0.3--0.4 MB.  B6 must land and
+be reprofiled before selecting B7 slices or attributing the remaining extra
+8,572 unique function bodies to demand versus code selection.
 
 ### 4.4 P0 result
 
