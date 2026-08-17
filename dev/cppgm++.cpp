@@ -1046,6 +1046,26 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << semantic.constexpr_step_visits
 			 << " demand_pushes=" << semantic.demand_worklist_pushes
 			 << " demanded_functions=" << semantic.demanded_function_emissions
+			 << " demand_requests=" << semantic.demand_requests
+			 << " demand_unique_edges=" << semantic.demand_unique_edges
+			 << " demand_root_edges=" << semantic.demand_root_edges
+			 << " demand_dependency_edges="
+			 << semantic.demand_dependency_edges
+			 << " demand_evaluated="
+			 << semantic.demand_evaluated_use_requests
+			 << " demand_retained_calls="
+			 << semantic.demand_retained_call_requests
+			 << " demand_addresses=" << semantic.demand_address_requests
+			 << " demand_lifecycle=" << semantic.demand_lifecycle_requests
+			 << " demand_vtable=" << semantic.demand_vtable_requests
+			 << " demand_static_lifecycle="
+			 << semantic.demand_static_lifecycle_requests
+			 << " demand_exception_cleanup="
+			 << semantic.demand_exception_cleanup_requests
+			 << " demand_explicit_instantiation="
+			 << semantic.demand_explicit_instantiation_requests
+			 << " demand_abi_support="
+			 << semantic.demand_abi_support_requests
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " instructions=" << stats.instructions
@@ -1653,6 +1673,23 @@ int run_emit_semantics_mode(const vector<string> & args)
            << stats.demanded_function_emissions
            << " default_constructor_emissions="
            << stats.default_constructor_emissions
+           << " demand_requests=" << stats.demand_requests
+           << " demand_unique_edges=" << stats.demand_unique_edges
+           << " demand_root_edges=" << stats.demand_root_edges
+           << " demand_dependency_edges=" << stats.demand_dependency_edges
+           << " demand_evaluated=" << stats.demand_evaluated_use_requests
+           << " demand_retained_calls="
+           << stats.demand_retained_call_requests
+           << " demand_addresses=" << stats.demand_address_requests
+           << " demand_lifecycle=" << stats.demand_lifecycle_requests
+           << " demand_vtable=" << stats.demand_vtable_requests
+           << " demand_static_lifecycle="
+           << stats.demand_static_lifecycle_requests
+           << " demand_exception_cleanup="
+           << stats.demand_exception_cleanup_requests
+           << " demand_explicit_instantiation="
+           << stats.demand_explicit_instantiation_requests
+           << " demand_abi_support=" << stats.demand_abi_support_requests
            << " semantic_storage_bytes=" << stats.semantic_storage_bytes
            << " peak_stage_storage_bytes=" << stats.peak_stage_storage_bytes
 		   << " preprocess_ns=" << stats.preprocessing.elapsed_nanoseconds
@@ -1943,6 +1980,26 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << semantic.demanded_function_emissions
 			 << " default_constructor_emissions="
 			 << semantic.default_constructor_emissions
+			 << " demand_requests=" << semantic.demand_requests
+			 << " demand_unique_edges=" << semantic.demand_unique_edges
+			 << " demand_root_edges=" << semantic.demand_root_edges
+			 << " demand_dependency_edges="
+			 << semantic.demand_dependency_edges
+			 << " demand_evaluated="
+			 << semantic.demand_evaluated_use_requests
+			 << " demand_retained_calls="
+			 << semantic.demand_retained_call_requests
+			 << " demand_addresses=" << semantic.demand_address_requests
+			 << " demand_lifecycle=" << semantic.demand_lifecycle_requests
+			 << " demand_vtable=" << semantic.demand_vtable_requests
+			 << " demand_static_lifecycle="
+			 << semantic.demand_static_lifecycle_requests
+			 << " demand_exception_cleanup="
+			 << semantic.demand_exception_cleanup_requests
+			 << " demand_explicit_instantiation="
+			 << semantic.demand_explicit_instantiation_requests
+			 << " demand_abi_support="
+			 << semantic.demand_abi_support_requests
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " blocks=" << stats.blocks

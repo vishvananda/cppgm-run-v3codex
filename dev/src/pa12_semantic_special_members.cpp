@@ -258,7 +258,7 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	info.complete_constructor = source_info.complete_constructor == kNoBinding ?
 		constructor : source_info.complete_constructor;
 	info.ordinary_visible = false;
-	info.demand_state = 0;
+	info.definition_state = FUNCTION_DEFINITION_NOT_STARTED;
 	if (function_fact_by_binding_.size() <= base_entry)
 		function_fact_by_binding_.resize(
 			static_cast<std::size_t>(base_entry) + 1, kNoDumpEdge);

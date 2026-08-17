@@ -2972,6 +2972,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->demand_worklist_pushes = demand_worklist_pushes_;
 		stats_->demanded_function_emissions = demanded_function_emissions_;
 		stats_->default_constructor_emissions = default_constructor_emissions_;
+		PublishFunctionDemandStats();
 		PublishBindingPopulationStats();
 		const std::size_t shared_string_storage =
 			arena.SharedStrings().StorageBytes();

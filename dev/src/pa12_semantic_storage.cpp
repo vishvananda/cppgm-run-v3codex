@@ -164,6 +164,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +
 		default_constructor_demand_states_.capacity() * sizeof(std::uint8_t) +
 		demanded_functions_.capacity() * sizeof(BindingId) +
+		function_demand_edges_.capacity() * sizeof(FunctionDemandEdge) +
 		constexpr_frames_.capacity() * sizeof(ConstexprFrame) +
 		constexpr_locals_.capacity() * sizeof(ConstexprLocalValue) +
 		constexpr_local_by_name_.capacity() * sizeof(std::size_t) +

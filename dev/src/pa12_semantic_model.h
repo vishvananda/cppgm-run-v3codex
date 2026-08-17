@@ -875,6 +875,14 @@ enum ExceptionSpecificationState
 	EXCEPTION_SPECIFICATION_FAILED
 };
 
+enum FunctionDefinitionState
+{
+	FUNCTION_DEFINITION_NOT_STARTED,
+	FUNCTION_DEFINITION_QUEUED,
+	FUNCTION_DEFINITION_IN_PROGRESS,
+	FUNCTION_DEFINITION_COMPLETE
+};
+
 struct FunctionInfo
 {
 	BindingId binding;
@@ -944,7 +952,7 @@ struct FunctionInfo
 	bool ordinary_visible;
 	bool exception_specification_configured;
 	ExceptionSpecificationState exception_specification_state;
-	std::uint8_t demand_state;
+	FunctionDefinitionState definition_state;
 	FunctionInfo()
 		: binding(kNoBinding), inherited_constructor_source(kNoBinding),
 		  complete_constructor(kNoBinding), delegated_constructor(kNoBinding),
@@ -982,7 +990,7 @@ struct FunctionInfo
 		  synthesized_prefix_alignment(0), synthesized_prefix_members(0),
 		  ordinary_visible(true), exception_specification_configured(false),
 		  exception_specification_state(EXCEPTION_SPECIFICATION_FIXED),
-		  demand_state(0) {}
+		  definition_state(FUNCTION_DEFINITION_NOT_STARTED) {}
 };
 
 struct ClassSpecialMemberFacts

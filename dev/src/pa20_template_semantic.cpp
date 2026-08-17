@@ -465,7 +465,8 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		if (target_definition && (state & 2) != 0)
 			throw std::runtime_error(
 				"duplicate explicit member specialization definition");
-		if (GetFunction(selected).demand_state >= 2)
+		if (GetFunction(selected).definition_state >=
+			FUNCTION_DEFINITION_IN_PROGRESS)
 			throw std::runtime_error(
 				"explicit member specialization follows instantiation");
 		state |= target_definition ? 2 : 1;
@@ -763,7 +764,7 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	if (target_definition && (specialization_state & 2) != 0)
 		throw std::runtime_error(
 			"duplicate explicit function specialization definition");
-	if (function.demand_state >= 2)
+	if (function.definition_state >= FUNCTION_DEFINITION_IN_PROGRESS)
 		throw std::runtime_error(
 			"explicit function specialization follows instantiation");
 	specialization_state |= target_definition ? 2 : 1;

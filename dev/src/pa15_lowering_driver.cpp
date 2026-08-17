@@ -173,6 +173,34 @@ void AccumulateVirtualBaseStats(SemanticAnalysisStats* target,
 		source.polymorphic_virtual_view_merges;
 }
 
+void AccumulateFunctionDemandStats(SemanticAnalysisStats* target,
+	const SemanticAnalysisStats& source)
+{
+	target->demand_worklist_pushes += source.demand_worklist_pushes;
+	target->demanded_function_emissions +=
+		source.demanded_function_emissions;
+	target->default_constructor_emissions +=
+		source.default_constructor_emissions;
+	target->demand_requests += source.demand_requests;
+	target->demand_unique_edges += source.demand_unique_edges;
+	target->demand_root_edges += source.demand_root_edges;
+	target->demand_dependency_edges += source.demand_dependency_edges;
+	target->demand_evaluated_use_requests +=
+		source.demand_evaluated_use_requests;
+	target->demand_retained_call_requests +=
+		source.demand_retained_call_requests;
+	target->demand_address_requests += source.demand_address_requests;
+	target->demand_lifecycle_requests += source.demand_lifecycle_requests;
+	target->demand_vtable_requests += source.demand_vtable_requests;
+	target->demand_static_lifecycle_requests +=
+		source.demand_static_lifecycle_requests;
+	target->demand_exception_cleanup_requests +=
+		source.demand_exception_cleanup_requests;
+	target->demand_explicit_instantiation_requests +=
+		source.demand_explicit_instantiation_requests;
+	target->demand_abi_support_requests += source.demand_abi_support_requests;
+}
+
 void AccumulateSemanticStorageStats(SemanticAnalysisStats* target,
 	const SemanticAnalysisStats& source)
 {
@@ -430,12 +458,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 			semantic.constexpr_scratch_peak_nodes = std::max(
 				semantic.constexpr_scratch_peak_nodes,
 				semantic_stats.constexpr_scratch_peak_nodes);
-			semantic.demand_worklist_pushes +=
-				semantic_stats.demand_worklist_pushes;
-			semantic.demanded_function_emissions +=
-				semantic_stats.demanded_function_emissions;
-			semantic.default_constructor_emissions +=
-				semantic_stats.default_constructor_emissions;
+			AccumulateFunctionDemandStats(&semantic, semantic_stats);
 				AccumulateSemanticStorageStats(&semantic, semantic_stats);
 			semantic.preprocessing.elapsed_nanoseconds +=
 				semantic_stats.preprocessing.elapsed_nanoseconds;

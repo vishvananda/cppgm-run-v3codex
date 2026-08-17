@@ -253,7 +253,7 @@ void SemanticAnalyzer::RecordMemberPointerAddressFacts(
 	dump_.nodes[expression].binding = selected;
 	const BindingRecord& member = program_->bindings[selected];
 	if (host_object_emission_ && member.kind == BIND_FUNCTION)
-		DemandFunction(selected);
+		DemandFunction(selected, FUNCTION_DEMAND_ADDRESS);
 	if (!member.virtual_function) return;
 	const std::uint32_t slot = VirtualSlotFor(selected);
 	if (slot == kNoDumpEdge)

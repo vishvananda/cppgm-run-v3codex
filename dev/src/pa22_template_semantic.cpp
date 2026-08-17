@@ -808,7 +808,7 @@ ExpressionInfo SemanticAnalyzer::BuildLambdaInvocationPointer(
 	// indirect source call indirect even though the pointed-to function is
 	// known, so the selected conversion remains visible to typed lowering.
 	result.indirect_constant_designator = true;
-	DemandFunction(canonical);
+	DemandFunction(canonical, FUNCTION_DEMAND_ADDRESS);
 	++expression_count_;
 	return ApplyTarget(result, target);
 }
@@ -851,7 +851,8 @@ void SemanticAnalyzer::DemandMaterializedConstructorActions(
 						!GetFunction(binding).defined)
 					{
 						GetMutableFunction(binding).deferred = true;
-						DemandRuntimeFunction(binding);
+						DemandRuntimeFunction(
+							binding, FUNCTION_DEMAND_RETAINED_CALL);
 					}
 				}
 			}
@@ -917,7 +918,8 @@ void SemanticAnalyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
 					{
 						if (!GetFunction(binding).defined)
 							GetMutableFunction(binding).deferred = true;
-						DemandRuntimeFunction(binding);
+						DemandRuntimeFunction(
+							binding, FUNCTION_DEMAND_RETAINED_CALL);
 					}
 				}
 			}
@@ -936,7 +938,7 @@ void SemanticAnalyzer::DemandRetainedRuntimeCalls(std::uint32_t node)
 			{
 				if (retain_lowering_facts_ && !GetFunction(binding).defined)
 					GetMutableFunction(binding).deferred = true;
-				DemandRuntimeFunction(binding);
+				DemandRuntimeFunction(binding, FUNCTION_DEMAND_ADDRESS);
 			}
 		}
 		for (std::uint32_t edge = record.first_edge;

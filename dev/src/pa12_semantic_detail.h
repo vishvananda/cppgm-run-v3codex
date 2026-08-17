@@ -26,6 +26,41 @@ using namespace pa11;
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
 
+enum FunctionDemandReason
+{
+	FUNCTION_DEMAND_EVALUATED_USE,
+	FUNCTION_DEMAND_RETAINED_CALL,
+	FUNCTION_DEMAND_ADDRESS,
+	FUNCTION_DEMAND_LIFECYCLE,
+	FUNCTION_DEMAND_VTABLE,
+	FUNCTION_DEMAND_STATIC_LIFECYCLE,
+	FUNCTION_DEMAND_EXCEPTION_CLEANUP,
+	FUNCTION_DEMAND_EXPLICIT_INSTANTIATION,
+	FUNCTION_DEMAND_ABI_SUPPORT,
+	FUNCTION_DEMAND_REASON_COUNT
+};
+
+struct FunctionDemandEdge
+{
+	BindingId caller, callee;
+	FunctionDemandReason reason;
+
+	FunctionDemandEdge(BindingId caller_value, BindingId callee_value,
+		FunctionDemandReason reason_value)
+		: caller(caller_value), callee(callee_value), reason(reason_value) {}
+	bool operator<(const FunctionDemandEdge& other) const
+	{
+		if (caller != other.caller) return caller < other.caller;
+		if (callee != other.callee) return callee < other.callee;
+		return reason < other.reason;
+	}
+	bool operator==(const FunctionDemandEdge& other) const
+	{
+		return caller == other.caller && callee == other.callee &&
+			reason == other.reason;
+	}
+};
+
 bool StringLiteralTokenEnd(const std::string& spelling, std::size_t* end);
 bool TemplateArgumentsNeedInternalEmission(const Program& program,
 	const std::vector<TemplateArgument>& arguments);
@@ -183,7 +218,11 @@ public:
 		  empty_destructor_chain_visits_(0),
 		  empty_destructor_chain_cache_hits_(0),
 		  anonymous_enum_count_(0), local_type_count_(0),
-		  branch_cleanup_scan_epoch_(0) {}
+		  branch_cleanup_scan_epoch_(0)
+	{
+		for (std::size_t i = 0; i < FUNCTION_DEMAND_REASON_COUNT; ++i)
+			demand_reason_requests_[i] = 0;
+	}
 
 	void Consume(const SyntaxArena& arena, NodeId root);
 	InternedStringTable& SharedStrings() { return strings_; }
@@ -938,8 +977,11 @@ private:
 	void DeduceFunctionTemplates(ScopeId scope, const std::string& spelling,
 		const std::vector<ExpressionInfo>& arguments,
 		NodeId syntax = kNoNode);
-	void DemandFunction(BindingId binding);
-	void DemandRuntimeFunction(BindingId binding);
+	void DemandFunction(BindingId binding,
+		FunctionDemandReason reason = FUNCTION_DEMAND_EVALUATED_USE);
+	void DemandRuntimeFunction(BindingId binding, FunctionDemandReason reason);
+	void RecordFunctionDemand(BindingId binding, FunctionDemandReason reason);
+	void PublishFunctionDemandStats();
 	void QueueFunctionDefinitionValidation(BindingId binding);
 	void DemandVtableFunction(BindingId binding);
 	void EnsureFunctionExceptionSpecification(BindingId binding);
@@ -2258,6 +2300,8 @@ private:
 	std::size_t demand_worklist_pushes_;
 	std::size_t demanded_function_emissions_;
 	std::size_t default_constructor_emissions_;
+	std::size_t demand_reason_requests_[FUNCTION_DEMAND_REASON_COUNT];
+	std::vector<FunctionDemandEdge> function_demand_edges_;
 	std::size_t class_layouts_;
 	std::size_t class_layout_member_visits_;
 	std::vector<std::uint32_t> virtual_base_layout_entity_marks_;

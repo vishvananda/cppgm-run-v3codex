@@ -2622,7 +2622,7 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	FunctionInfo info = source_info;
 	info.binding = base_entry;
 	info.ordinary_visible = false;
-	info.demand_state = 0;
+	info.definition_state = FUNCTION_DEFINITION_NOT_STARTED;
 	if (function_fact_by_binding_.size() <= base_entry)
 		function_fact_by_binding_.resize(
 			static_cast<std::size_t>(base_entry) + 1, kNoDumpEdge);
@@ -2750,16 +2750,19 @@ FunctionInfo& SemanticAnalyzer::GetMutableFunction(BindingId binding)
 		throw std::logic_error("missing PA12 function fact");
 	return functions_[function_fact_by_binding_[canonical]];
 }
-void SemanticAnalyzer::DemandFunction(BindingId binding)
+void SemanticAnalyzer::DemandFunction(BindingId binding,
+	FunctionDemandReason reason)
 {
 	if (binding == kNoBinding || unevaluated_depth_ != 0 ||
 		constexpr_evaluation_depth_ != 0) return;
-	DemandRuntimeFunction(binding);
+	DemandRuntimeFunction(binding, reason);
 }
-void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding)
+void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding,
+	FunctionDemandReason reason)
 {
 	if (binding == kNoBinding) return;
 	binding = program_->bindings[binding].canonical;
+	RecordFunctionDemand(binding, reason);
 	EnsureFunctionExceptionSpecification(binding);
 	DemandClassTemplateMemberDefinitions(program_->bindings[binding].member_owner);
 	program_->bindings[binding].emission_demanded |= program_->bindings[binding].inline_function;
@@ -2774,34 +2777,36 @@ void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding)
 		const BindingId base_entry =
 			constructor_base_entry_by_binding_[binding];
 		if (base_entry != kNoBinding && base_entry != binding)
-			DemandFunction(base_entry);
+			DemandFunction(base_entry, FUNCTION_DEMAND_LIFECYCLE);
 	}
 	if (binding < destructor_base_entry_by_binding_.size())
 	{
 		const BindingId base_entry =
 			destructor_base_entry_by_binding_[binding];
 		if (base_entry != kNoBinding && base_entry != binding)
-			DemandFunction(base_entry);
+			DemandFunction(base_entry, FUNCTION_DEMAND_LIFECYCLE);
 	}
 	if (binding >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[binding] == kNoDumpEdge) return;
 	FunctionInfo& function = GetMutableFunction(binding);
-	if (!function.deferred || function.demand_state != 0) return;
-	function.demand_state = 1;
+	if (!function.deferred ||
+		function.definition_state != FUNCTION_DEFINITION_NOT_STARTED) return;
+	function.definition_state = FUNCTION_DEFINITION_QUEUED;
 	demanded_functions_.push_back(binding);
 	++demand_worklist_pushes_;
 }
 void SemanticAnalyzer::DemandVtableFunction(BindingId binding)
 {
 	if (binding == kNoBinding) return;
-	DemandRuntimeFunction(binding);
+	DemandRuntimeFunction(binding, FUNCTION_DEMAND_VTABLE);
 	binding = program_->bindings[binding].canonical;
 	if (binding >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[binding] == kNoDumpEdge) return;
 	FunctionInfo& function = GetMutableFunction(binding);
-	if (function.deferred || function.demand_state != 0 ||
+	if (function.deferred ||
+		function.definition_state != FUNCTION_DEFINITION_NOT_STARTED ||
 		function.member_owner == kNoType) return;
-	function.demand_state = 1;
+	function.definition_state = FUNCTION_DEFINITION_QUEUED;
 	demanded_functions_.push_back(binding);
 	++demand_worklist_pushes_;
 }
@@ -2830,8 +2835,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	if (binding >= function_fact_by_binding_.size() ||
 		function_fact_by_binding_[binding] == kNoDumpEdge) return;
 	FunctionInfo& state = GetMutableFunction(binding);
-	if (state.demand_state >= 2) return;
-	state.demand_state = 2;
+	if (state.definition_state >= FUNCTION_DEFINITION_IN_PROGRESS) return;
+	state.definition_state = FUNCTION_DEFINITION_IN_PROGRESS;
 	const FunctionInfo& initial = GetFunction(binding);
 	const bool emit_definition = initial.defined &&
 		!program_->bindings[binding].explicit_instantiation_suppressed;
@@ -2845,7 +2850,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	if (!emit_definition && (retain_lowering_facts_ || member ||
 		program_->bindings[binding].explicit_instantiation_suppressed))
 	{
-		GetMutableFunction(binding).demand_state = 3;
+		GetMutableFunction(binding).definition_state =
+			FUNCTION_DEFINITION_COMPLETE;
 		++demanded_function_emissions_;
 		return;
 	}
@@ -2858,7 +2864,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			dump_.Add(function, dump_.edges[edge].child);
 		FinalizeStaticallyUnreachableBranchCleanup(function);
 		DemandMaterializedConstructorActions(function, true);
-		GetMutableFunction(binding).demand_state = 3;
+		GetMutableFunction(binding).definition_state =
+			FUNCTION_DEFINITION_COMPLETE;
 		++demanded_function_emissions_;
 		return;
 	}
@@ -2892,7 +2899,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	InstallLambdaCaptureBindings(function_scope, this_binding, info);
 	if (!emit_definition)
 	{
-		GetMutableFunction(binding).demand_state = 3;
+		GetMutableFunction(binding).definition_state =
+			FUNCTION_DEFINITION_COMPLETE;
 		++demanded_function_emissions_;
 		return;
 	}
@@ -2983,7 +2991,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		current_function_context_ = previous_function;
 		DemandMaterializedConstructorActions(function, true);
 	}
-	GetMutableFunction(binding).demand_state = 3;
+	GetMutableFunction(binding).definition_state = FUNCTION_DEFINITION_COMPLETE;
 	++demanded_function_emissions_;
 }
 }
