@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, and B3b complete
+Status: in progress; B1, B2, B3a, B3b, and B3n complete
 
 Date: 2026-08-17
 
@@ -257,7 +257,7 @@ candidate.
 | B2 | Omit encoded jump to next instruction | 0 existing | 0 existing | **Landed** in `acf3d415`; 9,399 jumps and 18,798 text bytes removed with timing neutral |
 | B3a | Unsigned power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `65b62af8`; PA29 encoder peephole, active behavior reducer, frozen object byte-identical, timing neutral |
 | B3b | Signed positive power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `b37a6a93`; encoder peephole plus explicit-extension correction, active behavior reducers, frozen object -112 bytes, timing neutral |
-| B3n | Signed negative power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned after B3b; negative divisor remains an encoded `idiv` control |
+| B3n | Signed negative power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `e9cf0de9`; active behavior reducer, `-1` intentionally retained, frozen object byte-identical, timing neutral |
 | B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | Deferred until B3a/B3b evidence |
 | B4a | Flag-safe zero materialization | 0 | 0 | Planned |
 | B4b | `cmp reg, 0` to `test reg, reg` | 0 | 0 | Planned |
@@ -402,6 +402,35 @@ Validation and final frozen evidence:
 - three-block immutable ABBA paired deltas on the exact audited compiler:
   wall +0.25%, user -0.09%, peak RSS +0.26%.  All six outputs per compiler
   were deterministic.
+
+### 4.8 B3n result
+
+`e9cf0de9` applies the B3b bias sequence to negative power-of-two divisors and
+negates only a quotient; remainder is identical to the corresponding positive
+divisor because its sign follows the dividend.  The magnitude calculation is
+unsigned so `-9223372036854775808` is handled without compiler-side signed
+overflow.  Divisor `-1` remains on hardware `idiv`: without a dividend value
+proof, replacing it with `neg` would remove the existing overflow trap for
+`INT64_MIN / -1`.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  The new active behavior reducer is
+`cppgm.tests/course/pa29/negative-power-of-two-division.t`; the reference and
+implementation agree on behavior, while no representation-specific MIR oracle
+is checked in.  Its encoded `idiv rcx` count falls from eight to the three
+intentional `-7` and `-1` controls.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- PA29--PA38 report: 1,280/1,280;
+- full report: 5,171/5,171;
+- PA39 file audit: zero fatal findings;
+- frozen object, text, LSDA, and unwind output: byte-identical because this
+  translation unit has no matching negative power-of-two divisor; and
+- three-block immutable ABBA paired deltas: wall -0.41%, user -0.36%, peak
+  RSS +0.02%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
