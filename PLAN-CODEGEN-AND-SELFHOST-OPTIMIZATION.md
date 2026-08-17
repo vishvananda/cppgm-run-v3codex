@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, and B4a complete
+Status: in progress; B1, B2, B3a, B3b, B3n, B4a, and B4b complete
 
 Date: 2026-08-17
 
@@ -260,7 +260,7 @@ candidate.
 | B3n | Signed negative power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `e9cf0de9`; active behavior reducer, `-1` intentionally retained, frozen object byte-identical, timing neutral |
 | B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | Deferred until B3a/B3b evidence |
 | B4a | Flag-safe zero materialization | 0 existing | 0 existing | **Landed** in `edd35810`; linear per-block flag liveness, proposed encoding reducer, frozen object -11,048 bytes, timing neutral |
-| B4b | `cmp reg, 0` to `test reg, reg` | 0 | 0 | Planned |
+| B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, proposed byte-shape reducer, frozen object -8,104 bytes, timing neutral |
 | B4c | Narrow zero-extension encodings | 0 | 0 | Planned |
 | B4d | Remaining bounded address/load/store folding | 0 | 0 | Planned one pattern at a time |
 | B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
@@ -463,6 +463,33 @@ Validation and frozen evidence:
 - three-block immutable ABBA paired deltas on the final compiler: wall
   -0.41%, user +0.54%, peak RSS +0.23%.  All six outputs per compiler were
   deterministic.
+
+### 4.10 B4b result
+
+`fba50ba6` encodes a register comparison with immediate zero as the
+width-correct `test reg,reg` form.  For the equality, signed, and unsigned x86
+conditions used by MIR, both instructions produce the same relevant ZF, SF,
+PF, CF, and OF values.  The selection is local and constant-time.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  Existing PA29 zero-compare branch tests remain the active
+behavior and MIR gates.  `proposed/pa29/zero-compare-test-encoding.t` retains
+`cmp ..., 0` in MIR while manual inspection proves u32 and i64 `test`
+encodings; it remains proposed because the active harness has no native-byte
+oracle and its behavior duplicates existing coverage.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- full report: 5,171/5,171;
+- PA39 file audit: zero fatal findings;
+- object: 3,770,232 to 3,762,128 bytes;
+- `.text`: 1,039,496 to 1,031,422 bytes;
+- `.gcc_except_table`: 73,463 to 73,434 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes; and
+- three-block immutable ABBA paired deltas: wall +0.08%, user -0.18%, peak
+  RSS +0.06%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
