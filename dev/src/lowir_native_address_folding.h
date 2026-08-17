@@ -45,6 +45,37 @@ inline bool is_address_store_sequence(
     instructions[start + 1].opcode == MirInstruction::MI_STORE;
 }
 
+inline bool is_copy_address_store_sequence(
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start)
+{
+  using mir_model::MirInstruction;
+  return start + 2 < instructions.size() &&
+    instructions[start].opcode == MirInstruction::MI_MOV &&
+    instructions[start + 1].opcode == MirInstruction::MI_LEA &&
+    instructions[start + 2].opcode == MirInstruction::MI_STORE;
+}
+
+enum MemoryFoldKind {
+  MFK_NONE,
+  MFK_SETUP_LOAD,
+  MFK_COPY_STORE,
+  MFK_ADDRESS_STORE,
+  MFK_COPY_ADDRESS_STORE
+};
+
+inline MemoryFoldKind classify_memory_fold(
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start)
+{
+  if(is_setup_load_sequence(instructions, start)) return MFK_SETUP_LOAD;
+  if(is_copy_store_sequence(instructions, start)) return MFK_COPY_STORE;
+  if(is_address_store_sequence(instructions, start)) return MFK_ADDRESS_STORE;
+  if(is_copy_address_store_sequence(instructions, start))
+    return MFK_COPY_ADDRESS_STORE;
+  return MFK_NONE;
+}
+
 std::size_t emit_dead_setup_load(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
@@ -61,6 +92,15 @@ std::size_t emit_dead_address_copy_store(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start, const mir_model::MirFunction & function);
+std::size_t emit_dead_copy_address_store(
+    elf_detail::CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start);
+std::size_t emit_memory_fold(
+    elf_detail::CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, const mir_model::MirFunction & function,
+    MemoryFoldKind kind);
 
 }  // namespace address_folding
 }  // namespace lowir_native

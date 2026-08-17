@@ -270,5 +270,58 @@ std::size_t emit_dead_address_copy_store(
   return 2;
 }
 
+std::size_t emit_dead_copy_address_store(
+    elf_detail::CodeBuffer & out,
+    const std::vector<MirInstruction> & instructions, std::size_t start)
+{
+  if(start > instructions.size() || instructions.size() - start < 3)
+    return 0;
+  const MirInstruction & copy = instructions[start];
+  const MirInstruction & setup = instructions[start + 1];
+  const MirInstruction & store = instructions[start + 2];
+  if(copy.opcode != MirInstruction::MI_MOV || copy.operands.size() != 2 ||
+     copy.operands[0].kind != MirOperand::OP_REG ||
+     copy.operands[1].kind != MirOperand::OP_REG ||
+     setup.opcode != MirInstruction::MI_LEA || setup.operands.size() != 2 ||
+     setup.operands[0].kind != MirOperand::OP_REG ||
+     setup.operands[0].reg != copy.operands[0].reg ||
+     setup.operands[1].kind != MirOperand::OP_DEREF ||
+     setup.operands[1].reg != copy.operands[0].reg ||
+     store.opcode != MirInstruction::MI_STORE || store.operands.size() != 2 ||
+     store.operands[0].kind != MirOperand::OP_DEREF ||
+     store.operands[0].reg != copy.operands[0].reg ||
+     store.operands[1].kind != MirOperand::OP_REG ||
+     store.operands[1].reg == copy.operands[0].reg) return 0;
+  const X64Register address_reg = copy.operands[0].reg;
+  if(!overwritten_without_read(instructions, start + 3, address_reg)) return 0;
+  long long offset = 0;
+  if(!add_offsets(setup.operands[1].offset, store.operands[0].offset,
+                  &offset)) return 0;
+  emit_store(out, copy.operands[1].reg, offset, store.operands[1].reg,
+             data_layout::type_width(store.type));
+  return 3;
+}
+
+std::size_t emit_memory_fold(
+    elf_detail::CodeBuffer & out,
+    const std::vector<MirInstruction> & instructions, std::size_t start,
+    const mir_model::MirFunction & function, MemoryFoldKind kind)
+{
+  std::size_t folded = 0;
+  if(kind == MFK_SETUP_LOAD)
+    folded = emit_dead_setup_load(out, instructions, start, function);
+  if(kind == MFK_COPY_STORE) {
+    folded = emit_dead_copy_store(out, instructions, start, function);
+    if(!folded)
+      folded = emit_dead_address_copy_store(
+        out, instructions, start, function);
+  }
+  if(kind == MFK_ADDRESS_STORE)
+    folded = emit_dead_address_store(out, instructions, start, function);
+  if(kind == MFK_COPY_ADDRESS_STORE)
+    folded = emit_dead_copy_address_store(out, instructions, start);
+  return folded;
+}
+
 }  // namespace address_folding
 }  // namespace lowir_native

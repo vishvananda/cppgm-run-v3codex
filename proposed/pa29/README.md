@@ -38,6 +38,13 @@ pointer and omits the address copy while preserving textual MIR.  Runtime
 indirect-store behavior is already actively covered and PA29 has no
 native-byte oracle, so it remains proposed.
 
+`dead-address-copy-index-store-folding.t` creates a copied base, constant
+index, and store followed by an overwrite of the derived-address register.  It
+is intended to inspect that native encoding folds both setup instructions into
+the store while retaining the `mov`/`lea`/`store` MIR chain.  Runtime behavior
+is already actively covered and PA29 has no native-byte oracle, so it remains
+proposed.
+
 `narrow-zero-extension-encoding.t` covers byte and word zero extension.  It is
 intended to inspect that `movzx` writes a 32-bit destination, relying on the
 x86-64 zeroing rule instead of carrying an unnecessary `REX.W`.  Active PA29
