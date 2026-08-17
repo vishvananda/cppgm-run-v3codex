@@ -1,5 +1,6 @@
 #include "lowir_native_encoding.h"
 
+#include <climits>
 #include <cstdint>
 
 namespace lowir_native {
@@ -188,6 +189,125 @@ void emit_condition_jump(CodeBuffer & out, X86Condition condition,
   out.byte(0x0f);
   out.byte(0x80 + static_cast<unsigned>(condition));
   out.relative32(target);
+}
+
+namespace {
+
+bool is_register_move(const mir_model::MirInstruction & instruction,
+                      X64Register destination, X64Register source)
+{
+  return instruction.opcode == mir_model::MirInstruction::MI_MOV &&
+    instruction.operands.size() == 2 &&
+    instruction.operands[0].kind == mir_model::MirOperand::OP_REG &&
+    instruction.operands[0].reg == destination &&
+    instruction.operands[1].kind == mir_model::MirOperand::OP_REG &&
+    instruction.operands[1].reg == source;
+}
+
+bool is_immediate_move(const mir_model::MirInstruction & instruction,
+                       X64Register destination, long long * value)
+{
+  if(instruction.opcode != mir_model::MirInstruction::MI_MOV ||
+     instruction.operands.size() != 2 ||
+     instruction.operands[0].kind != mir_model::MirOperand::OP_REG ||
+     instruction.operands[0].reg != destination ||
+     instruction.operands[1].kind != mir_model::MirOperand::OP_IMM)
+    return false;
+  *value = instruction.operands[1].imm;
+  return true;
+}
+
+void emit_immediate_shift(CodeBuffer & out, X64Register destination,
+                          unsigned extension, unsigned amount)
+{
+  if(!amount) return;
+  emit_rex(out, true, XR_RAX, destination);
+  out.byte(0xc1);
+  emit_modrm(out, 3, extension, destination);
+  out.byte(amount);
+}
+
+void emit_immediate_and(CodeBuffer & out, X64Register destination,
+                        std::uint64_t mask)
+{
+  if(mask <= 127) {
+    emit_rex(out, true, XR_RAX, destination);
+    out.byte(0x83);
+    emit_modrm(out, 3, 4, destination);
+    out.byte(static_cast<unsigned>(mask));
+    return;
+  }
+  if(mask <= static_cast<std::uint64_t>(INT32_MAX)) {
+    emit_rex(out, true, XR_RAX, destination);
+    out.byte(0x81);
+    emit_modrm(out, 3, 4, destination);
+    out.little(mask, 4);
+    return;
+  }
+  emit_immediate_move(out, XR_R11, mask);
+  emit_register_alu(out, 0x21, destination, XR_R11);
+}
+
+}  // namespace
+
+std::size_t emit_unsigned_power_of_two_division(
+    CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start)
+{
+  using mir_model::MirInstruction;
+  using mir_model::MirOperand;
+  if(start > instructions.size() || instructions.size() - start < 5)
+    return 0;
+  long long signed_divisor = 0;
+  if(!is_immediate_move(instructions[start], XR_RDX, &signed_divisor) ||
+     !is_register_move(instructions[start + 1], XR_RCX, XR_RDX))
+    return 0;
+  const std::uint64_t divisor = static_cast<std::uint64_t>(signed_divisor);
+  if(!divisor || (divisor & (divisor - 1))) return 0;
+
+  std::size_t cursor = start + 2;
+  X64Register dividend = XR_RAX;
+  if(cursor < instructions.size() &&
+     instructions[cursor].opcode == MirInstruction::MI_MOV &&
+     instructions[cursor].operands.size() == 2 &&
+     instructions[cursor].operands[0].kind == MirOperand::OP_REG &&
+     instructions[cursor].operands[0].reg == XR_RAX &&
+     instructions[cursor].operands[1].kind == MirOperand::OP_REG) {
+    dividend = instructions[cursor].operands[1].reg;
+    ++cursor;
+  }
+  long long high_word = -1;
+  if(cursor >= instructions.size() ||
+     !is_immediate_move(instructions[cursor], XR_RDX, &high_word) ||
+     high_word != 0)
+    return 0;
+  ++cursor;
+  if(cursor >= instructions.size() ||
+     instructions[cursor].opcode != MirInstruction::MI_DIV ||
+     instructions[cursor].operands.size() != 1 ||
+     instructions[cursor].operands[0].kind != MirOperand::OP_REG ||
+     instructions[cursor].operands[0].reg != XR_RCX)
+    return 0;
+  ++cursor;
+  if(cursor >= instructions.size() ||
+     instructions[cursor].opcode != MirInstruction::MI_MOV ||
+     instructions[cursor].operands.size() != 2 ||
+     instructions[cursor].operands[0].kind != MirOperand::OP_REG ||
+     instructions[cursor].operands[1].kind != MirOperand::OP_REG ||
+     instructions[cursor].operands[0].reg != dividend)
+    return 0;
+  const X64Register result_source = instructions[cursor].operands[1].reg;
+  const bool remainder = result_source == XR_RDX;
+  if(!remainder && result_source != XR_RAX) return 0;
+
+  unsigned shift = 0;
+  for(std::uint64_t value = divisor; value > 1; value >>= 1) ++shift;
+  if(remainder)
+    emit_immediate_and(out, dividend, divisor - 1);
+  else
+    emit_immediate_shift(out, dividend, 5, shift);
+  return cursor - start + 1;
 }
 
 void emit_i128_shift(CodeBuffer & out,

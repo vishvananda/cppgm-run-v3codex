@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace lowir_native {
 
@@ -45,6 +46,10 @@ void emit_register_alu(elf_detail::CodeBuffer & out, unsigned opcode,
 void emit_condition_jump(elf_detail::CodeBuffer & out,
                          X86Condition condition,
                          const std::string & target);
+std::size_t emit_unsigned_power_of_two_division(
+    elf_detail::CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start);
 void emit_i128_shift(elf_detail::CodeBuffer & out,
                      mir_model::MirInstruction::Opcode opcode);
 void emit_i128_division(elf_detail::CodeBuffer & out,
