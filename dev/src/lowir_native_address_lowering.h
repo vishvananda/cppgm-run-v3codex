@@ -266,6 +266,15 @@ protected:
 			if (destination.kind == mir_model::MirOperand::OP_FRAME)
 				append_store(out, destination, target, "ptr");
 		}
+		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
+			derived.address_is_call_argument(instruction.dest))
+		{
+			// A symbol address is already a complete target operand.  Retain it
+			// until call setup selects the ABI register instead of assigning an
+			// unrelated persistent register and immediately copying from it.
+			destination = derived.global_operand(
+				mir_model::MirOperand::OP_SYMBOL, instruction.first);
+		}
 		else
 		{
 			X64Register result = XR_RSP;

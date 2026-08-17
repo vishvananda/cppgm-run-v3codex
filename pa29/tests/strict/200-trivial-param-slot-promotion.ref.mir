@@ -30,7 +30,6 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, @cell
-    mov rdi, r8
+    mov rdi, @cell
     call @read [args=(rdi)]
     ret rax

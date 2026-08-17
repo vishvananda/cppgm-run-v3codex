@@ -75,22 +75,22 @@ function @main
     scratch_bytes 48
 
   block ^entry
-    mov r8, @value
     mov rdi, 0
     mov rsi, 0
     mov rdx, 0
     mov rcx, 0
+    mov r8, @value
     call @target [args=(rcx,rdx,rsi,rdi,r8)]
-    mov r9, rax
+    mov r8, rax
     mov rdx, 77
-    cmp.i64 r9, rdx
-    sete r9
-    movzx r9, r9
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
     mov rdx, 0
-    cmp.i64 r9, rdx
-    sete r9
-    movzx r9, r9
-    mov r8, r9
-    sext.i32 r8
-    mov rax, r8
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
     ret rax

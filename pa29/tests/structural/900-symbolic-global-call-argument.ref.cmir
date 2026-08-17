@@ -1,0 +1,47 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @value
+  storage data
+  item i64 47
+
+function @read
+  abi
+    param %address -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, rdi
+    load.i64 rax, [r8]
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve <gpr0> <gpr1> <gpr2>
+
+  block ^entry
+    mov rdi, @value
+    call @read [args=(rdi)]
+    mov <gpr0>, rax
+    mov <gpr1>, @value
+    mov rdi, <gpr1>
+    call @read [args=(rdi)]
+    mov <gpr2>, rax
+    mov rdi, <gpr1>
+    call @read [args=(rdi)]
+    mov r8, rax
+    add <gpr0>, <gpr2>
+    add <gpr0>, r8
+    mov rax, <gpr0>
+    ret rax

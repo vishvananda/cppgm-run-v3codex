@@ -57,8 +57,7 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, @pair
-    mov rdi, r8
+    mov rdi, @pair
     call @check [args=(rdi)]
     cmp.i32 @seen, 1
     je ^pass

@@ -65,18 +65,17 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
-    preserve rbx r12
+    preserve rbx
 
   block ^entry
-    mov r8, @cell
-    mov r9, 1
-    mov rbx, 7
-    mov rdi, r9
-    mov rsi, r8
-    mov rdx, rbx
+    mov r8, 1
+    mov r9, 7
+    mov rdi, r8
+    mov rsi, @cell
+    mov rdx, r9
     call @dispatch [args=(rdx,rsi,rdi)]
-    mov r12, rax
-    cmp.i64 r12, 7
+    mov rbx, rax
+    cmp.i64 rbx, 7
     je ^good
     jmp ^bad
 
