@@ -1,0 +1,16 @@
+static int unused_internal()
+{
+  return 91;
+}
+
+static int used_internal()
+{
+  return 7;
+}
+
+int (*used_address)() = &used_internal;
+
+int main()
+{
+  return used_address() == 7 ? 0 : 1;
+}

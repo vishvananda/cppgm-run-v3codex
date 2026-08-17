@@ -624,10 +624,14 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 		pa15_function_reachability::Analyze(*program);
 	if (stats)
 	{
+		const pa15_function_reachability::Summary internal_audit =
+			pa15_function_reachability::AuditWithoutInternalRoots(*program);
 		stats->post_inline_reachable_functions =
 			reachability.reachable_functions;
 		stats->post_inline_unreachable_weak_functions =
 			reachability.unreachable_weak_functions;
+		stats->post_inline_unreachable_internal_functions =
+			internal_audit.unreachable_internal_functions;
 		stats->post_inline_pruned_functions = reachability.pruned_functions;
 		stats->post_inline_retained_external_strong =
 			reachability.retained_external_strong;
@@ -645,6 +649,8 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 			reachability.retained_conservative_fallback;
 		stats->post_inline_retained_conservative_fallback_names =
 			reachability.retained_conservative_fallback_names;
+		stats->post_inline_unreachable_internal_names =
+			internal_audit.unreachable_internal_names;
 		stats->functions = program->functions.size();
 		stats->blocks = 0;
 		stats->instructions = 0;

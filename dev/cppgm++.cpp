@@ -1110,6 +1110,8 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << stats.post_inline_reachable_functions
 			 << " post_inline_unreachable_weak_functions="
 			 << stats.post_inline_unreachable_weak_functions
+			 << " post_inline_unreachable_internal_functions="
+			 << stats.post_inline_unreachable_internal_functions
 			 << " post_inline_pruned_functions="
 			 << stats.post_inline_pruned_functions
 			 << " post_inline_retained_external_strong="
@@ -1160,6 +1162,14 @@ cppgm::pa30::CompilerObject compile_source_object(
 				 << " file=" << path
 				 << " symbol="
 				 << stats.post_inline_retained_conservative_fallback_names[fallback]
+				 << '\n';
+		for (size_t internal = 0;
+			internal < stats.post_inline_unreachable_internal_names.size();
+			++internal)
+			cerr << "pa15_unreachable_internal"
+				 << " file=" << path
+				 << " symbol="
+				 << stats.post_inline_unreachable_internal_names[internal]
 				 << '\n';
 		cerr << "pa37_prepare_stats"
 			 << " file=" << path

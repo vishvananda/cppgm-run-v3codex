@@ -15,6 +15,7 @@ struct Summary
 {
 	std::size_t reachable_functions;
 	std::size_t unreachable_weak_functions;
+	std::size_t unreachable_internal_functions;
 	std::size_t pruned_functions;
 	std::size_t retained_external_strong;
 	std::size_t retained_address_or_relocation;
@@ -24,8 +25,10 @@ struct Summary
 	std::size_t retained_required_weak;
 	std::size_t retained_conservative_fallback;
 	std::vector<std::string> retained_conservative_fallback_names;
+	std::vector<std::string> unreachable_internal_names;
 
 	Summary() : reachable_functions(0), unreachable_weak_functions(0),
+		unreachable_internal_functions(0),
 		pruned_functions(0), retained_external_strong(0),
 		retained_address_or_relocation(0), retained_direct_call(0),
 		retained_lifecycle(0), retained_eh_or_runtime(0),
@@ -33,6 +36,8 @@ struct Summary
 };
 
 Summary Analyze(const pa15_lowir_detail::TypedProgram& program);
+Summary AuditWithoutInternalRoots(
+	const pa15_lowir_detail::TypedProgram& program);
 Summary PruneUnreachableWeakFunctions(
 	pa15_lowir_detail::TypedProgram* program);
 

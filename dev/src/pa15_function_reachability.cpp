@@ -56,10 +56,11 @@ std::uint16_t semantic_retention_reasons(const Symbol& symbol)
 class Analyzer
 {
 public:
-	explicit Analyzer(const TypedProgram& program)
+	Analyzer(const TypedProgram& program, bool retain_internal_roots)
 		: program_(program), function_by_symbol_(program.symbols.size(),
 			kNoFunction), reachable_(program.functions.size(), 0),
-			retention_reasons_(program.functions.size(), 0)
+			retention_reasons_(program.functions.size(), 0),
+			retain_internal_roots_(retain_internal_roots)
 	{
 		for (std::size_t i = 0; i < program_.functions.size(); ++i)
 		{
@@ -86,6 +87,14 @@ public:
 			const std::uint32_t symbol = program_.functions[i].symbol;
 			if (!reachable_[i] && program_.symbols[symbol].weak_linkage)
 				++result.unreachable_weak_functions;
+			if (!reachable_[i] && program_.symbols[symbol].internal_linkage)
+			{
+				++result.unreachable_internal_functions;
+				const Symbol& internal = program_.symbols[symbol];
+				result.unreachable_internal_names.push_back(
+					internal.object_name.empty() ? internal.name :
+					internal.object_name);
+			}
 		}
 		ClassifyRetainedFunctions(&result);
 		return result;
@@ -102,6 +111,7 @@ private:
 	std::vector<unsigned char> reachable_;
 	std::vector<std::uint16_t> retention_reasons_;
 	std::vector<std::size_t> pending_;
+	bool retain_internal_roots_;
 
 	void MarkSymbol(SymbolId symbol, std::uint16_t reason)
 	{
@@ -109,8 +119,7 @@ private:
 		if (id == kNoLowId || id >= function_by_symbol_.size()) return;
 		const std::size_t function = function_by_symbol_[id];
 		if (function == kNoFunction) return;
-		retention_reasons_[function] |= reason |
-			semantic_retention_reasons(program_.symbols[id]);
+		retention_reasons_[function] |= reason;
 		if (reachable_[function]) return;
 		reachable_[function] = 1;
 		pending_.push_back(function);
@@ -146,12 +155,14 @@ private:
 		{
 			const Function& function = program_.functions[i];
 			const Symbol& symbol = program_.symbols[function.symbol];
-			if (!symbol.weak_linkage)
+			if (!symbol.weak_linkage &&
+				(!symbol.internal_linkage || retain_internal_roots_))
 				MarkSymbol(function.symbol, symbol.internal_linkage ?
 					RETENTION_CONSERVATIVE_FALLBACK :
 					RETENTION_EXTERNAL_STRONG);
 			if (symbol.object_output_root)
-				MarkSymbol(function.symbol, RETENTION_REQUIRED_WEAK);
+				MarkSymbol(function.symbol, RETENTION_REQUIRED_WEAK |
+					semantic_retention_reasons(symbol));
 			if (function.entry || function.initializer || function.finalizer ||
 				symbol.tls_for_symbol != kNoLowId)
 				MarkSymbol(function.symbol, RETENTION_LIFECYCLE);
@@ -228,14 +239,19 @@ private:
 
 Summary Analyze(const TypedProgram& program)
 {
-	return Analyzer(program).Run();
+	return Analyzer(program, true).Run();
+}
+
+Summary AuditWithoutInternalRoots(const TypedProgram& program)
+{
+	return Analyzer(program, false).Run();
 }
 
 Summary PruneUnreachableWeakFunctions(TypedProgram* program)
 {
 	if (!program) throw std::logic_error(
 		"cannot prune a null typed LowIR program");
-	Analyzer analyzer(*program);
+	Analyzer analyzer(*program, true);
 	Summary result = analyzer.Run();
 	std::vector<unsigned char> removed_symbols(program->symbols.size(), 0);
 	std::vector<Function> retained;

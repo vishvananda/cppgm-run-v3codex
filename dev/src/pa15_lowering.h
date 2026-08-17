@@ -72,6 +72,7 @@ struct LowIRLoweringStats
 	std::size_t force_inline_cloned_instructions;
 	std::size_t post_inline_reachable_functions;
 	std::size_t post_inline_unreachable_weak_functions;
+	std::size_t post_inline_unreachable_internal_functions;
 	std::size_t post_inline_pruned_functions;
 	std::size_t post_inline_retained_external_strong;
 	std::size_t post_inline_retained_address_or_relocation;
@@ -81,6 +82,7 @@ struct LowIRLoweringStats
 	std::size_t post_inline_retained_required_weak;
 	std::size_t post_inline_retained_conservative_fallback;
 	std::vector<std::string> post_inline_retained_conservative_fallback_names;
+	std::vector<std::string> post_inline_unreachable_internal_names;
 	std::size_t typed_storage_bytes;
 	std::size_t output_bytes;
 	std::uint64_t lowering_nanoseconds;
