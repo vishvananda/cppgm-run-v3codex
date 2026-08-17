@@ -10,5 +10,7 @@ struct Stats;
 
 bool share_terminal_resume_blocks(lowir_model::Function * function,
                                   Stats * stats = 0);
+bool share_exact_cleanup_tails(lowir_model::Function * function,
+                               Stats * stats = 0);
 
 }  // namespace lowir_opt

@@ -186,6 +186,15 @@ int run_lowiropt_mode(const vector<string> & args)
               << stats.cleanup_resume_block_visits
               << " cleanup_resume_blocks_removed="
               << stats.cleanup_resume_blocks_removed
+              << " cleanup_tail_runs=" << stats.cleanup_tail_runs
+              << " cleanup_tail_block_visits="
+              << stats.cleanup_tail_block_visits
+              << " cleanup_tail_groups_shared="
+              << stats.cleanup_tail_groups_shared
+              << " cleanup_tail_blocks_rewritten="
+              << stats.cleanup_tail_blocks_rewritten
+              << " cleanup_tail_instructions_removed="
+              << stats.cleanup_tail_instructions_removed
          << " inline_ns=" << stats.inline_nanoseconds
          << " simplify_ns=" << stats.simplify_nanoseconds
          << " dce_ns=" << stats.dce_nanoseconds
@@ -197,6 +206,7 @@ int run_lowiropt_mode(const vector<string> & args)
               << " promote_slot_ns=" << stats.promote_slot_nanoseconds
               << " dead_store_ns=" << stats.dead_store_nanoseconds
               << " cleanup_resume_ns=" << stats.cleanup_resume_nanoseconds
+              << " cleanup_tail_ns=" << stats.cleanup_tail_nanoseconds
          << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
   }
   return EXIT_SUCCESS;

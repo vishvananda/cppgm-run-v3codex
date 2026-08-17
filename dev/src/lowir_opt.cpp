@@ -2630,6 +2630,14 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - cleanup_resume_started).count());
+    const std::chrono::steady_clock::time_point cleanup_tail_started =
+      stats ? std::chrono::steady_clock::now() :
+              std::chrono::steady_clock::time_point();
+    share_exact_cleanup_tails(&function, stats);
+    if(stats) stats->cleanup_tail_nanoseconds +=
+      static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - cleanup_tail_started).count());
     bool post_cfg_values_changed = false;
     if(initial_cfg_changed) {
       post_cfg_values_changed = timed_function_pass(
