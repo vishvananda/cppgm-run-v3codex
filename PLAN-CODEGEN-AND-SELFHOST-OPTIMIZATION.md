@@ -621,6 +621,59 @@ width proof.  Further material copy reduction therefore moves to the planned
 PA38 value-placement/register-allocation work rather than broadening the O0
 encoder peephole.
 
+### 4.3.7 Exact-current residual size classification
+
+After B7c, both cppgm++ and GCC compiled the exact same current source tree at
+`-O0`.  This removes the small source-drift caveat from the earlier B6
+comparison:
+
+| Final compiler component | cppgm++ | GCC | Delta |
+| --- | ---: | ---: | ---: |
+| file bytes | 18,509,600 | 13,801,280 | +4,708,320 |
+| GNU `size` text | 11,159,621 | 8,504,783 | +2,654,838 |
+| machine `.text` | 9,028,802 | 6,274,499 | +2,754,303 |
+| `.eh_frame_hdr` | 309,748 | 240,764 | +68,984 |
+| `.eh_frame` | 1,260,304 | 1,015,276 | +245,028 |
+| LSDA | 470,234 | 176,032 | +294,202 |
+| `.data` plus `.rodata` | 816,316 | 733,868 | +82,448 |
+| `.symtab` plus `.strtab` | 6,525,273 | 5,269,402 | +1,255,871 |
+| FDEs | 38,717 | 30,094 | +8,623 |
+| defined code symbols | 46,241 | 37,271 | +8,970 |
+
+The executable is therefore 34.1% larger on disk, GNU `size` text is 31.2%
+larger, and machine text is 43.9% larger.  The 1.26 MB symbol-table/string-table
+gap is non-allocating file content: stripping could reduce distribution size,
+but would not improve generated code or loaded execution footprint.  The
+0.61 MB unwind gap and extra FDEs remain a secondary definition/demand target.
+
+The current normalized disassembly divides the machine-code gap as follows:
+
+| Residual instruction family | Excess bytes versus GCC |
+| --- | ---: |
+| register-to-register `mov` | 488,224 |
+| stack `mov` | 652,630 |
+| stack-address `lea` | 327,299 |
+| other memory-address `lea` | 283,785 |
+| other memory `mov` | 130,917 |
+| immediate `mov` | 86,042 |
+| RIP-relative `mov`/`lea` | 38,413 |
+| `push`/`pop` | 326,781 |
+
+Plain `mov` and `lea` account for 2,007,310 bytes, or 72.9% of the machine
+text gap.  Register copies, stack loads/stores, and stack-address formation
+alone account for 1,468,153 bytes.  Adding `push`/`pop` brings these broad
+value-placement and save/restore families to 84.7% of the gap.  These are
+upper bounds, not all removable bytes, but they identify the dominant cause.
+
+The excess is also widely distributed rather than concentrated in a few
+compiler routines.  Maximum body size per demangled name attributes a net
+2,129,582 excess bytes to 27,455 common names and 485,067 net bytes to names
+present on only one side.  The ten largest positive common-name gaps total
+161,243 bytes; the largest 100 total 623,062 bytes.  Consequently there is no
+second COMDAT-sized local simplification.  The next majority opportunity is
+the planned PA38 value coalescing/register-allocation work, which can attack
+copy, home/reload, address-materialization, and callee-save traffic together.
+
 ### 4.4 P0 result
 
 `c6ee9be9` moves `INCEPTION_HOST_ALLOC_LIBS` after every PA39 link's input
