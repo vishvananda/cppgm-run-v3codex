@@ -88,7 +88,23 @@ than host contention or E5/E6 cost.
 | E6 | Elide single-use temporary frame stores paired with an adjacent 64-bit reload; PA29 native encoding | Prove from all MIR operands that the compiler-only home has exactly one store and one load, then forward the register without materializing unobservable temporary memory | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -37,240 bytes; text -36,836 bytes; EH -408 bytes; `analyze_call_expression` -14,536 bytes | **Retain**; one linear use-count pass per function preserves O0 MIR and final observable state |
 | E7 | Forward a single-use temporary reload across one independent register instruction; PA29 native encoding | Skip the unobservable store/reload when the sole intervening load, LEA, or move writes a different register | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -5,368 bytes; text -5,318 bytes; EH -34 bytes; `analyze_call_expression` -1,485 bytes; timing screen 6.15 s | **Retain**; all calls, stores, EH markers, arithmetic, and source-register definitions remain barriers |
 | E8 | Extend E7 across short runs of independently checked instructions; PA29 native encoding | Reuse the same per-instruction proof for two to five intervening load/LEA/move instructions | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -6,544 bytes; text -6,502 bytes; EH -55 bytes; `analyze_call_expression` -2,387 bytes; timing screen 6.15 s | **Retain**; the five-instruction bound captures all but no-value outliers without requiring CFG dataflow |
-| E9 | Extend frame reload forwarding to narrow integer transfers; PA29 native encoding | Preserve x86 partial-register semantics with width-matched register moves for 8/16/32-bit store/reload pairs | Pending | The frozen main function has about 250 adjacent narrow pairs | **Investigation**; evaluate separately from full-width forwarding |
+| E9 | Extend frame reload forwarding to narrow integer transfers; PA29 native encoding | Preserve x86 partial-register semantics with width-matched register moves for 8/16/32-bit store/reload pairs | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -8,144 bytes; text -8,090 bytes; EH -41 bytes; `analyze_call_expression` -3,196 bytes; timing screen 6.12 s | **Retain**; width-matched register moves reproduce each x86 load's partial-register behavior |
+
+## Optimization placement
+
+E2, E3/E3P, and E5--E9 operate on facts created only by native lowering:
+frame bindings, physical registers, x86 branch widths, and final code offsets.
+They therefore belong in the backend and should not appear in pre-LowIR output.
+The E5--E9 traffic is introduced by reactive register allocation, not emitted by
+the frontend LowIR builder.  A future allocator could avoid those homes while
+building MIR, but doing so would deliberately change PA29's checked O0 MIR;
+the late encoder proof removes the machine operations without changing that
+assignment contract.
+
+E4 could also be expressed as a target-independent `-O1/-O2` LowIR transform
+or as constant-data materialization during lowering.  Its O0 encoder form is
+kept because the established O0 LowIR/MIR fixtures are canonical assignment
+outputs, while the packed x86 stores are not semantically observable.
 
 ## Deferred candidates
 

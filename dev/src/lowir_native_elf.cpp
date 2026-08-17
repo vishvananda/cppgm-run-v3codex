@@ -116,6 +116,19 @@ void emit_size_prefix(CodeBuffer & out, unsigned width)
   if(width == 16) out.byte(0x66);
 }
 
+void emit_sized_register_move(CodeBuffer & out, X64Register destination,
+                              X64Register source, unsigned width)
+{
+  if(width == 64) {
+    emit_register_move(out, destination, source);
+    return;
+  }
+  emit_size_prefix(out, width);
+  emit_rex(out, false, source, destination, width == 8);
+  out.byte(width == 8 ? 0x88 : 0x89);
+  emit_modrm(out, 3, source, destination);
+}
+
 void emit_load(CodeBuffer & out, X64Register destination, X64Register base,
                long long displacement, unsigned width)
 {
@@ -2055,7 +2068,7 @@ bool parse_forwarded_frame_reload(
   const MirInstruction & load = instructions[start + 1];
   if(store.opcode != MirInstruction::MI_STORE ||
      load.opcode != MirInstruction::MI_LOAD ||
-     store.type != load.type || type_width(store.type) != 64 ||
+     store.type != load.type || type_width(store.type) > 64 ||
      store.operands.size() != 2 || load.operands.size() != 2 ||
      store.operands[0].kind != MirOperand::OP_FRAME ||
      store.operands[1].kind != MirOperand::OP_REG ||
@@ -2110,7 +2123,11 @@ FrameReloadPlan find_single_use_frame_reloads(
   for(std::size_t i = 0; i < function.frame_bindings.size(); ++i) {
     const mir_model::MirFrameBinding & binding = function.frame_bindings[i];
     if(binding.kind == mir_model::MirFrameBinding::FB_TEMP &&
-       (binding.type == "ptr" || binding.type == "i64"))
+       (binding.type == "ptr" || binding.type == "i64" ||
+        binding.type == "i32" || binding.type == "u32" ||
+        binding.type == "i16" || binding.type == "u16" ||
+        binding.type == "i8" || binding.type == "u8" ||
+        binding.type == "i1"))
       uses.emplace(binding.offset, FrameUseFacts());
   }
   if(function.host_eh_enabled) {
@@ -2204,7 +2221,8 @@ bool emit_delayed_frame_forwarding(
   if(source == plan.delayed.end()) return false;
   const X64Register destination = instruction.operands[0].reg;
   if(source->second != destination)
-    emit_register_move(out, destination, source->second);
+    emit_sized_register_move(out, destination, source->second,
+      type_width(instruction.type));
   return true;
 }
 
@@ -2222,7 +2240,8 @@ std::size_t emit_forwarded_frame_reload(
   if(!frame_reload_plan.adjacent.count(frame_offset))
     emit_instruction(out, instructions[start], &function);
   if(source != destination)
-    emit_register_move(out, destination, source);
+    emit_sized_register_move(out, destination, source,
+      type_width(instructions[start].type));
   return 2;
 }
 
