@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1 and B2 complete
+Status: in progress; B1, B2, B3a, and B3b complete
 
 Date: 2026-08-17
 
@@ -256,7 +256,8 @@ candidate.
 | B1 | Compact memory displacements | 0 existing | 0 existing | **Landed** in `e46bde65`; deterministic object -157,352 bytes and text -156,330 bytes; behavior reference agrees while its unrelated MIR layout differs |
 | B2 | Omit encoded jump to next instruction | 0 existing | 0 existing | **Landed** in `acf3d415`; 9,399 jumps and 18,798 text bytes removed with timing neutral |
 | B3a | Unsigned power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `65b62af8`; PA29 encoder peephole, active behavior reducer, frozen object byte-identical, timing neutral |
-| B3b | Signed power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned after B3a |
+| B3b | Signed positive power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `b37a6a93`; encoder peephole plus explicit-extension correction, active behavior reducers, frozen object -112 bytes, timing neutral |
+| B3n | Signed negative power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned after B3b; negative divisor remains an encoded `idiv` control |
 | B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | Deferred until B3a/B3b evidence |
 | B4a | Flag-safe zero materialization | 0 | 0 | Planned |
 | B4b | `cmp reg, 0` to `test reg, reg` | 0 | 0 | Planned |
@@ -357,6 +358,50 @@ Validation and frozen evidence:
   and
 - three-block immutable ABBA paired deltas: wall -0.97%, user -1.25%, peak
   RSS +0.22%.  All six outputs per compiler were deterministic.
+
+### 4.7 B3b result
+
+`b37a6a93` extends the encoder peephole to signed division and remainder by a
+positive power of two.  It biases negative dividends before an arithmetic
+shift so division truncates toward zero.  Remainder uses
+`((n + bias) & mask) - bias`, preserving the dividend-sign rule without a
+hardware divide.  The same changeset corrects explicit integer extension
+selection: `zext` and `sext` now choose their MIR opcode from the conversion
+operator rather than the spelling of the source type.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  The two new active behavior reducers are:
+
+- `cppgm.tests/course/pa29/explicit-integer-extension-spelling.t`; and
+- `cppgm.tests/course/pa29/signed-power-of-two-division.t`.
+
+Both references agree with the tested behavior.  Their reference MIR uses
+different valid register allocation and frame layout, so neither new test
+checks in a MIR oracle.  No existing MIR oracle was edited, removed, or
+regenerated.  The signed reducer covers i8/i16/i32/i64, zero, positive and
+negative nonmultiples, extrema, divisors 1/2/4/large powers, and three negative
+controls.  Its encoded `idiv rcx` count falls from 16 to the three controls.
+
+The first signed encoding experiment was rejected and replaced before commit:
+although correct, constructing the quotient in the scratch register grew the
+frozen object by 176 bytes and `.text` by 180 bytes.  Updating the dividend in
+place and using the direct remainder identity reversed that regression.
+
+Validation and final frozen evidence:
+
+- PA29: 183/183 assignment tests and 18/18 course tests;
+- through PA29: 4,092/4,092;
+- full report: 5,170/5,170;
+- PA39 file audit: zero fatal findings; the new MIR builder was separated from
+  `lowir_native.cpp` to keep that file at the 3,000-line limit;
+- matching frozen `idiv rcx` sites: 166 to 76;
+- object: 3,781,392 to 3,781,280 bytes;
+- `.text`: 1,050,580 to 1,050,488 bytes;
+- `.gcc_except_table`: 73,529 to 73,515 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes; and
+- three-block immutable ABBA paired deltas on the exact audited compiler:
+  wall +0.25%, user -0.09%, peak RSS +0.26%.  All six outputs per compiler
+  were deterministic.
 
 ## 5. Execution plan
 
