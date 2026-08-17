@@ -1,0 +1,6 @@
+#include "200-explicit-function-specialization-cross-object.helper.h"
+
+int main()
+{
+  return specialized_value<specialization_tag>(5) == 12 ? 0 : 1;
+}

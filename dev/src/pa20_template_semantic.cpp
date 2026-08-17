@@ -472,6 +472,10 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		state |= target_definition ? 2 : 1;
 		FunctionInfo& function = GetMutableFunction(selected);
 		function.explicit_specialization = true;
+		BindingRecord& specialization_binding = program_->bindings[selected];
+		specialization_binding.explicit_function_specialization = true;
+		specialization_binding.inline_function = false;
+		specialization_binding.weak_odr = false;
 		std::vector<ParameterInfo> specialization_parameters = parsed.parameters;
 		if (specialization_parameters.size() == function.parameters.size())
 			for (std::size_t parameter = 0;
@@ -769,6 +773,10 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 			"explicit function specialization follows instantiation");
 	specialization_state |= target_definition ? 2 : 1;
 	function.explicit_specialization = true;
+	BindingRecord& specialization_binding = program_->bindings[selected];
+	specialization_binding.explicit_function_specialization = true;
+	specialization_binding.inline_function = false;
+	specialization_binding.weak_odr = false;
 	if (spec.is_constexpr)
 		ValidateConstexprCallableType(function.type, false);
 	std::vector<ParameterInfo> specialization_parameters = parsed.parameters;

@@ -673,6 +673,7 @@ struct BindingRecord
 		override_specifier : 1, weak_odr : 1, weak_symbol : 1,
 		object_output_root : 1, emission_demanded : 1;
 	bool explicit_instantiation_suppressed : 1;
+	bool explicit_function_specialization : 1;
 	bool template_parameter_constant : 1;
 	bool variable_template_specialization : 1;
 	// A canonical callable specialization owns boundary exceptions that cannot

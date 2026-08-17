@@ -2615,6 +2615,8 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	binding.object_output_root = source_binding_copy.object_output_root;
 	binding.explicit_instantiation_suppressed =
 		source_binding_copy.explicit_instantiation_suppressed;
+	binding.explicit_function_specialization =
+		source_binding_copy.explicit_function_specialization;
 	binding.destructor = true;
 	binding.destructor_base_entry = true;
 	binding.lifecycle_base_entry = base_entry;

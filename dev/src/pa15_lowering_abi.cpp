@@ -1967,7 +1967,8 @@ bool HasWeakLinkage(
 		canonical.explicit_instantiation_suppressed;
 	return canonical.weak_symbol || (!preempted &&
 		(record.weak_odr || primary_template_member ||
-		 (function && record.template_argument_count != 0)));
+		 (function && record.template_argument_count != 0 &&
+		  !record.explicit_function_specialization)));
 }
 
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,

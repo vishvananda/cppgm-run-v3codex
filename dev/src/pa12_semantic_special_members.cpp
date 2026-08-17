@@ -248,6 +248,8 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	binding.object_output_root = source_binding.object_output_root;
 	binding.explicit_instantiation_suppressed =
 		source_binding.explicit_instantiation_suppressed;
+	binding.explicit_function_specialization =
+		source_binding.explicit_function_specialization;
 	binding.static_member_function = source_binding.static_member_function;
 	binding.constructor = true;
 	binding.constructor_base_entry = true;

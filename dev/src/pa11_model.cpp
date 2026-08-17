@@ -725,6 +725,7 @@ BindingRecord::BindingRecord()
 	  override_specifier(false), weak_odr(false), weak_symbol(false),
 	  object_output_root(false),
 	  emission_demanded(false), explicit_instantiation_suppressed(false),
+	  explicit_function_specialization(false),
 	  template_parameter_constant(false),
 	  variable_template_specialization(false),
 	  force_indirect_class_result_abi(false),
