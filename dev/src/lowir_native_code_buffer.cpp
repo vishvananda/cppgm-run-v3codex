@@ -96,6 +96,21 @@ void CodeBuffer::append(const std::vector<unsigned char>& bytes)
 	bytes_.insert(bytes_.end(), bytes.begin(), bytes.end());
 }
 
+bool CodeBuffer::short_relative(unsigned opcode, const std::string& target)
+{
+	const std::unordered_map<std::string, std::size_t>::const_iterator found =
+		labels_.find(target);
+	if (found == labels_.end()) return false;
+	if (found->second > static_cast<std::size_t>(LLONG_MAX) ||
+		bytes_.size() > static_cast<std::size_t>(LLONG_MAX - 2)) return false;
+	const std::int64_t delta = static_cast<std::int64_t>(found->second) -
+		static_cast<std::int64_t>(bytes_.size() + 2);
+	if (delta < INT8_MIN || delta > INT8_MAX) return false;
+	byte(opcode);
+	byte(static_cast<std::uint8_t>(delta));
+	return true;
+}
+
 void CodeBuffer::relative32(const std::string& target)
 {
 	Fixup fixup;

@@ -216,6 +216,8 @@ void emit_register_alu(CodeBuffer & out, unsigned opcode,
 void emit_condition_jump(CodeBuffer & out, X86Condition condition,
                          const std::string & target)
 {
+  if(out.short_relative(
+       0x70 + static_cast<unsigned>(condition), target)) return;
   out.byte(0x0f);
   out.byte(0x80 + static_cast<unsigned>(condition));
   out.relative32(target);
@@ -875,13 +877,12 @@ X64Register materialize_integer_operand(CodeBuffer & out,
 void emit_near_jump(CodeBuffer & out, X86Condition condition,
                     const std::string & target)
 {
-  out.byte(0x0f);
-  out.byte(0x80 + static_cast<unsigned>(condition));
-  out.relative32(target);
+  emit_condition_jump(out, condition, target);
 }
 
 void emit_unconditional_jump(CodeBuffer & out, const std::string & target)
 {
+  if(out.short_relative(0xeb, target)) return;
   out.byte(0xe9);
   out.relative32(target);
 }
@@ -1569,7 +1570,7 @@ void emit_eh_catch(CodeBuffer & out,
     emit_load(out, XR_RAX, XR_R11, 0, 64);
   }
   if(!exact.empty()) {
-    out.byte(0xe9); out.relative32(selected);
+    emit_unconditional_jump(out, selected);
     out.label(exact);
     emit_symbol_move(out, XR_R11, kEhValue);
     emit_load(out, XR_RAX, XR_R11, 0, 64);
@@ -1614,10 +1615,10 @@ bool emit_eh_instruction(CodeBuffer & out,
     emit_symbol_move(out, XR_R11, kEhType);
     emit_immediate_move(out, XR_RAX, 0);
     emit_store(out, XR_R11, 0, XR_RAX, 64);
-    out.byte(0xe9); out.relative32(kEhDispatch); return true;
+    emit_unconditional_jump(out, kEhDispatch); return true;
   case mir_model::MirInstruction::MI_RESUME:
     require_operands(instruction, 0);
-    out.byte(0xe9); out.relative32(kEhResume); return true;
+    emit_unconditional_jump(out, kEhResume); return true;
   default: return false;
   }
 }
@@ -1886,15 +1887,14 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
   case mir_model::MirInstruction::MI_JCC:
     if(!function) throw std::logic_error("conditional branch outside function");
     require_operands(instruction, 1);
-    out.byte(0x0f);
-    out.byte(0x80 + static_cast<unsigned>(instruction.condition));
-    out.relative32(block_target(function->name, instruction.operands[0]));
+    emit_condition_jump(out, instruction.condition,
+      block_target(function->name, instruction.operands[0]));
     return;
   case mir_model::MirInstruction::MI_JMP:
     if(!function) throw std::logic_error("jump outside function");
     require_operands(instruction, 1);
-    out.byte(0xe9);
-    out.relative32(block_target(function->name, instruction.operands[0]));
+    emit_unconditional_jump(out,
+      block_target(function->name, instruction.operands[0]));
     return;
   case mir_model::MirInstruction::MI_CALL:
     require_operands(instruction, 1);
@@ -2008,7 +2008,7 @@ void emit_eh_dispatch(CodeBuffer & out)
   out.label(skip);
   emit_load(out, XR_RCX, XR_RAX, 0, 64);
   emit_store(out, XR_R11, 0, XR_RCX, 64);
-  out.byte(0xe9); out.relative32(kEhDispatch);
+  emit_unconditional_jump(out, kEhDispatch);
   out.label(unhandled);
   emit_immediate_move(out, XR_RDI, 134);
   emit_immediate_move(out, XR_RAX, 60);
@@ -2031,7 +2031,7 @@ void emit_eh_resume(CodeBuffer & out,
   emit_condition_jump(out, XC_NE, kEhDispatch);
   emit_load(out, XR_RCX, XR_RAX, 0, 64);
   emit_store(out, XR_R11, 0, XR_RCX, 64);
-  out.byte(0xe9); out.relative32(kEhDispatch);
+  emit_unconditional_jump(out, kEhDispatch);
 }
 
 void emit_eh_allocate(CodeBuffer & out)
@@ -2109,14 +2109,14 @@ void emit_dynamic_cast_find(
     emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
     emit_condition_jump(out, XC_E, vmi);
   }
-  out.byte(0xe9); out.relative32(done);
+  emit_unconditional_jump(out, done);
   out.label(si);
   emit_register_move(out, XR_RDI, XR_RBX);
   emit_load(out, XR_RSI, XR_R12, 16, 64);
   emit_register_move(out, XR_RDX, XR_R13);
   out.byte(0xe8); out.relative32(helper);
   emit_store(out, XR_RBP, -48, XR_RAX, 64);
-  out.byte(0xe9); out.relative32(done);
+  emit_unconditional_jump(out, done);
   out.label(vmi);
   emit_load(out, XR_R15, XR_R12, 20, 32);
   emit_lea(out, XR_R14, XR_R12, 24);
@@ -2150,10 +2150,10 @@ void emit_dynamic_cast_find(
   out.label(skip);
   emit_immediate_alu(out, XR_R14, 0, 16);
   emit_immediate_alu(out, XR_R15, 5, 1);
-  out.byte(0xe9); out.relative32(loop);
+  emit_unconditional_jump(out, loop);
   out.label(record);
   emit_store(out, XR_RBP, -48, XR_RBX, 64);
-  out.byte(0xe9); out.relative32(done);
+  emit_unconditional_jump(out, done);
   out.label(ambiguous);
   emit_immediate_move(out, XR_RAX, UINT64_MAX);
   emit_store(out, XR_RBP, -48, XR_RAX, 64);
@@ -2237,7 +2237,7 @@ void emit_eh_throw_runtime(CodeBuffer & out)
   emit_symbol_move(out, XR_R11, kEhSelector);
   emit_immediate_move(out, XR_RAX, 0);
   emit_store(out, XR_R11, 0, XR_RAX, 64);
-  out.byte(0xe9); out.relative32(kEhDispatch);
+  emit_unconditional_jump(out, kEhDispatch);
 }
 
 void emit_eh_rethrow(CodeBuffer & out)
@@ -2251,7 +2251,7 @@ void emit_eh_rethrow(CodeBuffer & out)
   emit_load(out, XR_RSI, XR_RDI, -24, 64);
   emit_symbol_move(out, XR_R11, kEhType);
   emit_store(out, XR_R11, 0, XR_RSI, 64);
-  out.byte(0xe9); out.relative32(kEhDispatch);
+  emit_unconditional_jump(out, kEhDispatch);
 }
 
 void emit_eh_runtime(CodeBuffer & out, const mir_model::MirProgram & program)
@@ -2616,8 +2616,8 @@ HostFunctionLayout emit_host_function(
     out.label(function.name + "::" + stack_cleanups[i].label);
     emit_stack_adjust(out, false,
       static_cast<unsigned>(stack_cleanups[i].stack_bytes));
-    out.byte(0xe9);
-    out.relative32(function.name + "::" + stack_cleanups[i].landing_pad);
+    emit_unconditional_jump(
+      out, function.name + "::" + stack_cleanups[i].landing_pad);
   }
   layout.size = out.size() - layout.offset;
   return layout;

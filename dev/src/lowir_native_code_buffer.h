@@ -43,6 +43,7 @@ public:
 	std::size_t size() const;
 	bool relocatable_addresses() const;
 	void append(const std::vector<unsigned char>& bytes);
+	bool short_relative(unsigned opcode, const std::string& target);
 	void relative32(const std::string& target);
 	void absolute64(const std::string& target, long long addend = 0);
 	void address32(const std::string& target,
