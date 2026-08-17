@@ -30,8 +30,7 @@ function @main
     mov rsi, r9
     copy_bytes 16x8, rdi, rsi
     load.i64 r9, @dst
-    lea r8, [r8+8]
-    load.i64 rbx, [r8]
+    load.i64 rbx, [r8+8]
     add r9, rbx
     mov rax, r9
     ret rax

@@ -19,9 +19,8 @@ function @check
     param %p -> rdi : ptr
     return void -> void
   frame
-    stack_size 64
+    stack_size 48
     scratch_bytes 48
-    preserve rbx
 
   block ^entry
     mov r9, rdi
@@ -33,11 +32,9 @@ function @check
     jmp ^end
 
   block ^rhs
-    mov r8, r9
-    lea r8, [r8+8]
-    load.i32 rbx, [r8]
-    sext.i32 rbx
-    cmp.i32 rbx, 0
+    load.i32 r8, [r9+8]
+    sext.i32 r8
+    cmp.i32 r8, 0
     jne ^then
     jmp ^end
 

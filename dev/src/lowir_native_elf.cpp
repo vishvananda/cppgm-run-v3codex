@@ -548,7 +548,10 @@ void emit_address_load(CodeBuffer & out, X64Register destination,
                        const mir_model::MirFunction & function)
 {
   if(address.kind == mir_model::MirOperand::OP_DEREF) {
-    emit_load(out, destination, address.reg, address.offset, width);
+    if(address.has_index)
+      emit_indexed_load(out, destination, address.reg, address.index,
+                        address.scale, address.offset, width);
+    else emit_load(out, destination, address.reg, address.offset, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
     emit_symbol_move(out, XR_R11, address.text, address.address_binding);
     emit_load(out, destination, XR_R11, 0, width);
@@ -563,7 +566,10 @@ void emit_address_store(CodeBuffer & out, const mir_model::MirOperand & address,
                         const mir_model::MirFunction & function)
 {
   if(address.kind == mir_model::MirOperand::OP_DEREF) {
-    emit_store(out, address.reg, address.offset, source, width);
+    if(address.has_index)
+      emit_indexed_store(out, address.reg, address.index, address.scale,
+                         address.offset, source, width);
+    else emit_store(out, address.reg, address.offset, source, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
     emit_symbol_move(out, XR_R11, address.text, address.address_binding);
     emit_store(out, XR_R11, 0, source, width);
@@ -1425,8 +1431,15 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     }
     if(instruction.operands[1].kind != mir_model::MirOperand::OP_DEREF)
       throw std::logic_error("native lea source is not memory-shaped");
-    emit_lea(out, require_register(instruction.operands[0]),
-             instruction.operands[1].reg, instruction.operands[1].offset);
+    if(instruction.operands[1].has_index)
+      emit_indexed_lea(out, require_register(instruction.operands[0]),
+                       instruction.operands[1].reg,
+                       instruction.operands[1].index,
+                       instruction.operands[1].scale,
+                       instruction.operands[1].offset);
+    else emit_lea(out, require_register(instruction.operands[0]),
+                  instruction.operands[1].reg,
+                  instruction.operands[1].offset);
     return;
   case mir_model::MirInstruction::MI_FMOV:
     if(!function) throw std::logic_error("floating move outside function");

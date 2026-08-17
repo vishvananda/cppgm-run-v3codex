@@ -21,8 +21,7 @@ function @main
   block ^entry
     mov r8, @cells
     lea r8, [r8+8]
-    lea r8, [r8+8]
-    load.i64 r9, [r8]
+    load.i64 r9, [r8+8]
     mov rdx, 17
     cmp.i64 r9, rdx
     sete r9

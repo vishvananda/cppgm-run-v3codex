@@ -107,6 +107,8 @@ Call argument-use, stack-argument, variadic, unwind, and no-return annotations
 described by PA29 remain part of optimized MIR.  A machine optimization may
 remove argument setup only when the surviving call annotation no longer names
 the removed register use.  It must preserve stack and exception-boundary facts.
+Indexed memory operands likewise retain both register uses and their scale;
+copy propagation must rewrite or invalidate the base and index independently.
 
 ### Error Handling
 

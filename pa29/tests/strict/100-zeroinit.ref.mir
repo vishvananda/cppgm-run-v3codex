@@ -23,8 +23,7 @@ function @main
     mov rdi, r8
     zero_bytes 16x8, rdi
     load.i64 r9, @dst
-    lea r8, [r8+8]
-    load.i64 rbx, [r8]
+    load.i64 rbx, [r8+8]
     add r9, rbx
     mov rax, r9
     ret rax

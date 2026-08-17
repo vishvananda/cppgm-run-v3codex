@@ -206,8 +206,14 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | Stage | LowIR fixtures | MIR fixtures | Size/time result | Status |
 | --- | ---: | ---: | --- | --- |
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
-| VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | complete, pending commit |
-| VP2 | pending | pending | pending | pending |
+| VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
+| VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | complete, pending commit |
 | VP3 | pending | pending | pending | pending |
 | VP4 | pending | pending | pending | pending |
 | VP5 | pending | pending | pending | pending |
+
+The VP1 proposed call-argument input predates the public MIR placement rule and
+is now supplemental to the active `900-symbolic-global-call-argument` fixture.
+The VP2 scaled-index witness remains proposed because the course reference
+materializes `imul` plus `add`; both compilers execute it successfully, but
+their MIR shapes intentionally disagree.

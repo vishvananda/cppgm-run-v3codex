@@ -70,7 +70,9 @@ RegisterMask operand_registers(const MirOperand & operand)
 {
   if(operand.kind == MirOperand::OP_REG) return gpr_bit(operand.reg);
   if(operand.kind == MirOperand::OP_XMM) return xmm_bit(operand.xmm);
-  if(operand.kind == MirOperand::OP_DEREF) return gpr_bit(operand.reg);
+  if(operand.kind == MirOperand::OP_DEREF)
+    return gpr_bit(operand.reg) |
+      (operand.has_index ? gpr_bit(operand.index) : 0);
   return 0;
 }
 
@@ -302,7 +304,10 @@ struct LocalFacts
       if(gprs[i].valid && gprs[i].value.kind == MirOperand::OP_REG &&
          (defs & gpr_bit(gprs[i].value.reg))) gprs[i].valid = false;
       if(gprs[i].valid && gprs[i].value.kind == MirOperand::OP_DEREF &&
-         (defs & gpr_bit(gprs[i].value.reg))) gprs[i].valid = false;
+         ((defs & gpr_bit(gprs[i].value.reg)) ||
+          (gprs[i].value.has_index &&
+           (defs & gpr_bit(gprs[i].value.index)))))
+        gprs[i].valid = false;
     }
     for(std::size_t i = 0; i < xmms.size(); ++i) {
       if(defs & (RegisterMask(1) << (16 + i))) xmms[i].valid = false;
@@ -410,7 +415,10 @@ bool same_operand(const MirOperand & left, const MirOperand & right)
      left.kind == MirOperand::OP_GLOBAL || left.kind == MirOperand::OP_LABEL)
     return left.text == right.text;
   if(left.kind == MirOperand::OP_DEREF)
-    return left.reg == right.reg && left.offset == right.offset;
+    return left.reg == right.reg && left.offset == right.offset &&
+      left.has_index == right.has_index &&
+      (!left.has_index ||
+       (left.index == right.index && left.scale == right.scale));
   return false;
 }
 
@@ -440,7 +448,8 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
         base.reg = operand.reg;
         const MirOperand replacement = facts.canonical(base, &definition);
         if(replacement.kind == MirOperand::OP_REG) operand.reg = replacement.reg;
-        else if(replacement.kind == MirOperand::OP_FRAME) {
+        else if(replacement.kind == MirOperand::OP_FRAME &&
+                !operand.has_index) {
           const long long folded_offset = operand.offset + replacement.offset;
           // Negative frame operands name local storage and are adjusted past
           // callee saves by the encoder.  Nonnegative frame operands name the
@@ -452,6 +461,14 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
             operand.kind = MirOperand::OP_FRAME;
             operand.offset = folded_offset;
           }
+        }
+        if(operand.kind == MirOperand::OP_DEREF && operand.has_index) {
+          MirOperand index;
+          index.kind = MirOperand::OP_REG;
+          index.reg = operand.index;
+          const MirOperand replacement_index = facts.canonical(index);
+          if(replacement_index.kind == MirOperand::OP_REG)
+            operand.index = replacement_index.reg;
         }
       } else if(operand.kind == MirOperand::OP_REG ||
                 operand.kind == MirOperand::OP_XMM) {

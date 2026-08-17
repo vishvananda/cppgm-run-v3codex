@@ -119,6 +119,11 @@ struct Operand
   } address_binding = ADDRESS_LOCAL;
 
   X64Register reg = XR_RAX;
+  // OP_DEREF always names a base register in reg.  Indexed memory operands
+  // additionally name an x86 scale/index pair; scale is one of 1, 2, 4, 8.
+  bool has_index = false;
+  X64Register index = XR_RAX;
+  unsigned scale = 1;
   XmmRegister xmm = XMM_0;
   long long imm = 0;
   long double float_imm = 0.0L;

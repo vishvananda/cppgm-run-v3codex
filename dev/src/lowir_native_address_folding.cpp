@@ -38,6 +38,9 @@ bool source_reads_register(const MirInstruction & instruction,
     if((operand.kind == MirOperand::OP_REG ||
         operand.kind == MirOperand::OP_DEREF) && operand.reg == reg)
       return true;
+    if(operand.kind == MirOperand::OP_DEREF && operand.has_index &&
+       operand.index == reg)
+      return true;
   }
   return false;
 }
@@ -90,6 +93,7 @@ std::size_t plan_dead_setup_load(
        setup.operands[1].kind != MirOperand::OP_REG)) ||
      load.operands[0].kind != MirOperand::OP_REG ||
      load.operands[1].kind != MirOperand::OP_DEREF ||
+     load.operands[1].has_index ||
      load.operands[1].reg != setup.operands[0].reg)
     return 0;
 
@@ -98,6 +102,7 @@ std::size_t plan_dead_setup_load(
      address->operands[0].kind != MirOperand::OP_REG ||
      address->operands[0].reg != setup_reg ||
      address->operands[1].kind != MirOperand::OP_DEREF ||
+     address->operands[1].has_index ||
      address->operands[1].reg != setup_reg)) return 0;
   const bool self_copy = !address && setup.opcode == MirInstruction::MI_MOV &&
     setup.operands[1].reg == setup_reg;
@@ -142,9 +147,12 @@ TransientScratchUsePlan::TransientScratchUsePlan(
     bool reads_r11 = false;
     for(std::size_t operand = simple_definition ? 1 : 0;
         operand < instruction.operands.size(); ++operand)
-      if((instruction.operands[operand].kind == MirOperand::OP_REG ||
-          instruction.operands[operand].kind == MirOperand::OP_DEREF) &&
-         instruction.operands[operand].reg == XR_R11)
+      if(((instruction.operands[operand].kind == MirOperand::OP_REG ||
+           instruction.operands[operand].kind == MirOperand::OP_DEREF) &&
+          instruction.operands[operand].reg == XR_R11) ||
+         (instruction.operands[operand].kind == MirOperand::OP_DEREF &&
+          instruction.operands[operand].has_index &&
+          instruction.operands[operand].index == XR_R11))
         reads_r11 = true;
     if(simple_definition && !reads_r11) read_before_definition = false;
     else if(reads_r11) read_before_definition = true;
@@ -212,6 +220,8 @@ std::size_t emit_dead_copy_store(
       store.operands[0].kind != MirOperand::OP_GLOBAL &&
       store.operands[0].kind != MirOperand::OP_DEREF) ||
      store.operands[1].kind != MirOperand::OP_REG ||
+     (store.operands[0].kind == MirOperand::OP_DEREF &&
+      store.operands[0].has_index) ||
      store.operands[1].reg != copy.operands[0].reg) return 0;
   const X64Register copied = copy.operands[0].reg;
   const X64Register source = copy.operands[1].reg;
@@ -258,6 +268,7 @@ std::size_t emit_dead_address_store(
       setup.operands[1].kind != MirOperand::OP_DEREF) ||
      store.opcode != MirInstruction::MI_STORE || store.operands.size() != 2 ||
      store.operands[0].kind != MirOperand::OP_DEREF ||
+     setup.operands[1].has_index || store.operands[0].has_index ||
      store.operands[0].reg != setup.operands[0].reg ||
      store.operands[1].kind != MirOperand::OP_REG ||
      store.operands[1].reg == setup.operands[0].reg) return 0;
@@ -295,6 +306,7 @@ std::size_t emit_dead_address_copy_store(
      copy.operands[1].kind != MirOperand::OP_REG ||
      store.opcode != MirInstruction::MI_STORE || store.operands.size() != 2 ||
      store.operands[0].kind != MirOperand::OP_DEREF ||
+     store.operands[0].has_index ||
      store.operands[0].reg != copy.operands[0].reg ||
      store.operands[1].kind != MirOperand::OP_REG) return 0;
   const X64Register copied = copy.operands[0].reg;
@@ -325,9 +337,11 @@ std::size_t emit_dead_copy_address_store(
      setup.operands[0].kind != MirOperand::OP_REG ||
      setup.operands[0].reg != copy.operands[0].reg ||
      setup.operands[1].kind != MirOperand::OP_DEREF ||
+     setup.operands[1].has_index ||
      setup.operands[1].reg != copy.operands[0].reg ||
      store.opcode != MirInstruction::MI_STORE || store.operands.size() != 2 ||
      store.operands[0].kind != MirOperand::OP_DEREF ||
+     store.operands[0].has_index ||
      store.operands[0].reg != copy.operands[0].reg ||
      store.operands[1].kind != MirOperand::OP_REG ||
      store.operands[1].reg == copy.operands[0].reg) return 0;

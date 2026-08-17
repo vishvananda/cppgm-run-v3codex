@@ -45,6 +45,10 @@ std::string dereference(const Operand & operand)
 {
   std::ostringstream out;
   out << '[' << register_name(operand.reg);
+  if(operand.has_index) {
+    out << '+' << register_name(operand.index);
+    if(operand.scale != 1) out << '*' << operand.scale;
+  }
   if(operand.offset > 0) out << '+' << operand.offset;
   else if(operand.offset < 0) out << operand.offset;
   out << ']';

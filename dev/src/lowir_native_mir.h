@@ -15,6 +15,10 @@ mir_model::MirOperand float_immediate(const std::string & text);
 mir_model::MirOperand named_operand(mir_model::MirOperand::Kind kind,
                                     const std::string & text);
 mir_model::MirOperand dereference(X64Register reg, long long offset = 0);
+mir_model::MirOperand indexed_dereference(X64Register base,
+                                          X64Register index,
+                                          unsigned scale,
+                                          long long offset = 0);
 mir_model::MirOperand frame_operand(long long offset);
 mir_model::MirInstruction machine_instruction(
     mir_model::MirInstruction::Opcode opcode,

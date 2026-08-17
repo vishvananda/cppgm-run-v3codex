@@ -105,8 +105,11 @@ has no native-byte oracle, so this representation-only witness remains
 proposed.
 
 `single-block-call-argument-coalescing.t` materializes a global address and
-passes it as the sole integer argument to a call.  It is intended to inspect
-that native encoding can place the address directly in the ABI argument
-register and omit the temporary register copy while the serialized MIR stays
-unchanged.  Existing active call-ABI tests cover behavior, while PA29 has no
-native-byte oracle, so this representation-only witness remains proposed.
+passes it as the sole integer argument to a call.  A sole-use symbolic address
+must be placed directly in the ABI argument register in serialized MIR; it must
+not require an intermediate general-purpose register.
+
+`indexed-memory-addressing.t` exercises variable scaled-index loads and stores.
+The MIR load and store must each retain the base, index, and scale in one memory
+operand, and the native instruction must use the corresponding x86 addressing
+mode without separately multiplying or adding the index.

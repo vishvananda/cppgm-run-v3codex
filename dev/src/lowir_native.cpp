@@ -7,6 +7,7 @@
 #include "lowir_native_control_flow.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_host_eh.h"
+#include "lowir_native_index_lowering.h"
 #include "lowir_native_intrinsic_lowering.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_memory_lowering.h"
@@ -39,12 +40,14 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
                         private AtomicLowering<FunctionLowerer>,
                         private bulk_detail::BulkLowering<FunctionLowerer>,
+                        private index_detail::IndexLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
   friend class AddressLowering<FunctionLowerer>;
   friend class AtomicLowering<FunctionLowerer>;
   friend class bulk_detail::BulkLowering<FunctionLowerer>;
+  friend class index_detail::IndexLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
@@ -496,6 +499,11 @@ private:
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
         value.location = reg_operand(destination);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
+      } else if(!wide_gpr_boundary && uses == 1 &&
+                facts_.direct_memory_index_bases.count(parameter.name) &&
+                !crosses_register_clobber(parameter.name, binding.reg)) {
+        // The sole use can name the incoming ABI register directly as an x86
+        // memory base; no parameter-home copy is needed.
       } else if(!wide_gpr_boundary &&
                 crosses_register_clobber(parameter.name, binding.reg)) {
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
@@ -701,6 +709,12 @@ private:
     }
     if(operand.kind == Operand::OP_SLOT)
       return storage(operand);
+    if(operand.kind == Operand::OP_TEMP) {
+      const std::unordered_map<std::string, ValueFact>::const_iterator value =
+        values_.find(operand.text);
+      if(value != values_.end() && value->second.deferred_address)
+        return value->second.location;
+    }
     if(is_frame_address(operand)) {
       append_address(out, XR_RCX, resolve(operand));
       return dereference(XR_RCX);
@@ -761,6 +775,10 @@ private:
       if(!value.parameter && value.location.kind == MirOperand::OP_XMM &&
          !has_live_location_alias(operand.text, value.location))
         xmms_.release(value.location.xmm);
+      if(value.deferred_address) {
+        consume(value.deferred_address_base, retained);
+        consume(value.deferred_address_index, retained);
+      }
     }
   }
   bool current_instruction_uses(const std::string & name) const
@@ -770,8 +788,18 @@ private:
       &active_instruction_->first, &active_instruction_->second,
       &active_instruction_->third
     };
-    for(std::size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i)
-      if(fixed[i]->kind == Operand::OP_TEMP && fixed[i]->text == name) return true;
+    for(std::size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i) {
+      if(fixed[i]->kind != Operand::OP_TEMP) continue;
+      if(fixed[i]->text == name) return true;
+      const std::unordered_map<std::string, ValueFact>::const_iterator value =
+        values_.find(fixed[i]->text);
+      if(value != values_.end() && value->second.deferred_address &&
+         ((value->second.deferred_address_base.kind == Operand::OP_TEMP &&
+           value->second.deferred_address_base.text == name) ||
+          (value->second.deferred_address_index.kind == Operand::OP_TEMP &&
+           value->second.deferred_address_index.text == name)))
+        return true;
+    }
     for(std::size_t i = 0; i < active_instruction_->args.size(); ++i)
       if(active_instruction_->args[i].kind == Operand::OP_TEMP &&
          active_instruction_->args[i].text == name) return true;
@@ -1840,93 +1868,6 @@ private:
     consume(instruction.first);
     skipped_position_ = position_ + 1;
   }
-  void emit_index(const Instruction & instruction,
-                  std::vector<MirInstruction> & out)
-  {
-    const bool constant_index = instruction.second.kind == Operand::OP_INTEGER;
-    const long long offset = constant_index ?
-      integer_value(instruction.second) *
-        static_cast<long long>(instruction.type.storage_size) : 0;
-    MirOperand base = resolve(instruction.first);
-	if(instruction.first.kind == Operand::OP_TEMP &&
-	   facts_.first_use[instruction.first.text] == position_ &&
-	   !result_crosses_call(instruction.dest) &&
-	   incoming_parameter_registers_.count(instruction.first.text)) {
-	  const X64Register incoming =
-		incoming_parameter_registers_.find(instruction.first.text)->second;
-	  if(incoming_parameter_register_is_intact(
-		   instruction.first.text, incoming))
-		base = reg_operand(incoming);
-	}
-    MirOperand destination;
-    const bool forwarded_alias = offset == 0 &&
-      instruction.first.kind == Operand::OP_TEMP &&
-      facts_.forwarded_parameters_across_call.count(instruction.first.text);
-    const bool safe_reuse = base.kind == MirOperand::OP_REG &&
-      constant_index && (can_reuse(instruction.first) ||
-      forwarded_alias) &&
-      (!result_crosses_call(instruction.dest) || is_callee_saved(base.reg));
-    MirOperand pressure_home;
-    if(safe_reuse) destination = base;
-    else {
-      const bool force_preserved =
-        instruction.first.kind == Operand::OP_TEMP &&
-        values_.find(instruction.first.text)->second.parameter && offset != 0 &&
-        !facts_.zero_index_parameters.count(instruction.first.text);
-      X64Register result = XR_RSP;
-      if(try_allocate_result(instruction.dest, out, &result, force_preserved))
-        destination = reg_operand(result);
-      else {
-        pressure_home = allocate_temp_home(
-          instruction.dest,
-          lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
-        destination = reg_operand(XR_RAX);
-      }
-    }
-    if(base.kind != MirOperand::OP_REG || destination.reg != base.reg) {
-      if(is_frame_address(instruction.first))
-        append_address(out, destination.reg, base);
-      else
-        move_value_to_register(out, destination.reg, base, operand_type(instruction.first));
-    }
-    if(constant_index) {
-      if(offset != 0) {
-        MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
-        append_operand(lea, destination);
-        append_operand(lea, dereference(destination.reg, offset));
-        out.push_back(lea);
-      }
-    } else {
-      MirOperand index = resolve(instruction.second);
-      if(index.kind != MirOperand::OP_REG) {
-        move_value_to_register(out, XR_RDX, index, operand_type(instruction.second));
-        index = reg_operand(XR_RDX);
-      }
-      if(instruction.type.storage_size != 1) {
-        if(index.reg != XR_RDX) append_move(out, reg_operand(XR_RDX), index);
-        MirInstruction scale = machine_instruction(MirInstruction::MI_IMUL, "i64");
-        append_operand(scale, reg_operand(XR_RDX));
-        append_operand(scale, immediate(
-          static_cast<long long>(instruction.type.storage_size)));
-        out.push_back(scale);
-        index = reg_operand(XR_RDX);
-      }
-      MirInstruction add = machine_instruction(MirInstruction::MI_ADD, "ptr");
-      append_operand(add, destination);
-      append_operand(add, index);
-      out.push_back(add);
-    }
-    consume(instruction.first, destination.reg);
-    consume(instruction.second, destination.reg);
-    const LowType pointer_type =
-      lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
-    if(pressure_home.kind == MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, pointer_type.text);
-    define(instruction.dest, pointer_type,
-           pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
-    if(safe_reuse && forwarded_alias)
-      values_[instruction.dest].parameter = true;
-  }
   bool move_destination_is_safe(const std::vector<GprMove> & moves,
                                 std::size_t candidate) const
   {
@@ -2937,7 +2878,8 @@ private:
               instruction.kind == Instruction::IK_ATOMIC_SIGNAL_FENCE) {
       emit_atomic_fence(instruction, out);
     } else if(TryEmitIntrinsic(instruction, out)) return;
-    else if(instruction.kind == Instruction::IK_INDEX) emit_index(instruction, out);
+    else if(instruction.kind == Instruction::IK_INDEX)
+      emit_index(block, instruction_index, instruction, out);
     else if(instruction.kind == Instruction::IK_BINARY) emit_binary(instruction, out);
     else if(instruction.kind == Instruction::IK_CMP) {
       if(facts_.deferred_branch_comparisons.count(instruction.dest)) return;

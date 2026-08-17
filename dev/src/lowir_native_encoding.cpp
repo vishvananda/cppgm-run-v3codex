@@ -86,6 +86,52 @@ void emit_memory_modrm(CodeBuffer & out, unsigned reg, X64Register base,
     out.little(static_cast<std::uint32_t>(displacement), displacement_bytes);
 }
 
+namespace {
+
+unsigned scale_code(unsigned scale)
+{
+  if(scale == 1) return 0;
+  if(scale == 2) return 1;
+  if(scale == 4) return 2;
+  if(scale == 8) return 3;
+  throw std::logic_error("invalid x86 indexed-address scale");
+}
+
+void emit_indexed_rex(CodeBuffer & out, bool wide, X64Register reg,
+                      X64Register base, X64Register index, bool force = false)
+{
+  const unsigned value = 0x40 | (wide ? 8 : 0) |
+    ((static_cast<unsigned>(reg) >> 3) << 2) |
+    ((static_cast<unsigned>(index) >> 3) << 1) |
+    (static_cast<unsigned>(base) >> 3);
+  if(value != 0x40 || force) out.byte(value);
+}
+
+}  // namespace
+
+void emit_indexed_memory_modrm(CodeBuffer & out, unsigned reg,
+                               X64Register base, X64Register index,
+                               unsigned scale, long long displacement)
+{
+  if(index == XR_RSP)
+    throw std::logic_error("rsp cannot be an x86 address index");
+  const unsigned base_code = static_cast<unsigned>(base) & 7;
+  unsigned mode = 2;
+  unsigned displacement_bytes = 4;
+  if(displacement == 0 && base_code != 5) {
+    mode = 0;
+    displacement_bytes = 0;
+  } else if(displacement >= -128 && displacement <= 127) {
+    mode = 1;
+    displacement_bytes = 1;
+  }
+  emit_modrm(out, mode, reg, 4);
+  out.byte((scale_code(scale) << 6) |
+           ((static_cast<unsigned>(index) & 7) << 3) | base_code);
+  if(displacement_bytes)
+    out.little(static_cast<std::uint32_t>(displacement), displacement_bytes);
+}
+
 void emit_size_prefix(CodeBuffer & out, unsigned width)
 {
   if(width == 16) out.byte(0x66);
@@ -159,6 +205,17 @@ void emit_load(CodeBuffer & out, X64Register destination, X64Register base,
   emit_memory_modrm(out, destination, base, displacement);
 }
 
+void emit_indexed_load(CodeBuffer & out, X64Register destination,
+                       X64Register base, X64Register index, unsigned scale,
+                       long long displacement, unsigned width)
+{
+  emit_size_prefix(out, width);
+  emit_indexed_rex(out, width == 64, destination, base, index, width == 8);
+  out.byte(width == 8 ? 0x8a : 0x8b);
+  emit_indexed_memory_modrm(
+    out, destination, base, index, scale, displacement);
+}
+
 void emit_store(CodeBuffer & out, X64Register base, long long displacement,
                 X64Register source, unsigned width)
 {
@@ -168,12 +225,33 @@ void emit_store(CodeBuffer & out, X64Register base, long long displacement,
   emit_memory_modrm(out, source, base, displacement);
 }
 
+void emit_indexed_store(CodeBuffer & out, X64Register base,
+                        X64Register index, unsigned scale,
+                        long long displacement, X64Register source,
+                        unsigned width)
+{
+  emit_size_prefix(out, width);
+  emit_indexed_rex(out, width == 64, source, base, index, width == 8);
+  out.byte(width == 8 ? 0x88 : 0x89);
+  emit_indexed_memory_modrm(out, source, base, index, scale, displacement);
+}
+
 void emit_lea(CodeBuffer & out, X64Register destination, X64Register base,
               long long displacement)
 {
   emit_rex(out, true, destination, base);
   out.byte(0x8d);
   emit_memory_modrm(out, destination, base, displacement);
+}
+
+void emit_indexed_lea(CodeBuffer & out, X64Register destination,
+                      X64Register base, X64Register index, unsigned scale,
+                      long long displacement)
+{
+  emit_indexed_rex(out, true, destination, base, index);
+  out.byte(0x8d);
+  emit_indexed_memory_modrm(
+    out, destination, base, index, scale, displacement);
 }
 
 void emit_push(CodeBuffer & out, X64Register reg)

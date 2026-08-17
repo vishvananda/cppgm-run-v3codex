@@ -53,6 +53,18 @@ mir_model::MirOperand dereference(X64Register reg, long long offset)
   return out;
 }
 
+mir_model::MirOperand indexed_dereference(X64Register base,
+                                          X64Register index,
+                                          unsigned scale,
+                                          long long offset)
+{
+  mir_model::MirOperand out = dereference(base, offset);
+  out.has_index = true;
+  out.index = index;
+  out.scale = scale;
+  return out;
+}
+
 mir_model::MirOperand frame_operand(long long offset)
 {
   mir_model::MirOperand out;

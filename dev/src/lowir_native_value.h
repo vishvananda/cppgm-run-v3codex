@@ -16,6 +16,12 @@ struct ValueFact
   long long frame_provenance = 0;
   mir_model::MirOperand pointer_global_cell;
   std::string forwarded_parameter;
+  // A directly selected address keeps its LowIR inputs live until the memory
+  // instruction consumes the address.  This avoids manufacturing a pointer
+  // temporary solely to feed an x86 addressing mode.
+  bool deferred_address = false;
+  lowir_model::Operand deferred_address_base;
+  lowir_model::Operand deferred_address_index;
 };
 
 struct GprMove

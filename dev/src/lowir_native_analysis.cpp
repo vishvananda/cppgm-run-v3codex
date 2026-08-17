@@ -381,6 +381,19 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
       if(!instruction.dest.empty()) definitions[instruction.dest] = j;
       if(instruction.kind == Instruction::IK_CMP)
         comparisons[instruction.dest] = j;
+      if(instruction.kind == Instruction::IK_INDEX &&
+         instruction.first.kind == Operand::OP_TEMP &&
+         facts.uses[instruction.dest] == 1 && j + 1 < instructions.size()) {
+        const Instruction & consumer = instructions[j + 1];
+        const bool load = consumer.kind == Instruction::IK_LOAD &&
+          consumer.first.kind == Operand::OP_TEMP &&
+          consumer.first.text == instruction.dest;
+        const bool store = consumer.kind == Instruction::IK_STORE &&
+          consumer.second.kind == Operand::OP_TEMP &&
+          consumer.second.text == instruction.dest;
+        if(load || store)
+          facts.direct_memory_index_bases.insert(instruction.first.text);
+      }
       if(instruction.kind != Instruction::IK_BRANCH ||
          instruction.first.kind != Operand::OP_TEMP) continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator branch_definition =

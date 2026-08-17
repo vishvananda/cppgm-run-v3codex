@@ -114,6 +114,24 @@ sub canonical_machine_ir_memory_operand
 	return "[$base$sign<off$index>]";
 }
 
+sub canonical_machine_ir_indexed_memory_operand
+{
+	my ($base, $index, $scale, $sign, $disp, $state) = @_;
+	my $address = "$base+$index";
+	$address .= "*$scale" if defined($scale);
+	return "[$address]" if !defined($sign) || !defined($disp);
+	my $key = "$address|$sign|$disp";
+	my $bucket = "$address|$sign";
+	if (!exists($state->{disp_map}{$key}))
+	{
+		my $next = $state->{next_disp}{$bucket} || 0;
+		$state->{disp_map}{$key} = $next;
+		$state->{next_disp}{$bucket} = $next + 1;
+	}
+	my $offset = $state->{disp_map}{$key};
+	return "[$address$sign<off$offset>]";
+}
+
 sub canonical_machine_ir_free_gpr
 {
 	my ($reg, $state) = @_;
@@ -151,6 +169,7 @@ sub canonicalize_machine_ir
 		xmm_map => {},
 		next_xmm => 0,
 	);
+	$data =~ s/\[([A-Za-z_][A-Za-z0-9_]*)\+([A-Za-z_][A-Za-z0-9_]*)(?:\*([1248]))?([+-])(\d+)\]/canonical_machine_ir_indexed_memory_operand($1, $2, $3, $4, $5, \%state)/ge;
 	$data =~ s/\[([A-Za-z_][A-Za-z0-9_]*)([+-])(\d+)\]/canonical_machine_ir_memory_operand($1, $2, $3, \%state)/ge;
 	$data =~ s/\b(rbx|r10|r11|r12|r13|r14|r15)\b/canonical_machine_ir_free_gpr($1, \%state)/ge;
 	$data =~ s/\b(xmm2|xmm3|xmm4|xmm5|xmm6|xmm7)\b/canonical_machine_ir_free_xmm($1, \%state)/ge;

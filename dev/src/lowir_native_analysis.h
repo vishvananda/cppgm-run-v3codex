@@ -31,6 +31,7 @@ struct FunctionFacts
   std::unordered_set<std::string> direct_compare_storage_values;
   std::unordered_set<std::string> direct_compare_rax_values;
   std::unordered_set<std::string> direct_branch_call_results;
+  std::unordered_set<std::string> direct_memory_index_bases;
   std::unordered_set<std::string> zero_index_parameters;
   std::unordered_set<std::string> forwarded_parameters_across_call;
   std::unordered_set<std::string> switch_parameters;

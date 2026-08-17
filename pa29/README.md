@@ -204,6 +204,8 @@ Machine operands use the following target-specific forms:
 - an integer or floating literal for an immediate value
 - `@name` or `^label` for a symbol or block label
 - `[register]` or `[register+displacement]` for register-based memory
+- `[base+index*scale+displacement]` for indexed memory, where `scale` is
+  `1`, `2`, `4`, or `8`; `*1` and a zero displacement are omitted
 - `[rbp+displacement]` for a frame location
 
 A direct call names a symbol, while an indirect call prefixes its register or
@@ -521,7 +523,9 @@ To complete PA29, implement these goals:
 
 15. Keep pointer/index address calculation visible as pointer arithmetic.
    Pointer indexing and pointer-difference behavior should stay structurally visible in MIR
-   rather than being hidden behind an unrelated compatibility path.
+   rather than being hidden behind an unrelated compatibility path.  When a one-use
+   `index` feeds the following scalar load or store, keep its base, index, scale, and
+   displacement in that memory operand instead of materializing a temporary pointer.
 
 16. Preserve mixed integer/floating call ABI classification.
    Calls that mix GPR and XMM arguments should keep that classification visible in MIR so
