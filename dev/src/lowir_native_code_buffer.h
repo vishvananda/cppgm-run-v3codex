@@ -19,6 +19,7 @@ struct CodeOffsetAdjustment
 	{
 		std::size_t end = 0;
 		std::size_t count = 0;
+		std::size_t total = 0;
 	};
 
 	std::size_t translate(std::size_t offset) const;
@@ -87,6 +88,7 @@ private:
 	bool relocatable_addresses_;
 	std::vector<unsigned char> bytes_;
 	std::unordered_map<std::string, std::size_t> labels_;
+	std::vector<std::size_t*> label_offsets_;
 	std::vector<Fixup> fixups_;
 	std::vector<ShortRelativeFixup> short_relative_fixups_;
 	std::size_t next_internal_label_ = 0;
