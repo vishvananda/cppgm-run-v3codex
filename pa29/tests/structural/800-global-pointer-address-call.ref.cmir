@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -30,5 +30,5 @@ function @main
   block ^entry
     mov r8, @fp
     load.ptr <gpr0>, @fp
-    call *<gpr0>
+    call *<gpr0> [args=()]
     ret rax

@@ -103,6 +103,11 @@ generated `x.my.mir` dump. The generated native program's exit status and
 standard output are behavior-preservation oracles layered on top of that
 structural check.
 
+Call argument-use, stack-argument, variadic, unwind, and no-return annotations
+described by PA29 remain part of optimized MIR.  A machine optimization may
+remove argument setup only when the surviving call annotation no longer names
+the removed register use.  It must preserve stack and exception-boundary facts.
+
 ### Error Handling
 
 The tool must fail with a nonzero exit status when:

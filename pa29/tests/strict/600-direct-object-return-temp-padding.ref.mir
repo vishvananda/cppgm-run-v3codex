@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @__cppgm_406d61696e
+    call @__cppgm_406d61696e [args=()]
     mov rdi, rax
     exit
 
@@ -33,7 +33,7 @@ function @__cppgm_406d61696e
     slot $out -> [rbp-4] : obj<3x1>
 
   block ^entry
-    call @f
+    call @f [args=()]
     lea r11, [rbp-4]
     store.i32 [r11], rax
     mov rax, 0

@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -30,7 +30,7 @@ function @unwrap
     slot $x -> [rbp-8] : obj<8x8>
 
   block ^entry
-    call @make_value
+    call @make_value [args=()]
     lea r11, [rbp-8]
     store.i64 [r11], rax
     lea rcx, [rbp-8]
@@ -45,5 +45,5 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    call @unwrap
+    call @unwrap [args=()]
     ret rax

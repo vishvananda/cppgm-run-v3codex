@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -32,7 +32,7 @@ function @main
 
   block ^entry
     fmov.f64 xmm0, 2.0
-    call @roundtrip
+    call @roundtrip [args=(xmm0)]
     fmov.f64 xmm0, xmm0
     feq.f64 rax, xmm0, 2.0
     mov r8, rax

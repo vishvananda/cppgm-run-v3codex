@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -60,7 +60,7 @@ function @main
     mov r9, 6
     lea r11, [rbp-1]
     store.ptr [rsp], r11
-    call @write_seventh
+    call @write_seventh [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
     add rsp, 16
     load.u8 r8, [rbp-1]
     zext.i8 r8

@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -29,6 +29,6 @@ function @main
     mov r8, 20
     add r8, 22
     mov rdi, r8
-    call @sink
+    call @sink [args=(rdi)]
     mov rax, 0
     ret rax

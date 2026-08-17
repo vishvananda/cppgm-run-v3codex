@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @__cppgm_406d61696e
+    call @__cppgm_406d61696e [args=()]
     mov rdi, rax
     exit
 
@@ -42,7 +42,7 @@ function @__cppgm_406d61696e
     mov r9, 41
     mov rdi, r8
     mov rsi, r9
-    call @f
+    call @f [args=(rsi,rdi)]
     mov <gpr0>, rax
     cmp.i64 <gpr0>, 41
     je ^good

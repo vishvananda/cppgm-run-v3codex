@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -24,7 +24,7 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    call @zero
+    call @zero [args=()]
     test.i64 rax, rax
     jne ^false
 

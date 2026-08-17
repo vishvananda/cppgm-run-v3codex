@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -43,7 +43,7 @@ function @main
     mov rdi, rbx
     mov rsi, 4
     mov rdx, 5
-    call @make_pair
+    call @make_pair [args=(rdx,rsi,rdi)]
     load.i64 r8, @out
     lea rbx, [rbx+8]
     load.i64 r9, [rbx]

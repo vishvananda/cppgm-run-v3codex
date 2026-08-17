@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -37,7 +37,7 @@ function @main
     store.i64 [rbp-<off1>], rax
     lea rdi, [rbp-<off1>]
     lea rsi, [rbp-<off0>]
-    call @copy_ref
+    call @copy_ref [args=(rsi,rdi)]
     load.i64 r8, [rbp-<off1>]
     mov rdx, 7
     cmp.i64 r8, rdx

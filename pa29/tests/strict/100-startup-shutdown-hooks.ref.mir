@@ -1,10 +1,10 @@
 machine_ir x86_64 linux
 
 startup
-    call @__cppgm_init
-    call @main
+    call @__cppgm_init [args=()]
+    call @main [args=()]
     mov r12, rax
-    call @__cppgm_fini
+    call @__cppgm_fini [args=()]
     mov rdi, r12
     exit
 

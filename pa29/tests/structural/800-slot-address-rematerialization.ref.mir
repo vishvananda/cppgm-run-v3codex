@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -43,10 +43,10 @@ function @f
     slot $y -> [rbp-16] : i64
 
   block ^entry
-    call @mark
+    call @mark [args=()]
     lea rdi, [rbp-8]
     lea rsi, [rbp-16]
-    call @sink
+    call @sink [args=(rsi,rdi)]
     load.i64 r8, [rbp-8]
     load.i64 r9, [rbp-16]
     add r8, r9
@@ -61,5 +61,5 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    call @f
+    call @f [args=()]
     ret rax

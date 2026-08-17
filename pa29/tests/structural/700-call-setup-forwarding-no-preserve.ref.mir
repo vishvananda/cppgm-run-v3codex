@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -49,7 +49,7 @@ function @main
     sitofp.i64.f64 xmm1, r9
     mov rdi, r8
     mov rsi, r9
-    call @mix
+    call @mix [args=(rsi,rdi,xmm0,xmm1)]
     mov rbx, rax
     mov rdx, 50
     cmp.i64 rbx, rdx

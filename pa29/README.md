@@ -197,6 +197,30 @@ for testing is still this textual machine-IR form:
 - per-function `abi`, `frame`, and ordered `block ^...` sections
 - one instruction or metadata line per indented row beneath those sections
 
+Machine operands use the following target-specific forms:
+
+- `rax` through `r15` for general-purpose registers
+- `xmm0` through `xmm7` for scalar floating-point registers
+- an integer or floating literal for an immediate value
+- `@name` or `^label` for a symbol or block label
+- `[register]` or `[register+displacement]` for register-based memory
+- `[rbp+displacement]` for a frame location
+
+A direct call names a symbol, while an indirect call prefixes its register or
+memory target with `*`.  A call may also carry bracketed machine facts:
+
+```text
+call @consume [args=(rdi,rsi,xmm0), stack=16]
+call *r10 [args=(rdi), variadic, unwind=no]
+```
+
+`args=(...)` lists the physical argument registers read by the call.  An empty
+list is written as `args=()`.  `stack=N` records the bytes of caller-owned stack
+arguments, `variadic` records a variadic call boundary, `unwind=no` records a
+non-unwinding call, and `returns=noreturn` records a call that does not return.
+These facts are part of MIR because register liveness, stack cleanup, exception
+handling, and native emission all depend on them.
+
 For strict and structural MIR tests, the raw `.ref.mir` file is still checked in because it
 is the debugging-oriented dump students see directly from `--dump-machine-ir`.
 Structural tests also keep `x.ref.cmir`, the canonical oracle used for grading.

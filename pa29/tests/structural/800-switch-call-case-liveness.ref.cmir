@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -49,10 +49,10 @@ function @dispatch
   block ^case
     mov rdi, <gpr1>
     mov rsi, <gpr0>
-    call @touch
+    call @touch [args=(rsi,rdi)]
     mov rdi, <gpr1>
     mov rsi, <gpr0>
-    call @touch
+    call @touch [args=(rsi,rdi)]
     ret rax
 
   block ^miss
@@ -74,7 +74,7 @@ function @main
     mov rdi, r9
     mov rsi, r8
     mov rdx, <gpr0>
-    call @dispatch
+    call @dispatch [args=(rdx,rsi,rdi)]
     mov <gpr1>, rax
     cmp.i64 <gpr1>, 7
     je ^good

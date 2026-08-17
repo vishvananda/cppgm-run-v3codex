@@ -205,7 +205,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 
 | Stage | LowIR fixtures | MIR fixtures | Size/time result | Status |
 | --- | ---: | ---: | --- | --- |
-| VP0 | pending | pending | pending | in progress |
+| VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | complete, pending commit |
 | VP1 | pending | pending | pending | pending |
 | VP2 | pending | pending | pending | pending |
 | VP3 | pending | pending | pending | pending |

@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -45,10 +45,10 @@ function @main
     temp %v -> [rbp-8] : obj<8x8>
 
   block ^entry
-    call @make_value
+    call @make_value [args=()]
     lea r11, [rbp-8]
     store.i64 [r11], rax
     lea r11, [rbp-8]
     load.i64 rdi, [r11]
-    call @unwrap
+    call @unwrap [args=(rdi)]
     ret rax

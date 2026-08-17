@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -57,7 +57,7 @@ function @main
     mov rcx, 40
     mov r8, 50
     mov r9, 60
-    call @clobber
+    call @clobber [args=(rcx,rdx,rsi,rdi,r8,r9)]
     load.ptr rax, [rbp-<off0>]
     cmp.ptr rax, [rbp-<off1>]
     je ^done

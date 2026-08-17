@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -54,7 +54,7 @@ function @main
     preserve rbx
 
   block ^entry
-    call @one
+    call @one [args=()]
     mov rbx, rax
     mov rdi, 10
     mov rsi, 20
@@ -62,7 +62,7 @@ function @main
     mov rcx, 40
     mov r8, 2
     mov r9, 2
-    call @clobber
+    call @clobber [args=(rcx,rdx,rsi,rdi,r8,r9)]
     cmp.i64 rbx, 1
     je ^true
     jmp ^false

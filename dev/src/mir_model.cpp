@@ -179,6 +179,58 @@ void render_operands(std::ostringstream & out, const Instruction & instruction,
   }
 }
 
+void render_call_facts(std::ostringstream & out,
+                       const Instruction & instruction)
+{
+  if(instruction.opcode != Instruction::MI_CALL &&
+     instruction.opcode != Instruction::MI_CALL_INDIRECT) return;
+  const bool has_facts = instruction.call_argument_registers_known ||
+    instruction.call_stack_bytes != 0 || instruction.call_variadic ||
+    instruction.call_unwind_no || instruction.call_returns_noreturn;
+  if(!has_facts) return;
+
+  out << " [";
+  bool needs_separator = false;
+  if(instruction.call_argument_registers_known) {
+    out << "args=(";
+    bool needs_register_separator = false;
+    for(unsigned reg = 0; reg != 16; ++reg)
+      if(instruction.call_argument_register_mask & (1u << reg)) {
+        if(needs_register_separator) out << ',';
+        out << register_name(static_cast<X64Register>(reg));
+        needs_register_separator = true;
+      }
+    for(unsigned reg = 0; reg != 8; ++reg)
+      if(instruction.call_argument_register_mask & (1u << (16 + reg))) {
+        if(needs_register_separator) out << ',';
+        out << xmm_name(static_cast<XmmRegister>(reg));
+        needs_register_separator = true;
+      }
+    out << ')';
+    needs_separator = true;
+  }
+  if(instruction.call_stack_bytes) {
+    if(needs_separator) out << ", ";
+    out << "stack=" << instruction.call_stack_bytes;
+    needs_separator = true;
+  }
+  if(instruction.call_variadic) {
+    if(needs_separator) out << ", ";
+    out << "variadic";
+    needs_separator = true;
+  }
+  if(instruction.call_unwind_no) {
+    if(needs_separator) out << ", ";
+    out << "unwind=no";
+    needs_separator = true;
+  }
+  if(instruction.call_returns_noreturn) {
+    if(needs_separator) out << ", ";
+    out << "returns=noreturn";
+  }
+  out << ']';
+}
+
 std::string instruction_text(const Instruction & instruction)
 {
   std::ostringstream out;
@@ -233,6 +285,7 @@ std::string instruction_text(const Instruction & instruction)
       instruction.opcode == Instruction::MI_ZEXT) && !instruction.type.empty())
     out << '.' << instruction.type;
   render_operands(out, instruction);
+  render_call_facts(out, instruction);
   return out.str();
 }
 

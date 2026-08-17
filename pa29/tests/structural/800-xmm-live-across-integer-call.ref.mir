@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -43,7 +43,7 @@ function @preserve_across_integer_call
     fmov.f64 [rbp-8], xmm0
     fadd.f64 [rbp-16], [rbp-8], 1.25
     mov rdi, 7
-    call @clobber_xmm_from_integer
+    call @clobber_xmm_from_integer [args=(rdi)]
     mov r8, rax
     sext.i32 r8
     sitofp.i32.f64 xmm0, r8
@@ -60,7 +60,7 @@ function @main
 
   block ^entry
     fmov.f64 xmm0, 4.0
-    call @preserve_across_integer_call
+    call @preserve_across_integer_call [args=(xmm0)]
     fmov.f64 xmm0, xmm0
     feq.f64 rax, xmm0, 7.25
     mov r8, rax

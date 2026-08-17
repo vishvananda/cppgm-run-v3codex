@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -52,9 +52,9 @@ function @read_after_call
     mov r8, rsi
     mov rdi, <gpr0>
     mov rsi, r8
-    call @touch
+    call @touch [args=(rsi,rdi)]
     mov rdi, <gpr0>
-    call @load_value
+    call @load_value [args=(rdi)]
     ret rax
 
 function @main
@@ -70,7 +70,7 @@ function @main
     mov r9, 7
     mov rdi, r8
     mov rsi, r9
-    call @read_after_call
+    call @read_after_call [args=(rsi,rdi)]
     mov <gpr0>, rax
     cmp.i64 <gpr0>, 41
     je ^good

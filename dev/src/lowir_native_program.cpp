@@ -27,6 +27,7 @@ void append_startup_call(std::vector<MirInstruction> & startup,
                          const std::string & name)
 {
   MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
+  call.call_argument_registers_known = true;
   append_operand(call, named_operand(MirOperand::OP_SYMBOL, name));
   startup.push_back(call);
 }

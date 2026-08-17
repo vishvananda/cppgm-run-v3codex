@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -42,11 +42,11 @@ function @main
     temp %host-eh-selector -> [rbp-16] : i64
 
   block ^entry
-    call @address
+    call @address [args=(), unwind=no]
     mov r8, rax
     eh_push ^handler, 0
     mov rdi, r8
-    call @read
+    call @read [args=(rdi), unwind=no]
     mov r9, rax
     eh_pop
     mov rdx, 0

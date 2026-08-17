@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -41,11 +41,11 @@ function @main
 
   block ^entry
     lea rdi, [rbp-8]
-    call @YP__YP
+    call @YP__YP [args=(rdi)]
     lea rcx, [rbp-8]
     load.i32 rbx, [rcx]
     sext.i32 rbx
     lea rdi, [rbp-8]
-    call @YP___YP
+    call @YP___YP [args=(rdi)]
     mov rax, rbx
     ret rax

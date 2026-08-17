@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -31,5 +31,5 @@ function @main
     lea rcx, [rbp-8] !dbg(test.cpp, 7, 1)
     store.i32 [rbp-8], rax !dbg(test.cpp, 7, 1)
     lea rdi, [rbp-8] !dbg(test.cpp, 9, 1)
-    call @id !dbg(test.cpp, 9, 1)
+    call @id [args=(rdi)] !dbg(test.cpp, 9, 1)
     ret rax !dbg(test.cpp, 10, 1)

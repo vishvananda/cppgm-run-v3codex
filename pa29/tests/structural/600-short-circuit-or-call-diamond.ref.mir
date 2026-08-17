@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -35,14 +35,14 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    call @lhs_false
+    call @lhs_false [args=()]
     mov r8, rax
     cmp.i64 rax, 0
     jne ^true
     jmp ^rhs
 
   block ^rhs
-    call @rhs_true
+    call @rhs_true [args=()]
     cmp.i64 rax, 0
     jne ^true
     jmp ^false

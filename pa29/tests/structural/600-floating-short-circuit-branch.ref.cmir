@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -59,7 +59,7 @@ function @main
   block ^entry
     mov r8, @pair
     mov rdi, r8
-    call @check
+    call @check [args=(rdi)]
     cmp.i32 @seen, 1
     je ^pass
     jmp ^fail

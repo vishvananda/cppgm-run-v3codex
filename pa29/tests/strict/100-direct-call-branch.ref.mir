@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -34,7 +34,7 @@ function @main
   block ^then
     mov r8, 7
     mov rdi, r8
-    call @helper
+    call @helper [args=(rdi)]
     ret rax
 
   block ^else

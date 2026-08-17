@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -78,7 +78,7 @@ function @main
     store.i64 [rsp], <gpr4>
     load.i64 <gpr5>, [rbp-<off0>]
     store.i64 [rsp+<off0>], <gpr5>
-    call @sum8
+    call @sum8 [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
     add rsp, 16
     store.i64 [rbp-<off1>], rax
     load.i64 r8, [rbp-<off1>]

@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -33,7 +33,7 @@ function @main
     mov <gpr0>, r8
     add <gpr0>, r9
     mov rdi, 20
-    call @add1
+    call @add1 [args=(rdi)]
     mov r8, rax
     add <gpr0>, r8
     mov rax, <gpr0>

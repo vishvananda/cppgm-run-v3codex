@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -48,5 +48,5 @@ function @main
   block ^entry
     mov rdi, 0
     mov rsi, 0
-    call @accept
+    call @accept [args=(rsi,rdi)]
     ret rax

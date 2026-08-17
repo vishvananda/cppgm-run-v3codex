@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -49,10 +49,10 @@ function @dispatch
   block ^case
     mov rdi, r12
     mov rsi, rbx
-    call @touch
+    call @touch [args=(rsi,rdi)]
     mov rdi, r12
     mov rsi, rbx
-    call @touch
+    call @touch [args=(rsi,rdi)]
     ret rax
 
   block ^miss
@@ -74,7 +74,7 @@ function @main
     mov rdi, r9
     mov rsi, r8
     mov rdx, rbx
-    call @dispatch
+    call @dispatch [args=(rdx,rsi,rdi)]
     mov r12, rax
     cmp.i64 r12, 7
     je ^good

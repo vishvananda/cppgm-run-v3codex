@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -26,5 +26,5 @@ function @main
   block ^entry
     mov r8, 20
     mov rdi, 20
-    call @id
+    call @id [args=(rdi)]
     ret rax

@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -31,5 +31,5 @@ function @main
   block ^entry
     load.ptr r8, @table
     mov r10, r8
-    call *r10
+    call *r10 [args=()]
     ret rax

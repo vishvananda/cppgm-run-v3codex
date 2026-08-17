@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -59,11 +59,11 @@ function @target
     mov rbx, rsi
     mov r9, r8
     mov rdi, r8
-    call @load_value
+    call @load_value [args=(rdi)]
     mov r12, rax
     mov r9, rbx
     mov rdi, rbx
-    call @consume
+    call @consume [args=(rdi)]
     mov rax, r12
     ret rax
 
@@ -80,7 +80,7 @@ function @main
     mov rsi, 0
     mov rdx, 0
     mov rcx, 0
-    call @target
+    call @target [args=(rcx,rdx,rsi,rdi,r8)]
     mov r9, rax
     mov rdx, 77
     cmp.i64 r9, rdx

@@ -1,7 +1,7 @@
 machine_ir x86_64 <host-target>
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -44,7 +44,7 @@ function @main
     mov rsi, 20
     fmov.f64 xmm0, 1.5
     fmov.f64 xmm1, 2.5
-    call @mix
+    call @mix [args=(rsi,rdi,xmm0,xmm1)]
     mov r8, rax
     mov rdx, 33
     cmp.i64 r8, rdx

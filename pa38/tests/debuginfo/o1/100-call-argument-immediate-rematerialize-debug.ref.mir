@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -26,5 +26,5 @@ function @main
   block ^entry
     mov r8, 20 !dbg(test.cpp, 5, 1)
     mov rdi, 20 !dbg(test.cpp, 6, 1)
-    call @id !dbg(test.cpp, 6, 1)
+    call @id [args=(rdi)] !dbg(test.cpp, 6, 1)
     ret rax !dbg(test.cpp, 7, 1)

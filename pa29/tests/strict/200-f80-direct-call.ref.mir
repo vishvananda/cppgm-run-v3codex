@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -40,7 +40,7 @@ function @main
     sub rsp, 32
     fmov.f80 [rsp], [rbp-16]
     fmov.f80 [rsp+16], [rbp-32]
-    call @addl
+    call @addl [args=(), stack=32]
     add rsp, 32
     fstp.f80 [rbp-48]
     fmov.f80 [rbp-64], 3.75L
