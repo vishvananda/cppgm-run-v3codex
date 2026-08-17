@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: planned
+Status: in progress; B1 complete
 
 Date: 2026-08-17
 
@@ -253,7 +253,7 @@ candidate.
 | --- | --- | ---: | ---: | --- |
 | T1 | E4--E9 reducer backfill | 0 existing | 0 existing | Planned, tests only |
 | P0 | Retain jemalloc in the PA39 self link | 0 | 0 | Planned build-system parity check |
-| B1 | Compact memory displacements | 0 | 0 | Planned first; isolated prototype clean |
+| B1 | Compact memory displacements | 0 existing | 0 existing | **Landed** in `e46bde65`; deterministic object -157,352 bytes and text -156,330 bytes; behavior reference agrees while its unrelated MIR layout differs |
 | B2 | Omit encoded jump to next instruction | 0 | 0 | Planned |
 | B3a | Unsigned power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned |
 | B3b | Signed power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned after B3a |
@@ -275,6 +275,32 @@ For an accepted row, replace `Initial status` with the exact owner reports,
 fixture counts and paths, frozen size/time delta, reference disposition,
 commit, and final decision.  For a deferred row, record the same evidence and
 the reason for deferral.
+
+### 4.4 B1 result
+
+`e46bde65` selects no displacement or disp8 directly in the shared ModRM/SIB
+encoder, while retaining the required displacement for RBP/R13 and disp32 for
+larger offsets.  No existing LowIR or MIR fixture changed.  The new PA29
+boundary reducer covers `-129`, `-128`, `-1`, `0`, `1`, `127`, and `128`; both
+implementations execute it successfully.  The reference compiler's unrelated
+register allocation differs, so the active test intentionally retains the
+reference-generated behavior oracle without an exact MIR oracle.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 14/14 course tests;
+- through PA29: 4,088/4,088;
+- PA29--PA38 report: 1,275/1,275;
+- full report: 5,166/5,166;
+- PA39 file audit: zero fatal findings;
+- object: 3,957,616 to 3,800,264 bytes;
+- `.text`: 1,225,708 to 1,069,378 bytes;
+- `.gcc_except_table`: 74,640 to 73,608 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes; and
+- three-block immutable ABBA medians: wall +0.99%, user +1.55%, peak RSS
+  +0.15%, all below the 3% gate.  All six outputs per compiler were
+  deterministic; one candidate timing outlier was retained in the declared
+  window.
 
 ## 5. Execution plan
 
