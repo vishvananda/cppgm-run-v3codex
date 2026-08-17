@@ -56,7 +56,6 @@ function @target
     store.ptr [rbp-16], rdx
     store.ptr [rbp-24], rcx
     mov rbx, rsi
-    mov r9, r8
     mov rdi, r8
     call @load_value [args=(rdi)]
     mov r12, rax

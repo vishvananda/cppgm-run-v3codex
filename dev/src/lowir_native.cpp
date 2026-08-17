@@ -476,6 +476,10 @@ private:
         cross_call_homes.find(parameter.name);
       const bool incoming_clobbered = !wide_gpr_boundary && uses &&
         crosses_register_clobber(parameter.name, binding.reg);
+      const bool promoted_incoming_clobbered =
+        i < storage_facts_.promoted_parameter_clobbers.size() &&
+        (storage_facts_.promoted_parameter_clobbers[i] &
+         analysis::register_mask(binding.reg));
       if(uses == 0) {
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
@@ -496,8 +500,7 @@ private:
         value.location = reg_operand(planned->second);
         value.fixed_register_home = storage_facts_.promoted_parameters.count(parameter.name);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary &&
-                storage_facts_.promoted_parameters.count(parameter.name)) {
+      } else if(!wide_gpr_boundary && promoted_incoming_clobbered) {
         const X64Register destination = registers_.is_used(XR_R9) ?
           registers_.allocate(false) : XR_R9;
         if(destination == XR_R9) registers_.reserve(XR_R9);
@@ -506,6 +509,8 @@ private:
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && !incoming_clobbered) {
         // Keep an intact incoming ABI register as the value's selected home.
+        value.fixed_register_home =
+          storage_facts_.promoted_parameters.count(parameter.name);
       } else if(wide_gpr_boundary && crosses_call(parameter.name)) {
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
@@ -520,6 +525,8 @@ private:
       } else if(!wide_gpr_boundary && incoming_clobbered) {
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
         value.location = reg_operand(destination);
+        value.fixed_register_home =
+          storage_facts_.promoted_parameters.count(parameter.name);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
       }
       if(incoming_pool_reserved[i] &&

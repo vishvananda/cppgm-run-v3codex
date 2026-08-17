@@ -1,6 +1,7 @@
 #include "lowir_native_analysis.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <queue>
 #include <set>
@@ -514,6 +515,7 @@ StorageFacts analyze_storage(
     const std::unordered_map<std::string, std::string> & tls_wrappers)
 {
   StorageFacts facts;
+  facts.promoted_parameter_clobbers.assign(function.params.size(), 0);
   std::unordered_set<std::string> written_slots;
   std::unordered_set<std::string> observed_slots;
   std::unordered_map<std::string, std::size_t> parameters_by_name;
@@ -552,12 +554,15 @@ StorageFacts analyze_storage(
     bool read_through = true;
     std::size_t parameter = static_cast<std::size_t>(-1);
     std::string loaded_name;
+    unsigned intervening_clobbers = 0;
   };
   std::unordered_map<std::string, ScalarSlotState> scalar_states;
   for(std::unordered_map<std::string, std::size_t>::const_iterator slot =
         scalar_slots.begin(); slot != scalar_slots.end(); ++slot)
     scalar_states.emplace(slot->first, ScalarSlotState());
   std::unordered_set<std::string> seen_object_slots;
+  std::array<std::size_t, 16> last_clobber;
+  last_clobber.fill(std::numeric_limits<std::size_t>::max());
 
   for(std::size_t b = 0; b < function.blocks.size(); ++b) {
     const std::vector<Instruction> & instructions = function.blocks[b].instructions;
@@ -654,10 +659,24 @@ StorageFacts analyze_storage(
           ++state.load_count;
           state.load_position = i;
           state.loaded_name = instruction.dest;
+          const std::unordered_map<std::string, unsigned>::const_iterator
+            result_clobbers =
+              function_facts.live_across_clobbers.find(instruction.dest);
+          if(result_clobbers != function_facts.live_across_clobbers.end())
+            state.intervening_clobbers |= result_clobbers->second;
+          for(std::size_t reg = 0; reg < last_clobber.size(); ++reg)
+            if(last_clobber[reg] != std::numeric_limits<std::size_t>::max() &&
+               last_clobber[reg] > state.store_position)
+              state.intervening_clobbers |= 1u << reg;
         } else if(first || second || third) {
           state.valid = false;
         }
       }
+      const unsigned clobbers = instruction_clobber_mask(
+        instruction,
+        function_facts.direct_memory_index_values.count(instruction.dest));
+      for(std::size_t reg = 0; reg < last_clobber.size(); ++reg)
+        if(clobbers & (1u << reg)) last_clobber[reg] = i;
     }
   }
 
@@ -698,6 +717,8 @@ StorageFacts analyze_storage(
     else
       facts.forwarded_parameter_slots[state->first] = parameter;
     facts.promoted_parameters.insert(parameter);
+    facts.promoted_parameter_clobbers[state->second.parameter] |=
+      state->second.intervening_clobbers;
     const std::vector<std::size_t>::const_iterator call = std::upper_bound(
       function_facts.calls.begin(), function_facts.calls.end(),
       state->second.store_position);

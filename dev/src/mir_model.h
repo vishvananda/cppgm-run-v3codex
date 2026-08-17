@@ -76,8 +76,8 @@ struct ParamBinding
   } location = PL_REG;
 
   // PL_REG/PL_XMM describe the incoming ABI location. A lowering may retain
-  // the parameter there when its complete live interval crosses no clobber;
-  // a separate move or frame home is required otherwise.
+  // the parameter there when its complete live interval, including promoted
+  // slot aliases, crosses no clobber; a separate home is required otherwise.
   std::string name;
   X64Register reg = XR_RDI;
   XmmRegister xmm = XMM_0;

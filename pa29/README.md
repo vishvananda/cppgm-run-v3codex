@@ -480,6 +480,7 @@ To complete PA29, implement these goals:
 
    An incoming scalar parameter may remain in its ABI register for its whole
    live interval when no instruction in that interval clobbers the register.
+   That interval includes uses reached through a promoted parameter-slot load.
    Reserve that register while the parameter remains live so result allocation
    cannot overwrite it.  Relocate or spill the parameter before its first use
    whenever a fixed-register operation or call can clobber its incoming
