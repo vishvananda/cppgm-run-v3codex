@@ -3,6 +3,7 @@
 #include "lowir_native_data_layout.h"
 #include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
+#include "lowir_native_encoding.h"
 #include "lowir_native_object_elf.h"
 #include <algorithm>
 #include <cerrno>
@@ -61,14 +62,6 @@ void emit_register_move(CodeBuffer & out, X64Register destination,
   emit_rex(out, true, source, destination);
   out.byte(0x89);
   emit_modrm(out, 3, source, destination);
-}
-
-void emit_immediate_move(CodeBuffer & out, X64Register destination,
-                         std::uint64_t value)
-{
-  emit_rex(out, true, XR_RAX, destination);
-  out.byte(0xb8 + (static_cast<unsigned>(destination) & 7));
-  out.little(value, 8);
 }
 
 void emit_symbol_move(CodeBuffer & out, X64Register destination,
