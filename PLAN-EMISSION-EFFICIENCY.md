@@ -1,6 +1,6 @@
 # Plan: Frozen Object Emission Efficiency
 
-Status: active
+Status: complete
 
 Date: 2026-08-17
 
@@ -80,15 +80,15 @@ than host contention or E5/E6 cost.
 | ID | Candidate and earliest owner | Expected structural effect | Fixture result | Frozen result | Decision |
 | --- | --- | --- | --- | --- | --- |
 | E1 | Share constructor-unwind destructor suffixes; PA26 exception-aware construction | Replace copied cleanup prefixes with one destructor block per constructed subobject | Existing PA16--PA38 fixtures unchanged; proposed PA26 reference uses a different valid layout | Object -27,376 bytes; code/EH -12,448 bytes; `Scope::Scope` 8,254 to 1,952 bytes | **Landed** in `d549070e`; proposed stress case in `5205d9d1` |
-| E2 | Stop reserving frame holes for forwarded and dead-store slots; PA29 native lowering | Reduce frame size and avoid wide stack displacements without changing LowIR | Existing PA29--PA38 fixtures unchanged (1,274 tests); proposed PA29 reference retains dead slots | Object/text -4,624 bytes; three-run compile median unchanged at 6.09 s | **Retain**; proposed regression under `proposed/pa29/` |
-| E3 | Relax known forward x86 branches after layout; PA29 native encoding | Use short encodings for local forward branches while keeping final offsets, EH ranges, symbols, and fixups coherent | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -56,504 bytes; text -56,246 bytes; EH -266 bytes; deterministic across three loaded-host runs | **Retain**; final function layout repatches existing backward rel8 branches and translates host EH call-site ranges |
-| E3P | Make E3 branch compaction linear in the current function; PA29 native encoding | Compact bytes in place and adjust only the current function's labels and fixups, with binary-search offset translation | Exact E6 frozen object SHA preserved; PA29--PA38 1,274/1,274 and full report 5,165/5,165 remain clean | Current E6 stats screen: wall 15.16 to 6.18 s and encoding 9.081 to 0.249 s; object remains 3,977,672 bytes | **Retain**; fixes the quadratic whole-buffer copying and rescanning accidentally introduced with E3 |
-| E4 | Coalesce adjacent constant byte stores during PA29 native encoding | Replace repeated address setup and scalar stores with packed 64/32/16/8-bit stores while restoring the final MIR-defined registers | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165; proposed runtime reducer passes both implementations but reference MIR uses a different register/frame layout | Object -11,760 bytes; text -11,754 bytes; each frozen `__to_chars_10_impl` specialization falls from about 5.0 KiB to about 1.1 KiB | **Retain**; proposed regression under `proposed/pa29/` |
-| E5 | Forward an immediately reloaded 64-bit frame store during PA29 native encoding | Keep the architecturally visible store but replace the following reload with a register move, or no instruction when its destination already contains the value | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -53,720 bytes; text -53,398 bytes; EH -329 bytes; `analyze_call_expression` -15,486 bytes | **Retain**; encoding-only change preserves O0 MIR and final frame/register state |
-| E6 | Elide single-use temporary frame stores paired with an adjacent 64-bit reload; PA29 native encoding | Prove from all MIR operands that the compiler-only home has exactly one store and one load, then forward the register without materializing unobservable temporary memory | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -37,240 bytes; text -36,836 bytes; EH -408 bytes; `analyze_call_expression` -14,536 bytes | **Retain**; one linear use-count pass per function preserves O0 MIR and final observable state |
-| E7 | Forward a single-use temporary reload across one independent register instruction; PA29 native encoding | Skip the unobservable store/reload when the sole intervening load, LEA, or move writes a different register | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -5,368 bytes; text -5,318 bytes; EH -34 bytes; `analyze_call_expression` -1,485 bytes; timing screen 6.15 s | **Retain**; all calls, stores, EH markers, arithmetic, and source-register definitions remain barriers |
-| E8 | Extend E7 across short runs of independently checked instructions; PA29 native encoding | Reuse the same per-instruction proof for two to five intervening load/LEA/move instructions | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -6,544 bytes; text -6,502 bytes; EH -55 bytes; `analyze_call_expression` -2,387 bytes; timing screen 6.15 s | **Retain**; the five-instruction bound captures all but no-value outliers without requiring CFG dataflow |
-| E9 | Extend frame reload forwarding to narrow integer transfers; PA29 native encoding | Preserve x86 partial-register semantics with width-matched register moves for 8/16/32-bit store/reload pairs | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -8,144 bytes; text -8,090 bytes; EH -41 bytes; `analyze_call_expression` -3,196 bytes; timing screen 6.12 s | **Retain**; width-matched register moves reproduce each x86 load's partial-register behavior |
+| E2 | Stop reserving frame holes for forwarded and dead-store slots; PA29 native lowering | Reduce frame size and avoid wide stack displacements without changing LowIR | Existing PA29--PA38 fixtures unchanged (1,274 tests); proposed PA29 reference retains dead slots | Object/text -4,624 bytes; three-run compile median unchanged at 6.09 s | **Landed** in `05b46fd9`; proposed regression under `proposed/pa29/` |
+| E3 | Relax known forward x86 branches after layout; PA29 native encoding | Use short encodings for local forward branches while keeping final offsets, EH ranges, symbols, and fixups coherent | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -56,504 bytes; text -56,246 bytes; EH -266 bytes; deterministic across three loaded-host runs | **Landed** in `633fe401`; final function layout repatches existing backward rel8 branches and translates host EH call-site ranges |
+| E3P | Make E3 branch compaction linear in the current function; PA29 native encoding | Compact bytes in place and adjust only the current function's labels and fixups, with binary-search offset translation | Exact E6 frozen object SHA preserved; PA29--PA38 1,274/1,274 and full report 5,165/5,165 remain clean | Current E6 stats screen: wall 15.16 to 6.18 s and encoding 9.081 to 0.249 s; object remains 3,977,672 bytes | **Landed** in `eb0f7c2a`; fixes the quadratic whole-buffer copying and rescanning accidentally introduced with E3 |
+| E4 | Coalesce adjacent constant byte stores during PA29 native encoding | Replace repeated address setup and scalar stores with packed 64/32/16/8-bit stores while restoring the final MIR-defined registers | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165; proposed runtime reducer passes both implementations but reference MIR uses a different register/frame layout | Object -11,760 bytes; text -11,754 bytes; each frozen `__to_chars_10_impl` specialization falls from about 5.0 KiB to about 1.1 KiB | **Landed** in `a1c74fb1`; proposed regression under `proposed/pa29/` |
+| E5 | Forward an immediately reloaded 64-bit frame store during PA29 native encoding | Keep the architecturally visible store but replace the following reload with a register move, or no instruction when its destination already contains the value | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -53,720 bytes; text -53,398 bytes; EH -329 bytes; `analyze_call_expression` -15,486 bytes | **Landed** in `ec680854`; encoding-only change preserves O0 MIR and final frame/register state |
+| E6 | Elide single-use temporary frame stores paired with an adjacent 64-bit reload; PA29 native encoding | Prove from all MIR operands that the compiler-only home has exactly one store and one load, then forward the register without materializing unobservable temporary memory | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -37,240 bytes; text -36,836 bytes; EH -408 bytes; `analyze_call_expression` -14,536 bytes | **Landed** in `c7e1715e`; one linear use-count pass per function preserves O0 MIR and final observable state |
+| E7 | Forward a single-use temporary reload across one independent register instruction; PA29 native encoding | Skip the unobservable store/reload when the sole intervening load, LEA, or move writes a different register | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -5,368 bytes; text -5,318 bytes; EH -34 bytes; `analyze_call_expression` -1,485 bytes; timing screen 6.15 s | **Landed** in `714575a6`; all calls, stores, EH markers, arithmetic, and source-register definitions remain barriers |
+| E8 | Extend E7 across short runs of independently checked instructions; PA29 native encoding | Reuse the same per-instruction proof for two to five intervening load/LEA/move instructions | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -6,544 bytes; text -6,502 bytes; EH -55 bytes; `analyze_call_expression` -2,387 bytes; timing screen 6.15 s | **Landed** in `a5997d8e`; the five-instruction bound captures all but no-value outliers without requiring CFG dataflow |
+| E9 | Extend frame reload forwarding to narrow integer transfers; PA29 native encoding | Preserve x86 partial-register semantics with width-matched register moves for 8/16/32-bit store/reload pairs | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -8,144 bytes; text -8,090 bytes; EH -41 bytes; `analyze_call_expression` -3,196 bytes; timing screen 6.12 s | **Landed** in `d613a2d0`; width-matched register moves reproduce each x86 load's partial-register behavior |
 
 ## Optimization placement
 
@@ -130,3 +130,25 @@ The batch is complete only when retained changes have:
 - zero fatal file-audit findings;
 - a byte-identical PA39 self/inception comparison; and
 - separate pushed commits with this ledger updated to their final hashes.
+
+## Final evidence
+
+The retained E2--E9 series reduces the frozen object from 4,141,520 to
+3,957,616 bytes (183,904 bytes, 4.44%).  Native `.text` falls from 1,408,476
+to 1,225,708 bytes (182,768 bytes, 12.98%); `.gcc_except_table` falls from
+75,773 to 74,640 bytes, and `.eh_frame` remains 145,188 bytes.  Separating the
+shared x86 encoders in `fb07fb77` preserves the final frozen object exactly at
+SHA-256 `2cb1b4717cff7536b0f42dd630a6a9c143152ea4ba8a33dc5d7992c9b0007436`.
+
+Final validation on the committed source:
+
+- `make test-report`: pass, 5,165/5,165.
+- `perl scripts/cppgm_file_audit.pl --stage pa39 --paths dev/src`: pass with
+  zero fatal findings and the 23 pre-existing advisory header warnings.
+- Clean 32-way `cppgm++-self`: 18.21 seconds wall, 414.48 seconds user,
+  35.65 seconds system, and 330,164 KiB maximum per-process RSS.
+- Clean 8-way inception generation and comparison: 4:19.47 wall,
+  1,997.63 seconds user, 39.02 seconds system, and 301,320 KiB maximum
+  per-process RSS.  All 154 objects match; the two 26,874,936-byte binaries
+  have SHA-256
+  `1d28155b35b66ace3ea3890261c28921b5ffb65e3a892384e217883060a4c382`.
