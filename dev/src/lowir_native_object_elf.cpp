@@ -653,6 +653,9 @@ void collect_host_symbols(
     if(program.exported_symbols[i].keep_internal_alias)
       required_local_labels.insert(
         program.exported_symbols[i].internal_symbol);
+  for(std::size_t i = 0; i < functions.size(); ++i)
+    if(functions[i].object_symbol.empty())
+      required_local_labels.insert(functions[i].internal_symbol);
   std::unordered_set<std::string> object_only_labels;
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const ir_model::ExportedSymbol & exported = program.exported_symbols[i];
