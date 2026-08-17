@@ -309,6 +309,13 @@ struct SignedDivisionMagic
   unsigned shift;
 };
 
+struct UnsignedDivisionMagic
+{
+  std::uint64_t multiplier;
+  unsigned shift;
+  bool add;
+};
+
 SignedDivisionMagic signed_division_magic(long long divisor)
 {
   const std::uint64_t divisor_bits =
@@ -353,6 +360,42 @@ SignedDivisionMagic signed_division_magic(long long divisor)
   return result;
 }
 
+UnsignedDivisionMagic unsigned_division_magic(std::uint64_t divisor)
+{
+  unsigned floor_log2 = 0;
+  for(std::uint64_t value = divisor; value > 1; value >>= 1)
+    ++floor_log2;
+
+  // Divide (1 << (64 + floor_log2)) by divisor.  The high word is smaller
+  // than every non-power-of-two divisor admitted here, so one bounded
+  // 64-step restoring division produces the complete quotient and remainder
+  // without requiring a host 128-bit division.
+  std::uint64_t proposed_multiplier = 0;
+  std::uint64_t remainder = UINT64_C(1) << floor_log2;
+  for(unsigned bit = 0; bit != 64; ++bit) {
+    proposed_multiplier <<= 1;
+    if(remainder >= divisor - remainder) {
+      remainder -= divisor - remainder;
+      proposed_multiplier |= 1;
+    } else {
+      remainder += remainder;
+    }
+  }
+
+  bool add = false;
+  if(divisor - remainder >= (UINT64_C(1) << floor_log2)) {
+    proposed_multiplier += proposed_multiplier;
+    const std::uint64_t twice_remainder = remainder + remainder;
+    if(twice_remainder >= divisor || twice_remainder < remainder)
+      ++proposed_multiplier;
+    add = true;
+  }
+  const UnsignedDivisionMagic result = {
+    proposed_multiplier + 1, floor_log2, add
+  };
+  return result;
+}
+
 void emit_signed_multiply_high(CodeBuffer & out, X64Register source,
                                std::uint64_t multiplier)
 {
@@ -361,6 +404,51 @@ void emit_signed_multiply_high(CodeBuffer & out, X64Register source,
   emit_rex(out, true, XR_RAX, XR_R10);
   out.byte(0xf7);
   emit_modrm(out, 3, 5, XR_R10);
+}
+
+void emit_unsigned_multiply_high(CodeBuffer & out, X64Register source,
+                                 std::uint64_t multiplier)
+{
+  emit_register_move(out, XR_RAX, source);
+  emit_immediate_move(out, XR_R10, multiplier);
+  emit_rex(out, true, XR_RAX, XR_R10);
+  out.byte(0xf7);
+  emit_modrm(out, 3, 4, XR_R10);
+}
+
+void emit_register_multiply(CodeBuffer & out, X64Register destination,
+                            X64Register source)
+{
+  emit_rex(out, true, destination, source);
+  out.byte(0x0f);
+  out.byte(0xaf);
+  emit_modrm(out, 3, destination, source);
+}
+
+void emit_multiply_by_constant(CodeBuffer & out, X64Register destination,
+                               std::uint64_t multiplier)
+{
+  if(multiplier <= static_cast<std::uint64_t>(INT32_MAX) ||
+     multiplier >= UINT64_C(0xffffffff80000000)) {
+    emit_rex(out, true, destination, destination);
+    out.byte(0x69);
+    emit_modrm(out, 3, destination, destination);
+    out.little(multiplier, 4);
+    return;
+  }
+  emit_immediate_move(out, XR_RDX, multiplier);
+  emit_register_multiply(out, destination, XR_RDX);
+}
+
+void emit_remainder_from_quotient(CodeBuffer & out,
+                                  std::uint64_t divisor)
+{
+  // R11 retains the dividend and RAX retains the quotient.  Preserve both
+  // architectural division results while reconstructing RDX = n - q*d.
+  emit_register_move(out, XR_R10, XR_RAX);
+  emit_multiply_by_constant(out, XR_R10, divisor);
+  emit_register_move(out, XR_RDX, XR_R11);
+  emit_register_alu(out, 0x29, XR_RDX, XR_R10);
 }
 
 bool preserves_condition_flags(mir_model::MirInstruction::Opcode opcode)
@@ -559,14 +647,26 @@ std::size_t emit_constant_division(
      instructions[cursor].operands[0].reg != XR_RCX)
     return 0;
   ++cursor;
-  if(cursor >= instructions.size() ||
-     instructions[cursor].opcode != MirInstruction::MI_MOV ||
-     instructions[cursor].operands.size() != 2 ||
-     instructions[cursor].operands[0].kind != MirOperand::OP_REG ||
-     instructions[cursor].operands[1].kind != MirOperand::OP_REG)
+  X64Register destination = XR_RSP;
+  X64Register result_source = XR_RSP;
+  bool consume_result_move = false;
+  if(cursor < instructions.size() &&
+     instructions[cursor].opcode == MirInstruction::MI_MOV &&
+     instructions[cursor].operands.size() == 2 &&
+     instructions[cursor].operands[0].kind == MirOperand::OP_REG &&
+     instructions[cursor].operands[1].kind == MirOperand::OP_REG) {
+    destination = instructions[cursor].operands[0].reg;
+    result_source = instructions[cursor].operands[1].reg;
+    consume_result_move = true;
+  } else if(cursor < instructions.size() &&
+            instructions[cursor].opcode == MirInstruction::MI_RET &&
+            instructions[cursor].operands.size() == 1 &&
+            instructions[cursor].operands[0].kind == MirOperand::OP_REG) {
+    destination = instructions[cursor].operands[0].reg;
+    result_source = destination;
+  } else {
     return 0;
-  const X64Register destination = instructions[cursor].operands[0].reg;
-  const X64Register result_source = instructions[cursor].operands[1].reg;
+  }
   const bool remainder = result_source == XR_RDX;
   if(!remainder && result_source != XR_RAX) return 0;
 
@@ -580,29 +680,45 @@ std::size_t emit_constant_division(
 
   const bool power_of_two = !(divisor & (divisor - 1));
   if(!power_of_two) {
-    if(unsigned_operation || remainder) return 0;
-    const SignedDivisionMagic magic =
-      signed_division_magic(signed_divisor);
     emit_register_move(out, XR_R11, dividend);
-    emit_signed_multiply_high(out, dividend, magic.multiplier);
-    emit_register_move(out, result_source, XR_RDX);
-    const bool negative_magic = (magic.multiplier >> 63) != 0;
-    if(signed_divisor > 0 && negative_magic)
-      emit_register_alu(out, 0x01, result_source, XR_R11);
-    else if(signed_divisor < 0 && !negative_magic)
-      emit_register_alu(out, 0x29, result_source, XR_R11);
-    emit_immediate_shift(out, result_source, 7, magic.shift);
-    if(signed_divisor > 0) {
-      emit_immediate_shift(out, XR_R11, 7, 63);
-      emit_register_alu(out, 0x29, result_source, XR_R11);
+    if(unsigned_operation) {
+      const UnsignedDivisionMagic magic = unsigned_division_magic(divisor);
+      emit_unsigned_multiply_high(out, XR_R11, magic.multiplier);
+      emit_register_move(out, XR_RAX, XR_RDX);
+      if(magic.add) {
+        emit_register_move(out, XR_R10, XR_R11);
+        emit_register_alu(out, 0x29, XR_R10, XR_RAX);
+        emit_immediate_shift(out, XR_R10, 5, 1);
+        emit_register_alu(out, 0x01, XR_RAX, XR_R10);
+      }
+      emit_immediate_shift(out, XR_RAX, 5, magic.shift);
     } else {
-      emit_register_move(out, XR_R10, result_source);
-      emit_immediate_shift(out, XR_R10, 5, 63);
-      emit_register_alu(out, 0x01, result_source, XR_R10);
+      const SignedDivisionMagic magic =
+        signed_division_magic(signed_divisor);
+      emit_signed_multiply_high(out, dividend, magic.multiplier);
+      emit_register_move(out, XR_RAX, XR_RDX);
+      const bool negative_magic = (magic.multiplier >> 63) != 0;
+      if(signed_divisor > 0 && negative_magic)
+        emit_register_alu(out, 0x01, XR_RAX, XR_R11);
+      else if(signed_divisor < 0 && !negative_magic)
+        emit_register_alu(out, 0x29, XR_RAX, XR_R11);
+      emit_immediate_shift(out, XR_RAX, 7, magic.shift);
+      if(signed_divisor > 0) {
+        const X64Register sign = remainder ? XR_R10 : XR_R11;
+        if(remainder) emit_register_move(out, sign, XR_R11);
+        emit_immediate_shift(out, sign, 7, 63);
+        emit_register_alu(out, 0x29, XR_RAX, sign);
+      } else {
+        emit_register_move(out, XR_R10, XR_RAX);
+        emit_immediate_shift(out, XR_R10, 5, 63);
+        emit_register_alu(out, 0x01, XR_RAX, XR_R10);
+      }
     }
+    if(remainder) emit_remainder_from_quotient(out, unsigned_operation ?
+      divisor : static_cast<std::uint64_t>(signed_divisor));
     if(destination != result_source)
       emit_register_move(out, destination, result_source);
-    return cursor - start + 1;
+    return cursor - start + (consume_result_move ? 1 : 0);
   }
   if(!unsigned_operation && negate_quotient && divisor == 1) return 0;
 
@@ -639,7 +755,7 @@ std::size_t emit_constant_division(
   }
   if(destination != result_source)
     emit_register_move(out, destination, result_source);
-  return cursor - start + 1;
+  return cursor - start + (consume_result_move ? 1 : 0);
 }
 
 void emit_i128_shift(CodeBuffer & out,
