@@ -297,6 +297,7 @@ candidate.
 | B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
 | B6 | Put weak function bodies in real ELF COMDAT groups | 0 existing | 0 existing | **Landed** in `90368327`; actual weak code and relocation sections now share the function COMDAT, FDEs follow the selected code, a reference-agreeing PA32 reducer checks both membership facts, compiler `size` text -7,295,360 bytes, full report 5,186/5,186, zero-fatal audit, and clean object/final-binary inception comparison pass |
 | B7 | Reduce residual copy, frame-home, and address-materialization traffic | 0 preferred | 0 at baseline; intentional only if assigned to PA38 | **Reprofiled after B6**: same-name functions account for about 2.25 MB of the 2.94 MB residual machine-text gap; `mov` and `lea` account for 2.20 MB of the parsed instruction-byte delta, led by register copies, stack homes/reloads, and materialized addresses; prove bounded zero-MIR cases first, then put representation-changing coalescing in PA38 |
+| B7a | Omit a proved redundant 32-bit normalization | 0 existing | 0 existing | **Landed** in `0f01fa1a`; an immediately preceding non-forwarded 32-bit producer proves that the register's upper half is already zero, identical-source O0 self build machine text -41,856 bytes and 16,107 same-register moves, frozen object text -347 bytes, paired compile time neutral |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -494,6 +495,47 @@ versus 76.025 s median).  The clean eight-way optimized self build took
 19.39 s wall with 307,704 KiB peak RSS.  The corresponding inception rebuild
 took 4:15.20 wall with 314,324 KiB peak RSS, matched every object, and matched
 the final `cppgm++` binary byte for byte.
+
+### 4.3.4 B7a result
+
+`0f01fa1a` removes a 32-bit `zext` from native encoding only when the
+immediately preceding instruction provably wrote the same register with a
+zero-extending 32-bit operation.  The bounded producers are non-frame 32-bit
+loads, `movzx`, a prior 32-bit `zext` or `bswap`, and immediates that the
+encoder emits with a 32-bit destination.  Frame loads are deliberately
+excluded: frame reload forwarding can suppress the load, and a same-register
+forward would then make the following normalization semantically necessary.
+Textual MIR is unchanged.
+
+The proposed PA29 byte-shape witness
+`proposed/pa29/redundant-u32-normalization-encoding.t` retains both the global
+`load.u32` and the `zext.i32` in MIR while native disassembly omits the
+redundant `mov r32,r32`.  Runtime behavior is already actively covered and
+PA29 has no native-byte oracle, so the representation-only test remains
+proposed.
+
+For an exact codegen comparison, the compiler immediately before B7a and the
+B7a compiler each compiled the same post-refactor source tree at `-O0`:
+
+| Identical-source O0 self compiler | Before B7a | B7a | Change |
+| --- | ---: | ---: | ---: |
+| file bytes | 18,653,848 | 18,612,888 | -40,960 |
+| GNU `size` text | 11,304,413 | 11,262,493 | -41,920 |
+| machine `.text` | 9,172,818 | 9,130,962 | -41,856 |
+| same-register 32-bit moves | 59,023 | 42,916 | -16,107 |
+| `.eh_frame` | 1,260,792 | 1,260,792 | 0 |
+
+The frozen max-optimization object falls by 347 GNU `size` text bytes.  Two
+interleaved ABBA blocks measured 8.970 s versus 8.965 s wall medians; paired
+candidate/baseline deltas were +0.78% wall, +0.86% user, and -0.44% peak RSS,
+all within the 3% neutral gate under changing host load.  The clean eight-way
+O0 self build took 17.53 s wall and 262,772 KiB peak RSS.  PA29 passes 36/36
+strict, 59/59 structural, 88/88 behavior, and 28/28 course tests;
+PA1--PA29 passes 4,102/4,102; the affected PA29--PA38 selection passes
+1,295/1,295; and the full report passes 5,186/5,186.  The PA39 file audit has
+zero fatal findings (25 warnings).  Its responsibility splits preserve the
+existing statistics output while keeping both touched driver functions and
+the native ELF orchestrator below fatal size limits.
 
 ### 4.4 P0 result
 
