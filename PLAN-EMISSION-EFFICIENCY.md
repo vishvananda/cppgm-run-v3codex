@@ -101,10 +101,17 @@ building MIR, but doing so would deliberately change PA29's checked O0 MIR;
 the late encoder proof removes the machine operations without changing that
 assignment contract.
 
-E4 could also be expressed as a target-independent `-O1/-O2` LowIR transform
-or as constant-data materialization during lowering.  Its O0 encoder form is
-kept because the established O0 LowIR/MIR fixtures are canonical assignment
-outputs, while the packed x86 stores are not semantically observable.
+E4 is a target-specific instruction-selection peephole and is appropriate at
+`-O0`: optimization level zero does not require literal one-for-one encoding
+of MIR artifacts.  Packing byte stores relies on x86-64 little-endian layout,
+legal unaligned stores, immediate encodings, and preservation of the physical
+register state defined by MIR, so spelling the result as a wide LowIR store
+would put target facts above the native backend boundary.  A frontend may
+instead canonically lower an actual constant aggregate or string initializer
+to constant data or a bulk-memory operation even at `-O0`; that is distinct
+from rewriting an arbitrary sequence of scalar LowIR stores.  The encoder
+peephole remains useful for both canonical and handwritten scalar LowIR while
+preserving the established O0 LowIR/MIR fixtures.
 
 ## Deferred candidates
 
