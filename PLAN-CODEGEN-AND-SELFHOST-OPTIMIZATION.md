@@ -299,7 +299,8 @@ candidate.
 | C2a | Share terminal `resume` blocks | Intentional at O1 | Downstream only | **Landed** in `d3b9eca0`; 3 frozen blocks removed, object -120 bytes, PA37 88/88 and full report 5,177/5,177, timing neutral |
 | C2b | Exact context-compatible cleanup-tail sharing | Intentional at O1 | Downstream only | **Landed** in `9bf96710`; 50 frozen groups, 97 LowIR instructions, 82 resume calls, and 5,984 object bytes removed; full report 5,178/5,178, timing neutral |
 | C2c | Alpha-equivalent or cross-context cleanup-tail sharing | Potentially broad at O1 | Downstream only | Deferred: exact sharing captured the safe typed subset; cross-context ownership failed the PA36 reducer and alpha-renaming needs a separate SSA/liveness proof |
-| D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`; all 4,578 frozen functions classified, only 3 conservative fallback roots, exact object SHA preserved, full report 5,178/5,178, timing neutral |
+| D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`, corrected in `5517d984`; all 4,578 frozen functions classified, 74 conservative fallback roots and 78 internal-pruning candidates, exact object SHA preserved, full report 5,178/5,178, timing neutral |
+| D2 | Prune unreachable internal native definitions | 0 required | Native function set changes at O0/O1/O2 | **Deferred**: raw prototype removed 78 definitions and 22,376 bytes, but omitted an ABI-required anonymous-namespace base constructor; the metadata repair moved 49 existing LowIR fixtures, while the nonserialized repair broke 3/7 PA37 object round trips |
 | O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | Planned |
 | O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | Planned after O1a |
 | O2a | Expanded slot/value promotion | Intentional at O2 | Downstream only | Profile-gated |
@@ -1068,25 +1069,32 @@ without a rendered-name lookup.  The diagnostic reports one exclusive primary
 bucket for every reachable function; only fallback names are printed, and only
 under explicit `--stats`.
 
+The first version incorrectly ORed stale pre-inline semantic demand reasons
+into every later graph visit.  That made ordinary graph-reachable internal
+functions appear semantically rooted and undercounted the conservative
+fallback bucket as three.  `5517d984` corrects the exclusive classification
+and, only under `--stats`, runs a second O(V + E) observation with the blanket
+internal roots disabled.  Normal compilation still performs one reachability
+walk and emits byte-identical output.
+
 The 4,578 retained frozen O1 definitions classify exactly as follows:
 
 | Primary retention reason | Functions |
 | --- | ---: |
 | externally visible strong definition | 13 |
-| address or relocation use | 16 |
-| direct-call closure | 4,512 |
-| vtable/constructor/destructor/static lifecycle | 29 |
+| address or relocation use | 39 |
+| direct-call closure | 4,445 |
+| vtable/constructor/destructor/static lifecycle | 2 |
 | EH cleanup/runtime | 1 |
 | required weak/COMDAT ownership | 4 |
-| conservative internal-root fallback | 3 |
+| conservative internal-root fallback | 74 |
 
-The three fallback bodies are aggregate helpers for `EPPToken`,
-`builtin_type_transforms::Info`, and `builtin_type_transforms::AliasInfo`.
-This result changes the earlier size-gap diagnosis: the remaining function
-count is overwhelmingly supported by actual typed calls, not by hundreds of
-unexplained weak roots.  D1 therefore narrows the next reachability experiment
-to three internal helpers; it does not justify pruning against GCC's symbol
-count.
+With blanket internal roots disabled, the observational walk finds 78
+unreachable internal definitions.  The difference between 74 fallback-primary
+functions and 78 candidates is expected: four internal functions have another
+primary retention reason in the emitted graph.  This correction reopens a
+bounded internal-pruning experiment, but it still does not make GCC's symbol
+count a deadness oracle.
 
 The frozen object remains exactly 3,613,040 bytes with SHA-256
 `5c647dc5...`, identical to C2b.  Three-block immutable ABBA medians are
@@ -1098,6 +1106,47 @@ PA15 passes 113/113, through PA15 passes 1,163/1,163, the full report passes
 5,178/5,178, and the PA39 file audit has zero fatal findings.  **O0, O1, and
 O2 compiler output are byte-unchanged; no existing LowIR fixture changed and
 no existing MIR fixture changed.**
+
+### 4.25 D2 deferred result
+
+The first typed prototype removed internal definitions in the same O(V + E)
+closure that already removes weak definitions.  On the frozen O1 compile it
+removed all 78 observed candidates: functions fell from 4,578 to 4,500 and
+the object fell from 3,613,040 to 3,590,664 bytes (-22,376).  `.text` fell
+2,632 bytes, `.gcc_except_table` 64 bytes, and `.eh_frame` 2,248 bytes.  This
+is a useful upper bound, not an accepted optimization.
+
+The PA32 whole report found one correctness regression in
+`200-anon-namespace-special-member-symbols.t`: the anonymous `Analyzer` C2
+base-constructor entry disappeared even though the ABI fixture requires C1,
+C2, D1, and D2.  Marking recursively demanded base entries as ordinary
+`object_output_root` repaired PA32, but changed 49 existing LowIR fixtures
+across PA16--PA28 by rendering new `object_root=yes` metadata.  Per the
+fixture policy, that broad LowIR movement was reverted rather than
+rebaselined.
+
+A narrower prototype used a spare bit in the existing typed demand mask, so
+source `--emit-lowir` stayed unchanged.  It retained enough lifecycle entries
+to pass PA1--PA32 (4,365/4,365), removed 16 net definitions and 4,144 object
+bytes, and was timing-neutral in a three-block immutable ABBA (-0.62% paired
+wall, -0.08% user, +0.29% peak RSS).  The full report then exposed three PA37
+object-roundtrip failures: serialized LowIR intentionally does not contain
+that private semantic bit, so compiling it could not reproduce the direct
+object.  Adding serialized lifecycle metadata would return to the broad
+LowIR-fixture change above.
+
+The output-changing code was therefore reverted.  The landed D1 correction
+keeps the frozen object exactly 3,613,040 bytes with SHA-256
+`5c647dc5...`; PA37 object round trips pass 7/7, the full report passes
+5,178/5,178, and the PA39 audit has zero fatal findings.  The reducer remains
+in `proposed/pa32` because both candidate and reference execute it correctly,
+but the pinned reference deliberately retains the unused local symbol.
+
+**Fixture record:** the raw D2 experiments intentionally changed the native
+function/MIR set at O0, O1, and O2, but no existing exact MIR fixture required
+an update.  The attempted serialized-root repair changed 49 existing LowIR
+fixtures and is the explicit reason for deferral.  The landed audit changes
+neither existing LowIR nor existing MIR output.
 
 ## 5. Execution plan
 
