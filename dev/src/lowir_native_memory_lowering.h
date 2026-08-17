@@ -67,9 +67,14 @@ protected:
 				{
 					const bool preserved =
 						lowerer.result_crosses_call(instruction.dest);
+					const bool direct_call_alias =
+						value.fixed_register_home && !preserved &&
+						lowerer.facts_.only_call_arguments.count(instruction.dest);
 					X64Register forwarded = XR_R9;
 					bool allocated = true;
-					if (preserved)
+					if (direct_call_alias)
+						allocated = false;
+					else if (preserved)
 						allocated = lowerer.try_allocate_result(
 							instruction.dest, out, &forwarded);
 					else if (lowerer.nonparameter_value_live_in_register(forwarded))
@@ -79,7 +84,7 @@ protected:
 					// Storage analysis already required a stable cross-call home.
 					// If the speculative copy cannot allocate a register, calls can
 					// continue to consume that home directly.
-					if (allocated)
+					if (!direct_call_alias && allocated)
 					{
 						append_move(out, reg_operand(forwarded), value.location);
 						value.location = reg_operand(forwarded);

@@ -495,6 +495,10 @@ To complete PA29, implement these goals:
    direct-value call argument.  Emit only the move required by that consumer;
    do not first assign the result an unrelated temporary home.
 
+   When a load from a promoted parameter slot is used only as a call argument,
+   let call setup read the parameter's fixed home directly.  Do not also emit
+   a speculative temporary copy that the call does not consume.
+
    Keep typed integer constants as immediate value facts until an instruction
    requires a physical register.  A scalar copy may retain its source location
    without emitting a machine move when that location is an immediate, a

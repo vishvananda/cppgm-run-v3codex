@@ -217,7 +217,8 @@ struct Instruction
     MI_TLS_ADDR,
     // Scalar call results initially occupy their ABI return carrier. A sole-use
     // result consumed immediately by a store or direct-value argument does not
-    // require a separate intermediate MIR home.
+    // require a separate intermediate MIR home. Call setup may likewise read a
+    // promoted parameter's fixed home without a dead temporary copy.
     MI_CALL,
     MI_CALL_INDIRECT,
     // Bulk-memory operands name logical address registers. The encoder owns

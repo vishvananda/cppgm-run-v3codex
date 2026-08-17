@@ -60,7 +60,6 @@ function @target
     mov rdi, r8
     call @load_value [args=(rdi)]
     mov r12, rax
-    mov r9, rbx
     mov rdi, rbx
     call @consume [args=(rdi)]
     mov rax, r12
