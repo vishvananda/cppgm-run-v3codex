@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B3c, B4a, B4b, B4c, B4d1--B4d7, B5, B6, C1, C2a--C2b, D1, O1a, and R1--R3 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B3c, B4a, B4b, B4c, B4d1--B4d7, B5, B6, B7e, C1, C2a--C2b, D1, O1a, and R1--R3 complete
 
 Date: 2026-08-17
 
@@ -301,6 +301,7 @@ candidate.
 | B7b | Extend the proof through frame-load forwarding | 0 existing | 0 existing | **Landed** in `58aa9b65`; ordinary 32-bit frame loads and different-register forwarded reloads normalize their destination, while same-register forwarding retains the required operation; identical-source O0 self machine text -67,536 bytes and 26,719 same-register moves, frozen text -156 bytes, paired compile time neutral |
 | B7c | Fuse register copy followed by 32-bit normalization | 0 existing | 0 existing | **Landed** in `9a929862`; a single 32-bit register move has the exact final value and flags of the adjacent 64-bit copy plus normalization; identical-source O0 self machine text -34,224 bytes and 11,721 same-register moves, frozen text -192 bytes, paired compile time neutral |
 | B7d | Retain a direct parameter in an unclobbered incoming ABI register | 0 existing | 10 existing PA29 MIR fixtures | **Deferred**: a bounded clobber proof removed 325 MIR instructions and 2,391 text bytes from the O0 `lowir_opt.cpp` sample, and all affected programs remained correct, but it moved 2 strict, 7 structural, and 1 behavior MIR oracles without a PA29 reference workflow that authorizes regeneration |
+| B7e | Fold a consumed transient R11 address setup | 0 existing | 0 existing | **Landed** in `10bdd7ad`; one linear backward use/definition plan per MIR block proves whether an adjacent R11 setup has another reader; O0 `lowir_opt.cpp` text -2,289 bytes and 607 stack LEAs, frozen text -2,626 bytes, timing neutral |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -704,6 +705,42 @@ than hand-editing oracles.  Its keep-going PA29 report was 203/213, with all ten
 failures attributable to the listed MIR movement.  This remains a valid PA38
 optional value-placement idea, but is not an acceptable baseline change under
 the O0 fixture rule.
+
+### 4.3.9 B7e transient-scratch address folding
+
+`10bdd7ad` extends the existing native address-folding proof for R11, the fixed
+transient setup register that is never assigned as a persistent `ValueFact`
+home.  A backward plan records at every MIR boundary whether R11 will be read
+before its next simple definition.  An adjacent setup/load or setup/store may
+therefore fold when the consumed R11 value has no later reader, including at
+block end.  A shared-address pair such as a 16-byte return retains its setup
+because the first load is followed by a second R11 load.  Frame-store folds
+retain the existing forwarding barrier.
+
+The plan is constructed once per block in O(instructions + operands) time and
+uses one byte per instruction.  Each encoder query is O(1); it replaces no MIR
+and adds no rescan per candidate.  No existing checked-in LowIR or MIR fixture
+changed.  `proposed/pa29/transient-scratch-address-folding.t` is the native-byte
+witness: its one-eightbyte return may fold the R11 setup, while its
+two-eightbyte return must retain one setup for both loads.  Existing active
+object-return tests remain the behavioral oracle.
+
+Measured evidence:
+
+- O0 `lowir_opt.cpp` MIR: unchanged at 122,204 instructions;
+- O0 `lowir_opt.cpp` object: 2,584,648 to 2,582,216 bytes and GNU text 624,023
+  to 621,734 bytes;
+- parsed O0 `lowir_opt.cpp` machine instructions: 140,583 to 139,809, with
+  stack-address LEAs falling from 6,634 to 6,027;
+- frozen explicit-O0 object: 4,516,264 to 4,513,368 bytes and GNU text
+  1,214,586 to 1,211,960 bytes;
+- three-block immutable ABBA: paired wall -0.39%, user +0.09%, and peak RSS
+  -0.23%, with all six outputs per compiler deterministic;
+- PA29: 183/183 assignment tests and 30/30 course tests;
+- through PA29: 4,104/4,104;
+- affected PA29/PA31/PA37/PA38 report: 353/353;
+- full report: 5,188/5,188; and
+- PA39 file audit: zero fatal findings and 23 inherited warnings.
 
 ### 4.4 P0 result
 
