@@ -302,6 +302,7 @@ candidate.
 | B7c | Fuse register copy followed by 32-bit normalization | 0 existing | 0 existing | **Landed** in `9a929862`; a single 32-bit register move has the exact final value and flags of the adjacent 64-bit copy plus normalization; identical-source O0 self machine text -34,224 bytes and 11,721 same-register moves, frozen text -192 bytes, paired compile time neutral |
 | B7d | Retain a direct parameter in an unclobbered incoming ABI register | 0 existing | 10 existing PA29 MIR fixtures | **Deferred**: a bounded clobber proof removed 325 MIR instructions and 2,391 text bytes from the O0 `lowir_opt.cpp` sample, and all affected programs remained correct, but it moved 2 strict, 7 structural, and 1 behavior MIR oracles without a PA29 reference workflow that authorizes regeneration |
 | B7e | Fold a consumed transient R11 address setup | 0 existing | 0 existing | **Landed** in `10bdd7ad`; one linear backward use/definition plan per MIR block proves whether an adjacent R11 setup has another reader; O0 `lowir_opt.cpp` text -2,289 bytes and 607 stack LEAs, frozen text -2,626 bytes, timing neutral |
+| B7f | Admit R10 as a persistent register in leaf functions with no R10 scratch operations | 0 existing | 14 existing PA29 MIR fixtures | **Deferred**: the corrected function-wide scratch proof preserved all PA29 behavior but moved 10 strict and 4 structural oracles for only 1,715 text bytes and about 600 push/pop instructions on O0 `lowir_opt.cpp`; this is too little return for baseline MIR movement |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -741,6 +742,26 @@ Measured evidence:
 - affected PA29/PA31/PA37/PA38 report: 353/353;
 - full report: 5,188/5,188; and
 - PA39 file audit: zero fatal findings and 23 inherited warnings.
+
+### 4.3.10 B7f leaf-function R10 allocation
+
+B7f prototyped adding R10 after R8/R9 in the persistent-value register pool,
+but only in functions whose complete LowIR clobber inventory never uses R10 as
+fixed scratch.  The first version exposed an important hidden encoder boundary:
+floating-immediate materialization uses R10 below MIR, so the existing PA29
+`800-f80-call-preserves-gpr-arguments` behavior test failed until floating and
+conversion operations were included in the function-wide scratch inventory.
+With that correction, every PA29 program had the expected behavior.
+
+The resulting benefit was small.  On the same O0 `lowir_opt.cpp` sample, MIR
+fell from 122,204 to 122,199 instructions, object size fell from 2,582,216 to
+2,580,632 bytes, GNU text fell from 621,734 to 620,019 bytes, and disassembly
+contained about 600 fewer push/pop instructions.  PA29 still reported 14 MIR
+oracle changes: 10 strict fixtures and 4 structural fixtures.  Since PA29 has
+no external reference workflow and the size return is much smaller than the
+fixture surface, the prototype was reverted.  A future PA38 allocator may use
+the result together with explicit MIR scratch definitions; it is not an O0
+baseline change.
 
 ### 4.4 P0 result
 
