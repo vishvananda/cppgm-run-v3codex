@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, B4a, and B4b complete
+Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, and B4c complete
 
 Date: 2026-08-17
 
@@ -261,7 +261,7 @@ candidate.
 | B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | Deferred until B3a/B3b evidence |
 | B4a | Flag-safe zero materialization | 0 existing | 0 existing | **Landed** in `edd35810`; linear per-block flag liveness, proposed encoding reducer, frozen object -11,048 bytes, timing neutral |
 | B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, proposed byte-shape reducer, frozen object -8,104 bytes, timing neutral |
-| B4c | Narrow zero-extension encodings | 0 | 0 | Planned |
+| B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, proposed byte-shape reducer, frozen object -2,080 bytes, timing neutral |
 | B4d | Remaining bounded address/load/store folding | 0 | 0 | Planned one pattern at a time |
 | B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
 | C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
@@ -490,6 +490,33 @@ Validation and frozen evidence:
 - `.eh_frame`: unchanged at 145,188 bytes; and
 - three-block immutable ABBA paired deltas: wall +0.08%, user -0.18%, peak
   RSS +0.06%.  All six outputs per compiler were deterministic.
+
+### 4.11 B4c result
+
+`13fa0a10` emits byte and word zero extension into a 32-bit destination, whose
+x86-64 architectural write semantics clear the upper 32 bits.  It also emits
+a bare REX prefix for byte registers only when the source encoding requires
+SPL/BPL/SIL/DIL or either operand uses an extended register.  Signed extension
+continues to use `REX.W`.  The selection is local and constant-time.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  Existing PA29 extension tests remain the active behavior
+gate.  `proposed/pa29/narrow-zero-extension-encoding.t` retains byte/word
+`zext` in MIR while manual disassembly proves `movzbl`/`movzwl` destinations;
+it remains proposed because native bytes are not an active PA29 oracle.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- full report: 5,171/5,171;
+- PA39 file audit: zero fatal findings;
+- object: 3,762,128 to 3,760,048 bytes;
+- `.text`: 1,031,422 to 1,029,350 bytes;
+- `.gcc_except_table`: 73,434 to 73,422 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes; and
+- three-block immutable ABBA paired deltas: wall -0.33%, user -0.54%, peak
+  RSS +0.23%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
