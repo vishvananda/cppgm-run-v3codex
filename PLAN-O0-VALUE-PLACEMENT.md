@@ -208,7 +208,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
-| VP3 | 2 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2 | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions; combined two-screen ABBA medians improved 0.78% user and 0.55% wall with RSS +0.12%; full report 5,189/5,189; audit zero fatal | input lifetime, scalar address/return placement, and safe scalar-copy sharing complete; broader load/call/store producer placement pending |
+| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%; full report 5,192/5,192; audit zero fatal | input lifetime, scalar address/return placement, safe scalar-copy sharing, and immediate call-result argument/store placement complete; broader load/store producer placement pending |
 | VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, direct ALU/shift constraints, and intact ABI-parameter retention complete; address rematerialization and spill-slot reuse pending |
 | VP5 | 0 | 3 strict PA29 MIR fixtures for bulk copy/zero placement | Logical bulk operands reshape individual functions but leave aggregate `.text*` (943,292 bytes) and x86 instruction-family counts unchanged; total object -32 bytes. Two-block ABBA medians are user tied at 5.665 s, wall -0.28%, and RSS -0.04%; affected report 357/357 | logical bulk operands complete; remaining scalar compatibility rewrites pending |
 
@@ -331,6 +331,30 @@ remain 234,717 x86 instructions, 98,327 moves, 26,788 `lea` instructions,
 of 5.665/5.665 seconds user, 6.245/6.230 seconds wall, and 365,076/364,652 KiB
 peak RSS. Existing exact fixtures cover both copy and zero forms, so no
 duplicate reducer was added.
+
+The direct call-result-consumer slice keeps a sole-use scalar result in RAX
+when the immediately following instruction passes it as a direct-value call
+argument or stores it. The existing use census proves the sole use, and the
+selector inspects only the following instruction and its argument list. It
+does not build another value graph or rescan the function. Indirect-result and
+other address-requiring arguments retain their frame home.
+
+No existing PA29 fixture exercises this exact placement shape.
+`proposed/pa29/direct-call-result-consumers.t` covers both consumers and runs
+successfully under the current and course-reference compilers. The reference
+forwards RAX to the consumer but retains dead intermediate result copies, so
+the case remains proposed rather than imposing a new exact course oracle. The
+student README and scaffold state only the required placement rule.
+
+Against `59e7e175`, the frozen object falls from 4,429,536 to 4,420,488 bytes,
+aggregate `.text*` from 943,292 to 935,088 bytes, `.eh_frame` from 138,804 to
+138,180 bytes, and `.gcc_except_table` from 46,382 to 46,359 bytes. X86
+instructions fall from 234,717 to 231,968, including 2,624 fewer moves, 9
+fewer `lea` instructions, 177 fewer pushes, and 376 fewer pops. The hidden
+single-block preparation has 241 fewer register-copy rewrites and 233 fewer
+dead register-copy definitions to remove. Two ABBA blocks give
+baseline/candidate medians of 5.625/5.605 seconds user, 6.215/6.145 seconds
+wall, and 364,674/365,418 KiB peak RSS.
 
 The VP3 input-lifetime slice changes
 `pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection

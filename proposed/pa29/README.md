@@ -4,6 +4,13 @@ This directory holds native-lowering regression candidates whose behavior is
 valid but whose machine-IR shape differs from the course reference compiler.
 They are not part of the active golden suite.
 
+`direct-call-result-consumers.t` checks that a sole-use scalar call result
+stays in the ABI return register when the next instruction passes it as a
+direct-value call argument or stores it. Both compilers execute the input
+successfully, and the reference forwards RAX to each consumer, but its MIR
+also retains dead intermediate result-register copies. The candidate is useful
+only as a placement-shape witness, so it remains proposed.
+
 `discarded-slots-do-not-reserve-frame.t` checks that scalar slots proven to
 contain only dead stores do not consume frame space.  The current compiler
 removes the three dead stores and emits one retained slot in a 16-byte frame.

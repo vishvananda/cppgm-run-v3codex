@@ -586,6 +586,32 @@ private:
         return true;
     return false;
   }
+  bool result_is_next_direct_call_argument(
+      const lowir_model::LowirBlock & block, std::size_t instruction_index,
+      const Instruction & producer) const
+  {
+    const std::unordered_map<std::string, std::size_t>::const_iterator uses =
+      facts_.uses.find(producer.dest);
+    if(uses == facts_.uses.end() || uses->second != 1 ||
+       instruction_index + 1 >= block.instructions.size()) return false;
+    const Instruction & call = block.instructions[instruction_index + 1];
+    if(call.kind != Instruction::IK_CALL) return false;
+    const std::vector<lowir_model::LowirParameter> * parameters = 0;
+    if(call.has_call_signature) parameters = &call.call_params;
+    else if(call.first.kind == Operand::OP_GLOBAL) {
+      const FunctionSignatureIndex::const_iterator found =
+        signatures_.find(call.first.text);
+      if(found != signatures_.end()) parameters = found->second.params;
+    }
+    for(std::size_t i = 0; i < call.args.size(); ++i) {
+      if(call.args[i].kind != Operand::OP_TEMP ||
+         call.args[i].text != producer.dest) continue;
+      return !parameters || i >= parameters->size() ||
+        (*parameters)[i].metadata.passing == lowir_model::PPM_DIRECT ||
+        producer.type.kind == lowir_model::LTK_PTR;
+    }
+    return false;
+  }
   MirOperand global_operand(MirOperand::Kind kind,
                             const Operand & operand) const
   {
@@ -2422,6 +2448,10 @@ private:
       MirOperand location = reg_operand(XR_RAX);
       MirOperand pressure_home;
       if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
+         !selection::result_is_immediately_stored(
+           block, instruction_index, instruction.dest, facts_) &&
+         !result_is_next_direct_call_argument(
+           block, instruction_index, instruction) &&
          !result_is_immediate_unary_not_branch(block, instruction_index,
                                                instruction.dest)) {
         X64Register result = XR_RSP;
@@ -2583,6 +2613,10 @@ private:
           !source_.blocks.empty() && block.label != source_.blocks.front().label;
         if(!forward_nonentry_branch &&
            !result_is_immediate_return(block, instruction_index, instruction.dest) &&
+           !selection::result_is_immediately_stored(
+             block, instruction_index, instruction.dest, facts_) &&
+           !result_is_next_direct_call_argument(
+             block, instruction_index, instruction) &&
            !result_is_immediate_unary_not_branch(block, instruction_index,
                                                  instruction.dest)) {
           const bool across = result_crosses_call(instruction.dest);

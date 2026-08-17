@@ -490,6 +490,11 @@ To complete PA29, implement these goals:
    not overwrite an input needed by that instruction.  MIR should not introduce
    a temporary register followed only by a return-register copy.
 
+   A sole-use scalar call result may likewise remain in its ABI return register
+   when the immediately following instruction stores it or passes it as a
+   direct-value call argument.  Emit only the move required by that consumer;
+   do not first assign the result an unrelated temporary home.
+
    Keep typed integer constants as immediate value facts until an instruction
    requires a physical register.  A scalar copy may retain its source location
    without emitting a machine move when that location is an immediate, a

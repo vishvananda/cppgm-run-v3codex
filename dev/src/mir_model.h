@@ -215,6 +215,9 @@ struct Instruction
     MI_I128_SDIV,
     MI_I128_SMOD,
     MI_TLS_ADDR,
+    // Scalar call results initially occupy their ABI return carrier. A sole-use
+    // result consumed immediately by a store or direct-value argument does not
+    // require a separate intermediate MIR home.
     MI_CALL,
     MI_CALL_INDIRECT,
     // Bulk-memory operands name logical address registers. The encoder owns
