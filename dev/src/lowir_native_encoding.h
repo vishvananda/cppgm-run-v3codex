@@ -34,6 +34,15 @@ void emit_sized_register_move(elf_detail::CodeBuffer & out,
 void emit_move_zero_extended_byte(elf_detail::CodeBuffer & out,
                                   X64Register destination,
                                   X64Register source);
+inline void emit_set_condition(elf_detail::CodeBuffer & out,
+                               X86Condition condition,
+                               X64Register destination)
+{
+  emit_rex(out, false, XR_RAX, destination, destination >= XR_RSP);
+  out.byte(0x0f);
+  out.byte(0x90 + static_cast<unsigned>(condition));
+  emit_modrm(out, 3, 0, destination);
+}
 void emit_test_register(elf_detail::CodeBuffer & out, X64Register reg,
                         unsigned width = 64);
 void emit_load(elf_detail::CodeBuffer & out, X64Register destination,

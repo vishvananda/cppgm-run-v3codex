@@ -56,38 +56,48 @@ bool overwritten_without_read(
 
 }  // namespace
 
-bool plan_dead_address_load(
+bool plan_dead_setup_load(
     const std::vector<MirInstruction> & instructions, std::size_t start,
     MirOperand * folded_address)
 {
   if(start > instructions.size() || instructions.size() - start < 2)
     return false;
-  const MirInstruction & address = instructions[start];
+  const MirInstruction & setup = instructions[start];
   const MirInstruction & load = instructions[start + 1];
-  if(address.opcode != MirInstruction::MI_LEA ||
-     address.operands.size() != 2 ||
-     address.operands[0].kind != MirOperand::OP_REG ||
-     (address.operands[1].kind != MirOperand::OP_FRAME &&
-      address.operands[1].kind != MirOperand::OP_DEREF) ||
+  if((setup.opcode != MirInstruction::MI_LEA &&
+      setup.opcode != MirInstruction::MI_MOV) ||
      load.opcode != MirInstruction::MI_LOAD || load.operands.size() != 2 ||
+     setup.operands.size() != 2 ||
+     setup.operands[0].kind != MirOperand::OP_REG ||
+     ((setup.opcode == MirInstruction::MI_LEA &&
+       setup.operands[1].kind != MirOperand::OP_FRAME &&
+       setup.operands[1].kind != MirOperand::OP_DEREF) ||
+      (setup.opcode == MirInstruction::MI_MOV &&
+       setup.operands[1].kind != MirOperand::OP_REG)) ||
      load.operands[0].kind != MirOperand::OP_REG ||
      load.operands[1].kind != MirOperand::OP_DEREF ||
-     load.operands[1].reg != address.operands[0].reg)
+     load.operands[1].reg != setup.operands[0].reg)
     return false;
 
-  const X64Register address_reg = address.operands[0].reg;
-  if(load.operands[0].reg != address_reg &&
-     !overwritten_without_read(instructions, start + 2, address_reg))
+  const X64Register setup_reg = setup.operands[0].reg;
+  const bool self_copy = setup.opcode == MirInstruction::MI_MOV &&
+    setup.operands[1].reg == setup_reg;
+  if(!self_copy && load.operands[0].reg != setup_reg &&
+     !overwritten_without_read(instructions, start + 2, setup_reg))
     return false;
 
-  long long offset = 0;
-  if(!add_offsets(address.operands[1].offset, load.operands[1].offset,
-                  &offset)) return false;
-  if(address.operands[1].kind == MirOperand::OP_FRAME &&
-     (address.operands[1].offset < 0) != (offset < 0)) return false;
-
-  *folded_address = address.operands[1];
-  folded_address->offset = offset;
+  if(setup.opcode == MirInstruction::MI_MOV) {
+    *folded_address = load.operands[1];
+    folded_address->reg = setup.operands[1].reg;
+  } else {
+    long long offset = 0;
+    if(!add_offsets(setup.operands[1].offset, load.operands[1].offset,
+                    &offset)) return false;
+    if(setup.operands[1].kind == MirOperand::OP_FRAME &&
+       (setup.operands[1].offset < 0) != (offset < 0)) return false;
+    *folded_address = setup.operands[1];
+    folded_address->offset = offset;
+  }
   return true;
 }
 

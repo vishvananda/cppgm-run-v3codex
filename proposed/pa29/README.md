@@ -43,3 +43,10 @@ is intended to inspect that native encoding folds the two displacements into
 the load while preserving the textual MIR.  Its program behavior duplicates
 active address/load coverage and the harness does not compare native bytes, so
 this representation-only candidate remains proposed.
+
+`dead-address-copy-load-folding.t` creates an adjacent register copy and load
+whose copied address register is overwritten before it is read again.  It is
+intended to inspect that native encoding addresses the load through the
+original register and omits the copy while preserving textual MIR.  Program
+behavior duplicates active indirect-load coverage and native bytes are not an
+active PA29 oracle, so this representation-only candidate remains proposed.

@@ -456,7 +456,6 @@ void emit_float_compare_flags(CodeBuffer & out,
   emit_memory_modrm(out, xmm_index(XMM_6), base, displacement);
 }
 
-void emit_set_condition(CodeBuffer & out, X86Condition condition, X64Register destination);
 X64Register require_register(const mir_model::MirOperand & operand);
 
 X86Condition float_value_condition(mir_model::MirInstruction::Opcode opcode)
@@ -1024,14 +1023,6 @@ void emit_imultiply(CodeBuffer & out, const mir_model::MirInstruction & instruct
     emit_modrm(out, 3, destination, destination);
     out.little(static_cast<std::uint32_t>(source.imm), 4);
   } else throw std::logic_error("unsupported native multiply operand");
-}
-
-void emit_set_condition(CodeBuffer & out, X86Condition condition, X64Register destination)
-{
-  emit_rex(out, false, XR_RAX, destination, destination >= XR_RSP);
-  out.byte(0x0f);
-  out.byte(0x90 + static_cast<unsigned>(condition));
-  emit_modrm(out, 3, 0, destination);
 }
 
 void emit_integer_extension(CodeBuffer & out,
@@ -1984,47 +1975,49 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   const FrameReloadPlan frame_reload_plan =
     find_single_use_frame_reloads(function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-    out.label(function.name + "::" + function.blocks[i].label);
-    const std::vector<bool> flags_live = condition_flags_live_before(
-      function.blocks[i].instructions);
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-      if(function.blocks[i].instructions[j].opcode ==
-           mir_model::MirInstruction::MI_LEA) {
+    const mir_model::MirBlock & block = function.blocks[i];
+    out.label(function.name + "::" + block.label);
+    const std::vector<bool> flags_live =
+      condition_flags_live_before(block.instructions);
+    for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      if((block.instructions[j].opcode == mir_model::MirInstruction::MI_LEA ||
+          block.instructions[j].opcode == mir_model::MirInstruction::MI_MOV) &&
+         j + 1 < block.instructions.size() && block.instructions[j + 1].opcode ==
+           mir_model::MirInstruction::MI_LOAD) {
         mir_model::MirOperand folded_address;
-        if(address_folding::plan_dead_address_load(
-             function.blocks[i].instructions, j, &folded_address)) {
+        if(address_folding::plan_dead_setup_load(
+             block.instructions, j, &folded_address)) {
           const mir_model::MirInstruction & load =
-            function.blocks[i].instructions[j + 1];
+            block.instructions[j + 1];
           emit_address_load(out, load.operands[0].reg, folded_address,
             type_width(load.type), function); ++j; continue;
         }
       }
       const std::size_t divided = emit_power_of_two_division(
-        out, function.blocks[i].instructions, j);
+        out, block.instructions, j);
       if(divided) {
         j += divided - 1;
         continue;
       }
       if(emit_delayed_frame_forwarding(out,
-           function.blocks[i].instructions[j], frame_reload_plan))
+           block.instructions[j], frame_reload_plan))
         continue;
       const std::size_t forwarded = emit_forwarded_frame_reload(
-        out, function.blocks[i].instructions, j, function,
-        frame_reload_plan);
+        out, block.instructions, j, function, frame_reload_plan);
       if(forwarded) {
         j += forwarded - 1;
         continue;
       }
       const std::size_t coalesced = emit_coalesced_constant_byte_stores(
-        out, function.blocks[i].instructions, j, function);
+        out, block.instructions, j, function);
       if(coalesced) {
         j += coalesced - 1;
         continue;
       }
       if(emit_flag_safe_zero_move(
-           out, function.blocks[i].instructions[j], flags_live[j]))
+           out, block.instructions[j], flags_live[j]))
         continue;
-      emit_instruction(out, function.blocks[i].instructions[j], &function);
+      emit_instruction(out, block.instructions[j], &function);
     }
   }
   out.relax_forward_branches(function_start);
@@ -2682,9 +2675,12 @@ HostFunctionLayout emit_host_function(
         XR_RDX, 64);
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
-      if(block.instructions[j].opcode == mir_model::MirInstruction::MI_LEA) {
+      if((block.instructions[j].opcode == mir_model::MirInstruction::MI_LEA ||
+          block.instructions[j].opcode == mir_model::MirInstruction::MI_MOV) &&
+         j + 1 < block.instructions.size() && block.instructions[j + 1].opcode ==
+           mir_model::MirInstruction::MI_LOAD) {
         mir_model::MirOperand folded_address;
-        if(address_folding::plan_dead_address_load(
+        if(address_folding::plan_dead_setup_load(
              block.instructions, j, &folded_address)) {
           const mir_model::MirInstruction & load = block.instructions[j + 1];
           emit_address_load(out, load.operands[0].reg, folded_address,
