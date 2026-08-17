@@ -243,5 +243,32 @@ std::size_t emit_dead_address_store(
   return 2;
 }
 
+std::size_t emit_dead_address_copy_store(
+    elf_detail::CodeBuffer & out,
+    const std::vector<MirInstruction> & instructions, std::size_t start,
+    const mir_model::MirFunction & function)
+{
+  if(start > instructions.size() || instructions.size() - start < 2)
+    return 0;
+  const MirInstruction & copy = instructions[start];
+  const MirInstruction & store = instructions[start + 1];
+  if(copy.opcode != MirInstruction::MI_MOV || copy.operands.size() != 2 ||
+     copy.operands[0].kind != MirOperand::OP_REG ||
+     copy.operands[1].kind != MirOperand::OP_REG ||
+     store.opcode != MirInstruction::MI_STORE || store.operands.size() != 2 ||
+     store.operands[0].kind != MirOperand::OP_DEREF ||
+     store.operands[0].reg != copy.operands[0].reg ||
+     store.operands[1].kind != MirOperand::OP_REG) return 0;
+  const X64Register copied = copy.operands[0].reg;
+  const X64Register source = copy.operands[1].reg;
+  if(copied != source &&
+     !overwritten_without_read(instructions, start + 2, copied)) return 0;
+  const X64Register value = store.operands[1].reg == copied ?
+    source : store.operands[1].reg;
+  emit_store(out, source, store.operands[0].offset, value,
+             data_layout::type_width(store.type));
+  return 2;
+}
+
 }  // namespace address_folding
 }  // namespace lowir_native

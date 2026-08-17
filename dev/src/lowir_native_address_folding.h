@@ -57,6 +57,10 @@ std::size_t emit_dead_address_store(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start, const mir_model::MirFunction & function);
+std::size_t emit_dead_address_copy_store(
+    elf_detail::CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, const mir_model::MirFunction & function);
 
 }  // namespace address_folding
 }  // namespace lowir_native
