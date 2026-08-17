@@ -1,8 +1,55 @@
 # Plan: Native Object Separation and Demand-Driven Emission
 
-Status: analysis complete; implementation not started
+Status: implemented and validated
 
 Date: 2026-08-17
+
+## 0. Implementation result
+
+The plan was implemented as a conservative native-output boundary rather than
+as cross-object compiler metadata. Native `.o` files no longer carry the
+serialized cppgm object. Private `.obj` files retain that representation for
+the PA30 compiler-link contract, while direct native compilation and final
+conversion from textual LowIR use the same native reachability policy.
+
+The demand work was split into independently gated changesets. Validation no
+longer publishes object-definition demand by itself. After force inlining, the
+final native path retains typed semantic roots and their lifecycle variants,
+then removes unowned weak definitions that are outside the reachable closure.
+Private objects and textual LowIR remain stable until the final native object
+boundary. Explicit function specializations are not misclassified as weak
+merely because they have template arguments; explicit class-instantiation
+definitions and required destructor variants retain their required ownership.
+
+On the frozen `semantic_overload.cpp` input, the final native object is
+7,590,800 bytes, contains no `.cppgm_object` section or `CPPGMOBJ` marker, and
+has 13 strong plus 4,491 weak default-visible function definitions. The final
+candidate has 4,578 typed functions and 180,729 typed LowIR instructions. The
+post-inline pass removes 683 unreachable weak functions before native
+lowering, leaving 135,151 native LowIR instructions and 181,290 MIR
+instructions. Three candidate runs had wall times of 7.60, 7.61, and 8.90
+seconds (7.61-second median); the third sample coincided with heavier host
+load.
+
+An immutable pre-prune compiler from commit `64d11564` and the final compiler
+were also compared in six interleaved runs each using the frozen benchmark's
+ABBA runner. Median wall time changed from 7.674 to 7.619 seconds (-0.72%),
+while object size fell from 8,086,872 to 7,590,800 bytes (-6.13%). Typed
+function count fell from 5,260 to 4,578, typed instructions from 187,737 to
+180,729, native LowIR instructions from 138,011 to 135,151, and MIR
+instructions from 185,468 to 181,290. Candidate outputs were deterministic.
+
+Final validation completed with:
+
+- root `make test-report`: 5,163 / 5,163 passed;
+- PA39 file audit: zero fatal findings (23 pre-existing advisory warnings);
+- clean 8-worker self build: 38.18 seconds wall, 346,428 KB maximum RSS;
+- clean 8-worker inception compare: 4:24.32 wall, 318,960 KB maximum RSS;
+- clean 32-worker inception compare: 2:03.74 wall, 316,112 KB maximum RSS;
+  and
+- 152 / 152 inception objects matched, and the self/inception binaries were
+  byte-identical with SHA-256
+  `f21a9c98687f07983bf27665a5de7d4ec761092c17a8f1ff8000fe982dec6cf3`.
 
 ## 1. Objectives
 
@@ -510,4 +557,3 @@ of the following:
 10. The final frozen benchmark is measured in a predeclared interleaved window,
     and all implementation changes, regressions, counters, and measurements
     are committed before the result is declared complete.
-
