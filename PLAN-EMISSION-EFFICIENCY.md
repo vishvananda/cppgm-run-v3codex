@@ -58,6 +58,23 @@ Frozen `-O0` measurements after shared constructor cleanup suffixes:
 The remaining allocated-size gap from the last GCC comparison is concentrated
 in emitted code and EH metadata, not symbols or ordinary data.
 
+## Corrected controlled timing
+
+After E3P removed the accidental whole-buffer rescans, three interleaved
+`--stats` runs under the same host conditions produced:
+
+| Variant | Wall median | User median | Encode median | RSS median | Object bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| E4 baseline | 6.16 s | 5.60 s | 0.243 s | 365,256 KiB | 4,068,632 |
+| E5 | 6.17 s | 5.62 s | 0.248 s | 365,160 KiB | 4,014,912 |
+| E6 | 6.29 s | 5.74 s | 0.259 s | 365,504 KiB | 3,977,672 |
+
+E5 is timing-neutral versus E4.  E6's additional linear MIR-operand census is
+about 1.9% in the wall median while remaining below the project's 3% noise and
+RSS guardrails.  Keep later measurements on the corrected E3P implementation;
+the earlier 15-second screens measured the quadratic relaxation bug rather
+than host contention or E5/E6 cost.
+
 ## Candidate ledger
 
 | ID | Candidate and earliest owner | Expected structural effect | Fixture result | Frozen result | Decision |
