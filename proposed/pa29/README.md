@@ -30,3 +30,9 @@ bytes use width-correct `test reg,reg` instructions while the baseline MIR
 remains `cmp ..., 0`.  Active PA29 tests already cover the behavior and the
 harness does not compare native bytes, so this representation-only candidate
 remains proposed.
+
+`narrow-zero-extension-encoding.t` covers byte and word zero extension.  It is
+intended to inspect that `movzx` writes a 32-bit destination, relying on the
+x86-64 zeroing rule instead of carrying an unnecessary `REX.W`.  Active PA29
+tests already cover extension behavior and the harness does not compare native
+bytes, so this representation-only candidate remains proposed.

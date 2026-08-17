@@ -1038,7 +1038,8 @@ void emit_set_condition(CodeBuffer & out, X86Condition condition, X64Register de
 void emit_move_zero_extended_byte(CodeBuffer & out, X64Register destination,
                                   X64Register source)
 {
-  emit_rex(out, true, destination, source, true);
+  emit_rex(out, false, destination, source,
+           source >= XR_RSP && source < XR_R8);
   out.byte(0x0f);
   out.byte(0xb6);
   emit_modrm(out, 3, destination, source);
@@ -1058,7 +1059,8 @@ void emit_integer_extension(CodeBuffer & out,
     emit_modrm(out, 3, reg, reg);
     return;
   }
-  emit_rex(out, true, reg, reg, width == 8);
+  emit_rex(out, sign_extend, reg, reg,
+           !sign_extend && width == 8 && reg >= XR_RSP && reg < XR_R8);
   if(sign_extend && width == 32) {
     out.byte(0x63);
   } else {
