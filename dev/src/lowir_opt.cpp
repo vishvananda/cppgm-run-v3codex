@@ -1,4 +1,5 @@
 #include "lowir_opt.h"
+#include "lowir_cleanup_o1.h"
 #include "lowir_inline_o1.h"
 #include "lowir_float_literal.h"
 
@@ -2621,6 +2622,14 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     const bool initial_cfg_changed = timed_function_pass(
       cleanup_cfg, &function, stats,
       &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+    const std::chrono::steady_clock::time_point cleanup_resume_started =
+      stats ? std::chrono::steady_clock::now() :
+              std::chrono::steady_clock::time_point();
+    share_terminal_resume_blocks(&function, stats);
+    if(stats) stats->cleanup_resume_nanoseconds +=
+      static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - cleanup_resume_started).count());
     bool post_cfg_values_changed = false;
     if(initial_cfg_changed) {
       post_cfg_values_changed = timed_function_pass(

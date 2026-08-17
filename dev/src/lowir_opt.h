@@ -41,6 +41,9 @@ struct Stats
   std::size_t promote_slot_changes = 0;
   std::size_t dead_store_runs = 0;
   std::size_t dead_store_changes = 0;
+  std::size_t cleanup_resume_runs = 0;
+  std::size_t cleanup_resume_block_visits = 0;
+  std::size_t cleanup_resume_blocks_removed = 0;
   std::uint64_t inline_nanoseconds = 0;
   std::uint64_t simplify_nanoseconds = 0;
   std::uint64_t dce_nanoseconds = 0;
@@ -51,6 +54,7 @@ struct Stats
   std::uint64_t remove_slot_nanoseconds = 0;
   std::uint64_t promote_slot_nanoseconds = 0;
   std::uint64_t dead_store_nanoseconds = 0;
+  std::uint64_t cleanup_resume_nanoseconds = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };
 

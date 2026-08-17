@@ -181,6 +181,11 @@ int run_lowiropt_mode(const vector<string> & args)
               << " promote_slot_changes=" << stats.promote_slot_changes
               << " dead_store_runs=" << stats.dead_store_runs
               << " dead_store_changes=" << stats.dead_store_changes
+              << " cleanup_resume_runs=" << stats.cleanup_resume_runs
+              << " cleanup_resume_block_visits="
+              << stats.cleanup_resume_block_visits
+              << " cleanup_resume_blocks_removed="
+              << stats.cleanup_resume_blocks_removed
          << " inline_ns=" << stats.inline_nanoseconds
          << " simplify_ns=" << stats.simplify_nanoseconds
          << " dce_ns=" << stats.dce_nanoseconds
@@ -191,6 +196,7 @@ int run_lowiropt_mode(const vector<string> & args)
               << " remove_slot_ns=" << stats.remove_slot_nanoseconds
               << " promote_slot_ns=" << stats.promote_slot_nanoseconds
               << " dead_store_ns=" << stats.dead_store_nanoseconds
+              << " cleanup_resume_ns=" << stats.cleanup_resume_nanoseconds
          << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
   }
   return EXIT_SUCCESS;
