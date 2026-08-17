@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1, B4d2, B4d3, B4d4, B4d5, and B4d6 complete
+Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1--B4d7 complete
 
 Date: 2026-08-17
 
@@ -268,7 +268,7 @@ candidate.
 | B4d4 | Fold a dead value copy into its store | 0 existing | 0 existing | **Landed** in `9082687e`; 154 bounded proofs after frame-forwarding barriers, proposed byte-shape reducer, frozen object -400 bytes, timing neutral |
 | B4d5 | Fold a dead address calculation into its store | 0 existing | 0 existing | **Landed** in `40500a27`; 259 bounded proofs, proposed byte-shape reducer, frozen object -928 bytes, timing neutral |
 | B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, proposed byte-shape reducer, frozen object -544 bytes, timing neutral |
-| B4d7 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d6 |
+| B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
 | B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
 | C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
 | C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
@@ -768,6 +768,53 @@ Validation and frozen evidence:
   candidate (+0.56%, about 1.4 ms); and
 - three-block immutable ABBA paired deltas: wall -0.57%, user -0.54%, peak
   RSS +0.09%.  All six outputs per compiler were deterministic.
+
+### 4.18 B4d7 result
+
+`53a6f6ea` recognizes `mov address, base; lea address,
+[address+index]; store [address+offset], value`.  It combines the two checked
+offsets, emits the store directly through `base`, and omits both address
+instructions when the derived-address register is overwritten without a read
+in the existing five-instruction window.  The stored value may not be that
+address register.
+
+The frozen MIR contained 192 exact candidates.  The proof accepted 84: 80
+address overwrites immediately followed the store and four were two
+instructions later.  It rejected 108 at an opcode or shape barrier.  The
+implementation also consolidates the duplicated native/host fold dispatch
+into the address-folding module; the hot loop classifies each sequence once
+and passes the resulting enum to the out-of-line emitter.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  `proposed/pa29/dead-address-copy-index-store-folding.t`
+retains the accepted `mov`/`lea`/`store` chain in dumped MIR and its generated
+program succeeds.  It remains proposed because runtime indirect-store
+behavior is already actively covered and PA29 has no native-byte oracle.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- full report: 5,171/5,171;
+- PA39 file audit: zero fatal findings; consolidating dispatch leaves
+  `lowir_native_elf.cpp` at 2,982 lines;
+- object: 3,753,760 to 3,753,440 bytes;
+- `.text`: 1,023,074 to 1,022,764 bytes;
+- `.gcc_except_table`: unchanged at 73,406 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes;
+- three-run internal encoder medians: 264.6 ms baseline and 259.4 ms
+  candidate (-1.97%); and
+- three-block immutable ABBA paired deltas: wall +0.57%, user +0.63%, peak
+  RSS +0.07%.  The sub-50-ms differences changed sign between the internal
+  encoder and end-to-end lanes and are treated as timing noise.  All six
+  outputs per compiler were deterministic.
+
+B4d is closed for baseline emission.  The remaining nearby patterns are
+memory operations whose accesses cannot be deleted at `-O0` merely because
+their loaded value or stored address is later overwritten: removing them
+could erase a required fault or other observable access.  Wider alias-aware
+load/store elimination belongs in an explicit optimization level, not in the
+baseline encoder.
 
 ## 5. Execution plan
 
