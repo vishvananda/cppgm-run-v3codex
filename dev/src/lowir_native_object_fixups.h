@@ -1,0 +1,18 @@
+#pragma once
+
+#include "lowir_native_object_elf.h"
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+namespace lowir_native {
+namespace object_elf_detail {
+
+void resolve_same_section_local_fixups(
+  EncodedSection & text,
+  std::vector<EncodedSection> & data_sections,
+  const std::unordered_map<std::string, std::string> & declarations);
+
+}  // namespace object_elf_detail
+}  // namespace lowir_native

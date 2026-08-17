@@ -1,0 +1,128 @@
+#include "lowir_native_object_fixups.h"
+
+#include <climits>
+#include <cstdint>
+#include <stdexcept>
+#include <unordered_set>
+#include <utility>
+
+namespace lowir_native {
+namespace object_elf_detail {
+namespace {
+
+struct LabelLocation
+{
+  bool text = false;
+  std::size_t section = 0;
+  std::size_t offset = 0;
+};
+
+typedef std::unordered_map<std::string, LabelLocation> LabelIndex;
+
+void add_labels(LabelIndex & labels, const EncodedSection & source,
+                bool text, std::size_t section)
+{
+  for(std::unordered_map<std::string, std::size_t>::const_iterator label =
+        source.labels.begin(); label != source.labels.end(); ++label) {
+    LabelLocation location;
+    location.text = text;
+    location.section = section;
+    location.offset = label->second;
+    labels.insert(std::make_pair(label->first, location));
+  }
+}
+
+std::unordered_set<std::string> externally_named_targets(
+    const std::unordered_map<std::string, std::string> & declarations)
+{
+  std::unordered_set<std::string> result;
+  result.reserve(declarations.size() * 3);
+  for(std::unordered_map<std::string, std::string>::const_iterator declaration =
+        declarations.begin(); declaration != declarations.end(); ++declaration) {
+    result.insert(declaration->first);
+    result.insert(declaration->second);
+    if(!declaration->second.empty() && declaration->second[0] != '@')
+      result.insert("@" + declaration->second);
+  }
+  return result;
+}
+
+void patch_relative32(EncodedSection & source, const EncodedFixup & fixup,
+                      std::size_t target)
+{
+  if(fixup.offset > source.bytes.size() ||
+     4 > source.bytes.size() - fixup.offset)
+    throw std::logic_error("native object relative fixup is out of bounds");
+  if(target > static_cast<std::size_t>(LLONG_MAX) ||
+     fixup.offset > static_cast<std::size_t>(LLONG_MAX - 4))
+    throw std::runtime_error("native object relative fixup exceeds rel32");
+  const long long base = static_cast<long long>(target) -
+    static_cast<long long>(fixup.offset + 4);
+  if((fixup.addend > 0 && base > LLONG_MAX - fixup.addend) ||
+     (fixup.addend < 0 && base < LLONG_MIN - fixup.addend))
+    throw std::runtime_error("native object relative fixup exceeds rel32");
+  const long long delta = base + fixup.addend;
+  if(delta < INT32_MIN || delta > INT32_MAX)
+    throw std::runtime_error("native object relative fixup exceeds rel32");
+  const std::uint32_t encoded = static_cast<std::uint32_t>(delta);
+  for(unsigned byte = 0; byte < 4; ++byte)
+    source.bytes[fixup.offset + byte] =
+      static_cast<unsigned char>(encoded >> (byte * 8));
+}
+
+bool is_same_section(const LabelLocation & target, bool source_text,
+                     std::size_t source_section)
+{
+  return target.text == source_text &&
+    (source_text || target.section == source_section);
+}
+
+void resolve_section_fixups(
+    EncodedSection & source, bool source_text, std::size_t source_section,
+    const LabelIndex & labels,
+    const std::unordered_set<std::string> & externally_named)
+{
+  std::vector<EncodedFixup> unresolved;
+  unresolved.reserve(source.fixups.size());
+  for(std::size_t i = 0; i < source.fixups.size(); ++i) {
+    const EncodedFixup & fixup = source.fixups[i];
+    const LabelIndex::const_iterator target = labels.find(fixup.target);
+    const bool relative = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
+      (fixup.kind == EncodedFixup::EF_ADDRESS32 &&
+       fixup.address_binding == mir_model::MirOperand::ADDRESS_LOCAL);
+    if(!relative || externally_named.count(fixup.target) ||
+       target == labels.end() ||
+       !is_same_section(target->second, source_text, source_section)) {
+      unresolved.push_back(fixup);
+      continue;
+    }
+    patch_relative32(source, fixup, target->second.offset);
+  }
+  source.fixups.swap(unresolved);
+}
+
+}  // namespace
+
+void resolve_same_section_local_fixups(
+    EncodedSection & text,
+    std::vector<EncodedSection> & data_sections,
+    const std::unordered_map<std::string, std::string> & declarations)
+{
+  std::size_t label_count = text.labels.size();
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    label_count += data_sections[i].labels.size();
+  LabelIndex labels;
+  labels.reserve(label_count);
+  add_labels(labels, text, true, 0);
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    add_labels(labels, data_sections[i], false, i);
+  const std::unordered_set<std::string> externally_named =
+    externally_named_targets(declarations);
+  resolve_section_fixups(text, true, 0, labels, externally_named);
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    resolve_section_fixups(
+      data_sections[i], false, i, labels, externally_named);
+}
+
+}  // namespace object_elf_detail
+}  // namespace lowir_native

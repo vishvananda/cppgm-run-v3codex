@@ -1,4 +1,5 @@
 #include "lowir_native_object_elf.h"
+#include "lowir_native_object_fixups.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -624,6 +625,8 @@ void collect_host_symbols(
     const std::vector<HostFunctionLayout> & functions,
     const std::vector<HostRelocation> & text_relocations,
     const std::vector<std::vector<HostRelocation> > & data_relocations,
+    const std::vector<HostRelocation> & init_array_relocations,
+    const std::vector<HostRelocation> & fini_array_relocations,
     const std::vector<HostRelocation> & lsda_relocations,
     const std::vector<HostRelocation> & eh_relocations,
     std::vector<HostSymbol> & locals,
@@ -631,6 +634,25 @@ void collect_host_symbols(
 {
   std::unordered_map<std::string, std::size_t> local_index;
   std::unordered_map<std::string, std::size_t> global_index;
+  std::unordered_set<std::string> required_local_labels;
+  const auto require_relocation_labels =
+    [&encoded_labels, &required_local_labels](
+      const std::vector<HostRelocation> & relocations) {
+      for(std::size_t i = 0; i < relocations.size(); ++i)
+        if(encoded_labels.count(relocations[i].target))
+          required_local_labels.insert(relocations[i].target);
+    };
+  require_relocation_labels(text_relocations);
+  for(std::size_t i = 0; i < data_relocations.size(); ++i)
+    require_relocation_labels(data_relocations[i]);
+  require_relocation_labels(init_array_relocations);
+  require_relocation_labels(fini_array_relocations);
+  require_relocation_labels(lsda_relocations);
+  require_relocation_labels(eh_relocations);
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
+    if(program.exported_symbols[i].keep_internal_alias)
+      required_local_labels.insert(
+        program.exported_symbols[i].internal_symbol);
   std::unordered_set<std::string> object_only_labels;
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const ir_model::ExportedSymbol & exported = program.exported_symbols[i];
@@ -644,7 +666,8 @@ void collect_host_symbols(
     function_sizes[functions[i].offset] = functions[i].size;
   for(std::unordered_map<std::string, std::size_t>::const_iterator it =
         text.labels.begin(); it != text.labels.end(); ++it) {
-    if(object_only_labels.count(it->first)) continue;
+    if(object_only_labels.count(it->first) ||
+       !required_local_labels.count(it->first)) continue;
     HostSymbol symbol;
     symbol.name = it->first;
     symbol.section = text_section_index;
@@ -657,7 +680,8 @@ void collect_host_symbols(
     for(std::unordered_map<std::string, std::size_t>::const_iterator it =
           data_sections[section].labels.begin();
         it != data_sections[section].labels.end(); ++it) {
-      if(object_only_labels.count(it->first)) continue;
+      if(object_only_labels.count(it->first) ||
+         !required_local_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
       symbol.section = data_section_indexes[section];
@@ -732,6 +756,8 @@ void collect_host_symbols(
   relocation_groups.push_back(&text_relocations);
   for(std::size_t i = 0; i < data_relocations.size(); ++i)
     relocation_groups.push_back(&data_relocations[i]);
+  relocation_groups.push_back(&init_array_relocations);
+  relocation_groups.push_back(&fini_array_relocations);
   relocation_groups.push_back(&lsda_relocations);
   relocation_groups.push_back(&eh_relocations);
   for(std::size_t group = 0; group < relocation_groups.size(); ++group) {
@@ -883,6 +909,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
   publish_object_aliases(program, mutable_text, mutable_data, encoded_labels);
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
+  resolve_same_section_local_fixups(
+    mutable_text, mutable_data, declarations);
   const std::vector<HostRelocation> text_relocations = host_relocations(
     mutable_text, encoded_labels, declarations);
   std::vector<std::vector<HostRelocation> > data_relocations(
@@ -982,7 +1010,9 @@ std::vector<unsigned char> make_linux_relocatable_image(
   collect_host_symbols(program, mutable_text, text_index,
                        mutable_data, data_indexes, encoded_labels,
                        functions, text_relocations,
-                       data_relocations, lsda_relocations, eh_relocations,
+                       data_relocations, init_array_relocations,
+                       fini_array_relocations, lsda_relocations,
+                       eh_relocations,
                        locals, globals);
 
   std::vector<std::pair<std::string, std::uint16_t> > section_symbols;

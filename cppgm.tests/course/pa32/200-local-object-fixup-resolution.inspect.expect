@@ -1,0 +1,2 @@
+defined_symbol_canonical 1 _main
+absent_defined_symbol_substring 1 ::^

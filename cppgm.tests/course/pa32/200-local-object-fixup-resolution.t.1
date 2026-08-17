@@ -1,0 +1,30 @@
+static int state;
+
+struct Lifetime
+{
+  Lifetime()
+  {
+    if(state == 0) state = 11;
+  }
+
+  ~Lifetime()
+  {
+    if(state == 17) state = 23;
+  }
+};
+
+Lifetime lifetime;
+
+int choose(int value)
+{
+  if(value < 0) return -1;
+  if(value == 0) return state;
+  return choose(value - 1) + 2;
+}
+
+int main()
+{
+  if(choose(3) != 17) return 1;
+  state = 17;
+  return 0;
+}
