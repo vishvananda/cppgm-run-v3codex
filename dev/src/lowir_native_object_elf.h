@@ -38,6 +38,12 @@ struct EncodedSection
 
 struct HostFunctionLayout
 {
+  struct UnwindRange
+  {
+    std::size_t start = 0;
+    std::size_t length = 0;
+  };
+
   struct CallSite
   {
     std::size_t start = 0;
@@ -53,6 +59,7 @@ struct HostFunctionLayout
   std::vector<X64Register> callee_saved_regs;
   std::map<std::string, std::vector<mir_model::MirHostEhClause> > clauses;
   std::vector<CallSite> call_sites;
+  std::vector<UnwindRange> unprotected_unwind_ranges;
   std::size_t lsda_offset = 0;
 };
 

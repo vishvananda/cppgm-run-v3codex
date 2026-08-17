@@ -4,6 +4,7 @@
 #include "lowir_native_data_layout.h"
 #include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
+#include "lowir_native_lsda.h"
 #include "lowir_native_encoding.h"
 #include "lowir_native_object_elf.h"
 #include <algorithm>
@@ -2602,7 +2603,12 @@ void emit_host_instruction(
     instruction.opcode == mir_model::MirInstruction::MI_CALL_INDIRECT;
   const std::size_t start = out.size();
   emit_instruction(out, instruction, &function);
-  if(call && !instruction.call_unwind_no && !landing_pad.empty()) {
+  if(call && !instruction.call_unwind_no && landing_pad.empty()) {
+    HostFunctionLayout::UnwindRange range;
+    range.start = start - layout.offset;
+    range.length = out.size() - start;
+    layout.unprotected_unwind_ranges.push_back(range);
+  } else if(call && !instruction.call_unwind_no) {
     HostFunctionLayout::CallSite site;
     site.start = start - layout.offset;
     site.length = out.size() - start;
@@ -2722,7 +2728,18 @@ HostFunctionLayout emit_host_function(
     layout.call_sites[i].start = new_start - layout.offset;
     layout.call_sites[i].length = new_end - new_start;
   }
+  for(std::size_t i = 0; i < layout.unprotected_unwind_ranges.size(); ++i) {
+    const std::size_t old_start = layout.offset +
+      layout.unprotected_unwind_ranges[i].start;
+    const std::size_t old_end = old_start +
+      layout.unprotected_unwind_ranges[i].length;
+    const std::size_t new_start = adjustment.translate(old_start);
+    const std::size_t new_end = adjustment.translate(old_end);
+    layout.unprotected_unwind_ranges[i].start = new_start - layout.offset;
+    layout.unprotected_unwind_ranges[i].length = new_end - new_start;
+  }
   layout.size = out.size() - layout.offset;
+  lsda_detail::coalesce_call_sites(layout, stats);
   return layout;
 }
 

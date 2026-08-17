@@ -1,0 +1,31 @@
+int calls;
+int destroyed;
+
+struct Guard
+{
+  ~Guard()
+  {
+    ++destroyed;
+  }
+};
+
+int may_throw(int value)
+{
+  ++calls;
+  if(value == 2) throw value;
+  return value;
+}
+
+int main()
+{
+  try
+  {
+    Guard guard;
+    calls += 10 * (may_throw(1) + may_throw(2));
+  }
+  catch(int value)
+  {
+    return value == 2 && calls == 2 && destroyed == 1 ? 0 : 1;
+  }
+  return 2;
+}

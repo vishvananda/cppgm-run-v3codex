@@ -39,6 +39,8 @@ struct Stats
   std::size_t eh_region_states = 0;
   std::size_t eh_region_edges = 0;
   std::size_t eh_call_sites = 0;
+  std::size_t eh_lsda_call_sites = 0;
+  std::size_t eh_coalesced_call_sites = 0;
   std::size_t fixups = 0;
   std::size_t output_bytes = 0;
   std::uint64_t lower_nanoseconds = 0;

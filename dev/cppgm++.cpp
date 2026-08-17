@@ -1227,6 +1227,9 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " eh_region_states=" << native_stats.eh_region_states
          << " eh_region_edges=" << native_stats.eh_region_edges
          << " eh_call_sites=" << native_stats.eh_call_sites
+         << " eh_lsda_call_sites=" << native_stats.eh_lsda_call_sites
+         << " eh_coalesced_call_sites="
+         << native_stats.eh_coalesced_call_sites
          << " fixups=" << native_stats.fixups
          << " output_bytes=" << native_stats.output_bytes
          << " lower_ns=" << native_stats.lower_nanoseconds
