@@ -298,6 +298,7 @@ candidate.
 | B6 | Put weak function bodies in real ELF COMDAT groups | 0 existing | 0 existing | **Landed** in `90368327`; actual weak code and relocation sections now share the function COMDAT, FDEs follow the selected code, a reference-agreeing PA32 reducer checks both membership facts, compiler `size` text -7,295,360 bytes, full report 5,186/5,186, zero-fatal audit, and clean object/final-binary inception comparison pass |
 | B7 | Reduce residual copy, frame-home, and address-materialization traffic | 0 preferred | 0 at baseline; intentional only if assigned to PA38 | **Reprofiled after B6**: same-name functions account for about 2.25 MB of the 2.94 MB residual machine-text gap; `mov` and `lea` account for 2.20 MB of the parsed instruction-byte delta, led by register copies, stack homes/reloads, and materialized addresses; prove bounded zero-MIR cases first, then put representation-changing coalescing in PA38 |
 | B7a | Omit a proved redundant 32-bit normalization | 0 existing | 0 existing | **Landed** in `0f01fa1a`; an immediately preceding non-forwarded 32-bit producer proves that the register's upper half is already zero, identical-source O0 self build machine text -41,856 bytes and 16,107 same-register moves, frozen object text -347 bytes, paired compile time neutral |
+| B7b | Extend the proof through frame-load forwarding | 0 existing | 0 existing | **Landed** in `58aa9b65`; ordinary 32-bit frame loads and different-register forwarded reloads normalize their destination, while same-register forwarding retains the required operation; identical-source O0 self machine text -67,536 bytes and 26,719 same-register moves, frozen text -156 bytes, paired compile time neutral |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -536,6 +537,48 @@ PA1--PA29 passes 4,102/4,102; the affected PA29--PA38 selection passes
 zero fatal findings (25 warnings).  Its responsibility splits preserve the
 existing statistics output while keeping both touched driver functions and
 the native ELF orchestrator below fatal size limits.
+
+### 4.3.5 B7b result
+
+`58aa9b65` extends B7a to frame loads while accounting for the already-landed
+frame-reload forwarding rules.  A real 32-bit load always zero-extends its
+destination, and a forwarded load does too when it emits a 32-bit move between
+different registers.  When forwarding eliminates a store/load pair whose
+source and destination are the same register, however, no 32-bit instruction
+is emitted; B7b detects that case and retains the normalization.  This is a
+constant-time local query against the existing per-function forwarding plan.
+
+Frame-forwarding analysis now lives in the responsibility-named
+`lowir_native_frame_forwarding` module.  This reduces the native ELF
+orchestrator from 2,978 to 2,838 lines rather than leaving it at the 3,000-line
+fatal audit boundary.  The new module is present in both compiler and
+`lowir2native` source sets.
+
+The proposed PA29 witness now contains a frame load separated from its store
+by a call, as well as the original global load.  Its MIR retains each explicit
+`zext.i32`; raw native disassembly omits the redundant instruction after the
+real frame load, and the program exits zero.  Existing active PA29 narrow and
+same-register frame-forwarding cases continue to cover the correctness
+boundary.
+
+Identical current sources compiled by the B7a and B7b compilers at `-O0`
+measure:
+
+| Identical-source O0 self compiler | B7a | B7b | Change |
+| --- | ---: | ---: | ---: |
+| file bytes | 18,611,848 | 18,542,216 | -69,632 |
+| GNU `size` text | 11,260,589 | 11,192,909 | -67,680 |
+| machine `.text` | 9,129,650 | 9,062,114 | -67,536 |
+| same-register 32-bit moves | 42,916 | 16,197 | -26,719 |
+| `.eh_frame` | 1,260,264 | 1,260,264 | 0 |
+
+Both same-source eight-way builds took 17.95 s wall; B7b used 259,368 KiB
+peak RSS versus 264,644 KiB for B7a.  The frozen object loses another 156 GNU
+`size` text bytes.  A two-block immutable ABBA comparison measured 8.845 s
+versus 8.810 s wall medians, with paired changes of -0.48% wall, -0.15% user,
+and -0.22% RSS.  PA29 passes all four lanes, PA1--PA29 is 4,102/4,102,
+PA29--PA38 is 1,295/1,295, the full report is 5,186/5,186, and the PA39 audit
+has zero fatal findings (25 warnings).
 
 ### 4.4 P0 result
 
