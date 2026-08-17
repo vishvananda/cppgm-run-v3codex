@@ -302,7 +302,7 @@ candidate.
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`, corrected in `5517d984`; all 4,578 frozen functions classified, 74 conservative fallback roots and 78 internal-pruning candidates, exact object SHA preserved, full report 5,178/5,178, timing neutral |
 | D2 | Prune unreachable internal native definitions | 0 required | Native function set changes at O0/O1/O2 | **Deferred**: raw prototype removed 78 definitions and 22,376 bytes, but omitted an ABI-required anonymous-namespace base constructor; the metadata repair moved 49 existing LowIR fixtures, while the nonserialized repair broke 3/7 PA37 object round trips |
 | O1a | Simplify before inlining and dependency scheduling | Intentional at O1 | Downstream only | **In progress**: preparation `693e4357` plus sparse EH dependency worklist `919c2e55`; two reference-agreeing PA37 reducers, frozen object -1,144 bytes overall and byte-identical in the scheduling slice, five-block paired wall +0.41% and user +0.15%, full report 5,180/5,180 |
-| O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | Planned after O1a |
+| O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | **Deferred** in `37ecea4e`: a per-object second closure removed contract-required weak/COMDAT definitions and failed 49 existing PA32/PA33 tests; explicit `-O2` reference opportunity remains in `proposed/pa32` pending cross-object ownership |
 | O2a | Expanded slot/value promotion | Intentional at O2 | Downstream only | Profile-gated |
 | O2b | Bounded improved register allocation | LowIR unchanged | Intentional at O2 | Profile-gated PA38 work |
 
@@ -1215,6 +1215,32 @@ PA1--PA37 passes 5,154/5,154, the full report passes 5,180/5,180, and the
 PA39 audit has zero fatal findings.  **O0 is unchanged, and no existing LowIR
 or MIR fixture changes.**  The rejected global schedule's two existing O1
 fixture changes are recorded here and were reverted, not rebaselined.
+
+### 4.28 O1b deferred result
+
+The O1b prototype repeated the existing serialized weak-function reachability
+closure after optional inlining and immediately before native emission.  The
+narrow reducer's local call disappeared at O1/O2, and both the candidate and
+the pinned reference invoked explicitly with `-O2` omitted the now-unowned
+weak helper while O0 retained it.
+
+The whole through-PA37 report rejected the generalization before benchmarking:
+49 existing PA32/PA33 tests lost required weak/COMDAT definitions.  These are
+intentional object-shape contracts, including duplicate template definitions,
+symbol-spelling ownership, inherited constructors, and wrappers that must be
+emitted even when their local call happens to inline.  The new reducer also
+disagrees with the documented default-mode reference, which retains the weak
+symbol; explicit `-O2` behavior is not authority to rewrite that fixture.
+
+Per-object reachability cannot distinguish “no remaining local edge” from
+“this object owns a definition that another object may select.”  Adding more
+local demand bits would reproduce the serialization/ownership problem already
+seen in D2.  The output-changing code and PA37 roundtrip placeholder were
+reverted, PA1--PA37 returned to 5,154/5,154, and the exact symbol test remains
+in `proposed/pa32`.  **The experiment changed native O1/O2/default-max function
+and MIR sets but did not alter serialized LowIR; no existing fixture was
+updated.**  Revisit O1b only with a native cross-object ownership model or a
+proven visibility class narrower than ordinary weak/COMDAT linkage.
 
 ## 5. Execution plan
 
