@@ -233,14 +233,13 @@ private:
   bool constrained_wide_pressure() const { return source_.params.size() > 6 && source_.slots.empty() && !facts_.calls.empty(); }
   bool crosses_register_clobber(const std::string & name, X64Register reg) const
   {
-    const std::unordered_map<std::string, unsigned>::const_iterator found =
-      facts_.live_across_clobbers.find(name);
-    return found != facts_.live_across_clobbers.end() &&
-      (found->second & register_mask(reg)) != 0;
+    return analysis::crosses_register_clobber(facts_, name, reg);
   }
   bool incoming_parameter_register_is_intact(
       const std::string & name, X64Register reg) const
   {
+    if(analysis::register_was_clobbered_before(facts_, reg, position_))
+      return false;
     if(crosses_register_clobber(name, reg)) return false;
     for(std::unordered_map<std::string, ValueFact>::const_iterator value =
           values_.begin(); value != values_.end(); ++value) {

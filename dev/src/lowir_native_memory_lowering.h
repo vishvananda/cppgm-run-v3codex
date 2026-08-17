@@ -46,10 +46,22 @@ protected:
 					lowerer.facts_.definition[instruction.dest];
 				if (load_position < lowerer.facts_.calls.front() &&
 					lowerer.facts_.only_call_arguments.count(instruction.dest) &&
-					!lowerer.result_crosses_call(instruction.dest))
+					!lowerer.result_crosses_call(instruction.dest) &&
+					lowerer.incoming_parameter_register_is_intact(
+						parameter,
+						lowerer.incoming_parameter_registers_.find(parameter)->second))
 				{
-					value.location = reg_operand(
-						lowerer.incoming_parameter_registers_.find(parameter)->second);
+					const X64Register incoming =
+						lowerer.incoming_parameter_registers_.find(parameter)->second;
+					// A promoted load may deliberately reuse the untouched ABI
+					// register all the way to its first call.  Make that reuse a
+					// real allocator lifetime: otherwise a later indirect-call
+					// target calculation can allocate r8/r9 and silently replace a
+					// pending argument before the parallel call moves run.
+					if (lowerer.managed_register(incoming) &&
+						!lowerer.registers_.is_used(incoming))
+						lowerer.registers_.reserve(incoming);
+					value.location = reg_operand(incoming);
 				}
 				else if (load_position > lowerer.facts_.calls.front())
 				{

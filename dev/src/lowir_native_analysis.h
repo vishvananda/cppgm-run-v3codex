@@ -20,6 +20,9 @@ struct FunctionFacts
   std::unordered_map<std::string, std::size_t> definition;
   std::unordered_set<std::string> parameters;
   std::vector<std::size_t> calls;
+  // The first LowIR position that destroys each physical GPR's incoming
+  // value.  This is a fixed 16-entry table populated by analyze_function.
+  std::vector<std::size_t> first_register_clobber;
   std::unordered_set<std::string> live_across_call;
   std::unordered_set<std::string> edge_live;
   std::unordered_set<std::string> loop_invariant_values;
@@ -54,6 +57,10 @@ struct StorageFacts
 };
 
 unsigned register_mask(X64Register reg);
+bool crosses_register_clobber(const FunctionFacts & facts,
+                              const std::string & name, X64Register reg);
+bool register_was_clobbered_before(const FunctionFacts & facts,
+                                   X64Register reg, std::size_t position);
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function);
 StorageFacts analyze_storage(
     const lowir_model::LowirFunction & function,

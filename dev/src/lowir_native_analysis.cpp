@@ -1,6 +1,7 @@
 #include "lowir_native_analysis.h"
 
 #include <algorithm>
+#include <limits>
 #include <queue>
 #include <set>
 
@@ -263,9 +264,28 @@ unsigned register_mask(X64Register reg)
   return 1u << static_cast<unsigned>(reg);
 }
 
+bool crosses_register_clobber(const FunctionFacts & facts,
+                              const std::string & name, X64Register reg)
+{
+  const std::unordered_map<std::string, unsigned>::const_iterator found =
+    facts.live_across_clobbers.find(name);
+  return found != facts.live_across_clobbers.end() &&
+    (found->second & register_mask(reg)) != 0;
+}
+
+bool register_was_clobbered_before(const FunctionFacts & facts,
+                                   X64Register reg, std::size_t position)
+{
+  const std::size_t index = static_cast<std::size_t>(reg);
+  return index < facts.first_register_clobber.size() &&
+    facts.first_register_clobber[index] < position;
+}
+
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
 {
   FunctionFacts facts;
+  facts.first_register_clobber.assign(
+    16, std::numeric_limits<std::size_t>::max());
   std::unordered_set<std::string> call_arguments;
   std::unordered_set<std::string> other_uses;
   std::unordered_set<std::string> parameter_names;
@@ -315,7 +335,12 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
       }
       const unsigned clobbers = instruction_clobber_mask(instruction);
       for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)
-        if(clobbers & (1u << reg)) clobber_positions[reg].push_back(position);
+        if(clobbers & (1u << reg)) {
+          clobber_positions[reg].push_back(position);
+          if(facts.first_register_clobber[reg] ==
+             std::numeric_limits<std::size_t>::max())
+            facts.first_register_clobber[reg] = position;
+        }
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
          parameter_names.count(instruction.first.text) &&
