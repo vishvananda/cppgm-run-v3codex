@@ -13,6 +13,19 @@ namespace lowir_native
 namespace elf_detail
 {
 
+struct CodeOffsetAdjustment
+{
+	struct Removal
+	{
+		std::size_t end = 0;
+		std::size_t count = 0;
+	};
+
+	std::size_t translate(std::size_t offset) const;
+	std::size_t bytes_removed() const;
+	std::vector<Removal> removals;
+};
+
 struct Fixup
 {
 	enum Kind { RELATIVE32, ABSOLUTE64, ADDRESS32, TLS_OFFSET32 };
@@ -44,6 +57,7 @@ public:
 	bool relocatable_addresses() const;
 	void append(const std::vector<unsigned char>& bytes);
 	bool short_relative(unsigned opcode, const std::string& target);
+	CodeOffsetAdjustment relax_forward_branches(std::size_t begin);
 	void relative32(const std::string& target);
 	void absolute64(const std::string& target, long long addend = 0);
 	void address32(const std::string& target,
@@ -62,11 +76,19 @@ public:
 	std::string internal_label(const char* purpose);
 
 private:
+	struct ShortRelativeFixup
+	{
+		std::size_t offset = 0;
+		std::string target;
+	};
+
+	void resolve_short_relatives(std::size_t begin);
 	std::size_t base_offset_;
 	bool relocatable_addresses_;
 	std::vector<unsigned char> bytes_;
 	std::unordered_map<std::string, std::size_t> labels_;
 	std::vector<Fixup> fixups_;
+	std::vector<ShortRelativeFixup> short_relative_fixups_;
 	std::size_t next_internal_label_ = 0;
 };
 

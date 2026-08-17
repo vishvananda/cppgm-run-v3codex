@@ -32,6 +32,7 @@ using float_bits::scalar;
 using data_layout::global_alignment;
 using data_layout::type_size;
 using elf_detail::CodeBuffer;
+using elf_detail::CodeOffsetAdjustment;
 using elf_detail::Fixup;
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
@@ -1944,6 +1945,7 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   // the target word as the virtual-slot tag.  Keep every native function
   // entry at least two-byte aligned so a direct target cannot carry that tag.
   out.align(2);
+  const std::size_t function_start = out.size();
   out.label(function.name);
   const std::string object_symbol = native_object_symbol(function.object_symbol);
   if(!object_symbol.empty() && object_symbol != function.name)
@@ -1954,6 +1956,7 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
       emit_instruction(out, function.blocks[i].instructions[j], &function);
   }
+  out.relax_forward_branches(function_start);
 }
 
 void emit_runtime_labels(CodeBuffer & out,
@@ -2618,6 +2621,16 @@ HostFunctionLayout emit_host_function(
       static_cast<unsigned>(stack_cleanups[i].stack_bytes));
     emit_unconditional_jump(
       out, function.name + "::" + stack_cleanups[i].landing_pad);
+  }
+  const CodeOffsetAdjustment adjustment =
+    out.relax_forward_branches(layout.offset);
+  for(std::size_t i = 0; i < layout.call_sites.size(); ++i) {
+    const std::size_t old_start = layout.offset + layout.call_sites[i].start;
+    const std::size_t old_end = old_start + layout.call_sites[i].length;
+    const std::size_t new_start = adjustment.translate(old_start);
+    const std::size_t new_end = adjustment.translate(old_end);
+    layout.call_sites[i].start = new_start - layout.offset;
+    layout.call_sites[i].length = new_end - new_start;
   }
   layout.size = out.size() - layout.offset;
   return layout;

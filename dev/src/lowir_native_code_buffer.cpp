@@ -1,5 +1,6 @@
 #include "lowir_native_code_buffer.h"
 
+#include <algorithm>
 #include <climits>
 #include <stdexcept>
 #include <utility>
@@ -14,6 +15,27 @@ namespace
 const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kExecutableContentOffset = 120;
 
+}
+
+std::size_t CodeOffsetAdjustment::translate(std::size_t offset) const
+{
+	std::size_t removed = 0;
+	for (std::size_t i = 0; i < removals.size(); ++i)
+	{
+		if (removals[i].end > offset) break;
+		removed += removals[i].count;
+	}
+	if (removed > offset)
+		throw std::logic_error("native code offset adjustment underflows");
+	return offset - removed;
+}
+
+std::size_t CodeOffsetAdjustment::bytes_removed() const
+{
+	std::size_t result = 0;
+	for (std::size_t i = 0; i < removals.size(); ++i)
+		result += removals[i].count;
+	return result;
 }
 
 CodeBuffer::CodeBuffer()
@@ -107,8 +129,157 @@ bool CodeBuffer::short_relative(unsigned opcode, const std::string& target)
 		static_cast<std::int64_t>(bytes_.size() + 2);
 	if (delta < INT8_MIN || delta > INT8_MAX) return false;
 	byte(opcode);
+	ShortRelativeFixup fixup;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	short_relative_fixups_.push_back(fixup);
 	byte(static_cast<std::uint8_t>(delta));
 	return true;
+}
+
+void CodeBuffer::resolve_short_relatives(std::size_t begin)
+{
+	std::vector<ShortRelativeFixup> retained;
+	retained.reserve(short_relative_fixups_.size());
+	for (std::size_t i = 0; i < short_relative_fixups_.size(); ++i)
+	{
+		const ShortRelativeFixup& fixup = short_relative_fixups_[i];
+		if (fixup.offset < begin)
+		{
+			retained.push_back(fixup);
+			continue;
+		}
+		const std::unordered_map<std::string, std::size_t>::const_iterator
+			target = labels_.find(fixup.target);
+		if (target == labels_.end())
+			throw std::logic_error("native rel8 fixup lost its target");
+		const std::int64_t delta = static_cast<std::int64_t>(target->second) -
+			static_cast<std::int64_t>(fixup.offset + 1);
+		if (delta < INT8_MIN || delta > INT8_MAX)
+			throw std::logic_error("native branch displacement exceeds rel8");
+		patch(fixup.offset, static_cast<std::uint8_t>(delta), 1);
+	}
+	short_relative_fixups_.swap(retained);
+}
+
+CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
+{
+	if (begin > bytes_.size())
+		throw std::logic_error("native branch relaxation begins out of bounds");
+	struct Candidate
+	{
+		std::size_t fixup = 0;
+		std::size_t start = 0;
+		std::size_t size = 0;
+		unsigned opcode = 0;
+		std::string target;
+	};
+	std::vector<Candidate> candidates;
+	for (std::size_t i = 0; i < fixups_.size(); ++i)
+	{
+		const Fixup& fixup = fixups_[i];
+		if (fixup.kind != Fixup::RELATIVE32 || fixup.offset < begin ||
+			fixup.offset + 4 > bytes_.size()) continue;
+		Candidate candidate;
+		candidate.fixup = i;
+		candidate.target = fixup.target;
+		if (fixup.offset >= begin + 2 &&
+			bytes_[fixup.offset - 2] == 0x0f &&
+			bytes_[fixup.offset - 1] >= 0x80 &&
+			bytes_[fixup.offset - 1] <= 0x8f)
+		{
+			candidate.start = fixup.offset - 2;
+			candidate.size = 6;
+			candidate.opcode = 0x70 + bytes_[fixup.offset - 1] - 0x80;
+		}
+		else if (fixup.offset >= begin + 1 &&
+			bytes_[fixup.offset - 1] == 0xe9)
+		{
+			candidate.start = fixup.offset - 1;
+			candidate.size = 5;
+			candidate.opcode = 0xeb;
+		}
+		else continue;
+		const std::unordered_map<std::string, std::size_t>::const_iterator
+			target = labels_.find(candidate.target);
+		if (target == labels_.end() || target->second <= candidate.start ||
+			target->second > bytes_.size()) continue;
+		const std::size_t delta = target->second - (candidate.start + 2);
+		if (delta > static_cast<std::size_t>(INT8_MAX)) continue;
+		candidates.push_back(candidate);
+	}
+	std::sort(candidates.begin(), candidates.end(),
+		[](const Candidate& left, const Candidate& right)
+		{
+			return left.start < right.start;
+		});
+	CodeOffsetAdjustment adjustment;
+	if (candidates.empty())
+	{
+		resolve_short_relatives(begin);
+		return adjustment;
+	}
+	std::vector<unsigned char> suffix;
+	suffix.reserve(bytes_.size() - begin);
+	std::size_t cursor = begin;
+	std::vector<std::size_t> short_starts;
+	short_starts.reserve(candidates.size());
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		if (candidates[i].start < cursor ||
+			candidates[i].start + candidates[i].size > bytes_.size())
+			throw std::logic_error("overlapping native branch relaxation");
+		suffix.insert(suffix.end(), bytes_.begin() + cursor,
+			bytes_.begin() + candidates[i].start);
+		short_starts.push_back(begin + suffix.size());
+		suffix.push_back(static_cast<unsigned char>(candidates[i].opcode));
+		suffix.push_back(0);
+		CodeOffsetAdjustment::Removal removal;
+		removal.end = candidates[i].start + candidates[i].size;
+		removal.count = candidates[i].size - 2;
+		adjustment.removals.push_back(removal);
+		cursor = candidates[i].start + candidates[i].size;
+	}
+	suffix.insert(suffix.end(), bytes_.begin() + cursor, bytes_.end());
+	std::vector<unsigned char> relaxed(bytes_.begin(), bytes_.begin() + begin);
+	relaxed.insert(relaxed.end(), suffix.begin(), suffix.end());
+	bytes_.swap(relaxed);
+	for (std::unordered_map<std::string, std::size_t>::iterator label =
+			labels_.begin(); label != labels_.end(); ++label)
+		if (label->second >= begin)
+			label->second = adjustment.translate(label->second);
+	for (std::size_t i = 0; i < short_relative_fixups_.size(); ++i)
+		if (short_relative_fixups_[i].offset >= begin)
+			short_relative_fixups_[i].offset =
+				adjustment.translate(short_relative_fixups_[i].offset);
+	std::vector<unsigned char> removed_fixups(fixups_.size(), 0);
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+		removed_fixups[candidates[i].fixup] = 1;
+	std::vector<Fixup> retained;
+	retained.reserve(fixups_.size() - candidates.size());
+	for (std::size_t i = 0; i < fixups_.size(); ++i)
+	{
+		if (removed_fixups[i]) continue;
+		Fixup fixup = fixups_[i];
+		if (fixup.offset >= begin)
+			fixup.offset = adjustment.translate(fixup.offset);
+		retained.push_back(fixup);
+	}
+	fixups_.swap(retained);
+	for (std::size_t i = 0; i < candidates.size(); ++i)
+	{
+		const std::unordered_map<std::string, std::size_t>::const_iterator
+			target = labels_.find(candidates[i].target);
+		if (target == labels_.end())
+			throw std::logic_error("relaxed native branch lost its target");
+		const std::int64_t delta = static_cast<std::int64_t>(target->second) -
+			static_cast<std::int64_t>(short_starts[i] + 2);
+		if (delta < INT8_MIN || delta > INT8_MAX)
+			throw std::logic_error("relaxed native branch exceeds rel8");
+		bytes_[short_starts[i] + 1] = static_cast<unsigned char>(delta);
+	}
+	resolve_short_relatives(begin);
+	return adjustment;
 }
 
 void CodeBuffer::relative32(const std::string& target)
@@ -183,6 +354,7 @@ void CodeBuffer::absolute64_at(std::size_t offset,
 
 void CodeBuffer::resolve()
 {
+	resolve_short_relatives(0);
 	for (std::size_t i = 0; i < fixups_.size(); ++i)
 	{
 		const Fixup& fixup = fixups_[i];
@@ -233,6 +405,7 @@ const std::vector<unsigned char>& CodeBuffer::bytes() const
 
 std::vector<unsigned char> CodeBuffer::take_bytes()
 {
+	resolve_short_relatives(0);
 	return std::move(bytes_);
 }
 
