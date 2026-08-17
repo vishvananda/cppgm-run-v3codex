@@ -25,6 +25,13 @@ void RegisterPool::reserve(X64Register reg)
   remember_preserve(reg);
 }
 
+bool RegisterPool::try_reserve(X64Register reg)
+{
+  if(used_[static_cast<unsigned>(reg)]) return false;
+  reserve(reg);
+  return true;
+}
+
 bool RegisterPool::is_used(X64Register reg) const
 {
   return used_[static_cast<unsigned>(reg)];
@@ -63,7 +70,8 @@ bool RegisterPool::try_allocate(bool across_call, X64Register & result)
 void RegisterPool::release(X64Register reg)
 {
   const unsigned index = static_cast<unsigned>(reg);
-  if(reg == XR_R8 || reg == XR_R9 || is_callee_saved(reg)) used_[index] = false;
+  if(reg == XR_RDI || reg == XR_RSI || reg == XR_R8 || reg == XR_R9 ||
+     is_callee_saved(reg)) used_[index] = false;
 }
 
 const std::vector<X64Register> & RegisterPool::preserves() const

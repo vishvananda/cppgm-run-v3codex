@@ -14,20 +14,19 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 16
+    stack_size 0
     scratch_bytes 0
-    preserve <gpr0>
 
   block ^entry
     mov r8, @cells
     lea r9, [r8+<off0>]
-    mov <gpr0>, r9
-    cmp.ptr <gpr0>, r9
-    sete <gpr0>
-    movzx <gpr0>, <gpr0>
+    mov rdi, r9
+    cmp.ptr rdi, r9
+    sete rdi
+    movzx rdi, rdi
     cmp.ptr r9, r8
     setne r9
     movzx r9, r9
-    add <gpr0>, r9
-    mov rax, <gpr0>
+    add rdi, r9
+    mov rax, rdi
     ret rax

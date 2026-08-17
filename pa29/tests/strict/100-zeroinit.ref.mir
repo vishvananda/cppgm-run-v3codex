@@ -14,16 +14,15 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 16
+    stack_size 0
     scratch_bytes 0
-    preserve rbx
 
   block ^entry
     mov r8, @dst
     mov rdi, r8
     zero_bytes 16x8, rdi
     load.i64 r9, @dst
-    load.i64 rbx, [r8+8]
-    add r9, rbx
+    load.i64 rdi, [r8+8]
+    add r9, rdi
     mov rax, r9
     ret rax

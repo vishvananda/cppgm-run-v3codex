@@ -9,9 +9,8 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 16
+    stack_size 0
     scratch_bytes 0
-    preserve rbx
 
   block ^entry
     mov r8, -1
@@ -36,15 +35,15 @@ function @main
     cmp.i64 r9, rdx
     sete r9
     movzx r9, r9
-    mov rbx, -16
+    mov rdi, -16
     mov rdx, 2
     mov rcx, rdx
-    shr rbx, cl
+    shr rdi, cl
     mov rdx, 4611686018427387900
-    cmp.i64 rbx, rdx
-    sete rbx
-    movzx rbx, rbx
+    cmp.i64 rdi, rdx
+    sete rdi
+    movzx rdi, rdi
     add r8, r9
-    add r8, rbx
+    add r8, rdi
     mov rax, r8
     ret rax

@@ -17,9 +17,9 @@ function @mix
     param %d -> xmm1 : f64
     return i64 -> rax
   frame
-    stack_size 96
+    stack_size 80
     scratch_bytes 48
-    preserve <gpr0> <gpr1> <gpr2>
+    preserve <gpr0> <gpr1>
     param-slot %b -> [rbp-<off0>] : f64
     param-slot %d -> [rbp-<off1>] : f64
 
@@ -28,12 +28,12 @@ function @mix
     fmov.f64 [rbp-<off1>], xmm1
     mov <gpr0>, rsi
     fptosi.f64.i64 r9, [rbp-<off0>]
-    fptosi.f64.i64 <gpr1>, [rbp-<off1>]
-    mov <gpr2>, rdi
-    add <gpr2>, <gpr0>
-    add r9, <gpr1>
-    add <gpr2>, r9
-    mov rax, <gpr2>
+    fptosi.f64.i64 rsi, [rbp-<off1>]
+    mov <gpr1>, rdi
+    add <gpr1>, <gpr0>
+    add r9, rsi
+    add <gpr1>, r9
+    mov rax, <gpr1>
     ret rax
 
 function @main
@@ -45,12 +45,12 @@ function @main
 
   block ^entry
     load.ptr r8, @table
-    mov <gpr3>, r8
+    mov <gpr2>, r8
     mov rdi, 10
     mov rsi, 20
     fmov.f64 xmm0, 1.5
     fmov.f64 xmm1, 2.5
-    call *<gpr3> [args=(rsi,rdi,xmm0,xmm1)]
+    call *<gpr2> [args=(rsi,rdi,xmm0,xmm1)]
     mov r9, rax
     mov rdx, 33
     cmp.i64 r9, rdx

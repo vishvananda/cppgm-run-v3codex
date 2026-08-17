@@ -257,6 +257,16 @@ private:
     }
     return true;
   }
+  void reserve_direct_parameter_register(
+      const mir_model::MirParamBinding & binding,
+      const ValueFact & value, std::size_t uses)
+  {
+    if(!uses || binding.location != mir_model::MirParamBinding::PL_REG ||
+       value.location.kind != MirOperand::OP_REG ||
+       value.location.reg != binding.reg || !managed_register(binding.reg) ||
+       registers_.is_used(binding.reg)) return;
+    registers_.reserve(binding.reg);
+  }
   void bind_mixed_parameters()
   {
     uses_scalar_float_ = true;
@@ -321,6 +331,8 @@ private:
         }
         value.location = frame_operand(home);
       }
+      reserve_direct_parameter_register(
+        binding, value, facts_.uses[parameter.name]);
       target_.params.push_back(binding);
       set_value(parameter.name, value);
     }
@@ -556,6 +568,8 @@ private:
       if(incoming_pool_reserved[i] &&
          (value.location.kind != MirOperand::OP_REG || value.location.reg != binding.reg))
         registers_.release(binding.reg);
+      if(!wide_gpr_boundary)
+        reserve_direct_parameter_register(binding, value, uses);
       set_value(parameter.name, value);
     }
     parameter_moves_.insert(parameter_moves_.end(), register_parameter_moves.begin(),
@@ -770,6 +784,7 @@ private:
       if(value.location.kind == MirOperand::OP_REG &&
          !value.parameter &&
          !value.fixed_register_home &&
+         !facts_.loop_invariant_values.count(operand.text) &&
          value.location.reg != retained && value.location.reg != XR_RAX &&
          !has_live_location_alias(operand.text, value.location)) {
         registers_.release(value.location.reg);
@@ -809,7 +824,8 @@ private:
   }
   static bool managed_register(X64Register reg)
   {
-    return reg == XR_R8 || reg == XR_R9 || is_callee_saved(reg);
+    return reg == XR_RDI || reg == XR_RSI || reg == XR_R8 || reg == XR_R9 ||
+      is_callee_saved(reg);
   }
   bool value_is_live(const std::string & name) const
   {
@@ -1009,6 +1025,7 @@ private:
       if(!value->second.parameter || value->second.fixed_register_home ||
          value->second.location.kind != MirOperand::OP_REG ||
          !managed_register(value->second.location.reg) ||
+         !registers_.is_used(value->second.location.reg) ||
          (needs_callee_saved && !is_callee_saved(value->second.location.reg)))
         continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator uses =
@@ -1022,22 +1039,34 @@ private:
     }
     return false;
   }
+  bool try_reserve_result_register(const std::string & name,
+                                   bool needs_callee_saved,
+                                   X64Register * result)
+  {
+    static const X64Register caller_saved[] = {
+      XR_R8, XR_R9, XR_RDI, XR_RSI
+    };
+    if(!needs_callee_saved)
+      for(std::size_t i = 0;
+          i < sizeof(caller_saved) / sizeof(caller_saved[0]); ++i)
+        if(!crosses_register_clobber(name, caller_saved[i]) &&
+           registers_.try_reserve(caller_saved[i])) {
+          *result = caller_saved[i];
+          return true;
+        }
+    return registers_.try_allocate(true, *result);
+  }
   bool try_allocate_result(const std::string & name,
                            std::vector<MirInstruction> & out,
                            X64Register * result,
                            bool force_preserved = false)
   {
-    // R8 and R9 are the ordinary reactive result registers.  Some lowered
-    // intrinsics (notably va_arg) clobber them without being ABI calls, so a
-    // value live across either clobber needs the same preserved-register
-    // treatment as a value live across a call.
-    const bool across = force_preserved || result_crosses_call(name) ||
-      crosses_register_clobber(name, XR_R8) ||
-      crosses_register_clobber(name, XR_R9);
-    if(registers_.try_allocate(across, *result)) return true;
+    const bool across = force_preserved || result_crosses_call(name);
+    if(try_reserve_result_register(name, across, result)) return true;
     if(reclaim_dead_parameter_register(across) &&
-       registers_.try_allocate(across, *result)) return true;
-    if(spill_one(across, out) && registers_.try_allocate(across, *result)) return true;
+       try_reserve_result_register(name, across, result)) return true;
+    if(spill_one(across, out) &&
+       try_reserve_result_register(name, across, result)) return true;
     return false;
   }
   X64Register allocate_result(const std::string & name,
@@ -1221,7 +1250,7 @@ private:
       facts_.uses.find(instruction.first.text)->second == 2 &&
       !values_.find(instruction.first.text)->second.parameter;
     const bool safe_reuse = (can_reuse(instruction.first) || duplicate_last_use) &&
-      (!result_crosses_call(instruction.dest) || is_callee_saved(left.reg));
+      !crosses_register_clobber(instruction.dest, left.reg);
     if(safe_reuse) return left;
     X64Register result = XR_RSP;
     if(!try_allocate_result(instruction.dest, out, &result)) {
@@ -1774,7 +1803,7 @@ private:
     MirOperand destination;
     MirOperand pressure_home;
     const bool safe_reuse = can_reuse(instruction.first) &&
-      (!result_crosses_call(instruction.dest) || is_callee_saved(source.reg));
+      !crosses_register_clobber(instruction.dest, source.reg);
     if(direct_return && source.kind != MirOperand::OP_REG) {
       destination = reg_operand(XR_RAX);
       move_value_to_register(out, destination.reg, source, instruction.type);

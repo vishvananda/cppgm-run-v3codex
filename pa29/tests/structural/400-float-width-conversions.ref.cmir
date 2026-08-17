@@ -9,9 +9,8 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 80
+    stack_size 64
     scratch_bytes 48
-    preserve <gpr0>
     temp %2 -> [rbp-<off0>] : f80
 
   block ^entry
@@ -24,8 +23,8 @@ function @main
     mov r9, rax
     fptrunc.f80.f64 xmm0, [rbp-<off0>]
     feq.f64 rax, xmm0, 1.5
-    mov <gpr0>, rax
+    mov rdi, rax
     add r8, r9
-    add r8, <gpr0>
+    add r8, rdi
     mov rax, r8
     ret rax

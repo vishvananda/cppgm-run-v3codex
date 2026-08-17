@@ -15,7 +15,7 @@ function @main
   frame
     stack_size 32
     scratch_bytes 0
-    preserve rbx r12 r13
+    preserve rbx r12
     slot $expected -> [rbp-8] : i64
 
   block ^entry
@@ -31,21 +31,21 @@ function @main
     store.i64 [rdx], rax
     sete rax
     movzx rax, rax
-    mov rbx, rax
+    mov rdi, rax
     load.i64 r9, [r8]
     load.i64 r8, [rbp-8]
-    mov r12, 0
-    mov r13, 7
-    cmp.i64 rbx, r12
-    sete rbx
-    movzx rbx, rbx
-    cmp.i64 r9, r13
+    mov rbx, 0
+    mov r12, 7
+    cmp.i64 rdi, rbx
+    sete rdi
+    movzx rdi, rdi
+    cmp.i64 r9, r12
     sete r9
     movzx r9, r9
-    cmp.i64 r8, r13
+    cmp.i64 r8, r12
     sete r8
     movzx r8, r8
-    and rbx, r9
-    and rbx, r8
-    mov rax, rbx
+    and rdi, r9
+    and rdi, r8
+    mov rax, rdi
     ret rax

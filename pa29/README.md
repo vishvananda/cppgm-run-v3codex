@@ -464,6 +464,15 @@ To complete PA29, implement these goals:
    division, and shifts, must preserve still-live frame addresses and incoming parameters
    before reusing those registers.
 
+   Treat `rdi` and `rsi` as available caller-saved result registers when no
+   incoming argument remains resident there and the result does not cross an
+   instruction that fixes or clobbers that register. Prefer such an available
+   caller-saved register to introducing a callee-saved preserve. When a result
+   reuses its final-use input register, check the new result's complete live
+   interval: calls, object copies, zero initialization, and fixed division or
+   shift operands may make a register safe for the input but unsafe for the
+   longer-lived result.
+
    When a sole-use scalar constant, load, copy, address, or index is immediately
    returned, lower it directly into the ABI return register when doing so does
    not overwrite an input needed by that instruction.  MIR should not introduce

@@ -15,6 +15,7 @@ public:
   RegisterPool();
 
   void reserve(X64Register reg);
+  bool try_reserve(X64Register reg);
   bool is_used(X64Register reg) const;
   X64Register allocate(bool across_call);
   bool try_allocate(bool across_call, X64Register & result);

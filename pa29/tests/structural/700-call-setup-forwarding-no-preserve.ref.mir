@@ -13,9 +13,9 @@ function @mix
     param %d -> xmm1 : f64
     return i64 -> rax
   frame
-    stack_size 96
+    stack_size 80
     scratch_bytes 48
-    preserve rbx r12 r13
+    preserve rbx r12
     param-slot %b -> [rbp-8] : f64
     param-slot %d -> [rbp-16] : f64
 
@@ -24,12 +24,12 @@ function @mix
     fmov.f64 [rbp-16], xmm1
     mov rbx, rsi
     fptosi.f64.i64 r9, [rbp-8]
-    fptosi.f64.i64 r12, [rbp-16]
-    mov r13, rdi
-    add r13, rbx
-    add r9, r12
-    add r13, r9
-    mov rax, r13
+    fptosi.f64.i64 rsi, [rbp-16]
+    mov r12, rdi
+    add r12, rbx
+    add r9, rsi
+    add r12, r9
+    mov rax, r12
     ret rax
 
 function @main

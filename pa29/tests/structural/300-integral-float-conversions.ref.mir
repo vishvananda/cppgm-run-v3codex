@@ -9,9 +9,8 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 96
+    stack_size 80
     scratch_bytes 48
-    preserve rbx r12
     temp %4 -> [rbp-16] : f80
     temp %7 -> [rbp-32] : f80
 
@@ -27,19 +26,19 @@ function @main
     sete r9
     movzx r9, r9
     sitofp.i64.f80 [rbp-16], -42
-    fptosi.f80.i64 rbx, [rbp-16]
+    fptosi.f80.i64 rdi, [rbp-16]
     mov rdx, -42
-    cmp.i64 rbx, rdx
-    sete rbx
-    movzx rbx, rbx
+    cmp.i64 rdi, rdx
+    sete rdi
+    movzx rdi, rdi
     uitofp.i64.f80 [rbp-32], -1
-    fptoui.f80.i64 r12, [rbp-32]
+    fptoui.f80.i64 rsi, [rbp-32]
     mov rdx, -1
-    cmp.i64 r12, rdx
-    sete r12
-    movzx r12, r12
+    cmp.i64 rsi, rdx
+    sete rsi
+    movzx rsi, rsi
     add r8, r9
-    add r8, rbx
-    add r8, r12
+    add r8, rdi
+    add r8, rsi
     mov rax, r8
     ret rax

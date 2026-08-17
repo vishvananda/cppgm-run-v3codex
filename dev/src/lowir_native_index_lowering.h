@@ -103,8 +103,7 @@ materialize_index:
     const bool safe_reuse = base.kind == mir_model::MirOperand::OP_REG &&
       constant_index && (lowerer.can_reuse(instruction.first) ||
       forwarded_alias) &&
-      (!lowerer.result_crosses_call(instruction.dest) ||
-       allocation::is_callee_saved(base.reg));
+      !lowerer.crosses_register_clobber(instruction.dest, base.reg);
     bool direct_return = selection::result_is_immediate_return(
       block, instruction_index, instruction.dest, lowerer.facts_);
     if(direct_return && base.kind == mir_model::MirOperand::OP_REG &&

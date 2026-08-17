@@ -209,7 +209,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
 | VP3 | 2 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2 | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions; combined two-screen ABBA medians improved 0.78% user and 0.55% wall with RSS +0.12%; full report 5,189/5,189; audit zero fatal | input lifetime and scalar address/return placement complete; broader producer placement pending |
-| VP4 | pending | pending | pending | pending |
+| VP4 | 2 course LowIR correctness reducers | 9 strict and 7 structural PA29 fixtures | Frozen object -21,824 bytes, aggregate text -18,494 bytes, and 5,800 instructions; push -1,370 and pop -2,017. Two-order, eight-run-per-compiler ABBA medians: user +0.78%, wall +0.55%, RSS +0.17%; full report 5,191/5,191; audit zero fatal | caller-saved pool and clobber-safe reuse complete |
 | VP5 | pending | pending | pending | pending |
 
 The VP1 proposed call-argument input predates the public MIR placement rule and
@@ -217,6 +217,28 @@ is now supplemental to the active `900-symbolic-global-call-argument` fixture.
 The VP2 scaled-index witness remains proposed because the course reference
 materializes `imul` plus `add`; both compilers execute it successfully, but
 their MIR shapes intentionally disagree.
+
+The VP4 caller-saved slice changes strict PA29 MIR for `100-copyobj`,
+`100-zeroinit`, `300-atomic-add-fetch`,
+`300-atomic-compare-exchange-failure`,
+`300-atomic-compare-exchange-success`, `300-atomic-exchange`,
+`300-unsigned-compare-predicates`, `300-unsigned-int-ops`, and
+`600-atomic-i32-exchange`. It changes the raw and canonical MIR pairs for
+`300-integral-float-conversions`, `400-float-width-conversions`,
+`500-mixed-gpr-xmm-call-abi`, `500-ptr-index-arithmetic`,
+`600-indirect-mixed-gpr-xmm-call-abi`,
+`600-ptr-compare-value-materialize`, and
+`700-call-setup-forwarding-no-preserve`. These cases use an unoccupied RDI or
+RSI for a short-lived result and remove unnecessary callee-save and frame
+traffic.
+
+`caller-saved-binary-reuse-clobber.t` and
+`caller-saved-index-reuse-clobber.t` are PA29 behavior reducers for the fixed
+register hazard exposed by the wider pool. Each forces a short-lived value
+into a caller-saved argument register, lengthens its interval through result
+reuse, and crosses `copyobj`; the reference and current compiler agree on the
+program result. Reuse now queries the already-computed per-register clobber
+mask for the result interval in O(1) time.
 
 The VP3 input-lifetime slice changes
 `pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection
