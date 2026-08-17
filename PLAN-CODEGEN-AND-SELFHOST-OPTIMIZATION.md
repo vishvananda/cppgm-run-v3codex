@@ -296,7 +296,8 @@ candidate.
 | B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
 | B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
 | C1 | Direct cleanup-state suffix interning | Pre-existing LowIR shape | Pre-existing downstream shape | **Already landed** in the PA17/PA26 baseline (`c2b6fd68`, `e05062b1`, `8fd4193d`); exact action/context states and long `(action, tail)` chains are interned; 0 fixture changes in this run |
-| C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
+| C2a | Share terminal `resume` blocks | Intentional at O1 | Downstream only | **Landed** in `d3b9eca0`; 3 frozen blocks removed, object -120 bytes, PA37 88/88 and full report 5,177/5,177, timing neutral |
+| C2b | General cleanup-tail sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 after the bounded terminal case |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | Planned diagnosis |
 | O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | Planned |
 | O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | Planned after O1a |
@@ -946,6 +947,47 @@ to discover and merge additional arbitrary suffixes after construction would
 be LowIR-visible optimizer work; it remains C2 at PA37 O1 rather than a second
 baseline cache.  The full 5,176/5,176 report and fatal-clean PA39 file audit
 from the immediately preceding B5 gate cover the unchanged implementation.
+
+### 4.22 C2a result
+
+`d3b9eca0` adds a bounded PA37 O1 transform that shares terminal `resume`
+blocks inside one function.  It first counts blocks without allocating.  Only
+functions with at least two one-instruction resume blocks build the typed
+debug-location map and removal bitmap.  Equal blocks are redirected through
+normal control-flow operands and EH target operands, then duplicate blocks are
+removed.  The pass does not render or compare LowIR text, discover arbitrary
+suffixes, iterate to a fixed point, or run at `-O0`.
+
+The frozen O1 compile visits 22,188 blocks in 4,578 functions and removes
+three resume blocks.  The pass itself takes about 1.585 ms.  Its deterministic
+object changes are deliberately small:
+
+| Metric | C1/B5 baseline | C2a | Delta |
+| --- | ---: | ---: | ---: |
+| object bytes | 3,619,144 | 3,619,024 | -120 |
+| `.text` bytes | 932,780 | 932,744 | -36 |
+| `.gcc_except_table` bytes | 45,601 | 45,597 | -4 |
+
+The active PA37 O1 `340-share-terminal-resume.t` fixture has two distinct
+cleanup predecessors and verifies that both target one retained resume block.
+This is intentional optimized-LowIR coverage.  **No `-O0` output changed, no
+existing checked-in LowIR fixture changed, and no existing checked-in MIR
+fixture changed.**  Consequently there is no baseline fixture rewrite to
+record; the only new exact layout is the new PA37 O1 fixture.
+
+Two independent three-block immutable ABBA measurements are retained because
+host peak RSS varied materially.  The first measured baseline/candidate wall
+medians of 7.330/7.290 seconds and user medians of 6.680/6.635 seconds, with
+paired deltas of -0.61% wall, -0.60% user, and +3.31% RSS.  The immediate
+recheck measured 7.260/7.260 seconds wall and 6.605/6.625 seconds user, with
+paired deltas of 0.00% wall, 0.00% user, and +1.36% RSS.  Neither sample shows
+a compile-time regression; both RSS results are recorded rather than choosing
+the lower one.
+
+Validation is PA37 88/88, through PA37 5,151/5,151, full report
+5,177/5,177, and a PA39 file audit with zero fatal findings.  Broader
+bottom-up cleanup-tail sharing remains C2b and must receive its own fixture,
+timing, and full-report gate.
 
 ## 5. Execution plan
 
