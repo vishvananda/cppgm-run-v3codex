@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1, and B4d2 complete
+Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1, B4d2, and B4d3 complete
 
 Date: 2026-08-17
 
@@ -264,7 +264,8 @@ candidate.
 | B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, proposed byte-shape reducer, frozen object -2,080 bytes, timing neutral |
 | B4d1 | Fold a dead adjacent address calculation into its load | 0 existing | 0 existing | **Landed** in `551e530f`; 1,195 bounded proofs, proposed byte-shape reducer, frozen object -3,920 bytes, timing neutral |
 | B4d2 | Fold a dead adjacent address-register copy into its load | 0 existing | 0 existing | **Landed** in `014b7594`; 144 bounded proofs, proposed byte-shape reducer, frozen object -336 bytes, timing neutral |
-| B4d3 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d2 |
+| B4d3 | Fold a dead copy/index/load chain | 0 existing | 0 existing | **Landed** in `2a9adc71`; 54 bounded proofs, proposed byte-shape reducer, frozen object -160 bytes, timing neutral |
+| B4d4 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d3 |
 | B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
 | C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
 | C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
@@ -609,6 +610,47 @@ Validation and frozen evidence:
   candidate (+0.32%, below the run-to-run noise floor); and
 - three-block immutable ABBA paired deltas: wall -0.17%, user -0.09%, peak
   RSS +0.12%.  All six outputs per compiler were deterministic.
+
+### 4.14 B4d3 result
+
+`2a9adc71` recognizes `mov address, base`,
+`lea address, [address+offset]`, and
+`load destination, [address+offset]` as one bounded chain.  It emits the load
+directly from `base` with the checked sum of the two displacements when the
+address register passes the existing death proof.  This is incremental to
+B4d1: without B4d3 the encoder already removes the `lea`, while B4d3 also
+removes the preceding copy.
+
+The frozen MIR contained 142 exact chains.  The proof accepted 54: 52 address
+overwrites immediately followed the load and two were two instructions later.
+The other 88 reached an opcode/shape barrier before a safe overwrite.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  `proposed/pa29/dead-address-copy-index-load-folding.t`
+retains the `mov`/`lea`/`load` chain in its dumped MIR and its generated
+program succeeds.  It remains proposed because behavior duplicates active
+coverage and PA29 has no native-byte oracle.
+
+The initial implementation made `lowir_native_elf.cpp` 3,008 lines, which is a
+fatal audit violation.  Fold planning and emission now live together in the
+162-line address-folding module, scalar width ownership moved to the existing
+data-layout module, and the ELF emitter is 2,978 lines.  A cheap inline shape
+guard prevents an out-of-line planner call for unrelated instructions.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- full report: 5,171/5,171;
+- PA39 file audit: zero fatal findings;
+- object: 3,755,792 to 3,755,632 bytes;
+- `.text`: 1,025,114 to 1,024,952 bytes;
+- `.gcc_except_table`: unchanged at 73,406 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes;
+- three-run internal encoder medians: 254.9 ms baseline and 251.2 ms
+  candidate (-1.47%); and
+- three-block immutable ABBA paired deltas: wall -0.33%, user 0.00%, peak RSS
+  +0.28%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
