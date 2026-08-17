@@ -299,7 +299,7 @@ candidate.
 | C2a | Share terminal `resume` blocks | Intentional at O1 | Downstream only | **Landed** in `d3b9eca0`; 3 frozen blocks removed, object -120 bytes, PA37 88/88 and full report 5,177/5,177, timing neutral |
 | C2b | Exact context-compatible cleanup-tail sharing | Intentional at O1 | Downstream only | **Landed** in `9bf96710`; 50 frozen groups, 97 LowIR instructions, 82 resume calls, and 5,984 object bytes removed; full report 5,178/5,178, timing neutral |
 | C2c | Alpha-equivalent or cross-context cleanup-tail sharing | Potentially broad at O1 | Downstream only | Deferred: exact sharing captured the safe typed subset; cross-context ownership failed the PA36 reducer and alpha-renaming needs a separate SSA/liveness proof |
-| D1 | Typed audit of remaining emitted definitions | 0 | 0 | Planned diagnosis |
+| D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`; all 4,578 frozen functions classified, only 3 conservative fallback roots, exact object SHA preserved, full report 5,178/5,178, timing neutral |
 | O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | Planned |
 | O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | Planned after O1a |
 | O2a | Expanded slot/value promotion | Intentional at O2 | Downstream only | Profile-gated |
@@ -1056,6 +1056,48 @@ fixture changed and no existing checked-in MIR fixture changed.**  The only
 new exact layout is the PA37 O1 fixture above.  Alpha-equivalent temporary
 renaming and cross-context ownership remain C2c rather than being folded into
 this proven bounded pass.
+
+### 4.24 D1 result
+
+`6bfef5ea` carries each semantic function-demand reason as a compact bit mask
+to the typed LowIR symbol and makes the post-inline reachability walk retain a
+reason mask per function.  Direct call targets, function addresses and global
+relocations, lifecycle roots, EH/runtime roots, weak ownership, external
+strong roots, and the existing conservative internal-root fallback are marked
+without a rendered-name lookup.  The diagnostic reports one exclusive primary
+bucket for every reachable function; only fallback names are printed, and only
+under explicit `--stats`.
+
+The 4,578 retained frozen O1 definitions classify exactly as follows:
+
+| Primary retention reason | Functions |
+| --- | ---: |
+| externally visible strong definition | 13 |
+| address or relocation use | 16 |
+| direct-call closure | 4,512 |
+| vtable/constructor/destructor/static lifecycle | 29 |
+| EH cleanup/runtime | 1 |
+| required weak/COMDAT ownership | 4 |
+| conservative internal-root fallback | 3 |
+
+The three fallback bodies are aggregate helpers for `EPPToken`,
+`builtin_type_transforms::Info`, and `builtin_type_transforms::AliasInfo`.
+This result changes the earlier size-gap diagnosis: the remaining function
+count is overwhelmingly supported by actual typed calls, not by hundreds of
+unexplained weak roots.  D1 therefore narrows the next reachability experiment
+to three internal helpers; it does not justify pruning against GCC's symbol
+count.
+
+The frozen object remains exactly 3,613,040 bytes with SHA-256
+`5c647dc5...`, identical to C2b.  Three-block immutable ABBA medians are
+7.265/7.265 seconds wall, 6.630/6.605 seconds user, and
+417,242/418,370 KiB peak RSS.  Paired deltas are +0.14% wall, -0.45% user,
+and -0.21% RSS, so the diagnostic bookkeeping is timing-neutral.
+
+PA15 passes 113/113, through PA15 passes 1,163/1,163, the full report passes
+5,178/5,178, and the PA39 file audit has zero fatal findings.  **O0, O1, and
+O2 compiler output are byte-unchanged; no existing LowIR fixture changed and
+no existing MIR fixture changed.**
 
 ## 5. Execution plan
 
