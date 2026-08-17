@@ -612,19 +612,34 @@ private:
 
 }
 
-void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats)
+void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
+	bool prune_unreachable_weak_functions)
 {
 	if (!program) throw std::logic_error("force-inline program is null");
 	Inliner inliner(program, stats);
 	if (inliner.HasCandidates()) inliner.Run();
+	const pa15_function_reachability::Summary reachability =
+		prune_unreachable_weak_functions ?
+		pa15_function_reachability::PruneUnreachableWeakFunctions(program) :
+		pa15_function_reachability::Analyze(*program);
 	if (stats)
 	{
-		const pa15_function_reachability::Summary reachability =
-			pa15_function_reachability::Analyze(*program);
 		stats->post_inline_reachable_functions =
 			reachability.reachable_functions;
 		stats->post_inline_unreachable_weak_functions =
 			reachability.unreachable_weak_functions;
+		stats->post_inline_pruned_functions = reachability.pruned_functions;
+		stats->functions = program->functions.size();
+		stats->blocks = 0;
+		stats->instructions = 0;
+		for (std::size_t i = 0; i < program->functions.size(); ++i)
+		{
+			stats->blocks += program->functions[i].block_order.size();
+			for (std::size_t j = 0;
+				j < program->functions[i].blocks.size(); ++j)
+				stats->instructions +=
+					program->functions[i].blocks[j].instructions.size();
+		}
 	}
 }
 

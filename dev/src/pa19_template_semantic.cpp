@@ -2966,7 +2966,8 @@ void SemanticAnalyzer::AnalyzeExplicitInstantiation(NodeId node,
 			function.deleted_special_member)
 			return;
 		program_->bindings[binding].weak_odr = true;
-		program_->bindings[binding].object_output_root |= object_output_root;
+		if (host_object_emission_ || object_output_root)
+			MarkFunctionObjectOutputRoot(binding);
 		DemandFunction(binding);
 	};
 	if (entity < entity_member_functions_.size())

@@ -1909,7 +1909,7 @@ bool SemanticAnalyzer::AnalyzeExplicitFunctionInstantiation(
 	state |= 2;
 	binding.explicit_instantiation_suppressed = false;
 	binding.weak_odr = true;
-	binding.object_output_root = true;
+	MarkFunctionObjectOutputRoot(selected);
 	DemandFunction(selected);
 	return true;
 }

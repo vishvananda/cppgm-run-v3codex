@@ -8,6 +8,7 @@
 #include "pa30_lowir_adapter.h"
 #include "pa30_object.h"
 #include "pa30_elf_object.h"
+#include "lowir_function_reachability.h"
 #include "lowir_prepare.h"
 #include "lowir_native.h"
 #include "lowir_opt.h"
@@ -924,7 +925,8 @@ void optimize_lowir(lowir_model::LowirProgram * program, int level,
 cppgm::pa30::CompilerObject compile_source_object(
     const string & path,
     const DriverInvocation & invocation,
-    const string & target)
+    const string & target,
+	bool prune_unreachable_weak_functions)
 {
 	const bool collect_stats = invocation.collect_stats;
   const string source = read_source_file(path);
@@ -939,6 +941,8 @@ cppgm::pa30::CompilerObject compile_source_object(
 	if(lowir_input) {
 		object.lowir = lowir_model::parse_lowir_program_text(
 			source, path, lowir_model::LEP_ALLOW_HELPERS_ONLY);
+		if(prune_unreachable_weak_functions)
+			lowir_model::prune_unreachable_weak_functions(object.lowir);
 	} else {
 		vector<cppgm::LowIRSource> sources;
 		sources.push_back(cppgm::LowIRSource(path, source));
@@ -948,7 +952,8 @@ cppgm::pa30::CompilerObject compile_source_object(
 			const cppgm::pa15_lowir_detail::TypedProgram typed =
 				cppgm::BuildTypedLowIRProgram(sources,
 					options,
-					collect_stats ? &stats : 0, true, true);
+					collect_stats ? &stats : 0, true, true,
+					prune_unreachable_weak_functions);
 			object.lowir = cppgm::AdaptTypedLowIRForNative(typed,
 				collect_stats ? &preparation_stats : 0);
 		}
@@ -1089,6 +1094,8 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << stats.post_inline_reachable_functions
 			 << " post_inline_unreachable_weak_functions="
 			 << stats.post_inline_unreachable_weak_functions
+			 << " post_inline_pruned_functions="
+			 << stats.post_inline_pruned_functions
 			 << " semantic_program_bytes="
 			 << semantic.semantic_program_storage_bytes
 			 << " binding_layout_facts="
@@ -1165,12 +1172,13 @@ int run_compile_driver(const DriverInvocation & invocation,
 {
   if(invocation.inputs.size() != 1 || invocation.output.empty())
     throw logic_error("compile mode requires one input and -o");
-  const cppgm::pa30::CompilerObject object =
-      compile_source_object(invocation.inputs[0], invocation, target);
-	cppgm::pa30::ObjectSerializationStats serialization_stats;
-  lowir_native::Stats native_stats;
   const bool private_object =
       cppgm::pa30::UsesPrivateCompilerObjectFormat(invocation.output);
+  const cppgm::pa30::CompilerObject object =
+	  compile_source_object(invocation.inputs[0], invocation, target,
+		  !private_object);
+	cppgm::pa30::ObjectSerializationStats serialization_stats;
+  lowir_native::Stats native_stats;
   if(private_object) {
     cppgm::pa30::WriteCompilerObject(
       invocation.output, object,
@@ -1258,7 +1266,7 @@ int run_link_driver(const DriverInvocation & invocation,
         invocation.inputs[i]);
     else
       objects.push_back(compile_source_object(invocation.inputs[i], invocation,
-                                              target));
+                                              target, false));
   }
   for(size_t i = 0; i < invocation.libraries.size(); ++i) {
     const string path = find_library_object(invocation, invocation.libraries[i]);
@@ -1750,7 +1758,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 		{
 			const cppgm::pa15_lowir_detail::TypedProgram typed =
 				cppgm::BuildTypedLowIRProgram(sources, options,
-					invocation.collect_stats ? &stats : 0, true, true);
+					invocation.collect_stats ? &stats : 0, true, true, false);
 			program = cppgm::AdaptTypedLowIRForNative(typed);
 		}
 		if(invocation.line_tables && sources.size() == 1)

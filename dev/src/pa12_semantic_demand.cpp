@@ -5,6 +5,30 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+void SemanticAnalyzer::MarkFunctionObjectOutputRoot(BindingId binding)
+{
+	if (binding == kNoBinding) return;
+	binding = program_->bindings[binding].canonical;
+	program_->bindings[binding].object_output_root = true;
+	const BindingId lifecycle_base =
+		program_->bindings[binding].lifecycle_base_entry;
+	if (lifecycle_base != kNoBinding &&
+		lifecycle_base < program_->bindings.size())
+		program_->bindings[lifecycle_base].object_output_root = true;
+	if (binding < constructor_base_entry_by_binding_.size())
+	{
+		const BindingId base = constructor_base_entry_by_binding_[binding];
+		if (base != kNoBinding && base < program_->bindings.size())
+			program_->bindings[base].object_output_root = true;
+	}
+	if (binding < destructor_base_entry_by_binding_.size())
+	{
+		const BindingId base = destructor_base_entry_by_binding_[binding];
+		if (base != kNoBinding && base < program_->bindings.size())
+			program_->bindings[base].object_output_root = true;
+	}
+}
+
 void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding,
 	FunctionDemandReason reason)
 {

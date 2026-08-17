@@ -252,7 +252,7 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  force_inline_recursive_candidates(0), force_inline_call_probes(0),
 	  force_inline_calls(0), force_inline_blocks(0),
 	  force_inline_cloned_instructions(0), post_inline_reachable_functions(0),
-	  post_inline_unreachable_weak_functions(0),
+	  post_inline_unreachable_weak_functions(0), post_inline_pruned_functions(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {
@@ -260,7 +260,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 
 TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	const PreprocessingOptions& options, LowIRLoweringStats* stats,
-	bool complete_constructor_unwind, bool host_object_emission)
+	bool complete_constructor_unwind, bool host_object_emission,
+	bool prune_unreachable_weak_functions)
 {
 	if (sources.empty()) throw std::runtime_error("no PA15 source inputs");
 	if (stats) *stats = LowIRLoweringStats();
@@ -477,7 +478,8 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	std::chrono::steady_clock::time_point coalesce_started;
 	if (stats) coalesce_started = std::chrono::steady_clock::now();
 	CoalesceLifecycleFunctions(&program, stats);
-	pa15_force_inline::RewriteProgram(&program, stats);
+	pa15_force_inline::RewriteProgram(
+		&program, stats, prune_unreachable_weak_functions);
 	if (stats)
 		stats->lowering_nanoseconds += static_cast<std::uint64_t>(
 			std::chrono::duration_cast<std::chrono::nanoseconds>(

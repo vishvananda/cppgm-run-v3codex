@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace cppgm
@@ -50,6 +51,11 @@ public:
 				++result.unreachable_weak_functions;
 		}
 		return result;
+	}
+
+	bool Reachable(std::size_t function) const
+	{
+		return function < reachable_.size() && reachable_[function] != 0;
 	}
 
 private:
@@ -143,6 +149,40 @@ private:
 Summary Analyze(const TypedProgram& program)
 {
 	return Analyzer(program).Run();
+}
+
+Summary PruneUnreachableWeakFunctions(TypedProgram* program)
+{
+	if (!program) throw std::logic_error(
+		"cannot prune a null typed LowIR program");
+	Analyzer analyzer(*program);
+	Summary result = analyzer.Run();
+	std::vector<unsigned char> removed_symbols(program->symbols.size(), 0);
+	std::vector<Function> retained;
+	retained.reserve(result.reachable_functions);
+	for (std::size_t i = 0; i < program->functions.size(); ++i)
+	{
+		Function& function = program->functions[i];
+		const std::uint32_t symbol = function.symbol;
+		if (!analyzer.Reachable(i) && program->symbols[symbol].weak_linkage)
+		{
+			removed_symbols[symbol] = 1;
+			program->symbols[symbol].definition_emitted = false;
+			++result.pruned_functions;
+		}
+		else retained.push_back(std::move(function));
+	}
+	program->functions.swap(retained);
+	std::vector<ObjectAlias> aliases;
+	aliases.reserve(program->object_aliases.size());
+	for (std::size_t i = 0; i < program->object_aliases.size(); ++i)
+	{
+		const std::uint32_t target = program->object_aliases[i].target;
+		if (target >= removed_symbols.size() || !removed_symbols[target])
+			aliases.push_back(std::move(program->object_aliases[i]));
+	}
+	program->object_aliases.swap(aliases);
+	return result;
 }
 
 }

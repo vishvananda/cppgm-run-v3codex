@@ -14,7 +14,8 @@ namespace pa15_force_inline
 // temporaries still have compact typed identities. The transform mutates one
 // owned LowIR program and performs work only for explicit expansion.
 void RewriteProgram(pa15_lowir_detail::TypedProgram* program,
-	LowIRLoweringStats* stats = 0);
+	LowIRLoweringStats* stats = 0,
+	bool prune_unreachable_weak_functions = false);
 
 }
 }
