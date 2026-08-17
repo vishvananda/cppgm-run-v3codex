@@ -273,6 +273,66 @@ void emit_immediate_and(CodeBuffer & out, X64Register destination,
   emit_register_alu(out, 0x21, destination, scratch);
 }
 
+struct SignedDivisionMagic
+{
+  std::uint64_t multiplier;
+  unsigned shift;
+};
+
+SignedDivisionMagic signed_division_magic(long long divisor)
+{
+  const std::uint64_t divisor_bits =
+    static_cast<std::uint64_t>(divisor);
+  const std::uint64_t absolute_divisor = divisor < 0 ?
+    UINT64_C(0) - divisor_bits : divisor_bits;
+  const std::uint64_t signed_minimum = UINT64_C(1) << 63;
+  const std::uint64_t adjusted_minimum =
+    signed_minimum + (divisor_bits >> 63);
+  const std::uint64_t negative_anc = adjusted_minimum - 1 -
+    adjusted_minimum % absolute_divisor;
+
+  unsigned exponent = 63;
+  std::uint64_t quotient1 = signed_minimum / negative_anc;
+  std::uint64_t remainder1 =
+    signed_minimum - quotient1 * negative_anc;
+  std::uint64_t quotient2 = signed_minimum / absolute_divisor;
+  std::uint64_t remainder2 =
+    signed_minimum - quotient2 * absolute_divisor;
+  std::uint64_t delta = 0;
+  do {
+    ++exponent;
+    quotient1 <<= 1;
+    remainder1 <<= 1;
+    if(remainder1 >= negative_anc) {
+      ++quotient1;
+      remainder1 -= negative_anc;
+    }
+    quotient2 <<= 1;
+    remainder2 <<= 1;
+    if(remainder2 >= absolute_divisor) {
+      ++quotient2;
+      remainder2 -= absolute_divisor;
+    }
+    delta = absolute_divisor - remainder2;
+  } while(quotient1 < delta ||
+          (quotient1 == delta && remainder1 == 0));
+
+  std::uint64_t multiplier = quotient2 + 1;
+  if(divisor < 0) multiplier = UINT64_C(0) - multiplier;
+  SignedDivisionMagic result = { multiplier, exponent - 64 };
+  return result;
+}
+
+void emit_signed_multiply_high(CodeBuffer & out, X64Register source,
+                               std::uint64_t multiplier)
+{
+  emit_register_move(out, XR_RAX, source);
+  emit_immediate_move(out, XR_R10, multiplier);
+  emit_rex(out, true, XR_RAX, XR_R10);
+  out.byte(0xf7);
+  emit_modrm(out, 3, 5, XR_R10);
+}
+
 bool preserves_condition_flags(mir_model::MirInstruction::Opcode opcode)
 {
   using mir_model::MirInstruction;
@@ -355,20 +415,27 @@ bool emit_flag_safe_zero_move(
   return true;
 }
 
-std::size_t emit_power_of_two_division(
+std::size_t emit_constant_division(
     CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start)
 {
   using mir_model::MirInstruction;
   using mir_model::MirOperand;
-  if(start > instructions.size() || instructions.size() - start < 5)
+  if(start > instructions.size() || instructions.size() - start < 4)
     return 0;
   long long signed_divisor = 0;
-  if(!is_immediate_move(instructions[start], XR_RDX, &signed_divisor) ||
-     !is_register_move(instructions[start + 1], XR_RCX, XR_RDX))
+  std::size_t cursor = start;
+  if(is_immediate_move(instructions[cursor], XR_RCX, &signed_divisor)) {
+    ++cursor;
+  } else if(is_immediate_move(
+              instructions[cursor], XR_RDX, &signed_divisor) &&
+            cursor + 1 < instructions.size() &&
+            is_register_move(instructions[cursor + 1], XR_RCX, XR_RDX)) {
+    cursor += 2;
+  } else {
     return 0;
-  std::size_t cursor = start + 2;
+  }
   X64Register dividend = XR_RAX;
   if(cursor < instructions.size() &&
      instructions[cursor].opcode == MirInstruction::MI_MOV &&
@@ -403,47 +470,82 @@ std::size_t emit_power_of_two_division(
      instructions[cursor].opcode != MirInstruction::MI_MOV ||
      instructions[cursor].operands.size() != 2 ||
      instructions[cursor].operands[0].kind != MirOperand::OP_REG ||
-     instructions[cursor].operands[1].kind != MirOperand::OP_REG ||
-     instructions[cursor].operands[0].reg != dividend)
+     instructions[cursor].operands[1].kind != MirOperand::OP_REG)
     return 0;
+  const X64Register destination = instructions[cursor].operands[0].reg;
   const X64Register result_source = instructions[cursor].operands[1].reg;
   const bool remainder = result_source == XR_RDX;
   if(!remainder && result_source != XR_RAX) return 0;
 
   std::uint64_t divisor = static_cast<std::uint64_t>(signed_divisor);
   bool negate_quotient = false;
-  if(unsigned_operation) {
-    if(!divisor || (divisor & (divisor - 1))) return 0;
-  } else {
-    if(!signed_divisor) return 0;
+  if(!signed_divisor) return 0;
+  if(!unsigned_operation) {
     negate_quotient = signed_divisor < 0;
     if(negate_quotient) divisor = UINT64_C(0) - divisor;
-    if((divisor & (divisor - 1)) || (negate_quotient && divisor == 1))
-      return 0;
   }
+
+  const bool power_of_two = !(divisor & (divisor - 1));
+  if(!power_of_two) {
+    if(unsigned_operation || remainder) return 0;
+    const SignedDivisionMagic magic =
+      signed_division_magic(signed_divisor);
+    emit_register_move(out, XR_R11, dividend);
+    emit_signed_multiply_high(out, dividend, magic.multiplier);
+    emit_register_move(out, result_source, XR_RDX);
+    const bool negative_magic = (magic.multiplier >> 63) != 0;
+    if(signed_divisor > 0 && negative_magic)
+      emit_register_alu(out, 0x01, result_source, XR_R11);
+    else if(signed_divisor < 0 && !negative_magic)
+      emit_register_alu(out, 0x29, result_source, XR_R11);
+    emit_immediate_shift(out, result_source, 7, magic.shift);
+    if(signed_divisor > 0) {
+      emit_immediate_shift(out, XR_R11, 7, 63);
+      emit_register_alu(out, 0x29, result_source, XR_R11);
+    } else {
+      emit_register_move(out, XR_R10, result_source);
+      emit_immediate_shift(out, XR_R10, 5, 63);
+      emit_register_alu(out, 0x01, result_source, XR_R10);
+    }
+    if(destination != result_source)
+      emit_register_move(out, destination, result_source);
+    return cursor - start + 1;
+  }
+  if(!unsigned_operation && negate_quotient && divisor == 1) return 0;
 
   unsigned shift = 0;
   for(std::uint64_t value = divisor; value > 1; value >>= 1) ++shift;
   if(unsigned_operation) {
+    if(!remainder || divisor != 1) {
+      if(result_source != dividend)
+        emit_register_move(out, result_source, dividend);
+    }
     if(remainder)
-      emit_immediate_and(out, dividend, divisor - 1, XR_R11);
+      emit_immediate_and(out, result_source, divisor - 1, XR_R11);
     else
-      emit_immediate_shift(out, dividend, 5, shift);
+      emit_immediate_shift(out, result_source, 5, shift);
   } else if(divisor == 1) {
-    if(remainder) emit_register_alu(out, 0x31, dividend, dividend);
+    if(remainder)
+      emit_register_alu(out, 0x31, result_source, result_source);
+    else if(result_source != dividend)
+      emit_register_move(out, result_source, dividend);
   } else {
     emit_register_move(out, XR_R11, dividend);
+    if(result_source != dividend)
+      emit_register_move(out, result_source, dividend);
     emit_immediate_shift(out, XR_R11, 7, 63);
     emit_immediate_and(out, XR_R11, divisor - 1, XR_R10);
-    emit_register_alu(out, 0x01, dividend, XR_R11);
+    emit_register_alu(out, 0x01, result_source, XR_R11);
     if(remainder) {
-      emit_immediate_and(out, dividend, divisor - 1, XR_R10);
-      emit_register_alu(out, 0x29, dividend, XR_R11);
+      emit_immediate_and(out, result_source, divisor - 1, XR_R10);
+      emit_register_alu(out, 0x29, result_source, XR_R11);
     } else {
-      emit_immediate_shift(out, dividend, 7, shift);
-      if(negate_quotient) emit_register_negate(out, dividend);
+      emit_immediate_shift(out, result_source, 7, shift);
+      if(negate_quotient) emit_register_negate(out, result_source);
     }
   }
+  if(destination != result_source)
+    emit_register_move(out, destination, result_source);
   return cursor - start + 1;
 }
 

@@ -1982,7 +1982,7 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
         j += folded - 1;
         continue;
       }
-      const std::size_t divided = emit_power_of_two_division(
+      const std::size_t divided = emit_constant_division(
         out, block.instructions, j);
       if(divided) {
         j += divided - 1;
@@ -2680,7 +2680,7 @@ HostFunctionLayout emit_host_function(
         j += folded - 1;
         continue;
       }
-      const std::size_t divided = emit_power_of_two_division(
+      const std::size_t divided = emit_constant_division(
         out, block.instructions, j);
       if(divided) {
         j += divided - 1;
