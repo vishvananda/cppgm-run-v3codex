@@ -2172,9 +2172,12 @@ FrameReloadPlan find_single_use_frame_reloads(
       continue;
     }
     const X64Register source = facts.store->operands[1].reg;
-    if(gap == 1 && preserves_forwarded_register(
-         function.blocks[facts.store_block].instructions[
-           facts.store_index + 1], source))
+    bool preserved = gap != 0 && gap <= 5;
+    for(std::size_t i = facts.store_index + 1;
+        preserved && i < facts.load_index; ++i)
+      preserved = preserves_forwarded_register(
+        function.blocks[facts.store_block].instructions[i], source);
+    if(preserved)
       result.delayed.emplace(use->first, source);
   }
   return result;
