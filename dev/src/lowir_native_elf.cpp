@@ -1979,6 +1979,10 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
          address_folding::is_copy_store_sequence(block.instructions, j))
         folded = address_folding::emit_dead_copy_store(
           out, block.instructions, j, function);
+      if(!folded &&
+         address_folding::is_address_store_sequence(block.instructions, j))
+        folded = address_folding::emit_dead_address_store(
+          out, block.instructions, j, function);
       if(folded) {
         j += folded - 1;
         continue;
@@ -2672,6 +2676,10 @@ HostFunctionLayout emit_host_function(
       if(!folded &&
          address_folding::is_copy_store_sequence(block.instructions, j))
         folded = address_folding::emit_dead_copy_store(
+          out, block.instructions, j, function);
+      if(!folded &&
+         address_folding::is_address_store_sequence(block.instructions, j))
+        folded = address_folding::emit_dead_address_store(
           out, block.instructions, j, function);
       if(folded) {
         j += folded - 1;

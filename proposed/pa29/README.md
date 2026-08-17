@@ -58,6 +58,13 @@ three textual MIR instructions.  Its behavior duplicates active address and
 load coverage and native bytes are not an active PA29 oracle, so it remains
 proposed.
 
+`dead-address-store-folding.t` creates an indexed address consumed by a store
+and then overwrites the address register without reading it.  It is intended
+to inspect that native encoding folds the index displacement into the store
+while retaining the `lea` and `store` in textual MIR.  Runtime indexed-store
+behavior is already actively covered and PA29 has no native-byte oracle, so it
+remains proposed.
+
 `dead-copy-store-folding.t` creates a register copy consumed by a store and
 then overwrites the copied register without reading it.  It is intended to
 inspect that native encoding stores from the original register and omits the

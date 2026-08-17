@@ -207,5 +207,41 @@ std::size_t emit_dead_copy_store(
   return 2;
 }
 
+std::size_t emit_dead_address_store(
+    elf_detail::CodeBuffer & out,
+    const std::vector<MirInstruction> & instructions, std::size_t start,
+    const mir_model::MirFunction & function)
+{
+  if(start > instructions.size() || instructions.size() - start < 2)
+    return 0;
+  const MirInstruction & setup = instructions[start];
+  const MirInstruction & store = instructions[start + 1];
+  if(setup.opcode != MirInstruction::MI_LEA || setup.operands.size() != 2 ||
+     setup.operands[0].kind != MirOperand::OP_REG ||
+     (setup.operands[1].kind != MirOperand::OP_FRAME &&
+      setup.operands[1].kind != MirOperand::OP_DEREF) ||
+     store.opcode != MirInstruction::MI_STORE || store.operands.size() != 2 ||
+     store.operands[0].kind != MirOperand::OP_DEREF ||
+     store.operands[0].reg != setup.operands[0].reg ||
+     store.operands[1].kind != MirOperand::OP_REG ||
+     store.operands[1].reg == setup.operands[0].reg) return 0;
+  const X64Register address_reg = setup.operands[0].reg;
+  if(!overwritten_without_read(instructions, start + 2, address_reg)) return 0;
+  long long offset = 0;
+  if(!add_offsets(setup.operands[1].offset, store.operands[0].offset,
+                  &offset)) return 0;
+  if(setup.operands[1].kind == MirOperand::OP_FRAME &&
+     (setup.operands[1].offset < 0) != (offset < 0)) return 0;
+  X64Register base = setup.operands[1].reg;
+  if(setup.operands[1].kind == MirOperand::OP_FRAME) {
+    base = XR_RBP;
+    if(offset < 0) offset -= static_cast<long long>(
+      function.callee_saved_regs.size() * 8);
+  }
+  emit_store(out, base, offset, store.operands[1].reg,
+             data_layout::type_width(store.type));
+  return 2;
+}
+
 }  // namespace address_folding
 }  // namespace lowir_native
