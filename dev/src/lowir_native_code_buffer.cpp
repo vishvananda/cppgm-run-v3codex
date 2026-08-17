@@ -177,6 +177,7 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 		std::size_t start = 0;
 		std::size_t size = 0;
 		unsigned opcode = 0;
+		bool omit = false;
 		std::string target;
 	};
 	std::size_t fixup_begin = fixups_.size();
@@ -212,8 +213,11 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 			target = labels_.find(candidate.target);
 		if (target == labels_.end() || target->second <= candidate.start ||
 			target->second > bytes_.size()) continue;
+		candidate.omit = candidate.opcode == 0xeb &&
+			target->second == candidate.start + candidate.size;
 		const std::size_t delta = target->second - (candidate.start + 2);
-		if (delta > static_cast<std::size_t>(INT8_MAX)) continue;
+		if (!candidate.omit && delta > static_cast<std::size_t>(INT8_MAX))
+			continue;
 		candidates.push_back(candidate);
 	}
 	std::sort(candidates.begin(), candidates.end(),
@@ -243,11 +247,16 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 				bytes_.data() + read_cursor, retained);
 		write_cursor += retained;
 		short_starts.push_back(write_cursor);
-		bytes_[write_cursor++] = static_cast<unsigned char>(candidates[i].opcode);
-		bytes_[write_cursor++] = 0;
+		if (!candidates[i].omit)
+		{
+			bytes_[write_cursor++] =
+				static_cast<unsigned char>(candidates[i].opcode);
+			bytes_[write_cursor++] = 0;
+		}
 		CodeOffsetAdjustment::Removal removal;
 		removal.end = candidates[i].start + candidates[i].size;
-		removal.count = candidates[i].size - 2;
+		removal.count = candidates[i].size -
+			(candidates[i].omit ? 0 : 2);
 		removal.total = removal.count +
 			(adjustment.removals.empty() ? 0 :
 			 adjustment.removals.back().total);
@@ -287,6 +296,7 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 	fixups_.resize(fixup_write);
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 	{
+		if (candidates[i].omit) continue;
 		const std::unordered_map<std::string, std::size_t>::const_iterator
 			target = labels_.find(candidates[i].target);
 		if (target == labels_.end())
