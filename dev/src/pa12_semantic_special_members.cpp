@@ -128,6 +128,7 @@ void SemanticAnalyzer::InheritConstructors(EntityId entity,
 			source_binding.access_owner : source_binding.member_owner;
 		binding.access = source_binding.access;
 		binding.constructor = true;
+		PublishInlineFunctionFacts(inherited, true);
 		FunctionInfo& info = GetMutableFunction(inherited);
 		info.member_owner = derived.type;
 		info.constructor = true;

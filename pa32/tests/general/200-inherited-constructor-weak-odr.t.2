@@ -1,0 +1,7 @@
+#include "200-inherited-constructor-weak-odr.helper.h"
+
+int inherited_right()
+{
+  inherited_linkage_derived value(4);
+  return value.value;
+}

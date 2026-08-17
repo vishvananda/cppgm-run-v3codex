@@ -1,0 +1,4 @@
+duplicate_definition 1 _ZN25inherited_linkage_derivedC1Ei
+duplicate_definition 1 _ZN25inherited_linkage_derivedC2Ei
+duplicate_definition 2 _ZN25inherited_linkage_derivedC1Ei
+duplicate_definition 2 _ZN25inherited_linkage_derivedC2Ei
