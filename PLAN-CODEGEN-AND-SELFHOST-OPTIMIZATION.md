@@ -301,7 +301,7 @@ candidate.
 | C2c | Alpha-equivalent or cross-context cleanup-tail sharing | Potentially broad at O1 | Downstream only | Deferred: exact sharing captured the safe typed subset; cross-context ownership failed the PA36 reducer and alpha-renaming needs a separate SSA/liveness proof |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`, corrected in `5517d984`; all 4,578 frozen functions classified, 74 conservative fallback roots and 78 internal-pruning candidates, exact object SHA preserved, full report 5,178/5,178, timing neutral |
 | D2 | Prune unreachable internal native definitions | 0 required | Native function set changes at O0/O1/O2 | **Deferred**: raw prototype removed 78 definitions and 22,376 bytes, but omitted an ABI-required anonymous-namespace base constructor; the metadata repair moved 49 existing LowIR fixtures, while the nonserialized repair broke 3/7 PA37 object round trips |
-| O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | Planned |
+| O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | **In progress**: preparation slice landed in `693e4357`; one reference-agreeing PA37 reducer, frozen object -1,144 bytes, paired wall -0.07% and user +0.68%, full report 5,179/5,179; bottom-up scheduling remains |
 | O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | Planned after O1a |
 | O2a | Expanded slot/value promotion | Intentional at O2 | Downstream only | Profile-gated |
 | O2b | Bounded improved register allocation | LowIR unchanged | Intentional at O2 | Profile-gated PA38 work |
@@ -1147,6 +1147,40 @@ function/MIR set at O0, O1, and O2, but no existing exact MIR fixture required
 an update.  The attempted serialized-root repair changed 49 existing LowIR
 fixtures and is the explicit reason for deferral.  The landed audit changes
 neither existing LowIR nor existing MIR output.
+
+### 4.26 O1a preparation result
+
+`693e4357` moves the existing bounded simplify/DCE/CFG preparation before O1
+inline summaries are built.  Functions whose original unsimplified size was
+already within the old threshold retain that original instruction count as a
+budget floor.  A formerly oversized function is newly eligible only when it
+collapses to a call-free, single-block leaf of at most four instructions.  This
+keeps preparation from turning dead source-level scaffolding into hundreds of
+new medium-sized inline expansions.
+
+The reference-agreeing PA37 reducer
+`360-inline-after-callee-simplify.t` starts with a 42-instruction identity
+callee.  The old ordering simplified its body only after rejecting the call;
+the new ordering reduces it to one return and inlines it.  An unrestricted
+prototype enabled 376 additional frozen inline sites, grew the object 17,504
+bytes, and increased optimizer work, so it was tightened before acceptance.
+
+On the accepted frozen O1 compile, inline calls change from 7,298 to 7,292,
+final LowIR instructions from 151,494 to 151,453, and native call instructions
+from 29,993 to 29,992.  The object changes from 3,613,040 to 3,611,896 bytes
+(-1,144), with `.text` down 2,626 bytes, `.gcc_except_table` down 5 bytes, and
+`.eh_frame` down 4 bytes.  The preparation work increases PA37 optimizer time
+from 1.234 to 1.288 seconds in the instrumented run, but the immutable
+three-block ABBA remains end-to-end neutral: baseline/candidate medians are
+7.260/7.290 seconds wall, 6.620/6.680 seconds user, and 414,068/392,432 KiB
+peak RSS; paired deltas are -0.07%, +0.68%, and -5.65% respectively.
+
+PA37 through-report passes 5,153/5,153, all 14 PA37 debug and object-roundtrip
+checks pass, the full report passes 5,179/5,179, and the PA39 audit has zero
+fatal findings.  **O0 is unchanged.  No existing checked-in LowIR or MIR
+fixture changes; the sole new exact O1 fixture agrees with the pinned
+reference.**  Bottom-up scheduling and changed-caller worklist consolidation
+remain part of O1a because they should recover the extra preparation work.
 
 ## 5. Execution plan
 
