@@ -857,10 +857,18 @@ LinkStats::LinkStats()
 	: objects(0), symbols(0), symbol_probes(0), rename_probes(0),
 	  definitions(0), coalesced_weak_definitions(0), link_nanoseconds(0) {}
 
-void WriteCompilerObject(const std::string& path,
-	const CompilerObject& object)
+bool UsesPrivateCompilerObjectFormat(const std::string& path)
 {
-	const std::vector<unsigned char> bytes = SerializeCompilerObject(object);
+	static const std::string suffix = ".obj";
+	return path.size() >= suffix.size() &&
+		path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+void WriteCompilerObject(const std::string& path,
+	const CompilerObject& object, ObjectSerializationStats* stats)
+{
+	const std::vector<unsigned char> bytes =
+		SerializeCompilerObject(object, stats);
 	std::ofstream output(path.c_str(),
 		std::ios::out | std::ios::binary | std::ios::trunc);
 	if (!output) throw std::runtime_error("unable to open object output: " + path);

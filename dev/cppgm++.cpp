@@ -1136,16 +1136,22 @@ int run_compile_driver(const DriverInvocation & invocation,
   const cppgm::pa30::CompilerObject object =
       compile_source_object(invocation.inputs[0], invocation, target);
 	cppgm::pa30::ObjectSerializationStats serialization_stats;
-	vector<unsigned char> compiler_payload =
-		cppgm::pa30::SerializeCompilerObject(object,
-			invocation.collect_stats ? &serialization_stats : 0);
   lowir_native::Stats native_stats;
-  lowir_native::write_linux_relocatable(
-      invocation.output, object.lowir, target, std::move(compiler_payload),
+  const bool private_object =
+      cppgm::pa30::UsesPrivateCompilerObjectFormat(invocation.output);
+  if(private_object) {
+    cppgm::pa30::WriteCompilerObject(
+      invocation.output, object,
+      invocation.collect_stats ? &serialization_stats : 0);
+  } else {
+    lowir_native::write_linux_relocatable(
+      invocation.output, object.lowir, target,
       invocation.optimization_level,
       invocation.collect_stats ? &native_stats : 0);
+  }
   if(invocation.collect_stats) {
     cerr << "pa31_object_stats"
+         << " private_object=" << (private_object ? 1 : 0)
          << " functions=" << native_stats.functions
          << " lowir_instructions=" << native_stats.lowir_instructions
          << " mir_instructions=" << native_stats.mir_instructions
@@ -1210,6 +1216,14 @@ int run_link_driver(const DriverInvocation & invocation,
   for(size_t i = 0; i < invocation.inputs.size(); ++i) {
     if(cppgm::pa30::IsCompilerObject(invocation.inputs[i]))
       objects.push_back(cppgm::pa30::ReadCompilerObject(invocation.inputs[i]));
+    else if(cppgm::pa30::UsesPrivateCompilerObjectFormat(
+              invocation.inputs[i]) ||
+            (invocation.inputs[i].size() >= 2 &&
+             invocation.inputs[i].compare(
+               invocation.inputs[i].size() - 2, 2, ".o") == 0))
+      throw runtime_error(
+        "native or invalid object cannot be linked by cppgm++: " +
+        invocation.inputs[i]);
     else
       objects.push_back(compile_source_object(invocation.inputs[i], invocation,
                                               target));

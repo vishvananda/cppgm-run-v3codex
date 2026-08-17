@@ -40,8 +40,9 @@ struct ObjectSerializationStats
 	std::uint64_t elapsed_nanoseconds = 0;
 };
 
+bool UsesPrivateCompilerObjectFormat(const std::string& path);
 void WriteCompilerObject(const std::string& path,
-	const CompilerObject& object);
+	const CompilerObject& object, ObjectSerializationStats* stats = 0);
 std::vector<unsigned char> SerializeCompilerObject(
 	const CompilerObject& object, ObjectSerializationStats* stats = 0);
 CompilerObject ReadCompilerObject(const std::string& path);

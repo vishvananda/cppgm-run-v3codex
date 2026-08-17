@@ -116,7 +116,6 @@ void write_linux_executable(const std::string & path,
 void write_linux_relocatable(const std::string & path,
                              const lowir_model::LowirProgram & program,
                              const std::string & target,
-                             std::vector<unsigned char> compiler_payload,
                              int optimization_level,
                              Stats * stats = 0);
 

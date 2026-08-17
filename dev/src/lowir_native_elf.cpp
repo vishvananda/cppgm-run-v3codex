@@ -2754,7 +2754,6 @@ void write_linux_relocatable(
     const std::string & path,
     const lowir_model::LowirProgram & source,
     const std::string & target,
-    std::vector<unsigned char> compiler_payload,
     int optimization_level,
     Stats * stats)
 {
@@ -2860,7 +2859,7 @@ void write_linux_relocatable(
     source, encoded_section(std::move(text), ".text", 6, 16),
     std::move(encoded_data_sections),
     functions,
-    std::move(compiler_payload), relocations);
+    relocations);
   if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - image_started).count());

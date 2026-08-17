@@ -876,7 +876,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
     EncodedSection mutable_text,
     std::vector<EncodedSection> mutable_data,
     std::vector<HostFunctionLayout> & functions,
-    std::vector<unsigned char> compiler_payload,
     std::size_t & relocation_count)
 {
   EncodedLabelIndex encoded_labels =
@@ -1009,10 +1008,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
   HostSection note;
   note.name = ".note.GNU-stack";
   append_section(std::move(note));
-  HostSection payload;
-  payload.name = ".cppgm_object";
-  payload.bytes = std::move(compiler_payload);
-  append_section(std::move(payload));
   HostSection symtab;
   symtab.name = ".symtab";
   symtab.type = 2;
