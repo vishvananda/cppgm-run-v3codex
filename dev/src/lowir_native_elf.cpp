@@ -5,6 +5,7 @@
 #include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_lsda.h"
+#include "lowir_native_opt.h"
 #include "lowir_native_encoding.h"
 #include "lowir_native_frame_forwarding.h"
 #include "lowir_native_object_elf.h"
@@ -1782,7 +1783,8 @@ std::size_t emit_forwarded_frame_reload(
   return 2;
 }
 
-void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
+void emit_prepared_function(
+    CodeBuffer & out, const mir_model::MirFunction & function)
 {
   // The x86-64 member-function-pointer representation reserves bit zero of
   // the target word as the virtual-slot tag.  Keep every native function
@@ -1852,6 +1854,17 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
     }
   }
   out.relax_forward_branches(function_start);
+}
+
+void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
+{
+  if(function.blocks.size() != 1) {
+    emit_prepared_function(out, function);
+    return;
+  }
+  mir_model::MirFunction prepared = function;
+  machine_opt::prepare_for_encoding(prepared);
+  emit_prepared_function(out, prepared);
 }
 
 void emit_runtime_labels(CodeBuffer & out,
@@ -2471,7 +2484,7 @@ void emit_host_instruction(
   }
 }
 
-HostFunctionLayout emit_host_function(
+HostFunctionLayout emit_prepared_host_function(
     CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
   host_eh_detail::HostEhRegionPlan region_plan;
@@ -2705,9 +2718,10 @@ void write_linux_executable(const std::string & path,
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - encode_started).count());
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
-    const mir_model::MirFunction function = lowering.lower_function(i);
+    mir_model::MirFunction function = lowering.lower_function(i);
+    machine_opt::prepare_for_encoding(function);
     if(stats) encode_started = std::chrono::steady_clock::now();
-    emit_function(content, function);
+    emit_prepared_function(content, function);
     if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - encode_started).count());
@@ -2743,11 +2757,12 @@ void write_linux_relocatable(
       text, wrapper.name, wrapper.metadata));
   }
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
-    const mir_model::MirFunction function = lowering.lower_function(i);
+    mir_model::MirFunction function = lowering.lower_function(i);
+    machine_opt::prepare_for_encoding(function);
     const std::chrono::steady_clock::time_point started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();
-    functions.push_back(emit_host_function(text, function, stats));
+    functions.push_back(emit_prepared_host_function(text, function, stats));
     if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - started).count());

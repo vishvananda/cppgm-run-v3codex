@@ -103,3 +103,10 @@ two-eightbyte return is the safety boundary: both loads share R11, so its setup
 must remain.  Existing active object-return tests cover behavior, while PA29
 has no native-byte oracle, so this representation-only witness remains
 proposed.
+
+`single-block-call-argument-coalescing.t` materializes a global address and
+passes it as the sole integer argument to a call.  It is intended to inspect
+that native encoding can place the address directly in the ABI argument
+register and omit the temporary register copy while the serialized MIR stays
+unchanged.  Existing active call-ABI tests cover behavior, while PA29 has no
+native-byte oracle, so this representation-only witness remains proposed.

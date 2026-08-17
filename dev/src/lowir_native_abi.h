@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "lowir_model.h"
+#include "mir_model.h"
 #include "x86_register_model.h"
 
 namespace lowir_native {
@@ -58,6 +59,11 @@ std::size_t direct_parameter_bytes(
     const std::vector<lowir_model::LowirParameter> & parameters);
 X64Register argument_register(std::size_t index);
 Plan classify(const std::vector<lowir_model::LowirParameter> & parameters);
+void record_argument_registers(mir_model::MirInstruction & call,
+                               const Plan & plan);
+void record_argument_registers(
+    mir_model::MirInstruction & call,
+    const std::vector<lowir_model::LowirParameter> & parameters);
 std::size_t xmm_register_count(const Plan & plan);
 VariadicState variadic_state(
     const std::vector<lowir_model::LowirParameter> & named_parameters);

@@ -232,6 +232,8 @@ struct Instruction
   bool call_unwind_no = false;
   bool call_returns_noreturn = false;
   bool call_variadic = false;
+  bool call_argument_registers_known = false;
+  unsigned call_argument_register_mask = 0;
   std::size_t call_stack_bytes = 0;
   bool has_source_position = false;
   std::size_t source_position = 0;

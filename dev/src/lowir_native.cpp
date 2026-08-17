@@ -2469,9 +2469,9 @@ private:
     call.call_variadic = variadic;
     call.call_unwind_no =
       instruction.call_boundary.unwind == lowir_model::CUM_NO;
-    call.call_returns_noreturn =
-      instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
+    call.call_returns_noreturn = instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
     call.call_stack_bytes = plan.stack_bytes;
+    abi::record_argument_registers(call, plan);
     append_operand(call, direct ?
       named_operand(MirOperand::OP_SYMBOL, instruction.first.text) :
       reg_operand(XR_R10));
@@ -2629,9 +2629,9 @@ private:
       call.call_variadic = variadic;
       call.call_unwind_no =
         instruction.call_boundary.unwind == lowir_model::CUM_NO;
-      call.call_returns_noreturn =
-        instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
+      call.call_returns_noreturn = instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
       call.call_stack_bytes = stack_bytes;
+      abi::record_argument_registers(call, parameters);
       append_operand(call, named_operand(MirOperand::OP_SYMBOL, instruction.first.text));
       out.push_back(call);
     } else {
@@ -2642,6 +2642,7 @@ private:
       call.call_returns_noreturn =
         instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
       call.call_stack_bytes = stack_bytes;
+      abi::record_argument_registers(call, parameters);
       append_operand(call, reg_operand(XR_R10));
       out.push_back(call);
     }

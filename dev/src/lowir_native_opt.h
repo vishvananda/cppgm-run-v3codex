@@ -23,6 +23,7 @@ struct Stats
 
 void optimize_function(mir_model::MirFunction & function, int level,
                        Stats * stats = 0);
+void prepare_for_encoding(mir_model::MirFunction & function);
 void optimize(mir_model::MirProgram & program, int level, Stats * stats = 0);
 
 }  // namespace machine_opt

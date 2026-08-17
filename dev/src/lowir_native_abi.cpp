@@ -159,6 +159,28 @@ Plan classify(const std::vector<lowir_model::LowirParameter> & parameters)
   return plan;
 }
 
+void record_argument_registers(
+    mir_model::MirInstruction & call, const Plan & plan)
+{
+  call.call_argument_registers_known = true;
+  unsigned mask = call.call_variadic ? 1u << XR_RAX : 0;
+  for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
+    const Piece & piece = plan.pieces[i];
+    if(piece.location == PL_GPR)
+      mask |= 1u << static_cast<unsigned>(piece.reg);
+    else if(piece.location == PL_XMM)
+      mask |= 1u << (16 + static_cast<unsigned>(piece.xmm));
+  }
+  call.call_argument_register_mask = mask;
+}
+
+void record_argument_registers(
+    mir_model::MirInstruction & call,
+    const std::vector<lowir_model::LowirParameter> & parameters)
+{
+  record_argument_registers(call, classify(parameters));
+}
+
 std::size_t xmm_register_count(const Plan & plan)
 {
   std::size_t count = 0;
