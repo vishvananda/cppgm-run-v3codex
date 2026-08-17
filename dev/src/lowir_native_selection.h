@@ -12,6 +12,8 @@ namespace selection {
 
 long long integer_literal(const std::string & text);
 long long integer_value(const lowir_model::Operand & operand);
+long long canonical_integer_constant(long long value,
+                                     const lowir_model::LowType & type);
 long long atomic_order(const lowir_model::Operand & operand);
 bool is_signed_integer(const lowir_model::LowType & type);
 bool is_integer_or_pointer(const lowir_model::LowType & type);

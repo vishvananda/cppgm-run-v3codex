@@ -65,12 +65,11 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 7
     mov rdi, @cell
-    mov rsi, r8
+    mov rsi, 7
     call @read_after_call [args=(rsi,rdi)]
-    mov r9, rax
-    cmp.i64 r9, 41
+    mov r8, rax
+    cmp.i64 r8, 41
     je ^good
     jmp ^bad
 

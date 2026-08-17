@@ -13,9 +13,7 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 1
+    mov r8, 40
     add r8, 2
-    imul r8, 4
-    sub r8, 12
     mov rax, r8
     ret rax

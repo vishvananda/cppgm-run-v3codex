@@ -15,13 +15,12 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
-    preserve rbx r12
+    preserve rbx
 
   block ^entry
     mov rbx, 7
-    mov r12, rbx
     tls_addr r11, @g__tls_wrapper
-    store.i64 [r11], r12
+    store.i64 [r11], rbx
     tls_addr r11, @g__tls_wrapper
     load.i64 r8, [r11]
     mov rdx, 4294967295

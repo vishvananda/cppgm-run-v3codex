@@ -14,8 +14,7 @@ function @main
 
   block ^entry
     mov r8, 1
-    mov r9, 2
-    add r8, r9
+    add r8, 2
     imul r8, 4
     sub r8, 12
     mov rax, r8

@@ -20,8 +20,8 @@ function @__cppgm_init
     scratch_bytes 0
 
   block ^entry
-    mov r8, 5
-    store.i64 @g, r8
+    mov rax, 5
+    store.i64 @g, rax
     ret
 
 function @__cppgm_fini
@@ -32,8 +32,8 @@ function @__cppgm_fini
     scratch_bytes 0
 
   block ^entry
-    mov r8, 9
-    store.i64 @g, r8
+    mov rax, 9
+    store.i64 @g, rax
     ret
 
 function @main

@@ -13,8 +13,8 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 0
-    cmp.ptr r8, 0
+    mov rax, 0
+    cmp.ptr rax, 0
     je ^good
     jmp ^bad
 

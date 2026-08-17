@@ -5,6 +5,7 @@
 #include "lowir_native_atomic_lowering.h"
 #include "lowir_native_bulk_lowering.h"
 #include "lowir_native_control_flow.h"
+#include "lowir_native_copy_lowering.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_index_lowering.h"
@@ -41,6 +42,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
                         private AtomicLowering<FunctionLowerer>,
                         private bulk_detail::BulkLowering<FunctionLowerer>,
+                        private copy_detail::CopyLowering<FunctionLowerer>,
                         private index_detail::IndexLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>
 {
@@ -48,6 +50,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class AddressLowering<FunctionLowerer>;
   friend class AtomicLowering<FunctionLowerer>;
   friend class bulk_detail::BulkLowering<FunctionLowerer>;
+  friend class copy_detail::CopyLowering<FunctionLowerer>;
   friend class index_detail::IndexLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
 public:
@@ -1081,8 +1084,10 @@ private:
   }
   MirOperand allocate_temp_home(const std::string & name, const LowType & type)
   {
-    return frame_operand(allocate_frame_binding(
+    const MirOperand home = frame_operand(allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP, name, type));
+    spill_offsets_[name] = home.offset;
+    return home;
   }
   MirOperand allocate_float_result(const std::string & name, const LowType & type)
   {
@@ -1777,53 +1782,6 @@ private:
     if(pressure_home.kind == MirOperand::OP_FRAME)
       append_store(out, pressure_home, destination, result_type.text);
     define(instruction.dest, result_type,
-           pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
-  }
-  void emit_copy(const Instruction & instruction,
-                 std::vector<MirInstruction> & out,
-                 bool direct_return = false)
-  {
-    if(instruction.type.kind == lowir_model::LTK_OBJECT) {
-      emit_object_value(instruction.dest, instruction.type,
-                        instruction.first, out);
-      return;
-    }
-    if(wide::is_integer(instruction.type)) {
-      const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
-      wide::append_copy(destination, wide_value(instruction.first), out);
-      consume(instruction.first);
-      define(instruction.dest, instruction.type, destination);
-      return;
-    }
-    if(is_floating(instruction.type)) {
-      emit_float_copy(instruction, out);
-      return;
-    }
-    const MirOperand source = resolve(instruction.first);
-    MirOperand destination;
-    MirOperand pressure_home;
-    const bool safe_reuse = can_reuse(instruction.first) &&
-      !crosses_register_clobber(instruction.dest, source.reg);
-    if(direct_return && source.kind != MirOperand::OP_REG) {
-      destination = reg_operand(XR_RAX);
-      move_value_to_register(out, destination.reg, source, instruction.type);
-    } else if(safe_reuse) destination = source;
-    else {
-      X64Register result = XR_RSP;
-      if(try_allocate_result(instruction.dest, out, &result))
-        destination = reg_operand(result);
-      else {
-        pressure_home = allocate_temp_home(instruction.dest, instruction.type);
-        destination = reg_operand(XR_RAX);
-      }
-      move_value_to_register(out, destination.reg, source, instruction.type);
-    }
-    if(is_integer_or_pointer(instruction.type))
-      normalize_integer(instruction.type, destination, out);
-    consume(instruction.first, destination.reg);
-    if(pressure_home.kind == MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, instruction.type.text);
-    define(instruction.dest, instruction.type,
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
   void emit_unary_value(const Instruction & instruction,
@@ -2882,6 +2840,12 @@ private:
       }
       if(is_floating(instruction.type)) {
         emit_float_const(instruction, out);
+        return;
+      }
+      if(is_integer_or_pointer(instruction.type)) {
+        define(instruction.dest, instruction.type,
+               immediate(canonical_integer_constant(
+                 integer_value(instruction.first), instruction.type)));
         return;
       }
       MirOperand destination;

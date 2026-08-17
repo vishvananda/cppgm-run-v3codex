@@ -13,8 +13,7 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 0
-    mov rax, r8
+    mov rax, 0
     cmp.i64 rax, 0
     jne ^bad
     jmp ^step_one
@@ -23,8 +22,7 @@ function @main
     jmp ^step_two
 
   block ^step_two
-    mov r8, 0
-    mov rax, r8
+    mov rax, 0
     cmp.i64 rax, 0
     jne ^bad
     jmp ^step_three

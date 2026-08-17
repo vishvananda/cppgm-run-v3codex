@@ -24,7 +24,6 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 20
     mov rdi, 20
     call @id [args=(rdi)]
     ret rax

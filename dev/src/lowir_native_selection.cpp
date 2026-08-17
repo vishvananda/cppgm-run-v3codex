@@ -25,6 +25,20 @@ long long integer_value(const lowir_model::Operand & operand)
     integer_literal(operand.text);
 }
 
+long long canonical_integer_constant(long long value,
+                                     const lowir_model::LowType & type)
+{
+  if(type.kind == lowir_model::LTK_PTR || type.bit_width >= 64)
+    return value;
+  const unsigned bits = static_cast<unsigned>(type.bit_width);
+  const unsigned long long mask = (1ULL << bits) - 1;
+  const unsigned long long truncated =
+    static_cast<unsigned long long>(value) & mask;
+  if(!is_signed_integer(type) || !(truncated & (1ULL << (bits - 1))))
+    return static_cast<long long>(truncated);
+  return -1 - static_cast<long long>((~truncated) & mask);
+}
+
 long long atomic_order(const lowir_model::Operand & operand)
 {
   if(operand.kind != lowir_model::Operand::OP_INTEGER)

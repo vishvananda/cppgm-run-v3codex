@@ -22,7 +22,6 @@ function @main
 
   block ^entry
     load.ptr r8, @value_ptr
-    mov r9, r8
     cmp.ptr r8, r8
     je ^check
 
@@ -31,9 +30,9 @@ function @main
     ret rax
 
   block ^check
-    load.i64 r8, [r9]
+    load.i64 r9, [r8]
     mov rdx, 77
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    ret r8
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    ret r9

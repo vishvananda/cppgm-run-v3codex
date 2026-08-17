@@ -13,17 +13,14 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 16
+    stack_size 0
     scratch_bytes 0
-    preserve <gpr0>
 
   block ^entry
     mov r8, @g
     load.i8 r9, [r8]
     sext.i8 r9
-    mov <gpr0>, 1
-    sext.i8 <gpr0>
-    add r9, <gpr0>
+    add r9, 1
     sext.i8 r9
     store.i8 [r8], r9
     load.i8 r9, [r8]

@@ -18,16 +18,15 @@ function @main
 
   block ^entry
     mov r8, @g
-    mov r9, 5
     mov rcx, r8
-    mov rdx, r9
-    mov rax, r9
+    mov rdx, 5
+    mov rax, 5
     lock_xadd.i64 [rcx], rax
     add rax, rdx
-    mov rdi, rax
-    mov r8, 12
-    cmp.i64 rdi, r8
-    sete rdi
-    movzx rdi, rdi
-    mov rax, rdi
+    mov r9, rax
+    mov rdx, 12
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rax, r9
     ret rax

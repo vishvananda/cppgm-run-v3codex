@@ -478,6 +478,14 @@ To complete PA29, implement these goals:
    not overwrite an input needed by that instruction.  MIR should not introduce
    a temporary register followed only by a return-register copy.
 
+   Keep typed integer constants as immediate value facts until an instruction
+   requires a physical register.  A scalar copy may retain its source location
+   without emitting a machine move when that location is an immediate, a
+   symbolic address, an immutable temporary frame home, or a register that is
+   not clobbered anywhere in the copied value's complete live interval.  Do not
+   defer a read from mutable slot or global storage, and do not share an incoming
+   parameter register under this rule.
+
    A numeric immediate written without a decimal point still follows the declared LowIR
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.

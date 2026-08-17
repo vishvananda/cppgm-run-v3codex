@@ -18,18 +18,18 @@ function @main
 
   block ^entry
     mov r8, @g
-    mov r9, 9
-    mov rax, r9
+    mov rax, 9
     xchg.i64 [r8], rax
-    mov rdi, rax
-    load.i64 rsi, [r8]
-    mov r8, 7
-    cmp.i64 rdi, r8
+    mov r9, rax
+    load.i64 rdi, [r8]
+    mov rdx, 7
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rdx, 9
+    cmp.i64 rdi, rdx
     sete rdi
     movzx rdi, rdi
-    cmp.i64 rsi, r9
-    sete rsi
-    movzx rsi, rsi
-    and rdi, rsi
-    mov rax, rdi
+    and r9, rdi
+    mov rax, r9
     ret rax

@@ -28,10 +28,8 @@ function @main
     preserve rbx
 
   block ^entry
-    mov r8, 7
-    mov r9, 8
-    mov rbx, r8
-    add rbx, r9
+    mov rbx, 7
+    add rbx, 8
     mov rdi, 20
     call @add1 [args=(rdi)]
     mov r8, rax

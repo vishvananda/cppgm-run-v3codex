@@ -13,8 +13,7 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 4294967295
-    mov rax, r8
+    mov rax, 4294967295
     mov rdx, 4294967295
     cmp.i64 rax, rdx
     jne ^bad_u32
@@ -25,8 +24,7 @@ function @main
     ret rax
 
   block ^check_above_u32
-    mov r8, 4294967296
-    mov rax, r8
+    mov rax, 4294967296
     mov rdx, 4294967296
     cmp.i64 rax, rdx
     jne ^bad_above_u32
@@ -37,8 +35,8 @@ function @main
     ret rax
 
   block ^check_i32_min
-    mov r8, -2147483648
-    cmp.i64 r8, -2147483648
+    mov rax, -2147483648
+    cmp.i64 rax, -2147483648
     jne ^bad_i32_min
     jmp ^check_below_i32
 
@@ -47,8 +45,7 @@ function @main
     ret rax
 
   block ^check_below_i32
-    mov r8, -2147483649
-    mov rax, r8
+    mov rax, -2147483649
     mov rdx, -2147483649
     cmp.i64 rax, rdx
     jne ^bad_below_i32

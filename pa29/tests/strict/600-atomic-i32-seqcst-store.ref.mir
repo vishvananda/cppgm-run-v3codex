@@ -18,9 +18,7 @@ function @main
 
   block ^entry
     mov r8, @g
-    mov r9, 11
-    sext.i32 r9
-    mov rax, r9
+    mov rax, 11
     xchg.i32 [r8], rax
     load.i32 r9, [r8]
     sext.i32 r9

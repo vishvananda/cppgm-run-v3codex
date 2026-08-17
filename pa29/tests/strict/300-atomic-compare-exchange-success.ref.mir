@@ -13,38 +13,38 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 32
+    stack_size 16
     scratch_bytes 0
-    preserve rbx r12
     slot $expected -> [rbp-8] : i64
 
   block ^entry
     mov r8, @g
-    mov r9, 7
-    store.i64 [rbp-8], r9
-    mov rbx, 9
+    mov rax, 7
+    store.i64 [rbp-8], rax
     mov rcx, r8
     lea rdx, [rbp-8]
     load.i64 rax, [rdx]
-    mov rsi, rbx
+    mov rsi, 9
     lock_cmpxchg.i64 [rcx], rsi
     store.i64 [rdx], rax
     sete rax
     movzx rax, rax
-    mov rdi, rax
-    load.i64 rsi, [r8]
+    mov r9, rax
+    load.i64 rdi, [r8]
     load.i64 r8, [rbp-8]
-    mov r12, 1
-    cmp.i64 rdi, r12
+    mov rdx, 1
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rdx, 9
+    cmp.i64 rdi, rdx
     sete rdi
     movzx rdi, rdi
-    cmp.i64 rsi, rbx
-    sete rsi
-    movzx rsi, rsi
-    cmp.i64 r8, r9
+    mov rdx, 7
+    cmp.i64 r8, rdx
     sete r8
     movzx r8, r8
-    and rdi, rsi
-    and rdi, r8
-    mov rax, rdi
+    and r9, rdi
+    and r9, r8
+    mov rax, r9
     ret rax

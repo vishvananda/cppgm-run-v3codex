@@ -208,8 +208,8 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
-| VP3 | 2 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2 | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions; combined two-screen ABBA medians improved 0.78% user and 0.55% wall with RSS +0.12%; full report 5,189/5,189; audit zero fatal | input lifetime and scalar address/return placement complete; broader producer placement pending |
-| VP4 | 2 course LowIR correctness reducers | 9 strict and 7 structural PA29 fixtures | Frozen object -21,824 bytes, aggregate text -18,494 bytes, and 5,800 instructions; push -1,370 and pop -2,017. Two-order, eight-run-per-compiler ABBA medians: user +0.78%, wall +0.55%, RSS +0.17%; full report 5,191/5,191; audit zero fatal | caller-saved pool and clobber-safe reuse complete |
+| VP3 | 2 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2 | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions; combined two-screen ABBA medians improved 0.78% user and 0.55% wall with RSS +0.12%; full report 5,189/5,189; audit zero fatal | input lifetime, scalar address/return placement, and safe scalar-copy sharing complete; broader load/call/store producer placement pending |
+| VP4 | 3 course LowIR correctness/shape reducers | 12 strict, 9 structural, and 3 course-exact PA29 fixtures; 4 PA38 O1/O2 fixtures | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Two-order, eight-run-per-compiler medians for the latter: user -0.18%, wall +0.40%, RSS +0.19%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, and safe copy sharing complete; address rematerialization and spill-slot reuse pending |
 | VP5 | pending | pending | pending | pending |
 
 The VP1 proposed call-argument input predates the public MIR placement rule and
@@ -239,6 +239,36 @@ into a caller-saved argument register, lengthens its interval through result
 reuse, and crosses `copyobj`; the reference and current compiler agree on the
 program result. Reuse now queries the already-computed per-register clobber
 mask for the result interval in O(1) time.
+
+The typed-immediate and scalar-copy slice changes strict PA29 MIR for
+`100-direct-call-branch`, `100-startup-shutdown-hooks`,
+`100-switch-terminator`, `200-indirect-call-six-register-args`,
+`300-atomic-add-fetch`, `300-atomic-compare-exchange-failure`,
+`300-atomic-compare-exchange-success`, `300-atomic-exchange`,
+`300-atomic-load-store`, `600-atomic-i32-exchange`,
+`600-atomic-i32-seqcst-store`, and
+`600-thread-local-direct-native-runtime`. It changes the raw and canonical
+PA29 structural pairs for `200-stack-arguments-beyond-six`,
+`400-call-clobber-register-pressure`, `400-i64-leaf-register-chain`,
+`500-const-ptr-null-direct-compare-branch`,
+`600-atomic-i8-load-store`, `800-conditional-edge-liveness`,
+`800-forwarded-param-identity-live-across-call`,
+`800-runtime-zero-only-global-pointer-alignment`, and
+`800-switch-call-case-liveness`. The course-exact
+`fallthrough-jump-encoding` and `immediate-move-encoding-boundaries` fixtures
+also change. PA38's O1 and O2 raw/canonical fixtures change for
+`100-call-argument-immediate-rematerialize` and
+`200-cross-block-copy-liveness` because PA29 now presents the already-placed
+value to the optimizer.
+
+`scalar-copy-location-sharing.t` is the active PA29 shape reducer. The course
+reference and current compiler both materialize the constant once in the
+arithmetic destination and emit no machine move for the same-type copy. The
+current fixture additionally carries the public exact call-argument annotation
+introduced by VP0. Mutable slot/global values and incoming parameter registers
+are excluded from sharing; register aliases query the copied result interval's
+fixed clobber mask in O(1) time. Temporary frame homes are identified through
+the existing per-value spill-home table rather than a second frame index.
 
 The VP3 input-lifetime slice changes
 `pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection
