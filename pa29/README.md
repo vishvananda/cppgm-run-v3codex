@@ -486,6 +486,13 @@ To complete PA29, implement these goals:
    defer a read from mutable slot or global storage, and do not share an incoming
    parameter register under this rule.
 
+   Keep an integer constant as an immediate MIR operand when the selected ALU
+   instruction accepts an immediate.  If a particular x86 encoding cannot
+   represent that value directly, native emission may materialize it in a
+   scratch register without changing the MIR value operand.  A variable shift
+   must place its count directly in `rcx` for the implicit `cl` operand rather
+   than routing the count through an additional scratch register.
+
    A numeric immediate written without a decimal point still follows the declared LowIR
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.

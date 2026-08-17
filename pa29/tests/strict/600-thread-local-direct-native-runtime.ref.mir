@@ -23,8 +23,7 @@ function @main
     store.i64 [r11], rbx
     tls_addr r11, @g__tls_wrapper
     load.i64 r8, [r11]
-    mov rdx, 4294967295
-    and r8, rdx
+    and r8, 4294967295
     sext.i32 r8
     mov rax, r8
     ret rax

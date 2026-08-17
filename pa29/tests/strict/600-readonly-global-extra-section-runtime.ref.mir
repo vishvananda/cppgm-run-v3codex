@@ -18,8 +18,7 @@ function @main
 
   block ^entry
     load.i64 r8, @g
-    mov rdx, 4294967295
-    and r8, rdx
+    and r8, 4294967295
     sext.i32 r8
     mov rax, r8
     ret rax

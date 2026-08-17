@@ -177,6 +177,8 @@ struct Instruction
     MI_FPTOUI,
     MI_FPEXT,
     MI_FPTRUNC,
+    // Integer ALU instructions may retain an OP_IMM source. Native emission
+    // materializes a scratch only when the concrete x86 encoding requires it.
     MI_ADD,
     MI_SUB,
     MI_IMUL,
@@ -197,6 +199,8 @@ struct Instruction
     MI_CQO,
     MI_IDIV,
     MI_DIV,
+    // These shifts read the count implicitly from rcx/cl; MIR should place the
+    // selected count there directly.
     MI_SHL_CL,
     MI_SHR_CL,
     MI_SAR_CL,

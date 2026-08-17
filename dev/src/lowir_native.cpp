@@ -1573,8 +1573,8 @@ private:
   void emit_shift(const Instruction & instruction, const MirOperand & destination,
                   const MirOperand & right, std::vector<MirInstruction> & out)
   {
-    append_move(out, reg_operand(XR_RDX), right);
-    append_move(out, reg_operand(XR_RCX), reg_operand(XR_RDX));
+    move_value_to_register(out, XR_RCX, right,
+                           operand_type(instruction.second));
     MirInstruction::Opcode opcode = MirInstruction::MI_SHL_CL;
     if(instruction.op == "shr") opcode = MirInstruction::MI_SAR_CL;
     else if(instruction.op == "ushr") opcode = MirInstruction::MI_SHR_CL;
@@ -1610,16 +1610,19 @@ private:
       destination = reg_operand(XR_RAX);
       move_value_to_register(out, XR_RAX, left, operand_type(instruction.first));
     }
-    const bool bitwise = instruction.op == "and" || instruction.op == "or" ||
-                         instruction.op == "xor";
-    if(right.kind == MirOperand::OP_FRAME || right.kind == MirOperand::OP_GLOBAL ||
-       right.kind == MirOperand::OP_DEREF) {
+    const bool shift = instruction.op == "shl" || instruction.op == "shr" ||
+                       instruction.op == "ushr";
+    if(!shift && (right.kind == MirOperand::OP_FRAME ||
+       right.kind == MirOperand::OP_GLOBAL ||
+       right.kind == MirOperand::OP_DEREF)) {
       move_value_to_register(out, XR_RDX, right, operand_type(instruction.second));
       right = reg_operand(XR_RDX);
       normalize_integer(operand_type(instruction.second), right, out);
     }
-    if(right.kind == MirOperand::OP_IMM &&
-       (bitwise || right.imm < INT32_MIN || right.imm > INT32_MAX)) {
+    const bool bitwise = instruction.op == "and" || instruction.op == "or" ||
+                         instruction.op == "xor";
+    if(right.kind == MirOperand::OP_IMM && !bitwise &&
+       (right.imm < INT32_MIN || right.imm > INT32_MAX)) {
       append_move(out, reg_operand(XR_RDX), right);
       right = reg_operand(XR_RDX);
     }

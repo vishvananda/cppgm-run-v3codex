@@ -47,7 +47,7 @@ unsigned instruction_clobber_mask(const Instruction & instruction,
   if(instruction.kind == Instruction::IK_BINARY &&
      (instruction.op == "shl" || instruction.op == "shr" ||
       instruction.op == "ushr"))
-    return register_mask(XR_RCX) | register_mask(XR_RDX);
+    return register_mask(XR_RCX);
   if(instruction.kind == Instruction::IK_INDEX &&
      instruction.second.kind != Operand::OP_INTEGER)
     return direct_memory_index ? 0 : register_mask(XR_RDX);
