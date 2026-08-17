@@ -1,5 +1,6 @@
 #include "pa15_force_inline.h"
 
+#include "pa15_function_reachability.h"
 #include "pa15_lowering.h"
 
 #include <algorithm>
@@ -616,6 +617,15 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats)
 	if (!program) throw std::logic_error("force-inline program is null");
 	Inliner inliner(program, stats);
 	if (inliner.HasCandidates()) inliner.Run();
+	if (stats)
+	{
+		const pa15_function_reachability::Summary reachability =
+			pa15_function_reachability::Analyze(*program);
+		stats->post_inline_reachable_functions =
+			reachability.reachable_functions;
+		stats->post_inline_unreachable_weak_functions =
+			reachability.unreachable_weak_functions;
+	}
 }
 
 }

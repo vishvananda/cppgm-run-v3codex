@@ -142,11 +142,15 @@ struct SemanticAnalysisStats
 	std::size_t constexpr_scratch_peak_nodes;
 	std::size_t demand_worklist_pushes;
 	std::size_t demanded_function_emissions;
+	std::size_t definition_validation_only_completions;
+	std::size_t definition_emission_required_completions;
 	std::size_t default_constructor_emissions;
 	std::size_t demand_requests;
 	std::size_t demand_unique_edges;
 	std::size_t demand_root_edges;
 	std::size_t demand_dependency_edges;
+	std::size_t demand_replayed_functions;
+	std::size_t demand_replayed_edges;
 	std::size_t demand_evaluated_use_requests;
 	std::size_t demand_retained_call_requests;
 	std::size_t demand_address_requests;

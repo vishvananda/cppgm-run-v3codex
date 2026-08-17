@@ -20,6 +20,7 @@ FRONTEND_OBJ_BASENAMES_cppgm++ += lowir_native_data_layout
 FRONTEND_OBJ_BASENAMES_cppgm++ += lowir_native_control_flow
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa32_entity_ownership_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa15_force_inline
+FRONTEND_OBJ_BASENAMES_cppgm++ += pa15_function_reachability
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa19_internal_identity_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa19_template_partial_storage
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa21_static_constant_storage

@@ -987,6 +987,7 @@ private:
 	bool FunctionObjectDefinitionRequired(BindingId binding) const;
 	void ReplayFunctionDemandEdges(BindingId binding);
 	void ReplayRequiredFunctionDemandEdges();
+	void CompleteFunctionDefinition(BindingId binding);
 	void PublishFunctionDemandStats();
 	void QueueFunctionDefinitionValidation(BindingId binding);
 	void DemandVtableFunction(BindingId binding);

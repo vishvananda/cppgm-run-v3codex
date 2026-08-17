@@ -179,12 +179,18 @@ void AccumulateFunctionDemandStats(SemanticAnalysisStats* target,
 	target->demand_worklist_pushes += source.demand_worklist_pushes;
 	target->demanded_function_emissions +=
 		source.demanded_function_emissions;
+	target->definition_validation_only_completions +=
+		source.definition_validation_only_completions;
+	target->definition_emission_required_completions +=
+		source.definition_emission_required_completions;
 	target->default_constructor_emissions +=
 		source.default_constructor_emissions;
 	target->demand_requests += source.demand_requests;
 	target->demand_unique_edges += source.demand_unique_edges;
 	target->demand_root_edges += source.demand_root_edges;
 	target->demand_dependency_edges += source.demand_dependency_edges;
+	target->demand_replayed_functions += source.demand_replayed_functions;
+	target->demand_replayed_edges += source.demand_replayed_edges;
 	target->demand_evaluated_use_requests +=
 		source.demand_evaluated_use_requests;
 	target->demand_retained_call_requests +=
@@ -245,7 +251,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  exception_selector_assignments(0), force_inline_candidates(0),
 	  force_inline_recursive_candidates(0), force_inline_call_probes(0),
 	  force_inline_calls(0), force_inline_blocks(0),
-	  force_inline_cloned_instructions(0),
+	  force_inline_cloned_instructions(0), post_inline_reachable_functions(0),
+	  post_inline_unreachable_weak_functions(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {

@@ -1046,11 +1046,19 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << semantic.constexpr_step_visits
 			 << " demand_pushes=" << semantic.demand_worklist_pushes
 			 << " demanded_functions=" << semantic.demanded_function_emissions
+			 << " validation_only_completions="
+			 << semantic.definition_validation_only_completions
+			 << " emission_required_completions="
+			 << semantic.definition_emission_required_completions
 			 << " demand_requests=" << semantic.demand_requests
 			 << " demand_unique_edges=" << semantic.demand_unique_edges
 			 << " demand_root_edges=" << semantic.demand_root_edges
 			 << " demand_dependency_edges="
 			 << semantic.demand_dependency_edges
+			 << " demand_replayed_functions="
+			 << semantic.demand_replayed_functions
+			 << " demand_replayed_edges="
+			 << semantic.demand_replayed_edges
 			 << " demand_evaluated="
 			 << semantic.demand_evaluated_use_requests
 			 << " demand_retained_calls="
@@ -1077,6 +1085,10 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " force_inline_blocks=" << stats.force_inline_blocks
 			 << " force_inline_cloned_instructions="
 			 << stats.force_inline_cloned_instructions
+			 << " post_inline_reachable_functions="
+			 << stats.post_inline_reachable_functions
+			 << " post_inline_unreachable_weak_functions="
+			 << stats.post_inline_unreachable_weak_functions
 			 << " semantic_program_bytes="
 			 << semantic.semantic_program_storage_bytes
 			 << " binding_layout_facts="

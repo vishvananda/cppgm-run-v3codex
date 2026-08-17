@@ -2812,9 +2812,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	if (!emit_definition && (retain_lowering_facts_ || member ||
 		program_->bindings[binding].explicit_instantiation_suppressed))
 	{
-		GetMutableFunction(binding).definition_state =
-			FUNCTION_DEFINITION_COMPLETE;
-		++demanded_function_emissions_;
+		CompleteFunctionDefinition(binding);
 		return;
 	}
 	if (emit_definition &&
@@ -2826,9 +2824,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 			dump_.Add(function, dump_.edges[edge].child);
 		FinalizeStaticallyUnreachableBranchCleanup(function);
 		DemandMaterializedConstructorActions(function, true);
-		GetMutableFunction(binding).definition_state =
-			FUNCTION_DEFINITION_COMPLETE;
-		++demanded_function_emissions_;
+		CompleteFunctionDefinition(binding);
 		return;
 	}
 	const FunctionInfo info = GetFunction(binding);
@@ -2861,9 +2857,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 	InstallLambdaCaptureBindings(function_scope, this_binding, info);
 	if (!emit_definition)
 	{
-		GetMutableFunction(binding).definition_state =
-			FUNCTION_DEFINITION_COMPLETE;
-		++demanded_function_emissions_;
+		CompleteFunctionDefinition(binding);
 		return;
 	}
 	if (emit_definition)
@@ -2953,8 +2947,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		current_function_context_ = previous_function;
 		DemandMaterializedConstructorActions(function, true);
 	}
-	GetMutableFunction(binding).definition_state = FUNCTION_DEFINITION_COMPLETE;
-	++demanded_function_emissions_;
+	CompleteFunctionDefinition(binding);
 }
 }
 }

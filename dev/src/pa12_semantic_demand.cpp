@@ -34,10 +34,14 @@ void SemanticAnalyzer::ReplayFunctionDemandEdges(BindingId binding)
 	FunctionInfo& function = GetMutableFunction(binding);
 	if (function.emission_dependencies_replayed) return;
 	function.emission_dependencies_replayed = true;
+	if (stats_) ++stats_->demand_replayed_functions;
 	if (binding >= function_demand_head_by_binding_.size()) return;
 	for (std::uint32_t edge = function_demand_head_by_binding_[binding];
 		edge != kNoDumpEdge; edge = function_demand_edges_[edge].next)
+	{
+		if (stats_) ++stats_->demand_replayed_edges;
 		DemandRuntimeDefinition(function_demand_edges_[edge].callee);
+	}
 }
 
 void SemanticAnalyzer::ReplayRequiredFunctionDemandEdges()
@@ -84,6 +88,18 @@ void SemanticAnalyzer::DemandRuntimeDefinition(BindingId binding)
 	function.definition_state = FUNCTION_DEFINITION_QUEUED;
 	demanded_functions_.push_back(binding);
 	++demand_worklist_pushes_;
+}
+
+void SemanticAnalyzer::CompleteFunctionDefinition(BindingId binding)
+{
+	binding = program_->bindings[binding].canonical;
+	GetMutableFunction(binding).definition_state =
+		FUNCTION_DEFINITION_COMPLETE;
+	++demanded_function_emissions_;
+	if (!stats_) return;
+	if (FunctionObjectDefinitionRequired(binding))
+		++stats_->definition_emission_required_completions;
+	else ++stats_->definition_validation_only_completions;
 }
 
 }
