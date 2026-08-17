@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, and B4c complete
+Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1 complete
 
 Date: 2026-08-17
 
@@ -262,7 +262,8 @@ candidate.
 | B4a | Flag-safe zero materialization | 0 existing | 0 existing | **Landed** in `edd35810`; linear per-block flag liveness, proposed encoding reducer, frozen object -11,048 bytes, timing neutral |
 | B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, proposed byte-shape reducer, frozen object -8,104 bytes, timing neutral |
 | B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, proposed byte-shape reducer, frozen object -2,080 bytes, timing neutral |
-| B4d | Remaining bounded address/load/store folding | 0 | 0 | Planned one pattern at a time |
+| B4d1 | Fold a dead adjacent address calculation into its load | 0 existing | 0 existing | **Landed** in `551e530f`; 1,195 bounded proofs, proposed byte-shape reducer, frozen object -3,920 bytes, timing neutral |
+| B4d2 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d1 |
 | B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
 | C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
 | C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
@@ -517,6 +518,52 @@ Validation and frozen evidence:
 - `.eh_frame`: unchanged at 145,188 bytes; and
 - three-block immutable ABBA paired deltas: wall -0.33%, user -0.54%, peak
   RSS +0.23%.  All six outputs per compiler were deterministic.
+
+### 4.12 B4d1 result
+
+`551e530f` folds an adjacent `lea address, [base+offset]` and
+`load destination, [address+offset]` directly into the load when the address
+register is overwritten without being read again.  A block-local proof looks
+ahead at most five instructions and admits only write-only `mov`, `load`, and
+`lea` definitions.  A call, store, atomic or EH operation, control transfer,
+unknown instruction shape, read of the address register, missing bounded
+overwrite, displacement overflow, or crossing between local and caller frame
+offset namespaces rejects the fold.  Dispatch checks for `lea` before calling
+the proof, so non-candidates pay only one opcode comparison.
+
+The frozen MIR contained 3,253 adjacent address/load candidates.  The proof
+accepted 1,195: 1,147 address overwrites followed the load immediately, 43
+were two instructions later, three were three instructions later, and two
+were four instructions later.  It rejected 1,919 at an opcode/shape barrier,
+96 on an address-register read, and 43 without a bounded overwrite.  No case
+needed the overflow or frame-namespace rejection, but both remain explicit
+safety checks.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  This is a native-encoding-only `-O0` change.  The dumped MIR
+for `proposed/pa29/dead-address-load-folding.t` deliberately retains the
+adjacent `lea` and `load`; the generated program succeeds.  The reducer stays
+proposed because PA29 has no standalone reference implementation and its
+active harness does not inspect native instruction bytes, so behavior alone
+would add no new correctness coverage.
+
+The address proof is a separate 95-line implementation module.  Two existing
+instruction encoders moved to the shared encoding module, leaving
+`lowir_native_elf.cpp` at 3,000 lines and the PA39 audit with zero fatal
+findings.  Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- PA29--PA38 report: 1,280/1,280;
+- full report: 5,171/5,171;
+- object: 3,760,048 to 3,756,128 bytes;
+- `.text`: 1,029,350 to 1,025,456 bytes;
+- `.gcc_except_table`: 73,422 to 73,406 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes;
+- three-run internal encoder medians: 263.5 ms baseline and 264.4 ms
+  candidate (+0.35%, below the run-to-run noise floor); and
+- three-block immutable ABBA paired deltas: wall -0.33%, user -0.27%, peak
+  RSS +0.09%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
