@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, the signed-quotient portion of B3c, B4a, B4b, B4c, B4d1--B4d7, B5, B6, C1, C2a--C2b, D1, O1a, and R1--R3 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B3c, B4a, B4b, B4c, B4d1--B4d7, B5, B6, C1, C2a--C2b, D1, O1a, and R1--R3 complete
 
 Date: 2026-08-17
 
@@ -283,7 +283,7 @@ candidate.
 | B3a | Unsigned power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `65b62af8`; PA29 encoder peephole, active behavior reducer, frozen object byte-identical, timing neutral |
 | B3b | Signed positive power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `b37a6a93`; encoder peephole plus explicit-extension correction, active behavior reducers, frozen object -112 bytes, timing neutral |
 | B3n | Signed negative power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `e9cf0de9`; active behavior reducer, `-1` intentionally retained, frozen object byte-identical, timing neutral |
-| B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | **In progress**: signed quotient landed in `b7c61cc5`; no existing fixture movement, active PA29 behavior/O2 fixed-register reducers, self-host frozen wall -1.82%; signed remainder and unsigned forms remain |
+| B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | **Landed** in `b7c61cc5` and `796de10c`; signed quotient/remainder and unsigned quotient/remainder are complete, no existing fixture movement, four active PA29 behavior/O2 reducers, frozen hardware divides 163 to 160, host-compiler wall -1.67%, and generated-self wall +0.64% (neutral) |
 | B4a | Flag-safe zero materialization | 0 existing | 0 existing | **Landed** in `edd35810`; linear per-block flag liveness, proposed encoding reducer, frozen object -11,048 bytes, timing neutral |
 | B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, proposed byte-shape reducer, frozen object -8,104 bytes, timing neutral |
 | B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, proposed byte-shape reducer, frozen object -2,080 bytes, timing neutral |
@@ -919,6 +919,53 @@ This establishes a remaining baseline x86/native-demand gap, but it is much
 smaller than the earlier optimized self-host gap: inlining and optional
 optimization are not the whole problem, while baseline machine-code quality
 does not explain a multi-fold slowdown by itself.
+
+### 4.9.2 B3c remainder and unsigned result
+
+`796de10c` completes B3c by replacing signed constant remainder and unsigned
+constant quotient/remainder sequences with multiply-high division.  The
+unsigned magic-number construction uses a fixed 64-step restoring division,
+so it does not depend on a host `__int128` divide and adds no whole-function
+analysis.  Remainders reuse the selected quotient and reconstruct
+`dividend - quotient * divisor`.  Recognition also accepts the direct fixed
+`rax`/`rdx` return left when PA38 removes the final result copy at `-O2`.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  Two additional active PA29 behavior reducers were added:
+
+- `general-constant-remainder-and-unsigned-division.t` covers signed
+  quotient/remainder and unsigned quotient/remainder at 8, 16, 32, and 64
+  bits, including both unsigned magic forms and high divisors;
+- `optimized-general-constant-division.t` runs at `-O2` and covers the direct
+  fixed-result return exposed by optional propagation.
+
+The reference accepts and executes both tests.  Their valid MIR differs from
+our selected layout, so the active tests deliberately retain the behavioral
+oracle without an exact MIR sidecar.  Disassembly of both reducers contains no
+hardware divide instruction.  An independent exhaustive 8-bit and
+1,010,000-case random/boundary 64-bit check also validated the unsigned magic
+calculation.
+
+Validation and measured evidence:
+
+- PA29: 183/183 assignment tests and 30/30 course tests;
+- through PA29: 4,104/4,104;
+- affected PA29/PA31/PA37/PA38 report: 353/353;
+- full report: 5,188/5,188;
+- PA39 file audit: zero fatal findings and 23 inherited division warnings;
+- frozen object: 4,516,184 to 4,516,264 bytes and GNU `.text`: 1,214,508 to
+  1,214,586 bytes, while hardware divides fall from 163 to 160;
+- immutable host-compiler ABBA: paired wall -1.67%, user -1.93%, and peak RSS
+  +0.03%;
+- matched generated-self compiler GNU text: 10,296,564 to 10,296,980 bytes,
+  while hardware divides fall from 7,383 to 7,365; and
+- two-block generated-self ABBA on the frozen explicit-`-O0` compile: paired
+  wall +0.64%, user +0.59%, and peak RSS +0.02%.
+
+All measured outputs were deterministic.  The generated-self timing is
+neutral under the plan's 3% threshold, while this slice completes the
+constant-division forms and removes the remaining matching hardware divides
+without changing LowIR or MIR contracts.
 
 ### 4.10 B4a result
 
