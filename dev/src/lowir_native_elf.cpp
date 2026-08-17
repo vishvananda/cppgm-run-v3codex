@@ -2042,6 +2042,35 @@ std::size_t emit_coalesced_constant_byte_stores(
   return stores.size() * 4;
 }
 
+std::size_t emit_forwarded_frame_reload(
+    CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, const mir_model::MirFunction & function)
+{
+  using mir_model::MirInstruction;
+  using mir_model::MirOperand;
+  if(start > instructions.size() || instructions.size() - start < 2)
+    return 0;
+  const MirInstruction & store = instructions[start];
+  const MirInstruction & load = instructions[start + 1];
+  if(store.opcode != MirInstruction::MI_STORE ||
+     load.opcode != MirInstruction::MI_LOAD ||
+     store.type != load.type || type_width(store.type) != 64 ||
+     store.operands.size() != 2 || load.operands.size() != 2 ||
+     store.operands[0].kind != MirOperand::OP_FRAME ||
+     store.operands[1].kind != MirOperand::OP_REG ||
+     load.operands[0].kind != MirOperand::OP_REG ||
+     load.operands[1].kind != MirOperand::OP_FRAME ||
+     store.operands[0].offset != load.operands[1].offset)
+    return 0;
+  emit_instruction(out, store, &function);
+  const X64Register source = store.operands[1].reg;
+  const X64Register destination = load.operands[0].reg;
+  if(source != destination)
+    emit_register_move(out, destination, source);
+  return 2;
+}
+
 void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
 {
   // The x86-64 member-function-pointer representation reserves bit zero of
@@ -2057,6 +2086,12 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out.label(function.name + "::" + function.blocks[i].label);
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const std::size_t forwarded = emit_forwarded_frame_reload(
+        out, function.blocks[i].instructions, j, function);
+      if(forwarded) {
+        j += forwarded - 1;
+        continue;
+      }
       const std::size_t coalesced = emit_coalesced_constant_byte_stores(
         out, function.blocks[i].instructions, j, function);
       if(coalesced) {
@@ -2717,6 +2752,12 @@ HostFunctionLayout emit_host_function(
         XR_RDX, 64);
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const std::size_t forwarded = emit_forwarded_frame_reload(
+        out, block.instructions, j, function);
+      if(forwarded) {
+        j += forwarded - 1;
+        continue;
+      }
       const std::size_t coalesced = emit_coalesced_constant_byte_stores(
         out, block.instructions, j, function);
       if(coalesced) {
