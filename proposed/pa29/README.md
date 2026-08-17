@@ -23,3 +23,10 @@ condition flags permit the shorter `xor r32,r32` encoding while the textual
 MIR remains a `mov` of zero.  Program behavior alone would duplicate active
 coverage, and the course harness does not compare native instruction bytes,
 so the representation-specific candidate remains proposed.
+
+`zero-compare-test-encoding.t` covers u32 and i64 comparisons with zero across
+unsigned and equality predicates.  It is intended to inspect that the native
+bytes use width-correct `test reg,reg` instructions while the baseline MIR
+remains `cmp ..., 0`.  Active PA29 tests already cover the behavior and the
+harness does not compare native bytes, so this representation-only candidate
+remains proposed.

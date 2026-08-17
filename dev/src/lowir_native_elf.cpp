@@ -1129,10 +1129,11 @@ const char * const kEhCaught = ".__cppgm_eh_caught";
 const char * const kEhDispatch = ".__cppgm_eh_dispatch";
 const char * const kEhResume = ".__cppgm_eh_resume";
 
-void emit_test_register(CodeBuffer & out, X64Register reg)
+void emit_test_register(CodeBuffer & out, X64Register reg, unsigned width = 64)
 {
-  emit_rex(out, true, reg, reg);
-  out.byte(0x85);
+  emit_size_prefix(out, width);
+  emit_rex(out, width == 64, reg, reg, width == 8);
+  out.byte(width == 8 ? 0x84 : 0x85);
   emit_modrm(out, 3, reg, reg);
 }
 
@@ -1146,7 +1147,7 @@ bool prepare_explicit_operands(CodeBuffer & out,
     const X64Register right = require_register(instruction.operands[1]);
     if(left != right)
       throw std::logic_error("native zero test requires one repeated register");
-    emit_test_register(out, left);
+    emit_test_register(out, left, type_width(instruction.type));
     return true;
   }
   if(instruction.opcode == mir_model::MirInstruction::MI_COPY_BYTES) {
@@ -1571,6 +1572,12 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     return;
   case mir_model::MirInstruction::MI_CMP:
     if(instruction.operands.size() == 2 &&
+       instruction.operands[0].kind == mir_model::MirOperand::OP_REG &&
+       instruction.operands[1].kind == mir_model::MirOperand::OP_IMM &&
+       instruction.operands[1].imm == 0) {
+      emit_test_register(out, instruction.operands[0].reg,
+                         type_width(instruction.type));
+    } else if(instruction.operands.size() == 2 &&
        (instruction.operands[0].kind == mir_model::MirOperand::OP_FRAME ||
         instruction.operands[0].kind == mir_model::MirOperand::OP_DEREF ||
         instruction.operands[0].kind == mir_model::MirOperand::OP_GLOBAL)) {
