@@ -85,3 +85,11 @@ inspect that native encoding stores from the original register and omits the
 copy while retaining both textual MIR instructions.  Runtime store behavior
 is already actively covered and PA29 has no native-byte oracle, so it remains
 proposed.
+
+`redundant-u32-normalization-encoding.t` loads a `u32` value from global
+storage and widens it for a 64-bit comparison.  The MIR deliberately retains
+the explicit `zext i32` required by PA29, while the native encoder may omit the
+second normalization because the immediately preceding 32-bit load already
+clears the register's upper half.  Active PA29 tests cover the behavior and
+the harness has no native-byte oracle, so this representation-only witness
+remains proposed.

@@ -31,6 +31,9 @@ void emit_size_prefix(elf_detail::CodeBuffer & out, unsigned width);
 void emit_sized_register_move(elf_detail::CodeBuffer & out,
                               X64Register destination, X64Register source,
                               unsigned width);
+void emit_integer_extension(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction, bool sign_extend);
 void emit_move_zero_extended_byte(elf_detail::CodeBuffer & out,
                                   X64Register destination,
                                   X64Register source);
@@ -69,6 +72,9 @@ std::vector<bool> condition_flags_live_before(
 bool emit_flag_safe_zero_move(
     elf_detail::CodeBuffer & out,
     const mir_model::MirInstruction & instruction, bool flags_live);
+bool is_redundant_u32_normalization(
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start);
 void emit_i128_shift(elf_detail::CodeBuffer & out,
                      mir_model::MirInstruction::Opcode opcode);
 void emit_i128_division(elf_detail::CodeBuffer & out,

@@ -1017,32 +1017,6 @@ void emit_imultiply(CodeBuffer & out, const mir_model::MirInstruction & instruct
   } else throw std::logic_error("unsupported native multiply operand");
 }
 
-void emit_integer_extension(CodeBuffer & out,
-                            const mir_model::MirInstruction & instruction,
-                            bool sign_extend)
-{
-  require_operands(instruction, 1);
-  const X64Register reg = require_register(instruction.operands[0]);
-  const unsigned width = type_width(instruction.type);
-  if(width == 64) return;
-  if(!sign_extend && width == 32) {
-    emit_rex(out, false, reg, reg);
-    out.byte(0x89);
-    emit_modrm(out, 3, reg, reg);
-    return;
-  }
-  emit_rex(out, sign_extend, reg, reg,
-           !sign_extend && width == 8 && reg >= XR_RSP && reg < XR_R8);
-  if(sign_extend && width == 32) {
-    out.byte(0x63);
-  } else {
-    out.byte(0x0f);
-    out.byte(sign_extend ? (width == 8 ? 0xbe : 0xbf) :
-                           (width == 8 ? 0xb6 : 0xb7));
-  }
-  emit_modrm(out, 3, reg, reg);
-}
-
 void emit_integer_unary(CodeBuffer & out,
                         const mir_model::MirInstruction & instruction,
                         unsigned extension)
@@ -2006,6 +1980,8 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
       if(emit_flag_safe_zero_move(
            out, block.instructions[j], flags_live[j]))
         continue;
+      if(is_redundant_u32_normalization(block.instructions, j))
+        continue;
       emit_instruction(out, block.instructions[j], &function);
     }
   }
@@ -2703,6 +2679,8 @@ HostFunctionLayout emit_host_function(
       }
       if(emit_flag_safe_zero_move(
            out, block.instructions[j], flags_live[j]))
+        continue;
+      if(is_redundant_u32_normalization(block.instructions, j))
         continue;
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;

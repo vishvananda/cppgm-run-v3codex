@@ -942,6 +942,55 @@ void optimize_lowir(lowir_model::LowirProgram * program, int level,
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }
 
+void report_lowir_preparation_stats(
+	const string & path, const cppgm::LowIRLoweringStats & stats,
+	const lowir_model::LowirPreparationStats & preparation_stats)
+{
+	for(size_t fallback = 0;
+		fallback < stats.post_inline_retained_conservative_fallback_names.size();
+		++fallback)
+		cerr << "pa15_retained_fallback"
+			 << " file=" << path
+			 << " symbol="
+			 << stats.post_inline_retained_conservative_fallback_names[fallback]
+			 << '\n';
+	for(size_t internal = 0;
+		internal < stats.post_inline_unreachable_internal_names.size();
+		++internal)
+		cerr << "pa15_unreachable_internal"
+			 << " file=" << path
+			 << " symbol="
+			 << stats.post_inline_unreachable_internal_names[internal]
+			 << '\n';
+	cerr << "pa37_prepare_stats"
+		 << " file=" << path
+		 << " reference_operand_visits="
+		 << preparation_stats.reference_operand_visits
+		 << " referenced_symbols=" << preparation_stats.referenced_symbols
+		 << " declaration_visits=" << preparation_stats.declaration_visits
+		 << " retained_declarations="
+		 << preparation_stats.retained_declarations
+		 << " function_order_visits="
+		 << preparation_stats.function_order_visits
+		 << " function_moves=" << preparation_stats.function_moves
+		 << " function_copies=" << preparation_stats.function_copies
+		 << " alias_order_visits=" << preparation_stats.alias_order_visits
+		 << " alias_moves=" << preparation_stats.alias_moves
+		 << " serialized_operand_visits="
+		 << preparation_stats.serialized_operand_visits
+		 << " derived_operand_visits="
+		 << preparation_stats.derived_operand_visits
+		 << " boundary_call_visits="
+		 << preparation_stats.boundary_call_visits
+		 << " exports=" << preparation_stats.exports
+		 << " frontend_canonical_ns="
+		 << preparation_stats.frontend_canonical_nanoseconds
+		 << " serialized_canonical_ns="
+		 << preparation_stats.serialized_canonical_nanoseconds
+		 << " derived_facts_ns="
+		 << preparation_stats.derived_facts_nanoseconds << '\n';
+}
+
 cppgm::pa30::CompilerObject compile_source_object(
     const string & path,
     const DriverInvocation & invocation,
@@ -1159,50 +1208,7 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " frontend_ns=" << semantic.elapsed_nanoseconds
 			 << " lowering_ns=" << stats.lowering_nanoseconds
 			 << " adapt_ns=" << adapt_nanoseconds << '\n';
-		for (size_t fallback = 0;
-			fallback < stats.post_inline_retained_conservative_fallback_names.size();
-			++fallback)
-			cerr << "pa15_retained_fallback"
-				 << " file=" << path
-				 << " symbol="
-				 << stats.post_inline_retained_conservative_fallback_names[fallback]
-				 << '\n';
-		for (size_t internal = 0;
-			internal < stats.post_inline_unreachable_internal_names.size();
-			++internal)
-			cerr << "pa15_unreachable_internal"
-				 << " file=" << path
-				 << " symbol="
-				 << stats.post_inline_unreachable_internal_names[internal]
-				 << '\n';
-		cerr << "pa37_prepare_stats"
-			 << " file=" << path
-			 << " reference_operand_visits="
-			 << preparation_stats.reference_operand_visits
-			 << " referenced_symbols=" << preparation_stats.referenced_symbols
-			 << " declaration_visits=" << preparation_stats.declaration_visits
-			 << " retained_declarations="
-			 << preparation_stats.retained_declarations
-			 << " function_order_visits="
-			 << preparation_stats.function_order_visits
-			 << " function_moves=" << preparation_stats.function_moves
-			 << " function_copies=" << preparation_stats.function_copies
-			 << " alias_order_visits="
-			 << preparation_stats.alias_order_visits
-			 << " alias_moves=" << preparation_stats.alias_moves
-			 << " serialized_operand_visits="
-			 << preparation_stats.serialized_operand_visits
-			 << " derived_operand_visits="
-			 << preparation_stats.derived_operand_visits
-			 << " boundary_call_visits="
-			 << preparation_stats.boundary_call_visits
-			 << " exports=" << preparation_stats.exports
-			 << " frontend_canonical_ns="
-			 << preparation_stats.frontend_canonical_nanoseconds
-			 << " serialized_canonical_ns="
-			 << preparation_stats.serialized_canonical_nanoseconds
-			 << " derived_facts_ns="
-			 << preparation_stats.derived_facts_nanoseconds << '\n';
+		report_lowir_preparation_stats(path, stats, preparation_stats);
 	}
   return object;
 }
@@ -1529,6 +1535,70 @@ int run_emit_types_mode(const vector<string> & args)
   return EXIT_SUCCESS;
 }
 
+void append_pa12_template_stats(
+	ostream & output, const cppgm::SemanticAnalysisStats & stats)
+{
+	output << " function_template_default_materializations="
+		 << stats.function_template_default_materializations
+		 << " function_template_default_request_cache_hits="
+		 << stats.function_template_default_request_cache_hits
+		 << " function_template_default_failure_cache_hits="
+		 << stats.function_template_default_failure_cache_hits
+		 << " function_template_exception_specification_requests="
+		 << stats.function_template_exception_specification_requests
+		 << " function_template_exception_specification_cache_hits="
+		 << stats.function_template_exception_specification_cache_hits
+		 << " function_template_exception_specification_evaluations="
+		 << stats.function_template_exception_specification_evaluations
+		 << " template_argument_list_requests="
+		 << stats.template_argument_list_requests
+		 << " template_argument_list_cache_hits="
+		 << stats.template_argument_list_cache_hits
+		 << " template_argument_list_index_probes="
+		 << stats.template_argument_list_index_probes
+		 << " template_partition_requests="
+		 << stats.template_partition_requests
+		 << " template_partition_cache_hits="
+		 << stats.template_partition_cache_hits
+		 << " template_partition_index_probes="
+		 << stats.template_partition_index_probes
+		 << " function_template_result_identity_requests="
+		 << stats.function_template_result_identity_requests
+		 << " function_template_result_identity_cache_hits="
+		 << stats.function_template_result_identity_cache_hits
+		 << " function_template_result_identity_index_probes="
+		 << stats.function_template_result_identity_index_probes
+		 << " function_template_result_identity_atom_visits="
+		 << stats.function_template_result_identity_atom_visits
+		 << " function_template_result_identity_syntax_visits="
+		 << stats.function_template_result_identity_syntax_visits
+		 << " function_template_result_identity_environment_probes="
+		 << stats.function_template_result_identity_environment_probes
+		 << " function_template_result_identity_alias_expansions="
+		 << stats.function_template_result_identity_alias_expansions
+		 << " template_partial_candidates="
+		 << stats.template_partial_candidates
+		 << " template_partial_order_comparisons="
+		 << stats.template_partial_order_comparisons
+		 << " template_partial_shape_materializations="
+		 << stats.template_partial_shape_materializations
+		 << " template_partial_shape_cache_hits="
+		 << stats.template_partial_shape_cache_hits
+		 << " template_partial_deduction_visits="
+		 << stats.template_partial_deduction_visits
+		 << " function_template_deduction_visits="
+		 << stats.function_template_deduction_visits
+		 << " lambda_closure_requests=" << stats.lambda_closure_requests
+		 << " lambda_closure_cache_hits=" << stats.lambda_closure_cache_hits
+		 << " lambda_capture_summary_requests="
+		 << stats.lambda_capture_summary_requests
+		 << " lambda_capture_summary_cache_hits="
+		 << stats.lambda_capture_summary_cache_hits
+		 << " lambda_capture_syntax_visits="
+		 << stats.lambda_capture_syntax_visits
+		 << " lambda_capture_name_uses=" << stats.lambda_capture_name_uses;
+}
+
 int run_emit_semantics_mode(const vector<string> & args)
 {
   const SourceOutputInvocation invocation =
@@ -1663,70 +1733,9 @@ int run_emit_semantics_mode(const vector<string> & args)
            << " template_specialization_requests="
            << stats.template_specialization_requests
            << " template_specialization_cache_hits="
-           << stats.template_specialization_cache_hits
-		   << " function_template_default_materializations="
-		   << stats.function_template_default_materializations
-		   << " function_template_default_request_cache_hits="
-		   << stats.function_template_default_request_cache_hits
-		   << " function_template_default_failure_cache_hits="
-		   << stats.function_template_default_failure_cache_hits
-		   << " function_template_exception_specification_requests="
-		   << stats.function_template_exception_specification_requests
-		   << " function_template_exception_specification_cache_hits="
-		   << stats.function_template_exception_specification_cache_hits
-		   << " function_template_exception_specification_evaluations="
-		   << stats.function_template_exception_specification_evaluations
-		   << " template_argument_list_requests="
-		   << stats.template_argument_list_requests
-		   << " template_argument_list_cache_hits="
-		   << stats.template_argument_list_cache_hits
-		   << " template_argument_list_index_probes="
-		   << stats.template_argument_list_index_probes
-		   << " template_partition_requests="
-		   << stats.template_partition_requests
-		   << " template_partition_cache_hits="
-		   << stats.template_partition_cache_hits
-		   << " template_partition_index_probes="
-		   << stats.template_partition_index_probes
-		   << " function_template_result_identity_requests="
-		   << stats.function_template_result_identity_requests
-		   << " function_template_result_identity_cache_hits="
-		   << stats.function_template_result_identity_cache_hits
-		   << " function_template_result_identity_index_probes="
-		   << stats.function_template_result_identity_index_probes
-		   << " function_template_result_identity_atom_visits="
-		   << stats.function_template_result_identity_atom_visits
-		   << " function_template_result_identity_syntax_visits="
-		   << stats.function_template_result_identity_syntax_visits
-		   << " function_template_result_identity_environment_probes="
-		   << stats.function_template_result_identity_environment_probes
-		   << " function_template_result_identity_alias_expansions="
-		   << stats.function_template_result_identity_alias_expansions
-		   << " template_partial_candidates="
-		   << stats.template_partial_candidates
-		   << " template_partial_order_comparisons="
-		   << stats.template_partial_order_comparisons
-		   << " template_partial_shape_materializations="
-		   << stats.template_partial_shape_materializations
-		   << " template_partial_shape_cache_hits="
-		   << stats.template_partial_shape_cache_hits
-			   << " template_partial_deduction_visits="
-			   << stats.template_partial_deduction_visits
-			   << " function_template_deduction_visits="
-			   << stats.function_template_deduction_visits
-			   << " lambda_closure_requests="
-			   << stats.lambda_closure_requests
-			   << " lambda_closure_cache_hits="
-			   << stats.lambda_closure_cache_hits
-			   << " lambda_capture_summary_requests="
-			   << stats.lambda_capture_summary_requests
-			   << " lambda_capture_summary_cache_hits="
-			   << stats.lambda_capture_summary_cache_hits
-			   << " lambda_capture_syntax_visits="
-			   << stats.lambda_capture_syntax_visits
-			   << " lambda_capture_name_uses="
-			   << stats.lambda_capture_name_uses
-	           << " constexpr_call_requests=" << stats.constexpr_call_requests
+           << stats.template_specialization_cache_hits;
+		append_pa12_template_stats(cerr, stats);
+		cerr << " constexpr_call_requests=" << stats.constexpr_call_requests
 	           << " constexpr_call_cache_hits=" << stats.constexpr_call_cache_hits
 	           << " constant_conversion_fact_requests="
 	           << stats.constant_conversion_fact_requests

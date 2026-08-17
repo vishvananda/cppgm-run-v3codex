@@ -1,7 +1,9 @@
 #include "lowir_native_encoding.h"
+#include "lowir_native_data_layout.h"
 
 #include <climits>
 #include <cstdint>
+#include <stdexcept>
 
 namespace lowir_native {
 
@@ -100,6 +102,34 @@ void emit_sized_register_move(CodeBuffer & out, X64Register destination,
   emit_rex(out, false, source, destination, width == 8);
   out.byte(width == 8 ? 0x88 : 0x89);
   emit_modrm(out, 3, source, destination);
+}
+
+void emit_integer_extension(
+    CodeBuffer & out, const mir_model::MirInstruction & instruction,
+    bool sign_extend)
+{
+  if(instruction.operands.size() != 1 ||
+     instruction.operands[0].kind != mir_model::MirOperand::OP_REG)
+    throw std::logic_error("invalid integer-extension operands");
+  const X64Register reg = instruction.operands[0].reg;
+  const unsigned width = data_layout::type_width(instruction.type);
+  if(width == 64) return;
+  if(!sign_extend && width == 32) {
+    emit_rex(out, false, reg, reg);
+    out.byte(0x89);
+    emit_modrm(out, 3, reg, reg);
+    return;
+  }
+  emit_rex(out, sign_extend, reg, reg,
+           !sign_extend && width == 8 && reg >= XR_RSP && reg < XR_R8);
+  if(sign_extend && width == 32) {
+    out.byte(0x63);
+  } else {
+    out.byte(0x0f);
+    out.byte(sign_extend ? (width == 8 ? 0xbe : 0xbf) :
+                           (width == 8 ? 0xb6 : 0xb7));
+  }
+  emit_modrm(out, 3, reg, reg);
 }
 
 void emit_move_zero_extended_byte(CodeBuffer & out, X64Register destination,
@@ -413,6 +443,45 @@ bool emit_flag_safe_zero_move(
   out.byte(0x31);
   emit_modrm(out, 3, destination, destination);
   return true;
+}
+
+bool is_redundant_u32_normalization(
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start)
+{
+  using mir_model::MirInstruction;
+  using mir_model::MirOperand;
+  if(start == 0 || start >= instructions.size()) return false;
+  const MirInstruction & normalization = instructions[start];
+  if(normalization.opcode != MirInstruction::MI_ZEXT ||
+     normalization.operands.size() != 1 ||
+     normalization.operands[0].kind != MirOperand::OP_REG ||
+     data_layout::type_width(normalization.type) != 32)
+    return false;
+
+  const X64Register reg = normalization.operands[0].reg;
+  const MirInstruction & producer = instructions[start - 1];
+  if(producer.operands.empty() ||
+     producer.operands[0].kind != MirOperand::OP_REG ||
+     producer.operands[0].reg != reg)
+    return false;
+
+  if(producer.opcode == MirInstruction::MI_LOAD &&
+     producer.operands.size() == 2 &&
+     producer.operands[1].kind != MirOperand::OP_FRAME)
+    return data_layout::type_width(producer.type) == 32;
+  if(producer.opcode == MirInstruction::MI_MOVZX)
+    return producer.operands.size() == 2;
+  if((producer.opcode == MirInstruction::MI_ZEXT ||
+      producer.opcode == MirInstruction::MI_BSWAP) &&
+     data_layout::type_width(producer.type) == 32)
+    return true;
+  if(producer.opcode != MirInstruction::MI_MOV ||
+     producer.operands.size() != 2 ||
+     producer.operands[1].kind != MirOperand::OP_IMM)
+    return false;
+  return static_cast<std::uint64_t>(producer.operands[1].imm) <=
+    UINT64_C(0xffffffff);
 }
 
 std::size_t emit_constant_division(
