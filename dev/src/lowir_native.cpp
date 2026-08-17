@@ -1475,7 +1475,12 @@ private:
       const MirOperand destination = reg_operand(result);
       move_value_to_register(out, destination.reg, resolve(instruction.first),
                              instruction.source_type);
-      normalize_integer(instruction.source_type, destination, out);
+      if(instruction.op == "sext" || instruction.op == "zext") {
+        append_integer_extension(out, destination,
+          instruction.source_type.bit_width, instruction.op == "sext");
+      } else {
+        normalize_integer(instruction.source_type, destination, out);
+      }
       normalize_integer(instruction.type, destination, out);
       consume(instruction.first, destination.reg);
       if(pressure_home.kind == MirOperand::OP_FRAME)

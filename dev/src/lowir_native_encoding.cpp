@@ -228,7 +228,7 @@ void emit_immediate_shift(CodeBuffer & out, X64Register destination,
 }
 
 void emit_immediate_and(CodeBuffer & out, X64Register destination,
-                        std::uint64_t mask)
+                        std::uint64_t mask, X64Register scratch)
 {
   if(mask <= 127) {
     emit_rex(out, true, XR_RAX, destination);
@@ -244,13 +244,13 @@ void emit_immediate_and(CodeBuffer & out, X64Register destination,
     out.little(mask, 4);
     return;
   }
-  emit_immediate_move(out, XR_R11, mask);
-  emit_register_alu(out, 0x21, destination, XR_R11);
+  emit_immediate_move(out, scratch, mask);
+  emit_register_alu(out, 0x21, destination, scratch);
 }
 
 }  // namespace
 
-std::size_t emit_unsigned_power_of_two_division(
+std::size_t emit_power_of_two_division(
     CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start)
@@ -263,9 +263,6 @@ std::size_t emit_unsigned_power_of_two_division(
   if(!is_immediate_move(instructions[start], XR_RDX, &signed_divisor) ||
      !is_register_move(instructions[start + 1], XR_RCX, XR_RDX))
     return 0;
-  const std::uint64_t divisor = static_cast<std::uint64_t>(signed_divisor);
-  if(!divisor || (divisor & (divisor - 1))) return 0;
-
   std::size_t cursor = start + 2;
   X64Register dividend = XR_RAX;
   if(cursor < instructions.size() &&
@@ -277,14 +274,21 @@ std::size_t emit_unsigned_power_of_two_division(
     dividend = instructions[cursor].operands[1].reg;
     ++cursor;
   }
+  bool unsigned_operation = false;
   long long high_word = -1;
-  if(cursor >= instructions.size() ||
-     !is_immediate_move(instructions[cursor], XR_RDX, &high_word) ||
-     high_word != 0)
+  if(cursor < instructions.size() &&
+     is_immediate_move(instructions[cursor], XR_RDX, &high_word) &&
+     high_word == 0) {
+    unsigned_operation = true;
+  } else if(cursor >= instructions.size() ||
+            instructions[cursor].opcode != MirInstruction::MI_CQO ||
+            !instructions[cursor].operands.empty()) {
     return 0;
+  }
   ++cursor;
   if(cursor >= instructions.size() ||
-     instructions[cursor].opcode != MirInstruction::MI_DIV ||
+     instructions[cursor].opcode != (unsigned_operation ?
+       MirInstruction::MI_DIV : MirInstruction::MI_IDIV) ||
      instructions[cursor].operands.size() != 1 ||
      instructions[cursor].operands[0].kind != MirOperand::OP_REG ||
      instructions[cursor].operands[0].reg != XR_RCX)
@@ -301,12 +305,34 @@ std::size_t emit_unsigned_power_of_two_division(
   const bool remainder = result_source == XR_RDX;
   if(!remainder && result_source != XR_RAX) return 0;
 
+  const std::uint64_t divisor = static_cast<std::uint64_t>(signed_divisor);
+  if(unsigned_operation) {
+    if(!divisor || (divisor & (divisor - 1))) return 0;
+  } else if(signed_divisor <= 0 || (divisor & (divisor - 1))) {
+    return 0;
+  }
+
   unsigned shift = 0;
   for(std::uint64_t value = divisor; value > 1; value >>= 1) ++shift;
-  if(remainder)
-    emit_immediate_and(out, dividend, divisor - 1);
-  else
-    emit_immediate_shift(out, dividend, 5, shift);
+  if(unsigned_operation) {
+    if(remainder)
+      emit_immediate_and(out, dividend, divisor - 1, XR_R11);
+    else
+      emit_immediate_shift(out, dividend, 5, shift);
+  } else if(divisor == 1) {
+    if(remainder) emit_register_alu(out, 0x31, dividend, dividend);
+  } else {
+    emit_register_move(out, XR_R11, dividend);
+    emit_immediate_shift(out, XR_R11, 7, 63);
+    emit_immediate_and(out, XR_R11, divisor - 1, XR_R10);
+    emit_register_alu(out, 0x01, dividend, XR_R11);
+    if(remainder) {
+      emit_immediate_and(out, dividend, divisor - 1, XR_R10);
+      emit_register_alu(out, 0x29, dividend, XR_R11);
+    } else {
+      emit_immediate_shift(out, dividend, 7, shift);
+    }
+  }
   return cursor - start + 1;
 }
 

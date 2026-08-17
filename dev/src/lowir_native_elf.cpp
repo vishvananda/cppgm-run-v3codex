@@ -1996,7 +1996,7 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out.label(function.name + "::" + function.blocks[i].label);
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-      const std::size_t divided = emit_unsigned_power_of_two_division(
+      const std::size_t divided = emit_power_of_two_division(
         out, function.blocks[i].instructions, j);
       if(divided) {
         j += divided - 1;
@@ -2674,7 +2674,7 @@ HostFunctionLayout emit_host_function(
         XR_RDX, 64);
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
-      const std::size_t divided = emit_unsigned_power_of_two_division(
+      const std::size_t divided = emit_power_of_two_division(
         out, block.instructions, j);
       if(divided) {
         j += divided - 1;

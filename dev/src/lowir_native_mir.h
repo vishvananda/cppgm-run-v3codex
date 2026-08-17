@@ -32,6 +32,10 @@ void append_store(std::vector<mir_model::MirInstruction> & out,
                   const mir_model::MirOperand & destination,
                   const mir_model::MirOperand & source,
                   const std::string & type);
+void append_integer_extension(
+    std::vector<mir_model::MirInstruction> & out,
+    const mir_model::MirOperand & destination, unsigned source_width,
+    bool sign_extend);
 void append_float_move(std::vector<mir_model::MirInstruction> & out,
                        const mir_model::MirOperand & destination,
                        const mir_model::MirOperand & source,

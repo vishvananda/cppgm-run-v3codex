@@ -114,6 +114,19 @@ void append_store(std::vector<mir_model::MirInstruction> & out,
   out.push_back(instruction);
 }
 
+void append_integer_extension(
+    std::vector<mir_model::MirInstruction> & out,
+    const mir_model::MirOperand & destination, unsigned source_width,
+    bool sign_extend)
+{
+  mir_model::MirInstruction instruction = machine_instruction(
+    sign_extend ? mir_model::MirInstruction::MI_SEXT :
+                  mir_model::MirInstruction::MI_ZEXT,
+    "i" + std::to_string(source_width));
+  append_operand(instruction, destination);
+  out.push_back(instruction);
+}
+
 void append_float_move(std::vector<mir_model::MirInstruction> & out,
                        const mir_model::MirOperand & destination,
                        const mir_model::MirOperand & source,
