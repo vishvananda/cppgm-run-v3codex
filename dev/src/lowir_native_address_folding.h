@@ -64,6 +64,17 @@ enum MemoryFoldKind {
   MFK_COPY_ADDRESS_STORE
 };
 
+class TransientScratchUsePlan
+{
+public:
+  explicit TransientScratchUsePlan(
+      const std::vector<mir_model::MirInstruction> & instructions);
+  bool dead_after(std::size_t start, X64Register reg) const;
+
+private:
+  std::vector<unsigned char> r11_read_before_definition_;
+};
+
 inline MemoryFoldKind classify_memory_fold(
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start)
@@ -79,28 +90,32 @@ inline MemoryFoldKind classify_memory_fold(
 std::size_t emit_dead_setup_load(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, const mir_model::MirFunction & function);
+    std::size_t start, const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses);
 std::size_t emit_dead_copy_store(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, const mir_model::MirFunction & function);
+    std::size_t start, const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses);
 std::size_t emit_dead_address_store(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, const mir_model::MirFunction & function);
+    std::size_t start, const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses);
 std::size_t emit_dead_address_copy_store(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, const mir_model::MirFunction & function);
+    std::size_t start, const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses);
 std::size_t emit_dead_copy_address_store(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start);
+    std::size_t start, const TransientScratchUsePlan & scratch_uses);
 std::size_t emit_memory_fold(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start, const mir_model::MirFunction & function,
-    MemoryFoldKind kind);
+    MemoryFoldKind kind, const TransientScratchUsePlan & scratch_uses);
 
 }  // namespace address_folding
 }  // namespace lowir_native

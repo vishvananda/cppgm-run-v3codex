@@ -94,3 +94,12 @@ one 32-bit move.  The frame case crosses a call so it cannot use store/load
 forwarding; active narrow and same-register frame tests cover forwarding
 behavior.  PA29 has no native-byte oracle, so this representation-only witness
 remains proposed.
+
+`transient-scratch-address-folding.t` returns both one- and two-eightbyte
+objects from frame homes.  The one-eightbyte return deliberately leaves an
+adjacent `lea r11, frame` plus one load in MIR; native encoding may address the
+load directly because the transient R11 setup has no later reader.  The
+two-eightbyte return is the safety boundary: both loads share R11, so its setup
+must remain.  Existing active object-return tests cover behavior, while PA29
+has no native-byte oracle, so this representation-only witness remains
+proposed.

@@ -63,7 +63,8 @@ bool overwritten_without_read(
 
 std::size_t plan_dead_setup_load(
     const std::vector<MirInstruction> & instructions, std::size_t start,
-    MirOperand * folded_address)
+    MirOperand * folded_address,
+    const TransientScratchUsePlan & scratch_uses)
 {
   if(start > instructions.size() || instructions.size() - start < 2)
     return 0;
@@ -101,6 +102,7 @@ std::size_t plan_dead_setup_load(
   const bool self_copy = !address && setup.opcode == MirInstruction::MI_MOV &&
     setup.operands[1].reg == setup_reg;
   if(!self_copy && load.operands[0].reg != setup_reg &&
+     !scratch_uses.dead_after(load_index + 1, setup_reg) &&
      !overwritten_without_read(instructions, load_index + 1, setup_reg))
     return 0;
 
@@ -128,10 +130,40 @@ std::size_t plan_dead_setup_load(
 
 }  // namespace
 
+TransientScratchUsePlan::TransientScratchUsePlan(
+    const std::vector<MirInstruction> & instructions)
+  : r11_read_before_definition_(instructions.size() + 1, 0)
+{
+  bool read_before_definition = false;
+  for(std::size_t i = instructions.size(); i != 0; --i) {
+    const MirInstruction & instruction = instructions[i - 1];
+    const bool simple_definition = simple_register_definition(instruction) &&
+      instruction.operands[0].reg == XR_R11;
+    bool reads_r11 = false;
+    for(std::size_t operand = simple_definition ? 1 : 0;
+        operand < instruction.operands.size(); ++operand)
+      if((instruction.operands[operand].kind == MirOperand::OP_REG ||
+          instruction.operands[operand].kind == MirOperand::OP_DEREF) &&
+         instruction.operands[operand].reg == XR_R11)
+        reads_r11 = true;
+    if(simple_definition && !reads_r11) read_before_definition = false;
+    else if(reads_r11) read_before_definition = true;
+    r11_read_before_definition_[i - 1] = read_before_definition ? 1 : 0;
+  }
+}
+
+bool TransientScratchUsePlan::dead_after(
+    std::size_t start, X64Register reg) const
+{
+  return reg == XR_R11 && start < r11_read_before_definition_.size() &&
+    !r11_read_before_definition_[start];
+}
+
 std::size_t emit_dead_setup_load(
     elf_detail::CodeBuffer & out,
     const std::vector<MirInstruction> & instructions, std::size_t start,
-    const mir_model::MirFunction & function)
+    const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses)
 {
   if(start >= instructions.size() ||
      (instructions[start].opcode != MirInstruction::MI_LEA &&
@@ -145,7 +177,7 @@ std::size_t emit_dead_setup_load(
   if(!pair && !chain) return 0;
   MirOperand address;
   const std::size_t count =
-    plan_dead_setup_load(instructions, start, &address);
+    plan_dead_setup_load(instructions, start, &address, scratch_uses);
   if(!count) return 0;
   const MirInstruction & load = instructions[start + count - 1];
   long long offset = address.offset;
@@ -165,7 +197,8 @@ std::size_t emit_dead_setup_load(
 std::size_t emit_dead_copy_store(
     elf_detail::CodeBuffer & out,
     const std::vector<MirInstruction> & instructions, std::size_t start,
-    const mir_model::MirFunction & function)
+    const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses)
 {
   if(start > instructions.size() || instructions.size() - start < 2)
     return 0;
@@ -184,7 +217,9 @@ std::size_t emit_dead_copy_store(
   const X64Register source = copy.operands[1].reg;
   const MirOperand * frame = store.operands[0].kind == MirOperand::OP_FRAME ?
     &store.operands[0] : 0;
-  if(copied != source &&
+  const bool transient_dead = !frame &&
+    scratch_uses.dead_after(start + 2, copied);
+  if(copied != source && !transient_dead &&
      !overwritten_without_read(instructions, start + 2, copied, frame))
     return 0;
 
@@ -210,7 +245,8 @@ std::size_t emit_dead_copy_store(
 std::size_t emit_dead_address_store(
     elf_detail::CodeBuffer & out,
     const std::vector<MirInstruction> & instructions, std::size_t start,
-    const mir_model::MirFunction & function)
+    const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses)
 {
   if(start > instructions.size() || instructions.size() - start < 2)
     return 0;
@@ -226,7 +262,8 @@ std::size_t emit_dead_address_store(
      store.operands[1].kind != MirOperand::OP_REG ||
      store.operands[1].reg == setup.operands[0].reg) return 0;
   const X64Register address_reg = setup.operands[0].reg;
-  if(!overwritten_without_read(instructions, start + 2, address_reg)) return 0;
+  if(!scratch_uses.dead_after(start + 2, address_reg) &&
+     !overwritten_without_read(instructions, start + 2, address_reg)) return 0;
   long long offset = 0;
   if(!add_offsets(setup.operands[1].offset, store.operands[0].offset,
                   &offset)) return 0;
@@ -246,7 +283,8 @@ std::size_t emit_dead_address_store(
 std::size_t emit_dead_address_copy_store(
     elf_detail::CodeBuffer & out,
     const std::vector<MirInstruction> & instructions, std::size_t start,
-    const mir_model::MirFunction & function)
+    const mir_model::MirFunction & function,
+    const TransientScratchUsePlan & scratch_uses)
 {
   if(start > instructions.size() || instructions.size() - start < 2)
     return 0;
@@ -261,7 +299,7 @@ std::size_t emit_dead_address_copy_store(
      store.operands[1].kind != MirOperand::OP_REG) return 0;
   const X64Register copied = copy.operands[0].reg;
   const X64Register source = copy.operands[1].reg;
-  if(copied != source &&
+  if(copied != source && !scratch_uses.dead_after(start + 2, copied) &&
      !overwritten_without_read(instructions, start + 2, copied)) return 0;
   const X64Register value = store.operands[1].reg == copied ?
     source : store.operands[1].reg;
@@ -272,7 +310,8 @@ std::size_t emit_dead_address_copy_store(
 
 std::size_t emit_dead_copy_address_store(
     elf_detail::CodeBuffer & out,
-    const std::vector<MirInstruction> & instructions, std::size_t start)
+    const std::vector<MirInstruction> & instructions, std::size_t start,
+    const TransientScratchUsePlan & scratch_uses)
 {
   if(start > instructions.size() || instructions.size() - start < 3)
     return 0;
@@ -293,7 +332,8 @@ std::size_t emit_dead_copy_address_store(
      store.operands[1].kind != MirOperand::OP_REG ||
      store.operands[1].reg == copy.operands[0].reg) return 0;
   const X64Register address_reg = copy.operands[0].reg;
-  if(!overwritten_without_read(instructions, start + 3, address_reg)) return 0;
+  if(!scratch_uses.dead_after(start + 3, address_reg) &&
+     !overwritten_without_read(instructions, start + 3, address_reg)) return 0;
   long long offset = 0;
   if(!add_offsets(setup.operands[1].offset, store.operands[0].offset,
                   &offset)) return 0;
@@ -305,21 +345,26 @@ std::size_t emit_dead_copy_address_store(
 std::size_t emit_memory_fold(
     elf_detail::CodeBuffer & out,
     const std::vector<MirInstruction> & instructions, std::size_t start,
-    const mir_model::MirFunction & function, MemoryFoldKind kind)
+    const mir_model::MirFunction & function, MemoryFoldKind kind,
+    const TransientScratchUsePlan & scratch_uses)
 {
   std::size_t folded = 0;
   if(kind == MFK_SETUP_LOAD)
-    folded = emit_dead_setup_load(out, instructions, start, function);
+    folded = emit_dead_setup_load(
+      out, instructions, start, function, scratch_uses);
   if(kind == MFK_COPY_STORE) {
-    folded = emit_dead_copy_store(out, instructions, start, function);
+    folded = emit_dead_copy_store(
+      out, instructions, start, function, scratch_uses);
     if(!folded)
       folded = emit_dead_address_copy_store(
-        out, instructions, start, function);
+        out, instructions, start, function, scratch_uses);
   }
   if(kind == MFK_ADDRESS_STORE)
-    folded = emit_dead_address_store(out, instructions, start, function);
+    folded = emit_dead_address_store(
+      out, instructions, start, function, scratch_uses);
   if(kind == MFK_COPY_ADDRESS_STORE)
-    folded = emit_dead_copy_address_store(out, instructions, start);
+    folded = emit_dead_copy_address_store(
+      out, instructions, start, scratch_uses);
   return folded;
 }
 

@@ -1799,6 +1799,8 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(function.name + "::" + block.label);
+    const address_folding::TransientScratchUsePlan scratch_uses(
+      block.instructions);
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
@@ -1807,7 +1809,7 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
         address_folding::classify_memory_fold(block.instructions, j);
       if(fold_kind != address_folding::MFK_NONE)
         folded = address_folding::emit_memory_fold(
-          out, block.instructions, j, function, fold_kind);
+          out, block.instructions, j, function, fold_kind, scratch_uses);
       if(folded) {
         j += folded - 1;
         continue;
@@ -2499,6 +2501,8 @@ HostFunctionLayout emit_host_function(
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(function.name + "::" + block.label);
+    const address_folding::TransientScratchUsePlan scratch_uses(
+      block.instructions);
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
     if(function.host_eh_clauses.count(block.label)) {
@@ -2515,7 +2519,7 @@ HostFunctionLayout emit_host_function(
         address_folding::classify_memory_fold(block.instructions, j);
       if(fold_kind != address_folding::MFK_NONE)
         folded = address_folding::emit_memory_fold(
-          out, block.instructions, j, function, fold_kind);
+          out, block.instructions, j, function, fold_kind, scratch_uses);
       if(folded) {
         j += folded - 1;
         continue;
