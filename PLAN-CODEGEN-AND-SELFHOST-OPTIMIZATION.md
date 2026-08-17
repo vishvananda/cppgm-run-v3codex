@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, the signed-quotient portion of B3c, B4a, B4b, B4c, B4d1--B4d7, B5, C1, C2a--C2b, D1, O1a, and R1--R3 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, the signed-quotient portion of B3c, B4a, B4b, B4c, B4d1--B4d7, B5, B6, C1, C2a--C2b, D1, O1a, and R1--R3 complete
 
 Date: 2026-08-17
 
@@ -295,8 +295,8 @@ candidate.
 | B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, proposed byte-shape reducer, frozen object -544 bytes, timing neutral |
 | B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
 | B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
-| B6 | Put weak function bodies in real ELF COMDAT groups | 0 existing | 0 existing | **Analyzed; highest priority**: current groups contain only empty marker sections, so the native linker retains 51,540 losing weak bodies (5,302,111 text bytes) plus an estimated 2.07 MB of their unwind records; projected to close about 73% of the current `size` text gap without cross-object compiler metadata |
-| B7 | Reduce residual copy, frame-home, and address-materialization traffic | 0 preferred | 0 at baseline; intentional only if assigned to PA38 | **Profile after B6**: after removing duplicate weak bodies from the profile, `mov` and `lea` account for 2,156,578 bytes, or 73.7% of the remaining normalized instruction-byte delta; prove bounded zero-MIR encoder cases first, then put representation-changing coalescing in PA38 |
+| B6 | Put weak function bodies in real ELF COMDAT groups | 0 existing | 0 existing | **Landed** in `90368327`; actual weak code and relocation sections now share the function COMDAT, FDEs follow the selected code, a reference-agreeing PA32 reducer checks both membership facts, compiler `size` text -7,295,360 bytes, full report 5,186/5,186, zero-fatal audit, and clean object/final-binary inception comparison pass |
+| B7 | Reduce residual copy, frame-home, and address-materialization traffic | 0 preferred | 0 at baseline; intentional only if assigned to PA38 | **Reprofiled after B6**: same-name functions account for about 2.25 MB of the 2.94 MB residual machine-text gap; `mov` and `lea` account for 2.20 MB of the parsed instruction-byte delta, led by register copies, stack homes/reloads, and materialized addresses; prove bounded zero-MIR cases first, then put representation-changing coalescing in PA38 |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -414,6 +414,86 @@ one safe deletion.  Repeated prologues and epilogues are visible too, but their
 measured `push`/`pop` contribution is only about 0.3--0.4 MB.  B6 must land and
 be reprofiled before selecting B7 slices or attributing the remaining extra
 8,572 unique function bodies to demand versus code selection.
+
+### 4.3.3 B6 result and post-COMDAT classification
+
+`90368327` replaces the empty marker-section convention with real function
+COMDAT ownership.  Weak function byte ranges are partitioned into
+`.text.<signature>` sections, their relocation sections carry both
+`SHF_GROUP` and `SHF_INFO_LINK`, and the weak definition is the group
+signature.  Strong and local functions remain in the aggregate `.text`
+section.  Cross-section references become ordinary ELF relocations.  Each FDE
+continues to live in shared `.eh_frame`, but its relocation now names the
+function's actual section, allowing the GNU linker to discard the FDE with a
+losing COMDAT body.  LSDA remains aggregate and is a later, smaller target.
+
+The earliest-owned active reducer is
+`cppgm.tests/course/pa32/weak-function-body-comdat.t`.  Its two translation
+units execute the selected inline definition and its object inspection checks
+that both the function body and its relocation section belong to the
+definition's COMDAT group.  GCC agrees.  Splitting text also exposed an old
+same-section-fixup assumption through the existing PA33
+`200-host-thread-local-wrapper-access.t`; exact section identity now decides
+whether a fixup can be resolved locally, so the weak TLS wrapper receives the
+required cross-section relocation.
+
+The immediate pre-B6 and post-B6 `-O0` self binaries show the predicted result:
+
+| Final compiler component | Pre-B6 | B6 | Change | GCC `-O0` |
+| --- | ---: | ---: | ---: | ---: |
+| file bytes | 25,886,080 | 18,657,216 | -7,228,864 | 13,693,896 |
+| GNU `size` text | 18,600,825 | 11,305,465 | -7,295,360 | 8,452,343 |
+| machine `.text` | 14,430,802 | 9,174,130 | -5,256,672 | 6,236,307 |
+| `.eh_frame_hdr` | 719,364 | 309,860 | -409,504 | 238,508 |
+| `.eh_frame` | 2,891,536 | 1,260,680 | -1,630,856 | 1,005,972 |
+| LSDA | 468,734 | 470,406 | +1,672 | 175,488 |
+| FDEs | 89,919 | 38,731 | -51,188 | 29,812 |
+
+The FDE reduction is within 352 of the 51,540-body prediction.  The combined
+code, header, and frame saving is 7,297,032 bytes; the small LSDA increase
+makes the GNU `size` text saving exactly 7,295,360 bytes.  Machine text is now
+47.1% above GCC rather than 131.4% above it, and GNU `size` text is 33.8%
+above GCC rather than 120.1% above it.
+
+The residual 2,937,823-byte machine-text gap is primarily code selection
+inside the same source functions, not another duplicate-body effect.  Taking
+the maximum body size for each demangled function name, common names account
+for approximately 2,249,788 bytes of excess, while the net size of names found
+only on one side is approximately 547,880 bytes.  The final compiler has
+38,727 unique text addresses versus GCC's 29,809, so demand remains relevant,
+but it is secondary to the per-function code-size gap.
+
+A post-B6 disassembly attributes 2,203,845 bytes of the parsed instruction-byte
+delta to plain `mov` and `lea` alone:
+
+| Residual family | Excess bytes versus GCC |
+| --- | ---: |
+| register-to-register `mov` | 651,146 |
+| stack `mov` | 674,672 |
+| stack-address `lea` | 335,693 |
+| other memory-address `lea` | 283,384 |
+| other memory `mov` | 132,138 |
+| immediate `mov` | 88,169 |
+| RIP-relative `mov`/`lea` net | 38,643 |
+
+`push` and `pop` add another 327,276 bytes of raw excess, reflecting both more
+functions and much heavier use of `rbx`/`r12`--`r15`, but this is not the
+majority target.  There are 59,020 apparent same-register 32-bit moves versus
+706 in GCC.  They are writes such as `mov %ebx,%ebx`, which zero-extend the
+upper half on x86-64; they are not unconditional no-ops.  A bounded producer
+proof can remove those whose input is already normalized, but blind encoder
+deletion would be incorrect.  B7 should therefore begin with proved copy and
+normalization cases, followed by PA38 frame-home and address coalescing.
+
+Validation is complete: PA32 is 135/135 with 13/13 course tests,
+PA32--PA38 report selection is 963/963, the full report is 5,186/5,186, and the
+file audit has zero fatal findings (23 inherited warnings).  A frozen
+host-compiler ABBA comparison was neutral (8.986 s pre-B6 versus 8.971 s B6
+median); the `-O0` self-compiler ABBA comparison was also neutral (76.138 s
+versus 76.025 s median).  The clean eight-way optimized self build took
+19.39 s wall with 307,704 KiB peak RSS.  The corresponding inception rebuild
+took 4:15.20 wall with 314,324 KiB peak RSS, matched every object, and matched
+the final `cppgm++` binary byte for byte.
 
 ### 4.4 P0 result
 
