@@ -2042,15 +2042,15 @@ std::size_t emit_coalesced_constant_byte_stores(
   return stores.size() * 4;
 }
 
-std::size_t emit_forwarded_frame_reload(
-    CodeBuffer & out,
+bool parse_forwarded_frame_reload(
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, const mir_model::MirFunction & function)
+    std::size_t start, long long * frame_offset,
+    X64Register * source, X64Register * destination)
 {
   using mir_model::MirInstruction;
   using mir_model::MirOperand;
   if(start > instructions.size() || instructions.size() - start < 2)
-    return 0;
+    return false;
   const MirInstruction & store = instructions[start];
   const MirInstruction & load = instructions[start + 1];
   if(store.opcode != MirInstruction::MI_STORE ||
@@ -2062,10 +2062,75 @@ std::size_t emit_forwarded_frame_reload(
      load.operands[0].kind != MirOperand::OP_REG ||
      load.operands[1].kind != MirOperand::OP_FRAME ||
      store.operands[0].offset != load.operands[1].offset)
-    return 0;
-  emit_instruction(out, store, &function);
-  const X64Register source = store.operands[1].reg;
-  const X64Register destination = load.operands[0].reg;
+    return false;
+  *frame_offset = store.operands[0].offset;
+  *source = store.operands[1].reg;
+  *destination = load.operands[0].reg;
+  return true;
+}
+
+std::unordered_set<long long> find_single_use_frame_reloads(
+    const mir_model::MirFunction & function)
+{
+  std::unordered_map<long long, std::size_t> uses;
+  uses.reserve(function.frame_bindings.size());
+  for(std::size_t i = 0; i < function.frame_bindings.size(); ++i) {
+    const mir_model::MirFrameBinding & binding = function.frame_bindings[i];
+    if(binding.kind == mir_model::MirFrameBinding::FB_TEMP &&
+       (binding.type == "ptr" || binding.type == "i64"))
+      uses.emplace(binding.offset, 0);
+  }
+  if(function.host_eh_enabled) {
+    uses.erase(function.host_eh_exception_offset);
+    uses.erase(function.host_eh_selector_offset);
+  }
+  std::unordered_set<long long> result;
+  if(uses.empty()) return result;
+  std::unordered_set<long long> adjacent_reloads;
+  adjacent_reloads.reserve(uses.size());
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const std::vector<mir_model::MirInstruction> & instructions =
+      function.blocks[i].instructions;
+    for(std::size_t j = 0; j < instructions.size(); ++j) {
+      for(std::size_t k = 0;
+          k < instructions[j].operands.size(); ++k) {
+        const mir_model::MirOperand & operand = instructions[j].operands[k];
+        if(operand.kind != mir_model::MirOperand::OP_FRAME) continue;
+        const std::unordered_map<long long, std::size_t>::iterator found =
+          uses.find(operand.offset);
+        if(found != uses.end()) ++found->second;
+      }
+      long long frame_offset = 0;
+      X64Register source = XR_RAX;
+      X64Register destination = XR_RAX;
+      if(parse_forwarded_frame_reload(instructions, j, &frame_offset,
+           &source, &destination))
+        adjacent_reloads.insert(frame_offset);
+    }
+  }
+  result.reserve(adjacent_reloads.size());
+  for(std::unordered_set<long long>::const_iterator offset =
+        adjacent_reloads.begin(); offset != adjacent_reloads.end(); ++offset) {
+    const std::unordered_map<long long, std::size_t>::const_iterator found =
+      uses.find(*offset);
+    if(found != uses.end() && found->second == 2) result.insert(*offset);
+  }
+  return result;
+}
+
+std::size_t emit_forwarded_frame_reload(
+    CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, const mir_model::MirFunction & function,
+    const std::unordered_set<long long> & single_use_frame_reloads)
+{
+  long long frame_offset = 0;
+  X64Register source = XR_RAX;
+  X64Register destination = XR_RAX;
+  if(!parse_forwarded_frame_reload(instructions, start, &frame_offset,
+       &source, &destination)) return 0;
+  if(!single_use_frame_reloads.count(frame_offset))
+    emit_instruction(out, instructions[start], &function);
   if(source != destination)
     emit_register_move(out, destination, source);
   return 2;
@@ -2083,11 +2148,14 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   if(!object_symbol.empty() && object_symbol != function.name)
     out.label(object_symbol);
   emit_function_prologue(out, function);
+  const std::unordered_set<long long> single_use_frame_reloads =
+    find_single_use_frame_reloads(function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out.label(function.name + "::" + function.blocks[i].label);
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       const std::size_t forwarded = emit_forwarded_frame_reload(
-        out, function.blocks[i].instructions, j, function);
+        out, function.blocks[i].instructions, j, function,
+        single_use_frame_reloads);
       if(forwarded) {
         j += forwarded - 1;
         continue;
@@ -2738,6 +2806,8 @@ HostFunctionLayout emit_host_function(
   if(!object_symbol.empty() && object_symbol != function.name)
     out.label(object_symbol);
   emit_function_prologue(out, function);
+  const std::unordered_set<long long> single_use_frame_reloads =
+    find_single_use_frame_reloads(function);
   const std::string no_landing_pad;
   std::vector<HostEhStackCleanup> stack_cleanups;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -2753,7 +2823,7 @@ HostFunctionLayout emit_host_function(
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
       const std::size_t forwarded = emit_forwarded_frame_reload(
-        out, block.instructions, j, function);
+        out, block.instructions, j, function, single_use_frame_reloads);
       if(forwarded) {
         j += forwarded - 1;
         continue;
