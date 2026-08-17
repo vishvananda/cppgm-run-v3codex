@@ -463,6 +463,33 @@ aggregate `.text*` from 932,603 to 931,996 bytes, and x86 instructions from
 give baseline/candidate medians of 5.665/5.590 seconds user, 6.230/6.165
 seconds wall, and 364,872/364,868 KiB peak RSS.
 
+An immediately returned integer-binary-result prototype was rejected. It
+would change 14 exact PA29 cases and 17 structural PA29/PA38 cases (48 MIR
+files after raw/canonical pairs), but against `1e6cb571` the frozen object grew
+from 4,417,352 to 4,417,376 bytes and aggregate `.text*` grew from 931,996 to
+932,005 bytes. The reshaping removed 20 moves and 10 net instructions, plus
+one push/pop pair, but wider encodings erased the nominal instruction benefit.
+This candidate remains deferred rather than imposing a broad fixture migration
+for a nine-byte text regression. The affected exact cases were PA29
+`100-copyobj`, `100-object-abi-lowered`, `100-zeroinit`,
+`200-indirect-call-six-register-args`,
+`300-atomic-compare-exchange-failure`,
+`300-atomic-compare-exchange-success`, `300-atomic-exchange`,
+`300-unsigned-compare-predicates`, `300-unsigned-int-ops`,
+`600-atomic-i32-exchange`, `800-atomic-i128-compare-exchange`, behavior cases
+`800-reactive-spill-bulk-storage` and `800-reactive-spill-signed-div`, and
+course case `scalar-copy-location-sharing`. The structural cases were PA29
+`200-stack-arguments-beyond-six`, `300-integral-float-conversions`,
+`400-call-clobber-register-pressure`, `400-float-width-conversions`,
+`400-i64-leaf-register-chain`, `400-u32-compare-value-materialize`,
+`500-f64-compare-value-materialize`, `500-mixed-gpr-xmm-call-abi`,
+`500-ptr-index-arithmetic`, `600-indirect-mixed-gpr-xmm-call-abi`,
+`600-ptr-compare-value-materialize`,
+`700-call-setup-forwarding-no-preserve`,
+`800-slot-address-rematerialization`, `800-xmm-live-across-integer-call`,
+`900-symbolic-global-call-argument`, and PA38 O1/O2
+`100-return-copy-coalesce`.
+
 The VP3 input-lifetime slice changes
 `pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection
 slice changes the PA29 structural `500-ptr-diff-switch`,
