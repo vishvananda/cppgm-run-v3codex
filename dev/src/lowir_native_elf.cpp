@@ -1995,6 +1995,8 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
     find_single_use_frame_reloads(function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out.label(function.name + "::" + function.blocks[i].label);
+    const std::vector<bool> flags_live = condition_flags_live_before(
+      function.blocks[i].instructions);
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       const std::size_t divided = emit_power_of_two_division(
         out, function.blocks[i].instructions, j);
@@ -2018,6 +2020,9 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
         j += coalesced - 1;
         continue;
       }
+      if(emit_flag_safe_zero_move(
+           out, function.blocks[i].instructions[j], flags_live[j]))
+        continue;
       emit_instruction(out, function.blocks[i].instructions[j], &function);
     }
   }
@@ -2665,6 +2670,8 @@ HostFunctionLayout emit_host_function(
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(function.name + "::" + block.label);
+    const std::vector<bool> flags_live =
+      condition_flags_live_before(block.instructions);
     if(function.host_eh_clauses.count(block.label)) {
       emit_store(out, XR_RBP,
         actual_frame_offset(function, function.host_eh_exception_offset),
@@ -2695,6 +2702,9 @@ HostFunctionLayout emit_host_function(
         j += coalesced - 1;
         continue;
       }
+      if(emit_flag_safe_zero_move(
+           out, block.instructions[j], flags_live[j]))
+        continue;
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
       emit_host_instruction(out, block.instructions[j], function,

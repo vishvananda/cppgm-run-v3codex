@@ -50,6 +50,11 @@ std::size_t emit_power_of_two_division(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start);
+std::vector<bool> condition_flags_live_before(
+    const std::vector<mir_model::MirInstruction> & instructions);
+bool emit_flag_safe_zero_move(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction, bool flags_live);
 void emit_i128_shift(elf_detail::CodeBuffer & out,
                      mir_model::MirInstruction::Opcode opcode);
 void emit_i128_division(elf_detail::CodeBuffer & out,

@@ -255,7 +255,87 @@ void emit_immediate_and(CodeBuffer & out, X64Register destination,
   emit_register_alu(out, 0x21, destination, scratch);
 }
 
+bool preserves_condition_flags(mir_model::MirInstruction::Opcode opcode)
+{
+  using mir_model::MirInstruction;
+  switch(opcode) {
+  case MirInstruction::MI_MOV:
+  case MirInstruction::MI_LOAD:
+  case MirInstruction::MI_STORE:
+  case MirInstruction::MI_MFENCE:
+  case MirInstruction::MI_XCHG:
+  case MirInstruction::MI_LEA:
+  case MirInstruction::MI_FMOV:
+  case MirInstruction::MI_FNEG:
+  case MirInstruction::MI_FADD:
+  case MirInstruction::MI_FSUB:
+  case MirInstruction::MI_FMUL:
+  case MirInstruction::MI_FDIV:
+  case MirInstruction::MI_FSTP:
+  case MirInstruction::MI_FPOP:
+  case MirInstruction::MI_SITOFP:
+  case MirInstruction::MI_UITOFP:
+  case MirInstruction::MI_FPTOSI:
+  case MirInstruction::MI_FPTOUI:
+  case MirInstruction::MI_FPEXT:
+  case MirInstruction::MI_FPTRUNC:
+  case MirInstruction::MI_NOT:
+  case MirInstruction::MI_BSWAP:
+  case MirInstruction::MI_MOVZX:
+  case MirInstruction::MI_SEXT:
+  case MirInstruction::MI_ZEXT:
+  case MirInstruction::MI_CQO:
+  case MirInstruction::MI_COPY_BYTES:
+  case MirInstruction::MI_ZERO_BYTES:
+  case MirInstruction::MI_EH_FILTER:
+  case MirInstruction::MI_EH_CLEANUP_CLAUSE:
+    return true;
+  default:
+    return false;
+  }
+}
+
 }  // namespace
+
+std::vector<bool> condition_flags_live_before(
+    const std::vector<mir_model::MirInstruction> & instructions)
+{
+  using mir_model::MirInstruction;
+  std::vector<bool> result(instructions.size(), false);
+  bool live = false;
+  for(std::size_t i = 0; i < instructions.size(); ++i) {
+    result[i] = live;
+    const MirInstruction::Opcode opcode = instructions[i].opcode;
+    if(opcode == MirInstruction::MI_CMP ||
+       opcode == MirInstruction::MI_TEST ||
+       opcode == MirInstruction::MI_FCMP) {
+      live = true;
+    } else if(opcode == MirInstruction::MI_JCC ||
+              opcode == MirInstruction::MI_JNE ||
+              opcode == MirInstruction::MI_SETCC ||
+              !preserves_condition_flags(opcode)) {
+      live = false;
+    }
+  }
+  return result;
+}
+
+bool emit_flag_safe_zero_move(
+    CodeBuffer & out, const mir_model::MirInstruction & instruction,
+    bool flags_live)
+{
+  if(flags_live || instruction.opcode != mir_model::MirInstruction::MI_MOV ||
+     instruction.operands.size() != 2 ||
+     instruction.operands[0].kind != mir_model::MirOperand::OP_REG ||
+     instruction.operands[1].kind != mir_model::MirOperand::OP_IMM ||
+     instruction.operands[1].imm != 0)
+    return false;
+  const X64Register destination = instruction.operands[0].reg;
+  emit_rex(out, false, destination, destination);
+  out.byte(0x31);
+  emit_modrm(out, 3, destination, destination);
+  return true;
+}
 
 std::size_t emit_power_of_two_division(
     CodeBuffer & out,
