@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1, B4d2, B4d3, and B4d4 complete
+Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1, B4d2, B4d3, B4d4, and B4d5 complete
 
 Date: 2026-08-17
 
@@ -266,7 +266,8 @@ candidate.
 | B4d2 | Fold a dead adjacent address-register copy into its load | 0 existing | 0 existing | **Landed** in `014b7594`; 144 bounded proofs, proposed byte-shape reducer, frozen object -336 bytes, timing neutral |
 | B4d3 | Fold a dead copy/index/load chain | 0 existing | 0 existing | **Landed** in `2a9adc71`; 54 bounded proofs, proposed byte-shape reducer, frozen object -160 bytes, timing neutral |
 | B4d4 | Fold a dead value copy into its store | 0 existing | 0 existing | **Landed** in `9082687e`; 154 bounded proofs after frame-forwarding barriers, proposed byte-shape reducer, frozen object -400 bytes, timing neutral |
-| B4d5 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d4 |
+| B4d5 | Fold a dead address calculation into its store | 0 existing | 0 existing | **Landed** in `40500a27`; 259 bounded proofs, proposed byte-shape reducer, frozen object -928 bytes, timing neutral |
+| B4d6 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d5 |
 | B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
 | C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
 | C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
@@ -694,6 +695,43 @@ Validation and frozen evidence:
   candidate (-3.69%); and
 - three-block immutable ABBA paired deltas: wall -0.33%, user -0.81%, peak
   RSS +0.12%.  All six outputs per compiler were deterministic.
+
+### 4.16 B4d5 result
+
+`40500a27` recognizes `lea address, [base+offset]` followed by a store through
+`address`.  It emits the store from `base` with the checked sum of the setup
+and store displacements when `address` is overwritten without a read in the
+bounded window.  A store whose value is the derived address is rejected, as
+are displacement overflow and a transition between local and caller frame
+offset namespaces.
+
+The frozen MIR contained 684 adjacent address/store candidates.  The proof
+accepted 259: 144 address overwrites immediately followed the store, 80 were
+two instructions later, and 35 were three instructions later.  It rejected
+424 at an opcode/shape barrier and one without a bounded overwrite.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  `proposed/pa29/dead-address-store-folding.t` retains an
+accepted `lea`/`store` pair and its following overwrite in dumped MIR, and the
+generated program succeeds.  It remains proposed because indexed-store
+behavior is already covered and PA29 has no native-byte oracle.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- full report: 5,171/5,171;
+- PA39 file audit: zero fatal findings;
+- object: 3,755,232 to 3,754,304 bytes;
+- `.text`: 1,024,546 to 1,023,620 bytes;
+- `.gcc_except_table`: unchanged at 73,406 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes;
+- three-run internal encoder medians: 252.2 ms baseline and 251.3 ms
+  candidate (-0.33%); and
+- three-block immutable ABBA paired deltas: wall +0.08%, user -0.09%, peak
+  RSS +0.21%.  One candidate run encountered obvious intermittent host load
+  at 7.47 seconds; the six-run medians remained 6.105 and 6.115 seconds.  All
+  outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
