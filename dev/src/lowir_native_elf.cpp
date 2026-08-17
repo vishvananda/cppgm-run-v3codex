@@ -1818,6 +1818,12 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
         j += divided - 1;
         continue;
       }
+      const std::size_t normalized = emit_fused_u32_register_move(
+        out, block.instructions, j);
+      if(normalized) {
+        j += normalized - 1;
+        continue;
+      }
       if(emit_delayed_frame_forwarding(out,
            block.instructions[j], frame_reload_plan))
         continue;
@@ -2518,6 +2524,12 @@ HostFunctionLayout emit_host_function(
         out, block.instructions, j);
       if(divided) {
         j += divided - 1;
+        continue;
+      }
+      const std::size_t normalized = emit_fused_u32_register_move(
+        out, block.instructions, j);
+      if(normalized) {
+        j += normalized - 1;
         continue;
       }
       if(emit_delayed_frame_forwarding(

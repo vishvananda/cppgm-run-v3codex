@@ -485,6 +485,29 @@ bool is_redundant_u32_normalization(
     UINT64_C(0xffffffff);
 }
 
+std::size_t emit_fused_u32_register_move(
+    CodeBuffer & out, const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start)
+{
+  using mir_model::MirInstruction;
+  using mir_model::MirOperand;
+  if(start > instructions.size() || instructions.size() - start < 2)
+    return 0;
+  const MirInstruction & move = instructions[start];
+  const MirInstruction & normalization = instructions[start + 1];
+  if(move.opcode != MirInstruction::MI_MOV || move.operands.size() != 2 ||
+     move.operands[0].kind != MirOperand::OP_REG ||
+     move.operands[1].kind != MirOperand::OP_REG ||
+     normalization.opcode != MirInstruction::MI_ZEXT ||
+     normalization.operands.size() != 1 ||
+     normalization.operands[0].kind != MirOperand::OP_REG ||
+     normalization.operands[0].reg != move.operands[0].reg ||
+     data_layout::type_width(normalization.type) != 32) return 0;
+  emit_sized_register_move(out, move.operands[0].reg,
+    move.operands[1].reg, 32);
+  return 2;
+}
+
 std::size_t emit_constant_division(
     CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
