@@ -31,6 +31,11 @@ void emit_size_prefix(elf_detail::CodeBuffer & out, unsigned width);
 void emit_sized_register_move(elf_detail::CodeBuffer & out,
                               X64Register destination, X64Register source,
                               unsigned width);
+void emit_move_zero_extended_byte(elf_detail::CodeBuffer & out,
+                                  X64Register destination,
+                                  X64Register source);
+void emit_test_register(elf_detail::CodeBuffer & out, X64Register reg,
+                        unsigned width = 64);
 void emit_load(elf_detail::CodeBuffer & out, X64Register destination,
                X64Register base, long long displacement, unsigned width);
 void emit_store(elf_detail::CodeBuffer & out, X64Register base,

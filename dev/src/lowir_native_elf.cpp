@@ -1,4 +1,5 @@
 #include "lowir_native.h"
+#include "lowir_native_address_folding.h"
 #include "lowir_native_code_buffer.h"
 #include "lowir_native_data_layout.h"
 #include "lowir_native_float_bits.h"
@@ -456,8 +457,6 @@ void emit_float_compare_flags(CodeBuffer & out,
 }
 
 void emit_set_condition(CodeBuffer & out, X86Condition condition, X64Register destination);
-void emit_move_zero_extended_byte(CodeBuffer & out, X64Register destination,
-                                  X64Register source);
 X64Register require_register(const mir_model::MirOperand & operand);
 
 X86Condition float_value_condition(mir_model::MirInstruction::Opcode opcode)
@@ -1035,16 +1034,6 @@ void emit_set_condition(CodeBuffer & out, X86Condition condition, X64Register de
   emit_modrm(out, 3, 0, destination);
 }
 
-void emit_move_zero_extended_byte(CodeBuffer & out, X64Register destination,
-                                  X64Register source)
-{
-  emit_rex(out, false, destination, source,
-           source >= XR_RSP && source < XR_R8);
-  out.byte(0x0f);
-  out.byte(0xb6);
-  emit_modrm(out, 3, destination, source);
-}
-
 void emit_integer_extension(CodeBuffer & out,
                             const mir_model::MirInstruction & instruction,
                             bool sign_extend)
@@ -1130,14 +1119,6 @@ const char * const kEhSelector = ".__cppgm_eh_selector";
 const char * const kEhCaught = ".__cppgm_eh_caught";
 const char * const kEhDispatch = ".__cppgm_eh_dispatch";
 const char * const kEhResume = ".__cppgm_eh_resume";
-
-void emit_test_register(CodeBuffer & out, X64Register reg, unsigned width = 64)
-{
-  emit_size_prefix(out, width);
-  emit_rex(out, width == 64, reg, reg, width == 8);
-  out.byte(width == 8 ? 0x84 : 0x85);
-  emit_modrm(out, 3, reg, reg);
-}
 
 bool prepare_explicit_operands(CodeBuffer & out,
                                const mir_model::MirInstruction & instruction,
@@ -2007,6 +1988,17 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
     const std::vector<bool> flags_live = condition_flags_live_before(
       function.blocks[i].instructions);
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      if(function.blocks[i].instructions[j].opcode ==
+           mir_model::MirInstruction::MI_LEA) {
+        mir_model::MirOperand folded_address;
+        if(address_folding::plan_dead_address_load(
+             function.blocks[i].instructions, j, &folded_address)) {
+          const mir_model::MirInstruction & load =
+            function.blocks[i].instructions[j + 1];
+          emit_address_load(out, load.operands[0].reg, folded_address,
+            type_width(load.type), function); ++j; continue;
+        }
+      }
       const std::size_t divided = emit_power_of_two_division(
         out, function.blocks[i].instructions, j);
       if(divided) {
@@ -2690,6 +2682,15 @@ HostFunctionLayout emit_host_function(
         XR_RDX, 64);
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      if(block.instructions[j].opcode == mir_model::MirInstruction::MI_LEA) {
+        mir_model::MirOperand folded_address;
+        if(address_folding::plan_dead_address_load(
+             block.instructions, j, &folded_address)) {
+          const mir_model::MirInstruction & load = block.instructions[j + 1];
+          emit_address_load(out, load.operands[0].reg, folded_address,
+            type_width(load.type), function); ++j; continue;
+        }
+      }
       const std::size_t divided = emit_power_of_two_division(
         out, block.instructions, j);
       if(divided) {

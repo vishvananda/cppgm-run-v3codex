@@ -36,3 +36,10 @@ intended to inspect that `movzx` writes a 32-bit destination, relying on the
 x86-64 zeroing rule instead of carrying an unnecessary `REX.W`.  Active PA29
 tests already cover extension behavior and the harness does not compare native
 bytes, so this representation-only candidate remains proposed.
+
+`dead-address-load-folding.t` creates an adjacent address calculation and load
+whose temporary address register is overwritten before it is read again.  It
+is intended to inspect that native encoding folds the two displacements into
+the load while preserving the textual MIR.  Its program behavior duplicates
+active address/load coverage and the harness does not compare native bytes, so
+this representation-only candidate remains proposed.

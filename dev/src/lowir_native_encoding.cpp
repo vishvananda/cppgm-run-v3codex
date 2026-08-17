@@ -102,6 +102,24 @@ void emit_sized_register_move(CodeBuffer & out, X64Register destination,
   emit_modrm(out, 3, source, destination);
 }
 
+void emit_move_zero_extended_byte(CodeBuffer & out, X64Register destination,
+                                  X64Register source)
+{
+  emit_rex(out, false, destination, source,
+           source >= XR_RSP && source < XR_R8);
+  out.byte(0x0f);
+  out.byte(0xb6);
+  emit_modrm(out, 3, destination, source);
+}
+
+void emit_test_register(CodeBuffer & out, X64Register reg, unsigned width)
+{
+  emit_size_prefix(out, width);
+  emit_rex(out, width == 64, reg, reg, width == 8);
+  out.byte(width == 8 ? 0x84 : 0x85);
+  emit_modrm(out, 3, reg, reg);
+}
+
 void emit_load(CodeBuffer & out, X64Register destination, X64Register base,
                long long displacement, unsigned width)
 {
