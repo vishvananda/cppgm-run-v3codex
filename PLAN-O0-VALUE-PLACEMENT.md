@@ -208,7 +208,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
-| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09% | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, and promoted-slot interval extension complete; broader load/store producer placement pending |
+| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16% | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, promoted-slot interval extension, and dense slot-analysis state complete; broader load/store producer placement pending |
 | VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, direct ALU/shift constraints, and intact ABI-parameter retention complete; address rematerialization and spill-slot reuse pending |
 | VP5 | 0 | 3 strict PA29 MIR fixtures for bulk copy/zero placement | Logical bulk operands reshape individual functions but leave aggregate `.text*` (943,292 bytes) and x86 instruction-family counts unchanged; total object -32 bytes. Two-block ABBA medians are user tied at 5.665 s, wall -0.28%, and RSS -0.04%; affected report 357/357 | logical bulk operands complete; remaining scalar compatibility rewrites pending |
 
@@ -399,6 +399,32 @@ fewer pops; `.eh_frame` falls by 48 bytes and `.gcc_except_table` is unchanged.
 Two ABBA blocks give baseline/candidate medians of 5.660/5.695 seconds user,
 6.280/6.250 seconds wall, and 364,406/364,094 KiB peak RSS. All changes remain
 inside the neutral compile-time gate.
+
+The follow-up storage-analysis representation slice replaces the transient
+`written_slots`, `observed_slots`, and `seen_object_slots` string sets with one
+byte-flags vector indexed by function slot ordinal. Scalar promotion state is
+also ordinal-indexed. Each slot operand spelling is resolved once through one
+function-local index; all classification and state updates after that lookup
+are dense array operations. This removes repeated string copies, hashes, and
+node allocations while retaining the existing string-keyed output facts that
+the current native selector consumes.
+
+The frozen object remains byte-identical at 4,417,928 bytes with SHA-256
+`f4578b97f4fdb8d710b6eac77a5828a0408c594337ddf7e4a6131d4ed3757614`.
+Two ABBA blocks give baseline/candidate medians of 5.660/5.645 seconds user,
+6.220/6.195 seconds wall, and 365,856/365,274 KiB peak RSS.
+
+The representation audit also found that the front-end PA15 LowIR already
+uses compact `uint32_t` parameter, slot, temporary, block, and symbol IDs, but
+`AdaptTypedLowIRForNative` expands those identities into owning strings in a
+second backend-facing model. This is an in-memory adapter rather than a text
+round trip, yet it leaves optimizers and native lowering hashing presentation
+names. A complete repair must preserve compact identities for source input,
+assign them once for explicit textual LowIR and decoded binary objects, and
+make rendering the only spelling consumer. That cross-pipeline migration is
+deferred from this O0 placement slice because it spans PA15 lowering, PA30
+adaptation/object decoding, PA37/PA38 optimization, and PA29 selection; it must
+not be approximated by parallel ID and string models that can diverge.
 
 The VP3 input-lifetime slice changes
 `pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection

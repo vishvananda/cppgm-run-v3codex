@@ -516,20 +516,29 @@ StorageFacts analyze_storage(
 {
   StorageFacts facts;
   facts.promoted_parameter_clobbers.assign(function.params.size(), 0);
-  std::unordered_set<std::string> written_slots;
-  std::unordered_set<std::string> observed_slots;
   std::unordered_map<std::string, std::size_t> parameters_by_name;
   std::unordered_map<std::string, std::size_t> parameters_by_suffix;
+  parameters_by_name.reserve(function.params.size());
+  parameters_by_suffix.reserve(function.params.size());
   for(std::size_t p = 0; p < function.params.size(); ++p) {
     parameters_by_name[function.params[p].name] = p;
     if(function.params[p].name.size() >= 2)
       parameters_by_suffix[function.params[p].name.substr(1)] = p;
   }
 
-  std::unordered_map<std::string, std::size_t> object_slots;
-  std::unordered_map<std::string, std::size_t> scalar_slots;
+  const std::size_t no_index = std::numeric_limits<std::size_t>::max();
+  enum SlotFlag {
+    SF_WRITTEN = 1,
+    SF_OBSERVED = 2,
+    SF_OBJECT_SEEN = 4
+  };
+  std::unordered_map<std::string, std::size_t> slots_by_name;
+  slots_by_name.reserve(function.slots.size());
+  std::vector<unsigned char> slot_flags(function.slots.size(), 0);
+  std::vector<std::size_t> object_slot_parameters(function.slots.size(), no_index);
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
     const std::string & slot = function.slots[s].first;
+    slots_by_name[slot] = s;
     if(function.slots[s].second.kind == lowir_model::LTK_OBJECT) {
       if(slot.size() < 2) continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
@@ -537,9 +546,7 @@ StorageFacts analyze_storage(
       if(parameter != parameters_by_suffix.end() &&
          lowir_model::same_lowir_type(function.params[parameter->second].type,
                                       function.slots[s].second))
-        object_slots[slot] = parameter->second;
-    } else if(function.blocks.size() == 1) {
-      scalar_slots[slot] = s;
+        object_slot_parameters[s] = parameter->second;
     }
   }
 
@@ -552,15 +559,20 @@ StorageFacts analyze_storage(
     std::size_t load_position = 0;
     bool valid = true;
     bool read_through = true;
-    std::size_t parameter = static_cast<std::size_t>(-1);
-    std::string loaded_name;
+    std::size_t parameter = no_index;
+    const std::string * loaded_name = 0;
     unsigned intervening_clobbers = 0;
   };
-  std::unordered_map<std::string, ScalarSlotState> scalar_states;
-  for(std::unordered_map<std::string, std::size_t>::const_iterator slot =
-        scalar_slots.begin(); slot != scalar_slots.end(); ++slot)
-    scalar_states.emplace(slot->first, ScalarSlotState());
-  std::unordered_set<std::string> seen_object_slots;
+  std::vector<std::size_t> scalar_state_indexes(function.slots.size(), no_index);
+  std::vector<ScalarSlotState> scalar_states;
+  if(function.blocks.size() == 1) {
+    scalar_states.reserve(function.slots.size());
+    for(std::size_t s = 0; s < function.slots.size(); ++s)
+      if(function.slots[s].second.kind != lowir_model::LTK_OBJECT) {
+        scalar_state_indexes[s] = scalar_states.size();
+        scalar_states.push_back(ScalarSlotState());
+      }
+  }
   std::array<std::size_t, 16> last_clobber;
   last_clobber.fill(std::numeric_limits<std::size_t>::max());
 
@@ -568,29 +580,35 @@ StorageFacts analyze_storage(
     const std::vector<Instruction> & instructions = function.blocks[b].instructions;
     for(std::size_t i = 0; i < instructions.size(); ++i) {
       const Instruction & instruction = instructions[i];
-      const bool has_dead_store_candidate =
-        instruction.kind == Instruction::IK_STORE &&
-        instruction.second.kind == Operand::OP_SLOT &&
-        !(instruction.first.kind == Operand::OP_SLOT &&
-          instruction.first.text == instruction.second.text) &&
-        !(instruction.third.kind == Operand::OP_SLOT &&
-          instruction.third.text == instruction.second.text);
-      if(has_dead_store_candidate)
-        written_slots.insert(instruction.second.text);
-      const Operand * storage_operands[] = {
+      const Operand * operands[] = {
         &instruction.first, &instruction.second, &instruction.third
       };
-      for(std::size_t k = 0;
-          k < sizeof(storage_operands) / sizeof(storage_operands[0]); ++k)
-        if(storage_operands[k]->kind == Operand::OP_SLOT &&
-           (!has_dead_store_candidate ||
-            storage_operands[k]->text != instruction.second.text))
-          observed_slots.insert(storage_operands[k]->text);
-      for(std::size_t k = 0; k < instruction.args.size(); ++k)
-        if(instruction.args[k].kind == Operand::OP_SLOT &&
-           (!has_dead_store_candidate ||
-            instruction.args[k].text != instruction.second.text))
-          observed_slots.insert(instruction.args[k].text);
+      std::size_t operand_slots[] = {no_index, no_index, no_index};
+      for(std::size_t k = 0; k < sizeof(operands) / sizeof(operands[0]); ++k) {
+        if(operands[k]->kind != Operand::OP_SLOT) continue;
+        const std::unordered_map<std::string, std::size_t>::const_iterator slot =
+          slots_by_name.find(operands[k]->text);
+        if(slot != slots_by_name.end()) operand_slots[k] = slot->second;
+      }
+      const bool has_dead_store_candidate =
+        instruction.kind == Instruction::IK_STORE &&
+        operand_slots[1] != no_index &&
+        operand_slots[0] != operand_slots[1] &&
+        operand_slots[2] != operand_slots[1];
+      if(has_dead_store_candidate)
+        slot_flags[operand_slots[1]] |= SF_WRITTEN;
+      for(std::size_t k = 0; k < sizeof(operand_slots) / sizeof(operand_slots[0]); ++k)
+        if(operand_slots[k] != no_index &&
+           (!has_dead_store_candidate || operand_slots[k] != operand_slots[1]))
+          slot_flags[operand_slots[k]] |= SF_OBSERVED;
+      for(std::size_t k = 0; k < instruction.args.size(); ++k) {
+        if(instruction.args[k].kind != Operand::OP_SLOT) continue;
+        const std::unordered_map<std::string, std::size_t>::const_iterator slot =
+          slots_by_name.find(instruction.args[k].text);
+        if(slot != slots_by_name.end() &&
+           (!has_dead_store_candidate || slot->second != operand_slots[1]))
+          slot_flags[slot->second] |= SF_OBSERVED;
+      }
       if(instruction.kind == Instruction::IK_STORE &&
          instruction.first.kind == Operand::OP_TEMP &&
          instruction.second.kind == Operand::OP_GLOBAL &&
@@ -603,51 +621,47 @@ StorageFacts analyze_storage(
          function_facts.uses.find(instruction.first.text)->second == 1)
         facts.dead_slot_only_parameters.insert(instruction.first.text);
 
-      const Operand * operands[] = {
-        &instruction.first, &instruction.second, &instruction.third
-      };
-      std::string mentioned[3];
+      std::size_t mentioned[3];
       std::size_t mentioned_count = 0;
       for(std::size_t k = 0; k < sizeof(operands) / sizeof(operands[0]); ++k) {
-        if(operands[k]->kind != Operand::OP_SLOT) continue;
+        if(operand_slots[k] == no_index) continue;
         bool duplicate = false;
         for(std::size_t m = 0; m < mentioned_count; ++m)
-          if(mentioned[m] == operands[k]->text) duplicate = true;
+          if(mentioned[m] == operand_slots[k]) duplicate = true;
         if(duplicate) continue;
-        mentioned[mentioned_count++] = operands[k]->text;
+        mentioned[mentioned_count++] = operand_slots[k];
 
-        const std::unordered_map<std::string, std::size_t>::const_iterator object =
-          object_slots.find(operands[k]->text);
-        if(object != object_slots.end() &&
-           seen_object_slots.insert(object->first).second &&
-           instruction.kind == Instruction::IK_ADDR && i + 1 < instructions.size()) {
-          const lowir_model::LowirParameter & parameter =
-            function.params[object->second];
-          const Instruction & copy = instructions[i + 1];
-          if(copy.kind == Instruction::IK_COPYOBJ &&
-             copy.first.kind == Operand::OP_TEMP && copy.first.text == parameter.name &&
-             copy.second.kind == Operand::OP_TEMP && copy.second.text == instruction.dest &&
-             copy.byte_count == parameter.type.storage_size)
-            facts.parameter_slot_aliases[object->first] = parameter.name;
+        const std::size_t slot_index = operand_slots[k];
+        const std::size_t object_parameter = object_slot_parameters[slot_index];
+        if(object_parameter != no_index &&
+           !(slot_flags[slot_index] & SF_OBJECT_SEEN)) {
+          slot_flags[slot_index] |= SF_OBJECT_SEEN;
+          if(instruction.kind == Instruction::IK_ADDR &&
+             i + 1 < instructions.size()) {
+            const lowir_model::LowirParameter & parameter =
+              function.params[object_parameter];
+            const Instruction & copy = instructions[i + 1];
+            if(copy.kind == Instruction::IK_COPYOBJ &&
+               copy.first.kind == Operand::OP_TEMP && copy.first.text == parameter.name &&
+               copy.second.kind == Operand::OP_TEMP && copy.second.text == instruction.dest &&
+               copy.byte_count == parameter.type.storage_size)
+              facts.parameter_slot_aliases[function.slots[slot_index].first] =
+                parameter.name;
+          }
         }
 
-        const std::unordered_map<std::string, std::size_t>::const_iterator scalar =
-          scalar_slots.find(operands[k]->text);
-        if(scalar == scalar_slots.end()) continue;
-        ScalarSlotState & state = scalar_states[scalar->first];
-        const bool first = instruction.first.kind == Operand::OP_SLOT &&
-          instruction.first.text == scalar->first;
-        const bool second = instruction.second.kind == Operand::OP_SLOT &&
-          instruction.second.text == scalar->first;
-        const bool third = instruction.third.kind == Operand::OP_SLOT &&
-          instruction.third.text == scalar->first;
+        if(scalar_state_indexes[slot_index] == no_index) continue;
+        ScalarSlotState & state = scalar_states[scalar_state_indexes[slot_index]];
+        const bool first = operand_slots[0] == slot_index;
+        const bool second = operand_slots[1] == slot_index;
+        const bool third = operand_slots[2] == slot_index;
         if(!state.initialized && instruction.kind == Instruction::IK_STORE && second &&
            instruction.first.kind == Operand::OP_TEMP) {
           const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
             parameters_by_name.find(instruction.first.text);
           if(parameter != parameters_by_name.end() &&
              lowir_model::same_lowir_type(function.params[parameter->second].type,
-                                          function.slots[scalar->second].second)) {
+                                          function.slots[slot_index].second)) {
             state.initialized = true;
             state.parameter = parameter->second;
             state.store_position = i;
@@ -658,7 +672,7 @@ StorageFacts analyze_storage(
           state.loaded = true;
           ++state.load_count;
           state.load_position = i;
-          state.loaded_name = instruction.dest;
+          state.loaded_name = &instruction.dest;
           const std::unordered_map<std::string, unsigned>::const_iterator
             result_clobbers =
               function_facts.live_across_clobbers.find(instruction.dest);
@@ -680,15 +694,18 @@ StorageFacts analyze_storage(
     }
   }
 
-  for(std::unordered_set<std::string>::const_iterator slot = written_slots.begin();
-      slot != written_slots.end(); ++slot)
-    if(!observed_slots.count(*slot)) facts.dead_store_slots.insert(*slot);
+  for(std::size_t s = 0; s < function.slots.size(); ++s)
+    if((slot_flags[s] & SF_WRITTEN) && !(slot_flags[s] & SF_OBSERVED))
+      facts.dead_store_slots.insert(function.slots[s].first);
 
-  std::unordered_map<std::string, std::string> loaded_slots;
-  for(std::unordered_map<std::string, ScalarSlotState>::const_iterator state =
-        scalar_states.begin(); state != scalar_states.end(); ++state)
-    if(state->second.valid && state->second.initialized && state->second.loaded)
-      loaded_slots[state->second.loaded_name] = state->first;
+  std::unordered_map<std::string, std::size_t> loaded_slots;
+  loaded_slots.reserve(scalar_states.size());
+  for(std::size_t s = 0; s < function.slots.size(); ++s) {
+    if(scalar_state_indexes[s] == no_index) continue;
+    const ScalarSlotState & state = scalar_states[scalar_state_indexes[s]];
+    if(state.valid && state.initialized && state.loaded)
+      loaded_slots[*state.loaded_name] = s;
+  }
   for(std::size_t i = 0; i < (function.blocks.empty() ? 0 :
       function.blocks[0].instructions.size()); ++i) {
     const Instruction & instruction = function.blocks[0].instructions[i];
@@ -697,34 +714,35 @@ StorageFacts analyze_storage(
     };
     for(std::size_t k = 0; k < sizeof(operands) / sizeof(operands[0]); ++k) {
       if(operands[k]->kind != Operand::OP_TEMP) continue;
-      const std::unordered_map<std::string, std::string>::const_iterator slot =
+      const std::unordered_map<std::string, std::size_t>::const_iterator slot =
         loaded_slots.find(operands[k]->text);
       if(slot != loaded_slots.end() &&
          !(instruction.kind == Instruction::IK_LOAD && k == 0))
-        scalar_states[slot->second].read_through = false;
+        scalar_states[scalar_state_indexes[slot->second]].read_through = false;
     }
   }
-  for(std::unordered_map<std::string, ScalarSlotState>::const_iterator state =
-        scalar_states.begin(); state != scalar_states.end(); ++state) {
-    if(!state->second.valid || !state->second.initialized || !state->second.loaded ||
-       (!function_facts.calls.empty() && state->second.load_count != 1))
+  for(std::size_t s = 0; s < function.slots.size(); ++s) {
+    if(scalar_state_indexes[s] == no_index) continue;
+    const ScalarSlotState & state = scalar_states[scalar_state_indexes[s]];
+    if(!state.valid || !state.initialized || !state.loaded ||
+       (!function_facts.calls.empty() && state.load_count != 1))
       continue;
-    const std::string & parameter = function.params[state->second.parameter].name;
+    const std::string & parameter = function.params[state.parameter].name;
     if(!function_facts.calls.empty() && function_facts.uses.find(parameter)->second != 1)
       continue;
-    if(state->second.read_through)
-      facts.promoted_parameter_slots[state->first] = parameter;
+    if(state.read_through)
+      facts.promoted_parameter_slots[function.slots[s].first] = parameter;
     else
-      facts.forwarded_parameter_slots[state->first] = parameter;
+      facts.forwarded_parameter_slots[function.slots[s].first] = parameter;
     facts.promoted_parameters.insert(parameter);
-    facts.promoted_parameter_clobbers[state->second.parameter] |=
-      state->second.intervening_clobbers;
+    facts.promoted_parameter_clobbers[state.parameter] |=
+      state.intervening_clobbers;
     const std::vector<std::size_t>::const_iterator call = std::upper_bound(
       function_facts.calls.begin(), function_facts.calls.end(),
-      state->second.store_position);
-    if(function_facts.live_across_call.count(state->second.loaded_name) ||
+      state.store_position);
+    if(function_facts.live_across_call.count(*state.loaded_name) ||
        (call != function_facts.calls.end() &&
-        *call < state->second.load_position))
+        *call < state.load_position))
       facts.promoted_parameters_across_call.insert(parameter);
   }
   return facts;
