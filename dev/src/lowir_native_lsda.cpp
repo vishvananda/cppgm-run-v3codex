@@ -22,6 +22,15 @@ bool same_handler(const HostFunctionLayout::CallSite & left,
 
 }  // namespace
 
+void record_unprotected_unwind_range(HostFunctionLayout & function,
+                                     std::size_t start, std::size_t length)
+{
+  HostFunctionLayout::UnwindRange range;
+  range.start = start;
+  range.length = length;
+  function.unprotected_unwind_ranges.push_back(range);
+}
+
 void coalesce_call_sites(HostFunctionLayout & function, Stats * stats)
 {
   std::vector<HostFunctionLayout::CallSite> & sites = function.call_sites;

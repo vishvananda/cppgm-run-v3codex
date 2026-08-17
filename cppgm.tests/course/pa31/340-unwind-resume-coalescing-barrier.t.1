@@ -1,0 +1,39 @@
+int destroyed;
+int throw_first;
+
+struct Guard
+{
+  ~Guard() noexcept { ++destroyed; }
+};
+
+int first()
+{
+  if (throw_first) throw 1;
+  return 1;
+}
+
+int second()
+{
+  throw 2;
+}
+
+void probe()
+{
+  Guard guard;
+  for (int value = first(); value; value = second())
+  {
+  }
+}
+
+int main()
+{
+  try
+  {
+    probe();
+  }
+  catch (int value)
+  {
+    return value == 2 && destroyed == 1 ? 0 : destroyed + 10;
+  }
+  return 30;
+}

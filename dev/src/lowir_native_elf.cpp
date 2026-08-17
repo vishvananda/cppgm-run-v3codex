@@ -2595,8 +2595,11 @@ void emit_host_instruction(
     require_operands(instruction, 0);
     emit_load(out, XR_RDI, XR_RBP,
       actual_frame_offset(function, function.host_eh_exception_offset), 64);
+    const std::size_t start = out.size();
     out.byte(0xe8);
     out.relative32("_Unwind_Resume");
+    lsda_detail::record_unprotected_unwind_range(
+      layout, start - layout.offset, out.size() - start);
     return;
   }
   const bool call = instruction.opcode == mir_model::MirInstruction::MI_CALL ||
@@ -2604,10 +2607,8 @@ void emit_host_instruction(
   const std::size_t start = out.size();
   emit_instruction(out, instruction, &function);
   if(call && !instruction.call_unwind_no && landing_pad.empty()) {
-    HostFunctionLayout::UnwindRange range;
-    range.start = start - layout.offset;
-    range.length = out.size() - start;
-    layout.unprotected_unwind_ranges.push_back(range);
+    lsda_detail::record_unprotected_unwind_range(
+      layout, start - layout.offset, out.size() - start);
   } else if(call && !instruction.call_unwind_no) {
     HostFunctionLayout::CallSite site;
     site.start = start - layout.offset;
