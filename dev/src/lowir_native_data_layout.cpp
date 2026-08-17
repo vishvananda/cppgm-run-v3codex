@@ -17,6 +17,16 @@ std::size_t type_size(const std::string & type)
   throw std::logic_error("unsupported native data type: " + type);
 }
 
+unsigned type_width(const std::string & type)
+{
+  if(type == "i1" || type == "i8" || type == "u8") return 8;
+  if(type == "i16" || type == "u16") return 16;
+  if(type == "i32" || type == "u32" || type == "f32") return 32;
+  if(type == "i64" || type == "f64" || type == "ptr") return 64;
+  if(type == "f80") return 80;
+  throw std::logic_error("unsupported native scalar type: " + type);
+}
+
 std::size_t global_alignment(const mir_model::MirGlobalDefinition & global)
 {
   if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR)

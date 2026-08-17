@@ -50,3 +50,10 @@ intended to inspect that native encoding addresses the load through the
 original register and omits the copy while preserving textual MIR.  Program
 behavior duplicates active indirect-load coverage and native bytes are not an
 active PA29 oracle, so this representation-only candidate remains proposed.
+
+`dead-address-copy-index-load-folding.t` extends the copy/load candidate with
+an intervening constant index.  It is intended to inspect that native encoding
+folds both the copy and indexed address setup into the load while retaining all
+three textual MIR instructions.  Its behavior duplicates active address and
+load coverage and native bytes are not an active PA29 oracle, so it remains
+proposed.

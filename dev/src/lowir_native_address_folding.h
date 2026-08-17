@@ -1,5 +1,6 @@
 #pragma once
 
+#include "lowir_native_code_buffer.h"
 #include "mir_model.h"
 
 #include <cstddef>
@@ -8,9 +9,26 @@
 namespace lowir_native {
 namespace address_folding {
 
-bool plan_dead_setup_load(
+inline bool is_setup_load_sequence(
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, mir_model::MirOperand * folded_address);
+    std::size_t start)
+{
+  using mir_model::MirInstruction;
+  if(start >= instructions.size() ||
+     (instructions[start].opcode != MirInstruction::MI_LEA &&
+      instructions[start].opcode != MirInstruction::MI_MOV)) return false;
+  if(start + 1 < instructions.size() &&
+     instructions[start + 1].opcode == MirInstruction::MI_LOAD) return true;
+  return start + 2 < instructions.size() &&
+    instructions[start].opcode == MirInstruction::MI_MOV &&
+    instructions[start + 1].opcode == MirInstruction::MI_LEA &&
+    instructions[start + 2].opcode == MirInstruction::MI_LOAD;
+}
+
+std::size_t emit_dead_setup_load(
+    elf_detail::CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, const mir_model::MirFunction & function);
 
 }  // namespace address_folding
 }  // namespace lowir_native

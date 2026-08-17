@@ -33,6 +33,7 @@ using float_bits::extended;
 using float_bits::scalar;
 using data_layout::global_alignment;
 using data_layout::type_size;
+using data_layout::type_width;
 using elf_detail::CodeBuffer;
 using elf_detail::CodeOffsetAdjustment;
 using elf_detail::Fixup;
@@ -514,16 +515,6 @@ void emit_float_negate(CodeBuffer & out,
   emit_gpr_to_xmm(out, target, XR_R11, instruction.type == "f32" ? 32 : 64);
   if(destination.kind != mir_model::MirOperand::OP_XMM)
     emit_xmm_store(out, destination, target, instruction.type, function);
-}
-
-unsigned type_width(const std::string & type)
-{
-  if(type == "i1" || type == "i8" || type == "u8") return 8;
-  if(type == "i16" || type == "u16") return 16;
-  if(type == "i32" || type == "u32" || type == "f32") return 32;
-  if(type == "i64" || type == "f64" || type == "ptr") return 64;
-  if(type == "f80") return 80;
-  throw std::logic_error("unsupported native scalar type: " + type);
 }
 
 X64Register require_register(const mir_model::MirOperand & operand)
@@ -1980,18 +1971,13 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
-      if((block.instructions[j].opcode == mir_model::MirInstruction::MI_LEA ||
-          block.instructions[j].opcode == mir_model::MirInstruction::MI_MOV) &&
-         j + 1 < block.instructions.size() && block.instructions[j + 1].opcode ==
-           mir_model::MirInstruction::MI_LOAD) {
-        mir_model::MirOperand folded_address;
-        if(address_folding::plan_dead_setup_load(
-             block.instructions, j, &folded_address)) {
-          const mir_model::MirInstruction & load =
-            block.instructions[j + 1];
-          emit_address_load(out, load.operands[0].reg, folded_address,
-            type_width(load.type), function); ++j; continue;
-        }
+      std::size_t folded = 0;
+      if(address_folding::is_setup_load_sequence(block.instructions, j))
+        folded = address_folding::emit_dead_setup_load(
+          out, block.instructions, j, function);
+      if(folded) {
+        j += folded - 1;
+        continue;
       }
       const std::size_t divided = emit_power_of_two_division(
         out, block.instructions, j);
@@ -2675,17 +2661,13 @@ HostFunctionLayout emit_host_function(
         XR_RDX, 64);
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
-      if((block.instructions[j].opcode == mir_model::MirInstruction::MI_LEA ||
-          block.instructions[j].opcode == mir_model::MirInstruction::MI_MOV) &&
-         j + 1 < block.instructions.size() && block.instructions[j + 1].opcode ==
-           mir_model::MirInstruction::MI_LOAD) {
-        mir_model::MirOperand folded_address;
-        if(address_folding::plan_dead_setup_load(
-             block.instructions, j, &folded_address)) {
-          const mir_model::MirInstruction & load = block.instructions[j + 1];
-          emit_address_load(out, load.operands[0].reg, folded_address,
-            type_width(load.type), function); ++j; continue;
-        }
+      std::size_t folded = 0;
+      if(address_folding::is_setup_load_sequence(block.instructions, j))
+        folded = address_folding::emit_dead_setup_load(
+          out, block.instructions, j, function);
+      if(folded) {
+        j += folded - 1;
+        continue;
       }
       const std::size_t divided = emit_power_of_two_division(
         out, block.instructions, j);
