@@ -2641,6 +2641,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     inline_o1_calls(program, prepared_oversized_functions,
       original_instruction_counts, &inlined_functions, stats);
   if(stats) {
+    stats->inline_changed_callers = inlined_functions.size();
     stats->rewrites += inline_rewrites;
     stats->inline_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(

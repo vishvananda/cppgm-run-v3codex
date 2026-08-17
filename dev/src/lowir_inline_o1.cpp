@@ -228,6 +228,32 @@ std::vector<std::size_t> normal_successors(const Function & function,
   return result;
 }
 
+void remove_unreachable_blocks(Function * function)
+{
+  if(function->blocks.empty()) return;
+  BlockIndex index;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    index[function->blocks[i].label] = i;
+  std::vector<unsigned char> reachable(function->blocks.size(), 0);
+  std::vector<std::size_t> pending(1, 0);
+  reachable[0] = 1;
+  for(std::size_t cursor = 0; cursor < pending.size(); ++cursor) {
+    const std::vector<std::size_t> successors =
+      normal_successors(*function, pending[cursor], index);
+    for(std::size_t i = 0; i < successors.size(); ++i)
+      if(!reachable[successors[i]]) {
+        reachable[successors[i]] = 1;
+        pending.push_back(successors[i]);
+      }
+  }
+  if(pending.size() == function->blocks.size()) return;
+  std::vector<Block> kept;
+  kept.reserve(pending.size());
+  for(std::size_t i = 0; i < function->blocks.size(); ++i)
+    if(reachable[i]) kept.push_back(std::move(function->blocks[i]));
+  function->blocks.swap(kept);
+}
+
 struct EhContext
 {
   std::vector<unsigned char> incoming;
@@ -312,11 +338,50 @@ public:
     infer_no_unwind();
     mark_recursive();
     state_.assign(program_.functions.size(), 0);
+    remaining_inline_budget_.assign(program_.functions.size(),
+      kInlineInstructionBudget);
   }
 
   std::size_t run()
   {
-    for(std::size_t i = 0; i < program_.functions.size(); ++i) expand(i);
+    std::deque<std::size_t> stripped;
+    for(std::size_t i = 0; i < program_.functions.size(); ++i)
+      if(expand(i) && has_eh_blocked_callers(i) &&
+         instruction_counts_[i] <= 4 &&
+         leaf_inline_shape(program_.functions[i])) {
+        stripped.push_back(i);
+        if(stats_) ++stats_->worklist_pushes;
+      }
+    while(!stripped.empty()) {
+      const std::size_t target = stripped.front();
+      stripped.pop_front();
+      std::vector<std::size_t> & blocked =
+        eh_blocked_callers_.find(target)->second;
+      std::sort(blocked.begin(), blocked.end());
+      blocked.erase(std::unique(blocked.begin(), blocked.end()), blocked.end());
+      for(std::size_t i = 0; i < blocked.size(); ++i) {
+        const std::size_t caller = blocked[i];
+        if(stats_) ++stats_->inline_revisited_callers;
+        inline_calls(caller);
+        const bool caller_stripped =
+          strip_explicit_no_unwind_eh(&program_.functions[caller]);
+        if(caller_stripped) {
+          ++rewrites_;
+          if(rewritten_functions_)
+            rewritten_functions_->insert(program_.functions[caller].name);
+        }
+        contains_eh_[caller] = contains_eh(program_.functions[caller]);
+        instruction_counts_[caller] =
+          instruction_count(program_.functions[caller]);
+        if(caller_stripped &&
+           has_eh_blocked_callers(caller) &&
+           instruction_counts_[caller] <= 4 &&
+           leaf_inline_shape(program_.functions[caller])) {
+          stripped.push_back(caller);
+          if(stats_) ++stats_->worklist_pushes;
+        }
+      }
+    }
     return rewrites_;
   }
 
@@ -330,6 +395,9 @@ private:
   const std::vector<std::size_t> & original_instruction_counts_;
   std::vector<unsigned char> recursive_, state_, contains_eh_;
   std::vector<std::size_t> instruction_counts_;
+  std::vector<std::size_t> remaining_inline_budget_;
+  std::unordered_map<std::size_t, std::vector<std::size_t> >
+    eh_blocked_callers_;
   std::size_t rewrites_;
 
   std::size_t callee(const Instruction & instruction) const
@@ -339,6 +407,14 @@ private:
     const std::unordered_map<std::string, std::size_t>::const_iterator found =
       definition_.find(*name);
     return found == definition_.end() ? kNoFunction : found->second;
+  }
+
+  bool has_eh_blocked_callers(std::size_t target) const
+  {
+    const std::unordered_map<std::size_t,
+      std::vector<std::size_t> >::const_iterator found =
+        eh_blocked_callers_.find(target);
+    return found != eh_blocked_callers_.end() && !found->second.empty();
   }
 
   void infer_no_unwind()
@@ -464,7 +540,7 @@ private:
 
   bool candidate(std::size_t caller, std::size_t target,
                  const Instruction & call,
-                 bool landing, bool inside_eh) const
+                 bool landing, bool inside_eh)
   {
     if(target == kNoFunction || recursive_[target] || target == caller) return false;
     const Function & callee_function = program_.functions[target];
@@ -473,8 +549,8 @@ private:
     // boundary operands to native lowering.  They are valid backend calls but
     // are not structurally safe to substitute as ordinary LowIR parameters.
     if(callee_function.params.size() != call.args.size()) return false;
-    if(callee_function.boundary.arity == lowir_model::CAM_VARIADIC ||
-       contains_eh_[target]) return false;
+    if(callee_function.boundary.arity == lowir_model::CAM_VARIADIC)
+      return false;
     if(instruction_counts_[target] > 40 &&
        !callee_function.metadata.prefer_local_object_binding) return false;
     if(prepared_oversized_functions_.count(callee_function.name) &&
@@ -486,8 +562,16 @@ private:
     // inferred no-throw body is not part of that external ABI contract.
     if(inside_eh && !callee_function.metadata.object_symbol.empty())
       return false;
-    return !inside_eh ||
-      no_unwind_.count(callee_function.name);
+    if(inside_eh && !no_unwind_.count(callee_function.name)) return false;
+    if(contains_eh_[target]) {
+      if(callee_function.boundary.unwind == lowir_model::CUM_NO &&
+         instruction_counts_[target] <= 8) {
+        eh_blocked_callers_[target].push_back(caller);
+        if(stats_) ++stats_->inline_eh_blocked_records;
+      }
+      return false;
+    }
+    return true;
   }
 
   bool consume_inline_budget(std::size_t target, std::size_t * remaining)
@@ -529,15 +613,18 @@ private:
       }
       function->blocks[b].instructions.swap(kept);
     }
+    remove_unreachable_blocks(function);
     return changed;
   }
 
-  void expand(std::size_t function_index)
+  bool expand(std::size_t function_index)
   {
-    if(state_[function_index] == 2 || state_[function_index] == 1) return;
+    if(state_[function_index] == 2 || state_[function_index] == 1) return false;
     state_[function_index] = 1;
     inline_calls(function_index);
-    if(strip_explicit_no_unwind_eh(&program_.functions[function_index])) {
+    const bool stripped =
+      strip_explicit_no_unwind_eh(&program_.functions[function_index]);
+    if(stripped) {
       ++rewrites_;
       if(rewritten_functions_)
         rewritten_functions_->insert(program_.functions[function_index].name);
@@ -546,6 +633,7 @@ private:
     instruction_counts_[function_index] =
       instruction_count(program_.functions[function_index]);
     state_[function_index] = 2;
+    return stripped;
   }
 
   void build_maps(const Function & callee_function, const Instruction & call,
@@ -869,7 +957,7 @@ private:
         b < eh.incoming.size() && eh.incoming[b] == 2 ? 1 : 0;
     ValueMap replacements;
     bool changed = false;
-    std::size_t inline_budget = kInlineInstructionBudget;
+    std::size_t & inline_budget = remaining_inline_budget_[function_index];
     for(std::size_t b = 0;
         b < program_.functions[function_index].blocks.size(); ++b) {
       changed |= batch_inline_leaf_calls(function_index, b, eh, block_eh,

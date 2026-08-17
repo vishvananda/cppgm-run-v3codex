@@ -887,6 +887,10 @@ void optimize_lowir(lowir_model::LowirProgram * program, int level,
 		 << " dataflow_updates=" << stats.dataflow_updates
 		 << " inline_call_visits=" << stats.inline_call_visits
 		 << " inline_calls=" << stats.inline_calls
+		 << " inline_changed_callers=" << stats.inline_changed_callers
+		 << " inline_eh_blocked_records="
+		 << stats.inline_eh_blocked_records
+		 << " inline_revisited_callers=" << stats.inline_revisited_callers
 		 << " budget_skips=" << stats.budget_skips
 		 << " rewrites=" << stats.rewrites
 		  << " simplify_runs=" << stats.simplify_runs

@@ -19,6 +19,9 @@ struct Stats
   std::size_t dataflow_updates = 0;
   std::size_t inline_call_visits = 0;
   std::size_t inline_calls = 0;
+  std::size_t inline_changed_callers = 0;
+  std::size_t inline_eh_blocked_records = 0;
+  std::size_t inline_revisited_callers = 0;
   std::size_t budget_skips = 0;
   std::size_t rewrites = 0;
   std::size_t simplify_runs = 0;
