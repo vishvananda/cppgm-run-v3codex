@@ -512,6 +512,50 @@ sub count_linux_comdat_groups
 	return $count;
 }
 
+sub count_linux_comdat_definitions
+{
+	my ($obj, $needle, $require_relocation) = @_;
+	my %symbol_sections;
+	for my $line (read_command_lines('readelf', '-Ws', $obj))
+	{
+		my @fields = split(/\s+/, trim_text($line));
+		next if scalar(@fields) < 8 || $fields[0] !~ /^\d+:$/;
+		next if $fields[3] ne 'FUNC' || $fields[4] ne 'WEAK';
+		next if $fields[6] !~ /^\d+$/;
+		next if !canonical_symbol_matches(
+			canonicalize_symbol($fields[7]), $needle);
+		$symbol_sections{$fields[6]} = 1;
+	}
+	return 0 if scalar(keys(%symbol_sections)) == 0;
+
+	my $matching_group = 0;
+	my $has_body = 0;
+	my $has_relocation = 0;
+	my $count = 0;
+	for my $line (read_command_lines('readelf', '--section-groups', $obj))
+	{
+		if ($line =~ /COMDAT group section .*\[([^\]]+)\] contains/)
+		{
+			++$count if $matching_group && $has_body &&
+				(!$require_relocation || $has_relocation);
+			$matching_group = canonical_symbol_matches(
+				canonicalize_symbol($1), $needle);
+			$has_body = 0;
+			$has_relocation = 0;
+			next;
+		}
+		next if !$matching_group;
+		if ($line =~ /^\s*\[\s*(\d+)\]\s+(\S+)/)
+		{
+			$has_body = 1 if $symbol_sections{$1};
+			$has_relocation = 1 if $2 =~ /^\.rela/;
+		}
+	}
+	++$count if $matching_group && $has_body &&
+		(!$require_relocation || $has_relocation);
+	return $count;
+}
+
 sub count_weak_symbols
 {
 	my ($os, $obj, $needle) = @_;
@@ -654,6 +698,50 @@ while (my $line = <$spec>)
 				if $group_count < $min_count;
 		}
 		print "duplicate_definition $obj_index $needle $min_count\n";
+		next;
+	}
+
+	if ($kind eq 'comdat_definition')
+	{
+		my ($needle, $min_count) = @fields;
+		$min_count = 1 if !defined($min_count);
+		die "Invalid comdat_definition expectation in $spec_file: $line\n"
+			if !defined($needle) || $min_count !~ /^\d+$/;
+		die "comdat_definition is only supported for ELF objects\n"
+			if $os ne 'linux';
+		my $count = count_linux_comdat_definitions($obj, $needle, 0);
+		if ($record_mode)
+		{
+			die "Expected at least one function-body COMDAT for '$needle' in object $obj_index; got $count\n"
+				if $count == 0;
+			print "comdat_definition $obj_index $needle $count\n";
+			next;
+		}
+		die "Expected at least $min_count function-body COMDATs for '$needle' in object $obj_index; got $count\n"
+			if $count < $min_count;
+		print "comdat_definition $obj_index $needle $min_count\n";
+		next;
+	}
+
+	if ($kind eq 'comdat_relocated_definition')
+	{
+		my ($needle, $min_count) = @fields;
+		$min_count = 1 if !defined($min_count);
+		die "Invalid comdat_relocated_definition expectation in $spec_file: $line\n"
+			if !defined($needle) || $min_count !~ /^\d+$/;
+		die "comdat_relocated_definition is only supported for ELF objects\n"
+			if $os ne 'linux';
+		my $count = count_linux_comdat_definitions($obj, $needle, 1);
+		if ($record_mode)
+		{
+			die "Expected at least one function-and-relocation COMDAT for '$needle' in object $obj_index; got $count\n"
+				if $count == 0;
+			print "comdat_relocated_definition $obj_index $needle $count\n";
+			next;
+		}
+		die "Expected at least $min_count function-and-relocation COMDATs for '$needle' in object $obj_index; got $count\n"
+			if $count < $min_count;
+		print "comdat_relocated_definition $obj_index $needle $min_count\n";
 		next;
 	}
 

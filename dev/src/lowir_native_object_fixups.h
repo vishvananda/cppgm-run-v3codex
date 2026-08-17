@@ -10,7 +10,7 @@ namespace lowir_native {
 namespace object_elf_detail {
 
 void resolve_same_section_local_fixups(
-  EncodedSection & text,
+  std::vector<EncodedSection> & text_sections,
   std::vector<EncodedSection> & data_sections,
   const std::unordered_map<std::string, std::string> & declarations);
 

@@ -74,7 +74,7 @@ bool is_same_section(const LabelLocation & target, bool source_text,
                      std::size_t source_section)
 {
   return target.text == source_text &&
-    (source_text || target.section == source_section);
+    target.section == source_section;
 }
 
 void resolve_section_fixups(
@@ -104,21 +104,26 @@ void resolve_section_fixups(
 }  // namespace
 
 void resolve_same_section_local_fixups(
-    EncodedSection & text,
+    std::vector<EncodedSection> & text_sections,
     std::vector<EncodedSection> & data_sections,
     const std::unordered_map<std::string, std::string> & declarations)
 {
-  std::size_t label_count = text.labels.size();
+  std::size_t label_count = 0;
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    label_count += text_sections[i].labels.size();
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     label_count += data_sections[i].labels.size();
   LabelIndex labels;
   labels.reserve(label_count);
-  add_labels(labels, text, true, 0);
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    add_labels(labels, text_sections[i], true, i);
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     add_labels(labels, data_sections[i], false, i);
   const std::unordered_set<std::string> externally_named =
     externally_named_targets(declarations);
-  resolve_section_fixups(text, true, 0, labels, externally_named);
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    resolve_section_fixups(
+      text_sections[i], true, i, labels, externally_named);
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     resolve_section_fixups(
       data_sections[i], false, i, labels, externally_named);

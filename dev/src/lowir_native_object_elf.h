@@ -29,6 +29,7 @@ struct EncodedFixup
 struct EncodedSection
 {
   std::string name;
+  std::string comdat_signature;
   std::uint64_t flags = 0;
   std::size_t alignment = 1;
   std::vector<unsigned char> bytes;
@@ -54,6 +55,7 @@ struct HostFunctionLayout
 
   std::string internal_symbol;
   std::string object_symbol;
+  std::size_t text_section = 0;
   std::size_t offset = 0;
   std::size_t size = 0;
   std::vector<X64Register> callee_saved_regs;

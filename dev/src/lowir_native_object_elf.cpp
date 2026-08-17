@@ -43,21 +43,26 @@ typedef std::unordered_map<std::string, EncodedLabelLocation>
   EncodedLabelIndex;
 
 EncodedLabelIndex index_encoded_labels(
-    const EncodedSection & text,
+    const std::vector<EncodedSection> & text_sections,
     const std::vector<EncodedSection> & data_sections)
 {
-  std::size_t label_count = text.labels.size();
+  std::size_t label_count = 0;
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    label_count += text_sections[i].labels.size();
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     label_count += data_sections[i].labels.size();
   EncodedLabelIndex result;
   result.reserve(label_count);
-  for(std::unordered_map<std::string, std::size_t>::const_iterator label =
-        text.labels.begin(); label != text.labels.end(); ++label) {
-    EncodedLabelLocation location;
-    location.text = true;
-    location.offset = label->second;
-    result.insert(std::make_pair(label->first, location));
-  }
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    for(std::unordered_map<std::string, std::size_t>::const_iterator label =
+          text_sections[i].labels.begin();
+        label != text_sections[i].labels.end(); ++label) {
+      EncodedLabelLocation location;
+      location.text = true;
+      location.section = i;
+      location.offset = label->second;
+      result.insert(std::make_pair(label->first, location));
+    }
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     for(std::unordered_map<std::string, std::size_t>::const_iterator label =
           data_sections[i].labels.begin();
@@ -72,7 +77,7 @@ EncodedLabelIndex index_encoded_labels(
 
 void publish_object_aliases(
     const lowir_model::LowirProgram & program,
-    EncodedSection & text,
+    std::vector<EncodedSection> & text_sections,
     std::vector<EncodedSection> & data_sections,
     EncodedLabelIndex & labels)
 {
@@ -84,10 +89,134 @@ void publish_object_aliases(
     if(target == labels.end()) throw std::runtime_error(
       "native alias has undefined target: " + program.object_aliases[i].target);
     const EncodedLabelLocation location = target->second;
-    if(location.text) text.labels[alias] = location.offset;
+    if(location.text)
+      text_sections[location.section].labels[alias] = location.offset;
     else data_sections[location.section].labels[alias] = location.offset;
     labels[alias] = location;
   }
+}
+
+struct TextSlice
+{
+  std::size_t old_start = 0;
+  std::size_t old_end = 0;
+  std::size_t section = 0;
+  std::size_t new_start = 0;
+};
+
+std::size_t text_slice_at(const std::vector<TextSlice> & slices,
+                          std::size_t offset)
+{
+  const std::vector<TextSlice>::const_iterator after = std::upper_bound(
+    slices.begin(), slices.end(), offset,
+    [](std::size_t value, const TextSlice & slice) {
+      return value < slice.old_start;
+    });
+  if(after == slices.begin())
+    throw std::logic_error("encoded text item precedes every function");
+  const std::size_t index = static_cast<std::size_t>(after - slices.begin() - 1);
+  if(offset > slices[index].old_end)
+    throw std::logic_error("encoded text item is outside a function");
+  return index;
+}
+
+std::vector<EncodedSection> partition_weak_text(
+    const lowir_model::LowirProgram & program,
+    EncodedSection source,
+    std::vector<HostFunctionLayout> & functions)
+{
+  std::unordered_map<std::size_t, std::string> weak_signatures;
+  std::unordered_set<std::string> weak_objects;
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
+    const ir_model::ExportedSymbol & symbol = program.exported_symbols[i];
+    if(symbol.linkage != ir_model::SL_WEAK || symbol.object_symbol.empty())
+      continue;
+    weak_objects.insert(symbol.object_symbol);
+    const std::string object_label = native_object_symbol(symbol.object_symbol);
+    std::unordered_map<std::string, std::size_t>::const_iterator label =
+      source.labels.find(object_label);
+    if(label == source.labels.end())
+      label = source.labels.find(symbol.internal_symbol);
+    if(label != source.labels.end() && !weak_signatures.count(label->second))
+      weak_signatures[label->second] = symbol.object_symbol;
+  }
+
+  std::vector<std::size_t> order(functions.size());
+  for(std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+  std::sort(order.begin(), order.end(),
+    [&functions](std::size_t left, std::size_t right) {
+      return functions[left].offset < functions[right].offset;
+    });
+
+  std::vector<EncodedSection> result(1);
+  result[0].name = source.name;
+  result[0].flags = source.flags;
+  result[0].alignment = source.alignment;
+  std::vector<TextSlice> slices;
+  slices.reserve(functions.size());
+  std::unordered_set<std::string> section_names;
+  section_names.insert(source.name);
+  for(std::size_t position = 0; position < order.size(); ++position) {
+    HostFunctionLayout & function = functions[order[position]];
+    if(function.offset > source.bytes.size() ||
+       function.size > source.bytes.size() - function.offset)
+      throw std::logic_error("encoded host function is out of bounds");
+    if(position && slices.back().old_end > function.offset)
+      throw std::logic_error("overlapping encoded host functions");
+    std::string signature;
+    const std::unordered_map<std::size_t, std::string>::const_iterator weak =
+      weak_signatures.find(function.offset);
+    if(weak != weak_signatures.end()) signature = weak->second;
+    if(!function.object_symbol.empty() &&
+       weak_objects.count(function.object_symbol))
+      signature = function.object_symbol;
+
+    TextSlice slice;
+    slice.old_start = function.offset;
+    slice.old_end = function.offset + function.size;
+    if(signature.empty()) {
+      EncodedSection & ordinary = result[0];
+      while(ordinary.bytes.size() % 2) ordinary.bytes.push_back(0);
+      slice.new_start = ordinary.bytes.size();
+      slice.section = 0;
+      ordinary.bytes.insert(ordinary.bytes.end(),
+        source.bytes.begin() + function.offset,
+        source.bytes.begin() + function.offset + function.size);
+    } else {
+      EncodedSection grouped;
+      grouped.name = ".text." + signature;
+      grouped.comdat_signature = signature;
+      grouped.flags = source.flags | 0x200;
+      grouped.alignment = 2;
+      if(!section_names.insert(grouped.name).second)
+        throw std::logic_error("duplicate function COMDAT section name");
+      grouped.bytes.insert(grouped.bytes.end(),
+        source.bytes.begin() + function.offset,
+        source.bytes.begin() + function.offset + function.size);
+      result.push_back(std::move(grouped));
+      slice.section = result.size() - 1;
+    }
+    function.text_section = slice.section;
+    function.offset = slice.new_start;
+    slices.push_back(slice);
+  }
+
+  for(std::unordered_map<std::string, std::size_t>::const_iterator label =
+        source.labels.begin(); label != source.labels.end(); ++label) {
+    const TextSlice & slice = slices[text_slice_at(slices, label->second)];
+    result[slice.section].labels[label->first] =
+      slice.new_start + label->second - slice.old_start;
+  }
+  for(std::size_t i = 0; i < source.fixups.size(); ++i) {
+    const TextSlice & slice = slices[text_slice_at(
+      slices, source.fixups[i].offset)];
+    if(source.fixups[i].offset >= slice.old_end)
+      throw std::logic_error("encoded text fixup is outside a function");
+    EncodedFixup fixup = source.fixups[i];
+    fixup.offset = slice.new_start + fixup.offset - slice.old_start;
+    result[slice.section].fixups.push_back(fixup);
+  }
+  return result;
 }
 
 struct HostSection
@@ -209,7 +338,7 @@ std::string host_symbol_spelling(const std::string & raw);
 
 HostSection make_host_lsda(
     std::vector<HostFunctionLayout> & functions,
-    const EncodedSection & text,
+    const EncodedLabelIndex & encoded_labels,
     const std::unordered_map<std::string, std::string> & declarations,
     std::vector<HostRelocation> & relocations)
 {
@@ -322,13 +451,14 @@ HostSection make_host_lsda(
       }
       const std::string landing_name = function.internal_symbol + "::" +
         sites[site].landing_pad;
-      const std::unordered_map<std::string, std::size_t>::const_iterator landing =
-        text.labels.find(landing_name);
-      if(landing == text.labels.end())
+      const EncodedLabelIndex::const_iterator landing =
+        encoded_labels.find(landing_name);
+      if(landing == encoded_labels.end() || !landing->second.text ||
+         landing->second.section != function.text_section)
         throw std::logic_error("host EH landing pad has no encoded label");
       append_uleb128(call_table, sites[site].start);
       append_uleb128(call_table, sites[site].length);
-      append_uleb128(call_table, landing->second - function.offset);
+      append_uleb128(call_table, landing->second.offset - function.offset);
       const std::string & action_pad = sites[site].action_pad.empty() ?
         sites[site].landing_pad : sites[site].action_pad;
       const std::map<std::string, std::size_t>::const_iterator action =
@@ -425,6 +555,7 @@ std::size_t append_cie(HostSection & section, bool with_personality,
 
 HostSection make_host_eh_frame(
     const std::vector<HostFunctionLayout> & functions,
+    const std::vector<EncodedSection> & text_sections,
     std::vector<HostRelocation> & relocations)
 {
   HostSection section;
@@ -479,7 +610,9 @@ HostSection make_host_eh_frame(
     HostRelocation relocation;
     relocation.kind = HostRelocation::HR_PC32;
     relocation.offset = initial_location;
-    relocation.target = ".text";
+    if(function.text_section >= text_sections.size())
+      throw std::logic_error("host function has invalid text section");
+    relocation.target = text_sections[function.text_section].name;
     relocation.addend = static_cast<long long>(function.offset);
     relocations.push_back(relocation);
   }
@@ -607,23 +740,25 @@ void add_unique_symbol(std::vector<HostSymbol> & symbols,
 }
 
 std::uint64_t function_size_at(
-    const std::unordered_map<std::size_t, std::uint64_t> & function_sizes,
-    std::size_t offset)
+    const std::map<std::pair<std::size_t, std::size_t>, std::uint64_t> &
+      function_sizes,
+    std::size_t section, std::size_t offset)
 {
-  const std::unordered_map<std::size_t, std::uint64_t>::const_iterator found =
-    function_sizes.find(offset);
+  const std::map<std::pair<std::size_t, std::size_t>,
+    std::uint64_t>::const_iterator found = function_sizes.find(
+      std::make_pair(section, offset));
   return found == function_sizes.end() ? 0 : found->second;
 }
 
 void collect_host_symbols(
     const lowir_model::LowirProgram & program,
-    const EncodedSection & text,
-    std::uint16_t text_section_index,
+    const std::vector<EncodedSection> & text_sections,
+    const std::vector<std::uint16_t> & text_section_indexes,
     const std::vector<EncodedSection> & data_sections,
     const std::vector<std::uint16_t> & data_section_indexes,
     const EncodedLabelIndex & encoded_labels,
     const std::vector<HostFunctionLayout> & functions,
-    const std::vector<HostRelocation> & text_relocations,
+    const std::vector<std::vector<HostRelocation> > & text_relocations,
     const std::vector<std::vector<HostRelocation> > & data_relocations,
     const std::vector<HostRelocation> & init_array_relocations,
     const std::vector<HostRelocation> & fini_array_relocations,
@@ -642,7 +777,8 @@ void collect_host_symbols(
         if(encoded_labels.count(relocations[i].target))
           required_local_labels.insert(relocations[i].target);
     };
-  require_relocation_labels(text_relocations);
+  for(std::size_t i = 0; i < text_relocations.size(); ++i)
+    require_relocation_labels(text_relocations[i]);
   for(std::size_t i = 0; i < data_relocations.size(); ++i)
     require_relocation_labels(data_relocations[i]);
   require_relocation_labels(init_array_relocations);
@@ -663,22 +799,24 @@ void collect_host_symbols(
       object_only_labels.insert(
         native_object_symbol(exported.object_symbol));
   }
-  std::unordered_map<std::size_t, std::uint64_t> function_sizes;
-  function_sizes.reserve(functions.size());
+  std::map<std::pair<std::size_t, std::size_t>, std::uint64_t> function_sizes;
   for(std::size_t i = 0; i < functions.size(); ++i)
-    function_sizes[functions[i].offset] = functions[i].size;
-  for(std::unordered_map<std::string, std::size_t>::const_iterator it =
-        text.labels.begin(); it != text.labels.end(); ++it) {
-    if(object_only_labels.count(it->first) ||
-       !required_local_labels.count(it->first)) continue;
-    HostSymbol symbol;
-    symbol.name = it->first;
-    symbol.section = text_section_index;
-    symbol.value = it->second;
-    symbol.size = function_size_at(function_sizes, it->second);
-    symbol.type = symbol.size ? 2 : 0;
-    add_unique_symbol(locals, local_index, symbol);
-  }
+    function_sizes[std::make_pair(
+      functions[i].text_section, functions[i].offset)] = functions[i].size;
+  for(std::size_t section = 0; section < text_sections.size(); ++section)
+    for(std::unordered_map<std::string, std::size_t>::const_iterator it =
+          text_sections[section].labels.begin();
+        it != text_sections[section].labels.end(); ++it) {
+      if(object_only_labels.count(it->first) ||
+         !required_local_labels.count(it->first)) continue;
+      HostSymbol symbol;
+      symbol.name = it->first;
+      symbol.section = text_section_indexes[section];
+      symbol.value = it->second;
+      symbol.size = function_size_at(function_sizes, section, it->second);
+      symbol.type = symbol.size ? 2 : 0;
+      add_unique_symbol(locals, local_index, symbol);
+    }
   for(std::size_t section = 0; section < data_sections.size(); ++section) {
     for(std::unordered_map<std::string, std::size_t>::const_iterator it =
           data_sections[section].labels.begin();
@@ -701,7 +839,8 @@ void collect_host_symbols(
     const EncodedLabelIndex::const_iterator location =
       encoded_labels.find(object_label);
     if(location == encoded_labels.end()) continue;
-    const std::uint16_t section = location->second.text ? text_section_index :
+    const std::uint16_t section = location->second.text ?
+      text_section_indexes[location->second.section] :
       data_section_indexes[location->second.section];
     const std::size_t value = location->second.offset;
     const unsigned type = location->second.text ? 2 :
@@ -711,7 +850,8 @@ void collect_host_symbols(
     symbol.section = section;
     symbol.value = value;
     symbol.type = type;
-    symbol.size = symbol.type == 2 ? function_size_at(function_sizes, value) : 0;
+    symbol.size = symbol.type == 2 ? function_size_at(
+      function_sizes, location->second.section, value) : 0;
     symbol.binding = exported.linkage == ir_model::SL_WEAK ? 2 :
       exported.linkage == ir_model::SL_INTERNAL ||
       exported.prefer_local_object_binding ? 0 : 1;
@@ -722,17 +862,18 @@ void collect_host_symbols(
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     if(program.functions[i].metadata.role != lowir_model::SR_ENTRY) continue;
-    const std::unordered_map<std::string, std::size_t>::const_iterator at =
-      text.labels.find(program.functions[i].name);
-    if(at == text.labels.end())
+    const EncodedLabelIndex::const_iterator at =
+      encoded_labels.find(program.functions[i].name);
+    if(at == encoded_labels.end() || !at->second.text)
       throw std::logic_error("entry function has no encoded symbol");
     HostSymbol symbol;
     symbol.name = "main";
     symbol.binding = 1;
     symbol.type = 2;
-    symbol.section = text_section_index;
-    symbol.value = at->second;
-    symbol.size = function_size_at(function_sizes, at->second);
+    symbol.section = text_section_indexes[at->second.section];
+    symbol.value = at->second.offset;
+    symbol.size = function_size_at(
+      function_sizes, at->second.section, at->second.offset);
     add_unique_symbol(globals, global_index, symbol);
   }
 
@@ -750,13 +891,15 @@ void collect_host_symbols(
 		declared_tls_symbols.insert(object->second);
 	}
   std::unordered_set<std::string> section_symbols;
-  section_symbols.insert(text.name);
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    section_symbols.insert(text_sections[i].name);
   section_symbols.insert(".gcc_except_table");
   section_symbols.insert(".eh_frame");
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     section_symbols.insert(data_sections[i].name);
   std::vector<const std::vector<HostRelocation> *> relocation_groups;
-  relocation_groups.push_back(&text_relocations);
+  for(std::size_t i = 0; i < text_relocations.size(); ++i)
+    relocation_groups.push_back(&text_relocations[i]);
   for(std::size_t i = 0; i < data_relocations.size(); ++i)
     relocation_groups.push_back(&data_relocations[i]);
   relocation_groups.push_back(&init_array_relocations);
@@ -900,6 +1043,35 @@ std::size_t relocatable_image_size(
   return size + sections.size() * 64;
 }
 
+void append_function_comdat_groups(
+    std::vector<HostSection> & sections,
+    const std::vector<EncodedSection> & text_sections,
+    const std::vector<std::uint16_t> & text_indexes,
+    const std::vector<std::uint16_t> & text_relocation_indexes,
+    std::uint16_t symtab_index,
+    const std::unordered_map<std::string, std::size_t> & symbol_indexes)
+{
+  for(std::size_t i = 0; i < text_sections.size(); ++i) {
+    if(text_sections[i].comdat_signature.empty()) continue;
+    const std::unordered_map<std::string, std::size_t>::const_iterator signature =
+      symbol_indexes.find(text_sections[i].comdat_signature);
+    if(signature == symbol_indexes.end())
+      throw std::logic_error("function COMDAT has no signature symbol");
+    HostSection group;
+    group.name = ".group";
+    group.type = 17;
+    group.alignment = 4;
+    group.entry_size = 4;
+    group.link = symtab_index;
+    group.info = static_cast<std::uint32_t>(signature->second);
+    append_little(group.bytes, 1, 4);
+    append_little(group.bytes, text_indexes[i], 4);
+    if(text_relocation_indexes[i])
+      append_little(group.bytes, text_relocation_indexes[i], 4);
+    sections.push_back(group);
+  }
+}
+
 std::vector<unsigned char> make_linux_relocatable_image(
     const lowir_model::LowirProgram & program,
     EncodedSection mutable_text,
@@ -907,15 +1079,24 @@ std::vector<unsigned char> make_linux_relocatable_image(
     std::vector<HostFunctionLayout> & functions,
     std::size_t & relocation_count)
 {
+  std::vector<EncodedSection> text_sections;
+  text_sections.push_back(std::move(mutable_text));
   EncodedLabelIndex encoded_labels =
-    index_encoded_labels(mutable_text, mutable_data);
-  publish_object_aliases(program, mutable_text, mutable_data, encoded_labels);
+    index_encoded_labels(text_sections, mutable_data);
+  publish_object_aliases(
+    program, text_sections, mutable_data, encoded_labels);
+  text_sections = partition_weak_text(
+    program, std::move(text_sections[0]), functions);
+  encoded_labels = index_encoded_labels(text_sections, mutable_data);
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
   resolve_same_section_local_fixups(
-    mutable_text, mutable_data, declarations);
-  const std::vector<HostRelocation> text_relocations = host_relocations(
-    mutable_text, encoded_labels, declarations);
+    text_sections, mutable_data, declarations);
+  std::vector<std::vector<HostRelocation> > text_relocations(
+    text_sections.size());
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    text_relocations[i] = host_relocations(
+      text_sections[i], encoded_labels, declarations);
   std::vector<std::vector<HostRelocation> > data_relocations(
     mutable_data.size());
   for(std::size_t i = 0; i < mutable_data.size(); ++i)
@@ -923,9 +1104,10 @@ std::vector<unsigned char> make_linux_relocatable_image(
       mutable_data[i], encoded_labels, declarations);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
-    functions, mutable_text, declarations, lsda_relocations);
+    functions, encoded_labels, declarations, lsda_relocations);
   std::vector<HostRelocation> eh_relocations;
-  HostSection eh = make_host_eh_frame(functions, eh_relocations);
+  HostSection eh = make_host_eh_frame(
+    functions, text_sections, eh_relocations);
 
   struct PendingRelocations
   {
@@ -942,13 +1124,15 @@ std::vector<unsigned char> make_linux_relocatable_image(
       return static_cast<std::uint16_t>(sections.size() - 1);
     };
   const auto append_relocations =
-    [&append_section, &pending_relocations](
+    [&append_section, &pending_relocations, &sections](
       const std::string & name, std::uint16_t target,
-      const std::vector<HostRelocation> & relocations) {
-      if(relocations.empty()) return;
+      const std::vector<HostRelocation> & relocations) -> std::uint16_t {
+      if(relocations.empty()) return 0;
       HostSection section;
       section.name = ".rela" + name;
       section.type = 4;
+      section.flags = 0x40 |
+        ((sections[target].flags & 0x200) ? 0x200 : 0);
       section.alignment = 8;
       section.entry_size = 24;
       section.info = target;
@@ -956,15 +1140,24 @@ std::vector<unsigned char> make_linux_relocatable_image(
       pending.section = append_section(std::move(section));
       pending.relocations = &relocations;
       pending_relocations.push_back(pending);
+      return pending.section;
     };
 
-  HostSection text_section;
-  text_section.name = mutable_text.name;
-  text_section.flags = mutable_text.flags;
-  text_section.alignment = mutable_text.alignment;
-  text_section.bytes = std::move(mutable_text.bytes);
-  const std::uint16_t text_index = append_section(std::move(text_section));
-  append_relocations(mutable_text.name, text_index, text_relocations);
+  std::vector<std::uint16_t> text_indexes;
+  std::vector<std::uint16_t> text_relocation_indexes;
+  text_indexes.reserve(text_sections.size());
+  text_relocation_indexes.reserve(text_sections.size());
+  for(std::size_t i = 0; i < text_sections.size(); ++i) {
+    HostSection section;
+    section.name = text_sections[i].name;
+    section.flags = text_sections[i].flags;
+    section.alignment = text_sections[i].alignment;
+    section.bytes = std::move(text_sections[i].bytes);
+    const std::uint16_t index = append_section(std::move(section));
+    text_indexes.push_back(index);
+    text_relocation_indexes.push_back(append_relocations(
+      text_sections[i].name, index, text_relocations[i]));
+  }
 
   std::vector<std::uint16_t> data_indexes;
   data_indexes.reserve(mutable_data.size());
@@ -1010,7 +1203,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
 
   std::vector<HostSymbol> locals;
   std::vector<HostSymbol> globals;
-  collect_host_symbols(program, mutable_text, text_index,
+  collect_host_symbols(program, text_sections, text_indexes,
                        mutable_data, data_indexes, encoded_labels,
                        functions, text_relocations,
                        data_relocations, init_array_relocations,
@@ -1019,7 +1212,9 @@ std::vector<unsigned char> make_linux_relocatable_image(
                        locals, globals);
 
   std::vector<std::pair<std::string, std::uint16_t> > section_symbols;
-  section_symbols.push_back(std::make_pair(mutable_text.name, text_index));
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    section_symbols.push_back(std::make_pair(
+      text_sections[i].name, text_indexes[i]));
   for(std::size_t i = 0; i < mutable_data.size(); ++i)
     section_symbols.push_back(std::make_pair(mutable_data[i].name,
                                              data_indexes[i]));
@@ -1069,32 +1264,9 @@ std::vector<unsigned char> make_linux_relocatable_image(
       *pending_relocations[i].relocations, symbol_indexes);
   }
 
-  // STB_WEAK is the executable coalescing rule for the current monolithic
-  // text/data sections.  Also publish one standards-shaped COMDAT group per
-  // weak ODR root.  Its tiny SHF_GROUP marker gives object inspectors and the
-  // host linker a canonical group signature without incorrectly placing the
-  // whole translation-unit .text/.data section in a discardable group.
-  const std::size_t first_global_symbol =
-    1 + section_symbols.size() + locals.size();
-  for(std::size_t i = 0; i < globals.size(); ++i) {
-    const HostSymbol & symbol = globals[i];
-    if(symbol.binding != 2 || symbol.section == 0) continue;
-    HostSection marker;
-    marker.name = ".cppgm.odr." + std::to_string(i);
-    marker.flags = 0x200;
-    const std::size_t marker_index = sections.size();
-    sections.push_back(marker);
-    HostSection group;
-    group.name = ".group";
-    group.type = 17;
-    group.alignment = 4;
-    group.entry_size = 4;
-    group.link = symtab_index;
-    group.info = static_cast<std::uint32_t>(first_global_symbol + i);
-    append_little(group.bytes, 1, 4);
-    append_little(group.bytes, marker_index, 4);
-    sections.push_back(group);
-  }
+  append_function_comdat_groups(
+    sections, text_sections, text_indexes, text_relocation_indexes,
+    symtab_index, symbol_indexes);
   for(std::size_t i = 1; i < sections.size(); ++i)
     sections[i].name_offset = add_string(
       sections[shstrtab_index].bytes, sections[i].name);
@@ -1133,8 +1305,9 @@ std::vector<unsigned char> make_linux_relocatable_image(
     put_little(image, at + 48, sections[i].alignment, 8);
     put_little(image, at + 56, sections[i].entry_size, 8);
   }
-  relocation_count = text_relocations.size() + lsda_relocations.size() +
-    eh_relocations.size();
+  relocation_count = lsda_relocations.size() + eh_relocations.size();
+  for(std::size_t i = 0; i < text_relocations.size(); ++i)
+    relocation_count += text_relocations[i].size();
   for(std::size_t i = 0; i < data_relocations.size(); ++i)
     relocation_count += data_relocations[i].size();
   return image;
