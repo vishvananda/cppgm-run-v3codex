@@ -113,3 +113,14 @@ not require an intermediate general-purpose register.
 The MIR load and store must each retain the base, index, and scale in one memory
 operand, and the native instruction must use the corresponding x86 addressing
 mode without separately multiplying or adding the index.
+
+`index-address-placement.t` exercises constant and variable indexed addresses
+returned from functions.  MIR must form each address directly in the ABI return
+register.  A constant index uses one `lea` from the base register, and a legal
+x86 variable scale stays in the `lea` memory operand without separate copy,
+multiply, or add instructions.
+
+`direct-return-placement.t` exercises immediately returned integer constants,
+integer loads, global addresses, and frame addresses.  Each producer must write
+the ABI return register directly, without first assigning a general-purpose
+temporary that is used only by the return.

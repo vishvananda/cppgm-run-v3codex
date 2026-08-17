@@ -464,6 +464,11 @@ To complete PA29, implement these goals:
    division, and shifts, must preserve still-live frame addresses and incoming parameters
    before reusing those registers.
 
+   When a sole-use scalar constant, load, copy, address, or index is immediately
+   returned, lower it directly into the ABI return register when doing so does
+   not overwrite an input needed by that instruction.  MIR should not introduce
+   a temporary register followed only by a return-register copy.
+
    A numeric immediate written without a decimal point still follows the declared LowIR
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.
@@ -526,6 +531,9 @@ To complete PA29, implement these goals:
    rather than being hidden behind an unrelated compatibility path.  When a one-use
    `index` feeds the following scalar load or store, keep its base, index, scale, and
    displacement in that memory operand instead of materializing a temporary pointer.
+   When an indexed address itself must remain a value, use one `lea` from the
+   original base and legal x86 scale instead of first copying the base or emitting
+   separate multiply and add instructions.
 
 16. Preserve mixed integer/floating call ABI classification.
    Calls that mix GPR and XMM arguments should keep that classification visible in MIR so

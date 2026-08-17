@@ -20,8 +20,7 @@ function @main
 
   block ^entry
     mov r8, @cells
-    mov r9, r8
-    lea r9, [r9+8]
+    lea r9, [r8+8]
     mov rbx, r9
     sub rbx, r8
     load.i64 r8, [r9]

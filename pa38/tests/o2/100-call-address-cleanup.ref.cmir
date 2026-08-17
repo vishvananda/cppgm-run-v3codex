@@ -14,9 +14,9 @@ function @id
     scratch_bytes 0
 
   block ^entry
-    load.i32 r9, [rdi]
-    sext.i32 r9
-    ret r9
+    load.i32 rax, [rdi]
+    sext.i32 rax
+    ret rax
 
 function @main
   abi

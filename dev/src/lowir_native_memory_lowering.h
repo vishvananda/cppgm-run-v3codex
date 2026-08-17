@@ -135,10 +135,8 @@ protected:
 				instruction.dest) ||
 			(selection::result_is_immediately_stored(block, instruction_index,
 				instruction.dest, lowerer.facts_) ||
-			 (lowerer.result_is_immediate_return(block, instruction_index,
-				instruction.dest) &&
-			  (instruction.type.kind == lowir_model::LTK_PTR ||
-			   instruction.type.bit_width == 64))))
+			 lowerer.result_is_immediate_return(block, instruction_index,
+				instruction.dest)))
 		{
 			destination = reg_operand(XR_RAX);
 		}

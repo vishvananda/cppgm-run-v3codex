@@ -14,6 +14,5 @@ function @main
 
   block ^entry
     mfence
-    mov r8, 1
-    mov rax, r8
+    mov rax, 1
     ret rax

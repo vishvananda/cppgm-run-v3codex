@@ -42,9 +42,8 @@ function @id
     mov rsi, r8
     copy_bytes 4x1, rdi, rsi
     lea rcx, [rbp-8]
-    load.i32 r9, [rcx]
-    sext.i32 r9
-    mov rax, r9
+    load.i32 rax, [rcx]
+    sext.i32 rax
     ret rax
 
 function @main

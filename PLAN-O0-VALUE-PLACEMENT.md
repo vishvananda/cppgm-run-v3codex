@@ -208,7 +208,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
-| VP3 | pending | 1 existing PA29 MIR fixture in the direct-index input-lifetime slice | First slice: frozen object -2,360 bytes and text -2,272 bytes; x86 instructions -662, including 213 fewer `mov`, 204 fewer `push`, and 244 fewer `pop`; paired user +0.70%, wall +0.48%, RSS flat; full report 5,189/5,189; audit zero fatal | input lifetime slice complete, destination placement pending |
+| VP3 | 2 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2 | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions; combined two-screen ABBA medians improved 0.78% user and 0.55% wall with RSS +0.12%; full report 5,189/5,189; audit zero fatal | input lifetime and scalar address/return placement complete; broader producer placement pending |
 | VP4 | pending | pending | pending | pending |
 | VP5 | pending | pending | pending | pending |
 
@@ -217,3 +217,21 @@ is now supplemental to the active `900-symbolic-global-call-argument` fixture.
 The VP2 scaled-index witness remains proposed because the course reference
 materializes `imul` plus `add`; both compilers execute it successfully, but
 their MIR shapes intentionally disagree.
+
+The VP3 input-lifetime slice changes
+`pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection
+slice changes the PA29 structural `500-ptr-diff-switch`,
+`500-ptr-index-arithmetic`, `600-ptr-compare-value-materialize`, and
+`800-loop-slot-compare-reload` MIR/CMIR pairs: each removes a base-register
+copy and forms the address from the original base in one `lea`.  Direct return
+placement changes the PA29 strict `100-ret0`, `100-structured-global-data`,
+`200-pass-by-value-lvalue`, `200-pcrel-global-data-load`, and
+`300-atomic-seq-cst-fence` MIR files.  It also changes the PA38
+`100-call-address-cleanup` MIR/CMIR pair at both O1 and O2 because the PA29
+load already targets the return register before machine optimization.
+
+`proposed/pa29/index-address-placement.t` and
+`proposed/pa29/direct-return-placement.t` execute successfully with both
+compilers.  They remain proposed because the course reference introduces the
+temporary copies or expanded multiply/add sequences that the public placement
+rule excludes.

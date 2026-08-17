@@ -105,8 +105,20 @@ materialize_index:
       forwarded_alias) &&
       (!lowerer.result_crosses_call(instruction.dest) ||
        allocation::is_callee_saved(base.reg));
+    bool direct_return = selection::result_is_immediate_return(
+      block, instruction_index, instruction.dest, lowerer.facts_);
+    if(direct_return && base.kind == mir_model::MirOperand::OP_REG &&
+       base.reg == XR_RAX && !lowerer.can_reuse(instruction.first))
+      direct_return = false;
+    if(direct_return && !constant_index) {
+      const mir_model::MirOperand index = lowerer.resolve(instruction.second);
+      if(index.kind == mir_model::MirOperand::OP_REG && index.reg == XR_RAX &&
+         !lowerer.can_reuse(instruction.second))
+        direct_return = false;
+    }
     mir_model::MirOperand pressure_home;
-    if(safe_reuse) destination = base;
+    if(direct_return) destination = reg_operand(XR_RAX);
+    else if(safe_reuse) destination = base;
     else {
       const bool force_preserved =
         instruction.first.kind == lowir_model::Operand::OP_TEMP &&
@@ -124,25 +136,43 @@ materialize_index:
         destination = reg_operand(XR_RAX);
       }
     }
-    if(base.kind != mir_model::MirOperand::OP_REG ||
-       destination.reg != base.reg) {
-      if(lowerer.is_frame_address(instruction.first))
-        lowerer.append_address(out, destination.reg, base);
-      else
-        lowerer.move_value_to_register(
-          out, destination.reg, base,
-          lowerer.operand_type(instruction.first));
-    }
+    bool address_emitted = false;
     if(constant_index) {
-      if(offset != 0) {
+      if(base.kind == mir_model::MirOperand::OP_REG && offset != 0) {
         mir_model::MirInstruction lea =
           machine_instruction(mir_model::MirInstruction::MI_LEA);
         append_operand(lea, destination);
-        append_operand(lea, dereference(destination.reg, offset));
+        append_operand(lea, dereference(base.reg, offset));
         out.push_back(lea);
+        address_emitted = true;
       }
     } else {
       mir_model::MirOperand index = lowerer.resolve(instruction.second);
+      if(base.kind == mir_model::MirOperand::OP_REG &&
+         index.kind == mir_model::MirOperand::OP_REG && index.reg != XR_RSP &&
+         (instruction.type.storage_size == 1 ||
+          instruction.type.storage_size == 2 ||
+          instruction.type.storage_size == 4 ||
+          instruction.type.storage_size == 8)) {
+        mir_model::MirInstruction lea =
+          machine_instruction(mir_model::MirInstruction::MI_LEA);
+        append_operand(lea, destination);
+        append_operand(lea, indexed_dereference(
+          base.reg, index.reg,
+          static_cast<unsigned>(instruction.type.storage_size)));
+        out.push_back(lea);
+        address_emitted = true;
+      }
+      if(!address_emitted) {
+        if(base.kind != mir_model::MirOperand::OP_REG ||
+           destination.reg != base.reg) {
+          if(lowerer.is_frame_address(instruction.first))
+            lowerer.append_address(out, destination.reg, base);
+          else
+            lowerer.move_value_to_register(
+              out, destination.reg, base,
+              lowerer.operand_type(instruction.first));
+        }
       if(index.kind != mir_model::MirOperand::OP_REG) {
         lowerer.move_value_to_register(
           out, XR_RDX, index, lowerer.operand_type(instruction.second));
@@ -164,6 +194,25 @@ materialize_index:
       append_operand(add, destination);
       append_operand(add, index);
       out.push_back(add);
+      }
+    }
+    if(!address_emitted && constant_index) {
+      if(base.kind != mir_model::MirOperand::OP_REG ||
+         destination.reg != base.reg) {
+        if(lowerer.is_frame_address(instruction.first))
+          lowerer.append_address(out, destination.reg, base);
+        else
+          lowerer.move_value_to_register(
+            out, destination.reg, base,
+            lowerer.operand_type(instruction.first));
+      }
+      if(offset != 0) {
+        mir_model::MirInstruction lea =
+          machine_instruction(mir_model::MirInstruction::MI_LEA);
+        append_operand(lea, destination);
+        append_operand(lea, dereference(destination.reg, offset));
+        out.push_back(lea);
+      }
     }
     lowerer.consume(instruction.first, destination.reg);
     lowerer.consume(instruction.second, destination.reg);

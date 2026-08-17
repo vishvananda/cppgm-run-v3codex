@@ -17,8 +17,7 @@ function @ret3
     scratch_bytes 0
 
   block ^entry
-    mov r8, 3
-    mov rax, r8
+    mov rax, 3
     ret rax
 
 function @main

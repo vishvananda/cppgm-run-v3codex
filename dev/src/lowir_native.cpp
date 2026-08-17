@@ -501,10 +501,10 @@ private:
         value.location = reg_operand(destination);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && uses == 1 &&
-                facts_.direct_memory_index_bases.count(parameter.name) &&
+                facts_.sole_index_bases.count(parameter.name) &&
                 !crosses_register_clobber(parameter.name, binding.reg)) {
-        // The sole use can name the incoming ABI register directly as an x86
-        // memory base; no parameter-home copy is needed.
+        // Address selection can name the incoming ABI register directly as
+        // an x86 base; no parameter-home copy is needed.
       } else if(!wide_gpr_boundary &&
                 crosses_register_clobber(parameter.name, binding.reg)) {
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
@@ -1750,7 +1750,9 @@ private:
     define(instruction.dest, result_type,
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
-  void emit_copy(const Instruction & instruction, std::vector<MirInstruction> & out)
+  void emit_copy(const Instruction & instruction,
+                 std::vector<MirInstruction> & out,
+                 bool direct_return = false)
   {
     if(instruction.type.kind == lowir_model::LTK_OBJECT) {
       emit_object_value(instruction.dest, instruction.type,
@@ -1773,7 +1775,10 @@ private:
     MirOperand pressure_home;
     const bool safe_reuse = can_reuse(instruction.first) &&
       (!result_crosses_call(instruction.dest) || is_callee_saved(source.reg));
-    if(safe_reuse) destination = source;
+    if(direct_return && source.kind != MirOperand::OP_REG) {
+      destination = reg_operand(XR_RAX);
+      move_value_to_register(out, destination.reg, source, instruction.type);
+    } else if(safe_reuse) destination = source;
     else {
       X64Register result = XR_RSP;
       if(try_allocate_result(instruction.dest, out, &result))
@@ -1793,6 +1798,8 @@ private:
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
   void emit_unary_value(const Instruction & instruction,
+                        const lowir_model::LowirBlock & block,
+                        std::size_t instruction_index,
                         std::vector<MirInstruction> & out)
   {
     if(wide::is_integer(instruction.type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); wide::append_unary(destination, wide_value(instruction.first), instruction.op, out); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
@@ -1803,7 +1810,8 @@ private:
     if(!is_integer_or_pointer(instruction.type))
       throw std::runtime_error("integer selector received non-integer unary operation");
     if(instruction.op == "decay") {
-      emit_copy(instruction, out);
+      emit_copy(instruction, out,
+        result_is_immediate_return(block, instruction_index, instruction.dest));
       return;
     }
     const MirOperand source = resolve(instruction.first);
@@ -2849,7 +2857,13 @@ private:
       }
       MirOperand destination;
       X64Register reg = XR_RSP;
-      if(registers_.try_allocate(result_crosses_call(instruction.dest), reg)) {
+      if(result_is_immediate_return(block, instruction_index,
+                                    instruction.dest)) {
+        destination = reg_operand(XR_RAX);
+        append_move(out, destination, immediate(integer_value(instruction.first)));
+        normalize_integer(instruction.type, destination, out);
+      } else if(registers_.try_allocate(
+                  result_crosses_call(instruction.dest), reg)) {
         destination = reg_operand(reg);
         append_move(out, destination, immediate(integer_value(instruction.first)));
         normalize_integer(instruction.type, destination, out);
@@ -2860,7 +2874,10 @@ private:
         append_store(out, destination, reg_operand(XR_RAX), instruction.type.text);
       }
       define(instruction.dest, instruction.type, destination);
-    } else if(instruction.kind == Instruction::IK_COPY) emit_copy(instruction, out);
+    } else if(instruction.kind == Instruction::IK_COPY) {
+      emit_copy(instruction, out,
+        result_is_immediate_return(block, instruction_index, instruction.dest));
+    }
     else if(instruction.kind == Instruction::IK_ADDR) emit_address_value(block, instruction_index, instruction, out);
     else if(instruction.kind == Instruction::IK_LOAD) {
       emit_load_instruction(instruction, block, instruction_index, out);
@@ -2898,7 +2915,7 @@ private:
     } else if(instruction.kind == Instruction::IK_UNARY) {
       if(unary_not_feeds_branch(block, instruction_index, instruction))
         emit_direct_unary_not_branch(instruction, block.instructions[instruction_index + 1], out);
-      else emit_unary_value(instruction, out);
+      else emit_unary_value(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_CONVERT) emit_convert(instruction, out);
     else if(instruction.kind == Instruction::IK_CALL)
       emit_call(instruction, block, instruction_index, out);

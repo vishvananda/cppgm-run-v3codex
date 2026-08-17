@@ -179,7 +179,17 @@ protected:
 		mir_model::MirOperand destination;
 		if (instruction.first.kind == lowir_model::Operand::OP_SLOT)
 		{
-			if (derived.address_is_call_argument(instruction.dest) ||
+			if (derived.result_is_immediate_return(
+					block, instruction_index, instruction.dest))
+			{
+				destination = reg_operand(XR_RAX);
+				mir_model::MirInstruction lea =
+					machine_instruction(mir_model::MirInstruction::MI_LEA);
+				append_operand(lea, destination);
+				append_operand(lea, derived.storage(instruction.first));
+				out.push_back(lea);
+			}
+			else if (derived.address_is_call_argument(instruction.dest) ||
 				derived.address_is_next_atomic_expected(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_next_va_start(
@@ -202,40 +212,43 @@ protected:
 					derived.storage(instruction.first).offset;
 				return;
 			}
-			const X64Register compare_register =
-				derived.direct_slot_address_register(
-					block, instruction_index, instruction.dest);
-			mir_model::MirOperand target;
-			if (compare_register != XR_RSP) {
-				destination = reg_operand(compare_register);
-				target = destination;
-			} else if (derived.address_is_immediately_loaded(
-					block, instruction_index, instruction.dest) ||
-				 derived.address_is_immediately_stored(
-					block, instruction_index, instruction.dest) ||
-				 derived.address_precedes_elided_copy(
-					block, instruction_index, instruction.dest) ||
-				 derived.skipped_position_ == derived.position_ + 1) {
-				destination = reg_operand(XR_RCX);
-				target = destination;
-			} else {
-				X64Register result = XR_RSP;
-				if (derived.try_allocate_result(instruction.dest, out, &result)) {
-					destination = reg_operand(result);
+			else
+			{
+				const X64Register compare_register =
+					derived.direct_slot_address_register(
+						block, instruction_index, instruction.dest);
+				mir_model::MirOperand target;
+				if (compare_register != XR_RSP) {
+					destination = reg_operand(compare_register);
+					target = destination;
+				} else if (derived.address_is_immediately_loaded(
+						block, instruction_index, instruction.dest) ||
+					 derived.address_is_immediately_stored(
+						block, instruction_index, instruction.dest) ||
+					 derived.address_precedes_elided_copy(
+						block, instruction_index, instruction.dest) ||
+					 derived.skipped_position_ == derived.position_ + 1) {
+					destination = reg_operand(XR_RCX);
 					target = destination;
 				} else {
-					destination = derived.allocate_temp_home(
-						instruction.dest, pointer_type);
-					target = reg_operand(XR_RAX);
+					X64Register result = XR_RSP;
+					if (derived.try_allocate_result(instruction.dest, out, &result)) {
+						destination = reg_operand(result);
+						target = destination;
+					} else {
+						destination = derived.allocate_temp_home(
+							instruction.dest, pointer_type);
+						target = reg_operand(XR_RAX);
+					}
 				}
+				mir_model::MirInstruction lea =
+					machine_instruction(mir_model::MirInstruction::MI_LEA);
+				append_operand(lea, target);
+				append_operand(lea, derived.storage(instruction.first));
+				out.push_back(lea);
+				if (destination.kind == mir_model::MirOperand::OP_FRAME)
+					append_store(out, destination, target, pointer_type.text);
 			}
-			mir_model::MirInstruction lea =
-				machine_instruction(mir_model::MirInstruction::MI_LEA);
-			append_operand(lea, target);
-			append_operand(lea, derived.storage(instruction.first));
-			out.push_back(lea);
-			if (destination.kind == mir_model::MirOperand::OP_FRAME)
-				append_store(out, destination, target, pointer_type.text);
 		}
 		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
 			derived.tls_wrappers_.count(instruction.first.text))
@@ -244,7 +257,13 @@ protected:
 				wrapper = derived.tls_wrappers_.find(instruction.first.text);
 			mir_model::MirOperand target;
 			X64Register result = XR_RSP;
-			if (derived.constrained_wide_pressure() ||
+			if (derived.result_is_immediate_return(
+					block, instruction_index, instruction.dest))
+			{
+				destination = reg_operand(XR_RAX);
+				target = destination;
+			}
+			else if (derived.constrained_wide_pressure() ||
 				!derived.try_allocate_result(instruction.dest, out, &result))
 			{
 				destination = derived.allocate_temp_home(instruction.dest,
@@ -274,6 +293,13 @@ protected:
 			// unrelated persistent register and immediately copying from it.
 			destination = derived.global_operand(
 				mir_model::MirOperand::OP_SYMBOL, instruction.first);
+		}
+		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
+			derived.result_is_immediate_return(
+				block, instruction_index, instruction.dest))
+		{
+			destination = reg_operand(XR_RAX);
+			append_move(out, destination, derived.resolve(instruction.first));
 		}
 		else
 		{

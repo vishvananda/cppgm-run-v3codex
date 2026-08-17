@@ -402,12 +402,15 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
       if(!instruction.dest.empty()) definitions[instruction.dest] = j;
       if(instruction.kind == Instruction::IK_CMP)
         comparisons[instruction.dest] = j;
+      if(instruction.kind == Instruction::IK_INDEX &&
+         instruction.first.kind == Operand::OP_TEMP &&
+         parameter_names.count(instruction.first.text) &&
+         facts.uses.find(instruction.first.text) != facts.uses.end() &&
+         facts.uses.find(instruction.first.text)->second == 1)
+        facts.sole_index_bases.insert(instruction.first.text);
       const bool direct_index = direct_memory_index_use(facts, instructions, j);
-      if(direct_index) {
+      if(direct_index)
         facts.direct_memory_index_values.insert(instruction.dest);
-        if(instruction.first.kind == Operand::OP_TEMP)
-          facts.direct_memory_index_bases.insert(instruction.first.text);
-      }
       const unsigned clobbers =
         instruction_clobber_mask(instruction, direct_index);
       for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)

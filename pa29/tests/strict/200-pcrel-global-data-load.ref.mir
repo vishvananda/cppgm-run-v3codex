@@ -17,7 +17,6 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    load.i32 r8, @g
-    sext.i32 r8
-    mov rax, r8
+    load.i32 rax, @g
+    sext.i32 rax
     ret rax

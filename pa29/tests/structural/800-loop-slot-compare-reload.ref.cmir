@@ -34,8 +34,7 @@ function @main
     jmp ^body
 
   block ^body
-    mov r9, r8
-    lea r9, [r9+<off0>]
+    lea r9, [r8+<off1>]
     store.ptr [rbp-<off0>], r9
     jmp ^loop
 
