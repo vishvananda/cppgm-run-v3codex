@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, and B5 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, B5, and C1 complete
 
 Date: 2026-08-17
 
@@ -295,7 +295,7 @@ candidate.
 | B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, proposed byte-shape reducer, frozen object -544 bytes, timing neutral |
 | B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
 | B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
-| C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
+| C1 | Direct cleanup-state suffix interning | Pre-existing LowIR shape | Pre-existing downstream shape | **Already landed** in the PA17/PA26 baseline (`c2b6fd68`, `e05062b1`, `8fd4193d`); exact action/context states and long `(action, tail)` chains are interned; 0 fixture changes in this run |
 | C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | Planned diagnosis |
 | O1a | Simplify before inlining and bottom-up scheduling | Intentional at O1 | Downstream only | Planned |
@@ -915,6 +915,37 @@ action ordering and `_Unwind_Resume`.  Validation and frozen evidence:
   5.565 to 5.595 seconds, peak RSS 366,068 to 364,814 KiB.  Paired deltas are
   +0.82%, +0.72%, and -0.39%, respectively, and are timing-neutral under the
   3% gate.  One 8.93-second candidate outlier was retained.
+
+### 4.21 C1 result
+
+C1 required no new compiler change.  The requested frontend construction-time
+interning is already part of the baseline:
+
+- `CleanupDispatchCache` fingerprints and verifies the complete ordered action
+  identity plus exception-cleanup context, then reuses the existing dispatch
+  block for an exact state;
+- action identity includes lifetime object, object/function binding, operand
+  type, handler-exit state, and cleanup-region-exit state;
+- cleanup chains above the bounded eight-action inline threshold are built by
+  interning `(action identity, tail block)` nodes; and
+- the PA26 architecture audit clears only occupied cache entries, so per-
+  function reset is proportional to represented states rather than retained
+  table capacity.
+
+The core implementation dates to `c2b6fd68`; `e05062b1` added exception-context
+identity and `8fd4193d` completed handler/cleanup-exit identity.  The active
+PA26 `200-nested-short-circuit-temporary-cleanup.t` fixture exercises the path:
+its telemetry reports eight probes, three cache hits, and five emitted entries,
+while its checked-in LowIR and runtime behavior remain clean.  The guarded
+local-static cleanup control records three distinct states and correctly gets
+zero hits.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed in this run because no implementation was altered.  Attempting
+to discover and merge additional arbitrary suffixes after construction would
+be LowIR-visible optimizer work; it remains C2 at PA37 O1 rather than a second
+baseline cache.  The full 5,176/5,176 report and fatal-clean PA39 file audit
+from the immediately preceding B5 gate cover the unchanged implementation.
 
 ## 5. Execution plan
 
