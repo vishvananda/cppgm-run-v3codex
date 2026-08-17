@@ -33,8 +33,7 @@ function @load_value
     scratch_bytes 0
 
   block ^entry
-    mov r8, rdi
-    load.i64 rax, [r8]
+    load.i64 rax, [rdi]
     ret rax
 
 function @read_after_call
@@ -49,9 +48,6 @@ function @read_after_call
 
   block ^entry
     mov rbx, rdi
-    mov r8, rsi
-    mov rdi, rbx
-    mov rsi, r8
     call @touch [args=(rsi,rdi)]
     mov rdi, rbx
     call @load_value [args=(rdi)]

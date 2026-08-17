@@ -36,7 +36,6 @@ function @dispatch
     preserve rbx r12
 
   block ^entry
-    mov r9, rdi
     mov r12, rsi
     mov rbx, rdx
     mov rax, rdi

@@ -22,12 +22,11 @@ function @mix
   block ^entry
     fmov.f64 [rbp-8], xmm0
     fmov.f64 [rbp-16], xmm1
-    mov rbx, rsi
     fptosi.f64.i64 r9, [rbp-8]
-    fptosi.f64.i64 rsi, [rbp-16]
+    fptosi.f64.i64 rbx, [rbp-16]
     mov r12, rdi
-    add r12, rbx
-    add r9, rsi
+    add r12, rsi
+    add r9, rbx
     add r12, r9
     mov rax, r12
     ret rax

@@ -19,12 +19,10 @@ function @make_pair
   frame
     stack_size 32
     scratch_bytes 0
-    preserve rbx
 
   block ^entry
-    mov rbx, rdi
-    store.i64 [rbx], rsi
-    store.i64 [rbx+8], rdx
+    store.i64 [rdi], rsi
+    store.i64 [rdi+8], rdx
     ret
 
 function @main

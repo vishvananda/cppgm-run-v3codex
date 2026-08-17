@@ -209,7 +209,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
 | VP3 | 2 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2 | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions; combined two-screen ABBA medians improved 0.78% user and 0.55% wall with RSS +0.12%; full report 5,189/5,189; audit zero fatal | input lifetime, scalar address/return placement, and safe scalar-copy sharing complete; broader load/call/store producer placement pending |
-| VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures, with overlap | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Its ABBA medians are user -0.18%, wall +0.16%, RSS -0.06%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, and direct ALU/shift constraints complete; address rematerialization and spill-slot reuse pending |
+| VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, direct ALU/shift constraints, and intact ABI-parameter retention complete; address rematerialization and spill-slot reuse pending |
 | VP5 | pending | pending | pending | pending |
 
 The VP1 proposed call-argument input predates the public MIR placement rule and
@@ -284,6 +284,35 @@ frozen object falls from 4,431,376 to 4,431,216 bytes and aggregate `.text*`
 from 944,752 to 944,597 bytes. Two ABBA blocks give 5.620 versus 5.615 seconds
 median user time, 6.185 versus 6.205 seconds wall, and 364,738 versus 364,646
 KiB peak RSS for baseline versus candidate.
+
+The intact-parameter slice changes strict PA29 MIR for
+`100-object-abi-lowered`, `600-call-pass-mode-address-materialization`, and
+`600-call-pass-mode-register-temp-address-materialization`; raw and canonical
+structural MIR for `400-call-clobber-register-pressure`,
+`500-mixed-gpr-xmm-call-abi`, `600-floating-short-circuit-branch`,
+`600-indirect-mixed-gpr-xmm-call-abi`,
+`700-call-pass-mode-address-materialization`,
+`700-call-setup-forwarding-no-preserve`, `800-conditional-edge-liveness`,
+`800-forwarded-param-identity-live-across-call`,
+`800-slot-address-rematerialization`, `800-switch-call-case-liveness`,
+`800-xmm-live-across-integer-call`, and
+`900-symbolic-global-call-argument`; and the exact MIR sidecar for behavior
+case `800-register-param-r8-home-clobber`. These existing fixtures already
+exercise direct arithmetic, load, store, address, call, branch, switch, and
+mixed GPR/XMM consumers, so no duplicate reducer was added. The older course
+reference eagerly moves these parameters; its disagreement is limited to the
+listed MIR shapes, while program behavior agrees.
+
+The selector now retains an incoming scalar parameter only after the existing
+linear interval analysis proves that its ABI register crosses no fixed
+clobber. It reserves the retained register in the existing fixed-size register
+state and performs no new scan or value graph construction. Against
+`4b4efbd5`, the frozen object falls from 4,431,216 to 4,429,568 bytes,
+aggregate `.text*` from 944,597 to 943,292 bytes, and x86 instructions from
+235,164 to 234,717. The movement includes 144 fewer pushes and 311 fewer pops;
+small local allocation changes add 35 moves and 21 `lea` instructions. Two
+calm ABBA blocks give baseline/candidate medians of 5.670/5.675 seconds user,
+6.260/6.260 seconds wall, and 364,608/365,048 KiB peak RSS.
 
 The VP3 input-lifetime slice changes
 `pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection

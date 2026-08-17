@@ -23,7 +23,6 @@ function @check
     scratch_bytes 48
 
   block ^entry
-    mov r9, rdi
     mov r8, rdi
     fmov.f64 xmm0, [r8]
     fcmp.f64 xmm0, 0.0
@@ -32,7 +31,7 @@ function @check
     jmp ^end
 
   block ^rhs
-    load.i32 r8, [r9+<off0>]
+    load.i32 r8, [rdi+<off0>]
     sext.i32 r8
     cmp.i32 r8, 0
     jne ^then

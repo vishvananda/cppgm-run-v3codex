@@ -26,12 +26,11 @@ function @mix
   block ^entry
     fmov.f64 [rbp-<off0>], xmm0
     fmov.f64 [rbp-<off1>], xmm1
-    mov <gpr0>, rsi
     fptosi.f64.i64 r9, [rbp-<off0>]
-    fptosi.f64.i64 rsi, [rbp-<off1>]
+    fptosi.f64.i64 <gpr0>, [rbp-<off1>]
     mov <gpr1>, rdi
-    add <gpr1>, <gpr0>
-    add r9, rsi
+    add <gpr1>, rsi
+    add r9, <gpr0>
     add <gpr1>, r9
     mov rax, <gpr1>
     ret rax

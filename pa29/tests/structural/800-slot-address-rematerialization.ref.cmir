@@ -25,12 +25,10 @@ function @sink
     scratch_bytes 0
 
   block ^entry
-    mov r8, rdi
-    mov r9, rsi
     mov rax, 1
-    store.i64 [r8], rax
+    store.i64 [rdi], rax
     mov rax, 2
-    store.i64 [r9], rax
+    store.i64 [rsi], rax
     ret
 
 function @f

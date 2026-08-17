@@ -18,15 +18,14 @@ function @clobber_xmm_from_integer
     scratch_bytes 48
 
   block ^entry
-    mov r8, rdi
-    sitofp.i32.f64 xmm0, r8
+    sitofp.i32.f64 xmm0, rdi
     fadd.f64 xmm1, xmm0, 0.5
     fmul.f64 xmm0, xmm1, 3.0
     fmov.f64 @observed, xmm0
-    mov r9, r8
-    sub r9, 5
-    sext.i32 r9
-    mov rax, r9
+    mov r8, rdi
+    sub r8, 5
+    sext.i32 r8
+    mov rax, r8
     ret rax
 
 function @preserve_across_integer_call

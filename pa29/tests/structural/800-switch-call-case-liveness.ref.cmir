@@ -36,7 +36,6 @@ function @dispatch
     preserve <gpr0> <gpr1>
 
   block ^entry
-    mov r9, rdi
     mov <gpr1>, rsi
     mov <gpr0>, rdx
     mov rax, rdi

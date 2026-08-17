@@ -26,10 +26,8 @@ function @copy_ref
     scratch_bytes 0
 
   block ^entry
-    mov r8, rdi
-    mov r9, rsi
-    load.i64 rax, [r9]
-    store.i64 [r8], rax
+    load.i64 rax, [rsi]
+    store.i64 [rdi], rax
     ret
 
 function @main

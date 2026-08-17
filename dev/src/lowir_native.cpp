@@ -307,13 +307,11 @@ private:
         binding.reg = argument_register(parameter_gpr_index);
         value.location = reg_operand(binding.reg);
         const std::size_t uses = facts_.uses[parameter.name];
-        if(crosses_register_clobber(parameter.name, binding.reg) ||
-           (parameter_gpr_index != 0 && uses) ||
-           (parameter.type.kind == lowir_model::LTK_PTR && uses > 1)) {
-          const X64Register destination = registers_.allocate(true);
-          value.location = reg_operand(destination);
-          append_move(gpr_parameter_moves, value.location, reg_operand(binding.reg));
-        } else if(uses && crosses_call(parameter.name)) {
+        const bool clobbered =
+          crosses_register_clobber(parameter.name, binding.reg);
+        if(clobbered || (facts_.has_va_start &&
+           ((parameter_gpr_index != 0 && uses) ||
+            (parameter.type.kind == lowir_model::LTK_PTR && uses > 1)))) {
           const X64Register destination = registers_.allocate(true);
           value.location = reg_operand(destination);
           append_move(gpr_parameter_moves, value.location, reg_operand(binding.reg));
@@ -476,6 +474,8 @@ private:
       const std::size_t uses = facts_.uses[parameter.name];
       const std::unordered_map<std::string, X64Register>::const_iterator planned =
         cross_call_homes.find(parameter.name);
+      const bool incoming_clobbered = !wide_gpr_boundary && uses &&
+        crosses_register_clobber(parameter.name, binding.reg);
       if(uses == 0) {
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
@@ -504,6 +504,8 @@ private:
         value.location = reg_operand(destination);
         value.fixed_register_home = true;
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
+      } else if(!wide_gpr_boundary && !incoming_clobbered) {
+        // Keep an intact incoming ABI register as the value's selected home.
       } else if(wide_gpr_boundary && crosses_call(parameter.name)) {
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
@@ -515,58 +517,10 @@ private:
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
         value.location = reg_operand(destination);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary && uses == 1 &&
-                facts_.sole_index_bases.count(parameter.name) &&
-                !crosses_register_clobber(parameter.name, binding.reg)) {
-        // Address selection can name the incoming ABI register directly as
-        // an x86 base; no parameter-home copy is needed.
-      } else if(!wide_gpr_boundary &&
-                crosses_register_clobber(parameter.name, binding.reg)) {
+      } else if(!wide_gpr_boundary && incoming_clobbered) {
         const X64Register destination = registers_.allocate(crosses_call(parameter.name));
         value.location = reg_operand(destination);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary &&
-                (facts_.zero_index_parameters.count(parameter.name) ||
-                 facts_.switch_parameters.count(parameter.name) ||
-                 (uses == 1 && facts_.destructive_parameters.count(parameter.name))) &&
-                !facts_.forwarded_parameters_across_call.count(parameter.name)) {
-        const X64Register destination = registers_.is_used(XR_R9) ?
-          registers_.allocate(false) : XR_R9;
-        if(destination == XR_R9) registers_.reserve(XR_R9);
-        value.location = reg_operand(destination);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary && uses &&
-                facts_.direct_branch_sources.count(parameter.name)) {
-        const X64Register destination = registers_.allocate(crosses_call(parameter.name));
-        value.location = reg_operand(destination);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary &&
-                facts_.only_call_arguments.count(parameter.name)) {
-        const X64Register destination = registers_.allocate(false);
-        value.location = reg_operand(destination);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary && parameter.type.kind == lowir_model::LTK_PTR && uses &&
-                !storage_facts_.dead_slot_only_parameters.count(parameter.name)) {
-        const X64Register destination = registers_.allocate(
-          uses > 1 || crosses_call(parameter.name));
-        value.location = reg_operand(destination);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary && uses > 1) {
-        const X64Register destination = registers_.allocate(crosses_call(parameter.name));
-        value.location = reg_operand(destination);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary && binding.reg == XR_RDX && uses &&
-                register_was_clobbered_before(
-                  facts_, binding.reg, facts_.first_use[parameter.name])) {
-        const X64Register destination = registers_.is_used(XR_R9) ?
-          registers_.allocate(crosses_call(parameter.name)) : XR_R9;
-        if(destination == XR_R9) registers_.reserve(XR_R9);
-        value.location = reg_operand(destination);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
-      } else if(!wide_gpr_boundary && uses && crosses_call(parameter.name)) {
-        const X64Register destination = registers_.allocate(true);
-        value.location = reg_operand(destination);
-        append_move(parameter_moves_, value.location, reg_operand(binding.reg));
       }
       if(incoming_pool_reserved[i] &&
          (value.location.kind != MirOperand::OP_REG || value.location.reg != binding.reg))

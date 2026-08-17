@@ -14,9 +14,8 @@ function @add1
     scratch_bytes 0
 
   block ^entry
-    mov r9, rdi
-    add r9, 1
-    mov rax, r9
+    add rdi, 1
+    mov rax, rdi
     ret rax
 
 function @main

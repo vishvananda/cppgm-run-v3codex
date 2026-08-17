@@ -32,8 +32,7 @@ function @load_value
     scratch_bytes 0
 
   block ^entry
-    mov r8, rdi
-    load.i64 rax, [r8]
+    load.i64 rax, [rdi]
     ret rax
 
 function @target
