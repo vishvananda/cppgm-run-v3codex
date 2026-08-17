@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, and B4d1 complete
+Status: in progress; B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1, and B4d2 complete
 
 Date: 2026-08-17
 
@@ -263,7 +263,8 @@ candidate.
 | B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, proposed byte-shape reducer, frozen object -8,104 bytes, timing neutral |
 | B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, proposed byte-shape reducer, frozen object -2,080 bytes, timing neutral |
 | B4d1 | Fold a dead adjacent address calculation into its load | 0 existing | 0 existing | **Landed** in `551e530f`; 1,195 bounded proofs, proposed byte-shape reducer, frozen object -3,920 bytes, timing neutral |
-| B4d2 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d1 |
+| B4d2 | Fold a dead adjacent address-register copy into its load | 0 existing | 0 existing | **Landed** in `014b7594`; 144 bounded proofs, proposed byte-shape reducer, frozen object -336 bytes, timing neutral |
+| B4d3 | Remaining bounded address/load/store folding | 0 existing | 0 existing | Planned one pattern at a time after B4d2 |
 | B5 | Adjacent LSDA call-site coalescing | 0 | 0 | Planned |
 | C1 | Direct cleanup-state suffix interning | Narrow only | 0 unless native consequences move it | Probe; defer on broad LowIR movement |
 | C2 | General cleanup-tail and terminal-resume sharing | Intentional at O1 | Downstream only | Planned for PA37 O1 |
@@ -564,6 +565,50 @@ findings.  Validation and frozen evidence:
   candidate (+0.35%, below the run-to-run noise floor); and
 - three-block immutable ABBA paired deltas: wall -0.33%, user -0.27%, peak
   RSS +0.09%.  All six outputs per compiler were deterministic.
+
+### 4.13 B4d2 result
+
+`014b7594` extends the same encoder-only proof to
+`mov address, original_address` followed by
+`load destination, [address+offset]`.  It emits the load through
+`original_address` and omits the copy only when the copied address register is
+overwritten without a read within the five-instruction window.  A self-copy
+or a load that itself overwrites the copied address is also intrinsically
+safe.  The B4d1 barriers remain unchanged.
+
+The frozen MIR contained 574 adjacent copy/load candidates.  The proof
+accepted 144: 141 overwrites immediately followed the load, one was two
+instructions later, and two were three instructions later.  It rejected 428
+at an opcode/shape barrier, one on an address-register read, and one without a
+bounded overwrite.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  `proposed/pa29/dead-address-copy-load-folding.t` retains the
+register copy and indirect load in its dumped MIR and its generated program
+succeeds.  It remains proposed because the active PA29 lane does not inspect
+native bytes and behavior alone duplicates existing indirect-load coverage.
+
+The first implementation screen exposed an approximately 8 ms encoder cost
+from moving the hot `setcc` primitive out of the ELF translation unit merely
+to preserve the file-size limit.  Keeping that short primitive inline in the
+shared encoding header removed the cost.  The planner is additionally called
+only for an adjacent `lea`/`mov` plus `load`, reducing possible invocations on
+the frozen MIR from 73,102 setup instructions to 3,827 pairs.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 19/19 course tests;
+- through PA29: 4,093/4,093;
+- full report: 5,171/5,171;
+- PA39 file audit: zero fatal findings;
+- object: 3,756,128 to 3,755,792 bytes;
+- `.text`: 1,025,456 to 1,025,114 bytes;
+- `.gcc_except_table`: unchanged at 73,406 bytes;
+- `.eh_frame`: unchanged at 145,188 bytes;
+- three-run internal encoder medians: 264.0 ms baseline and 264.8 ms
+  candidate (+0.32%, below the run-to-run noise floor); and
+- three-block immutable ABBA paired deltas: wall -0.17%, user -0.09%, peak
+  RSS +0.12%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
