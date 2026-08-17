@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, B5, C1, C2a--C2b, D1, O1a, and R1--R3 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, the signed-quotient portion of B3c, B4a, B4b, B4c, B4d1--B4d7, B5, C1, C2a--C2b, D1, O1a, and R1--R3 complete
 
 Date: 2026-08-17
 
@@ -283,7 +283,7 @@ candidate.
 | B3a | Unsigned power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `65b62af8`; PA29 encoder peephole, active behavior reducer, frozen object byte-identical, timing neutral |
 | B3b | Signed positive power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `b37a6a93`; encoder peephole plus explicit-extension correction, active behavior reducers, frozen object -112 bytes, timing neutral |
 | B3n | Signed negative power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `e9cf0de9`; active behavior reducer, `-1` intentionally retained, frozen object byte-identical, timing neutral |
-| B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | Deferred until B3a/B3b evidence |
+| B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | **In progress**: signed quotient landed in `b7c61cc5`; no existing fixture movement, active PA29 behavior/O2 fixed-register reducers, self-host frozen wall -1.82%; signed remainder and unsigned forms remain |
 | B4a | Flag-safe zero materialization | 0 existing | 0 existing | **Landed** in `edd35810`; linear per-block flag liveness, proposed encoding reducer, frozen object -11,048 bytes, timing neutral |
 | B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, proposed byte-shape reducer, frozen object -8,104 bytes, timing neutral |
 | B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, proposed byte-shape reducer, frozen object -2,080 bytes, timing neutral |
@@ -553,6 +553,65 @@ Validation and frozen evidence:
   translation unit has no matching negative power-of-two divisor; and
 - three-block immutable ABBA paired deltas: wall -0.41%, user -0.36%, peak
   RSS +0.02%.  All six outputs per compiler were deterministic.
+
+### 4.9.1 B3c signed-quotient result
+
+`b7c61cc5` replaces signed non-power-of-two constant quotient sequences with
+the standard multiply-high magic sequence in the native encoder.  The magic
+calculation is bounded by integer width and recognition remains constant-time
+per instruction.  Hardware division remains for signed remainder and all
+non-power-of-two unsigned forms until their independent slices are proved.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  Two active PA29 behavior reducers were added:
+
+- `signed-constant-division-magic.t` covers positive and negative divisors,
+  both multiplier correction directions, narrow values, and 64-bit extrema;
+- `optimized-constant-division-result-register.t` runs at `-O2` and proves
+  that the selected fixed `rax` result remains live when optimized MIR also
+  copies the quotient to another physical register.
+
+The latter reducer was created from the first self-host failure: the initial
+encoder rewrite computed only the copied destination and left a later fixed
+`rax` consumer stale.  Computing in the selected fixed result register before
+the final copy repaired the general contract rather than special-casing the
+driver.  The reference accepts and executes both tests; neither test needs a
+representation-specific MIR fixture.
+
+Validation and measured evidence:
+
+- PA29: 183/183 assignment tests and 28/28 course tests;
+- through PA29: 4,102/4,102;
+- affected PA29/PA31/PA37/PA38 report: 351/351;
+- full report: 5,185/5,185;
+- PA39 file audit: zero fatal findings;
+- frozen hardware divides: 233 to 163, with 70 signed constant quotients
+  removed;
+- frozen object: 3,727,000 to 3,728,008 bytes and `.text`: 1,022,892 to
+  1,023,904 bytes; the 1,012-byte text increase is retained because the
+  generated self compiler improves materially;
+- matched `-O3` self compiler text: 17,024,332 to 17,065,600 bytes, while
+  hardware divides fall from 17,473 to 13,929;
+- two-block self-compiler ABBA on the frozen explicit-`-O0` compile: paired
+  wall -1.82%, user -1.86%, and peak RSS +0.41%.
+
+A fresh diagnostic then built the entire compiler twice at explicit `-O0`,
+once with GCC and once with `cppgm++`, and used those two executables for an
+interleaved frozen explicit-`-O0` compile.  This deliberately disables the
+PA37/PA38 optional optimization paths in both compiler executables:
+
+| Compiler executable | File bytes | `size` text bytes | Defined text/weak functions | Frozen wall median | Frozen user median | Peak RSS median |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| GCC-built `-O0` | 13,693,896 | 8,452,343 | 36,928 | 46.980 s | 46.225 s | 364,052 KiB |
+| cppgm++-built `-O0` | 25,886,080 | 18,600,825 | 45,856 | 56.880 s | 56.110 s | 368,376 KiB |
+
+The paired cppgm++-built/GCC-built deltas are +23.04% wall, +23.27% user,
+and +1.18% peak RSS.  The host was quiet at the start of each ABBA block, and
+all four runs per executable succeeded and were internally deterministic.
+This establishes a remaining baseline x86/native-demand gap, but it is much
+smaller than the earlier optimized self-host gap: inlining and optional
+optimization are not the whole problem, while baseline machine-code quality
+does not explain a multi-fold slowdown by itself.
 
 ### 4.10 B4a result
 
