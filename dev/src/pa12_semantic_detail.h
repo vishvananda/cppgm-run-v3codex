@@ -2,6 +2,7 @@
 
 #include "pa10_syntax.h"
 #include "pa10_syntax_model.h"
+#include "function_demand_reason.h"
 #include "pa11_model.h"
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
@@ -25,20 +26,6 @@ using namespace pa11;
 
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
-
-enum FunctionDemandReason
-{
-	FUNCTION_DEMAND_EVALUATED_USE,
-	FUNCTION_DEMAND_RETAINED_CALL,
-	FUNCTION_DEMAND_ADDRESS,
-	FUNCTION_DEMAND_LIFECYCLE,
-	FUNCTION_DEMAND_VTABLE,
-	FUNCTION_DEMAND_STATIC_LIFECYCLE,
-	FUNCTION_DEMAND_EXCEPTION_CLEANUP,
-	FUNCTION_DEMAND_EXPLICIT_INSTANTIATION,
-	FUNCTION_DEMAND_ABI_SUPPORT,
-	FUNCTION_DEMAND_REASON_COUNT
-};
 
 struct FunctionDemandEdge
 {

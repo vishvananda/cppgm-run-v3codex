@@ -1112,6 +1112,20 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << stats.post_inline_unreachable_weak_functions
 			 << " post_inline_pruned_functions="
 			 << stats.post_inline_pruned_functions
+			 << " post_inline_retained_external_strong="
+			 << stats.post_inline_retained_external_strong
+			 << " post_inline_retained_address_or_relocation="
+			 << stats.post_inline_retained_address_or_relocation
+			 << " post_inline_retained_direct_call="
+			 << stats.post_inline_retained_direct_call
+			 << " post_inline_retained_lifecycle="
+			 << stats.post_inline_retained_lifecycle
+			 << " post_inline_retained_eh_or_runtime="
+			 << stats.post_inline_retained_eh_or_runtime
+			 << " post_inline_retained_required_weak="
+			 << stats.post_inline_retained_required_weak
+			 << " post_inline_retained_conservative_fallback="
+			 << stats.post_inline_retained_conservative_fallback
 			 << " semantic_program_bytes="
 			 << semantic.semantic_program_storage_bytes
 			 << " binding_layout_facts="
@@ -1139,6 +1153,14 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " frontend_ns=" << semantic.elapsed_nanoseconds
 			 << " lowering_ns=" << stats.lowering_nanoseconds
 			 << " adapt_ns=" << adapt_nanoseconds << '\n';
+		for (size_t fallback = 0;
+			fallback < stats.post_inline_retained_conservative_fallback_names.size();
+			++fallback)
+			cerr << "pa15_retained_fallback"
+				 << " file=" << path
+				 << " symbol="
+				 << stats.post_inline_retained_conservative_fallback_names[fallback]
+				 << '\n';
 		cerr << "pa37_prepare_stats"
 			 << " file=" << path
 			 << " reference_operand_visits="

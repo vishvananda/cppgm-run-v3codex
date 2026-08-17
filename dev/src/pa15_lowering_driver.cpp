@@ -253,6 +253,12 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  force_inline_calls(0), force_inline_blocks(0),
 	  force_inline_cloned_instructions(0), post_inline_reachable_functions(0),
 	  post_inline_unreachable_weak_functions(0), post_inline_pruned_functions(0),
+	  post_inline_retained_external_strong(0),
+	  post_inline_retained_address_or_relocation(0),
+	  post_inline_retained_direct_call(0), post_inline_retained_lifecycle(0),
+	  post_inline_retained_eh_or_runtime(0),
+	  post_inline_retained_required_weak(0),
+	  post_inline_retained_conservative_fallback(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {

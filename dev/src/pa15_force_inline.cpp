@@ -629,6 +629,22 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 		stats->post_inline_unreachable_weak_functions =
 			reachability.unreachable_weak_functions;
 		stats->post_inline_pruned_functions = reachability.pruned_functions;
+		stats->post_inline_retained_external_strong =
+			reachability.retained_external_strong;
+		stats->post_inline_retained_address_or_relocation =
+			reachability.retained_address_or_relocation;
+		stats->post_inline_retained_direct_call =
+			reachability.retained_direct_call;
+		stats->post_inline_retained_lifecycle =
+			reachability.retained_lifecycle;
+		stats->post_inline_retained_eh_or_runtime =
+			reachability.retained_eh_or_runtime;
+		stats->post_inline_retained_required_weak =
+			reachability.retained_required_weak;
+		stats->post_inline_retained_conservative_fallback =
+			reachability.retained_conservative_fallback;
+		stats->post_inline_retained_conservative_fallback_names =
+			reachability.retained_conservative_fallback_names;
 		stats->functions = program->functions.size();
 		stats->blocks = 0;
 		stats->instructions = 0;

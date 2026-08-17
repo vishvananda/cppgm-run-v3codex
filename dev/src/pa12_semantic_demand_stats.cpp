@@ -16,6 +16,8 @@ void SemanticAnalyzer::RecordFunctionDemand(BindingId binding,
 		reason >= FUNCTION_DEMAND_REASON_COUNT)
 		throw std::logic_error("invalid function demand reason");
 	binding = program_->bindings[binding].canonical;
+	program_->bindings[binding].demand_reason_mask |=
+		FunctionDemandReasonMask(reason);
 	BindingId caller = current_function_context_;
 	if (caller != kNoBinding)
 		caller = program_->bindings[caller].canonical;

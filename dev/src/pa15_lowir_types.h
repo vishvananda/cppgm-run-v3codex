@@ -459,6 +459,7 @@ struct Symbol
 	bool thread_local_storage;
 	SymbolId tls_for_symbol;
 	std::uint32_t source_type;
+	std::uint16_t demand_reason_mask;
 	bool declaration_emitted;
 	bool definition_emitted;
 	bool referenced;
@@ -479,6 +480,7 @@ struct Symbol
 		  nonthrowing(nonthrowing_value), noreturn(false),
 		  thread_local_storage(false),
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),
+		  demand_reason_mask(0),
 		  declaration_emitted(false), definition_emitted(false), referenced(false),
 		  object_output_root(false), trivial_lifecycle(false), force_inline(false),
 		  no_inline(false) {}

@@ -402,6 +402,7 @@ private:
 				canonical_binding.object_section_name != 0)
 				symbol.section_name = program_.names.Get(canonical_binding.object_section_name);
 			symbol.object_output_root |= binding.object_output_root;
+			symbol.demand_reason_mask |= canonical_binding.demand_reason_mask;
 			symbol.force_inline |= binding.force_inline || canonical_binding.force_inline;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function,
@@ -431,6 +432,8 @@ private:
 		if (canonical_binding.object_section_name != 0)
 			output_.symbols.back().section_name = program_.names.Get(canonical_binding.object_section_name);
 		output_.symbols.back().object_output_root = binding.object_output_root;
+		output_.symbols.back().demand_reason_mask =
+			canonical_binding.demand_reason_mask;
 		output_.symbols.back().force_inline = binding.force_inline || canonical_binding.force_inline;
 		output_.symbol_index.Insert(identity, symbol);
 		return symbol;

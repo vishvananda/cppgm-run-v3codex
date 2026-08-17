@@ -651,6 +651,7 @@ struct BindingRecord
 	NameId display_type_name;
 	BindingId canonical;
 	BindingId lifecycle_base_entry;
+	std::uint16_t demand_reason_mask;
 	std::int64_t value;
 	OperatorKind operator_kind;
 	BuiltinFunctionKind builtin_function;

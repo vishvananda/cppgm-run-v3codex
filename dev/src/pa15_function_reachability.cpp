@@ -1,5 +1,7 @@
 #include "pa15_function_reachability.h"
 
+#include "function_demand_reason.h"
+
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -17,12 +19,47 @@ using namespace pa15_lowir_detail;
 
 const std::size_t kNoFunction = std::numeric_limits<std::size_t>::max();
 
+enum RetentionReason
+{
+	RETENTION_EXTERNAL_STRONG = 1U << 0,
+	RETENTION_ADDRESS_OR_RELOCATION = 1U << 1,
+	RETENTION_DIRECT_CALL = 1U << 2,
+	RETENTION_LIFECYCLE = 1U << 3,
+	RETENTION_EH_OR_RUNTIME = 1U << 4,
+	RETENTION_REQUIRED_WEAK = 1U << 5,
+	RETENTION_CONSERVATIVE_FALLBACK = 1U << 6
+};
+
+std::uint16_t semantic_retention_reasons(const Symbol& symbol)
+{
+	using namespace pa12_semantic_detail;
+	const std::uint16_t demand = symbol.demand_reason_mask;
+	std::uint16_t result = 0;
+	if (demand & (FunctionDemandReasonMask(FUNCTION_DEMAND_LIFECYCLE) |
+		FunctionDemandReasonMask(FUNCTION_DEMAND_VTABLE) |
+		FunctionDemandReasonMask(FUNCTION_DEMAND_STATIC_LIFECYCLE)))
+		result |= RETENTION_LIFECYCLE;
+	if (demand & (FunctionDemandReasonMask(FUNCTION_DEMAND_EXCEPTION_CLEANUP) |
+		FunctionDemandReasonMask(FUNCTION_DEMAND_ABI_SUPPORT)))
+		result |= RETENTION_EH_OR_RUNTIME;
+	if (demand & FunctionDemandReasonMask(FUNCTION_DEMAND_ADDRESS))
+		result |= RETENTION_ADDRESS_OR_RELOCATION;
+	if (demand & (FunctionDemandReasonMask(FUNCTION_DEMAND_EVALUATED_USE) |
+		FunctionDemandReasonMask(FUNCTION_DEMAND_RETAINED_CALL)))
+		result |= RETENTION_DIRECT_CALL;
+	if (demand & FunctionDemandReasonMask(
+		FUNCTION_DEMAND_EXPLICIT_INSTANTIATION))
+		result |= RETENTION_REQUIRED_WEAK;
+	return result;
+}
+
 class Analyzer
 {
 public:
 	explicit Analyzer(const TypedProgram& program)
 		: program_(program), function_by_symbol_(program.symbols.size(),
-			kNoFunction), reachable_(program.functions.size(), 0)
+			kNoFunction), reachable_(program.functions.size(), 0),
+			retention_reasons_(program.functions.size(), 0)
 	{
 		for (std::size_t i = 0; i < program_.functions.size(); ++i)
 		{
@@ -50,6 +87,7 @@ public:
 			if (!reachable_[i] && program_.symbols[symbol].weak_linkage)
 				++result.unreachable_weak_functions;
 		}
+		ClassifyRetainedFunctions(&result);
 		return result;
 	}
 
@@ -62,22 +100,26 @@ private:
 	const TypedProgram& program_;
 	std::vector<std::size_t> function_by_symbol_;
 	std::vector<unsigned char> reachable_;
+	std::vector<std::uint16_t> retention_reasons_;
 	std::vector<std::size_t> pending_;
 
-	void MarkSymbol(SymbolId symbol)
+	void MarkSymbol(SymbolId symbol, std::uint16_t reason)
 	{
 		const std::uint32_t id = symbol;
 		if (id == kNoLowId || id >= function_by_symbol_.size()) return;
 		const std::size_t function = function_by_symbol_[id];
-		if (function == kNoFunction || reachable_[function]) return;
+		if (function == kNoFunction) return;
+		retention_reasons_[function] |= reason |
+			semantic_retention_reasons(program_.symbols[id]);
+		if (reachable_[function]) return;
 		reachable_[function] = 1;
 		pending_.push_back(function);
 	}
 
-	void MarkOperand(const Operand& operand)
+	void MarkOperand(const Operand& operand, std::uint16_t reason)
 	{
 		if (operand.kind == Operand::FUNCTION || operand.kind == Operand::GLOBAL)
-			MarkSymbol(SymbolId(operand.id));
+			MarkSymbol(SymbolId(operand.id), reason);
 	}
 
 	void MarkGlobalReferences()
@@ -86,13 +128,16 @@ private:
 		{
 			const Global& global = program_.globals[i];
 			if (global.initializer_kind == Global::ADDRESS_VALUE)
-				MarkSymbol(global.address_symbol);
+				MarkSymbol(global.address_symbol,
+					RETENTION_ADDRESS_OR_RELOCATION);
 			for (std::size_t j = 0; j < global.items.size(); ++j)
 				if (global.items[j].kind == Global::DataItem::ADDRESS_ITEM)
-					MarkSymbol(global.items[j].symbol);
+					MarkSymbol(global.items[j].symbol,
+						RETENTION_ADDRESS_OR_RELOCATION);
 		}
 		for (std::size_t i = 0; i < program_.exception_filter_types.size(); ++i)
-			MarkSymbol(program_.exception_filter_types[i]);
+			MarkSymbol(program_.exception_filter_types[i],
+				RETENTION_EH_OR_RUNTIME);
 	}
 
 	void MarkRoots()
@@ -101,15 +146,20 @@ private:
 		{
 			const Function& function = program_.functions[i];
 			const Symbol& symbol = program_.symbols[function.symbol];
-			if (!symbol.weak_linkage || symbol.object_output_root ||
-				function.entry || function.initializer || function.finalizer ||
+			if (!symbol.weak_linkage)
+				MarkSymbol(function.symbol, symbol.internal_linkage ?
+					RETENTION_CONSERVATIVE_FALLBACK :
+					RETENTION_EXTERNAL_STRONG);
+			if (symbol.object_output_root)
+				MarkSymbol(function.symbol, RETENTION_REQUIRED_WEAK);
+			if (function.entry || function.initializer || function.finalizer ||
 				symbol.tls_for_symbol != kNoLowId)
-				MarkSymbol(function.symbol);
+				MarkSymbol(function.symbol, RETENTION_LIFECYCLE);
 		}
 		MarkGlobalReferences();
-		MarkSymbol(program_.terminate_runtime_symbol);
-		MarkSymbol(program_.terminate_helper_symbol);
-		MarkSymbol(program_.call_unexpected_symbol);
+		MarkSymbol(program_.terminate_runtime_symbol, RETENTION_EH_OR_RUNTIME);
+		MarkSymbol(program_.terminate_helper_symbol, RETENTION_EH_OR_RUNTIME);
+		MarkSymbol(program_.call_unexpected_symbol, RETENTION_EH_OR_RUNTIME);
 	}
 
 	void MarkCallArguments(const Instruction& instruction)
@@ -124,7 +174,7 @@ private:
 				"function reachability call arguments are out of bounds");
 		for (std::size_t i = 0; i < instruction.extra_count; ++i)
 			MarkOperand(program_.call_arguments[
-				instruction.extra_first + i]);
+				instruction.extra_first + i], RETENTION_ADDRESS_OR_RELOCATION);
 	}
 
 	void VisitFunction(std::size_t index)
@@ -136,11 +186,41 @@ private:
 			{
 				const Instruction& instruction =
 					function.blocks[i].instructions[j];
-				MarkOperand(instruction.first);
-				MarkOperand(instruction.second);
-				MarkOperand(instruction.third);
+				MarkOperand(instruction.first,
+					instruction.kind == Instruction::CALL ?
+						RETENTION_DIRECT_CALL : RETENTION_ADDRESS_OR_RELOCATION);
+				MarkOperand(instruction.second, RETENTION_ADDRESS_OR_RELOCATION);
+				MarkOperand(instruction.third, RETENTION_ADDRESS_OR_RELOCATION);
 				MarkCallArguments(instruction);
 			}
+	}
+
+	void ClassifyRetainedFunctions(Summary* result) const
+	{
+		for (std::size_t i = 0; i < reachable_.size(); ++i)
+		{
+			if (!reachable_[i]) continue;
+			const std::uint16_t reasons = retention_reasons_[i];
+			if (reasons & RETENTION_EXTERNAL_STRONG)
+				++result->retained_external_strong;
+			else if (reasons & RETENTION_LIFECYCLE)
+				++result->retained_lifecycle;
+			else if (reasons & RETENTION_EH_OR_RUNTIME)
+				++result->retained_eh_or_runtime;
+			else if (reasons & RETENTION_REQUIRED_WEAK)
+				++result->retained_required_weak;
+			else if (reasons & RETENTION_ADDRESS_OR_RELOCATION)
+				++result->retained_address_or_relocation;
+			else if (reasons & RETENTION_DIRECT_CALL)
+				++result->retained_direct_call;
+			else {
+				++result->retained_conservative_fallback;
+				const Symbol& symbol = program_.symbols[
+					program_.functions[i].symbol];
+				result->retained_conservative_fallback_names.push_back(
+					symbol.object_name.empty() ? symbol.name : symbol.object_name);
+			}
+		}
 	}
 };
 
