@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, B5, C1, C2a--C2b, D1, and O1a complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B4a, B4b, B4c, B4d1--B4d7, B5, C1, C2a--C2b, D1, O1a, and R1--R3 complete
 
 Date: 2026-08-17
 
@@ -295,6 +295,9 @@ candidate.
 | B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, proposed byte-shape reducer, frozen object -544 bytes, timing neutral |
 | B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
 | B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
+| R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
+| R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
+| R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
 | C1 | Direct cleanup-state suffix interning | Pre-existing LowIR shape | Pre-existing downstream shape | **Already landed** in the PA17/PA26 baseline (`c2b6fd68`, `e05062b1`, `8fd4193d`); exact action/context states and long `(action, tail)` chains are interned; 0 fixture changes in this run |
 | C2a | Share terminal `resume` blocks | Intentional at O1 | Downstream only | **Landed** in `d3b9eca0`; 3 frozen blocks removed, object -120 bytes, PA37 88/88 and full report 5,177/5,177, timing neutral |
 | C2b | Exact context-compatible cleanup-tail sharing | Intentional at O1 | Downstream only | **Landed** in `9bf96710`; 50 frozen groups, 97 LowIR instructions, 82 resume calls, and 5,984 object bytes removed; full report 5,178/5,178, timing neutral |
@@ -310,6 +313,59 @@ For an accepted row, replace `Initial status` with the exact owner reports,
 fixture counts and paths, frozen size/time delta, reference disposition,
 commit, and final decision.  For a deferred row, record the same evidence and
 the reason for deferral.
+
+### 4.3.1 Current `-O0` compiler-code baseline
+
+R1--R3 were found while making the frozen source compile under a compiler that
+was itself produced at `-O0` by `cppgm++`.  The reducers live at their earliest
+owners:
+
+- PA29 `forwarded-r8-indirect-call-target.t` proves that reusing incoming `r8`
+  for the fifth call argument also reserves it against an indirect-call target;
+- PA29 `promoted-rsi-after-object-copy.t` proves that an earlier physical
+  `copyobj` clobber invalidates later forwarding from incoming `rsi`; and
+- PA31 `340-unwind-resume-coalescing-barrier.t` proves that an explicit
+  `noexcept` cleanup runs once when a loop call throws across a resume block.
+
+The PA31 reducer hung before R3 because the resume PC selected the same cleanup
+landing pad again.  GCC accepts and executes the source successfully.  No
+existing checked-in LowIR fixture and no existing checked-in MIR fixture
+changed for R1--R3.  The combined PA29/PA31 report passes 232/232, the full
+report passes 5,183/5,183, and the PA39 file audit has zero fatal findings.
+The shared register-clobber queries and unprotected-range construction were
+separated into the existing analysis and LSDA modules; the touched monolithic
+files are now 2,999 and 3,000 lines.
+
+Fresh eight-worker builds then produced two otherwise matching `-O0` compiler
+executables from the same corrected sources.  Both links retain jemalloc.
+
+| Compiler executable | Build compiler | File bytes | `size` text bytes | Defined text/weak functions |
+| --- | --- | ---: | ---: | ---: |
+| host | GCC `-O0` | 13,693,688 | 8,451,033 | 36,926 |
+| self | `cppgm++` `-O0` | 25,824,440 | 18,539,137 | 45,854 |
+
+Two interleaved ABBA blocks compiled the frozen `semantic_overload.cpp` with
+explicit `-O0`, sequentially and under a quiet CPU-pressure screen.  The four
+samples per compiler were:
+
+| Compiler executable | Wall samples (s) | Wall median | User median | Peak RSS median |
+| --- | --- | ---: | ---: | ---: |
+| GCC-built | 44.48, 44.60, 44.47, 44.79 | 44.540 s | 43.845 s | 364,660 KiB |
+| cppgm++-built | 55.92, 55.91, 55.86, 55.89 | 55.900 s | 55.115 s | 368,746 KiB |
+
+The paired cppgm++-built/GCC-built deltas are +25.37% wall, +25.67% user, and
++1.20% peak RSS.  This isolates a substantial baseline generated-code and
+native-demand gap even with both optional optimization pipelines disabled; it
+cannot be attributed only to PA37/PA38 inlining or optimization.
+
+Each compiler's frozen output is internally deterministic.  Cross-compiler
+bytes differ in one isolated standard-library function: the cppgm++-built
+compiler retains one `std::__deque_buf_size(80)` call that the GCC-built
+compiler folds to the constant 6.  The symbol sets are identical; the retained
+call adds 14 `.text` bytes, one relocation, and 48 total object bytes
+(3,727,048 versus 3,727,000).  This narrow valid selection difference is
+recorded rather than presenting the host/self comparison as exact-object
+parity, and is far too small to explain the compiler execution-time gap.
 
 ### 4.4 P0 result
 
