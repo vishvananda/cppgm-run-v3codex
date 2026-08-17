@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unordered_map>
@@ -1939,6 +1940,108 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
   }
 }
 
+struct ConstantByteStore
+{
+  X64Register base = XR_RAX;
+  X64Register address = XR_RAX;
+  X64Register value = XR_RAX;
+  long long offset = 0;
+  unsigned char byte = 0;
+};
+
+bool parse_constant_byte_store(
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, ConstantByteStore * result)
+{
+  using mir_model::MirInstruction;
+  using mir_model::MirOperand;
+  if(start > instructions.size() || instructions.size() - start < 4)
+    return false;
+  const MirInstruction & copy = instructions[start];
+  const MirInstruction & address = instructions[start + 1];
+  const MirInstruction & value = instructions[start + 2];
+  const MirInstruction & store = instructions[start + 3];
+  if(copy.opcode != MirInstruction::MI_MOV || copy.operands.size() != 2 ||
+     copy.operands[0].kind != MirOperand::OP_REG ||
+     copy.operands[1].kind != MirOperand::OP_REG ||
+     address.opcode != MirInstruction::MI_LEA ||
+     address.operands.size() != 2 ||
+     address.operands[0].kind != MirOperand::OP_REG ||
+     address.operands[1].kind != MirOperand::OP_DEREF ||
+     value.opcode != MirInstruction::MI_MOV || value.operands.size() != 2 ||
+     value.operands[0].kind != MirOperand::OP_REG ||
+     value.operands[1].kind != MirOperand::OP_IMM ||
+     store.opcode != MirInstruction::MI_STORE || store.type != "i8" ||
+     store.operands.size() != 2 ||
+     store.operands[0].kind != MirOperand::OP_DEREF ||
+     store.operands[1].kind != MirOperand::OP_REG)
+    return false;
+  result->address = copy.operands[0].reg;
+  result->base = copy.operands[1].reg;
+  result->value = value.operands[0].reg;
+  if(result->address == result->base || result->value == result->base ||
+     result->value == result->address ||
+     address.operands[0].reg != result->address ||
+     address.operands[1].reg != result->address ||
+     store.operands[0].reg != result->address ||
+     store.operands[1].reg != result->value)
+    return false;
+  const long long address_offset = address.operands[1].offset;
+  const long long store_offset = store.operands[0].offset;
+  if((store_offset > 0 && address_offset >
+        std::numeric_limits<long long>::max() - store_offset) ||
+     (store_offset < 0 && address_offset <
+        std::numeric_limits<long long>::min() - store_offset))
+    return false;
+  result->offset = address_offset + store_offset;
+  result->byte = static_cast<unsigned char>(value.operands[1].imm);
+  return true;
+}
+
+std::size_t emit_coalesced_constant_byte_stores(
+    CodeBuffer & out,
+    const std::vector<mir_model::MirInstruction> & instructions,
+    std::size_t start, const mir_model::MirFunction & function)
+{
+  std::vector<ConstantByteStore> stores;
+  std::size_t cursor = start;
+  for(;; cursor += 4) {
+    ConstantByteStore next;
+    if(!parse_constant_byte_store(instructions, cursor, &next)) break;
+    if(!stores.empty()) {
+      const ConstantByteStore & previous = stores.back();
+      if(next.base != previous.base || next.address != previous.address ||
+         next.value != previous.value ||
+         previous.offset == std::numeric_limits<long long>::max() ||
+         next.offset != previous.offset + 1)
+        break;
+    }
+    stores.push_back(next);
+  }
+  if(stores.size() < 4) return 0;
+  std::size_t position = 0;
+  while(position < stores.size()) {
+    const std::size_t remaining = stores.size() - position;
+    const std::size_t width = remaining >= 8 ? 8 :
+      remaining >= 4 ? 4 : remaining >= 2 ? 2 : 1;
+    std::uint64_t packed = 0;
+    for(std::size_t i = 0; i < width; ++i)
+      packed |= static_cast<std::uint64_t>(stores[position + i].byte) <<
+        (i * 8);
+    emit_immediate_move(out, stores[position].value, packed);
+    emit_store(out, stores[position].base, stores[position].offset,
+      stores[position].value, static_cast<unsigned>(width * 8));
+    position += width;
+  }
+  // The removed address and immediate setup instructions define physical
+  // registers in MIR.  Re-emit the final definitions so any later use sees
+  // exactly the state produced by the scalar sequence.
+  const std::size_t final_setup = start + (stores.size() - 1) * 4;
+  for(std::size_t i = 0; i < 3; ++i)
+    emit_instruction(out, instructions[final_setup + i], &function);
+  return stores.size() * 4;
+}
+
 void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
 {
   // The x86-64 member-function-pointer representation reserves bit zero of
@@ -1953,8 +2056,15 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
   emit_function_prologue(out, function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out.label(function.name + "::" + function.blocks[i].label);
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const std::size_t coalesced = emit_coalesced_constant_byte_stores(
+        out, function.blocks[i].instructions, j, function);
+      if(coalesced) {
+        j += coalesced - 1;
+        continue;
+      }
       emit_instruction(out, function.blocks[i].instructions[j], &function);
+    }
   }
   out.relax_forward_branches(function_start);
 }
@@ -2607,6 +2717,12 @@ HostFunctionLayout emit_host_function(
         XR_RDX, 64);
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const std::size_t coalesced = emit_coalesced_constant_byte_stores(
+        out, block.instructions, j, function);
+      if(coalesced) {
+        j += coalesced - 1;
+        continue;
+      }
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
       emit_host_instruction(out, block.instructions[j], function,

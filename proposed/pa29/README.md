@@ -9,3 +9,10 @@ contain only dead stores do not consume frame space.  The current compiler
 removes the three dead stores and emits one retained slot in a 16-byte frame.
 The reference compiler retains all four slots and emits an 80-byte frame, so
 its generated MIR cannot be used as the oracle for this optimization.
+
+`constant-byte-store-coalescing.t` checks the runtime result of initializing
+16 adjacent bytes.  It exercises the native encoder's coalescing of repeated
+constant byte stores without changing MIR.  The reference program exits
+successfully, but its MIR assigns the preserved base and derived addresses to
+different physical registers (and retains unrelated `main` scratch space), so
+the reference dump cannot serve as this compiler's structural fixture.
