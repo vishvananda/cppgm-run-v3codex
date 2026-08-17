@@ -12,7 +12,8 @@ namespace {
 using lowir_model::Instruction;
 using lowir_model::Operand;
 
-unsigned instruction_clobber_mask(const Instruction & instruction)
+unsigned instruction_clobber_mask(const Instruction & instruction,
+                                  bool direct_memory_index = false)
 {
   const bool wide = instruction.type.kind == lowir_model::LTK_I128;
   if(wide && (instruction.kind == Instruction::IK_CONST ||
@@ -49,7 +50,7 @@ unsigned instruction_clobber_mask(const Instruction & instruction)
     return register_mask(XR_RCX) | register_mask(XR_RDX);
   if(instruction.kind == Instruction::IK_INDEX &&
      instruction.second.kind != Operand::OP_INTEGER)
-    return register_mask(XR_RDX);
+    return direct_memory_index ? 0 : register_mask(XR_RDX);
   if(instruction.kind == Instruction::IK_CMP)
     return wide ? register_mask(XR_RAX) | register_mask(XR_RCX) |
       register_mask(XR_RDX) | register_mask(XR_RSI) |
@@ -114,6 +115,34 @@ void note_instruction_operands(FunctionFacts & facts,
   note_operand(facts, instruction.third, position);
   for(std::size_t i = 0; i < instruction.args.size(); ++i)
     note_operand(facts, instruction.args[i], position);
+}
+
+bool direct_memory_index_use(const FunctionFacts & facts,
+                             const std::vector<Instruction> & instructions,
+                             std::size_t index)
+{
+  if(index + 1 >= instructions.size()) return false;
+  const Instruction & instruction = instructions[index];
+  if(instruction.kind != Instruction::IK_INDEX ||
+     facts.edge_live.count(instruction.dest)) return false;
+  const std::unordered_map<std::string, std::size_t>::const_iterator uses =
+    facts.uses.find(instruction.dest);
+  if(uses == facts.uses.end() || uses->second != 1) return false;
+  const std::size_t scale = instruction.type.storage_size;
+  if(scale != 1 && scale != 2 && scale != 4 && scale != 8) return false;
+  const Instruction & consumer = instructions[index + 1];
+  if(consumer.type.kind == lowir_model::LTK_F32 ||
+     consumer.type.kind == lowir_model::LTK_F64 ||
+     consumer.type.kind == lowir_model::LTK_F80 ||
+     consumer.type.kind == lowir_model::LTK_I128 ||
+     consumer.type.kind == lowir_model::LTK_OBJECT) return false;
+  const bool load = consumer.kind == Instruction::IK_LOAD &&
+    consumer.first.kind == Operand::OP_TEMP &&
+    consumer.first.text == instruction.dest;
+  const bool store = consumer.kind == Instruction::IK_STORE &&
+    consumer.second.kind == Operand::OP_TEMP &&
+    consumer.second.text == instruction.dest;
+  return load || store;
 }
 
 void extend_loop_liveness(FunctionFacts & facts,
@@ -333,14 +362,6 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
         facts.definition[instruction.dest] = position;
         definition_blocks[instruction.dest] = i;
       }
-      const unsigned clobbers = instruction_clobber_mask(instruction);
-      for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)
-        if(clobbers & (1u << reg)) {
-          clobber_positions[reg].push_back(position);
-          if(facts.first_register_clobber[reg] ==
-             std::numeric_limits<std::size_t>::max())
-            facts.first_register_clobber[reg] = position;
-        }
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
          parameter_names.count(instruction.first.text) &&
@@ -381,19 +402,21 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
       if(!instruction.dest.empty()) definitions[instruction.dest] = j;
       if(instruction.kind == Instruction::IK_CMP)
         comparisons[instruction.dest] = j;
-      if(instruction.kind == Instruction::IK_INDEX &&
-         instruction.first.kind == Operand::OP_TEMP &&
-         facts.uses[instruction.dest] == 1 && j + 1 < instructions.size()) {
-        const Instruction & consumer = instructions[j + 1];
-        const bool load = consumer.kind == Instruction::IK_LOAD &&
-          consumer.first.kind == Operand::OP_TEMP &&
-          consumer.first.text == instruction.dest;
-        const bool store = consumer.kind == Instruction::IK_STORE &&
-          consumer.second.kind == Operand::OP_TEMP &&
-          consumer.second.text == instruction.dest;
-        if(load || store)
+      const bool direct_index = direct_memory_index_use(facts, instructions, j);
+      if(direct_index) {
+        facts.direct_memory_index_values.insert(instruction.dest);
+        if(instruction.first.kind == Operand::OP_TEMP)
           facts.direct_memory_index_bases.insert(instruction.first.text);
       }
+      const unsigned clobbers =
+        instruction_clobber_mask(instruction, direct_index);
+      for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)
+        if(clobbers & (1u << reg)) {
+          clobber_positions[reg].push_back(position);
+          if(facts.first_register_clobber[reg] ==
+             std::numeric_limits<std::size_t>::max())
+            facts.first_register_clobber[reg] = position;
+        }
       if(instruction.kind != Instruction::IK_BRANCH ||
          instruction.first.kind != Operand::OP_TEMP) continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator branch_definition =
@@ -456,7 +479,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
         const std::string & name = operands[operand]->text;
         facts.last_use[name] = std::max(facts.last_use[name], block_start + j);
         for(std::size_t k = comparison->second + 1; k < j; ++k) {
-          const unsigned clobbers = instruction_clobber_mask(instructions[k]);
+          const unsigned clobbers = instruction_clobber_mask(
+            instructions[k],
+            facts.direct_memory_index_values.count(instructions[k].dest));
           facts.live_across_clobbers[name] |= clobbers;
           if(instructions[k].kind == Instruction::IK_CALL)
             facts.live_across_call.insert(name);

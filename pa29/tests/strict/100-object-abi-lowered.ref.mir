@@ -23,9 +23,8 @@ function @make_pair
 
   block ^entry
     mov rbx, rdi
-    mov r9, rdx
     store.i64 [rbx], rsi
-    store.i64 [rbx+8], r9
+    store.i64 [rbx+8], rdx
     ret
 
 function @main

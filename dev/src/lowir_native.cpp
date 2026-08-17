@@ -32,6 +32,7 @@ using mir_model::MirInstruction; using mir_model::MirOperand;
 using abi::FunctionSignature; using abi::FunctionSignatureIndex;
 using analysis::FunctionFacts; using analysis::StorageFacts;
 using analysis::analyze_function; using analysis::analyze_storage; using analysis::register_mask;
+using analysis::register_was_clobbered_before;
 using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
@@ -540,7 +541,8 @@ private:
         value.location = reg_operand(destination);
         append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && binding.reg == XR_RDX && uses &&
-                facts_.first_use[parameter.name] > 0) {
+                register_was_clobbered_before(
+                  facts_, binding.reg, facts_.first_use[parameter.name])) {
         const X64Register destination = registers_.is_used(XR_R9) ?
           registers_.allocate(crosses_call(parameter.name)) : XR_R9;
         if(destination == XR_R9) registers_.reserve(XR_R9);
