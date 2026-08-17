@@ -25,9 +25,7 @@ function @main
   block ^entry
     mov r8, @dst
     mov r9, @src
-    mov rdi, r8
-    mov rsi, r9
-    copy_bytes 16x8, rdi, rsi
+    copy_bytes 16x8, r8, r9
     load.i64 r9, @dst
     load.i64 rdi, [r8+8]
     add r9, rdi

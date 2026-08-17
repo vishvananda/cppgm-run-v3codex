@@ -428,6 +428,11 @@ To complete PA29, implement these goals:
    `zero_bytes <bytes>x<align>`, rather than being expanded only through the old CY86
    lowering path.
 
+   The operands of `copy_bytes` and `zero_bytes` name the selected logical
+   address registers. Lowering should not first copy those addresses into the
+   fixed registers used by a particular string-instruction encoding; native
+   emission performs any required parallel register setup.
+
 4. Preserve the distinction between direct and indirect calls.
    The direct backend should still emit indirect machine-IR calls for truly indirect LowIR
    calls, such as virtual dispatch, instead of collapsing all calls into one lowered form.

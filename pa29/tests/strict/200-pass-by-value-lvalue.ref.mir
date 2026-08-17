@@ -37,10 +37,8 @@ function @id
     slot $y__0 -> [rbp-8] : i64
 
   block ^entry
-    mov r8, rdi
-    lea rdi, [rbp-8]
-    mov rsi, r8
-    copy_bytes 4x1, rdi, rsi
+    lea r11, [rbp-8]
+    copy_bytes 4x1, r11, rdi
     lea rcx, [rbp-8]
     load.i32 rax, [rcx]
     sext.i32 rax

@@ -23,14 +23,26 @@ class BulkLowering
 {
 protected:
   void append_object_copy(std::size_t bytes, std::size_t alignment,
+                          X64Register destination, X64Register source,
                           std::vector<MirInstruction>& out)
   {
     MirInstruction copy = machine_instruction(MirInstruction::MI_COPY_BYTES);
     copy.byte_count = bytes;
     copy.byte_alignment = alignment;
-    append_operand(copy, reg_operand(XR_RDI));
-    append_operand(copy, reg_operand(XR_RSI));
+    append_operand(copy, reg_operand(destination));
+    append_operand(copy, reg_operand(source));
     out.push_back(copy);
+  }
+
+  bool direct_address_register(const Operand& operand,
+                               X64Register* result) const
+  {
+    if (operand.kind != Operand::OP_TEMP) return false;
+    const Derived& derived = static_cast<const Derived&>(*this);
+    const MirOperand address = derived.resolve(operand);
+    if (address.kind != MirOperand::OP_REG) return false;
+    *result = address.reg;
+    return true;
   }
 
   void emit_object_copy(const Operand& source, const Operand& destination,
@@ -44,27 +56,23 @@ protected:
       derived.consume(destination);
       return;
     }
-    X64Register saved_source = XR_RSP;
-    bool allocated_saved_source = false;
-    if (source.kind == Operand::OP_TEMP)
+    X64Register source_register = XR_RSI;
+    const bool direct_source =
+      direct_address_register(source, &source_register);
+    X64Register destination_register = XR_RDI;
+    if (!direct_address_register(destination, &destination_register))
     {
-      const MirOperand resolved_source = derived.resolve(source);
-      if (resolved_source.kind == MirOperand::OP_REG &&
-          resolved_source.reg == XR_RDI)
-      {
-        allocated_saved_source =
-          derived.registers_.try_allocate(false, saved_source);
-        if (!allocated_saved_source) saved_source = XR_R11;
-        append_move(out, reg_operand(saved_source), resolved_source);
-      }
+      destination_register = direct_source && source_register == XR_RDI ?
+        XR_R11 : XR_RDI;
+      derived.emit_operand_address(out, destination_register, destination);
     }
-    derived.emit_operand_address(out, XR_RDI, destination);
-    if (saved_source != XR_RSP)
-      append_move(out, reg_operand(XR_RSI), reg_operand(saved_source));
-    else
-      derived.emit_operand_address(out, XR_RSI, source);
-    append_object_copy(bytes, alignment, out);
-    if (allocated_saved_source) derived.registers_.release(saved_source);
+    if (!direct_source)
+    {
+      source_register = destination_register == XR_RSI ? XR_R11 : XR_RSI;
+      derived.emit_operand_address(out, source_register, source);
+    }
+    append_object_copy(bytes, alignment, destination_register,
+                       source_register, out);
     derived.consume(source);
     derived.consume(destination);
   }
@@ -74,11 +82,13 @@ protected:
                         std::vector<MirInstruction>& out)
   {
     Derived& derived = static_cast<Derived&>(*this);
-    derived.emit_operand_address(out, XR_RDI, destination);
+    X64Register destination_register = XR_RDI;
+    if (!direct_address_register(destination, &destination_register))
+      derived.emit_operand_address(out, destination_register, destination);
     MirInstruction zero = machine_instruction(MirInstruction::MI_ZERO_BYTES);
     zero.byte_count = bytes;
     zero.byte_alignment = alignment;
-    append_operand(zero, reg_operand(XR_RDI));
+    append_operand(zero, reg_operand(destination_register));
     out.push_back(zero);
     derived.consume(destination);
   }
@@ -89,11 +99,16 @@ protected:
   {
     Derived& derived = static_cast<Derived&>(*this);
     const MirOperand home = derived.allocate_temp_home(name, type);
-    // Resolve an incoming object address before assigning its possible RDI
-    // carrier to the frame destination.
-    derived.emit_operand_address(out, XR_RSI, source);
-    derived.append_address(out, XR_RDI, home);
-    append_object_copy(type.storage_size, type.alignment, out);
+    X64Register source_register = XR_RSI;
+    const bool direct_source =
+      direct_address_register(source, &source_register);
+    const X64Register destination_register =
+      direct_source && source_register == XR_RDI ? XR_R11 : XR_RDI;
+    derived.append_address(out, destination_register, home);
+    if (!direct_source)
+      derived.emit_operand_address(out, XR_RSI, source);
+    append_object_copy(type.storage_size, type.alignment,
+                       destination_register, source_register, out);
     derived.consume(source);
     derived.define_object_result(name, type, 0, home);
   }

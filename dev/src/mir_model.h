@@ -217,6 +217,8 @@ struct Instruction
     MI_TLS_ADDR,
     MI_CALL,
     MI_CALL_INDIRECT,
+    // Bulk-memory operands name logical address registers. The encoder owns
+    // any parallel moves required by the concrete x86 string instruction.
     MI_COPY_BYTES,
     MI_ZERO_BYTES,
     MI_EH_PUSH,
