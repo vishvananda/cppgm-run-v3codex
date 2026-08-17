@@ -300,6 +300,7 @@ candidate.
 | B7a | Omit a proved redundant 32-bit normalization | 0 existing | 0 existing | **Landed** in `0f01fa1a`; an immediately preceding non-forwarded 32-bit producer proves that the register's upper half is already zero, identical-source O0 self build machine text -41,856 bytes and 16,107 same-register moves, frozen object text -347 bytes, paired compile time neutral |
 | B7b | Extend the proof through frame-load forwarding | 0 existing | 0 existing | **Landed** in `58aa9b65`; ordinary 32-bit frame loads and different-register forwarded reloads normalize their destination, while same-register forwarding retains the required operation; identical-source O0 self machine text -67,536 bytes and 26,719 same-register moves, frozen text -156 bytes, paired compile time neutral |
 | B7c | Fuse register copy followed by 32-bit normalization | 0 existing | 0 existing | **Landed** in `9a929862`; a single 32-bit register move has the exact final value and flags of the adjacent 64-bit copy plus normalization; identical-source O0 self machine text -34,224 bytes and 11,721 same-register moves, frozen text -192 bytes, paired compile time neutral |
+| B7d | Retain a direct parameter in an unclobbered incoming ABI register | 0 existing | 10 existing PA29 MIR fixtures | **Deferred**: a bounded clobber proof removed 325 MIR instructions and 2,391 text bytes from the O0 `lowir_opt.cpp` sample, and all affected programs remained correct, but it moved 2 strict, 7 structural, and 1 behavior MIR oracles without a PA29 reference workflow that authorizes regeneration |
 | R1 | Reserve a reused incoming ABI argument register through its first call | 0 existing | 0 existing | **Landed** in `df01fb99`; active PA29 indirect-call behavior reducer, no existing fixture changed |
 | R2 | Reject incoming-register forwarding after an earlier physical clobber | 0 existing | 0 existing | **Landed** in `df01fb99`; fixed 16-entry first-clobber table, active PA29 object-copy behavior reducer, no existing fixture changed |
 | R3 | Keep `_Unwind_Resume` outside coalesced protected LSDA ranges | 0 existing | 0 existing | **Landed** in `f7946c1b`; active PA31 exactly-once `noexcept` cleanup reducer, no existing fixture changed |
@@ -673,6 +674,36 @@ present on only one side.  The ten largest positive common-name gaps total
 second COMDAT-sized local simplification.  The next majority opportunity is
 the planned PA38 value coalescing/register-allocation work, which can attack
 copy, home/reload, address-materialization, and callee-save traffic together.
+
+### 4.3.8 B7d deferred incoming-parameter retention
+
+A prototype retained a direct scalar parameter in its incoming ABI register
+when the existing fixed-register clobber analysis proved that register intact
+through the parameter's last use.  On the matched O0 `lowir_opt.cpp` sample it
+removed 325 MIR instructions, reduced GNU text from 624,023 to 621,632 bytes,
+and reduced functions preserving `r12`/`r13`/`r14`/`r15` by 52/12/101/20.
+All changed tests still matched their implementation exit status, program exit
+status, and stdout oracles.
+
+The prototype nevertheless changed ten existing PA29 MIR fixtures:
+
+- `pa29/tests/strict/100-object-abi-lowered.t`;
+- `pa29/tests/strict/200-pass-by-value-lvalue.t`;
+- `pa29/tests/structural/400-call-clobber-register-pressure.t`;
+- `pa29/tests/structural/600-floating-short-circuit-branch.t`;
+- `pa29/tests/structural/800-conditional-edge-liveness.t`;
+- `pa29/tests/structural/800-forwarded-param-identity-live-across-call.t`;
+- `pa29/tests/structural/800-slot-address-rematerialization.t`;
+- `pa29/tests/structural/800-switch-call-case-liveness.t`;
+- `pa29/tests/structural/800-xmm-live-across-integer-call.t`; and
+- `pa29/tests/behavior/800-register-param-r8-home-clobber.t`.
+
+PA29 has no standalone reference binary, and the two strict fixtures explicitly
+require the original raw MIR.  The candidate was therefore reverted rather
+than hand-editing oracles.  Its keep-going PA29 report was 203/213, with all ten
+failures attributable to the listed MIR movement.  This remains a valid PA38
+optional value-placement idea, but is not an acceptable baseline change under
+the O0 fixture rule.
 
 ### 4.4 P0 result
 
