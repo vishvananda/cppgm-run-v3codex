@@ -2792,6 +2792,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 			if (hidden_friend_anchor_by_entity_[i] != kNoBinding &&
 				!GetFunction(hidden_friend_anchor_by_entity_[i]).constexpr_function)
 				DemandFunction(hidden_friend_anchor_by_entity_[i]);
+	ReplayRequiredFunctionDemandEdges();
 	std::size_t default_demand = 0;
 	std::size_t function_demand = 0;
 	std::size_t member_definition_demand = 0;

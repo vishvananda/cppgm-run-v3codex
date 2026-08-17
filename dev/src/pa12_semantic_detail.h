@@ -44,10 +44,12 @@ struct FunctionDemandEdge
 {
 	BindingId caller, callee;
 	FunctionDemandReason reason;
+	std::uint32_t next;
 
 	FunctionDemandEdge(BindingId caller_value, BindingId callee_value,
-		FunctionDemandReason reason_value)
-		: caller(caller_value), callee(callee_value), reason(reason_value) {}
+		FunctionDemandReason reason_value, std::uint32_t next_value)
+		: caller(caller_value), callee(callee_value), reason(reason_value),
+		  next(next_value) {}
 	bool operator<(const FunctionDemandEdge& other) const
 	{
 		if (caller != other.caller) return caller < other.caller;
@@ -980,7 +982,11 @@ private:
 	void DemandFunction(BindingId binding,
 		FunctionDemandReason reason = FUNCTION_DEMAND_EVALUATED_USE);
 	void DemandRuntimeFunction(BindingId binding, FunctionDemandReason reason);
+	void DemandRuntimeDefinition(BindingId binding);
 	void RecordFunctionDemand(BindingId binding, FunctionDemandReason reason);
+	bool FunctionObjectDefinitionRequired(BindingId binding) const;
+	void ReplayFunctionDemandEdges(BindingId binding);
+	void ReplayRequiredFunctionDemandEdges();
 	void PublishFunctionDemandStats();
 	void QueueFunctionDefinitionValidation(BindingId binding);
 	void DemandVtableFunction(BindingId binding);
@@ -2302,6 +2308,8 @@ private:
 	std::size_t default_constructor_emissions_;
 	std::size_t demand_reason_requests_[FUNCTION_DEMAND_REASON_COUNT];
 	std::vector<FunctionDemandEdge> function_demand_edges_;
+	std::vector<std::uint32_t> function_demand_head_by_binding_;
+	std::vector<BindingId> functions_with_demand_edges_;
 	std::size_t class_layouts_;
 	std::size_t class_layout_member_visits_;
 	std::vector<std::uint32_t> virtual_base_layout_entity_marks_;

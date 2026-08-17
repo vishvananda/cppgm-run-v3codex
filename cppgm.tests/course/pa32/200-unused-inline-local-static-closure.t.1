@@ -1,0 +1,21 @@
+struct local_value
+{
+  local_value() {}
+  ~local_value() {}
+};
+
+inline int inner()
+{
+  static local_value value;
+  return 1;
+}
+
+inline int outer()
+{
+  return inner();
+}
+
+int main()
+{
+  return 0;
+}

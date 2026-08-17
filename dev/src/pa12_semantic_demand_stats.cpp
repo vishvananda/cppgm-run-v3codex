@@ -11,7 +11,7 @@ namespace pa12_semantic_detail
 void SemanticAnalyzer::RecordFunctionDemand(BindingId binding,
 	FunctionDemandReason reason)
 {
-	if (!stats_ || binding == kNoBinding) return;
+	if (binding == kNoBinding) return;
 	if (reason < FUNCTION_DEMAND_EVALUATED_USE ||
 		reason >= FUNCTION_DEMAND_REASON_COUNT)
 		throw std::logic_error("invalid function demand reason");
@@ -19,21 +19,35 @@ void SemanticAnalyzer::RecordFunctionDemand(BindingId binding,
 	BindingId caller = current_function_context_;
 	if (caller != kNoBinding)
 		caller = program_->bindings[caller].canonical;
-	++demand_reason_requests_[reason];
+	if (stats_) ++demand_reason_requests_[reason];
+	if (caller == kNoBinding && !stats_) return;
+	std::uint32_t next = kNoDumpEdge;
+	if (caller != kNoBinding)
+	{
+		if (function_demand_head_by_binding_.size() <= caller)
+			function_demand_head_by_binding_.resize(
+				static_cast<std::size_t>(caller) + 1, kNoDumpEdge);
+		next = function_demand_head_by_binding_[caller];
+		if (next == kNoDumpEdge)
+			functions_with_demand_edges_.push_back(caller);
+		function_demand_head_by_binding_[caller] =
+			static_cast<std::uint32_t>(function_demand_edges_.size());
+	}
 	function_demand_edges_.push_back(
-		FunctionDemandEdge(caller, binding, reason));
+		FunctionDemandEdge(caller, binding, reason, next));
 }
 
 void SemanticAnalyzer::PublishFunctionDemandStats()
 {
 	if (!stats_) return;
-	std::sort(function_demand_edges_.begin(), function_demand_edges_.end());
-	function_demand_edges_.erase(std::unique(function_demand_edges_.begin(),
-		function_demand_edges_.end()), function_demand_edges_.end());
-	stats_->demand_unique_edges = function_demand_edges_.size();
-	for (std::size_t i = 0; i < function_demand_edges_.size(); ++i)
+	std::vector<FunctionDemandEdge> unique_edges = function_demand_edges_;
+	std::sort(unique_edges.begin(), unique_edges.end());
+	unique_edges.erase(std::unique(unique_edges.begin(), unique_edges.end()),
+		unique_edges.end());
+	stats_->demand_unique_edges = unique_edges.size();
+	for (std::size_t i = 0; i < unique_edges.size(); ++i)
 	{
-		if (function_demand_edges_[i].caller == kNoBinding)
+		if (unique_edges[i].caller == kNoBinding)
 			++stats_->demand_root_edges;
 		else ++stats_->demand_dependency_edges;
 	}

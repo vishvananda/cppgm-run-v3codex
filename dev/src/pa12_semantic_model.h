@@ -950,6 +950,7 @@ struct FunctionInfo
 	std::uint32_t synthesized_prefix_alignment;
 	std::uint32_t synthesized_prefix_members;
 	bool ordinary_visible;
+	bool emission_dependencies_replayed;
 	bool exception_specification_configured;
 	ExceptionSpecificationState exception_specification_state;
 	FunctionDefinitionState definition_state;
@@ -988,7 +989,8 @@ struct FunctionInfo
 		  synthesized_storage_copy(false), synthesized_memberwise_copy(false),
 		  synthesized_prefix_size(0),
 		  synthesized_prefix_alignment(0), synthesized_prefix_members(0),
-		  ordinary_visible(true), exception_specification_configured(false),
+		  ordinary_visible(true), emission_dependencies_replayed(false),
+		  exception_specification_configured(false),
 		  exception_specification_state(EXCEPTION_SPECIFICATION_FIXED),
 		  definition_state(FUNCTION_DEFINITION_NOT_STARTED) {}
 };

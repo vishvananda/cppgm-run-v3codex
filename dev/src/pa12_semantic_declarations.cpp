@@ -2757,44 +2757,6 @@ void SemanticAnalyzer::DemandFunction(BindingId binding,
 		constexpr_evaluation_depth_ != 0) return;
 	DemandRuntimeFunction(binding, reason);
 }
-void SemanticAnalyzer::DemandRuntimeFunction(BindingId binding,
-	FunctionDemandReason reason)
-{
-	if (binding == kNoBinding) return;
-	binding = program_->bindings[binding].canonical;
-	RecordFunctionDemand(binding, reason);
-	EnsureFunctionExceptionSpecification(binding);
-	DemandClassTemplateMemberDefinitions(program_->bindings[binding].member_owner);
-	program_->bindings[binding].emission_demanded |= program_->bindings[binding].inline_function;
-	if ((program_->bindings[binding].constructor ||
-		 program_->bindings[binding].destructor) &&
-		program_->bindings[binding].member_owner != kNoEntity &&
-		program_->entities[program_->bindings[binding].member_owner].
-			polymorphic_class)
-		MarkVtableDemand(program_->bindings[binding].member_owner);
-	if (binding < constructor_base_entry_by_binding_.size())
-	{
-		const BindingId base_entry =
-			constructor_base_entry_by_binding_[binding];
-		if (base_entry != kNoBinding && base_entry != binding)
-			DemandFunction(base_entry, FUNCTION_DEMAND_LIFECYCLE);
-	}
-	if (binding < destructor_base_entry_by_binding_.size())
-	{
-		const BindingId base_entry =
-			destructor_base_entry_by_binding_[binding];
-		if (base_entry != kNoBinding && base_entry != binding)
-			DemandFunction(base_entry, FUNCTION_DEMAND_LIFECYCLE);
-	}
-	if (binding >= function_fact_by_binding_.size() ||
-		function_fact_by_binding_[binding] == kNoDumpEdge) return;
-	FunctionInfo& function = GetMutableFunction(binding);
-	if (!function.deferred ||
-		function.definition_state != FUNCTION_DEFINITION_NOT_STARTED) return;
-	function.definition_state = FUNCTION_DEFINITION_QUEUED;
-	demanded_functions_.push_back(binding);
-	++demand_worklist_pushes_;
-}
 void SemanticAnalyzer::DemandVtableFunction(BindingId binding)
 {
 	if (binding == kNoBinding) return;

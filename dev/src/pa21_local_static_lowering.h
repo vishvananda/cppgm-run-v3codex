@@ -112,7 +112,9 @@ protected:
 			const LocalStaticObjectAction& action =
 				derived.graph_.local_static_objects[i];
 			if (action.function >= derived.function_symbols_.size() ||
-				derived.function_symbols_[action.function] == kNoLowId)
+				derived.function_symbols_[action.function] == kNoLowId ||
+				action.function >= derived.function_definition_.size() ||
+				derived.function_definition_[action.function] == kNoDumpEdge)
 				continue;
 			const BindingRecord& function =
 				derived.program_.bindings[action.function];

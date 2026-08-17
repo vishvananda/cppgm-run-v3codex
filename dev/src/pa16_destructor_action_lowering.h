@@ -69,7 +69,17 @@ protected:
 		if (destructor == kNoBinding ||
 			destructor >= derived.function_symbols_.size() ||
 			derived.function_symbols_[destructor] == kNoLowId)
-			throw std::runtime_error("destructor action has no emitted binding");
+			throw std::runtime_error(
+				"destructor action has no emitted binding: " +
+				std::to_string(destructor) + " " +
+				(destructor < derived.program_.bindings.size() ?
+				 derived.program_.names.Get(
+					derived.program_.bindings[destructor].name) :
+				 std::string("<invalid>")) + " in " +
+				(derived.function_ &&
+				 derived.function_->symbol < derived.output_.symbols.size() ?
+				 derived.output_.symbols[derived.function_->symbol].name :
+				 std::string("<synthetic>")));
 		Instruction call(Instruction::CALL);
 		call.type = LowVoid();
 		call.first = Operand(Operand::FUNCTION,

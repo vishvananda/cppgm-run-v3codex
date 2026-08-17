@@ -465,7 +465,10 @@ void SemanticAnalyzer::AddLocalStaticObjectAction(std::uint32_t variable,
 		if (!CanAccessMember(destructor, entity))
 			throw std::runtime_error("inaccessible local static object destructor");
 		if (!program_->entities[entity].trivial_destructor)
+		{
 			destructor_action = MakeDestructorAction(type, destructor, object);
+			DemandFunction(destructor, FUNCTION_DEMAND_STATIC_LIFECYCLE);
+		}
 	}
 	const bool specialized_addresses = initializer != kNoDumpEdge &&
 		DemandRuntimeInitializerFunctions(initializer, true);
