@@ -1,6 +1,6 @@
 # Plan: Baseline Code Generation and Optimized Self-Host Performance
 
-Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B3c, B4a, B4b, B4c, B4d1--B4d7, B5, B6, B7e, C1, C2a--C2b, D1, O1a, and R1--R3 complete
+Status: in progress; T1, P0, B1, B2, B3a, B3b, B3n, B3c, B4a, B4b, B4c, B4d1--B4d7, B5, B6, B7e, C1, C2a--C2b, D1, O1a, and R1--R3 complete; VP0--VP5 tracked in `PLAN-O0-VALUE-PLACEMENT.md`
 
 Date: 2026-08-17
 
