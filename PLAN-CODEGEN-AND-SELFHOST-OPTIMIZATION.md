@@ -255,7 +255,7 @@ candidate.
 | P0 | Retain jemalloc in the PA39 self link | 0 | 0 | Planned build-system parity check |
 | B1 | Compact memory displacements | 0 existing | 0 existing | **Landed** in `e46bde65`; deterministic object -157,352 bytes and text -156,330 bytes; behavior reference agrees while its unrelated MIR layout differs |
 | B2 | Omit encoded jump to next instruction | 0 existing | 0 existing | **Landed** in `acf3d415`; 9,399 jumps and 18,798 text bytes removed with timing neutral |
-| B3a | Unsigned power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned |
+| B3a | Unsigned power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `65b62af8`; PA29 encoder peephole, active behavior reducer, frozen object byte-identical, timing neutral |
 | B3b | Signed power-of-two division/remainder | 0 preferred | 0 preferred; list narrow movement if unavoidable | Planned after B3a |
 | B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | Deferred until B3a/B3b evidence |
 | B4a | Flag-safe zero materialization | 0 | 0 | Planned |
@@ -326,6 +326,37 @@ Validation and frozen evidence:
 - `.eh_frame`: unchanged at 145,188 bytes; and
 - three-block immutable ABBA paired deltas: wall +0.08%, user +0.09%, peak
   RSS +0.07%.  All six outputs per compiler were deterministic.
+
+### 4.6 B3a result
+
+`65b62af8` recognizes the existing unsigned constant-division MIR sequence in
+the native encoder.  A power-of-two quotient is emitted as an in-place logical
+shift and a remainder as an in-place mask; non-power-of-two divisors retain
+hardware `div`.  This keeps the baseline LowIR and textual MIR contracts
+unchanged.
+
+No existing checked-in LowIR fixture changed and no existing checked-in MIR
+fixture changed.  The new active reducer is
+`cppgm.tests/course/pa29/unsigned-power-of-two-division.t`.  Both the reference
+and implementation pass its behavior oracle.  The reference-generated MIR
+uses a different valid register allocation and frame layout, so no MIR oracle
+is checked in for this new behavior test; no existing oracle was removed or
+regenerated.  A binary inspection of the reducer finds exactly the two
+non-power-of-two control `div` instructions and none for its power-of-two
+cases.
+
+Validation and frozen evidence:
+
+- PA29: 183/183 assignment tests and 16/16 course tests;
+- through PA29: 4,090/4,090;
+- PA29--PA38 report: 1,277/1,277;
+- full report: 5,168/5,168;
+- PA39 file audit: zero fatal findings;
+- frozen object, text, LSDA, and unwind output: byte-identical because this
+  translation unit has no matching unsigned power-of-two division sequence;
+  and
+- three-block immutable ABBA paired deltas: wall -0.97%, user -1.25%, peak
+  RSS +0.22%.  All six outputs per compiler were deterministic.
 
 ## 5. Execution plan
 
