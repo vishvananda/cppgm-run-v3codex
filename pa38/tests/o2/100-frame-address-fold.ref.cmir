@@ -20,6 +20,6 @@ function @main
     sext.i8 r8
     mov rdx, -1
     cmp.i64 r8, rdx
-    sete r8
-    movzx r8, r8
-    ret r8
+    sete rax
+    movzx rax, rax
+    ret rax

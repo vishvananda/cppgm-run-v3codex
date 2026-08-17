@@ -36,9 +36,9 @@ function @main
     fmov.f64 xmm0, xmm0
     feq.f64 rax, xmm0, 2.0
     mov r8, rax
-    mov rdx, 0
-    cmp.i64 r8, rdx
-    sete r8
-    movzx r8, r8
     mov rax, r8
+    mov rdx, 0
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     ret rax

@@ -51,9 +51,9 @@ function @main
     eh_pop
     mov rdx, 0
     cmp.i64 r9, rdx
-    setne r9
-    movzx r9, r9
-    ret r9
+    setne rax
+    movzx rax, rax
+    ret rax
 
   block ^handler
     mov rax, 2

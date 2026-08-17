@@ -26,17 +26,26 @@ function @return_slot_address() -> ptr {
     return ptr %address
 }
 
+function @return_compare(%left : i64, %right : i64) -> i64 {
+  block ^entry:
+    %result = cmp ult i64 %left, %right
+    return i64 %result
+}
+
 function @main() -> i32 [role=entry] {
   block ^entry:
     %constant = call i32 @return_constant()
     %loaded = call i32 @return_load()
     %address = call ptr @return_global_address()
+    %compared = call i64 @return_compare(3, 5)
     %expected = addr @value
     %constant_bad = cmp ne i32 %constant, 11
     %load_bad = cmp ne i32 %loaded, 17
     %address_bad = cmp ne ptr %address, %expected
+    %compare_bad = cmp ne i64 %compared, 1
     %first_bad = binary or i64 %constant_bad, %load_bad
-    %bad = binary or i64 %first_bad, %address_bad
+    %second_bad = binary or i64 %address_bad, %compare_bad
+    %bad = binary or i64 %first_bad, %second_bad
     %exit = convert trunc i32 i64 %bad
     return i32 %exit
 }

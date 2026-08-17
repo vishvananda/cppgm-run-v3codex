@@ -25,9 +25,9 @@ function @main
     store.i8 [r8], r9
     load.i8 r9, [r8]
     sext.i8 r9
-    mov rdx, 8
-    cmp.i8 r9, rdx
-    sete r9
-    movzx r9, r9
     mov rax, r9
+    mov rdx, 8
+    cmp.i8 rax, rdx
+    sete rax
+    movzx rax, rax
     ret rax

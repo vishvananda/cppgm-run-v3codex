@@ -19,9 +19,9 @@ function @main
     lea rcx, [rbp-<off0>]
     load.u16 r8, [rcx]
     zext.i16 r8
-    mov rdx, 65535
-    cmp.i64 r8, rdx
-    sete r8
-    movzx r8, r8
     mov rax, r8
+    mov rdx, 65535
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     ret rax

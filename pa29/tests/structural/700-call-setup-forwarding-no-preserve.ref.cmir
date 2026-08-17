@@ -50,9 +50,9 @@ function @main
     mov rsi, r9
     call @mix [args=(rsi,rdi,xmm0,xmm1)]
     mov <gpr0>, rax
-    mov rdx, 50
-    cmp.i64 <gpr0>, rdx
-    sete <gpr0>
-    movzx <gpr0>, <gpr0>
     mov rax, <gpr0>
+    mov rdx, 50
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     ret rax

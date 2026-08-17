@@ -24,9 +24,9 @@ function @main
     lock_xadd.i64 [rcx], rax
     add rax, rdx
     mov r9, rax
-    mov rdx, 12
-    cmp.i64 r9, rdx
-    sete r9
-    movzx r9, r9
     mov rax, r9
+    mov rdx, 12
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     ret rax

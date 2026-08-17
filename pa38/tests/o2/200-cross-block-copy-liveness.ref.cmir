@@ -33,6 +33,6 @@ function @main
     load.i64 r9, [r8]
     mov rdx, 77
     cmp.i64 r9, rdx
-    setne r9
-    movzx r9, r9
-    ret r9
+    setne rax
+    movzx rax, rax
+    ret rax

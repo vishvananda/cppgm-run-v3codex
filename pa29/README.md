@@ -486,10 +486,11 @@ To complete PA29, implement these goals:
    whenever a fixed-register operation or call can clobber its incoming
    register.
 
-   When a sole-use scalar constant, load, copy, address, or index is immediately
-   returned, lower it directly into the ABI return register when doing so does
-   not overwrite an input needed by that instruction.  MIR should not introduce
-   a temporary register followed only by a return-register copy.
+   When a sole-use scalar constant, load, copy, address, index, or integer
+   comparison is immediately returned, lower it directly into the ABI return
+   register when doing so does not overwrite an input needed by that
+   instruction.  MIR should not introduce a temporary register followed only
+   by a return-register copy.
 
    A sole-use scalar call result may likewise remain in its ABI return register
    when the immediately following instruction stores it or passes it as a

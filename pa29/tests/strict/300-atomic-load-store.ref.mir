@@ -22,9 +22,9 @@ function @main
     add r9, 1
     store.i64 [r8], r9
     load.i64 r9, [r8]
-    mov rdx, 8
-    cmp.i64 r9, rdx
-    sete r9
-    movzx r9, r9
     mov rax, r9
+    mov rdx, 8
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     ret rax

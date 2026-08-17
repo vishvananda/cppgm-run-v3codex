@@ -19,9 +19,9 @@ function @main
     lea rcx, [rbp-<off0>]
     load.i8 r8, [rcx]
     sext.i8 r8
-    mov rdx, -1
-    cmp.i64 r8, rdx
-    sete r8
-    movzx r8, r8
     mov rax, r8
+    mov rdx, -1
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     ret rax

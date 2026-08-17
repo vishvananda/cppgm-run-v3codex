@@ -128,6 +128,6 @@ x86 variable scale stays in the `lea` memory operand without separate copy,
 multiply, or add instructions.
 
 `direct-return-placement.t` exercises immediately returned integer constants,
-integer loads, global addresses, and frame addresses.  Each producer must write
-the ABI return register directly, without first assigning a general-purpose
-temporary that is used only by the return.
+integer loads, global addresses, frame addresses, and integer comparisons.
+Each producer must write the ABI return register directly, without first
+assigning a general-purpose temporary that is used only by the return.

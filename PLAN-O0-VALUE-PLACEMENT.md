@@ -208,7 +208,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
-| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16% | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, promoted-slot interval extension, and dense slot-analysis state complete; broader load/store producer placement pending |
+| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, promoted-slot interval extension, dense slot-analysis state, and integer-comparison return placement complete; broader producer placement pending |
 | VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, direct ALU/shift constraints, and intact ABI-parameter retention complete; address rematerialization and spill-slot reuse pending |
 | VP5 | 0 | 3 strict PA29 MIR fixtures for bulk copy/zero placement | Logical bulk operands reshape individual functions but leave aggregate `.text*` (943,292 bytes) and x86 instruction-family counts unchanged; total object -32 bytes. Two-block ABBA medians are user tied at 5.665 s, wall -0.28%, and RSS -0.04%; affected report 357/357 | logical bulk operands complete; remaining scalar compatibility rewrites pending |
 
@@ -425,6 +425,43 @@ make rendering the only spelling consumer. That cross-pipeline migration is
 deferred from this O0 placement slice because it spans PA15 lowering, PA30
 adaptation/object decoding, PA37/PA38 optimization, and PA29 selection; it must
 not be approximated by parallel ID and string models that can diverge.
+
+The direct comparison-return slice extends the existing PA29 rule for
+immediately returned scalar producers to ordinary integer comparisons. It
+selects RAX only when the comparison result has one adjacent return use and
+placing the left operand there cannot overwrite an RAX-based right operand.
+The already-computed use count plus the adjacent instruction check make this
+an O(1) lowering decision; it adds no analysis or pass.
+
+The migration changes strict PA29 MIR for `300-atomic-add-fetch`,
+`300-atomic-load-store`, `400-u32-bswap-and-float-conversions`,
+`600-atomic-i32-seqcst-store`,
+`600-call-pass-mode-address-materialization`,
+`600-call-pass-mode-register-temp-address-materialization`, and
+`900-slot-address-stack-call-argument`, plus the exact behavior sidecar for
+`800-call-i128-literal-abi-chunks`. It changes raw and canonical structural
+MIR for PA29 `500-mixed-gpr-xmm-call-abi`,
+`600-atomic-i8-load-store`, `600-i8-signed-frame-load-widen`,
+`600-indirect-mixed-gpr-xmm-call-abi`,
+`600-u16-zero-frame-load-widen`,
+`700-call-pass-mode-address-materialization`,
+`700-call-setup-forwarding-no-preserve`,
+`700-f64-f80-implicit-store-return-convert`,
+`700-i8-signed-global-load-widen`, `700-index-chain-register-reuse`, and
+`700-u16-zero-global-load-widen`. PA38's O1 and O2 raw/canonical fixtures also
+change for `100-frame-address-fold`, `200-cross-block-copy-liveness`, and
+course case `300-call-result-across-eh-push` because the input PA29 MIR already
+places the result in RAX.
+
+The comparison was added to `proposed/pa29/direct-return-placement.t`. Both
+compilers execute the expanded witness successfully. The course reference
+retains a temporary comparison register and final return copy, so the shape
+witness remains proposed rather than becoming a conflicting active oracle.
+Against `51a7243c`, the frozen object falls from 4,417,928 to 4,417,352 bytes,
+aggregate `.text*` from 932,603 to 931,996 bytes, and x86 instructions from
+231,032 to 230,921; all 111 removed instructions are moves. Two ABBA blocks
+give baseline/candidate medians of 5.665/5.590 seconds user, 6.230/6.165
+seconds wall, and 364,872/364,868 KiB peak RSS.
 
 The VP3 input-lifetime slice changes
 `pa29/tests/strict/100-object-abi-lowered.ref.mir`.  The address-selection

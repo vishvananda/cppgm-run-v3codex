@@ -64,9 +64,9 @@ function @main
     add rsp, 16
     load.u8 r8, [rbp-1]
     zext.i8 r8
-    mov rdx, 1
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
     mov rax, r8
+    mov rdx, 1
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
     ret rax

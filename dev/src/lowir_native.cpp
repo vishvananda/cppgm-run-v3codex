@@ -1213,6 +1213,13 @@ private:
       frame_provenance(destination, destination_offset) &&
       source_offset == destination_offset;
   }
+  static bool operand_uses_register(const MirOperand & operand,
+                                    X64Register reg)
+  {
+    return (operand.kind == MirOperand::OP_REG && operand.reg == reg) ||
+      (operand.kind == MirOperand::OP_DEREF &&
+       (operand.reg == reg || (operand.has_index && operand.index == reg)));
+  }
   bool result_crosses_call(const std::string & name) const
   {
     return (facts_.last_use.count(name) && crosses_call(name)) ||
@@ -1728,12 +1735,17 @@ private:
     if(skip_branch) skipped_position_ = position_ + 1;
   }
   void emit_compare_value(const Instruction & instruction,
+                          const lowir_model::LowirBlock & block,
+                          std::size_t instruction_index,
                           std::vector<MirInstruction> & out)
   {
+    const bool direct_return = result_is_immediate_return(
+      block, instruction_index, instruction.dest);
     if(wide::is_integer(instruction.type)) {
       wide::append_compare(wide_value(instruction.first),
                            wide_value(instruction.second), instruction.op, out);
-      const MirOperand destination = reg_operand(allocate_result(instruction.dest, out));
+      const MirOperand destination = direct_return ? reg_operand(XR_RAX) :
+        reg_operand(allocate_result(instruction.dest, out));
       append_move(out, destination, reg_operand(XR_R10));
       consume(instruction.first);
       consume(instruction.second);
@@ -1746,10 +1758,24 @@ private:
     const MirOperand left = resolve(instruction.first);
     const LowType result_type =
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
-    MirOperand pressure_home;
-    const MirOperand destination = binary_destination(
-      instruction, left, out, false, &pressure_home, &result_type);
     MirOperand right = resolve(instruction.second);
+    MirOperand pressure_home;
+    MirOperand destination;
+    const bool left_already_in_rax =
+      left.kind == MirOperand::OP_REG && left.reg == XR_RAX;
+    if(direct_return &&
+       (left_already_in_rax || !operand_uses_register(right, XR_RAX))) {
+      destination = reg_operand(XR_RAX);
+      move_value_to_register(
+        out, destination.reg, left, operand_type(instruction.first));
+      if(left.kind == MirOperand::OP_FRAME ||
+         left.kind == MirOperand::OP_GLOBAL ||
+         left.kind == MirOperand::OP_DEREF)
+        normalize_integer(operand_type(instruction.first), destination, out);
+    } else {
+      destination = binary_destination(
+        instruction, left, out, false, &pressure_home, &result_type);
+    }
     if(right.kind != MirOperand::OP_REG) {
       move_value_to_register(out, XR_RDX, right, operand_type(instruction.second));
       right = reg_operand(XR_RDX);
@@ -2894,7 +2920,7 @@ private:
     else if(instruction.kind == Instruction::IK_CMP) {
       if(facts_.deferred_branch_comparisons.count(instruction.dest)) return;
       if(wide::is_integer(instruction.type))
-        emit_compare_value(instruction, out);
+        emit_compare_value(instruction, block, instruction_index, out);
       else if(is_floating(instruction.type) &&
          comparison_feeds_branch(block, instruction_index, instruction))
         emit_float_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
@@ -2902,7 +2928,7 @@ private:
         emit_float_compare_value(instruction, block, instruction_index, out);
       else if(comparison_feeds_branch(block, instruction_index, instruction))
         emit_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
-      else emit_compare_value(instruction, out);
+      else emit_compare_value(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_UNARY) {
       if(unary_not_feeds_branch(block, instruction_index, instruction))
         emit_direct_unary_not_branch(instruction, block.instructions[instruction_index + 1], out);

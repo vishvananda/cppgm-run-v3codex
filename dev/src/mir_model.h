@@ -195,6 +195,8 @@ struct Instruction
     MI_CMP,
     MI_TEST,
     MI_JCC,
+    // A sole-use comparison immediately returned should select the ABI return
+    // carrier when doing so preserves both comparison inputs.
     MI_SETCC,
     MI_MOVZX,
     MI_SEXT,
