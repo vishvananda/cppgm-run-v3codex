@@ -201,14 +201,10 @@ private:
         continue;
       if(storage_facts_.forwarded_parameter_slots.count(name)) {
         discarded_slots_.insert(name);
-        frame_bytes_ = align_up(frame_bytes_, type.alignment);
-        frame_bytes_ += abi::frame_storage_size(type);
         continue;
       }
       if(storage_facts_.dead_store_slots.count(name)) {
         discarded_slots_.insert(name);
-        frame_bytes_ = align_up(frame_bytes_, type.alignment);
-        frame_bytes_ += abi::frame_storage_size(type);
         continue;
       }
       slot_offsets_[name] = allocate_frame_binding(
