@@ -780,6 +780,19 @@ const std::string & host_runtime_object_symbol(
   return object_symbol;
 }
 
+bool contains_named_target(
+    const std::vector<const std::string *> * targets,
+    const std::string & value)
+{
+  if(!targets) return true;
+  const std::vector<const std::string *>::const_iterator found =
+    std::lower_bound(targets->begin(), targets->end(), value,
+      [](const std::string * left, const std::string & right) {
+        return *left < right;
+      });
+  return found != targets->end() && **found == value;
+}
+
 DeclarationObjectSymbols declaration_object_symbols(
     const lowir_model::LowirProgram & program,
     bool include_named_fallbacks,
@@ -787,28 +800,21 @@ DeclarationObjectSymbols declaration_object_symbols(
 {
   DeclarationObjectSymbols result;
   result.typed.resize(program.symbol_names.size());
-  const auto is_named_target = [named_targets](const std::string & value) {
-    if(!named_targets) return true;
-    const std::vector<const std::string *>::const_iterator found =
-      std::lower_bound(named_targets->begin(), named_targets->end(), value,
-        [](const std::string * left, const std::string & right) {
-          return *left < right;
-        });
-    return found != named_targets->end() && **found == value;
-  };
   const auto add = [&program, &result, include_named_fallbacks,
-                    &is_named_target](
+                    named_targets](
       lowir_model::SymbolId symbol, lowir_model::StringId object_identity,
       const std::string & object) {
     const std::uint32_t index = symbol;
     if(!symbol.valid() || index >= result.typed.size())
       throw std::logic_error("invalid declaration symbol identity");
+    if(!result.typed[index].spelling) result.symbols.push_back(symbol);
     result.typed[index].identity = object_identity;
     result.typed[index].spelling = &object;
     if(!include_named_fallbacks) return;
     const std::string & internal =
       lowir_model::lowir_symbol_name(program, symbol);
-    if(is_named_target(internal) || is_named_target(object))
+    if(contains_named_target(named_targets, internal) ||
+       contains_named_target(named_targets, object))
       result.named[internal] = &result.typed[index];
   };
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
@@ -971,6 +977,7 @@ void collect_host_symbols(
     const std::vector<EncodedSection> & data_sections,
     const std::vector<std::uint16_t> & data_section_indexes,
     const EncodedLabels & encoded_labels,
+    const DeclarationObjectSymbols & declarations,
     const std::vector<HostFunctionLayout> & functions,
     const std::vector<std::vector<HostRelocation> > & text_relocations,
     const std::vector<std::vector<HostRelocation> > & data_relocations,
@@ -1135,19 +1142,17 @@ void collect_host_symbols(
   std::unordered_set<std::string> declared_tls_symbols;
   std::vector<unsigned char> declared_tls_objects(
     program.strings.size() + 1, 0);
-  const DeclarationObjectSymbols declared_objects =
-		declaration_object_symbols(program);
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].storage == lowir_model::GSM_THREAD_LOCAL) {
-      const DeclarationObjectSymbol * object = declared_objects.find(
+      const DeclarationObjectSymbol * object = declarations.find(
         program.global_declarations[i].symbol);
-	  if(object && object->identity.valid()) {
+      if(object && object->identity.valid()) {
         const std::uint32_t identity = object->identity;
         if(identity >= declared_tls_objects.size())
           throw std::logic_error("invalid TLS object-symbol identity");
         declared_tls_objects[identity] = 1;
       } else if(object) declared_tls_symbols.insert(*object->spelling);
-	}
+    }
   std::unordered_set<std::string> section_symbols;
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     section_symbols.insert(text_sections[i].name);
@@ -1457,6 +1462,7 @@ void record_final_elf_storage(Stats * stats,
 
 std::vector<unsigned char> make_linux_relocatable_image(
     const lowir_model::LowirProgram & program,
+    DeclarationObjectSymbols declarations,
     EncodedSection mutable_text,
     std::vector<EncodedSection> mutable_data,
     std::vector<HostFunctionLayout> & functions,
@@ -1495,8 +1501,18 @@ std::vector<unsigned char> make_linux_relocatable_image(
     [](const std::string * left, const std::string * right) {
       return *left == *right;
     }), named_fixup_targets.end());
-  const DeclarationObjectSymbols declarations =
-    declaration_object_symbols(program, true, &named_fixup_targets);
+  declarations.named.clear();
+  declarations.named.reserve(named_fixup_targets.size());
+  for(std::size_t i = 0; i < declarations.symbols.size(); ++i) {
+    const lowir_model::SymbolId symbol = declarations.symbols[i];
+    const DeclarationObjectSymbol * object = declarations.find(symbol);
+    if(!object) continue;
+    const std::string & internal =
+      lowir_model::lowir_symbol_name(program, symbol);
+    if(contains_named_target(&named_fixup_targets, internal) ||
+       contains_named_target(&named_fixup_targets, *object->spelling))
+      declarations.named[internal] = object;
+  }
   if(stats) stats->elf_imported_string_entries = declarations.named.size();
   resolve_same_section_local_fixups(
     text_sections, mutable_data, program, declarations);
@@ -1609,6 +1625,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   std::vector<HostSymbol> globals;
   collect_host_symbols(program, text_sections, text_indexes,
                        mutable_data, data_indexes, encoded_labels,
+                       declarations,
                        functions, text_relocations,
                        data_relocations, init_array_relocations,
                        fini_array_relocations, lsda_relocations,

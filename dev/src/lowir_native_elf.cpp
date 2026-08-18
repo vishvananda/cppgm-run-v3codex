@@ -2921,7 +2921,7 @@ void write_linux_relocatable(
     emit_global(section.content, global);
   }
   bool needs_personality = false;
-  const object_elf_detail::DeclarationObjectSymbols host_declarations =
+  object_elf_detail::DeclarationObjectSymbols host_declarations =
     declaration_object_symbols(source, false);
   std::vector<unsigned char> catch_type_seen(source.symbol_names.size(), 0);
   const auto record_eh_type = [&](lowir_model::SymbolId symbol) {
@@ -2997,7 +2997,8 @@ void write_linux_relocatable(
       data_section_name(program.strings, data_sections[i]),
       data_sections[i].flags, data_sections[i].alignment));
   const std::vector<unsigned char> image = make_linux_relocatable_image(
-    source, encoded_section(std::move(text), ".text", 6, 16),
+    source, std::move(host_declarations),
+    encoded_section(std::move(text), ".text", 6, 16),
     std::move(encoded_data_sections),
     functions,
     relocations,

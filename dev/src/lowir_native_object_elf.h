@@ -101,6 +101,7 @@ struct DeclarationObjectSymbols
 {
   std::unordered_map<std::string, const DeclarationObjectSymbol *> named;
   std::vector<DeclarationObjectSymbol> typed;
+  std::vector<lowir_model::SymbolId> symbols;
 
   const DeclarationObjectSymbol * find(lowir_model::SymbolId symbol) const
   {
@@ -121,6 +122,7 @@ std::vector<unsigned char> host_external_global_definitions(
 
 std::vector<unsigned char> make_linux_relocatable_image(
   const lowir_model::LowirProgram & program,
+  DeclarationObjectSymbols declarations,
   EncodedSection text,
   std::vector<EncodedSection> data_sections,
   std::vector<HostFunctionLayout> & functions,
