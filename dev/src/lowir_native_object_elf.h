@@ -64,9 +64,8 @@ struct HostFunctionLayout
     lowir_model::BlockId action_block;
   };
 
-  std::string internal_symbol;
   lowir_model::SymbolId program_symbol;
-  std::string object_symbol;
+  lowir_model::StringId object_symbol;
   std::size_t text_section = 0;
   std::size_t offset = 0;
   std::size_t size = 0;

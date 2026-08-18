@@ -2351,12 +2351,12 @@ HostFunctionLayout emit_host_tls_wrapper(
   layout.program_symbol = symbol;
   const std::string & internal_symbol =
     lowir_model::lowir_symbol_name(program, symbol);
-  layout.internal_symbol = internal_symbol;
   if(metadata.object_symbol.valid())
-    layout.object_symbol = program.strings.get(metadata.object_symbol);
+    layout.object_symbol = metadata.object_symbol;
   layout.offset = out.size();
   out.label(internal_symbol);
-  const std::string object_symbol = native_object_symbol(layout.object_symbol);
+  const std::string object_symbol =
+    native_object_symbol(out, layout.object_symbol);
   if(!object_symbol.empty() && object_symbol != internal_symbol)
     out.label(object_symbol);
   emit_tls_address(out, XR_RAX,
@@ -2564,9 +2564,8 @@ HostFunctionLayout emit_prepared_host_function(
   out.align(2);
   HostFunctionLayout layout;
   layout.program_symbol = function.symbol;
-  layout.internal_symbol = function_name;
   if(function.object_symbol.valid())
-    layout.object_symbol = out.literal_spelling(function.object_symbol);
+    layout.object_symbol = function.object_symbol;
   layout.offset = out.size();
   layout.callee_saved_regs = function.callee_saved_regs;
   layout.clauses = function.host_eh_clauses;

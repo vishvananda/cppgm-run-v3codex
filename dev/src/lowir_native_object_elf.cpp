@@ -171,9 +171,11 @@ std::vector<EncodedSection> partition_weak_text(
     const std::unordered_map<std::size_t, std::string>::const_iterator weak =
       weak_signatures.find(function.offset);
     if(weak != weak_signatures.end()) signature = weak->second;
-    if(!function.object_symbol.empty() &&
-       weak_objects.count(function.object_symbol))
-      signature = function.object_symbol;
+    const std::string function_object_symbol = function.object_symbol.valid() ?
+      program.strings.get(function.object_symbol) : std::string();
+    if(!function_object_symbol.empty() &&
+       weak_objects.count(function_object_symbol))
+      signature = function_object_symbol;
 
     TextSlice slice;
     slice.old_start = function.offset;
@@ -882,8 +884,9 @@ void collect_host_symbols(
       required_local_labels.insert(
         program.exported_symbols[i].internal_symbol);
   for(std::size_t i = 0; i < functions.size(); ++i)
-    if(functions[i].object_symbol.empty())
-      required_local_labels.insert(functions[i].internal_symbol);
+    if(!functions[i].object_symbol.valid())
+      required_local_labels.insert(lowir_model::lowir_symbol_name(
+        program, functions[i].program_symbol));
   std::unordered_set<std::string> object_only_labels;
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const ir_model::ExportedSymbol & exported = program.exported_symbols[i];
