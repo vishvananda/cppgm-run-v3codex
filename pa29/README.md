@@ -476,20 +476,9 @@ To complete PA29, implement these goals:
    division, and shifts, must preserve still-live frame addresses and incoming parameters
    before reusing those registers.
 
-   The checked MIR fixtures also require simple operations to avoid redundant
-   copies. In particular, they keep values in incoming or return registers
-   while those registers remain valid, retain encodable integer constants as
-   immediates, and use the registers required by division and variable shifts
-   directly. Any register-allocation strategy is acceptable if it preserves
-   program behavior and produces the checked strict or structural MIR shape.
-
    A numeric immediate written without a decimal point still follows the declared LowIR
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.
-
-   The checked MIR frame layouts may reuse compatible temporary locations whose
-   values do not overlap. Source slots, parameter slots, and simultaneously live
-   values must retain distinct locations.
 
 9. Implement call-boundary correctness without requiring a clever allocator.
    PA29 must respect the native calling convention for direct calls, indirect calls,
@@ -615,3 +604,23 @@ The cleanest PA29 structure is:
 The important architectural constraint is that PA29 should reuse PA9 knowledge without
 re-coupling the compiler to CY86. CY86 may remain useful as a secondary validation path, but
 the primary backend boundary should now be LowIR to machine IR and native code/data.
+
+For the compact MIR shapes used by the checked fixtures, useful implementation
+strategies include:
+
+- keep incoming parameters and call results in their ABI registers until an
+  emitted instruction invalidates that location
+- retain encodable integer constants as immediates and place division or
+  variable-shift operands directly in their required registers
+- prefer an available caller-saved register to adding a callee-saved register
+  to the frame's `preserve` list
+- reuse compatible compiler-created temporary frame locations when their value
+  lifetimes do not overlap, while keeping source slots and parameter slots
+  distinct
+- fold a one-use `index` into the following memory operand, omit work for an
+  unused or zero-displacement index, and use one `lea` when an indexed address
+  must remain as a value
+
+These are suggestions, not required internal data structures or algorithms.
+Any implementation is acceptable if it preserves program behavior and produces
+the checked strict or structural MIR output.
