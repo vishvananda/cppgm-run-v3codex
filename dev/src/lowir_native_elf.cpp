@@ -2934,7 +2934,7 @@ void write_linux_relocatable(
   }
   bool needs_personality = false;
   object_elf_detail::DeclarationObjectSymbols host_declarations =
-    declaration_object_symbols(source, false);
+    declaration_object_symbols(source);
   std::vector<unsigned char> catch_type_seen(source.symbol_names.size(), 0);
   const auto record_eh_type = [&](lowir_model::SymbolId symbol) {
     const std::uint32_t index = symbol;

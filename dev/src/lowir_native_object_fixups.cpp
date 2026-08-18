@@ -3,7 +3,6 @@
 #include <climits>
 #include <cstdint>
 #include <stdexcept>
-#include <unordered_set>
 #include <utility>
 
 namespace lowir_native {
@@ -52,21 +51,6 @@ void add_symbol_labels(
   }
 }
 
-std::unordered_set<std::string> externally_named_targets(
-    const DeclarationObjectSymbols & declarations)
-{
-  std::unordered_set<std::string> result;
-  result.reserve(declarations.named.size() * 3);
-  for(std::unordered_map<std::string,
-        const DeclarationObjectSymbol *>::const_iterator
-        declaration = declarations.named.begin();
-      declaration != declarations.named.end(); ++declaration) {
-    result.insert(declaration->first);
-    result.insert(*declaration->second->spelling);
-  }
-  return result;
-}
-
 void patch_relative32(EncodedSection & source, const EncodedFixup & fixup,
                       std::size_t target)
 {
@@ -100,7 +84,6 @@ bool is_same_section(const LabelLocation & target, bool source_text,
 void resolve_section_fixups(
     EncodedSection & source, bool source_text, std::size_t source_section,
     const LabelIndex & labels,
-    const std::unordered_set<std::string> & externally_named,
     const std::vector<LabelLocation> & symbol_locations,
     const std::vector<unsigned char> & symbol_location_known,
     const std::vector<unsigned char> & symbol_external)
@@ -113,8 +96,7 @@ void resolve_section_fixups(
     const bool relative = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       (fixup.kind == EncodedFixup::EF_ADDRESS32 &&
        fixup.address_binding == mir_model::MirOperand::ADDRESS_LOCAL);
-    if(!relative || externally_named.count(fixup.target) ||
-       target == labels.end() ||
+    if(!relative || target == labels.end() ||
        !is_same_section(target->second, source_text, source_section)) {
       unresolved.push_back(fixup);
       continue;
@@ -166,8 +148,6 @@ void resolve_same_section_local_fixups(
     add_labels(labels, text_sections[i], true, i);
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     add_labels(labels, data_sections[i], false, i);
-  const std::unordered_set<std::string> externally_named =
-    externally_named_targets(declarations);
   std::vector<LabelLocation> symbol_locations(program.symbol_names.size());
   std::vector<unsigned char> symbol_location_known(
     program.symbol_names.size(), 0);
@@ -182,11 +162,11 @@ void resolve_same_section_local_fixups(
     symbol_external[i] = declarations.typed[i].spelling != 0;
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     resolve_section_fixups(
-      text_sections[i], true, i, labels, externally_named, symbol_locations,
+      text_sections[i], true, i, labels, symbol_locations,
       symbol_location_known, symbol_external);
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     resolve_section_fixups(
-      data_sections[i], false, i, labels, externally_named, symbol_locations,
+      data_sections[i], false, i, labels, symbol_locations,
       symbol_location_known, symbol_external);
 }
 

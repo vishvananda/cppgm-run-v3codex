@@ -853,42 +853,19 @@ const std::string & host_runtime_object_symbol(
   return object_symbol;
 }
 
-bool contains_named_target(
-    const std::vector<const std::string *> * targets,
-    const std::string & value)
-{
-  if(!targets) return true;
-  const std::vector<const std::string *>::const_iterator found =
-    std::lower_bound(targets->begin(), targets->end(), value,
-      [](const std::string * left, const std::string & right) {
-        return *left < right;
-      });
-  return found != targets->end() && **found == value;
-}
-
 DeclarationObjectSymbols declaration_object_symbols(
-    const lowir_model::LowirProgram & program,
-    bool include_named_fallbacks,
-    const std::vector<const std::string *> * named_targets)
+    const lowir_model::LowirProgram & program)
 {
   DeclarationObjectSymbols result;
   result.typed.resize(program.symbol_names.size());
-  const auto add = [&program, &result, include_named_fallbacks,
-                    named_targets](
+  const auto add = [&result](
       lowir_model::SymbolId symbol, lowir_model::StringId object_identity,
       const std::string & object) {
     const std::uint32_t index = symbol;
     if(!symbol.valid() || index >= result.typed.size())
       throw std::logic_error("invalid declaration symbol identity");
-    if(!result.typed[index].spelling) result.symbols.push_back(symbol);
     result.typed[index].identity = object_identity;
     result.typed[index].spelling = &object;
-    if(!include_named_fallbacks) return;
-    const std::string & internal =
-      lowir_model::lowir_symbol_name(program, symbol);
-    if(contains_named_target(named_targets, internal) ||
-       contains_named_target(named_targets, object))
-      result.named[internal] = &result.typed[index];
   };
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
     if(program.exported_symbols[i].object_symbol.valid())
@@ -928,17 +905,9 @@ std::string host_eh_type_ref_symbol(
 void assign_relocation_target(
     HostRelocation & relocation,
     const std::string & raw,
-    const EncodedLabels & labels,
-    const DeclarationObjectSymbols & declarations)
+    const EncodedLabels & labels)
 {
-  const std::unordered_map<std::string,
-    const DeclarationObjectSymbol *>::const_iterator
-    found = declarations.named.find(raw);
-  if(found != declarations.named.end()) {
-    if(found->second->identity.valid())
-      relocation.object_symbol = found->second->identity;
-    else relocation.target = *found->second->spelling;
-  } else if(labels.named.count(raw)) {
+  if(labels.named.count(raw)) {
     relocation.target = raw;
   } else {
     relocation.target = host_symbol_spelling(raw);
@@ -974,8 +943,7 @@ std::vector<HostRelocation> host_relocations(
         HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
     }
     relocation.offset = fixup.offset;
-    assign_relocation_target(
-      relocation, fixup.target, labels, declarations);
+    assign_relocation_target(relocation, fixup.target, labels);
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
@@ -1653,41 +1621,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   text_sections = partition_weak_text(
     program, std::move(text_sections[0]), functions);
   encoded_labels = index_encoded_labels(program, text_sections, mutable_data);
-  std::size_t named_fixup_count = 0;
-  for(std::size_t i = 0; i < text_sections.size(); ++i)
-    named_fixup_count += text_sections[i].fixups.size();
-  for(std::size_t i = 0; i < mutable_data.size(); ++i)
-    named_fixup_count += mutable_data[i].fixups.size();
-  std::vector<const std::string *> named_fixup_targets;
-  named_fixup_targets.reserve(named_fixup_count);
-  for(std::size_t i = 0; i < text_sections.size(); ++i)
-    for(std::size_t j = 0; j < text_sections[i].fixups.size(); ++j)
-      named_fixup_targets.push_back(&text_sections[i].fixups[j].target);
-  for(std::size_t i = 0; i < mutable_data.size(); ++i)
-    for(std::size_t j = 0; j < mutable_data[i].fixups.size(); ++j)
-      named_fixup_targets.push_back(&mutable_data[i].fixups[j].target);
-  std::sort(named_fixup_targets.begin(), named_fixup_targets.end(),
-    [](const std::string * left, const std::string * right) {
-      return *left < *right;
-    });
-  named_fixup_targets.erase(std::unique(
-    named_fixup_targets.begin(), named_fixup_targets.end(),
-    [](const std::string * left, const std::string * right) {
-      return *left == *right;
-    }), named_fixup_targets.end());
-  declarations.named.clear();
-  declarations.named.reserve(named_fixup_targets.size());
-  for(std::size_t i = 0; i < declarations.symbols.size(); ++i) {
-    const lowir_model::SymbolId symbol = declarations.symbols[i];
-    const DeclarationObjectSymbol * object = declarations.find(symbol);
-    if(!object) continue;
-    const std::string & internal =
-      lowir_model::lowir_symbol_name(program, symbol);
-    if(contains_named_target(&named_fixup_targets, internal) ||
-       contains_named_target(&named_fixup_targets, *object->spelling))
-      declarations.named[internal] = object;
-  }
-  if(stats) stats->elf_imported_string_entries = declarations.named.size();
+  if(stats) stats->elf_imported_string_entries = 0;
   resolve_same_section_local_fixups(
     text_sections, mutable_data, program, declarations);
   std::vector<std::vector<HostRelocation> > text_relocations(

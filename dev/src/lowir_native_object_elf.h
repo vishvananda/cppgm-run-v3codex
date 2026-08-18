@@ -108,9 +108,7 @@ struct DeclarationObjectSymbol
 
 struct DeclarationObjectSymbols
 {
-  std::unordered_map<std::string, const DeclarationObjectSymbol *> named;
   std::vector<DeclarationObjectSymbol> typed;
-  std::vector<lowir_model::SymbolId> symbols;
 
   const DeclarationObjectSymbol * find(lowir_model::SymbolId symbol) const
   {
@@ -122,9 +120,7 @@ struct DeclarationObjectSymbols
 
 std::string host_symbol_spelling(const std::string & raw);
 DeclarationObjectSymbols declaration_object_symbols(
-  const lowir_model::LowirProgram & program,
-  bool include_named_fallbacks = true,
-  const std::vector<const std::string *> * named_targets = 0);
+  const lowir_model::LowirProgram & program);
 std::vector<unsigned char> host_external_global_definitions(
   const lowir_model::LowirProgram & source,
   const mir_model::MirProgram & program);
