@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "ir_symbol_model.h"
+#include "lowir_identity.h"
 
 namespace lowir_model {
 
@@ -486,6 +487,7 @@ struct ObjectAlias
 
 struct Program
 {
+  StringPool strings;
   std::vector<GlobalDeclaration> global_declarations;
   std::vector<GlobalDefinition> globals;
   std::vector<FunctionDeclaration> function_declarations;

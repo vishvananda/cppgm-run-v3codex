@@ -1,5 +1,6 @@
 #pragma once
 
+#include "lowir_identity.h"
 #include "pa11_model.h"
 
 #include <cstddef>
@@ -94,19 +95,10 @@ inline bool IsFloating(const LowType& type)
 		type.kind == LOW_F80;
 }
 
-const std::uint32_t kNoLowId = std::numeric_limits<std::uint32_t>::max();
+const std::uint32_t kNoLowId = lowir_model::kInvalidCompactId;
 
 template <typename Tag>
-class LowId
-{
-public:
-	LowId() : value_(kNoLowId) {}
-	LowId(std::uint32_t value) : value_(value) {}
-	operator std::uint32_t() const { return value_; }
-
-private:
-	std::uint32_t value_;
-};
+using LowId = lowir_model::CompactId<Tag>;
 
 struct SymbolIdTag {};
 struct ParameterIdTag {};

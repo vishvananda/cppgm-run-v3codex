@@ -652,6 +652,19 @@ Six interleaved measurements per lane against `9365af5f` produced
 baseline/candidate medians of 5.635/5.565 seconds user, 6.19/6.10 seconds wall,
 and 365,086/364,998 KiB peak RSS.
 
+### CI4: shared identity and presentation-pool foundation
+
+The fourth Phase 1 slice introduces one shared compact-ID implementation for
+program and function identities and makes PA15's existing IDs reuse it.  It
+also adds a program-owned, open-addressed presentation string pool with
+disabled-by-default intern/probe counters.  The pool is not yet consulted by
+the source path in this foundation slice; each subsequent identity-domain
+migration removes its old owning strings before it is committed.
+
+The frozen object remains byte-identical.  PA13 and the full through-PA13
+report pass 100/100 and 933/933 tests; PA15, PA29, PA30, PA37, and PA38 report
+554/554 passing tests.  The PA39 file audit has no fatal issues.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one
