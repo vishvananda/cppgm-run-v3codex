@@ -4,6 +4,14 @@ This directory holds native-lowering regression candidates whose behavior is
 valid but whose machine-IR shape differs from the course reference compiler.
 They are not part of the active golden suite.
 
+`i128-multiply-caller-saved-clobber.t` keeps scalar values live in the native
+caller-saved result pool across an `i128` multiplication.  Multiplication uses
+both RSI and RDI as fixed wide-operation scratch registers, so those live
+values must be placed elsewhere.  The current compiler executes the reducer
+successfully, while the reference compiler leaves an unresolved `__multi3`
+symbol and cannot produce a runnable program.  The reference-agreeing active
+addition case covers the same wide-binary clobber contract for RSI.
+
 `direct-call-result-consumers.t` checks that a sole-use scalar call result
 stays in the ABI return register when the next instruction passes it as a
 direct-value call argument or stores it. Both compilers execute the input

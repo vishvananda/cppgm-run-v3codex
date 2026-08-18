@@ -40,6 +40,18 @@ unsigned instruction_clobber_mask(const Instruction & instruction,
   if(instruction.kind == Instruction::IK_ZEROINIT)
     return register_mask(XR_RAX) | register_mask(XR_RCX) |
       register_mask(XR_RDI);
+  if(instruction.type.kind == lowir_model::LTK_OBJECT &&
+     (instruction.kind == Instruction::IK_COPY ||
+      instruction.kind == Instruction::IK_LOAD ||
+      instruction.kind == Instruction::IK_STORE))
+    return register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RSI) | register_mask(XR_RDI) |
+      register_mask(XR_R11);
+  if(wide && instruction.kind == Instruction::IK_BINARY)
+    return register_mask(XR_RAX) | register_mask(XR_RCX) |
+      register_mask(XR_RDX) | register_mask(XR_RSI) |
+      register_mask(XR_RDI) | register_mask(XR_R10) |
+      register_mask(XR_R11);
   if(instruction.kind == Instruction::IK_BINARY &&
      (instruction.op == "div" || instruction.op == "mod" ||
       instruction.op == "udiv" || instruction.op == "umod"))
