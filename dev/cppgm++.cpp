@@ -1410,6 +1410,8 @@ int run_compile_driver(const DriverInvocation & invocation,
 		 << native_stats.native_literal_text_parses
 		 << " code_buffer_typed_labels="
 		 << native_stats.code_buffer_typed_labels
+		 << " code_buffer_object_labels="
+		 << native_stats.code_buffer_object_labels
 		 << " code_buffer_named_labels="
 		 << native_stats.code_buffer_named_labels
 		 << " code_buffer_typed_fixups="

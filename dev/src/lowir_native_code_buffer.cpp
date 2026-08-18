@@ -110,6 +110,19 @@ void CodeBuffer::label(lowir_model::SymbolId symbol)
 	label_bindings_.push_back(binding);
 }
 
+void CodeBuffer::label_object(lowir_model::StringId symbol)
+{
+	if (stats_) ++stats_->code_buffer_object_labels;
+	const std::uint32_t index = symbol;
+	if (!symbol.valid() || index >= object_label_offsets_.size())
+		throw std::logic_error("invalid native object-symbol identity");
+	if (object_label_known_[index])
+		throw std::logic_error("duplicate native object-symbol label");
+	object_label_offsets_[index] = bytes_.size();
+	object_label_known_[index] = 1;
+	label_offsets_.push_back(&object_label_offsets_[index]);
+}
+
 lowir_model::LocalLabelId CodeBuffer::allocate_local_label()
 {
 	if (local_label_offsets_.size() >= lowir_model::kInvalidCompactId)
@@ -190,6 +203,26 @@ void CodeBuffer::alias(const std::string& name,
 	label_at(name, symbol_label_offsets_[index]);
 }
 
+void CodeBuffer::alias_object(lowir_model::StringId name,
+	lowir_model::SymbolId target)
+{
+	const std::uint32_t symbol = target;
+	if (!target.valid() || symbol >= symbol_label_offsets_.size() ||
+		!symbol_label_known_[symbol])
+		throw std::runtime_error("native alias has undefined target: " +
+			symbol_name(target));
+	const std::uint32_t object = name;
+	if (!name.valid() || object >= object_label_offsets_.size())
+		throw std::logic_error("invalid native object-symbol identity");
+	if (object_label_known_[object])
+		throw std::runtime_error("duplicate native object symbol: " +
+			literal_spelling(name));
+	object_label_offsets_[object] = symbol_label_offsets_[symbol];
+	object_label_known_[object] = 1;
+	label_offsets_.push_back(&object_label_offsets_[object]);
+	if (stats_) ++stats_->code_buffer_object_labels;
+}
+
 void CodeBuffer::begin_function_blocks(std::size_t count)
 {
 	if (!local_fixups_.empty() || !short_relative_fixups_.empty() ||
@@ -255,7 +288,15 @@ const std::string& CodeBuffer::symbol_name(lowir_model::SymbolId symbol) const
 
 void CodeBuffer::bind_strings(const lowir_model::SealedStringPool& strings)
 {
+	if (strings_)
+	{
+		if (strings_ != &strings)
+			throw std::logic_error("native string pool rebound");
+		return;
+	}
 	strings_ = &strings;
+	object_label_offsets_.assign(strings.size() + 1, 0);
+	object_label_known_.assign(strings.size() + 1, 0);
 }
 
 void CodeBuffer::bind_stats(Stats* stats)
@@ -846,6 +887,16 @@ CodeBuffer::materialized_labels() const
 		if (!result.emplace(name, *binding.offset).second)
 			throw std::runtime_error("duplicate native symbol: " + name);
 	}
+	for (std::size_t i = 1; i < object_label_known_.size(); ++i)
+	{
+		if (!object_label_known_[i]) continue;
+		const std::string& raw = literal_spelling(
+			lowir_model::StringId(static_cast<std::uint32_t>(i)));
+		const std::string name = !raw.empty() && raw[0] == '@' ?
+			raw.substr(1) : raw;
+		if (!result.emplace(name, object_label_offsets_[i]).second)
+			throw std::runtime_error("duplicate native symbol: " + name);
+	}
 	return result;
 }
 
@@ -873,6 +924,26 @@ std::size_t CodeBuffer::symbol_label_offset(
 	if (!has_symbol_label(symbol))
 		throw std::logic_error("undefined native symbol identity");
 	return symbol_label_offsets_[static_cast<std::uint32_t>(symbol)];
+}
+
+std::size_t CodeBuffer::object_label_capacity() const
+{
+	return object_label_offsets_.size();
+}
+
+bool CodeBuffer::has_object_label(lowir_model::StringId symbol) const
+{
+	const std::uint32_t index = symbol;
+	return symbol.valid() && index < object_label_known_.size() &&
+		object_label_known_[index];
+}
+
+std::size_t CodeBuffer::object_label_offset(
+	lowir_model::StringId symbol) const
+{
+	if (!has_object_label(symbol))
+		throw std::logic_error("undefined native object-symbol identity");
+	return object_label_offsets_[static_cast<std::uint32_t>(symbol)];
 }
 
 const std::vector<Fixup>& CodeBuffer::fixups() const

@@ -41,6 +41,12 @@ struct EncodedSymbolLabel
   std::size_t offset = 0;
 };
 
+struct EncodedObjectLabel
+{
+  lowir_model::StringId symbol;
+  std::size_t offset = 0;
+};
+
 struct EncodedSection
 {
   std::string name;
@@ -50,6 +56,7 @@ struct EncodedSection
   std::vector<unsigned char> bytes;
   std::unordered_map<std::string, std::size_t> labels;
   std::vector<EncodedSymbolLabel> symbol_labels;
+  std::vector<EncodedObjectLabel> object_labels;
   std::vector<EncodedFixup> fixups;
   std::vector<EncodedSymbolFixup> symbol_fixups;
 };

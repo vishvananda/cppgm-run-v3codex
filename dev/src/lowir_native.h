@@ -26,6 +26,7 @@ struct Stats
 	std::size_t native_semantic_string_reads = 0;
 	std::size_t native_literal_text_parses = 0;
 	std::size_t code_buffer_typed_labels = 0;
+	std::size_t code_buffer_object_labels = 0;
 	std::size_t code_buffer_named_labels = 0;
 	std::size_t code_buffer_typed_fixups = 0;
 	std::size_t code_buffer_named_fixups = 0;

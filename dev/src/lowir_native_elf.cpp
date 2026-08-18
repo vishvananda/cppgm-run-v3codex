@@ -47,18 +47,6 @@ const std::size_t kElfHeaderSize = 64;
 const std::size_t kProgramHeaderSize = 56;
 const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
 
-std::string native_object_symbol(const std::string & symbol)
-{
-  return !symbol.empty() && symbol[0] == '@' ? symbol.substr(1) : symbol;
-}
-
-std::string native_object_symbol(
-    const CodeBuffer & out, lowir_model::StringId symbol)
-{
-  return symbol.valid() ? native_object_symbol(out.literal_spelling(symbol)) :
-                          std::string();
-}
-
 struct HostEhStackCleanup
 {
   lowir_model::LocalLabelId label;
@@ -1875,12 +1863,8 @@ void emit_prepared_function(
   // entry at least two-byte aligned so a direct target cannot carry that tag.
   out.align(2);
   const std::size_t function_start = out.size();
-  const std::string & function_name = out.symbol_name(function.symbol);
   out.label(function.symbol);
-  const std::string object_symbol =
-    native_object_symbol(out, function.object_symbol);
-  if(!object_symbol.empty() && object_symbol != function_name)
-    out.label(object_symbol);
+  if(function.object_symbol.valid()) out.label_object(function.object_symbol);
   out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
   const frame_forwarding::FrameReloadPlan frame_reload_plan =
@@ -1987,12 +1971,8 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function,
 void emit_runtime_labels(CodeBuffer & out,
                          const mir_model::MirRuntimeFunction & runtime)
 {
-  const std::string & runtime_name = out.symbol_name(runtime.symbol);
   out.label(runtime.symbol);
-  const std::string object_symbol =
-    native_object_symbol(out, runtime.object_symbol);
-  if(!object_symbol.empty() && object_symbol != runtime_name)
-    out.label(object_symbol);
+  if(runtime.object_symbol.valid()) out.label_object(runtime.object_symbol);
 }
 
 void emit_eh_restore(CodeBuffer & out)
@@ -2328,13 +2308,9 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
   }
   for(std::size_t i = 0; i < program.runtime_data.size(); ++i) {
     out.align(16);
-    const std::string & runtime_name =
-      out.symbol_name(program.runtime_data[i].symbol);
     out.label(program.runtime_data[i].symbol);
-    const std::string object_symbol =
-      native_object_symbol(out, program.runtime_data[i].object_symbol);
-    if(!object_symbol.empty() && object_symbol != runtime_name)
-      out.label(object_symbol);
+    if(program.runtime_data[i].object_symbol.valid())
+      out.label_object(program.runtime_data[i].object_symbol);
     out.zeros(32);
   }
 }
@@ -2349,16 +2325,11 @@ HostFunctionLayout emit_host_tls_wrapper(
   out.align(2);
   HostFunctionLayout layout;
   layout.program_symbol = symbol;
-  const std::string & internal_symbol =
-    lowir_model::lowir_symbol_name(program, symbol);
   if(metadata.object_symbol.valid())
     layout.object_symbol = metadata.object_symbol;
   layout.offset = out.size();
   out.label(symbol);
-  const std::string object_symbol =
-    native_object_symbol(out, layout.object_symbol);
-  if(!object_symbol.empty() && object_symbol != internal_symbol)
-    out.label(object_symbol);
+  if(layout.object_symbol.valid()) out.label_object(layout.object_symbol);
   emit_tls_address(out, XR_RAX,
                    lowir_model::lowir_symbol_name(
                      program, metadata.tls_for_symbol_id));
@@ -2441,9 +2412,8 @@ void emit_program_tail(CodeBuffer & content,
   emit_eh_data(content, program);
   emit_relocatable_objects(content, objects);
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i)
-    content.alias(native_object_symbol(
-                    content, program.object_aliases[i].object_symbol),
-                  program.object_aliases[i].target);
+    content.alias_object(program.object_aliases[i].object_symbol,
+                         program.object_aliases[i].target);
 }
 
 void finish_native_executable(
@@ -2579,10 +2549,7 @@ HostFunctionLayout emit_prepared_host_function(
   sort_blocks_by_presentation_order(
     &layout.clause_order, function.block_presentation_order);
   out.label(function.symbol);
-  const std::string object_symbol =
-    native_object_symbol(out, function.object_symbol);
-  if(!object_symbol.empty() && object_symbol != function_name)
-    out.label(object_symbol);
+  if(function.object_symbol.valid()) out.label_object(function.object_symbol);
   out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
   const frame_forwarding::FrameReloadPlan frame_reload_plan =
@@ -2713,6 +2680,15 @@ EncodedSection encoded_section(CodeBuffer && source,
     label.symbol = symbol;
     label.offset = source.symbol_label_offset(symbol);
     result.symbol_labels.push_back(label);
+  }
+  result.object_labels.reserve(source.object_label_capacity());
+  for(std::size_t i = 0; i < source.object_label_capacity(); ++i) {
+    const lowir_model::StringId symbol(static_cast<std::uint32_t>(i));
+    if(!source.has_object_label(symbol)) continue;
+    object_elf_detail::EncodedObjectLabel label;
+    label.symbol = symbol;
+    label.offset = source.object_label_offset(symbol);
+    result.object_labels.push_back(label);
   }
   result.fixups.reserve(source.fixups().size());
   for(std::size_t i = 0; i < source.fixups().size(); ++i) {

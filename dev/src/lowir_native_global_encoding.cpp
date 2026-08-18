@@ -15,15 +15,6 @@ using elf_detail::CodeBuffer;
 using data_layout::global_alignment;
 using data_layout::type_size;
 
-std::string native_object_symbol(
-    const CodeBuffer & out, lowir_model::StringId symbol)
-{
-  if(!symbol.valid()) return std::string();
-  const std::string & spelling = out.literal_spelling(symbol);
-  return !spelling.empty() && spelling[0] == '@' ?
-    spelling.substr(1) : spelling;
-}
-
 void emit_integer_data(CodeBuffer & out, long long value,
                        std::uint64_t high, std::size_t size)
 {
@@ -53,12 +44,8 @@ void emit_global(CodeBuffer & out,
                  const mir_model::MirGlobalDefinition & global)
 {
   out.align(global_alignment(global));
-  const std::string & global_name = out.symbol_name(global.symbol);
   out.label(global.symbol);
-  const std::string object_symbol =
-    native_object_symbol(out, global.object_symbol);
-  if(!object_symbol.empty() && object_symbol != global_name)
-    out.label(object_symbol);
+  if(global.object_symbol.valid()) out.label_object(global.object_symbol);
   if(global.thread_local_storage && global.thread_local_wrapper_symbol.valid())
     out.label(global.thread_local_wrapper_symbol);
   if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR) {

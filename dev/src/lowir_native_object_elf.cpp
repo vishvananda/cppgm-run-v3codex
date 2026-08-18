@@ -68,6 +68,8 @@ struct EncodedLabels
   EncodedLabelIndex named;
   std::vector<EncodedLabelLocation> symbols;
   std::vector<unsigned char> symbol_known;
+  std::vector<EncodedLabelLocation> objects;
+  std::vector<unsigned char> object_known;
 };
 
 void index_symbol_labels(EncodedLabels & result,
@@ -88,6 +90,22 @@ void index_symbol_labels(EncodedLabels & result,
   }
 }
 
+void index_object_labels(EncodedLabels & result,
+    const EncodedSection & source, bool text, std::size_t section)
+{
+  for(std::size_t i = 0; i < source.object_labels.size(); ++i) {
+    const EncodedObjectLabel & label = source.object_labels[i];
+    const std::uint32_t symbol = label.symbol;
+    if(!label.symbol.valid() || symbol >= result.objects.size())
+      throw std::logic_error("invalid encoded object-symbol identity");
+    if(result.object_known[symbol]) continue;
+    result.objects[symbol].text = text;
+    result.objects[symbol].section = section;
+    result.objects[symbol].offset = label.offset;
+    result.object_known[symbol] = 1;
+  }
+}
+
 EncodedLabels index_encoded_labels(
     const lowir_model::LowirProgram & program,
     const std::vector<EncodedSection> & text_sections,
@@ -102,6 +120,8 @@ EncodedLabels index_encoded_labels(
   result.named.reserve(label_count);
   result.symbols.resize(program.symbol_names.size());
   result.symbol_known.assign(program.symbol_names.size(), 0);
+  result.objects.resize(program.strings.size() + 1);
+  result.object_known.assign(program.strings.size() + 1, 0);
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     for(std::unordered_map<std::string, std::size_t>::const_iterator label =
           text_sections[i].labels.begin();
@@ -125,6 +145,10 @@ EncodedLabels index_encoded_labels(
     index_symbol_labels(result, text_sections[i], true, i);
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     index_symbol_labels(result, data_sections[i], false, i);
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    index_object_labels(result, text_sections[i], true, i);
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    index_object_labels(result, data_sections[i], false, i);
   return result;
 }
 
@@ -135,8 +159,8 @@ void publish_object_aliases(
     EncodedLabels & labels)
 {
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
-    const std::string alias = native_object_symbol(
-      program.strings.get(program.object_aliases[i].object_symbol));
+    const lowir_model::StringId alias =
+      program.object_aliases[i].object_symbol;
     const lowir_model::SymbolId target_id =
       program.object_aliases[i].target_id;
     const std::uint32_t target = target_id;
@@ -145,10 +169,17 @@ void publish_object_aliases(
       throw std::runtime_error("native alias has undefined target: " +
         lowir_model::lowir_symbol_name(program, target_id));
     const EncodedLabelLocation location = labels.symbols[target];
+    EncodedObjectLabel label;
+    label.symbol = alias;
+    label.offset = location.offset;
     if(location.text)
-      text_sections[location.section].labels[alias] = location.offset;
-    else data_sections[location.section].labels[alias] = location.offset;
-    labels.named[alias] = location;
+      text_sections[location.section].object_labels.push_back(label);
+    else data_sections[location.section].object_labels.push_back(label);
+    const std::uint32_t object = alias;
+    if(!alias.valid() || object >= labels.objects.size())
+      throw std::logic_error("invalid object-alias identity");
+    labels.objects[object] = location;
+    labels.object_known[object] = 1;
   }
 }
 
@@ -279,6 +310,13 @@ std::vector<EncodedSection> partition_weak_text(
     EncodedSymbolLabel moved = label;
     moved.offset = slice.new_start + label.offset - slice.old_start;
     result[slice.section].symbol_labels.push_back(moved);
+  }
+  for(std::size_t i = 0; i < source.object_labels.size(); ++i) {
+    const EncodedObjectLabel & label = source.object_labels[i];
+    const TextSlice & slice = slices[text_slice_at(slices, label.offset)];
+    EncodedObjectLabel moved = label;
+    moved.offset = slice.new_start + label.offset - slice.old_start;
+    result[slice.section].object_labels.push_back(moved);
   }
   for(std::size_t i = 0; i < source.fixups.size(); ++i) {
     const TextSlice & slice = slices[text_slice_at(
@@ -942,13 +980,6 @@ void collect_host_symbols(
   for(std::size_t i = 0; i < functions.size(); ++i)
     if(!functions[i].object_symbol.valid())
       require_program_symbol(functions[i].program_symbol);
-  std::unordered_set<std::string> object_only_labels;
-  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
-    const lowir_model::ExportedSymbol & exported = program.exported_symbols[i];
-    if(exported.object_symbol.valid() && !exported.keep_internal_alias)
-      object_only_labels.insert(
-        native_object_symbol(exported_object_symbol(program, exported)));
-  }
   std::map<std::pair<std::size_t, std::size_t>, std::uint64_t> function_sizes;
   for(std::size_t i = 0; i < functions.size(); ++i)
     function_sizes[std::make_pair(
@@ -957,8 +988,7 @@ void collect_host_symbols(
     for(std::unordered_map<std::string, std::size_t>::const_iterator it =
           text_sections[section].labels.begin();
         it != text_sections[section].labels.end(); ++it) {
-      if(object_only_labels.count(it->first) ||
-         !required_local_labels.count(it->first)) continue;
+      if(!required_local_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
       symbol.section = text_section_indexes[section];
@@ -971,8 +1001,7 @@ void collect_host_symbols(
     for(std::unordered_map<std::string, std::size_t>::const_iterator it =
           data_sections[section].labels.begin();
         it != data_sections[section].labels.end(); ++it) {
-      if(object_only_labels.count(it->first) ||
-         !required_local_labels.count(it->first)) continue;
+      if(!required_local_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
       symbol.section = data_section_indexes[section];
