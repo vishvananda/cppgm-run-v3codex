@@ -42,9 +42,8 @@ function @preserve_across_integer_call
     fadd.f64 [rbp-16], [rbp-8], 1.25
     mov rdi, 7
     call @clobber_xmm_from_integer [args=(rdi)]
-    mov r8, rax
-    sext.i32 r8
-    sitofp.i32.f64 xmm0, r8
+    sext.i32 rax
+    sitofp.i32.f64 xmm0, rax
     fadd.f64 xmm1, [rbp-16], xmm0
     fmov.f64 xmm0, xmm1
     ret

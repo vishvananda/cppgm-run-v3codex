@@ -30,6 +30,5 @@ function @main
     add <gpr0>, 8
     mov rdi, 20
     call @add1 [args=(rdi)]
-    mov r8, rax
-    add <gpr0>, r8
+    add <gpr0>, rax
     ret <gpr0>

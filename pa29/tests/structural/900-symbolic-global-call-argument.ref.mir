@@ -39,7 +39,6 @@ function @main
     mov r13, rax
     mov rdi, r12
     call @read [args=(rdi)]
-    mov r8, rax
     add rbx, r13
-    add rbx, r8
+    add rbx, rax
     ret rbx

@@ -30,6 +30,5 @@ function @main
     add rbx, 8
     mov rdi, 20
     call @add1 [args=(rdi)]
-    mov r8, rax
-    add rbx, r8
+    add rbx, rax
     ret rbx

@@ -43,8 +43,7 @@ function @main
     fmov.f64 xmm0, 1.5
     fmov.f64 xmm1, 2.5
     call @mix [args=(rsi,rdi,xmm0,xmm1)]
-    mov r8, rax
-    cmp.i64 r8, 33
+    cmp.i64 rax, 33
     sete rax
     movzx rax, rax
     ret rax

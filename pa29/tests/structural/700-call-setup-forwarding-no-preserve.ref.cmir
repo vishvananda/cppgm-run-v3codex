@@ -34,9 +34,8 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 64
+    stack_size 48
     scratch_bytes 48
-    preserve <gpr0>
 
   block ^entry
     mov r8, 4
@@ -48,8 +47,7 @@ function @main
     mov rdi, r8
     mov rsi, r9
     call @mix [args=(rsi,rdi,xmm0,xmm1)]
-    mov <gpr0>, rax
-    cmp.i64 <gpr0>, 50
+    cmp.i64 rax, 50
     sete rax
     movzx rax, rax
     ret rax

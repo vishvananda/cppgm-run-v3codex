@@ -39,7 +39,6 @@ function @main
     mov <gpr2>, rax
     mov rdi, <gpr1>
     call @read [args=(rdi)]
-    mov r8, rax
     add <gpr0>, <gpr2>
-    add <gpr0>, r8
+    add <gpr0>, rax
     ret <gpr0>

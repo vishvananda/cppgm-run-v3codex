@@ -538,10 +538,13 @@ To complete PA29, implement these goals:
    register when necessary; do not serialize a separate MIR move solely for
    that transfer.
 
-   A sole-use scalar call result may likewise remain in its ABI return register
-   when the immediately following instruction stores it or passes it as a
-   direct-value call argument.  Emit only the move required by that consumer;
-   do not first assign the result an unrelated temporary home.
+   A scalar call result may remain in its ABI return register throughout a
+   single-block interval that crosses no operation clobbering that register.
+   The final consumer must read the result before performing any fixed-register
+   setup that overwrites the return register.  In particular, relocate a result
+   used as a store address when materializing the stored value needs that same
+   register.  Emit only moves required by these constraints; do not assign the
+   result an unrelated intermediate home.
 
    When a load from a promoted parameter slot is used only as a call argument,
    let call setup read the parameter's fixed home directly.  Do not also emit

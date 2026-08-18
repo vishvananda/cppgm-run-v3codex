@@ -184,15 +184,13 @@ function @main
     store.i64 [rsp+24], r11
     call @f [args=(rcx,rdx,rsi,rdi,r8,r9), stack=32]
     add rsp, 32
-    mov r8, rax
     mov rdx, 125
-    cmp.i64 r8, rdx
-    sete r8
-    movzx r8, r8
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     mov rdx, 0
-    cmp.i64 r8, rdx
-    sete r8
-    movzx r8, r8
-    mov rax, r8
+    cmp.i64 rax, rdx
+    sete rax
+    movzx rax, rax
     sext.i32 rax
     ret rax

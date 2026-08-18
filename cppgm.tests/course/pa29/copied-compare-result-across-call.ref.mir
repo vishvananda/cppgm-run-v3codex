@@ -52,12 +52,11 @@ function @main
 
   block ^entry
     call @zero [args=()]
-    mov r8, rax
     mov rdx, 0
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov rbx, r8
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
+    mov rbx, rax
     zext.i8 rbx
     mov rdi, 1
     mov rsi, 2

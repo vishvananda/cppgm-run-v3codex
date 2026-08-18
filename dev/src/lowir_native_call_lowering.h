@@ -15,6 +15,25 @@ template <class Derived>
 class CallLowering
 {
 protected:
+  bool scalar_result_can_remain_in_return_register(
+      lowir_model::ValueId result) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    if(lowerer.source_.blocks.size() != 1 ||
+       lowerer.crosses_register_clobber(result, XR_RAX)) return false;
+    const std::size_t last_use = lowerer.facts_.last_use[result];
+    if(last_use == analysis::FunctionFacts::missing_position() ||
+       last_use >= lowerer.source_.blocks[0].instructions.size()) return false;
+    const lowir_model::Instruction & consumer =
+      lowerer.source_.blocks[0].instructions[last_use];
+    // Scalar-store lowering may materialize the stored value in rax before it
+    // consumes the address.  Retaining an address result in rax would then
+    // replace the address with the value being stored.
+    return consumer.kind != lowir_model::Instruction::IK_STORE ||
+      consumer.second.kind != lowir_model::Operand::OP_TEMP ||
+      consumer.second.value != result;
+  }
+
   bool stabilize_extended_register_sources(
       const lowir_model::Instruction & instruction,
       const std::vector<lowir_model::LowirParameter> & parameters,

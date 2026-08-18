@@ -2551,7 +2551,8 @@ private:
     } else if(materialize_result) {
       MirOperand location = reg_operand(XR_RAX);
       MirOperand pressure_home;
-      if(!result_is_immediate_return(block, instruction_index, instruction.dest) &&
+      if(!scalar_result_can_remain_in_return_register(instruction.dest) &&
+         !result_is_immediate_return(block, instruction_index, instruction.dest) &&
          !selection::result_is_immediately_stored(
            block, instruction_index, instruction.dest, facts_) &&
          !result_is_next_direct_call_argument(
@@ -2717,6 +2718,7 @@ private:
                      FunctionFacts::VF_DIRECT_BRANCH_CALL_RESULT) &&
           !source_.blocks.empty() && block.id != source_.blocks.front().id;
         if(!forward_nonentry_branch &&
+           !scalar_result_can_remain_in_return_register(instruction.dest) &&
            !result_is_immediate_return(block, instruction_index, instruction.dest) &&
            !selection::result_is_immediately_stored(
              block, instruction_index, instruction.dest, facts_) &&
