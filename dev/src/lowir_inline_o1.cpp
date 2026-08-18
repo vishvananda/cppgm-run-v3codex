@@ -9,7 +9,6 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -128,87 +127,40 @@ std::size_t instruction_count(const Function & function)
   return result;
 }
 
-void collect_generated_id(const std::string & name,
-                          std::unordered_set<std::size_t> * ids)
-{
-  const std::string marker = "__o1inl";
-  std::size_t at = name.find(marker);
-  while(at != std::string::npos) {
-    std::size_t digit = at + marker.size();
-    std::size_t end = digit;
-    std::size_t value = 0;
-    bool overflow = false;
-    while(end < name.size() && name[end] >= '0' && name[end] <= '9') {
-      const std::size_t next = static_cast<std::size_t>(name[end] - '0');
-      if(value > (std::numeric_limits<std::size_t>::max() - next) / 10)
-        overflow = true;
-      else if(!overflow) value = value * 10 + next;
-      ++end;
-    }
-    if(end > digit && name.compare(end, 2, "__") == 0)
-      ids->insert(overflow ? std::numeric_limits<std::size_t>::max() : value);
-    at = name.find(marker, at + marker.size());
-  }
-}
-
 struct Names
 {
   lowir_model::StringPool & strings;
-  std::unordered_set<std::uint32_t> slots;
-  std::unordered_set<std::size_t> site_ids;
-  std::size_t next_site_id;
+  Function & function;
+  std::uint32_t next_site_id;
 
-  Names(LowirProgram & program, const Function & function)
-    : strings(program.strings), next_site_id(0)
+  Names(LowirProgram & program, Function & function_value)
+    : strings(program.strings), function(function_value), next_site_id(0) {}
+
+  std::uint32_t next_site()
   {
-    for(std::size_t i = 0; i < function.params.size(); ++i) {
-      const std::string & name =
-        lowir_model::lowir_parameter_name(program, function.params[i]);
-      collect_generated_id(name, &site_ids);
-    }
-    for(std::size_t i = 0; i < function.slots.size(); ++i) {
-      const std::uint32_t slot_id = function.slots[i];
-      if(slot_id >= function.slot_names.size())
-        throw std::logic_error("invalid O1 inline slot presentation identity");
-      slots.insert(function.slot_names[slot_id]);
-      const std::string & slot =
-        lowir_model::lowir_slot_name(
-          program.strings, function, function.slots[i]);
-      collect_generated_id(slot, &site_ids);
-    }
-    for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-      const std::string & label =
-        lowir_model::lowir_block_label(
-          program.strings, function, function.blocks[i].id);
-      collect_generated_id(label, &site_ids);
-      for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-        const Instruction & ins = function.blocks[i].instructions[j];
-        if(ins.dest.valid()) {
-          const lowir_model::PresentationName presentation =
-            lowir_model::lowir_value_presentation(function, ins.dest);
-          if(!presentation.generated())
-            collect_generated_id(
-              program.strings.get(presentation.spelling()), &site_ids);
-        }
-      }
-    }
+    while(function.generated_name_reservations.contains(
+        lowir_model::GNR_O1_SITE, next_site_id)) ++next_site_id;
+    const std::uint32_t result = next_site_id++;
+    function.generated_name_reservations.reserve(
+      lowir_model::GNR_O1_SITE, result);
+    return result;
   }
 
-  std::size_t next_site()
+  void inherit_sites(const Function & source)
   {
-    while(site_ids.count(next_site_id)) ++next_site_id;
-    site_ids.insert(next_site_id);
-    return next_site_id++;
+    function.generated_name_reservations.merge_kind(
+      source.generated_name_reservations, lowir_model::GNR_O1_SITE);
   }
 
-  lowir_model::StringId unique_slot(const std::string & stem, const LowType &,
-                                    std::size_t first_suffix = 1)
+  lowir_model::StringId unique_slot(
+      const std::string & stem,
+      const lowir_model::GeneratedNameReservations & source,
+      lowir_model::GeneratedNameReservationKind suffix_kind,
+      std::uint32_t first_suffix = 1)
   {
-    for(std::size_t suffix = first_suffix;; ++suffix) {
-      const std::string candidate = stem + std::to_string(suffix);
-      const lowir_model::StringId name = strings.intern(candidate);
-      if(slots.insert(name).second) return name;
-    }
+    std::uint32_t suffix = first_suffix;
+    while(source.contains(suffix_kind, suffix)) ++suffix;
+    return strings.intern(stem + std::to_string(suffix));
   }
 };
 
@@ -723,6 +675,7 @@ private:
   {
     if(callee_function.params.size() != call.args.size())
       throw std::runtime_error("inline call argument count mismatch");
+    names->inherit_sites(callee_function);
     for(std::size_t i = 0; i < callee_function.params.size(); ++i)
       values->set(callee_function.params[i].value, call.args[i]);
     slots->resize(callee_function.slot_names.size());
@@ -735,7 +688,6 @@ private:
       (*slots)[source] = lowir_model::append_lowir_slot(
         *caller, renamed_id,
         lowir_model::lowir_slot_type(callee_function, source));
-      names->slots.insert(renamed_id);
     }
     blocks->resize(callee_function.next_block_id);
     for(std::size_t i = 0; i < callee_function.blocks.size(); ++i) {
@@ -833,8 +785,11 @@ private:
     const bool has_result = !call.call_returns_void;
     lowir_model::SlotId merge_slot;
     if(has_result && returns > 1) {
-      const lowir_model::StringId name = names->unique_slot("$" + prefix +
-        (object_result ? "retmergeobj__" : "retmerge__"), call.type);
+      const lowir_model::StringId name = names->unique_slot(
+        "$" + prefix + (object_result ? "retmergeobj__" : "retmerge__"),
+        callee_function.generated_name_reservations,
+        object_result ? lowir_model::GNR_O1_OBJECT_MERGE_SUFFIX :
+          lowir_model::GNR_O1_SCALAR_MERGE_SUFFIX);
       merge_slot = lowir_model::append_lowir_slot(
         caller, name, call.type);
     }

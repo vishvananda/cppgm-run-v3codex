@@ -491,6 +491,7 @@ struct Function
   std::vector<LowType> value_types;
   std::vector<Block> blocks;
   std::vector<StringId> block_labels;
+  GeneratedNameReservations generated_name_reservations;
   std::uint32_t next_block_id = 0;
   InstructionDebugLocation debug_location;
   FunctionBoundaryMetadata boundary;
@@ -586,6 +587,8 @@ std::string lowir_literal_text(const Operand & operand,
                                const SealedStringPool & strings);
 void resolve_lowir_function_operands(Function & function,
                                      const StringPool & strings);
+void classify_lowir_generated_name_reservations(
+    Function & function, const StringPool & strings);
 void resolve_lowir_program_symbols(Program & program);
 void remap_lowir_program_strings(Program & program,
                                  StringPool & destination);

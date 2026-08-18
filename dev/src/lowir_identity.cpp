@@ -125,6 +125,125 @@ const char * fixed_presentation_name_text(FixedPresentationName name)
 
 namespace {
 
+std::uint64_t generated_name_reservation_key(
+    GeneratedNameReservationKind kind, std::uint32_t ordinal)
+{
+  return static_cast<std::uint64_t>(kind) << 32 | ordinal;
+}
+
+}  // namespace
+
+void GeneratedNameReservations::clear() { entries_.clear(); }
+
+void GeneratedNameReservations::append(GeneratedNameReservationKind kind,
+                                        std::uint32_t ordinal)
+{
+  entries_.push_back(generated_name_reservation_key(kind, ordinal));
+}
+
+void GeneratedNameReservations::normalize()
+{
+  std::sort(entries_.begin(), entries_.end());
+  entries_.erase(std::unique(entries_.begin(), entries_.end()), entries_.end());
+}
+
+bool GeneratedNameReservations::contains(
+    GeneratedNameReservationKind kind, std::uint32_t ordinal) const
+{
+  return std::binary_search(entries_.begin(), entries_.end(),
+    generated_name_reservation_key(kind, ordinal));
+}
+
+void GeneratedNameReservations::reserve(
+    GeneratedNameReservationKind kind, std::uint32_t ordinal)
+{
+  const std::uint64_t key = generated_name_reservation_key(kind, ordinal);
+  const std::vector<std::uint64_t>::iterator position =
+    std::lower_bound(entries_.begin(), entries_.end(), key);
+  if(position == entries_.end() || *position != key)
+    entries_.insert(position, key);
+}
+
+void GeneratedNameReservations::merge_kind(
+    const GeneratedNameReservations & source,
+    GeneratedNameReservationKind kind)
+{
+  const std::uint64_t first = generated_name_reservation_key(kind, 0);
+  const std::uint64_t last = first | UINT64_C(0xffffffff);
+  std::vector<std::uint64_t>::const_iterator at =
+    std::lower_bound(source.entries_.begin(), source.entries_.end(), first);
+  const std::vector<std::uint64_t>::const_iterator end =
+    std::upper_bound(source.entries_.begin(), source.entries_.end(), last);
+  for(; at != end; ++at)
+  {
+    const std::vector<std::uint64_t>::iterator position =
+      std::lower_bound(entries_.begin(), entries_.end(), *at);
+    if(position == entries_.end() || *position != *at)
+      entries_.insert(position, *at);
+  }
+}
+
+std::size_t GeneratedNameReservations::size() const
+{
+  return entries_.size();
+}
+
+std::size_t GeneratedNameReservations::storage_bytes() const
+{
+  return entries_.capacity() * sizeof(std::uint64_t);
+}
+
+bool parse_generated_name_ordinal(const std::string & name,
+                                  const char * prefix,
+                                  std::uint32_t * ordinal)
+{
+  if(!prefix || !ordinal) return false;
+  const std::size_t prefix_size = std::char_traits<char>::length(prefix);
+  if(name.size() <= prefix_size ||
+     name.compare(0, prefix_size, prefix) != 0)
+    return false;
+  if(name[prefix_size] == '0' && name.size() != prefix_size + 1)
+    return false;
+  std::uint32_t value = 0;
+  for(std::size_t i = prefix_size; i < name.size(); ++i) {
+    if(name[i] < '0' || name[i] > '9') return false;
+    const std::uint32_t digit = static_cast<std::uint32_t>(name[i] - '0');
+    if(value > (std::numeric_limits<std::uint32_t>::max() - digit) / 10)
+      return false;
+    value = value * 10 + digit;
+  }
+  *ordinal = value;
+  return true;
+}
+
+void collect_o1_site_reservations(
+    const std::string & name, GeneratedNameReservations * reservations)
+{
+  if(!reservations) return;
+  const char marker[] = "__o1inl";
+  const std::size_t marker_size = sizeof(marker) - 1;
+  std::size_t at = name.find(marker);
+  while(at != std::string::npos) {
+    std::size_t end = at + marker_size;
+    const std::size_t first_digit = end;
+    std::uint32_t value = 0;
+    bool overflow = false;
+    while(end < name.size() && name[end] >= '0' && name[end] <= '9') {
+      const std::uint32_t digit =
+        static_cast<std::uint32_t>(name[end] - '0');
+      if(value > (std::numeric_limits<std::uint32_t>::max() - digit) / 10)
+        overflow = true;
+      else if(!overflow) value = value * 10 + digit;
+      ++end;
+    }
+    if(!overflow && end != first_digit && name.compare(end, 2, "__") == 0)
+      reservations->append(GNR_O1_SITE, value);
+    at = name.find(marker, at + marker_size);
+  }
+}
+
+namespace {
+
 std::string unsuffixed_floating_literal(const std::string & text)
 {
   if(!text.empty() && (text.back() == 'f' || text.back() == 'F' ||
@@ -644,6 +763,76 @@ const std::string & lowir_parameter_name(const Program & program,
   return program.strings.get(parameter.name);
 }
 
+namespace {
+
+void append_ordinal_reservation(const std::string & name,
+                                const char * prefix,
+                                GeneratedNameReservationKind kind,
+                                GeneratedNameReservations * reservations)
+{
+  std::uint32_t ordinal = 0;
+  if(parse_generated_name_ordinal(name, prefix, &ordinal))
+    reservations->append(kind, ordinal);
+}
+
+void classify_lowir_value_name(const std::string & name,
+                               GeneratedNameReservations * reservations)
+{
+  collect_o1_site_reservations(name, reservations);
+  append_ordinal_reservation(name, "%__force_inline_parameter_",
+    GNR_FORCE_PARAMETER, reservations);
+  append_ordinal_reservation(name, "%__force_inline_temporary_",
+    GNR_FORCE_TEMPORARY, reservations);
+}
+
+}  // namespace
+
+void classify_lowir_generated_name_reservations(
+    Function & function, const StringPool & strings)
+{
+  GeneratedNameReservations & reservations =
+    function.generated_name_reservations;
+  reservations.clear();
+  for(std::size_t i = 0; i < function.params.size(); ++i)
+    classify_lowir_value_name(strings.get(function.params[i].name),
+      &reservations);
+  for(std::size_t i = 0; i < function.slots.size(); ++i) {
+    const std::string & name =
+      lowir_slot_name(strings, function, function.slots[i]);
+    collect_o1_site_reservations(name, &reservations);
+    append_ordinal_reservation(name, "$__force_inline_local_",
+      GNR_FORCE_LOCAL, &reservations);
+    append_ordinal_reservation(name, "$__force_inline_result_",
+      GNR_FORCE_RESULT, &reservations);
+    append_ordinal_reservation(name, "$retmerge__",
+      GNR_O1_SCALAR_MERGE_SUFFIX, &reservations);
+    append_ordinal_reservation(name, "$retmergeobj__",
+      GNR_O1_OBJECT_MERGE_SUFFIX, &reservations);
+  }
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const Block & block = function.blocks[i];
+    const std::string & label =
+      lowir_block_label(strings, function, block.id);
+    collect_o1_site_reservations(label, &reservations);
+    append_ordinal_reservation(label, "^__force_inline_block_",
+      GNR_FORCE_BLOCK, &reservations);
+    append_ordinal_reservation(label, "^__force_inline_prologue_",
+      GNR_FORCE_PROLOGUE, &reservations);
+    append_ordinal_reservation(label, "^__force_inline_continuation_",
+      GNR_FORCE_CONTINUATION, &reservations);
+    for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const ValueId dest = block.instructions[j].dest;
+      if(!dest.valid()) continue;
+      const PresentationName presentation =
+        lowir_value_presentation(function, dest);
+      if(!presentation.generated())
+        classify_lowir_value_name(strings.get(presentation.spelling()),
+          &reservations);
+    }
+  }
+  reservations.normalize();
+}
+
 SymbolId append_lowir_symbol(Program & program, const std::string & name)
 {
   return append_lowir_symbol(program, program.strings.intern(name));
@@ -764,6 +953,7 @@ void resolve_lowir_function_operands(Function & function,
       }
     }
   }
+  classify_lowir_generated_name_reservations(function, strings);
 }
 
 void resolve_lowir_program_symbols(Program & program)
@@ -944,7 +1134,8 @@ std::size_t lowir_program_storage_bytes(const Program & program)
 			function.value_names.capacity() * sizeof(PresentationName) +
 			function.value_types.capacity() * sizeof(LowType) +
 			function.blocks.capacity() * sizeof(Block) +
-			function.block_labels.capacity() * sizeof(StringId);
+			function.block_labels.capacity() * sizeof(StringId) +
+			function.generated_name_reservations.storage_bytes();
 		for(std::size_t b = 0; b < function.blocks.size(); ++b) {
 			const std::vector<Instruction> & instructions =
 				function.blocks[b].instructions;

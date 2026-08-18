@@ -908,6 +908,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::Function result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
+		result.generated_name_reservations =
+			item.generated_name_reservations;
 		result.params = AdaptParameters(
 			item.parameters, &target.strings, &telemetry);
 		const AdaptedValues values = PrepareValues(item, target.strings, &result);

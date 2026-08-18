@@ -56,6 +56,49 @@ enum FixedPresentationName
   FPN_F80_RETURN
 };
 
+// Generated public spellings reserve their numeric component once at the
+// construction/input boundary. Inliners consume this compact table without
+// recovering collision facts from presentation text.
+enum GeneratedNameReservationKind : std::uint8_t
+{
+  GNR_TYPED_FORCE_SLOT,
+  GNR_TYPED_FORCE_BLOCK,
+  GNR_FORCE_PARAMETER,
+  GNR_FORCE_TEMPORARY,
+  GNR_FORCE_LOCAL,
+  GNR_FORCE_RESULT,
+  GNR_FORCE_BLOCK,
+  GNR_FORCE_PROLOGUE,
+  GNR_FORCE_CONTINUATION,
+  GNR_O1_SITE,
+  GNR_O1_SCALAR_MERGE_SUFFIX,
+  GNR_O1_OBJECT_MERGE_SUFFIX
+};
+
+class GeneratedNameReservations
+{
+public:
+  void clear();
+  void append(GeneratedNameReservationKind kind, std::uint32_t ordinal);
+  void normalize();
+  bool contains(GeneratedNameReservationKind kind,
+                std::uint32_t ordinal) const;
+  void reserve(GeneratedNameReservationKind kind, std::uint32_t ordinal);
+  void merge_kind(const GeneratedNameReservations & source,
+                  GeneratedNameReservationKind kind);
+  std::size_t size() const;
+  std::size_t storage_bytes() const;
+
+private:
+  std::vector<std::uint64_t> entries_;
+};
+
+bool parse_generated_name_ordinal(const std::string & name,
+                                  const char * prefix,
+                                  std::uint32_t * ordinal);
+void collect_o1_site_reservations(const std::string & name,
+                                  GeneratedNameReservations * reservations);
+
 // A display name is either one pooled spelling or a generated `%tN` ordinal.
 // Two tag bits also retain the explicit debug-copy presentation contract.
 class PresentationName

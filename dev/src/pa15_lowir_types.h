@@ -343,6 +343,7 @@ struct Function
 	std::vector<Slot> slots;
 	std::vector<Block> blocks;
 	std::vector<BlockId> block_order;
+	lowir_model::GeneratedNameReservations generated_name_reservations;
 	bool entry;
 	bool initializer;
 	bool finalizer;

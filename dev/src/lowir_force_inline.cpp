@@ -2,10 +2,8 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <limits>
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -53,107 +51,43 @@ Instruction jump_to(BlockId block)
 
 struct InlineNames
 {
-  enum GeneratedKind
-  {
-    GK_PARAMETER,
-    GK_TEMPORARY,
-    GK_LOCAL,
-    GK_RESULT,
-    GK_BLOCK,
-    GK_PROLOGUE,
-    GK_CONTINUATION,
-    GK_COUNT
-  };
-
   lowir_model::StringPool & strings;
-  std::unordered_set<std::size_t> occupied[GK_COUNT];
-  std::size_t next = 0;
+  Function & function;
+  std::uint32_t next = 0;
 
-  static bool ordinal(const std::string & name, const char * prefix,
-                      std::size_t * result)
-  {
-    const std::size_t prefix_size = std::char_traits<char>::length(prefix);
-    if(name.size() <= prefix_size || name.compare(0, prefix_size, prefix) != 0)
-      return false;
-    if(name[prefix_size] == '0' && name.size() != prefix_size + 1)
-      return false;
-    std::size_t value = 0;
-    for(std::size_t i = prefix_size; i < name.size(); ++i) {
-      if(name[i] < '0' || name[i] > '9') return false;
-      const std::size_t digit = static_cast<std::size_t>(name[i] - '0');
-      if(value > (std::numeric_limits<std::size_t>::max() - digit) / 10)
-        return false;
-      value = value * 10 + digit;
-    }
-    *result = value;
-    return true;
-  }
+  InlineNames(LowirProgram & program, Function & function_value)
+    : strings(program.strings), function(function_value) {}
 
-  void reserve(const std::string & name, GeneratedKind kind,
-               const char * prefix)
+  lowir_model::StringId fresh(
+      lowir_model::GeneratedNameReservationKind kind, const char * prefix)
   {
-    std::size_t id = 0;
-    if(ordinal(name, prefix, &id)) occupied[kind].insert(id);
-  }
-
-  InlineNames(LowirProgram & program, const Function & function)
-    : strings(program.strings)
-  {
-    for(std::size_t i = 0; i < function.params.size(); ++i) {
-      const std::string & name =
-        lowir_model::lowir_parameter_name(program, function.params[i]);
-      reserve(name, GK_PARAMETER, "%__force_inline_parameter_");
-      reserve(name, GK_TEMPORARY, "%__force_inline_temporary_");
-    }
-    for(std::size_t i = 0; i < function.slots.size(); ++i)
-    {
-      const std::string & name = lowir_model::lowir_slot_name(
-        program.strings, function, function.slots[i]);
-      reserve(name, GK_LOCAL, "$__force_inline_local_");
-      reserve(name, GK_RESULT, "$__force_inline_result_");
-    }
-    for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-      const std::string & label = lowir_model::lowir_block_label(
-        program.strings, function, function.blocks[i].id);
-      reserve(label, GK_BLOCK, "^__force_inline_block_");
-      reserve(label, GK_PROLOGUE, "^__force_inline_prologue_");
-      reserve(label, GK_CONTINUATION, "^__force_inline_continuation_");
-      for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-        const lowir_model::ValueId dest =
-          function.blocks[i].instructions[j].dest;
-        if(!dest.valid()) continue;
-        const lowir_model::PresentationName presentation =
-          lowir_model::lowir_value_presentation(function, dest);
-        if(!presentation.generated()) {
-          const std::string & name =
-            program.strings.get(presentation.spelling());
-          reserve(name, GK_PARAMETER, "%__force_inline_parameter_");
-          reserve(name, GK_TEMPORARY, "%__force_inline_temporary_");
-        }
-      }
-    }
-  }
-
-  lowir_model::StringId fresh(GeneratedKind kind, const char * prefix)
-  {
-    while(occupied[kind].count(next)) ++next;
-    return strings.intern(std::string(prefix) + std::to_string(next++));
+    while(function.generated_name_reservations.contains(kind, next)) ++next;
+    const std::uint32_t ordinal = next++;
+    function.generated_name_reservations.reserve(kind, ordinal);
+    return strings.intern(std::string(prefix) + std::to_string(ordinal));
   }
 
   lowir_model::StringId parameter()
-    { return fresh(GK_PARAMETER, "%__force_inline_parameter_"); }
+    { return fresh(lowir_model::GNR_FORCE_PARAMETER,
+        "%__force_inline_parameter_"); }
   lowir_model::StringId temporary()
-    { return fresh(GK_TEMPORARY, "%__force_inline_temporary_"); }
+    { return fresh(lowir_model::GNR_FORCE_TEMPORARY,
+        "%__force_inline_temporary_"); }
   lowir_model::StringId local_slot()
-    { return fresh(GK_LOCAL, "$__force_inline_local_"); }
+    { return fresh(lowir_model::GNR_FORCE_LOCAL,
+        "$__force_inline_local_"); }
   lowir_model::StringId result_slot()
-    { return fresh(GK_RESULT, "$__force_inline_result_"); }
+    { return fresh(lowir_model::GNR_FORCE_RESULT,
+        "$__force_inline_result_"); }
   lowir_model::StringId block()
-    { return fresh(GK_BLOCK, "^__force_inline_block_"); }
+    { return fresh(lowir_model::GNR_FORCE_BLOCK,
+        "^__force_inline_block_"); }
   lowir_model::StringId prologue()
-    { return fresh(GK_PROLOGUE, "^__force_inline_prologue_"); }
+    { return fresh(lowir_model::GNR_FORCE_PROLOGUE,
+        "^__force_inline_prologue_"); }
   lowir_model::StringId continuation()
-    { return fresh(GK_CONTINUATION, "^__force_inline_continuation_"); }
+    { return fresh(lowir_model::GNR_FORCE_CONTINUATION,
+        "^__force_inline_continuation_"); }
 };
 
 class Inliner {

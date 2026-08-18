@@ -9,7 +9,6 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace cppgm
@@ -23,35 +22,91 @@ using namespace pa15_lowir_detail;
 
 const std::size_t kNoFunction = std::numeric_limits<std::size_t>::max();
 
+void AppendOrdinalReservation(const std::string& name, const char* prefix,
+	lowir_model::GeneratedNameReservationKind kind,
+	lowir_model::GeneratedNameReservations* reservations)
+{
+	std::uint32_t ordinal = 0;
+	if (lowir_model::parse_generated_name_ordinal(name, prefix, &ordinal))
+		reservations->append(kind, ordinal);
+}
+
+void ClassifyPresentationReservations(TypedProgram* program)
+{
+	for (std::size_t f = 0; f < program->functions.size(); ++f)
+	{
+		Function& function = program->functions[f];
+		lowir_model::GeneratedNameReservations& reservations =
+			function.generated_name_reservations;
+		reservations.clear();
+		for (std::size_t i = 0; i < function.parameters.size(); ++i)
+		{
+			const std::string& name = function.parameters[i].name;
+			lowir_model::collect_o1_site_reservations(name, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_parameter_",
+				lowir_model::GNR_FORCE_PARAMETER, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_temporary_",
+				lowir_model::GNR_FORCE_TEMPORARY, &reservations);
+		}
+		for (std::size_t i = 0; i < function.slots.size(); ++i)
+		{
+			const std::string& name = function.slots[i].name;
+			lowir_model::collect_o1_site_reservations(name, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_slot_",
+				lowir_model::GNR_TYPED_FORCE_SLOT, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_local_",
+				lowir_model::GNR_FORCE_LOCAL, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_result_",
+				lowir_model::GNR_FORCE_RESULT, &reservations);
+			AppendOrdinalReservation(name, "retmerge__",
+				lowir_model::GNR_O1_SCALAR_MERGE_SUFFIX, &reservations);
+			AppendOrdinalReservation(name, "retmergeobj__",
+				lowir_model::GNR_O1_OBJECT_MERGE_SUFFIX, &reservations);
+		}
+		for (std::size_t i = 0; i < function.blocks.size(); ++i)
+		{
+			const std::string& name = function.blocks[i].label;
+			lowir_model::collect_o1_site_reservations(name, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_block_",
+				lowir_model::GNR_TYPED_FORCE_BLOCK, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_prologue_",
+				lowir_model::GNR_FORCE_PROLOGUE, &reservations);
+			AppendOrdinalReservation(name, "__force_inline_continuation_",
+				lowir_model::GNR_FORCE_CONTINUATION, &reservations);
+		}
+		reservations.normalize();
+	}
+}
+
 class PresentationNames
 {
 public:
-	explicit PresentationNames(const Function& function) : next_(0)
-	{
-		for (std::size_t i = 0; i < function.slots.size(); ++i)
-			slots_.insert(function.slots[i].name);
-		for (std::size_t i = 0; i < function.blocks.size(); ++i)
-			blocks_.insert(function.blocks[i].label);
-	}
+	explicit PresentationNames(Function* function)
+		: function_(*function), next_(0) {}
 
-	std::string SlotName() { return Fresh(slots_, "slot"); }
-	std::string BlockName() { return Fresh(blocks_, "block"); }
+	std::string SlotName()
+	{
+		return Fresh(lowir_model::GNR_TYPED_FORCE_SLOT, "slot");
+	}
+	std::string BlockName()
+	{
+		return Fresh(lowir_model::GNR_TYPED_FORCE_BLOCK, "block");
+	}
 
 private:
-	std::string Fresh(std::unordered_set<std::string>& names,
+	std::string Fresh(lowir_model::GeneratedNameReservationKind kind,
 		const char* role)
 	{
-		for (;;)
-		{
-			const std::string candidate = "__force_inline_" +
-				std::string(role) + "_" + std::to_string(next_++);
-			if (names.insert(candidate).second) return candidate;
-		}
+		while (function_.generated_name_reservations.contains(kind, next_))
+			++next_;
+		const std::uint32_t ordinal = next_++;
+		function_.generated_name_reservations.reserve(kind, ordinal);
+		return "__force_inline_" + std::string(role) + "_" +
+			std::to_string(ordinal);
 	}
 
-	std::unordered_set<std::string> slots_;
-	std::unordered_set<std::string> blocks_;
-	std::size_t next_;
+	Function& function_;
+	std::uint32_t next_;
 };
 
 class Inliner
@@ -589,7 +644,7 @@ private:
 	void InlineCalls(std::size_t function_index)
 	{
 		Function& caller = program_.functions[function_index];
-		PresentationNames names(caller);
+		PresentationNames names(&caller);
 		std::uint32_t next_temp = NextTemp(caller);
 		for (std::size_t block = 0; block < caller.blocks.size(); ++block)
 			for (std::size_t instruction = 0;
@@ -631,6 +686,7 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 	bool prune_unreachable_weak_functions)
 {
 	if (!program) throw std::logic_error("force-inline program is null");
+	ClassifyPresentationReservations(program);
 	Inliner inliner(program, stats);
 	if (inliner.HasCandidates()) inliner.Run();
 	const pa15_function_reachability::Summary reachability =

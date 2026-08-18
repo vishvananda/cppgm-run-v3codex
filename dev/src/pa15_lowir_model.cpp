@@ -494,7 +494,8 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 		bytes += function.parameters.capacity() * sizeof(Parameter) +
 			function.slots.capacity() * sizeof(Slot) +
 			function.blocks.capacity() * sizeof(Block) +
-			function.block_order.capacity() * sizeof(BlockId);
+			function.block_order.capacity() * sizeof(BlockId) +
+			function.generated_name_reservations.storage_bytes();
 		for (std::size_t p = 0; p < function.parameters.size(); ++p)
 			bytes += function.parameters[p].name.capacity();
 		for (std::size_t s = 0; s < function.slots.size(); ++s)
