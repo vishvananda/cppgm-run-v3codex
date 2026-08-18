@@ -241,8 +241,7 @@ ExpressionInfo SemanticAnalyzer::BuildLocalAggregateArrayActions(
 	{
 		const std::uint32_t element_node = dump_.edges[edge].child;
 		if (dump_.nodes[element_node].kind != DUMP_BRACED_INIT_LIST)
-			throw std::logic_error(
-				"aggregate array element has no action list");
+			continue;
 		const std::uint32_t replacement =
 			BuildAggregateConstructionAction(array.child, element_node, true);
 		dump_.edges[edge].child = replacement;
