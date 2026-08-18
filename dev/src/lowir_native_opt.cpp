@@ -1017,17 +1017,42 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   }
 }
 
-void prepare_for_encoding(MirFunction & function)
+void prepare_for_encoding(MirFunction & function, Stats * stats)
 {
   if(function.blocks.size() != 1) return;
-  make_scalar_float_returns_explicit(function, 0);
+  const std::chrono::steady_clock::time_point started =
+    std::chrono::steady_clock::now();
+  if(stats) {
+    ++stats->functions;
+    stats->input_instructions += instruction_count(function);
+  }
+  const std::size_t before_returns = stats ? stats->rewrites : 0;
+  make_scalar_float_returns_explicit(function, stats);
+  if(stats)
+    stats->implicit_return_rewrites += stats->rewrites - before_returns;
   const std::vector<bool> keep_original =
     baseline_encoding_preserve(function.blocks[0]);
   std::vector<bool> preserve;
+  const std::size_t before_operands = stats ? stats->rewrites : 0;
   rewrite_local_operands(
-    function.blocks[0], preserve, 0, &keep_original, true);
+    function.blocks[0], preserve, stats, &keep_original, true);
+  if(stats) stats->operand_rewrites += stats->rewrites - before_operands;
+  const std::size_t before_dead = function.blocks[0].instructions.size();
   remove_locally_dead_definitions(function.blocks[0], preserve);
-  finalize_frame(function, 0);
+  if(stats) {
+    stats->dead_definitions +=
+      before_dead - function.blocks[0].instructions.size();
+    stats->rewrites += before_dead - function.blocks[0].instructions.size();
+  }
+  const std::size_t before_frame = stats ? stats->rewrites : 0;
+  finalize_frame(function, stats);
+  if(stats) {
+    stats->frame_rewrites += stats->rewrites - before_frame;
+    stats->output_instructions += instruction_count(function);
+    stats->elapsed_nanoseconds += static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count());
+  }
 }
 
 void optimize(mir_model::MirProgram & program, int level, Stats * stats)

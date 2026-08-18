@@ -1352,6 +1352,20 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
          << " machine_opt_peak_bytes="
          << native_stats.machine_opt_peak_analysis_bytes
+         << " encoding_prepare_functions="
+         << native_stats.encoding_prepare_functions
+         << " encoding_prepare_input="
+         << native_stats.encoding_prepare_input_instructions
+         << " encoding_prepare_output="
+         << native_stats.encoding_prepare_output_instructions
+         << " encoding_prepare_operand_rewrites="
+         << native_stats.encoding_prepare_operand_rewrites
+         << " encoding_prepare_dead_definitions="
+         << native_stats.encoding_prepare_dead_definitions
+         << " encoding_prepare_frame_rewrites="
+         << native_stats.encoding_prepare_frame_rewrites
+         << " encoding_prepare_implicit_return_rewrites="
+         << native_stats.encoding_prepare_implicit_return_rewrites
          << " live_location_scans=" << native_stats.live_location_scans
          << " live_location_value_visits="
          << native_stats.live_location_value_visits
@@ -1384,6 +1398,8 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " output_bytes=" << native_stats.output_bytes
          << " lower_ns=" << native_stats.lower_nanoseconds
          << " machine_opt_ns=" << native_stats.machine_opt_nanoseconds
+         << " encoding_prepare_ns="
+         << native_stats.encoding_prepare_nanoseconds
          << " encode_ns=" << native_stats.encode_nanoseconds
          << " write_ns=" << native_stats.write_nanoseconds
 		 << " payload_reserved_bytes=" << serialization_stats.reserved_bytes
@@ -1463,8 +1479,22 @@ int run_link_driver(const DriverInvocation & invocation,
 		 << " machine_opt_pushes="
 		 << native_stats.machine_opt_worklist_pushes
 		 << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
-			 << " machine_opt_peak_bytes="
-			 << native_stats.machine_opt_peak_analysis_bytes
+		 << " machine_opt_peak_bytes="
+		 << native_stats.machine_opt_peak_analysis_bytes
+		 << " encoding_prepare_functions="
+		 << native_stats.encoding_prepare_functions
+		 << " encoding_prepare_input="
+		 << native_stats.encoding_prepare_input_instructions
+		 << " encoding_prepare_output="
+		 << native_stats.encoding_prepare_output_instructions
+		 << " encoding_prepare_operand_rewrites="
+		 << native_stats.encoding_prepare_operand_rewrites
+		 << " encoding_prepare_dead_definitions="
+		 << native_stats.encoding_prepare_dead_definitions
+		 << " encoding_prepare_frame_rewrites="
+		 << native_stats.encoding_prepare_frame_rewrites
+		 << " encoding_prepare_implicit_return_rewrites="
+		 << native_stats.encoding_prepare_implicit_return_rewrites
 			 << " live_location_scans=" << native_stats.live_location_scans
 			 << " live_location_value_visits="
 			 << native_stats.live_location_value_visits
@@ -1492,6 +1522,8 @@ int run_link_driver(const DriverInvocation & invocation,
 		 << " link_ns=" << link_stats.link_nanoseconds
 		 << " lower_ns=" << native_stats.lower_nanoseconds
 		 << " machine_opt_ns=" << native_stats.machine_opt_nanoseconds
+		 << " encoding_prepare_ns="
+		 << native_stats.encoding_prepare_nanoseconds
 		 << " encode_ns=" << native_stats.encode_nanoseconds
 		 << " write_ns=" << native_stats.write_nanoseconds << '\n';
   }
