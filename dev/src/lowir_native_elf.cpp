@@ -21,8 +21,6 @@
 #include <limits>
 #include <stdexcept>
 #include <sys/stat.h>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 namespace lowir_native {
@@ -2725,30 +2723,61 @@ EncodedSection encoded_section(CodeBuffer && source,
 
 struct DataSectionBuffer
 {
-  std::string name;
+  enum Kind { DSK_DATA, DSK_TDATA, DSK_CUSTOM } kind;
+  lowir_model::StringId custom_name;
   std::uint64_t flags;
   std::size_t alignment;
   CodeBuffer content;
 
-  DataSectionBuffer(const std::string & section_name, std::uint64_t section_flags)
-    : name(section_name), flags(section_flags), alignment(1), content(0) {}
+  DataSectionBuffer(Kind section_kind, lowir_model::StringId section_name,
+                    std::uint64_t section_flags)
+    : kind(section_kind), custom_name(section_name), flags(section_flags),
+      alignment(1), content(0) {}
+};
+
+struct DataSectionIndexes
+{
+  std::size_t data = static_cast<std::size_t>(-1);
+  std::size_t tdata = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> custom;
 };
 
 std::size_t intern_data_section(
-    const std::string & name, std::uint64_t flags,
+    DataSectionBuffer::Kind kind, lowir_model::StringId name,
+    std::uint64_t flags,
     std::vector<DataSectionBuffer> & sections,
-    std::unordered_map<std::string, std::size_t> & indexes)
+    DataSectionIndexes & indexes)
 {
-  const std::unordered_map<std::string, std::size_t>::const_iterator found =
-    indexes.find(name);
-  if(found != indexes.end()) {
-    sections[found->second].flags |= flags;
-    return found->second;
+  std::size_t * slot = 0;
+  if(kind == DataSectionBuffer::DSK_DATA) {
+    slot = &indexes.data;
+  } else if(kind == DataSectionBuffer::DSK_TDATA) {
+    slot = &indexes.tdata;
+  } else {
+    const std::uint32_t identity = name;
+    if(!name.valid() || identity >= indexes.custom.size())
+      throw std::logic_error("invalid custom section identity");
+    slot = &indexes.custom[identity];
+  }
+  if(*slot != static_cast<std::size_t>(-1)) {
+    sections[*slot].flags |= flags;
+    return *slot;
   }
   const std::size_t index = sections.size();
-  indexes[name] = index;
-  sections.push_back(DataSectionBuffer(name, flags));
+  *slot = index;
+  sections.push_back(DataSectionBuffer(kind, name, flags));
   return index;
+}
+
+const std::string & data_section_name(
+    const lowir_model::SealedStringPool & strings,
+    const DataSectionBuffer & section)
+{
+  static const std::string data = ".data";
+  static const std::string tdata = ".tdata";
+  return section.kind == DataSectionBuffer::DSK_DATA ? data :
+    section.kind == DataSectionBuffer::DSK_TDATA ? tdata :
+    strings.get(section.custom_name);
 }
 
 }  // namespace
@@ -2866,8 +2895,11 @@ void write_linux_relocatable(
         std::chrono::steady_clock::now() - started).count());
   }
   std::vector<DataSectionBuffer> data_sections;
-  std::unordered_map<std::string, std::size_t> data_section_indexes;
-  intern_data_section(".data", 3, data_sections, data_section_indexes);
+  DataSectionIndexes data_section_indexes;
+  data_section_indexes.custom.assign(
+    program.strings.size() + 1, static_cast<std::size_t>(-1));
+  intern_data_section(DataSectionBuffer::DSK_DATA, lowir_model::StringId(),
+    3, data_sections, data_section_indexes);
   data_sections[0].content.bind_symbol_names(program.symbol_names);
   data_sections[0].content.bind_strings(program.strings);
   data_sections[0].content.bind_stats(stats);
@@ -2876,13 +2908,15 @@ void write_linux_relocatable(
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
     if(suppressed_globals[global.symbol]) continue;
-    const std::string section_name = global.section_name.valid() ?
-      text.literal_spelling(global.section_name) :
-      global.thread_local_storage ? ".tdata" : ".data";
+    const DataSectionBuffer::Kind section_kind =
+      global.section_name.valid() ? DataSectionBuffer::DSK_CUSTOM :
+      global.thread_local_storage ? DataSectionBuffer::DSK_TDATA :
+      DataSectionBuffer::DSK_DATA;
     const std::uint64_t flags = 2 | (global.readonly ? 0 : 1) |
       (global.thread_local_storage ? 0x400 : 0);
     const std::size_t section_index = intern_data_section(
-      section_name, flags, data_sections, data_section_indexes);
+      section_kind, global.section_name, flags,
+      data_sections, data_section_indexes);
     DataSectionBuffer & section = data_sections[section_index];
     section.content.bind_symbol_names(program.symbol_names);
     section.content.bind_strings(program.strings);
@@ -2961,7 +2995,8 @@ void write_linux_relocatable(
   encoded_data_sections.reserve(data_sections.size());
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     encoded_data_sections.push_back(encoded_section(
-      std::move(data_sections[i].content), data_sections[i].name,
+      std::move(data_sections[i].content),
+      data_section_name(program.strings, data_sections[i]),
       data_sections[i].flags, data_sections[i].alignment));
   const std::vector<unsigned char> image = make_linux_relocatable_image(
     source, encoded_section(std::move(text), ".text", 6, 16),
