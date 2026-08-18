@@ -73,6 +73,20 @@ bool IsLambdaCaptureMember(
 		program.entities[member.member_owner].lambda_closure;
 }
 
+std::string MissingStorageBindingDetail(
+	const pa11::Program& program, pa11::BindingId binding)
+{
+	std::string detail = std::to_string(binding);
+	if (binding >= program.bindings.size()) return detail;
+	const pa11::BindingRecord& missing = program.bindings[binding];
+	detail += " name=" + program.names.Get(missing.name);
+	if (missing.qualified_name != 0)
+		detail += " qualified=" + program.names.Get(missing.qualified_name);
+	detail += " kind=" +
+		std::to_string(static_cast<unsigned>(missing.kind));
+	return detail;
+}
+
 bool IsNullPointerLiteralCast(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& source, pa11::TypeId target)
 {

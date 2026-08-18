@@ -23,6 +23,21 @@ template <class Derived>
 class SlotPlanning
 {
 protected:
+	bool HasLoweredStorage(BindingId binding) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (binding < derived.binding_indirect_parameters_.size() &&
+			derived.binding_indirect_parameters_[binding] != kNoLowId)
+			return true;
+		if (binding < derived.binding_slots_.size() &&
+			derived.binding_slots_[binding] != kNoLowId)
+			return true;
+		if (binding < derived.program_.bindings.size())
+			binding = derived.program_.bindings[binding].canonical;
+		return binding < derived.global_symbols_.size() &&
+			derived.global_symbols_[binding] != kNoLowId;
+	}
+
 	void ResetFunctionSlots()
 	{
 		Derived& derived = static_cast<Derived&>(*this);

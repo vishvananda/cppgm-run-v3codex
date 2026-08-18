@@ -982,7 +982,7 @@ private:
 			return Operand(Operand::GLOBAL, global, type);
 		}
 		throw std::runtime_error("PA15 binding has no lowered storage: " +
-			std::to_string(binding));
+			MissingStorageBindingDetail(program_, binding));
 	}
 
 	bool BindingIsReference(BindingId binding) const
@@ -1336,6 +1336,8 @@ private:
 		{
 			if (record.constant && record.binding != kNoBinding &&
 				(program_.IsStaticDataMember(record.binding) ||
+				 (program_.bindings[record.binding].kind == BIND_VARIABLE &&
+				  !HasLoweredStorage(record.binding)) ||
 				 program_.bindings[record.binding].kind == BIND_PARAMETER))
 				result = Operand(record.constant_value, record.constant_high, LowerExpressionType(record.type));
 			else if (record.binding != kNoBinding && record.binding < function_symbols_.size() &&

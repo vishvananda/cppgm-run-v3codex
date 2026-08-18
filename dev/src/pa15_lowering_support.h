@@ -34,6 +34,8 @@ pa11::EntityId LambdaClosureEntity(
 	const pa11::Program& program, pa11::TypeId type);
 bool IsLambdaCaptureMember(
 	const pa11::Program& program, pa11::BindingId binding);
+std::string MissingStorageBindingDetail(
+	const pa11::Program& program, pa11::BindingId binding);
 
 class PresentationNameMap
 {
