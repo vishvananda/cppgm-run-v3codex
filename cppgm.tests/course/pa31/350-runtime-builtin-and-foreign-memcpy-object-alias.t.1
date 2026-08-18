@@ -1,0 +1,11 @@
+extern "C" void* memcpy(void*, const void*, __SIZE_TYPE__) noexcept;
+
+int main()
+{
+  char source[4] = {1, 2, 3, 4};
+  char first[4] = {};
+  char second[4] = {};
+  __builtin_memcpy(first, source, sizeof source);
+  memcpy(second, first, sizeof first);
+  return second[0] == 1 && second[3] == 4 ? 0 : 1;
+}
