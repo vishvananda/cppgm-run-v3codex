@@ -704,3 +704,18 @@ load already targets the return register before machine optimization.
 compilers.  They remain proposed because the course reference introduces the
 temporary copies or expanded multiply/add sequences that the public placement
 rule excludes.
+
+The frame-home reuse follow-up fixes a correctness hole in loop interval
+construction.  A nested loop body may be serialized after an outer loop's
+textual backedge; treating that backedge block as the outer interval's end let
+the later body reuse storage still needed by the next outer iteration.  The
+analysis now merges overlapping source-order backedge intervals before
+extending invariant lifetimes.  It visits every block and backedge a constant
+number of times, adds only two dense block-indexed vectors, and adds no
+string-keyed hot-path state or fixed-point rescan.
+
+`cppgm.tests/course/pa29/noncontiguous-loop-frame-home-lifetime.t` is the
+active behavior reducer.  Before the fix `%original` and `%replacement`
+shared one frame offset and the program returned 1; afterward they have
+separate homes and the program returns 0.  The course reference also returns
+0.  No pre-existing PA29 MIR fixture changes.

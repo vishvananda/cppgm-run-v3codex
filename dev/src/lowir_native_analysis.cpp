@@ -229,6 +229,29 @@ void extend_loop_liveness(FunctionFacts & facts,
         loop_ends_at[found->second].push_back(i);
     }
   }
+  // A nested loop's blocks may follow the outer loop's textual backedge.
+  // Merge overlapping source-order loop intervals so values defined outside
+  // the entire cyclic region remain live through those later blocks.  Each
+  // block and backedge is visited a constant number of times.
+  std::vector<std::size_t> loop_region_start(block_count, block_count);
+  std::vector<std::size_t> loop_region_end(block_count, 0);
+  for(std::size_t start = 0; start < block_count; ) {
+    if(loop_ends_at[start].empty()) {
+      ++start;
+      continue;
+    }
+    std::size_t end = *std::max_element(
+      loop_ends_at[start].begin(), loop_ends_at[start].end());
+    for(std::size_t scan = start + 1; scan <= end; ++scan)
+      if(!loop_ends_at[scan].empty())
+        end = std::max(end, *std::max_element(
+          loop_ends_at[scan].begin(), loop_ends_at[scan].end()));
+    for(std::size_t block = start; block <= end; ++block) {
+      loop_region_start[block] = start;
+      loop_region_end[block] = end;
+    }
+    start = end + 1;
+  }
   std::vector<std::vector<std::size_t> > call_loop_ends_at(block_count);
   for(std::size_t start = 0; start < block_count; ++start)
     for(std::size_t i = 0; i < loop_ends_at[start].size(); ++i) {
@@ -293,10 +316,16 @@ void extend_loop_liveness(FunctionFacts & facts,
       loop_start_for_block[use_block] != block_count &&
       definition != definition_blocks.end() &&
       (parameter || definition->second < loop_start_for_block[use_block]);
-    if(loop_invariant) {
+    const bool region_invariant =
+      loop_region_start[use_block] != block_count &&
+      definition != definition_blocks.end() &&
+      (parameter || definition->second < loop_region_start[use_block]);
+    if(loop_invariant || region_invariant) {
       facts.loop_invariant_values.insert(block_uses[i].first);
       facts.last_use[block_uses[i].first] = std::max(
-        facts.last_use[block_uses[i].first], block_last_position[loop_end]);
+        facts.last_use[block_uses[i].first],
+        block_last_position[region_invariant ?
+          std::max(loop_end, loop_region_end[use_block]) : loop_end]);
     }
     if(call_loop_start_for_block[use_block] != block_count &&
        definition != definition_blocks.end() &&
