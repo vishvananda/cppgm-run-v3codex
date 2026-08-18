@@ -80,6 +80,9 @@ A current `-O0 --stats` run reported:
 | MIR instructions | 214,496 |
 | Output size | 4,417,176 bytes |
 
+The baseline object SHA-256 is
+`87bdd91604b0a3e62fdd0c7b2851a1104b2bf0f95c479f2c5a6613f9a6a19faa`.
+
 The existing `adapt_ns` measurement overlaps frontend and typed lowering and
 therefore cannot be added to those phases.  Its residual implies roughly 0.35
 seconds of adapter, preparation, and O0 work, but phase 0 below must replace it

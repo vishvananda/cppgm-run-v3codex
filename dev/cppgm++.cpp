@@ -1000,46 +1000,88 @@ cppgm::pa30::CompilerObject compile_source_object(
 	const bool collect_stats = invocation.collect_stats;
   const string source = read_source_file(path);
 	cppgm::LowIRLoweringStats stats;
-	chrono::steady_clock::time_point adapt_started;
-	if(collect_stats) adapt_started = chrono::steady_clock::now();
+	uint64_t text_parse_nanoseconds = 0;
+	uint64_t typed_pipeline_nanoseconds = 0;
+	uint64_t adapter_nanoseconds = 0;
+	uint64_t debug_nanoseconds = 0;
+	uint64_t prune_nanoseconds = 0;
+	uint64_t lowir_opt_nanoseconds = 0;
   cppgm::pa30::CompilerObject object;
   object.target = target;
 	lowir_model::LowirPreparationStats preparation_stats;
 	const bool lowir_input = path.size() >= 6 &&
 		path.compare(path.size() - 6, 6, ".lowir") == 0;
 	if(lowir_input) {
+		chrono::steady_clock::time_point started;
+		if(collect_stats) started = chrono::steady_clock::now();
 		object.lowir = lowir_model::parse_lowir_program_text(
 			source, path, lowir_model::LEP_ALLOW_HELPERS_ONLY);
-		if(prune_unreachable_weak_functions)
+		if(collect_stats) text_parse_nanoseconds = static_cast<uint64_t>(
+			chrono::duration_cast<chrono::nanoseconds>(
+				chrono::steady_clock::now() - started).count());
+		if(prune_unreachable_weak_functions) {
+			if(collect_stats) started = chrono::steady_clock::now();
 			lowir_model::prune_unreachable_weak_functions(object.lowir);
+			if(collect_stats) prune_nanoseconds = static_cast<uint64_t>(
+				chrono::duration_cast<chrono::nanoseconds>(
+					chrono::steady_clock::now() - started).count());
+		}
 	} else {
 		vector<cppgm::LowIRSource> sources;
 		sources.push_back(cppgm::LowIRSource(path, source));
 		const cppgm::PreprocessingOptions options =
 			make_driver_preprocessing_options(invocation);
 		{
+			chrono::steady_clock::time_point started;
+			if(collect_stats) started = chrono::steady_clock::now();
 			const cppgm::pa15_lowir_detail::TypedProgram typed =
 				cppgm::BuildTypedLowIRProgram(sources,
 					options,
 					collect_stats ? &stats : 0, true, true,
 					prune_unreachable_weak_functions);
+			if(collect_stats) typed_pipeline_nanoseconds = static_cast<uint64_t>(
+				chrono::duration_cast<chrono::nanoseconds>(
+					chrono::steady_clock::now() - started).count());
+			if(collect_stats) started = chrono::steady_clock::now();
 			object.lowir = cppgm::AdaptTypedLowIRForNative(typed,
 				collect_stats ? &preparation_stats : 0);
+			if(collect_stats) adapter_nanoseconds = static_cast<uint64_t>(
+				chrono::duration_cast<chrono::nanoseconds>(
+					chrono::steady_clock::now() - started).count());
 		}
-		if(invocation.line_tables)
+		if(invocation.line_tables) {
+			chrono::steady_clock::time_point started;
+			if(collect_stats) started = chrono::steady_clock::now();
 			attach_line_table_debug(&object.lowir, path, source);
+			if(collect_stats) debug_nanoseconds = static_cast<uint64_t>(
+				chrono::duration_cast<chrono::nanoseconds>(
+					chrono::steady_clock::now() - started).count());
+		}
 	}
+	chrono::steady_clock::time_point optimize_started;
+	if(collect_stats) optimize_started = chrono::steady_clock::now();
 	optimize_lowir(&object.lowir, invocation.optimization_level, path,
 		collect_stats);
-	uint64_t adapt_nanoseconds = 0;
-	if(collect_stats) adapt_nanoseconds = static_cast<uint64_t>(
+	if(collect_stats) lowir_opt_nanoseconds = static_cast<uint64_t>(
 		chrono::duration_cast<chrono::nanoseconds>(
-			chrono::steady_clock::now() - adapt_started).count());
+			chrono::steady_clock::now() - optimize_started).count());
 	// These telemetry fields are not semantic compiler-object contents.
 	object.lowir.source_bytes = 0;
 	object.lowir.token_count = 0;
 	if(collect_stats) {
 		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+		const uint64_t typed_accounted_nanoseconds =
+			semantic.elapsed_nanoseconds + stats.lowering_nanoseconds;
+		const uint64_t typed_glue_nanoseconds = typed_pipeline_nanoseconds >
+			typed_accounted_nanoseconds ?
+			typed_pipeline_nanoseconds - typed_accounted_nanoseconds : 0;
+		const uint64_t preparation_nanoseconds =
+			preparation_stats.frontend_canonical_nanoseconds +
+			preparation_stats.serialized_canonical_nanoseconds +
+			preparation_stats.derived_facts_nanoseconds;
+		const uint64_t adapter_build_nanoseconds = adapter_nanoseconds >
+			preparation_nanoseconds ?
+			adapter_nanoseconds - preparation_nanoseconds : 0;
 		cerr << "pa30_compile_stats"
 				 << " file=" << path
 				 << " source_bytes=" << stats.source_bytes
@@ -1207,7 +1249,24 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " semantic_ns=" << semantic.analysis_nanoseconds
 			 << " frontend_ns=" << semantic.elapsed_nanoseconds
 			 << " lowering_ns=" << stats.lowering_nanoseconds
-			 << " adapt_ns=" << adapt_nanoseconds << '\n';
+			 << " typed_glue_ns=" << typed_glue_nanoseconds
+			 << " adapter_build_ns=" << adapter_build_nanoseconds
+			 << " preparation_ns=" << preparation_nanoseconds
+			 << " adapt_ns=" << adapter_nanoseconds
+			 << " text_parse_ns=" << text_parse_nanoseconds
+			 << " prune_ns=" << prune_nanoseconds
+			 << " debug_ns=" << debug_nanoseconds
+			 << " lowir_opt_ns=" << lowir_opt_nanoseconds
+			 << " lowir_type_record_bytes="
+			 << sizeof(lowir_model::LowType)
+			 << " lowir_operand_record_bytes="
+			 << sizeof(lowir_model::Operand)
+			 << " lowir_instruction_record_bytes="
+			 << sizeof(lowir_model::Instruction)
+			 << " mir_operand_record_bytes="
+			 << sizeof(mir_model::Operand)
+			 << " mir_instruction_record_bytes="
+			 << sizeof(mir_model::Instruction) << '\n';
 		report_lowir_preparation_stats(path, stats, preparation_stats);
 	}
   return object;
