@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <stdexcept>
 #include <utility>
 
@@ -350,7 +351,6 @@ std::string host_symbol_spelling(const std::string & raw);
 
 HostSection make_host_lsda(
     std::vector<HostFunctionLayout> & functions,
-    const EncodedLabelIndex & encoded_labels,
     const lowir_model::LowirProgram & program,
     const std::unordered_map<std::string, std::string> & declarations,
     std::vector<HostRelocation> & relocations)
@@ -365,17 +365,21 @@ HostSection make_host_lsda(
     function.lsda_offset = section.bytes.size();
     std::vector<unsigned char> call_table;
     std::vector<unsigned char> actions;
-    std::map<std::string, std::size_t> action_offsets;
+    const std::size_t no_action = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> action_offsets(
+      function.clauses.size(), no_action);
     std::map<long long, lowir_model::SymbolId> type_symbols;
     std::map<lowir_model::SymbolId, long long> selectors_by_type;
     std::map<std::vector<lowir_model::SymbolId>, long long> filter_selectors;
     std::vector<unsigned char> exception_specs;
     long long max_selector = 0;
-    for(std::map<std::string,
-          std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
-          function.clauses.begin(); clauses != function.clauses.end();
-        ++clauses) {
-      const std::vector<mir_model::MirHostEhClause> & list = clauses->second;
+    for(std::size_t ordered = 0;
+        ordered < function.clause_order.size(); ++ordered) {
+      const std::uint32_t block = function.clause_order[ordered];
+      if(block >= function.clauses.size())
+        throw std::logic_error("invalid host EH clause identity");
+      const std::vector<mir_model::MirHostEhClause> & list =
+        function.clauses[block];
       for(std::size_t clause = 0; clause < list.size(); ++clause) {
         if(list[clause].kind != mir_model::MirHostEhClause::HC_CATCH) continue;
         max_selector = std::max(max_selector, list[clause].selector);
@@ -385,11 +389,11 @@ HostSection make_host_lsda(
           selectors_by_type[list[clause].type_symbol] = list[clause].selector;
       }
     }
-    for(std::map<std::string,
-          std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
-          function.clauses.begin(); clauses != function.clauses.end();
-        ++clauses) {
-      const std::vector<mir_model::MirHostEhClause> & list = clauses->second;
+    for(std::size_t ordered = 0;
+        ordered < function.clause_order.size(); ++ordered) {
+      const std::uint32_t block = function.clause_order[ordered];
+      const std::vector<mir_model::MirHostEhClause> & list =
+        function.clauses[block];
       for(std::size_t clause = 0; clause < list.size(); ++clause) {
         if(list[clause].kind != mir_model::MirHostEhClause::HC_FILTER)
           continue;
@@ -413,11 +417,11 @@ HostSection make_host_lsda(
         append_uleb128(exception_specs, 0);
       }
     }
-    for(std::map<std::string,
-          std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
-          function.clauses.begin(); clauses != function.clauses.end();
-        ++clauses) {
-      const std::vector<mir_model::MirHostEhClause> & list = clauses->second;
+    for(std::size_t ordered = 0;
+        ordered < function.clause_order.size(); ++ordered) {
+      const std::uint32_t block = function.clause_order[ordered];
+      const std::vector<mir_model::MirHostEhClause> & list =
+        function.clauses[block];
       bool catches = false;
       for(std::size_t clause = 0; clause < list.size(); ++clause)
         catches = catches ||
@@ -440,7 +444,7 @@ HostSection make_host_lsda(
                 static_cast<std::int64_t>(displacement));
         next_action = action;
       }
-      action_offsets[clauses->first] = next_action + 1;
+      action_offsets[block] = next_action + 1;
     }
 
     std::vector<HostFunctionLayout::CallSite> sites = function.call_sites;
@@ -462,22 +466,13 @@ HostSection make_host_lsda(
         append_uleb128(call_table, 0);
         append_uleb128(call_table, 0);
       }
-      const std::string landing_name = function.internal_symbol + "::" +
-        sites[site].landing_pad;
-      const EncodedLabelIndex::const_iterator landing =
-        encoded_labels.find(landing_name);
-      if(landing == encoded_labels.end() || !landing->second.text ||
-         landing->second.section != function.text_section)
-        throw std::logic_error("host EH landing pad has no encoded label");
       append_uleb128(call_table, sites[site].start);
       append_uleb128(call_table, sites[site].length);
-      append_uleb128(call_table, landing->second.offset - function.offset);
-      const std::string & action_pad = sites[site].action_pad.empty() ?
-        sites[site].landing_pad : sites[site].action_pad;
-      const std::map<std::string, std::size_t>::const_iterator action =
-        action_offsets.find(action_pad);
-      append_uleb128(call_table,
-        action == action_offsets.end() ? 0 : action->second);
+      append_uleb128(call_table, sites[site].landing_pad_offset);
+      const std::uint32_t action_block = sites[site].action_block;
+      const std::size_t action = action_block < action_offsets.size() ?
+        action_offsets[action_block] : no_action;
+      append_uleb128(call_table, action == no_action ? 0 : action);
       cursor = std::max(cursor, sites[site].start + sites[site].length);
     }
     if(cursor < function.size) {
@@ -981,7 +976,7 @@ void collect_host_symbols(
   std::sort(globals.begin(), globals.end(), stable_symbol_order);
 }
 
-std::unordered_set<std::string> host_external_global_definitions(
+std::vector<unsigned char> host_external_global_definitions(
     const lowir_model::LowirProgram & source,
     const mir_model::MirProgram & program)
 {
@@ -992,17 +987,16 @@ std::unordered_set<std::string> host_external_global_definitions(
        !source.global_declarations[i].metadata.object_symbol.empty())
       external_objects.insert(
         source.global_declarations[i].metadata.object_symbol);
-  std::unordered_set<std::string> suppressed;
+  std::vector<unsigned char> suppressed(program.symbol_names.size(), 0);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
     if(!global.object_symbol.valid() || !external_objects.count(
          mir_model::mir_string(program, global.object_symbol))) continue;
-    suppressed.insert(mir_model::mir_symbol_name(program, global.symbol));
+    suppressed[global.symbol] = 1;
     for(std::size_t j = 0; j < global.data_items.size(); ++j)
       if(global.data_items[j].kind ==
            mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR)
-        suppressed.insert(mir_model::mir_symbol_name(
-          program, global.data_items[j].symbol));
+        suppressed[global.data_items[j].symbol] = 1;
   }
   return suppressed;
 }
@@ -1158,7 +1152,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
       mutable_data[i], encoded_labels, program, declarations);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
-    functions, encoded_labels, program, declarations, lsda_relocations);
+    functions, program, declarations, lsda_relocations);
   std::vector<HostRelocation> eh_relocations;
   HostSection eh = make_host_eh_frame(
     functions, text_sections, eh_relocations);

@@ -180,6 +180,12 @@ lowir_model::LocalLabelId CodeBuffer::block_label(
 	return block_labels_[index];
 }
 
+std::size_t CodeBuffer::label_offset(
+	lowir_model::LocalLabelId label) const
+{
+	return local_label_offset(label);
+}
+
 std::size_t CodeBuffer::size() const
 {
 	return bytes_.size();

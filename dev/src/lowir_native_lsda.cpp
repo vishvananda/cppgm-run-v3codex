@@ -16,8 +16,8 @@ typedef object_elf_detail::HostFunctionLayout HostFunctionLayout;
 bool same_handler(const HostFunctionLayout::CallSite & left,
                   const HostFunctionLayout::CallSite & right)
 {
-  return left.landing_pad == right.landing_pad &&
-    left.action_pad == right.action_pad;
+  return left.landing_pad_offset == right.landing_pad_offset &&
+    left.action_block == right.action_block;
 }
 
 }  // namespace

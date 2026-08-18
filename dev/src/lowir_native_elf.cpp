@@ -62,8 +62,8 @@ std::string native_object_symbol(
 
 struct HostEhStackCleanup
 {
-  std::string label;
-  std::string landing_pad;
+  lowir_model::LocalLabelId label;
+  lowir_model::BlockId landing_block;
   std::size_t stack_bytes = 0;
 };
 
@@ -2442,7 +2442,7 @@ void emit_host_instruction(
     CodeBuffer & out,
     const mir_model::MirInstruction & instruction,
     const mir_model::MirFunction & function,
-    const std::string & landing_pad,
+    lowir_model::BlockId landing_block,
     HostFunctionLayout & layout,
     std::vector<HostEhStackCleanup> & stack_cleanups)
 {
@@ -2483,24 +2483,23 @@ void emit_host_instruction(
     instruction.opcode == mir_model::MirInstruction::MI_CALL_INDIRECT;
   const std::size_t start = out.size();
   emit_instruction(out, instruction, &function);
-  if(call && !instruction.call_unwind_no && landing_pad.empty()) {
+  if(call && !instruction.call_unwind_no && !landing_block.valid()) {
     lsda_detail::record_unprotected_unwind_range(
       layout, start - layout.offset, out.size() - start);
   } else if(call && !instruction.call_unwind_no) {
     HostFunctionLayout::CallSite site;
     site.start = start - layout.offset;
     site.length = out.size() - start;
-    site.action_pad = landing_pad;
+    site.action_block = landing_block;
     if(instruction.call_stack_bytes) {
       HostEhStackCleanup cleanup;
-      cleanup.label = ".__host_eh_stack_cleanup_" +
-        std::to_string(stack_cleanups.size());
-      cleanup.landing_pad = landing_pad;
+      cleanup.label = out.internal_label("host_eh_stack_cleanup");
+      cleanup.landing_block = landing_block;
       cleanup.stack_bytes = instruction.call_stack_bytes;
-      site.landing_pad = cleanup.label;
+      site.landing_label = cleanup.label;
       stack_cleanups.push_back(cleanup);
     } else {
-      site.landing_pad = landing_pad;
+      site.landing_label = out.block_label(landing_block);
     }
     layout.call_sites.push_back(site);
   }
@@ -2526,13 +2525,21 @@ HostFunctionLayout emit_prepared_host_function(
     layout.object_symbol = out.literal_spelling(function.object_symbol);
   layout.offset = out.size();
   layout.callee_saved_regs = function.callee_saved_regs;
+  layout.clauses = function.host_eh_clauses;
   for(std::size_t block = 0; block < function.host_eh_clauses.size(); ++block)
     if(!function.host_eh_clauses[block].empty()) {
       if(block >= function.block_labels.size())
         throw std::logic_error("invalid MIR block identity");
-      layout.clauses[out.literal_spelling(function.block_labels[block])] =
-        function.host_eh_clauses[block];
+      layout.clause_order.push_back(lowir_model::BlockId(
+        static_cast<std::uint32_t>(block)));
     }
+  std::sort(layout.clause_order.begin(), layout.clause_order.end(),
+    [&](lowir_model::BlockId left, lowir_model::BlockId right) {
+      return out.literal_spelling(function.block_labels[
+               static_cast<std::uint32_t>(left)]) <
+             out.literal_spelling(function.block_labels[
+               static_cast<std::uint32_t>(right)]);
+    });
   out.label(function.symbol);
   const std::string object_symbol =
     native_object_symbol(out, function.object_symbol);
@@ -2542,17 +2549,11 @@ HostFunctionLayout emit_prepared_host_function(
   emit_function_prologue(out, function);
   const frame_forwarding::FrameReloadPlan frame_reload_plan =
     frame_forwarding::find_single_use_reloads(function);
-  const std::string no_landing_pad;
   std::vector<HostEhStackCleanup> stack_cleanups;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(out.block_label(block.id));
     const std::uint32_t block_id = block.id;
-    if(block_id >= function.block_labels.size())
-      throw std::logic_error("invalid MIR block identity");
-    const std::string & block_name =
-      out.literal_spelling(function.block_labels[block_id]);
-    out.label_at(function_name + "::" + block_name, out.size());
     const address_folding::TransientScratchUsePlan scratch_uses(
       block.instructions);
     const std::vector<bool> flags_live =
@@ -2616,19 +2617,17 @@ HostFunctionLayout emit_prepared_host_function(
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
       emit_host_instruction(out, block.instructions[j], function,
-        landing_block ? out.literal_spelling(function.block_labels[
-          static_cast<std::uint32_t>(
-            function.blocks[landing_block - 1].id)]) :
-                        no_landing_pad,
+        landing_block ? function.blocks[landing_block - 1].id :
+                        lowir_model::BlockId(),
         layout, stack_cleanups);
     }
   }
   for(std::size_t i = 0; i < stack_cleanups.size(); ++i) {
-    out.label(function_name + "::" + stack_cleanups[i].label);
+    out.label(stack_cleanups[i].label);
     emit_stack_adjust(out, false,
       static_cast<unsigned>(stack_cleanups[i].stack_bytes));
-    emit_unconditional_jump(
-      out, function_name + "::" + stack_cleanups[i].landing_pad);
+    emit_unconditional_jump(out,
+      out.block_label(stack_cleanups[i].landing_block));
   }
   const CodeOffsetAdjustment adjustment =
     out.relax_forward_branches(layout.offset);
@@ -2639,6 +2638,8 @@ HostFunctionLayout emit_prepared_host_function(
     const std::size_t new_end = adjustment.translate(old_end);
     layout.call_sites[i].start = new_start - layout.offset;
     layout.call_sites[i].length = new_end - new_start;
+    layout.call_sites[i].landing_pad_offset =
+      out.label_offset(layout.call_sites[i].landing_label) - layout.offset;
   }
   for(std::size_t i = 0; i < layout.unprotected_unwind_ranges.size(); ++i) {
     const std::size_t old_start = layout.offset +
@@ -2741,7 +2742,8 @@ void write_linux_executable(const std::string & path,
                             const std::vector<RelocatableObject> & objects,
                             Stats * stats)
 {
-  if(program.target != "linux") throw std::runtime_error("ELF writer requires linux target");
+  if(program.target != mir_model::MirProgram::TARGET_LINUX)
+    throw std::runtime_error("ELF writer requires linux target");
   if(program.startup.empty()) throw std::runtime_error("native executable has no startup entry");
   std::chrono::steady_clock::time_point encode_start;
   if(stats) encode_start = std::chrono::steady_clock::now();
@@ -2839,11 +2841,11 @@ void write_linux_relocatable(
   intern_data_section(".data", 3, data_sections, data_section_indexes);
   data_sections[0].content.bind_symbol_names(program.symbol_names);
   data_sections[0].content.bind_strings(*program.strings);
-  const std::unordered_set<std::string> suppressed_globals =
+  const std::vector<unsigned char> suppressed_globals =
     host_external_global_definitions(source, program);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
-    if(suppressed_globals.count(text.symbol_name(global.symbol))) continue;
+    if(suppressed_globals[global.symbol]) continue;
     const std::string section_name = global.section_name.valid() ?
       text.literal_spelling(global.section_name) :
       global.thread_local_storage ? ".tdata" : ".data";
@@ -2871,19 +2873,22 @@ void write_linux_relocatable(
   for(std::size_t i = 0; i < functions.size(); ++i)
   {
     needs_personality = needs_personality || !functions[i].call_sites.empty();
-    for(std::map<std::string,
-          std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
-          functions[i].clauses.begin(); clauses != functions[i].clauses.end();
-        ++clauses)
-      for(std::size_t clause = 0; clause < clauses->second.size(); ++clause)
-        if(clauses->second[clause].kind ==
+    for(std::size_t block = 0; block < functions[i].clauses.size(); ++block)
+      for(std::size_t clause = 0;
+          clause < functions[i].clauses[block].size(); ++clause)
+        if(functions[i].clauses[block][clause].kind ==
              mir_model::MirHostEhClause::HC_CATCH &&
-           !clauses->second[clause].catch_all)
+           !functions[i].clauses[block][clause].catch_all)
         {
-          record_eh_type(clauses->second[clause].type_symbol);
+          record_eh_type(functions[i].clauses[block][clause].type_symbol);
         }
-        else if(clauses->second[clause].kind == mir_model::MirHostEhClause::HC_FILTER)
-          for(std::size_t type = 0; type < clauses->second[clause].filter_type_symbols.size(); ++type) record_eh_type(clauses->second[clause].filter_type_symbols[type]);
+        else if(functions[i].clauses[block][clause].kind ==
+                  mir_model::MirHostEhClause::HC_FILTER)
+          for(std::size_t type = 0;
+              type < functions[i].clauses[block][clause].filter_type_symbols.size();
+              ++type)
+            record_eh_type(functions[i].clauses[block][clause].
+              filter_type_symbols[type]);
   }
   std::vector<std::string> ordered_catch_types(
     catch_types.begin(), catch_types.end());

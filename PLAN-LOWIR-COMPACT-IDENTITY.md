@@ -1359,6 +1359,43 @@ All 163 self/inception objects match byte-for-byte.  The final binaries are
 byte-identical at 16,852,472 bytes with SHA-256
 `8ca0082229994f91b5df089f117e8e7ebc0c23ac7164acb7e947c500d5b4d35c`.
 
+### CI26: keep hosted-EH planning compact through LSDA encoding
+
+Hosted object emission no longer converts landing `BlockId` values into block
+names, constructs `function::block` labels, or stores clauses and call-site
+handlers in string-keyed maps.  Call sites now retain `BlockId` and
+`LocalLabelId`; branch relaxation publishes the final landing offset directly
+to LSDA construction.  Clause storage is dense by `BlockId`, with a compact
+sorted ID list preserving the previous presentation-name order and therefore
+the exact object layout.  Suppressed host-global state is likewise a dense
+symbol bitmap rather than a set of rendered symbol names.
+
+The last unused MIR debug-variable spelling is now a pooled `StringId`, and
+the fixed native target is an enum instead of an owning string.  Human-facing
+EH errors continue to render function and block spellings only on the error
+path.  Final ELF symbol, relocation, section, COMDAT, and string-table names
+remain text because those bytes are the required object-file boundary.
+
+PA29, PA30, PA37, and PA38 report 443/443 passing tests.  The full root report
+passes 5,204/5,204 tests and the PA39 file audit has zero fatal findings.  All
+MIR and host-object fixtures are unchanged.  The frozen object remains
+byte-identical to CI25 at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+Three A/B/B/A blocks against the immutable CI25 compiler produced
+baseline/candidate medians of 5.045/4.960 seconds user, 5.545/5.440 seconds
+wall, and 365,476/365,116 KiB peak RSS.  Every paired block improved: the
+candidate/baseline medians were 0.9821 for user time, 0.9810 for wall time,
+and 0.9991 for RSS.  The consistent 1.8--1.9% compile-time reduction is
+credited to removing the hosted-EH string round trip.
+
+A clean 32-way self build takes 18.15 seconds wall, 403.09 seconds aggregate
+user time, and 242,848 KiB peak RSS.  A separate 32-way inception compare takes
+1:52.67 wall, 2,943.85 seconds aggregate user time, and 233,176 KiB peak RSS.
+All 163 self/inception objects match byte-for-byte.  The final binaries are
+byte-identical at 16,829,104 bytes with SHA-256
+`a9d4d455c7737eff04a2c828cec97ba69169aabd1b5ba43d8e00d8aaebee3959`.
+
 ## 11. Current residual audit and next slices
 
 The cumulative hot-path milestone now passes the performance gate.  Three
@@ -1389,17 +1426,17 @@ follows:
 | LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings and are copied into MIR | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
 | PA37 inliners | Completed in CI23: semantic allocation is monotonic by compact ID; exact-name collision state uses numeric generated ordinals and pooled slot IDs | Keep the sparse numeric reservation for arbitrary explicit input; do not rebuild full caller string sets | Complete |
 | MIR program shell | CI24 completes semantic symbols and pooled block labels; CI25 pools object names, sections, aliases, and required global literals | Keep presentation rendering at MIR/ELF boundaries and parsed ordinary integer values text-free | Complete |
-| MIR debug metadata | `DebugVariable::name` remains owning text | Intern once in the existing MIR pool and carry `StringId` | Low on the frozen no-debug lane |
-| Native encoding before ELF | named `CodeBuffer` labels/fixups and object/EH planning maps still hash runtime, global-data, host-EH, declaration, COMDAT, and section spellings | Extend tagged fixup targets to runtime/object/EH IDs; use dense vectors for compiler-owned domains and resolve names once when constructing ELF symbol, relocation, section, and string tables | High within encoding |
+| MIR debug metadata | CI26 pools the remaining debug-variable spelling and replaces the fixed target string with an enum | Render only for future debug output or diagnostics | Complete |
+| Native encoding before ELF | CI26 removes host-EH and suppressed-symbol string identity; named `CodeBuffer` fixups and declaration/COMDAT/section maps remain | Keep arbitrary imported-object and final ELF names textual; separately compact fixed compiler-runtime labels only if measurement justifies the added tag domain | Output-boundary residual |
 | Explicit `.lowir` parsing and private-object joining | arbitrary input spellings require string maps to diagnose duplicates and unite independently owned programs | Keep transient boundary resolvers, preferably keyed by interned IDs/spans, and destroy them after producing compact identity | Not on frozen source hot path |
 | ELF construction | final symbol, COMDAT, section, relocation, and string-table indexes require byte identity | Keep string lookup at this output boundary; do not force it back into MIR or native analysis | Required output work |
 
 The next changesets should therefore be:
 
-1. Finish the executable/host-EH encoder boundary so the ELF writer
-   is the only owner that hashes output spellings.
-2. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
-   the O0 hot path is clean.
+1. Re-audit named native fixups and object maps, retaining text only for
+   arbitrary imported-object names and final ELF identity.
+2. Measure the cumulative compact-identity result against the recorded clean
+   baseline before beginning value-placement work.
 
 String-keyed maps in `lowir_parse.cpp`, the resolution portion of
 `lowir_identity.cpp`, and the ELF symbol/string-table builder remain valid.

@@ -313,7 +313,7 @@ struct DebugVariable
     XmmRegister xmm = XMM_0;
   };
 
-  std::string name;
+  lowir_model::StringId name;
   MachineType type;
   InstructionDebugLocation decl_location;
   std::vector<Range> ranges;
@@ -410,9 +410,13 @@ struct RuntimeData
 
 struct Program
 {
+  enum Target
+  {
+    TARGET_LINUX
+  } target = TARGET_LINUX;
+
   Program();
 
-  std::string target;
   std::vector<lowir_model::StringId> symbol_names;
   // Presentation identities are dense in MIR.  The shared pool lets streamed
   // function lowering intern literals and metadata after the program shell

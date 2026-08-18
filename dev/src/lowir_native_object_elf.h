@@ -6,7 +6,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -60,8 +59,9 @@ struct HostFunctionLayout
   {
     std::size_t start = 0;
     std::size_t length = 0;
-    std::string landing_pad;
-    std::string action_pad;
+    lowir_model::LocalLabelId landing_label;
+    std::size_t landing_pad_offset = 0;
+    lowir_model::BlockId action_block;
   };
 
   std::string internal_symbol;
@@ -70,7 +70,8 @@ struct HostFunctionLayout
   std::size_t offset = 0;
   std::size_t size = 0;
   std::vector<X64Register> callee_saved_regs;
-  std::map<std::string, std::vector<mir_model::MirHostEhClause> > clauses;
+  std::vector<std::vector<mir_model::MirHostEhClause> > clauses;
+  std::vector<lowir_model::BlockId> clause_order;
   std::vector<CallSite> call_sites;
   std::vector<UnwindRange> unprotected_unwind_ranges;
   std::size_t lsda_offset = 0;
@@ -79,7 +80,7 @@ struct HostFunctionLayout
 std::string host_symbol_spelling(const std::string & raw);
 std::unordered_map<std::string, std::string> declaration_object_symbols(
   const lowir_model::LowirProgram & program);
-std::unordered_set<std::string> host_external_global_definitions(
+std::vector<unsigned char> host_external_global_definitions(
   const lowir_model::LowirProgram & source,
   const mir_model::MirProgram & program);
 

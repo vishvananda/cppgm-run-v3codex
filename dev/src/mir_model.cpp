@@ -479,7 +479,9 @@ std::string mir_presentation_name(
 std::string serialize_mir_program(const MirProgram & program)
 {
   std::ostringstream out;
-  out << "machine_ir x86_64 " << program.target << '\n';
+  out << "machine_ir x86_64 "
+      << (program.target == Program::TARGET_LINUX ? "linux" : "invalid")
+      << '\n';
   if(!program.startup.empty()) {
     out << "\nstartup\n";
     for(std::size_t i = 0; i < program.startup.size(); ++i)

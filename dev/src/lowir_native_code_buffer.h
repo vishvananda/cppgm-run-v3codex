@@ -78,6 +78,7 @@ public:
 	void alias(const std::string& name, lowir_model::SymbolId target);
 	void begin_function_blocks(std::size_t count);
 	lowir_model::LocalLabelId block_label(lowir_model::BlockId block) const;
+	std::size_t label_offset(lowir_model::LocalLabelId label) const;
 	std::size_t size() const;
 	bool relocatable_addresses() const;
 	void bind_symbol_names(const std::vector<lowir_model::StringId>& names);
