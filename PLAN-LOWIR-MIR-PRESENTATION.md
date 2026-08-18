@@ -4,14 +4,14 @@ Status: planned
 
 Date: 2026-08-18
 
-Planning anchor: `24e9f2c6`
+Planning anchor: `38b086fe`
 
 The working tree also contains a paused, uncommitted O0 value-placement slice
-in `lowir_native.cpp`, `lowir_native_call_lowering.h`, and
-`lowir_native_memory_lowering.h`.  That slice is not part of this plan and must
-not be mixed into any presentation-identity changeset.  It must first reach its
-own tested commit boundary.  No later O0 placement phase should begin until the
-work in this plan is complete.
+in `lowir_native_address_lowering.h` and `lowir_native_index_lowering.h`.  That
+slice is not part of this plan and must not be mixed into any
+presentation-identity changeset.  It must first reach its own tested commit
+boundary.  No later O0 placement phase should begin until the work in this plan
+is complete.
 
 ## 1. Objective
 
