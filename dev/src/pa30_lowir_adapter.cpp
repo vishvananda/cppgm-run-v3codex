@@ -230,7 +230,21 @@ AdaptedValues PrepareValues(const Function& source,
 	return result;
 }
 
+void AdaptBoundaryFacts(const Symbol& source,
+	lowir_model::FunctionBoundaryMetadata* boundary)
+{
+	boundary->effects = source.effects == Symbol::EFFECTS_READNONE ?
+		lowir_model::CFXM_READNONE :
+		source.effects == Symbol::EFFECTS_READONLY ?
+		lowir_model::CFXM_READONLY :
+		source.effects == Symbol::EFFECTS_READWRITE ?
+		lowir_model::CFXM_READWRITE : lowir_model::CFXM_DEFAULT;
+	if (source.nonthrowing) boundary->unwind = lowir_model::CUM_NO;
+	if (source.noreturn) boundary->returns = lowir_model::CRM_NORETURN;
+}
+
 void AdaptSymbolFacts(const Symbol& source,
+	lowir_model::StringPool* strings,
 	lowir_model::SymbolMetadata* symbol,
 	lowir_model::FunctionBoundaryMetadata* boundary)
 {
@@ -238,25 +252,17 @@ void AdaptSymbolFacts(const Symbol& source,
 		lowir_model::LLM_CPP;
 	symbol->binding = source.internal_linkage ? lowir_model::SBM_INTERNAL :
 		source.weak_linkage ? lowir_model::SBM_WEAK : lowir_model::SBM_STRONG;
-	symbol->object_symbol = source.object_name;
-	symbol->section_name = source.section_name;
+	if (!source.object_name.empty())
+		symbol->object_symbol = strings->intern(source.object_name);
+	if (!source.section_name.empty())
+		symbol->section_name = strings->intern(source.section_name);
 	symbol->keep_internal_alias = false;
 	symbol->prefer_local_object_binding = source.prefer_local_object_binding;
 	symbol->object_output_root = source.object_output_root;
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	symbol->force_inline = source.force_inline;
 	symbol->no_inline = source.no_inline;
-	if (boundary)
-	{
-		boundary->effects = source.effects == Symbol::EFFECTS_READNONE ?
-			lowir_model::CFXM_READNONE :
-			source.effects == Symbol::EFFECTS_READONLY ?
-			lowir_model::CFXM_READONLY :
-			source.effects == Symbol::EFFECTS_READWRITE ?
-			lowir_model::CFXM_READWRITE : lowir_model::CFXM_DEFAULT;
-		if (source.nonthrowing) boundary->unwind = lowir_model::CUM_NO;
-		if (source.noreturn) boundary->returns = lowir_model::CRM_NORETURN;
-	}
+	if (boundary) AdaptBoundaryFacts(source, boundary);
 	switch (source.runtime_role)
 	{
 	case Symbol::RUNTIME_ROLE_NONE: break;
@@ -404,9 +410,8 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 		{
 			if (source.first.id >= program.symbols.size())
 				throw std::logic_error("invalid typed LowIR call target");
-			lowir_model::SymbolMetadata ignored_symbol;
-			AdaptSymbolFacts(program.symbols[source.first.id], &ignored_symbol,
-				&target.call_boundary);
+			AdaptBoundaryFacts(
+				program.symbols[source.first.id], &target.call_boundary);
 		}
 		if (source.extra_count)
 		{
@@ -595,7 +600,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (item.typed) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
-		AdaptSymbolFacts(symbol, &result.metadata, 0);
+		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0);
 		target.global_declarations.push_back(std::move(result));
 	}
 	target.function_declarations.reserve(source.declarations.size());
@@ -609,13 +614,12 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
-		AdaptSymbolFacts(symbol, &result.metadata, &result.boundary);
+		AdaptSymbolFacts(
+			symbol, &target.strings, &result.metadata, &result.boundary);
 		if (symbol.tls_for_symbol != kNoLowId)
 		{
 			result.metadata.tls_for_symbol_id =
 				lowir_model::SymbolId(symbol.tls_for_symbol);
-			result.metadata.tls_for_symbol =
-				At(source.symbols[symbol.tls_for_symbol].name);
 		}
 		target.function_declarations.push_back(std::move(result));
 	}
@@ -629,7 +633,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (item.type.kind != LOW_INVALID) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
-		AdaptSymbolFacts(symbol, &result.metadata, 0);
+		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0);
 		if (item.initializer_kind == Global::STRUCTURED_VALUE)
 		{
 			result.structured = true;
@@ -723,7 +727,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
-		AdaptSymbolFacts(symbol, &result.metadata, &result.boundary);
+		AdaptSymbolFacts(
+			symbol, &target.strings, &result.metadata, &result.boundary);
 		if (item.entry)
 		{
 			result.metadata.role = lowir_model::SR_ENTRY;
@@ -735,8 +740,6 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		{
 			result.metadata.tls_for_symbol_id =
 				lowir_model::SymbolId(symbol.tls_for_symbol);
-			result.metadata.tls_for_symbol =
-				At(source.symbols[symbol.tls_for_symbol].name);
 		}
 		for (std::size_t j = 0; j < item.slots.size(); ++j)
 		{
@@ -778,7 +781,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	for (std::size_t i = 0; i < source.object_aliases.size(); ++i)
 	{
 		lowir_model::ObjectAlias alias;
-		alias.object_symbol = source.object_aliases[i].object_name;
+		alias.object_symbol =
+			target.strings.intern(source.object_aliases[i].object_name);
 		alias.target_id = lowir_model::SymbolId(source.object_aliases[i].target);
 		const Symbol& alias_target =
 			source.symbols[source.object_aliases[i].target];
@@ -788,7 +792,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		{
 			ir_model::ExportedSymbol exported_alias;
 			AppendExport(alias_target, &exported_alias);
-			exported_alias.object_symbol = alias.object_symbol;
+			exported_alias.object_symbol =
+				target.strings.get(alias.object_symbol);
 			target.exported_symbols.push_back(std::move(exported_alias));
 		}
 		target.object_aliases.push_back(std::move(alias));

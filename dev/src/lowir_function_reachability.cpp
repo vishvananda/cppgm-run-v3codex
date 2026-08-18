@@ -73,7 +73,7 @@ private:
 				function.metadata.role == SR_ENTRY ||
 				function.metadata.role == SR_INIT ||
 				function.metadata.role == SR_FINI ||
-				!function.metadata.tls_for_symbol.empty())
+				function.metadata.tls_for_symbol_id.valid())
 				MarkSymbol(function.symbol);
 		}
 		for (std::size_t i = 0; i < program_.globals.size(); ++i)

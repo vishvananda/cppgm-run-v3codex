@@ -314,15 +314,21 @@ lowir_model::Operand ReadOperand(Reader& in,
 }
 
 void WriteSymbolMetadata(Writer& out,
-	const lowir_model::SymbolMetadata& value)
+	const lowir_model::SymbolMetadata& value,
+	const lowir_model::LowirProgram& program)
 {
 	WriteEnum(out, value.role);
 	WriteEnum(out, value.linkage);
 	WriteEnum(out, value.binding);
-	out.String(value.object_symbol);
-	out.String(value.tls_for_symbol);
-	out.String(value.section_segment);
-	out.String(value.section_name);
+	out.String(value.object_symbol.valid() ?
+		program.strings.get(value.object_symbol) : std::string());
+	out.String(value.tls_for_symbol_id.valid() ?
+		lowir_model::lowir_symbol_name(program, value.tls_for_symbol_id) :
+		std::string());
+	out.String(value.section_segment.valid() ?
+		program.strings.get(value.section_segment) : std::string());
+	out.String(value.section_name.valid() ?
+		program.strings.get(value.section_name) : std::string());
 	out.Bool(value.keep_internal_alias);
 	out.Bool(value.prefer_local_object_binding);
 	out.Bool(value.object_output_root);
@@ -331,16 +337,24 @@ void WriteSymbolMetadata(Writer& out,
 	out.Bool(value.no_inline);
 }
 
-lowir_model::SymbolMetadata ReadSymbolMetadata(Reader& in)
+lowir_model::SymbolMetadata ReadSymbolMetadata(
+	Reader& in, lowir_model::StringPool& strings)
 {
 	lowir_model::SymbolMetadata value;
 	value.role = ReadEnum<lowir_model::SymbolRole>(in);
 	value.linkage = ReadEnum<lowir_model::LanguageLinkageMode>(in);
 	value.binding = ReadEnum<lowir_model::SymbolBindingMode>(in);
-	value.object_symbol = in.String();
-	value.tls_for_symbol = in.String();
-	value.section_segment = in.String();
-	value.section_name = in.String();
+	const std::string object_symbol = in.String();
+	const std::string tls_for = in.String();
+	const std::string section_segment = in.String();
+	const std::string section_name = in.String();
+	if (!object_symbol.empty())
+		value.object_symbol = strings.intern(object_symbol);
+	if (!tls_for.empty()) value.tls_for_spelling = strings.intern(tls_for);
+	if (!section_segment.empty())
+		value.section_segment = strings.intern(section_segment);
+	if (!section_name.empty())
+		value.section_name = strings.intern(section_name);
 	value.keep_internal_alias = in.Bool();
 	value.prefer_local_object_binding = in.Bool();
 	value.object_output_root = in.Bool();
@@ -530,7 +544,7 @@ void WriteGlobalDeclaration(Writer& out,
 	out.Bool(value.has_type);
 	WriteType(out, value.type);
 	WriteEnum(out, value.storage);
-	WriteSymbolMetadata(out, value.metadata);
+	WriteSymbolMetadata(out, value.metadata, program);
 }
 
 lowir_model::GlobalDeclaration ReadGlobalDeclaration(Reader& in,
@@ -541,7 +555,7 @@ lowir_model::GlobalDeclaration ReadGlobalDeclaration(Reader& in,
 	value.has_type = in.Bool();
 	value.type = ReadType(in);
 	value.storage = ReadEnum<lowir_model::GlobalStorageMode>(in);
-	value.metadata = ReadSymbolMetadata(in);
+	value.metadata = ReadSymbolMetadata(in, program.strings);
 	return value;
 }
 
@@ -569,7 +583,7 @@ void WriteGlobal(Writer& out, const lowir_model::GlobalDefinition& value,
 		out.I64(item.addr_addend);
 		out.U64(item.zero_bytes);
 	}
-	WriteSymbolMetadata(out, value.metadata);
+	WriteSymbolMetadata(out, value.metadata, program);
 }
 
 lowir_model::GlobalDefinition ReadGlobal(Reader& in,
@@ -595,7 +609,7 @@ lowir_model::GlobalDefinition ReadGlobal(Reader& in,
 		item.addr_addend = in.I64();
 		item.zero_bytes = in.Size();
 	}
-	value.metadata = ReadSymbolMetadata(in);
+	value.metadata = ReadSymbolMetadata(in, program.strings);
 	return value;
 }
 
@@ -607,7 +621,7 @@ void WriteFunctionDeclaration(Writer& out,
 	WriteParameters(out, value.params, program);
 	WriteType(out, value.return_type);
 	WriteBoundary(out, value.boundary);
-	WriteSymbolMetadata(out, value.metadata);
+	WriteSymbolMetadata(out, value.metadata, program);
 }
 
 lowir_model::FunctionDeclaration ReadFunctionDeclaration(Reader& in,
@@ -618,7 +632,7 @@ lowir_model::FunctionDeclaration ReadFunctionDeclaration(Reader& in,
 	value.params = ReadParameters(in, program.strings);
 	value.return_type = ReadType(in);
 	value.boundary = ReadBoundary(in);
-	value.metadata = ReadSymbolMetadata(in);
+	value.metadata = ReadSymbolMetadata(in, program.strings);
 	return value;
 }
 
@@ -646,7 +660,7 @@ void WriteFunction(Writer& out, const lowir_model::Function& value,
 	}
 	WriteDebug(out, value.debug_location, program);
 	WriteBoundary(out, value.boundary);
-	WriteSymbolMetadata(out, value.metadata);
+	WriteSymbolMetadata(out, value.metadata, program);
 }
 
 lowir_model::Function ReadFunction(Reader& in,
@@ -680,7 +694,7 @@ lowir_model::Function ReadFunction(Reader& in,
 	lowir_model::resolve_lowir_function_operands(value, program.strings);
 	value.debug_location = ReadDebug(in, program.strings);
 	value.boundary = ReadBoundary(in);
-	value.metadata = ReadSymbolMetadata(in);
+	value.metadata = ReadSymbolMetadata(in, program.strings);
 	return value;
 }
 
@@ -723,7 +737,7 @@ void WriteProgram(Writer& out, const lowir_model::LowirProgram& value)
 	out.U64(value.object_aliases.size());
 	for (std::size_t i = 0; i < value.object_aliases.size(); ++i)
 	{
-		out.String(value.object_aliases[i].object_symbol);
+		out.String(value.strings.get(value.object_aliases[i].object_symbol));
 		out.String(lowir_model::lowir_symbol_name(
 			value, value.object_aliases[i].target_id));
 	}
@@ -755,7 +769,7 @@ lowir_model::LowirProgram ReadProgram(Reader& in)
 	value.object_aliases.resize(in.Count(16));
 	for (std::size_t i = 0; i < value.object_aliases.size(); ++i)
 	{
-		value.object_aliases[i].object_symbol = in.String();
+		value.object_aliases[i].object_symbol = value.strings.intern(in.String());
 		value.object_aliases[i].target_spelling =
 			value.strings.intern(in.String());
 	}
@@ -769,15 +783,6 @@ lowir_model::LowirProgram ReadProgram(Reader& in)
 }
 
 typedef std::unordered_map<std::string, std::string> RenameMap;
-
-void RenameString(std::string* value, const RenameMap& names,
-	LinkStats* stats)
-{
-	if (value->empty()) return;
-	if (stats) ++stats->rename_probes;
-	const RenameMap::const_iterator found = names.find(*value);
-	if (found != names.end()) *value = found->second;
-}
 
 void RenameStringId(lowir_model::LowirProgram* program,
 	lowir_model::StringId* value, const RenameMap& names, LinkStats* stats)
@@ -801,22 +806,11 @@ void RenameOperand(lowir_model::LowirProgram* program,
 		value->literal = program->strings.intern(found->second);
 }
 
-void RenameMetadata(lowir_model::SymbolMetadata* value,
-	const RenameMap& names, LinkStats* stats)
-{
-	RenameString(&value->tls_for_symbol, names, stats);
-}
-
 void RenameProgram(lowir_model::LowirProgram* program,
 	const RenameMap& names, LinkStats* stats)
 {
 	for (std::size_t i = 0; i < program->symbol_names.size(); ++i)
 		RenameStringId(program, &program->symbol_names[i], names, stats);
-	for (std::size_t i = 0; i < program->global_declarations.size(); ++i)
-	{
-		lowir_model::GlobalDeclaration& item = program->global_declarations[i];
-		RenameMetadata(&item.metadata, names, stats);
-	}
 	for (std::size_t i = 0; i < program->globals.size(); ++i)
 	{
 		lowir_model::GlobalDefinition& item = program->globals[i];
@@ -826,18 +820,10 @@ void RenameProgram(lowir_model::LowirProgram* program,
 			RenameOperand(program, &item.data_items[j].literal_operand,
 				names, stats);
 		}
-		RenameMetadata(&item.metadata, names, stats);
-	}
-	for (std::size_t i = 0; i < program->function_declarations.size(); ++i)
-	{
-		lowir_model::FunctionDeclaration& item =
-			program->function_declarations[i];
-		RenameMetadata(&item.metadata, names, stats);
 	}
 	for (std::size_t i = 0; i < program->functions.size(); ++i)
 	{
 		lowir_model::Function& item = program->functions[i];
-		RenameMetadata(&item.metadata, names, stats);
 		for (std::size_t j = 0; j < item.blocks.size(); ++j)
 			for (std::size_t k = 0; k < item.blocks[j].instructions.size(); ++k)
 			{
@@ -1234,18 +1220,22 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			result, "@__cppgm_link_fini", lowir_model::SR_FINI,
 			finalizers, true));
 
-	std::unordered_map<std::string, lowir_model::SymbolId> aliases;
+	std::vector<lowir_model::SymbolId> aliases(result.strings.size() + 1);
 	std::vector<lowir_model::ObjectAlias> unique_aliases;
 	for (std::size_t i = 0; i < result.object_aliases.size(); ++i)
 	{
 		const lowir_model::ObjectAlias& alias = result.object_aliases[i];
-		const std::pair<std::unordered_map<std::string,
-			lowir_model::SymbolId>::iterator, bool> inserted =
-			aliases.emplace(alias.object_symbol, alias.target_id);
-		if (inserted.second) unique_aliases.push_back(alias);
-		else if (inserted.first->second != alias.target_id)
+		const std::uint32_t spelling = alias.object_symbol;
+		if (!alias.object_symbol.valid() || spelling >= aliases.size())
+			throw std::logic_error("invalid linked object alias spelling");
+		if (!aliases[spelling].valid())
+		{
+			aliases[spelling] = alias.target_id;
+			unique_aliases.push_back(alias);
+		}
+		else if (aliases[spelling] != alias.target_id)
 			throw std::runtime_error("conflicting object alias: " +
-				alias.object_symbol);
+				result.strings.get(alias.object_symbol));
 	}
 	result.object_aliases.swap(unique_aliases);
 	lowir_model::finalize_lowir_object_model(result);

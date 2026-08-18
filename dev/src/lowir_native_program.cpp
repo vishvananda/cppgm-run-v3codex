@@ -2,6 +2,7 @@
 
 #include "lowir_native_mir.h"
 #include "lowir_native_selection.h"
+#include "lowir_native_session.h"
 
 #include <stdexcept>
 
@@ -35,20 +36,19 @@ void append_startup_call(std::vector<MirInstruction> & startup,
 }  // namespace
 
 mir_model::MirGlobalDefinition lower_global(
-    const lowir_model::LowirProgram & program,
     const lowir_model::LowirGlobalDefinition & source,
-    lowir_model::StringPool & strings)
+    session_detail::StringIdentityMap & strings)
 {
   mir_model::MirGlobalDefinition target;
   target.symbol = source.symbol;
-  if(!source.metadata.object_symbol.empty())
-    target.object_symbol = strings.intern(source.metadata.object_symbol);
+  if(source.metadata.object_symbol.valid())
+    target.object_symbol = strings.map(source.metadata.object_symbol);
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
-  if(!source.metadata.section_segment.empty())
-    target.section_segment = strings.intern(source.metadata.section_segment);
-  if(!source.metadata.section_name.empty())
-    target.section_name = strings.intern(source.metadata.section_name);
+  if(source.metadata.section_segment.valid())
+    target.section_segment = strings.map(source.metadata.section_segment);
+  if(source.metadata.section_name.valid())
+    target.section_name = strings.map(source.metadata.section_name);
   if(source.structured) {
     target.storage_kind = mir_model::MirGlobalDefinition::GS_DATA;
     for(std::size_t i = 0; i < source.data_items.size(); ++i) {
@@ -64,14 +64,12 @@ mir_model::MirGlobalDefinition lower_global(
         lowered.addr_addend = item.addr_addend;
       } else if(is_floating(item.type)) {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT;
-        lowered.literal = strings.intern(program.strings.get(
-          item.literal_operand.literal));
+        lowered.literal = strings.map(item.literal_operand.literal);
       } else {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
         lowered.int_value = selection::integer_value(item.literal_operand);
 		if(item.type.kind == lowir_model::LTK_I128)
-		  lowered.literal = strings.intern(program.strings.get(
-		    item.literal_operand.literal));
+		  lowered.literal = strings.map(item.literal_operand.literal);
       }
       target.data_items.push_back(lowered);
     }
@@ -84,19 +82,19 @@ mir_model::MirGlobalDefinition lower_global(
       target.addr_addend = source.addr_addend;
     } else if(is_floating(source.type)) {
       target.init_kind = mir_model::MirGlobalDefinition::GI_FLOAT;
-      target.literal = strings.intern(
-        source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
-          (source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
-           (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0")) :
-          program.strings.get(source.init_operand.literal));
+      if(source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO)
+        target.literal = strings.intern(
+          source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
+          (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0"));
+      else target.literal = strings.map(source.init_operand.literal);
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
       target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
         0 : selection::integer_value(source.init_operand);
 	  if(source.type.kind == lowir_model::LTK_I128)
-		target.literal = strings.intern(source.init_kind ==
-		  lowir_model::LowirGlobalDefinition::INIT_ZERO ? "0" :
-		  program.strings.get(source.init_operand.literal));
+		target.literal = source.init_kind ==
+		  lowir_model::LowirGlobalDefinition::INIT_ZERO ?
+		  strings.intern("0") : strings.map(source.init_operand.literal);
     }
   }
   return target;
@@ -114,7 +112,8 @@ std::vector<lowir_model::SymbolId> tls_wrapper_index(
       result[function.metadata.tls_for_symbol_id];
     if(wrapper.valid() && wrapper != function.symbol)
       throw std::runtime_error("multiple TLS wrappers for " +
-                               function.metadata.tls_for_symbol);
+        lowir_model::lowir_symbol_name(
+          source, function.metadata.tls_for_symbol_id));
     wrapper = function.symbol;
   }
   for(std::size_t i = 0; i < source.functions.size(); ++i) {
@@ -124,7 +123,8 @@ std::vector<lowir_model::SymbolId> tls_wrapper_index(
       result[function.metadata.tls_for_symbol_id];
     if(wrapper.valid() && wrapper != function.symbol)
       throw std::runtime_error("multiple TLS wrappers for " +
-                               function.metadata.tls_for_symbol);
+        lowir_model::lowir_symbol_name(
+          source, function.metadata.tls_for_symbol_id));
     wrapper = function.symbol;
   }
   return result;

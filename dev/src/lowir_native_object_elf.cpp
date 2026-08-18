@@ -84,7 +84,7 @@ void publish_object_aliases(
 {
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     const std::string alias = native_object_symbol(
-      program.object_aliases[i].object_symbol);
+      program.strings.get(program.object_aliases[i].object_symbol));
     const std::string & target_name = lowir_model::lowir_symbol_name(
       program, program.object_aliases[i].target_id);
     const EncodedLabelIndex::const_iterator target =
@@ -635,6 +635,7 @@ std::string host_symbol_spelling(const std::string & raw)
 }
 
 std::string host_runtime_object_symbol(
+    const lowir_model::LowirProgram & program,
     const lowir_model::SymbolMetadata & metadata)
 {
   static const char * const memory_symbols[] = {
@@ -642,25 +643,27 @@ std::string host_runtime_object_symbol(
     "strcmp", "strlen", "vsnprintf"
   };
   const std::string prefix = "cppgm_builtin_";
-  if(metadata.object_symbol.compare(0, prefix.size(), prefix) == 0) {
-    const std::string suffix = metadata.object_symbol.substr(prefix.size());
+  const std::string & object_symbol =
+    program.strings.get(metadata.object_symbol);
+  if(object_symbol.compare(0, prefix.size(), prefix) == 0) {
+    const std::string suffix = object_symbol.substr(prefix.size());
     if(suffix == "unreachable") return "abort";
     for(std::size_t i = 0;
         i < sizeof(memory_symbols) / sizeof(memory_symbols[0]); ++i)
       if(suffix == memory_symbols[i]) return suffix;
   }
   if(metadata.role == lowir_model::SR_ALLOCATE_MEMORY) {
-    if(metadata.object_symbol == "cppgm_builtin_operator_new") return "_Znwm";
-    if(metadata.object_symbol == "cppgm_builtin_operator_new_array")
+    if(object_symbol == "cppgm_builtin_operator_new") return "_Znwm";
+    if(object_symbol == "cppgm_builtin_operator_new_array")
       return "_Znam";
   }
   if(metadata.role == lowir_model::SR_FREE_MEMORY) {
-    if(metadata.object_symbol == "cppgm_builtin_operator_delete")
+    if(object_symbol == "cppgm_builtin_operator_delete")
       return "_ZdlPv";
-    if(metadata.object_symbol == "cppgm_builtin_operator_delete_array")
+    if(object_symbol == "cppgm_builtin_operator_delete_array")
       return "_ZdaPv";
   }
-  return metadata.object_symbol;
+  return object_symbol;
 }
 
 std::unordered_map<std::string, std::string> declaration_object_symbols(
@@ -672,16 +675,18 @@ std::unordered_map<std::string, std::string> declaration_object_symbols(
       result[program.exported_symbols[i].internal_symbol] =
         program.exported_symbols[i].object_symbol;
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    if(!program.function_declarations[i].metadata.object_symbol.empty())
+    if(program.function_declarations[i].metadata.object_symbol.valid())
       result[lowir_model::lowir_symbol_name(
         program, program.function_declarations[i].symbol)] =
         host_runtime_object_symbol(
+          program,
           program.function_declarations[i].metadata);
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    if(!program.global_declarations[i].metadata.object_symbol.empty())
+    if(program.global_declarations[i].metadata.object_symbol.valid())
       result[lowir_model::lowir_symbol_name(
         program, program.global_declarations[i].symbol)] =
-        program.global_declarations[i].metadata.object_symbol;
+        program.strings.get(
+          program.global_declarations[i].metadata.object_symbol);
   return result;
 }
 
@@ -984,9 +989,10 @@ std::vector<unsigned char> host_external_global_definitions(
   for(std::size_t i = 0; i < source.global_declarations.size(); ++i)
     if(source.global_declarations[i].metadata.role ==
          lowir_model::SR_RTTI_DATA &&
-       !source.global_declarations[i].metadata.object_symbol.empty())
+       source.global_declarations[i].metadata.object_symbol.valid())
       external_objects.insert(
-        source.global_declarations[i].metadata.object_symbol);
+        source.strings.get(
+          source.global_declarations[i].metadata.object_symbol));
   std::vector<unsigned char> suppressed(program.symbol_names.size(), 0);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];

@@ -83,8 +83,8 @@ public:
     incoming_parameter_registers_.resize(source_.value_names.size(), XR_RSP);
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
     target_.symbol = source.symbol;
-    if(!source.metadata.object_symbol.empty())
-      target_.object_symbol = strings_.intern(source.metadata.object_symbol);
+    if(source.metadata.object_symbol.valid())
+      target_.object_symbol = strings_.map(source.metadata.object_symbol);
     target_.block_labels.resize(source.block_labels.size());
     for(std::size_t i = 0; i < source.block_labels.size(); ++i)
       if(source.block_labels[i].valid())

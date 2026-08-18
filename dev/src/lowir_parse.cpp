@@ -420,10 +420,10 @@ private:
       else if(value == "strong") out.binding = SBM_STRONG;
       else if(value == "weak") out.binding = SBM_WEAK;
       else throw ParseError("invalid binding metadata");
-    } else if(key == "object") out.object_symbol = value;
+    } else if(key == "object") out.object_symbol = strings_->intern(value);
     else if(key == "tls_for") {
       if(!function_symbol) throw ParseError("tls_for metadata requires a function");
-      out.tls_for_symbol = value;
+      out.tls_for_spelling = strings_->intern(value);
     } else if(key == "keep_alias") out.keep_internal_alias = yes_no(value);
     else if(key == "prefer_local") {
       out.prefer_local_object_binding = yes_no(value);
@@ -640,9 +640,10 @@ private:
   {
     expect("object");
     ObjectAlias result;
-    result.object_symbol = take();
-    if(result.object_symbol.empty() || is_punctuation(result.object_symbol[0]))
+    const std::string object_symbol = take();
+    if(object_symbol.empty() || is_punctuation(object_symbol[0]))
       throw ParseError("invalid object alias spelling");
+    result.object_symbol = strings_->intern(object_symbol);
     expect("=");
     result.target_spelling = strings_->intern(
       named('@', "object alias target"));
@@ -1121,8 +1122,9 @@ private:
     if(metadata.role != SR_NONE && metadata.role != SR_RTTI_DATA &&
        !roles.insert(static_cast<int>(metadata.role)).second)
       throw ParseError("duplicate singleton role");
-    if(!metadata.tls_for_symbol.empty()) {
-      const std::string & target = metadata.tls_for_symbol;
+    if(metadata.tls_for_spelling.valid()) {
+      const std::string & target =
+        program_.strings.get(metadata.tls_for_spelling);
       if(!globals_.count(target) || global_storage_[target] != GSM_THREAD_LOCAL)
         throw ParseError("tls_for target is not thread-local global");
       if(!tls_targets.insert(target).second) throw ParseError("duplicate tls wrapper");
@@ -1134,7 +1136,8 @@ private:
     std::unordered_set<std::string> aliases;
     for(std::size_t i = 0; i < program_.object_aliases.size(); ++i) {
       const ObjectAlias & alias = program_.object_aliases[i];
-      if(!aliases.insert(alias.object_symbol).second) throw ParseError("duplicate object alias");
+      if(!aliases.insert(program_.strings.get(alias.object_symbol)).second)
+        throw ParseError("duplicate object alias");
       if(!top_symbols_.count(program_.strings.get(alias.target_spelling)))
         throw ParseError("undefined object alias target");
     }

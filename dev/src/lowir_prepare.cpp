@@ -28,14 +28,14 @@ void note_operand_reference(const Operand& operand,
 		(*referenced)[operand.symbol] = 1;
 }
 
-void canonicalize_frontend_symbol(const std::string& name,
-	SymbolMetadata* metadata)
+void canonicalize_frontend_symbol(const Program& program,
+	const std::string& name, SymbolMetadata* metadata)
 {
 	if (metadata->linkage == LLM_CPP) metadata->linkage = LLM_DEFAULT;
 	if (metadata->binding != SBM_INTERNAL &&
-		!metadata->object_symbol.empty() &&
-		name == "@" + metadata->object_symbol)
-		metadata->object_symbol.clear();
+		metadata->object_symbol.valid() &&
+		name == "@" + program.strings.get(metadata->object_symbol))
+		metadata->object_symbol = StringId();
 }
 
 ir_model::SymbolLinkage exported_linkage(SymbolBindingMode binding)
@@ -49,7 +49,8 @@ void append_export(Program& program, const std::string& name,
 {
 	ir_model::ExportedSymbol result;
 	result.internal_symbol = name;
-	result.object_symbol = metadata.object_symbol;
+	if (metadata.object_symbol.valid())
+		result.object_symbol = program.strings.get(metadata.object_symbol);
 	// Canonical LowIR omits a redundant external object= spelling whenever it
 	// is exactly the LowIR name without its sigil.  Reconstruct that derived
 	// spelling at the object boundary; this also covers ordinary namespace-
@@ -85,7 +86,7 @@ void derive_exports(Program& program)
 		ir_model::ExportedSymbol alias;
 		alias.internal_symbol =
 			lowir_symbol_name(program, object_alias.target_id);
-		alias.object_symbol = object_alias.object_symbol;
+		alias.object_symbol = program.strings.get(object_alias.object_symbol);
 		alias.linkage = linkage[object_alias.target_id];
 		program.exported_symbols.push_back(alias);
 	}
@@ -284,19 +285,19 @@ void canonicalize_frontend_lowir(Program& program,
 	program.object_aliases.swap(ordered_aliases);
 
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
-		canonicalize_frontend_symbol(lowir_symbol_name(
+		canonicalize_frontend_symbol(program, lowir_symbol_name(
 			program, program.global_declarations[i].symbol),
 			&program.global_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		canonicalize_frontend_symbol(lowir_symbol_name(
+		canonicalize_frontend_symbol(program, lowir_symbol_name(
 			program, program.function_declarations[i].symbol),
 			&program.function_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
-		canonicalize_frontend_symbol(lowir_symbol_name(
+		canonicalize_frontend_symbol(program, lowir_symbol_name(
 			program, program.globals[i].symbol),
 			&program.globals[i].metadata);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		canonicalize_frontend_symbol(lowir_symbol_name(
+		canonicalize_frontend_symbol(program, lowir_symbol_name(
 			program, program.functions[i].symbol),
 			&program.functions[i].metadata);
 	if (stats)

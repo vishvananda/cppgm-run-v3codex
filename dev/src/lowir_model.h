@@ -316,11 +316,13 @@ struct SymbolMetadata
   SymbolRole role = SR_NONE;
   LanguageLinkageMode linkage = LLM_DEFAULT;
   SymbolBindingMode binding = SBM_DEFAULT;
-  std::string object_symbol;
-  std::string tls_for_symbol;
+  StringId object_symbol;
+  // Explicit text input keeps the unresolved spelling only until the
+  // program-wide symbol resolver publishes tls_for_symbol_id.
+  StringId tls_for_spelling;
   SymbolId tls_for_symbol_id;
-  std::string section_segment;
-  std::string section_name;
+  StringId section_segment;
+  StringId section_name;
   bool keep_internal_alias = false;
   bool prefer_local_object_binding = false;
   bool object_output_root = false;
@@ -513,7 +515,7 @@ struct FunctionDeclaration
 
 struct ObjectAlias
 {
-  std::string object_symbol;
+  StringId object_symbol;
   SymbolId target_id;
   // Boundary-only unresolved presentation; invalid in a resolved program.
   StringId target_spelling;

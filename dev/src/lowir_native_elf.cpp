@@ -2305,20 +2305,24 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
 
 HostFunctionLayout emit_host_tls_wrapper(
     CodeBuffer & out, const std::string & internal_symbol,
+    const lowir_model::LowirProgram & program,
     const lowir_model::SymbolMetadata & metadata)
 {
-  if(metadata.tls_for_symbol.empty())
+  if(!metadata.tls_for_symbol_id.valid())
     throw std::logic_error("TLS wrapper has no storage target");
   out.align(2);
   HostFunctionLayout layout;
   layout.internal_symbol = internal_symbol;
-  layout.object_symbol = metadata.object_symbol;
+  if(metadata.object_symbol.valid())
+    layout.object_symbol = program.strings.get(metadata.object_symbol);
   layout.offset = out.size();
   out.label(internal_symbol);
-  const std::string object_symbol = native_object_symbol(metadata.object_symbol);
+  const std::string object_symbol = native_object_symbol(layout.object_symbol);
   if(!object_symbol.empty() && object_symbol != internal_symbol)
     out.label(object_symbol);
-  emit_tls_address(out, XR_RAX, metadata.tls_for_symbol);
+  emit_tls_address(out, XR_RAX,
+                   lowir_model::lowir_symbol_name(
+                     program, metadata.tls_for_symbol_id));
   out.byte(0xc3);
   layout.size = out.size() - layout.offset;
   return layout;
@@ -2818,12 +2822,12 @@ void write_linux_relocatable(
   for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
     const lowir_model::FunctionDeclaration & wrapper =
       source.function_declarations[i];
-    if(wrapper.metadata.tls_for_symbol.empty() ||
+    if(!wrapper.metadata.tls_for_symbol_id.valid() ||
        !emitted_tls_wrappers.insert(lowir_model::lowir_symbol_name(
          source, wrapper.symbol)).second) continue;
     functions.push_back(emit_host_tls_wrapper(
       text, lowir_model::lowir_symbol_name(source, wrapper.symbol),
-      wrapper.metadata));
+      source, wrapper.metadata));
   }
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     mir_model::MirFunction function = lowering.lower_function(i);

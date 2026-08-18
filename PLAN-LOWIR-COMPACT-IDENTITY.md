@@ -1,6 +1,6 @@
 # Plan: Compact LowIR-to-MIR Identity
 
-Status: in progress
+Status: complete
 
 Date: 2026-08-18
 
@@ -1396,17 +1396,67 @@ All 163 self/inception objects match byte-for-byte.  The final binaries are
 byte-identical at 16,829,104 bytes with SHA-256
 `a9d4d455c7737eff04a2c828cec97ba69169aabd1b5ba43d8e00d8aaebee3959`.
 
+### CI27: pool the remaining LowIR ABI presentation
+
+The remaining ABI-facing fields in the LowIR model no longer own strings.
+Object-symbol, section-segment, section-name, and object-alias presentation
+use the program `StringPool`; TLS wrapper metadata carries its target
+`SymbolId` directly.  Explicit textual input temporarily retains a pooled TLS
+spelling only until whole-program resolution and then invalidates it.  The
+source adapter never creates that spelling because the typed program already
+has the target identity.
+
+LowIR-to-MIR lowering maps these pooled identities through the session's
+existing direct `StringId` remap rather than reinterning bytes.  Call boundary
+facts use a narrow adapter which avoids constructing ignored ABI metadata for
+every call.  Private-object serialization is byte-compatible: the writer
+renders at its output boundary and the reader interns at its input boundary.
+Alias joining now uses a dense vector indexed by pooled identity instead of a
+string hash map.  `SymbolMetadata` is 40 bytes and `ObjectAlias` is 12 bytes
+after the change, down from string-bearing layouts of 152 and 40 bytes.
+
+The affected PA13, PA15, PA29--PA32, PA37, and PA38 report passes 827/827; the
+through-PA13 report passes 933/933; the full root report passes 5,204/5,204;
+and the PA39 file audit has zero fatal findings.  The frozen object is
+byte-identical to CI26 at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+Three A/B/B/A blocks against the immutable CI26 compiler produced
+baseline/candidate medians of 4.950/4.970 seconds user, 5.430/5.465 seconds
+wall, and 364,452/365,428 KiB peak RSS.  Paired medians are +0.20% user,
++0.83% wall, and +0.04% RSS, all within the noise envelope.  This slice takes
+no timing credit; it is retained because it removes the last owning ABI text
+from the LowIR-to-MIR model without adding an index or changing output.
+
+A clean 32-way self build takes 18.52 seconds wall, 405.59 seconds aggregate
+user time, and 235,440 KiB peak RSS.  The timed 8-way inception compare takes
+3:56.08 wall, 1,806.65 seconds aggregate user time, and 238,996 KiB peak RSS;
+the separately cleaned 32-way compare takes 1:49.71 wall, 2,929.98 seconds
+aggregate user time, and 232,428 KiB peak RSS.  All 163 inception objects
+match.  The self and inception binaries are byte-identical at 16,797,056 bytes
+with SHA-256
+`0a608ffc47ea0f99a2603fcec7d18ef0858ab64663af519dfcba2cefd51b4a1e`.
+
 ## 11. Current residual audit and next slices
 
-The cumulative hot-path milestone now passes the performance gate.  Three
-A/B/B/A blocks against CI6, the last compiler before dense LowIR value and
-symbol identity, produced baseline/candidate medians of 5.555/5.000 seconds
-user and 6.075/5.490 seconds wall.  The paired median improves both by about
-11.8%.  One candidate sample was externally loaded at 7.11 seconds; its other
-five samples are tightly grouped from 4.94 to 5.02 seconds, so the interleaved
-median is robust.  Peak RSS changes from 364,176 to 364,898 KiB (0.2%).  The
-latest full root report passes 5,204/5,204 tests and the PA39 file audit has
-zero fatal findings.
+The cumulative compact-identity milestone passes the performance gate.  Three
+A/B/B/A blocks compare the deterministic plan-start compiler at `30239dab`
+with the completed compiler.  Baseline/candidate medians are 5.670/4.910
+seconds user, 6.265/5.410 seconds wall, and 364,680/363,770 KiB peak RSS.  The
+paired candidate/baseline medians improve user time by 13.60% and wall time by
+14.08%, with peak RSS effectively unchanged.  The earlier resumed anchor was
+not used for the authoritative result because repeated compiles exposed its
+pre-CI7 unordered spill-tie nondeterminism.  Each lane in this final comparison
+is internally deterministic.
+
+The plan-start object is 4,417,176 bytes with SHA-256
+`87bdd91604b0a3e62fdd0c7b2851a1104b2bf0f95c479f2c5a6613f9a6a19faa`;
+the completed object is 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+The 16-byte behavioral difference is the isolated CI7 deterministic spill-tie
+correction.  Every later representation-only phase preserved the CI7 bytes.
+The latest full root report passes 5,204/5,204 tests and the PA39 file audit
+has zero fatal findings.
 
 The current source path has no string-keyed value, slot, block, symbol, or
 fixup identity in native analysis and selection.  LowIR types, operations, and
@@ -1423,7 +1473,7 @@ follows:
 | --- | --- | --- | --- |
 | LowIR top-level model | Completed in CI22: declarations, definitions, global address data, and alias targets carry `SymbolId`; the symbol table carries pooled `StringId` presentation | Keep rendering at serialization, diagnostic, and object-output boundaries; explicit-input forward spellings are transient pooled IDs | Complete |
 | LowIR function presentation | Completed in CI21: slots and blocks use pooled IDs; values use one tagged pooled spelling or generated ordinal, with explicit behavior bits | Keep rendering confined to serialization and diagnostics; do not add a parallel name index | Complete for LowIR; MIR block-label presentation remains below |
-| LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings and are copied into MIR | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
+| LowIR ABI metadata | Completed in CI27: object symbols, section names, and aliases use pooled `StringId`; TLS wrapper relationships use `SymbolId` | Map pooled identities directly into MIR and render only at input, serialization, diagnostic, or object-output boundaries | Complete |
 | PA37 inliners | Completed in CI23: semantic allocation is monotonic by compact ID; exact-name collision state uses numeric generated ordinals and pooled slot IDs | Keep the sparse numeric reservation for arbitrary explicit input; do not rebuild full caller string sets | Complete |
 | MIR program shell | CI24 completes semantic symbols and pooled block labels; CI25 pools object names, sections, aliases, and required global literals | Keep presentation rendering at MIR/ELF boundaries and parsed ordinary integer values text-free | Complete |
 | MIR debug metadata | CI26 pools the remaining debug-variable spelling and replaces the fixed target string with an enum | Render only for future debug output or diagnostics | Complete |
@@ -1431,28 +1481,22 @@ follows:
 | Explicit `.lowir` parsing and private-object joining | arbitrary input spellings require string maps to diagnose duplicates and unite independently owned programs | Keep transient boundary resolvers, preferably keyed by interned IDs/spans, and destroy them after producing compact identity | Not on frozen source hot path |
 | ELF construction | final symbol, COMDAT, section, relocation, and string-table indexes require byte identity | Keep string lookup at this output boundary; do not force it back into MIR or native analysis | Required output work |
 
-The next changesets should therefore be:
-
-1. Re-audit named native fixups and object maps, retaining text only for
-   arbitrary imported-object names and final ELF identity.
-2. Measure the cumulative compact-identity result against the recorded clean
-   baseline before beginning value-placement work.
-
 String-keyed maps in `lowir_parse.cpp`, the resolution portion of
 `lowir_identity.cpp`, and the ELF symbol/string-table builder remain valid.
 They resolve input or construct required output bytes and are destroyed with
 that boundary.  `lowir_cy86.cpp` may also construct output opcode and address
 text, but it must continue consuming compact LowIR identities internally.
 
-Each residual slice remains separately measured and committed.  A slice that
-adds a parallel string index, changes broad LowIR output, or loses the current
-frozen timing is rejected or deferred.  The remaining tranche must show a
-repeatable end-to-end improvement against the CI20 anchor; for smaller slices,
-a material reduction in their isolated adapter/native/encoding phase is
-acceptable until the cumulative interleaved measurement is large enough to
-clear host noise.  LowIR presentation work is owned by PA13/PA15; MIR and
-native identity work by PA29; optimized name generation by PA37/PA38; and ELF
-object identity by PA30-PA32.
+The remaining string owners are deliberate boundaries, not another internal
+identity layer.  `RelocatableObject`, declaration/COMDAT/section maps, and ELF
+symbol indexes join arbitrary independently-produced object spellings or emit
+required output bytes.  `CodeBuffer` named labels represent imported/final
+object names; semantic symbols and local control-flow labels already use typed
+IDs.  Fixed compiler-runtime labels are a bounded residual, but adding another
+tag domain is deferred unless measurement shows that output-boundary pocket is
+material.  `ir_model::ExportedSymbol` likewise carries final object
+presentation prepared for serialization rather than identity that transits
+through LowIR analysis or MIR selection.
 
 ## 12. Completion definition
 

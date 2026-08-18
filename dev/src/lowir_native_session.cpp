@@ -85,7 +85,7 @@ struct ProgramLoweringSession::Impl
 	shell.strings = strings.strings();
 	pointer_globals.assign(source.symbol_names.size(), 0);
 	signatures.resize(source.symbol_names.size());
-    eh::plan_program(source, shell);
+    eh::plan_program(source, shell, strings);
     program_lowering::lower_startup(source, shell);
     tls_wrappers = program_lowering::tls_wrapper_index(source);
     for(std::size_t i = 0; i < source.global_declarations.size(); ++i)
@@ -99,7 +99,7 @@ struct ProgramLoweringSession::Impl
     for(std::size_t i = 0; i < source.globals.size(); ++i) {
       mir_model::MirGlobalDefinition global =
         program_lowering::lower_global(
-          source, source.globals[i], *shell.strings);
+          source.globals[i], strings);
       const lowir_model::SymbolId wrapper =
         tls_wrappers[source.globals[i].symbol];
       if(wrapper.valid())
@@ -110,8 +110,8 @@ struct ProgramLoweringSession::Impl
     shell.object_aliases.reserve(source.object_aliases.size());
     for(std::size_t i = 0; i < source.object_aliases.size(); ++i) {
       mir_model::MirObjectAlias alias;
-      if(!source.object_aliases[i].object_symbol.empty())
-        alias.object_symbol = strings.intern(
+      if(source.object_aliases[i].object_symbol.valid())
+        alias.object_symbol = strings.map(
           source.object_aliases[i].object_symbol);
       alias.target = source.object_aliases[i].target_id;
       shell.object_aliases.push_back(alias);

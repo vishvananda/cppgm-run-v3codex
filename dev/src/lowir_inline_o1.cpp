@@ -640,7 +640,7 @@ private:
     // Preserve externally visible calls inside an EH region.  Earlier object
     // contracts inspect the call-site table emitted for these calls, and an
     // inferred no-throw body is not part of that external ABI contract.
-    if(inside_eh && !callee_function.metadata.object_symbol.empty())
+    if(inside_eh && callee_function.metadata.object_symbol.valid())
       return false;
     if(inside_eh && !no_unwind_[callee_function.symbol]) return false;
     if(contains_eh_[target]) {

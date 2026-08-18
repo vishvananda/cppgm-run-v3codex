@@ -527,9 +527,10 @@ void resolve_lowir_program_symbols(Program & program)
 
   const auto resolve_tls = [&program, &resolve_spelling](
       SymbolMetadata & metadata) {
-    if(metadata.tls_for_symbol.empty()) return;
+    if(!metadata.tls_for_spelling.valid()) return;
     metadata.tls_for_symbol_id = resolve_spelling(
-      program.strings.intern(metadata.tls_for_symbol), "undefined TLS target");
+      metadata.tls_for_spelling, "undefined TLS target");
+    metadata.tls_for_spelling = StringId();
   };
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     resolve_tls(program.global_declarations[i].metadata);
@@ -613,9 +614,21 @@ void remap_lowir_program_strings(Program & program,
   };
   for(std::size_t i = 0; i < program.symbol_names.size(); ++i)
     remap_string(program.symbol_names[i]);
+  const auto remap_metadata = [&remap_string](SymbolMetadata & metadata) {
+    remap_string(metadata.object_symbol);
+    remap_string(metadata.tls_for_spelling);
+    remap_string(metadata.section_segment);
+    remap_string(metadata.section_name);
+  };
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+    remap_metadata(program.global_declarations[i].metadata);
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+  {
+    remap_metadata(program.function_declarations[i].metadata);
     remap_parameters(program.function_declarations[i].params);
+  }
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    remap_metadata(program.globals[i].metadata);
     remap(program.globals[i].init_operand);
     for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j) {
       remap(program.globals[i].data_items[j].literal_operand);
@@ -625,6 +638,7 @@ void remap_lowir_program_strings(Program & program,
   for(std::size_t f = 0; f < program.functions.size(); ++f)
   {
     Function & function = program.functions[f];
+    remap_metadata(function.metadata);
     remap_parameters(function.params);
     for(std::size_t i = 0; i < function.slot_names.size(); ++i)
       remap_string(function.slot_names[i]);
@@ -652,8 +666,10 @@ void remap_lowir_program_strings(Program & program,
           remap(instruction.args[a]);
       }
   }
-  for(std::size_t i = 0; i < program.object_aliases.size(); ++i)
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
+    remap_string(program.object_aliases[i].object_symbol);
     remap_string(program.object_aliases[i].target_spelling);
+  }
 }
 
 void remap_lowir_program_symbols(

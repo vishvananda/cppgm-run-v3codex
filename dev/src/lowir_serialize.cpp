@@ -147,7 +147,8 @@ void write_boundary_metadata(MetadataWriter & metadata,
 }
 
 void write_symbol_metadata(MetadataWriter & metadata,
-                           const SymbolMetadata & value)
+                           const SymbolMetadata & value,
+                           const Program & program)
 {
   if(!value.inferred_legacy_role)
     metadata.item("role", role_name(value.role));
@@ -156,8 +157,11 @@ void write_symbol_metadata(MetadataWriter & metadata,
   if(value.binding == SBM_INTERNAL) metadata.item("binding", "internal");
   else if(value.binding == SBM_STRONG) metadata.item("binding", "strong");
   else if(value.binding == SBM_WEAK) metadata.item("binding", "weak");
-  metadata.item("object", value.object_symbol);
-  metadata.item("tls_for", value.tls_for_symbol);
+  if(value.object_symbol.valid())
+    metadata.item("object", program.strings.get(value.object_symbol));
+  if(value.tls_for_symbol_id.valid())
+    metadata.item("tls_for",
+                  lowir_symbol_name(program, value.tls_for_symbol_id));
   metadata.flag("keep_alias", value.keep_internal_alias);
   metadata.flag("prefer_local", value.prefer_local_object_binding);
   metadata.flag("object_root", value.object_output_root);
@@ -168,22 +172,24 @@ void write_symbol_metadata(MetadataWriter & metadata,
 
 void write_function_metadata(std::ostream & out,
                              const FunctionBoundaryMetadata & boundary,
-                             const SymbolMetadata & symbol)
+                             const SymbolMetadata & symbol,
+                             const Program & program)
 {
   MetadataWriter metadata(out);
   write_boundary_metadata(metadata, boundary);
-  write_symbol_metadata(metadata, symbol);
+  write_symbol_metadata(metadata, symbol, program);
   metadata.finish();
 }
 
 void write_global_metadata(std::ostream & out, GlobalStorageMode storage,
-                           const SymbolMetadata & symbol)
+                           const SymbolMetadata & symbol,
+                           const Program & program)
 {
   MetadataWriter metadata(out);
   if(storage == GSM_READONLY) metadata.item("storage", "readonly");
   else if(storage == GSM_THREAD_LOCAL)
     metadata.item("storage", "thread_local");
-  write_symbol_metadata(metadata, symbol);
+  write_symbol_metadata(metadata, symbol, program);
   metadata.finish();
 }
 
@@ -409,7 +415,7 @@ void write_global_declaration(std::ostream & out, const GlobalDeclaration & item
 {
   out << "declare global " << lowir_symbol_name(program, item.symbol);
   if(item.has_type) out << " : " << lowir_type_text(item.type);
-  write_global_metadata(out, item.storage, item.metadata);
+  write_global_metadata(out, item.storage, item.metadata, program);
   out << '\n';
 }
 
@@ -420,7 +426,7 @@ void write_function_declaration(std::ostream & out,
   out << "declare function " << lowir_symbol_name(program, item.symbol);
   write_parameters(out, item.params, program);
   out << " -> " << lowir_type_text(item.return_type);
-  write_function_metadata(out, item.boundary, item.metadata);
+  write_function_metadata(out, item.boundary, item.metadata, program);
   out << '\n';
 }
 
@@ -429,7 +435,7 @@ void write_global(std::ostream & out, const GlobalDefinition & item,
 {
   out << "global " << lowir_symbol_name(program, item.symbol);
   if(!item.structured) out << " : " << lowir_type_text(item.type);
-  write_global_metadata(out, item.storage, item.metadata);
+  write_global_metadata(out, item.storage, item.metadata, program);
   out << " = ";
   if(item.structured) {
     out << "{\n";
@@ -469,7 +475,8 @@ void write_function(std::ostream & out, const Function & function,
   out << "function " << lowir_symbol_name(program, function.symbol);
   write_parameters(out, function.params, program);
   out << " -> " << lowir_type_text(function.return_type);
-  write_function_metadata(out, function.boundary, function.metadata);
+  write_function_metadata(
+    out, function.boundary, function.metadata, program);
   write_debug(out, function.debug_location, program);
   out << " {\n";
   for(std::size_t i = 0; i < function.slots.size(); ++i)
@@ -506,7 +513,8 @@ std::string serialize_lowir_program(const LowirProgram & program)
   WRITE_GROUP(program.globals, write_global)
   WRITE_GROUP(program.functions, write_function)
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
-    out << "alias object " << program.object_aliases[i].object_symbol << " = "
+    out << "alias object "
+        << program.strings.get(program.object_aliases[i].object_symbol) << " = "
         << lowir_symbol_name(
              program, program.object_aliases[i].target_id) << '\n';
     wrote = true;
