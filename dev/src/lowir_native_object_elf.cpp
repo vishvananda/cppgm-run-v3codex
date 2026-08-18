@@ -434,7 +434,7 @@ std::string host_symbol_spelling(const std::string & raw);
 HostSection make_host_lsda(
     std::vector<HostFunctionLayout> & functions,
     const lowir_model::LowirProgram & program,
-    const std::unordered_map<std::string, std::string> & declarations,
+    const DeclarationObjectSymbols & declarations,
     std::vector<HostRelocation> & relocations)
 {
   HostSection section;
@@ -584,15 +584,13 @@ HostSection make_host_lsda(
         const lowir_model::SymbolId symbol = type == type_symbols.end() ?
           lowir_model::SymbolId() : type->second;
         if(symbol.valid()) {
-          const std::string & symbol_name =
-            lowir_model::lowir_symbol_name(program, symbol);
           HostRelocation relocation;
           relocation.kind = HostRelocation::HR_PC32;
           relocation.offset = section.bytes.size();
-          const std::unordered_map<std::string, std::string>::const_iterator named =
-            declarations.find(symbol_name);
-          relocation.target = "DW.ref." + (named == declarations.end() ?
-            host_symbol_spelling(symbol_name) : named->second);
+          const std::string * named = declarations.find(symbol);
+          relocation.target = "DW.ref." + (named ? *named :
+            host_symbol_spelling(
+              lowir_model::lowir_symbol_name(program, symbol)));
           relocations.push_back(relocation);
         }
         append_little(section.bytes, 0, 4);
@@ -716,70 +714,82 @@ std::string host_symbol_spelling(const std::string & raw)
   return !raw.empty() && raw[0] == '@' ? raw.substr(1) : raw;
 }
 
-std::string host_runtime_object_symbol(
+const std::string & host_runtime_object_symbol(
     const lowir_model::LowirProgram & program,
     const lowir_model::SymbolMetadata & metadata)
 {
-  static const char * const memory_symbols[] = {
+  static const std::string memory_symbols[] = {
     "bzero", "memchr", "memcmp", "memcpy", "memmove", "memset", "strchr",
     "strcmp", "strlen", "vsnprintf"
   };
+  static const std::string abort_name = "abort";
+  static const std::string operator_new_name = "_Znwm";
+  static const std::string operator_new_array_name = "_Znam";
+  static const std::string operator_delete_name = "_ZdlPv";
+  static const std::string operator_delete_array_name = "_ZdaPv";
   const std::string prefix = "cppgm_builtin_";
   const std::string & object_symbol =
     program.strings.get(metadata.object_symbol);
   if(object_symbol.compare(0, prefix.size(), prefix) == 0) {
     const std::string suffix = object_symbol.substr(prefix.size());
-    if(suffix == "unreachable") return "abort";
+    if(suffix == "unreachable") return abort_name;
     for(std::size_t i = 0;
         i < sizeof(memory_symbols) / sizeof(memory_symbols[0]); ++i)
-      if(suffix == memory_symbols[i]) return suffix;
+      if(suffix == memory_symbols[i]) return memory_symbols[i];
   }
   if(metadata.role == lowir_model::SR_ALLOCATE_MEMORY) {
-    if(object_symbol == "cppgm_builtin_operator_new") return "_Znwm";
+    if(object_symbol == "cppgm_builtin_operator_new") return operator_new_name;
     if(object_symbol == "cppgm_builtin_operator_new_array")
-      return "_Znam";
+      return operator_new_array_name;
   }
   if(metadata.role == lowir_model::SR_FREE_MEMORY) {
     if(object_symbol == "cppgm_builtin_operator_delete")
-      return "_ZdlPv";
+      return operator_delete_name;
     if(object_symbol == "cppgm_builtin_operator_delete_array")
-      return "_ZdaPv";
+      return operator_delete_array_name;
   }
   return object_symbol;
 }
 
-std::unordered_map<std::string, std::string> declaration_object_symbols(
+DeclarationObjectSymbols declaration_object_symbols(
     const lowir_model::LowirProgram & program)
 {
-  std::unordered_map<std::string, std::string> result;
+  DeclarationObjectSymbols result;
+  result.typed.assign(program.symbol_names.size(), 0);
+  const auto add = [&program, &result](
+      lowir_model::SymbolId symbol, const std::string & object) {
+    const std::uint32_t index = symbol;
+    if(!symbol.valid() || index >= result.typed.size())
+      throw std::logic_error("invalid declaration symbol identity");
+    result.typed[index] = &object;
+    result.named[lowir_model::lowir_symbol_name(program, symbol)] = &object;
+  };
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
     if(program.exported_symbols[i].object_symbol.valid())
-      result[exported_internal_symbol(program, program.exported_symbols[i])] =
-        exported_object_symbol(program, program.exported_symbols[i]);
+      add(program.exported_symbols[i].internal_symbol,
+        exported_object_symbol(program, program.exported_symbols[i]));
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
     if(program.function_declarations[i].metadata.object_symbol.valid())
-      result[lowir_model::lowir_symbol_name(
-        program, program.function_declarations[i].symbol)] =
+      add(program.function_declarations[i].symbol,
         host_runtime_object_symbol(
           program,
-          program.function_declarations[i].metadata);
+          program.function_declarations[i].metadata));
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].metadata.object_symbol.valid())
-      result[lowir_model::lowir_symbol_name(
-        program, program.global_declarations[i].symbol)] =
+      add(program.global_declarations[i].symbol,
         program.strings.get(
-          program.global_declarations[i].metadata.object_symbol);
+          program.global_declarations[i].metadata.object_symbol));
   return result;
 }
 
 std::string relocation_target(
     const std::string & raw,
     const EncodedLabels & labels,
-    const std::unordered_map<std::string, std::string> & declarations)
+    const DeclarationObjectSymbols & declarations)
 {
-  const std::unordered_map<std::string, std::string>::const_iterator found =
-    declarations.find(raw);
-  if(found != declarations.end()) return found->second;
+  const std::unordered_map<std::string, const std::string *>::const_iterator
+    found = declarations.named.find(raw);
+  if(found != declarations.named.end()) return *found->second;
   if(labels.named.count(raw)) return raw;
   return host_symbol_spelling(raw);
 }
@@ -788,7 +798,7 @@ std::vector<HostRelocation> host_relocations(
     EncodedSection & source,
     const EncodedLabels & labels,
     const lowir_model::LowirProgram & program,
-    const std::unordered_map<std::string, std::string> & declarations)
+    const DeclarationObjectSymbols & declarations)
 {
   std::vector<HostRelocation> result;
   result.reserve(source.fixups.size() + source.symbol_fixups.size());
@@ -844,17 +854,15 @@ std::vector<HostRelocation> host_relocations(
         HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
     }
     relocation.offset = fixup.offset;
-    const std::string & raw = lowir_model::lowir_symbol_name(
-      program, fixup.target);
-    const std::unordered_map<std::string, std::string>::const_iterator declared =
-      declarations.find(raw);
-    if(declared != declarations.end()) {
-      relocation.target = declared->second;
+    const std::string * declared = declarations.find(fixup.target);
+    if(declared) {
+      relocation.target = *declared;
     } else if(symbol < labels.symbol_known.size() &&
               labels.symbol_known[symbol]) {
       relocation.program_symbol = fixup.target;
     } else {
-      relocation.target = host_symbol_spelling(raw);
+      relocation.target = host_symbol_spelling(
+        lowir_model::lowir_symbol_name(program, fixup.target));
     }
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
@@ -1058,15 +1066,13 @@ void collect_host_symbols(
   for(std::size_t i = 0; i < locals.size(); ++i) defined[locals[i].name] = true;
   for(std::size_t i = 0; i < globals.size(); ++i) defined[globals[i].name] = true;
   std::unordered_set<std::string> declared_tls_symbols;
-	const std::unordered_map<std::string, std::string> declared_objects =
+  const DeclarationObjectSymbols declared_objects =
 		declaration_object_symbols(program);
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].storage == lowir_model::GSM_THREAD_LOCAL) {
-	  const std::unordered_map<std::string, std::string>::const_iterator object =
-		declared_objects.find(lowir_model::lowir_symbol_name(
-		  program, program.global_declarations[i].symbol));
-	  if(object != declared_objects.end())
-		declared_tls_symbols.insert(object->second);
+      const std::string * object = declared_objects.find(
+        program.global_declarations[i].symbol);
+	  if(object) declared_tls_symbols.insert(*object);
 	}
   std::unordered_set<std::string> section_symbols;
   for(std::size_t i = 0; i < text_sections.size(); ++i)
@@ -1364,7 +1370,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   text_sections = partition_weak_text(
     program, std::move(text_sections[0]), functions);
   encoded_labels = index_encoded_labels(program, text_sections, mutable_data);
-  const std::unordered_map<std::string, std::string> declarations =
+  const DeclarationObjectSymbols declarations =
     declaration_object_symbols(program);
   resolve_same_section_local_fixups(
     text_sections, mutable_data, program, declarations);

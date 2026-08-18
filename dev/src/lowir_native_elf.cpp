@@ -2864,13 +2864,17 @@ void write_linux_relocatable(
   std::vector<HostFunctionLayout> functions;
   functions.reserve(lowering.function_count() + source.function_declarations.size());
   std::uint64_t encode_nanoseconds = 0;
-  std::unordered_set<std::string> emitted_tls_wrappers;
+  std::vector<unsigned char> emitted_tls_wrappers(
+    source.symbol_names.size(), 0);
   for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
     const lowir_model::FunctionDeclaration & wrapper =
       source.function_declarations[i];
-    if(!wrapper.metadata.tls_for_symbol_id.valid() ||
-       !emitted_tls_wrappers.insert(lowir_model::lowir_symbol_name(
-         source, wrapper.symbol)).second) continue;
+    const std::uint32_t symbol = wrapper.symbol;
+    if(!wrapper.metadata.tls_for_symbol_id.valid()) continue;
+    if(!wrapper.symbol.valid() || symbol >= emitted_tls_wrappers.size())
+      throw std::logic_error("invalid TLS wrapper symbol identity");
+    if(emitted_tls_wrappers[symbol]) continue;
+    emitted_tls_wrappers[symbol] = 1;
     functions.push_back(emit_host_tls_wrapper(
       text, wrapper.symbol, source, wrapper.metadata));
   }
@@ -2911,15 +2915,14 @@ void write_linux_relocatable(
     emit_global(section.content, global);
   }
   bool needs_personality = false;
-  const std::unordered_map<std::string, std::string> host_declarations =
+  const object_elf_detail::DeclarationObjectSymbols host_declarations =
     declaration_object_symbols(source);
-  std::unordered_set<std::string> catch_types;
+  std::vector<unsigned char> catch_type_seen(source.symbol_names.size(), 0);
   const auto record_eh_type = [&](lowir_model::SymbolId symbol) {
-    const std::string & symbol_name =
-      lowir_model::lowir_symbol_name(source, symbol);
-    const auto named = host_declarations.find(symbol_name);
-    catch_types.insert(named == host_declarations.end() ?
-      host_symbol_spelling(symbol_name) : named->second);
+    const std::uint32_t index = symbol;
+    if(!symbol.valid() || index >= catch_type_seen.size())
+      throw std::logic_error("invalid EH type symbol identity");
+    catch_type_seen[index] = 1;
   };
   for(std::size_t i = 0; i < functions.size(); ++i)
   {
@@ -2941,12 +2944,26 @@ void write_linux_relocatable(
             record_eh_type(functions[i].clauses[block][clause].
               filter_type_symbols[type]);
   }
-  std::vector<std::string> ordered_catch_types(
-    catch_types.begin(), catch_types.end());
-  std::sort(ordered_catch_types.begin(), ordered_catch_types.end());
+  std::vector<lowir_model::SymbolId> ordered_catch_types;
+  for(std::size_t i = 0; i < catch_type_seen.size(); ++i)
+    if(catch_type_seen[i])
+      ordered_catch_types.push_back(
+        lowir_model::SymbolId(static_cast<std::uint32_t>(i)));
+  const auto catch_type_name =
+    [&source, &host_declarations](lowir_model::SymbolId symbol)
+      -> const std::string & {
+      const std::string * named = host_declarations.find(symbol);
+      return named ? *named : lowir_model::lowir_symbol_name(source, symbol);
+    };
+  std::sort(ordered_catch_types.begin(), ordered_catch_types.end(),
+    [&catch_type_name](lowir_model::SymbolId left,
+                       lowir_model::SymbolId right) {
+      return catch_type_name(left) < catch_type_name(right);
+    });
   CodeBuffer & ordinary_data = data_sections[0].content;
   for(std::size_t i = 0; i < ordered_catch_types.size(); ++i) {
-    const std::string & type = ordered_catch_types[i];
+    const std::string & type = catch_type_name(ordered_catch_types[i]);
+    if(i && type == catch_type_name(ordered_catch_types[i - 1])) continue;
     ordinary_data.align(8);
     ordinary_data.label("DW.ref." + type);
     ordinary_data.absolute64(type);
