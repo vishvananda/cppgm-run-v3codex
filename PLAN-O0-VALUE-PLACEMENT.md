@@ -581,7 +581,9 @@ assign them once for explicit textual LowIR and decoded binary objects, and
 make rendering the only spelling consumer. That cross-pipeline migration is
 deferred from this O0 placement slice because it spans PA15 lowering, PA30
 adaptation/object decoding, PA37/PA38 optimization, and PA29 selection; it must
-not be approximated by parallel ID and string models that can diverge.
+not be approximated by parallel ID and string models that can diverge.  The
+cross-pipeline work, complete representation audit, and performance gates are
+specified in `PLAN-LOWIR-COMPACT-IDENTITY.md`.
 
 The direct comparison-return slice extends the existing PA29 rule for
 immediately returned scalar producers to ordinary integer comparisons. It
