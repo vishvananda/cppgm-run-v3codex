@@ -93,6 +93,19 @@ protected:
         base = reg_operand(incoming);
     }
 materialize_index:
+    if(constant_index && offset == 0 &&
+       instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+       base.kind == mir_model::MirOperand::OP_REG &&
+       !lowerer.crosses_register_clobber(instruction.dest, base.reg)) {
+      ValueFact alias = lowerer.values_[instruction.first.value];
+      alias.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+      alias.parameter = false;
+      alias.fixed_register_home = false;
+      lowerer.set_value(instruction.dest, alias);
+      lowerer.consume(instruction.first);
+      lowerer.consume(instruction.second);
+      return;
+    }
     mir_model::MirOperand destination;
     const bool forwarded_alias = offset == 0 &&
       instruction.first.kind == lowir_model::Operand::OP_TEMP &&

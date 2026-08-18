@@ -23,8 +23,7 @@ function @check
     scratch_bytes 48
 
   block ^entry
-    mov r8, rdi
-    fmov.f64 xmm0, [r8]
+    fmov.f64 xmm0, [rdi]
     fcmp.f64 xmm0, 0.0
     jp ^rhs
     jne ^rhs

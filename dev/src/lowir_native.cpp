@@ -822,7 +822,8 @@ private:
            !values_[id].fixed_register_home &&
            (!facts_.has(id, FunctionFacts::VF_EDGE_LIVE) ||
             reusable_destructive_parameter) &&
-           values_[id].location.kind == MirOperand::OP_REG;
+           values_[id].location.kind == MirOperand::OP_REG &&
+           !has_live_location_alias(id, values_[id].location);
   }
   void consume(const Operand & operand, X64Register retained = XR_RSP)
   {

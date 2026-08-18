@@ -623,6 +623,10 @@ To complete PA29, implement these goals:
    rather than being hidden behind an unrelated compatibility path.  When a one-use
    `index` feeds the following scalar load or store, keep its base, index, scale, and
    displacement in that memory operand instead of materializing a temporary pointer.
+   A constant zero index denotes the unchanged base pointer.  Keep that value
+   in the base pointer's selected location when its complete live interval can
+   safely share the location; do not emit a register copy or `lea` solely to
+   represent a zero displacement.
    When an indexed address itself must remain a value, use one `lea` from the
    original base and legal x86 scale instead of first copying the base or emitting
    separate multiply and add instructions.

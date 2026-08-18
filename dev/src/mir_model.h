@@ -178,6 +178,9 @@ struct Instruction
     MI_LOCK_CMPXCHG,
     MI_LOCK_CMPXCHG16B,
     MI_LEA,
+    // A zero-offset LowIR index may retain its base register when the complete
+    // result interval can safely share that location; it needs no MI_LEA or
+    // register copy solely to preserve pointer identity.
     MI_FMOV,
     MI_FNEG,
     MI_FADD,
