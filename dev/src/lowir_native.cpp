@@ -17,6 +17,7 @@
 #include "lowir_native_return_lowering.h"
 #include "lowir_native_selection.h"
 #include "lowir_native_session.h"
+#include "lowir_native_spill_slots.h"
 #include "lowir_native_stack.h"
 #include "lowir_native_value.h"
 #include "lowir_native_varargs.h"
@@ -157,6 +158,7 @@ private:
   mir_model::MirFunction target_;
   RegisterPool registers_;
   XmmPool xmms_;
+  spill_slots::Pool spill_slots_;
   std::unordered_map<std::string, ValueFact> values_;
   std::vector<const std::string *> live_gpr_values_[16];
   std::vector<const std::string *> live_xmm_values_[8];
@@ -187,6 +189,41 @@ private:
     binding.type = type.text;
     target_.frame_bindings.push_back(binding);
     return binding.offset;
+  }
+  void append_frame_binding(mir_model::MirFrameBinding::Kind kind,
+                            const std::string & name, const LowType & type,
+                            long long offset)
+  {
+    mir_model::MirFrameBinding binding;
+    binding.kind = kind;
+    binding.name = name;
+    binding.offset = offset;
+    binding.type = type.text;
+    target_.frame_bindings.push_back(binding);
+  }
+  long long allocate_temp_frame_binding(const std::string & name,
+                                        const LowType & type)
+  {
+    const std::size_t size = abi::frame_storage_size(type);
+    const std::unordered_map<std::string, std::size_t>::const_iterator last =
+      facts_.last_use.find(name);
+    const std::size_t available_after = last == facts_.last_use.end() ?
+      position_ : last->second;
+    const bool reusable =
+      (type.kind == lowir_model::LTK_I128 ||
+       type.kind == lowir_model::LTK_F80);
+    long long offset = 0;
+    if(reusable && spill_slots_.acquire(size, type.alignment, position_,
+                                        available_after, &offset)) {
+      append_frame_binding(mir_model::MirFrameBinding::FB_TEMP,
+                           name, type, offset);
+      return offset;
+    }
+    offset = allocate_frame_binding(
+      mir_model::MirFrameBinding::FB_TEMP, name, type);
+    if(reusable)
+      spill_slots_.remember(size, type.alignment, available_after, offset);
+    return offset;
   }
   void plan_variadic_register_save()
   {
@@ -899,9 +936,8 @@ private:
     const MirOperand location = value->second.location;
     if(location.kind != MirOperand::OP_REG &&
        location.kind != MirOperand::OP_XMM) return;
-    const long long home = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, instruction.dest,
-      value->second.type);
+    const long long home =
+      allocate_temp_frame_binding(instruction.dest, value->second.type);
     if(location.kind == MirOperand::OP_XMM) {
       append_float_move(out, frame_operand(home), location,
                         value->second.type.text);
@@ -994,9 +1030,7 @@ private:
       spill_offsets_.find(victim->first);
     if(existing != spill_offsets_.end()) home = existing->second;
     else {
-      home = allocate_frame_binding(victim->second.parameter ?
-        mir_model::MirFrameBinding::FB_PARAM_SLOT :
-        mir_model::MirFrameBinding::FB_TEMP, victim->first, victim->second.type);
+      home = allocate_temp_frame_binding(victim->first, victim->second.type);
       spill_offsets_[victim->first] = home;
     }
     append_store(out, frame_operand(home), victim->second.location,
@@ -1074,8 +1108,8 @@ private:
   }
   MirOperand allocate_temp_home(const std::string & name, const LowType & type)
   {
-    const MirOperand home = frame_operand(allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, name, type));
+    const MirOperand home =
+      frame_operand(allocate_temp_frame_binding(name, type));
     spill_offsets_[name] = home.offset;
     return home;
   }

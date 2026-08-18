@@ -9,10 +9,10 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 80
+    stack_size 64
     scratch_bytes 48
     temp %4 -> [rbp-16] : f80
-    temp %7 -> [rbp-32] : f80
+    temp %7 -> [rbp-16] : f80
 
   block ^entry
     fptosi.f64.i64 r8, -42.75
@@ -31,8 +31,8 @@ function @main
     cmp.i64 rdi, rdx
     sete rdi
     movzx rdi, rdi
-    uitofp.i64.f80 [rbp-32], -1
-    fptoui.f80.i64 rsi, [rbp-32]
+    uitofp.i64.f80 [rbp-16], -1
+    fptoui.f80.i64 rsi, [rbp-16]
     mov rdx, -1
     cmp.i64 rsi, rdx
     sete rsi

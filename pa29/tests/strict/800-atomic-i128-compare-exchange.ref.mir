@@ -13,14 +13,14 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 96
+    stack_size 64
     scratch_bytes 0
     preserve rbx
     slot $expected -> [rbp-16] : i128
     temp %loaded -> [rbp-32] : i128
-    temp %nine -> [rbp-48] : i128
-    temp %now -> [rbp-64] : i128
-    temp %wanted -> [rbp-80] : i128
+    temp %nine -> [rbp-32] : i128
+    temp %now -> [rbp-32] : i128
+    temp %wanted -> [rbp-48] : i128
 
   block ^entry
     mov r8, @g
@@ -41,13 +41,13 @@ function @main
     store.i64 [r11+8], rdx
     mov rax, 9
     mov rdx, 0
-    lea r11, [rbp-48]
+    lea r11, [rbp-32]
     store.i64 [r11], rax
     store.i64 [r11+8], rdx
     lea r10, [rbp-16]
     load.i64 rax, [r10]
     load.i64 rdx, [r10+8]
-    lea r11, [rbp-48]
+    lea r11, [rbp-32]
     load.i64 rbx, [r11]
     load.i64 rcx, [r11+8]
     mov r11, r8
@@ -63,18 +63,18 @@ function @main
     mov rcx, 0
     mov r11, r8
     lock_cmpxchg16b [r11], expected=rdx:rax, desired=rcx:rbx
-    lea r11, [rbp-64]
+    lea r11, [rbp-32]
     store.i64 [r11], rax
     store.i64 [r11+8], rdx
     mov rax, 9
     mov rdx, 0
-    lea r11, [rbp-80]
+    lea r11, [rbp-48]
     store.i64 [r11], rax
     store.i64 [r11+8], rdx
-    lea r11, [rbp-64]
+    lea r11, [rbp-32]
     load.i64 rax, [r11]
     load.i64 rdx, [r11+8]
-    lea r11, [rbp-80]
+    lea r11, [rbp-48]
     load.i64 rcx, [r11]
     load.i64 rsi, [r11+8]
     cmp.i64 rdx, rsi

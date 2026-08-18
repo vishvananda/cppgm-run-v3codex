@@ -336,6 +336,9 @@ struct Function
   long long host_eh_selector_offset = 0;
   InstructionDebugLocation debug_location;
   std::vector<X64Register> callee_saved_regs;
+  // Compiler temporaries whose complete live intervals do not overlap may
+  // name the same frame offset when their size and alignment agree. Source
+  // slots and parameter slots retain their distinct storage identities.
   std::vector<FrameBinding> frame_bindings;
   std::vector<DebugVariable> debug_variables;
   std::map<std::string, std::vector<HostEhClause> > host_eh_clauses;

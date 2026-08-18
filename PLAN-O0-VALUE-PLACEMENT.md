@@ -209,7 +209,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
 | VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases; direct unary returns change no existing fixture; direct integer-conversion returns change 4 exact and 1 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied. Direct unary returns: object/text -16 bytes and 4 instructions/moves; paired user -0.35%, wall -0.48%, RSS +0.63%. Direct integer-conversion returns: object -32 bytes, text -20 bytes, and 6 instructions/moves; paired user -1.05%, wall -0.40%, and RSS -0.21% | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, promoted-slot interval extension, dense slot-analysis state, and integer comparison/unary/conversion return placement complete; broader producer placement pending |
-| VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, direct ALU/shift constraints, and intact ABI-parameter retention complete; address rematerialization and spill-slot reuse pending |
+| VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap; wide spill reuse changes 2 strict and 1 structural PA29 cases (4 MIR/CMIR files) | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%. Wide spill reuse is frozen-object-identical; paired user +0.18%, wall +0.08%, RSS -0.03%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, direct ALU/shift constraints, intact ABI-parameter retention, and f80/i128 spill-home reuse complete; address rematerialization and scalar spill reuse pending |
 | VP5 | 0 | 3 strict PA29 MIR fixtures for bulk copy/zero placement; logical scalar returns change 18 strict, 19 structural, 3 behavior-exact, and 1 course-exact report cases (60 MIR/CMIR files) | Logical bulk operands reshape individual functions but leave aggregate `.text*` (943,292 bytes) and x86 instruction-family counts unchanged; total object -32 bytes. Two-block ABBA medians are user tied at 5.665 s, wall -0.28%, and RSS -0.04%. Logical scalar returns remove 355 hidden operand rewrites and 355 dead definitions; frozen object -32 bytes, text -24 bytes, and 6 moves/instructions; paired user -0.89%, wall -0.65%, RSS +0.19%; affected report 357/357 | logical bulk and scalar-return operands complete; remaining scalar compatibility rewrites pending |
 
 The VP1 proposed call-argument input predates the public MIR placement rule and
@@ -313,6 +313,37 @@ aggregate `.text*` from 944,597 to 943,292 bytes, and x86 instructions from
 small local allocation changes add 35 moves and 21 `lea` instructions. Two
 calm ABBA blocks give baseline/candidate medians of 5.670/5.675 seconds user,
 6.260/6.260 seconds wall, and 364,608/365,048 KiB peak RSS.
+
+The wide spill-home slice reuses an expired compiler temporary only within an
+exact storage-size/alignment class. Twenty-five fixed buckets cover the five
+power-of-two sizes and alignments through 16 bytes; each bucket is a binary
+heap ordered by interval end. Acquiring or returning a home is O(log H), and
+the allocator compares the earliest end with the current source position.
+It reuses only i128 and f80 homes in this slice. These types cannot enter the
+scalar-copy location-sharing path, so no copied-value string set or parallel
+alias analysis is needed.
+
+Strict PA29 MIR changes for `200-f80-direct-call` and
+`800-atomic-i128-compare-exchange`; raw and canonical structural MIR change
+for `300-integral-float-conversions`. The first and third cases reduce their
+frames by 16 bytes. The atomic case reduces its frame from 96 to 64 bytes by
+sharing four non-overlapping i128 values across two homes. Existing fixtures
+cover f80 conversion/calls and repeated i128 atomic lifetimes, so no duplicate
+shape-only reducer was added. The older course reference gives each temporary
+a distinct offset.
+
+The frozen input contains no reusable wide home: its object remains
+byte-identical to `d988c874` at 4,417,272 bytes with SHA-256
+`0498a0bd5ea7024e581e36f156f15e082bb8b064cfc4d04e3ddce101a378020e`.
+Two ABBA blocks give baseline/candidate medians of 5.635/5.645 seconds user,
+6.200/6.205 seconds wall, and 364,996/364,872 KiB peak RSS, all neutral.
+
+An unrestricted scalar prototype was rejected for this slice. Reused offsets
+combined independent lifetimes in the encoder's offset-keyed single-use reload
+table, disabling existing frame forwarding and growing the frozen object by
+24,232 bytes and aggregate `.text*` by 24,155 bytes. Scalar reuse therefore
+remains pending until frame forwarding is keyed by instruction lifetime rather
+than treating an offset as a permanent value identity.
 
 The logical-bulk-operand slice changes strict PA29 MIR for `100-copyobj`,
 `100-zeroinit`, and `200-pass-by-value-lvalue`. `copy_bytes` and `zero_bytes`

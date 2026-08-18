@@ -27,12 +27,12 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 112
+    stack_size 96
     scratch_bytes 48
     temp %a -> [rbp-16] : f80
     temp %b -> [rbp-32] : f80
     temp %r -> [rbp-48] : f80
-    temp %e -> [rbp-64] : f80
+    temp %e -> [rbp-32] : f80
 
   block ^entry
     fmov.f80 [rbp-16], 1.5L
@@ -43,6 +43,6 @@ function @main
     call @addl [args=(), stack=32]
     add rsp, 32
     fstp.f80 [rbp-48]
-    fmov.f80 [rbp-64], 3.75L
-    feq.f80 rax, [rbp-48], [rbp-64]
+    fmov.f80 [rbp-32], 3.75L
+    feq.f80 rax, [rbp-48], [rbp-32]
     ret rax

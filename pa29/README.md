@@ -525,6 +525,13 @@ To complete PA29, implement these goals:
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.
 
+   Reuse an `i128` or `f80` compiler-created temporary frame home when its
+   previous value's complete live interval has ended and the new value has the
+   same storage size and alignment. Non-overlapping wide temporaries need not
+   grow the frame independently. Do not merge source slots, parameter slots,
+   simultaneously live values, or homes whose identity is shared by another
+   logical value.
+
 9. Implement call-boundary correctness without requiring a clever allocator.
    PA29 must respect the native calling convention for direct calls, indirect calls,
    mixed GPR/XMM arguments, variadic register-save state, stack arguments, scalar and
