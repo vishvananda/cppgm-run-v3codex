@@ -9,8 +9,22 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
 
 namespace lowir_model {
+
+struct StringPoolStorage
+{
+  std::vector<std::string> strings;
+  std::vector<std::uint32_t> slots;
+  std::size_t spelling_bytes;
+  bool sealed;
+
+  StringPoolStorage() : slots(32, 0), spelling_bytes(0), sealed(false)
+  {
+    strings.push_back(std::string());
+  }
+};
 
 namespace {
 
@@ -18,6 +32,7 @@ const std::uint32_t kPresentationKindMask = 0xc0000000U;
 const std::uint32_t kPresentationPayloadMask = 0x3fffffffU;
 const std::uint32_t kPresentationPreserveCopy = 0x40000000U;
 const std::uint32_t kPresentationGeneratedValue = 0x80000000U;
+const std::uint32_t kPresentationFixedValue = 0xc0000000U;
 
 }  // namespace
 
@@ -41,6 +56,14 @@ PresentationName PresentationName::generated_value(std::uint32_t ordinal)
   return PresentationName(kPresentationGeneratedValue | ordinal);
 }
 
+PresentationName PresentationName::fixed(FixedPresentationName name)
+{
+  const std::uint32_t id = static_cast<std::uint32_t>(name);
+  if(id > static_cast<std::uint32_t>(FPN_F80_RETURN))
+    throw std::runtime_error("invalid fixed presentation identity");
+  return PresentationName(kPresentationFixedValue | id);
+}
+
 bool PresentationName::valid() const
 {
   return encoded_ != kInvalidCompactId;
@@ -52,6 +75,12 @@ bool PresentationName::generated() const
     (encoded_ & kPresentationKindMask) == kPresentationGeneratedValue;
 }
 
+bool PresentationName::fixed() const
+{
+  return valid() &&
+    (encoded_ & kPresentationKindMask) == kPresentationFixedValue;
+}
+
 bool PresentationName::preserves_copy() const
 {
   return valid() &&
@@ -60,7 +89,7 @@ bool PresentationName::preserves_copy() const
 
 StringId PresentationName::spelling() const
 {
-  if(!valid() || generated())
+  if(!valid() || generated() || fixed())
     throw std::logic_error("presentation identity has no pooled spelling");
   return StringId(encoded_ & kPresentationPayloadMask);
 }
@@ -70,6 +99,28 @@ std::uint32_t PresentationName::generated_ordinal() const
   if(!generated())
     throw std::logic_error("presentation identity has no generated ordinal");
   return encoded_ & kPresentationPayloadMask;
+}
+
+FixedPresentationName PresentationName::fixed_name() const
+{
+  if(!fixed())
+    throw std::logic_error("presentation identity has no fixed name");
+  const std::uint32_t id = encoded_ & kPresentationPayloadMask;
+  if(id > static_cast<std::uint32_t>(FPN_F80_RETURN))
+    throw std::logic_error("invalid fixed presentation identity");
+  return static_cast<FixedPresentationName>(id);
+}
+
+const char * fixed_presentation_name_text(FixedPresentationName name)
+{
+  switch(name) {
+  case FPN_VA_REGISTER_SAVE: return "%va-register-save";
+  case FPN_HOST_EH_EXCEPTION: return "%host-eh-exception";
+  case FPN_HOST_EH_SELECTOR: return "%host-eh-selector";
+  case FPN_XMM_CALL_SCRATCH: return "%xmm-call-scratch";
+  case FPN_F80_RETURN: return "%f80-return";
+  }
+  throw std::logic_error("invalid fixed presentation identity");
 }
 
 namespace {
@@ -252,13 +303,10 @@ long double lowir_floating_value(std::uint64_t low, std::uint64_t high,
   return value;
 }
 
-std::string lowir_literal_text(const Operand & operand,
-                               const StringPool * strings)
+namespace {
+
+std::string generated_lowir_literal_text(const Operand & operand)
 {
-  if(operand.has_spelling) {
-    if(!strings) throw std::logic_error("literal spelling has no string pool");
-    return strings->get(operand.literal);
-  }
   if(operand.kind == Operand::OP_INTEGER) {
     return std::to_string(operand.int_value);
   }
@@ -276,9 +324,57 @@ std::string lowir_literal_text(const Operand & operand,
   return text.str();
 }
 
-StringPool::StringPool() : slots_(32, 0), spelling_bytes_(0)
+}  // namespace
+
+std::string lowir_literal_text(const Operand & operand,
+                               const StringPool * strings)
 {
-  strings_.push_back(std::string());
+  if(operand.has_spelling) {
+    if(!strings) throw std::logic_error("literal spelling has no string pool");
+    return strings->get(operand.literal);
+  }
+  return generated_lowir_literal_text(operand);
+}
+
+std::string lowir_literal_text(const Operand & operand,
+                               const SealedStringPool & strings)
+{
+  if(operand.has_spelling) return strings.get(operand.literal);
+  return generated_lowir_literal_text(operand);
+}
+
+StringPool::StringPool() : storage_(new StringPoolStorage)
+{
+}
+
+StringPool::StringPool(const StringPool & other)
+  : storage_(new StringPoolStorage)
+{
+  storage_->strings = other.storage_->strings;
+  storage_->spelling_bytes = other.storage_->spelling_bytes;
+  std::size_t capacity = 32;
+  while(storage_->strings.size() > capacity * 7 / 10) capacity *= 2;
+  storage_->slots.assign(capacity, 0);
+  rehash(capacity);
+}
+
+StringPool & StringPool::operator=(const StringPool & other)
+{
+  if(this == &other) return *this;
+  StringPool replacement(other);
+  storage_.swap(replacement.storage_);
+  return *this;
+}
+
+StringPool::StringPool(StringPool && other) noexcept
+  : storage_(std::move(other.storage_))
+{
+}
+
+StringPool & StringPool::operator=(StringPool && other) noexcept
+{
+  if(this != &other) storage_ = std::move(other.storage_);
+  return *this;
 }
 
 StringId StringPool::intern(const std::string & text, StringPoolStats * stats)
@@ -289,79 +385,138 @@ StringId StringPool::intern(const std::string & text, StringPoolStats * stats)
 StringId StringPool::intern_range(const std::string & text, std::size_t first,
                                   std::size_t count, StringPoolStats * stats)
 {
+  if(storage_->sealed)
+    throw std::logic_error("cannot mutate sealed LowIR presentation storage");
   if(first > text.size() || count > text.size() - first)
     throw std::logic_error("invalid LowIR string-pool range");
   if(stats) {
     ++stats->intern_calls;
     stats->hash_bytes += count;
   }
-  if((strings_.size() + 1) * 10 > slots_.size() * 7)
-    rehash(slots_.size() * 2);
-  const std::size_t mask = slots_.size() - 1;
+  if((storage_->strings.size() + 1) * 10 > storage_->slots.size() * 7)
+    rehash(storage_->slots.size() * 2);
+  const std::size_t mask = storage_->slots.size() - 1;
   std::size_t slot = hash_range(text, first, count) & mask;
-  while(slots_[slot] != 0) {
+  while(storage_->slots[slot] != 0) {
     if(stats) ++stats->slot_probes;
-    const std::uint32_t id = slots_[slot];
-    if(strings_[id].size() == count &&
-       text.compare(first, count, strings_[id]) == 0) {
+    const std::uint32_t id = storage_->slots[slot];
+    if(storage_->strings[id].size() == count &&
+       text.compare(first, count, storage_->strings[id]) == 0) {
       if(stats) ++stats->intern_hits;
       return StringId(id);
     }
     slot = (slot + 1) & mask;
   }
-  if(strings_.size() >= kInvalidCompactId)
+  if(storage_->strings.size() >= kInvalidCompactId)
     throw std::runtime_error("too many pooled LowIR strings");
-  const std::uint32_t id = static_cast<std::uint32_t>(strings_.size());
-  strings_.push_back(text.substr(first, count));
-  spelling_bytes_ += count;
-  slots_[slot] = id;
+  const std::uint32_t id = static_cast<std::uint32_t>(storage_->strings.size());
+  storage_->strings.push_back(text.substr(first, count));
+  storage_->spelling_bytes += count;
+  storage_->slots[slot] = id;
   if(stats) ++stats->intern_misses;
   return StringId(id);
 }
 
 void StringPool::reserve(std::size_t expected_strings)
 {
+  if(storage_->sealed)
+    throw std::logic_error("cannot mutate sealed LowIR presentation storage");
   if(expected_strings >= kInvalidCompactId)
     expected_strings = kInvalidCompactId - 1;
-  strings_.reserve(expected_strings + 1);
-  std::size_t capacity = slots_.size();
+  storage_->strings.reserve(expected_strings + 1);
+  std::size_t capacity = storage_->slots.size();
   while(expected_strings + 1 > capacity * 7 / 10) capacity *= 2;
-  if(capacity > slots_.size()) rehash(capacity);
+  if(capacity > storage_->slots.size()) rehash(capacity);
 }
 
 const std::string & StringPool::get(StringId id) const
 {
   const std::uint32_t index = id;
-  if(index >= strings_.size())
+  if(index >= storage_->strings.size())
     throw std::logic_error("invalid pooled LowIR string identity " +
-      std::to_string(index) + " for " + std::to_string(strings_.size()) +
+      std::to_string(index) + " for " +
+      std::to_string(storage_->strings.size()) +
       " entries");
-  return strings_[index];
+  return storage_->strings[index];
 }
 
-std::size_t StringPool::size() const { return strings_.size() - 1; }
-std::size_t StringPool::spelling_bytes() const { return spelling_bytes_; }
+std::size_t StringPool::size() const { return storage_->strings.size() - 1; }
+std::size_t StringPool::spelling_bytes() const
+  { return storage_->spelling_bytes; }
 
 std::size_t StringPool::storage_bytes() const
 {
-  std::size_t bytes = strings_.capacity() * sizeof(std::string) +
-    slots_.capacity() * sizeof(std::uint32_t);
-  for(std::size_t i = 1; i < strings_.size(); ++i)
-    bytes += strings_[i].capacity();
+  std::size_t bytes = storage_->strings.capacity() * sizeof(std::string) +
+    storage_->slots.capacity() * sizeof(std::uint32_t);
+  for(std::size_t i = 1; i < storage_->strings.size(); ++i)
+    bytes += storage_->strings[i].capacity();
   return bytes;
 }
+
+SealedStringPool StringPool::seal() const
+{
+  storage_->sealed = true;
+  std::vector<std::uint32_t>().swap(storage_->slots);
+  return SealedStringPool(storage_);
+}
+
+bool StringPool::sealed() const { return storage_->sealed; }
 
 void StringPool::rehash(std::size_t capacity)
 {
   std::vector<std::uint32_t> replacement(capacity, 0);
   const std::size_t mask = capacity - 1;
-  for(std::uint32_t id = 1; id < strings_.size(); ++id) {
-    std::size_t slot = hash_range(strings_[id], 0, strings_[id].size()) & mask;
+  for(std::uint32_t id = 1; id < storage_->strings.size(); ++id) {
+    std::size_t slot = hash_range(storage_->strings[id], 0,
+                                  storage_->strings[id].size()) & mask;
     while(replacement[slot] != 0) slot = (slot + 1) & mask;
     replacement[slot] = id;
   }
-  slots_.swap(replacement);
+  storage_->slots.swap(replacement);
 }
+
+SealedStringPool::SealedStringPool()
+{
+}
+
+SealedStringPool::SealedStringPool(
+    const std::shared_ptr<const StringPoolStorage> & storage)
+  : storage_(storage)
+{
+}
+
+const std::string & SealedStringPool::get(StringId id) const
+{
+  if(!storage_)
+    throw std::logic_error("missing sealed LowIR presentation storage");
+  const std::uint32_t index = id;
+  if(index >= storage_->strings.size())
+    throw std::logic_error("invalid sealed LowIR string identity " +
+      std::to_string(index) + " for " +
+      std::to_string(storage_->strings.size()) + " entries");
+  return storage_->strings[index];
+}
+
+std::size_t SealedStringPool::size() const
+{
+  return storage_ ? storage_->strings.size() - 1 : 0;
+}
+
+std::size_t SealedStringPool::spelling_bytes() const
+{
+  return storage_ ? storage_->spelling_bytes : 0;
+}
+
+std::size_t SealedStringPool::storage_bytes() const
+{
+  if(!storage_) return 0;
+  std::size_t bytes = storage_->strings.capacity() * sizeof(std::string);
+  for(std::size_t i = 1; i < storage_->strings.size(); ++i)
+    bytes += storage_->strings[i].capacity();
+  return bytes;
+}
+
+bool SealedStringPool::valid() const { return static_cast<bool>(storage_); }
 
 BlockId allocate_lowir_block_id(Function & function, StringId label)
 {

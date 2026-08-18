@@ -6,12 +6,10 @@
 #include "mir_model.h"
 
 namespace lowir_native {
-namespace session_detail { class StringIdentityMap; }
 namespace program_lowering {
 
 mir_model::MirGlobalDefinition lower_global(
-    const lowir_model::LowirGlobalDefinition & source,
-    session_detail::StringIdentityMap & strings);
+    const lowir_model::LowirGlobalDefinition & source);
 std::vector<lowir_model::SymbolId> tls_wrapper_index(
     const lowir_model::LowirProgram & source);
 void lower_startup(const lowir_model::LowirProgram & source,

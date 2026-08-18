@@ -2,7 +2,6 @@
 
 #include "lowir_native_mir.h"
 #include "lowir_native_selection.h"
-#include "lowir_native_session.h"
 
 #include <stdexcept>
 
@@ -36,19 +35,18 @@ void append_startup_call(std::vector<MirInstruction> & startup,
 }  // namespace
 
 mir_model::MirGlobalDefinition lower_global(
-    const lowir_model::LowirGlobalDefinition & source,
-    session_detail::StringIdentityMap & strings)
+    const lowir_model::LowirGlobalDefinition & source)
 {
   mir_model::MirGlobalDefinition target;
   target.symbol = source.symbol;
   if(source.metadata.object_symbol.valid())
-    target.object_symbol = strings.map(source.metadata.object_symbol);
+    target.object_symbol = source.metadata.object_symbol;
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
   if(source.metadata.section_segment.valid())
-    target.section_segment = strings.map(source.metadata.section_segment);
+    target.section_segment = source.metadata.section_segment;
   if(source.metadata.section_name.valid())
-    target.section_name = strings.map(source.metadata.section_name);
+    target.section_name = source.metadata.section_name;
   if(source.structured) {
     target.storage_kind = mir_model::MirGlobalDefinition::GS_DATA;
     for(std::size_t i = 0; i < source.data_items.size(); ++i) {
@@ -67,14 +65,14 @@ mir_model::MirGlobalDefinition lower_global(
         lowered.literal_low = item.literal_operand.literal_low;
         lowered.literal_high = item.literal_operand.literal_high;
         if(item.literal_operand.has_spelling)
-          lowered.literal = strings.map(item.literal_operand.literal);
+          lowered.literal = item.literal_operand.literal;
       } else {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
         lowered.int_value = selection::integer_value(item.literal_operand);
 		lowered.literal_high = item.literal_operand.int_high;
 		if(item.type.kind == lowir_model::LTK_I128 &&
 		   item.literal_operand.has_spelling)
-		  lowered.literal = strings.map(item.literal_operand.literal);
+		  lowered.literal = item.literal_operand.literal;
       }
       target.data_items.push_back(lowered);
     }
@@ -91,7 +89,7 @@ mir_model::MirGlobalDefinition lower_global(
         target.literal_low = source.init_operand.literal_low;
         target.literal_high = source.init_operand.literal_high;
         if(source.init_operand.has_spelling)
-          target.literal = strings.map(source.init_operand.literal);
+          target.literal = source.init_operand.literal;
       }
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
@@ -103,7 +101,7 @@ mir_model::MirGlobalDefinition lower_global(
 	  if(source.type.kind == lowir_model::LTK_I128 &&
 	     source.init_kind != lowir_model::LowirGlobalDefinition::INIT_ZERO &&
 	     source.init_operand.has_spelling)
-		target.literal = strings.map(source.init_operand.literal);
+		target.literal = source.init_operand.literal;
     }
   }
   return target;

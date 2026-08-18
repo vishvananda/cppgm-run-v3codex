@@ -222,7 +222,7 @@ const std::string& CodeBuffer::symbol_name(lowir_model::SymbolId symbol) const
 	return strings_->get((*symbol_names_)[index]);
 }
 
-void CodeBuffer::bind_strings(const lowir_model::StringPool& strings)
+void CodeBuffer::bind_strings(const lowir_model::SealedStringPool& strings)
 {
 	strings_ = &strings;
 }
@@ -244,7 +244,7 @@ void CodeBuffer::note_literal_text_parse(std::uint64_t nanoseconds)
 	stats_->native_literal_parse_nanoseconds += nanoseconds;
 }
 
-const lowir_model::StringPool& CodeBuffer::strings() const
+const lowir_model::SealedStringPool& CodeBuffer::strings() const
 {
 	if (!strings_) throw std::logic_error("native string pool is not bound");
 	return *strings_;

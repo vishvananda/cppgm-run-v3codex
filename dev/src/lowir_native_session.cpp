@@ -54,7 +54,9 @@ std::size_t mir_function_storage_bytes(const mir_model::MirFunction & function)
 
 std::size_t mir_shell_storage_bytes(const mir_model::MirProgram & program)
 {
-	std::size_t bytes = program.strings ? program.strings->storage_bytes() : 0;
+	// The sealed spelling store is already owned and counted by the LowIR
+	// program. MIR adds only one shared owner, not another string allocation.
+	std::size_t bytes = 0;
 	bytes += program.symbol_names.capacity() * sizeof(lowir_model::StringId) +
 		program.startup.capacity() * sizeof(mir_model::MirInstruction) +
 		program.globals.capacity() * sizeof(mir_model::MirGlobalDefinition) +
@@ -71,92 +73,10 @@ std::size_t mir_shell_storage_bytes(const mir_model::MirProgram & program)
 
 }  // namespace
 
-session_detail::StringIdentityMap::StringIdentityMap(
-    const lowir_model::StringPool & source, Stats * stats)
-  : source_(source), mapped_(source.size() + 1),
-    strings_(new lowir_model::StringPool), stats_(stats)
-{
-	if(stats_)
-		stats_->presentation_map_storage_bytes =
-			mapped_.capacity() * sizeof(lowir_model::StringId);
-}
-
-session_detail::StringIdentityMap::~StringIdentityMap()
-{
-	if(!stats_) return;
-	stats_->mir_string_entries = strings_->size();
-	stats_->mir_spelling_bytes = strings_->spelling_bytes();
-	stats_->mir_string_storage_bytes = strings_->storage_bytes();
-}
-
-lowir_model::StringId session_detail::StringIdentityMap::map(
-    lowir_model::StringId source_literal)
-{
-  if(!source_literal.valid()) return lowir_model::StringId();
-	const std::chrono::steady_clock::time_point started = stats_ ?
-		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-	if(stats_) ++stats_->presentation_map_calls;
-  const std::uint32_t source_index = source_literal;
-  if(source_index >= mapped_.size())
-    throw std::logic_error("invalid LowIR literal identity");
-  if(mapped_[source_index].valid()) {
-	if(stats_) {
-		++stats_->presentation_map_hits;
-		stats_->presentation_bridge_nanoseconds += static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - started).count());
-	}
-	return mapped_[source_index];
-  }
-  if(stats_) {
-	++stats_->presentation_map_misses;
-	stats_->presentation_mapped_bytes += source_.get(source_literal).size();
-  }
-  const lowir_model::StringId target = strings_->intern(
-    source_.get(source_literal));
-  mapped_[source_index] = target;
-  if(stats_) {
-	stats_->presentation_bridge_nanoseconds += static_cast<std::uint64_t>(
-		std::chrono::duration_cast<std::chrono::nanoseconds>(
-			std::chrono::steady_clock::now() - started).count());
-  }
-  return target;
-}
-
-lowir_model::PresentationName session_detail::StringIdentityMap::map(
-    lowir_model::PresentationName source_name)
-{
-  if(!source_name.valid()) return lowir_model::PresentationName();
-  if(source_name.generated()) return source_name;
-  return lowir_model::PresentationName::pooled(
-    map(source_name.spelling()), source_name.preserves_copy());
-}
-
-lowir_model::StringId session_detail::StringIdentityMap::intern(
-    const std::string & spelling)
-{
-	const std::chrono::steady_clock::time_point started = stats_ ?
-		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-	const lowir_model::StringId result = strings_->intern(spelling);
-	if(stats_) {
-		stats_->presentation_bridge_nanoseconds += static_cast<std::uint64_t>(
-			std::chrono::duration_cast<std::chrono::nanoseconds>(
-				std::chrono::steady_clock::now() - started).count());
-	}
-	return result;
-}
-
-std::shared_ptr<lowir_model::StringPool>
-session_detail::StringIdentityMap::strings() const
-{
-  return strings_;
-}
-
 struct ProgramLoweringSession::Impl
 {
   std::unique_ptr<lowir_model::LowirProgram> rewritten;
   const lowir_model::LowirProgram & source;
-  session_detail::StringIdentityMap strings;
   Stats * stats;
   int optimization_level;
   mir_model::MirProgram shell;
@@ -168,8 +88,7 @@ struct ProgramLoweringSession::Impl
   Impl(const lowir_model::LowirProgram & program, const std::string & target,
        int level, Stats * output_stats)
     : rewritten(force_inline::rewrite_program(program)),
-      source(rewritten ? *rewritten : program), strings(source.strings, output_stats),
-      stats(output_stats),
+      source(rewritten ? *rewritten : program), stats(output_stats),
       optimization_level(level), mir_shell_bytes(0)
   {
     std::chrono::steady_clock::time_point started;
@@ -177,13 +96,16 @@ struct ProgramLoweringSession::Impl
     if(target != "linux")
       throw std::runtime_error("unsupported native target: " + target);
 	shell.target = mir_model::MirProgram::TARGET_LINUX;
-	shell.symbol_names.reserve(source.symbol_names.size());
-	for(std::size_t i = 0; i < source.symbol_names.size(); ++i)
-	  shell.symbol_names.push_back(strings.map(source.symbol_names[i]));
-	shell.strings = strings.strings();
+	shell.symbol_names = source.symbol_names;
+	shell.strings = source.strings.seal();
+	if(stats) {
+	  stats->mir_string_entries = shell.strings.size();
+	  stats->mir_spelling_bytes = shell.strings.spelling_bytes();
+	  stats->mir_string_storage_bytes = shell.strings.storage_bytes();
+	}
 	pointer_globals.assign(source.symbol_names.size(), 0);
 	signatures.resize(source.symbol_names.size());
-    eh::plan_program(source, shell, strings);
+    eh::plan_program(source, shell);
     program_lowering::lower_startup(source, shell);
     tls_wrappers = program_lowering::tls_wrapper_index(source);
     for(std::size_t i = 0; i < source.global_declarations.size(); ++i)
@@ -196,8 +118,7 @@ struct ProgramLoweringSession::Impl
 		pointer_globals[source.globals[i].symbol] = 1;
     for(std::size_t i = 0; i < source.globals.size(); ++i) {
       mir_model::MirGlobalDefinition global =
-        program_lowering::lower_global(
-          source.globals[i], strings);
+        program_lowering::lower_global(source.globals[i]);
       const lowir_model::SymbolId wrapper =
         tls_wrappers[source.globals[i].symbol];
       if(wrapper.valid())
@@ -209,8 +130,7 @@ struct ProgramLoweringSession::Impl
     for(std::size_t i = 0; i < source.object_aliases.size(); ++i) {
       mir_model::MirObjectAlias alias;
       if(source.object_aliases[i].object_symbol.valid())
-        alias.object_symbol = strings.map(
-          source.object_aliases[i].object_symbol);
+        alias.object_symbol = source.object_aliases[i].object_symbol;
       alias.target = source.object_aliases[i].target_id;
       shell.object_aliases.push_back(alias);
     }
@@ -258,7 +178,7 @@ struct ProgramLoweringSession::Impl
     if(stats) started = std::chrono::steady_clock::now();
     mir_model::MirFunction result = session_detail::lower_native_function(
       source, source.functions[index], pointer_globals, tls_wrappers,
-      signatures, strings, stats);
+      signatures, stats);
     machine_opt::Stats opt_stats;
     machine_opt::optimize_function(result, optimization_level,
                                    stats ? &opt_stats : 0);

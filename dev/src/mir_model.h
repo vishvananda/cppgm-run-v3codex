@@ -8,7 +8,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -442,10 +441,8 @@ struct Program
   Program();
 
   std::vector<lowir_model::StringId> symbol_names;
-  // Presentation identities are dense in MIR.  The shared pool lets streamed
-  // function lowering intern literals and metadata after the program shell
-  // has moved to the object writer, without copying the larger LowIR pool.
-  std::shared_ptr<lowir_model::StringPool> strings;
+  // Provides the spellings referenced by MIR program and operand identities.
+  lowir_model::SealedStringPool strings;
   bool uses_eh = false;
   std::vector<Instruction> startup;
   std::vector<GlobalDefinition> globals;

@@ -582,6 +582,8 @@ long double lowir_floating_value(std::uint64_t low, std::uint64_t high,
                                  const LowType & type);
 std::string lowir_literal_text(const Operand & operand,
                                const StringPool * strings = 0);
+std::string lowir_literal_text(const Operand & operand,
+                               const SealedStringPool & strings);
 void resolve_lowir_function_operands(Function & function,
                                      const StringPool & strings);
 void resolve_lowir_program_symbols(Program & program);

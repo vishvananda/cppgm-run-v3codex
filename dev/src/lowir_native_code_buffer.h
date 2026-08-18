@@ -84,11 +84,11 @@ public:
 	bool relocatable_addresses() const;
 	void bind_symbol_names(const std::vector<lowir_model::StringId>& names);
 	const std::string& symbol_name(lowir_model::SymbolId symbol) const;
-	void bind_strings(const lowir_model::StringPool& strings);
+	void bind_strings(const lowir_model::SealedStringPool& strings);
 	void bind_stats(Stats* stats);
 	bool collects_stats() const;
 	void note_literal_text_parse(std::uint64_t nanoseconds = 0);
-	const lowir_model::StringPool& strings() const;
+	const lowir_model::SealedStringPool& strings() const;
 	const std::string& literal_spelling(lowir_model::StringId literal) const;
 	void append(const std::vector<unsigned char>& bytes);
 	bool short_relative(unsigned opcode, const std::string& target);
@@ -141,7 +141,7 @@ private:
 	std::size_t base_offset_;
 	bool relocatable_addresses_;
 	const std::vector<lowir_model::StringId>* symbol_names_;
-	const lowir_model::StringPool* strings_;
+	const lowir_model::SealedStringPool* strings_;
 	Stats* stats_;
 	std::vector<unsigned char> bytes_;
 	std::unordered_map<std::string, std::size_t> labels_;

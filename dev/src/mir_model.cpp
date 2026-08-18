@@ -73,7 +73,7 @@ std::string literal_text(std::uint64_t low, std::uint64_t high,
     operand.kind = lowir_model::Operand::OP_INTEGER;
     operand.has_int_value = true;
   }
-  return lowir_model::lowir_literal_text(operand, program.strings.get());
+  return lowir_model::lowir_literal_text(operand, program.strings);
 }
 
 std::string operand_text(const Operand & operand, const Program & program,
@@ -453,7 +453,6 @@ void render_function(std::ostringstream & out, const Program & program,
 }  // namespace
 
 Program::Program()
-  : strings(new lowir_model::StringPool)
 {
 }
 
@@ -485,9 +484,9 @@ const std::string & mir_literal_spelling(const MirProgram & program,
 const std::string & mir_string(const MirProgram & program,
                                lowir_model::StringId string)
 {
-  if(!program.strings || !string.valid())
+  if(!program.strings.valid() || !string.valid())
     throw std::logic_error("invalid MIR string identity");
-  return program.strings->get(string);
+  return program.strings.get(string);
 }
 
 std::string mir_presentation_name(
@@ -497,6 +496,8 @@ std::string mir_presentation_name(
     throw std::logic_error("invalid MIR presentation identity");
   if(name.generated())
     return "%t" + std::to_string(name.generated_ordinal());
+  if(name.fixed())
+    return lowir_model::fixed_presentation_name_text(name.fixed_name());
   return mir_string(program, name.spelling());
 }
 

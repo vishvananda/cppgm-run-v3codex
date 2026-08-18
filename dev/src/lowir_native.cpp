@@ -74,11 +74,10 @@ public:
                   const std::vector<unsigned char> & pointer_globals,
                   const std::vector<lowir_model::SymbolId> & tls_wrappers,
                   const FunctionSignatureIndex & signatures,
-                  session_detail::StringIdentityMap & strings,
                   lowir_native::Stats * stats)
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
-      signatures_(signatures), strings_(strings), stats_(stats),
+      signatures_(signatures), stats_(stats),
       facts_(analyze_function(source, stats)),
       control_flow_(source), position_(0)
   {
@@ -88,13 +87,10 @@ public:
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
     target_.symbol = source.symbol;
     if(source.metadata.object_symbol.valid())
-      target_.object_symbol = strings_.map(source.metadata.object_symbol);
-    target_.block_labels.resize(source.block_labels.size());
-    for(std::size_t i = 0; i < source.block_labels.size(); ++i)
-      if(source.block_labels[i].valid())
-        target_.block_labels[i] = strings_.map(source.block_labels[i]);
+      target_.object_symbol = source.metadata.object_symbol;
+    target_.block_labels = source.block_labels;
     target_.return_type = source.return_type;
-    target_.debug_location.file = strings_.map(source.debug_location.file);
+    target_.debug_location.file = source.debug_location.file;
     target_.debug_location.line = source.debug_location.line;
     target_.debug_location.column = source.debug_location.column;
     if(stats_)
@@ -150,7 +146,7 @@ public:
             k < block.instructions.size(); ++k) {
           block.instructions[k].has_source_position = true;
           block.instructions[k].source_position = position_;
-          block.instructions[k].debug_location.file = strings_.map(debug.file);
+          block.instructions[k].debug_location.file = debug.file;
           block.instructions[k].debug_location.line = debug.line;
           block.instructions[k].debug_location.column = debug.column;
         }
@@ -170,7 +166,6 @@ private:
   const std::vector<unsigned char> & pointer_globals_;
   const std::vector<lowir_model::SymbolId> & tls_wrappers_;
   const FunctionSignatureIndex & signatures_;
-  session_detail::StringIdentityMap & strings_;
   lowir_native::Stats * stats_;
   FunctionFacts facts_;
   StorageFacts storage_facts_;
@@ -198,12 +193,12 @@ private:
   long long variadic_register_save_offset_ = 0;
   abi::VariadicState variadic_state_;
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
-                                   const std::string & name,
+                                   lowir_model::FixedPresentationName name,
                                    const LowType & type)
   {
     return frame_layout::append_binding(
       target_, frame_bytes_, kind,
-      lowir_model::PresentationName::pooled(strings_.intern(name)), type);
+      lowir_model::PresentationName::fixed(name), type);
   }
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    lowir_model::StringId name,
@@ -211,14 +206,14 @@ private:
   {
     return frame_layout::append_binding(
       target_, frame_bytes_, kind,
-      lowir_model::PresentationName::pooled(strings_.map(name)), type);
+      lowir_model::PresentationName::pooled(name), type);
   }
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    lowir_model::PresentationName name,
                                    const LowType & type)
   {
     return frame_layout::append_binding(
-      target_, frame_bytes_, kind, strings_.map(name), type);
+      target_, frame_bytes_, kind, name, type);
   }
   std::uint32_t append_frame_binding(
                             mir_model::MirFrameBinding::Kind kind,
@@ -231,7 +226,7 @@ private:
       throw std::runtime_error("too many native frame bindings");
     mir_model::MirFrameBinding binding;
     binding.kind = kind;
-    binding.name = strings_.map(name);
+    binding.name = name;
     binding.offset = offset;
     binding.type = type;
     target_.frame_bindings.push_back(binding);
@@ -276,7 +271,8 @@ private:
       throw std::runtime_error("va_start in non-variadic function");
     variadic_state_ = abi::variadic_state(source_.params);
     variadic_register_save_offset_ = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, "%va-register-save",
+      mir_model::MirFrameBinding::FB_TEMP,
+      lowir_model::FPN_VA_REGISTER_SAVE,
       varargs::register_save_type());
     varargs::append_register_save(variadic_register_save_offset_, parameter_moves_);
     uses_scalar_float_ = true;
@@ -308,10 +304,12 @@ private:
     if(!host_eh_detail::requires_host_eh_storage(source_)) return;
     target_.host_eh_enabled = true;
     target_.host_eh_exception_offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, "%host-eh-exception",
+      mir_model::MirFrameBinding::FB_TEMP,
+      lowir_model::FPN_HOST_EH_EXCEPTION,
       lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
     target_.host_eh_selector_offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, "%host-eh-selector",
+      mir_model::MirFrameBinding::FB_TEMP,
+      lowir_model::FPN_HOST_EH_SELECTOR,
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
   }
   bool crosses_call(lowir_model::ValueId value) const
@@ -348,7 +346,7 @@ private:
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
       binding.name = lowir_model::PresentationName::pooled(
-        strings_.map(parameter.name));
+        parameter.name);
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -439,7 +437,7 @@ private:
         source_.params[piece.parameter_index];
       mir_model::MirParamBinding binding;
       binding.name = lowir_model::PresentationName::pooled(
-        strings_.map(parameter.name));
+        parameter.name);
       binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ||
         wide::is_integer(parameter.type) ?
         piece.type : parameter.type;
@@ -516,7 +514,7 @@ private:
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
       binding.name = lowir_model::PresentationName::pooled(
-        strings_.map(parameter.name));
+        parameter.name);
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -723,7 +721,7 @@ private:
     if(operand.kind == Operand::OP_FLOAT)
       return float_immediate(
         operand.literal_low, operand.literal_high,
-        operand.has_spelling ? strings_.map(operand.literal) :
+        operand.has_spelling ? operand.literal :
           lowir_model::StringId());
     if(operand.kind == Operand::OP_GLOBAL)
       return global_operand(MirOperand::OP_SYMBOL, operand);
@@ -1127,7 +1125,7 @@ private:
   {
     return allocate_temp_frame_binding(value, type);
   }
-  MirOperand allocate_named_temp_home(const std::string & name,
+  MirOperand allocate_named_temp_home(lowir_model::FixedPresentationName name,
                                       const LowType & type)
   {
     const long long offset = allocate_frame_binding(
@@ -1319,7 +1317,7 @@ private:
                         instruction.first.literal_low,
                         instruction.first.literal_high,
                         instruction.first.has_spelling ?
-                          strings_.map(instruction.first.literal) :
+                          instruction.first.literal :
                           lowir_model::StringId()),
                       instruction.type);
     define(instruction.dest, instruction.type, destination);
@@ -2035,7 +2033,8 @@ private:
   {
     if(has_xmm_call_scratch_) return xmm_call_scratch_;
     xmm_call_scratch_ = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, "%xmm-call-scratch",
+      mir_model::MirFrameBinding::FB_TEMP,
+      lowir_model::FPN_XMM_CALL_SCRATCH,
       lowir_model::builtin_lowir_type(lowir_model::LTK_F64));
     has_xmm_call_scratch_ = true;
     return xmm_call_scratch_;
@@ -2975,11 +2974,10 @@ mir_model::MirFunction session_detail::lower_native_function(
     const std::vector<unsigned char> & pointer_globals,
     const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
-    session_detail::StringIdentityMap & strings,
     lowir_native::Stats * stats)
 {
   return FunctionLowerer(program, function, pointer_globals, tls_wrappers,
-                         signatures, strings, stats).lower();
+                         signatures, stats).lower();
 }
 
 }  // namespace lowir_native

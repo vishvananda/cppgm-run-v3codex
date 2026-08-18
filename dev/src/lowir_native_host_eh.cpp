@@ -247,7 +247,7 @@ bool is_catch_dispatch_block(const mir_model::MirBlock & block)
 
 HostEhRegionPlan analyze_host_eh_regions(
     const mir_model::MirFunction & function,
-    const lowir_model::StringPool & strings,
+    const lowir_model::SealedStringPool & strings,
     const std::string & function_name)
 {
   HostEhRegionPlan result;

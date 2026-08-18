@@ -2788,7 +2788,7 @@ void write_linux_executable(const std::string & path,
   if(stats) encode_start = std::chrono::steady_clock::now();
   CodeBuffer content;
   content.bind_symbol_names(program.symbol_names);
-  content.bind_strings(*program.strings);
+  content.bind_strings(program.strings);
   content.bind_stats(stats);
   content.label("__startup");
   for(std::size_t i = 0; i < program.startup.size(); ++i)
@@ -2812,7 +2812,7 @@ void write_linux_executable(const std::string & path,
     throw std::runtime_error("native executable has no startup entry");
   CodeBuffer content;
   content.bind_symbol_names(program.symbol_names);
-  content.bind_strings(*program.strings);
+  content.bind_strings(program.strings);
   content.bind_stats(stats);
   std::uint64_t encode_nanoseconds = 0;
   std::chrono::steady_clock::time_point encode_started;
@@ -2851,7 +2851,7 @@ void write_linux_relocatable(
   mir_model::MirProgram program = lowering.take_program_shell();
   CodeBuffer text(0, true);
   text.bind_symbol_names(program.symbol_names);
-  text.bind_strings(*program.strings);
+  text.bind_strings(program.strings);
   text.bind_stats(stats);
   std::vector<HostFunctionLayout> functions;
   functions.reserve(lowering.function_count() + source.function_declarations.size());
@@ -2882,7 +2882,7 @@ void write_linux_relocatable(
   std::unordered_map<std::string, std::size_t> data_section_indexes;
   intern_data_section(".data", 3, data_sections, data_section_indexes);
   data_sections[0].content.bind_symbol_names(program.symbol_names);
-  data_sections[0].content.bind_strings(*program.strings);
+  data_sections[0].content.bind_strings(program.strings);
   data_sections[0].content.bind_stats(stats);
   const std::vector<unsigned char> suppressed_globals =
     host_external_global_definitions(source, program);
@@ -2898,7 +2898,7 @@ void write_linux_relocatable(
       section_name, flags, data_sections, data_section_indexes);
     DataSectionBuffer & section = data_sections[section_index];
     section.content.bind_symbol_names(program.symbol_names);
-    section.content.bind_strings(*program.strings);
+    section.content.bind_strings(program.strings);
     section.content.bind_stats(stats);
     section.alignment = std::max(section.alignment, global_alignment(global));
     emit_global(section.content, global);

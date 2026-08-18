@@ -1,7 +1,6 @@
 #include "lowir_native_eh.h"
 #include "lowir_native_block_labels.h"
 #include "lowir_native_mir.h"
-#include "lowir_native_session.h"
 
 namespace lowir_native {
 namespace eh {
@@ -66,8 +65,7 @@ bool is_eh_instruction(lowir_model::Instruction::Kind kind)
 }  // namespace
 
 void plan_program(const lowir_model::LowirProgram & source,
-                  mir_model::MirProgram & target,
-                  session_detail::StringIdentityMap & strings)
+                  mir_model::MirProgram & target)
 {
   for(std::size_t i = 0; i < source.global_declarations.size(); ++i) {
     const lowir_model::GlobalDeclaration & declaration =
@@ -76,7 +74,7 @@ void plan_program(const lowir_model::LowirProgram & source,
     if(!data_kind(declaration.metadata.role, data.kind)) continue;
     data.symbol = declaration.symbol;
     if(declaration.metadata.object_symbol.valid())
-      data.object_symbol = strings.map(declaration.metadata.object_symbol);
+      data.object_symbol = declaration.metadata.object_symbol;
     target.runtime_data.push_back(data);
   }
   for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
@@ -86,7 +84,7 @@ void plan_program(const lowir_model::LowirProgram & source,
     if(!runtime_kind(declaration.metadata.role, runtime.kind)) continue;
     runtime.symbol = declaration.symbol;
     if(declaration.metadata.object_symbol.valid())
-      runtime.object_symbol = strings.map(declaration.metadata.object_symbol);
+      runtime.object_symbol = declaration.metadata.object_symbol;
     target.runtime_functions.push_back(runtime);
     if(runtime.kind <= mir_model::RuntimeFunction::RF_EH_RESUME)
       target.uses_eh = true;

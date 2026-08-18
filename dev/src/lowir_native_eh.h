@@ -6,12 +6,10 @@
 #include <vector>
 
 namespace lowir_native {
-namespace session_detail { class StringIdentityMap; }
 namespace eh {
 
 void plan_program(const lowir_model::LowirProgram & source,
-                  mir_model::MirProgram & target,
-                  session_detail::StringIdentityMap & strings);
+                  mir_model::MirProgram & target);
 lowir_model::SymbolId runtime_data_symbol(
   const std::vector<mir_model::MirRuntimeData> & data,
   mir_model::RuntimeData::Kind kind);
