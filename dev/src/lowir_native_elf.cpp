@@ -108,10 +108,10 @@ unsigned xmm_index(XmmRegister xmm)
   return static_cast<unsigned>(xmm);
 }
 
-void emit_scalar_prefix(CodeBuffer & out, const std::string & type)
+void emit_scalar_prefix(CodeBuffer & out, const lowir_model::LowType & type)
 {
-  if(type == "f32") out.byte(0xf3);
-  else if(type == "f64") out.byte(0xf2);
+  if(type.kind == lowir_model::LTK_F32) out.byte(0xf3);
+  else if(type.kind == lowir_model::LTK_F64) out.byte(0xf2);
   else throw std::logic_error("SSE scalar operation requires f32 or f64");
 }
 
@@ -134,7 +134,7 @@ void float_address(CodeBuffer & out, const mir_model::MirOperand & address,
 
 void emit_xmm_load(CodeBuffer & out, XmmRegister destination,
                    const mir_model::MirOperand & source,
-                   const std::string & type,
+                   const lowir_model::LowType & type,
                    const mir_model::MirFunction & function)
 {
   X64Register base = XR_RBP;
@@ -148,7 +148,7 @@ void emit_xmm_load(CodeBuffer & out, XmmRegister destination,
 }
 
 void emit_xmm_store(CodeBuffer & out, const mir_model::MirOperand & destination,
-                    XmmRegister source, const std::string & type,
+                    XmmRegister source, const lowir_model::LowType & type,
                     const mir_model::MirFunction & function)
 {
   X64Register base = XR_RBP;
@@ -162,7 +162,8 @@ void emit_xmm_store(CodeBuffer & out, const mir_model::MirOperand & destination,
 }
 
 void emit_xmm_register_move(CodeBuffer & out, XmmRegister destination,
-                            XmmRegister source, const std::string & type)
+                            XmmRegister source,
+                            const lowir_model::LowType & type)
 {
   emit_scalar_prefix(out, type);
   out.byte(0x0f);
@@ -229,28 +230,34 @@ void emit_x87_memory(CodeBuffer & out, unsigned opcode, unsigned extension,
 
 void emit_x87_load_memory(CodeBuffer & out,
                           const mir_model::MirOperand & operand,
-                          const std::string & type,
+                          const lowir_model::LowType & type,
                           const mir_model::MirFunction & function)
 {
-  if(type == "f32") emit_x87_memory(out, 0xd9, 0, operand, function);
-  else if(type == "f64") emit_x87_memory(out, 0xdd, 0, operand, function);
-  else if(type == "f80") emit_x87_memory(out, 0xdb, 5, operand, function);
+  if(type.kind == lowir_model::LTK_F32)
+    emit_x87_memory(out, 0xd9, 0, operand, function);
+  else if(type.kind == lowir_model::LTK_F64)
+    emit_x87_memory(out, 0xdd, 0, operand, function);
+  else if(type.kind == lowir_model::LTK_F80)
+    emit_x87_memory(out, 0xdb, 5, operand, function);
   else throw std::logic_error("x87 load requires a floating type");
 }
 
 void emit_x87_store_pop_memory(CodeBuffer & out,
                                const mir_model::MirOperand & operand,
-                               const std::string & type,
+                               const lowir_model::LowType & type,
                                const mir_model::MirFunction & function)
 {
-  if(type == "f32") emit_x87_memory(out, 0xd9, 3, operand, function);
-  else if(type == "f64") emit_x87_memory(out, 0xdd, 3, operand, function);
-  else if(type == "f80") emit_x87_memory(out, 0xdb, 7, operand, function);
+  if(type.kind == lowir_model::LTK_F32)
+    emit_x87_memory(out, 0xd9, 3, operand, function);
+  else if(type.kind == lowir_model::LTK_F64)
+    emit_x87_memory(out, 0xdd, 3, operand, function);
+  else if(type.kind == lowir_model::LTK_F80)
+    emit_x87_memory(out, 0xdb, 7, operand, function);
   else throw std::logic_error("x87 store requires a floating type");
 }
 
 void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
-                   const std::string & type,
+                   const lowir_model::LowType & type,
                    const mir_model::MirFunction & function)
 {
   if(source.kind != mir_model::MirOperand::OP_FLOAT_IMM &&
@@ -263,7 +270,7 @@ void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
   const mir_model::MirOperand scratch = memory_operand(XR_RSP);
   if(source.kind == mir_model::MirOperand::OP_XMM) {
     emit_xmm_store(out, scratch, source.xmm, type, function);
-  } else if(type == "f80") {
+  } else if(type.kind == lowir_model::LTK_F80) {
     const std::string text = source.kind == mir_model::MirOperand::OP_FLOAT_IMM ?
       source.text : std::to_string(source.imm);
     emit_extended_immediate_store(out, scratch, text, function);
@@ -271,7 +278,8 @@ void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
     const std::string text = source.kind == mir_model::MirOperand::OP_FLOAT_IMM ?
       source.text : std::to_string(source.imm);
     emit_immediate_move(out, XR_R10, scalar(text, type));
-    emit_store(out, XR_RSP, 0, XR_R10, type == "f32" ? 32 : 64);
+    emit_store(out, XR_RSP, 0, XR_R10,
+               type.kind == lowir_model::LTK_F32 ? 32 : 64);
   }
   emit_x87_load_memory(out, scratch, type, function);
   emit_stack_adjust(out, false, 16);
@@ -279,7 +287,7 @@ void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
 
 void emit_x87_store_pop(CodeBuffer & out,
                         const mir_model::MirOperand & destination,
-                        const std::string & type,
+                        const lowir_model::LowType & type,
                         const mir_model::MirFunction & function)
 {
   if(destination.kind != mir_model::MirOperand::OP_XMM) {
@@ -320,8 +328,10 @@ void emit_x87_compare_flags(CodeBuffer & out,
                             const mir_model::MirOperand & right,
                             const mir_model::MirFunction & function)
 {
-  emit_x87_load(out, left, "f80", function);
-  emit_x87_load(out, right, "f80", function);
+  const lowir_model::LowType & f80 =
+    lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
+  emit_x87_load(out, left, f80, function);
+  emit_x87_load(out, right, f80, function);
   out.byte(0xdf);
   out.byte(0xe9); // fucomip st0, st1: compare MIR right with left and pop right.
   emit_x87_pop(out);
@@ -329,7 +339,7 @@ void emit_x87_compare_flags(CodeBuffer & out,
 
 void materialize_float_operand(CodeBuffer & out, XmmRegister destination,
                                const mir_model::MirOperand & source,
-                               const std::string & type,
+                               const lowir_model::LowType & type,
                                const mir_model::MirFunction & function)
 {
   if(source.kind == mir_model::MirOperand::OP_XMM) {
@@ -337,11 +347,13 @@ void materialize_float_operand(CodeBuffer & out, XmmRegister destination,
       emit_xmm_register_move(out, destination, source.xmm, type);
   } else if(source.kind == mir_model::MirOperand::OP_FLOAT_IMM) {
     emit_immediate_move(out, XR_R11, scalar(source.text, type));
-    emit_gpr_to_xmm(out, destination, XR_R11, type == "f32" ? 32 : 64);
+    emit_gpr_to_xmm(out, destination, XR_R11,
+                    type.kind == lowir_model::LTK_F32 ? 32 : 64);
   } else if(source.kind == mir_model::MirOperand::OP_IMM) {
     emit_immediate_move(out, XR_R11,
       scalar(std::to_string(source.imm), type));
-    emit_gpr_to_xmm(out, destination, XR_R11, type == "f32" ? 32 : 64);
+    emit_gpr_to_xmm(out, destination, XR_R11,
+                    type.kind == lowir_model::LTK_F32 ? 32 : 64);
   } else {
     emit_xmm_load(out, destination, source, type, function);
   }
@@ -353,7 +365,7 @@ void emit_float_move(CodeBuffer & out, const mir_model::MirInstruction & instruc
   require_operands(instruction, 2);
   const mir_model::MirOperand & destination = instruction.operands[0];
   const mir_model::MirOperand & source = instruction.operands[1];
-  if(instruction.type == "f80") {
+  if(instruction.type.kind == lowir_model::LTK_F80) {
     if(source.kind == mir_model::MirOperand::OP_FLOAT_IMM ||
        source.kind == mir_model::MirOperand::OP_IMM) {
       emit_extended_immediate_store(out, destination,
@@ -378,7 +390,7 @@ void emit_float_move(CodeBuffer & out, const mir_model::MirInstruction & instruc
 void emit_xmm_source_instruction(CodeBuffer & out, unsigned opcode,
                                  XmmRegister destination,
                                  const mir_model::MirOperand & source,
-                                 const std::string & type,
+                                 const lowir_model::LowType & type,
                                  const mir_model::MirFunction & function)
 {
   mir_model::MirOperand actual = source;
@@ -408,7 +420,8 @@ void emit_xmm_source_instruction(CodeBuffer & out, unsigned opcode,
 void emit_float_binary(CodeBuffer & out, const mir_model::MirInstruction & instruction,
                        const mir_model::MirFunction & function, unsigned opcode)
 {
-  if(instruction.type == "f80" || instruction.type == "f64") {
+  if(instruction.type.kind == lowir_model::LTK_F80 ||
+     instruction.type.kind == lowir_model::LTK_F64) {
     emit_x87_binary(out, instruction, function);
     return;
   }
@@ -427,10 +440,10 @@ void emit_float_binary(CodeBuffer & out, const mir_model::MirInstruction & instr
 void emit_float_compare_flags(CodeBuffer & out,
                               const mir_model::MirOperand & left,
                               const mir_model::MirOperand & right,
-                              const std::string & type,
+                              const lowir_model::LowType & type,
                               const mir_model::MirFunction & function)
 {
-  if(type == "f80") {
+  if(type.kind == lowir_model::LTK_F80) {
     emit_x87_compare_flags(out, left, right, function);
     return;
   }
@@ -444,7 +457,7 @@ void emit_float_compare_flags(CodeBuffer & out,
     actual_left.xmm = XMM_7;
   }
   if(actual_left.kind == mir_model::MirOperand::OP_XMM) {
-    if(type == "f64") out.byte(0x66);
+    if(type.kind == lowir_model::LTK_F64) out.byte(0x66);
     out.byte(0x0f);
     out.byte(0x2e);
     emit_modrm(out, 3, xmm_index(XMM_6), xmm_index(actual_left.xmm));
@@ -453,7 +466,7 @@ void emit_float_compare_flags(CodeBuffer & out,
   X64Register base = XR_RBP;
   long long displacement = 0;
   float_address(out, actual_left, function, base, displacement);
-  if(type == "f64") out.byte(0x66);
+  if(type.kind == lowir_model::LTK_F64) out.byte(0x66);
   emit_rex(out, false, static_cast<X64Register>(xmm_index(XMM_6)), base);
   out.byte(0x0f);
   out.byte(0x2e);
@@ -498,7 +511,7 @@ void emit_float_negate(CodeBuffer & out,
 {
   require_operands(instruction, 2);
   const mir_model::MirOperand & destination = instruction.operands[0];
-  if(instruction.type == "f80") {
+  if(instruction.type.kind == lowir_model::LTK_F80) {
     emit_x87_load(out, instruction.operands[1], instruction.type, function);
     out.byte(0xd9);
     out.byte(0xe0); // fchs
@@ -509,13 +522,16 @@ void emit_float_negate(CodeBuffer & out,
     destination.xmm : XMM_6;
   materialize_float_operand(out, target, instruction.operands[1],
                             instruction.type, function);
-  emit_xmm_to_gpr(out, XR_R11, target, instruction.type == "f32" ? 32 : 64);
-  emit_immediate_move(out, XR_R10, instruction.type == "f32" ?
+  emit_xmm_to_gpr(out, XR_R11, target,
+                  instruction.type.kind == lowir_model::LTK_F32 ? 32 : 64);
+  emit_immediate_move(out, XR_R10,
+    instruction.type.kind == lowir_model::LTK_F32 ?
     UINT64_C(0x80000000) : UINT64_C(0x8000000000000000));
   emit_rex(out, true, XR_R10, XR_R11);
   out.byte(0x31);
   emit_modrm(out, 3, XR_R10, XR_R11);
-  emit_gpr_to_xmm(out, target, XR_R11, instruction.type == "f32" ? 32 : 64);
+  emit_gpr_to_xmm(out, target, XR_R11,
+                  instruction.type.kind == lowir_model::LTK_F32 ? 32 : 64);
   if(destination.kind != mir_model::MirOperand::OP_XMM)
     emit_xmm_store(out, destination, target, instruction.type, function);
 }
@@ -599,14 +615,6 @@ void emit_atomic_memory(CodeBuffer & out,
   emit_memory_modrm(out, source, base, displacement);
 }
 
-std::pair<std::string, std::string> conversion_types(const std::string & type)
-{
-  const std::size_t split = type.find('.');
-  if(split == std::string::npos)
-    throw std::logic_error("native conversion lacks source/destination types");
-  return std::make_pair(type.substr(0, split), type.substr(split + 1));
-}
-
 X64Register materialize_integer_operand(CodeBuffer & out,
                                         const mir_model::MirOperand & source,
                                         unsigned width,
@@ -674,7 +682,8 @@ void emit_x87_load_unsigned_integer(CodeBuffer & out,
   mir_model::MirOperand two64;
   two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
   two64.text = "18446744073709551616.0L";
-  emit_x87_load(out, two64, "f80", function);
+  emit_x87_load(out, two64,
+    lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
   out.byte(0xde);
   out.byte(0xc1); // faddp st1, st0
   out.label(nonnegative);
@@ -721,7 +730,8 @@ void emit_x87_store_truncated_unsigned(CodeBuffer & out, X64Register destination
   mir_model::MirOperand threshold;
   threshold.kind = mir_model::MirOperand::OP_FLOAT_IMM;
   threshold.text = "9223372036854775808.0L";
-  emit_x87_load(out, threshold, "f80", function);
+  emit_x87_load(out, threshold,
+    lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
   out.byte(0xdf);
   out.byte(0xe9); // Compare 2^63 with the retained input and pop the threshold.
   const std::string high = out.internal_label("fptoui_high");
@@ -731,7 +741,8 @@ void emit_x87_store_truncated_unsigned(CodeBuffer & out, X64Register destination
   emit_load(out, destination, XR_RSP, 0, 64);
   emit_unconditional_jump(out, done);
   out.label(high);
-  emit_x87_load(out, threshold, "f80", function);
+  emit_x87_load(out, threshold,
+    lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
   out.byte(0xde);
   out.byte(0xe9); // fsubp st1, st0
   emit_x87_memory(out, 0xdd, 1, scratch, function);
@@ -748,8 +759,9 @@ void emit_integer_to_float(CodeBuffer & out,
                            const mir_model::MirInstruction & instruction,
                            const mir_model::MirFunction & function)
 {
-  const std::pair<std::string, std::string> types = conversion_types(instruction.type);
-  if(types.first == "i128") {
+  const lowir_model::LowType & source_type = instruction.source_type;
+  const lowir_model::LowType & destination_type = instruction.type;
+  if(source_type.kind == lowir_model::LTK_I128) {
     require_operands(instruction, 3);
     const mir_model::MirOperand & low = instruction.operands[1];
     const mir_model::MirOperand & high = instruction.operands[2];
@@ -760,50 +772,53 @@ void emit_integer_to_float(CodeBuffer & out,
     mir_model::MirOperand two64;
     two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
     two64.text = "18446744073709551616.0L";
-    emit_x87_load(out, two64, "f80", function);
+    emit_x87_load(out, two64,
+      lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
     out.byte(0xde);
     out.byte(0xc9); // fmulp st1, st0
     emit_x87_load_unsigned_integer(out, low, 64, function);
     out.byte(0xde);
     out.byte(0xc1); // faddp st1, st0
-    emit_x87_store_pop(out, instruction.operands[0], types.second, function);
+    emit_x87_store_pop(out, instruction.operands[0], destination_type,
+                       function);
     return;
   }
   require_operands(instruction, 2);
-  const unsigned source_width = type_width(types.first);
+  const unsigned source_width = type_width(source_type);
   const mir_model::MirOperand & destination = instruction.operands[0];
-  if(types.second == "f80") {
+  if(destination_type.kind == lowir_model::LTK_F80) {
     if(instruction.opcode == mir_model::MirInstruction::MI_UITOFP)
       emit_x87_load_unsigned_integer(out, instruction.operands[1], source_width, function);
     else
       emit_x87_load_signed_integer(out, instruction.operands[1], source_width, function);
-    emit_x87_store_pop(out, destination, "f80", function);
+    emit_x87_store_pop(out, destination, destination_type, function);
     return;
   }
   const XmmRegister target = destination.kind == mir_model::MirOperand::OP_XMM ?
     destination.xmm : XMM_6;
   const X64Register source = materialize_integer_operand(
     out, instruction.operands[1], source_width, function);
-  emit_scalar_prefix(out, types.second);
+  emit_scalar_prefix(out, destination_type);
   emit_rex(out, source_width == 64,
            static_cast<X64Register>(xmm_index(target)), source);
   out.byte(0x0f);
   out.byte(0x2a);
   emit_modrm(out, 3, xmm_index(target), source);
   if(destination.kind != mir_model::MirOperand::OP_XMM)
-    emit_xmm_store(out, destination, target, types.second, function);
+    emit_xmm_store(out, destination, target, destination_type, function);
 }
 
 void emit_float_to_integer(CodeBuffer & out,
                            const mir_model::MirInstruction & instruction,
                            const mir_model::MirFunction & function)
 {
-  const std::pair<std::string, std::string> types = conversion_types(instruction.type);
-  if(types.second == "i128") {
+  const lowir_model::LowType & source_type = instruction.source_type;
+  const lowir_model::LowType & destination_type = instruction.type;
+  if(destination_type.kind == lowir_model::LTK_I128) {
     require_operands(instruction, 3);
     const X64Register low = require_register(instruction.operands[0]);
     const X64Register high = require_register(instruction.operands[1]);
-    emit_x87_load(out, instruction.operands[2], types.first, function);
+    emit_x87_load(out, instruction.operands[2], source_type, function);
 
     const bool signed_conversion =
       instruction.opcode == mir_model::MirInstruction::MI_FPTOSI;
@@ -828,13 +843,15 @@ void emit_float_to_integer(CodeBuffer & out,
     mir_model::MirOperand two64;
     two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
     two64.text = "18446744073709551616.0L";
-    emit_x87_load(out, two64, "f80", function);
+    emit_x87_load(out, two64,
+      lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
     out.byte(0xde);
     out.byte(0xf9); // fdivp st1, st0
     emit_x87_store_truncated_unsigned(out, high, 64, function);
     emit_x87_load_unsigned_integer(out,
       instruction.operands[1], 64, function);
-    emit_x87_load(out, two64, "f80", function);
+    emit_x87_load(out, two64,
+      lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
     out.byte(0xde);
     out.byte(0xc9); // fmulp st1, st0
     out.byte(0xde);
@@ -862,19 +879,20 @@ void emit_float_to_integer(CodeBuffer & out,
   }
   require_operands(instruction, 2);
   const X64Register destination = require_register(instruction.operands[0]);
-  if(types.first == "f80") {
-    emit_x87_load(out, instruction.operands[1], types.first, function);
+  if(source_type.kind == lowir_model::LTK_F80) {
+    emit_x87_load(out, instruction.operands[1], source_type, function);
     if(instruction.opcode == mir_model::MirInstruction::MI_FPTOUI)
       emit_x87_store_truncated_unsigned(out, destination,
-                                        type_width(types.second), function);
+                                        type_width(destination_type), function);
     else
       emit_x87_store_truncated_integer(out, destination,
-                                       type_width(types.second), function);
+                                       type_width(destination_type), function);
     return;
   }
-  materialize_float_operand(out, XMM_7, instruction.operands[1], types.first, function);
-  emit_scalar_prefix(out, types.first);
-  emit_rex(out, type_width(types.second) == 64, destination,
+  materialize_float_operand(out, XMM_7, instruction.operands[1], source_type,
+                            function);
+  emit_scalar_prefix(out, source_type);
+  emit_rex(out, type_width(destination_type) == 64, destination,
            static_cast<X64Register>(xmm_index(XMM_7)));
   out.byte(0x0f);
   out.byte(0x2c);
@@ -886,22 +904,25 @@ void emit_float_width_conversion(CodeBuffer & out,
                                  const mir_model::MirFunction & function)
 {
   require_operands(instruction, 2);
-  const std::pair<std::string, std::string> types = conversion_types(instruction.type);
+  const lowir_model::LowType & source_type = instruction.source_type;
+  const lowir_model::LowType & destination_type = instruction.type;
   const mir_model::MirOperand & destination = instruction.operands[0];
-  if(types.first == "f80" || types.second == "f80") {
-    emit_x87_load(out, instruction.operands[1], types.first, function);
-    emit_x87_store_pop(out, destination, types.second, function);
+  if(source_type.kind == lowir_model::LTK_F80 ||
+     destination_type.kind == lowir_model::LTK_F80) {
+    emit_x87_load(out, instruction.operands[1], source_type, function);
+    emit_x87_store_pop(out, destination, destination_type, function);
     return;
   }
   const XmmRegister target = destination.kind == mir_model::MirOperand::OP_XMM ?
     destination.xmm : XMM_6;
-  materialize_float_operand(out, XMM_7, instruction.operands[1], types.first, function);
-  emit_scalar_prefix(out, types.first);
+  materialize_float_operand(out, XMM_7, instruction.operands[1], source_type,
+                            function);
+  emit_scalar_prefix(out, source_type);
   out.byte(0x0f);
   out.byte(0x5a);
   emit_modrm(out, 3, xmm_index(target), xmm_index(XMM_7));
   if(destination.kind != mir_model::MirOperand::OP_XMM)
-    emit_xmm_store(out, destination, target, types.second, function);
+    emit_xmm_store(out, destination, target, destination_type, function);
 }
 
 void emit_alu(CodeBuffer & out, const mir_model::MirInstruction & instruction,
@@ -1126,7 +1147,8 @@ bool prepare_explicit_operands(CodeBuffer & out,
         if(result.reg != XR_RAX) emit_register_move(out, XR_RAX, result.reg);
       } else if(result.kind == mir_model::MirOperand::OP_XMM) {
         if(!function ||
-           (function->return_type != "f32" && function->return_type != "f64"))
+           (function->return_type.kind != lowir_model::LTK_F32 &&
+            function->return_type.kind != lowir_model::LTK_F64))
           throw std::logic_error("native xmm return lacks a scalar-float ABI");
         if(result.xmm != XMM_0)
           emit_xmm_register_move(out, XMM_0, result.xmm,
@@ -1680,7 +1702,8 @@ bool parse_constant_byte_store(
      value.opcode != MirInstruction::MI_MOV || value.operands.size() != 2 ||
      value.operands[0].kind != MirOperand::OP_REG ||
      value.operands[1].kind != MirOperand::OP_IMM ||
-     store.opcode != MirInstruction::MI_STORE || store.type != "i8" ||
+     store.opcode != MirInstruction::MI_STORE ||
+     store.type.kind != lowir_model::LTK_I8 ||
      store.operands.size() != 2 ||
      store.operands[0].kind != MirOperand::OP_DEREF ||
      store.operands[1].kind != MirOperand::OP_REG)
@@ -2248,9 +2271,9 @@ void emit_integer_data(CodeBuffer & out, long long value, std::size_t size, cons
 }
 
 void emit_float_data(CodeBuffer & out, const std::string & text,
-                     const std::string & type)
+                     const lowir_model::LowType & type)
 {
-  if(type == "f80") {
+  if(type.kind == lowir_model::LTK_F80) {
     const std::pair<std::uint64_t, std::uint64_t> words =
       extended(text);
     out.little(words.first, 8);

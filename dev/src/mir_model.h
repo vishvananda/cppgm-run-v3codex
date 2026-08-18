@@ -12,9 +12,12 @@
 #include <string>
 #include <vector>
 
+#include "lowir_model.h"
 #include "x86_register_model.h"
 
 namespace mir_model {
+
+using MachineType = lowir_model::LowType;
 
 struct GlobalDefinition
 {
@@ -28,7 +31,7 @@ struct GlobalDefinition
       ITEM_ZERO
     } kind = ITEM_INTEGER;
 
-    std::string type;
+    MachineType type;
     long long int_value = 0;
     long double float_value = 0.0L;
     std::string literal_text;
@@ -58,7 +61,7 @@ struct GlobalDefinition
   std::string thread_local_wrapper_symbol;
   std::string section_segment;
   std::string section_name;
-  std::string type;
+  MachineType type;
   long long int_value = 0;
   long double float_value = 0.0L;
   std::string literal_text;
@@ -84,7 +87,7 @@ struct ParamBinding
   XmmRegister xmm = XMM_0;
   long long stack_offset = 0;
   long long chunk_offset = 0;
-  std::string type;
+  MachineType type;
 };
 
 struct FrameBinding
@@ -98,7 +101,7 @@ struct FrameBinding
 
   std::string name;
   long long offset = 0;
-  std::string type;
+  MachineType type;
 };
 
 struct Operand
@@ -255,7 +258,10 @@ struct Instruction
     MI_EXIT
   } opcode = MI_MOV;
 
-  std::string type;
+  MachineType type;
+  // Conversion instructions carry source and destination types separately;
+  // textual MIR renders the historical source.destination spelling.
+  MachineType source_type;
   X86Condition condition = XC_E;
   std::size_t byte_count = 0;
   std::size_t byte_alignment = 1;
@@ -297,7 +303,7 @@ struct DebugVariable
   };
 
   std::string name;
-  std::string type;
+  MachineType type;
   InstructionDebugLocation decl_location;
   std::vector<Range> ranges;
 };
@@ -327,7 +333,7 @@ struct Function
   std::string name;
   std::string object_symbol;
   std::vector<ParamBinding> params;
-  std::string return_type;
+  MachineType return_type;
   // Lowering-to-optimizer frame requirements.  The optimizer combines these
   // with the surviving save set and publishes the authoritative encoded total
   // in stack_size; native encoding does not consume these transient inputs.

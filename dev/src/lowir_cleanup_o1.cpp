@@ -95,17 +95,13 @@ void combine_hash(std::size_t * seed, std::size_t value)
 bool same_type(const lowir_model::LowType & left,
                const lowir_model::LowType & right)
 {
-  return left.kind == right.kind &&
-    left.bit_width == right.bit_width &&
-    left.storage_size == right.storage_size &&
-    left.alignment == right.alignment;
+  return lowir_model::same_lowir_type(left, right);
 }
 
 std::size_t type_hash(const lowir_model::LowType & type)
 {
   std::size_t result = static_cast<std::size_t>(type.kind);
   combine_hash(&result, static_cast<std::size_t>(type.kind));
-  combine_hash(&result, type.bit_width);
   combine_hash(&result, type.storage_size);
   combine_hash(&result, type.alignment);
   return result;

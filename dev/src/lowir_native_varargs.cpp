@@ -10,7 +10,6 @@ lowir_model::LowType make_register_save_type()
 {
   lowir_model::LowType type;
   type.kind = lowir_model::LTK_OBJECT;
-  type.bit_width = 176 * 8;
   type.storage_size = 176;
   type.alignment = 16;
   return type;
@@ -30,11 +29,11 @@ void append_register_save(long long frame_offset,
   using namespace build;
   for(std::size_t i = 0; i < 6; ++i)
     append_store(out, frame_operand(frame_offset + static_cast<long long>(i * 8)),
-                 reg_operand(abi::argument_register(i)), "i64");
+                 reg_operand(abi::argument_register(i)), machine_type(lowir_model::LTK_I64));
   for(std::size_t i = 0; i < 8; ++i)
     append_float_move(out,
       frame_operand(frame_offset + 48 + static_cast<long long>(i * 16)),
-      xmm_operand(static_cast<XmmRegister>(i)), "f64");
+      xmm_operand(static_cast<XmmRegister>(i)), machine_type(lowir_model::LTK_F64));
 }
 
 void append_va_start(const abi::VariadicState & state,
@@ -44,10 +43,10 @@ void append_va_start(const abi::VariadicState & state,
   using namespace build;
   append_move(out, reg_operand(XR_RAX),
               immediate(static_cast<long long>(state.gp_offset)));
-  append_store(out, dereference(XR_RCX), reg_operand(XR_RAX), "i32");
+  append_store(out, dereference(XR_RCX), reg_operand(XR_RAX), machine_type(lowir_model::LTK_I32));
   append_move(out, reg_operand(XR_RAX),
               immediate(static_cast<long long>(state.fp_offset)));
-  append_store(out, dereference(XR_RCX, 4), reg_operand(XR_RAX), "i32");
+  append_store(out, dereference(XR_RCX, 4), reg_operand(XR_RAX), machine_type(lowir_model::LTK_I32));
 
   mir_model::MirInstruction overflow =
     machine_instruction(mir_model::MirInstruction::MI_LEA);
@@ -55,14 +54,14 @@ void append_va_start(const abi::VariadicState & state,
   append_operand(overflow,
     frame_operand(static_cast<long long>(state.overflow_arg_offset)));
   out.push_back(overflow);
-  append_store(out, dereference(XR_RCX, 8), reg_operand(XR_RDX), "ptr");
+  append_store(out, dereference(XR_RCX, 8), reg_operand(XR_RDX), machine_type(lowir_model::LTK_PTR));
 
   mir_model::MirInstruction save =
     machine_instruction(mir_model::MirInstruction::MI_LEA);
   append_operand(save, reg_operand(XR_RDX));
   append_operand(save, frame_operand(register_save_offset));
   out.push_back(save);
-  append_store(out, dereference(XR_RCX, 16), reg_operand(XR_RDX), "ptr");
+  append_store(out, dereference(XR_RCX, 16), reg_operand(XR_RDX), machine_type(lowir_model::LTK_PTR));
 }
 
 void append_va_arg_address(bool floating,
@@ -73,16 +72,16 @@ void append_va_arg_address(bool floating,
   const long long limit = floating ? 176 : 48;
   const long long register_step = floating ? 16 : 8;
   append_load(out, reg_operand(XR_RAX),
-              dereference(XR_RCX, offset_field), "i32");
-  append_load(out, reg_operand(XR_RDX), dereference(XR_RCX, 16), "ptr");
+              dereference(XR_RCX, offset_field), machine_type(lowir_model::LTK_I32));
+  append_load(out, reg_operand(XR_RDX), dereference(XR_RCX, 16), machine_type(lowir_model::LTK_PTR));
   mir_model::MirInstruction register_address =
     machine_instruction(mir_model::MirInstruction::MI_ADD);
   append_operand(register_address, reg_operand(XR_RDX));
   append_operand(register_address, reg_operand(XR_RAX));
   out.push_back(register_address);
-  append_load(out, reg_operand(XR_RSI), dereference(XR_RCX, 8), "ptr");
+  append_load(out, reg_operand(XR_RSI), dereference(XR_RCX, 8), machine_type(lowir_model::LTK_PTR));
   mir_model::MirInstruction compare =
-    machine_instruction(mir_model::MirInstruction::MI_CMP, "i64");
+    machine_instruction(mir_model::MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
   append_operand(compare, reg_operand(XR_RAX));
   append_operand(compare, immediate(limit));
   out.push_back(compare);
@@ -130,7 +129,7 @@ void append_va_arg_address(bool floating,
   append_operand(advance_offset, reg_operand(XR_R9));
   out.push_back(advance_offset);
   append_store(out, dereference(XR_RCX, offset_field),
-               reg_operand(XR_RAX), "i32");
+               reg_operand(XR_RAX), machine_type(lowir_model::LTK_I32));
 
   append_move(out, reg_operand(XR_R10), reg_operand(XR_RDI));
   mir_model::MirInstruction invert =
@@ -147,7 +146,7 @@ void append_va_arg_address(bool floating,
   append_operand(advance_overflow, reg_operand(XR_RSI));
   append_operand(advance_overflow, reg_operand(XR_R10));
   out.push_back(advance_overflow);
-  append_store(out, dereference(XR_RCX, 8), reg_operand(XR_RSI), "ptr");
+  append_store(out, dereference(XR_RCX, 8), reg_operand(XR_RSI), machine_type(lowir_model::LTK_PTR));
 }
 
 }  // namespace varargs

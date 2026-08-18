@@ -32,7 +32,7 @@ protected:
 		std::vector<mir_model::MirInstruction>& out)
 	{
 		using namespace build;
-		mir_model::MirInstruction atomic = machine_instruction(opcode, lowir_model::lowir_type_text(type));
+		mir_model::MirInstruction atomic = machine_instruction(opcode, type);
 		append_operand(atomic, address);
 		append_operand(atomic, reg_operand(source));
 		out.push_back(atomic);
@@ -61,8 +61,8 @@ protected:
 				block, instruction_index, instruction.dest) ? reg_operand(XR_RAX) :
 			reg_operand(derived.allocate_result(instruction.dest, out));
 		append_load(out, destination,
-			derived.materialized_storage(instruction.first, out), lowir_model::lowir_type_text(instruction.type));
-		derived.normalize_integer(instruction.type, destination, out);
+			derived.materialized_storage(instruction.first, out), instruction.type);
+		append_integer_normalization(out, instruction.type, destination);
 		derived.consume(instruction.first, destination.reg);
 		derived.consume(instruction.args[0]);
 		derived.define(instruction.dest, instruction.type, destination);
@@ -86,7 +86,7 @@ protected:
 		if (sequential)
 			append_atomic(mir_model::MirInstruction::MI_XCHG,
 				instruction.type, address, XR_RAX, out);
-		else append_store(out, address, value, lowir_model::lowir_type_text(instruction.type));
+		else append_store(out, address, value, instruction.type);
 		derived.consume(instruction.first);
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
@@ -119,12 +119,12 @@ protected:
 			else pressure_home =
 				derived.allocate_temp_home(instruction.dest, instruction.type);
 		}
-		derived.normalize_integer(instruction.type, destination, out);
+		append_integer_normalization(out, instruction.type, destination);
 		derived.consume(instruction.first);
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
 		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+			append_store(out, pressure_home, destination, instruction.type);
 		derived.define(instruction.dest, instruction.type,
 			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
 			pressure_home : destination);
@@ -163,12 +163,12 @@ protected:
 			else pressure_home =
 				derived.allocate_temp_home(instruction.dest, instruction.type);
 		}
-		derived.normalize_integer(instruction.type, destination, out);
+		append_integer_normalization(out, instruction.type, destination);
 		derived.consume(instruction.first);
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
 		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+			append_store(out, pressure_home, destination, instruction.type);
 		derived.define(instruction.dest, instruction.type,
 			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
 			pressure_home : destination);
@@ -213,12 +213,12 @@ protected:
 		}
 		derived.emit_parallel_gpr_moves(moves, out);
 		append_load(out, reg_operand(XR_RAX), dereference(XR_RDX),
-			lowir_model::lowir_type_text(instruction.type));
+			instruction.type);
 		derived.emit_gpr_move(desired, out);
 		append_atomic(mir_model::MirInstruction::MI_LOCK_CMPXCHG,
 			instruction.type, dereference(XR_RCX), XR_RSI, out);
 		append_store(out, dereference(XR_RDX), reg_operand(XR_RAX),
-			lowir_model::lowir_type_text(instruction.type));
+			instruction.type);
 		mir_model::MirInstruction equal =
 			machine_instruction(mir_model::MirInstruction::MI_SETCC);
 		equal.condition = XC_E;
@@ -250,7 +250,7 @@ protected:
 		derived.consume(instruction.args[0]);
 		derived.consume(instruction.args[1]);
 		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, reg_operand(XR_RAX), "i64");
+			append_store(out, pressure_home, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64));
 		derived.define(instruction.dest,
 			lowir_model::builtin_lowir_type(lowir_model::LTK_I64),
 			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?

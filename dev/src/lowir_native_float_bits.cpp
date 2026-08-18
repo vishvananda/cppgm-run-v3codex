@@ -20,14 +20,17 @@ std::string unsuffixed(const std::string & text)
 
 }  // namespace
 
-std::uint64_t scalar(const std::string & text, const std::string & type)
+std::uint64_t scalar(const std::string & text,
+                     const lowir_model::LowType & type)
 {
   const std::string number = unsuffixed(text);
-  if(number == "snan" && type == "f32") return UINT64_C(0x7fa00000);
-  if(number == "snan" && type == "f64") return UINT64_C(0x7ff4000000000000);
+  if(number == "snan" && type.kind == lowir_model::LTK_F32)
+    return UINT64_C(0x7fa00000);
+  if(number == "snan" && type.kind == lowir_model::LTK_F64)
+    return UINT64_C(0x7ff4000000000000);
   errno = 0;
   char * end = 0;
-  if(type == "f32") {
+  if(type.kind == lowir_model::LTK_F32) {
     const float value = std::strtof(number.c_str(), &end);
     if(errno || !end || *end)
       throw std::runtime_error("invalid f32 literal: " + text);
@@ -35,7 +38,7 @@ std::uint64_t scalar(const std::string & text, const std::string & type)
     std::memcpy(&bits, &value, sizeof(bits));
     return bits;
   }
-  if(type == "f64") {
+  if(type.kind == lowir_model::LTK_F64) {
     const double value = std::strtod(number.c_str(), &end);
     if(errno || !end || *end)
       throw std::runtime_error("invalid f64 literal: " + text);

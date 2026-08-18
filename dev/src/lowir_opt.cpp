@@ -211,8 +211,9 @@ typedef unsigned __int128 WideUnsigned;
 
 WideUnsigned wide_mask(const LowType & type)
 {
-  return type.bit_width >= 128 ? ~static_cast<WideUnsigned>(0) :
-    (static_cast<WideUnsigned>(1) << type.bit_width) - 1;
+  const std::size_t width = lowir_model::lowir_type_bit_width(type);
+  return width >= 128 ? ~static_cast<WideUnsigned>(0) :
+    (static_cast<WideUnsigned>(1) << width) - 1;
 }
 
 WideUnsigned wide_integer(long long value)
@@ -233,8 +234,8 @@ bool representable_wide_integer(WideUnsigned value, const LowType & type,
 
 std::uint64_t width_mask(const LowType & type)
 {
-  return type.bit_width >= 64 ? ~UINT64_C(0) :
-    (UINT64_C(1) << type.bit_width) - 1;
+  const std::size_t width = lowir_model::lowir_type_bit_width(type);
+  return width >= 64 ? ~UINT64_C(0) : (UINT64_C(1) << width) - 1;
 }
 
 long long normalize_integer(std::uint64_t value, const LowType & type)
@@ -243,8 +244,8 @@ long long normalize_integer(std::uint64_t value, const LowType & type)
   if(type.kind == lowir_model::LTK_U8 || type.kind == lowir_model::LTK_U16 ||
      type.kind == lowir_model::LTK_U32 || type.kind == lowir_model::LTK_PTR)
     return static_cast<long long>(value);
-  if(type.bit_width && type.bit_width < 64 &&
-     (value & (UINT64_C(1) << (type.bit_width - 1))))
+  const std::size_t width = lowir_model::lowir_type_bit_width(type);
+  if(width && width < 64 && (value & (UINT64_C(1) << (width - 1))))
     value |= ~width_mask(type);
   return static_cast<long long>(value);
 }
@@ -406,7 +407,7 @@ bool fold_unary(const Instruction & ins, Operand * result)
   }
   if(ins.first.kind != Operand::OP_INTEGER || !ins.first.has_int_value ||
      !is_integer_type(ins.type)) return false;
-  if(ins.type.bit_width > 64) {
+  if(lowir_model::lowir_type_bit_width(ins.type) > 64) {
     const WideUnsigned value = wide_integer(ins.first.int_value);
     WideUnsigned folded = 0;
     if(ins.op == "neg") folded = -value;
@@ -432,7 +433,7 @@ bool fold_binary(const Instruction & ins, Operand * result)
   if(ins.first.kind != Operand::OP_INTEGER || !ins.first.has_int_value ||
      ins.second.kind != Operand::OP_INTEGER || !ins.second.has_int_value ||
      !is_integer_type(ins.type)) return false;
-  if(ins.type.bit_width > 64) {
+  if(lowir_model::lowir_type_bit_width(ins.type) > 64) {
     const WideUnsigned a = wide_integer(ins.first.int_value);
     const WideUnsigned b = wide_integer(ins.second.int_value);
     WideUnsigned value = 0;
@@ -492,7 +493,7 @@ bool fold_compare(const Instruction & ins, Operand * result)
      ins.second.kind == Operand::OP_INTEGER && ins.second.has_int_value) {
     const long long a = ins.first.int_value;
     const long long b = ins.second.int_value;
-    if(ins.type.bit_width > 64) {
+    if(lowir_model::lowir_type_bit_width(ins.type) > 64) {
       const WideSigned signed_a = static_cast<WideSigned>(a);
       const WideSigned signed_b = static_cast<WideSigned>(b);
       const WideUnsigned unsigned_a = static_cast<WideUnsigned>(signed_a);
@@ -559,15 +560,18 @@ bool fold_convert(const Instruction & ins, Operand * result)
   }
   if(ins.first.kind == Operand::OP_INTEGER && ins.first.has_int_value) {
     if(is_integer_type(ins.type)) {
-      if(ins.type.bit_width > 64) {
+      if(lowir_model::lowir_type_bit_width(ins.type) > 64) {
         WideUnsigned value = wide_integer(ins.first.int_value);
         if(ins.op == "zext") value &= wide_mask(ins.source_type);
-        else if(ins.op == "sext" && ins.source_type.bit_width < 128) {
+        else if(ins.op == "sext" &&
+                lowir_model::lowir_type_bit_width(ins.source_type) < 128) {
           const WideUnsigned mask = wide_mask(ins.source_type);
           value &= mask;
-          if(ins.source_type.bit_width &&
+          const std::size_t source_width =
+            lowir_model::lowir_type_bit_width(ins.source_type);
+          if(source_width &&
              (value & (static_cast<WideUnsigned>(1) <<
-                       (ins.source_type.bit_width - 1))))
+                       (source_width - 1))))
             value |= ~mask;
         } else return false;
         return representable_wide_integer(value, ins.type, result);
@@ -577,7 +581,8 @@ bool fold_convert(const Instruction & ins, Operand * result)
       *result = integer_operand(normalize_integer(value, ins.type), ins.type);
       return true;
     }
-    if(is_float_type(ins.type) && ins.source_type.bit_width <= 64 &&
+    if(is_float_type(ins.type) &&
+       lowir_model::lowir_type_bit_width(ins.source_type) <= 64 &&
        (ins.op == "sitofp" || ins.op == "uitofp")) {
       const long double value = ins.op == "uitofp" ?
         static_cast<long double>(static_cast<std::uint64_t>(ins.first.int_value) &

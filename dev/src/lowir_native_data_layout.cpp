@@ -7,24 +7,24 @@
 namespace lowir_native {
 namespace data_layout {
 
-std::size_t type_size(const std::string & type)
+std::size_t type_size(const lowir_model::LowType & type)
 {
-  if(type == "i1" || type == "i8" || type == "u8") return 1;
-  if(type == "i16" || type == "u16") return 2;
-  if(type == "i32" || type == "u32" || type == "f32") return 4;
-  if(type == "i64" || type == "f64" || type == "ptr") return 8;
-  if(type == "i128" || type == "f80") return 16;
-  throw std::logic_error("unsupported native data type: " + type);
+  if(type.kind == lowir_model::LTK_INVALID ||
+     type.kind == lowir_model::LTK_VOID ||
+     type.kind == lowir_model::LTK_OBJECT)
+    throw std::logic_error("unsupported native data type");
+  return type.storage_size;
 }
 
-unsigned type_width(const std::string & type)
+unsigned type_width(const lowir_model::LowType & type)
 {
-  if(type == "i1" || type == "i8" || type == "u8") return 8;
-  if(type == "i16" || type == "u16") return 16;
-  if(type == "i32" || type == "u32" || type == "f32") return 32;
-  if(type == "i64" || type == "f64" || type == "ptr") return 64;
-  if(type == "f80") return 80;
-  throw std::logic_error("unsupported native scalar type: " + type);
+  if(type.kind == lowir_model::LTK_INVALID ||
+     type.kind == lowir_model::LTK_VOID ||
+     type.kind == lowir_model::LTK_OBJECT ||
+     type.kind == lowir_model::LTK_I128)
+    throw std::logic_error("unsupported native scalar type");
+  return type.kind == lowir_model::LTK_I1 ? 8 :
+    static_cast<unsigned>(lowir_model::lowir_type_bit_width(type));
 }
 
 std::size_t global_alignment(const mir_model::MirGlobalDefinition & global)

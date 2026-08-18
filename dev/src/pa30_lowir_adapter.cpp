@@ -68,7 +68,6 @@ lowir_model::LowType AdaptType(const LowType& type)
 	{
 		lowir_model::LowType result;
 		result.kind = lowir_model::LTK_OBJECT;
-		result.bit_width = static_cast<std::size_t>(type.width);
 		result.storage_size = static_cast<std::size_t>(type.width / 8);
 		result.alignment = type.alignment;
 		return result;

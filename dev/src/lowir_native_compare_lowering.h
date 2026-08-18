@@ -21,11 +21,12 @@ protected:
     using namespace build;
     Derived & lowerer = static_cast<Derived &>(*this);
     const mir_model::MirOperand source = lowerer.resolve(operand);
-    if(source.kind == mir_model::MirOperand::OP_IMM && type.bit_width >= 32 &&
-       (type.bit_width < 64 ||
+    const std::size_t width = lowir_model::lowir_type_bit_width(type);
+    if(source.kind == mir_model::MirOperand::OP_IMM && width >= 32 &&
+       (width < 64 ||
         (source.imm >= INT32_MIN && source.imm <= INT32_MAX)))
       return source;
-    if(source.kind == mir_model::MirOperand::OP_IMM && type.bit_width < 32 &&
+    if(source.kind == mir_model::MirOperand::OP_IMM && width < 32 &&
        lowerer.operand_uses_register(left, XR_RDX))
       return source;
     if(source.kind == mir_model::MirOperand::OP_REG ||

@@ -89,10 +89,10 @@ protected:
         out, destination.reg, source, instruction.type);
     }
     if(selection::is_integer_or_pointer(instruction.type))
-      lowerer.normalize_integer(instruction.type, destination, out);
+      append_integer_normalization(out, instruction.type, destination);
     lowerer.consume(instruction.first, destination.reg);
     if(pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+      append_store(out, pressure_home, destination, instruction.type);
     lowerer.define(instruction.dest, instruction.type,
       pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
         pressure_home : destination);

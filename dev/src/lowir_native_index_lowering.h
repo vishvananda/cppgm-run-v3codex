@@ -181,7 +181,7 @@ materialize_index:
         if(index.reg != XR_RDX)
           append_move(out, reg_operand(XR_RDX), index);
         mir_model::MirInstruction scale = machine_instruction(
-          mir_model::MirInstruction::MI_IMUL, "i64");
+          mir_model::MirInstruction::MI_IMUL, machine_type(lowir_model::LTK_I64));
         append_operand(scale, reg_operand(XR_RDX));
         append_operand(scale, immediate(
           static_cast<long long>(instruction.type.storage_size)));
@@ -189,7 +189,7 @@ materialize_index:
         index = reg_operand(XR_RDX);
       }
       mir_model::MirInstruction add = machine_instruction(
-        mir_model::MirInstruction::MI_ADD, "ptr");
+        mir_model::MirInstruction::MI_ADD, machine_type(lowir_model::LTK_PTR));
       append_operand(add, destination);
       append_operand(add, index);
       out.push_back(add);
@@ -218,7 +218,7 @@ materialize_index:
     const lowir_model::LowType pointer_type =
       lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
     if(pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(pointer_type));
+      append_store(out, pressure_home, destination, pointer_type);
     lowerer.define(
       instruction.dest, pointer_type,
       pressure_home.kind == mir_model::MirOperand::OP_FRAME ?

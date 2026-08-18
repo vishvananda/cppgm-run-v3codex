@@ -3,6 +3,16 @@
 namespace lowir_native {
 namespace build {
 
+const lowir_model::LowType & integer_machine_type(std::size_t width)
+{
+  if(width <= 1) return machine_type(lowir_model::LTK_I1);
+  if(width <= 8) return machine_type(lowir_model::LTK_I8);
+  if(width <= 16) return machine_type(lowir_model::LTK_I16);
+  if(width <= 32) return machine_type(lowir_model::LTK_I32);
+  if(width <= 64) return machine_type(lowir_model::LTK_I64);
+  return machine_type(lowir_model::LTK_I128);
+}
+
 mir_model::MirOperand reg_operand(X64Register reg)
 {
   mir_model::MirOperand out;
@@ -76,7 +86,8 @@ mir_model::MirOperand frame_operand(long long offset,
 }
 
 mir_model::MirInstruction machine_instruction(
-    mir_model::MirInstruction::Opcode opcode, const std::string & type)
+    mir_model::MirInstruction::Opcode opcode,
+    const lowir_model::LowType & type)
 {
   mir_model::MirInstruction out;
   out.opcode = opcode;
@@ -107,7 +118,7 @@ void append_move(std::vector<mir_model::MirInstruction> & out,
 void append_load(std::vector<mir_model::MirInstruction> & out,
                  const mir_model::MirOperand & destination,
                  const mir_model::MirOperand & source,
-                 const std::string & type)
+                 const lowir_model::LowType & type)
 {
   mir_model::MirInstruction instruction =
     machine_instruction(mir_model::MirInstruction::MI_LOAD, type);
@@ -119,7 +130,7 @@ void append_load(std::vector<mir_model::MirInstruction> & out,
 void append_store(std::vector<mir_model::MirInstruction> & out,
                   const mir_model::MirOperand & destination,
                   const mir_model::MirOperand & source,
-                  const std::string & type)
+                  const lowir_model::LowType & type)
 {
   mir_model::MirInstruction instruction =
     machine_instruction(mir_model::MirInstruction::MI_STORE, type);
@@ -136,7 +147,28 @@ void append_integer_extension(
   mir_model::MirInstruction instruction = machine_instruction(
     sign_extend ? mir_model::MirInstruction::MI_SEXT :
                   mir_model::MirInstruction::MI_ZEXT,
-    "i" + std::to_string(source_width));
+    source_width == 8 ? lowir_model::builtin_lowir_type(lowir_model::LTK_I8) :
+    source_width == 16 ? lowir_model::builtin_lowir_type(lowir_model::LTK_I16) :
+    source_width == 32 ? lowir_model::builtin_lowir_type(lowir_model::LTK_I32) :
+    lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
+  append_operand(instruction, destination);
+  out.push_back(instruction);
+}
+
+void append_integer_normalization(
+    std::vector<mir_model::MirInstruction> & out,
+    const lowir_model::LowType & type,
+    const mir_model::MirOperand & destination)
+{
+  const std::size_t width = lowir_model::lowir_type_bit_width(type);
+  if(type.kind == lowir_model::LTK_PTR || width >= 64) return;
+  const bool sign_extend = type.kind == lowir_model::LTK_I1 ||
+    type.kind == lowir_model::LTK_I8 || type.kind == lowir_model::LTK_I16 ||
+    type.kind == lowir_model::LTK_I32 || type.kind == lowir_model::LTK_I64;
+  mir_model::MirInstruction instruction = machine_instruction(
+    sign_extend ? mir_model::MirInstruction::MI_SEXT :
+                  mir_model::MirInstruction::MI_ZEXT,
+    integer_machine_type(width));
   append_operand(instruction, destination);
   out.push_back(instruction);
 }
@@ -144,7 +176,7 @@ void append_integer_extension(
 void append_float_move(std::vector<mir_model::MirInstruction> & out,
                        const mir_model::MirOperand & destination,
                        const mir_model::MirOperand & source,
-                       const std::string & type,
+                       const lowir_model::LowType & type,
                        bool omit_identity)
 {
   if(omit_identity && destination.kind == mir_model::MirOperand::OP_XMM &&

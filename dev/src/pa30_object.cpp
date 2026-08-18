@@ -229,7 +229,7 @@ void WriteType(Writer& out, const lowir_model::LowType& value)
 {
 	out.String(lowir_model::lowir_type_text(value));
 	WriteEnum(out, value.kind);
-	out.U64(value.bit_width);
+	out.U64(lowir_model::lowir_type_bit_width(value));
 	out.U64(value.storage_size);
 	out.U64(value.alignment);
 }
@@ -239,9 +239,14 @@ lowir_model::LowType ReadType(Reader& in)
 	lowir_model::LowType value;
 	(void)in.String();
 	value.kind = ReadEnum<lowir_model::LowTypeKind>(in);
-	value.bit_width = in.Size();
+	const std::size_t serialized_width = in.Size();
 	value.storage_size = in.Size();
-	value.alignment = in.Size();
+	const std::size_t alignment = in.Size();
+	if (alignment > std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("compiler object type alignment is too large");
+	value.alignment = static_cast<std::uint32_t>(alignment);
+	if (serialized_width != lowir_model::lowir_type_bit_width(value))
+		throw std::runtime_error("compiler object type width is inconsistent");
 	return value;
 }
 

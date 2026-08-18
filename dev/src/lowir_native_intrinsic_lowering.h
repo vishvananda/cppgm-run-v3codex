@@ -68,17 +68,18 @@ protected:
     if(floating) {
       const mir_model::MirOperand destination =
         derived.allocate_float_result(instruction.dest, instruction.type);
-      build::append_float_move(out, destination, build::dereference(XR_R8), "f64");
+      build::append_float_move(out, destination, build::dereference(XR_R8),
+        lowir_model::builtin_lowir_type(lowir_model::LTK_F64));
       derived.define(instruction.dest, instruction.type, destination);
       return;
     }
     const mir_model::MirOperand destination = build::reg_operand(
       derived.allocate_result(instruction.dest, out));
-    const std::string scalar_type = lowir_model::lowir_type_text(
-      lowir_model::builtin_lowir_type(instruction.type.kind));
+    const lowir_model::LowType & scalar_type =
+      lowir_model::builtin_lowir_type(instruction.type.kind);
     build::append_load(out, destination, build::dereference(XR_R8),
                        scalar_type);
-    derived.normalize_integer(instruction.type, destination, out);
+    build::append_integer_normalization(out, instruction.type, destination);
     derived.define(instruction.dest, instruction.type, destination);
   }
 };

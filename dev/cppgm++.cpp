@@ -987,8 +987,62 @@ void report_lowir_preparation_stats(
 		 << preparation_stats.frontend_canonical_nanoseconds
 		 << " serialized_canonical_ns="
 		 << preparation_stats.serialized_canonical_nanoseconds
-		 << " derived_facts_ns="
-		 << preparation_stats.derived_facts_nanoseconds << '\n';
+			 << " derived_facts_ns="
+			 << preparation_stats.derived_facts_nanoseconds << '\n';
+}
+
+void report_compile_phase_stats(
+	const cppgm::LowIRLoweringStats & stats,
+	const lowir_model::LowirPreparationStats & preparation_stats,
+	uint64_t typed_pipeline_nanoseconds, uint64_t adapter_nanoseconds,
+	uint64_t text_parse_nanoseconds, uint64_t prune_nanoseconds,
+	uint64_t debug_nanoseconds, uint64_t lowir_opt_nanoseconds)
+{
+	const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
+	const uint64_t typed_accounted_nanoseconds =
+		semantic.elapsed_nanoseconds + stats.lowering_nanoseconds;
+	const uint64_t typed_glue_nanoseconds = typed_pipeline_nanoseconds >
+		typed_accounted_nanoseconds ?
+		typed_pipeline_nanoseconds - typed_accounted_nanoseconds : 0;
+	const uint64_t preparation_nanoseconds =
+		preparation_stats.frontend_canonical_nanoseconds +
+		preparation_stats.serialized_canonical_nanoseconds +
+		preparation_stats.derived_facts_nanoseconds;
+	const uint64_t adapter_build_nanoseconds = adapter_nanoseconds >
+		preparation_nanoseconds ?
+		adapter_nanoseconds - preparation_nanoseconds : 0;
+	cerr << " typed_bytes=" << stats.typed_storage_bytes
+		 << " preprocess_ns=" << semantic.preprocessing.elapsed_nanoseconds
+		 << " parse_ns=" << semantic.parse_nanoseconds
+		 << " semantic_ns=" << semantic.analysis_nanoseconds
+		 << " frontend_ns=" << semantic.elapsed_nanoseconds
+		 << " lowering_ns=" << stats.lowering_nanoseconds
+		 << " typed_glue_ns=" << typed_glue_nanoseconds
+		 << " adapter_build_ns=" << adapter_build_nanoseconds
+		 << " preparation_ns=" << preparation_nanoseconds
+		 << " adapt_ns=" << adapter_nanoseconds
+		 << " text_parse_ns=" << text_parse_nanoseconds
+		 << " prune_ns=" << prune_nanoseconds
+		 << " debug_ns=" << debug_nanoseconds
+		 << " lowir_opt_ns=" << lowir_opt_nanoseconds
+		 << " lowir_type_record_bytes=" << sizeof(lowir_model::LowType)
+		 << " lowir_operand_record_bytes=" << sizeof(lowir_model::Operand)
+		 << " lowir_instruction_record_bytes="
+		 << sizeof(lowir_model::Instruction)
+		 << " mir_operand_record_bytes=" << sizeof(mir_model::Operand)
+		 << " mir_instruction_record_bytes=" << sizeof(mir_model::Instruction)
+		 << '\n';
+}
+
+bool is_lowir_source_path(const string & path)
+{
+	return path.size() >= 6 && path.compare(path.size() - 6, 6, ".lowir") == 0;
+}
+
+void clear_nonsemantic_source_stats(lowir_model::LowirProgram * program)
+{
+	program->source_bytes = 0;
+	program->token_count = 0;
 }
 
 cppgm::pa30::CompilerObject compile_source_object(
@@ -1009,8 +1063,7 @@ cppgm::pa30::CompilerObject compile_source_object(
   cppgm::pa30::CompilerObject object;
   object.target = target;
 	lowir_model::LowirPreparationStats preparation_stats;
-	const bool lowir_input = path.size() >= 6 &&
-		path.compare(path.size() - 6, 6, ".lowir") == 0;
+	const bool lowir_input = is_lowir_source_path(path);
 	if(lowir_input) {
 		chrono::steady_clock::time_point started;
 		if(collect_stats) started = chrono::steady_clock::now();
@@ -1065,23 +1118,9 @@ cppgm::pa30::CompilerObject compile_source_object(
 	if(collect_stats) lowir_opt_nanoseconds = static_cast<uint64_t>(
 		chrono::duration_cast<chrono::nanoseconds>(
 			chrono::steady_clock::now() - optimize_started).count());
-	// These telemetry fields are not semantic compiler-object contents.
-	object.lowir.source_bytes = 0;
-	object.lowir.token_count = 0;
+	clear_nonsemantic_source_stats(&object.lowir);
 	if(collect_stats) {
 		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
-		const uint64_t typed_accounted_nanoseconds =
-			semantic.elapsed_nanoseconds + stats.lowering_nanoseconds;
-		const uint64_t typed_glue_nanoseconds = typed_pipeline_nanoseconds >
-			typed_accounted_nanoseconds ?
-			typed_pipeline_nanoseconds - typed_accounted_nanoseconds : 0;
-		const uint64_t preparation_nanoseconds =
-			preparation_stats.frontend_canonical_nanoseconds +
-			preparation_stats.serialized_canonical_nanoseconds +
-			preparation_stats.derived_facts_nanoseconds;
-		const uint64_t adapter_build_nanoseconds = adapter_nanoseconds >
-			preparation_nanoseconds ?
-			adapter_nanoseconds - preparation_nanoseconds : 0;
 		cerr << "pa30_compile_stats"
 				 << " file=" << path
 				 << " source_bytes=" << stats.source_bytes
@@ -1241,32 +1280,11 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << semantic.semantic_side_storage_bytes
 			 << " semantic_shared_string_bytes="
 			 << semantic.semantic_shared_string_bytes
-			 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes
-			 << " typed_bytes=" << stats.typed_storage_bytes
-			 << " preprocess_ns="
-			 << semantic.preprocessing.elapsed_nanoseconds
-			 << " parse_ns=" << semantic.parse_nanoseconds
-			 << " semantic_ns=" << semantic.analysis_nanoseconds
-			 << " frontend_ns=" << semantic.elapsed_nanoseconds
-			 << " lowering_ns=" << stats.lowering_nanoseconds
-			 << " typed_glue_ns=" << typed_glue_nanoseconds
-			 << " adapter_build_ns=" << adapter_build_nanoseconds
-			 << " preparation_ns=" << preparation_nanoseconds
-			 << " adapt_ns=" << adapter_nanoseconds
-			 << " text_parse_ns=" << text_parse_nanoseconds
-			 << " prune_ns=" << prune_nanoseconds
-			 << " debug_ns=" << debug_nanoseconds
-			 << " lowir_opt_ns=" << lowir_opt_nanoseconds
-			 << " lowir_type_record_bytes="
-			 << sizeof(lowir_model::LowType)
-			 << " lowir_operand_record_bytes="
-			 << sizeof(lowir_model::Operand)
-			 << " lowir_instruction_record_bytes="
-			 << sizeof(lowir_model::Instruction)
-			 << " mir_operand_record_bytes="
-			 << sizeof(mir_model::Operand)
-			 << " mir_instruction_record_bytes="
-			 << sizeof(mir_model::Instruction) << '\n';
+				 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes;
+		report_compile_phase_stats(stats, preparation_stats,
+			typed_pipeline_nanoseconds, adapter_nanoseconds,
+			text_parse_nanoseconds, prune_nanoseconds, debug_nanoseconds,
+			lowir_opt_nanoseconds);
 		report_lowir_preparation_stats(path, stats, preparation_stats);
 	}
   return object;

@@ -569,7 +569,7 @@ std::vector<bool> baseline_encoding_preserve(const MirBlock & block)
        block.instructions[i + 1].opcode == MirInstruction::MI_LEA &&
        block.instructions[i + 2].opcode == MirInstruction::MI_MOV &&
        block.instructions[i + 3].opcode == MirInstruction::MI_STORE &&
-       block.instructions[i + 3].type == "i8")
+       block.instructions[i + 3].type.kind == lowir_model::LTK_I8)
       for(std::size_t j = 0; j != 4; ++j) preserve[i + j] = true;
   }
   return preserve;
@@ -961,7 +961,8 @@ std::size_t instruction_count(const MirFunction & function)
 
 void make_scalar_float_returns_explicit(MirFunction & function, Stats * stats)
 {
-  if(function.return_type != "f32" && function.return_type != "f64") return;
+  if(function.return_type.kind != lowir_model::LTK_F32 &&
+     function.return_type.kind != lowir_model::LTK_F64) return;
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       MirInstruction & instruction = function.blocks[i].instructions[j];

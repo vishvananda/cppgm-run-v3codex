@@ -127,8 +127,8 @@ void append_pair_to_registers(const Value & value,
     return;
   }
   append_address(out, scratch, value.storage);
-  append_load(out, reg_operand(low), dereference(scratch), "i64");
-  append_load(out, reg_operand(high), dereference(scratch, 8), "i64");
+  append_load(out, reg_operand(low), dereference(scratch), machine_type(lowir_model::LTK_I64));
+  append_load(out, reg_operand(high), dereference(scratch, 8), machine_type(lowir_model::LTK_I64));
 }
 
 void append_pair_store(const MirOperand & destination,
@@ -137,15 +137,15 @@ void append_pair_store(const MirOperand & destination,
                        std::vector<MirInstruction> & out)
 {
   append_address(out, scratch, destination);
-  append_store(out, dereference(scratch), reg_operand(low), "i64");
-  append_store(out, dereference(scratch, 8), reg_operand(high), "i64");
+  append_store(out, dereference(scratch), reg_operand(low), machine_type(lowir_model::LTK_I64));
+  append_store(out, dereference(scratch, 8), reg_operand(high), machine_type(lowir_model::LTK_I64));
 }
 
 void append_equality_part(X64Register left, X64Register right,
                           X64Register destination,
                           std::vector<MirInstruction> & out)
 {
-  MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+  MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
   append_operand(compare, reg_operand(left));
   append_operand(compare, reg_operand(right));
   out.push_back(compare);
@@ -176,7 +176,7 @@ void append_register_binary(MirInstruction::Opcode opcode,
                             X64Register destination, X64Register source,
                             std::vector<MirInstruction> & out)
 {
-  MirInstruction instruction = machine_instruction(opcode, "i64");
+  MirInstruction instruction = machine_instruction(opcode, machine_type(lowir_model::LTK_I64));
   append_operand(instruction, reg_operand(destination));
   append_operand(instruction, reg_operand(source));
   out.push_back(instruction);
@@ -186,7 +186,7 @@ void append_register_immediate(MirInstruction::Opcode opcode,
                                X64Register destination, long long value,
                                std::vector<MirInstruction> & out)
 {
-  MirInstruction instruction = machine_instruction(opcode, "i64");
+  MirInstruction instruction = machine_instruction(opcode, machine_type(lowir_model::LTK_I64));
   append_operand(instruction, reg_operand(destination));
   append_operand(instruction, immediate(value));
   out.push_back(instruction);
@@ -224,7 +224,7 @@ void append_word_to_register(const Value & value, std::size_t chunk,
     return;
   }
   append_address(out, scratch, value.storage);
-  append_load(out, reg_operand(destination), dereference(scratch, chunk * 8), "i64");
+  append_load(out, reg_operand(destination), dereference(scratch, chunk * 8), machine_type(lowir_model::LTK_I64));
 }
 
 void append_word_store(const MirOperand & destination,
@@ -233,7 +233,7 @@ void append_word_store(const MirOperand & destination,
                        std::vector<MirInstruction> & out)
 {
   append_word_to_register(value, chunk, value_register, scratch, out);
-  append_store(out, destination, reg_operand(value_register), "i64");
+  append_store(out, destination, reg_operand(value_register), machine_type(lowir_model::LTK_I64));
 }
 
 void append_copy(const MirOperand & destination, const Value & source,
@@ -267,14 +267,14 @@ void append_compare(const Value & left, const Value & right,
      operation != "ugt" && operation != "uge")
     throw std::runtime_error("unsupported i128 comparison: " + operation);
 
-  MirInstruction low_compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+  MirInstruction low_compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
   append_operand(low_compare, reg_operand(XR_RAX));
   append_operand(low_compare, reg_operand(XR_RCX));
   out.push_back(low_compare);
   append_condition(XR_R10, less ? (inclusive ? XC_BE : XC_B) :
     (inclusive ? XC_AE : XC_A), out);
 
-  MirInstruction high_compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+  MirInstruction high_compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
   append_operand(high_compare, reg_operand(XR_RDX));
   append_operand(high_compare, reg_operand(XR_RSI));
   out.push_back(high_compare);
@@ -307,7 +307,7 @@ void append_binary(const MirOperand & destination,
   } else if(operation == "mul") {
     append_move(out, reg_operand(XR_R10), reg_operand(XR_RAX));
     append_move(out, reg_operand(XR_RDI), reg_operand(XR_RDX));
-    MirInstruction multiply = machine_instruction(MirInstruction::MI_MUL, "i64");
+    MirInstruction multiply = machine_instruction(MirInstruction::MI_MUL, machine_type(lowir_model::LTK_I64));
     append_operand(multiply, reg_operand(XR_RCX));
     out.push_back(multiply);
     append_register_binary(MirInstruction::MI_IMUL, XR_R10, XR_RSI, out);
@@ -344,10 +344,10 @@ void append_unary(const MirOperand & destination,
 {
   append_pair_to_registers(source, XR_RAX, XR_RDX, XR_R11, out);
   if(operation == "bitnot" || operation == "neg") {
-    MirInstruction low = machine_instruction(MirInstruction::MI_NOT, "i64");
+    MirInstruction low = machine_instruction(MirInstruction::MI_NOT, machine_type(lowir_model::LTK_I64));
     append_operand(low, reg_operand(XR_RAX));
     out.push_back(low);
-    MirInstruction high = machine_instruction(MirInstruction::MI_NOT, "i64");
+    MirInstruction high = machine_instruction(MirInstruction::MI_NOT, machine_type(lowir_model::LTK_I64));
     append_operand(high, reg_operand(XR_RDX));
     out.push_back(high);
     if(operation == "neg") {
@@ -379,17 +379,17 @@ void append_atomic_compare_exchange(const MirOperand & object,
                                     const Value & desired,
                                     std::vector<MirInstruction> & out)
 {
-  append_load(out, reg_operand(XR_RAX), expected, "i64");
+  append_load(out, reg_operand(XR_RAX), expected, machine_type(lowir_model::LTK_I64));
   MirOperand expected_high = expected;
   expected_high.offset += 8;
-  append_load(out, reg_operand(XR_RDX), expected_high, "i64");
+  append_load(out, reg_operand(XR_RDX), expected_high, machine_type(lowir_model::LTK_I64));
   append_pair_to_registers(desired, XR_RBX, XR_RCX, XR_R11, out);
   append_address(out, XR_R11, object);
   MirInstruction exchange = machine_instruction(MirInstruction::MI_LOCK_CMPXCHG16B);
   append_operand(exchange, dereference(XR_R11));
   out.push_back(exchange);
-  append_store(out, expected, reg_operand(XR_RAX), "i64");
-  append_store(out, expected_high, reg_operand(XR_RDX), "i64");
+  append_store(out, expected, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64));
+  append_store(out, expected_high, reg_operand(XR_RDX), machine_type(lowir_model::LTK_I64));
   MirInstruction set = machine_instruction(MirInstruction::MI_SETCC);
   set.condition = XC_E;
   append_operand(set, reg_operand(XR_RAX));

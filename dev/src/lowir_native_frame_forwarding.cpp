@@ -35,12 +35,10 @@ struct PlannedReload
   bool adjacent = false;
 };
 
-bool eligible_reload_type(const std::string & type)
+bool eligible_reload_type(const lowir_model::LowType & type)
 {
-  return type == "ptr" || type == "i64" ||
-    type == "i32" || type == "u32" ||
-    type == "i16" || type == "u16" ||
-    type == "i8" || type == "u8" || type == "i1";
+  return type.kind == lowir_model::LTK_PTR ||
+    (type.kind >= lowir_model::LTK_I1 && type.kind <= lowir_model::LTK_I64);
 }
 
 struct FrameBindingIndex

@@ -630,6 +630,28 @@ peak RSS.  One candidate and one adjacent baseline sample were host-loaded;
 the interleaved median remains favorable, while the small RSS difference is
 inside observed noise because semantic analysis still owns the process peak.
 
+### CI3: typed MIR type identity
+
+The third Phase 1 slice carries compact types through MIR construction,
+optimization, and native encoding.  Conversion instructions store source and
+destination types as separate values; their historical dotted spelling is
+formed only by the MIR serializer.  Fixed backend types now use enum identity
+directly, with no string-to-type compatibility lookup in the lowering path.
+
+The type value is compacted to 16 bytes by deriving scalar bit width from its
+kind and retaining only the object size and alignment that cannot be derived.
+Consequently `Operand` falls from 112 to 96 bytes and `Instruction` from 656
+to 560 bytes.  MIR instructions remain 200 bytes despite gaining an explicit
+conversion source type.  The frozen object remains byte-identical with the
+same SHA-256.
+
+PA13, PA15, PA29, PA30, PA31, PA32, PA37, and PA38 report 825/825 passing
+tests; PA29's assignment and course suites report 223/223, and the full
+through-PA29 report is 4,114/4,114.  The PA39 file audit has no fatal issues.
+Six interleaved measurements per lane against `9365af5f` produced
+baseline/candidate medians of 5.635/5.565 seconds user, 6.19/6.10 seconds wall,
+and 365,086/364,998 KiB peak RSS.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

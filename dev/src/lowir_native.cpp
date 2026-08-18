@@ -42,6 +42,7 @@ using analysis::register_was_clobbered_before;
 using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
+
 using namespace selection;
 class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
@@ -76,7 +77,7 @@ public:
   {
     target_.name = source.name;
     target_.object_symbol = source.metadata.object_symbol;
-    target_.return_type = lowir_model::lowir_type_text(source.return_type);
+    target_.return_type = source.return_type;
     target_.debug_location.file = source.debug_location.file;
     target_.debug_location.line = source.debug_location.line;
     target_.debug_location.column = source.debug_location.column;
@@ -195,7 +196,7 @@ private:
     binding.kind = kind;
     binding.name = name;
     binding.offset = -static_cast<long long>(frame_bytes_);
-    binding.type = lowir_model::lowir_type_text(type);
+    binding.type = type;
     target_.frame_bindings.push_back(binding);
     return binding.offset;
   }
@@ -211,7 +212,7 @@ private:
     binding.kind = kind;
     binding.name = name;
     binding.offset = offset;
-    binding.type = lowir_model::lowir_type_text(type);
+    binding.type = type;
     target_.frame_bindings.push_back(binding);
     return static_cast<std::uint32_t>(target_.frame_bindings.size());
   }
@@ -351,7 +352,7 @@ private:
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
       binding.name = parameter.name;
-      binding.type = lowir_model::lowir_type_text(parameter.type);
+      binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
       value.parameter = true;
@@ -361,7 +362,7 @@ private:
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_float_move(parameter_moves_, frame_operand(home),
-                          xmm_operand(binding.xmm), lowir_model::lowir_type_text(parameter.type));
+                          xmm_operand(binding.xmm), parameter.type);
         value.location = frame_operand(home);
       } else if(!is_scalar_float(parameter.type) && gpr_index < 6) {
         binding.location = mir_model::MirParamBinding::PL_REG;
@@ -385,12 +386,12 @@ private:
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         if(is_scalar_float(parameter.type))
           append_float_move(parameter_moves_, frame_operand(home),
-                            frame_operand(binding.stack_offset), lowir_model::lowir_type_text(parameter.type));
+                            frame_operand(binding.stack_offset), parameter.type);
         else {
           append_load(parameter_moves_, reg_operand(XR_RAX),
-                      frame_operand(binding.stack_offset), lowir_model::lowir_type_text(parameter.type));
+                      frame_operand(binding.stack_offset), parameter.type);
           append_store(parameter_moves_, frame_operand(home), reg_operand(XR_RAX),
-                       lowir_model::lowir_type_text(parameter.type));
+                       parameter.type);
         }
         value.location = frame_operand(home);
       }
@@ -441,30 +442,30 @@ private:
       binding.name = parameter.name;
       binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ||
         wide::is_integer(parameter.type) ?
-        lowir_model::lowir_type_text(piece.type) : lowir_model::lowir_type_text(parameter.type);
+        piece.type : parameter.type;
       binding.chunk_offset = static_cast<long long>(piece.chunk_offset);
       const MirOperand home = frame_operand(
         homes[piece.parameter_index] + static_cast<long long>(piece.chunk_offset));
       if(piece.location == abi::PL_GPR) {
         binding.location = mir_model::MirParamBinding::PL_REG;
         binding.reg = piece.reg;
-        append_store(parameter_moves_, home, reg_operand(piece.reg), lowir_model::lowir_type_text(piece.type));
+        append_store(parameter_moves_, home, reg_operand(piece.reg), piece.type);
       } else if(piece.location == abi::PL_XMM) {
         binding.location = mir_model::MirParamBinding::PL_XMM;
         binding.xmm = piece.xmm;
         uses_scalar_float_ = true;
-        append_float_move(parameter_moves_, home, xmm_operand(piece.xmm), lowir_model::lowir_type_text(piece.type));
+        append_float_move(parameter_moves_, home, xmm_operand(piece.xmm), piece.type);
       } else {
         binding.location = mir_model::MirParamBinding::PL_STACK;
         binding.stack_offset = 16 + static_cast<long long>(piece.stack_offset);
         if(is_floating(piece.type)) {
           uses_scalar_float_ = true;
           append_float_move(parameter_moves_, home,
-                            frame_operand(binding.stack_offset), lowir_model::lowir_type_text(piece.type));
+                            frame_operand(binding.stack_offset), piece.type);
         } else {
           append_load(parameter_moves_, reg_operand(XR_RAX),
-                      frame_operand(binding.stack_offset), lowir_model::lowir_type_text(piece.type));
-          append_store(parameter_moves_, home, reg_operand(XR_RAX), lowir_model::lowir_type_text(piece.type));
+                      frame_operand(binding.stack_offset), piece.type);
+          append_store(parameter_moves_, home, reg_operand(XR_RAX), piece.type);
         }
       }
       target_.params.push_back(binding);
@@ -510,7 +511,7 @@ private:
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
       binding.name = parameter.name;
-      binding.type = lowir_model::lowir_type_text(parameter.type);
+      binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
       value.parameter = true;
@@ -520,9 +521,9 @@ private:
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_load(parameter_moves_, reg_operand(XR_RAX),
-                    frame_operand(binding.stack_offset), lowir_model::lowir_type_text(parameter.type));
+                    frame_operand(binding.stack_offset), parameter.type);
         append_store(parameter_moves_, frame_operand(home), reg_operand(XR_RAX),
-                     lowir_model::lowir_type_text(parameter.type));
+                     parameter.type);
         value.location = frame_operand(home);
         target_.params.push_back(binding);
         set_value(parameter.name, value);
@@ -546,7 +547,7 @@ private:
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
-                     lowir_model::lowir_type_text(parameter.type));
+                     parameter.type);
         value.location = frame_operand(home);
       } else if(facts_.has_va_start) {
         // va_start/va_arg use the full SysV argument-register scratch set.
@@ -556,7 +557,7 @@ private:
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name,
           parameter.type);
         append_store(parameter_moves_, frame_operand(home),
-          reg_operand(binding.reg), lowir_model::lowir_type_text(parameter.type));
+          reg_operand(binding.reg), parameter.type);
         value.location = frame_operand(home);
       } else if(planned != cross_call_homes.end()) {
         value.location = reg_operand(planned->second);
@@ -577,7 +578,7 @@ private:
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
-                     lowir_model::lowir_type_text(parameter.type));
+                     parameter.type);
         value.location = frame_operand(home);
       } else if(!wide_gpr_boundary &&
                 parameter.metadata.passing != lowir_model::PPM_DIRECT && uses) {
@@ -742,8 +743,8 @@ private:
     const MirOperand target = reg_operand(destination);
     if(source.kind == MirOperand::OP_FRAME || source.kind == MirOperand::OP_GLOBAL ||
        source.kind == MirOperand::OP_DEREF) {
-      append_load(out, target, source, lowir_model::lowir_type_text(type));
-      if(is_integer_or_pointer(type)) normalize_integer(type, target, out);
+      append_load(out, target, source, type);
+      if(is_integer_or_pointer(type)) append_integer_normalization(out, type, target);
     } else append_move(out, target, source);
   }
   MirOperand storage(const Operand & operand) const
@@ -967,12 +968,12 @@ private:
       allocate_temp_frame_binding(instruction.dest, value->second.type);
     if(location.kind == MirOperand::OP_XMM) {
       append_float_move(out, home, location,
-                        lowir_model::lowir_type_text(value->second.type));
+                        value->second.type);
       if(!has_live_location_alias(instruction.dest, location))
         xmms_.release(location.xmm);
     } else {
       append_store(out, home, location,
-                   lowir_model::lowir_type_text(value->second.type));
+                   value->second.type);
       if(!has_live_location_alias(instruction.dest, location)) {
         registers_.release(location.reg);
       }
@@ -1056,7 +1057,7 @@ private:
     else
       home = allocate_temp_frame_binding(victim->first, victim->second.type);
     append_store(out, home, victim->second.location,
-                 lowir_model::lowir_type_text(victim->second.type));
+                 victim->second.type);
     const X64Register released = victim->second.location.reg;
     set_value_location(victim->first, home);
     registers_.release(released);
@@ -1236,9 +1237,9 @@ private:
       return found->second.location;
     const MirOperand home = allocate_temp_home(operand.text, found->second.type);
     if(found->second.location.kind == MirOperand::OP_XMM)
-      append_float_move(out, home, found->second.location, lowir_model::lowir_type_text(found->second.type));
+      append_float_move(out, home, found->second.location, found->second.type);
     else
-      append_store(out, home, found->second.location, lowir_model::lowir_type_text(found->second.type));
+      append_store(out, home, found->second.location, found->second.type);
     if(found->second.location.kind == MirOperand::OP_REG &&
        !has_live_location_alias(operand.text, found->second.location))
       registers_.release(found->second.location.reg);
@@ -1284,16 +1285,6 @@ private:
     return (facts_.last_use.count(name) && crosses_call(name)) ||
       storage_facts_.tls_store_inputs.count(name);
   }
-  void normalize_integer(const LowType & type, const MirOperand & destination,
-                         std::vector<MirInstruction> & out)
-  {
-    if(type.kind == lowir_model::LTK_PTR || type.bit_width >= 64) return;
-    const std::string width_type = "i" + std::to_string(type.bit_width);
-    MirInstruction normalize = machine_instruction(is_signed_integer(type) ?
-      MirInstruction::MI_SEXT : MirInstruction::MI_ZEXT, width_type);
-    append_operand(normalize, destination);
-    out.push_back(normalize);
-  }
   MirOperand binary_destination(const Instruction & instruction,
                                 const MirOperand & left,
                                 std::vector<MirInstruction> & out,
@@ -1322,7 +1313,7 @@ private:
     move_value_to_register(out, destination.reg, left, operand_type(instruction.first));
     if(left.kind == MirOperand::OP_FRAME || left.kind == MirOperand::OP_GLOBAL ||
        left.kind == MirOperand::OP_DEREF)
-      normalize_integer(operand_type(instruction.first), destination, out);
+      append_integer_normalization(out, operand_type(instruction.first), destination);
     return destination;
   }
   MirInstruction::Opcode float_binary_opcode(const std::string & operation) const
@@ -1360,14 +1351,14 @@ private:
   {
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     append_float_move(out, destination, float_immediate(instruction.first.text),
-                      lowir_model::lowir_type_text(instruction.type));
+                      instruction.type);
     define(instruction.dest, instruction.type, destination);
   }
   void emit_float_copy(const Instruction & instruction,
                        std::vector<MirInstruction> & out)
   {
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
-    append_float_move(out, destination, resolve(instruction.first), lowir_model::lowir_type_text(instruction.type));
+    append_float_move(out, destination, resolve(instruction.first), instruction.type);
     consume(instruction.first);
     define(instruction.dest, instruction.type, destination);
   }
@@ -1376,7 +1367,7 @@ private:
   {
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     MirInstruction operation = machine_instruction(
-      float_binary_opcode(instruction.op), lowir_model::lowir_type_text(instruction.type));
+      float_binary_opcode(instruction.op), instruction.type);
     append_operand(operation, destination);
     append_operand(operation, resolve(instruction.first));
     append_operand(operation, resolve(instruction.second));
@@ -1392,7 +1383,7 @@ private:
   {
     uses_scalar_float_ = true;
     MirInstruction compare = machine_instruction(MirInstruction::MI_FCMP,
-                                                 lowir_model::lowir_type_text(comparison.type));
+                                                 comparison.type);
     append_operand(compare, resolve(comparison.first));
     append_operand(compare, resolve(comparison.second));
     out.push_back(compare);
@@ -1419,7 +1410,7 @@ private:
   {
     uses_scalar_float_ = true;
     MirInstruction compare = machine_instruction(float_compare_opcode(instruction.op),
-                                                 lowir_model::lowir_type_text(instruction.type));
+                                                 instruction.type);
     append_operand(compare, reg_operand(XR_RAX));
     append_operand(compare, resolve(instruction.first));
     append_operand(compare, resolve(instruction.second));
@@ -1439,7 +1430,7 @@ private:
   {
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     append_float_move(out, destination, materialized_storage(instruction.first, out),
-                      lowir_model::lowir_type_text(instruction.type));
+                      instruction.type);
     consume(instruction.first);
     define(instruction.dest, instruction.type, destination);
   }
@@ -1450,9 +1441,11 @@ private:
                                      const LowType & destination_type)
   {
     MirInstruction conversion = machine_instruction(
-      source_type.bit_width < destination_type.bit_width ?
+      lowir_model::lowir_type_bit_width(source_type) <
+        lowir_model::lowir_type_bit_width(destination_type) ?
         MirInstruction::MI_FPEXT : MirInstruction::MI_FPTRUNC,
-      lowir_model::lowir_type_text(source_type) + "." + lowir_model::lowir_type_text(destination_type));
+      destination_type);
+    conversion.source_type = source_type;
     append_operand(conversion, destination);
     append_operand(conversion, source);
     out.push_back(conversion);
@@ -1468,7 +1461,7 @@ private:
       append_float_width_conversion(out, destination, resolve(instruction.first),
                                     source_type, instruction.type);
     else
-      append_float_move(out, destination, resolve(instruction.first), lowir_model::lowir_type_text(instruction.type));
+      append_float_move(out, destination, resolve(instruction.first), instruction.type);
     consume(instruction.first);
     consume(instruction.second);
   }
@@ -1479,7 +1472,7 @@ private:
       throw std::runtime_error("floating unary operation is not implemented: " + instruction.op);
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     MirInstruction negate = machine_instruction(MirInstruction::MI_FNEG,
-                                                lowir_model::lowir_type_text(instruction.type));
+                                                instruction.type);
     append_operand(negate, destination);
     append_operand(negate, resolve(instruction.first));
     out.push_back(negate);
@@ -1502,15 +1495,15 @@ private:
       const MirOperand destination = reg_operand(result);
       wide::append_word_to_register(wide_value(instruction.first), 0,
                                     destination.reg, XR_R11, out);
-      normalize_integer(instruction.type, destination, out);
+      append_integer_normalization(out, instruction.type, destination);
       consume(instruction.first, destination.reg);
       if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+        append_store(out, pressure_home, destination, instruction.type);
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
     }
-    if(destination_wide && is_integer_or_pointer(instruction.source_type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.source_type); normalize_integer(instruction.source_type, reg_operand(XR_RAX), out); if(instruction.op == "sext") out.push_back(machine_instruction(MirInstruction::MI_CQO)); else append_move(out, reg_operand(XR_RDX), immediate(0)); append_store(out, destination, reg_operand(XR_RAX), "i64"); MirOperand high = destination; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), "i64"); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
+    if(destination_wide && is_integer_or_pointer(instruction.source_type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.source_type); append_integer_normalization(out, instruction.source_type, reg_operand(XR_RAX)); if(instruction.op == "sext") out.push_back(machine_instruction(MirInstruction::MI_CQO)); else append_move(out, reg_operand(XR_RDX), immediate(0)); append_store(out, destination, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64)); MirOperand high = destination; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), machine_type(lowir_model::LTK_I64)); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
     const bool source_float = is_floating(instruction.source_type);
     const bool destination_float = is_floating(instruction.type);
     if(destination_wide && source_float) {
@@ -1523,15 +1516,18 @@ private:
       else throw std::runtime_error(
         "floating-to-i128 conversion is not implemented: " + instruction.op);
       MirInstruction conversion = machine_instruction(
-        opcode, lowir_model::lowir_type_text(instruction.source_type) + ".i128");
+        opcode, lowir_model::builtin_lowir_type(lowir_model::LTK_I128));
+      conversion.source_type = instruction.source_type;
       append_operand(conversion, reg_operand(XR_RAX));
       append_operand(conversion, reg_operand(XR_RDX));
       append_operand(conversion, resolve(instruction.first));
       out.push_back(conversion);
-      append_store(out, destination, reg_operand(XR_RAX), "i64");
+      append_store(out, destination, reg_operand(XR_RAX),
+                   lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
       MirOperand high = destination;
       high.offset += 8;
-      append_store(out, high, reg_operand(XR_RDX), "i64");
+      append_store(out, high, reg_operand(XR_RDX),
+                   lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
       consume(instruction.first);
       define(instruction.dest, instruction.type, destination);
       return;
@@ -1558,12 +1554,18 @@ private:
         }
         destination = reg_operand(result);
       }
-      const std::string source_name = is_integer_or_pointer(instruction.source_type) ?
-        "i" + std::to_string(instruction.source_type.bit_width) : lowir_model::lowir_type_text(instruction.source_type);
-      const std::string destination_name = is_integer_or_pointer(instruction.type) ?
-        "i" + std::to_string(instruction.type.bit_width) : lowir_model::lowir_type_text(instruction.type);
-      MirInstruction conversion = machine_instruction(
-        opcode, source_name + "." + destination_name);
+      const LowType & source_machine_type =
+        is_integer_or_pointer(instruction.source_type) ?
+        integer_machine_type(lowir_model::lowir_type_bit_width(
+          instruction.source_type)) :
+        instruction.source_type;
+      const LowType & destination_machine_type =
+        is_integer_or_pointer(instruction.type) ?
+        integer_machine_type(lowir_model::lowir_type_bit_width(
+          instruction.type)) : instruction.type;
+      MirInstruction conversion =
+        machine_instruction(opcode, destination_machine_type);
+      conversion.source_type = source_machine_type;
       append_operand(conversion, destination);
       if(source_wide && destination_float) {
         const wide::Value source = wide_value(instruction.first);
@@ -1577,7 +1579,7 @@ private:
       out.push_back(conversion);
       consume(instruction.first);
       if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+        append_store(out, pressure_home, destination, instruction.type);
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
@@ -1598,14 +1600,15 @@ private:
                              instruction.source_type);
       if(instruction.op == "sext" || instruction.op == "zext") {
         append_integer_extension(out, destination,
-          instruction.source_type.bit_width, instruction.op == "sext");
+          lowir_model::lowir_type_bit_width(instruction.source_type),
+          instruction.op == "sext");
       } else {
-        normalize_integer(instruction.source_type, destination, out);
+        append_integer_normalization(out, instruction.source_type, destination);
       }
-      normalize_integer(instruction.type, destination, out);
+      append_integer_normalization(out, instruction.type, destination);
       consume(instruction.first, destination.reg);
       if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+        append_store(out, pressure_home, destination, instruction.type);
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
@@ -1675,7 +1678,7 @@ private:
        right.kind == MirOperand::OP_DEREF)) {
       move_value_to_register(out, XR_RDX, right, operand_type(instruction.second));
       right = reg_operand(XR_RDX);
-      normalize_integer(operand_type(instruction.second), right, out);
+      append_integer_normalization(out, operand_type(instruction.second), right);
     }
     const bool bitwise = instruction.op == "and" || instruction.op == "or" ||
                          instruction.op == "xor";
@@ -1693,37 +1696,37 @@ private:
     else if(instruction.op == "div" || instruction.op == "mod" ||
             instruction.op == "udiv" || instruction.op == "umod") {
       emit_division(instruction, destination, right, out);
-      normalize_integer(instruction.type, destination, out);
+      append_integer_normalization(out, instruction.type, destination);
       consume(instruction.first, destination.reg);
       consume(instruction.second, destination.reg);
       if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+        append_store(out, pressure_home, destination, instruction.type);
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
     } else if(instruction.op == "shl" || instruction.op == "shr" ||
               instruction.op == "ushr") {
       emit_shift(instruction, destination, right, out);
-      normalize_integer(instruction.type, destination, out);
+      append_integer_normalization(out, instruction.type, destination);
       consume(instruction.first, destination.reg);
       consume(instruction.second, destination.reg);
       if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+        append_store(out, pressure_home, destination, instruction.type);
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
     } else if(instruction.op != "add") {
       throw std::runtime_error("integer binary operation is not implemented: " + instruction.op);
     }
-    MirInstruction operation = machine_instruction(opcode, lowir_model::lowir_type_text(instruction.type));
+    MirInstruction operation = machine_instruction(opcode, instruction.type);
     append_operand(operation, destination);
     append_operand(operation, right);
     out.push_back(operation);
-    normalize_integer(instruction.type, destination, out);
+    append_integer_normalization(out, instruction.type, destination);
     consume(instruction.first, destination.reg);
     consume(instruction.second, destination.reg);
     if(pressure_home.kind == MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+      append_store(out, pressure_home, destination, instruction.type);
     define(instruction.dest, instruction.type,
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
@@ -1754,7 +1757,8 @@ private:
   {
     MirOperand left = direct_compare_left(comparison.first, out);
     const MirOperand unresolved_right = resolve(comparison.second);
-    if(unresolved_right.kind == MirOperand::OP_IMM && comparison.type.bit_width == 64 &&
+    if(unresolved_right.kind == MirOperand::OP_IMM &&
+       lowir_model::lowir_type_bit_width(comparison.type) == 64 &&
        (unresolved_right.imm < INT32_MIN || unresolved_right.imm > INT32_MAX) &&
        (left.kind != MirOperand::OP_REG || left.reg != XR_RAX)) {
       move_value_to_register(out, XR_RAX, left, comparison.type);
@@ -1771,7 +1775,7 @@ private:
       right = reg_operand(XR_RDX);
     }
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
-                                                 lowir_model::lowir_type_text(comparison.type));
+                                                 comparison.type);
     append_operand(compare, left);
     append_operand(compare, right);
     out.push_back(compare);
@@ -1823,14 +1827,14 @@ private:
       if(left.kind == MirOperand::OP_FRAME ||
          left.kind == MirOperand::OP_GLOBAL ||
          left.kind == MirOperand::OP_DEREF)
-        normalize_integer(operand_type(instruction.first), destination, out);
+        append_integer_normalization(out, operand_type(instruction.first), destination);
     } else {
       destination = binary_destination(
         instruction, left, out, false, &pressure_home, &result_type);
     }
     if(right.kind != MirOperand::OP_REG) {
       const bool encodable_immediate = right.kind == MirOperand::OP_IMM &&
-        (instruction.type.bit_width < 64 ||
+        (lowir_model::lowir_type_bit_width(instruction.type) < 64 ||
          (right.imm >= INT32_MIN && right.imm <= INT32_MAX));
       if(!encodable_immediate || !operand_uses_register(destination, XR_RDX)) {
         const X64Register scratch = operand_uses_register(destination, XR_RDX) ?
@@ -1841,7 +1845,7 @@ private:
       }
     }
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
-                                                 lowir_model::lowir_type_text(instruction.type));
+                                                 instruction.type);
     append_operand(compare, destination);
     append_operand(compare, right);
     out.push_back(compare);
@@ -1856,7 +1860,7 @@ private:
     consume(instruction.first, destination.reg);
     consume(instruction.second, destination.reg);
     if(pressure_home.kind == MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(result_type));
+      append_store(out, pressure_home, destination, result_type);
     define(instruction.dest, result_type,
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
@@ -1890,14 +1894,14 @@ private:
       if(source.kind == MirOperand::OP_FRAME ||
          source.kind == MirOperand::OP_GLOBAL ||
          source.kind == MirOperand::OP_DEREF)
-        normalize_integer(operand_type(instruction.first), destination, out);
+        append_integer_normalization(out, operand_type(instruction.first), destination);
     } else {
       destination = binary_destination(
         instruction, source, out, false, &pressure_home, &result_type);
     }
     if(instruction.op == "not") {
       MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
-                                                   lowir_model::lowir_type_text(instruction.type));
+                                                   instruction.type);
       append_operand(compare, destination);
       append_operand(compare, immediate(0));
       out.push_back(compare);
@@ -1915,14 +1919,14 @@ private:
       else if(instruction.op == "bswap") opcode = MirInstruction::MI_BSWAP;
       else if(instruction.op != "neg")
         throw std::runtime_error("integer unary operation is not implemented: " + instruction.op);
-      MirInstruction operation = machine_instruction(opcode, lowir_model::lowir_type_text(instruction.type));
+      MirInstruction operation = machine_instruction(opcode, instruction.type);
       append_operand(operation, destination);
       out.push_back(operation);
-      normalize_integer(instruction.type, destination, out);
+      append_integer_normalization(out, instruction.type, destination);
     }
     consume(instruction.first, destination.reg);
     if(pressure_home.kind == MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(result_type));
+      append_store(out, pressure_home, destination, result_type);
     define(instruction.dest, result_type,
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
@@ -1939,7 +1943,7 @@ private:
   {
     const MirOperand value = direct_compare_left(instruction.first, out);
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
-                                                 lowir_model::lowir_type_text(instruction.type));
+                                                 instruction.type);
     append_operand(compare, value);
     append_operand(compare, immediate(0));
     out.push_back(compare);
@@ -1970,7 +1974,7 @@ private:
       emit_operand_address(out, XR_R11, move.object_source);
       append_load(out, reg_operand(move.destination),
                   dereference(XR_R11, static_cast<long long>(move.chunk_offset)),
-                  lowir_model::lowir_type_text(move.type));
+                  move.type);
     } else if(move.source_is_address) {
       if(move.source.kind == MirOperand::OP_FRAME ||
          move.source.kind == MirOperand::OP_DEREF)
@@ -2081,7 +2085,7 @@ private:
       for(std::size_t i = 0; i < moves.size(); ++i) {
         if(!moves[i].pending || !xmm_destination_is_safe(moves, i)) continue;
         append_float_move(out, xmm_operand(moves[i].destination), moves[i].source,
-                          lowir_model::lowir_type_text(moves[i].type), true);
+                          moves[i].type, true);
         moves[i].pending = false;
         --remaining;
         progressed = true;
@@ -2095,7 +2099,7 @@ private:
         throw std::logic_error("invalid parallel XMM move cycle");
       const XmmRegister saved = moves[cycle].source.xmm;
       const MirOperand scratch = frame_operand(xmm_call_scratch());
-      append_float_move(out, scratch, xmm_operand(saved), lowir_model::lowir_type_text(moves[cycle].type));
+      append_float_move(out, scratch, xmm_operand(saved), moves[cycle].type);
       for(std::size_t i = 0; i < moves.size(); ++i)
         if(moves[i].pending && moves[i].source.kind == MirOperand::OP_XMM &&
            moves[i].source.xmm == saved)
@@ -2127,14 +2131,14 @@ private:
       const MirOperand destination = dereference(
         XR_RSP, static_cast<long long>(stack_count++ * 8));
       if(floating)
-        append_float_move(out, destination, resolve(instruction.args[i]), lowir_model::lowir_type_text(type));
+        append_float_move(out, destination, resolve(instruction.args[i]), type);
       else {
         MirOperand value = resolve(instruction.args[i]);
         if(value.kind != MirOperand::OP_REG) {
           move_value_to_register(out, XR_R11, value, type);
           value = reg_operand(XR_R11);
         }
-        append_store(out, destination, value, lowir_model::lowir_type_text(type));
+        append_store(out, destination, value, type);
       }
     }
     return bytes;
@@ -2157,7 +2161,7 @@ private:
         value = reg_operand(XR_R11);
       }
       append_store(out, dereference(XR_RSP, static_cast<long long>((i - 6) * 8)),
-                   value, lowir_model::lowir_type_text(type));
+                   value, type);
     }
     return bytes;
   }
@@ -2168,7 +2172,7 @@ private:
       if(!is_frame_address(instruction.args[i])) continue;
       append_address(out, XR_R11, resolve(instruction.args[i]));
       append_store(out, dereference(XR_RSP, static_cast<long long>((i - 6) * 8)),
-                   reg_operand(XR_R11), lowir_model::lowir_type_text(operand_type(instruction.args[i])));
+                   reg_operand(XR_R11), operand_type(instruction.args[i]));
     }
   }
   std::vector<lowir_model::LowirParameter> call_parameters(
@@ -2271,7 +2275,7 @@ private:
       }
       if(is_extended_float(piece.type)) {
         uses_scalar_float_ = true;
-        append_float_move(out, destination, resolve(argument), lowir_model::lowir_type_text(piece.type));
+        append_float_move(out, destination, resolve(argument), piece.type);
         continue;
       }
       if(needs_address[piece.parameter_index] || is_frame_address(argument)) {
@@ -2282,14 +2286,14 @@ private:
         move.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
         move.source_is_address = true;
         emit_gpr_move(move, out);
-        append_store(out, destination, reg_operand(XR_R11), "ptr");
+        append_store(out, destination, reg_operand(XR_R11), machine_type(lowir_model::LTK_PTR));
       } else if(is_scalar_float(piece.type)) {
         uses_scalar_float_ = true;
-        append_float_move(out, destination, resolve(argument), lowir_model::lowir_type_text(piece.type));
+        append_float_move(out, destination, resolve(argument), piece.type);
       } else {
         move_value_to_register(out, XR_R11, resolve(argument),
                                operand_type(argument));
-        append_store(out, destination, reg_operand(XR_R11), lowir_model::lowir_type_text(piece.type));
+        append_store(out, destination, reg_operand(XR_R11), piece.type);
       }
     }
   }
@@ -2369,7 +2373,7 @@ private:
         if(!xmm_moves[i].pending || !xmm_destination_is_safe(xmm_moves, i)) continue;
         append_float_move(out, xmm_operand(xmm_moves[i].destination),
                           xmm_moves[i].source,
-                          lowir_model::lowir_type_text(xmm_moves[i].type), true);
+                          xmm_moves[i].type, true);
         xmm_moves[i].pending = false;
         --remaining;
         progressed = true;
@@ -2384,7 +2388,7 @@ private:
       const XmmRegister saved = xmm_moves[cycle].source.xmm;
       const MirOperand scratch = frame_operand(xmm_call_scratch());
       append_float_move(out, scratch, xmm_operand(saved),
-                        lowir_model::lowir_type_text(xmm_moves[cycle].type));
+                        xmm_moves[cycle].type);
       for(std::size_t i = 0; i < xmm_moves.size(); ++i)
         if(xmm_moves[i].pending && xmm_moves[i].source.kind == MirOperand::OP_XMM &&
            xmm_moves[i].source.xmm == saved)
@@ -2433,7 +2437,7 @@ private:
     for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
       const LowType & chunk_type = abi::object_chunk_type(type.storage_size - chunk * 8);
       append_store(out, dereference(XR_R11, static_cast<long long>(chunk * 8)),
-                   reg_operand(chunk ? XR_RDX : XR_RAX), lowir_model::lowir_type_text(chunk_type));
+                   reg_operand(chunk ? XR_RDX : XR_RAX), chunk_type);
     }
   }
   void define_object_result(const std::string & name,
@@ -2541,16 +2545,16 @@ private:
         elided_use.text = instruction.dest;
         consume(elided_use);
       }
-    } else if(materialize_result && wide::is_integer(instruction.type)) { const MirOperand home = allocate_temp_home(instruction.dest, instruction.type); append_store(out, home, reg_operand(XR_RAX), "i64"); MirOperand high = home; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), "i64"); define(instruction.dest, instruction.type, home); } else if(materialize_result && is_extended_float(instruction.type)) {
+    } else if(materialize_result && wide::is_integer(instruction.type)) { const MirOperand home = allocate_temp_home(instruction.dest, instruction.type); append_store(out, home, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64)); MirOperand high = home; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), machine_type(lowir_model::LTK_I64)); define(instruction.dest, instruction.type, home); } else if(materialize_result && is_extended_float(instruction.type)) {
       const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
       MirInstruction store = machine_instruction(MirInstruction::MI_FSTP,
-                                                 lowir_model::lowir_type_text(instruction.type));
+                                                 instruction.type);
       append_operand(store, location);
       out.push_back(store);
       define(instruction.dest, instruction.type, location);
     } else if(materialize_result && is_scalar_float(instruction.type)) {
       const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
-      append_float_move(out, location, xmm_operand(XMM_0), lowir_model::lowir_type_text(instruction.type));
+      append_float_move(out, location, xmm_operand(XMM_0), instruction.type);
       define(instruction.dest, instruction.type, location);
     } else if(materialize_result) {
       MirOperand location = reg_operand(XR_RAX);
@@ -2571,9 +2575,9 @@ private:
         }
       }
       if(is_integer_or_pointer(instruction.type))
-        normalize_integer(instruction.type, location, out);
+        append_integer_normalization(out, instruction.type, location);
       if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, location, lowir_model::lowir_type_text(instruction.type));
+        append_store(out, pressure_home, location, instruction.type);
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : location);
     }
@@ -2603,7 +2607,7 @@ private:
       frame_bytes_ = align_up(frame_bytes_, argument.type.alignment);
       frame_bytes_ += abi::frame_storage_size(argument.type);
       const MirOperand home = frame_operand(-static_cast<long long>(frame_bytes_));
-      append_store(out, home, argument.location, lowir_model::lowir_type_text(argument.type));
+      append_store(out, home, argument.location, argument.type);
       if(!has_live_location_alias(instruction.args[i].text, argument.location))
         registers_.release(argument.location.reg);
       set_value_location(instruction.args[i].text, home);
@@ -2617,7 +2621,7 @@ private:
         if(value != values_.end()) pointer_cell = value->second.pointer_global_cell;
       }
       if(!pointer_cell.text.empty()) {
-        MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, "ptr");
+        MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, machine_type(lowir_model::LTK_PTR));
         append_operand(load, reg_operand(XR_R10));
         append_operand(load, pointer_cell);
         out.push_back(load);
@@ -2693,21 +2697,21 @@ private:
     if(materialize_result) {
       if(is_scalar_float(instruction.type)) {
         const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
-        append_float_move(out, location, xmm_operand(XMM_0), lowir_model::lowir_type_text(instruction.type));
+        append_float_move(out, location, xmm_operand(XMM_0), instruction.type);
         define(instruction.dest, instruction.type, location);
       } else if(pressure_result) {
-        append_store(out, pressure_home, reg_operand(XR_RAX), lowir_model::lowir_type_text(instruction.type));
+        append_store(out, pressure_home, reg_operand(XR_RAX), instruction.type);
         define(instruction.dest, instruction.type, pressure_home);
       } else if(selection::result_is_immediate_store_address_with_later_use(
                   block, instruction_index, instruction.dest, facts_)) {
         const MirOperand home = allocate_temp_home(
           instruction.dest, instruction.type);
-        append_store(out, home, reg_operand(XR_RAX), lowir_model::lowir_type_text(instruction.type));
+        append_store(out, home, reg_operand(XR_RAX), instruction.type);
         define(instruction.dest, instruction.type, home);
       } else {
         if(result_is_next_call_address_argument(block, instruction_index, instruction)) {
           const MirOperand home = allocate_temp_home(instruction.dest, instruction.type);
-          append_store(out, home, reg_operand(XR_RAX), lowir_model::lowir_type_text(instruction.type));
+          append_store(out, home, reg_operand(XR_RAX), instruction.type);
           define(instruction.dest, instruction.type, home);
           for(std::size_t i = 0; i < instruction.args.size(); ++i)
             consume(instruction.args[i]);
@@ -2744,9 +2748,9 @@ private:
           }
         }
         if(is_integer_or_pointer(instruction.type))
-          normalize_integer(instruction.type, location, out);
+          append_integer_normalization(out, instruction.type, location);
         if(fallback_home.kind == MirOperand::OP_FRAME)
-          append_store(out, fallback_home, location, lowir_model::lowir_type_text(instruction.type));
+          append_store(out, fallback_home, location, instruction.type);
         define(instruction.dest, instruction.type,
                fallback_home.kind == MirOperand::OP_FRAME ? fallback_home : location);
       }
@@ -2764,14 +2768,14 @@ private:
       const wide::Value condition = wide_value(instruction.first);
       wide::append_word_to_register(condition, 0, XR_RAX, XR_R11, out);
       wide::append_word_to_register(condition, 1, XR_RDX, XR_R11, out);
-      MirInstruction combine = machine_instruction(MirInstruction::MI_OR, "i64");
+      MirInstruction combine = machine_instruction(MirInstruction::MI_OR, machine_type(lowir_model::LTK_I64));
       append_operand(combine, reg_operand(XR_RAX));
       append_operand(combine, reg_operand(XR_RDX));
       out.push_back(combine);
     } else if(!facts_.direct_branch_call_results.count(instruction.first.text))
       move_value_to_register(out, XR_RAX, resolve(instruction.first),
                              condition_type);
-    MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+    MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
     append_operand(compare, reg_operand(XR_RAX));
     append_operand(compare, immediate(0));
     out.push_back(compare);
@@ -2801,7 +2805,7 @@ private:
     for(std::size_t i = 0; i < instruction.args.size(); i += 2) {
       move_value_to_register(out, XR_RCX, resolve(instruction.args[i]),
                              operand_type(instruction.args[i]));
-      MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, "i64");
+      MirInstruction compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
       append_operand(compare, reg_operand(XR_RAX));
       append_operand(compare, reg_operand(XR_RCX));
       out.push_back(compare);
@@ -2843,11 +2847,11 @@ private:
     }
     MirInstruction load = machine_instruction(instruction.kind ==
       Instruction::IK_EXCEPTION ? MirInstruction::MI_LOAD_EXCEPTION :
-      MirInstruction::MI_LOAD_EXCEPTION_SELECTOR, lowir_model::lowir_type_text(instruction.type));
+      MirInstruction::MI_LOAD_EXCEPTION_SELECTOR, instruction.type);
     append_operand(load, destination);
     out.push_back(load);
     if(pressure_home.kind == MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+      append_store(out, pressure_home, destination, instruction.type);
     define(instruction.dest, instruction.type,
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
@@ -2860,7 +2864,7 @@ private:
       value = reg_operand(XR_RAX);
     }
     MirInstruction raise = machine_instruction(
-      MirInstruction::MI_THROW, lowir_model::lowir_type_text(instruction.type));
+      MirInstruction::MI_THROW, instruction.type);
     append_operand(raise, value);
     out.push_back(raise);
     consume(instruction.first);
@@ -2894,17 +2898,17 @@ private:
                                     instruction.dest)) {
         destination = reg_operand(XR_RAX);
         append_move(out, destination, immediate(integer_value(instruction.first)));
-        normalize_integer(instruction.type, destination, out);
+        append_integer_normalization(out, instruction.type, destination);
       } else if(registers_.try_allocate(
                   result_crosses_call(instruction.dest), reg)) {
         destination = reg_operand(reg);
         append_move(out, destination, immediate(integer_value(instruction.first)));
-        normalize_integer(instruction.type, destination, out);
+        append_integer_normalization(out, instruction.type, destination);
       } else {
         destination = allocate_temp_home(instruction.dest, instruction.type);
         append_move(out, reg_operand(XR_RAX),
                     immediate(integer_value(instruction.first)));
-        append_store(out, destination, reg_operand(XR_RAX), lowir_model::lowir_type_text(instruction.type));
+        append_store(out, destination, reg_operand(XR_RAX), instruction.type);
       }
       define(instruction.dest, instruction.type, destination);
     } else if(instruction.kind == Instruction::IK_COPY) {

@@ -30,7 +30,7 @@ TypeShape shape(const LowType & type)
 {
   if(type.kind == LTK_INVALID) throw ParseError("untyped LowIR value reached CY86 lowering");
   TypeShape result = {
-    type.kind == LTK_I1 ? 8 : type.bit_width,
+    type.kind == LTK_I1 ? 8 : lowir_type_bit_width(type),
     type.storage_size,
     type.alignment,
     type.kind == LTK_OBJECT,

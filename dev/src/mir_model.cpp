@@ -286,8 +286,15 @@ std::string instruction_text(const Instruction & instruction)
       instruction.opcode == Instruction::MI_CMP ||
       instruction.opcode == Instruction::MI_TEST ||
       instruction.opcode == Instruction::MI_SEXT ||
-      instruction.opcode == Instruction::MI_ZEXT) && !instruction.type.empty())
-    out << '.' << instruction.type;
+      instruction.opcode == Instruction::MI_ZEXT) &&
+     instruction.type.kind != lowir_model::LTK_INVALID) {
+    out << '.';
+    if(instruction.opcode >= Instruction::MI_SITOFP &&
+       instruction.opcode <= Instruction::MI_FPTRUNC &&
+       instruction.source_type.kind != lowir_model::LTK_INVALID)
+      out << lowir_model::lowir_type_text(instruction.source_type) << '.';
+    out << lowir_model::lowir_type_text(instruction.type);
+  }
   render_operands(out, instruction);
   render_call_facts(out, instruction);
   return out.str();
@@ -318,15 +325,17 @@ void render_global(std::ostringstream & out, const GlobalDefinition & global)
       if(item.kind == GlobalDefinition::DataItem::ITEM_ZERO) {
         out << "zero " << item.zero_bytes << '\n';
       } else if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
-        out << item.type << " addr " << item.symbol;
+        out << lowir_model::lowir_type_text(item.type) << " addr "
+            << item.symbol;
         if(item.addr_addend > 0) out << '+' << item.addr_addend;
         else if(item.addr_addend < 0) out << item.addr_addend;
         out << '\n';
       } else {
-        out << item.type << ' ';
+        out << lowir_model::lowir_type_text(item.type) << ' ';
         if(item.kind == GlobalDefinition::DataItem::ITEM_FLOAT)
           out << item.literal_text;
-		else if (item.type == "i128" && !item.literal_text.empty())
+		else if (item.type.kind == lowir_model::LTK_I128 &&
+                 !item.literal_text.empty())
 		  out << item.literal_text;
 		else out << item.int_value;
         out << '\n';
@@ -334,17 +343,20 @@ void render_global(std::ostringstream & out, const GlobalDefinition & global)
     }
     return;
   }
-  out << "  storage scalar " << global.type << '\n';
+  out << "  storage scalar " << lowir_model::lowir_type_text(global.type)
+      << '\n';
   out << "  init ";
   if(global.init_kind == GlobalDefinition::GI_ADDR) {
     out << "addr " << global.symbol;
     if(global.addr_addend > 0) out << '+' << global.addr_addend;
     else if(global.addr_addend < 0) out << global.addr_addend;
   } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
-    out << global.type << ' ' << global.literal_text;
+    out << lowir_model::lowir_type_text(global.type) << ' '
+        << global.literal_text;
   } else {
-    out << global.type << ' ';
-	if(global.type == "i128" && !global.literal_text.empty())
+    out << lowir_model::lowir_type_text(global.type) << ' ';
+	if(global.type.kind == lowir_model::LTK_I128 &&
+           !global.literal_text.empty())
 	  out << global.literal_text;
 	else out << global.int_value;
   }
@@ -360,13 +372,15 @@ void render_function(std::ostringstream & out, const Function & function)
     if(param.location == ParamBinding::PL_REG) out << register_name(param.reg);
     else if(param.location == ParamBinding::PL_XMM) out << xmm_name(param.xmm);
     else out << "[rbp+" << param.stack_offset << ']';
-    out << " : " << param.type << '\n';
+    out << " : " << lowir_model::lowir_type_text(param.type) << '\n';
   }
-  out << "    return " << function.return_type << " -> ";
-  if(function.return_type == "void") out << "void\n";
-  else if(function.return_type == "f32" || function.return_type == "f64")
+  out << "    return " << lowir_model::lowir_type_text(function.return_type)
+      << " -> ";
+  if(function.return_type.kind == lowir_model::LTK_VOID) out << "void\n";
+  else if(function.return_type.kind == lowir_model::LTK_F32 ||
+          function.return_type.kind == lowir_model::LTK_F64)
     out << "xmm0\n";
-  else if(function.return_type == "f80") out << "st0\n";
+  else if(function.return_type.kind == lowir_model::LTK_F80) out << "st0\n";
   else out << "rax\n";
   out << "  frame\n    stack_size " << function.stack_size
       << "\n    scratch_bytes " << function.scratch_bytes << '\n';
@@ -383,7 +397,7 @@ void render_function(std::ostringstream & out, const Function & function)
     else if(binding.kind == FrameBinding::FB_SLOT) out << "slot ";
     else out << "temp ";
     out << binding.name << " -> " << frame_address(binding.offset)
-        << " : " << binding.type << '\n';
+        << " : " << lowir_model::lowir_type_text(binding.type) << '\n';
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     out << "\n  block " << function.blocks[i].label << '\n';

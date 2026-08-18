@@ -8,7 +8,9 @@
 // facts must still serialize to and parse back from LowIR text.
 
 #include <cstddef>
+#include <cstdint>
 #include <iosfwd>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -96,7 +98,7 @@ std::ostream & operator<<(std::ostream & out, LowOperation operation);
 const char * lowir_operation_text(LowOperation operation);
 std::size_t lowir_operation_hash(LowOperation operation);
 
-enum LowTypeKind
+enum LowTypeKind : std::uint8_t
 {
   LTK_INVALID,
   LTK_VOID,
@@ -118,15 +120,33 @@ enum LowTypeKind
 
 struct LowType
 {
-  LowTypeKind kind = LTK_INVALID;
-  std::size_t bit_width = 0;
   std::size_t storage_size = 0;
-  std::size_t alignment = 1;
+  std::uint32_t alignment = 1;
+  LowTypeKind kind = LTK_INVALID;
 };
 
 const LowType & builtin_lowir_type(LowTypeKind kind);
+inline std::size_t lowir_type_bit_width(const LowType & type)
+{
+  switch(type.kind) {
+  case LTK_I1: return 1;
+  case LTK_I8: case LTK_U8: return 8;
+  case LTK_I16: case LTK_U16: return 16;
+  case LTK_I32: case LTK_U32: case LTK_F32: return 32;
+  case LTK_I64: case LTK_F64: case LTK_PTR: return 64;
+  case LTK_F80: return 80;
+  case LTK_I128: return 128;
+  case LTK_OBJECT:
+    return type.storage_size <= std::numeric_limits<std::size_t>::max() / 8 ?
+      type.storage_size * 8 : 0;
+  case LTK_INVALID: case LTK_VOID: return 0;
+  }
+  return 0;
+}
 std::string lowir_type_text(const LowType & type);
 bool same_lowir_type(const LowType & left, const LowType & right);
+bool operator==(const LowType & left, const LowType & right);
+bool operator!=(const LowType & left, const LowType & right);
 
 struct Operand
 {

@@ -159,16 +159,16 @@ protected:
 			}
 		}
 		mir_model::MirInstruction load = machine_instruction(
-			mir_model::MirInstruction::MI_LOAD, lowir_model::lowir_type_text(instruction.type));
+			mir_model::MirInstruction::MI_LOAD, instruction.type);
 		append_operand(load, destination);
 		append_operand(load,
 			lowerer.materialized_storage(instruction.first, out));
 		out.push_back(load);
 		if (selection::is_integer_or_pointer(instruction.type))
-			lowerer.normalize_integer(instruction.type, destination, out);
+			append_integer_normalization(out, instruction.type, destination);
 		lowerer.consume(instruction.first, destination.reg);
 		if (pressure_load)
-			append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
+			append_store(out, pressure_home, destination, instruction.type);
 		lowerer.define(instruction.dest, instruction.type,
 			pressure_load ? pressure_home : destination);
 	}
@@ -219,7 +219,7 @@ protected:
 			}
 			append_store(out,
 				lowerer.materialized_storage(instruction.second, out), value,
-				lowir_model::lowir_type_text(instruction.type));
+				instruction.type);
 			lowerer.consume(instruction.first);
 			lowerer.consume(instruction.second);
 			if (stable != XR_RSP) lowerer.registers_.release(stable);
@@ -235,7 +235,7 @@ protected:
 			return;
 		}
 		mir_model::MirInstruction store = machine_instruction(
-			mir_model::MirInstruction::MI_STORE, lowir_model::lowir_type_text(instruction.type));
+			mir_model::MirInstruction::MI_STORE, instruction.type);
 		mir_model::MirOperand value = lowerer.resolve(instruction.first);
 		if (value.kind != mir_model::MirOperand::OP_REG)
 		{

@@ -56,7 +56,7 @@ protected:
       const mir_model::MirOperand home = value->second.has_spill_home ?
         value->second.spill_home :
         lowerer.allocate_temp_home(argument.text, value->second.type);
-      build::append_store(out, home, location, lowir_model::lowir_type_text(value->second.type));
+      build::append_store(out, home, location, value->second.type);
       lowerer.set_value_location(argument.text, home);
       if(!shared && lowerer.registers_.is_used(location.reg))
         lowerer.registers_.release(location.reg);

@@ -49,7 +49,7 @@ mir_model::MirGlobalDefinition lower_global(
     for(std::size_t i = 0; i < source.data_items.size(); ++i) {
       const lowir_model::LowirGlobalDefinition::DataItem & item = source.data_items[i];
       mir_model::MirGlobalDefinition::DataItem lowered;
-      lowered.type = lowir_model::lowir_type_text(item.type);
+      lowered.type = item.type;
       if(item.kind == lowir_model::LowirGlobalDefinition::DataItem::ITEM_ZERO) {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_ZERO;
         lowered.zero_bytes = item.zero_bytes;
@@ -69,7 +69,7 @@ mir_model::MirGlobalDefinition lower_global(
     }
   } else {
     target.storage_kind = mir_model::MirGlobalDefinition::GS_SCALAR;
-    target.type = lowir_model::lowir_type_text(source.type);
+    target.type = source.type;
     if(source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ADDR) {
       target.init_kind = mir_model::MirGlobalDefinition::GI_ADDR;
       target.symbol = source.init_operand.text;
