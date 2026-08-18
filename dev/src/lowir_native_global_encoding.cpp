@@ -20,7 +20,8 @@ std::string native_object_symbol(
 {
   if(!symbol.valid()) return std::string();
   const std::string & spelling = out.literal_spelling(symbol);
-  return spelling.empty() || spelling[0] == '@' ? spelling : "@" + spelling;
+  return !spelling.empty() && spelling[0] == '@' ?
+    spelling.substr(1) : spelling;
 }
 
 void emit_integer_data(CodeBuffer & out, long long value,

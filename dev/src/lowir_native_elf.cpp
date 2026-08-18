@@ -48,7 +48,7 @@ const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
 
 std::string native_object_symbol(const std::string & symbol)
 {
-  return symbol.empty() || symbol[0] == '@' ? symbol : "@" + symbol;
+  return !symbol.empty() && symbol[0] == '@' ? symbol.substr(1) : symbol;
 }
 
 std::string native_object_symbol(

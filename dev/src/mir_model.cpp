@@ -89,11 +89,12 @@ std::string operand_text(const Operand & operand, const Program & program,
     return literal_text(operand.literal_low, operand.literal_high,
                         type, operand.literal, program);
   case Operand::OP_SYMBOL:
-  case Operand::OP_GLOBAL: return mir_symbol_name(program, operand.symbol);
+  case Operand::OP_GLOBAL:
+    return "@" + mir_symbol_name(program, operand.symbol);
   case Operand::OP_LABEL:
     if(!function)
       throw std::logic_error("MIR label operand outside function");
-    return mir_block_label(program, *function, operand.block);
+    return "^" + mir_block_label(program, *function, operand.block);
   case Operand::OP_FRAME: return frame_address(operand.offset);
   case Operand::OP_DEREF: return dereference(operand);
   }
@@ -350,7 +351,7 @@ std::string rendered_instruction_text(const Instruction & instruction,
 void render_global(std::ostringstream & out, const Program & program,
                    const GlobalDefinition & global)
 {
-  out << "global " << mir_symbol_name(program, global.symbol);
+  out << "global @" << mir_symbol_name(program, global.symbol);
   if(global.readonly) out << " readonly";
   if(global.thread_local_storage) out << " thread_local";
   out << '\n';
@@ -362,7 +363,7 @@ void render_global(std::ostringstream & out, const Program & program,
       if(item.kind == GlobalDefinition::DataItem::ITEM_ZERO) {
         out << "zero " << item.zero_bytes << '\n';
       } else if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
-        out << lowir_model::lowir_type_text(item.type) << " addr "
+        out << lowir_model::lowir_type_text(item.type) << " addr @"
             << mir_symbol_name(program, item.symbol);
         if(item.addr_addend > 0) out << '+' << item.addr_addend;
         else if(item.addr_addend < 0) out << item.addr_addend;
@@ -383,7 +384,7 @@ void render_global(std::ostringstream & out, const Program & program,
       << '\n';
   out << "  init ";
   if(global.init_kind == GlobalDefinition::GI_ADDR) {
-    out << "addr " << mir_symbol_name(program, global.init_symbol);
+    out << "addr @" << mir_symbol_name(program, global.init_symbol);
     if(global.addr_addend > 0) out << '+' << global.addr_addend;
     else if(global.addr_addend < 0) out << global.addr_addend;
   } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
@@ -403,7 +404,7 @@ void render_global(std::ostringstream & out, const Program & program,
 void render_function(std::ostringstream & out, const Program & program,
                      const Function & function)
 {
-  out << "function " << mir_symbol_name(program, function.symbol)
+  out << "function @" << mir_symbol_name(program, function.symbol)
       << "\n  abi\n";
   for(std::size_t i = 0; i < function.params.size(); ++i) {
     const ParamBinding & param = function.params[i];
@@ -436,12 +437,18 @@ void render_function(std::ostringstream & out, const Program & program,
     if(binding.kind == FrameBinding::FB_PARAM_SLOT) out << "param-slot ";
     else if(binding.kind == FrameBinding::FB_SLOT) out << "slot ";
     else out << "temp ";
-    out << mir_presentation_name(program, binding.name) << " -> "
+    if(binding.kind == FrameBinding::FB_SLOT) {
+      if(!binding.name.valid() || binding.name.generated() ||
+         binding.name.fixed())
+        throw std::logic_error("invalid MIR slot presentation identity");
+      out << '$' << mir_string(program, binding.name.spelling());
+    } else out << mir_presentation_name(program, binding.name);
+    out << " -> "
         << frame_address(binding.offset)
         << " : " << lowir_model::lowir_type_text(binding.type) << '\n';
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-    out << "\n  block " << mir_block_label(
+    out << "\n  block ^" << mir_block_label(
       program, function, function.blocks[i].id)
         << '\n';
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
@@ -498,7 +505,7 @@ std::string mir_presentation_name(
     return "%t" + std::to_string(name.generated_ordinal());
   if(name.fixed())
     return lowir_model::fixed_presentation_name_text(name.fixed_name());
-  return mir_string(program, name.spelling());
+  return "%" + mir_string(program, name.spelling());
 }
 
 std::string serialize_mir_program(const MirProgram & program)

@@ -727,7 +727,7 @@ std::string lowir_value_name(const StringPool & strings,
   if(!name.valid())
     throw std::logic_error("LowIR value has no presentation identity");
   if(!name.generated()) return strings.get(name.spelling());
-  return "%t" + std::to_string(name.generated_ordinal());
+  return "t" + std::to_string(name.generated_ordinal());
 }
 
 const LowType & lowir_value_type(const Function & function, ValueId value)
@@ -779,9 +779,9 @@ void classify_lowir_value_name(const std::string & name,
                                GeneratedNameReservations * reservations)
 {
   collect_o1_site_reservations(name, reservations);
-  append_ordinal_reservation(name, "%__force_inline_parameter_",
+  append_ordinal_reservation(name, "__force_inline_parameter_",
     GNR_FORCE_PARAMETER, reservations);
-  append_ordinal_reservation(name, "%__force_inline_temporary_",
+  append_ordinal_reservation(name, "__force_inline_temporary_",
     GNR_FORCE_TEMPORARY, reservations);
 }
 
@@ -800,13 +800,13 @@ void classify_lowir_generated_name_reservations(
     const std::string & name =
       lowir_slot_name(strings, function, function.slots[i]);
     collect_o1_site_reservations(name, &reservations);
-    append_ordinal_reservation(name, "$__force_inline_local_",
+    append_ordinal_reservation(name, "__force_inline_local_",
       GNR_FORCE_LOCAL, &reservations);
-    append_ordinal_reservation(name, "$__force_inline_result_",
+    append_ordinal_reservation(name, "__force_inline_result_",
       GNR_FORCE_RESULT, &reservations);
-    append_ordinal_reservation(name, "$retmerge__",
+    append_ordinal_reservation(name, "retmerge__",
       GNR_O1_SCALAR_MERGE_SUFFIX, &reservations);
-    append_ordinal_reservation(name, "$retmergeobj__",
+    append_ordinal_reservation(name, "retmergeobj__",
       GNR_O1_OBJECT_MERGE_SUFFIX, &reservations);
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -814,11 +814,11 @@ void classify_lowir_generated_name_reservations(
     const std::string & label =
       lowir_block_label(strings, function, block.id);
     collect_o1_site_reservations(label, &reservations);
-    append_ordinal_reservation(label, "^__force_inline_block_",
+    append_ordinal_reservation(label, "__force_inline_block_",
       GNR_FORCE_BLOCK, &reservations);
-    append_ordinal_reservation(label, "^__force_inline_prologue_",
+    append_ordinal_reservation(label, "__force_inline_prologue_",
       GNR_FORCE_PROLOGUE, &reservations);
-    append_ordinal_reservation(label, "^__force_inline_continuation_",
+    append_ordinal_reservation(label, "__force_inline_continuation_",
       GNR_FORCE_CONTINUATION, &reservations);
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
       const ValueId dest = block.instructions[j].dest;
@@ -942,10 +942,7 @@ void resolve_lowir_function_operands(Function & function,
     for(std::size_t p = 0; p < function.params.size(); ++p) {
       const std::string & parameter_name =
         strings.get(function.params[p].name);
-      if(slot_name.size() > 1 && parameter_name.size() > 1 &&
-         slot_name.compare(1, std::string::npos,
-                           parameter_name, 1,
-                           std::string::npos) == 0 &&
+      if(slot_name == parameter_name &&
          same_lowir_type(lowir_slot_type(function, slot),
                          function.params[p].type)) {
         function.slot_parameter_values[slot] = function.params[p].value;

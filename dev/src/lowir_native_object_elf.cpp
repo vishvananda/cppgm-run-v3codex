@@ -13,7 +13,7 @@ namespace object_elf_detail {
 
 std::string native_object_symbol(const std::string & symbol)
 {
-  return symbol.empty() || symbol[0] == '@' ? symbol : "@" + symbol;
+  return !symbol.empty() && symbol[0] == '@' ? symbol.substr(1) : symbol;
 }
 
 void put_little(std::vector<unsigned char> & out, std::size_t offset,

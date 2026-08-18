@@ -102,7 +102,7 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
 void write_parameter(std::ostream & out, const Parameter & parameter,
                      const Program & program)
 {
-  out << lowir_parameter_name(program, parameter) << " : "
+  out << '%' << lowir_parameter_name(program, parameter) << " : "
       << lowir_type_text(parameter.type);
   write_parameter_metadata(out, parameter.metadata);
 }
@@ -160,7 +160,7 @@ void write_symbol_metadata(MetadataWriter & metadata,
   if(value.object_symbol.valid())
     metadata.item("object", program.strings.get(value.object_symbol));
   if(value.tls_for_symbol_id.valid())
-    metadata.item("tls_for",
+    metadata.item("tls_for", "@" +
                   lowir_symbol_name(program, value.tls_for_symbol_id));
   metadata.flag("keep_alias", value.keep_internal_alias);
   metadata.flag("prefer_local", value.prefer_local_object_binding);
@@ -207,21 +207,21 @@ void write_operand(std::ostream & out, const Operand & operand,
 {
   if(operand.kind == Operand::OP_TEMP) {
     if(!function) throw std::logic_error("LowIR value lacks a function");
-    out << lowir_value_name(program.strings, *function, operand.value);
+    out << '%' << lowir_value_name(program.strings, *function, operand.value);
     return;
   }
   if(operand.kind == Operand::OP_LABEL) {
     if(!function) throw std::logic_error("LowIR block target lacks a function");
-    out << lowir_block_label(program.strings, *function, operand.block);
+    out << '^' << lowir_block_label(program.strings, *function, operand.block);
     return;
   }
   if(operand.kind == Operand::OP_SLOT) {
     if(!function) throw std::logic_error("LowIR slot lacks a function");
-    out << lowir_slot_name(program.strings, *function, operand.slot);
+    out << '$' << lowir_slot_name(program.strings, *function, operand.slot);
     return;
   }
   if(operand.kind == Operand::OP_GLOBAL) {
-    out << lowir_symbol_name(program, operand.symbol);
+    out << '@' << lowir_symbol_name(program, operand.symbol);
     return;
   }
   if(operand.kind == Operand::OP_FLOAT ||
@@ -247,7 +247,7 @@ void write_result(std::ostream & out, const Instruction & instruction,
 {
   if(!function || !instruction.dest.valid())
     throw std::logic_error("LowIR result lacks compact identity");
-  out << lowir_value_name(program.strings, *function, instruction.dest);
+  out << '%' << lowir_value_name(program.strings, *function, instruction.dest);
 }
 
 const char * projection_name(IndexProjectionKind projection)
@@ -411,7 +411,7 @@ void write_instruction(std::ostream & out, const Instruction & ins,
 void write_global_declaration(std::ostream & out, const GlobalDeclaration & item,
                               const Program & program)
 {
-  out << "declare global " << lowir_symbol_name(program, item.symbol);
+  out << "declare global @" << lowir_symbol_name(program, item.symbol);
   if(item.has_type) out << " : " << lowir_type_text(item.type);
   write_global_metadata(out, item.storage, item.metadata, program);
   out << '\n';
@@ -421,7 +421,7 @@ void write_function_declaration(std::ostream & out,
                                 const FunctionDeclaration & item,
                                 const Program & program)
 {
-  out << "declare function " << lowir_symbol_name(program, item.symbol);
+  out << "declare function @" << lowir_symbol_name(program, item.symbol);
   write_parameters(out, item.params, program);
   out << " -> " << lowir_type_text(item.return_type);
   write_function_metadata(out, item.boundary, item.metadata, program);
@@ -431,7 +431,7 @@ void write_function_declaration(std::ostream & out,
 void write_global(std::ostream & out, const GlobalDefinition & item,
                   const Program & program)
 {
-  out << "global " << lowir_symbol_name(program, item.symbol);
+  out << "global @" << lowir_symbol_name(program, item.symbol);
   if(!item.structured) out << " : " << lowir_type_text(item.type);
   write_global_metadata(out, item.storage, item.metadata, program);
   out << " = ";
@@ -443,7 +443,7 @@ void write_global(std::ostream & out, const GlobalDefinition & item,
       if(data.kind == GlobalDefinition::DataItem::ITEM_ZERO)
         out << "zero " << data.zero_bytes;
       else if(data.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
-        out << lowir_type_text(data.type) << " addr "
+        out << lowir_type_text(data.type) << " addr @"
             << lowir_symbol_name(program, data.symbol_id);
         if(data.addr_addend > 0) out << " + " << data.addr_addend;
         else if(data.addr_addend < 0) out << " - " << -data.addr_addend;
@@ -470,7 +470,7 @@ void write_global(std::ostream & out, const GlobalDefinition & item,
 void write_function(std::ostream & out, const Function & function,
                     const Program & program)
 {
-  out << "function " << lowir_symbol_name(program, function.symbol);
+  out << "function @" << lowir_symbol_name(program, function.symbol);
   write_parameters(out, function.params, program);
   out << " -> " << lowir_type_text(function.return_type);
   write_function_metadata(
@@ -478,12 +478,12 @@ void write_function(std::ostream & out, const Function & function,
   write_debug(out, function.debug_location, program);
   out << " {\n";
   for(std::size_t i = 0; i < function.slots.size(); ++i)
-    out << "  slot " << lowir_slot_name(program.strings, function, function.slots[i]) << " : "
+    out << "  slot $" << lowir_slot_name(program.strings, function, function.slots[i]) << " : "
         << lowir_type_text(lowir_slot_type(function, function.slots[i])) << '\n';
   if(!function.slots.empty()) out << '\n';
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     if(i) out << '\n';
-    out << "  block " << lowir_block_label(program.strings, function, function.blocks[i].id)
+    out << "  block ^" << lowir_block_label(program.strings, function, function.blocks[i].id)
         << ":\n";
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       out << "    ";
@@ -513,7 +513,7 @@ std::string serialize_lowir_program(const LowirProgram & program)
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     out << "alias object "
         << program.strings.get(program.object_aliases[i].object_symbol) << " = "
-        << lowir_symbol_name(
+        << '@' << lowir_symbol_name(
              program, program.object_aliases[i].target_id) << '\n';
     wrote = true;
   }

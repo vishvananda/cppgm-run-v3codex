@@ -23,25 +23,6 @@ struct AdapterTelemetry
 		bool preserve_literal_spellings)
 		: output(output_value), preserve_literals(preserve_literal_spellings) {}
 
-	std::string Prefix(char prefix, const std::string& value)
-	{
-		std::string result;
-		result.reserve(value.size() + 1);
-		result.push_back(prefix);
-		result.append(value);
-		if (output)
-		{
-			++output->adapter_prefix_renders;
-			output->adapter_prefix_bytes += result.size();
-		}
-		return result;
-	}
-
-	std::string At(const std::string& value) { return Prefix('@', value); }
-	std::string Percent(const std::string& value) { return Prefix('%', value); }
-	std::string Dollar(const std::string& value) { return Prefix('$', value); }
-	std::string Label(const std::string& value) { return Prefix('^', value); }
-
 	std::string IntegerText(std::int64_t low, std::uint64_t high,
 		const LowType& type)
 	{
@@ -262,8 +243,7 @@ void AdaptParameterFacts(const Parameter& source, const TypedProgram& program,
 	lowir_model::StringPool* strings, lowir_model::Parameter* target,
 	AdapterTelemetry* telemetry)
 {
-	target->name = telemetry->Intern(strings, telemetry->Percent(
-		program.strings.get(source.name)));
+	target->name = telemetry->Intern(strings, program.strings.get(source.name));
 	target->type = AdaptType(source.type);
 	if (source.reference)
 		target->metadata.passing = lowir_model::PPM_REFERENCE;
@@ -603,9 +583,9 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 				parameter.name = telemetry->Intern(literals,
 					i + source.virtual_base_argument_count >=
 					source.extra_count ?
-					telemetry->Percent("__pvbptr" + std::to_string(i +
-						source.virtual_base_argument_count - source.extra_count)) :
-					telemetry->Percent("arg" + std::to_string(i)));
+					"__pvbptr" + std::to_string(i +
+						source.virtual_base_argument_count - source.extra_count) :
+					"arg" + std::to_string(i));
 				parameter.type = target.args[i].literal_type;
 				if (source.extra_first + i <
 					program.call_argument_references.size())
@@ -744,7 +724,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 void AppendExport(const Symbol& source, const TypedProgram& program,
 	ir_model::ExportedSymbol* target, AdapterTelemetry* telemetry)
 {
-	target->internal_symbol = telemetry->At(program.strings.get(source.name));
+	target->internal_symbol = program.strings.get(source.name);
 	target->object_symbol = source.object_name.valid() ?
 		program.strings.get(source.object_name) : std::string();
 	target->keep_internal_alias = source.keep_internal_object_alias;
@@ -767,7 +747,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	for (std::size_t i = 0; i < source.symbols.size(); ++i)
 		lowir_model::append_lowir_symbol(target,
 			telemetry.Intern(&target.strings,
-				telemetry.At(source.strings.get(source.symbols[i].name))));
+				source.strings.get(source.symbols[i].name)));
 	target.global_declarations.reserve(source.global_declarations.size());
 	for (std::size_t i = 0; i < source.global_declarations.size(); ++i)
 	{
@@ -951,8 +931,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		{
 			lowir_model::append_lowir_slot(result,
 				telemetry.Intern(&target.strings,
-					telemetry.Dollar(source.strings.get(
-						item.slots[j].name))),
+					source.strings.get(item.slots[j].name)),
 				AdaptType(item.slots[j].type));
 			if (item.slots[j].parameter_origin.valid())
 			{
@@ -976,8 +955,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			lowir_model::Block lowered;
 			lowered.id = lowir_model::BlockId(block_id);
 			result.block_labels[block_id] =
-				telemetry.Intern(&target.strings, telemetry.Label(
-					source.strings.get(block.label)));
+				telemetry.Intern(&target.strings,
+					source.strings.get(block.label));
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(

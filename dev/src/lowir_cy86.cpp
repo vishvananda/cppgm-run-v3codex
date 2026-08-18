@@ -39,11 +39,6 @@ TypeShape shape(const LowType & type)
   return result;
 }
 
-std::string strip_sigil(const std::string & name)
-{
-  return name.empty() ? name : name.substr(1);
-}
-
 std::string register_name(char bank, std::size_t width)
 {
   std::ostringstream out;
@@ -237,7 +232,7 @@ public:
   std::string SymbolLabel(SymbolId symbol) const
   {
     const std::string & name = lowir_symbol_name(program_, symbol);
-    return (function_known_[symbol] ? "fn__" : "g__") + strip_sigil(name);
+    return (function_known_[symbol] ? "fn__" : "g__") + name;
   }
 
   bool IsFunction(SymbolId symbol) const { return function_known_[symbol] != 0; }
@@ -342,9 +337,9 @@ void ProgramEmitter::FindRoles()
   }
   for(std::size_t i = 0; i < program_.functions.size(); ++i)
     RecordRole(program_.functions[i].symbol, program_.functions[i].metadata.role);
-  const SymbolId main_symbol = FindSymbol("@main");
-  const SymbolId init_symbol = FindSymbol("@__cppgm_init");
-  const SymbolId fini_symbol = FindSymbol("@__cppgm_fini");
+  const SymbolId main_symbol = FindSymbol("main");
+  const SymbolId init_symbol = FindSymbol("__cppgm_init");
+  const SymbolId fini_symbol = FindSymbol("__cppgm_fini");
   const FunctionTarget * main = main_symbol.valid() ? FindFunction(main_symbol) : 0;
   const FunctionTarget * init = init_symbol.valid() ? FindFunction(init_symbol) : 0;
   const FunctionTarget * fini = fini_symbol.valid() ? FindFunction(fini_symbol) : 0;
@@ -458,10 +453,10 @@ void ProgramEmitter::EmitDefaultUnhandled()
 
 void ProgramEmitter::EmitDefaultEhGlobals()
 {
-  if(!eh_top_.valid() && !HasGlobal(FindSymbol("@__cppgm_eh_top"))) {
+  if(!eh_top_.valid() && !HasGlobal(FindSymbol("__cppgm_eh_top"))) {
     out_.Label("g____cppgm_eh_top"); out_.Instruction("data64 0"); out_.Blank();
   }
-  if(!eh_value_.valid() && !HasGlobal(FindSymbol("@__cppgm_eh_value"))) {
+  if(!eh_value_.valid() && !HasGlobal(FindSymbol("__cppgm_eh_value"))) {
     out_.Label("g____cppgm_eh_value"); out_.Instruction("data64 0"); out_.Blank();
   }
 }
@@ -554,8 +549,8 @@ std::string FunctionEmitter::SlotAddress(SlotId slot) const
 
 std::string FunctionEmitter::BlockLabel(const std::string & block) const
 {
-  return "fn__" + strip_sigil(lowir_model::lowir_symbol_name(
-    owner_.program_, function_.symbol)) + "__" + strip_sigil(block);
+  return "fn__" + lowir_model::lowir_symbol_name(
+    owner_.program_, function_.symbol) + "__" + block;
 }
 
 std::string FunctionEmitter::BlockLabel(const Operand & block) const
@@ -566,8 +561,8 @@ std::string FunctionEmitter::BlockLabel(const Operand & block) const
 
 std::string FunctionEmitter::EpilogueLabel() const
 {
-  return "fn__" + strip_sigil(lowir_model::lowir_symbol_name(
-    owner_.program_, function_.symbol)) + "__epilogue";
+  return "fn__" + lowir_model::lowir_symbol_name(
+    owner_.program_, function_.symbol) + "__epilogue";
 }
 
 void FunctionEmitter::Emit()

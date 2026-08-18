@@ -69,25 +69,25 @@ struct InlineNames
 
   lowir_model::StringId parameter()
     { return fresh(lowir_model::GNR_FORCE_PARAMETER,
-        "%__force_inline_parameter_"); }
+        "__force_inline_parameter_"); }
   lowir_model::StringId temporary()
     { return fresh(lowir_model::GNR_FORCE_TEMPORARY,
-        "%__force_inline_temporary_"); }
+        "__force_inline_temporary_"); }
   lowir_model::StringId local_slot()
     { return fresh(lowir_model::GNR_FORCE_LOCAL,
-        "$__force_inline_local_"); }
+        "__force_inline_local_"); }
   lowir_model::StringId result_slot()
     { return fresh(lowir_model::GNR_FORCE_RESULT,
-        "$__force_inline_result_"); }
+        "__force_inline_result_"); }
   lowir_model::StringId block()
     { return fresh(lowir_model::GNR_FORCE_BLOCK,
-        "^__force_inline_block_"); }
+        "__force_inline_block_"); }
   lowir_model::StringId prologue()
     { return fresh(lowir_model::GNR_FORCE_PROLOGUE,
-        "^__force_inline_prologue_"); }
+        "__force_inline_prologue_"); }
   lowir_model::StringId continuation()
     { return fresh(lowir_model::GNR_FORCE_CONTINUATION,
-        "^__force_inline_continuation_"); }
+        "__force_inline_continuation_"); }
 };
 
 class Inliner {

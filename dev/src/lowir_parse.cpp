@@ -267,6 +267,12 @@ private:
     return text;
   }
 
+  StringId named_id(char sigil, const char * description)
+  {
+    const std::string text = named(sigil, description);
+    return strings_->intern_range(text, 1, text.size() - 1);
+  }
+
   LowType type()
   {
     return parse_type_text(take());
@@ -294,7 +300,11 @@ private:
       text += take();
     }
     if(!strings_) throw std::logic_error("LowIR parser has no string pool");
-    result.literal = strings_->intern(text);
+    const bool named_operand = !text.empty() &&
+      (text[0] == '%' || text[0] == '$' || text[0] == '@' || text[0] == '^');
+    result.literal = named_operand ?
+      strings_->intern_range(text, 1, text.size() - 1) :
+      strings_->intern(text);
     result.has_spelling = true;
     if(starts_with(text, '%')) result.kind = Operand::OP_TEMP;
     else if(starts_with(text, '$')) result.kind = Operand::OP_SLOT;
@@ -422,7 +432,9 @@ private:
     } else if(key == "object") out.object_symbol = strings_->intern(value);
     else if(key == "tls_for") {
       if(!function_symbol) throw ParseError("tls_for metadata requires a function");
-      out.tls_for_spelling = strings_->intern(value);
+      out.tls_for_spelling = !value.empty() && value[0] == '@' ?
+        strings_->intern_range(value, 1, value.size() - 1) :
+        strings_->intern(value);
     } else if(key == "keep_alias") out.keep_internal_alias = yes_no(value);
     else if(key == "prefer_local") {
       out.prefer_local_object_binding = yes_no(value);
@@ -482,7 +494,7 @@ private:
   Parameter parameter()
   {
     Parameter result;
-    result.name = strings_->intern(named('%', "parameter name"));
+    result.name = named_id('%', "parameter name");
     expect(":");
     result.type = type();
     const Metadata items = metadata();
@@ -539,7 +551,7 @@ private:
   {
     GlobalDeclaration result;
     result.symbol = append_lowir_symbol(
-      program, strings_->intern(named('@', "global name")));
+      program, named_id('@', "global name"));
     if(accept("readonly")) result.storage = GSM_READONLY;
     else if(accept("thread_local")) result.storage = GSM_THREAD_LOCAL;
     if(accept(":")) {
@@ -554,7 +566,7 @@ private:
   {
     FunctionDeclaration result;
     result.symbol = append_lowir_symbol(
-      program, strings_->intern(named('@', "function name")));
+      program, named_id('@', "function name"));
     expect("(");
     result.params = parameter_list();
     expect(")");
@@ -568,7 +580,7 @@ private:
   {
     GlobalDefinition result;
     result.symbol = append_lowir_symbol(
-      program, strings_->intern(named('@', "global name")));
+      program, named_id('@', "global name"));
     if(accept("readonly")) result.storage = GSM_READONLY;
     else if(accept("thread_local")) result.storage = GSM_THREAD_LOCAL;
     if(accept(":")) result.type = type();
@@ -592,8 +604,8 @@ private:
         item.type = type();
         if(item.type.kind == LTK_PTR && accept("addr")) {
           item.kind = GlobalDefinition::DataItem::ITEM_ADDR;
-          item.symbol_spelling = strings_->intern(
-            named('@', "address initializer symbol"));
+          item.symbol_spelling = named_id(
+            '@', "address initializer symbol");
           item.addr_addend = address_addend();
         } else {
           item.kind = GlobalDefinition::DataItem::ITEM_INTEGER;
@@ -610,8 +622,8 @@ private:
     if(accept("zero")) result.init_kind = GlobalDefinition::INIT_ZERO;
     else if(accept("addr")) {
       result.init_kind = GlobalDefinition::INIT_ADDR;
-      result.init_operand.literal = strings_->intern(
-        named('@', "address initializer symbol"));
+      result.init_operand.literal = named_id(
+        '@', "address initializer symbol");
       result.init_operand.has_spelling = true;
       result.init_operand.kind = Operand::OP_GLOBAL;
       result.addr_addend = address_addend();
@@ -644,8 +656,7 @@ private:
       throw ParseError("invalid object alias spelling");
     result.object_symbol = strings_->intern(object_symbol);
     expect("=");
-    result.target_spelling = strings_->intern(
-      named('@', "object alias target"));
+    result.target_spelling = named_id('@', "object alias target");
     program.object_aliases.push_back(result);
   }
 
@@ -653,7 +664,7 @@ private:
   {
     Function result;
     result.symbol = append_lowir_symbol(
-      program, strings_->intern(named('@', "function name")));
+      program, named_id('@', "function name"));
     expect("(");
     result.params = parameter_list();
     expect(")");
@@ -676,9 +687,9 @@ private:
     while(!accept("}")) {
       if(accept("slot")) {
         if(block) throw ParseError("slot declaration after first block");
-        const std::string name = named('$', "slot name");
+        const lowir_model::StringId name = named_id('$', "slot name");
         expect(":");
-        append_lowir_slot(function, strings_->intern(name), type());
+        append_lowir_slot(function, name, type());
       } else if(accept("block")) {
         if(block && !terminated &&
            (block->instructions.empty() ||
@@ -686,11 +697,11 @@ private:
              block->instructions.back().kind != Instruction::IK_EH_END)))
           throw ParseError("block has no terminator: " +
             lowir_block_label(*strings_, function, block->id));
-        const std::string label = named('^', "block name");
+        const lowir_model::StringId label = named_id('^', "block name");
         function.blocks.push_back(Block());
         block = &function.blocks.back();
         block->id = allocate_lowir_block_id(
-          function, strings_->intern(label));
+          function, label);
         expect(":");
         terminated = false;
       } else {
@@ -738,7 +749,8 @@ private:
     result.debug_location = debug_location();
     if(!destination.empty())
       result.dest = append_lowir_value(
-        function, strings_->intern(destination), parsed_result_type(result),
+        function, strings_->intern_range(destination, 1,
+          destination.size() - 1), parsed_result_type(result),
         destination.compare(0, 5, "%dbg_") == 0);
     return result;
   }
@@ -1513,15 +1525,15 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
       Function & function = program.functions[i];
       if(function.metadata.role != SR_NONE) continue;
       const std::string & name = lowir_symbol_name(program, function.symbol);
-      if(name == "@main") {
+      if(name == "main") {
         function.metadata.role = SR_ENTRY;
         function.metadata.inferred_legacy_role = true;
         has_entry = true;
-      } else if(!has_init && name == "@__cppgm_init") {
+      } else if(!has_init && name == "__cppgm_init") {
         function.metadata.role = SR_INIT;
         function.metadata.inferred_legacy_role = true;
         has_init = true;
-      } else if(!has_fini && name == "@__cppgm_fini") {
+      } else if(!has_fini && name == "__cppgm_fini") {
         function.metadata.role = SR_FINI;
         function.metadata.inferred_legacy_role = true;
         has_fini = true;

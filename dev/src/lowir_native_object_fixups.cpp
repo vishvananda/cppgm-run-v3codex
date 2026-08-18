@@ -41,8 +41,6 @@ std::unordered_set<std::string> externally_named_targets(
         declarations.begin(); declaration != declarations.end(); ++declaration) {
     result.insert(declaration->first);
     result.insert(declaration->second);
-    if(!declaration->second.empty() && declaration->second[0] != '@')
-      result.insert("@" + declaration->second);
   }
   return result;
 }

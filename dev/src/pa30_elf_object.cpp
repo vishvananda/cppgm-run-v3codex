@@ -177,7 +177,7 @@ lowir_native::RelocatableObject ReadElfRelocatableObject(
 		if (defined != 0 && output_section.count(defined))
 		{
 			symbols[i] = binding == 0 || name.empty() ?
-				LocalSymbol(object_ordinal, i) : "@" + name;
+				LocalSymbol(object_ordinal, i) : name;
 			lowir_native::RelocatableLabel label;
 			label.name = symbols[i];
 			label.offset = value;
@@ -185,7 +185,7 @@ lowir_native::RelocatableObject ReadElfRelocatableObject(
 				throw std::runtime_error("ELF symbol lies outside imported section");
 			result.sections[output_section[defined]].labels.push_back(label);
 		}
-		else if (defined == 0) symbols[i] = name.empty() ? name : "@" + name;
+		else if (defined == 0) symbols[i] = name;
 	}
 
 	for (std::size_t i = 0; i < section_count; ++i)

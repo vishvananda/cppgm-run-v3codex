@@ -783,7 +783,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		lowir_model::Function & function = program->functions[fi];
 		const string& lowir_name = lowir_model::lowir_symbol_name(
 			*program, function.symbol);
-		string source_name = lowir_name.size() > 1 ? lowir_name.substr(1) : "";
+		string source_name = lowir_name;
 		const size_t separator = source_name.find("__");
 		if(separator != string::npos) source_name.erase(separator);
 		size_t function_line = 0;
@@ -795,12 +795,12 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		unordered_set<string> parameters;
 		for(size_t i = 0; i < function.params.size(); ++i)
 			parameters.insert(lowir_model::lowir_parameter_name(
-				*program, function.params[i]).substr(1));
+				*program, function.params[i]));
 		struct LocalLocation { size_t line = 0; size_t statement = 1; size_t rhs = 1; };
 		unordered_map<string, LocalLocation> locals;
 		for(size_t i = 0; i < function.slots.size(); ++i) {
 			const string name = lowir_model::lowir_slot_name(
-				program->strings, function, function.slots[i]).substr(1);
+				program->strings, function, function.slots[i]);
 			if(parameters.count(name)) continue;
 			WordOccurrence local_occurrence;
 			if(find_word(name, function_line + 1, false, true, &local_occurrence)) {
@@ -836,7 +836,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 					else if(ins.kind == lowir_model::Instruction::IK_STORE &&
 							ins.second.kind == lowir_model::Operand::OP_SLOT) {
 						const string slot = lowir_model::lowir_slot_name(
-							program->strings, function, ins.second.slot).substr(1);
+							program->strings, function, ins.second.slot);
 					if(parameters.count(slot)) ins.debug_location = function_loc;
 					else if(locals.count(slot)) {
 						const LocalLocation & loc = locals[slot];
@@ -846,7 +846,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 							copy.kind = lowir_model::Instruction::IK_COPY;
 							copy.type = ins.type;
 							copy.dest = lowir_model::append_lowir_value(function,
-								program->strings.intern("%dbg_" + slot + "__1"),
+								program->strings.intern("dbg_" + slot + "__1"),
 								copy.type, true);
 						copy.first = ins.first;
 						copy.debug_location = ins.debug_location;
@@ -859,7 +859,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 					} else if(ins.kind == lowir_model::Instruction::IK_LOAD &&
 							  ins.first.kind == lowir_model::Operand::OP_SLOT) {
 						const string slot = lowir_model::lowir_slot_name(
-							program->strings, function, ins.first.slot).substr(1);
+							program->strings, function, ins.first.slot);
 					if(locals.count(slot)) ins.debug_location = return_loc;
 					else if(!locals.empty()) {
 						const LocalLocation & loc = locals.begin()->second;

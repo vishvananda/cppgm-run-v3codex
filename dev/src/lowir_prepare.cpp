@@ -38,8 +38,7 @@ void canonicalize_frontend_symbol(const Program& program, SymbolId symbol,
 		lowir_symbol_spelling(program, symbol));
 	const std::string& object_name =
 		program.strings.get(metadata->object_symbol);
-	if (name.size() == object_name.size() + 1 && name[0] == '@' &&
-		name.compare(1, object_name.size(), object_name) == 0)
+	if (name == object_name)
 		metadata->object_symbol = StringId();
 }
 
@@ -60,9 +59,8 @@ void append_export(Program& program, const std::string& name,
 	// is exactly the LowIR name without its sigil.  Reconstruct that derived
 	// spelling at the object boundary; this also covers ordinary namespace-
 	// scope data, whose Itanium object name need not carry a _Z prefix.
-	if (result.object_symbol.empty() && metadata.binding != SBM_INTERNAL &&
-		!name.empty() && name[0] == '@')
-		result.object_symbol = name.substr(1);
+	if (result.object_symbol.empty() && metadata.binding != SBM_INTERNAL)
+		result.object_symbol = name;
 	result.keep_internal_alias = metadata.keep_internal_alias;
 	result.prefer_local_object_binding = metadata.prefer_local_object_binding;
 	result.linkage = exported_linkage(metadata.binding);
