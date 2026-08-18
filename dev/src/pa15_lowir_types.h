@@ -330,6 +330,9 @@ struct Slot
 {
 	std::string name;
 	LowType type;
+	// The source boundary parameter whose object storage this slot owns.
+	// Invalid for ordinary locals and compiler-created temporaries.
+	ParameterId parameter_origin;
 };
 
 struct Function

@@ -28,13 +28,18 @@ void note_operand_reference(const Operand& operand,
 		(*referenced)[operand.symbol] = 1;
 }
 
-void canonicalize_frontend_symbol(const Program& program,
-	const std::string& name, SymbolMetadata* metadata)
+void canonicalize_frontend_symbol(const Program& program, SymbolId symbol,
+	SymbolMetadata* metadata)
 {
 	if (metadata->linkage == LLM_CPP) metadata->linkage = LLM_DEFAULT;
-	if (metadata->binding != SBM_INTERNAL &&
-		metadata->object_symbol.valid() &&
-		name == "@" + program.strings.get(metadata->object_symbol))
+	if (metadata->binding == SBM_INTERNAL ||
+		!metadata->object_symbol.valid()) return;
+	const std::string& name = program.strings.get(
+		lowir_symbol_spelling(program, symbol));
+	const std::string& object_name =
+		program.strings.get(metadata->object_symbol);
+	if (name.size() == object_name.size() + 1 && name[0] == '@' &&
+		name.compare(1, object_name.size(), object_name) == 0)
 		metadata->object_symbol = StringId();
 }
 
@@ -278,20 +283,18 @@ void canonicalize_frontend_lowir(Program& program,
 	program.object_aliases.swap(ordered_aliases);
 
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
-		canonicalize_frontend_symbol(program, lowir_symbol_name(
-			program, program.global_declarations[i].symbol),
+		canonicalize_frontend_symbol(program,
+			program.global_declarations[i].symbol,
 			&program.global_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		canonicalize_frontend_symbol(program, lowir_symbol_name(
-			program, program.function_declarations[i].symbol),
+		canonicalize_frontend_symbol(program,
+			program.function_declarations[i].symbol,
 			&program.function_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
-		canonicalize_frontend_symbol(program, lowir_symbol_name(
-			program, program.globals[i].symbol),
+		canonicalize_frontend_symbol(program, program.globals[i].symbol,
 			&program.globals[i].metadata);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		canonicalize_frontend_symbol(program, lowir_symbol_name(
-			program, program.functions[i].symbol),
+		canonicalize_frontend_symbol(program, program.functions[i].symbol,
 			&program.functions[i].metadata);
 	if (stats)
 		stats->frontend_canonical_nanoseconds += elapsed_nanoseconds(started);

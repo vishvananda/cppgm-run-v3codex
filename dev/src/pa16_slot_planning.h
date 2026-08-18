@@ -175,6 +175,16 @@ protected:
 					slot.type = record.kind == DUMP_VARIABLE ?
 						derived.LowerVariableStorage(record) :
 						derived.LowerStorageType(record.type);
+					if (record.kind == DUMP_PARAMETER)
+					{
+						if (derived.parameter_slot_index_ >=
+							derived.function_->parameters.size())
+							throw std::logic_error(
+								"parameter slot has no boundary origin");
+						slot.parameter_origin = ParameterId(
+							static_cast<std::uint32_t>(
+								derived.parameter_slot_index_));
+					}
 					derived.function_->slots.push_back(slot);
 				}
 				if (record.kind == DUMP_PARAMETER)

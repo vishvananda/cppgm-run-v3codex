@@ -2198,6 +2198,7 @@ private:
 		Slot this_record;
 		this_record.name = "this";
 		this_record.type = LowPtr();
+		this_record.parameter_origin = ParameterId(0);
 		result.slots.push_back(this_record);
 		function_ = &result;
 		temp_counter_ = 0;

@@ -493,6 +493,9 @@ private:
 				throw std::runtime_error("too many force-inline slots");
 			Slot slot = callee.slots[i];
 			slot.name = names->SlotName();
+			// The cloned home belongs to an inlined local value, not to a
+			// boundary parameter of the caller.
+			slot.parameter_origin = ParameterId();
 			caller->slots.push_back(slot);
 		}
 

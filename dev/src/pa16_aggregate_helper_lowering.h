@@ -117,6 +117,8 @@ protected:
 				slot.type = parameter.by_address ?
 					derived.LowerStorageType(source_parameters[p]) :
 					parameter.type;
+				slot.parameter_origin = ParameterId(
+					static_cast<std::uint32_t>(p));
 				result.slots.push_back(slot);
 			}
 			derived.BeginSyntheticFunction(&result);

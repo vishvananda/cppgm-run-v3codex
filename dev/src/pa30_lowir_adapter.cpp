@@ -935,13 +935,15 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				telemetry.Intern(&target.strings,
 					telemetry.Dollar(item.slots[j].name)),
 				AdaptType(item.slots[j].type));
-			for (std::size_t p = 0; p < item.parameters.size(); ++p)
-				if (item.slots[j].name == item.parameters[p].name &&
-					SameType(item.slots[j].type, item.parameters[p].type))
-				{
-					result.slot_parameter_values[j] = values.parameters[p];
-					break;
-				}
+			if (item.slots[j].parameter_origin.valid())
+			{
+				const std::uint32_t parameter =
+					item.slots[j].parameter_origin;
+				if (parameter >= values.parameters.size())
+					throw std::logic_error(
+						"typed LowIR slot has invalid parameter origin");
+				result.slot_parameter_values[j] = values.parameters[parameter];
+			}
 		}
 		result.blocks.reserve(item.block_order.size());
 		result.block_labels.resize(item.blocks.size());
