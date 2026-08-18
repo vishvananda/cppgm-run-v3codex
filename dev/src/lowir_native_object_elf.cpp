@@ -51,6 +51,8 @@ struct HostRelocation
   std::string target;
   lowir_model::SymbolId program_symbol;
   lowir_model::StringId object_symbol;
+  lowir_model::SymbolId eh_type_ref_symbol;
+  bool eh_personality_ref = false;
   long long addend = 0;
 };
 
@@ -64,6 +66,12 @@ struct EncodedLabelLocation
 typedef std::unordered_map<std::string, EncodedLabelLocation>
   EncodedLabelIndex;
 
+struct EncodedEhTypeRefLocation
+{
+  lowir_model::SymbolId symbol;
+  EncodedLabelLocation location;
+};
+
 struct EncodedLabels
 {
   EncodedLabelIndex named;
@@ -71,6 +79,9 @@ struct EncodedLabels
   std::vector<unsigned char> symbol_known;
   std::vector<EncodedLabelLocation> objects;
   std::vector<unsigned char> object_known;
+  std::vector<EncodedEhTypeRefLocation> eh_type_refs;
+  EncodedLabelLocation eh_personality_ref;
+  bool eh_personality_ref_known = false;
 };
 
 void index_symbol_labels(EncodedLabels & result,
@@ -105,6 +116,48 @@ void index_object_labels(EncodedLabels & result,
     result.objects[symbol].offset = label.offset;
     result.object_known[symbol] = 1;
   }
+}
+
+void index_eh_type_ref_labels(EncodedLabels & result,
+    const EncodedSection & source, bool text, std::size_t section)
+{
+  for(std::size_t i = 0; i < source.eh_type_ref_labels.size(); ++i) {
+    const EncodedEhTypeRefLabel & label = source.eh_type_ref_labels[i];
+    const std::uint32_t symbol = label.symbol;
+    if(!label.symbol.valid())
+      throw std::logic_error("invalid encoded EH type-reference identity");
+    bool known = false;
+    for(std::size_t prior = 0; prior < result.eh_type_refs.size(); ++prior)
+      known = known || result.eh_type_refs[prior].symbol == label.symbol;
+    if(known) continue;
+    EncodedEhTypeRefLocation location;
+    location.symbol = lowir_model::SymbolId(symbol);
+    location.location.text = text;
+    location.location.section = section;
+    location.location.offset = label.offset;
+    result.eh_type_refs.push_back(location);
+  }
+}
+
+const EncodedLabelLocation * find_eh_type_ref_label(
+    const EncodedLabels & labels, lowir_model::SymbolId symbol)
+{
+  for(std::size_t i = 0; i < labels.eh_type_refs.size(); ++i)
+    if(labels.eh_type_refs[i].symbol == symbol)
+      return &labels.eh_type_refs[i].location;
+  return 0;
+}
+
+void index_eh_personality_ref_label(EncodedLabels & result,
+    const EncodedSection & source, bool text, std::size_t section)
+{
+  if(!source.has_eh_personality_ref_label ||
+     result.eh_personality_ref_known) return;
+  result.eh_personality_ref.text = text;
+  result.eh_personality_ref.section = section;
+  result.eh_personality_ref.offset =
+    source.eh_personality_ref_label_offset;
+  result.eh_personality_ref_known = true;
 }
 
 EncodedLabels index_encoded_labels(
@@ -150,6 +203,14 @@ EncodedLabels index_encoded_labels(
     index_object_labels(result, text_sections[i], true, i);
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     index_object_labels(result, data_sections[i], false, i);
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    index_eh_type_ref_labels(result, text_sections[i], true, i);
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    index_eh_type_ref_labels(result, data_sections[i], false, i);
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    index_eh_personality_ref_label(result, text_sections[i], true, i);
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    index_eh_personality_ref_label(result, data_sections[i], false, i);
   return result;
 }
 
@@ -319,6 +380,21 @@ std::vector<EncodedSection> partition_weak_text(
     moved.offset = slice.new_start + label.offset - slice.old_start;
     result[slice.section].object_labels.push_back(moved);
   }
+  for(std::size_t i = 0; i < source.eh_type_ref_labels.size(); ++i) {
+    const EncodedEhTypeRefLabel & label = source.eh_type_ref_labels[i];
+    const TextSlice & slice = slices[text_slice_at(slices, label.offset)];
+    EncodedEhTypeRefLabel moved = label;
+    moved.offset = slice.new_start + label.offset - slice.old_start;
+    result[slice.section].eh_type_ref_labels.push_back(moved);
+  }
+  if(source.has_eh_personality_ref_label) {
+    const TextSlice & slice = slices[text_slice_at(
+      slices, source.eh_personality_ref_label_offset)];
+    EncodedSection & target = result[slice.section];
+    target.has_eh_personality_ref_label = true;
+    target.eh_personality_ref_label_offset = slice.new_start +
+      source.eh_personality_ref_label_offset - slice.old_start;
+  }
   for(std::size_t i = 0; i < source.fixups.size(); ++i) {
     const TextSlice & slice = slices[text_slice_at(
       slices, source.fixups[i].offset)];
@@ -360,6 +436,8 @@ struct HostSymbol
   bool internal_program_symbol = false;
   lowir_model::SymbolId program_symbol;
   lowir_model::StringId object_symbol;
+  lowir_model::SymbolId eh_type_ref_symbol;
+  bool eh_personality_ref = false;
   unsigned binding = 0;
   unsigned type = 0;
   std::uint16_t section = 0;
@@ -462,8 +540,6 @@ std::string host_symbol_spelling(const std::string & raw);
 
 HostSection make_host_lsda(
     std::vector<HostFunctionLayout> & functions,
-    const lowir_model::LowirProgram & program,
-    const DeclarationObjectSymbols & declarations,
     std::vector<HostRelocation> & relocations)
 {
   HostSection section;
@@ -616,10 +692,7 @@ HostSection make_host_lsda(
           HostRelocation relocation;
           relocation.kind = HostRelocation::HR_PC32;
           relocation.offset = section.bytes.size();
-          const DeclarationObjectSymbol * named = declarations.find(symbol);
-          relocation.target = "DW.ref." + (named ? *named->spelling :
-            host_symbol_spelling(
-              lowir_model::lowir_symbol_name(program, symbol)));
+          relocation.eh_type_ref_symbol = symbol;
           relocations.push_back(relocation);
         }
         append_little(section.bytes, 0, 4);
@@ -656,7 +729,7 @@ std::size_t append_cie(HostSection & section, bool with_personality,
     HostRelocation personality;
     personality.kind = HostRelocation::HR_PC32;
     personality.offset = section.bytes.size();
-    personality.target = "DW.ref.__gxx_personality_v0";
+    personality.eh_personality_ref = true;
     relocations.push_back(personality);
     append_little(section.bytes, 0, 4);
     section.bytes.push_back(0x1b);
@@ -842,6 +915,16 @@ DeclarationObjectSymbols declaration_object_symbols(
   return result;
 }
 
+std::string host_eh_type_ref_symbol(
+    const lowir_model::LowirProgram & program,
+    const DeclarationObjectSymbols & declarations,
+    lowir_model::SymbolId symbol)
+{
+  const DeclarationObjectSymbol * object = declarations.find(symbol);
+  return "DW.ref." + (object ? *object->spelling :
+    host_symbol_spelling(lowir_model::lowir_symbol_name(program, symbol)));
+}
+
 void assign_relocation_target(
     HostRelocation & relocation,
     const std::string & raw,
@@ -993,6 +1076,8 @@ void collect_host_symbols(
   std::unordered_set<std::string> required_local_labels;
   std::vector<unsigned char> required_program_symbols(
     program.symbol_names.size(), 0);
+  std::vector<lowir_model::SymbolId> required_eh_type_refs;
+  bool required_eh_personality_ref = false;
   const auto require_program_symbol =
     [&required_program_symbols](lowir_model::SymbolId symbol) {
       const std::uint32_t index = symbol;
@@ -1001,11 +1086,26 @@ void collect_host_symbols(
       required_program_symbols[index] = 1;
     };
   const auto require_relocation_labels =
-    [&encoded_labels, &required_local_labels, &require_program_symbol](
+    [&encoded_labels, &required_local_labels, &require_program_symbol,
+     &required_program_symbols, &required_eh_type_refs,
+     &required_eh_personality_ref](
       const std::vector<HostRelocation> & relocations) {
       for(std::size_t i = 0; i < relocations.size(); ++i) {
         if(relocations[i].program_symbol.valid()) {
           require_program_symbol(relocations[i].program_symbol);
+        } else if(relocations[i].eh_type_ref_symbol.valid()) {
+          const std::uint32_t symbol = relocations[i].eh_type_ref_symbol;
+          if(symbol >= required_program_symbols.size())
+            throw std::logic_error(
+              "invalid required EH type-reference identity");
+          if(std::find(required_eh_type_refs.begin(),
+                       required_eh_type_refs.end(),
+                       relocations[i].eh_type_ref_symbol) ==
+             required_eh_type_refs.end())
+            required_eh_type_refs.push_back(
+              relocations[i].eh_type_ref_symbol);
+        } else if(relocations[i].eh_personality_ref) {
+          required_eh_personality_ref = true;
         } else if(encoded_labels.named.count(relocations[i].target)) {
           required_local_labels.insert(relocations[i].target);
         }
@@ -1074,6 +1174,44 @@ void collect_host_symbols(
       ((data_sections[location.section].flags & 0x400) ? 6 : 1);
     add_unique_symbol(locals, local_index, symbol);
   }
+  for(std::size_t i = 0; i < required_eh_type_refs.size(); ++i) {
+    const lowir_model::SymbolId identity = required_eh_type_refs[i];
+    const EncodedLabelLocation * location =
+      find_eh_type_ref_label(encoded_labels, identity);
+    if(!location)
+      throw std::logic_error("required EH type reference has no label");
+    HostSymbol symbol;
+    symbol.name = host_eh_type_ref_symbol(program, declarations, identity);
+    symbol.eh_type_ref_symbol = identity;
+    symbol.section = location->text ?
+      text_section_indexes[location->section] :
+      data_section_indexes[location->section];
+    symbol.value = location->offset;
+    symbol.size = location->text ? function_size_at(
+      function_sizes, location->section, location->offset) : 0;
+    symbol.type = location->text ? (symbol.size ? 2 : 0) :
+      ((data_sections[location->section].flags & 0x400) ? 6 : 1);
+    add_unique_symbol(locals, local_index, symbol);
+  }
+  if(required_eh_personality_ref) {
+    if(!encoded_labels.eh_personality_ref_known)
+      throw std::logic_error(
+        "required EH personality reference has no label");
+    const EncodedLabelLocation & location =
+      encoded_labels.eh_personality_ref;
+    HostSymbol symbol;
+    symbol.name = "DW.ref.__gxx_personality_v0";
+    symbol.eh_personality_ref = true;
+    symbol.section = location.text ?
+      text_section_indexes[location.section] :
+      data_section_indexes[location.section];
+    symbol.value = location.offset;
+    symbol.size = location.text ? function_size_at(
+      function_sizes, location.section, location.offset) : 0;
+    symbol.type = location.text ? (symbol.size ? 2 : 0) :
+      ((data_sections[location.section].flags & 0x400) ? 6 : 1);
+    add_unique_symbol(locals, local_index, symbol);
+  }
 
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const lowir_model::ExportedSymbol & exported = program.exported_symbols[i];
@@ -1131,7 +1269,9 @@ void collect_host_symbols(
   const auto mark_defined = [&defined, &defined_objects](
       const HostSymbol & symbol) {
     if(!symbol.object_symbol.valid()) {
-      if(!symbol.program_symbol.valid()) defined.insert(symbol.name);
+      if(!symbol.program_symbol.valid() && !symbol.eh_type_ref_symbol.valid() &&
+         !symbol.eh_personality_ref)
+        defined.insert(symbol.name);
       return;
     }
     const std::uint32_t object = symbol.object_symbol;
@@ -1174,7 +1314,9 @@ void collect_host_symbols(
   for(std::size_t group = 0; group < relocation_groups.size(); ++group) {
     const std::vector<HostRelocation> & relocations = *relocation_groups[group];
     for(std::size_t i = 0; i < relocations.size(); ++i) {
-      if(relocations[i].program_symbol.valid()) continue;
+      if(relocations[i].program_symbol.valid() ||
+         relocations[i].eh_type_ref_symbol.valid() ||
+         relocations[i].eh_personality_ref) continue;
       if(relocations[i].object_symbol.valid()) {
         const std::uint32_t object = relocations[i].object_symbol;
         if(object >= defined_objects.size())
@@ -1277,7 +1419,10 @@ std::vector<unsigned char> make_symbol_table(
     std::vector<unsigned char> & strings,
     std::unordered_map<std::string, std::size_t> & indexes,
     std::vector<std::size_t> & program_indexes,
-    std::vector<std::size_t> & object_indexes)
+    std::vector<std::size_t> & object_indexes,
+    std::vector<std::pair<lowir_model::SymbolId, std::size_t> > &
+      eh_type_ref_indexes,
+    std::size_t & eh_personality_ref_index)
 {
   std::vector<unsigned char> table(24, 0);
   for(std::size_t i = 0; i < section_symbols.size(); ++i) {
@@ -1308,6 +1453,11 @@ std::vector<unsigned char> make_symbol_table(
           throw std::logic_error("invalid ELF object-symbol identity");
         object_indexes[identity] = index;
       }
+      if(symbol.eh_type_ref_symbol.valid()) {
+        eh_type_ref_indexes.push_back(std::make_pair(
+          symbol.eh_type_ref_symbol, index));
+      }
+      if(symbol.eh_personality_ref) eh_personality_ref_index = index;
       append_little(table, add_symbol_string(strings, symbol), 4);
       table.push_back(static_cast<unsigned char>((symbol.binding << 4) |
                                                  symbol.type));
@@ -1324,7 +1474,10 @@ std::vector<unsigned char> make_relocation_table(
     const std::vector<HostRelocation> & relocations,
     const std::unordered_map<std::string, std::size_t> & symbols,
     const std::vector<std::size_t> & program_symbols,
-    const std::vector<std::size_t> & object_symbols)
+    const std::vector<std::size_t> & object_symbols,
+    const std::vector<std::pair<lowir_model::SymbolId, std::size_t> > &
+      eh_type_ref_symbols,
+    std::size_t eh_personality_ref_symbol)
 {
   std::vector<HostRelocation> ordered = relocations;
   std::sort(ordered.begin(), ordered.end(),
@@ -1348,6 +1501,20 @@ std::vector<unsigned char> make_relocation_table(
         symbol_index = object_symbols[identity];
       if(symbol_index == lowir_model::kInvalidCompactId)
         throw std::logic_error("ELF relocation has no object symbol");
+    } else if(relocation.eh_type_ref_symbol.valid()) {
+      for(std::size_t ref = 0; ref < eh_type_ref_symbols.size(); ++ref)
+        if(eh_type_ref_symbols[ref].first ==
+           relocation.eh_type_ref_symbol) {
+          symbol_index = eh_type_ref_symbols[ref].second;
+          break;
+        }
+      if(symbol_index == lowir_model::kInvalidCompactId)
+        throw std::logic_error("ELF relocation has no EH type reference");
+    } else if(relocation.eh_personality_ref) {
+      symbol_index = eh_personality_ref_symbol;
+      if(symbol_index == lowir_model::kInvalidCompactId)
+        throw std::logic_error(
+          "ELF relocation has no EH personality reference");
     } else {
       const std::unordered_map<std::string, std::size_t>::const_iterator symbol =
         symbols.find(relocation.target);
@@ -1534,8 +1701,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     data_relocations[i] = host_relocations(
       mutable_data[i], encoded_labels, program, declarations);
   std::vector<HostRelocation> lsda_relocations;
-  HostSection lsda = make_host_lsda(
-    functions, program, declarations, lsda_relocations);
+  HostSection lsda = make_host_lsda(functions, lsda_relocations);
   std::vector<HostRelocation> eh_relocations;
   HostSection eh = make_host_eh_frame(
     functions, text_sections, eh_relocations);
@@ -1662,11 +1828,17 @@ std::vector<unsigned char> make_linux_relocatable_image(
     program.symbol_names.size(), lowir_model::kInvalidCompactId);
   std::vector<std::size_t> object_symbol_indexes(
     program.strings.size() + 1, lowir_model::kInvalidCompactId);
+  std::vector<std::pair<lowir_model::SymbolId, std::size_t> >
+    eh_type_ref_symbol_indexes;
+  eh_type_ref_symbol_indexes.reserve(encoded_labels.eh_type_refs.size());
+  std::size_t eh_personality_ref_symbol_index =
+    lowir_model::kInvalidCompactId;
 	const std::chrono::steady_clock::time_point string_table_started = stats ?
 		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   std::vector<unsigned char> symbol_table = make_symbol_table(
     locals, globals, section_symbols, strings, symbol_indexes,
-    program_symbol_indexes, object_symbol_indexes);
+    program_symbol_indexes, object_symbol_indexes,
+    eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
 	record_string_table(stats, symbol_indexes, strings, string_table_started);
 
   HostSection note;
@@ -1698,7 +1870,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
     section.link = symtab_index;
     section.bytes = make_relocation_table(
       *pending_relocations[i].relocations, symbol_indexes,
-      program_symbol_indexes, object_symbol_indexes);
+      program_symbol_indexes, object_symbol_indexes,
+      eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
   }
 
   append_function_comdat_groups(

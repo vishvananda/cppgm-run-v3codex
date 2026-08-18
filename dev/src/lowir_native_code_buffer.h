@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -74,6 +75,8 @@ public:
 	void label(const std::string& name);
 	void label(lowir_model::SymbolId symbol);
 	void label_object(lowir_model::StringId symbol);
+	void label_eh_type_ref(lowir_model::SymbolId symbol);
+	void label_eh_personality_ref();
 	void label(lowir_model::LocalLabelId label);
 	void label_at(const std::string& name, std::size_t offset);
 	void alias(const std::string& name, const std::string& target);
@@ -125,6 +128,11 @@ public:
 	std::size_t object_label_capacity() const;
 	bool has_object_label(lowir_model::StringId symbol) const;
 	std::size_t object_label_offset(lowir_model::StringId symbol) const;
+	std::size_t eh_type_ref_label_count() const;
+	lowir_model::SymbolId eh_type_ref_label_symbol(std::size_t index) const;
+	std::size_t eh_type_ref_label_offset(std::size_t index) const;
+	bool has_eh_personality_ref_label() const;
+	std::size_t eh_personality_ref_label_offset() const;
 	const std::vector<Fixup>& fixups() const;
 	const std::vector<SymbolFixup>& symbol_fixups() const;
 	std::size_t fixup_count() const;
@@ -148,6 +156,11 @@ private:
 		const std::string* name = 0;
 		std::size_t* offset = 0;
 	};
+	struct EhTypeRefLabelBinding
+	{
+		lowir_model::SymbolId symbol;
+		std::size_t offset = 0;
+	};
 
 	void resolve_short_relatives(std::size_t begin);
 	void resolve_local_fixups(std::size_t begin);
@@ -166,6 +179,9 @@ private:
 	std::vector<unsigned char> symbol_label_known_;
 	std::vector<std::size_t> object_label_offsets_;
 	std::vector<unsigned char> object_label_known_;
+	std::deque<EhTypeRefLabelBinding> eh_type_ref_labels_;
+	std::size_t eh_personality_ref_label_offset_ = 0;
+	bool eh_personality_ref_label_known_ = false;
 	std::vector<LabelBinding> label_bindings_;
 	std::vector<std::size_t*> label_offsets_;
 	std::vector<Fixup> fixups_;

@@ -2684,6 +2684,18 @@ EncodedSection encoded_section(CodeBuffer && source,
     label.offset = source.object_label_offset(symbol);
     result.object_labels.push_back(label);
   }
+  result.eh_type_ref_labels.reserve(source.eh_type_ref_label_count());
+  for(std::size_t i = 0; i < source.eh_type_ref_label_count(); ++i) {
+    object_elf_detail::EncodedEhTypeRefLabel label;
+    label.symbol = source.eh_type_ref_label_symbol(i);
+    label.offset = source.eh_type_ref_label_offset(i);
+    result.eh_type_ref_labels.push_back(label);
+  }
+  if(source.has_eh_personality_ref_label()) {
+    result.has_eh_personality_ref_label = true;
+    result.eh_personality_ref_label_offset =
+      source.eh_personality_ref_label_offset();
+  }
   result.fixups.reserve(source.fixups().size());
   for(std::size_t i = 0; i < source.fixups().size(); ++i) {
     EncodedFixup fixup;
@@ -2968,19 +2980,56 @@ void write_linux_relocatable(
                        lowir_model::SymbolId right) {
       return catch_type_name(left) < catch_type_name(right);
     });
+  std::vector<std::pair<lowir_model::SymbolId, lowir_model::SymbolId> >
+    catch_type_aliases;
+  std::vector<lowir_model::SymbolId> unique_catch_types;
+  unique_catch_types.reserve(ordered_catch_types.size());
+  for(std::size_t i = 0; i < ordered_catch_types.size(); ++i) {
+    if(!unique_catch_types.empty() &&
+       catch_type_name(ordered_catch_types[i]) ==
+         catch_type_name(unique_catch_types.back())) {
+      catch_type_aliases.push_back(std::make_pair(
+        ordered_catch_types[i], unique_catch_types.back()));
+      continue;
+    }
+    unique_catch_types.push_back(ordered_catch_types[i]);
+  }
+  ordered_catch_types.swap(unique_catch_types);
+  const auto canonical_catch_type = [&catch_type_aliases](
+      lowir_model::SymbolId symbol) {
+    for(std::size_t i = 0; i < catch_type_aliases.size(); ++i)
+      if(catch_type_aliases[i].first == symbol)
+        return catch_type_aliases[i].second;
+    return symbol;
+  };
+  for(std::size_t function = 0; function < functions.size(); ++function)
+    for(std::size_t block = 0;
+        block < functions[function].clauses.size(); ++block)
+      for(std::size_t clause = 0;
+          clause < functions[function].clauses[block].size(); ++clause) {
+        mir_model::MirHostEhClause & item =
+          functions[function].clauses[block][clause];
+        if(item.kind == mir_model::MirHostEhClause::HC_CATCH &&
+           !item.catch_all)
+          item.type_symbol = canonical_catch_type(item.type_symbol);
+        else if(item.kind == mir_model::MirHostEhClause::HC_FILTER)
+          for(std::size_t type = 0;
+              type < item.filter_type_symbols.size(); ++type)
+            item.filter_type_symbols[type] =
+              canonical_catch_type(item.filter_type_symbols[type]);
+      }
   CodeBuffer & ordinary_data = data_sections[0].content;
   for(std::size_t i = 0; i < ordered_catch_types.size(); ++i) {
-    const std::string & type = catch_type_name(ordered_catch_types[i]);
-    if(i && type == catch_type_name(ordered_catch_types[i - 1])) continue;
+    const lowir_model::SymbolId type_symbol = ordered_catch_types[i];
     ordinary_data.align(8);
-    ordinary_data.label("DW.ref." + type);
-    ordinary_data.absolute64(type);
+    ordinary_data.label_eh_type_ref(type_symbol);
+    ordinary_data.absolute64(type_symbol);
     data_sections[0].alignment = std::max<std::size_t>(
       data_sections[0].alignment, 8);
   }
   if(needs_personality) {
     ordinary_data.align(8);
-    ordinary_data.label("DW.ref.__gxx_personality_v0");
+    ordinary_data.label_eh_personality_ref();
     ordinary_data.absolute64("__gxx_personality_v0");
     data_sections[0].alignment = std::max<std::size_t>(
       data_sections[0].alignment, 8);

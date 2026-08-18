@@ -123,6 +123,32 @@ void CodeBuffer::label_object(lowir_model::StringId symbol)
 	label_offsets_.push_back(&object_label_offsets_[index]);
 }
 
+void CodeBuffer::label_eh_type_ref(lowir_model::SymbolId symbol)
+{
+	if (stats_) ++stats_->code_buffer_typed_labels;
+	const std::uint32_t identity = symbol;
+	if (!symbol.valid() || !symbol_names_ || identity >= symbol_names_->size())
+		throw std::logic_error("invalid native EH type-reference identity");
+	for (std::size_t i = 0; i < eh_type_ref_labels_.size(); ++i)
+		if (eh_type_ref_labels_[i].symbol == symbol)
+			throw std::logic_error("duplicate native EH type-reference label");
+	EhTypeRefLabelBinding label;
+	label.symbol = symbol;
+	label.offset = bytes_.size();
+	eh_type_ref_labels_.push_back(label);
+	label_offsets_.push_back(&eh_type_ref_labels_.back().offset);
+}
+
+void CodeBuffer::label_eh_personality_ref()
+{
+	if (stats_) ++stats_->code_buffer_typed_labels;
+	if (eh_personality_ref_label_known_)
+		throw std::logic_error("duplicate native EH personality-reference label");
+	eh_personality_ref_label_offset_ = bytes_.size();
+	eh_personality_ref_label_known_ = true;
+	label_offsets_.push_back(&eh_personality_ref_label_offset_);
+}
+
 lowir_model::LocalLabelId CodeBuffer::allocate_local_label()
 {
 	if (local_label_offsets_.size() >= lowir_model::kInvalidCompactId)
@@ -944,6 +970,39 @@ std::size_t CodeBuffer::object_label_offset(
 	if (!has_object_label(symbol))
 		throw std::logic_error("undefined native object-symbol identity");
 	return object_label_offsets_[static_cast<std::uint32_t>(symbol)];
+}
+
+std::size_t CodeBuffer::eh_type_ref_label_count() const
+{
+	return eh_type_ref_labels_.size();
+}
+
+lowir_model::SymbolId CodeBuffer::eh_type_ref_label_symbol(
+	std::size_t index) const
+{
+	if (index >= eh_type_ref_labels_.size())
+		throw std::logic_error("invalid native EH type-reference label index");
+	return eh_type_ref_labels_[index].symbol;
+}
+
+std::size_t CodeBuffer::eh_type_ref_label_offset(std::size_t index) const
+{
+	if (index >= eh_type_ref_labels_.size())
+		throw std::logic_error("invalid native EH type-reference label index");
+	return eh_type_ref_labels_[index].offset;
+}
+
+bool CodeBuffer::has_eh_personality_ref_label() const
+{
+	return eh_personality_ref_label_known_;
+}
+
+std::size_t CodeBuffer::eh_personality_ref_label_offset() const
+{
+	if (!eh_personality_ref_label_known_)
+		throw std::logic_error(
+			"undefined native EH personality-reference identity");
+	return eh_personality_ref_label_offset_;
 }
 
 const std::vector<Fixup>& CodeBuffer::fixups() const

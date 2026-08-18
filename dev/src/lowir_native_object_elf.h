@@ -47,6 +47,12 @@ struct EncodedObjectLabel
   std::size_t offset = 0;
 };
 
+struct EncodedEhTypeRefLabel
+{
+  lowir_model::SymbolId symbol;
+  std::size_t offset = 0;
+};
+
 struct EncodedSection
 {
   std::string name;
@@ -57,6 +63,9 @@ struct EncodedSection
   std::unordered_map<std::string, std::size_t> labels;
   std::vector<EncodedSymbolLabel> symbol_labels;
   std::vector<EncodedObjectLabel> object_labels;
+  std::vector<EncodedEhTypeRefLabel> eh_type_ref_labels;
+  bool has_eh_personality_ref_label = false;
+  std::size_t eh_personality_ref_label_offset = 0;
   std::vector<EncodedFixup> fixups;
   std::vector<EncodedSymbolFixup> symbol_fixups;
 };
