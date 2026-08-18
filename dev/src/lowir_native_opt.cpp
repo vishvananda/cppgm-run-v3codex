@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <deque>
 #include <stdexcept>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -31,16 +30,6 @@ void note_peak_analysis_bytes(Stats * stats, std::size_t bytes)
 std::size_t bit_vector_bytes(const std::vector<bool> & values)
 {
   return (values.capacity() + 7) / 8;
-}
-
-std::size_t label_index_bytes(
-    const std::unordered_map<std::string, std::size_t> & labels)
-{
-  std::size_t bytes = labels.bucket_count() * sizeof(void *);
-  for(std::unordered_map<std::string, std::size_t>::const_iterator label =
-        labels.begin(); label != labels.end(); ++label)
-    bytes += sizeof(*label) + label->first.capacity() + 1;
-  return bytes;
 }
 
 const RegisterMask kAllGprs = (RegisterMask(1) << 16) - 1;
@@ -411,8 +400,9 @@ bool same_operand(const MirOperand & left, const MirOperand & right)
   if(left.kind == MirOperand::OP_XMM) return left.xmm == right.xmm;
   if(left.kind == MirOperand::OP_IMM) return left.imm == right.imm;
   if(left.kind == MirOperand::OP_FRAME) return left.offset == right.offset;
+  if(left.kind == MirOperand::OP_LABEL) return left.block == right.block;
   if(left.kind == MirOperand::OP_FLOAT_IMM || left.kind == MirOperand::OP_SYMBOL ||
-     left.kind == MirOperand::OP_GLOBAL || left.kind == MirOperand::OP_LABEL)
+     left.kind == MirOperand::OP_GLOBAL)
     return left.text == right.text;
   if(left.kind == MirOperand::OP_DEREF)
     return left.reg == right.reg && left.offset == right.offset &&
@@ -575,11 +565,12 @@ std::vector<bool> baseline_encoding_preserve(const MirBlock & block)
   return preserve;
 }
 
-bool is_label_operand(const MirInstruction & instruction, std::string * label)
+bool is_label_operand(const MirInstruction & instruction,
+                      lowir_model::BlockId * label)
 {
   if(instruction.operands.size() != 1 ||
      instruction.operands[0].kind != MirOperand::OP_LABEL) return false;
-  *label = instruction.operands[0].text;
+  *label = instruction.operands[0].block;
   return true;
 }
 
@@ -629,9 +620,12 @@ ControlFlow build_control_flow(const MirFunction & function, Stats * stats,
   // repeatedly scanning the growing successor vector.
   std::vector<std::size_t> seen_by_block(function.blocks.size(),
                                          function.blocks.size());
-  std::unordered_map<std::string, std::size_t> labels;
-  for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    labels[function.blocks[i].label] = i;
+  const std::size_t missing = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> labels(function.block_labels.size(), missing);
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const std::uint32_t id = function.blocks[i].id;
+    if(id < labels.size()) labels[id] = i;
+  }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const MirBlock & block = function.blocks[i];
     bool falls_through = true;
@@ -640,18 +634,17 @@ ControlFlow build_control_flow(const MirFunction & function, Stats * stats,
       if(instruction.opcode == MirInstruction::MI_JCC ||
          instruction.opcode == MirInstruction::MI_JMP ||
          instruction.opcode == MirInstruction::MI_EH_PUSH) {
-        std::string label;
+        lowir_model::BlockId label;
         const bool has_label = instruction.opcode == MirInstruction::MI_EH_PUSH ?
           !instruction.operands.empty() &&
             instruction.operands[0].kind == MirOperand::OP_LABEL :
           is_label_operand(instruction, &label);
         if(instruction.opcode == MirInstruction::MI_EH_PUSH && has_label)
-          label = instruction.operands[0].text;
+          label = instruction.operands[0].block;
         if(has_label) {
-          const std::unordered_map<std::string, std::size_t>::const_iterator found =
-            labels.find(label);
-          if(found != labels.end())
-            append_successor(cfg.successors[i], seen_by_block, i, found->second);
+          const std::uint32_t id = label;
+          if(label.valid() && id < labels.size() && labels[id] != missing)
+            append_successor(cfg.successors[i], seen_by_block, i, labels[id]);
         }
       }
       if(instruction.opcode == MirInstruction::MI_JMP ||
@@ -667,7 +660,8 @@ ControlFlow build_control_flow(const MirFunction & function, Stats * stats,
   if(stats)
     note_peak_analysis_bytes(stats, analysis_base_bytes +
       control_flow_bytes(cfg) +
-      seen_by_block.capacity() * sizeof(std::size_t) + label_index_bytes(labels));
+      seen_by_block.capacity() * sizeof(std::size_t) +
+      labels.capacity() * sizeof(std::size_t));
   return cfg;
 }
 
@@ -807,18 +801,19 @@ X86Condition inverse_condition(X86Condition condition)
   return static_cast<X86Condition>(static_cast<unsigned>(condition) ^ 1U);
 }
 
-bool jump_targets(const MirInstruction & instruction, const std::string & label)
+bool jump_targets(const MirInstruction & instruction,
+                  lowir_model::BlockId label)
 {
   return instruction.operands.size() == 1 &&
     instruction.operands[0].kind == MirOperand::OP_LABEL &&
-    instruction.operands[0].text == label;
+    instruction.operands[0].block == label;
 }
 
 void clean_branches(MirFunction & function, Stats * stats)
 {
   for(std::size_t i = 0; i + 1 < function.blocks.size(); ++i) {
     MirBlock & block = function.blocks[i];
-    const std::string & fallthrough = function.blocks[i + 1].label;
+    const lowir_model::BlockId fallthrough = function.blocks[i + 1].id;
     if(block.instructions.empty()) continue;
     MirInstruction & last = block.instructions.back();
     if(last.opcode == MirInstruction::MI_JMP && jump_targets(last, fallthrough)) {
@@ -860,9 +855,12 @@ void form_zero_tests(MirFunction & function, Stats * stats)
 void trace_layout(MirFunction & function, Stats * stats)
 {
   if(function.blocks.size() < 2) return;
-  std::unordered_map<std::string, std::size_t> labels;
-  for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    labels[function.blocks[i].label] = i;
+  const std::size_t missing = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> labels(function.block_labels.size(), missing);
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const std::uint32_t id = function.blocks[i].id;
+    if(id < labels.size()) labels[id] = i;
+  }
   std::vector<bool> placed(function.blocks.size(), false);
   std::vector<std::size_t> order;
   order.reserve(function.blocks.size());
@@ -881,18 +879,18 @@ void trace_layout(MirFunction & function, Stats * stats)
         if(opcode != MirInstruction::MI_JCC) break;
       }
       if(conditional_tail) break;
-      std::string target;
+      lowir_model::BlockId target;
       if(!is_label_operand(block.instructions.back(), &target)) break;
-      const std::unordered_map<std::string, std::size_t>::const_iterator next =
-        labels.find(target);
-      if(next == labels.end() || placed[next->second]) break;
-      current = next->second;
+      const std::uint32_t id = target;
+      if(!target.valid() || id >= labels.size() || labels[id] == missing ||
+         placed[labels[id]]) break;
+      current = labels[id];
     }
   }
   bool changed = false;
   for(std::size_t i = 0; i < order.size(); ++i) changed = changed || order[i] != i;
   if(stats)
-    note_peak_analysis_bytes(stats, label_index_bytes(labels) +
+    note_peak_analysis_bytes(stats, labels.capacity() * sizeof(std::size_t) +
       bit_vector_bytes(placed) + order.capacity() * sizeof(std::size_t) +
       (changed ? function.blocks.size() * sizeof(MirBlock) : 0));
   if(!changed) return;

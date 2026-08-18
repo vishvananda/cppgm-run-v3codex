@@ -110,6 +110,13 @@ emission. You may keep a typed MIR internally, and the optional
 `dev/src/mir_model.h` scaffold gives one possible representation, but the dump
 must describe the same program that native emission consumes.
 
+In the typed scaffold, a block and every branch or exception-region target use
+a stable function-local `BlockId`. Keep each `^label` spelling once in the
+function's block-label table, indexed by that identity. Block layout may change
+without renumbering identities. Resolve the spelling only when producing the
+MIR dump or a diagnostic; control-flow, exception, and layout analysis should
+use the compact identity directly.
+
 Frame metadata is part of that final MIR contract. In particular, the
 callee-saved `preserve` list should name the callee-saved registers that the
 final instruction body actually uses after local setup/copy cleanup, and the

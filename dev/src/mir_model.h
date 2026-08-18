@@ -8,7 +8,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -136,6 +135,9 @@ struct Operand
   // Zero means that the operand names storage only by its frame offset.
   // The ordinal is internal identity and is not part of serialized MIR.
   std::uint32_t frame_binding = 0;
+  // Function-local control-flow targets retain the dense LowIR block
+  // identity.  The function owns the corresponding presentation spelling.
+  lowir_model::BlockId block;
   long long imm = 0;
   long double float_imm = 0.0L;
   long long offset = 0;
@@ -310,7 +312,7 @@ struct DebugVariable
 
 struct Block
 {
-  std::string label;
+  lowir_model::BlockId id;
   std::vector<Instruction> instructions;
 };
 
@@ -353,7 +355,10 @@ struct Function
   // Source slots, parameter slots, and object homes remain distinct.
   std::vector<FrameBinding> frame_bindings;
   std::vector<DebugVariable> debug_variables;
-  std::map<std::string, std::vector<HostEhClause> > host_eh_clauses;
+  // Indexed by BlockId. Empty entries are blocks without landing-pad
+  // clauses. The label spelling remains in block_labels for serialization.
+  std::vector<std::vector<HostEhClause> > host_eh_clauses;
+  std::vector<std::string> block_labels;
   std::vector<Block> blocks;
 };
 
@@ -421,6 +426,8 @@ using MirRuntimeFunction = RuntimeFunction;
 using MirRuntimeData = RuntimeData;
 using MirProgram = Program;
 
+const std::string & mir_block_label(const MirFunction & function,
+                                    lowir_model::BlockId block);
 std::string serialize_mir_program(const MirProgram & program);
 void write_mir_program_file(const std::string & path,
                             const MirProgram & program);

@@ -8,9 +8,11 @@ mir_model::MirOperand native_block_operand(
     const lowir_model::Function & function,
     const lowir_model::Operand & block)
 {
-  return build::named_operand(
-    mir_model::MirOperand::OP_LABEL,
-    lowir_model::lowir_block_label(function, block.block));
+  (void)function;
+  mir_model::MirOperand result;
+  result.kind = mir_model::MirOperand::OP_LABEL;
+  result.block = block.block;
+  return result;
 }
 
 }  // namespace lowir_native

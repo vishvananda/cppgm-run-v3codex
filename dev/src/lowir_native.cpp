@@ -82,6 +82,7 @@ public:
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
     target_.name = source.name;
     target_.object_symbol = source.metadata.object_symbol;
+    target_.block_labels = source.block_labels;
     target_.return_type = source.return_type;
     target_.debug_location.file = source.debug_location.file;
     target_.debug_location.line = source.debug_location.line;
@@ -108,7 +109,7 @@ public:
     target_.blocks.reserve(source_.blocks.size());
     for(std::size_t i = 0; i < source_.blocks.size(); ++i) {
       mir_model::MirBlock block;
-      block.label = lowir_model::lowir_block_label(source_, source_.blocks[i].id);
+      block.id = source_.blocks[i].id;
       block.instructions.reserve(source_.blocks[i].instructions.size() +
         (i == 0 ? parameter_moves_.size() : 0));
       control_flow_.SelectBlock(i);

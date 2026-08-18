@@ -783,6 +783,34 @@ baseline/candidate medians of 5.130/5.095 seconds user, 5.655/5.600 seconds
 wall, and 364,774/364,734 KiB peak RSS.  Paired block medians improve user time
 by 0.68% and wall time by 1.06%, with peak RSS unchanged within noise.
 
+### CI9: compact MIR block and branch identity
+
+MIR blocks, branch operands, and protected-region landing pads now preserve
+the stable LowIR `BlockId` instead of allocating another copy of each textual
+label.  Each MIR function owns one presentation table.  Serialization and
+diagnostics resolve that table; MIR optimization, CFG construction, trace
+layout, fallthrough cleanup, host-EH region analysis, and landing-pad clause
+collection use dense ID-indexed vectors.
+
+The encoder still renders one scoped ELF label at its current string-table
+boundary; the subsequent local-fixup slice will carry `LocalLabelId` through
+`CodeBuffer`.  Host-function LSDA assembly likewise receives label spellings
+only at the object-layout boundary.  This separation removes backend label
+hashing without changing the public MIR format or native bytes.
+
+`MirOperand` remains 112 bytes, `MirInstruction` remains 200 bytes, and
+`MirFunction` falls from 368 to 352 bytes.  The candidate frozen object is
+byte-identical to its `071a81d0` baseline at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+PA29, PA30, PA37, and PA38 report 441/441 passing tests, and the PA39 file audit
+has no fatal findings.
+
+An eight-run interleaved timing sequence crossed a severe host-load transition:
+samples rose from 5.63--7.55 seconds to 15.13--20.92 seconds.  Its raw medians
+are not credited to either implementation.  The unchanged output, eliminated
+label maps, stable record sizes, and passing tests justify retaining the
+structural slice; cumulative timing will be repeated under comparable load.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

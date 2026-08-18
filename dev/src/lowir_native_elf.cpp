@@ -1089,12 +1089,13 @@ void emit_shift(CodeBuffer & out, const mir_model::MirInstruction & instruction,
   emit_modrm(out, 3, extension, destination);
 }
 
-std::string block_target(const std::string & function_name,
+std::string block_target(const mir_model::MirFunction & function,
                          const mir_model::MirOperand & operand)
 {
   if(operand.kind != mir_model::MirOperand::OP_LABEL)
     throw std::logic_error("native branch target is not a label");
-  return function_name + "::" + operand.text;
+  return function.name + "::" +
+    mir_model::mir_block_label(function, operand.block);
 }
 
 const char * const kEhTop = ".__cppgm_eh_top";
@@ -1199,12 +1200,10 @@ void emit_eh_push(CodeBuffer & out,
 {
   require_operands(instruction, 2);
   long long region_kind = instruction.operands[1].imm;
-  const std::map<std::string,
-    std::vector<mir_model::MirHostEhClause> >::const_iterator clauses =
-      function.host_eh_clauses.find(instruction.operands[0].text);
-  if(clauses != function.host_eh_clauses.end())
-    for(std::size_t i = 0; i < clauses->second.size(); ++i)
-      if(clauses->second[i].kind ==
+  const std::uint32_t block = instruction.operands[0].block;
+  if(block < function.host_eh_clauses.size())
+    for(std::size_t i = 0; i < function.host_eh_clauses[block].size(); ++i)
+      if(function.host_eh_clauses[block][i].kind ==
            mir_model::MirHostEhClause::HC_CLEANUP) {
         region_kind = 1;
         break;
@@ -1213,7 +1212,7 @@ void emit_eh_push(CodeBuffer & out,
   emit_symbol_move(out, XR_R11, kEhTop);
   emit_load(out, XR_RAX, XR_R11, 0, 64);
   emit_store(out, XR_RSP, 0, XR_RAX, 64);
-  emit_symbol_move(out, XR_RAX, block_target(function.name,
+  emit_symbol_move(out, XR_RAX, block_target(function,
                                               instruction.operands[0]));
   emit_store(out, XR_RSP, 8, XR_RAX, 64);
   emit_store(out, XR_RSP, 16, XR_RBP, 64);
@@ -1621,13 +1620,13 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     if(!function) throw std::logic_error("conditional branch outside function");
     require_operands(instruction, 1);
     emit_condition_jump(out, instruction.condition,
-      block_target(function->name, instruction.operands[0]));
+      block_target(*function, instruction.operands[0]));
     return;
   case mir_model::MirInstruction::MI_JMP:
     if(!function) throw std::logic_error("jump outside function");
     require_operands(instruction, 1);
     emit_unconditional_jump(out,
-      block_target(function->name, instruction.operands[0]));
+      block_target(*function, instruction.operands[0]));
     return;
   case mir_model::MirInstruction::MI_CALL:
     require_operands(instruction, 1);
@@ -1838,7 +1837,8 @@ void emit_prepared_function(
     frame_forwarding::find_single_use_reloads(function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
-    out.label(function.name + "::" + block.label);
+    out.label(function.name + "::" +
+      mir_model::mir_block_label(function, block.id));
     const address_folding::TransientScratchUsePlan scratch_uses(
       block.instructions);
     const std::vector<bool> flags_live =
@@ -2541,7 +2541,11 @@ HostFunctionLayout emit_prepared_host_function(
   layout.object_symbol = function.object_symbol;
   layout.offset = out.size();
   layout.callee_saved_regs = function.callee_saved_regs;
-  layout.clauses = function.host_eh_clauses;
+  for(std::size_t block = 0; block < function.host_eh_clauses.size(); ++block)
+    if(!function.host_eh_clauses[block].empty())
+      layout.clauses[mir_model::mir_block_label(
+        function, lowir_model::BlockId(static_cast<std::uint32_t>(block)))] =
+          function.host_eh_clauses[block];
   out.label(function.name);
   const std::string object_symbol = native_object_symbol(function.object_symbol);
   if(!object_symbol.empty() && object_symbol != function.name)
@@ -2553,12 +2557,15 @@ HostFunctionLayout emit_prepared_host_function(
   std::vector<HostEhStackCleanup> stack_cleanups;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
-    out.label(function.name + "::" + block.label);
+    out.label(function.name + "::" +
+      mir_model::mir_block_label(function, block.id));
     const address_folding::TransientScratchUsePlan scratch_uses(
       block.instructions);
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
-    if(function.host_eh_clauses.count(block.label)) {
+    const std::uint32_t block_id = block.id;
+    if(block_id < function.host_eh_clauses.size() &&
+       !function.host_eh_clauses[block_id].empty()) {
       emit_store(out, XR_RBP,
         actual_frame_offset(function, function.host_eh_exception_offset),
         XR_RAX, 64);
@@ -2616,7 +2623,8 @@ HostFunctionLayout emit_prepared_host_function(
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
       emit_host_instruction(out, block.instructions[j], function,
-        landing_block ? function.blocks[landing_block - 1].label :
+        landing_block ? mir_model::mir_block_label(
+          function, function.blocks[landing_block - 1].id) :
                         no_landing_pad,
         layout, stack_cleanups);
     }

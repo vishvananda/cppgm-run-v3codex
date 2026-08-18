@@ -2,7 +2,6 @@
 
 #include <stdexcept>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 namespace lowir_native {
@@ -23,14 +22,19 @@ bool requires_host_eh_storage(const lowir_model::LowirFunction & function)
 void collect_host_eh_clauses(mir_model::MirFunction * function)
 {
   if(!function->host_eh_enabled) return;
-  std::unordered_set<std::string> landing_pads;
+  std::vector<unsigned char> landing_pads(function->block_labels.size(), 0);
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const mir_model::MirInstruction & instruction =
         function->blocks[i].instructions[j];
       if(instruction.opcode == mir_model::MirInstruction::MI_EH_PUSH &&
-         !instruction.operands.empty())
-        landing_pads.insert(instruction.operands[0].text);
+         !instruction.operands.empty() &&
+         instruction.operands[0].kind == mir_model::MirOperand::OP_LABEL) {
+        const std::uint32_t block = instruction.operands[0].block;
+        if(block < landing_pads.size()) landing_pads[block] = 1;
+      }
+  function->host_eh_clauses.clear();
+  function->host_eh_clauses.resize(function->block_labels.size());
     }
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     std::vector<mir_model::MirHostEhClause> clauses;
@@ -61,13 +65,14 @@ void collect_host_eh_clauses(mir_model::MirFunction * function)
       } else continue;
       clauses.push_back(clause);
     }
-    if(!landing_pads.count(function->blocks[i].label)) continue;
+    const std::uint32_t block = function->blocks[i].id;
+    if(block >= landing_pads.size() || !landing_pads[block]) continue;
     if(clauses.empty()) {
       mir_model::MirHostEhClause cleanup;
       cleanup.kind = mir_model::MirHostEhClause::HC_CLEANUP;
       clauses.push_back(cleanup);
     }
-    function->host_eh_clauses[function->blocks[i].label] = clauses;
+    function->host_eh_clauses[block] = clauses;
   }
 }
 
@@ -247,18 +252,22 @@ HostEhRegionPlan analyze_host_eh_regions(
   result.call_landing_blocks.resize(function.blocks.size());
   if(function.blocks.empty()) return result;
 
-  std::unordered_map<std::string, std::size_t> block_index;
-  block_index.reserve(function.blocks.size());
+  const std::size_t unknown = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> block_index(function.block_labels.size(), unknown);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-    if(!block_index.emplace(function.blocks[i].label, i).second)
-      throw std::logic_error("duplicate MIR block label in host EH analysis: " +
-                             function.blocks[i].label);
+    const std::uint32_t id = function.blocks[i].id;
+    if(id >= block_index.size() || block_index[id] != unknown)
+      throw std::logic_error("duplicate or invalid MIR block identity in host EH analysis");
+    block_index[id] = i;
     result.call_landing_blocks[i].resize(
       function.blocks[i].instructions.size());
   }
+  const auto block_position = [&](lowir_model::BlockId id) {
+    const std::uint32_t index = id;
+    return id.valid() && index < block_index.size() ? block_index[index] : unknown;
+  };
 
   RegionStateInterner states;
-  const std::size_t unknown = static_cast<std::size_t>(-1);
   std::vector<std::size_t> entries(function.blocks.size(), unknown);
   std::vector<std::size_t> worklist;
   worklist.reserve(function.blocks.size());
@@ -275,14 +284,13 @@ HostEhRegionPlan analyze_host_eh_regions(
          instruction.operands.size() != 2 ||
          instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL)
         continue;
-      const std::unordered_map<std::string, std::size_t>::const_iterator landing =
-        block_index.find(instruction.operands[0].text);
-      if(landing == block_index.end()) continue;
-      cleanup_landing_blocks[landing->second] =
+      const std::size_t landing = block_position(instruction.operands[0].block);
+      if(landing == unknown) continue;
+      cleanup_landing_blocks[landing] =
         instruction.operands[1].kind == mir_model::MirOperand::OP_IMM &&
         (instruction.operands[1].imm != 0 ||
-         landing_pad_has_cleanup_clause(function.blocks[landing->second]) ||
-         !landing_pad_has_catches(function.blocks[landing->second]));
+         landing_pad_has_cleanup_clause(function.blocks[landing]) ||
+         !landing_pad_has_catches(function.blocks[landing]));
     }
 
   const auto merge_entry = [&](std::size_t block, std::size_t state,
@@ -303,21 +311,21 @@ HostEhRegionPlan analyze_host_eh_regions(
         return;
       throw std::logic_error(
         "host EH protected-region state mismatch in " + function.name +
-        " at MIR block " + function.blocks[block].label +
+        " at MIR block " +
+        mir_model::mir_block_label(function, function.blocks[block].id) +
         " (existing state " + std::to_string(entries[block]) +
         ", incoming state " + std::to_string(state) +
         ", existing active " + std::to_string(existing_active) +
         ", incoming active " + std::to_string(incoming_active) + ")");
     }
   };
-  const auto merge_label = [&](const std::string & label, std::size_t state,
+  const auto merge_label = [&](lowir_model::BlockId label, std::size_t state,
                                std::vector<std::size_t> * pending) {
-    const std::unordered_map<std::string, std::size_t>::const_iterator target =
-      block_index.find(label);
-    if(target == block_index.end())
+    const std::size_t target = block_position(label);
+    if(target == unknown)
       throw std::logic_error("host EH control-flow target has no MIR block: " +
-                             label);
-    merge_entry(target->second, state, pending);
+                             mir_model::mir_block_label(function, label));
+    merge_entry(target, state, pending);
   };
 
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -331,13 +339,12 @@ HostEhRegionPlan analyze_host_eh_regions(
       if(instruction.operands.size() != 1 ||
          instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL)
         throw std::logic_error("invalid MIR branch in host EH analysis");
-      const std::unordered_map<std::string, std::size_t>::const_iterator target =
-        block_index.find(instruction.operands[0].text);
-      if(target == block_index.end())
+      const std::size_t target = block_position(instruction.operands[0].block);
+      if(target == unknown)
         throw std::logic_error(
           "host EH control-flow target has no MIR block: " +
-          instruction.operands[0].text);
-      catch_entry_blocks[target->second] = true;
+          mir_model::mir_block_label(function, instruction.operands[0].block));
+      catch_entry_blocks[target] = true;
     }
     if(i + 1 < function.blocks.size() &&
        (function.blocks[i].instructions.empty() ||
@@ -354,7 +361,7 @@ HostEhRegionPlan analyze_host_eh_regions(
       else if(catch_entry_states[target] != state)
         throw std::logic_error(
           "host EH catch-entry state mismatch at MIR block: " +
-          function.blocks[target].label);
+          mir_model::mir_block_label(function, function.blocks[target].id));
       merge_entry(target, state, pending);
     } else if(catch_entry_blocks[target]) {
       // A failed inner catch enters the enclosing catch through the same
@@ -376,12 +383,12 @@ HostEhRegionPlan analyze_host_eh_regions(
       if(instruction.opcode != mir_model::MirInstruction::MI_EH_PUSH) continue;
       if(instruction.operands.size() != 2 ||
          instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL ||
-         instruction.operands[0].text.empty())
+         !instruction.operands[0].block.valid())
         throw std::logic_error("invalid MIR host EH protected-region marker");
-      if(!block_index.count(instruction.operands[0].text))
+      if(block_position(instruction.operands[0].block) == unknown)
         throw std::logic_error(
           "host EH landing pad has no MIR block: " +
-          instruction.operands[0].text);
+          mir_model::mir_block_label(function, instruction.operands[0].block));
     }
 
   std::size_t next = 0;
@@ -395,25 +402,24 @@ HostEhRegionPlan analyze_host_eh_regions(
       if(instruction.opcode == mir_model::MirInstruction::MI_EH_PUSH) {
         if(instruction.operands.size() != 2 ||
            instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL ||
-           instruction.operands[0].text.empty())
+           !instruction.operands[0].block.valid())
           throw std::logic_error(
             "invalid MIR host EH protected-region marker");
         const std::size_t parent = state;
-        const std::unordered_map<std::string, std::size_t>::const_iterator
-          landing = block_index.find(instruction.operands[0].text);
-        if(landing == block_index.end())
+        const std::size_t landing = block_position(instruction.operands[0].block);
+        if(landing == unknown)
           throw std::logic_error(
             "host EH landing pad has no MIR block: " +
-            instruction.operands[0].text);
-        state = states.Push(state, landing->second + 1);
+            mir_model::mir_block_label(function, instruction.operands[0].block));
+        state = states.Push(state, landing + 1);
         if(instruction.operands[1].kind != mir_model::MirOperand::OP_IMM)
           throw std::logic_error(
             "invalid MIR host EH protected-region kind");
         const bool cleanup_landing = instruction.operands[1].imm != 0 ||
-          landing_pad_has_cleanup_clause(function.blocks[landing->second]) ||
-          !landing_pad_has_catches(function.blocks[landing->second]);
+          landing_pad_has_cleanup_clause(function.blocks[landing]) ||
+          !landing_pad_has_catches(function.blocks[landing]);
         ++result.edge_count;
-        merge_label(instruction.operands[0].text,
+        merge_label(instruction.operands[0].block,
           cleanup_landing ? states.Consume(state) : parent,
           &worklist);
       } else if(instruction.opcode ==
@@ -424,7 +430,7 @@ HostEhRegionPlan analyze_host_eh_regions(
         if(state == 0)
           throw std::logic_error(
             "host EH protected-region stack underflow at MIR block: " +
-            block.label);
+            mir_model::mir_block_label(function, block.id));
         state = states.Parent(state);
       }
 
@@ -446,13 +452,11 @@ HostEhRegionPlan analyze_host_eh_regions(
            instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL)
           throw std::logic_error("invalid MIR branch in host EH analysis");
         ++result.edge_count;
-        const std::unordered_map<std::string, std::size_t>::const_iterator
-          target_entry = block_index.find(instruction.operands[0].text);
-        if(target_entry == block_index.end())
+        const std::size_t target = block_position(instruction.operands[0].block);
+        if(target == unknown)
           throw std::logic_error(
             "host EH control-flow target has no MIR block: " +
-            instruction.operands[0].text);
-        const std::size_t target = target_entry->second;
+            mir_model::mir_block_label(function, instruction.operands[0].block));
         merge_control_flow_edge(block_number, target, state, &worklist);
       }
       if(is_function_exit(instruction) && state != 0)

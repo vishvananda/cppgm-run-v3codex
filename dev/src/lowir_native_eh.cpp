@@ -1,4 +1,5 @@
 #include "lowir_native_eh.h"
+#include "lowir_native_block_labels.h"
 #include "lowir_native_mir.h"
 
 namespace lowir_native {
@@ -106,8 +107,7 @@ bool lower_marker(const lowir_model::Program & program,
   if(source.kind == LowInstruction::IK_EH_TRY ||
      source.kind == LowInstruction::IK_EH_CLEANUP) {
     MirInstruction push = machine_instruction(MirInstruction::MI_EH_PUSH);
-    append_operand(push, named_operand(mir_model::MirOperand::OP_LABEL,
-      lowir_model::lowir_block_label(function, source.first.block)));
+    append_operand(push, native_block_operand(function, source.first));
     append_operand(push, immediate(source.kind == LowInstruction::IK_EH_CLEANUP));
     target.push_back(push);
   } else if(source.kind == LowInstruction::IK_EH_END)
