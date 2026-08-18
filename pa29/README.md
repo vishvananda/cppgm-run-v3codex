@@ -543,6 +543,14 @@ To complete PA29, implement these goals:
    register when necessary; do not serialize a separate MIR move solely for
    that transfer.
 
+   Scalar integer division should place the selected divisor directly in
+   `rcx` and the dividend in `rax`.  Treat those placements as a two-register
+   parallel move: preserve both selected inputs when either already occupies
+   the other's fixed destination, and use a fixed division-clobbered scratch
+   for the rare cycle.  A quotient that is immediately returned should remain
+   in `rax`.  An immediately returned remainder should move directly from
+   `rdx` to `rax`, without first assigning an unrelated result register.
+
    A scalar call result may remain in its ABI return register throughout a
    single-block interval that crosses no operation clobbering that register.
    The final consumer must read the result before performing any fixed-register

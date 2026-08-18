@@ -137,9 +137,11 @@ multiply, or add instructions.
 
 `direct-return-placement.t` exercises immediately returned integer constants,
 integer loads, global addresses, frame addresses, and integer comparisons.
-It also covers immediately returned integer negation and conversion results.
-Each producer must write the ABI return register directly, without first
-assigning a general-purpose temporary that is used only by the return.
+It also covers immediately returned integer negation, conversion, division,
+and remainder results. Each producer must write the ABI return register
+directly when the machine result is available there. Division materializes its
+divisor directly in RCX; remainder transfers directly from RDX to RAX. Neither
+form assigns a general-purpose temporary that is used only by the return.
 
 `incoming-parameter-emitted-clobbers.t` keeps a reference parameter in RCX
 while promoted parameter-slot loads and directly addressed stores lower ahead

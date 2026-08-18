@@ -114,8 +114,7 @@ function @f
     call @clobber [args=(rcx,rdx,rsi,rdi,r8,r9)]
     store.i64 [rbp-112], rax
     load.i64 rax, [rbp-32]
-    mov rdx, -3
-    mov rcx, rdx
+    mov rcx, -3
     cqo
     idiv rcx
     store.i64 [rbp-120], rax

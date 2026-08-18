@@ -236,6 +236,9 @@ struct Instruction
     MI_SEXT,
     MI_ZEXT,
     MI_CQO,
+    // Scalar division places its divisor in rcx and its dividend in rax with
+    // dependency-safe parallel moves. An immediately returned quotient stays
+    // in rax; a remainder moves directly from rdx to rax.
     MI_IDIV,
     MI_DIV,
     // These shifts read the count implicitly from rcx/cl; MIR should place the

@@ -14,8 +14,7 @@ function @main
 
   block ^entry
     mov r8, -1
-    mov rdx, 2
-    mov rcx, rdx
+    mov rcx, 2
     mov rax, r8
     mov rdx, 0
     div rcx
@@ -25,8 +24,7 @@ function @main
     sete r8
     movzx r8, r8
     mov r9, -1
-    mov rdx, 7
-    mov rcx, rdx
+    mov rcx, 7
     mov rax, r9
     mov rdx, 0
     div rcx

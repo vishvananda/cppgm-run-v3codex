@@ -9,6 +9,7 @@
 #include "lowir_native_compare_lowering.h"
 #include "lowir_native_control_flow.h"
 #include "lowir_native_copy_lowering.h"
+#include "lowir_native_division_lowering.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_frame_layout.h"
 #include "lowir_native_host_eh.h"
@@ -1608,22 +1609,6 @@ private:
     }
     throw std::runtime_error("conversion categories are not implemented");
   }
-  void emit_division(const Instruction & instruction, const MirOperand & destination,
-                     const MirOperand & right, std::vector<MirInstruction> & out)
-  {
-    append_move(out, reg_operand(XR_RDX), right);
-    append_move(out, reg_operand(XR_RCX), reg_operand(XR_RDX));
-    append_move(out, reg_operand(XR_RAX), destination);
-    const bool unsigned_operation = instruction.op == "udiv" || instruction.op == "umod";
-    if(unsigned_operation) append_move(out, reg_operand(XR_RDX), immediate(0));
-    else out.push_back(machine_instruction(MirInstruction::MI_CQO));
-    MirInstruction divide = machine_instruction(unsigned_operation ?
-      MirInstruction::MI_DIV : MirInstruction::MI_IDIV);
-    append_operand(divide, reg_operand(XR_RCX));
-    out.push_back(divide);
-    const bool remainder = instruction.op == "mod" || instruction.op == "umod";
-    append_move(out, destination, reg_operand(remainder ? XR_RDX : XR_RAX));
-  }
   void emit_shift(const Instruction & instruction, const MirOperand & destination,
                   const MirOperand & right, std::vector<MirInstruction> & out)
   {
@@ -1637,6 +1622,8 @@ private:
     out.push_back(shift);
   }
   void emit_binary(const Instruction & instruction,
+                   const lowir_model::LowirBlock & block,
+                   std::size_t instruction_index,
                    std::vector<MirInstruction> & out)
   {
     if(wide::is_integer(instruction.type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); wide::append_binary(destination, wide_value(instruction.first), wide_value(instruction.second), instruction.op, out); consume(instruction.first); consume(instruction.second); define(instruction.dest, instruction.type, destination); return; }
@@ -1648,12 +1635,20 @@ private:
       throw std::runtime_error("integer selector received non-integer binary operation");
     const MirOperand left = resolve(instruction.first);
     MirOperand right = resolve(instruction.second);
+    const division_detail::Classification division =
+      division_detail::classify(instruction.op);
+    bool direct_division_return = false;
+    if(division.valid &&
+       result_is_immediate_return(block, instruction_index, instruction.dest))
+      direct_division_return = division_detail::direct_return_setup_is_safe(left, right);
     const bool pressure_leaf = constrained_wide_pressure() &&
       instruction.first.kind == Operand::OP_TEMP &&
       facts_.has(instruction.first.value, FunctionFacts::VF_PARAMETER);
     MirOperand pressure_home;
     MirOperand destination;
-    if(!pressure_leaf)
+    if(direct_division_return)
+      destination = reg_operand(XR_RAX);
+    else if(!pressure_leaf)
       destination = binary_destination(instruction, left, out, true, &pressure_home);
     else if(instruction.first.value == source_.params.front().value) {
       destination = reg_operand(XR_R15);
@@ -1686,9 +1681,9 @@ private:
     else if(instruction.op == "and") opcode = MirInstruction::MI_AND;
     else if(instruction.op == "or") opcode = MirInstruction::MI_OR;
     else if(instruction.op == "xor") opcode = MirInstruction::MI_XOR;
-    else if(instruction.op == "div" || instruction.op == "mod" ||
-            instruction.op == "udiv" || instruction.op == "umod") {
-      emit_division(instruction, destination, right, out);
+    else if(division.valid) {
+      division_detail::emit_division(division, destination,
+        direct_division_return ? left : destination, right, out);
       append_integer_normalization(out, instruction.type, destination);
       consume(instruction.first, destination.reg);
       consume(instruction.second, destination.reg);
@@ -2934,7 +2929,8 @@ private:
     } else if(TryEmitIntrinsic(instruction, out)) return;
     else if(instruction.kind == Instruction::IK_INDEX)
       emit_index(block, instruction_index, instruction, out);
-    else if(instruction.kind == Instruction::IK_BINARY) emit_binary(instruction, out);
+    else if(instruction.kind == Instruction::IK_BINARY)
+      emit_binary(instruction, block, instruction_index, out);
     else if(instruction.kind == Instruction::IK_CMP) {
       if(facts_.deferred_branch_comparisons[instruction.dest]) return;
       if(wide::is_integer(instruction.type))
