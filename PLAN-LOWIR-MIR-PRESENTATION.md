@@ -1,6 +1,6 @@
 # Plan: Eliminate LowIR-to-MIR Presentation Transit
 
-Status: in progress
+Status: in progress -- structural work complete; cumulative timing gate open
 
 Date: 2026-08-18
 
@@ -600,6 +600,43 @@ gets the requested separate timed 8-way inception comparison.
 
 ## 10. Implementation ledger
 
+### 10.1 Retained text boundaries after Phase 5
+
+The final source audit classifies the remaining string-keyed containers as
+explicit boundaries rather than semantic transport:
+
+- `lowir_parse.cpp` and `resolve_lowir_function_operands` use transient text
+  indexes only while resolving arbitrary serialized LowIR spellings into
+  `BlockId`, `SlotId`, `ValueId`, and `SymbolId`.  The maps do not survive the
+  parser or private-object reader boundary.
+- `lowir_serialize.cpp`, `mir_model.cpp`, and `lowir_cy86.cpp` read pooled
+  spellings only to produce LowIR, MIR, CY86, or diagnostic text.
+- `pa30_object.cpp` retains `RenameMap` and the external-name join only while
+  combining independently serialized private objects.  Linked LowIR publishes
+  compact symbol IDs before optimization resumes.
+- `CodeBuffer` retains a named-label/fixup path for arbitrary imported runtime
+  and executable labels.  Generated program, object, block, and local labels
+  use typed IDs.  The frozen source has zero named labels, 5,440 typed labels,
+  32,064 typed fixups, and 1,673 genuinely named/imported fixups.
+- The ELF writer retains text maps while deduplicating and lexically ordering
+  final ABI names and writing `.symtab`, `.strtab`, and `.shstrtab`.  Section,
+  program, object, COMDAT, TLS, EH type-reference, and personality relocation
+  targets remain numeric.  Only 11 frozen relocations require the transient
+  final name lookup; the final string table itself necessarily contains 6,609
+  names.
+
+`LowOperation` has only its enum-kind constructor and typed equality/hash
+operations.  `parse_lowir_operation(const std::string&)` is the explicit input
+boundary, while `lowir_operation_text` and `operator<<` are explicit output
+boundaries.  No construction, conversion, equality, indexing, or concatenation
+compatibility with operation text remains.
+
+The optional lexer-span cleanup for explicit `.lowir` input was not performed:
+it does not occur on the frozen C++ source path, and the retained parser maps
+already die at the correct boundary.
+
+### 10.2 Accepted and rejected experiments
+
 Update one row after every accepted or rejected experiment.
 
 | Phase/commit | Removed work | Structural counters | User/wall/RSS | Output gate | Reports/audit/inception | Decision |
@@ -614,6 +651,7 @@ Update one row after every accepted or rejected experiment.
 | Phase 2 sealed LowIR/MIR presentation store `dbd1d7f9` | Preserves LowIR `StringId` values through MIR, removes `StringIdentityMap` and its remap vector, shares one sealed immutable spelling store, and represents five backend-created frame names with bounded identities | Frozen remap calls 72,866 -> 0, misses 29,685 -> 0, mapped bytes 1,664,204 -> 0, remap-vector storage 125,936 -> 0, and bridge time 18.71 ms -> 0; incremental MIR peak storage falls 14,671,273 -> 13,290,492 bytes while the 2,850,971-byte spelling backing store is shared rather than counted twice | Three-block A/B/B/A medians: 4.875 vs 4.855 s user, 5.330 vs 5.300 s wall, 364,750 vs 365,336 KiB RSS; paired candidate/baseline deltas are -0.62% user, -0.19% wall, and +0.11% RSS | Frozen `-O0` object is byte-identical at 4,415,448 bytes and SHA-256 `d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`; self and inception binaries are exact at 16,777,144 bytes and SHA-256 `3f13cbf8e7965d0ac690f6ca2abaea65a7cf218a4f658e6fdbeaaacd5d8a0588` | PA29 226/226; through PA29 4,119/4,119; PA30/PA37 report 191/191; full report 5,208/5,208; zero-fatal audit with 26 warnings; clean j32 self 18.58 s wall/224,988 KiB; fresh j32 inception 1:49.59 wall/225,268 KiB with every object and final binary exact | Retained; removes the complete byte-remapping bridge without changing serialized MIR or object bytes; student-facing wording stays limited to observable requirements |
 | Phase 3 compact presentation and object-only elision `d82de391`..`27973be1` | Carries parameter origins, generated-name reservations, local names, EH order, and generated ELF identities numerically; normal object compilation omits unobserved local spellings and prunes the sealed pool to referenced entries | Prefix renders 86,579 -> 0, adapter pool calls 83,295 -> 0, retained LowIR/MIR strings 31,483 -> 15,491, spelling bytes 2,850,971 -> 1,321,945, native semantic string reads 38,423 -> 9,269, named labels remain only for the 4,705 serialized names among 5,425 typed labels, and named fixups remain 1,687 among 32,050 typed fixups; adapter time falls 119.48 -> 116.65 ms and total adaptation 153.09 -> 149.50 ms | Phase-2/candidate three-block A/B/B/A medians: 4.950 vs 4.930 s user, 5.430 vs 5.415 s wall, and 364,796 vs 364,236 KiB RSS; median within-block user ratio 0.997 | Existing serialized fixtures do not change; the frozen `-O0` object remains byte-identical at 4,415,448 bytes and SHA-256 `d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f` | PA15/PA29/PA30/PA37 531/531; through PA37 5,179/5,179 before the correction below; final corrected full report and inception gates are recorded below | Retained; removes about half the presentation entries and three quarters of native semantic string reads without a timing or RSS regression |
 | Call-result store-address correction `8d69cd66` | Keeps a call result used through a folded `index` as the store address when a non-register store value needs the return register as scratch; the scalar store selects `r11` in that one conflict instead of scanning or materializing names | PA29 LowIR reducer reproduces the invalid `mov rax, 1; store.u8 [rax+40], rax` sequence at `-O0`; corrected MIR uses `r11` for the constant and retains `rax` as the address | Not a representation experiment; the corrected clean j32 self build is 18.35 s wall, 408.10 s user, and 226,892 KiB peak RSS | Frozen object remains byte-identical; corrected self and inception binaries are exact at 16,839,688 bytes with SHA-256 `6c20577d180cf51c0c38428500aa204aa952ba093161299e458b87cf3256e6ee` | PA29 227/227; through PA29 4,120/4,120; full report 5,209/5,209; zero-fatal audit with 29 warnings; fresh j32 inception passes every object and final binary check in 4:09.52 wall/1,902.37 s aggregate user/228,428 KiB peak RSS under a loaded host | Retained as the earliest-owned PA29 correction exposed by the Phase 3 self build; no existing MIR fixture changed |
+| Phases 4-5 typed native/ELF identity `1d705a56`..`2df22436` | Keeps generated symbols, object names, block/local labels, fixups, function layouts, weak/COMDAT ownership, TLS wrappers, EH references, and section relocations typed through encoding and ELF layout; removes declaration compatibility maps; final name-only and typed aliases share one host-symbol record | Frozen source: zero presentation maps/bytes, zero native semantic string reads or literal parses, 15,491 pooled strings/1,321,945 spelling bytes, 5,440 typed and zero named labels, 32,064 typed and 1,673 imported named fixups, and only 11 transient ELF name entries; `LowOperation` text-compatibility audit is empty | Direct pinned Phase-0/final A/B/B/A raw medians are 4.880/4.805 s user, 5.345/5.255 s wall, and 364,722/365,162 KiB RSS; paired median deltas are -1.75% user, about -1.6% wall, and about +0.1% RSS | Frozen object remains exact at 4,415,448 bytes with SHA-256 `d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`; self and inception binaries are exact at 16,996,936 bytes with SHA-256 `d663e523b725fdfdbf868f1f879e46e812f6d70432b69e4f29b97391b85f0cca` | Affected report 701/701; full report 5,210/5,210; zero-fatal audit with 26 warnings; clean j32 self 18.53 s wall/407.58 s user/226,768 KiB; fresh j32 inception 2:12.91 wall/3,017.79 s user/226,680 KiB; fresh j8 inception 4:01.01 wall/1,841.51 s user/224,912 KiB; every object and final binary exact | Structural plan accepted and cleanly paused.  The measured cumulative user-time gain is real but below the 3% completion threshold, so the timing gate and plan status remain open rather than overstating completion. |
 
 Rejected experiments remain in the ledger with their patch/commit identifier
 and measured reason.  Do not erase negative evidence.
