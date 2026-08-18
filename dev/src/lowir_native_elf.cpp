@@ -1753,26 +1753,28 @@ std::size_t emit_coalesced_constant_byte_stores(
 
 bool emit_delayed_frame_forwarding(
     CodeBuffer & out, const mir_model::MirInstruction & instruction,
-    const frame_forwarding::FrameReloadPlan & plan)
+    const frame_forwarding::FrameReloadPlan::InstructionAction & action)
 {
   using mir_model::MirInstruction;
   using mir_model::MirOperand;
   if(instruction.opcode == MirInstruction::MI_STORE &&
      instruction.operands.size() == 2 &&
      instruction.operands[0].kind == MirOperand::OP_FRAME &&
-     plan.delayed.count(instruction.operands[0].offset))
+     action.kind == frame_forwarding::FrameReloadPlan::InstructionAction::
+       IA_SKIP_DELAYED_STORE)
     return true;
   if(instruction.opcode != MirInstruction::MI_LOAD ||
      instruction.operands.size() != 2 ||
      instruction.operands[0].kind != MirOperand::OP_REG ||
      instruction.operands[1].kind != MirOperand::OP_FRAME)
     return false;
-  const std::unordered_map<long long, X64Register>::const_iterator source =
-    plan.delayed.find(instruction.operands[1].offset);
-  if(source == plan.delayed.end()) return false;
+  if(action.kind != frame_forwarding::FrameReloadPlan::InstructionAction::
+       IA_FORWARD_DELAYED_LOAD)
+    return false;
+  const X64Register source = action.source_register();
   const X64Register destination = instruction.operands[0].reg;
-  if(source->second != destination)
-    emit_sized_register_move(out, destination, source->second,
+  if(source != destination)
+    emit_sized_register_move(out, destination, source,
       type_width(instruction.type));
   return true;
 }
@@ -1781,14 +1783,14 @@ std::size_t emit_forwarded_frame_reload(
     CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start, const mir_model::MirFunction & function,
-    const frame_forwarding::FrameReloadPlan & frame_reload_plan)
+    const frame_forwarding::FrameReloadPlan::InstructionAction & action)
 {
-  long long frame_offset = 0;
   X64Register source = XR_RAX;
   X64Register destination = XR_RAX;
-  if(!frame_forwarding::parse_reload(instructions, start, &frame_offset,
+  if(!frame_forwarding::parse_reload(instructions, start,
        &source, &destination)) return 0;
-  if(!frame_reload_plan.adjacent.count(frame_offset))
+  if(action.kind != frame_forwarding::FrameReloadPlan::InstructionAction::
+       IA_DROP_ADJACENT_STORE)
     emit_instruction(out, instructions[start], &function);
   if(source != destination)
     emit_sized_register_move(out, destination, source,
@@ -1819,6 +1821,8 @@ void emit_prepared_function(
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const frame_forwarding::FrameReloadPlan::InstructionAction
+        frame_reload_action = frame_reload_plan.action(i, j);
       std::size_t folded = 0;
       const address_folding::MemoryFoldKind fold_kind =
         address_folding::classify_memory_fold(block.instructions, j);
@@ -1842,10 +1846,10 @@ void emit_prepared_function(
         continue;
       }
       if(emit_delayed_frame_forwarding(out,
-           block.instructions[j], frame_reload_plan))
+           block.instructions[j], frame_reload_action))
         continue;
       const std::size_t forwarded = emit_forwarded_frame_reload(
-        out, block.instructions, j, function, frame_reload_plan);
+        out, block.instructions, j, function, frame_reload_action);
       if(forwarded) {
         j += forwarded - 1;
         continue;
@@ -1861,7 +1865,7 @@ void emit_prepared_function(
         continue;
       if(is_redundant_u32_normalization(block.instructions, j,
            frame_forwarding::load_zero_extends(
-             block.instructions, j, frame_reload_plan)))
+             block.instructions, i, j, frame_reload_plan)))
         continue;
       emit_instruction(out, block.instructions[j], &function);
     }
@@ -2540,6 +2544,8 @@ HostFunctionLayout emit_prepared_host_function(
         XR_RDX, 64);
     }
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const frame_forwarding::FrameReloadPlan::InstructionAction
+        frame_reload_action = frame_reload_plan.action(i, j);
       std::size_t folded = 0;
       const address_folding::MemoryFoldKind fold_kind =
         address_folding::classify_memory_fold(block.instructions, j);
@@ -2563,10 +2569,10 @@ HostFunctionLayout emit_prepared_host_function(
         continue;
       }
       if(emit_delayed_frame_forwarding(
-           out, block.instructions[j], frame_reload_plan))
+           out, block.instructions[j], frame_reload_action))
         continue;
       const std::size_t forwarded = emit_forwarded_frame_reload(
-        out, block.instructions, j, function, frame_reload_plan);
+        out, block.instructions, j, function, frame_reload_action);
       if(forwarded) {
         j += forwarded - 1;
         continue;
@@ -2582,7 +2588,7 @@ HostFunctionLayout emit_prepared_host_function(
         continue;
       if(is_redundant_u32_normalization(block.instructions, j,
            frame_forwarding::load_zero_extends(
-             block.instructions, j, frame_reload_plan)))
+             block.instructions, i, j, frame_reload_plan)))
         continue;
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
