@@ -1,7 +1,10 @@
 #include "lowir_native_float_bits.h"
 
+#include "lowir_native_code_buffer.h"
+
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -68,6 +71,33 @@ std::pair<std::uint64_t, std::uint64_t> extended(const std::string & text)
   std::memcpy(&low, bytes, 8);
   std::memcpy(&high, bytes + 8, 8);
   return std::make_pair(low, high);
+}
+
+std::uint64_t parsed_scalar(elf_detail::CodeBuffer & out,
+                            const std::string & text,
+                            const lowir_model::LowType & type)
+{
+  const std::chrono::steady_clock::time_point started = out.collects_stats() ?
+    std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  const std::uint64_t result = scalar(text, type);
+  if(out.collects_stats()) out.note_literal_text_parse(
+    static_cast<std::uint64_t>(std::chrono::duration_cast<
+      std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count()));
+  return result;
+}
+
+std::pair<std::uint64_t, std::uint64_t> parsed_extended(
+    elf_detail::CodeBuffer & out, const std::string & text)
+{
+  const std::chrono::steady_clock::time_point started = out.collects_stats() ?
+    std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  const std::pair<std::uint64_t, std::uint64_t> result = extended(text);
+  if(out.collects_stats()) out.note_literal_text_parse(
+    static_cast<std::uint64_t>(std::chrono::duration_cast<
+      std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count()));
+  return result;
 }
 
 }  // namespace float_bits

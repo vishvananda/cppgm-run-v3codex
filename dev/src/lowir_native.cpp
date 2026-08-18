@@ -79,7 +79,7 @@ public:
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
       signatures_(signatures), strings_(strings), stats_(stats),
-      facts_(analyze_function(source, program.strings)),
+      facts_(analyze_function(source, program.strings, stats)),
       control_flow_(source), position_(0)
   {
     values_.resize(source_.value_names.size());
@@ -740,6 +740,7 @@ private:
     if(operand.kind == Operand::OP_GLOBAL)
       return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
     if(operand.kind == Operand::OP_FLOAT) {
+		if(stats_) ++stats_->native_semantic_string_reads;
       return floating_literal_type(program_.strings.get(operand.literal));
     }
     return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);

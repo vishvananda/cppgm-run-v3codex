@@ -5,6 +5,7 @@
 #include "lowir_native_float_bits.h"
 
 #include <cstdint>
+#include <chrono>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -39,7 +40,13 @@ void emit_integer_data(CodeBuffer & out, long long value, std::size_t size,
     std::to_string(value);
   std::uint64_t low = 0;
   std::uint64_t high = 0;
+	const std::chrono::steady_clock::time_point started = out.collects_stats() ?
+		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   parse_wide_literal_words(text, &low, &high);
+	if(out.collects_stats()) out.note_literal_text_parse(
+		static_cast<std::uint64_t>(std::chrono::duration_cast<
+			std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - started).count()));
   out.little(low, 8);
   out.little(high, 8);
 }
@@ -48,13 +55,24 @@ void emit_float_data(CodeBuffer & out, lowir_model::StringId literal,
                      const lowir_model::LowType & type)
 {
   const std::string & text = out.literal_spelling(literal);
+	const std::chrono::steady_clock::time_point started = out.collects_stats() ?
+		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   if(type.kind == lowir_model::LTK_F80) {
     const std::pair<std::uint64_t, std::uint64_t> words = extended(text);
+		if(out.collects_stats()) out.note_literal_text_parse(
+			static_cast<std::uint64_t>(std::chrono::duration_cast<
+				std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - started).count()));
     out.little(words.first, 8);
     out.little(words.second, 8);
     return;
   }
-  out.little(scalar(text, type), static_cast<unsigned>(type_size(type)));
+	const std::uint64_t bits = scalar(text, type);
+	if(out.collects_stats()) out.note_literal_text_parse(
+		static_cast<std::uint64_t>(std::chrono::duration_cast<
+			std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - started).count()));
+  out.little(bits, static_cast<unsigned>(type_size(type)));
 }
 
 }  // namespace

@@ -1,5 +1,7 @@
 #include "lowir_native_code_buffer.h"
 
+#include "lowir_native.h"
+
 #include <algorithm>
 #include <climits>
 #include <cstring>
@@ -42,14 +44,14 @@ std::size_t CodeOffsetAdjustment::bytes_removed() const
 
 CodeBuffer::CodeBuffer()
 	: base_offset_(kExecutableContentOffset), relocatable_addresses_(false),
-	  symbol_names_(0), strings_(0)
+	  symbol_names_(0), strings_(0), stats_(0)
 {
 }
 
 CodeBuffer::CodeBuffer(std::size_t base_offset, bool relocatable_addresses)
 	: base_offset_(base_offset),
 	  relocatable_addresses_(relocatable_addresses), symbol_names_(0),
-	  strings_(0)
+	  strings_(0), stats_(0)
 {
 }
 
@@ -86,16 +88,14 @@ void CodeBuffer::align(std::size_t alignment)
 
 void CodeBuffer::label(const std::string& name)
 {
-	const std::pair<std::unordered_map<std::string, std::size_t>::iterator,
-		bool> inserted = labels_.emplace(name, bytes_.size());
-	if (!inserted.second)
-		throw std::logic_error("duplicate native label: " + name);
-	label_offsets_.push_back(&inserted.first->second);
+	if (stats_) ++stats_->code_buffer_named_labels;
+	insert_named_label(name, bytes_.size(), false);
 }
 
 void CodeBuffer::label(lowir_model::SymbolId symbol)
 {
-	label(symbol_name(symbol));
+	if (stats_) ++stats_->code_buffer_typed_labels;
+	insert_named_label(symbol_name(symbol), bytes_.size(), false);
 }
 
 lowir_model::LocalLabelId CodeBuffer::allocate_local_label()
@@ -133,10 +133,21 @@ void CodeBuffer::label_at(const std::string& name, std::size_t offset)
 {
 	if (offset > bytes_.size())
 		throw std::logic_error("native label is out of bounds");
+	if (stats_) ++stats_->code_buffer_named_labels;
+	insert_named_label(name, offset, true);
+}
+
+void CodeBuffer::insert_named_label(const std::string& name,
+	std::size_t offset, bool duplicate_is_runtime_error)
+{
 	const std::pair<std::unordered_map<std::string, std::size_t>::iterator,
 		bool> inserted = labels_.emplace(name, offset);
 	if (!inserted.second)
-		throw std::runtime_error("duplicate native symbol: " + name);
+	{
+		if (duplicate_is_runtime_error)
+			throw std::runtime_error("duplicate native symbol: " + name);
+		throw std::logic_error("duplicate native label: " + name);
+	}
 	// References to unordered_map elements remain valid across rehashes.  Keep
 	// insertion-order pointers so per-function compaction only adjusts labels
 	// emitted in that function instead of rescanning every earlier symbol.
@@ -216,6 +227,23 @@ void CodeBuffer::bind_strings(const lowir_model::StringPool& strings)
 	strings_ = &strings;
 }
 
+void CodeBuffer::bind_stats(Stats* stats)
+{
+	stats_ = stats;
+}
+
+bool CodeBuffer::collects_stats() const
+{
+	return stats_ != 0;
+}
+
+void CodeBuffer::note_literal_text_parse(std::uint64_t nanoseconds)
+{
+	if (!stats_) return;
+	++stats_->native_literal_text_parses;
+	stats_->native_literal_parse_nanoseconds += nanoseconds;
+}
+
 const lowir_model::StringPool& CodeBuffer::strings() const
 {
 	if (!strings_) throw std::logic_error("native string pool is not bound");
@@ -227,6 +255,7 @@ const std::string& CodeBuffer::literal_spelling(
 {
 	if (!strings_ || !literal.valid())
 		throw std::logic_error("invalid native literal identity");
+	if (stats_) ++stats_->native_semantic_string_reads;
 	return strings_->get(literal);
 }
 
@@ -245,6 +274,7 @@ bool CodeBuffer::short_relative(unsigned opcode, const std::string& target)
 	const std::int64_t delta = static_cast<std::int64_t>(found->second) -
 		static_cast<std::int64_t>(bytes_.size() + 2);
 	if (delta < INT8_MIN || delta > INT8_MAX) return false;
+	if (stats_) ++stats_->code_buffer_named_fixups;
 	byte(opcode);
 	NamedShortRelativeFixup fixup;
 	fixup.offset = bytes_.size();
@@ -482,6 +512,7 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 
 void CodeBuffer::relative32(const std::string& target)
 {
+	if (stats_) ++stats_->code_buffer_named_fixups;
 	Fixup fixup;
 	fixup.kind = Fixup::RELATIVE32;
 	fixup.offset = bytes_.size();
@@ -502,6 +533,7 @@ void CodeBuffer::relative32(lowir_model::LocalLabelId target)
 
 void CodeBuffer::relative32(lowir_model::SymbolId target)
 {
+	if (stats_) ++stats_->code_buffer_typed_fixups;
 	SymbolFixup fixup;
 	fixup.kind = Fixup::RELATIVE32;
 	fixup.offset = bytes_.size();
@@ -512,6 +544,7 @@ void CodeBuffer::relative32(lowir_model::SymbolId target)
 
 void CodeBuffer::absolute64(const std::string& target, long long addend)
 {
+	if (stats_) ++stats_->code_buffer_named_fixups;
 	Fixup fixup;
 	fixup.kind = Fixup::ABSOLUTE64;
 	fixup.offset = bytes_.size();
@@ -533,6 +566,7 @@ void CodeBuffer::absolute64(lowir_model::LocalLabelId target)
 
 void CodeBuffer::absolute64(lowir_model::SymbolId target, long long addend)
 {
+	if (stats_) ++stats_->code_buffer_typed_fixups;
 	SymbolFixup fixup;
 	fixup.kind = Fixup::ABSOLUTE64;
 	fixup.offset = bytes_.size();
@@ -546,6 +580,7 @@ void CodeBuffer::address32(
 	const std::string& target,
 	mir_model::MirOperand::AddressBinding address_binding)
 {
+	if (stats_) ++stats_->code_buffer_named_fixups;
 	Fixup fixup;
 	fixup.kind = Fixup::ADDRESS32;
 	fixup.address_binding = address_binding;
@@ -569,6 +604,7 @@ void CodeBuffer::address32(
 	lowir_model::SymbolId target,
 	mir_model::MirOperand::AddressBinding address_binding)
 {
+	if (stats_) ++stats_->code_buffer_typed_fixups;
 	SymbolFixup fixup;
 	fixup.kind = Fixup::ADDRESS32;
 	fixup.address_binding = address_binding;
@@ -580,6 +616,7 @@ void CodeBuffer::address32(
 
 void CodeBuffer::tls_offset32(const std::string& target)
 {
+	if (stats_) ++stats_->code_buffer_named_fixups;
 	Fixup fixup;
 	fixup.kind = Fixup::TLS_OFFSET32;
 	fixup.offset = bytes_.size();
@@ -590,6 +627,7 @@ void CodeBuffer::tls_offset32(const std::string& target)
 
 void CodeBuffer::tls_offset32(lowir_model::SymbolId target)
 {
+	if (stats_) ++stats_->code_buffer_typed_fixups;
 	SymbolFixup fixup;
 	fixup.kind = Fixup::TLS_OFFSET32;
 	fixup.offset = bytes_.size();
@@ -601,6 +639,7 @@ void CodeBuffer::tls_offset32(lowir_model::SymbolId target)
 void CodeBuffer::relative32_at(std::size_t offset,
 	const std::string& target, long long elf_addend)
 {
+	if (stats_) ++stats_->code_buffer_named_fixups;
 	if (offset > bytes_.size() || 4 > bytes_.size() - offset)
 		throw std::logic_error("native relative relocation is out of bounds");
 	Fixup fixup;
@@ -614,6 +653,7 @@ void CodeBuffer::relative32_at(std::size_t offset,
 void CodeBuffer::absolute64_at(std::size_t offset,
 	const std::string& target, long long addend)
 {
+	if (stats_) ++stats_->code_buffer_named_fixups;
 	if (offset > bytes_.size() || 8 > bytes_.size() - offset)
 		throw std::logic_error("native absolute relocation is out of bounds");
 	Fixup fixup;

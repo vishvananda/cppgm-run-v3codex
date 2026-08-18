@@ -35,8 +35,8 @@ using object_elf_detail::declaration_object_symbols;
 using object_elf_detail::host_external_global_definitions;
 using object_elf_detail::host_symbol_spelling;
 using object_elf_detail::make_linux_relocatable_image;
-using float_bits::extended;
-using float_bits::scalar;
+using float_bits::parsed_extended;
+using float_bits::parsed_scalar;
 using data_layout::global_alignment;
 using data_layout::type_size;
 using data_layout::type_width;
@@ -48,6 +48,7 @@ const std::uint64_t kLoadAddress = 0x400000;
 const std::size_t kElfHeaderSize = 64;
 const std::size_t kProgramHeaderSize = 56;
 const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
+
 std::string native_object_symbol(const std::string & symbol)
 {
   return symbol.empty() || symbol[0] == '@' ? symbol : "@" + symbol;
@@ -221,7 +222,7 @@ void emit_extended_immediate_store(CodeBuffer & out,
   long long displacement = 0;
   float_address(out, destination, function, base, displacement);
   const std::pair<std::uint64_t, std::uint64_t> words =
-    extended(text);
+    parsed_extended(out, text);
   emit_immediate_move(out, XR_R10, words.first);
   emit_store(out, base, displacement, XR_R10, 64);
   emit_immediate_move(out, XR_R10, words.second);
@@ -277,7 +278,7 @@ void emit_x87_load_spelling(CodeBuffer & out, const std::string & spelling,
   if(type.kind == lowir_model::LTK_F80)
     emit_extended_immediate_store(out, scratch, spelling, function);
   else {
-    emit_immediate_move(out, XR_R10, scalar(spelling, type));
+    emit_immediate_move(out, XR_R10, parsed_scalar(out, spelling, type));
     emit_store(out, XR_RSP, 0, XR_R10,
                type.kind == lowir_model::LTK_F32 ? 32 : 64);
   }
@@ -308,7 +309,8 @@ void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
     emit_extended_immediate_store(
       out, scratch, std::to_string(source.imm), function);
   } else {
-    emit_immediate_move(out, XR_R10, scalar(std::to_string(source.imm), type));
+    emit_immediate_move(out, XR_R10,
+      parsed_scalar(out, std::to_string(source.imm), type));
     emit_store(out, XR_RSP, 0, XR_R10,
                type.kind == lowir_model::LTK_F32 ? 32 : 64);
   }
@@ -378,12 +380,12 @@ void materialize_float_operand(CodeBuffer & out, XmmRegister destination,
       emit_xmm_register_move(out, destination, source.xmm, type);
   } else if(source.kind == mir_model::MirOperand::OP_FLOAT_IMM) {
     emit_immediate_move(out, XR_R11,
-      scalar(out.literal_spelling(source.literal), type));
+      parsed_scalar(out, out.literal_spelling(source.literal), type));
     emit_gpr_to_xmm(out, destination, XR_R11,
                     type.kind == lowir_model::LTK_F32 ? 32 : 64);
   } else if(source.kind == mir_model::MirOperand::OP_IMM) {
     emit_immediate_move(out, XR_R11,
-      scalar(std::to_string(source.imm), type));
+      parsed_scalar(out, std::to_string(source.imm), type));
     emit_gpr_to_xmm(out, destination, XR_R11,
                     type.kind == lowir_model::LTK_F32 ? 32 : 64);
   } else {
@@ -2782,6 +2784,7 @@ void write_linux_executable(const std::string & path,
   CodeBuffer content;
   content.bind_symbol_names(program.symbol_names);
   content.bind_strings(*program.strings);
+  content.bind_stats(stats);
   content.label("__startup");
   for(std::size_t i = 0; i < program.startup.size(); ++i)
     emit_instruction(content, program.startup[i], 0);
@@ -2805,6 +2808,7 @@ void write_linux_executable(const std::string & path,
   CodeBuffer content;
   content.bind_symbol_names(program.symbol_names);
   content.bind_strings(*program.strings);
+  content.bind_stats(stats);
   std::uint64_t encode_nanoseconds = 0;
   std::chrono::steady_clock::time_point encode_started;
   if(stats) encode_started = std::chrono::steady_clock::now();
@@ -2843,6 +2847,7 @@ void write_linux_relocatable(
   CodeBuffer text(0, true);
   text.bind_symbol_names(program.symbol_names);
   text.bind_strings(*program.strings);
+  text.bind_stats(stats);
   std::vector<HostFunctionLayout> functions;
   functions.reserve(lowering.function_count() + source.function_declarations.size());
   std::uint64_t encode_nanoseconds = 0;
@@ -2873,6 +2878,7 @@ void write_linux_relocatable(
   intern_data_section(".data", 3, data_sections, data_section_indexes);
   data_sections[0].content.bind_symbol_names(program.symbol_names);
   data_sections[0].content.bind_strings(*program.strings);
+  data_sections[0].content.bind_stats(stats);
   const std::vector<unsigned char> suppressed_globals =
     host_external_global_definitions(source, program);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
@@ -2888,6 +2894,7 @@ void write_linux_relocatable(
     DataSectionBuffer & section = data_sections[section_index];
     section.content.bind_symbol_names(program.symbol_names);
     section.content.bind_strings(*program.strings);
+    section.content.bind_stats(stats);
     section.alignment = std::max(section.alignment, global_alignment(global));
     emit_global(section.content, global);
   }
@@ -2955,7 +2962,8 @@ void write_linux_relocatable(
     source, encoded_section(std::move(text), ".text", 6, 16),
     std::move(encoded_data_sections),
     functions,
-    relocations);
+    relocations,
+    stats);
   if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - image_started).count());

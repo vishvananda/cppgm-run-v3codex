@@ -672,6 +672,48 @@ void remap_lowir_program_strings(Program & program,
   }
 }
 
+std::size_t lowir_program_storage_bytes(const Program & program)
+{
+	std::size_t bytes = program.strings.storage_bytes() +
+		program.symbol_names.capacity() * sizeof(StringId) +
+		program.global_declarations.capacity() * sizeof(GlobalDeclaration) +
+		program.globals.capacity() * sizeof(GlobalDefinition) +
+		program.function_declarations.capacity() * sizeof(FunctionDeclaration) +
+		program.functions.capacity() * sizeof(Function) +
+		program.object_aliases.capacity() * sizeof(ObjectAlias) +
+		program.exported_symbols.capacity() * sizeof(ir_model::ExportedSymbol);
+	for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+		bytes += program.function_declarations[i].params.capacity() *
+			sizeof(Parameter);
+	for(std::size_t i = 0; i < program.globals.size(); ++i)
+		bytes += program.globals[i].data_items.capacity() *
+			sizeof(GlobalDefinition::DataItem);
+	for(std::size_t f = 0; f < program.functions.size(); ++f) {
+		const Function & function = program.functions[f];
+		bytes += function.params.capacity() * sizeof(Parameter) +
+			function.slots.capacity() * sizeof(SlotId) +
+			function.slot_names.capacity() * sizeof(StringId) +
+			function.slot_types.capacity() * sizeof(LowType) +
+			function.slot_parameter_values.capacity() * sizeof(ValueId) +
+			function.value_names.capacity() * sizeof(PresentationName) +
+			function.value_types.capacity() * sizeof(LowType) +
+			function.blocks.capacity() * sizeof(Block) +
+			function.block_labels.capacity() * sizeof(StringId);
+		for(std::size_t b = 0; b < function.blocks.size(); ++b) {
+			const std::vector<Instruction> & instructions =
+				function.blocks[b].instructions;
+			bytes += instructions.capacity() * sizeof(Instruction);
+			for(std::size_t i = 0; i < instructions.size(); ++i)
+				bytes += instructions[i].args.capacity() * sizeof(Operand) +
+					instructions[i].call_params.capacity() * sizeof(Parameter);
+		}
+	}
+	for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
+		bytes += program.exported_symbols[i].internal_symbol.capacity() +
+			program.exported_symbols[i].object_symbol.capacity();
+	return bytes;
+}
+
 void remap_lowir_program_symbols(
     Program & program, const std::vector<SymbolId> & symbols)
 {

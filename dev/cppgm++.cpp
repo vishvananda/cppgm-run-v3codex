@@ -973,6 +973,38 @@ void report_lowir_preparation_stats(
 			 << '\n';
 	cerr << "pa37_prepare_stats"
 		 << " file=" << path
+		 << " typed_name_entries=" << preparation_stats.typed_name_entries
+		 << " typed_name_bytes=" << preparation_stats.typed_name_bytes
+		 << " adapter_prefix_renders="
+		 << preparation_stats.adapter_prefix_renders
+		 << " adapter_prefix_bytes="
+		 << preparation_stats.adapter_prefix_bytes
+		 << " adapter_integer_renders="
+		 << preparation_stats.adapter_integer_renders
+		 << " adapter_integer_bytes="
+		 << preparation_stats.adapter_integer_bytes
+		 << " adapter_literal_materializations="
+		 << preparation_stats.adapter_literal_materializations
+		 << " adapter_pool_calls="
+		 << preparation_stats.adapter_string_pool.intern_calls
+		 << " adapter_pool_hits="
+		 << preparation_stats.adapter_string_pool.intern_hits
+		 << " adapter_pool_misses="
+		 << preparation_stats.adapter_string_pool.intern_misses
+		 << " adapter_pool_hash_bytes="
+		 << preparation_stats.adapter_string_pool.hash_bytes
+		 << " adapter_pool_slot_probes="
+		 << preparation_stats.adapter_string_pool.slot_probes
+		 << " lowir_string_entries="
+		 << preparation_stats.lowir_string_entries
+		 << " lowir_spelling_bytes="
+		 << preparation_stats.lowir_spelling_bytes
+		 << " lowir_string_storage_bytes="
+		 << preparation_stats.lowir_string_storage_bytes
+		 << " lowir_model_storage_bytes="
+		 << preparation_stats.lowir_model_storage_bytes
+		 << " typed_lowir_peak_live_bytes="
+		 << preparation_stats.typed_lowir_peak_live_bytes
 		 << " reference_operand_visits="
 		 << preparation_stats.reference_operand_visits
 		 << " referenced_symbols=" << preparation_stats.referenced_symbols
@@ -1063,8 +1095,7 @@ cppgm::pa30::CompilerObject compile_source_object(
 	const bool collect_stats = invocation.collect_stats;
   const string source = read_source_file(path);
 	cppgm::LowIRLoweringStats stats;
-	uint64_t text_parse_nanoseconds = 0;
-	uint64_t typed_pipeline_nanoseconds = 0;
+	uint64_t text_parse_nanoseconds = 0, typed_pipeline_nanoseconds = 0;
 	uint64_t adapter_nanoseconds = 0;
 	uint64_t debug_nanoseconds = 0;
 	uint64_t prune_nanoseconds = 0;
@@ -1107,6 +1138,8 @@ cppgm::pa30::CompilerObject compile_source_object(
 			if(collect_stats) started = chrono::steady_clock::now();
 			object.lowir = cppgm::AdaptTypedLowIRForNative(typed,
 				collect_stats ? &preparation_stats : 0);
+			if(collect_stats) preparation_stats.typed_lowir_peak_live_bytes =
+				stats.typed_storage_bytes + preparation_stats.lowir_model_storage_bytes;
 			if(collect_stats) adapter_nanoseconds = static_cast<uint64_t>(
 				chrono::duration_cast<chrono::nanoseconds>(
 					chrono::steady_clock::now() - started).count());
@@ -1298,7 +1331,6 @@ cppgm::pa30::CompilerObject compile_source_object(
 	}
   return object;
 }
-
 string find_library_object(const DriverInvocation & invocation,
                            const string & library)
 {
@@ -1336,6 +1368,50 @@ int run_compile_driver(const DriverInvocation & invocation,
   if(invocation.collect_stats) {
     cerr << "pa31_object_stats"
          << " private_object=" << (private_object ? 1 : 0)
+		 << " presentation_map_calls=" << native_stats.presentation_map_calls
+		 << " presentation_map_hits=" << native_stats.presentation_map_hits
+		 << " presentation_map_misses=" << native_stats.presentation_map_misses
+		 << " presentation_mapped_bytes="
+		 << native_stats.presentation_mapped_bytes
+		 << " presentation_map_storage_bytes="
+		 << native_stats.presentation_map_storage_bytes
+		 << " mir_string_entries=" << native_stats.mir_string_entries
+		 << " mir_spelling_bytes=" << native_stats.mir_spelling_bytes
+		 << " mir_string_storage_bytes="
+		 << native_stats.mir_string_storage_bytes
+		 << " mir_model_peak_live_bytes="
+		 << native_stats.mir_model_peak_live_bytes
+		 << " native_semantic_string_reads="
+		 << native_stats.native_semantic_string_reads
+		 << " native_literal_text_parses="
+		 << native_stats.native_literal_text_parses
+		 << " code_buffer_typed_labels="
+		 << native_stats.code_buffer_typed_labels
+		 << " code_buffer_named_labels="
+		 << native_stats.code_buffer_named_labels
+		 << " code_buffer_typed_fixups="
+		 << native_stats.code_buffer_typed_fixups
+		 << " code_buffer_named_fixups="
+		 << native_stats.code_buffer_named_fixups
+		 << " elf_internal_string_entries="
+		 << native_stats.elf_internal_string_entries
+		 << " elf_imported_string_entries="
+		 << native_stats.elf_imported_string_entries
+		 << " elf_string_map_probes="
+		 << native_stats.elf_string_map_probes
+		 << " final_strtab_entries=" << native_stats.final_strtab_entries
+		 << " final_strtab_bytes=" << native_stats.final_strtab_bytes
+		 << " final_shstrtab_entries="
+		 << native_stats.final_shstrtab_entries
+		 << " final_shstrtab_bytes=" << native_stats.final_shstrtab_bytes
+		 << " encoded_section_bytes=" << native_stats.encoded_section_bytes
+		 << " final_elf_live_bytes=" << native_stats.final_elf_live_bytes
+		 << " presentation_bridge_ns="
+		 << native_stats.presentation_bridge_nanoseconds
+		 << " native_literal_parse_ns="
+		 << native_stats.native_literal_parse_nanoseconds
+		 << " elf_string_table_ns="
+		 << native_stats.elf_string_table_nanoseconds
          << " functions=" << native_stats.functions
          << " lowir_instructions=" << native_stats.lowir_instructions
          << " mir_instructions=" << native_stats.mir_instructions

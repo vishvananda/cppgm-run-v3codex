@@ -10,6 +10,7 @@
 
 namespace lowir_native
 {
+struct Stats;
 namespace elf_detail
 {
 
@@ -84,6 +85,9 @@ public:
 	void bind_symbol_names(const std::vector<lowir_model::StringId>& names);
 	const std::string& symbol_name(lowir_model::SymbolId symbol) const;
 	void bind_strings(const lowir_model::StringPool& strings);
+	void bind_stats(Stats* stats);
+	bool collects_stats() const;
+	void note_literal_text_parse(std::uint64_t nanoseconds = 0);
 	const lowir_model::StringPool& strings() const;
 	const std::string& literal_spelling(lowir_model::StringId literal) const;
 	void append(const std::vector<unsigned char>& bytes);
@@ -132,10 +136,13 @@ private:
 	void resolve_local_fixups(std::size_t begin);
 	lowir_model::LocalLabelId allocate_local_label();
 	std::size_t local_label_offset(lowir_model::LocalLabelId label) const;
+	void insert_named_label(const std::string& name, std::size_t offset,
+		bool duplicate_is_runtime_error);
 	std::size_t base_offset_;
 	bool relocatable_addresses_;
 	const std::vector<lowir_model::StringId>* symbol_names_;
 	const lowir_model::StringPool* strings_;
+	Stats* stats_;
 	std::vector<unsigned char> bytes_;
 	std::unordered_map<std::string, std::size_t> labels_;
 	std::vector<std::size_t*> label_offsets_;

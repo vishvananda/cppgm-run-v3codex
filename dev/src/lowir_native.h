@@ -12,6 +12,35 @@ namespace lowir_native {
 
 struct Stats
 {
+	// Disabled-by-default presentation transit telemetry.  Every update is
+	// guarded by the optional Stats pointer already used by --stats.
+	std::size_t presentation_map_calls = 0;
+	std::size_t presentation_map_hits = 0;
+	std::size_t presentation_map_misses = 0;
+	std::size_t presentation_mapped_bytes = 0;
+	std::size_t presentation_map_storage_bytes = 0;
+	std::size_t mir_string_entries = 0;
+	std::size_t mir_spelling_bytes = 0;
+	std::size_t mir_string_storage_bytes = 0;
+	std::size_t mir_model_peak_live_bytes = 0;
+	std::size_t native_semantic_string_reads = 0;
+	std::size_t native_literal_text_parses = 0;
+	std::size_t code_buffer_typed_labels = 0;
+	std::size_t code_buffer_named_labels = 0;
+	std::size_t code_buffer_typed_fixups = 0;
+	std::size_t code_buffer_named_fixups = 0;
+	std::size_t elf_internal_string_entries = 0;
+	std::size_t elf_imported_string_entries = 0;
+	std::size_t elf_string_map_probes = 0;
+	std::size_t final_strtab_entries = 0;
+	std::size_t final_strtab_bytes = 0;
+	std::size_t final_shstrtab_entries = 0;
+	std::size_t final_shstrtab_bytes = 0;
+	std::size_t encoded_section_bytes = 0;
+	std::size_t final_elf_live_bytes = 0;
+	std::uint64_t presentation_bridge_nanoseconds = 0;
+	std::uint64_t native_literal_parse_nanoseconds = 0;
+	std::uint64_t elf_string_table_nanoseconds = 0;
   std::size_t functions = 0;
   std::size_t blocks = 0;
   std::size_t lowir_instructions = 0;

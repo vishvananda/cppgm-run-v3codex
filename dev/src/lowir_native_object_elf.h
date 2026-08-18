@@ -89,7 +89,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
   EncodedSection text,
   std::vector<EncodedSection> data_sections,
   std::vector<HostFunctionLayout> & functions,
-  std::size_t & relocation_count);
+  std::size_t & relocation_count,
+  Stats * stats = 0);
 
 }  // namespace object_elf_detail
 }  // namespace lowir_native

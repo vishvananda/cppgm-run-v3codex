@@ -18,28 +18,103 @@ namespace
 
 using namespace pa15_lowir_detail;
 
-std::string Prefix(char prefix, const std::string& value)
+struct AdapterTelemetry
 {
-	std::string result;
-	result.reserve(value.size() + 1);
-	result.push_back(prefix);
-	result.append(value);
-	return result;
+	explicit AdapterTelemetry(lowir_model::LowirPreparationStats* output_value)
+		: output(output_value) {}
+
+	std::string Prefix(char prefix, const std::string& value)
+	{
+		std::string result;
+		result.reserve(value.size() + 1);
+		result.push_back(prefix);
+		result.append(value);
+		if (output)
+		{
+			++output->adapter_prefix_renders;
+			output->adapter_prefix_bytes += result.size();
+		}
+		return result;
+	}
+
+	std::string At(const std::string& value) { return Prefix('@', value); }
+	std::string Percent(const std::string& value) { return Prefix('%', value); }
+	std::string Dollar(const std::string& value) { return Prefix('$', value); }
+	std::string Label(const std::string& value) { return Prefix('^', value); }
+
+	std::string IntegerText(std::int64_t low, std::uint64_t high,
+		const LowType& type)
+	{
+		std::string text;
+		if (type.kind != LOW_I128) text = std::to_string(low);
+		else
+		{
+			std::ostringstream result;
+			result << "0x" << std::hex << std::setfill('0') << std::setw(16)
+				<< high << std::setw(16) << static_cast<std::uint64_t>(low);
+			text = result.str();
+		}
+		if (output)
+		{
+			++output->adapter_integer_renders;
+			output->adapter_integer_bytes += text.size();
+		}
+		return text;
+	}
+
+	lowir_model::StringId Intern(lowir_model::StringPool* strings,
+		const std::string& text, bool literal = false)
+	{
+		if (output && literal) ++output->adapter_literal_materializations;
+		return strings->intern(text, output ? &pool : 0);
+	}
+
+	void Finish(const lowir_model::LowirProgram& program)
+	{
+		if (!output) return;
+		output->adapter_string_pool = pool;
+		output->lowir_string_entries = program.strings.size();
+		output->lowir_spelling_bytes = program.strings.spelling_bytes();
+		output->lowir_string_storage_bytes = program.strings.storage_bytes();
+		output->lowir_model_storage_bytes =
+			lowir_model::lowir_program_storage_bytes(program);
+	}
+
+	lowir_model::LowirPreparationStats* output;
+	lowir_model::StringPoolStats pool;
+};
+
+void CountTypedName(const std::string& name, AdapterTelemetry* telemetry)
+{
+	if (!telemetry->output || name.empty()) return;
+	++telemetry->output->typed_name_entries;
+	telemetry->output->typed_name_bytes += name.size();
 }
 
-std::string At(const std::string& value) { return Prefix('@', value); }
-std::string Percent(const std::string& value) { return Prefix('%', value); }
-std::string Dollar(const std::string& value) { return Prefix('$', value); }
-std::string Label(const std::string& value) { return Prefix('^', value); }
-
-std::string IntegerText(std::int64_t low, std::uint64_t high,
-	const LowType& type)
+void CountTypedNames(const TypedProgram& program, AdapterTelemetry* telemetry)
 {
-	if (type.kind != LOW_I128) return std::to_string(low);
-	std::ostringstream result;
-	result << "0x" << std::hex << std::setfill('0') << std::setw(16) << high
-		<< std::setw(16) << static_cast<std::uint64_t>(low);
-	return result.str();
+	if (!telemetry->output) return;
+	for (std::size_t i = 0; i < program.symbols.size(); ++i)
+	{
+		CountTypedName(program.symbols[i].name, telemetry);
+		CountTypedName(program.symbols[i].object_name, telemetry);
+		CountTypedName(program.symbols[i].section_name, telemetry);
+	}
+	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
+		CountTypedName(program.object_aliases[i].object_name, telemetry);
+	for (std::size_t i = 0; i < program.declarations.size(); ++i)
+		for (std::size_t p = 0; p < program.declarations[i].parameters.size(); ++p)
+			CountTypedName(program.declarations[i].parameters[p].name, telemetry);
+	for (std::size_t i = 0; i < program.functions.size(); ++i)
+	{
+		const Function& function = program.functions[i];
+		for (std::size_t p = 0; p < function.parameters.size(); ++p)
+			CountTypedName(function.parameters[p].name, telemetry);
+		for (std::size_t s = 0; s < function.slots.size(); ++s)
+			CountTypedName(function.slots[s].name, telemetry);
+		for (std::size_t b = 0; b < function.blocks.size(); ++b)
+			CountTypedName(function.blocks[b].label, telemetry);
+	}
 }
 
 lowir_model::LowType AdaptType(const LowType& type)
@@ -81,7 +156,8 @@ struct AdaptedValues
 
 lowir_model::Operand AdaptOperand(const Operand& operand,
 	const TypedProgram& program, const Function& function,
-	const AdaptedValues& values, lowir_model::StringPool* literals)
+	const AdaptedValues& values, lowir_model::StringPool* literals,
+	AdapterTelemetry* telemetry)
 {
 	lowir_model::Operand result;
 	if (operand.type.kind != LOW_INVALID)
@@ -126,20 +202,22 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		result.int_value = operand.integer_value;
 		result.int_high = operand.integer_high;
 		result.has_int_value = true;
-		result.literal = literals->intern(IntegerText(operand.integer_value,
-			operand.integer_high, operand.type));
+		result.literal = telemetry->Intern(literals,
+			telemetry->IntegerText(operand.integer_value,
+				operand.integer_high, operand.type), true);
 		result.has_spelling = true;
 		break;
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
-		result.literal = literals->intern(program.literals.Get(operand.id));
+		result.literal = telemetry->Intern(
+			literals, program.literals.Get(operand.id), true);
 		result.has_spelling = true;
 		lowir_model::parse_lowir_floating_literal(
 			literals->get(result.literal), &result.float_value);
 		break;
 	case Operand::NULL_POINTER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
-		result.literal = literals->intern("nullptr");
+		result.literal = telemetry->Intern(literals, "nullptr", true);
 		result.has_spelling = true;
 		result.int_value = 0;
 		result.int_high = 0;
@@ -152,9 +230,10 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 }
 
 void AdaptParameterFacts(const Parameter& source,
-	lowir_model::StringPool* strings, lowir_model::Parameter* target)
+	lowir_model::StringPool* strings, lowir_model::Parameter* target,
+	AdapterTelemetry* telemetry)
 {
-	target->name = strings->intern(Percent(source.name));
+	target->name = telemetry->Intern(strings, telemetry->Percent(source.name));
 	target->type = AdaptType(source.type);
 	if (source.reference)
 		target->metadata.passing = lowir_model::PPM_REFERENCE;
@@ -177,11 +256,12 @@ void AdaptParameterFacts(const Parameter& source,
 }
 
 std::vector<lowir_model::Parameter> AdaptParameters(
-	const std::vector<Parameter>& source, lowir_model::StringPool* strings)
+	const std::vector<Parameter>& source, lowir_model::StringPool* strings,
+	AdapterTelemetry* telemetry)
 {
 	std::vector<lowir_model::Parameter> result(source.size());
 	for (std::size_t i = 0; i < source.size(); ++i)
-		AdaptParameterFacts(source[i], strings, &result[i]);
+		AdaptParameterFacts(source[i], strings, &result[i], telemetry);
 	return result;
 }
 
@@ -246,16 +326,17 @@ void AdaptBoundaryFacts(const Symbol& source,
 void AdaptSymbolFacts(const Symbol& source,
 	lowir_model::StringPool* strings,
 	lowir_model::SymbolMetadata* symbol,
-	lowir_model::FunctionBoundaryMetadata* boundary)
+	lowir_model::FunctionBoundaryMetadata* boundary,
+	AdapterTelemetry* telemetry)
 {
 	symbol->linkage = source.c_linkage ? lowir_model::LLM_C :
 		lowir_model::LLM_CPP;
 	symbol->binding = source.internal_linkage ? lowir_model::SBM_INTERNAL :
 		source.weak_linkage ? lowir_model::SBM_WEAK : lowir_model::SBM_STRONG;
 	if (!source.object_name.empty())
-		symbol->object_symbol = strings->intern(source.object_name);
+		symbol->object_symbol = telemetry->Intern(strings, source.object_name);
 	if (!source.section_name.empty())
-		symbol->section_name = strings->intern(source.section_name);
+		symbol->section_name = telemetry->Intern(strings, source.section_name);
 	symbol->keep_internal_alias = false;
 	symbol->prefer_local_object_binding = source.prefer_local_object_binding;
 	symbol->object_output_root = source.object_output_root;
@@ -369,7 +450,8 @@ lowir_model::LowOperation AdaptOperation(LowOperation source)
 
 lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	const TypedProgram& program, const Function& function,
-	const AdaptedValues& values, lowir_model::StringPool* literals)
+	const AdaptedValues& values, lowir_model::StringPool* literals,
+	AdapterTelemetry* telemetry)
 {
 	lowir_model::Instruction target;
 	if (source.dest != kNoLowId)
@@ -383,9 +465,12 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	if (source.source_type.kind != LOW_INVALID)
 		target.source_type = AdaptType(source.source_type);
 	target.op = AdaptOperation(source.op);
-	target.first = AdaptOperand(source.first, program, function, values, literals);
-	target.second = AdaptOperand(source.second, program, function, values, literals);
-	target.third = AdaptOperand(source.third, program, function, values, literals);
+	target.first = AdaptOperand(
+		source.first, program, function, values, literals, telemetry);
+	target.second = AdaptOperand(
+		source.second, program, function, values, literals, telemetry);
+	target.third = AdaptOperand(
+		source.third, program, function, values, literals, telemetry);
 	AdaptProjection(source.projection, &target);
 	switch (source.kind)
 	{
@@ -396,18 +481,18 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::ATOMIC_LOAD:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_LOAD;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values, literals));
+			program, function, values, literals, telemetry));
 		break;
 	case Instruction::STORE: target.kind = lowir_model::Instruction::IK_STORE; break;
 	case Instruction::ATOMIC_STORE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_STORE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values, literals));
+			program, function, values, literals, telemetry));
 		break;
 	case Instruction::ATOMIC_EXCHANGE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_EXCHANGE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values, literals));
+			program, function, values, literals, telemetry));
 		break;
 	case Instruction::COPY_OBJECT:
 		target.kind = lowir_model::Instruction::IK_COPYOBJ;
@@ -427,15 +512,15 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::ATOMIC_ADD_FETCH:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_ADD_FETCH;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values, literals));
+			program, function, values, literals, telemetry));
 		break;
 	case Instruction::ATOMIC_COMPARE_EXCHANGE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_COMPARE_EXCHANGE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values, literals));
+			program, function, values, literals, telemetry));
 		target.args.push_back(AdaptOperand(
 			Operand(source.atomic_failure_order, LowI32()), program, function,
-			values, literals));
+			values, literals, telemetry));
 		break;
 	case Instruction::ATOMIC_THREAD_FENCE:
 	case Instruction::ATOMIC_SIGNAL_FENCE:
@@ -443,7 +528,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			lowir_model::Instruction::IK_ATOMIC_THREAD_FENCE :
 			lowir_model::Instruction::IK_ATOMIC_SIGNAL_FENCE;
 		target.first = AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values, literals);
+			program, function, values, literals, telemetry);
 		break;
 	case Instruction::STACK_ALLOC:
 		target.kind = lowir_model::Instruction::IK_STACK_ALLOC; break;
@@ -472,7 +557,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			for (std::size_t i = 0; i < source.extra_count; ++i)
 				target.args.push_back(AdaptOperand(
 					program.call_arguments[source.extra_first + i], program, function,
-					values, literals));
+					values, literals, telemetry));
 		}
 		if (source.indirect)
 		{
@@ -482,11 +567,12 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			for (std::size_t i = 0; i < source.extra_count; ++i)
 			{
 				lowir_model::Parameter& parameter = target.call_params[i];
-				parameter.name = literals->intern(i + source.virtual_base_argument_count >=
+				parameter.name = telemetry->Intern(literals,
+					i + source.virtual_base_argument_count >=
 					source.extra_count ?
-					Percent("__pvbptr" + std::to_string(i +
+					telemetry->Percent("__pvbptr" + std::to_string(i +
 						source.virtual_base_argument_count - source.extra_count)) :
-					Percent("arg" + std::to_string(i)));
+					telemetry->Percent("arg" + std::to_string(i)));
 				parameter.type = target.args[i].literal_type;
 				if (source.extra_first + i <
 					program.call_argument_references.size())
@@ -585,7 +671,9 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			value.int_value = program.switch_case_values[source.extra_first + i];
 			value.int_high = value.int_value < 0 ? ~std::uint64_t(0) : 0;
 			value.has_int_value = true;
-			value.literal = literals->intern(std::to_string(value.int_value));
+			value.literal = telemetry->Intern(
+				literals, telemetry->IntegerText(
+					value.int_value, value.int_high, LowI64()), true);
 			value.has_spelling = true;
 			target.args.push_back(value);
 			const BlockId block =
@@ -619,9 +707,10 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	return target;
 }
 
-void AppendExport(const Symbol& source, ir_model::ExportedSymbol* target)
+void AppendExport(const Symbol& source, ir_model::ExportedSymbol* target,
+	AdapterTelemetry* telemetry)
 {
-	target->internal_symbol = At(source.name);
+	target->internal_symbol = telemetry->At(source.name);
 	target->object_symbol = source.object_name;
 	target->keep_internal_alias = source.keep_internal_object_alias;
 	target->prefer_local_object_binding = source.prefer_local_object_binding;
@@ -635,10 +724,14 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	const TypedProgram& source,
 	lowir_model::LowirPreparationStats* preparation_stats)
 {
+	AdapterTelemetry telemetry(preparation_stats);
+	CountTypedNames(source, &telemetry);
 	lowir_model::LowirProgram target;
 	target.symbol_names.reserve(source.symbols.size());
 	for (std::size_t i = 0; i < source.symbols.size(); ++i)
-		lowir_model::append_lowir_symbol(target, At(source.symbols[i].name));
+		lowir_model::append_lowir_symbol(target,
+			telemetry.Intern(&target.strings,
+				telemetry.At(source.symbols[i].name)));
 	target.global_declarations.reserve(source.global_declarations.size());
 	for (std::size_t i = 0; i < source.global_declarations.size(); ++i)
 	{
@@ -650,7 +743,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (item.typed) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
-		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0);
+		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0,
+			&telemetry);
 		target.global_declarations.push_back(std::move(result));
 	}
 	target.function_declarations.reserve(source.declarations.size());
@@ -660,12 +754,14 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::FunctionDeclaration result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
-		result.params = AdaptParameters(item.parameters, &target.strings);
+		result.params = AdaptParameters(
+			item.parameters, &target.strings, &telemetry);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
 		AdaptSymbolFacts(
-			symbol, &target.strings, &result.metadata, &result.boundary);
+			symbol, &target.strings, &result.metadata, &result.boundary,
+			&telemetry);
 		if (symbol.tls_for_symbol != kNoLowId)
 		{
 			result.metadata.tls_for_symbol_id =
@@ -683,7 +779,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (item.type.kind != LOW_INVALID) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
-		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0);
+		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0,
+			&telemetry);
 		if (item.initializer_kind == Global::STRUCTURED_VALUE)
 		{
 			result.structured = true;
@@ -712,8 +809,9 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					if (value.kind == Global::DataItem::FLOATING_ITEM)
 					{
 						data.literal_operand.kind = lowir_model::Operand::OP_FLOAT;
-						data.literal_operand.literal = target.strings.intern(
-							source.literals.Get(value.floating_spelling));
+						data.literal_operand.literal = telemetry.Intern(
+							&target.strings,
+							source.literals.Get(value.floating_spelling), true);
 						data.literal_operand.has_spelling = true;
 					}
 					else
@@ -722,9 +820,9 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 						data.literal_operand.int_value = value.integer_value;
 						data.literal_operand.int_high = value.integer_high;
 						data.literal_operand.has_int_value = true;
-						data.literal_operand.literal = target.strings.intern(
-							IntegerText(value.integer_value, value.integer_high,
-								value.type));
+						data.literal_operand.literal = telemetry.Intern(
+							&target.strings, telemetry.IntegerText(
+								value.integer_value, value.integer_high, value.type), true);
 						data.literal_operand.has_spelling = true;
 					}
 				}
@@ -747,8 +845,9 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			if (item.initializer_kind == Global::FLOATING_VALUE)
 			{
 				result.init_operand.kind = lowir_model::Operand::OP_FLOAT;
-				result.init_operand.literal = target.strings.intern(
-					source.literals.Get(item.floating_initializer));
+				result.init_operand.literal = telemetry.Intern(
+					&target.strings,
+					source.literals.Get(item.floating_initializer), true);
 				result.init_operand.has_spelling = true;
 			}
 			else
@@ -757,9 +856,9 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				result.init_operand.int_value = item.initializer;
 				result.init_operand.int_high = item.initializer_high;
 				result.init_operand.has_int_value = true;
-				result.init_operand.literal = target.strings.intern(
-					IntegerText(item.initializer, item.initializer_high,
-						item.type));
+				result.init_operand.literal = telemetry.Intern(
+					&target.strings, telemetry.IntegerText(
+						item.initializer, item.initializer_high, item.type), true);
 				result.init_operand.has_spelling = true;
 			}
 		}
@@ -772,13 +871,15 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::Function result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
-		result.params = AdaptParameters(item.parameters, &target.strings);
+		result.params = AdaptParameters(
+			item.parameters, &target.strings, &telemetry);
 		const AdaptedValues values = PrepareValues(item, target.strings, &result);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
 		AdaptSymbolFacts(
-			symbol, &target.strings, &result.metadata, &result.boundary);
+			symbol, &target.strings, &result.metadata, &result.boundary,
+			&telemetry);
 		if (item.entry)
 		{
 			result.metadata.role = lowir_model::SR_ENTRY;
@@ -794,7 +895,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		for (std::size_t j = 0; j < item.slots.size(); ++j)
 		{
 			lowir_model::append_lowir_slot(result,
-				target.strings.intern(Dollar(item.slots[j].name)),
+				telemetry.Intern(&target.strings,
+					telemetry.Dollar(item.slots[j].name)),
 				AdaptType(item.slots[j].type));
 			for (std::size_t p = 0; p < item.parameters.size(); ++p)
 				if (item.slots[j].name == item.parameters[p].name &&
@@ -816,11 +918,12 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			lowir_model::Block lowered;
 			lowered.id = lowir_model::BlockId(block_id);
 			result.block_labels[block_id] =
-				target.strings.intern(Label(block.label));
+				telemetry.Intern(&target.strings, telemetry.Label(block.label));
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(
-					block.instructions[j], source, item, values, &target.strings));
+					block.instructions[j], source, item, values, &target.strings,
+					&telemetry));
 			result.blocks.push_back(std::move(lowered));
 		}
 		target.functions.push_back(std::move(result));
@@ -832,7 +935,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	{
 		lowir_model::ObjectAlias alias;
 		alias.object_symbol =
-			target.strings.intern(source.object_aliases[i].object_name);
+			telemetry.Intern(
+				&target.strings, source.object_aliases[i].object_name);
 		alias.target_id = lowir_model::SymbolId(source.object_aliases[i].target);
 		const Symbol& alias_target =
 			source.symbols[source.object_aliases[i].target];
@@ -841,7 +945,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (source.host_object_emission)
 		{
 			ir_model::ExportedSymbol exported_alias;
-			AppendExport(alias_target, &exported_alias);
+			AppendExport(alias_target, &exported_alias, &telemetry);
 			exported_alias.object_symbol =
 				target.strings.get(alias.object_symbol);
 			target.exported_symbols.push_back(std::move(exported_alias));
@@ -851,11 +955,12 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	for (std::size_t i = 0; i < source.symbols.size(); ++i)
 	{
 		ir_model::ExportedSymbol symbol;
-		AppendExport(source.symbols[i], &symbol);
+		AppendExport(source.symbols[i], &symbol, &telemetry);
 		target.exported_symbols.push_back(std::move(symbol));
 	}
 	canonicalize_frontend_lowir(target, preparation_stats);
 	finalize_lowir_object_model(target, preparation_stats);
+	telemetry.Finish(target);
 	return target;
 }
 

@@ -14,7 +14,8 @@ namespace session_detail {
 class StringIdentityMap
 {
 public:
-  explicit StringIdentityMap(const lowir_model::StringPool & source);
+  StringIdentityMap(const lowir_model::StringPool & source, Stats * stats);
+  ~StringIdentityMap();
 
   lowir_model::StringId map(lowir_model::StringId source_literal);
   lowir_model::PresentationName map(
@@ -26,6 +27,7 @@ private:
   const lowir_model::StringPool & source_;
   std::vector<lowir_model::StringId> mapped_;
   std::shared_ptr<lowir_model::StringPool> strings_;
+  Stats * stats_;
 };
 
 mir_model::MirFunction lower_native_function(

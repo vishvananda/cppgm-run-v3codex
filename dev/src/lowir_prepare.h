@@ -10,6 +10,22 @@ namespace lowir_model
 
 struct LowirPreparationStats
 {
+	// Presentation telemetry is collected only when this optional stats object
+	// is supplied.  It measures the representation boundary without adding
+	// counters to ordinary compilation.
+	std::size_t typed_name_entries = 0;
+	std::size_t typed_name_bytes = 0;
+	std::size_t adapter_prefix_renders = 0;
+	std::size_t adapter_prefix_bytes = 0;
+	std::size_t adapter_integer_renders = 0;
+	std::size_t adapter_integer_bytes = 0;
+	std::size_t adapter_literal_materializations = 0;
+	StringPoolStats adapter_string_pool;
+	std::size_t lowir_string_entries = 0;
+	std::size_t lowir_spelling_bytes = 0;
+	std::size_t lowir_string_storage_bytes = 0;
+	std::size_t lowir_model_storage_bytes = 0;
+	std::size_t typed_lowir_peak_live_bytes = 0;
 	std::size_t reference_operand_visits = 0;
 	std::size_t referenced_symbols = 0;
 	std::size_t declaration_visits = 0;

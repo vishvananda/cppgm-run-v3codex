@@ -574,6 +574,7 @@ void remap_lowir_program_strings(Program & program,
                                  StringPool & destination);
 void remap_lowir_program_symbols(
   Program & program, const std::vector<SymbolId> & symbols);
+std::size_t lowir_program_storage_bytes(const Program & program);
 
 enum LowirEntryPolicy
 {

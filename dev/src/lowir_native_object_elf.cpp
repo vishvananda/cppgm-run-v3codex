@@ -2,6 +2,7 @@
 #include "lowir_native_object_fixups.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <stdexcept>
@@ -1126,13 +1127,68 @@ void append_function_comdat_groups(
   }
 }
 
+namespace {
+
+void record_encoded_storage(Stats * stats, const EncodedSection & text,
+    const std::vector<EncodedSection> & data)
+{
+  if(!stats) return;
+  stats->encoded_section_bytes = text.bytes.size();
+  for(std::size_t i = 0; i < data.size(); ++i)
+    stats->encoded_section_bytes += data[i].bytes.size();
+}
+
+void record_string_table(Stats * stats,
+    const std::unordered_map<std::string, std::size_t> & indexes,
+    const std::vector<unsigned char> & strings,
+    const std::chrono::steady_clock::time_point & started)
+{
+  if(!stats) return;
+  stats->elf_internal_string_entries = indexes.size();
+  stats->final_strtab_entries = indexes.size();
+  stats->final_strtab_bytes = strings.size();
+  stats->elf_string_table_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
+}
+
+void record_section_string_table(Stats * stats,
+    const std::vector<HostSection> & sections, std::uint16_t table,
+    const std::chrono::steady_clock::time_point & started)
+{
+  if(!stats) return;
+  stats->final_shstrtab_entries = sections.size() - 1;
+  stats->final_shstrtab_bytes = sections[table].bytes.size();
+  stats->elf_string_table_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
+}
+
+void record_final_elf_storage(Stats * stats,
+    const std::vector<HostSection> & sections,
+    const std::vector<unsigned char> & image, std::size_t relocations,
+    std::size_t symbol_entries)
+{
+  if(!stats) return;
+  stats->elf_string_map_probes = symbol_entries + relocations;
+  stats->final_elf_live_bytes = image.capacity() +
+    sections.capacity() * sizeof(HostSection);
+  for(std::size_t i = 1; i < sections.size(); ++i)
+    stats->final_elf_live_bytes += sections[i].bytes.capacity() +
+      sections[i].name.capacity();
+}
+
+}  // namespace
+
 std::vector<unsigned char> make_linux_relocatable_image(
     const lowir_model::LowirProgram & program,
     EncodedSection mutable_text,
     std::vector<EncodedSection> mutable_data,
     std::vector<HostFunctionLayout> & functions,
-    std::size_t & relocation_count)
+    std::size_t & relocation_count,
+    Stats * stats)
 {
+	record_encoded_storage(stats, mutable_text, mutable_data);
   std::vector<EncodedSection> text_sections;
   text_sections.push_back(std::move(mutable_text));
   EncodedLabelIndex encoded_labels =
@@ -1162,7 +1218,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
   std::vector<HostRelocation> eh_relocations;
   HostSection eh = make_host_eh_frame(
     functions, text_sections, eh_relocations);
-
   struct PendingRelocations
   {
     std::uint16_t section;
@@ -1196,7 +1251,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
       pending_relocations.push_back(pending);
       return pending.section;
     };
-
   std::vector<std::uint16_t> text_indexes;
   std::vector<std::uint16_t> text_relocation_indexes;
   text_indexes.reserve(text_sections.size());
@@ -1212,7 +1266,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
     text_relocation_indexes.push_back(append_relocations(
       text_sections[i].name, index, text_relocations[i]));
   }
-
   std::vector<std::uint16_t> data_indexes;
   data_indexes.reserve(mutable_data.size());
   for(std::size_t i = 0; i < mutable_data.size(); ++i) {
@@ -1225,7 +1278,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
     data_indexes.push_back(index);
     append_relocations(mutable_data[i].name, index, data_relocations[i]);
   }
-
   std::vector<HostRelocation> init_array_relocations;
   HostSection init_array = make_host_lifecycle_array(
     program, lowir_model::SR_INIT, ".init_array", 14,
@@ -1284,8 +1336,11 @@ std::vector<unsigned char> make_linux_relocatable_image(
 
   std::vector<unsigned char> strings(1, 0);
   std::unordered_map<std::string, std::size_t> symbol_indexes;
+	const std::chrono::steady_clock::time_point string_table_started = stats ?
+		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   std::vector<unsigned char> symbol_table = make_symbol_table(
     locals, globals, section_symbols, strings, symbol_indexes);
+	record_string_table(stats, symbol_indexes, strings, string_table_started);
 
   HostSection note;
   note.name = ".note.GNU-stack";
@@ -1321,9 +1376,13 @@ std::vector<unsigned char> make_linux_relocatable_image(
   append_function_comdat_groups(
     sections, text_sections, text_indexes, text_relocation_indexes,
     symtab_index, symbol_indexes);
+	const std::chrono::steady_clock::time_point section_strings_started = stats ?
+		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(std::size_t i = 1; i < sections.size(); ++i)
     sections[i].name_offset = add_string(
       sections[shstrtab_index].bytes, sections[i].name);
+	record_section_string_table(
+		stats, sections, shstrtab_index, section_strings_started);
 
   std::vector<unsigned char> image;
   image.reserve(relocatable_image_size(sections));
@@ -1364,6 +1423,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
     relocation_count += text_relocations[i].size();
   for(std::size_t i = 0; i < data_relocations.size(); ++i)
     relocation_count += data_relocations[i].size();
+	record_final_elf_storage(
+		stats, sections, image, relocation_count, symbol_indexes.size());
   return image;
 }
 
