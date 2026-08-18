@@ -205,7 +205,7 @@ AdaptedValues PrepareValues(const Function& source,
 	for (std::size_t i = 0; i < target->params.size(); ++i)
 	{
 		result.parameters[i] = lowir_model::append_lowir_value(
-			*target, strings.get(target->params[i].name), target->params[i].type);
+			*target, target->params[i].name, target->params[i].type);
 		target->params[i].value = result.parameters[i];
 	}
 	for (std::size_t order = 0; order < source.block_order.size(); ++order)
@@ -744,7 +744,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		}
 		for (std::size_t j = 0; j < item.slots.size(); ++j)
 		{
-			lowir_model::append_lowir_slot(result, Dollar(item.slots[j].name),
+			lowir_model::append_lowir_slot(result,
+				target.strings.intern(Dollar(item.slots[j].name)),
 				AdaptType(item.slots[j].type));
 			for (std::size_t p = 0; p < item.parameters.size(); ++p)
 				if (item.slots[j].name == item.parameters[p].name &&
@@ -765,7 +766,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			const Block& block = item.blocks[block_id];
 			lowir_model::Block lowered;
 			lowered.id = lowir_model::BlockId(block_id);
-			result.block_labels[block_id] = Label(block.label);
+			result.block_labels[block_id] =
+				target.strings.intern(Label(block.label));
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(

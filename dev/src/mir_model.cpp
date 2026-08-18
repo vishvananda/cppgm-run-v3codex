@@ -382,7 +382,8 @@ void render_function(std::ostringstream & out, const Program & program,
   out << "function " << function.name << "\n  abi\n";
   for(std::size_t i = 0; i < function.params.size(); ++i) {
     const ParamBinding & param = function.params[i];
-    out << "    param " << mir_string(program, param.name) << " -> ";
+    out << "    param " << mir_presentation_name(program, param.name)
+        << " -> ";
     if(param.location == ParamBinding::PL_REG) out << register_name(param.reg);
     else if(param.location == ParamBinding::PL_XMM) out << xmm_name(param.xmm);
     else out << "[rbp+" << param.stack_offset << ']';
@@ -410,7 +411,8 @@ void render_function(std::ostringstream & out, const Program & program,
     if(binding.kind == FrameBinding::FB_PARAM_SLOT) out << "param-slot ";
     else if(binding.kind == FrameBinding::FB_SLOT) out << "slot ";
     else out << "temp ";
-    out << mir_string(program, binding.name) << " -> " << frame_address(binding.offset)
+    out << mir_presentation_name(program, binding.name) << " -> "
+        << frame_address(binding.offset)
         << " : " << lowir_model::lowir_type_text(binding.type) << '\n';
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -459,6 +461,16 @@ const std::string & mir_string(const MirProgram & program,
   if(!program.strings || !string.valid())
     throw std::logic_error("invalid MIR string identity");
   return program.strings->get(string);
+}
+
+std::string mir_presentation_name(
+    const MirProgram & program, lowir_model::PresentationName name)
+{
+  if(!name.valid())
+    throw std::logic_error("invalid MIR presentation identity");
+  if(name.generated())
+    return "%t" + std::to_string(name.generated_ordinal());
+  return mir_string(program, name.spelling());
 }
 
 std::string serialize_mir_program(const MirProgram & program)

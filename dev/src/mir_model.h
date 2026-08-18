@@ -82,7 +82,7 @@ struct ParamBinding
   // PL_REG/PL_XMM describe the incoming ABI location. A lowering may retain
   // the parameter there when its complete live interval, including promoted
   // slot aliases, crosses no clobber; a separate home is required otherwise.
-  lowir_model::StringId name;
+  lowir_model::PresentationName name;
   X64Register reg = XR_RDI;
   XmmRegister xmm = XMM_0;
   long long stack_offset = 0;
@@ -99,7 +99,7 @@ struct FrameBinding
     FB_TEMP
   } kind = FB_TEMP;
 
-  lowir_model::StringId name;
+  lowir_model::PresentationName name;
   long long offset = 0;
   MachineType type;
 };
@@ -448,6 +448,8 @@ const std::string & mir_symbol_name(const MirProgram & program,
                                     lowir_model::SymbolId symbol);
 const std::string & mir_string(const MirProgram & program,
                                lowir_model::StringId string);
+std::string mir_presentation_name(
+  const MirProgram & program, lowir_model::PresentationName name);
 const std::string & mir_literal_spelling(const MirProgram & program,
                                          lowir_model::StringId literal);
 std::string serialize_mir_program(const MirProgram & program);

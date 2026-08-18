@@ -201,17 +201,17 @@ void write_operand(std::ostream & out, const Operand & operand,
 {
   if(operand.kind == Operand::OP_TEMP) {
     if(!function) throw std::logic_error("LowIR value lacks a function");
-    out << lowir_value_name(*function, operand.value);
+    out << lowir_value_name(program.strings, *function, operand.value);
     return;
   }
   if(operand.kind == Operand::OP_LABEL) {
     if(!function) throw std::logic_error("LowIR block target lacks a function");
-    out << lowir_block_label(*function, operand.block);
+    out << lowir_block_label(program.strings, *function, operand.block);
     return;
   }
   if(operand.kind == Operand::OP_SLOT) {
     if(!function) throw std::logic_error("LowIR slot lacks a function");
-    out << lowir_slot_name(*function, operand.slot);
+    out << lowir_slot_name(program.strings, *function, operand.slot);
     return;
   }
   if(operand.kind == Operand::OP_GLOBAL) {
@@ -239,11 +239,11 @@ void write_operand(std::ostream & out, const Operand & operand,
 }
 
 void write_result(std::ostream & out, const Instruction & instruction,
-                  const Function * function)
+                  const Program & program, const Function * function)
 {
   if(!function || !instruction.dest.valid())
     throw std::logic_error("LowIR result lacks compact identity");
-  out << lowir_value_name(*function, instruction.dest);
+  out << lowir_value_name(program.strings, *function, instruction.dest);
 }
 
 const char * projection_name(IndexProjectionKind projection)
@@ -261,7 +261,7 @@ const char * projection_name(IndexProjectionKind projection)
 void write_call(std::ostream & out, const Instruction & ins,
                 const Program & program, const Function * function)
 {
-  if(ins.dest.valid()) { write_result(out, ins, function); out << " = "; }
+  if(ins.dest.valid()) { write_result(out, ins, program, function); out << " = "; }
   out << "call " << (ins.call_returns_void ? "void" : lowir_type_text(ins.type)) << ' ';
   write_operand(out, ins.first, program, function);
   out << '(';
@@ -285,18 +285,18 @@ void write_instruction(std::ostream & out, const Instruction & ins,
 {
   switch(ins.kind) {
   case Instruction::IK_CONST:
-    write_result(out, ins, function); out << " = const " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = const " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); break;
   case Instruction::IK_COPY:
-    write_result(out, ins, function); out << " = copy " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = copy " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); break;
   case Instruction::IK_ADDR:
-    write_result(out, ins, function); out << " = addr "; write_operand(out, ins.first, program, function); break;
+    write_result(out, ins, program, function); out << " = addr "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_LOAD:
-    write_result(out, ins, function); out << " = load " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = load " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); break;
   case Instruction::IK_ATOMIC_LOAD:
-    write_result(out, ins, function); out << " = atomic_load " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = atomic_load " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_STORE:
     out << "store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, program, function);
@@ -306,32 +306,32 @@ void write_instruction(std::ostream & out, const Instruction & ins,
     out << ", "; write_operand(out, ins.second, program, function); out << ", ";
     write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_ATOMIC_EXCHANGE:
-    write_result(out, ins, function); out << " = atomic_exchange " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = atomic_exchange " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function);
     out << ", "; write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_INDEX:
-    write_result(out, ins, function); out << " = index " << lowir_type_text(ins.type);
+    write_result(out, ins, program, function); out << " = index " << lowir_type_text(ins.type);
     if(const char * projection = projection_name(ins.index_projection))
       out << " [projection=" << projection << ']';
     out << ' '; write_operand(out, ins.first, program, function); out << ", ";
     write_operand(out, ins.second, program, function); break;
   case Instruction::IK_UNARY:
-    write_result(out, ins, function); out << " = unary " << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = unary " << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); break;
   case Instruction::IK_BINARY:
   case Instruction::IK_CMP:
-    write_result(out, ins, function); out << (ins.kind == Instruction::IK_BINARY ? " = binary " : " = cmp ")
+    write_result(out, ins, program, function); out << (ins.kind == Instruction::IK_BINARY ? " = binary " : " = cmp ")
         << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function); break;
   case Instruction::IK_CONVERT:
-    write_result(out, ins, function); out << " = convert " << ins.op << ' ' << lowir_type_text(ins.type) << ' '
+    write_result(out, ins, program, function); out << " = convert " << ins.op << ' ' << lowir_type_text(ins.type) << ' '
         << lowir_type_text(ins.source_type) << ' '; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_ATOMIC_ADD_FETCH:
-    write_result(out, ins, function); out << " = atomic_add_fetch " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = atomic_add_fetch " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function);
     out << ", "; write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_ATOMIC_COMPARE_EXCHANGE:
-    write_result(out, ins, function); out << " = atomic_compare_exchange " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = atomic_compare_exchange " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function);
     out << ", "; write_operand(out, ins.third, program, function); out << ", ";
     write_operand(out, ins.args.at(0), program, function); out << ", "; write_operand(out, ins.args.at(1), program, function); break;
@@ -343,10 +343,10 @@ void write_instruction(std::ostream & out, const Instruction & ins,
   case Instruction::IK_VA_START:
     out << "va_start "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_VA_ARG:
-    write_result(out, ins, function); out << " = va_arg " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function); out << " = va_arg " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); break;
   case Instruction::IK_STACK_ALLOC:
-    write_result(out, ins, function); out << " = stack_alloc "; write_operand(out, ins.first, program, function); break;
+    write_result(out, ins, program, function); out << " = stack_alloc "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_CALL: write_call(out, ins, program, function); break;
   case Instruction::IK_COPYOBJ:
     out << "copyobj " << ins.byte_count << 'x' << ins.byte_alignment << ' ';
@@ -378,9 +378,9 @@ void write_instruction(std::ostream & out, const Instruction & ins,
   case Instruction::IK_THROW:
     out << "throw " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_EXCEPTION:
-    write_result(out, ins, function); out << " = exception " << lowir_type_text(ins.type); break;
+    write_result(out, ins, program, function); out << " = exception " << lowir_type_text(ins.type); break;
   case Instruction::IK_EXCEPTION_SELECTOR:
-    write_result(out, ins, function); out << " = exception_selector " << lowir_type_text(ins.type); break;
+    write_result(out, ins, program, function); out << " = exception_selector " << lowir_type_text(ins.type); break;
   case Instruction::IK_RESUME: out << "resume"; break;
   case Instruction::IK_JUMP:
     out << "jump "; write_operand(out, ins.first, program, function); break;
@@ -473,12 +473,12 @@ void write_function(std::ostream & out, const Function & function,
   write_debug(out, function.debug_location, program);
   out << " {\n";
   for(std::size_t i = 0; i < function.slots.size(); ++i)
-    out << "  slot " << lowir_slot_name(function, function.slots[i]) << " : "
+    out << "  slot " << lowir_slot_name(program.strings, function, function.slots[i]) << " : "
         << lowir_type_text(lowir_slot_type(function, function.slots[i])) << '\n';
   if(!function.slots.empty()) out << '\n';
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     if(i) out << '\n';
-    out << "  block " << lowir_block_label(function, function.blocks[i].id)
+    out << "  block " << lowir_block_label(program.strings, function, function.blocks[i].id)
         << ":\n";
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       out << "    ";

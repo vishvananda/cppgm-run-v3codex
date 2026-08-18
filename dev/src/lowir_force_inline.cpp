@@ -63,15 +63,18 @@ struct InlineNames
       values.insert(
         lowir_model::lowir_parameter_name(program, function.params[i]));
     for(std::size_t i = 0; i < function.slots.size(); ++i)
-      slots.insert(lowir_model::lowir_slot_name(function, function.slots[i]));
+      slots.insert(lowir_model::lowir_slot_name(
+        program.strings, function, function.slots[i]));
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
       labels.insert(
-        lowir_model::lowir_block_label(function, function.blocks[i].id));
+        lowir_model::lowir_block_label(
+          program.strings, function, function.blocks[i].id));
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
         const lowir_model::ValueId dest =
           function.blocks[i].instructions[j].dest;
         if(dest.valid())
-          values.insert(lowir_model::lowir_value_name(function, dest));
+          values.insert(lowir_model::lowir_value_name(
+            program.strings, function, dest));
       }
     }
   }
@@ -269,25 +272,27 @@ private:
     values->resize(callee.value_names.size());
     for(std::size_t i = 0; i < callee.params.size(); ++i)
       (*values)[callee.params[i].value] = lowir_model::append_lowir_value(
-        *caller, names->value("parameter"), callee.params[i].type);
+        *caller, program_.strings.intern(names->value("parameter")),
+        callee.params[i].type);
     slots->resize(callee.slot_names.size());
     for(std::size_t i = 0; i < callee.slots.size(); ++i) {
       const lowir_model::SlotId source = callee.slots[i];
       (*slots)[source] = lowir_model::append_lowir_slot(
-        *caller, names->slot("local"), lowir_model::lowir_slot_type(callee, source));
+        *caller, program_.strings.intern(names->slot("local")),
+        lowir_model::lowir_slot_type(callee, source));
     }
     blocks->resize(callee.next_block_id);
     for(std::size_t i = 0; i < callee.blocks.size(); ++i) {
       RenamedBlock block;
       block.id = lowir_model::allocate_lowir_block_id(
-        *caller, names->label("block"));
+        *caller, program_.strings.intern(names->label("block")));
       (*blocks)[callee.blocks[i].id] = block;
       for(std::size_t j = 0; j < callee.blocks[i].instructions.size(); ++j) {
         const lowir_model::ValueId dest =
           callee.blocks[i].instructions[j].dest;
         if(dest.valid())
           (*values)[dest] = lowir_model::append_lowir_value(
-            *caller, names->value("temporary"),
+            *caller, program_.strings.intern(names->value("temporary")),
             lowir_model::lowir_value_type(callee, dest));
       }
     }
@@ -385,13 +390,15 @@ private:
     const std::string prologue_label = names->label("prologue");
     const std::string continuation_label = names->label("continuation");
     const BlockId prologue_id =
-      lowir_model::allocate_lowir_block_id(*caller, prologue_label);
+      lowir_model::allocate_lowir_block_id(
+        *caller, program_.strings.intern(prologue_label));
     const BlockId continuation_id =
-      lowir_model::allocate_lowir_block_id(*caller, continuation_label);
+      lowir_model::allocate_lowir_block_id(
+        *caller, program_.strings.intern(continuation_label));
     lowir_model::SlotId result_slot;
     if(!call.call_returns_void)
       result_slot = lowir_model::append_lowir_slot(
-        *caller, names->slot("result"), call.type);
+        *caller, program_.strings.intern(names->slot("result")), call.type);
     std::vector<Instruction> tail(
       caller->blocks[block_index].instructions.begin() + instruction_index + 1,
       caller->blocks[block_index].instructions.end());

@@ -798,7 +798,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		unordered_map<string, LocalLocation> locals;
 		for(size_t i = 0; i < function.slots.size(); ++i) {
 			const string name = lowir_model::lowir_slot_name(
-				function, function.slots[i]).substr(1);
+				program->strings, function, function.slots[i]).substr(1);
 			if(parameters.count(name)) continue;
 			WordOccurrence local_occurrence;
 			if(find_word(name, function_line + 1, false, true, &local_occurrence)) {
@@ -834,7 +834,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 					else if(ins.kind == lowir_model::Instruction::IK_STORE &&
 							ins.second.kind == lowir_model::Operand::OP_SLOT) {
 						const string slot = lowir_model::lowir_slot_name(
-							function, ins.second.slot).substr(1);
+							program->strings, function, ins.second.slot).substr(1);
 					if(parameters.count(slot)) ins.debug_location = function_loc;
 					else if(locals.count(slot)) {
 						const LocalLocation & loc = locals[slot];
@@ -844,7 +844,8 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 							copy.kind = lowir_model::Instruction::IK_COPY;
 							copy.type = ins.type;
 							copy.dest = lowir_model::append_lowir_value(function,
-								"%dbg_" + slot + "__1", copy.type);
+								program->strings.intern("%dbg_" + slot + "__1"),
+								copy.type, true);
 						copy.first = ins.first;
 						copy.debug_location = ins.debug_location;
 							lowir_model::Operand debug_value;
@@ -856,7 +857,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 					} else if(ins.kind == lowir_model::Instruction::IK_LOAD &&
 							  ins.first.kind == lowir_model::Operand::OP_SLOT) {
 						const string slot = lowir_model::lowir_slot_name(
-							function, ins.first.slot).substr(1);
+							program->strings, function, ins.first.slot).substr(1);
 					if(locals.count(slot)) ins.debug_location = return_loc;
 					else if(!locals.empty()) {
 						const LocalLocation & loc = locals.begin()->second;

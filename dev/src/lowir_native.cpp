@@ -84,7 +84,10 @@ public:
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
     target_.name = source.name;
     target_.object_symbol = source.metadata.object_symbol;
-    target_.block_labels = source.block_labels;
+    target_.block_labels.resize(source.block_labels.size());
+    for(std::size_t i = 0; i < source.block_labels.size(); ++i)
+      if(source.block_labels[i].valid())
+        target_.block_labels[i] = program.strings.get(source.block_labels[i]);
     target_.return_type = source.return_type;
     target_.debug_location.file = strings_.map(source.debug_location.file);
     target_.debug_location.line = source.debug_location.line;
@@ -147,32 +150,9 @@ public:
       target_.blocks.push_back(std::move(block));
     }
     target_.callee_saved_regs = registers_.preserves();
-    target_.has_dynamic_stack = facts_.has_dynamic_stack;
-    const bool needs_call_scratch = uses_scalar_float_ ||
-      (source_.metadata.keep_internal_alias && !facts_.calls.empty());
-    target_.scratch_bytes = needs_call_scratch ? 48 : 0;
-    const std::size_t direct_parameter_bytes =
-      !storage_facts_.has_promoted_parameter_slots &&
-      !facts_.has_direct_branch_parameter ?
-      abi::direct_parameter_bytes(source_.params) : 0;
-    if(needs_call_scratch) {
-      const std::size_t float_frame_bytes = source_.params.empty() ||
-      std::find_if(facts_.value_flags.begin(), facts_.value_flags.end(),
-        [](unsigned flags) {
-          return (flags & FunctionFacts::VF_ZERO_INDEX_PARAMETER) != 0;
-        }) != facts_.value_flags.end() ? frame_bytes_ :
-        std::max<std::size_t>(frame_bytes_, 16);
-      target_.stack_frame_bytes = float_frame_bytes + target_.scratch_bytes;
-    } else {
-      target_.stack_frame_bytes = frame_bytes_;
-      target_.stack_floor_bytes = direct_parameter_bytes;
-    }
-    if(constrained_wide_pressure()) {
-      target_.stack_frame_bytes += 16;
-      target_.stack_floor_bytes += 16;
-    }
-    target_.stack_size = align_up(std::max(target_.stack_floor_bytes,
-      target_.stack_frame_bytes + target_.callee_saved_regs.size() * 8), 16);
+    frame_layout::finalize_function(
+      target_, source_, facts_, storage_facts_, frame_bytes_,
+      uses_scalar_float_, constrained_wide_pressure());
     host_eh_detail::collect_host_eh_clauses(&target_);
     return target_;
   }
@@ -214,10 +194,19 @@ private:
                                    const LowType & type)
   {
     return frame_layout::append_binding(
-      target_, frame_bytes_, kind, strings_.intern(name), type);
+      target_, frame_bytes_, kind,
+      lowir_model::PresentationName::pooled(strings_.intern(name)), type);
   }
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    lowir_model::StringId name,
+                                   const LowType & type)
+  {
+    return frame_layout::append_binding(
+      target_, frame_bytes_, kind,
+      lowir_model::PresentationName::pooled(strings_.map(name)), type);
+  }
+  long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
+                                   lowir_model::PresentationName name,
                                    const LowType & type)
   {
     return frame_layout::append_binding(
@@ -225,7 +214,8 @@ private:
   }
   std::uint32_t append_frame_binding(
                             mir_model::MirFrameBinding::Kind kind,
-                            const std::string & name, const LowType & type,
+                            lowir_model::PresentationName name,
+                            const LowType & type,
                             long long offset)
   {
     if(target_.frame_bindings.size() >=
@@ -233,7 +223,7 @@ private:
       throw std::runtime_error("too many native frame bindings");
     mir_model::MirFrameBinding binding;
     binding.kind = kind;
-    binding.name = strings_.intern(name);
+    binding.name = strings_.map(name);
     binding.offset = offset;
     binding.type = type;
     target_.frame_bindings.push_back(binding);
@@ -249,7 +239,8 @@ private:
        FunctionFacts::missing_position())
       available_after = std::max(
         available_after, facts_.shared_storage_last_use[value]);
-    const std::string name = lowir_model::lowir_value_name(source_, value);
+    const lowir_model::PresentationName name =
+      lowir_model::lowir_value_presentation(source_, value);
     const bool reusable = type.kind != lowir_model::LTK_OBJECT;
     long long offset = 0;
     if(reusable && spill_slots_.acquire(size, type.alignment, position_,
@@ -286,7 +277,6 @@ private:
   {
     for(std::size_t i = 0; i < source_.slots.size(); ++i) {
       const lowir_model::SlotId slot = source_.slots[i];
-      const std::string & name = lowir_model::lowir_slot_name(source_, slot);
       const LowType & type = lowir_model::lowir_slot_type(source_, slot);
       if(storage_facts_.parameter_slot_aliases[slot].valid() ||
          storage_facts_.promoted_parameter_slots[slot].valid())
@@ -300,7 +290,8 @@ private:
         continue;
       }
       slot_offsets_[slot] = allocate_frame_binding(
-        mir_model::MirFrameBinding::FB_SLOT, name, type);
+        mir_model::MirFrameBinding::FB_SLOT,
+        lowir_model::PresentationName::pooled(source_.slot_names[slot]), type);
       slot_offset_known_[slot] = 1;
     }
   }
@@ -369,7 +360,8 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = strings_.map(parameter.name);
+      binding.name = lowir_model::PresentationName::pooled(
+        strings_.map(parameter.name));
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -459,7 +451,8 @@ private:
       const lowir_model::LowirParameter & parameter =
         source_.params[piece.parameter_index];
       mir_model::MirParamBinding binding;
-      binding.name = strings_.map(parameter.name);
+      binding.name = lowir_model::PresentationName::pooled(
+        strings_.map(parameter.name));
       binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ||
         wide::is_integer(parameter.type) ?
         piece.type : parameter.type;
@@ -535,7 +528,8 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = strings_.map(parameter.name);
+      binding.name = lowir_model::PresentationName::pooled(
+        strings_.map(parameter.name));
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -1121,7 +1115,8 @@ private:
     X64Register result = XR_RSP;
     if(try_allocate_result(value, out, &result, force_preserved)) return result;
     throw std::runtime_error("reactive GPR allocation exhausted in " +
-      source_.name + " for " + lowir_model::lowir_value_name(source_, value) +
+      source_.name + " for " + lowir_model::lowir_value_name(
+        program_.strings, source_, value) +
       " at LowIR position " +
 	  std::to_string(position_));
   }

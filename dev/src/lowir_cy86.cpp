@@ -558,7 +558,8 @@ std::string FunctionEmitter::BlockLabel(const std::string & block) const
 
 std::string FunctionEmitter::BlockLabel(const Operand & block) const
 {
-  return BlockLabel(lowir_model::lowir_block_label(function_, block.block));
+  return BlockLabel(lowir_model::lowir_block_label(
+    owner_.program_.strings, function_, block.block));
 }
 
 std::string FunctionEmitter::EpilogueLabel() const
@@ -620,7 +621,8 @@ void FunctionEmitter::EmitParameterCopies()
 
 void FunctionEmitter::EmitBlock(const Block & block)
 {
-  out_.Label(BlockLabel(lowir_model::lowir_block_label(function_, block.id)));
+  out_.Label(BlockLabel(lowir_model::lowir_block_label(
+    owner_.program_.strings, function_, block.id)));
   for(std::size_t i = 0; i < block.instructions.size(); ++i) {
     EmitInstruction(block.instructions[i]);
     ++instruction_count_;

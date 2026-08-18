@@ -487,14 +487,15 @@ struct Function
   std::vector<Parameter> params;
   LowType return_type;
   std::vector<SlotId> slots;
-  std::vector<std::string> slot_names;
+  // Function tables keep compact presentation identities. Generated values
+  // use their ordinal and leave the pooled name invalid.
+  std::vector<StringId> slot_names;
   std::vector<LowType> slot_types;
   std::vector<ValueId> slot_parameter_values;
-  std::vector<std::string> value_names;
-  std::vector<std::uint32_t> generated_value_ordinals;
+  std::vector<PresentationName> value_names;
   std::vector<LowType> value_types;
   std::vector<Block> blocks;
-  std::vector<std::string> block_labels;
+  std::vector<StringId> block_labels;
   std::uint32_t next_block_id = 0;
   InstructionDebugLocation debug_location;
   FunctionBoundaryMetadata boundary;
@@ -545,19 +546,27 @@ using LowirObjectAlias = ObjectAlias;
 using LowirProgram = Program;
 
 BlockId allocate_lowir_block_id(Function & function,
-                               const std::string & label = std::string());
-const std::string & lowir_block_label(const Function & function, BlockId block);
-SlotId append_lowir_slot(Function & function, const std::string & name,
+                               StringId label = StringId());
+const std::string & lowir_block_label(const StringPool & strings,
+                                      const Function & function,
+                                      BlockId block);
+SlotId append_lowir_slot(Function & function, StringId name,
                          const LowType & type);
-const std::string & lowir_slot_name(const Function & function, SlotId slot);
+const std::string & lowir_slot_name(const StringPool & strings,
+                                    const Function & function, SlotId slot);
 const LowType & lowir_slot_type(const Function & function, SlotId slot);
-ValueId append_lowir_value(Function & function, const std::string & name,
-                           const LowType & type);
+ValueId append_lowir_value(Function & function, StringId name,
+                           const LowType & type,
+                           bool preserve_copy = false);
 ValueId append_lowir_generated_value(Function & function,
                                      std::uint32_t ordinal,
                                      const LowType & type);
-std::string lowir_value_name(const Function & function, ValueId value);
+std::string lowir_value_name(const StringPool & strings,
+                             const Function & function, ValueId value);
 const LowType & lowir_value_type(const Function & function, ValueId value);
+bool lowir_value_preserves_copy(const Function & function, ValueId value);
+PresentationName lowir_value_presentation(const Function & function,
+                                          ValueId value);
 SymbolId append_lowir_symbol(Program & program, const std::string & name);
 const std::string & lowir_symbol_name(const Program & program, SymbolId symbol);
 const std::string & lowir_parameter_name(const Program & program,

@@ -6,6 +6,67 @@
 #include <unordered_map>
 
 namespace lowir_model {
+
+namespace {
+
+const std::uint32_t kPresentationKindMask = 0xc0000000U;
+const std::uint32_t kPresentationPayloadMask = 0x3fffffffU;
+const std::uint32_t kPresentationPreserveCopy = 0x40000000U;
+const std::uint32_t kPresentationGeneratedValue = 0x80000000U;
+
+}  // namespace
+
+PresentationName::PresentationName() : encoded_(kInvalidCompactId) {}
+PresentationName::PresentationName(std::uint32_t encoded) : encoded_(encoded) {}
+
+PresentationName PresentationName::pooled(StringId spelling,
+                                           bool preserve_copy)
+{
+  const std::uint32_t id = spelling;
+  if(!spelling.valid() || id > kPresentationPayloadMask)
+    throw std::runtime_error("invalid pooled presentation identity");
+  return PresentationName(
+    id | (preserve_copy ? kPresentationPreserveCopy : 0));
+}
+
+PresentationName PresentationName::generated_value(std::uint32_t ordinal)
+{
+  if(ordinal > kPresentationPayloadMask)
+    throw std::runtime_error("too many generated presentation identities");
+  return PresentationName(kPresentationGeneratedValue | ordinal);
+}
+
+bool PresentationName::valid() const
+{
+  return encoded_ != kInvalidCompactId;
+}
+
+bool PresentationName::generated() const
+{
+  return valid() &&
+    (encoded_ & kPresentationKindMask) == kPresentationGeneratedValue;
+}
+
+bool PresentationName::preserves_copy() const
+{
+  return valid() &&
+    (encoded_ & kPresentationKindMask) == kPresentationPreserveCopy;
+}
+
+StringId PresentationName::spelling() const
+{
+  if(!valid() || generated())
+    throw std::logic_error("presentation identity has no pooled spelling");
+  return StringId(encoded_ & kPresentationPayloadMask);
+}
+
+std::uint32_t PresentationName::generated_ordinal() const
+{
+  if(!generated())
+    throw std::logic_error("presentation identity has no generated ordinal");
+  return encoded_ & kPresentationPayloadMask;
+}
+
 namespace {
 
 std::string generated_literal_spelling(const Operand & operand)
@@ -195,7 +256,7 @@ void StringPool::rehash(std::size_t capacity)
   slots_.swap(replacement);
 }
 
-BlockId allocate_lowir_block_id(Function & function, const std::string & label)
+BlockId allocate_lowir_block_id(Function & function, StringId label)
 {
   if(function.next_block_id == kInvalidCompactId)
     throw std::runtime_error("too many LowIR blocks");
@@ -204,15 +265,17 @@ BlockId allocate_lowir_block_id(Function & function, const std::string & label)
   return result;
 }
 
-const std::string & lowir_block_label(const Function & function, BlockId block)
+const std::string & lowir_block_label(const StringPool & strings,
+                                      const Function & function,
+                                      BlockId block)
 {
   const std::uint32_t id = block;
   if(id >= function.block_labels.size())
     throw std::logic_error("invalid LowIR block identity");
-  return function.block_labels[id];
+  return strings.get(function.block_labels[id]);
 }
 
-SlotId append_lowir_slot(Function & function, const std::string & name,
+SlotId append_lowir_slot(Function & function, StringId name,
                          const LowType & type)
 {
   if(function.slot_names.size() == kInvalidCompactId)
@@ -225,12 +288,13 @@ SlotId append_lowir_slot(Function & function, const std::string & name,
   return result;
 }
 
-const std::string & lowir_slot_name(const Function & function, SlotId slot)
+const std::string & lowir_slot_name(const StringPool & strings,
+                                    const Function & function, SlotId slot)
 {
   const std::uint32_t id = slot;
   if(id >= function.slot_names.size())
     throw std::logic_error("invalid LowIR slot identity");
-  return function.slot_names[id];
+  return strings.get(function.slot_names[id]);
 }
 
 const LowType & lowir_slot_type(const Function & function, SlotId slot)
@@ -243,45 +307,46 @@ const LowType & lowir_slot_type(const Function & function, SlotId slot)
 
 namespace {
 
-ValueId append_value_identity(Function & function, const std::string & name,
-                              std::uint32_t generated_ordinal,
+ValueId append_value_identity(Function & function, PresentationName name,
                               const LowType & type)
 {
   if(function.value_names.size() == kInvalidCompactId)
     throw std::runtime_error("too many LowIR values");
   const ValueId result(static_cast<std::uint32_t>(function.value_names.size()));
   function.value_names.push_back(name);
-  function.generated_value_ordinals.push_back(generated_ordinal);
   function.value_types.push_back(type);
   return result;
 }
 
 }  // namespace
 
-ValueId append_lowir_value(Function & function, const std::string & name,
-                           const LowType & type)
+ValueId append_lowir_value(Function & function, StringId name,
+                           const LowType & type, bool preserve_copy)
 {
-  if(name.empty()) throw std::logic_error("empty named LowIR value");
-  return append_value_identity(function, name, kInvalidCompactId, type);
+  if(!name.valid()) throw std::logic_error("empty named LowIR value");
+  return append_value_identity(
+    function, PresentationName::pooled(name, preserve_copy), type);
 }
 
 ValueId append_lowir_generated_value(Function & function,
                                      std::uint32_t ordinal,
                                      const LowType & type)
 {
-  return append_value_identity(function, std::string(), ordinal, type);
+  return append_value_identity(
+    function, PresentationName::generated_value(ordinal), type);
 }
 
-std::string lowir_value_name(const Function & function, ValueId value)
+std::string lowir_value_name(const StringPool & strings,
+                             const Function & function, ValueId value)
 {
   const std::uint32_t id = value;
   if(id >= function.value_names.size())
     throw std::logic_error("invalid LowIR value identity");
-  if(!function.value_names[id].empty()) return function.value_names[id];
-  const std::uint32_t ordinal = function.generated_value_ordinals[id];
-  if(ordinal == kInvalidCompactId)
+  const PresentationName name = function.value_names[id];
+  if(!name.valid())
     throw std::logic_error("LowIR value has no presentation identity");
-  return "%t" + std::to_string(ordinal);
+  if(!name.generated()) return strings.get(name.spelling());
+  return "%t" + std::to_string(name.generated_ordinal());
 }
 
 const LowType & lowir_value_type(const Function & function, ValueId value)
@@ -290,6 +355,23 @@ const LowType & lowir_value_type(const Function & function, ValueId value)
   if(id >= function.value_types.size())
     throw std::logic_error("invalid LowIR value type identity");
   return function.value_types[id];
+}
+
+bool lowir_value_preserves_copy(const Function & function, ValueId value)
+{
+  const std::uint32_t id = value;
+  if(id >= function.value_names.size())
+    throw std::logic_error("invalid LowIR value identity");
+  return function.value_names[id].preserves_copy();
+}
+
+PresentationName lowir_value_presentation(const Function & function,
+                                          ValueId value)
+{
+  const std::uint32_t id = value;
+  if(id >= function.value_names.size())
+    throw std::logic_error("invalid LowIR value identity");
+  return function.value_names[id];
 }
 
 const std::string & lowir_parameter_name(const Program & program,
@@ -326,18 +408,18 @@ void resolve_lowir_function_operands(Function & function,
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     Block & block = function.blocks[i];
     if(!block.id.valid()) block.id = allocate_lowir_block_id(function);
-    blocks.emplace(lowir_block_label(function, block.id), block.id);
+    blocks.emplace(lowir_block_label(strings, function, block.id), block.id);
   }
   std::unordered_map<std::string, SlotId> slots;
   slots.reserve(function.slots.size());
   for(std::size_t i = 0; i < function.slots.size(); ++i)
-    slots.emplace(lowir_slot_name(function, function.slots[i]),
+    slots.emplace(lowir_slot_name(strings, function, function.slots[i]),
                   function.slots[i]);
   std::unordered_map<std::string, ValueId> values;
   values.reserve(function.value_names.size());
   for(std::size_t i = 0; i < function.value_names.size(); ++i) {
     const ValueId value(static_cast<std::uint32_t>(i));
-    values.emplace(lowir_value_name(function, value), value);
+    values.emplace(lowir_value_name(strings, function, value), value);
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     std::vector<Instruction> & instructions = function.blocks[i].instructions;
@@ -394,7 +476,7 @@ void resolve_lowir_function_operands(Function & function,
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
     const SlotId slot = function.slots[s];
     if(lowir_slot_type(function, slot).kind != LTK_OBJECT) continue;
-    const std::string & slot_name = lowir_slot_name(function, slot);
+    const std::string & slot_name = lowir_slot_name(strings, function, slot);
     for(std::size_t p = 0; p < function.params.size(); ++p) {
       const std::string & parameter_name =
         strings.get(function.params[p].name);
@@ -538,13 +620,25 @@ void remap_lowir_program_strings(Program & program,
   }
   for(std::size_t f = 0; f < program.functions.size(); ++f)
   {
-    remap_parameters(program.functions[f].params);
-    remap_string(program.functions[f].debug_location.file);
-    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
+    Function & function = program.functions[f];
+    remap_parameters(function.params);
+    for(std::size_t i = 0; i < function.slot_names.size(); ++i)
+      remap_string(function.slot_names[i]);
+    for(std::size_t i = 0; i < function.value_names.size(); ++i) {
+      PresentationName & name = function.value_names[i];
+      if(name.valid() && !name.generated())
+        name = PresentationName::pooled(
+          destination.intern(program.strings.get(name.spelling())),
+          name.preserves_copy());
+    }
+    for(std::size_t i = 0; i < function.block_labels.size(); ++i)
+      if(function.block_labels[i].valid()) remap_string(function.block_labels[i]);
+    remap_string(function.debug_location.file);
+    for(std::size_t b = 0; b < function.blocks.size(); ++b)
       for(std::size_t i = 0;
-          i < program.functions[f].blocks[b].instructions.size(); ++i) {
+          i < function.blocks[b].instructions.size(); ++i) {
         Instruction & instruction =
-          program.functions[f].blocks[b].instructions[i];
+          function.blocks[b].instructions[i];
         remap_parameters(instruction.call_params);
         remap_string(instruction.debug_location.file);
         remap(instruction.first);

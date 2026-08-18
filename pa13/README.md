@@ -187,6 +187,14 @@ program. Debug locations use a `StringId` from the same pool for their source
 file spelling. Do not store a separate owning `std::string` in every operand or
 debug-location record.
 
+Function-local presentation spellings use the same ownership rule. Slot and
+block tables carry pooled `StringId` values, and explicitly named values carry
+a pooled spelling ID. A compiler-generated temporary may instead retain its
+numeric ordinal and render `%tN` only when LowIR text is written. Validation,
+optimization, and lowering use `ValueId`, `SlotId`, and `BlockId`; behavior
+that must distinguish a special value is an explicit typed flag rather than a
+test of its rendered name.
+
 Required instructions:
 
 - `const`, `copy`, `addr`, `load`, and `store`

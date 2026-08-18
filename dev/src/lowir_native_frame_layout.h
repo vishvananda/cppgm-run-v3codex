@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lowir_native_abi.h"
+#include "lowir_native_analysis.h"
 #include "lowir_native_selection.h"
 
 namespace lowir_native {
@@ -8,7 +9,8 @@ namespace frame_layout {
 
 inline long long append_binding(
     mir_model::MirFunction & function, std::size_t & frame_bytes,
-    mir_model::MirFrameBinding::Kind kind, lowir_model::StringId name,
+    mir_model::MirFrameBinding::Kind kind,
+    lowir_model::PresentationName name,
     const lowir_model::LowType & type)
 {
   frame_bytes = selection::align_up(frame_bytes, type.alignment);
@@ -21,6 +23,14 @@ inline long long append_binding(
   function.frame_bindings.push_back(binding);
   return binding.offset;
 }
+
+void finalize_function(
+    mir_model::MirFunction & target,
+    const lowir_model::LowirFunction & source,
+    const analysis::FunctionFacts & function_facts,
+    const analysis::StorageFacts & storage_facts,
+    std::size_t frame_bytes, bool uses_scalar_float,
+    bool constrained_wide_pressure);
 
 }  // namespace frame_layout
 }  // namespace lowir_native

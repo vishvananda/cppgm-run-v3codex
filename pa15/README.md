@@ -280,6 +280,11 @@ This PA15 milestone supports the following:
 
 Compiler-generated slots and helper names must remain distinct from source
 identifiers so a source declaration cannot redirect an internal temporary.
+The source lowering path should carry compact value, slot, block, and symbol
+identities into the shared typed LowIR model. Store required display spellings
+once in the program string pool, and retain a numeric ordinal for generated
+temporaries; do not construct or hash a presentation string for every operand
+reference.
 
 The generated LowIR for this supported subset is intended to be accepted by the
 later PA29 `lowir2native` backend. PA13 `lowir2cy86` remains a useful optional

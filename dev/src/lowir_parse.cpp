@@ -657,7 +657,7 @@ private:
     result.debug_location = debug_location();
     for(std::size_t i = 0; i < result.params.size(); ++i)
       result.params[i].value = append_lowir_value(
-        result, strings_->get(result.params[i].name), result.params[i].type);
+        result, result.params[i].name, result.params[i].type);
     expect("{");
     parse_function_body(result);
     program.functions.push_back(result);
@@ -672,18 +672,19 @@ private:
         if(block) throw ParseError("slot declaration after first block");
         const std::string name = named('$', "slot name");
         expect(":");
-        append_lowir_slot(function, name, type());
+        append_lowir_slot(function, strings_->intern(name), type());
       } else if(accept("block")) {
         if(block && !terminated &&
            (block->instructions.empty() ||
             (block->instructions.back().kind != Instruction::IK_CALL &&
              block->instructions.back().kind != Instruction::IK_EH_END)))
           throw ParseError("block has no terminator: " +
-            lowir_block_label(function, block->id));
+            lowir_block_label(*strings_, function, block->id));
         const std::string label = named('^', "block name");
         function.blocks.push_back(Block());
         block = &function.blocks.back();
-        block->id = allocate_lowir_block_id(function, label);
+        block->id = allocate_lowir_block_id(
+          function, strings_->intern(label));
         expect(":");
         terminated = false;
       } else {
@@ -698,7 +699,7 @@ private:
         (block->instructions.back().kind != Instruction::IK_CALL &&
          block->instructions.back().kind != Instruction::IK_EH_END)))
       throw ParseError("block has no terminator: " +
-        lowir_block_label(function, block->id));
+        lowir_block_label(*strings_, function, block->id));
   }
 
   bool is_terminator(Instruction::Kind kind) const
@@ -731,7 +732,8 @@ private:
     result.debug_location = debug_location();
     if(!destination.empty())
       result.dest = append_lowir_value(
-        function, destination, parsed_result_type(result));
+        function, strings_->intern(destination), parsed_result_type(result),
+        destination.compare(0, 5, "%dbg_") == 0);
     return result;
   }
 
@@ -1160,12 +1162,14 @@ private:
       values[lowir_parameter_name(program_, function.params[i])] =
         &function.params[i].type;
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
-      if(!slots.emplace(lowir_slot_name(function, function.slots[i]),
+      if(!slots.emplace(lowir_slot_name(program_.strings, function,
+                                        function.slots[i]),
                         &lowir_slot_type(function, function.slots[i])).second)
         throw ParseError("duplicate slot");
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
-      if(!blocks.insert(lowir_block_label(function, function.blocks[i].id)).second)
+      if(!blocks.insert(lowir_block_label(program_.strings, function,
+                                          function.blocks[i].id)).second)
         throw ParseError("duplicate block");
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
       validate_block(function, function.blocks[i], values, slots, blocks);
@@ -1181,7 +1185,8 @@ private:
       const Instruction & ins = block.instructions[i];
       validate_instruction(function, ins, values, slots, blocks);
       if(ins.dest.valid()) {
-        const std::string name = lowir_value_name(function, ins.dest);
+        const std::string name = lowir_value_name(
+          program_.strings, function, ins.dest);
         if(values.count(name)) throw ParseError("duplicate temporary definition");
         values[name] = &lowir_value_type(function, ins.dest);
       }
@@ -1196,7 +1201,7 @@ private:
 	  instruction_terminates(block.instructions.back());
 	if(!terminated)
 	  throw ParseError("block has no terminator: " +
-	    lowir_block_label(function, block.id));
+            lowir_block_label(program_.strings, function, block.id));
   }
 
   bool instruction_terminates(const Instruction & ins) const

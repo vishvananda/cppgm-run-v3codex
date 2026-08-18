@@ -1126,7 +1126,7 @@ wall, and 363,252/364,016 KiB peak RSS.  Paired medians are -0.30% user,
 -0.27% wall, and +0.20% RSS, all inside the noise envelope, so this slice
 receives no standalone timing credit.  The frozen object remains exact at
 4,417,192 bytes with SHA-256
-`98f77be43c75d46d29b75809bd6784a921578303484ece5355eef14693231283`.
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
 
 A clean 32-way self build takes 18.06 seconds wall, 401.21 seconds aggregate
 user time, and 256,068 KiB peak RSS.  A separate 32-way inception build takes
@@ -1134,6 +1134,62 @@ user time, and 256,068 KiB peak RSS.  A separate 32-way inception build takes
 All 160 inception objects match; the self and inception binaries are
 byte-identical at 16,782,616 bytes with SHA-256
 `5ff3ea4f850186a60ff8dac197607f32223354b1c2c1a03d2edf849398efd71d`.
+
+### CI21: compact LowIR local presentation identity
+
+Function-local LowIR presentation tables now store compact program identities
+instead of owning strings.  Slot and block tables carry `StringId`.  Value
+tables carry one four-byte `PresentationName`: its tagged payload is either a
+pooled spelling or the ordinal of a generated `%tN` value.  One tag bit records
+the explicit debug-copy preservation contract, replacing PA37's former
+`%dbg_` prefix tests with a typed fact.  There is no parallel presentation
+index and no generated-name side vector.
+
+Source lowering, explicit LowIR parsing, and private compiler-object reading
+intern names at their respective construction boundaries.  Private-object
+joining remaps pooled IDs directly; the byte-level object format is unchanged.
+Serializers render generated values only when text is requested.  Native
+lowering carries `PresentationName` directly into MIR parameter and frame
+bindings, so a source-generated `%tN` does not need to be constructed and
+hashed merely to transit from LowIR to MIR.  Explicit text validation retains
+its transient string maps because arbitrary user spellings must be resolved;
+those maps are not present on the frozen source path.
+
+The frozen LowIR contains 103,392 function-local values, 20,555 slots, 36,042
+block-table entries, and 5,261 function definitions.  Relative to CI20, compact
+entries remove 4,893,260 bytes of table payload and removing the generated
+ordinal vector removes another 126,264 bytes of `Function` objects, for a
+deterministic 5,019,524-byte reduction before allocator overhead.  The
+`Function` record falls from 504 to 480 bytes; `PresentationName`, `StringId`,
+MIR parameter names, and MIR frame names are each four-byte identities.
+
+The changed lowering initially exposed sparse invalid block-label entries in
+an existing PA37 private-object round-trip test.  MIR block-label presentation
+is still string-owned in this slice, so the LowIR-to-MIR bridge now resolves
+only valid block identities and preserves the existing sparse holes.  The
+public LowIR/MIR/object contracts remain exact.  Moving frame finalization into
+`lowir_native_frame_layout.cpp` keeps `lowir_native.cpp` below the PA39 file
+size limit without changing the hot inline frame-binding allocator.
+
+PA13, PA15, PA29, PA30, PA37, and PA38 report 656/656 passing tests.  The final
+full report passes 5,204/5,204 tests and the PA39 file audit has zero fatal
+findings.  The frozen object is byte-identical to CI20 at 4,417,192 bytes with
+SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+Three A/B/B/A blocks against the immutable CI20 compiler produced
+baseline/candidate medians of 4.970/4.950 seconds user, 5.445/5.415 seconds
+wall, and 366,814/365,352 KiB peak RSS.  Paired medians improve user time by
+0.30%, wall time by 0.28%, and RSS by 0.49%.  This is directionally consistent
+with the structural reduction but remains within the host noise envelope, so
+it is not treated as a large standalone timing win.
+
+A clean 32-way self build takes 18.75 seconds wall, 405.09 seconds aggregate
+user time, and 245,676 KiB peak RSS.  A separate 32-way inception compare takes
+1:49.07 wall, 2,926.92 seconds aggregate user time, and 233,188 KiB peak RSS.
+All 162 self/inception objects match byte-for-byte.  The final binaries are
+byte-identical at 16,839,296 bytes with SHA-256
+`271a7a5e8387cb7789b5bcf9000311ab37e535112b175115e8c938e5ddbb0c52`.
 
 ## 11. Current residual audit and next slices
 
@@ -1161,7 +1217,7 @@ follows:
 | Owner | Avoidable representation | Efficient replacement | Benchmark priority |
 | --- | --- | --- | --- |
 | LowIR top-level model | `GlobalDeclaration`, `GlobalDefinition`, `Function`, and `FunctionDeclaration` duplicate `name` beside `SymbolId`; global data duplicates an address `symbol` beside `symbol_id`; aliases duplicate `target` beside `target_id` | Keep `SymbolId` as semantic identity and make the program symbol table a dense `StringId` view used by dumps and object output | High |
-| LowIR function presentation | `slot_names`, `value_names`, and `block_labels` own strings even for source-generated numeric identities | Store an optional pooled display ID only for arbitrary textual input; otherwise store a compact generated-name recipe/ordinal and render at serialization | High because the frozen input has many generated values |
+| LowIR function presentation | Completed in CI21: slots and blocks use pooled IDs; values use one tagged pooled spelling or generated ordinal, with explicit behavior bits | Keep rendering confined to serialization and diagnostics; do not add a parallel name index | Complete for LowIR; MIR block-label presentation remains below |
 | LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
 | PA37 inliners | value, slot, and label collision sets hash rendered strings and generate new text during every inline | Allocate fresh `ValueId`, `SlotId`, and `BlockId` monotonically; retain one numeric presentation ordinal and consult an explicit-input reservation table only when an exact dump needs collision avoidance | O1/O2 only; correctness owner is PA37 |
 | MIR program shell | functions, globals, global data items, aliases, runtime records, and block-label tables repeat semantic/object names | Carry `SymbolId`, pooled object-name IDs, `BlockId`, and literal IDs; derive fixed runtime names from the existing runtime enum | Medium for O0; high structural value |
@@ -1172,11 +1228,9 @@ follows:
 
 The next changesets should therefore be:
 
-1. Remove duplicated LowIR top-level names and source-generated function-local
-   presentation strings.  First preserve arbitrary textual names through an
-   optional `StringId`; source-generated values, slots, and blocks use a tagged
-   numeric display recipe.  This is the largest remaining source-path string
-   owner and the best candidate for another visible `-O0` improvement.
+1. Remove duplicated LowIR top-level names.  Functions, declarations, globals,
+   global data, and aliases should retain `SymbolId` as identity and resolve
+   their pooled presentation or object spelling only at a true output boundary.
 2. Replace the O1/force-inliner's string collision sets with monotonic numeric
    allocation.  This is PA37 work and must preserve exact optimized LowIR;
    optimization-level policy tests belong in PA38.

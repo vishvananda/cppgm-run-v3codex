@@ -34,6 +34,15 @@ lowir_model::StringId session_detail::StringIdentityMap::map(
   return target;
 }
 
+lowir_model::PresentationName session_detail::StringIdentityMap::map(
+    lowir_model::PresentationName source_name)
+{
+  if(!source_name.valid()) return lowir_model::PresentationName();
+  if(source_name.generated()) return source_name;
+  return lowir_model::PresentationName::pooled(
+    map(source_name.spelling()), source_name.preserves_copy());
+}
+
 lowir_model::StringId session_detail::StringIdentityMap::intern(
     const std::string & spelling)
 {

@@ -46,6 +46,27 @@ typedef CompactId<BlockIdTag> BlockId;
 typedef CompactId<FrameBindingIdTag> FrameBindingId;
 typedef CompactId<LocalLabelIdTag> LocalLabelId;
 
+// A display name is either one pooled spelling or a generated `%tN` ordinal.
+// Two tag bits also retain the explicit debug-copy presentation contract.
+class PresentationName
+{
+public:
+  PresentationName();
+  static PresentationName pooled(StringId spelling,
+                                 bool preserve_copy = false);
+  static PresentationName generated_value(std::uint32_t ordinal);
+
+  bool valid() const;
+  bool generated() const;
+  bool preserves_copy() const;
+  StringId spelling() const;
+  std::uint32_t generated_ordinal() const;
+
+private:
+  explicit PresentationName(std::uint32_t encoded);
+  std::uint32_t encoded_;
+};
+
 struct StringPoolStats
 {
   std::size_t intern_calls = 0;

@@ -1099,7 +1099,8 @@ bool simplify_values(Function * function, Stats * stats)
         replacement = ins.first;
         replace = true;
       } else if(ins.kind == Instruction::IK_COPY &&
-                function->value_names[ins.dest].compare(0, 5, "%dbg_") != 0 &&
+                !lowir_model::lowir_value_preserves_copy(
+                  *function, ins.dest) &&
                 !storage_temporaries[ins.dest]) {
         replace = ins.first.kind != Operand::OP_TEMP ||
           lowir_model::same_lowir_type(
@@ -2433,7 +2434,8 @@ bool promote_slots(Function * function, Stats * stats)
         Operand folded;
         bool known = ins.kind == Instruction::IK_CONST ? (folded = ins.first, true) :
           ins.kind == Instruction::IK_COPY &&
-            function->value_names[ins.dest].compare(0, 5, "%dbg_") != 0 ?
+            !lowir_model::lowir_value_preserves_copy(
+              *function, ins.dest) ?
               (folded = ins.first, true) :
           ins.kind == Instruction::IK_UNARY ? fold_unary(ins, &folded) :
           ins.kind == Instruction::IK_BINARY ? fold_binary(ins, &folded) :

@@ -260,19 +260,22 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value,
 	{
 		if (!function)
 			throw std::logic_error("compiler object block target lacks a function");
-		out.String(lowir_model::lowir_block_label(*function, value.block));
+		out.String(lowir_model::lowir_block_label(
+			program.strings, *function, value.block));
 	}
 	else if (value.kind == lowir_model::Operand::OP_SLOT)
 	{
 		if (!function)
 			throw std::logic_error("compiler object slot lacks a function");
-		out.String(lowir_model::lowir_slot_name(*function, value.slot));
+		out.String(lowir_model::lowir_slot_name(
+			program.strings, *function, value.slot));
 	}
 	else if (value.kind == lowir_model::Operand::OP_TEMP)
 	{
 		if (!function)
 			throw std::logic_error("compiler object value lacks a function");
-		out.String(lowir_model::lowir_value_name(*function, value.value));
+		out.String(lowir_model::lowir_value_name(
+			program.strings, *function, value.value));
 	}
 	else if (value.kind == lowir_model::Operand::OP_GLOBAL)
 		out.String(lowir_model::lowir_symbol_name(program, value.symbol));
@@ -435,7 +438,8 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
 {
 	WriteEnum(out, value.kind);
 	out.String(value.dest.valid() ?
-		lowir_model::lowir_value_name(function, value.dest) : std::string());
+		lowir_model::lowir_value_name(
+			program.strings, function, value.dest) : std::string());
 	WriteType(out, value.type);
 	WriteType(out, value.source_type);
 	out.String(value.op);
@@ -499,7 +503,9 @@ lowir_model::Instruction ReadInstruction(Reader& in,
 	value.debug_location = ReadDebug(in, program.strings);
 	if (!destination.empty())
 		value.dest = lowir_model::append_lowir_value(
-			function, destination, InstructionResultType(value));
+			function, program.strings.intern(destination),
+			InstructionResultType(value),
+			destination.compare(0, 5, "%dbg_") == 0);
 	return value;
 }
 
@@ -607,13 +613,15 @@ void WriteFunction(Writer& out, const lowir_model::Function& value,
 	out.U64(value.slots.size());
 	for (std::size_t i = 0; i < value.slots.size(); ++i)
 	{
-		out.String(lowir_model::lowir_slot_name(value, value.slots[i]));
+		out.String(lowir_model::lowir_slot_name(
+			program.strings, value, value.slots[i]));
 		WriteType(out, lowir_model::lowir_slot_type(value, value.slots[i]));
 	}
 	out.U64(value.blocks.size());
 	for (std::size_t i = 0; i < value.blocks.size(); ++i)
 	{
-		out.String(lowir_model::lowir_block_label(value, value.blocks[i].id));
+		out.String(lowir_model::lowir_block_label(
+			program.strings, value, value.blocks[i].id));
 		out.U64(value.blocks[i].instructions.size());
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
 			WriteInstruction(out, value.blocks[i].instructions[j], program, value);
@@ -632,19 +640,21 @@ lowir_model::Function ReadFunction(Reader& in,
 	value.return_type = ReadType(in);
 	for (std::size_t i = 0; i < value.params.size(); ++i)
 		value.params[i].value = lowir_model::append_lowir_value(
-			value, lowir_model::lowir_parameter_name(program, value.params[i]),
+			value, value.params[i].name,
 			value.params[i].type);
 	const std::size_t slot_count = in.Count(8);
 	for (std::size_t i = 0; i < slot_count; ++i)
 	{
 		const std::string name = in.String();
-		lowir_model::append_lowir_slot(value, name, ReadType(in));
+		lowir_model::append_lowir_slot(
+			value, program.strings.intern(name), ReadType(in));
 	}
 	value.blocks.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.blocks.size(); ++i)
 	{
 		value.blocks[i].id =
-			lowir_model::allocate_lowir_block_id(value, in.String());
+			lowir_model::allocate_lowir_block_id(
+				value, program.strings.intern(in.String()));
 		value.blocks[i].instructions.resize(in.Count(4));
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
 			value.blocks[i].instructions[j] = ReadInstruction(in, program, value);
@@ -826,7 +836,8 @@ lowir_model::Function MakeLifecycleAggregate(lowir_model::LowirProgram& program,
 	result.metadata.role = role;
 	result.metadata.binding = lowir_model::SBM_INTERNAL;
 	lowir_model::Block block;
-	block.id = lowir_model::allocate_lowir_block_id(result, "^entry");
+	block.id = lowir_model::allocate_lowir_block_id(
+		result, program.strings.intern("^entry"));
 	for (std::size_t i = 0; i < functions.size(); ++i)
 	{
 		const std::size_t index = reverse ? functions.size() - i - 1 : i;

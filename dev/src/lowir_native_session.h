@@ -17,6 +17,8 @@ public:
   explicit StringIdentityMap(const lowir_model::StringPool & source);
 
   lowir_model::StringId map(lowir_model::StringId source_literal);
+  lowir_model::PresentationName map(
+    lowir_model::PresentationName source_name);
   lowir_model::StringId intern(const std::string & spelling);
   std::shared_ptr<lowir_model::StringPool> strings() const;
 
