@@ -4,10 +4,11 @@ Status: in progress
 
 Date: 2026-08-18
 
-Implementation anchor: `9960ff68`
+Implementation anchor: `ee07a5f4`
 
-The preceding O0 value-placement slice reached its own clean, pushed test and
-inception boundary at the implementation anchor.  No later O0 placement phase
+The preceding O0 value-placement slice reached its own clean, pushed boundary
+at `9960ff68`.  The typed-operation preparation and its pressure correction
+now form the clean implementation anchor above.  No later O0 placement phase
 begins until the work in this plan is complete.
 
 ## 1. Objective
@@ -604,7 +605,8 @@ Update one row after every accepted or rejected experiment.
 | Phase/commit | Removed work | Structural counters | User/wall/RSS | Output gate | Reports/audit/inception | Decision |
 | --- | --- | --- | --- | --- | --- | --- |
 | Anchor `9960ff68` | Clean boundary after the paused O0 slice | Phase 0 counters pending | Frozen medians: 4.94 s user, 5.44 s wall, 365,846 KiB RSS | Frozen object 4,415,480 bytes, SHA-256 `25817b506e3444c9a89209ba81c7e5b8a9fee2ecd203a218321953d4aee324d1` | Prior full report/audit/32-way inception clean | Immutable baseline |
-| Typed operation boundary | Removed all LowOperation text equality, construction, conversion, indexing, and concatenation compatibility; PA15 adaptation is a fixed enum translation and only explicit readers/renderers cross text | Source audit finds zero legacy operation-text compatibility uses | 4.92 s user, 5.405 s wall, 365,214 KiB RSS; paired median user ratio 0.996 | Frozen object byte-identical to anchor | 5,204/5,204 report; zero-fatal audit; clean self/inception pending | Retained; structurally removes repeated rendering and comparison without regression |
+| Typed operation boundary `a18641ef` | Removed all LowOperation text equality, construction, conversion, indexing, and concatenation compatibility; PA15 adaptation is a fixed enum translation and only explicit readers/renderers cross text | Source audit finds zero legacy operation-text compatibility uses | 4.92 s user, 5.405 s wall, 365,214 KiB RSS; paired median user ratio 0.996 | Frozen object byte-identical to anchor | 5,204/5,204 report; zero-fatal audit | Retained; structurally removes repeated rendering and comparison without regression |
+| Float-compare pressure correction `ee07a5f4` | Spills a Boolean float-comparison result when every managed GPR is live instead of aborting self-host compilation | PA29 reducer exercises two parameter registers plus seven edge-live global loads across a branch | Representation-only: frozen object remains byte-identical | Frozen object 4,415,480 bytes, SHA-256 `25817b506e3444c9a89209ba81c7e5b8a9fee2ecd203a218321953d4aee324d1`; self and inception binaries byte-identical at 16,739,992 bytes, SHA-256 `1de64f5a58eb0425c726aaa0c13c02f82b525a1396b85ec59d4952559ed559b6` | PA29 225/225; through PA29 4,117/4,117; full report 5,205/5,205; zero-fatal audit; clean j32 self 17.87 s wall/236,560 KiB; separate j32 inception 1:49.35 wall/236,060 KiB | Retained; closes the chunk at a clean self-host and inception boundary |
 
 Rejected experiments remain in the ledger with their patch/commit identifier
 and measured reason.  Do not erase negative evidence.
