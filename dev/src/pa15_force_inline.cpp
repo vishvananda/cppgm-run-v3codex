@@ -502,16 +502,25 @@ private:
 			caller->blocks[block_index].instructions.end());
 		if (tail.empty())
 			throw std::logic_error("force-inline continuation is empty");
-		const std::size_t added_count = callee.blocks.size() + 2;
+		const std::size_t cloned_count = callee.block_order.size();
+		if (cloned_count == 0)
+			throw std::logic_error("force-inline callee has no ordered blocks");
+		const std::size_t added_count = cloned_count + 2;
 		if (caller->blocks.size() > kNoLowId - added_count)
 			throw std::runtime_error("too many force-inline blocks");
 		const BlockId prologue = static_cast<BlockId>(caller->blocks.size());
-		std::vector<BlockId> cloned(callee.blocks.size());
-		for (std::size_t i = 0; i < cloned.size(); ++i)
-			cloned[i] = static_cast<BlockId>(
+		std::vector<BlockId> cloned(callee.blocks.size(), BlockId(kNoLowId));
+		for (std::size_t i = 0; i < cloned_count; ++i)
+		{
+			const BlockId source_block = callee.block_order[i];
+			if (source_block >= callee.blocks.size() ||
+				cloned[source_block] != kNoLowId)
+				throw std::logic_error("invalid force-inline block order");
+			cloned[source_block] = static_cast<BlockId>(
 				caller->blocks.size() + 1 + i);
+		}
 		const BlockId continuation = static_cast<BlockId>(
-			caller->blocks.size() + 1 + callee.blocks.size());
+			caller->blocks.size() + 1 + cloned_count);
 
 		Block& call_block = caller->blocks[block_index];
 		call_block.instructions.erase(
@@ -529,16 +538,18 @@ private:
 			copy.first = arguments[i];
 			prologue_block.instructions.push_back(copy);
 		}
-		if (cloned.empty())
-			throw std::logic_error("force-inline callee has no blocks");
-		prologue_block.instructions.push_back(JumpTo(cloned[0]));
+		prologue_block.instructions.push_back(
+			JumpTo(cloned[callee.block_order[0]]));
 		prologue_block.terminated = true;
 		caller->blocks.push_back(prologue_block);
 
-		for (std::size_t i = 0; i < callee.blocks.size(); ++i)
-			caller->blocks.push_back(CloneBlock(callee.blocks[i], callee,
+		for (std::size_t i = 0; i < cloned_count; ++i)
+		{
+			const BlockId source_block = callee.block_order[i];
+			caller->blocks.push_back(CloneBlock(callee.blocks[source_block], callee,
 				parameters, temporaries, callee_slot_base, cloned,
 				continuation, result_slot, names->BlockName()));
+		}
 
 		Block continuation_block(names->BlockName());
 		if (callee.result.kind != LOW_VOID)
@@ -561,7 +572,8 @@ private:
 		std::vector<BlockId> order;
 		order.reserve(added_count);
 		order.push_back(prologue);
-		order.insert(order.end(), cloned.begin(), cloned.end());
+		for (std::size_t i = 0; i < cloned_count; ++i)
+			order.push_back(cloned[callee.block_order[i]]);
 		order.push_back(continuation);
 		InsertBlockOrder(caller, static_cast<BlockId>(block_index), order);
 		if (stats_)
