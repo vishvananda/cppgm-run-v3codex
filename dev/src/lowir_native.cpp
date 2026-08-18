@@ -4,6 +4,7 @@
 #include "lowir_native_analysis.h"
 #include "lowir_native_atomic_lowering.h"
 #include "lowir_native_bulk_lowering.h"
+#include "lowir_native_call_lowering.h"
 #include "lowir_native_compare_lowering.h"
 #include "lowir_native_control_flow.h"
 #include "lowir_native_copy_lowering.h"
@@ -46,6 +47,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
                         private AtomicLowering<FunctionLowerer>,
                         private bulk_detail::BulkLowering<FunctionLowerer>,
+                        private call_detail::CallLowering<FunctionLowerer>,
                         private comparison_detail::CompareLowering<FunctionLowerer>,
                         private copy_detail::CopyLowering<FunctionLowerer>,
                         private index_detail::IndexLowering<FunctionLowerer>,
@@ -56,6 +58,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class AddressLowering<FunctionLowerer>;
   friend class AtomicLowering<FunctionLowerer>;
   friend class bulk_detail::BulkLowering<FunctionLowerer>;
+  friend class call_detail::CallLowering<FunctionLowerer>;
   friend class comparison_detail::CompareLowering<FunctionLowerer>;
   friend class copy_detail::CopyLowering<FunctionLowerer>;
   friend class index_detail::IndexLowering<FunctionLowerer>;
@@ -2472,6 +2475,7 @@ private:
       move_value_to_register(out, XR_R10, resolve(instruction.first),
                              operand_type(instruction.first));
     const abi::Plan plan = abi::classify(parameters);
+    stabilize_extended_register_sources(instruction, parameters, plan, out);
     std::vector<bool> needs_address(parameters.size(), false);
     std::vector<MirOperand> addressable(parameters.size());
     for(std::size_t i = 0; i < parameters.size(); ++i) {
