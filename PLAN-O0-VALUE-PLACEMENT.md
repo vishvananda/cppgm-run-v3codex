@@ -831,3 +831,11 @@ report passes 5,204/5,204, and the PA39 file audit has zero fatal findings.
 Parameter-register state is separated into
 `lowir_native_parameter_lowering.h`, leaving the main lowering owner at 2,996
 lines.
+
+At commit `b8d70f5b`, a clean 32-way self build takes 18.59 seconds wall,
+406.76 seconds aggregate user time, and 244,152 KiB peak RSS.  With no
+inception object tree present, the separate 32-way inception compare takes
+1:50.13 wall, 2,921.83 seconds aggregate user time, and 233,580 KiB peak RSS.
+All 163 compared objects match.  The self and inception binaries are
+byte-identical at 16,745,840 bytes with SHA-256
+`8b11823875d402227b221efa70789c457ff486258fc56e44caeb9f725048cfbd`.
