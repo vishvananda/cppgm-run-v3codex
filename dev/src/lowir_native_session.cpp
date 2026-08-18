@@ -78,7 +78,7 @@ struct ProgramLoweringSession::Impl
     if(stats) started = std::chrono::steady_clock::now();
     if(target != "linux")
       throw std::runtime_error("unsupported native target: " + target);
-	shell.target = target;
+	shell.target = mir_model::MirProgram::TARGET_LINUX;
 	shell.symbol_names.reserve(source.symbol_names.size());
 	for(std::size_t i = 0; i < source.symbol_names.size(); ++i)
 	  shell.symbol_names.push_back(strings.map(source.symbol_names[i]));
