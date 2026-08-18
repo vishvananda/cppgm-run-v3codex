@@ -1000,3 +1000,12 @@ The affected PA29/PA31/PA37/PA38 report passes 368/368, the PA29 suite passes
 224/224, the through-PA29 report passes 4,116/4,116, and the full report passes
 5,204/5,204.  The PA39 file audit remains zero-fatal with the same 26 advisory
 warnings as the phase baseline.
+
+At commit `7bbbc937`, a clean 32-way self build takes 19.09 seconds wall,
+408.76 seconds aggregate user time, 39.51 seconds system time, and 239,968 KiB
+peak RSS.  With no inception object tree present, the separate clean 32-way
+inception comparison takes 1:51.15 wall, 2,982.52 seconds aggregate user time,
+70.20 seconds system time, and 237,140 KiB peak RSS.  All 163 compared objects
+match.  The self and inception binaries are byte-identical at 16,751,152 bytes
+with SHA-256
+`2f19994d8a6088ba2b591582a8398db09369e259e7eb4dc6edaf96e57f0a8123`.
