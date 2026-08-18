@@ -476,62 +476,20 @@ To complete PA29, implement these goals:
    division, and shifts, must preserve still-live frame addresses and incoming parameters
    before reusing those registers.
 
-   In the checked MIR cases, use an available caller-saved `rdi` or `rsi`
-   instead of adding a callee-saved register to the frame's `preserve` list.
-   Reusing one of those registers must not overwrite a live incoming argument
-   or a value that must survive a call or fixed-register operation.
-
-   An incoming scalar parameter may remain in its ABI register while that
-   register is intact, including when the parameter is read through its
-   promoted slot. Uses after an emitted MIR instruction clobbers the register
-   must instead read a preserved copy. A LowIR operation that emits no MIR
-   instruction does not make the incoming register unavailable.
-
-   When a sole-use scalar constant, load, copy, address, index, unary operation,
-   or integer conversion is immediately returned, lower its result directly
-   into the ABI return register when doing so does not overwrite an input needed
-   by that instruction.  For an immediately returned integer comparison, place
-   the Boolean result in the ABI return register while keeping each comparison
-   input in its selected source location.  MIR should not copy an input into the
-   return register merely because `setcc` writes the result there, or introduce a
-   temporary register followed only by a return-register copy.
-
-   Otherwise, a scalar `ret` operand names the register holding the result; do
-   not add a separate MIR move used only to place that value in the ABI return
-   register.
-
-   Scalar integer division should place the divisor in `rcx` and the dividend
-   in `rax` without losing either input when those placements overlap. An
-   immediately returned quotient should remain in `rax`, and an immediately
-   returned remainder should move directly from `rdx` to `rax`.
-
-   A scalar call result may remain in its ABI return register until its use if
-   no intervening operation clobbers that register. Its consumer must still
-   receive the original result when setting up another operand also requires
-   the return register. Do not add an unrelated intermediate home when no move
-   is required.
-
-   When a load from a promoted parameter slot is used only as a call argument,
-   the MIR should pass the preserved parameter value without an unused
-   temporary copy.
-
-   Integer constants should remain immediate MIR operands until an instruction
-   requires a register. A scalar copy need not emit a move when it can safely
-   keep an immediate, symbolic address, immutable temporary frame location, or
-   intact register as its source. Loads from mutable slot or global storage
-   must still occur at the LowIR load or copy operation.
-
-   Keep an integer constant as an immediate MIR operand when the selected ALU
-   instruction accepts an immediate. A variable shift must place its count in
-   `rcx` without an additional MIR move through another register.
+   The checked MIR fixtures also require simple operations to avoid redundant
+   copies. In particular, they keep values in incoming or return registers
+   while those registers remain valid, retain encodable integer constants as
+   immediates, and use the registers required by division and variable shifts
+   directly. Any register-allocation strategy is acceptable if it preserves
+   program behavior and produces the checked strict or structural MIR shape.
 
    A numeric immediate written without a decimal point still follows the declared LowIR
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.
 
-   Checked MIR frame layouts reuse same-sized, same-alignment temporary frame
-   locations whose values do not overlap. Source slots, parameter slots, and
-   simultaneously live values must retain distinct locations.
+   The checked MIR frame layouts may reuse compatible temporary locations whose
+   values do not overlap. Source slots, parameter slots, and simultaneously live
+   values must retain distinct locations.
 
 9. Implement call-boundary correctness without requiring a clever allocator.
    PA29 must respect the native calling convention for direct calls, indirect calls,
