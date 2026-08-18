@@ -2705,7 +2705,7 @@ EncodedSection encoded_section(CodeBuffer && source,
   result.flags = flags;
   result.alignment = alignment;
   result.bytes = source.take_bytes();
-  result.labels = source.labels();
+  result.labels = source.materialized_labels();
   result.fixups.reserve(source.fixups().size());
   for(std::size_t i = 0; i < source.fixups().size(); ++i) {
     EncodedFixup fixup;

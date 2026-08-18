@@ -114,7 +114,7 @@ public:
 	void resolve();
 	const std::vector<unsigned char>& bytes() const;
 	std::vector<unsigned char> take_bytes();
-	const std::unordered_map<std::string, std::size_t>& labels() const;
+	std::unordered_map<std::string, std::size_t> materialized_labels() const;
 	const std::vector<Fixup>& fixups() const;
 	const std::vector<SymbolFixup>& symbol_fixups() const;
 	std::size_t fixup_count() const;
@@ -131,6 +131,13 @@ private:
 		std::size_t offset = 0;
 		std::string target;
 	};
+	struct LabelBinding
+	{
+		bool symbol = false;
+		lowir_model::SymbolId symbol_id;
+		const std::string* name = 0;
+		std::size_t* offset = 0;
+	};
 
 	void resolve_short_relatives(std::size_t begin);
 	void resolve_local_fixups(std::size_t begin);
@@ -145,6 +152,9 @@ private:
 	Stats* stats_;
 	std::vector<unsigned char> bytes_;
 	std::unordered_map<std::string, std::size_t> labels_;
+	std::vector<std::size_t> symbol_label_offsets_;
+	std::vector<unsigned char> symbol_label_known_;
+	std::vector<LabelBinding> label_bindings_;
 	std::vector<std::size_t*> label_offsets_;
 	std::vector<Fixup> fixups_;
 	std::vector<SymbolFixup> symbol_fixups_;

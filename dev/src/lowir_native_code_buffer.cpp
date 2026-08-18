@@ -95,7 +95,19 @@ void CodeBuffer::label(const std::string& name)
 void CodeBuffer::label(lowir_model::SymbolId symbol)
 {
 	if (stats_) ++stats_->code_buffer_typed_labels;
-	insert_named_label(symbol_name(symbol), bytes_.size(), false);
+	const std::uint32_t index = symbol;
+	if (!symbol.valid() || index >= symbol_label_offsets_.size())
+		throw std::logic_error("invalid native symbol identity");
+	if (symbol_label_known_[index])
+		throw std::logic_error("duplicate native symbol label");
+	symbol_label_offsets_[index] = bytes_.size();
+	symbol_label_known_[index] = 1;
+	label_offsets_.push_back(&symbol_label_offsets_[index]);
+	LabelBinding binding;
+	binding.symbol = true;
+	binding.symbol_id = symbol;
+	binding.offset = &symbol_label_offsets_[index];
+	label_bindings_.push_back(binding);
 }
 
 lowir_model::LocalLabelId CodeBuffer::allocate_local_label()
@@ -152,6 +164,10 @@ void CodeBuffer::insert_named_label(const std::string& name,
 	// insertion-order pointers so per-function compaction only adjusts labels
 	// emitted in that function instead of rescanning every earlier symbol.
 	label_offsets_.push_back(&inserted.first->second);
+	LabelBinding binding;
+	binding.name = &inserted.first->first;
+	binding.offset = &inserted.first->second;
+	label_bindings_.push_back(binding);
 }
 
 void CodeBuffer::alias(const std::string& name, const std::string& target)
@@ -166,7 +182,12 @@ void CodeBuffer::alias(const std::string& name, const std::string& target)
 void CodeBuffer::alias(const std::string& name,
 	lowir_model::SymbolId target)
 {
-	alias(name, symbol_name(target));
+	const std::uint32_t index = target;
+	if (!target.valid() || index >= symbol_label_offsets_.size() ||
+		!symbol_label_known_[index])
+		throw std::runtime_error("native alias has undefined target: " +
+			symbol_name(target));
+	label_at(name, symbol_label_offsets_[index]);
 }
 
 void CodeBuffer::begin_function_blocks(std::size_t count)
@@ -210,7 +231,17 @@ bool CodeBuffer::relocatable_addresses() const
 void CodeBuffer::bind_symbol_names(
 	const std::vector<lowir_model::StringId>& names)
 {
+	if (symbol_names_)
+	{
+		if (symbol_names_ != &names)
+			throw std::logic_error("native symbol names rebound");
+		return;
+	}
+	if (!label_bindings_.empty())
+		throw std::logic_error("native symbol names bound after labels");
 	symbol_names_ = &names;
+	symbol_label_offsets_.assign(names.size(), 0);
+	symbol_label_known_.assign(names.size(), 0);
 }
 
 const std::string& CodeBuffer::symbol_name(lowir_model::SymbolId symbol) const
@@ -695,12 +726,14 @@ void CodeBuffer::resolve()
 {
 	resolve_short_relatives(0);
 	resolve_local_fixups(0);
+	const std::unordered_map<std::string, std::size_t> labels =
+		materialized_labels();
 	for (std::size_t i = 0; i < fixups_.size(); ++i)
 	{
 		const Fixup& fixup = fixups_[i];
 		const std::unordered_map<std::string, std::size_t>::const_iterator target =
-			labels_.find(fixup.target);
-		if (target == labels_.end())
+			labels.find(fixup.target);
+		if (target == labels.end())
 			throw std::runtime_error("undefined native symbol: " + fixup.target);
 		if (fixup.kind == Fixup::RELATIVE32 ||
 			fixup.kind == Fixup::ADDRESS32 ||
@@ -739,17 +772,27 @@ void CodeBuffer::resolve()
 	for (std::size_t i = 0; i < symbol_fixups_.size(); ++i)
 	{
 		const SymbolFixup& fixup = symbol_fixups_[i];
-		const std::string& name = symbol_name(fixup.target);
-		const std::unordered_map<std::string, std::size_t>::const_iterator target =
-			labels_.find(name);
-		if (target == labels_.end())
-			throw std::runtime_error("undefined native symbol: " + name);
+		const std::uint32_t symbol = fixup.target;
+		if (!fixup.target.valid() || symbol >= symbol_label_offsets_.size())
+			throw std::logic_error("invalid native symbol fixup identity");
+		std::size_t target = 0;
+		if (symbol_label_known_[symbol])
+			target = symbol_label_offsets_[symbol];
+		else
+		{
+			const std::string& name = symbol_name(fixup.target);
+			const std::unordered_map<std::string, std::size_t>::const_iterator found =
+				labels.find(name);
+			if (found == labels.end())
+				throw std::runtime_error("undefined native symbol: " + name);
+			target = found->second;
+		}
 		if (fixup.kind == Fixup::RELATIVE32 ||
 			fixup.kind == Fixup::ADDRESS32 ||
 			fixup.kind == Fixup::TLS_OFFSET32)
 		{
 			const std::int64_t delta =
-				static_cast<std::int64_t>(target->second) -
+				static_cast<std::int64_t>(target) -
 				static_cast<std::int64_t>(fixup.offset + 4) + fixup.addend;
 			if (delta < INT32_MIN || delta > INT32_MAX)
 				throw std::runtime_error(
@@ -758,7 +801,7 @@ void CodeBuffer::resolve()
 			continue;
 		}
 		std::uint64_t address = kLoadAddress + kExecutableContentOffset +
-			target->second;
+			target;
 		if (fixup.addend >= 0)
 		{
 			const std::uint64_t addend =
@@ -791,9 +834,19 @@ std::vector<unsigned char> CodeBuffer::take_bytes()
 	return std::move(bytes_);
 }
 
-const std::unordered_map<std::string, std::size_t>& CodeBuffer::labels() const
+std::unordered_map<std::string, std::size_t>
+CodeBuffer::materialized_labels() const
 {
-	return labels_;
+	std::unordered_map<std::string, std::size_t> result;
+	for (std::size_t i = 0; i < label_bindings_.size(); ++i)
+	{
+		const LabelBinding& binding = label_bindings_[i];
+		const std::string& name = binding.symbol ?
+			symbol_name(binding.symbol_id) : *binding.name;
+		if (!result.emplace(name, *binding.offset).second)
+			throw std::runtime_error("duplicate native symbol: " + name);
+	}
+	return result;
 }
 
 const std::vector<Fixup>& CodeBuffer::fixups() const
