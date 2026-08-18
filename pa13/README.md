@@ -187,6 +187,14 @@ program. Debug locations use a `StringId` from the same pool for their source
 file spelling. Do not store a separate owning `std::string` in every operand or
 debug-location record.
 
+Top-level declarations and definitions carry `SymbolId`; the program symbol
+table maps each `SymbolId` to one pooled `StringId` for serialization and
+diagnostics. Global address data and object-alias targets likewise resolve to
+`SymbolId` before the typed program is returned. The explicit-text parser may
+hold a pooled spelling while it validates and resolves a forward reference,
+but declarations, definitions, and references must not retain duplicate
+owning symbol-name strings.
+
 Function-local presentation spellings use the same ownership rule. Slot and
 block tables carry pooled `StringId` values, and explicitly named values carry
 a pooled spelling ID. A compiler-generated temporary may instead retain its

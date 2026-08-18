@@ -39,7 +39,7 @@ mir_model::MirGlobalDefinition lower_global(
     const lowir_model::LowirGlobalDefinition & source)
 {
   mir_model::MirGlobalDefinition target;
-  target.name = source.name;
+  target.name = lowir_model::lowir_symbol_name(program, source.symbol);
   target.object_symbol = source.metadata.object_symbol;
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;

@@ -1191,6 +1191,64 @@ All 162 self/inception objects match byte-for-byte.  The final binaries are
 byte-identical at 16,839,296 bytes with SHA-256
 `271a7a5e8387cb7789b5bcf9000311ab37e535112b175115e8c938e5ddbb0c52`.
 
+### CI22: compact LowIR top-level symbol presentation
+
+Top-level LowIR declarations and definitions now carry only `SymbolId` as
+semantic identity.  The program symbol table maps each ID to one pooled
+`StringId`; structured-global address items and object aliases retain a pooled
+forward-reference spelling only while explicit text or a private compiler
+object is being resolved, then carry `SymbolId`.  The source adapter creates
+the resolved form directly.  Serialization, diagnostics, CY86 output, MIR
+shell construction, and ELF construction resolve presentation only when they
+actually need bytes.
+
+The private compiler-object byte format is unchanged.  Reading and linking no
+longer materialize every symbol reference as text and then resolve it again.
+Each input is remapped directly into the joined symbol domain.  Both the reader
+and linker use dense `StringId`-indexed vectors after interning, rather than a
+second string-keyed symbol map; linked symbol spellings are interned before
+unrelated object strings so that domain remains dense.  Definition,
+declaration, lifecycle, and alias coalescing then use `SymbolId`-indexed facts.
+
+Record sizes fall as follows:
+
+| Record | CI21 | CI22 |
+| --- | ---: | ---: |
+| `GlobalDeclaration` | 232 | 192 bytes |
+| `GlobalDefinition` | 336 | 304 bytes |
+| `GlobalDefinition::DataItem` | 160 | 128 bytes |
+| `FunctionDeclaration` | 256 | 224 bytes |
+| `Function` | 480 | 448 bytes |
+| `ObjectAlias` | 72 | 40 bytes |
+
+For the frozen serialized program, the 6,341-entry symbol table saves at least
+177,548 bytes, the top-level and alias records save 236,192 bytes, and 31,931
+structured-global data items save 1,021,792 bytes.  This is a deterministic
+1,435,532-byte model-payload reduction before allocator overhead.  The native
+compile prunes 683 functions before adaptation, so its corresponding live
+record reduction is at least 1,413,676 bytes.
+
+PA13, PA15, PA29, PA30, PA31, PA32, PA37, and PA38 report 827/827 passing
+tests.  The full root report passes 5,204/5,204 tests and the PA39 file audit
+has zero fatal findings.  The frozen object remains byte-identical to CI21 at
+4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+Three A/B/B/A blocks against the immutable CI21 compiler produced
+baseline/candidate medians of 4.980/5.025 seconds user, 5.475/5.500 seconds
+wall, and 364,136/365,342 KiB peak RSS.  Block directions were mixed and the
+1.5% user delta remains within the host noise envelope, so this slice receives
+no standalone timing credit.  It removes the duplicated state structurally;
+the MIR program shell still recreates a string-owned symbol-name vector and is
+tracked as the next O0 boundary.
+
+A clean 32-way self build takes 18.50 seconds wall, 402.81 seconds aggregate
+user time, and 237,884 KiB peak RSS.  A separate 32-way inception compare takes
+1:49.60 wall, 2,916.78 seconds aggregate user time, and 237,652 KiB peak RSS.
+All 162 self/inception objects match byte-for-byte.  The final binaries are
+byte-identical at 16,843,872 bytes with SHA-256
+`f3a435af3c322738a19c837777479c81429cb41e680bc0237c3878a2c9881b67`.
+
 ## 11. Current residual audit and next slices
 
 The cumulative hot-path milestone now passes the performance gate.  Three
@@ -1216,7 +1274,7 @@ follows:
 
 | Owner | Avoidable representation | Efficient replacement | Benchmark priority |
 | --- | --- | --- | --- |
-| LowIR top-level model | `GlobalDeclaration`, `GlobalDefinition`, `Function`, and `FunctionDeclaration` duplicate `name` beside `SymbolId`; global data duplicates an address `symbol` beside `symbol_id`; aliases duplicate `target` beside `target_id` | Keep `SymbolId` as semantic identity and make the program symbol table a dense `StringId` view used by dumps and object output | High |
+| LowIR top-level model | Completed in CI22: declarations, definitions, global address data, and alias targets carry `SymbolId`; the symbol table carries pooled `StringId` presentation | Keep rendering at serialization, diagnostic, and object-output boundaries; explicit-input forward spellings are transient pooled IDs | Complete |
 | LowIR function presentation | Completed in CI21: slots and blocks use pooled IDs; values use one tagged pooled spelling or generated ordinal, with explicit behavior bits | Keep rendering confined to serialization and diagnostics; do not add a parallel name index | Complete for LowIR; MIR block-label presentation remains below |
 | LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
 | PA37 inliners | value, slot, and label collision sets hash rendered strings and generate new text during every inline | Allocate fresh `ValueId`, `SlotId`, and `BlockId` monotonically; retain one numeric presentation ordinal and consult an explicit-input reservation table only when an exact dump needs collision avoidance | O1/O2 only; correctness owner is PA37 |
@@ -1228,18 +1286,15 @@ follows:
 
 The next changesets should therefore be:
 
-1. Remove duplicated LowIR top-level names.  Functions, declarations, globals,
-   global data, and aliases should retain `SymbolId` as identity and resolve
-   their pooled presentation or object spelling only at a true output boundary.
-2. Replace the O1/force-inliner's string collision sets with monotonic numeric
+1. Replace the O1/force-inliner's string collision sets with monotonic numeric
    allocation.  This is PA37 work and must preserve exact optimized LowIR;
    optimization-level policy tests belong in PA38.
-3. Convert the MIR program shell and global data to semantic and pooled object
+2. Convert the MIR program shell and global data to semantic and pooled object
    IDs, including fixed-runtime enum lookup.  Do not introduce a parallel name
    index.
-4. Finish the executable/global-data/host-EH encoder boundary so the ELF writer
+3. Finish the executable/global-data/host-EH encoder boundary so the ELF writer
    is the only owner that hashes output spellings.
-5. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
+4. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
    the O0 hot path is clean.
 
 String-keyed maps in `lowir_parse.cpp`, the resolution portion of

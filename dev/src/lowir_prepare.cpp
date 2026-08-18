@@ -90,16 +90,18 @@ void derive_exports(Program& program)
 		program.exported_symbols.push_back(alias);
 	}
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
-		append_export(program, program.global_declarations[i].name,
+		append_export(program, lowir_symbol_name(
+			program, program.global_declarations[i].symbol),
 			program.global_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		append_export(program, program.function_declarations[i].name,
+		append_export(program, lowir_symbol_name(
+			program, program.function_declarations[i].symbol),
 			program.function_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
-		append_export(program, program.globals[i].name,
+		append_export(program, lowir_symbol_name(program, program.globals[i].symbol),
 			program.globals[i].metadata);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		append_export(program, program.functions[i].name,
+		append_export(program, lowir_symbol_name(program, program.functions[i].symbol),
 			program.functions[i].metadata);
 }
 
@@ -282,16 +284,20 @@ void canonicalize_frontend_lowir(Program& program,
 	program.object_aliases.swap(ordered_aliases);
 
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
-		canonicalize_frontend_symbol(program.global_declarations[i].name,
+		canonicalize_frontend_symbol(lowir_symbol_name(
+			program, program.global_declarations[i].symbol),
 			&program.global_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		canonicalize_frontend_symbol(program.function_declarations[i].name,
+		canonicalize_frontend_symbol(lowir_symbol_name(
+			program, program.function_declarations[i].symbol),
 			&program.function_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
-		canonicalize_frontend_symbol(program.globals[i].name,
+		canonicalize_frontend_symbol(lowir_symbol_name(
+			program, program.globals[i].symbol),
 			&program.globals[i].metadata);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		canonicalize_frontend_symbol(program.functions[i].name,
+		canonicalize_frontend_symbol(lowir_symbol_name(
+			program, program.functions[i].symbol),
 			&program.functions[i].metadata);
 	if (stats)
 		stats->frontend_canonical_nanoseconds += elapsed_nanoseconds(started);

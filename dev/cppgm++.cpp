@@ -781,7 +781,9 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 	};
 	for(size_t fi = 0; fi < program->functions.size(); ++fi) {
 		lowir_model::Function & function = program->functions[fi];
-		string source_name = function.name.size() > 1 ? function.name.substr(1) : "";
+		const string& lowir_name = lowir_model::lowir_symbol_name(
+			*program, function.symbol);
+		string source_name = lowir_name.size() > 1 ? lowir_name.substr(1) : "";
 		const size_t separator = source_name.find("__");
 		if(separator != string::npos) source_name.erase(separator);
 		size_t function_line = 0;

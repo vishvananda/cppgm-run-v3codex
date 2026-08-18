@@ -2862,9 +2862,11 @@ void write_linux_relocatable(
     const lowir_model::FunctionDeclaration & wrapper =
       source.function_declarations[i];
     if(wrapper.metadata.tls_for_symbol.empty() ||
-       !emitted_tls_wrappers.insert(wrapper.name).second) continue;
+       !emitted_tls_wrappers.insert(lowir_model::lowir_symbol_name(
+         source, wrapper.symbol)).second) continue;
     functions.push_back(emit_host_tls_wrapper(
-      text, wrapper.name, wrapper.metadata));
+      text, lowir_model::lowir_symbol_name(source, wrapper.symbol),
+      wrapper.metadata));
   }
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     mir_model::MirFunction function = lowering.lower_function(i);

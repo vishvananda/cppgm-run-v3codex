@@ -384,20 +384,31 @@ const std::string & lowir_parameter_name(const Program & program,
 
 SymbolId append_lowir_symbol(Program & program, const std::string & name)
 {
+  return append_lowir_symbol(program, program.strings.intern(name));
+}
+
+SymbolId append_lowir_symbol(Program & program, StringId name)
+{
   if(program.symbol_names.size() == kInvalidCompactId)
     throw std::runtime_error("too many LowIR symbols");
+  if(!name.valid()) throw std::logic_error("empty LowIR symbol presentation");
   const SymbolId result(
     static_cast<std::uint32_t>(program.symbol_names.size()));
   program.symbol_names.push_back(name);
   return result;
 }
 
-const std::string & lowir_symbol_name(const Program & program, SymbolId symbol)
+StringId lowir_symbol_spelling(const Program & program, SymbolId symbol)
 {
   const std::uint32_t id = symbol;
   if(id >= program.symbol_names.size())
     throw std::logic_error("invalid LowIR symbol identity");
   return program.symbol_names[id];
+}
+
+const std::string & lowir_symbol_name(const Program & program, SymbolId symbol)
+{
+  return program.strings.get(lowir_symbol_spelling(program, symbol));
 }
 
 void resolve_lowir_function_operands(Function & function,
@@ -495,37 +506,30 @@ void resolve_lowir_function_operands(Function & function,
 
 void resolve_lowir_program_symbols(Program & program)
 {
-  program.symbol_names.clear();
-  std::unordered_map<std::string, SymbolId> symbols;
-  symbols.reserve(program.global_declarations.size() + program.globals.size() +
-                  program.function_declarations.size() +
-                  program.functions.size());
-  const auto resolve_definition = [&program, &symbols](
-      const std::string & name) -> SymbolId {
-    const std::unordered_map<std::string, SymbolId>::const_iterator found =
-      symbols.find(name);
-    if(found != symbols.end()) return found->second;
-    const SymbolId id = append_lowir_symbol(program, name);
-    symbols.emplace(name, id);
-    return id;
-  };
-  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    program.global_declarations[i].symbol =
-      resolve_definition(program.global_declarations[i].name);
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    program.function_declarations[i].symbol =
-      resolve_definition(program.function_declarations[i].name);
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    program.globals[i].symbol = resolve_definition(program.globals[i].name);
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    program.functions[i].symbol = resolve_definition(program.functions[i].name);
+  // Every spelling has already been interned at the input boundary.  Resolve
+  // through that compact identity instead of owning and hashing the text a
+  // second time.
+  std::vector<SymbolId> symbols(program.strings.size() + 1);
+  for(std::size_t i = 0; i < program.symbol_names.size(); ++i) {
+    const std::uint32_t spelling = program.symbol_names[i];
+    if(spelling >= symbols.size())
+      throw std::logic_error("invalid LowIR symbol presentation identity");
+    symbols[spelling] = SymbolId(static_cast<std::uint32_t>(i));
+  }
 
-  const auto resolve_tls = [&symbols](SymbolMetadata & metadata) {
+  const auto resolve_spelling = [&symbols](StringId spelling,
+                                           const char * error) -> SymbolId {
+    const std::uint32_t id = spelling;
+    if(!spelling.valid() || id >= symbols.size() || !symbols[id].valid())
+      throw ParseError(error);
+    return symbols[id];
+  };
+
+  const auto resolve_tls = [&program, &resolve_spelling](
+      SymbolMetadata & metadata) {
     if(metadata.tls_for_symbol.empty()) return;
-    const std::unordered_map<std::string, SymbolId>::const_iterator found =
-      symbols.find(metadata.tls_for_symbol);
-    if(found == symbols.end()) throw ParseError("undefined TLS target");
-    metadata.tls_for_symbol_id = found->second;
+    metadata.tls_for_symbol_id = resolve_spelling(
+      program.strings.intern(metadata.tls_for_symbol), "undefined TLS target");
   };
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     resolve_tls(program.global_declarations[i].metadata);
@@ -536,14 +540,11 @@ void resolve_lowir_program_symbols(Program & program)
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     resolve_tls(program.functions[i].metadata);
 
-  const auto resolve_operand = [&program, &symbols](Operand & operand) {
+  const auto resolve_operand = [&resolve_spelling](Operand & operand) {
     if(operand.kind != Operand::OP_GLOBAL) return;
     if(!operand.has_spelling) return;
-    const std::string & spelling = program.strings.get(operand.literal);
-    const std::unordered_map<std::string, SymbolId>::const_iterator found =
-      symbols.find(spelling);
-    if(found == symbols.end()) throw ParseError("undefined top-level symbol");
-    operand.symbol = found->second;
+    operand.symbol = resolve_spelling(
+      operand.literal, "undefined top-level symbol");
     operand.has_spelling = false;
   };
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
@@ -553,11 +554,10 @@ void resolve_lowir_program_symbols(Program & program)
       GlobalDefinition::DataItem & item = global.data_items[j];
       resolve_operand(item.literal_operand);
       if(item.kind != GlobalDefinition::DataItem::ITEM_ADDR) continue;
-      const std::unordered_map<std::string, SymbolId>::const_iterator found =
-        symbols.find(item.symbol);
-      if(found == symbols.end()) throw ParseError("undefined data symbol");
-      item.symbol_id = found->second;
-      std::string().swap(item.symbol);
+      if(item.symbol_id.valid()) continue;
+      item.symbol_id = resolve_spelling(
+        item.symbol_spelling, "undefined data symbol");
+      item.symbol_spelling = StringId();
     }
   }
   for(std::size_t f = 0; f < program.functions.size(); ++f)
@@ -571,12 +571,12 @@ void resolve_lowir_program_symbols(Program & program)
         for(std::size_t a = 0; a < instructions[i].args.size(); ++a)
           resolve_operand(instructions[i].args[a]);
       }
-    }
+  }
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
-    const std::unordered_map<std::string, SymbolId>::const_iterator found =
-      symbols.find(program.object_aliases[i].target);
-    if(found == symbols.end()) throw ParseError("undefined alias target");
-    program.object_aliases[i].target_id = found->second;
+    if(program.object_aliases[i].target_id.valid()) continue;
+    program.object_aliases[i].target_id = resolve_spelling(
+      program.object_aliases[i].target_spelling, "undefined alias target");
+    program.object_aliases[i].target_spelling = StringId();
   }
 }
 
@@ -611,12 +611,16 @@ void remap_lowir_program_strings(Program & program,
     for(std::size_t i = 0; i < parameters.size(); ++i)
       remap_string(parameters[i].name);
   };
+  for(std::size_t i = 0; i < program.symbol_names.size(); ++i)
+    remap_string(program.symbol_names[i]);
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
     remap_parameters(program.function_declarations[i].params);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     remap(program.globals[i].init_operand);
-    for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
+    for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j) {
       remap(program.globals[i].data_items[j].literal_operand);
+      remap_string(program.globals[i].data_items[j].symbol_spelling);
+    }
   }
   for(std::size_t f = 0; f < program.functions.size(); ++f)
   {
@@ -648,56 +652,64 @@ void remap_lowir_program_strings(Program & program,
           remap(instruction.args[a]);
       }
   }
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i)
+    remap_string(program.object_aliases[i].target_spelling);
 }
 
-void materialize_lowir_program_symbol_spellings(Program & program)
+void remap_lowir_program_symbols(
+    Program & program, const std::vector<SymbolId> & symbols)
 {
-  if(program.symbol_names.empty()) return;
-  const auto materialize_operand = [&program](Operand & operand) {
-    if(operand.kind == Operand::OP_GLOBAL && !operand.has_spelling &&
-       operand.symbol.valid()) {
-      operand.literal = program.strings.intern(
-        lowir_symbol_name(program, operand.symbol));
-      operand.has_spelling = true;
-    }
+  if(symbols.size() != program.symbol_names.size())
+    throw std::logic_error("invalid LowIR symbol remap");
+  const auto remap_symbol = [&symbols](SymbolId & symbol) {
+    if(!symbol.valid() || static_cast<std::uint32_t>(symbol) >= symbols.size())
+      throw std::logic_error("invalid LowIR symbol identity during remap");
+    symbol = symbols[symbol];
   };
-  const auto materialize_metadata = [&program](SymbolMetadata & metadata) {
+  const auto remap_metadata = [&remap_symbol](SymbolMetadata & metadata) {
     if(metadata.tls_for_symbol_id.valid())
-      metadata.tls_for_symbol =
-        lowir_symbol_name(program, metadata.tls_for_symbol_id);
+      remap_symbol(metadata.tls_for_symbol_id);
   };
-  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-    materialize_metadata(program.global_declarations[i].metadata);
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    materialize_metadata(program.function_declarations[i].metadata);
+  const auto remap_operand = [&remap_symbol](Operand & operand) {
+    if(operand.kind == Operand::OP_GLOBAL && !operand.has_spelling)
+      remap_symbol(operand.symbol);
+  };
+  const auto remap_instruction = [&remap_operand](Instruction & instruction) {
+    remap_operand(instruction.first);
+    remap_operand(instruction.second);
+    remap_operand(instruction.third);
+    for(std::size_t i = 0; i < instruction.args.size(); ++i)
+      remap_operand(instruction.args[i]);
+  };
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i) {
+    remap_symbol(program.global_declarations[i].symbol);
+    remap_metadata(program.global_declarations[i].metadata);
+  }
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
+    remap_symbol(program.function_declarations[i].symbol);
+    remap_metadata(program.function_declarations[i].metadata);
+  }
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     GlobalDefinition & global = program.globals[i];
-    materialize_metadata(global.metadata);
-    materialize_operand(global.init_operand);
+    remap_symbol(global.symbol);
+    remap_metadata(global.metadata);
+    remap_operand(global.init_operand);
     for(std::size_t j = 0; j < global.data_items.size(); ++j) {
-      GlobalDefinition::DataItem & item = global.data_items[j];
-      materialize_operand(item.literal_operand);
-      if(item.symbol_id.valid())
-        item.symbol = lowir_symbol_name(program, item.symbol_id);
+      remap_operand(global.data_items[j].literal_operand);
+      if(global.data_items[j].symbol_id.valid())
+        remap_symbol(global.data_items[j].symbol_id);
     }
   }
-  for(std::size_t f = 0; f < program.functions.size(); ++f) {
-    Function & function = program.functions[f];
-    materialize_metadata(function.metadata);
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    Function & function = program.functions[i];
+    remap_symbol(function.symbol);
+    remap_metadata(function.metadata);
     for(std::size_t b = 0; b < function.blocks.size(); ++b)
-      for(std::size_t i = 0; i < function.blocks[b].instructions.size(); ++i) {
-        Instruction & instruction = function.blocks[b].instructions[i];
-        materialize_operand(instruction.first);
-        materialize_operand(instruction.second);
-        materialize_operand(instruction.third);
-        for(std::size_t a = 0; a < instruction.args.size(); ++a)
-          materialize_operand(instruction.args[a]);
-      }
+      for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j)
+        remap_instruction(function.blocks[b].instructions[j]);
   }
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i)
-    if(program.object_aliases[i].target_id.valid())
-      program.object_aliases[i].target =
-        lowir_symbol_name(program, program.object_aliases[i].target_id);
+    remap_symbol(program.object_aliases[i].target_id);
 }
 
 }  // namespace lowir_model

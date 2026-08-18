@@ -119,6 +119,14 @@ Externally meaningful C++ symbols must be produced through PA14's shared typed
 ABI encoder. Build the encoder target from resolved declarations and types;
 the ABI fact-file parser is a standalone-tool adapter and is not part of the
 source-to-LowIR path.
+
+The in-memory LowIR program uses compact semantic identity. Assign each
+top-level symbol one `SymbolId`, store its presentation spelling once through a
+program `StringId`, and use that `SymbolId` in declarations, definitions,
+operands, structured-global addresses, and alias targets. Render the spelling
+only when writing LowIR text or a diagnostic; do not copy an owning symbol name
+into each record or reference.
+
 Your output must also preserve order-sensitive LowIR regions when they are present: instruction order inside
 blocks, item order inside structured globals, vtable slot order, and action
 order inside generated initialization, finalization, constructor, destructor,

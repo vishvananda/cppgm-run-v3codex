@@ -301,7 +301,8 @@ private:
 SymbolId ProgramEmitter::FindSymbol(const std::string & name) const
 {
   for(std::size_t i = 0; i < program_.symbol_names.size(); ++i)
-    if(program_.symbol_names[i] == name)
+    if(lowir_model::lowir_symbol_name(
+         program_, SymbolId(static_cast<std::uint32_t>(i))) == name)
       return SymbolId(static_cast<std::uint32_t>(i));
   return SymbolId();
 }
@@ -553,7 +554,8 @@ std::string FunctionEmitter::SlotAddress(SlotId slot) const
 
 std::string FunctionEmitter::BlockLabel(const std::string & block) const
 {
-  return "fn__" + strip_sigil(function_.name) + "__" + strip_sigil(block);
+  return "fn__" + strip_sigil(lowir_model::lowir_symbol_name(
+    owner_.program_, function_.symbol)) + "__" + strip_sigil(block);
 }
 
 std::string FunctionEmitter::BlockLabel(const Operand & block) const
@@ -564,7 +566,8 @@ std::string FunctionEmitter::BlockLabel(const Operand & block) const
 
 std::string FunctionEmitter::EpilogueLabel() const
 {
-  return "fn__" + strip_sigil(function_.name) + "__epilogue";
+  return "fn__" + strip_sigil(lowir_model::lowir_symbol_name(
+    owner_.program_, function_.symbol)) + "__epilogue";
 }
 
 void FunctionEmitter::Emit()

@@ -79,7 +79,10 @@ struct ProgramLoweringSession::Impl
     if(target != "linux")
       throw std::runtime_error("unsupported native target: " + target);
 	shell.target = target;
-	shell.symbol_names = source.symbol_names;
+	shell.symbol_names.reserve(source.symbol_names.size());
+	for(std::size_t i = 0; i < source.symbol_names.size(); ++i)
+	  shell.symbol_names.push_back(lowir_model::lowir_symbol_name(
+	    source, lowir_model::SymbolId(static_cast<std::uint32_t>(i))));
 	shell.strings = strings.strings();
 	pointer_globals.assign(source.symbol_names.size(), 0);
 	signatures.resize(source.symbol_names.size());
@@ -109,7 +112,8 @@ struct ProgramLoweringSession::Impl
     for(std::size_t i = 0; i < source.object_aliases.size(); ++i) {
       mir_model::MirObjectAlias alias;
       alias.object_symbol = source.object_aliases[i].object_symbol;
-      alias.target = source.object_aliases[i].target;
+      alias.target = lowir_model::lowir_symbol_name(
+        source, source.object_aliases[i].target_id);
       shell.object_aliases.push_back(alias);
     }
     if(stats) RecordProgramStats(started);

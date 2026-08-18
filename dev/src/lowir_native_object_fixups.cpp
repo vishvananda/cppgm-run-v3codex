@@ -153,12 +153,14 @@ void resolve_same_section_local_fixups(
     program.symbol_names.size(), 0);
   std::vector<unsigned char> symbol_external(program.symbol_names.size(), 0);
   for(std::size_t i = 0; i < program.symbol_names.size(); ++i) {
-    const LabelIndex::const_iterator found = labels.find(program.symbol_names[i]);
+    const std::string & name = lowir_model::lowir_symbol_name(
+      program, lowir_model::SymbolId(static_cast<std::uint32_t>(i)));
+    const LabelIndex::const_iterator found = labels.find(name);
     if(found != labels.end()) {
       symbol_locations[i] = found->second;
       symbol_location_known[i] = 1;
     }
-    symbol_external[i] = externally_named.count(program.symbol_names[i]) != 0;
+    symbol_external[i] = externally_named.count(name) != 0;
   }
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     resolve_section_fixups(

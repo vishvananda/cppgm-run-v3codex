@@ -591,7 +591,6 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::GlobalDeclaration result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
-		result.name = At(symbol.name);
 		result.has_type = item.typed;
 		if (item.typed) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
@@ -606,7 +605,6 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::FunctionDeclaration result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
-		result.name = At(symbol.name);
 		result.params = AdaptParameters(item.parameters, &target.strings);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
@@ -628,7 +626,6 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::GlobalDefinition result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
-		result.name = At(symbol.name);
 		if (item.type.kind != LOW_INVALID) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
@@ -721,7 +718,6 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::Function result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
-		result.name = At(symbol.name);
 		result.params = AdaptParameters(item.parameters, &target.strings);
 		const AdaptedValues values = PrepareValues(item, target.strings, &result);
 		result.return_type = AdaptType(item.result);
@@ -786,7 +782,6 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		alias.target_id = lowir_model::SymbolId(source.object_aliases[i].target);
 		const Symbol& alias_target =
 			source.symbols[source.object_aliases[i].target];
-		alias.target = At(alias_target.name);
 		// An ABI alias is an additional exported spelling of the same root, so
 		// carry the target's linkage with it across the typed-LowIR boundary.
 		if (source.host_object_emission)

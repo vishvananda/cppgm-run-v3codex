@@ -82,7 +82,7 @@ public:
     value_known_.assign(source_.value_names.size(), 0);
     incoming_parameter_registers_.resize(source_.value_names.size(), XR_RSP);
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
-    target_.name = source.name;
+    target_.name = lowir_model::lowir_symbol_name(program, source.symbol);
     target_.object_symbol = source.metadata.object_symbol;
     target_.block_labels.resize(source.block_labels.size());
     for(std::size_t i = 0; i < source.block_labels.size(); ++i)
@@ -1115,7 +1115,8 @@ private:
     X64Register result = XR_RSP;
     if(try_allocate_result(value, out, &result, force_preserved)) return result;
     throw std::runtime_error("reactive GPR allocation exhausted in " +
-      source_.name + " for " + lowir_model::lowir_value_name(
+      lowir_model::lowir_symbol_name(program_, source_.symbol) + " for " +
+      lowir_model::lowir_value_name(
         program_.strings, source_, value) +
       " at LowIR position " +
 	  std::to_string(position_));

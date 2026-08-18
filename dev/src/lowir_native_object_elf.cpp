@@ -84,10 +84,12 @@ void publish_object_aliases(
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     const std::string alias = native_object_symbol(
       program.object_aliases[i].object_symbol);
+    const std::string & target_name = lowir_model::lowir_symbol_name(
+      program, program.object_aliases[i].target_id);
     const EncodedLabelIndex::const_iterator target =
-      labels.find(program.object_aliases[i].target);
+      labels.find(target_name);
     if(target == labels.end()) throw std::runtime_error(
-      "native alias has undefined target: " + program.object_aliases[i].target);
+      "native alias has undefined target: " + target_name);
     const EncodedLabelLocation location = target->second;
     if(location.text)
       text_sections[location.section].labels[alias] = location.offset;
@@ -276,7 +278,8 @@ HostSection make_host_lifecycle_array(
     HostRelocation relocation;
     relocation.kind = HostRelocation::HR_ABSOLUTE64;
     relocation.offset = section.bytes.size();
-    relocation.target = function.name;
+    relocation.target = lowir_model::lowir_symbol_name(
+      program, function.symbol);
     relocations.push_back(relocation);
     append_little(section.bytes, 0, 8);
   }
@@ -675,12 +678,14 @@ std::unordered_map<std::string, std::string> declaration_object_symbols(
         program.exported_symbols[i].object_symbol;
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
     if(!program.function_declarations[i].metadata.object_symbol.empty())
-      result[program.function_declarations[i].name] =
+      result[lowir_model::lowir_symbol_name(
+        program, program.function_declarations[i].symbol)] =
         host_runtime_object_symbol(
           program.function_declarations[i].metadata);
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(!program.global_declarations[i].metadata.object_symbol.empty())
-      result[program.global_declarations[i].name] =
+      result[lowir_model::lowir_symbol_name(
+        program, program.global_declarations[i].symbol)] =
         program.global_declarations[i].metadata.object_symbol;
   return result;
 }
@@ -758,7 +763,8 @@ std::vector<HostRelocation> host_relocations(
     }
     relocation.offset = fixup.offset;
     relocation.target = relocation_target(
-      program.symbol_names[symbol], labels, declarations);
+      lowir_model::lowir_symbol_name(program, fixup.target),
+      labels, declarations);
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
@@ -907,7 +913,8 @@ void collect_host_symbols(
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     if(program.functions[i].metadata.role != lowir_model::SR_ENTRY) continue;
     const EncodedLabelIndex::const_iterator at =
-      encoded_labels.find(program.functions[i].name);
+      encoded_labels.find(lowir_model::lowir_symbol_name(
+        program, program.functions[i].symbol));
     if(at == encoded_labels.end() || !at->second.text)
       throw std::logic_error("entry function has no encoded symbol");
     HostSymbol symbol;
@@ -930,7 +937,8 @@ void collect_host_symbols(
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].storage == lowir_model::GSM_THREAD_LOCAL) {
 	  const std::unordered_map<std::string, std::string>::const_iterator object =
-		declared_objects.find(program.global_declarations[i].name);
+		declared_objects.find(lowir_model::lowir_symbol_name(
+		  program, program.global_declarations[i].symbol));
 	  if(object != declared_objects.end())
 		declared_tls_symbols.insert(object->second);
 	}

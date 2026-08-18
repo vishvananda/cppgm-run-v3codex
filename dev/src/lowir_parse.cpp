@@ -539,7 +539,8 @@ private:
   void parse_global_declaration(Program & program)
   {
     GlobalDeclaration result;
-    result.name = named('@', "global name");
+    result.symbol = append_lowir_symbol(
+      program, strings_->intern(named('@', "global name")));
     if(accept("readonly")) result.storage = GSM_READONLY;
     else if(accept("thread_local")) result.storage = GSM_THREAD_LOCAL;
     if(accept(":")) {
@@ -553,7 +554,8 @@ private:
   void parse_function_declaration(Program & program)
   {
     FunctionDeclaration result;
-    result.name = named('@', "function name");
+    result.symbol = append_lowir_symbol(
+      program, strings_->intern(named('@', "function name")));
     expect("(");
     result.params = parameter_list();
     expect(")");
@@ -566,7 +568,8 @@ private:
   void parse_global_definition(Program & program)
   {
     GlobalDefinition result;
-    result.name = named('@', "global name");
+    result.symbol = append_lowir_symbol(
+      program, strings_->intern(named('@', "global name")));
     if(accept("readonly")) result.storage = GSM_READONLY;
     else if(accept("thread_local")) result.storage = GSM_THREAD_LOCAL;
     if(accept(":")) result.type = type();
@@ -590,7 +593,8 @@ private:
         item.type = type();
         if(item.type.kind == LTK_PTR && accept("addr")) {
           item.kind = GlobalDefinition::DataItem::ITEM_ADDR;
-          item.symbol = named('@', "address initializer symbol");
+          item.symbol_spelling = strings_->intern(
+            named('@', "address initializer symbol"));
           item.addr_addend = address_addend();
         } else {
           item.kind = GlobalDefinition::DataItem::ITEM_INTEGER;
@@ -640,14 +644,16 @@ private:
     if(result.object_symbol.empty() || is_punctuation(result.object_symbol[0]))
       throw ParseError("invalid object alias spelling");
     expect("=");
-    result.target = named('@', "object alias target");
+    result.target_spelling = strings_->intern(
+      named('@', "object alias target"));
     program.object_aliases.push_back(result);
   }
 
   void parse_function_definition(Program & program)
   {
     Function result;
-    result.name = named('@', "function name");
+    result.symbol = append_lowir_symbol(
+      program, strings_->intern(named('@', "function name")));
     expect("(");
     result.params = parameter_list();
     expect(")");
@@ -1020,24 +1026,28 @@ private:
   {
     for(std::size_t i = 0; i < program_.global_declarations.size(); ++i) {
       const GlobalDeclaration & item = program_.global_declarations[i];
-      add_top(item.name); globals_.insert(item.name); global_storage_[item.name] = item.storage;
+      const std::string & name = lowir_symbol_name(program_, item.symbol);
+      add_top(name); globals_.insert(name); global_storage_[name] = item.storage;
       validate_global_role(item.metadata.role);
     }
     for(std::size_t i = 0; i < program_.globals.size(); ++i) {
       const GlobalDefinition & item = program_.globals[i];
-      add_top(item.name); globals_.insert(item.name); global_storage_[item.name] = item.storage;
+      const std::string & name = lowir_symbol_name(program_, item.symbol);
+      add_top(name); globals_.insert(name); global_storage_[name] = item.storage;
       validate_global_role(item.metadata.role);
     }
     for(std::size_t i = 0; i < program_.function_declarations.size(); ++i) {
       const FunctionDeclaration & item = program_.function_declarations[i];
-      add_top(item.name);
-      functions_[item.name] = FunctionInfo{&item.params, &item.return_type, &item.boundary};
+      const std::string & name = lowir_symbol_name(program_, item.symbol);
+      add_top(name);
+      functions_[name] = FunctionInfo{&item.params, &item.return_type, &item.boundary};
       validate_function_role(item.metadata.role);
     }
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       const Function & item = program_.functions[i];
-      add_top(item.name);
-      functions_[item.name] = FunctionInfo{&item.params, &item.return_type, &item.boundary};
+      const std::string & name = lowir_symbol_name(program_, item.symbol);
+      add_top(name);
+      functions_[name] = FunctionInfo{&item.params, &item.return_type, &item.boundary};
       validate_function_role(item.metadata.role);
     }
   }
@@ -1093,7 +1103,8 @@ private:
         for(std::size_t j = 0; j < global.data_items.size(); ++j) {
           const GlobalDefinition::DataItem & item = global.data_items[j];
           if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR &&
-             !top_symbols_.count(item.symbol))
+             !top_symbols_.count(
+               program_.strings.get(item.symbol_spelling)))
             throw ParseError("undefined structured global address target");
         }
       } else if(global.init_kind == GlobalDefinition::INIT_ADDR &&
@@ -1124,7 +1135,8 @@ private:
     for(std::size_t i = 0; i < program_.object_aliases.size(); ++i) {
       const ObjectAlias & alias = program_.object_aliases[i];
       if(!aliases.insert(alias.object_symbol).second) throw ParseError("duplicate object alias");
-      if(!top_symbols_.count(alias.target)) throw ParseError("undefined object alias target");
+      if(!top_symbols_.count(program_.strings.get(alias.target_spelling)))
+        throw ParseError("undefined object alias target");
     }
   }
 
@@ -1415,15 +1427,16 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
     for(std::size_t i = 0; i < program.functions.size(); ++i) {
       Function & function = program.functions[i];
       if(function.metadata.role != SR_NONE) continue;
-      if(function.name == "@main") {
+      const std::string & name = lowir_symbol_name(program, function.symbol);
+      if(name == "@main") {
         function.metadata.role = SR_ENTRY;
         function.metadata.inferred_legacy_role = true;
         has_entry = true;
-      } else if(!has_init && function.name == "@__cppgm_init") {
+      } else if(!has_init && name == "@__cppgm_init") {
         function.metadata.role = SR_INIT;
         function.metadata.inferred_legacy_role = true;
         has_init = true;
-      } else if(!has_fini && function.name == "@__cppgm_fini") {
+      } else if(!has_fini && name == "@__cppgm_fini") {
         function.metadata.role = SR_FINI;
         function.metadata.inferred_legacy_role = true;
         has_fini = true;

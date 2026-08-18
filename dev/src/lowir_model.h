@@ -365,8 +365,8 @@ struct InstructionDebugLocation
 
 struct GlobalDeclaration
 {
+  // Semantic identity is compact; presentation lives once in Program.
   SymbolId symbol;
-  std::string name;
   bool has_type = false;
   LowType type;
   GlobalStorageMode storage = GSM_DEFAULT;
@@ -386,14 +386,15 @@ struct GlobalDefinition
 
     LowType type;
     Operand literal_operand;
-    std::string symbol;
+    // Explicit-text parsing may hold a pooled forward reference until it is
+    // resolved to symbol_id.  Production source lowering sets symbol_id.
+    StringId symbol_spelling;
     SymbolId symbol_id;
     long long addr_addend = 0;
     std::size_t zero_bytes = 0;
   };
 
   SymbolId symbol;
-  std::string name;
   bool structured = false;
   GlobalStorageMode storage = GSM_DEFAULT;
   LowType type;
@@ -483,7 +484,6 @@ struct Block
 struct Function
 {
   SymbolId symbol;
-  std::string name;
   std::vector<Parameter> params;
   LowType return_type;
   std::vector<SlotId> slots;
@@ -505,7 +505,6 @@ struct Function
 struct FunctionDeclaration
 {
   SymbolId symbol;
-  std::string name;
   std::vector<Parameter> params;
   LowType return_type;
   FunctionBoundaryMetadata boundary;
@@ -516,13 +515,14 @@ struct ObjectAlias
 {
   std::string object_symbol;
   SymbolId target_id;
-  std::string target;
+  // Boundary-only unresolved presentation; invalid in a resolved program.
+  StringId target_spelling;
 };
 
 struct Program
 {
   StringPool strings;
-  std::vector<std::string> symbol_names;
+  std::vector<StringId> symbol_names;
   std::vector<GlobalDeclaration> global_declarations;
   std::vector<GlobalDefinition> globals;
   std::vector<FunctionDeclaration> function_declarations;
@@ -568,6 +568,8 @@ bool lowir_value_preserves_copy(const Function & function, ValueId value);
 PresentationName lowir_value_presentation(const Function & function,
                                           ValueId value);
 SymbolId append_lowir_symbol(Program & program, const std::string & name);
+SymbolId append_lowir_symbol(Program & program, StringId name);
+StringId lowir_symbol_spelling(const Program & program, SymbolId symbol);
 const std::string & lowir_symbol_name(const Program & program, SymbolId symbol);
 const std::string & lowir_parameter_name(const Program & program,
                                          const Parameter & parameter);
@@ -579,7 +581,8 @@ void resolve_lowir_program_symbols(Program & program);
 void intern_lowir_program_literals(Program & program);
 void remap_lowir_program_strings(Program & program,
                                  StringPool & destination);
-void materialize_lowir_program_symbol_spellings(Program & program);
+void remap_lowir_program_symbols(
+  Program & program, const std::vector<SymbolId> & symbols);
 
 enum LowirEntryPolicy
 {

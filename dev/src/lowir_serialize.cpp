@@ -405,9 +405,9 @@ void write_instruction(std::ostream & out, const Instruction & ins,
 }
 
 void write_global_declaration(std::ostream & out, const GlobalDeclaration & item,
-                              const Program &)
+                              const Program & program)
 {
-  out << "declare global " << item.name;
+  out << "declare global " << lowir_symbol_name(program, item.symbol);
   if(item.has_type) out << " : " << lowir_type_text(item.type);
   write_global_metadata(out, item.storage, item.metadata);
   out << '\n';
@@ -417,7 +417,7 @@ void write_function_declaration(std::ostream & out,
                                 const FunctionDeclaration & item,
                                 const Program & program)
 {
-  out << "declare function " << item.name;
+  out << "declare function " << lowir_symbol_name(program, item.symbol);
   write_parameters(out, item.params, program);
   out << " -> " << lowir_type_text(item.return_type);
   write_function_metadata(out, item.boundary, item.metadata);
@@ -427,7 +427,7 @@ void write_function_declaration(std::ostream & out,
 void write_global(std::ostream & out, const GlobalDefinition & item,
                   const Program & program)
 {
-  out << "global " << item.name;
+  out << "global " << lowir_symbol_name(program, item.symbol);
   if(!item.structured) out << " : " << lowir_type_text(item.type);
   write_global_metadata(out, item.storage, item.metadata);
   out << " = ";
@@ -466,7 +466,7 @@ void write_global(std::ostream & out, const GlobalDefinition & item,
 void write_function(std::ostream & out, const Function & function,
                     const Program & program)
 {
-  out << "function " << function.name;
+  out << "function " << lowir_symbol_name(program, function.symbol);
   write_parameters(out, function.params, program);
   out << " -> " << lowir_type_text(function.return_type);
   write_function_metadata(out, function.boundary, function.metadata);
@@ -507,7 +507,8 @@ std::string serialize_lowir_program(const LowirProgram & program)
   WRITE_GROUP(program.functions, write_function)
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     out << "alias object " << program.object_aliases[i].object_symbol << " = "
-        << program.object_aliases[i].target << '\n';
+        << lowir_symbol_name(
+             program, program.object_aliases[i].target_id) << '\n';
     wrote = true;
   }
 #undef WRITE_GROUP
