@@ -2315,7 +2315,6 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
 
 HostFunctionLayout emit_host_tls_wrapper(
     CodeBuffer & out, lowir_model::SymbolId symbol,
-    const lowir_model::LowirProgram & program,
     const lowir_model::SymbolMetadata & metadata)
 {
   if(!metadata.tls_for_symbol_id.valid())
@@ -2328,9 +2327,7 @@ HostFunctionLayout emit_host_tls_wrapper(
   layout.offset = out.size();
   out.label(symbol);
   if(layout.object_symbol.valid()) out.label_object(layout.object_symbol);
-  emit_tls_address(out, XR_RAX,
-                   lowir_model::lowir_symbol_name(
-                     program, metadata.tls_for_symbol_id));
+  emit_tls_address(out, XR_RAX, metadata.tls_for_symbol_id);
   out.byte(0xc3);
   layout.size = out.size() - layout.offset;
   return layout;
@@ -2519,11 +2516,10 @@ void emit_host_instruction(
 HostFunctionLayout emit_prepared_host_function(
     CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
-  const std::string & function_name = out.symbol_name(function.symbol);
   host_eh_detail::HostEhRegionPlan region_plan;
   if(function.host_eh_enabled)
     region_plan = host_eh_detail::analyze_host_eh_regions(
-      function, out.strings(), function_name);
+      function, out.strings(), out.symbol_name(function.symbol));
   if(stats && function.host_eh_enabled) {
     stats->eh_region_states += region_plan.state_count;
     stats->eh_region_edges += region_plan.edge_count;
@@ -2881,7 +2877,7 @@ void write_linux_relocatable(
     if(emitted_tls_wrappers[symbol]) continue;
     emitted_tls_wrappers[symbol] = 1;
     functions.push_back(emit_host_tls_wrapper(
-      text, wrapper.symbol, source, wrapper.metadata));
+      text, wrapper.symbol, wrapper.metadata));
   }
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     mir_model::MirFunction function = lowering.lower_function(i);
