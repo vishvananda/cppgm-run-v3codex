@@ -356,7 +356,7 @@ struct Parameter
 
 struct InstructionDebugLocation
 {
-  std::string file;
+  StringId file;
   std::size_t line = 0;
   std::size_t column = 0;
 
@@ -566,8 +566,8 @@ void resolve_lowir_function_operands(Function & function,
                                      const StringPool & strings);
 void resolve_lowir_program_symbols(Program & program);
 void intern_lowir_program_literals(Program & program);
-void remap_lowir_program_operand_spellings(Program & program,
-                                           StringPool & destination);
+void remap_lowir_program_strings(Program & program,
+                                 StringPool & destination);
 void materialize_lowir_program_symbol_spellings(Program & program);
 
 enum LowirEntryPolicy

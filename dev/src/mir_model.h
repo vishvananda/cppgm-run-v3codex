@@ -155,13 +155,13 @@ struct Operand
 
 struct InstructionDebugLocation
 {
-  std::string file;
+  lowir_model::StringId file;
   std::size_t line = 0;
   std::size_t column = 0;
 
   bool present() const
   {
-    return !file.empty() && line != 0 && column != 0;
+    return file.valid() && line != 0 && column != 0;
   }
 };
 

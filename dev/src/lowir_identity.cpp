@@ -503,9 +503,12 @@ void intern_lowir_program_literals(Program & program)
           program, program.functions[f].blocks[b].instructions[i]);
 }
 
-void remap_lowir_program_operand_spellings(Program & program,
-                                           StringPool & destination)
+void remap_lowir_program_strings(Program & program,
+                                 StringPool & destination)
 {
+  const auto remap_string = [&program, &destination](StringId & string) {
+    if(string.valid()) string = destination.intern(program.strings.get(string));
+  };
   const auto remap = [&program, &destination](Operand & operand) {
     if(!operand.has_spelling) return;
     operand.literal = destination.intern(program.strings.get(operand.literal));
@@ -516,17 +519,21 @@ void remap_lowir_program_operand_spellings(Program & program,
       remap(program.globals[i].data_items[j].literal_operand);
   }
   for(std::size_t f = 0; f < program.functions.size(); ++f)
+  {
+    remap_string(program.functions[f].debug_location.file);
     for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
       for(std::size_t i = 0;
           i < program.functions[f].blocks[b].instructions.size(); ++i) {
         Instruction & instruction =
           program.functions[f].blocks[b].instructions[i];
+        remap_string(instruction.debug_location.file);
         remap(instruction.first);
         remap(instruction.second);
         remap(instruction.third);
         for(std::size_t a = 0; a < instruction.args.size(); ++a)
           remap(instruction.args[a]);
       }
+  }
 }
 
 void materialize_lowir_program_symbol_spellings(Program & program)

@@ -406,17 +406,20 @@ std::vector<lowir_model::Parameter> ReadParameters(Reader& in)
 }
 
 void WriteDebug(Writer& out,
-	const lowir_model::InstructionDebugLocation& value)
+	const lowir_model::InstructionDebugLocation& value,
+	const lowir_model::LowirProgram& program)
 {
-	out.String(value.file);
+	out.String(value.file.valid() ? program.strings.get(value.file) : std::string());
 	out.U64(value.line);
 	out.U64(value.column);
 }
 
-lowir_model::InstructionDebugLocation ReadDebug(Reader& in)
+lowir_model::InstructionDebugLocation ReadDebug(Reader& in,
+	lowir_model::StringPool& strings)
 {
 	lowir_model::InstructionDebugLocation value;
-	value.file = in.String();
+	const std::string file = in.String();
+	if (!file.empty()) value.file = strings.intern(file);
 	value.line = in.Size();
 	value.column = in.Size();
 	return value;
@@ -448,7 +451,7 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
 	WriteParameters(out, value.call_params);
 	WriteType(out, value.call_return_type);
 	WriteBoundary(out, value.call_boundary);
-	WriteDebug(out, value.debug_location);
+	WriteDebug(out, value.debug_location, program);
 }
 
 const lowir_model::LowType& InstructionResultType(
@@ -489,7 +492,7 @@ lowir_model::Instruction ReadInstruction(Reader& in,
 	value.call_params = ReadParameters(in);
 	value.call_return_type = ReadType(in);
 	value.call_boundary = ReadBoundary(in);
-	value.debug_location = ReadDebug(in);
+	value.debug_location = ReadDebug(in, program.strings);
 	if (!destination.empty())
 		value.dest = lowir_model::append_lowir_value(
 			function, destination, InstructionResultType(value));
@@ -609,7 +612,7 @@ void WriteFunction(Writer& out, const lowir_model::Function& value,
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
 			WriteInstruction(out, value.blocks[i].instructions[j], program, value);
 	}
-	WriteDebug(out, value.debug_location);
+	WriteDebug(out, value.debug_location, program);
 	WriteBoundary(out, value.boundary);
 	WriteSymbolMetadata(out, value.metadata);
 }
@@ -640,7 +643,7 @@ lowir_model::Function ReadFunction(Reader& in,
 			value.blocks[i].instructions[j] = ReadInstruction(in, program, value);
 	}
 	lowir_model::resolve_lowir_function_operands(value, program.strings);
-	value.debug_location = ReadDebug(in);
+	value.debug_location = ReadDebug(in, program.strings);
 	value.boundary = ReadBoundary(in);
 	value.metadata = ReadSymbolMetadata(in);
 	return value;
@@ -1058,7 +1061,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 		RenameProgram(&objects[i].lowir, names, stats);
 		lowir_model::materialize_lowir_program_symbol_spellings(
 			objects[i].lowir);
-		lowir_model::remap_lowir_program_operand_spellings(
+		lowir_model::remap_lowir_program_strings(
 			objects[i].lowir, result.strings);
 		std::vector<ir_model::ExportedSymbol>().swap(
 			objects[i].lowir.exported_symbols);

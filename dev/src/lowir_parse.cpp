@@ -351,8 +351,9 @@ private:
     InstructionDebugLocation result;
     if(!accept("!dbg")) return result;
     expect("(");
-    result.file = take();
-    while(peek() != ",") result.file += take();
+    std::string file = take();
+    while(peek() != ",") file += take();
+    result.file = strings_->intern(file);
     expect(",");
     result.line = parse_positive_size(signed_literal());
     expect(",");
@@ -1624,7 +1625,7 @@ std::string lowir_type_text(const LowType & type)
 
 bool InstructionDebugLocation::present() const
 {
-  return !file.empty() && line != 0 && column != 0;
+  return file.valid() && line != 0 && column != 0;
 }
 
 bool same_lowir_type(const LowType & left, const LowType & right)

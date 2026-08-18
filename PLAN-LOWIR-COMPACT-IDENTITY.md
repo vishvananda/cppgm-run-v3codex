@@ -940,6 +940,43 @@ inside the noise envelope.  This slice receives no standalone timing credit;
 it is retained because it halves the two records without adding a hot lookup
 or changing their semantic consumers.
 
+### CI14: compact LowIR and MIR debug-file identity
+
+LowIR and MIR debug locations now carry the source-file spelling as a pooled
+`StringId`.  Source debug attachment interns the translation-unit path once;
+explicit LowIR parsing and private-object reading intern at their input
+boundaries.  Serializers and private-object writing resolve the spelling only
+when bytes are required.  Private-object joining remaps debug IDs together
+with literal spellings before moving functions into the joined pool.
+
+O1 cleanup/resume equality and hashing compare the compact file identity
+directly.  LowIR-to-MIR lowering uses the session's direct source-ID remap, so
+MIR instruction selection and optimization do not construct or compare file
+strings.  `LowirInstruction` falls from 432 to 400 bytes and
+`MirInstruction` from 176 to 152 bytes; a native compile without debug data
+therefore no longer pays for an empty `std::string` in every instruction.
+
+A debug-bearing private compiler object is byte-identical to the CI13 output,
+and linking that object produces a successful executable.  The frozen native
+object remains 4,417,192 bytes.  Its `.text` bytes are identical across all
+baseline and candidate runs; varying relocation-table order continues to
+produce the pre-existing set of whole-object hashes, including the expected
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+PA13, PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests, and the
+PA39 file audit has no fatal findings.  Three A/B/B/A blocks against
+`1be0413f` produced baseline/candidate medians of 5.745/5.730 seconds user,
+6.230/6.230 seconds wall, and 364,194/365,262 KiB peak RSS.  Paired block
+medians improve user time by 0.44%, with wall time and RSS neutral.  The
+record-size reduction and direct-ID cleanup keys justify retaining the slice;
+its small timing change is not counted as a large standalone win.
+
+The separate PA13 debug-info lane still reports nine pre-existing fixture
+mismatches for both CI13 and CI14 (O0 MIR/source-layout changes and absent
+native DWARF sections).  Candidate outputs were compared directly with CI13
+and are unchanged; those behavioral/fixture issues are not hidden by this
+representation changeset.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

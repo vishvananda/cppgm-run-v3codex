@@ -24,7 +24,7 @@ using lowir_model::Operand;
 
 struct ResumeKey
 {
-  std::string file;
+  lowir_model::StringId file;
   std::size_t line;
   std::size_t column;
   std::size_t context;
@@ -40,7 +40,7 @@ struct ResumeKeyHash
 {
   std::size_t operator()(const ResumeKey & key) const
   {
-    std::size_t result = std::hash<std::string>()(key.file);
+    std::size_t result = static_cast<std::uint32_t>(key.file);
     result ^= key.line + static_cast<std::size_t>(0x9e3779b9U) +
       (result << 6) + (result >> 2);
     result ^= key.column + static_cast<std::size_t>(0x9e3779b9U) +
@@ -203,7 +203,7 @@ bool same_debug(const InstructionDebugLocation & left,
 
 std::size_t debug_hash(const InstructionDebugLocation & debug)
 {
-  std::size_t result = std::hash<std::string>()(debug.file);
+  std::size_t result = static_cast<std::uint32_t>(debug.file);
   combine_hash(&result, debug.line);
   combine_hash(&result, debug.column);
   return result;

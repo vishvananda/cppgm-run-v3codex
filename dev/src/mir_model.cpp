@@ -316,7 +316,8 @@ std::string rendered_instruction_text(const Instruction & instruction,
   std::ostringstream out;
   out << instruction_text(instruction, program, function);
   if(instruction.debug_location.present())
-    out << " !dbg(" << instruction.debug_location.file << ", "
+    out << " !dbg(" << mir_string(program, instruction.debug_location.file)
+        << ", "
         << instruction.debug_location.line << ", "
         << instruction.debug_location.column << ')';
   return out.str();

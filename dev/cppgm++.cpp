@@ -698,10 +698,10 @@ int run_query_driver(const string & query)
 }
 
 lowir_model::InstructionDebugLocation source_location(
-    const string & path, size_t line, size_t column)
+    lowir_model::StringId file, size_t line, size_t column)
 {
 	lowir_model::InstructionDebugLocation result;
-	result.file = path;
+	result.file = file;
 	result.line = line;
 	result.column = column;
 	return result;
@@ -716,6 +716,7 @@ size_t first_source_column(const string & line)
 void attach_line_table_debug(lowir_model::LowirProgram * program,
 	const string & path, const string & source)
 {
+	const lowir_model::StringId debug_file = program->strings.intern(path);
 	vector<string> lines;
 	size_t begin = 0;
 	while(begin <= source.size()) {
@@ -787,7 +788,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		WordOccurrence function_occurrence;
 		if(find_word(source_name, 0, true, false, &function_occurrence))
 			function_line = function_occurrence.line;
-		function.debug_location = source_location(path, function_line + 1,
+		function.debug_location = source_location(debug_file, function_line + 1,
 			first_source_column(lines[function_line]));
 		unordered_set<string> parameters;
 		for(size_t i = 0; i < function.params.size(); ++i)
@@ -821,7 +822,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		const lowir_model::InstructionDebugLocation function_loc =
 			function.debug_location;
 		const lowir_model::InstructionDebugLocation return_loc =
-			source_location(path, return_line + 1,
+			source_location(debug_file, return_line + 1,
 				first_source_column(lines[return_line]));
 		for(size_t b = 0; b < function.blocks.size(); ++b) {
 			vector<lowir_model::Instruction> with_debug;
@@ -836,7 +837,7 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 					if(parameters.count(slot)) ins.debug_location = function_loc;
 					else if(locals.count(slot)) {
 						const LocalLocation & loc = locals[slot];
-						ins.debug_location = source_location(path, loc.line + 1,
+						ins.debug_location = source_location(debug_file, loc.line + 1,
 							loc.statement);
 							lowir_model::Instruction copy;
 							copy.kind = lowir_model::Instruction::IK_COPY;
@@ -858,13 +859,13 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 					if(locals.count(slot)) ins.debug_location = return_loc;
 					else if(!locals.empty()) {
 						const LocalLocation & loc = locals.begin()->second;
-						ins.debug_location = source_location(path, loc.line + 1,
+						ins.debug_location = source_location(debug_file, loc.line + 1,
 							loc.statement);
 					}
 				} else if(ins.kind == lowir_model::Instruction::IK_BINARY &&
 						  !locals.empty()) {
 					const LocalLocation & loc = locals.begin()->second;
-					ins.debug_location = source_location(path, loc.line + 1, loc.rhs);
+					ins.debug_location = source_location(debug_file, loc.line + 1, loc.rhs);
 				}
 				with_debug.push_back(ins);
 			}

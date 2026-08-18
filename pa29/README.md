@@ -128,7 +128,8 @@ is interned once in a program-level string pool. Parameter names and frame-slot
 display names use identities from the same pool. Carry these identities through
 instruction selection and MIR processing, and resolve their spellings only for
 the MIR dump, diagnostics, or native encoding. Do not store a separate
-`std::string` in each MIR operand or metadata record.
+`std::string` in each MIR operand or metadata record. MIR debug locations also
+carry their source-file spelling through this pool.
 
 Frame metadata is part of that final MIR contract. In particular, the
 callee-saved `preserve` list should name the callee-saved registers that the

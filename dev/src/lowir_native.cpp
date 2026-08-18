@@ -86,7 +86,7 @@ public:
     target_.object_symbol = source.metadata.object_symbol;
     target_.block_labels = source.block_labels;
     target_.return_type = source.return_type;
-    target_.debug_location.file = source.debug_location.file;
+    target_.debug_location.file = strings_.map(source.debug_location.file);
     target_.debug_location.line = source.debug_location.line;
     target_.debug_location.column = source.debug_location.column;
     if(stats_)
@@ -139,7 +139,7 @@ public:
             k < block.instructions.size(); ++k) {
           block.instructions[k].has_source_position = true;
           block.instructions[k].source_position = position_;
-          block.instructions[k].debug_location.file = debug.file;
+          block.instructions[k].debug_location.file = strings_.map(debug.file);
           block.instructions[k].debug_location.line = debug.line;
           block.instructions[k].debug_location.column = debug.column;
         }

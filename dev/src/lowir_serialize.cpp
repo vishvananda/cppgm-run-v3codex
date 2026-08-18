@@ -184,10 +184,12 @@ void write_global_metadata(std::ostream & out, GlobalStorageMode storage,
   metadata.finish();
 }
 
-void write_debug(std::ostream & out, const InstructionDebugLocation & location)
+void write_debug(std::ostream & out, const InstructionDebugLocation & location,
+                 const Program & program)
 {
   if(location.present())
-    out << " !dbg(" << location.file << ", " << location.line << ", "
+    out << " !dbg(" << program.strings.get(location.file) << ", "
+        << location.line << ", "
         << location.column << ')';
 }
 
@@ -396,7 +398,7 @@ void write_instruction(std::ostream & out, const Instruction & ins,
     if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first, program, function); }
     break;
   }
-  write_debug(out, ins.debug_location);
+  write_debug(out, ins.debug_location, program);
 }
 
 void write_global_declaration(std::ostream & out, const GlobalDeclaration & item,
@@ -465,7 +467,7 @@ void write_function(std::ostream & out, const Function & function,
   write_parameters(out, function.params);
   out << " -> " << lowir_type_text(function.return_type);
   write_function_metadata(out, function.boundary, function.metadata);
-  write_debug(out, function.debug_location);
+  write_debug(out, function.debug_location, program);
   out << " {\n";
   for(std::size_t i = 0; i < function.slots.size(); ++i)
     out << "  slot " << lowir_slot_name(function, function.slots[i]) << " : "

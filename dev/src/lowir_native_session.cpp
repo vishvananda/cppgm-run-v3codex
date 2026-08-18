@@ -23,8 +23,9 @@ session_detail::StringIdentityMap::StringIdentityMap(
 lowir_model::StringId session_detail::StringIdentityMap::map(
     lowir_model::StringId source_literal)
 {
+  if(!source_literal.valid()) return lowir_model::StringId();
   const std::uint32_t source_index = source_literal;
-  if(!source_literal.valid() || source_index >= mapped_.size())
+  if(source_index >= mapped_.size())
     throw std::logic_error("invalid LowIR literal identity");
   if(mapped_[source_index].valid()) return mapped_[source_index];
   const lowir_model::StringId target = strings_->intern(
