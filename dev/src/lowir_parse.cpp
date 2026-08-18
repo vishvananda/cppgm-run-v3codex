@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <cstring>
 #include <iterator>
 #include <sstream>
 #include <unordered_map>
@@ -16,6 +17,53 @@
 
 namespace lowir_model {
 namespace {
+
+LowOperation::Kind operation_kind(const std::string & text)
+{
+  static const std::pair<const char *, LowOperation::Kind> operations[] = {
+    {"neg", LowOperation::LOP_NEG},
+    {"not", LowOperation::LOP_NOT},
+    {"bitnot", LowOperation::LOP_BITNOT},
+    {"bswap", LowOperation::LOP_BSWAP},
+    {"add", LowOperation::LOP_ADD},
+    {"sub", LowOperation::LOP_SUB},
+    {"mul", LowOperation::LOP_MUL},
+    {"div", LowOperation::LOP_DIV},
+    {"udiv", LowOperation::LOP_UDIV},
+    {"mod", LowOperation::LOP_MOD},
+    {"umod", LowOperation::LOP_UMOD},
+    {"and", LowOperation::LOP_AND},
+    {"or", LowOperation::LOP_OR},
+    {"xor", LowOperation::LOP_XOR},
+    {"shl", LowOperation::LOP_SHL},
+    {"shr", LowOperation::LOP_SHR},
+    {"ushr", LowOperation::LOP_USHR},
+    {"eq", LowOperation::LOP_EQ},
+    {"ne", LowOperation::LOP_NE},
+    {"lt", LowOperation::LOP_LT},
+    {"ult", LowOperation::LOP_ULT},
+    {"le", LowOperation::LOP_LE},
+    {"ule", LowOperation::LOP_ULE},
+    {"gt", LowOperation::LOP_GT},
+    {"ugt", LowOperation::LOP_UGT},
+    {"ge", LowOperation::LOP_GE},
+    {"uge", LowOperation::LOP_UGE},
+    {"trunc", LowOperation::LOP_TRUNC},
+    {"sext", LowOperation::LOP_SEXT},
+    {"zext", LowOperation::LOP_ZEXT},
+    {"sitofp", LowOperation::LOP_SITOFP},
+    {"uitofp", LowOperation::LOP_UITOFP},
+    {"fptosi", LowOperation::LOP_FPTOSI},
+    {"fptoui", LowOperation::LOP_FPTOUI},
+    {"fptrunc", LowOperation::LOP_FPTRUNC},
+    {"fpext", LowOperation::LOP_FPEXT},
+    {"decay", LowOperation::LOP_DECAY}
+  };
+  for(std::size_t i = 0; i < sizeof(operations) / sizeof(operations[0]); ++i)
+    if(text == operations[i].first) return operations[i].second;
+  if(text.empty()) return LowOperation::LOP_NONE;
+  throw ParseError("unknown LowIR operation: " + text);
+}
 
 struct Token
 {
@@ -1340,6 +1388,130 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
 }
 
 }  // namespace
+
+LowOperation::LowOperation(const char * text)
+  : kind(operation_kind(text ? std::string(text) : std::string()))
+{}
+
+LowOperation::LowOperation(const std::string & text)
+  : kind(operation_kind(text))
+{}
+
+const char * lowir_operation_text(LowOperation operation)
+{
+  switch(operation.kind) {
+  case LowOperation::LOP_NONE: return "";
+  case LowOperation::LOP_NEG: return "neg";
+  case LowOperation::LOP_NOT: return "not";
+  case LowOperation::LOP_BITNOT: return "bitnot";
+  case LowOperation::LOP_BSWAP: return "bswap";
+  case LowOperation::LOP_ADD: return "add";
+  case LowOperation::LOP_SUB: return "sub";
+  case LowOperation::LOP_MUL: return "mul";
+  case LowOperation::LOP_DIV: return "div";
+  case LowOperation::LOP_UDIV: return "udiv";
+  case LowOperation::LOP_MOD: return "mod";
+  case LowOperation::LOP_UMOD: return "umod";
+  case LowOperation::LOP_AND: return "and";
+  case LowOperation::LOP_OR: return "or";
+  case LowOperation::LOP_XOR: return "xor";
+  case LowOperation::LOP_SHL: return "shl";
+  case LowOperation::LOP_SHR: return "shr";
+  case LowOperation::LOP_USHR: return "ushr";
+  case LowOperation::LOP_EQ: return "eq";
+  case LowOperation::LOP_NE: return "ne";
+  case LowOperation::LOP_LT: return "lt";
+  case LowOperation::LOP_ULT: return "ult";
+  case LowOperation::LOP_LE: return "le";
+  case LowOperation::LOP_ULE: return "ule";
+  case LowOperation::LOP_GT: return "gt";
+  case LowOperation::LOP_UGT: return "ugt";
+  case LowOperation::LOP_GE: return "ge";
+  case LowOperation::LOP_UGE: return "uge";
+  case LowOperation::LOP_TRUNC: return "trunc";
+  case LowOperation::LOP_SEXT: return "sext";
+  case LowOperation::LOP_ZEXT: return "zext";
+  case LowOperation::LOP_SITOFP: return "sitofp";
+  case LowOperation::LOP_UITOFP: return "uitofp";
+  case LowOperation::LOP_FPTOSI: return "fptosi";
+  case LowOperation::LOP_FPTOUI: return "fptoui";
+  case LowOperation::LOP_FPTRUNC: return "fptrunc";
+  case LowOperation::LOP_FPEXT: return "fpext";
+  case LowOperation::LOP_DECAY: return "decay";
+  }
+  throw ParseError("invalid compact LowIR operation identity");
+}
+
+std::size_t LowOperation::size() const
+{
+  return std::strlen(lowir_operation_text(*this));
+}
+
+char LowOperation::operator[](std::size_t index) const
+{
+  if(index >= size()) throw std::out_of_range("LowIR operation text index");
+  return lowir_operation_text(*this)[index];
+}
+
+LowOperation::operator std::string() const
+{
+  return std::string(lowir_operation_text(*this));
+}
+
+bool operator==(LowOperation left, LowOperation right)
+{
+  return left.kind == right.kind;
+}
+
+bool operator!=(LowOperation left, LowOperation right)
+{
+  return !(left == right);
+}
+
+bool operator==(LowOperation left, const char * right)
+{
+  return right && std::strcmp(lowir_operation_text(left), right) == 0;
+}
+
+bool operator!=(LowOperation left, const char * right)
+{
+  return !(left == right);
+}
+
+bool operator==(const char * left, LowOperation right)
+{
+  return right == left;
+}
+
+bool operator!=(const char * left, LowOperation right)
+{
+  return !(right == left);
+}
+
+std::string operator+(const char * left, LowOperation right)
+{
+  return std::string(left ? left : "") + lowir_operation_text(right);
+}
+
+std::string operator+(const std::string & left, LowOperation right)
+{
+  return left + lowir_operation_text(right);
+}
+
+std::string operator+(LowOperation left, const std::string & right)
+{
+  return std::string(lowir_operation_text(left)) + right;
+}
+
+std::ostream & operator<<(std::ostream & out, LowOperation operation)
+{
+  return out << lowir_operation_text(operation);
+}
+
+std::size_t lowir_operation_hash(LowOperation operation)
+{
+  return static_cast<std::size_t>(operation.kind);
+}
 
 const LowType & builtin_lowir_type(LowTypeKind kind)
 {

@@ -8,6 +8,7 @@
 // facts must still serialize to and parse back from LowIR text.
 
 #include <cstddef>
+#include <iosfwd>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -23,6 +24,77 @@ struct ParseError : std::runtime_error
     : std::runtime_error(message)
   {}
 };
+
+// LowIR operations are semantic identity, not presentation text.  The compact
+// value is carried through optimization and native lowering; text is decoded
+// once by the parser and rendered only by serializers and diagnostics.
+struct LowOperation
+{
+  enum Kind
+  {
+    LOP_NONE,
+    LOP_NEG,
+    LOP_NOT,
+    LOP_BITNOT,
+    LOP_BSWAP,
+    LOP_ADD,
+    LOP_SUB,
+    LOP_MUL,
+    LOP_DIV,
+    LOP_UDIV,
+    LOP_MOD,
+    LOP_UMOD,
+    LOP_AND,
+    LOP_OR,
+    LOP_XOR,
+    LOP_SHL,
+    LOP_SHR,
+    LOP_USHR,
+    LOP_EQ,
+    LOP_NE,
+    LOP_LT,
+    LOP_ULT,
+    LOP_LE,
+    LOP_ULE,
+    LOP_GT,
+    LOP_UGT,
+    LOP_GE,
+    LOP_UGE,
+    LOP_TRUNC,
+    LOP_SEXT,
+    LOP_ZEXT,
+    LOP_SITOFP,
+    LOP_UITOFP,
+    LOP_FPTOSI,
+    LOP_FPTOUI,
+    LOP_FPTRUNC,
+    LOP_FPEXT,
+    LOP_DECAY
+  } kind;
+
+  LowOperation() : kind(LOP_NONE) {}
+  LowOperation(Kind value) : kind(value) {}
+  LowOperation(const char * text);
+  LowOperation(const std::string & text);
+
+  bool empty() const { return kind == LOP_NONE; }
+  std::size_t size() const;
+  char operator[](std::size_t index) const;
+  operator std::string() const;
+};
+
+bool operator==(LowOperation left, LowOperation right);
+bool operator!=(LowOperation left, LowOperation right);
+bool operator==(LowOperation left, const char * right);
+bool operator!=(LowOperation left, const char * right);
+bool operator==(const char * left, LowOperation right);
+bool operator!=(const char * left, LowOperation right);
+std::string operator+(const char * left, LowOperation right);
+std::string operator+(const std::string & left, LowOperation right);
+std::string operator+(LowOperation left, const std::string & right);
+std::ostream & operator<<(std::ostream & out, LowOperation operation);
+const char * lowir_operation_text(LowOperation operation);
+std::size_t lowir_operation_hash(LowOperation operation);
 
 enum LowTypeKind
 {
@@ -341,7 +413,7 @@ struct Instruction
   std::string dest;
   LowType type;
   LowType source_type;
-  std::string op;
+  LowOperation op;
   std::size_t byte_count = 0;
   std::size_t byte_alignment = 1;
   bool has_eh_selector = false;

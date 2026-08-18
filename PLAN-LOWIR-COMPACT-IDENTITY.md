@@ -1,6 +1,6 @@
 # Plan: Compact LowIR-to-MIR Identity
 
-Status: ready for implementation
+Status: in progress
 
 Date: 2026-08-18
 
@@ -589,7 +589,28 @@ Final cumulative gates:
 | Large cross-cutting patch obscures regressions | Land one owner/representation slice per commit with earliest-PA reports |
 | Timing is hidden by host load | Interleaved medians plus counters, record sizes, hashes, and RSS |
 
-## 10. Completion definition
+## 10. Implementation log
+
+### CI1: compact LowIR operation identity
+
+The first Phase 1 slice replaces `Instruction::op` owning text with a compact
+closed-set operation identity.  The explicit LowIR parser decodes the spelling
+once, while serializers and diagnostics render it on demand.  The source
+adapter no longer allocates an operation string for every unary, binary,
+comparison, or conversion instruction.
+
+The LowIR instruction record falls from 864 to 848 bytes.  The frozen object
+remains byte-identical with SHA-256
+`87bdd91604b0a3e62fdd0c7b2851a1104b2bf0f95c479f2c5a6613f9a6a19faa`.
+PA13, PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests.
+
+Three A/B/B/A blocks against `30239dab` produced baseline/candidate medians of
+5.965/5.650 seconds user, 6.565/6.200 seconds wall, and 365,506/365,390 KiB
+peak RSS.  One late baseline run was heavily host-loaded; the interleaved
+median and the unchanged output hash are retained, but cumulative timing will
+be remeasured after the larger type and identity slices.
+
+## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one
 compact LowIR model; PA37, native lowering, MIR optimization, EH, and encoding

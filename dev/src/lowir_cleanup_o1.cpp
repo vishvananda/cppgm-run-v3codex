@@ -218,7 +218,7 @@ std::size_t instruction_hash(const Instruction & instruction)
   combine_hash(&result, std::hash<std::string>()(instruction.dest));
   combine_hash(&result, type_hash(instruction.type));
   combine_hash(&result, type_hash(instruction.source_type));
-  combine_hash(&result, std::hash<std::string>()(instruction.op));
+  combine_hash(&result, lowir_model::lowir_operation_hash(instruction.op));
   combine_hash(&result, instruction.byte_count);
   combine_hash(&result, instruction.byte_alignment);
   combine_hash(&result, instruction.has_eh_selector ? 1 : 0);
