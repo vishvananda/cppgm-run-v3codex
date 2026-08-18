@@ -65,10 +65,41 @@ void emit_symbol_move(CodeBuffer & out, X64Register destination,
   }
 }
 
+void emit_symbol_move(
+    CodeBuffer & out, X64Register destination, lowir_model::SymbolId symbol,
+    mir_model::MirOperand::AddressBinding address_binding)
+{
+  if(out.relocatable_addresses()) {
+    emit_rex(out, true, destination, XR_RBP);
+    out.byte(0x8d);
+    emit_modrm(out, 0, destination, 5);
+    out.address32(symbol, address_binding);
+  } else {
+    emit_rex(out, true, XR_RAX, destination);
+    out.byte(0xb8 + (static_cast<unsigned>(destination) & 7));
+    out.absolute64(symbol);
+  }
+}
+
 void emit_tls_address(CodeBuffer & out, X64Register destination,
                       const std::string & symbol)
 {
   // PA32's non-PIE host link permits one local-exec TPOFF32 displacement.
+  out.byte(0x64);
+  emit_rex(out, true, destination, XR_RSP);
+  out.byte(0x8b);
+  emit_modrm(out, 0, destination, 4);
+  out.byte(0x25);
+  out.zeros(4);
+  emit_rex(out, true, XR_RAX, destination);
+  out.byte(0x81);
+  emit_modrm(out, 3, 0, destination);
+  out.tls_offset32(symbol);
+}
+
+void emit_tls_address(CodeBuffer & out, X64Register destination,
+                      lowir_model::SymbolId symbol)
+{
   out.byte(0x64);
   emit_rex(out, true, destination, XR_RSP);
   out.byte(0x8b);

@@ -80,7 +80,10 @@ bool is_same_section(const LabelLocation & target, bool source_text,
 void resolve_section_fixups(
     EncodedSection & source, bool source_text, std::size_t source_section,
     const LabelIndex & labels,
-    const std::unordered_set<std::string> & externally_named)
+    const std::unordered_set<std::string> & externally_named,
+    const std::vector<LabelLocation> & symbol_locations,
+    const std::vector<unsigned char> & symbol_location_known,
+    const std::vector<unsigned char> & symbol_external)
 {
   std::vector<EncodedFixup> unresolved;
   unresolved.reserve(source.fixups.size());
@@ -99,6 +102,29 @@ void resolve_section_fixups(
     patch_relative32(source, fixup, target->second.offset);
   }
   source.fixups.swap(unresolved);
+  std::vector<EncodedSymbolFixup> unresolved_symbols;
+  unresolved_symbols.reserve(source.symbol_fixups.size());
+  for(std::size_t i = 0; i < source.symbol_fixups.size(); ++i) {
+    const EncodedSymbolFixup & fixup = source.symbol_fixups[i];
+    const std::uint32_t symbol = fixup.target;
+    if(!fixup.target.valid() || symbol >= symbol_locations.size())
+      throw std::logic_error("invalid encoded symbol fixup identity");
+    const bool relative = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
+      (fixup.kind == EncodedFixup::EF_ADDRESS32 &&
+       fixup.address_binding == mir_model::MirOperand::ADDRESS_LOCAL);
+    if(!relative || symbol_external[symbol] || !symbol_location_known[symbol] ||
+       !is_same_section(symbol_locations[symbol], source_text, source_section)) {
+      unresolved_symbols.push_back(fixup);
+      continue;
+    }
+    EncodedFixup numeric;
+    numeric.kind = fixup.kind;
+    numeric.address_binding = fixup.address_binding;
+    numeric.offset = fixup.offset;
+    numeric.addend = fixup.addend;
+    patch_relative32(source, numeric, symbol_locations[symbol].offset);
+  }
+  source.symbol_fixups.swap(unresolved_symbols);
 }
 
 }  // namespace
@@ -106,6 +132,7 @@ void resolve_section_fixups(
 void resolve_same_section_local_fixups(
     std::vector<EncodedSection> & text_sections,
     std::vector<EncodedSection> & data_sections,
+    const lowir_model::LowirProgram & program,
     const std::unordered_map<std::string, std::string> & declarations)
 {
   std::size_t label_count = 0;
@@ -121,12 +148,26 @@ void resolve_same_section_local_fixups(
     add_labels(labels, data_sections[i], false, i);
   const std::unordered_set<std::string> externally_named =
     externally_named_targets(declarations);
+  std::vector<LabelLocation> symbol_locations(program.symbol_names.size());
+  std::vector<unsigned char> symbol_location_known(
+    program.symbol_names.size(), 0);
+  std::vector<unsigned char> symbol_external(program.symbol_names.size(), 0);
+  for(std::size_t i = 0; i < program.symbol_names.size(); ++i) {
+    const LabelIndex::const_iterator found = labels.find(program.symbol_names[i]);
+    if(found != labels.end()) {
+      symbol_locations[i] = found->second;
+      symbol_location_known[i] = 1;
+    }
+    symbol_external[i] = externally_named.count(program.symbol_names[i]) != 0;
+  }
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     resolve_section_fixups(
-      text_sections[i], true, i, labels, externally_named);
+      text_sections[i], true, i, labels, externally_named, symbol_locations,
+      symbol_location_known, symbol_external);
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     resolve_section_fixups(
-      data_sections[i], false, i, labels, externally_named);
+      data_sections[i], false, i, labels, externally_named, symbol_locations,
+      symbol_location_known, symbol_external);
 }
 
 }  // namespace object_elf_detail

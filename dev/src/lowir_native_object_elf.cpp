@@ -216,6 +216,15 @@ std::vector<EncodedSection> partition_weak_text(
     fixup.offset = slice.new_start + fixup.offset - slice.old_start;
     result[slice.section].fixups.push_back(fixup);
   }
+  for(std::size_t i = 0; i < source.symbol_fixups.size(); ++i) {
+    const TextSlice & slice = slices[text_slice_at(
+      slices, source.symbol_fixups[i].offset)];
+    if(source.symbol_fixups[i].offset >= slice.old_end)
+      throw std::logic_error("encoded text symbol fixup is outside a function");
+    EncodedSymbolFixup fixup = source.symbol_fixups[i];
+    fixup.offset = slice.new_start + fixup.offset - slice.old_start;
+    result[slice.section].symbol_fixups.push_back(fixup);
+  }
   return result;
 }
 
@@ -691,10 +700,11 @@ std::string relocation_target(
 std::vector<HostRelocation> host_relocations(
     EncodedSection & source,
     const EncodedLabelIndex & labels,
+    const lowir_model::LowirProgram & program,
     const std::unordered_map<std::string, std::string> & declarations)
 {
   std::vector<HostRelocation> result;
-  result.reserve(source.fixups.size());
+  result.reserve(source.fixups.size() + source.symbol_fixups.size());
   for(std::size_t i = 0; i < source.fixups.size(); ++i) {
     const EncodedFixup & fixup = source.fixups[i];
     HostRelocation relocation;
@@ -718,6 +728,37 @@ std::vector<HostRelocation> host_relocations(
     relocation.offset = fixup.offset;
     relocation.target = relocation_target(
       fixup.target, labels, declarations);
+    relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
+      fixup.kind == EncodedFixup::EF_ADDRESS32 ?
+      fixup.addend - 4 : fixup.addend;
+    result.push_back(relocation);
+  }
+  for(std::size_t i = 0; i < source.symbol_fixups.size(); ++i) {
+    const EncodedSymbolFixup & fixup = source.symbol_fixups[i];
+    const std::uint32_t symbol = fixup.target;
+    if(!fixup.target.valid() || symbol >= program.symbol_names.size())
+      throw std::logic_error("invalid host relocation symbol identity");
+    HostRelocation relocation;
+    if(fixup.kind == EncodedFixup::EF_TLS_OFFSET32) {
+      relocation.kind = HostRelocation::HR_TPOFF32;
+    } else if(fixup.kind == EncodedFixup::EF_ADDRESS32) {
+      const bool local_address = fixup.address_binding ==
+        mir_model::MirOperand::ADDRESS_LOCAL;
+      relocation.kind = local_address ? HostRelocation::HR_PC32 :
+        HostRelocation::HR_GOTPCRELX;
+      if(!local_address) {
+        if(fixup.offset < 2 || fixup.offset > source.bytes.size() ||
+           source.bytes[fixup.offset - 2] != 0x8d)
+          throw std::logic_error("symbol-address fixup is not RIP-relative LEA");
+        source.bytes[fixup.offset - 2] = 0x8b;
+      }
+    } else {
+      relocation.kind = fixup.kind == EncodedFixup::EF_ABSOLUTE64 ?
+        HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
+    }
+    relocation.offset = fixup.offset;
+    relocation.target = relocation_target(
+      program.symbol_names[symbol], labels, declarations);
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
@@ -1094,17 +1135,17 @@ std::vector<unsigned char> make_linux_relocatable_image(
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
   resolve_same_section_local_fixups(
-    text_sections, mutable_data, declarations);
+    text_sections, mutable_data, program, declarations);
   std::vector<std::vector<HostRelocation> > text_relocations(
     text_sections.size());
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     text_relocations[i] = host_relocations(
-      text_sections[i], encoded_labels, declarations);
+      text_sections[i], encoded_labels, program, declarations);
   std::vector<std::vector<HostRelocation> > data_relocations(
     mutable_data.size());
   for(std::size_t i = 0; i < mutable_data.size(); ++i)
     data_relocations[i] = host_relocations(
-      mutable_data[i], encoded_labels, declarations);
+      mutable_data[i], encoded_labels, program, declarations);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
     functions, encoded_labels, program, declarations, lsda_relocations);

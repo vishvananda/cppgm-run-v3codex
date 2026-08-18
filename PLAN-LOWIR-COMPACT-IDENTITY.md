@@ -1005,6 +1005,30 @@ native encoding time from 302.9 to 282.7 ms (6.7%), confirming that the
 end-to-end signal is a real backend improvement masked by the much larger
 frontend interval.
 
+### CI16: compact symbol fixups through native object emission
+
+Direct calls, global addresses, TLS references, and EH type references now
+carry their existing `SymbolId` into `CodeBuffer` and the encoded-section
+model.  The encoder no longer resolves a symbol spelling and allocates an
+owning string for every fixup.  The object writer builds dense symbol-location,
+presence, and external-binding arrays once, patches same-section references by
+ID, and resolves a spelling only for the remaining ELF relocation records.
+Fixed runtime and object-format names continue to use the named boundary.
+
+The frozen object remains 4,417,192 bytes and deterministic runs retain SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+PA29, PA30, PA31, PA32, PA37, and PA38 report 612/612 passing tests, and the
+PA39 file audit has no fatal findings.
+
+Three A/B/B/A blocks against `b1085835` produced baseline/candidate medians of
+5.755/5.715 seconds user, 6.255/6.185 seconds wall, and 365,452/365,108 KiB
+peak RSS.  Paired block medians improve user time by 0.61% and wall time by
+0.96%, while RSS is unchanged.  Alternating backend-stat samples reduce native
+encoding from approximately 282.7 to 266.1 ms (5.9%), localizing the gain to
+the intended boundary.  Whole-object hashing still observes the pre-existing
+equivalent relocation-order variants; output size, tests, and the expected
+deterministic object are unchanged.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

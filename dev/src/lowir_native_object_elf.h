@@ -26,6 +26,16 @@ struct EncodedFixup
   long long addend = 0;
 };
 
+struct EncodedSymbolFixup
+{
+  EncodedFixup::Kind kind = EncodedFixup::EF_RELATIVE32;
+  mir_model::MirOperand::AddressBinding address_binding =
+    mir_model::MirOperand::ADDRESS_LOCAL;
+  std::size_t offset = 0;
+  lowir_model::SymbolId target;
+  long long addend = 0;
+};
+
 struct EncodedSection
 {
   std::string name;
@@ -35,6 +45,7 @@ struct EncodedSection
   std::vector<unsigned char> bytes;
   std::unordered_map<std::string, std::size_t> labels;
   std::vector<EncodedFixup> fixups;
+  std::vector<EncodedSymbolFixup> symbol_fixups;
 };
 
 struct HostFunctionLayout

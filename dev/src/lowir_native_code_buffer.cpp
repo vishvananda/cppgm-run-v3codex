@@ -434,6 +434,12 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 		--external_fixup_begin;
 	for (std::size_t i = external_fixup_begin; i < fixups_.size(); ++i)
 		fixups_[i].offset = adjustment.translate(fixups_[i].offset);
+	std::size_t symbol_fixup_begin = symbol_fixups_.size();
+	while (symbol_fixup_begin &&
+		symbol_fixups_[symbol_fixup_begin - 1].offset >= begin)
+		--symbol_fixup_begin;
+	for (std::size_t i = symbol_fixup_begin; i < symbol_fixups_.size(); ++i)
+		symbol_fixups_[i].offset = adjustment.translate(symbol_fixups_[i].offset);
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 	{
 		if (candidates[i].omit) continue;
@@ -469,6 +475,16 @@ void CodeBuffer::relative32(lowir_model::LocalLabelId target)
 	zeros(4);
 }
 
+void CodeBuffer::relative32(lowir_model::SymbolId target)
+{
+	SymbolFixup fixup;
+	fixup.kind = Fixup::RELATIVE32;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	symbol_fixups_.push_back(fixup);
+	zeros(4);
+}
+
 void CodeBuffer::absolute64(const std::string& target, long long addend)
 {
 	Fixup fixup;
@@ -487,6 +503,17 @@ void CodeBuffer::absolute64(lowir_model::LocalLabelId target)
 	fixup.offset = bytes_.size();
 	fixup.target = target;
 	local_fixups_.push_back(fixup);
+	zeros(8);
+}
+
+void CodeBuffer::absolute64(lowir_model::SymbolId target, long long addend)
+{
+	SymbolFixup fixup;
+	fixup.kind = Fixup::ABSOLUTE64;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	fixup.addend = addend;
+	symbol_fixups_.push_back(fixup);
 	zeros(8);
 }
 
@@ -513,6 +540,19 @@ void CodeBuffer::address32(lowir_model::LocalLabelId target)
 	zeros(4);
 }
 
+void CodeBuffer::address32(
+	lowir_model::SymbolId target,
+	mir_model::MirOperand::AddressBinding address_binding)
+{
+	SymbolFixup fixup;
+	fixup.kind = Fixup::ADDRESS32;
+	fixup.address_binding = address_binding;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	symbol_fixups_.push_back(fixup);
+	zeros(4);
+}
+
 void CodeBuffer::tls_offset32(const std::string& target)
 {
 	Fixup fixup;
@@ -520,6 +560,16 @@ void CodeBuffer::tls_offset32(const std::string& target)
 	fixup.offset = bytes_.size();
 	fixup.target = target;
 	fixups_.push_back(fixup);
+	zeros(4);
+}
+
+void CodeBuffer::tls_offset32(lowir_model::SymbolId target)
+{
+	SymbolFixup fixup;
+	fixup.kind = Fixup::TLS_OFFSET32;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	symbol_fixups_.push_back(fixup);
 	zeros(4);
 }
 
@@ -621,6 +671,47 @@ void CodeBuffer::resolve()
 		}
 		patch(fixup.offset, address, 8);
 	}
+	for (std::size_t i = 0; i < symbol_fixups_.size(); ++i)
+	{
+		const SymbolFixup& fixup = symbol_fixups_[i];
+		const std::string& name = symbol_name(fixup.target);
+		const std::unordered_map<std::string, std::size_t>::const_iterator target =
+			labels_.find(name);
+		if (target == labels_.end())
+			throw std::runtime_error("undefined native symbol: " + name);
+		if (fixup.kind == Fixup::RELATIVE32 ||
+			fixup.kind == Fixup::ADDRESS32 ||
+			fixup.kind == Fixup::TLS_OFFSET32)
+		{
+			const std::int64_t delta =
+				static_cast<std::int64_t>(target->second) -
+				static_cast<std::int64_t>(fixup.offset + 4) + fixup.addend;
+			if (delta < INT32_MIN || delta > INT32_MAX)
+				throw std::runtime_error(
+					"native branch displacement exceeds rel32");
+			patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
+			continue;
+		}
+		std::uint64_t address = kLoadAddress + kExecutableContentOffset +
+			target->second;
+		if (fixup.addend >= 0)
+		{
+			const std::uint64_t addend =
+				static_cast<std::uint64_t>(fixup.addend);
+			if (UINT64_MAX - address < addend)
+				throw std::runtime_error("native address fixup overflows");
+			address += addend;
+		}
+		else
+		{
+			const std::uint64_t magnitude =
+				static_cast<std::uint64_t>(-(fixup.addend + 1)) + 1;
+			if (address < magnitude)
+				throw std::runtime_error("native address fixup underflows");
+			address -= magnitude;
+		}
+		patch(fixup.offset, address, 8);
+	}
 }
 
 const std::vector<unsigned char>& CodeBuffer::bytes() const
@@ -645,9 +736,14 @@ const std::vector<Fixup>& CodeBuffer::fixups() const
 	return fixups_;
 }
 
+const std::vector<SymbolFixup>& CodeBuffer::symbol_fixups() const
+{
+	return symbol_fixups_;
+}
+
 std::size_t CodeBuffer::fixup_count() const
 {
-	return fixups_.size();
+	return fixups_.size() + symbol_fixups_.size();
 }
 
 lowir_model::LocalLabelId CodeBuffer::internal_label(const char*)

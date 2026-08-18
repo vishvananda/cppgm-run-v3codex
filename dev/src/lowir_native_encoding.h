@@ -26,8 +26,16 @@ void emit_symbol_move(
 void emit_symbol_move(elf_detail::CodeBuffer & out,
                       X64Register destination,
                       lowir_model::LocalLabelId label);
+void emit_symbol_move(
+    elf_detail::CodeBuffer & out, X64Register destination,
+    lowir_model::SymbolId symbol,
+    mir_model::MirOperand::AddressBinding address_binding =
+      mir_model::MirOperand::ADDRESS_LOCAL);
 void emit_tls_address(elf_detail::CodeBuffer & out,
                       X64Register destination, const std::string & symbol);
+void emit_tls_address(elf_detail::CodeBuffer & out,
+                      X64Register destination,
+                      lowir_model::SymbolId symbol);
 void emit_memory_modrm(elf_detail::CodeBuffer & out, unsigned reg,
                        X64Register base, long long displacement);
 void emit_indexed_memory_modrm(elf_detail::CodeBuffer & out, unsigned reg,

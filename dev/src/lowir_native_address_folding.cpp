@@ -249,7 +249,7 @@ std::size_t emit_dead_copy_store(
       function.callee_saved_regs.size() * 8);
   } else if(address.kind == MirOperand::OP_GLOBAL) {
     if(source == XR_R11) return 0;
-    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+    emit_symbol_move(out, XR_R11, address.symbol,
                      address.address_binding);
     base = XR_R11;
     offset = 0;

@@ -129,6 +129,12 @@ carry that identity through MIR optimization and native selection. Keep the
 symbol spelling once in the MIR program's symbol-name table and resolve it only
 for the MIR dump, a diagnostic, or native object emission.
 
+Native fixups for those references should also retain `SymbolId`. Resolve a
+same-section reference from an ID-indexed symbol-location table, and resolve a
+remaining spelling only when the object writer creates the symbol or relocation
+record. Do not allocate or hash a symbol-name string for every call, address, or
+TLS fixup.
+
 Integer and floating immediate operands use a compact `StringId` whose spelling
 is interned once in a program-level string pool. Parameter names and frame-slot
 display names use identities from the same pool. Carry these identities through

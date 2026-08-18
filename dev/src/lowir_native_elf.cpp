@@ -26,6 +26,7 @@
 namespace lowir_native {
 namespace {
 using object_elf_detail::EncodedFixup;
+using object_elf_detail::EncodedSymbolFixup;
 using object_elf_detail::EncodedSection;
 using object_elf_detail::HostFunctionLayout;
 using object_elf_detail::declaration_object_symbols;
@@ -126,7 +127,7 @@ void float_address(CodeBuffer & out, const mir_model::MirOperand & address,
     base = XR_RBP;
     displacement = actual_frame_offset(function, address.offset);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+    emit_symbol_move(out, XR_R11, address.symbol,
                      address.address_binding);
     base = XR_R11;
     displacement = 0;
@@ -575,10 +576,10 @@ void emit_move(CodeBuffer & out, const mir_model::MirInstruction & instruction)
   else if(source.kind == mir_model::MirOperand::OP_IMM)
     emit_immediate_move(out, destination, static_cast<std::uint64_t>(source.imm));
   else if(source.kind == mir_model::MirOperand::OP_SYMBOL)
-    emit_symbol_move(out, destination, out.symbol_name(source.symbol),
+    emit_symbol_move(out, destination, source.symbol,
                      source.address_binding);
   else if(source.kind == mir_model::MirOperand::OP_GLOBAL)
-    emit_symbol_move(out, destination, out.symbol_name(source.symbol),
+    emit_symbol_move(out, destination, source.symbol,
                      source.address_binding);
   else throw std::logic_error("unsupported native move operand");
 }
@@ -593,7 +594,7 @@ void emit_address_load(CodeBuffer & out, X64Register destination,
                         address.scale, address.offset, width);
     else emit_load(out, destination, address.reg, address.offset, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+    emit_symbol_move(out, XR_R11, address.symbol,
                      address.address_binding);
     emit_load(out, destination, XR_R11, 0, width);
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
@@ -612,7 +613,7 @@ void emit_address_store(CodeBuffer & out, const mir_model::MirOperand & address,
                          address.offset, source, width);
     else emit_store(out, address.reg, address.offset, source, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+    emit_symbol_move(out, XR_R11, address.symbol,
                      address.address_binding);
     emit_store(out, XR_R11, 0, source, width);
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
@@ -998,7 +999,7 @@ void emit_memory_compare(CodeBuffer & out,
     base = address.reg;
     displacement = address.offset;
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+    emit_symbol_move(out, XR_R11, address.symbol,
                      address.address_binding);
     base = XR_R11;
   } else {
@@ -1037,7 +1038,7 @@ void emit_register_memory_compare(CodeBuffer & out,
     base = address.reg;
     displacement = address.offset;
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+    emit_symbol_move(out, XR_R11, address.symbol,
                      address.address_binding);
     base = XR_R11;
   } else {
@@ -1297,8 +1298,7 @@ void emit_eh_catch(CodeBuffer & out,
     out.internal_label("eh_catch_selected");
   if(instruction.operands.size() == 2) {
     exact = out.internal_label("eh_catch_exact");
-    emit_symbol_move(out, XR_RAX,
-                     out.symbol_name(instruction.operands[1].symbol),
+    emit_symbol_move(out, XR_RAX, instruction.operands[1].symbol,
                      instruction.operands[1].address_binding);
     emit_symbol_move(out, XR_R11, kEhType);
     emit_load(out, XR_RCX, XR_R11, 0, 64);
@@ -1443,10 +1443,10 @@ void emit_tls_address_instruction(
     throw std::logic_error("TLS address source has invalid symbol facts");
   if(out.relocatable_addresses())
     emit_tls_address(out, require_register(instruction.operands[0]),
-                     out.symbol_name(instruction.tls_storage_symbol));
+                     instruction.tls_storage_symbol);
   else
     emit_symbol_move(out, require_register(instruction.operands[0]),
-                     out.symbol_name(instruction.operands[1].symbol),
+                     instruction.operands[1].symbol,
                      instruction.operands[1].address_binding);
 }
 
@@ -1662,7 +1662,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     if(instruction.operands[0].kind != mir_model::MirOperand::OP_SYMBOL)
       throw std::logic_error("direct call target is not a symbol");
     out.byte(0xe8);
-    out.relative32(out.symbol_name(instruction.operands[0].symbol));
+    out.relative32(instruction.operands[0].symbol);
     return;
   case mir_model::MirInstruction::MI_CALL_INDIRECT:
     require_operands(instruction, 1);
@@ -2725,6 +2725,21 @@ EncodedSection encoded_section(CodeBuffer && source,
     fixup.target = source.fixups()[i].target;
     fixup.addend = source.fixups()[i].addend;
     result.fixups.push_back(fixup);
+  }
+  result.symbol_fixups.reserve(source.symbol_fixups().size());
+  for(std::size_t i = 0; i < source.symbol_fixups().size(); ++i) {
+    EncodedSymbolFixup fixup;
+    fixup.kind = source.symbol_fixups()[i].kind == Fixup::ABSOLUTE64 ?
+      EncodedFixup::EF_ABSOLUTE64 :
+      source.symbol_fixups()[i].kind == Fixup::ADDRESS32 ?
+      EncodedFixup::EF_ADDRESS32 :
+      source.symbol_fixups()[i].kind == Fixup::TLS_OFFSET32 ?
+      EncodedFixup::EF_TLS_OFFSET32 : EncodedFixup::EF_RELATIVE32;
+    fixup.address_binding = source.symbol_fixups()[i].address_binding;
+    fixup.offset = source.symbol_fixups()[i].offset;
+    fixup.target = source.symbol_fixups()[i].target;
+    fixup.addend = source.symbol_fixups()[i].addend;
+    result.symbol_fixups.push_back(fixup);
   }
   return result;
 }

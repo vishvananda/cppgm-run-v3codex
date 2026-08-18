@@ -48,6 +48,16 @@ struct LocalFixup
 	lowir_model::LocalLabelId target;
 };
 
+struct SymbolFixup
+{
+	Fixup::Kind kind = Fixup::RELATIVE32;
+	mir_model::MirOperand::AddressBinding address_binding =
+		mir_model::MirOperand::ADDRESS_LOCAL;
+	std::size_t offset = 0;
+	lowir_model::SymbolId target;
+	long long addend = 0;
+};
+
 class CodeBuffer
 {
 public:
@@ -78,12 +88,17 @@ public:
 	CodeOffsetAdjustment relax_forward_branches(std::size_t begin);
 	void relative32(const std::string& target);
 	void relative32(lowir_model::LocalLabelId target);
+	void relative32(lowir_model::SymbolId target);
 	void absolute64(const std::string& target, long long addend = 0);
 	void absolute64(lowir_model::LocalLabelId target);
+	void absolute64(lowir_model::SymbolId target, long long addend = 0);
 	void address32(const std::string& target,
 		mir_model::MirOperand::AddressBinding address_binding);
 	void address32(lowir_model::LocalLabelId target);
+	void address32(lowir_model::SymbolId target,
+		mir_model::MirOperand::AddressBinding address_binding);
 	void tls_offset32(const std::string& target);
+	void tls_offset32(lowir_model::SymbolId target);
 	void relative32_at(std::size_t offset, const std::string& target,
 		long long elf_addend);
 	void absolute64_at(std::size_t offset, const std::string& target,
@@ -93,6 +108,7 @@ public:
 	std::vector<unsigned char> take_bytes();
 	const std::unordered_map<std::string, std::size_t>& labels() const;
 	const std::vector<Fixup>& fixups() const;
+	const std::vector<SymbolFixup>& symbol_fixups() const;
 	std::size_t fixup_count() const;
 	lowir_model::LocalLabelId internal_label(const char* purpose);
 
@@ -120,6 +136,7 @@ private:
 	std::unordered_map<std::string, std::size_t> labels_;
 	std::vector<std::size_t*> label_offsets_;
 	std::vector<Fixup> fixups_;
+	std::vector<SymbolFixup> symbol_fixups_;
 	std::vector<LocalFixup> local_fixups_;
 	std::vector<std::size_t> local_label_offsets_;
 	std::vector<lowir_model::LocalLabelId> bound_local_labels_;
