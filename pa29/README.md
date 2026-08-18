@@ -110,31 +110,6 @@ emission. You may keep a typed MIR internally, and the optional
 `dev/src/mir_model.h` scaffold gives one possible representation, but the dump
 must describe the same program that native emission consumes.
 
-In the typed scaffold, a block and every branch or exception-region target use
-a stable function-local `BlockId`. Keep each `^label` spelling once in the
-function's block-label table, indexed by that identity. Block layout may change
-without renumbering identities. Resolve the spelling only when producing the
-MIR dump or a diagnostic; control-flow, exception, and layout analysis should
-use the compact identity directly.
-
-Native encoding should map those block IDs to function-local `LocalLabelId`
-values and keep their bound offsets in a dense table. Branch and local-address
-fixups carry the local identity directly; they must not render and hash a
-`function::block` string. Resolve or retain names only for symbols and EH/object
-metadata that actually needs a spelling in the emitted file.
-
-Program symbols use the corresponding program-wide `SymbolId`. Direct calls,
-global storage operands, TLS references, and exception type references should
-carry that identity through MIR optimization and native selection. Keep the
-symbol spelling once in the MIR program's symbol-name table and resolve it only
-for the MIR dump, a diagnostic, or native object emission.
-
-Native fixups for those references should also retain `SymbolId`. Resolve a
-same-section reference from an ID-indexed symbol-location table, and resolve a
-remaining spelling only when the object writer creates the symbol or relocation
-record. Do not allocate or hash a symbol-name string for every call, address, or
-TLS fixup.
-
 Integer immediates must preserve the complete input value, including values
 that use the high half of an `i128`. Floating immediates must be interpreted as
 their stated f32, f64, or f80 type so that globals, computations, and native
@@ -462,10 +437,8 @@ To complete PA29, implement these goals:
    `zero_bytes <bytes>x<align>`, rather than being expanded only through the old CY86
    lowering path.
 
-   The operands of `copy_bytes` and `zero_bytes` name the selected logical
-   address registers. Lowering should not first copy those addresses into the
-   fixed registers used by a particular string-instruction encoding; native
-   emission performs any required parallel register setup.
+   The operands of `copy_bytes` and `zero_bytes` name their address registers
+   directly, without preceding MIR copies into fixed registers.
 
 4. Preserve the distinction between direct and indirect calls.
    The direct backend should still emit indirect machine-IR calls for truly indirect LowIR
@@ -521,14 +494,10 @@ To complete PA29, implement these goals:
    register.
 
    When a parameter needs a fixed home across a later clobber, an earlier use
-   may still read the incoming ABI register.  Do so only while parameter setup,
-   fixed-register instructions, calls, and earlier selected results have left
-   that register intact.  Determine this from the explicit and implicit
-   register definitions in the MIR instructions actually emitted before the
-   use.  A logical LowIR instruction that emits no MIR instruction does not
-   clobber a register.  Maintain a fixed register mask as MIR is appended;
-   do not rescan prior instructions or build a string-keyed register table.
-   Uses after the first emitted clobber must read the fixed home.
+   may still read the incoming ABI register while that register remains intact.
+   Uses after the first emitted MIR instruction that clobbers it must read the
+   fixed home. A LowIR operation that emits no MIR instruction does not itself
+   make the incoming register unavailable.
 
    When a sole-use scalar constant, load, copy, address, index, unary operation,
    or integer conversion is immediately returned, lower its result directly
