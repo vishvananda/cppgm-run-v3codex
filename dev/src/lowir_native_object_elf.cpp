@@ -181,39 +181,21 @@ std::vector<EncodedSection> partition_weak_text(
     EncodedSection source,
     std::vector<HostFunctionLayout> & functions)
 {
-  std::unordered_map<std::size_t, std::string> weak_signatures;
-  std::unordered_set<std::string> weak_objects;
-  std::vector<std::size_t> symbol_offsets(program.symbol_names.size(), 0);
-  std::vector<unsigned char> symbol_known(program.symbol_names.size(), 0);
-  for(std::size_t i = 0; i < source.symbol_labels.size(); ++i) {
-    const EncodedSymbolLabel & label = source.symbol_labels[i];
-    const std::uint32_t symbol = label.symbol;
-    if(!label.symbol.valid() || symbol >= symbol_offsets.size())
-      throw std::logic_error("invalid encoded symbol label identity");
-    symbol_offsets[symbol] = label.offset;
-    symbol_known[symbol] = 1;
-  }
+  std::vector<lowir_model::StringId> weak_symbols(
+    program.symbol_names.size());
+  std::vector<unsigned char> weak_objects(program.strings.size() + 1, 0);
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const lowir_model::ExportedSymbol & symbol = program.exported_symbols[i];
     if(symbol.linkage != ir_model::SL_WEAK || !symbol.object_symbol.valid())
       continue;
-    const std::string & object_symbol = exported_object_symbol(program, symbol);
-    weak_objects.insert(object_symbol);
-    const std::string object_label = native_object_symbol(object_symbol);
-    std::unordered_map<std::string, std::size_t>::const_iterator label =
-      source.labels.find(object_label);
-    std::size_t offset = 0;
-    bool found = label != source.labels.end();
-    if(found) {
-      offset = label->second;
-    } else {
-      const std::uint32_t internal = symbol.internal_symbol;
-      found = symbol.internal_symbol.valid() &&
-        internal < symbol_known.size() && symbol_known[internal];
-      if(found) offset = symbol_offsets[internal];
-    }
-    if(found && !weak_signatures.count(offset))
-      weak_signatures[offset] = object_symbol;
+    const std::uint32_t object = symbol.object_symbol;
+    const std::uint32_t internal = symbol.internal_symbol;
+    if(object >= weak_objects.size() ||
+       !symbol.internal_symbol.valid() || internal >= weak_symbols.size())
+      throw std::logic_error("invalid weak symbol identity");
+    weak_objects[object] = 1;
+    if(!weak_symbols[internal].valid())
+      weak_symbols[internal] = symbol.object_symbol;
   }
 
   std::vector<std::size_t> order(functions.size());
@@ -229,8 +211,8 @@ std::vector<EncodedSection> partition_weak_text(
   result[0].alignment = source.alignment;
   std::vector<TextSlice> slices;
   slices.reserve(functions.size());
-  std::unordered_set<std::string> section_names;
-  section_names.insert(source.name);
+  std::vector<unsigned char> emitted_weak_objects(
+    program.strings.size() + 1, 0);
   for(std::size_t position = 0; position < order.size(); ++position) {
     HostFunctionLayout & function = functions[order[position]];
     if(function.offset > source.bytes.size() ||
@@ -238,20 +220,22 @@ std::vector<EncodedSection> partition_weak_text(
       throw std::logic_error("encoded host function is out of bounds");
     if(position && slices.back().old_end > function.offset)
       throw std::logic_error("overlapping encoded host functions");
-    std::string signature;
-    const std::unordered_map<std::size_t, std::string>::const_iterator weak =
-      weak_signatures.find(function.offset);
-    if(weak != weak_signatures.end()) signature = weak->second;
-    const std::string function_object_symbol = function.object_symbol.valid() ?
-      program.strings.get(function.object_symbol) : std::string();
-    if(!function_object_symbol.empty() &&
-       weak_objects.count(function_object_symbol))
-      signature = function_object_symbol;
+    lowir_model::StringId signature;
+    const std::uint32_t program_symbol = function.program_symbol;
+    if(function.program_symbol.valid() &&
+       program_symbol < weak_symbols.size())
+      signature = weak_symbols[program_symbol];
+    if(function.object_symbol.valid()) {
+      const std::uint32_t object = function.object_symbol;
+      if(object >= weak_objects.size())
+        throw std::logic_error("invalid function object symbol identity");
+      if(weak_objects[object]) signature = function.object_symbol;
+    }
 
     TextSlice slice;
     slice.old_start = function.offset;
     slice.old_end = function.offset + function.size;
-    if(signature.empty()) {
+    if(!signature.valid()) {
       EncodedSection & ordinary = result[0];
       while(ordinary.bytes.size() % 2) ordinary.bytes.push_back(0);
       slice.new_start = ordinary.bytes.size();
@@ -260,13 +244,18 @@ std::vector<EncodedSection> partition_weak_text(
         source.bytes.begin() + function.offset,
         source.bytes.begin() + function.offset + function.size);
     } else {
+      const std::uint32_t object = signature;
+      if(object >= emitted_weak_objects.size())
+        throw std::logic_error("invalid weak signature identity");
       EncodedSection grouped;
-      grouped.name = ".text." + signature;
-      grouped.comdat_signature = signature;
+      const std::string & signature_name = program.strings.get(signature);
+      grouped.name = ".text." + signature_name;
+      grouped.comdat_signature = signature_name;
       grouped.flags = source.flags | 0x200;
       grouped.alignment = 2;
-      if(!section_names.insert(grouped.name).second)
+      if(emitted_weak_objects[object])
         throw std::logic_error("duplicate function COMDAT section name");
+      emitted_weak_objects[object] = 1;
       grouped.bytes.insert(grouped.bytes.end(),
         source.bytes.begin() + function.offset,
         source.bytes.begin() + function.offset + function.size);
