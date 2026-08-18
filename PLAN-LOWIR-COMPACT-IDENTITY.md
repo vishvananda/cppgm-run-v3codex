@@ -1066,6 +1066,33 @@ difference is within the semantic-frontend process-peak envelope.  No fixture
 changes are required because the defect affected allocation complexity, not
 MIR or object semantics.
 
+### CI19: clean self-host anchor and compact-ID reducers
+
+Before residual identity work, the PA39 tree was removed and rebuilt from
+scratch.  That clean build exposed two independent defects that incremental
+tests had not exercised.  Both were reduced and fixed at their earliest owned
+assignment before accepting a new timing anchor.
+
+- A PA25 local array containing aggregate elements with array members rejected
+  a valid copied element as though every element had to be a nested braced
+  action list.  `200-local-aggregate-array-copy-and-braces` now covers the
+  copy path, and already-lowered copy elements remain unchanged while actual
+  braced elements still receive construction actions (`eeae0510`).
+- Compact `BlockId` conversion made the O1 batch inliner index original
+  landing-pad state with blocks created during inlining.  Generated blocks are
+  not original landing pads, so the lookup is now bounded by the original
+  table.  `380-inline-generated-block-state` covers the non-leaf-to-leaf
+  transition that creates and then revisits those blocks (`cedf4191`).
+
+The full report passes 5,203/5,203 tests and the PA39 file audit has zero fatal
+findings.  Under a calm host, the clean 32-way `cppgm++-self` build takes
+18.14 seconds wall, 403.43 seconds aggregate user time, and 251,600 KiB peak
+RSS.  A separate clean 32-way inception build takes 1:48.99 wall, 2,890.77
+seconds aggregate user time, and 240,112 KiB peak RSS.  All 161 inception
+objects match; the final self and inception binaries are byte-identical at
+16,781,400 bytes with SHA-256
+`6645e3a9f7e204c601567a148ca514c50c0aa0c4c654cdb943c06b6dba6f2e7a`.
+
 ## 11. Current residual audit and next slices
 
 The cumulative hot-path milestone now passes the performance gate.  Three
