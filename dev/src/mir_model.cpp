@@ -346,10 +346,10 @@ void render_global(std::ostringstream & out, const Program & program,
       } else {
         out << lowir_model::lowir_type_text(item.type) << ' ';
         if(item.kind == GlobalDefinition::DataItem::ITEM_FLOAT)
-          out << item.literal_text;
+          out << mir_string(program, item.literal);
 		else if (item.type.kind == lowir_model::LTK_I128 &&
-                 !item.literal_text.empty())
-		  out << item.literal_text;
+		         item.literal.valid())
+		  out << mir_string(program, item.literal);
 		else out << item.int_value;
         out << '\n';
       }
@@ -365,12 +365,12 @@ void render_global(std::ostringstream & out, const Program & program,
     else if(global.addr_addend < 0) out << global.addr_addend;
   } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
     out << lowir_model::lowir_type_text(global.type) << ' '
-        << global.literal_text;
+        << mir_string(program, global.literal);
   } else {
     out << lowir_model::lowir_type_text(global.type) << ' ';
 	if(global.type.kind == lowir_model::LTK_I128 &&
-           !global.literal_text.empty())
-	  out << global.literal_text;
+	   global.literal.valid())
+	  out << mir_string(program, global.literal);
 	else out << global.int_value;
   }
   out << '\n';

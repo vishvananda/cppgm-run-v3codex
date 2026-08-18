@@ -36,15 +36,19 @@ void append_startup_call(std::vector<MirInstruction> & startup,
 
 mir_model::MirGlobalDefinition lower_global(
     const lowir_model::LowirProgram & program,
-    const lowir_model::LowirGlobalDefinition & source)
+    const lowir_model::LowirGlobalDefinition & source,
+    lowir_model::StringPool & strings)
 {
   mir_model::MirGlobalDefinition target;
   target.symbol = source.symbol;
-  target.object_symbol = source.metadata.object_symbol;
+  if(!source.metadata.object_symbol.empty())
+    target.object_symbol = strings.intern(source.metadata.object_symbol);
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
-  target.section_segment = source.metadata.section_segment;
-  target.section_name = source.metadata.section_name;
+  if(!source.metadata.section_segment.empty())
+    target.section_segment = strings.intern(source.metadata.section_segment);
+  if(!source.metadata.section_name.empty())
+    target.section_name = strings.intern(source.metadata.section_name);
   if(source.structured) {
     target.storage_kind = mir_model::MirGlobalDefinition::GS_DATA;
     for(std::size_t i = 0; i < source.data_items.size(); ++i) {
@@ -60,13 +64,14 @@ mir_model::MirGlobalDefinition lower_global(
         lowered.addr_addend = item.addr_addend;
       } else if(is_floating(item.type)) {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT;
-        lowered.literal_text = program.strings.get(
-          item.literal_operand.literal);
+        lowered.literal = strings.intern(program.strings.get(
+          item.literal_operand.literal));
       } else {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
         lowered.int_value = selection::integer_value(item.literal_operand);
-		lowered.literal_text = program.strings.get(
-		  item.literal_operand.literal);
+		if(item.type.kind == lowir_model::LTK_I128)
+		  lowered.literal = strings.intern(program.strings.get(
+		    item.literal_operand.literal));
       }
       target.data_items.push_back(lowered);
     }
@@ -79,17 +84,19 @@ mir_model::MirGlobalDefinition lower_global(
       target.addr_addend = source.addr_addend;
     } else if(is_floating(source.type)) {
       target.init_kind = mir_model::MirGlobalDefinition::GI_FLOAT;
-      target.literal_text = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
-        (source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
-         (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0")) :
-        program.strings.get(source.init_operand.literal);
+      target.literal = strings.intern(
+        source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
+          (source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
+           (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0")) :
+          program.strings.get(source.init_operand.literal));
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
       target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
         0 : selection::integer_value(source.init_operand);
-	  target.literal_text = source.init_kind ==
-		lowir_model::LowirGlobalDefinition::INIT_ZERO ? "0" :
-		program.strings.get(source.init_operand.literal);
+	  if(source.type.kind == lowir_model::LTK_I128)
+		target.literal = strings.intern(source.init_kind ==
+		  lowir_model::LowirGlobalDefinition::INIT_ZERO ? "0" :
+		  program.strings.get(source.init_operand.literal));
     }
   }
   return target;

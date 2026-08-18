@@ -1324,6 +1324,41 @@ All 162 self/inception objects match byte-for-byte.  The final binaries are
 byte-identical at 16,843,400 bytes with SHA-256
 `3e55a11e491c27e87d2782ddb15c8f18613ddca80050651984da2c4188e136df`.
 
+### CI25: pool MIR ABI and global-data presentation
+
+MIR object names, section names, alias names, and the literal spellings needed
+for floating-point and 128-bit global data now carry pooled `StringId` rather
+than owning strings.  Ordinary integer global data retains only its parsed
+value because neither MIR serialization nor encoding needs the original
+spelling.  Fixed floating and wide-zero spellings are interned once.
+
+Global-data encoding now owns the final identity-to-bytes transition in the
+new `lowir_native_global_encoding` module.  This keeps the ELF writer below its
+fatal file-size threshold and leaves pooled presentation intact until labels,
+relocations, serialized MIR, or actual data bytes require text.  No new name
+map or string set was added to analysis or lowering.
+
+PA29, PA30, PA37, and PA38 report 443/443 passing tests.  The full root report
+passes 5,204/5,204 tests and the PA39 file audit has zero fatal findings.  All
+MIR fixtures are unchanged.  The frozen object remains byte-identical to CI24
+at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+Three A/B/B/A blocks against the immutable CI24 compiler produced
+baseline/candidate medians of 5.020/4.960 seconds user, 5.535/5.430 seconds
+wall, and 364,846/364,464 KiB peak RSS.  The paired candidate/baseline medians
+were 0.9920 for user time, 0.9918 for wall time, and 0.9982 for RSS.  One
+candidate run encountered a visible host-load spike; the robust paired median
+still trends better, but the sub-percent result takes no standalone timing
+credit.
+
+A clean 32-way self build takes 18.41 seconds wall, 407.20 seconds aggregate
+user time, and 246,684 KiB peak RSS.  A separate 32-way inception compare takes
+1:50.49 wall, 2,946.65 seconds aggregate user time, and 231,844 KiB peak RSS.
+All 163 self/inception objects match byte-for-byte.  The final binaries are
+byte-identical at 16,852,472 bytes with SHA-256
+`8ca0082229994f91b5df089f117e8e7ebc0c23ac7164acb7e947c500d5b4d35c`.
+
 ## 11. Current residual audit and next slices
 
 The cumulative hot-path milestone now passes the performance gate.  Three
@@ -1353,7 +1388,7 @@ follows:
 | LowIR function presentation | Completed in CI21: slots and blocks use pooled IDs; values use one tagged pooled spelling or generated ordinal, with explicit behavior bits | Keep rendering confined to serialization and diagnostics; do not add a parallel name index | Complete for LowIR; MIR block-label presentation remains below |
 | LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings and are copied into MIR | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
 | PA37 inliners | Completed in CI23: semantic allocation is monotonic by compact ID; exact-name collision state uses numeric generated ordinals and pooled slot IDs | Keep the sparse numeric reservation for arbitrary explicit input; do not rebuild full caller string sets | Complete |
-| MIR program shell | CI24 completes semantic symbols and pooled block labels; object names, section names, and global literal spellings remain owning strings | Pool genuine output presentation once and render only at MIR/ELF boundaries | Semantic identity complete; presentation pooling remains |
+| MIR program shell | CI24 completes semantic symbols and pooled block labels; CI25 pools object names, sections, aliases, and required global literals | Keep presentation rendering at MIR/ELF boundaries and parsed ordinary integer values text-free | Complete |
 | MIR debug metadata | `DebugVariable::name` remains owning text | Intern once in the existing MIR pool and carry `StringId` | Low on the frozen no-debug lane |
 | Native encoding before ELF | named `CodeBuffer` labels/fixups and object/EH planning maps still hash runtime, global-data, host-EH, declaration, COMDAT, and section spellings | Extend tagged fixup targets to runtime/object/EH IDs; use dense vectors for compiler-owned domains and resolve names once when constructing ELF symbol, relocation, section, and string tables | High within encoding |
 | Explicit `.lowir` parsing and private-object joining | arbitrary input spellings require string maps to diagnose duplicates and unite independently owned programs | Keep transient boundary resolvers, preferably keyed by interned IDs/spans, and destroy them after producing compact identity | Not on frozen source hot path |
@@ -1361,12 +1396,9 @@ follows:
 
 The next changesets should therefore be:
 
-1. Pool LowIR/MIR ABI and global-literal presentation, including object names,
-   sections, and fixed zero spellings.  Do not introduce a parallel name
-   index.
-2. Finish the executable/global-data/host-EH encoder boundary so the ELF writer
+1. Finish the executable/host-EH encoder boundary so the ELF writer
    is the only owner that hashes output spellings.
-3. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
+2. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
    the O0 hot path is clean.
 
 String-keyed maps in `lowir_parse.cpp`, the resolution portion of

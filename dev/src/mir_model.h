@@ -34,7 +34,7 @@ struct GlobalDefinition
     MachineType type;
     long long int_value = 0;
     long double float_value = 0.0L;
-    std::string literal_text;
+    lowir_model::StringId literal;
     lowir_model::SymbolId symbol;
     long long addr_addend = 0;
     std::size_t zero_bytes = 0;
@@ -55,16 +55,16 @@ struct GlobalDefinition
   } init_kind = GI_ZERO;
 
   lowir_model::SymbolId symbol;
-  std::string object_symbol;
+  lowir_model::StringId object_symbol;
   bool readonly = false;
   bool thread_local_storage = false;
   lowir_model::SymbolId thread_local_wrapper_symbol;
-  std::string section_segment;
-  std::string section_name;
+  lowir_model::StringId section_segment;
+  lowir_model::StringId section_name;
   MachineType type;
   long long int_value = 0;
   long double float_value = 0.0L;
-  std::string literal_text;
+  lowir_model::StringId literal;
   lowir_model::SymbolId init_symbol;
   long long addr_addend = 0;
   std::vector<DataItem> data_items;
@@ -342,7 +342,7 @@ struct HostEhClause
 struct Function
 {
   lowir_model::SymbolId symbol;
-  std::string object_symbol;
+  lowir_model::StringId object_symbol;
   std::vector<ParamBinding> params;
   MachineType return_type;
   // Lowering-to-optimizer frame requirements.  The optimizer combines these
@@ -373,7 +373,7 @@ struct Function
 
 struct ObjectAlias
 {
-  std::string object_symbol;
+  lowir_model::StringId object_symbol;
   lowir_model::SymbolId target;
 };
 
@@ -397,7 +397,7 @@ struct RuntimeFunction
   } kind = RF_EH_PERSONALITY;
 
   lowir_model::SymbolId symbol;
-  std::string object_symbol;
+  lowir_model::StringId object_symbol;
 };
 
 struct RuntimeData
@@ -405,7 +405,7 @@ struct RuntimeData
   enum Kind { RD_OPAQUE, RD_RTTI_CLASS, RD_RTTI_SI, RD_RTTI_VMI }
     kind = RD_OPAQUE;
   lowir_model::SymbolId symbol;
-  std::string object_symbol;
+  lowir_model::StringId object_symbol;
 };
 
 struct Program

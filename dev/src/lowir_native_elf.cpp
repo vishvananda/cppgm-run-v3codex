@@ -9,6 +9,7 @@
 #include "lowir_native_opt.h"
 #include "lowir_native_encoding.h"
 #include "lowir_native_frame_forwarding.h"
+#include "lowir_native_global_encoding.h"
 #include "lowir_native_object_elf.h"
 #include <algorithm>
 #include <cerrno>
@@ -39,6 +40,7 @@ using float_bits::scalar;
 using data_layout::global_alignment;
 using data_layout::type_size;
 using data_layout::type_width;
+using global_encoding::emit_global;
 using elf_detail::CodeBuffer;
 using elf_detail::CodeOffsetAdjustment;
 using elf_detail::Fixup;
@@ -49,6 +51,13 @@ const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
 std::string native_object_symbol(const std::string & symbol)
 {
   return symbol.empty() || symbol[0] == '@' ? symbol : "@" + symbol;
+}
+
+std::string native_object_symbol(
+    const CodeBuffer & out, lowir_model::StringId symbol)
+{
+  return symbol.valid() ? native_object_symbol(out.literal_spelling(symbol)) :
+                          std::string();
 }
 
 struct HostEhStackCleanup
@@ -1860,7 +1869,8 @@ void emit_prepared_function(
   const std::size_t function_start = out.size();
   const std::string & function_name = out.symbol_name(function.symbol);
   out.label(function.symbol);
-  const std::string object_symbol = native_object_symbol(function.object_symbol);
+  const std::string object_symbol =
+    native_object_symbol(out, function.object_symbol);
   if(!object_symbol.empty() && object_symbol != function_name)
     out.label(object_symbol);
   out.begin_function_blocks(function.block_labels.size());
@@ -1943,7 +1953,8 @@ void emit_runtime_labels(CodeBuffer & out,
 {
   const std::string & runtime_name = out.symbol_name(runtime.symbol);
   out.label(runtime.symbol);
-  const std::string object_symbol = native_object_symbol(runtime.object_symbol);
+  const std::string object_symbol =
+    native_object_symbol(out, runtime.object_symbol);
   if(!object_symbol.empty() && object_symbol != runtime_name)
     out.label(object_symbol);
 }
@@ -2285,74 +2296,10 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
       out.symbol_name(program.runtime_data[i].symbol);
     out.label(program.runtime_data[i].symbol);
     const std::string object_symbol =
-      native_object_symbol(program.runtime_data[i].object_symbol);
+      native_object_symbol(out, program.runtime_data[i].object_symbol);
     if(!object_symbol.empty() && object_symbol != runtime_name)
       out.label(object_symbol);
     out.zeros(32);
-  }
-}
-
-void emit_integer_data(CodeBuffer & out, long long value, std::size_t size, const std::string& literal_text)
-{
-  if(size <= 8) {
-    out.little(static_cast<std::uint64_t>(value), static_cast<unsigned>(size));
-    return;
-  }
-  if(size != 16) throw std::logic_error("unsupported wide integer data size");
-	std::uint64_t low, high; parse_wide_literal_words(literal_text.empty() ? std::to_string(value) : literal_text, &low, &high);
-	out.little(low, 8); out.little(high, 8);
-}
-
-void emit_float_data(CodeBuffer & out, const std::string & text,
-                     const lowir_model::LowType & type)
-{
-  if(type.kind == lowir_model::LTK_F80) {
-    const std::pair<std::uint64_t, std::uint64_t> words =
-      extended(text);
-    out.little(words.first, 8);
-    out.little(words.second, 8);
-    return;
-  }
-  out.little(scalar(text, type),
-             static_cast<unsigned>(type_size(type)));
-}
-
-void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global)
-{
-  out.align(global_alignment(global));
-  const std::string & global_name = out.symbol_name(global.symbol);
-  out.label(global.symbol);
-  const std::string object_symbol = native_object_symbol(global.object_symbol);
-  if(!object_symbol.empty() && object_symbol != global_name)
-    out.label(object_symbol);
-  if(global.thread_local_storage && global.thread_local_wrapper_symbol.valid())
-    out.label(global.thread_local_wrapper_symbol);
-  if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR) {
-    const std::size_t size = type_size(global.type);
-    if(global.init_kind == mir_model::MirGlobalDefinition::GI_ADDR) {
-      out.absolute64(global.init_symbol, global.addr_addend);
-    } else if(global.init_kind == mir_model::MirGlobalDefinition::GI_FLOAT) {
-      emit_float_data(out, global.literal_text, global.type);
-    } else {
-      emit_integer_data(out, global.int_value, size, global.literal_text);
-    }
-    return;
-  }
-  for(std::size_t i = 0; i < global.data_items.size(); ++i) {
-    const mir_model::MirGlobalDefinition::DataItem & item = global.data_items[i];
-    if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_ZERO) {
-      out.zeros(item.zero_bytes);
-      continue;
-    }
-    const std::size_t size = type_size(item.type);
-    out.align(size);
-    if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR)
-      out.absolute64(item.symbol, item.addr_addend);
-    else if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER)
-      emit_integer_data(out, item.int_value, size, item.literal_text);
-    else if(item.kind == mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT)
-      emit_float_data(out, item.literal_text, item.type);
-    else throw std::logic_error("unsupported native global data item");
   }
 }
 
@@ -2451,7 +2398,8 @@ void emit_program_tail(CodeBuffer & content,
   emit_eh_data(content, program);
   emit_relocatable_objects(content, objects);
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i)
-    content.alias(native_object_symbol(program.object_aliases[i].object_symbol),
+    content.alias(native_object_symbol(
+                    content, program.object_aliases[i].object_symbol),
                   program.object_aliases[i].target);
 }
 
@@ -2574,7 +2522,8 @@ HostFunctionLayout emit_prepared_host_function(
   out.align(2);
   HostFunctionLayout layout;
   layout.internal_symbol = function_name;
-  layout.object_symbol = function.object_symbol;
+  if(function.object_symbol.valid())
+    layout.object_symbol = out.literal_spelling(function.object_symbol);
   layout.offset = out.size();
   layout.callee_saved_regs = function.callee_saved_regs;
   for(std::size_t block = 0; block < function.host_eh_clauses.size(); ++block)
@@ -2585,7 +2534,8 @@ HostFunctionLayout emit_prepared_host_function(
         function.host_eh_clauses[block];
     }
   out.label(function.symbol);
-  const std::string object_symbol = native_object_symbol(function.object_symbol);
+  const std::string object_symbol =
+    native_object_symbol(out, function.object_symbol);
   if(!object_symbol.empty() && object_symbol != function_name)
     out.label(object_symbol);
   out.begin_function_blocks(function.block_labels.size());
@@ -2894,8 +2844,9 @@ void write_linux_relocatable(
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
     if(suppressed_globals.count(text.symbol_name(global.symbol))) continue;
-    const std::string section_name = !global.section_name.empty() ?
-      global.section_name : global.thread_local_storage ? ".tdata" : ".data";
+    const std::string section_name = global.section_name.valid() ?
+      text.literal_spelling(global.section_name) :
+      global.thread_local_storage ? ".tdata" : ".data";
     const std::uint64_t flags = 2 | (global.readonly ? 0 : 1) |
       (global.thread_local_storage ? 0x400 : 0);
     const std::size_t section_index = intern_data_section(

@@ -73,7 +73,9 @@ void plan_program(const lowir_model::LowirProgram & source,
     mir_model::MirRuntimeData data;
     if(!data_kind(declaration.metadata.role, data.kind)) continue;
     data.symbol = declaration.symbol;
-    data.object_symbol = declaration.metadata.object_symbol;
+    if(!declaration.metadata.object_symbol.empty())
+      data.object_symbol = target.strings->intern(
+        declaration.metadata.object_symbol);
     target.runtime_data.push_back(data);
   }
   for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
@@ -82,7 +84,9 @@ void plan_program(const lowir_model::LowirProgram & source,
     mir_model::MirRuntimeFunction runtime;
     if(!runtime_kind(declaration.metadata.role, runtime.kind)) continue;
     runtime.symbol = declaration.symbol;
-    runtime.object_symbol = declaration.metadata.object_symbol;
+    if(!declaration.metadata.object_symbol.empty())
+      runtime.object_symbol = target.strings->intern(
+        declaration.metadata.object_symbol);
     target.runtime_functions.push_back(runtime);
     if(runtime.kind <= mir_model::RuntimeFunction::RF_EH_RESUME)
       target.uses_eh = true;

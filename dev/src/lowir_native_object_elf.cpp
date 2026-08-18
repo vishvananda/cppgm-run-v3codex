@@ -995,7 +995,8 @@ std::unordered_set<std::string> host_external_global_definitions(
   std::unordered_set<std::string> suppressed;
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
-    if(!external_objects.count(global.object_symbol)) continue;
+    if(!global.object_symbol.valid() || !external_objects.count(
+         mir_model::mir_string(program, global.object_symbol))) continue;
     suppressed.insert(mir_model::mir_symbol_name(program, global.symbol));
     for(std::size_t j = 0; j < global.data_items.size(); ++j)
       if(global.data_items[j].kind ==
