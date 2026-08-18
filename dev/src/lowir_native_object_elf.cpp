@@ -49,6 +49,7 @@ struct HostRelocation
     kind = HR_ABSOLUTE64;
   std::size_t offset = 0;
   std::string target;
+  lowir_model::SymbolId program_symbol;
   long long addend = 0;
 };
 
@@ -62,7 +63,33 @@ struct EncodedLabelLocation
 typedef std::unordered_map<std::string, EncodedLabelLocation>
   EncodedLabelIndex;
 
-EncodedLabelIndex index_encoded_labels(
+struct EncodedLabels
+{
+  EncodedLabelIndex named;
+  std::vector<EncodedLabelLocation> symbols;
+  std::vector<unsigned char> symbol_known;
+};
+
+void index_symbol_labels(EncodedLabels & result,
+    const EncodedSection & source, bool text, std::size_t section)
+{
+  for(std::size_t i = 0; i < source.symbol_labels.size(); ++i) {
+    const EncodedSymbolLabel & label = source.symbol_labels[i];
+    const std::uint32_t symbol = label.symbol;
+    if(!label.symbol.valid() || symbol >= result.symbols.size())
+      throw std::logic_error("invalid encoded symbol label identity");
+    // Some TLS wrapper identities are also published at their backing
+    // storage address.  Preserve the historical text-before-data choice.
+    if(result.symbol_known[symbol]) continue;
+    result.symbols[symbol].text = text;
+    result.symbols[symbol].section = section;
+    result.symbols[symbol].offset = label.offset;
+    result.symbol_known[symbol] = 1;
+  }
+}
+
+EncodedLabels index_encoded_labels(
+    const lowir_model::LowirProgram & program,
     const std::vector<EncodedSection> & text_sections,
     const std::vector<EncodedSection> & data_sections)
 {
@@ -71,8 +98,10 @@ EncodedLabelIndex index_encoded_labels(
     label_count += text_sections[i].labels.size();
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     label_count += data_sections[i].labels.size();
-  EncodedLabelIndex result;
-  result.reserve(label_count);
+  EncodedLabels result;
+  result.named.reserve(label_count);
+  result.symbols.resize(program.symbol_names.size());
+  result.symbol_known.assign(program.symbol_names.size(), 0);
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     for(std::unordered_map<std::string, std::size_t>::const_iterator label =
           text_sections[i].labels.begin();
@@ -81,7 +110,7 @@ EncodedLabelIndex index_encoded_labels(
       location.text = true;
       location.section = i;
       location.offset = label->second;
-      result.insert(std::make_pair(label->first, location));
+      result.named.insert(std::make_pair(label->first, location));
     }
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     for(std::unordered_map<std::string, std::size_t>::const_iterator label =
@@ -90,8 +119,12 @@ EncodedLabelIndex index_encoded_labels(
       EncodedLabelLocation location;
       location.section = i;
       location.offset = label->second;
-      result.insert(std::make_pair(label->first, location));
+      result.named.insert(std::make_pair(label->first, location));
     }
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    index_symbol_labels(result, text_sections[i], true, i);
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    index_symbol_labels(result, data_sections[i], false, i);
   return result;
 }
 
@@ -99,22 +132,23 @@ void publish_object_aliases(
     const lowir_model::LowirProgram & program,
     std::vector<EncodedSection> & text_sections,
     std::vector<EncodedSection> & data_sections,
-    EncodedLabelIndex & labels)
+    EncodedLabels & labels)
 {
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
     const std::string alias = native_object_symbol(
       program.strings.get(program.object_aliases[i].object_symbol));
-    const std::string & target_name = lowir_model::lowir_symbol_name(
-      program, program.object_aliases[i].target_id);
-    const EncodedLabelIndex::const_iterator target =
-      labels.find(target_name);
-    if(target == labels.end()) throw std::runtime_error(
-      "native alias has undefined target: " + target_name);
-    const EncodedLabelLocation location = target->second;
+    const lowir_model::SymbolId target_id =
+      program.object_aliases[i].target_id;
+    const std::uint32_t target = target_id;
+    if(!target_id.valid() || target >= labels.symbols.size() ||
+       !labels.symbol_known[target])
+      throw std::runtime_error("native alias has undefined target: " +
+        lowir_model::lowir_symbol_name(program, target_id));
+    const EncodedLabelLocation location = labels.symbols[target];
     if(location.text)
       text_sections[location.section].labels[alias] = location.offset;
     else data_sections[location.section].labels[alias] = location.offset;
-    labels[alias] = location;
+    labels.named[alias] = location;
   }
 }
 
@@ -149,6 +183,16 @@ std::vector<EncodedSection> partition_weak_text(
 {
   std::unordered_map<std::size_t, std::string> weak_signatures;
   std::unordered_set<std::string> weak_objects;
+  std::vector<std::size_t> symbol_offsets(program.symbol_names.size(), 0);
+  std::vector<unsigned char> symbol_known(program.symbol_names.size(), 0);
+  for(std::size_t i = 0; i < source.symbol_labels.size(); ++i) {
+    const EncodedSymbolLabel & label = source.symbol_labels[i];
+    const std::uint32_t symbol = label.symbol;
+    if(!label.symbol.valid() || symbol >= symbol_offsets.size())
+      throw std::logic_error("invalid encoded symbol label identity");
+    symbol_offsets[symbol] = label.offset;
+    symbol_known[symbol] = 1;
+  }
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const lowir_model::ExportedSymbol & symbol = program.exported_symbols[i];
     if(symbol.linkage != ir_model::SL_WEAK || !symbol.object_symbol.valid())
@@ -158,10 +202,18 @@ std::vector<EncodedSection> partition_weak_text(
     const std::string object_label = native_object_symbol(object_symbol);
     std::unordered_map<std::string, std::size_t>::const_iterator label =
       source.labels.find(object_label);
-    if(label == source.labels.end())
-      label = source.labels.find(exported_internal_symbol(program, symbol));
-    if(label != source.labels.end() && !weak_signatures.count(label->second))
-      weak_signatures[label->second] = object_symbol;
+    std::size_t offset = 0;
+    bool found = label != source.labels.end();
+    if(found) {
+      offset = label->second;
+    } else {
+      const std::uint32_t internal = symbol.internal_symbol;
+      found = symbol.internal_symbol.valid() &&
+        internal < symbol_known.size() && symbol_known[internal];
+      if(found) offset = symbol_offsets[internal];
+    }
+    if(found && !weak_signatures.count(offset))
+      weak_signatures[offset] = object_symbol;
   }
 
   std::vector<std::size_t> order(functions.size());
@@ -232,6 +284,13 @@ std::vector<EncodedSection> partition_weak_text(
     result[slice.section].labels[label->first] =
       slice.new_start + label->second - slice.old_start;
   }
+  for(std::size_t i = 0; i < source.symbol_labels.size(); ++i) {
+    const EncodedSymbolLabel & label = source.symbol_labels[i];
+    const TextSlice & slice = slices[text_slice_at(slices, label.offset)];
+    EncodedSymbolLabel moved = label;
+    moved.offset = slice.new_start + label.offset - slice.old_start;
+    result[slice.section].symbol_labels.push_back(moved);
+  }
   for(std::size_t i = 0; i < source.fixups.size(); ++i) {
     const TextSlice & slice = slices[text_slice_at(
       slices, source.fixups[i].offset)];
@@ -271,6 +330,7 @@ struct HostSymbol
 {
   std::string name;
   bool internal_program_symbol = false;
+  lowir_model::SymbolId program_symbol;
   unsigned binding = 0;
   unsigned type = 0;
   std::uint16_t section = 0;
@@ -302,8 +362,7 @@ HostSection make_host_lifecycle_array(
     HostRelocation relocation;
     relocation.kind = HostRelocation::HR_ABSOLUTE64;
     relocation.offset = section.bytes.size();
-    relocation.target = lowir_model::lowir_symbol_name(
-      program, function.symbol);
+    relocation.program_symbol = function.symbol;
     relocations.push_back(relocation);
     append_little(section.bytes, 0, 8);
   }
@@ -715,19 +774,19 @@ std::unordered_map<std::string, std::string> declaration_object_symbols(
 
 std::string relocation_target(
     const std::string & raw,
-    const EncodedLabelIndex & labels,
+    const EncodedLabels & labels,
     const std::unordered_map<std::string, std::string> & declarations)
 {
   const std::unordered_map<std::string, std::string>::const_iterator found =
     declarations.find(raw);
   if(found != declarations.end()) return found->second;
-  if(labels.count(raw)) return raw;
+  if(labels.named.count(raw)) return raw;
   return host_symbol_spelling(raw);
 }
 
 std::vector<HostRelocation> host_relocations(
     EncodedSection & source,
-    const EncodedLabelIndex & labels,
+    const EncodedLabels & labels,
     const lowir_model::LowirProgram & program,
     const std::unordered_map<std::string, std::string> & declarations)
 {
@@ -785,9 +844,18 @@ std::vector<HostRelocation> host_relocations(
         HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
     }
     relocation.offset = fixup.offset;
-    relocation.target = relocation_target(
-      lowir_model::lowir_symbol_name(program, fixup.target),
-      labels, declarations);
+    const std::string & raw = lowir_model::lowir_symbol_name(
+      program, fixup.target);
+    const std::unordered_map<std::string, std::string>::const_iterator declared =
+      declarations.find(raw);
+    if(declared != declarations.end()) {
+      relocation.target = declared->second;
+    } else if(symbol < labels.symbol_known.size() &&
+              labels.symbol_known[symbol]) {
+      relocation.program_symbol = fixup.target;
+    } else {
+      relocation.target = host_symbol_spelling(raw);
+    }
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
@@ -829,7 +897,7 @@ void collect_host_symbols(
     const std::vector<std::uint16_t> & text_section_indexes,
     const std::vector<EncodedSection> & data_sections,
     const std::vector<std::uint16_t> & data_section_indexes,
-    const EncodedLabelIndex & encoded_labels,
+    const EncodedLabels & encoded_labels,
     const std::vector<HostFunctionLayout> & functions,
     const std::vector<std::vector<HostRelocation> > & text_relocations,
     const std::vector<std::vector<HostRelocation> > & data_relocations,
@@ -842,53 +910,26 @@ void collect_host_symbols(
 {
   std::unordered_map<std::string, std::size_t> local_index;
   std::unordered_map<std::string, std::size_t> global_index;
-  typedef std::pair<std::size_t, lowir_model::SymbolId> ProgramLabelIdentity;
-  std::vector<std::vector<ProgramLabelIdentity> > program_text_labels(
-    text_sections.size());
-  std::vector<std::vector<ProgramLabelIdentity> > program_data_labels(
-    data_sections.size());
-  const auto record_program_data_label =
-    [&program, &encoded_labels,
-     &program_data_labels](lowir_model::SymbolId symbol) {
-      const EncodedLabelIndex::const_iterator found = encoded_labels.find(
-        lowir_model::lowir_symbol_name(program, symbol));
-      if(found == encoded_labels.end() || found->second.text) return;
-      program_data_labels[found->second.section].push_back(
-        std::make_pair(found->second.offset, symbol));
-    };
-  for(std::size_t i = 0; i < functions.size(); ++i)
-    if(functions[i].program_symbol.valid())
-      program_text_labels[functions[i].text_section].push_back(
-        std::make_pair(functions[i].offset, functions[i].program_symbol));
-  for(std::size_t i = 0; i < program.globals.size(); ++i)
-    record_program_data_label(program.globals[i].symbol);
-  for(std::size_t i = 0; i < program_text_labels.size(); ++i)
-    std::sort(program_text_labels[i].begin(), program_text_labels[i].end());
-  for(std::size_t i = 0; i < program_data_labels.size(); ++i)
-    std::sort(program_data_labels[i].begin(), program_data_labels[i].end());
-  const auto is_program_label =
-    [&program, &program_text_labels, &program_data_labels](
-        const std::string & name, bool text,
-        std::size_t section, std::size_t offset) {
-      const std::vector<ProgramLabelIdentity> & labels = text ?
-        program_text_labels[section] : program_data_labels[section];
-      std::vector<ProgramLabelIdentity>::const_iterator found =
-        std::lower_bound(labels.begin(), labels.end(),
-          ProgramLabelIdentity(offset, lowir_model::SymbolId(0)));
-      while(found != labels.end() && found->first == offset) {
-        if(lowir_model::lowir_symbol_name(program, found->second) == name)
-          return true;
-        ++found;
-      }
-      return false;
-    };
   std::unordered_set<std::string> required_local_labels;
+  std::vector<unsigned char> required_program_symbols(
+    program.symbol_names.size(), 0);
+  const auto require_program_symbol =
+    [&required_program_symbols](lowir_model::SymbolId symbol) {
+      const std::uint32_t index = symbol;
+      if(!symbol.valid() || index >= required_program_symbols.size())
+        throw std::logic_error("invalid required program symbol identity");
+      required_program_symbols[index] = 1;
+    };
   const auto require_relocation_labels =
-    [&encoded_labels, &required_local_labels](
+    [&encoded_labels, &required_local_labels, &require_program_symbol](
       const std::vector<HostRelocation> & relocations) {
-      for(std::size_t i = 0; i < relocations.size(); ++i)
-        if(encoded_labels.count(relocations[i].target))
+      for(std::size_t i = 0; i < relocations.size(); ++i) {
+        if(relocations[i].program_symbol.valid()) {
+          require_program_symbol(relocations[i].program_symbol);
+        } else if(encoded_labels.named.count(relocations[i].target)) {
           required_local_labels.insert(relocations[i].target);
+        }
+      }
     };
   for(std::size_t i = 0; i < text_relocations.size(); ++i)
     require_relocation_labels(text_relocations[i]);
@@ -900,12 +941,10 @@ void collect_host_symbols(
   require_relocation_labels(eh_relocations);
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
     if(program.exported_symbols[i].keep_internal_alias)
-      required_local_labels.insert(
-        exported_internal_symbol(program, program.exported_symbols[i]));
+      require_program_symbol(program.exported_symbols[i].internal_symbol);
   for(std::size_t i = 0; i < functions.size(); ++i)
     if(!functions[i].object_symbol.valid())
-      required_local_labels.insert(lowir_model::lowir_symbol_name(
-        program, functions[i].program_symbol));
+      require_program_symbol(functions[i].program_symbol);
   std::unordered_set<std::string> object_only_labels;
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const lowir_model::ExportedSymbol & exported = program.exported_symbols[i];
@@ -925,8 +964,6 @@ void collect_host_symbols(
          !required_local_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
-      symbol.internal_program_symbol = is_program_label(
-        symbol.name, true, section, it->second);
       symbol.section = text_section_indexes[section];
       symbol.value = it->second;
       symbol.size = function_size_at(function_sizes, section, it->second);
@@ -941,36 +978,54 @@ void collect_host_symbols(
          !required_local_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
-      symbol.internal_program_symbol = is_program_label(
-        symbol.name, false, section, it->second);
       symbol.section = data_section_indexes[section];
       symbol.value = it->second;
       symbol.type = (data_sections[section].flags & 0x400) ? 6 : 1;
       add_unique_symbol(locals, local_index, symbol);
     }
   }
+  for(std::size_t i = 0; i < required_program_symbols.size(); ++i) {
+    if(!required_program_symbols[i] || !encoded_labels.symbol_known[i])
+      continue;
+    const lowir_model::SymbolId identity(static_cast<std::uint32_t>(i));
+    const EncodedLabelLocation & location = encoded_labels.symbols[i];
+    HostSymbol symbol;
+    symbol.name = lowir_model::lowir_symbol_name(program, identity);
+    symbol.internal_program_symbol = true;
+    symbol.program_symbol = identity;
+    symbol.section = location.text ?
+      text_section_indexes[location.section] :
+      data_section_indexes[location.section];
+    symbol.value = location.offset;
+    symbol.size = location.text ? function_size_at(
+      function_sizes, location.section, location.offset) : 0;
+    symbol.type = location.text ? (symbol.size ? 2 : 0) :
+      ((data_sections[location.section].flags & 0x400) ? 6 : 1);
+    add_unique_symbol(locals, local_index, symbol);
+  }
 
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
     const lowir_model::ExportedSymbol & exported = program.exported_symbols[i];
     if(!exported.object_symbol.valid()) continue;
     const std::string & object_symbol = exported_object_symbol(program, exported);
-    const std::string object_label = native_object_symbol(object_symbol);
-    const EncodedLabelIndex::const_iterator location =
-      encoded_labels.find(object_label);
-    if(location == encoded_labels.end()) continue;
-    const std::uint16_t section = location->second.text ?
-      text_section_indexes[location->second.section] :
-      data_section_indexes[location->second.section];
-    const std::size_t value = location->second.offset;
-    const unsigned type = location->second.text ? 2 :
-      (data_sections[location->second.section].flags & 0x400) ? 6 : 1;
+    const std::uint32_t internal = exported.internal_symbol;
+    if(!exported.internal_symbol.valid() ||
+       internal >= encoded_labels.symbol_known.size() ||
+       !encoded_labels.symbol_known[internal]) continue;
+    const EncodedLabelLocation & location = encoded_labels.symbols[internal];
+    const std::uint16_t section = location.text ?
+      text_section_indexes[location.section] :
+      data_section_indexes[location.section];
+    const std::size_t value = location.offset;
+    const unsigned type = location.text ? 2 :
+      (data_sections[location.section].flags & 0x400) ? 6 : 1;
     HostSymbol symbol;
     symbol.name = object_symbol;
     symbol.section = section;
     symbol.value = value;
     symbol.type = type;
     symbol.size = symbol.type == 2 ? function_size_at(
-      function_sizes, location->second.section, value) : 0;
+      function_sizes, location.section, value) : 0;
     symbol.binding = exported.linkage == ir_model::SL_WEAK ? 2 :
       exported.linkage == ir_model::SL_INTERNAL ||
       exported.prefer_local_object_binding ? 0 : 1;
@@ -981,19 +1036,21 @@ void collect_host_symbols(
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     if(program.functions[i].metadata.role != lowir_model::SR_ENTRY) continue;
-    const EncodedLabelIndex::const_iterator at =
-      encoded_labels.find(lowir_model::lowir_symbol_name(
-        program, program.functions[i].symbol));
-    if(at == encoded_labels.end() || !at->second.text)
+    const std::uint32_t entry = program.functions[i].symbol;
+    if(!program.functions[i].symbol.valid() ||
+       entry >= encoded_labels.symbol_known.size() ||
+       !encoded_labels.symbol_known[entry] ||
+       !encoded_labels.symbols[entry].text)
       throw std::logic_error("entry function has no encoded symbol");
+    const EncodedLabelLocation & at = encoded_labels.symbols[entry];
     HostSymbol symbol;
     symbol.name = "main";
     symbol.binding = 1;
     symbol.type = 2;
-    symbol.section = text_section_indexes[at->second.section];
-    symbol.value = at->second.offset;
+    symbol.section = text_section_indexes[at.section];
+    symbol.value = at.offset;
     symbol.size = function_size_at(
-      function_sizes, at->second.section, at->second.offset);
+      function_sizes, at.section, at.offset);
     add_unique_symbol(globals, global_index, symbol);
   }
 
@@ -1030,6 +1087,7 @@ void collect_host_symbols(
   for(std::size_t group = 0; group < relocation_groups.size(); ++group) {
     const std::vector<HostRelocation> & relocations = *relocation_groups[group];
     for(std::size_t i = 0; i < relocations.size(); ++i) {
+      if(relocations[i].program_symbol.valid()) continue;
       if(section_symbols.count(relocations[i].target) ||
          defined.count(relocations[i].target)) continue;
       HostSymbol symbol;
@@ -1112,7 +1170,8 @@ std::vector<unsigned char> make_symbol_table(
     const std::vector<HostSymbol> & globals,
     const std::vector<std::pair<std::string, std::uint16_t> > & section_symbols,
     std::vector<unsigned char> & strings,
-    std::unordered_map<std::string, std::size_t> & indexes)
+    std::unordered_map<std::string, std::size_t> & indexes,
+    std::vector<std::size_t> & program_indexes)
 {
   std::vector<unsigned char> table(24, 0);
   for(std::size_t i = 0; i < section_symbols.size(); ++i) {
@@ -1131,6 +1190,12 @@ std::vector<unsigned char> make_symbol_table(
       const HostSymbol & symbol = symbols[i];
       const std::size_t index = table.size() / 24;
       if(!indexes.count(symbol.name)) indexes[symbol.name] = index;
+      if(symbol.program_symbol.valid()) {
+        const std::uint32_t identity = symbol.program_symbol;
+        if(identity >= program_indexes.size())
+          throw std::logic_error("invalid ELF program symbol identity");
+        program_indexes[identity] = index;
+      }
       append_little(table, add_symbol_string(strings, symbol), 4);
       table.push_back(static_cast<unsigned char>((symbol.binding << 4) |
                                                  symbol.type));
@@ -1145,7 +1210,8 @@ std::vector<unsigned char> make_symbol_table(
 
 std::vector<unsigned char> make_relocation_table(
     const std::vector<HostRelocation> & relocations,
-    const std::unordered_map<std::string, std::size_t> & symbols)
+    const std::unordered_map<std::string, std::size_t> & symbols,
+    const std::vector<std::size_t> & program_symbols)
 {
   std::vector<HostRelocation> ordered = relocations;
   std::sort(ordered.begin(), ordered.end(),
@@ -1156,17 +1222,27 @@ std::vector<unsigned char> make_relocation_table(
   table.reserve(ordered.size() * 24);
   for(std::size_t i = 0; i < ordered.size(); ++i) {
     const HostRelocation & relocation = ordered[i];
-    const std::unordered_map<std::string, std::size_t>::const_iterator symbol =
-      symbols.find(relocation.target);
-    if(symbol == symbols.end())
-      throw std::logic_error("ELF relocation has no symbol: " +
-                             relocation.target);
+    std::size_t symbol_index = lowir_model::kInvalidCompactId;
+    if(relocation.program_symbol.valid()) {
+      const std::uint32_t identity = relocation.program_symbol;
+      if(identity < program_symbols.size())
+        symbol_index = program_symbols[identity];
+      if(symbol_index == lowir_model::kInvalidCompactId)
+        throw std::logic_error("ELF relocation has no program symbol");
+    } else {
+      const std::unordered_map<std::string, std::size_t>::const_iterator symbol =
+        symbols.find(relocation.target);
+      if(symbol == symbols.end())
+        throw std::logic_error("ELF relocation has no symbol: " +
+                               relocation.target);
+      symbol_index = symbol->second;
+    }
     const unsigned type = relocation.kind == HostRelocation::HR_ABSOLUTE64 ? 1 :
       relocation.kind == HostRelocation::HR_PC32 ? 2 :
       relocation.kind == HostRelocation::HR_GOTPCRELX ? 42 :
       relocation.kind == HostRelocation::HR_TPOFF32 ? 23 : 4;
     append_little(table, relocation.offset, 8);
-    append_little(table, (static_cast<std::uint64_t>(symbol->second) << 32) |
+    append_little(table, (static_cast<std::uint64_t>(symbol_index) << 32) |
                          type, 8);
     append_little(table, static_cast<std::uint64_t>(relocation.addend), 8);
   }
@@ -1281,13 +1357,13 @@ std::vector<unsigned char> make_linux_relocatable_image(
 	record_encoded_storage(stats, mutable_text, mutable_data);
   std::vector<EncodedSection> text_sections;
   text_sections.push_back(std::move(mutable_text));
-  EncodedLabelIndex encoded_labels =
-    index_encoded_labels(text_sections, mutable_data);
+  EncodedLabels encoded_labels =
+    index_encoded_labels(program, text_sections, mutable_data);
   publish_object_aliases(
     program, text_sections, mutable_data, encoded_labels);
   text_sections = partition_weak_text(
     program, std::move(text_sections[0]), functions);
-  encoded_labels = index_encoded_labels(text_sections, mutable_data);
+  encoded_labels = index_encoded_labels(program, text_sections, mutable_data);
   const std::unordered_map<std::string, std::string> declarations =
     declaration_object_symbols(program);
   resolve_same_section_local_fixups(
@@ -1426,10 +1502,13 @@ std::vector<unsigned char> make_linux_relocatable_image(
 
   std::vector<unsigned char> strings(1, 0);
   std::unordered_map<std::string, std::size_t> symbol_indexes;
+  std::vector<std::size_t> program_symbol_indexes(
+    program.symbol_names.size(), lowir_model::kInvalidCompactId);
 	const std::chrono::steady_clock::time_point string_table_started = stats ?
 		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   std::vector<unsigned char> symbol_table = make_symbol_table(
-    locals, globals, section_symbols, strings, symbol_indexes);
+    locals, globals, section_symbols, strings, symbol_indexes,
+    program_symbol_indexes);
 	record_string_table(stats, symbol_indexes, strings, string_table_started);
 
   HostSection note;
@@ -1460,7 +1539,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
     HostSection & section = sections[pending_relocations[i].section];
     section.link = symtab_index;
     section.bytes = make_relocation_table(
-      *pending_relocations[i].relocations, symbol_indexes);
+      *pending_relocations[i].relocations, symbol_indexes,
+      program_symbol_indexes);
   }
 
   append_function_comdat_groups(

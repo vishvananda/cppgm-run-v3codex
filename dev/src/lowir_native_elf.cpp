@@ -2354,7 +2354,7 @@ HostFunctionLayout emit_host_tls_wrapper(
   if(metadata.object_symbol.valid())
     layout.object_symbol = metadata.object_symbol;
   layout.offset = out.size();
-  out.label(internal_symbol);
+  out.label(symbol);
   const std::string object_symbol =
     native_object_symbol(out, layout.object_symbol);
   if(!object_symbol.empty() && object_symbol != internal_symbol)
@@ -2704,7 +2704,16 @@ EncodedSection encoded_section(CodeBuffer && source,
   result.flags = flags;
   result.alignment = alignment;
   result.bytes = source.take_bytes();
-  result.labels = source.materialized_labels();
+  result.labels = source.named_labels();
+  result.symbol_labels.reserve(source.symbol_label_capacity());
+  for(std::size_t i = 0; i < source.symbol_label_capacity(); ++i) {
+    const lowir_model::SymbolId symbol(static_cast<std::uint32_t>(i));
+    if(!source.has_symbol_label(symbol)) continue;
+    object_elf_detail::EncodedSymbolLabel label;
+    label.symbol = symbol;
+    label.offset = source.symbol_label_offset(symbol);
+    result.symbol_labels.push_back(label);
+  }
   result.fixups.reserve(source.fixups().size());
   for(std::size_t i = 0; i < source.fixups().size(); ++i) {
     EncodedFixup fixup;

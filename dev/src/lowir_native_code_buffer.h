@@ -115,6 +115,10 @@ public:
 	const std::vector<unsigned char>& bytes() const;
 	std::vector<unsigned char> take_bytes();
 	std::unordered_map<std::string, std::size_t> materialized_labels() const;
+	const std::unordered_map<std::string, std::size_t>& named_labels() const;
+	std::size_t symbol_label_capacity() const;
+	bool has_symbol_label(lowir_model::SymbolId symbol) const;
+	std::size_t symbol_label_offset(lowir_model::SymbolId symbol) const;
 	const std::vector<Fixup>& fixups() const;
 	const std::vector<SymbolFixup>& symbol_fixups() const;
 	std::size_t fixup_count() const;

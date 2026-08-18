@@ -35,6 +35,12 @@ struct EncodedSymbolFixup
   long long addend = 0;
 };
 
+struct EncodedSymbolLabel
+{
+  lowir_model::SymbolId symbol;
+  std::size_t offset = 0;
+};
+
 struct EncodedSection
 {
   std::string name;
@@ -43,6 +49,7 @@ struct EncodedSection
   std::size_t alignment = 1;
   std::vector<unsigned char> bytes;
   std::unordered_map<std::string, std::size_t> labels;
+  std::vector<EncodedSymbolLabel> symbol_labels;
   std::vector<EncodedFixup> fixups;
   std::vector<EncodedSymbolFixup> symbol_fixups;
 };

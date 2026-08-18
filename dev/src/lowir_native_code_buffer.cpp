@@ -849,6 +849,32 @@ CodeBuffer::materialized_labels() const
 	return result;
 }
 
+const std::unordered_map<std::string, std::size_t>&
+CodeBuffer::named_labels() const
+{
+	return labels_;
+}
+
+std::size_t CodeBuffer::symbol_label_capacity() const
+{
+	return symbol_label_offsets_.size();
+}
+
+bool CodeBuffer::has_symbol_label(lowir_model::SymbolId symbol) const
+{
+	const std::uint32_t index = symbol;
+	return symbol.valid() && index < symbol_label_known_.size() &&
+		symbol_label_known_[index];
+}
+
+std::size_t CodeBuffer::symbol_label_offset(
+	lowir_model::SymbolId symbol) const
+{
+	if (!has_symbol_label(symbol))
+		throw std::logic_error("undefined native symbol identity");
+	return symbol_label_offsets_[static_cast<std::uint32_t>(symbol)];
+}
+
 const std::vector<Fixup>& CodeBuffer::fixups() const
 {
 	return fixups_;

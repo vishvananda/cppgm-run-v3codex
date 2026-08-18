@@ -32,6 +32,26 @@ void add_labels(LabelIndex & labels, const EncodedSection & source,
   }
 }
 
+void add_symbol_labels(
+    std::vector<LabelLocation> & locations,
+    std::vector<unsigned char> & known,
+    const EncodedSection & source, bool text, std::size_t section)
+{
+  for(std::size_t i = 0; i < source.symbol_labels.size(); ++i) {
+    const EncodedSymbolLabel & label = source.symbol_labels[i];
+    const std::uint32_t symbol = label.symbol;
+    if(!label.symbol.valid() || symbol >= locations.size())
+      throw std::logic_error("invalid encoded symbol label identity");
+    // Some TLS wrapper identities are also published at their backing
+    // storage address.  Preserve the text-before-data definition.
+    if(known[symbol]) continue;
+    locations[symbol].text = text;
+    locations[symbol].section = section;
+    locations[symbol].offset = label.offset;
+    known[symbol] = 1;
+  }
+}
+
 std::unordered_set<std::string> externally_named_targets(
     const std::unordered_map<std::string, std::string> & declarations)
 {
@@ -150,16 +170,21 @@ void resolve_same_section_local_fixups(
   std::vector<unsigned char> symbol_location_known(
     program.symbol_names.size(), 0);
   std::vector<unsigned char> symbol_external(program.symbol_names.size(), 0);
-  for(std::size_t i = 0; i < program.symbol_names.size(); ++i) {
-    const std::string & name = lowir_model::lowir_symbol_name(
-      program, lowir_model::SymbolId(static_cast<std::uint32_t>(i)));
-    const LabelIndex::const_iterator found = labels.find(name);
-    if(found != labels.end()) {
-      symbol_locations[i] = found->second;
-      symbol_location_known[i] = 1;
-    }
-    symbol_external[i] = externally_named.count(name) != 0;
-  }
+  for(std::size_t i = 0; i < text_sections.size(); ++i)
+    add_symbol_labels(symbol_locations, symbol_location_known,
+      text_sections[i], true, i);
+  for(std::size_t i = 0; i < data_sections.size(); ++i)
+    add_symbol_labels(symbol_locations, symbol_location_known,
+      data_sections[i], false, i);
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
+    if(program.exported_symbols[i].object_symbol.valid())
+      symbol_external[program.exported_symbols[i].internal_symbol] = 1;
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+    if(program.function_declarations[i].metadata.object_symbol.valid())
+      symbol_external[program.function_declarations[i].symbol] = 1;
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+    if(program.global_declarations[i].metadata.object_symbol.valid())
+      symbol_external[program.global_declarations[i].symbol] = 1;
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     resolve_section_fixups(
       text_sections[i], true, i, labels, externally_named, symbol_locations,
