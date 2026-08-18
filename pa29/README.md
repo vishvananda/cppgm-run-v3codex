@@ -522,7 +522,12 @@ To complete PA29, implement these goals:
    When a parameter needs a fixed home across a later clobber, an earlier use
    may still read the incoming ABI register.  Do so only while parameter setup,
    fixed-register instructions, calls, and earlier selected results have left
-   that register intact.  Uses after the first clobber must read the fixed home.
+   that register intact.  Determine this from the explicit and implicit
+   register definitions in the MIR instructions actually emitted before the
+   use.  A logical LowIR instruction that emits no MIR instruction does not
+   clobber a register.  Maintain a fixed register mask as MIR is appended;
+   do not rescan prior instructions or build a string-keyed register table.
+   Uses after the first emitted clobber must read the fixed home.
 
    When a sole-use scalar constant, load, copy, address, index, unary operation,
    or integer conversion is immediately returned, lower its result directly

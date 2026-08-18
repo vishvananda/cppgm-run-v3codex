@@ -976,6 +976,12 @@ void make_scalar_float_returns_explicit(MirFunction & function, Stats * stats)
 
 }  // namespace
 
+std::uint64_t instruction_definition_mask(
+    const mir_model::MirInstruction & instruction)
+{
+  return instruction_defs(instruction);
+}
+
 void optimize_function(MirFunction & function, int level, Stats * stats)
 {
   if(level < 0 || level > 2)

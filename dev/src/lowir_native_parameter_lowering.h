@@ -2,10 +2,12 @@
 
 #include "lowir_native_analysis.h"
 #include "lowir_native_mir.h"
+#include "lowir_native_opt.h"
 #include "lowir_native_value.h"
 
 #include <algorithm>
 #include <cstddef>
+#include <vector>
 
 namespace lowir_native {
 namespace parameter_detail {
@@ -31,16 +33,35 @@ protected:
   bool incoming_register_is_available(X64Register reg) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
-    return !analysis::register_was_clobbered_before(
-        lowerer.facts_, reg, lowerer.position_) &&
+    return !(emitted_register_definitions_ &
+             analysis::register_mask(reg)) &&
       !parameter_setup_clobbers_[static_cast<std::size_t>(reg)] &&
       first_selected_definition_[static_cast<std::size_t>(reg)] >=
         lowerer.position_;
   }
 
+  void record_emitted_register_definitions(
+      const std::vector<mir_model::MirInstruction> & instructions,
+      std::size_t first)
+  {
+    // Only the six incoming GPRs can answer an early parameter read. Stop
+    // visiting MIR once every location represented by this function is gone.
+    if((emitted_register_definitions_ & tracked_incoming_registers_) ==
+       tracked_incoming_registers_) return;
+    for(std::size_t i = first; i < instructions.size(); ++i)
+      emitted_register_definitions_ |= tracked_incoming_registers_ &
+        static_cast<unsigned>(
+          machine_opt::instruction_definition_mask(instructions[i]));
+  }
+
   void record_parameter_setup_clobbers()
   {
     Derived & lowerer = static_cast<Derived &>(*this);
+    for(std::size_t i = 0;
+        i < lowerer.incoming_parameter_register_known_.size(); ++i)
+      if(lowerer.incoming_parameter_register_known_[i])
+        tracked_incoming_registers_ |= analysis::register_mask(
+          lowerer.incoming_parameter_registers_[i]);
     for(std::size_t i = 0; i < lowerer.parameter_moves_.size(); ++i) {
       const mir_model::MirInstruction & instruction =
         lowerer.parameter_moves_[i];
@@ -82,6 +103,8 @@ protected:
   unsigned active_setup_register_clobbers_ = 0;
 
 private:
+  unsigned tracked_incoming_registers_ = 0;
+  unsigned emitted_register_definitions_ = 0;
   unsigned char parameter_setup_clobbers_[16] = {};
   std::size_t first_selected_definition_[16];
 };

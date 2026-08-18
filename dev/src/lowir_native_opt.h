@@ -25,6 +25,10 @@ struct Stats
   std::uint64_t elapsed_nanoseconds = 0;
 };
 
+// Physical registers explicitly or implicitly defined by one MIR instruction.
+// GPR bits occupy 0..15 and XMM bits occupy 16..23.
+std::uint64_t instruction_definition_mask(
+  const mir_model::MirInstruction & instruction);
 void optimize_function(mir_model::MirFunction & function, int level,
                        Stats * stats = 0);
 void prepare_for_encoding(mir_model::MirFunction & function,

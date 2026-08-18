@@ -83,8 +83,10 @@ struct ParamBinding
   // the parameter there when its complete live interval, including promoted
   // slot aliases, crosses no clobber; a separate home is required otherwise.
   // A use before the first clobber may still read the incoming register when
-  // parameter setup and earlier selected results have left it intact, even if
-  // a fixed home carries the value across a later clobber.
+  // parameter setup and the explicit or implicit definitions in MIR already
+  // emitted have left it intact, even if a fixed home carries the value across
+  // a later clobber. A logical instruction that emits no MIR does not clobber
+  // the incoming location; lowering can maintain this fact in a fixed mask.
   lowir_model::PresentationName name;
   X64Register reg = XR_RDI;
   XmmRegister xmm = XMM_0;

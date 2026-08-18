@@ -140,3 +140,12 @@ integer loads, global addresses, frame addresses, and integer comparisons.
 It also covers immediately returned integer negation and conversion results.
 Each producer must write the ABI return register directly, without first
 assigning a general-purpose temporary that is used only by the return.
+
+`incoming-parameter-emitted-clobbers.t` keeps a reference parameter in RCX
+while promoted parameter-slot loads and directly addressed stores lower ahead
+of its final use.  The selected MIR operations before that use do not define
+RCX, so the final store may read the incoming register instead of its stable
+copy.  Both compilers execute the input successfully, but the reference moves
+the parameters into callee-saved registers and retains separate address
+instructions.  The input is therefore a placement-shape witness rather than
+an active reference fixture.

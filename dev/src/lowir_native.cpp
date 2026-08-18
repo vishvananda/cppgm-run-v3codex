@@ -130,6 +130,8 @@ public:
         lower_instruction(source_.blocks[i], j, block.instructions);
         stabilize_edge_live_result(source_.blocks[i].instructions[j],
                                    block.instructions);
+        record_emitted_register_definitions(
+          block.instructions, first_machine_instruction);
         const lowir_model::Instruction * debug_source =
           &source_.blocks[i].instructions[j];
         if(j + 1 < source_.blocks[i].instructions.size() &&
