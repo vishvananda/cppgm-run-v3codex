@@ -871,3 +871,11 @@ peak RSS.  Paired medians improve user by 0.41% and wall by 0.75%, with RSS
 improving 0.02%.  The affected report passes 368/368, the PA29 suite passes
 224/224, the through-PA29 report passes 4,116/4,116, the full report passes
 5,204/5,204, and the PA39 file audit has zero fatal findings.
+
+At commit `1e1b63ca`, a clean 32-way self build takes 19.39 seconds wall,
+414.14 seconds aggregate user time, and 239,472 KiB peak RSS.  With no
+inception object tree present, the separate clean 32-way inception comparison
+takes 1:53.27 wall, 3,023.62 seconds aggregate user time, and 243,376 KiB peak
+RSS.  All 163 compared objects match.  The self and inception binaries are
+byte-identical at 16,746,040 bytes with SHA-256
+`2982ccf4437bc3046bcc9856c76cdf856fddfca10a088840078804c991eec6b7`.
