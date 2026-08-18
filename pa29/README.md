@@ -643,6 +643,10 @@ To complete PA29, implement these goals:
    in the base pointer's selected location when its complete live interval can
    safely share the location; do not emit a register copy or `lea` solely to
    represent a zero displacement.
+   A pure `index` whose result has no use emits no MIR instruction.  When its
+   only input is a frame address created immediately before it and that address
+   has no other use, keep the address as a logical frame location rather than
+   materializing an otherwise unused `lea`.
    When an indexed address itself must remain a value, use one `lea` from the
    original base and legal x86 scale instead of first copying the base or emitting
    separate multiply and add instructions.

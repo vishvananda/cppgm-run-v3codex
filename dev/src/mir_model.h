@@ -185,7 +185,9 @@ struct Instruction
     MI_LEA,
     // A zero-offset LowIR index may retain its base register when the complete
     // result interval can safely share that location; it needs no MI_LEA or
-    // register copy solely to preserve pointer identity.
+    // register copy solely to preserve pointer identity. A pure unused index
+    // emits no MIR, and an immediately preceding frame address used only by
+    // that index remains a logical frame location instead of emitting MI_LEA.
     MI_FMOV,
     MI_FNEG,
     MI_FADD,

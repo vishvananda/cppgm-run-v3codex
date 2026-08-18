@@ -201,7 +201,9 @@ protected:
 				derived.address_is_immediately_stored(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_object_result_destination(
-					block, instruction_index, instruction.dest))
+					block, instruction_index, instruction.dest) ||
+				selection::address_only_feeds_dead_index(
+					block, instruction_index, instruction.dest, derived.facts_))
 			{
 				derived.define(instruction.dest,
 					lowir_model::builtin_lowir_type(lowir_model::LTK_PTR),

@@ -35,6 +35,18 @@ bool result_is_immediately_stored(
 bool result_is_immediate_store_address_with_later_use(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
     lowir_model::ValueId destination, const analysis::FunctionFacts & facts);
+inline bool address_only_feeds_dead_index(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts)
+{
+  if(facts.uses[destination] != 1 ||
+     instruction_index + 1 >= block.instructions.size()) return false;
+  const lowir_model::Instruction & index =
+    block.instructions[instruction_index + 1];
+  return index.kind == lowir_model::Instruction::IK_INDEX &&
+    index.first.kind == lowir_model::Operand::OP_TEMP &&
+    index.first.value == destination && facts.uses[index.dest] == 0;
+}
 
 }  // namespace selection
 }  // namespace lowir_native

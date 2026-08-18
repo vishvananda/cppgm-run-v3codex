@@ -53,6 +53,11 @@ protected:
   {
     using namespace build;
     Derived & lowerer = static_cast<Derived &>(*this);
+    if(lowerer.facts_.uses[instruction.dest] == 0) {
+      lowerer.consume(instruction.first);
+      lowerer.consume(instruction.second);
+      return;
+    }
     const bool constant_index =
       instruction.second.kind == lowir_model::Operand::OP_INTEGER;
     const long long offset = constant_index ?

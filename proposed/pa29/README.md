@@ -149,3 +149,10 @@ copy.  Both compilers execute the input successfully, but the reference moves
 the parameters into callee-saved registers and retains separate address
 instructions.  The input is therefore a placement-shape witness rather than
 an active reference fixture.
+
+`unused-index-address-elision.t` forms a frame address whose only consumer is
+a pure `index` result that is never read.  Both compilers omit the two
+operations from the function MIR and execute the input successfully.  Their
+unrelated startup-call syntax differs, while program behavior observes only
+the constant return, so the input remains a supplemental shape witness rather
+than an active exact-MIR fixture.
