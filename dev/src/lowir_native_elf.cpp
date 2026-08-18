@@ -2962,8 +2962,10 @@ void write_linux_relocatable(
   const auto catch_type_name =
     [&source, &host_declarations](lowir_model::SymbolId symbol)
       -> const std::string & {
-      const std::string * named = host_declarations.find(symbol);
-      return named ? *named : lowir_model::lowir_symbol_name(source, symbol);
+      const object_elf_detail::DeclarationObjectSymbol * named =
+        host_declarations.find(symbol);
+      return named ? *named->spelling :
+        lowir_model::lowir_symbol_name(source, symbol);
     };
   std::sort(ordered_catch_types.begin(), ordered_catch_types.end(),
     [&catch_type_name](lowir_model::SymbolId left,

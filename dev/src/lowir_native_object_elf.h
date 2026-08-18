@@ -91,15 +91,22 @@ struct HostFunctionLayout
   std::size_t lsda_offset = 0;
 };
 
+struct DeclarationObjectSymbol
+{
+  lowir_model::StringId identity;
+  const std::string * spelling = 0;
+};
+
 struct DeclarationObjectSymbols
 {
-  std::unordered_map<std::string, const std::string *> named;
-  std::vector<const std::string *> typed;
+  std::unordered_map<std::string, const DeclarationObjectSymbol *> named;
+  std::vector<DeclarationObjectSymbol> typed;
 
-  const std::string * find(lowir_model::SymbolId symbol) const
+  const DeclarationObjectSymbol * find(lowir_model::SymbolId symbol) const
   {
     const std::uint32_t index = symbol;
-    return symbol.valid() && index < typed.size() ? typed[index] : 0;
+    return symbol.valid() && index < typed.size() && typed[index].spelling ?
+      &typed[index] : 0;
   }
 };
 

@@ -57,11 +57,12 @@ std::unordered_set<std::string> externally_named_targets(
 {
   std::unordered_set<std::string> result;
   result.reserve(declarations.named.size() * 3);
-  for(std::unordered_map<std::string, const std::string *>::const_iterator
+  for(std::unordered_map<std::string,
+        const DeclarationObjectSymbol *>::const_iterator
         declaration = declarations.named.begin();
       declaration != declarations.named.end(); ++declaration) {
     result.insert(declaration->first);
-    result.insert(*declaration->second);
+    result.insert(*declaration->second->spelling);
   }
   return result;
 }
@@ -178,7 +179,7 @@ void resolve_same_section_local_fixups(
     add_symbol_labels(symbol_locations, symbol_location_known,
       data_sections[i], false, i);
   for(std::size_t i = 0; i < declarations.typed.size(); ++i)
-    symbol_external[i] = declarations.typed[i] != 0;
+    symbol_external[i] = declarations.typed[i].spelling != 0;
   for(std::size_t i = 0; i < text_sections.size(); ++i)
     resolve_section_fixups(
       text_sections[i], true, i, labels, externally_named, symbol_locations,

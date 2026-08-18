@@ -50,6 +50,7 @@ struct HostRelocation
   std::size_t offset = 0;
   std::string target;
   lowir_model::SymbolId program_symbol;
+  lowir_model::StringId object_symbol;
   long long addend = 0;
 };
 
@@ -358,6 +359,7 @@ struct HostSymbol
   std::string name;
   bool internal_program_symbol = false;
   lowir_model::SymbolId program_symbol;
+  lowir_model::StringId object_symbol;
   unsigned binding = 0;
   unsigned type = 0;
   std::uint16_t section = 0;
@@ -614,8 +616,8 @@ HostSection make_host_lsda(
           HostRelocation relocation;
           relocation.kind = HostRelocation::HR_PC32;
           relocation.offset = section.bytes.size();
-          const std::string * named = declarations.find(symbol);
-          relocation.target = "DW.ref." + (named ? *named :
+          const DeclarationObjectSymbol * named = declarations.find(symbol);
+          relocation.target = "DW.ref." + (named ? *named->spelling :
             host_symbol_spelling(
               lowir_model::lowir_symbol_name(program, symbol)));
           relocations.push_back(relocation);
@@ -782,43 +784,61 @@ DeclarationObjectSymbols declaration_object_symbols(
     const lowir_model::LowirProgram & program)
 {
   DeclarationObjectSymbols result;
-  result.typed.assign(program.symbol_names.size(), 0);
+  result.typed.resize(program.symbol_names.size());
   const auto add = [&program, &result](
-      lowir_model::SymbolId symbol, const std::string & object) {
+      lowir_model::SymbolId symbol, lowir_model::StringId object_identity,
+      const std::string & object) {
     const std::uint32_t index = symbol;
     if(!symbol.valid() || index >= result.typed.size())
       throw std::logic_error("invalid declaration symbol identity");
-    result.typed[index] = &object;
-    result.named[lowir_model::lowir_symbol_name(program, symbol)] = &object;
+    result.typed[index].identity = object_identity;
+    result.typed[index].spelling = &object;
+    result.named[lowir_model::lowir_symbol_name(program, symbol)] =
+      &result.typed[index];
   };
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
     if(program.exported_symbols[i].object_symbol.valid())
       add(program.exported_symbols[i].internal_symbol,
+        program.exported_symbols[i].object_symbol,
         exported_object_symbol(program, program.exported_symbols[i]));
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    if(program.function_declarations[i].metadata.object_symbol.valid())
-      add(program.function_declarations[i].symbol,
-        host_runtime_object_symbol(
-          program,
-          program.function_declarations[i].metadata));
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
+    const lowir_model::FunctionDeclaration & declaration =
+      program.function_declarations[i];
+    if(!declaration.metadata.object_symbol.valid()) continue;
+    const std::string & object = host_runtime_object_symbol(
+      program, declaration.metadata);
+    const std::string & pooled = program.strings.get(
+      declaration.metadata.object_symbol);
+    add(declaration.symbol, &object == &pooled ?
+      declaration.metadata.object_symbol : lowir_model::StringId(), object);
+  }
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].metadata.object_symbol.valid())
       add(program.global_declarations[i].symbol,
+        program.global_declarations[i].metadata.object_symbol,
         program.strings.get(
           program.global_declarations[i].metadata.object_symbol));
   return result;
 }
 
-std::string relocation_target(
+void assign_relocation_target(
+    HostRelocation & relocation,
     const std::string & raw,
     const EncodedLabels & labels,
     const DeclarationObjectSymbols & declarations)
 {
-  const std::unordered_map<std::string, const std::string *>::const_iterator
+  const std::unordered_map<std::string,
+    const DeclarationObjectSymbol *>::const_iterator
     found = declarations.named.find(raw);
-  if(found != declarations.named.end()) return *found->second;
-  if(labels.named.count(raw)) return raw;
-  return host_symbol_spelling(raw);
+  if(found != declarations.named.end()) {
+    if(found->second->identity.valid())
+      relocation.object_symbol = found->second->identity;
+    else relocation.target = *found->second->spelling;
+  } else if(labels.named.count(raw)) {
+    relocation.target = raw;
+  } else {
+    relocation.target = host_symbol_spelling(raw);
+  }
 }
 
 std::vector<HostRelocation> host_relocations(
@@ -850,8 +870,8 @@ std::vector<HostRelocation> host_relocations(
         HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
     }
     relocation.offset = fixup.offset;
-    relocation.target = relocation_target(
-      fixup.target, labels, declarations);
+    assign_relocation_target(
+      relocation, fixup.target, labels, declarations);
     relocation.addend = fixup.kind == EncodedFixup::EF_RELATIVE32 ||
       fixup.kind == EncodedFixup::EF_ADDRESS32 ?
       fixup.addend - 4 : fixup.addend;
@@ -881,9 +901,12 @@ std::vector<HostRelocation> host_relocations(
         HostRelocation::HR_ABSOLUTE64 : HostRelocation::HR_PLT32;
     }
     relocation.offset = fixup.offset;
-    const std::string * declared = declarations.find(fixup.target);
+    const DeclarationObjectSymbol * declared =
+      declarations.find(fixup.target);
     if(declared) {
-      relocation.target = *declared;
+      if(declared->identity.valid())
+        relocation.object_symbol = declared->identity;
+      else relocation.target = *declared->spelling;
     } else if(symbol < labels.symbol_known.size() &&
               labels.symbol_known[symbol]) {
       relocation.program_symbol = fixup.target;
@@ -1047,6 +1070,7 @@ void collect_host_symbols(
       (data_sections[location.section].flags & 0x400) ? 6 : 1;
     HostSymbol symbol;
     symbol.name = object_symbol;
+    symbol.object_symbol = exported.object_symbol;
     symbol.section = section;
     symbol.value = value;
     symbol.type = type;
@@ -1080,17 +1104,34 @@ void collect_host_symbols(
     add_unique_symbol(globals, global_index, symbol);
   }
 
-  std::unordered_map<std::string, bool> defined;
-  for(std::size_t i = 0; i < locals.size(); ++i) defined[locals[i].name] = true;
-  for(std::size_t i = 0; i < globals.size(); ++i) defined[globals[i].name] = true;
+  std::unordered_set<std::string> defined;
+  std::vector<unsigned char> defined_objects(program.strings.size() + 1, 0);
+  const auto mark_defined = [&defined, &defined_objects](
+      const HostSymbol & symbol) {
+    defined.insert(symbol.name);
+    if(!symbol.object_symbol.valid()) return;
+    const std::uint32_t object = symbol.object_symbol;
+    if(object >= defined_objects.size())
+      throw std::logic_error("invalid defined object-symbol identity");
+    defined_objects[object] = 1;
+  };
+  for(std::size_t i = 0; i < locals.size(); ++i) mark_defined(locals[i]);
+  for(std::size_t i = 0; i < globals.size(); ++i) mark_defined(globals[i]);
   std::unordered_set<std::string> declared_tls_symbols;
+  std::vector<unsigned char> declared_tls_objects(
+    program.strings.size() + 1, 0);
   const DeclarationObjectSymbols declared_objects =
 		declaration_object_symbols(program);
   for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
     if(program.global_declarations[i].storage == lowir_model::GSM_THREAD_LOCAL) {
-      const std::string * object = declared_objects.find(
+      const DeclarationObjectSymbol * object = declared_objects.find(
         program.global_declarations[i].symbol);
-	  if(object) declared_tls_symbols.insert(*object);
+	  if(object && object->identity.valid()) {
+        const std::uint32_t identity = object->identity;
+        if(identity >= declared_tls_objects.size())
+          throw std::logic_error("invalid TLS object-symbol identity");
+        declared_tls_objects[identity] = 1;
+      } else if(object) declared_tls_symbols.insert(*object->spelling);
 	}
   std::unordered_set<std::string> section_symbols;
   for(std::size_t i = 0; i < text_sections.size(); ++i)
@@ -1112,6 +1153,21 @@ void collect_host_symbols(
     const std::vector<HostRelocation> & relocations = *relocation_groups[group];
     for(std::size_t i = 0; i < relocations.size(); ++i) {
       if(relocations[i].program_symbol.valid()) continue;
+      if(relocations[i].object_symbol.valid()) {
+        const std::uint32_t object = relocations[i].object_symbol;
+        if(object >= defined_objects.size())
+          throw std::logic_error("invalid relocation object-symbol identity");
+        if(defined_objects[object]) continue;
+        HostSymbol symbol;
+        symbol.object_symbol = relocations[i].object_symbol;
+        symbol.name = program.strings.get(relocations[i].object_symbol);
+        symbol.binding = 1;
+        if(declared_tls_objects[object]) symbol.type = 6;
+        add_unique_symbol(globals, global_index, symbol);
+        defined_objects[object] = 1;
+        defined.insert(symbol.name);
+        continue;
+      }
       if(section_symbols.count(relocations[i].target) ||
          defined.count(relocations[i].target)) continue;
       HostSymbol symbol;
@@ -1119,7 +1175,7 @@ void collect_host_symbols(
       symbol.binding = 1;
       if(declared_tls_symbols.count(symbol.name)) symbol.type = 6;
       add_unique_symbol(globals, global_index, symbol);
-      defined[symbol.name] = true;
+      defined.insert(symbol.name);
     }
   }
   const auto stable_symbol_order = [](const HostSymbol & left,
@@ -1195,7 +1251,8 @@ std::vector<unsigned char> make_symbol_table(
     const std::vector<std::pair<std::string, std::uint16_t> > & section_symbols,
     std::vector<unsigned char> & strings,
     std::unordered_map<std::string, std::size_t> & indexes,
-    std::vector<std::size_t> & program_indexes)
+    std::vector<std::size_t> & program_indexes,
+    std::vector<std::size_t> & object_indexes)
 {
   std::vector<unsigned char> table(24, 0);
   for(std::size_t i = 0; i < section_symbols.size(); ++i) {
@@ -1220,6 +1277,12 @@ std::vector<unsigned char> make_symbol_table(
           throw std::logic_error("invalid ELF program symbol identity");
         program_indexes[identity] = index;
       }
+      if(symbol.object_symbol.valid()) {
+        const std::uint32_t identity = symbol.object_symbol;
+        if(identity >= object_indexes.size())
+          throw std::logic_error("invalid ELF object-symbol identity");
+        object_indexes[identity] = index;
+      }
       append_little(table, add_symbol_string(strings, symbol), 4);
       table.push_back(static_cast<unsigned char>((symbol.binding << 4) |
                                                  symbol.type));
@@ -1235,7 +1298,8 @@ std::vector<unsigned char> make_symbol_table(
 std::vector<unsigned char> make_relocation_table(
     const std::vector<HostRelocation> & relocations,
     const std::unordered_map<std::string, std::size_t> & symbols,
-    const std::vector<std::size_t> & program_symbols)
+    const std::vector<std::size_t> & program_symbols,
+    const std::vector<std::size_t> & object_symbols)
 {
   std::vector<HostRelocation> ordered = relocations;
   std::sort(ordered.begin(), ordered.end(),
@@ -1253,6 +1317,12 @@ std::vector<unsigned char> make_relocation_table(
         symbol_index = program_symbols[identity];
       if(symbol_index == lowir_model::kInvalidCompactId)
         throw std::logic_error("ELF relocation has no program symbol");
+    } else if(relocation.object_symbol.valid()) {
+      const std::uint32_t identity = relocation.object_symbol;
+      if(identity < object_symbols.size())
+        symbol_index = object_symbols[identity];
+      if(symbol_index == lowir_model::kInvalidCompactId)
+        throw std::logic_error("ELF relocation has no object symbol");
     } else {
       const std::unordered_map<std::string, std::size_t>::const_iterator symbol =
         symbols.find(relocation.target);
@@ -1528,11 +1598,13 @@ std::vector<unsigned char> make_linux_relocatable_image(
   std::unordered_map<std::string, std::size_t> symbol_indexes;
   std::vector<std::size_t> program_symbol_indexes(
     program.symbol_names.size(), lowir_model::kInvalidCompactId);
+  std::vector<std::size_t> object_symbol_indexes(
+    program.strings.size() + 1, lowir_model::kInvalidCompactId);
 	const std::chrono::steady_clock::time_point string_table_started = stats ?
 		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   std::vector<unsigned char> symbol_table = make_symbol_table(
     locals, globals, section_symbols, strings, symbol_indexes,
-    program_symbol_indexes);
+    program_symbol_indexes, object_symbol_indexes);
 	record_string_table(stats, symbol_indexes, strings, string_table_started);
 
   HostSection note;
@@ -1564,7 +1636,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     section.link = symtab_index;
     section.bytes = make_relocation_table(
       *pending_relocations[i].relocations, symbol_indexes,
-      program_symbol_indexes);
+      program_symbol_indexes, object_symbol_indexes);
   }
 
   append_function_comdat_groups(
