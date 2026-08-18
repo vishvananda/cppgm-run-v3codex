@@ -21,6 +21,16 @@
 
 namespace lowir_model {
 
+struct ExportedSymbol
+{
+  SymbolId internal_symbol;
+  StringId object_symbol;
+  StringId thread_local_wrapper_object_symbol;
+  bool keep_internal_alias = false;
+  bool prefer_local_object_binding = false;
+  ir_model::SymbolLinkage linkage = ir_model::SL_EXTERNAL;
+};
+
 struct ParseError : std::runtime_error
 {
   explicit ParseError(const std::string & message)
@@ -533,7 +543,7 @@ struct Program
   std::vector<FunctionDeclaration> function_declarations;
   std::vector<Function> functions;
   std::vector<ObjectAlias> object_aliases;
-  std::vector<ir_model::ExportedSymbol> exported_symbols;
+  std::vector<ExportedSymbol> exported_symbols;
   std::size_t source_bytes = 0;
   std::size_t token_count = 0;
   PresentationPolicy presentation_policy = PRESENTATION_SERIALIZABLE;

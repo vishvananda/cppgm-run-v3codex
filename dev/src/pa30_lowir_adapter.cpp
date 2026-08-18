@@ -698,18 +698,6 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	return target;
 }
 
-void AppendExport(const Symbol& source, const TypedProgram& program,
-	ir_model::ExportedSymbol* target)
-{
-	target->internal_symbol = program.strings.get(source.name);
-	target->object_symbol = source.object_name.valid() ?
-		program.strings.get(source.object_name) : std::string();
-	target->keep_internal_alias = source.keep_internal_object_alias;
-	target->prefer_local_object_binding = source.prefer_local_object_binding;
-	target->linkage = source.internal_linkage ? ir_model::SL_INTERNAL :
-		source.weak_linkage ? ir_model::SL_WEAK : ir_model::SL_EXTERNAL;
-}
-
 }
 
 lowir_model::LowirProgram AdaptTypedLowIRForNative(
@@ -931,32 +919,12 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		target.functions.push_back(std::move(result));
 	}
 	target.object_aliases.reserve(source.object_aliases.size());
-	target.exported_symbols.reserve(
-		source.object_aliases.size() + source.symbols.size());
 	for (std::size_t i = 0; i < source.object_aliases.size(); ++i)
 	{
 		lowir_model::ObjectAlias alias;
 		alias.object_symbol = source.object_aliases[i].object_name;
 		alias.target_id = lowir_model::SymbolId(source.object_aliases[i].target);
-		const Symbol& alias_target =
-			source.symbols[source.object_aliases[i].target];
-		// An ABI alias is an additional exported spelling of the same root, so
-		// carry the target's linkage with it across the typed-LowIR boundary.
-		if (source.host_object_emission)
-		{
-			ir_model::ExportedSymbol exported_alias;
-			AppendExport(alias_target, source, &exported_alias);
-			exported_alias.object_symbol =
-				source.strings.get(alias.object_symbol);
-			target.exported_symbols.push_back(std::move(exported_alias));
-		}
 		target.object_aliases.push_back(std::move(alias));
-	}
-	for (std::size_t i = 0; i < source.symbols.size(); ++i)
-	{
-		ir_model::ExportedSymbol symbol;
-		AppendExport(source.symbols[i], source, &symbol);
-		target.exported_symbols.push_back(std::move(symbol));
 	}
 	target.strings = std::move(source.strings);
 	canonicalize_frontend_lowir(target, preparation_stats);

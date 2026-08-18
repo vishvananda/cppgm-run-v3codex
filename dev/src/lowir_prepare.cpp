@@ -48,19 +48,19 @@ ir_model::SymbolLinkage exported_linkage(SymbolBindingMode binding)
 		binding == SBM_WEAK ? ir_model::SL_WEAK : ir_model::SL_EXTERNAL;
 }
 
-void append_export(Program& program, const std::string& name,
+void append_export(Program& program, SymbolId symbol,
 	const SymbolMetadata& metadata)
 {
-	ir_model::ExportedSymbol result;
-	result.internal_symbol = name;
+	ExportedSymbol result;
+	result.internal_symbol = symbol;
 	if (metadata.object_symbol.valid())
-		result.object_symbol = program.strings.get(metadata.object_symbol);
+		result.object_symbol = metadata.object_symbol;
 	// Canonical LowIR omits a redundant external object= spelling whenever it
 	// is exactly the LowIR name without its sigil.  Reconstruct that derived
 	// spelling at the object boundary; this also covers ordinary namespace-
 	// scope data, whose Itanium object name need not carry a _Z prefix.
-	if (result.object_symbol.empty() && metadata.binding != SBM_INTERNAL)
-		result.object_symbol = name;
+	if (!result.object_symbol.valid() && metadata.binding != SBM_INTERNAL)
+		result.object_symbol = lowir_symbol_spelling(program, symbol);
 	result.keep_internal_alias = metadata.keep_internal_alias;
 	result.prefer_local_object_binding = metadata.prefer_local_object_binding;
 	result.linkage = exported_linkage(metadata.binding);
@@ -86,26 +86,23 @@ void derive_exports(Program& program)
 	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
 	{
 		const ObjectAlias& object_alias = program.object_aliases[i];
-		ir_model::ExportedSymbol alias;
-		alias.internal_symbol =
-			lowir_symbol_name(program, object_alias.target_id);
-		alias.object_symbol = program.strings.get(object_alias.object_symbol);
+		ExportedSymbol alias;
+		alias.internal_symbol = object_alias.target_id;
+		alias.object_symbol = object_alias.object_symbol;
 		alias.linkage = linkage[object_alias.target_id];
 		program.exported_symbols.push_back(alias);
 	}
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
-		append_export(program, lowir_symbol_name(
-			program, program.global_declarations[i].symbol),
+		append_export(program, program.global_declarations[i].symbol,
 			program.global_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		append_export(program, lowir_symbol_name(
-			program, program.function_declarations[i].symbol),
+		append_export(program, program.function_declarations[i].symbol,
 			program.function_declarations[i].metadata);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
-		append_export(program, lowir_symbol_name(program, program.globals[i].symbol),
+		append_export(program, program.globals[i].symbol,
 			program.globals[i].metadata);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		append_export(program, lowir_symbol_name(program, program.functions[i].symbol),
+		append_export(program, program.functions[i].symbol,
 			program.functions[i].metadata);
 }
 

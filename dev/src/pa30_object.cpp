@@ -717,22 +717,32 @@ lowir_model::Function ReadFunction(Reader& in,
 	return value;
 }
 
-void WriteExport(Writer& out, const ir_model::ExportedSymbol& value)
+void WriteExport(Writer& out, const lowir_model::ExportedSymbol& value,
+	const lowir_model::LowirProgram& program)
 {
-	out.String(value.internal_symbol);
-	out.String(value.object_symbol);
-	out.String(value.thread_local_wrapper_object_symbol);
+	out.String(lowir_model::lowir_symbol_name(program, value.internal_symbol));
+	out.String(value.object_symbol.valid() ?
+		program.strings.get(value.object_symbol) : std::string());
+	out.String(value.thread_local_wrapper_object_symbol.valid() ?
+		program.strings.get(value.thread_local_wrapper_object_symbol) :
+		std::string());
 	out.Bool(value.keep_internal_alias);
 	out.Bool(value.prefer_local_object_binding);
 	WriteEnum(out, value.linkage);
 }
 
-ir_model::ExportedSymbol ReadExport(Reader& in)
+lowir_model::ExportedSymbol ReadExport(Reader& in,
+	lowir_model::LowirProgram& program, ReadSymbolIndex& symbols)
 {
-	ir_model::ExportedSymbol value;
-	value.internal_symbol = in.String();
-	value.object_symbol = in.String();
-	value.thread_local_wrapper_object_symbol = in.String();
+	lowir_model::ExportedSymbol value;
+	value.internal_symbol = ReadSymbol(in, program, symbols);
+	const std::string object_symbol = in.String();
+	if (!object_symbol.empty())
+		value.object_symbol = program.strings.intern(object_symbol);
+	const std::string wrapper_symbol = in.String();
+	if (!wrapper_symbol.empty())
+		value.thread_local_wrapper_object_symbol =
+			program.strings.intern(wrapper_symbol);
 	value.keep_internal_alias = in.Bool();
 	value.prefer_local_object_binding = in.Bool();
 	value.linkage = ReadEnum<ir_model::SymbolLinkage>(in);
@@ -762,7 +772,7 @@ void WriteProgram(Writer& out, const lowir_model::LowirProgram& value)
 	}
 	out.U64(value.exported_symbols.size());
 	for (std::size_t i = 0; i < value.exported_symbols.size(); ++i)
-		WriteExport(out, value.exported_symbols[i]);
+		WriteExport(out, value.exported_symbols[i], value);
 	out.U64(value.source_bytes);
 	out.U64(value.token_count);
 }
@@ -794,7 +804,7 @@ lowir_model::LowirProgram ReadProgram(Reader& in)
 	}
 	value.exported_symbols.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.exported_symbols.size(); ++i)
-		value.exported_symbols[i] = ReadExport(in);
+		value.exported_symbols[i] = ReadExport(in, value, symbols);
 	value.source_bytes = in.Size();
 	value.token_count = in.Size();
 	lowir_model::resolve_lowir_program_symbols(value);
@@ -1096,21 +1106,25 @@ lowir_model::LowirProgram LinkCompilerObjects(
 		RenameMap names;
 		for (std::size_t j = 0; j < objects[i].lowir.exported_symbols.size(); ++j)
 		{
-			const ir_model::ExportedSymbol& symbol =
+			const lowir_model::ExportedSymbol& symbol =
 				objects[i].lowir.exported_symbols[j];
+			const std::string& internal_symbol = lowir_model::lowir_symbol_name(
+				objects[i].lowir, symbol.internal_symbol);
+			const std::string object_symbol = symbol.object_symbol.valid() ?
+				objects[i].lowir.strings.get(symbol.object_symbol) : std::string();
 			if (stats) { ++stats->symbols; ++stats->symbol_probes; }
 			if (symbol.linkage == ir_model::SL_INTERNAL ||
 				symbol.prefer_local_object_binding)
-				names[symbol.internal_symbol] = symbol.internal_symbol +
+				names[internal_symbol] = internal_symbol +
 					".__u" + std::to_string(i);
 			else
 			{
-				const std::string key = symbol.object_symbol.empty() ?
-					symbol.internal_symbol : symbol.object_symbol;
+				const std::string key = object_symbol.empty() ?
+					internal_symbol : object_symbol;
 				const std::pair<std::unordered_map<std::string, std::string>::iterator,
 					bool> inserted = external_names.emplace(key,
-						symbol.internal_symbol);
-				names[symbol.internal_symbol] = inserted.first->second;
+						internal_symbol);
+				names[internal_symbol] = inserted.first->second;
 			}
 		}
 		RenameProgram(&objects[i].lowir, names, stats);
@@ -1139,7 +1153,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 	{
 		lowir_model::remap_lowir_program_strings(
 			objects[i].lowir, result.strings);
-		std::vector<ir_model::ExportedSymbol>().swap(
+		std::vector<lowir_model::ExportedSymbol>().swap(
 			objects[i].lowir.exported_symbols);
 	}
 

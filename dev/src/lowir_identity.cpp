@@ -1176,6 +1176,11 @@ void remap_lowir_program_strings(Program & program,
     remap_string(program.object_aliases[i].object_symbol);
     remap_string(program.object_aliases[i].target_spelling);
   }
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
+    remap_string(program.exported_symbols[i].object_symbol);
+    remap_string(
+      program.exported_symbols[i].thread_local_wrapper_object_symbol);
+  }
 }
 
 void discard_unreferenced_lowir_strings(Program & program)
@@ -1251,6 +1256,10 @@ void discard_unreferenced_lowir_strings(Program & program)
     retain(program.object_aliases[i].object_symbol);
     retain(program.object_aliases[i].target_spelling);
   }
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
+    retain(program.exported_symbols[i].object_symbol);
+    retain(program.exported_symbols[i].thread_local_wrapper_object_symbol);
+  }
   program.strings.retain_only(retained);
 }
 
@@ -1263,7 +1272,7 @@ std::size_t lowir_program_storage_bytes(const Program & program)
 		program.function_declarations.capacity() * sizeof(FunctionDeclaration) +
 		program.functions.capacity() * sizeof(Function) +
 		program.object_aliases.capacity() * sizeof(ObjectAlias) +
-		program.exported_symbols.capacity() * sizeof(ir_model::ExportedSymbol);
+		program.exported_symbols.capacity() * sizeof(ExportedSymbol);
 	for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
 		bytes += program.function_declarations[i].params.capacity() *
 			sizeof(Parameter);
@@ -1292,9 +1301,6 @@ std::size_t lowir_program_storage_bytes(const Program & program)
 					instructions[i].call_params.capacity() * sizeof(Parameter);
 		}
 	}
-	for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
-		bytes += program.exported_symbols[i].internal_symbol.capacity() +
-			program.exported_symbols[i].object_symbol.capacity();
 	return bytes;
 }
 
@@ -1352,6 +1358,8 @@ void remap_lowir_program_symbols(
   }
   for(std::size_t i = 0; i < program.object_aliases.size(); ++i)
     remap_symbol(program.object_aliases[i].target_id);
+  for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
+    remap_symbol(program.exported_symbols[i].internal_symbol);
 }
 
 }  // namespace lowir_model

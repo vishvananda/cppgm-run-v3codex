@@ -16,6 +16,24 @@ std::string native_object_symbol(const std::string & symbol)
   return !symbol.empty() && symbol[0] == '@' ? symbol.substr(1) : symbol;
 }
 
+const std::string & exported_internal_symbol(
+    const lowir_model::LowirProgram & program,
+    const lowir_model::ExportedSymbol & symbol)
+{
+  return lowir_model::lowir_symbol_name(program, symbol.internal_symbol);
+}
+
+const std::string & exported_object_symbol(
+    const lowir_model::LowirProgram & program,
+    const lowir_model::ExportedSymbol & symbol)
+{
+  if(!symbol.object_symbol.valid()) {
+    static const std::string empty;
+    return empty;
+  }
+  return program.strings.get(symbol.object_symbol);
+}
+
 void put_little(std::vector<unsigned char> & out, std::size_t offset,
                 std::uint64_t value, unsigned count)
 {
@@ -132,17 +150,18 @@ std::vector<EncodedSection> partition_weak_text(
   std::unordered_map<std::size_t, std::string> weak_signatures;
   std::unordered_set<std::string> weak_objects;
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
-    const ir_model::ExportedSymbol & symbol = program.exported_symbols[i];
-    if(symbol.linkage != ir_model::SL_WEAK || symbol.object_symbol.empty())
+    const lowir_model::ExportedSymbol & symbol = program.exported_symbols[i];
+    if(symbol.linkage != ir_model::SL_WEAK || !symbol.object_symbol.valid())
       continue;
-    weak_objects.insert(symbol.object_symbol);
-    const std::string object_label = native_object_symbol(symbol.object_symbol);
+    const std::string & object_symbol = exported_object_symbol(program, symbol);
+    weak_objects.insert(object_symbol);
+    const std::string object_label = native_object_symbol(object_symbol);
     std::unordered_map<std::string, std::size_t>::const_iterator label =
       source.labels.find(object_label);
     if(label == source.labels.end())
-      label = source.labels.find(symbol.internal_symbol);
+      label = source.labels.find(exported_internal_symbol(program, symbol));
     if(label != source.labels.end() && !weak_signatures.count(label->second))
-      weak_signatures[label->second] = symbol.object_symbol;
+      weak_signatures[label->second] = object_symbol;
   }
 
   std::vector<std::size_t> order(functions.size());
@@ -675,9 +694,9 @@ std::unordered_map<std::string, std::string> declaration_object_symbols(
 {
   std::unordered_map<std::string, std::string> result;
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
-    if(!program.exported_symbols[i].object_symbol.empty())
-      result[program.exported_symbols[i].internal_symbol] =
-        program.exported_symbols[i].object_symbol;
+    if(program.exported_symbols[i].object_symbol.valid())
+      result[exported_internal_symbol(program, program.exported_symbols[i])] =
+        exported_object_symbol(program, program.exported_symbols[i]);
   for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
     if(program.function_declarations[i].metadata.object_symbol.valid())
       result[lowir_model::lowir_symbol_name(
@@ -882,17 +901,17 @@ void collect_host_symbols(
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i)
     if(program.exported_symbols[i].keep_internal_alias)
       required_local_labels.insert(
-        program.exported_symbols[i].internal_symbol);
+        exported_internal_symbol(program, program.exported_symbols[i]));
   for(std::size_t i = 0; i < functions.size(); ++i)
     if(!functions[i].object_symbol.valid())
       required_local_labels.insert(lowir_model::lowir_symbol_name(
         program, functions[i].program_symbol));
   std::unordered_set<std::string> object_only_labels;
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
-    const ir_model::ExportedSymbol & exported = program.exported_symbols[i];
-    if(!exported.object_symbol.empty() && !exported.keep_internal_alias)
+    const lowir_model::ExportedSymbol & exported = program.exported_symbols[i];
+    if(exported.object_symbol.valid() && !exported.keep_internal_alias)
       object_only_labels.insert(
-        native_object_symbol(exported.object_symbol));
+        native_object_symbol(exported_object_symbol(program, exported)));
   }
   std::map<std::pair<std::size_t, std::size_t>, std::uint64_t> function_sizes;
   for(std::size_t i = 0; i < functions.size(); ++i)
@@ -932,9 +951,10 @@ void collect_host_symbols(
   }
 
   for(std::size_t i = 0; i < program.exported_symbols.size(); ++i) {
-    const ir_model::ExportedSymbol & exported = program.exported_symbols[i];
-    if(exported.object_symbol.empty()) continue;
-    const std::string object_label = native_object_symbol(exported.object_symbol);
+    const lowir_model::ExportedSymbol & exported = program.exported_symbols[i];
+    if(!exported.object_symbol.valid()) continue;
+    const std::string & object_symbol = exported_object_symbol(program, exported);
+    const std::string object_label = native_object_symbol(object_symbol);
     const EncodedLabelIndex::const_iterator location =
       encoded_labels.find(object_label);
     if(location == encoded_labels.end()) continue;
@@ -945,7 +965,7 @@ void collect_host_symbols(
     const unsigned type = location->second.text ? 2 :
       (data_sections[location->second.section].flags & 0x400) ? 6 : 1;
     HostSymbol symbol;
-    symbol.name = exported.object_symbol;
+    symbol.name = object_symbol;
     symbol.section = section;
     symbol.value = value;
     symbol.type = type;
