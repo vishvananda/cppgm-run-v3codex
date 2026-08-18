@@ -476,28 +476,16 @@ To complete PA29, implement these goals:
    division, and shifts, must preserve still-live frame addresses and incoming parameters
    before reusing those registers.
 
-   Treat `rdi` and `rsi` as available caller-saved result registers when no
-   incoming argument remains resident there and the result does not cross an
-   instruction that fixes or clobbers that register. Prefer such an available
-   caller-saved register to introducing a callee-saved preserve. When a result
-   reuses its final-use input register, check the new result's complete live
-   interval: calls, object copies, zero initialization, and fixed division or
-   shift operands may make a register safe for the input but unsafe for the
-   longer-lived result.
+   In the checked MIR cases, use an available caller-saved `rdi` or `rsi`
+   instead of adding a callee-saved register to the frame's `preserve` list.
+   Reusing one of those registers must not overwrite a live incoming argument
+   or a value that must survive a call or fixed-register operation.
 
-   An incoming scalar parameter may remain in its ABI register for its whole
-   live interval when no instruction in that interval clobbers the register.
-   That interval includes uses reached through a promoted parameter-slot load.
-   Reserve that register while the parameter remains live so result allocation
-   cannot overwrite it.  Relocate or spill the parameter before its first use
-   whenever a fixed-register operation or call can clobber its incoming
-   register.
-
-   When a parameter needs a fixed home across a later clobber, an earlier use
-   may still read the incoming ABI register while that register remains intact.
-   Uses after the first emitted MIR instruction that clobbers it must read the
-   fixed home. A LowIR operation that emits no MIR instruction does not itself
-   make the incoming register unavailable.
+   An incoming scalar parameter may remain in its ABI register while that
+   register is intact, including when the parameter is read through its
+   promoted slot. Uses after an emitted MIR instruction clobbers the register
+   must instead read a preserved copy. A LowIR operation that emits no MIR
+   instruction does not make the incoming register unavailable.
 
    When a sole-use scalar constant, load, copy, address, index, unary operation,
    or integer conversion is immediately returned, lower its result directly
@@ -508,56 +496,42 @@ To complete PA29, implement these goals:
    return register merely because `setcc` writes the result there, or introduce a
    temporary register followed only by a return-register copy.
 
-   Otherwise, a scalar `ret` operand names the result's selected logical
-   register.  Native encoding performs the final transfer to the ABI return
-   register when necessary; do not serialize a separate MIR move solely for
-   that transfer.
+   Otherwise, a scalar `ret` operand names the register holding the result; do
+   not add a separate MIR move used only to place that value in the ABI return
+   register.
 
-   Scalar integer division should place the selected divisor directly in
-   `rcx` and the dividend in `rax`.  Treat those placements as a two-register
-   parallel move: preserve both selected inputs when either already occupies
-   the other's fixed destination, and use a fixed division-clobbered scratch
-   for the rare cycle.  A quotient that is immediately returned should remain
-   in `rax`.  An immediately returned remainder should move directly from
-   `rdx` to `rax`, without first assigning an unrelated result register.
+   Scalar integer division should place the divisor in `rcx` and the dividend
+   in `rax` without losing either input when those placements overlap. An
+   immediately returned quotient should remain in `rax`, and an immediately
+   returned remainder should move directly from `rdx` to `rax`.
 
-   A scalar call result may remain in its ABI return register throughout a
-   single-block interval that crosses no operation clobbering that register.
-   The final consumer must read the result before performing any fixed-register
-   setup that overwrites the return register.  In particular, relocate a result
-   used as a store address when materializing the stored value needs that same
-   register.  Emit only moves required by these constraints; do not assign the
-   result an unrelated intermediate home.
+   A scalar call result may remain in its ABI return register until its use if
+   no intervening operation clobbers that register. Its consumer must still
+   receive the original result when setting up another operand also requires
+   the return register. Do not add an unrelated intermediate home when no move
+   is required.
 
    When a load from a promoted parameter slot is used only as a call argument,
-   let call setup read the parameter's fixed home directly.  Do not also emit
-   a speculative temporary copy that the call does not consume.
+   the MIR should pass the preserved parameter value without an unused
+   temporary copy.
 
-   Keep typed integer constants as immediate value facts until an instruction
-   requires a physical register.  A scalar copy may retain its source location
-   without emitting a machine move when that location is an immediate, a
-   symbolic address, an immutable temporary frame home, or a register that is
-   not clobbered anywhere in the copied value's complete live interval.  Do not
-   defer a read from mutable slot or global storage, and do not share an incoming
-   parameter register under this rule.
+   Integer constants should remain immediate MIR operands until an instruction
+   requires a register. A scalar copy need not emit a move when it can safely
+   keep an immediate, symbolic address, immutable temporary frame location, or
+   intact register as its source. Loads from mutable slot or global storage
+   must still occur at the LowIR load or copy operation.
 
    Keep an integer constant as an immediate MIR operand when the selected ALU
-   instruction accepts an immediate.  If a particular x86 encoding cannot
-   represent that value directly, native emission may materialize it in a
-   scratch register without changing the MIR value operand.  A variable shift
-   must place its count directly in `rcx` for the implicit `cl` operand rather
-   than routing the count through an additional scratch register.
+   instruction accepts an immediate. A variable shift must place its count in
+   `rcx` without an additional MIR move through another register.
 
    A numeric immediate written without a decimal point still follows the declared LowIR
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.
 
-   Reuse a compiler-created scalar temporary frame home when its previous
-   value's complete live interval has ended and the new value has the same
-   storage size and alignment. Non-overlapping temporaries need not grow the
-   frame independently. Do not merge source slots, parameter slots,
-   simultaneously live values, or a home while its location is shared by
-   another logical value.
+   Checked MIR frame layouts reuse same-sized, same-alignment temporary frame
+   locations whose values do not overlap. Source slots, parameter slots, and
+   simultaneously live values must retain distinct locations.
 
 9. Implement call-boundary correctness without requiring a clever allocator.
    PA29 must respect the native calling convention for direct calls, indirect calls,
@@ -614,20 +588,13 @@ To complete PA29, implement these goals:
 
 15. Keep pointer/index address calculation visible as pointer arithmetic.
    Pointer indexing and pointer-difference behavior should stay structurally visible in MIR
-   rather than being hidden behind an unrelated compatibility path.  When a one-use
-   `index` feeds the following scalar load or store, keep its base, index, scale, and
-   displacement in that memory operand instead of materializing a temporary pointer.
-   A constant zero index denotes the unchanged base pointer.  Keep that value
-   in the base pointer's selected location when its complete live interval can
-   safely share the location; do not emit a register copy or `lea` solely to
-   represent a zero displacement.
-   A pure `index` whose result has no use emits no MIR instruction.  When its
-   only input is a frame address created immediately before it and that address
-   has no other use, keep the address as a logical frame location rather than
-   materializing an otherwise unused `lea`.
-   When an indexed address itself must remain a value, use one `lea` from the
-   original base and legal x86 scale instead of first copying the base or emitting
-   separate multiply and add instructions.
+   rather than being hidden behind an unrelated compatibility path. When a one-use
+   `index` feeds the following scalar load or store, that memory operand should
+   contain the base, index, scale, and displacement directly. A zero index
+   should not introduce a register copy or `lea`, and an unused `index` should
+   not emit an instruction. When an indexed address must remain as a value, the
+   MIR should use one `lea` rather than separate copy, multiply, and add
+   instructions.
 
 16. Preserve mixed integer/floating call ABI classification.
    Calls that mix GPR and XMM arguments should keep that classification visible in MIR so
