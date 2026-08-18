@@ -1249,6 +1249,44 @@ All 162 self/inception objects match byte-for-byte.  The final binaries are
 byte-identical at 16,843,872 bytes with SHA-256
 `f3a435af3c322738a19c837777479c81429cb41e680bc0237c3878a2c9881b67`.
 
+### CI23: compact forced- and O1-inliner presentation reservations
+
+Forced inlining no longer constructs three string sets containing every value,
+slot, and block name in each caller.  It scans only callers that contain an
+eligible force-inline call, recognizes exact compiler-generated collision
+patterns once, and retains compact occupied ordinals by generated-name role.
+Fresh semantic values, slots, and blocks continue to be allocated
+monotonically by `ValueId`, `SlotId`, and `BlockId`; text is constructed and
+interned once only for the exact LowIR presentation required by dumps.
+
+The O1 inliner likewise drops its value and label string sets.  It retains the
+small numeric site-ID reservation set needed when explicit LowIR input mimics
+an `__o1inlN__` spelling, and tracks merge-slot collisions by pooled
+`StringId`.  Generated-site recognition parses digit spans directly without a
+temporary substring.  Existing PA37 fixtures already cover skipping an
+occupied generated site and merge-slot collisions, and all exact fixtures are
+unchanged.
+
+PA29, PA30, PA37, and PA38 report 443/443 passing tests.  The full root report
+passes 5,204/5,204 tests and the PA39 file audit has zero fatal findings.  The
+frozen object remains byte-identical to CI22 at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+Three final A/B/B/A blocks against the immutable CI22 compiler produced
+baseline/candidate medians of 4.975/4.990 seconds user, 5.485/5.475 seconds
+wall, and 365,840/364,244 KiB peak RSS.  The paired candidate/baseline medians
+were 1.0071 for user time, 1.0046 for wall time, and 0.9961 for RSS.  This is a
+neutral result within host noise, so the change takes no standalone benchmark
+credit.  The frozen O0 input measures only the forced-inliner part; PA37 tests
+and the self-host lane also exercise the O1 reservation path.
+
+A clean 32-way self build takes 18.27 seconds wall, 402.26 seconds aggregate
+user time, and 254,052 KiB peak RSS.  A separate 32-way inception compare takes
+1:49.02 wall, 2,917.42 seconds aggregate user time, and 234,636 KiB peak RSS.
+All 162 self/inception objects match byte-for-byte.  The final binaries are
+byte-identical at 16,845,168 bytes with SHA-256
+`bffbff85d1c7b22a0fde2c0bd389b5ff5f1044ce6c2550a164942df0fd9e7c2a`.
+
 ## 11. Current residual audit and next slices
 
 The cumulative hot-path milestone now passes the performance gate.  Three
@@ -1277,7 +1315,7 @@ follows:
 | LowIR top-level model | Completed in CI22: declarations, definitions, global address data, and alias targets carry `SymbolId`; the symbol table carries pooled `StringId` presentation | Keep rendering at serialization, diagnostic, and object-output boundaries; explicit-input forward spellings are transient pooled IDs | Complete |
 | LowIR function presentation | Completed in CI21: slots and blocks use pooled IDs; values use one tagged pooled spelling or generated ordinal, with explicit behavior bits | Keep rendering confined to serialization and diagnostics; do not add a parallel name index | Complete for LowIR; MIR block-label presentation remains below |
 | LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
-| PA37 inliners | value, slot, and label collision sets hash rendered strings and generate new text during every inline | Allocate fresh `ValueId`, `SlotId`, and `BlockId` monotonically; retain one numeric presentation ordinal and consult an explicit-input reservation table only when an exact dump needs collision avoidance | O1/O2 only; correctness owner is PA37 |
+| PA37 inliners | Completed in CI23: semantic allocation is monotonic by compact ID; exact-name collision state uses numeric generated ordinals and pooled slot IDs | Keep the sparse numeric reservation for arbitrary explicit input; do not rebuild full caller string sets | Complete |
 | MIR program shell | functions, globals, global data items, aliases, runtime records, and block-label tables repeat semantic/object names | Carry `SymbolId`, pooled object-name IDs, `BlockId`, and literal IDs; derive fixed runtime names from the existing runtime enum | Medium for O0; high structural value |
 | MIR debug metadata | `DebugVariable::name` remains owning text | Intern once in the existing MIR pool and carry `StringId` | Low on the frozen no-debug lane |
 | Native encoding before ELF | named `CodeBuffer` labels/fixups and object/EH planning maps still hash runtime, global-data, host-EH, declaration, COMDAT, and section spellings | Extend tagged fixup targets to runtime/object/EH IDs; use dense vectors for compiler-owned domains and resolve names once when constructing ELF symbol, relocation, section, and string tables | High within encoding |
@@ -1286,15 +1324,12 @@ follows:
 
 The next changesets should therefore be:
 
-1. Replace the O1/force-inliner's string collision sets with monotonic numeric
-   allocation.  This is PA37 work and must preserve exact optimized LowIR;
-   optimization-level policy tests belong in PA38.
-2. Convert the MIR program shell and global data to semantic and pooled object
+1. Convert the MIR program shell and global data to semantic and pooled object
    IDs, including fixed-runtime enum lookup.  Do not introduce a parallel name
    index.
-3. Finish the executable/global-data/host-EH encoder boundary so the ELF writer
+2. Finish the executable/global-data/host-EH encoder boundary so the ELF writer
    is the only owner that hashes output spellings.
-4. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
+3. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
    the O0 hot path is clean.
 
 String-keyed maps in `lowir_parse.cpp`, the resolution portion of

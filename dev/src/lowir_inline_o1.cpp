@@ -2,11 +2,10 @@
 #include "lowir_opt.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
-#include <cstdlib>
 #include <deque>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -137,52 +136,59 @@ void collect_generated_id(const std::string & name,
   while(at != std::string::npos) {
     std::size_t digit = at + marker.size();
     std::size_t end = digit;
-    while(end < name.size() && std::isdigit(static_cast<unsigned char>(name[end])))
+    std::size_t value = 0;
+    bool overflow = false;
+    while(end < name.size() && name[end] >= '0' && name[end] <= '9') {
+      const std::size_t next = static_cast<std::size_t>(name[end] - '0');
+      if(value > (std::numeric_limits<std::size_t>::max() - next) / 10)
+        overflow = true;
+      else if(!overflow) value = value * 10 + next;
       ++end;
+    }
     if(end > digit && name.compare(end, 2, "__") == 0)
-      ids->insert(static_cast<std::size_t>(
-        std::strtoull(name.substr(digit, end - digit).c_str(), 0, 10)));
+      ids->insert(overflow ? std::numeric_limits<std::size_t>::max() : value);
     at = name.find(marker, at + marker.size());
   }
 }
 
 struct Names
 {
-  std::unordered_set<std::string> values;
-  std::unordered_set<std::string> slots;
-  std::unordered_set<std::string> labels;
+  lowir_model::StringPool & strings;
+  std::unordered_set<std::uint32_t> slots;
   std::unordered_set<std::size_t> site_ids;
   std::size_t next_site_id;
 
-  Names(const LowirProgram & program, const Function & function)
-    : next_site_id(0)
+  Names(LowirProgram & program, const Function & function)
+    : strings(program.strings), next_site_id(0)
   {
     for(std::size_t i = 0; i < function.params.size(); ++i) {
       const std::string & name =
         lowir_model::lowir_parameter_name(program, function.params[i]);
-      values.insert(name);
       collect_generated_id(name, &site_ids);
     }
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
+      const std::uint32_t slot_id = function.slots[i];
+      if(slot_id >= function.slot_names.size())
+        throw std::logic_error("invalid O1 inline slot presentation identity");
+      slots.insert(function.slot_names[slot_id]);
       const std::string & slot =
         lowir_model::lowir_slot_name(
           program.strings, function, function.slots[i]);
-      slots.insert(slot);
       collect_generated_id(slot, &site_ids);
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
       const std::string & label =
         lowir_model::lowir_block_label(
           program.strings, function, function.blocks[i].id);
-      labels.insert(label);
       collect_generated_id(label, &site_ids);
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
         const Instruction & ins = function.blocks[i].instructions[j];
         if(ins.dest.valid()) {
-          const std::string name = lowir_model::lowir_value_name(
-            program.strings, function, ins.dest);
-          values.insert(name);
-          collect_generated_id(name, &site_ids);
+          const lowir_model::PresentationName presentation =
+            lowir_model::lowir_value_presentation(function, ins.dest);
+          if(!presentation.generated())
+            collect_generated_id(
+              program.strings.get(presentation.spelling()), &site_ids);
         }
       }
     }
@@ -195,12 +201,13 @@ struct Names
     return next_site_id++;
   }
 
-  std::string unique_slot(const std::string & stem, const LowType &,
-                          std::size_t first_suffix = 1)
+  lowir_model::StringId unique_slot(const std::string & stem, const LowType &,
+                                    std::size_t first_suffix = 1)
   {
     for(std::size_t suffix = first_suffix;; ++suffix) {
       const std::string candidate = stem + std::to_string(suffix);
-      if(slots.insert(candidate).second) return candidate;
+      const lowir_model::StringId name = strings.intern(candidate);
+      if(slots.insert(name).second) return name;
     }
   }
 };
@@ -724,10 +731,11 @@ private:
       const std::string renamed = "$" + prefix +
         lowir_model::lowir_slot_name(
           program_.strings, callee_function, source).substr(1);
+      const lowir_model::StringId renamed_id = program_.strings.intern(renamed);
       (*slots)[source] = lowir_model::append_lowir_slot(
-        *caller, program_.strings.intern(renamed),
+        *caller, renamed_id,
         lowir_model::lowir_slot_type(callee_function, source));
-      names->slots.insert(renamed);
+      names->slots.insert(renamed_id);
     }
     blocks->resize(callee_function.next_block_id);
     for(std::size_t i = 0; i < callee_function.blocks.size(); ++i) {
@@ -739,7 +747,6 @@ private:
       block.id = lowir_model::allocate_lowir_block_id(
         *caller, program_.strings.intern(renamed));
       (*blocks)[callee_function.blocks[i].id] = block;
-      names->labels.insert(renamed);
       for(std::size_t j = 0;
           j < callee_function.blocks[i].instructions.size(); ++j) {
         const Instruction & ins = callee_function.blocks[i].instructions[j];
@@ -752,7 +759,6 @@ private:
         const lowir_model::ValueId renamed = lowir_model::append_lowir_value(
           *caller, program_.strings.intern(value), type);
         values->set(ins.dest, value_operand(renamed, type));
-        names->values.insert(value);
       }
     }
   }
@@ -827,10 +833,10 @@ private:
     const bool has_result = !call.call_returns_void;
     lowir_model::SlotId merge_slot;
     if(has_result && returns > 1) {
-      const std::string name = names->unique_slot("$" + prefix +
+      const lowir_model::StringId name = names->unique_slot("$" + prefix +
         (object_result ? "retmergeobj__" : "retmerge__"), call.type);
       merge_slot = lowir_model::append_lowir_slot(
-        caller, program_.strings.intern(name), call.type);
+        caller, name, call.type);
     }
 
     std::vector<Instruction> tail(
@@ -880,7 +886,6 @@ private:
         continuation_block.instructions = std::move(tail);
         caller.blocks.insert(caller.blocks.begin() + block_index + 1,
           std::move(continuation_block));
-        names->labels.insert(wrapper_continuation);
         block_eh->resize(caller.next_block_id, 0);
         (*block_eh)[wrapper_continuation_id] = inside_eh ? 1 : 0;
       } else caller.blocks[block_index].instructions.insert(
@@ -898,7 +903,6 @@ private:
     const BlockId continuation_id =
       lowir_model::allocate_lowir_block_id(
         caller, program_.strings.intern(continuation));
-    names->labels.insert(continuation);
     block_eh->resize(caller.next_block_id, 0);
     (*block_eh)[continuation_id] = inside_eh ? 1 : 0;
     caller.blocks[block_index].instructions.push_back(jump_to(

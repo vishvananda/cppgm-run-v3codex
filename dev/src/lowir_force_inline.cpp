@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -52,46 +53,107 @@ Instruction jump_to(BlockId block)
 
 struct InlineNames
 {
-  std::unordered_set<std::string> values;
-  std::unordered_set<std::string> slots;
-  std::unordered_set<std::string> labels;
+  enum GeneratedKind
+  {
+    GK_PARAMETER,
+    GK_TEMPORARY,
+    GK_LOCAL,
+    GK_RESULT,
+    GK_BLOCK,
+    GK_PROLOGUE,
+    GK_CONTINUATION,
+    GK_COUNT
+  };
+
+  lowir_model::StringPool & strings;
+  std::unordered_set<std::size_t> occupied[GK_COUNT];
   std::size_t next = 0;
 
-  InlineNames(const LowirProgram & program, const Function & function)
+  static bool ordinal(const std::string & name, const char * prefix,
+                      std::size_t * result)
   {
-    for(std::size_t i = 0; i < function.params.size(); ++i)
-      values.insert(
-        lowir_model::lowir_parameter_name(program, function.params[i]));
+    const std::size_t prefix_size = std::char_traits<char>::length(prefix);
+    if(name.size() <= prefix_size || name.compare(0, prefix_size, prefix) != 0)
+      return false;
+    if(name[prefix_size] == '0' && name.size() != prefix_size + 1)
+      return false;
+    std::size_t value = 0;
+    for(std::size_t i = prefix_size; i < name.size(); ++i) {
+      if(name[i] < '0' || name[i] > '9') return false;
+      const std::size_t digit = static_cast<std::size_t>(name[i] - '0');
+      if(value > (std::numeric_limits<std::size_t>::max() - digit) / 10)
+        return false;
+      value = value * 10 + digit;
+    }
+    *result = value;
+    return true;
+  }
+
+  void reserve(const std::string & name, GeneratedKind kind,
+               const char * prefix)
+  {
+    std::size_t id = 0;
+    if(ordinal(name, prefix, &id)) occupied[kind].insert(id);
+  }
+
+  InlineNames(LowirProgram & program, const Function & function)
+    : strings(program.strings)
+  {
+    for(std::size_t i = 0; i < function.params.size(); ++i) {
+      const std::string & name =
+        lowir_model::lowir_parameter_name(program, function.params[i]);
+      reserve(name, GK_PARAMETER, "%__force_inline_parameter_");
+      reserve(name, GK_TEMPORARY, "%__force_inline_temporary_");
+    }
     for(std::size_t i = 0; i < function.slots.size(); ++i)
-      slots.insert(lowir_model::lowir_slot_name(
-        program.strings, function, function.slots[i]));
+    {
+      const std::string & name = lowir_model::lowir_slot_name(
+        program.strings, function, function.slots[i]);
+      reserve(name, GK_LOCAL, "$__force_inline_local_");
+      reserve(name, GK_RESULT, "$__force_inline_result_");
+    }
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-      labels.insert(
-        lowir_model::lowir_block_label(
-          program.strings, function, function.blocks[i].id));
+      const std::string & label = lowir_model::lowir_block_label(
+        program.strings, function, function.blocks[i].id);
+      reserve(label, GK_BLOCK, "^__force_inline_block_");
+      reserve(label, GK_PROLOGUE, "^__force_inline_prologue_");
+      reserve(label, GK_CONTINUATION, "^__force_inline_continuation_");
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
         const lowir_model::ValueId dest =
           function.blocks[i].instructions[j].dest;
-        if(dest.valid())
-          values.insert(lowir_model::lowir_value_name(
-            program.strings, function, dest));
+        if(!dest.valid()) continue;
+        const lowir_model::PresentationName presentation =
+          lowir_model::lowir_value_presentation(function, dest);
+        if(!presentation.generated()) {
+          const std::string & name =
+            program.strings.get(presentation.spelling());
+          reserve(name, GK_PARAMETER, "%__force_inline_parameter_");
+          reserve(name, GK_TEMPORARY, "%__force_inline_temporary_");
+        }
       }
     }
   }
 
-  std::string fresh(std::unordered_set<std::string> & names,
-                    char sigil, const std::string & role)
+  lowir_model::StringId fresh(GeneratedKind kind, const char * prefix)
   {
-    for(;;) {
-      const std::string candidate = std::string(1, sigil) +
-        "__force_inline_" + role + "_" + std::to_string(next++);
-      if(names.insert(candidate).second) return candidate;
-    }
+    while(occupied[kind].count(next)) ++next;
+    return strings.intern(std::string(prefix) + std::to_string(next++));
   }
 
-  std::string value(const std::string & role) { return fresh(values, '%', role); }
-  std::string slot(const std::string & role) { return fresh(slots, '$', role); }
-  std::string label(const std::string & role) { return fresh(labels, '^', role); }
+  lowir_model::StringId parameter()
+    { return fresh(GK_PARAMETER, "%__force_inline_parameter_"); }
+  lowir_model::StringId temporary()
+    { return fresh(GK_TEMPORARY, "%__force_inline_temporary_"); }
+  lowir_model::StringId local_slot()
+    { return fresh(GK_LOCAL, "$__force_inline_local_"); }
+  lowir_model::StringId result_slot()
+    { return fresh(GK_RESULT, "$__force_inline_result_"); }
+  lowir_model::StringId block()
+    { return fresh(GK_BLOCK, "^__force_inline_block_"); }
+  lowir_model::StringId prologue()
+    { return fresh(GK_PROLOGUE, "^__force_inline_prologue_"); }
+  lowir_model::StringId continuation()
+    { return fresh(GK_CONTINUATION, "^__force_inline_continuation_"); }
 };
 
 class Inliner {
@@ -272,27 +334,27 @@ private:
     values->resize(callee.value_names.size());
     for(std::size_t i = 0; i < callee.params.size(); ++i)
       (*values)[callee.params[i].value] = lowir_model::append_lowir_value(
-        *caller, program_.strings.intern(names->value("parameter")),
+        *caller, names->parameter(),
         callee.params[i].type);
     slots->resize(callee.slot_names.size());
     for(std::size_t i = 0; i < callee.slots.size(); ++i) {
       const lowir_model::SlotId source = callee.slots[i];
       (*slots)[source] = lowir_model::append_lowir_slot(
-        *caller, program_.strings.intern(names->slot("local")),
+        *caller, names->local_slot(),
         lowir_model::lowir_slot_type(callee, source));
     }
     blocks->resize(callee.next_block_id);
     for(std::size_t i = 0; i < callee.blocks.size(); ++i) {
       RenamedBlock block;
       block.id = lowir_model::allocate_lowir_block_id(
-        *caller, program_.strings.intern(names->label("block")));
+        *caller, names->block());
       (*blocks)[callee.blocks[i].id] = block;
       for(std::size_t j = 0; j < callee.blocks[i].instructions.size(); ++j) {
         const lowir_model::ValueId dest =
           callee.blocks[i].instructions[j].dest;
         if(dest.valid())
           (*values)[dest] = lowir_model::append_lowir_value(
-            *caller, program_.strings.intern(names->value("temporary")),
+            *caller, names->temporary(),
             lowir_model::lowir_value_type(callee, dest));
       }
     }
@@ -387,18 +449,18 @@ private:
     SlotMap slots;
     BlockMap blocks;
     BuildRenameMaps(caller, callee, names, &values, &slots, &blocks);
-    const std::string prologue_label = names->label("prologue");
-    const std::string continuation_label = names->label("continuation");
+    const lowir_model::StringId prologue_label = names->prologue();
+    const lowir_model::StringId continuation_label = names->continuation();
     const BlockId prologue_id =
       lowir_model::allocate_lowir_block_id(
-        *caller, program_.strings.intern(prologue_label));
+        *caller, prologue_label);
     const BlockId continuation_id =
       lowir_model::allocate_lowir_block_id(
-        *caller, program_.strings.intern(continuation_label));
+        *caller, continuation_label);
     lowir_model::SlotId result_slot;
     if(!call.call_returns_void)
       result_slot = lowir_model::append_lowir_slot(
-        *caller, program_.strings.intern(names->slot("result")), call.type);
+        *caller, names->result_slot(), call.type);
     std::vector<Instruction> tail(
       caller->blocks[block_index].instructions.begin() + instruction_index + 1,
       caller->blocks[block_index].instructions.end());
@@ -420,6 +482,20 @@ private:
   void InlineCalls(std::size_t function_index)
   {
     Function & caller = program_.functions[function_index];
+    bool has_candidate = false;
+    for(std::size_t block = 0; !has_candidate && block < caller.blocks.size();
+        ++block)
+      for(std::size_t instruction = 0;
+          instruction < caller.blocks[block].instructions.size(); ++instruction) {
+        const std::size_t callee =
+          Candidate(caller.blocks[block].instructions[instruction]);
+        if(callee != kNoFunction && !recursive_[callee]) {
+          has_candidate = true;
+          break;
+        }
+      }
+    if(!has_candidate) return;
+
     InlineNames names(program_, caller);
     for(std::size_t block = 0; block < caller.blocks.size(); ++block) {
       for(std::size_t instruction = 0;
