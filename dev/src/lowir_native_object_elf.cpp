@@ -47,12 +47,16 @@ struct HostRelocation
 {
   enum Kind { HR_ABSOLUTE64, HR_PC32, HR_PLT32, HR_GOTPCRELX, HR_TPOFF32 }
     kind = HR_ABSOLUTE64;
+  enum SectionTarget { HST_NONE, HST_TEXT, HST_LSDA }
+    section_target = HST_NONE;
   std::size_t offset = 0;
   std::string target;
   lowir_model::SymbolId program_symbol;
   lowir_model::StringId object_symbol;
   lowir_model::SymbolId eh_type_ref_symbol;
   bool eh_personality_ref = false;
+  std::size_t text_section = 0;
+  std::uint16_t section_symbol = 0;
   long long addend = 0;
 };
 
@@ -747,7 +751,6 @@ std::size_t append_cie(HostSection & section, bool with_personality,
 
 HostSection make_host_eh_frame(
     const std::vector<HostFunctionLayout> & functions,
-    const std::vector<EncodedSection> & text_sections,
     std::vector<HostRelocation> & relocations)
 {
   HostSection section;
@@ -775,8 +778,8 @@ HostSection make_host_eh_frame(
     if(with_personality) {
       HostRelocation lsda;
       lsda.kind = HostRelocation::HR_PC32;
+      lsda.section_target = HostRelocation::HST_LSDA;
       lsda.offset = section.bytes.size();
-      lsda.target = ".gcc_except_table";
       lsda.addend = static_cast<long long>(function.lsda_offset);
       relocations.push_back(lsda);
       append_little(section.bytes, 0, 4);
@@ -801,14 +804,35 @@ HostSection make_host_eh_frame(
                section.bytes.size() - fde_start - 4, 4);
     HostRelocation relocation;
     relocation.kind = HostRelocation::HR_PC32;
+    relocation.section_target = HostRelocation::HST_TEXT;
     relocation.offset = initial_location;
-    if(function.text_section >= text_sections.size())
-      throw std::logic_error("host function has invalid text section");
-    relocation.target = text_sections[function.text_section].name;
+    relocation.text_section = function.text_section;
     relocation.addend = static_cast<long long>(function.offset);
     relocations.push_back(relocation);
   }
   return section;
+}
+
+void bind_host_section_targets(
+    std::vector<HostRelocation> & relocations,
+    const std::vector<std::uint16_t> & text_section_indexes,
+    std::uint16_t lsda_index)
+{
+  for(std::size_t i = 0; i < relocations.size(); ++i) {
+    HostRelocation & relocation = relocations[i];
+    if(relocation.section_target == HostRelocation::HST_NONE) continue;
+    if(relocation.section_target == HostRelocation::HST_TEXT) {
+      if(relocation.text_section >= text_section_indexes.size())
+        throw std::logic_error("host function has invalid text section");
+      relocation.section_symbol =
+        text_section_indexes[relocation.text_section];
+    } else {
+      if(!lsda_index)
+        throw std::logic_error("host EH relocation has no LSDA section");
+      relocation.section_symbol = lsda_index;
+    }
+    relocation.section_target = HostRelocation::HST_NONE;
+  }
 }
 
 std::string host_symbol_spelling(const std::string & raw)
@@ -1059,7 +1083,9 @@ void collect_host_symbols(
      &required_eh_personality_ref](
       const std::vector<HostRelocation> & relocations) {
       for(std::size_t i = 0; i < relocations.size(); ++i) {
-        if(relocations[i].program_symbol.valid()) {
+        if(relocations[i].section_symbol) {
+          continue;
+        } else if(relocations[i].program_symbol.valid()) {
           require_program_symbol(relocations[i].program_symbol);
         } else if(relocations[i].eh_type_ref_symbol.valid()) {
           const std::uint32_t symbol = relocations[i].eh_type_ref_symbol;
@@ -1263,13 +1289,6 @@ void collect_host_symbols(
         declared_tls_objects[identity] = 1;
       } else if(object) declared_tls_symbols.insert(*object->spelling);
     }
-  std::unordered_set<std::string> section_symbols;
-  for(std::size_t i = 0; i < text_sections.size(); ++i)
-    section_symbols.insert(text_sections[i].name);
-  section_symbols.insert(".gcc_except_table");
-  section_symbols.insert(".eh_frame");
-  for(std::size_t i = 0; i < data_sections.size(); ++i)
-    section_symbols.insert(data_sections[i].name);
   std::vector<const std::vector<HostRelocation> *> relocation_groups;
   for(std::size_t i = 0; i < text_relocations.size(); ++i)
     relocation_groups.push_back(&text_relocations[i]);
@@ -1282,7 +1301,8 @@ void collect_host_symbols(
   for(std::size_t group = 0; group < relocation_groups.size(); ++group) {
     const std::vector<HostRelocation> & relocations = *relocation_groups[group];
     for(std::size_t i = 0; i < relocations.size(); ++i) {
-      if(relocations[i].program_symbol.valid() ||
+      if(relocations[i].section_symbol ||
+         relocations[i].program_symbol.valid() ||
          relocations[i].eh_type_ref_symbol.valid() ||
          relocations[i].eh_personality_ref) continue;
       if(relocations[i].object_symbol.valid()) {
@@ -1299,8 +1319,7 @@ void collect_host_symbols(
         defined_objects[object] = 1;
         continue;
       }
-      if(section_symbols.count(relocations[i].target) ||
-         defined.count(relocations[i].target)) continue;
+      if(defined.count(relocations[i].target)) continue;
       HostSymbol symbol;
       symbol.name = relocations[i].target;
       symbol.binding = 1;
@@ -1386,6 +1405,7 @@ std::vector<unsigned char> make_symbol_table(
     const std::vector<std::pair<std::string, std::uint16_t> > & section_symbols,
     std::vector<unsigned char> & strings,
     std::unordered_map<std::string, std::size_t> & indexes,
+    std::vector<std::size_t> & section_indexes,
     std::vector<std::size_t> & program_indexes,
     std::vector<std::size_t> & object_indexes,
     std::vector<std::pair<lowir_model::SymbolId, std::size_t> > &
@@ -1395,7 +1415,10 @@ std::vector<unsigned char> make_symbol_table(
   std::vector<unsigned char> table(24, 0);
   for(std::size_t i = 0; i < section_symbols.size(); ++i) {
     const std::size_t index = table.size() / 24;
-    indexes[section_symbols[i].first] = index;
+    const std::uint16_t section = section_symbols[i].second;
+    if(section >= section_indexes.size())
+      throw std::logic_error("invalid ELF section-symbol identity");
+    section_indexes[section] = index;
     append_little(table, 0, 4);
     table.push_back(3);
     table.push_back(0);
@@ -1408,7 +1431,10 @@ std::vector<unsigned char> make_symbol_table(
     for(std::size_t i = 0; i < symbols.size(); ++i) {
       const HostSymbol & symbol = symbols[i];
       const std::size_t index = table.size() / 24;
-      if(!indexes.count(symbol.name)) indexes[symbol.name] = index;
+      if(!symbol.program_symbol.valid() && !symbol.object_symbol.valid() &&
+         !symbol.eh_type_ref_symbol.valid() && !symbol.eh_personality_ref &&
+         !indexes.count(symbol.name))
+        indexes[symbol.name] = index;
       if(symbol.program_symbol.valid()) {
         const std::uint32_t identity = symbol.program_symbol;
         if(identity >= program_indexes.size())
@@ -1441,6 +1467,7 @@ std::vector<unsigned char> make_symbol_table(
 std::vector<unsigned char> make_relocation_table(
     const std::vector<HostRelocation> & relocations,
     const std::unordered_map<std::string, std::size_t> & symbols,
+    const std::vector<std::size_t> & section_symbols,
     const std::vector<std::size_t> & program_symbols,
     const std::vector<std::size_t> & object_symbols,
     const std::vector<std::pair<lowir_model::SymbolId, std::size_t> > &
@@ -1457,7 +1484,12 @@ std::vector<unsigned char> make_relocation_table(
   for(std::size_t i = 0; i < ordered.size(); ++i) {
     const HostRelocation & relocation = ordered[i];
     std::size_t symbol_index = lowir_model::kInvalidCompactId;
-    if(relocation.program_symbol.valid()) {
+    if(relocation.section_symbol) {
+      if(relocation.section_symbol < section_symbols.size())
+        symbol_index = section_symbols[relocation.section_symbol];
+      if(symbol_index == lowir_model::kInvalidCompactId)
+        throw std::logic_error("ELF relocation has no section symbol");
+    } else if(relocation.program_symbol.valid()) {
       const std::uint32_t identity = relocation.program_symbol;
       if(identity < program_symbols.size())
         symbol_index = program_symbols[identity];
@@ -1563,11 +1595,13 @@ void record_encoded_storage(Stats * stats, const EncodedSection & text,
 void record_string_table(Stats * stats,
     const std::unordered_map<std::string, std::size_t> & indexes,
     const std::vector<unsigned char> & strings,
+    std::size_t name_entries,
     const std::chrono::steady_clock::time_point & started)
 {
   if(!stats) return;
-  stats->elf_internal_string_entries = indexes.size();
-  stats->final_strtab_entries = indexes.size();
+  stats->elf_internal_string_entries = 0;
+  stats->elf_imported_string_entries = indexes.size();
+  stats->final_strtab_entries = name_entries;
   stats->final_strtab_bytes = strings.size();
   stats->elf_string_table_nanoseconds += static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -1637,8 +1671,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(functions, lsda_relocations);
   std::vector<HostRelocation> eh_relocations;
-  HostSection eh = make_host_eh_frame(
-    functions, text_sections, eh_relocations);
+  HostSection eh = make_host_eh_frame(functions, eh_relocations);
   struct PendingRelocations
   {
     std::uint16_t section;
@@ -1725,6 +1758,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     lsda_index = append_section(lsda);
     append_relocations(lsda.name, lsda_index, lsda_relocations);
   }
+  bind_host_section_targets(eh_relocations, text_indexes, lsda_index);
   const std::uint16_t eh_index = append_section(eh);
   append_relocations(eh.name, eh_index, eh_relocations);
 
@@ -1758,6 +1792,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
 
   std::vector<unsigned char> strings(1, 0);
   std::unordered_map<std::string, std::size_t> symbol_indexes;
+  std::vector<std::size_t> section_symbol_indexes(
+    sections.size(), lowir_model::kInvalidCompactId);
   std::vector<std::size_t> program_symbol_indexes(
     program.symbol_names.size(), lowir_model::kInvalidCompactId);
   std::vector<std::size_t> object_symbol_indexes(
@@ -1771,9 +1807,10 @@ std::vector<unsigned char> make_linux_relocatable_image(
 		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   std::vector<unsigned char> symbol_table = make_symbol_table(
     locals, globals, section_symbols, strings, symbol_indexes,
-    program_symbol_indexes, object_symbol_indexes,
+    section_symbol_indexes, program_symbol_indexes, object_symbol_indexes,
     eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
-	record_string_table(stats, symbol_indexes, strings, string_table_started);
+	record_string_table(stats, symbol_indexes, strings,
+	  locals.size() + globals.size(), string_table_started);
 
   HostSection note;
   note.name = ".note.GNU-stack";
@@ -1804,7 +1841,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     section.link = symtab_index;
     section.bytes = make_relocation_table(
       *pending_relocations[i].relocations, symbol_indexes,
-      program_symbol_indexes, object_symbol_indexes,
+      section_symbol_indexes, program_symbol_indexes, object_symbol_indexes,
       eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
   }
 
