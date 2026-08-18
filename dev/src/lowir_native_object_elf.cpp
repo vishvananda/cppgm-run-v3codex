@@ -438,6 +438,7 @@ struct HostSymbol
 {
   std::string name;
   bool internal_program_symbol = false;
+  bool named_lookup = false;
   lowir_model::SymbolId program_symbol;
   lowir_model::StringId object_symbol;
   lowir_model::SymbolId eh_type_ref_symbol;
@@ -1027,7 +1028,15 @@ void add_unique_symbol(std::vector<HostSymbol> & symbols,
     index.find(symbol.name);
   if(found != index.end()) {
     HostSymbol & prior = symbols[found->second];
+    const bool named_lookup = prior.named_lookup || symbol.named_lookup;
+    lowir_model::StringId object_symbol = prior.object_symbol.valid() ?
+      prior.object_symbol : symbol.object_symbol;
+    if(prior.object_symbol.valid() && symbol.object_symbol.valid() &&
+       prior.object_symbol != symbol.object_symbol)
+      throw std::logic_error("conflicting ELF object-symbol identities");
     if(prior.section == 0 && symbol.section != 0) prior = symbol;
+    prior.named_lookup = named_lookup;
+    if(!prior.object_symbol.valid()) prior.object_symbol = object_symbol;
     return;
   }
   index[symbol.name] = symbols.size();
@@ -1322,6 +1331,7 @@ void collect_host_symbols(
       if(defined.count(relocations[i].target)) continue;
       HostSymbol symbol;
       symbol.name = relocations[i].target;
+      symbol.named_lookup = true;
       symbol.binding = 1;
       if(declared_tls_symbols.count(symbol.name)) symbol.type = 6;
       add_unique_symbol(globals, global_index, symbol);
@@ -1431,7 +1441,11 @@ std::vector<unsigned char> make_symbol_table(
     for(std::size_t i = 0; i < symbols.size(); ++i) {
       const HostSymbol & symbol = symbols[i];
       const std::size_t index = table.size() / 24;
-      if(!indexes.count(symbol.name)) indexes[symbol.name] = index;
+      if((symbol.named_lookup ||
+          (!symbol.program_symbol.valid() && !symbol.object_symbol.valid() &&
+           !symbol.eh_type_ref_symbol.valid() &&
+           !symbol.eh_personality_ref)) && !indexes.count(symbol.name))
+        indexes[symbol.name] = index;
       if(symbol.program_symbol.valid()) {
         const std::uint32_t identity = symbol.program_symbol;
         if(identity >= program_indexes.size())
@@ -1463,7 +1477,6 @@ std::vector<unsigned char> make_symbol_table(
 
 std::vector<unsigned char> make_relocation_table(
     const std::vector<HostRelocation> & relocations,
-    const lowir_model::StringPool & strings,
     const std::unordered_map<std::string, std::size_t> & symbols,
     const std::vector<std::size_t> & section_symbols,
     const std::vector<std::size_t> & program_symbols,
@@ -1497,11 +1510,6 @@ std::vector<unsigned char> make_relocation_table(
       const std::uint32_t identity = relocation.object_symbol;
       if(identity < object_symbols.size())
         symbol_index = object_symbols[identity];
-      if(symbol_index == lowir_model::kInvalidCompactId) {
-        const std::unordered_map<std::string, std::size_t>::const_iterator
-          named = symbols.find(strings.get(relocation.object_symbol));
-        if(named != symbols.end()) symbol_index = named->second;
-      }
       if(symbol_index == lowir_model::kInvalidCompactId)
         throw std::logic_error("ELF relocation has no object symbol");
     } else if(relocation.eh_type_ref_symbol.valid()) {
@@ -1602,8 +1610,8 @@ void record_string_table(Stats * stats,
     const std::chrono::steady_clock::time_point & started)
 {
   if(!stats) return;
-  stats->elf_internal_string_entries = indexes.size();
-  stats->elf_imported_string_entries = 0;
+  stats->elf_internal_string_entries = 0;
+  stats->elf_imported_string_entries = indexes.size();
   stats->final_strtab_entries = name_entries;
   stats->final_strtab_bytes = strings.size();
   stats->elf_string_table_nanoseconds += static_cast<std::uint64_t>(
@@ -1843,7 +1851,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     HostSection & section = sections[pending_relocations[i].section];
     section.link = symtab_index;
     section.bytes = make_relocation_table(
-      *pending_relocations[i].relocations, program.strings, symbol_indexes,
+      *pending_relocations[i].relocations, symbol_indexes,
       section_symbol_indexes, program_symbol_indexes, object_symbol_indexes,
       eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
   }
