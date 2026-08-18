@@ -1373,6 +1373,8 @@ private:
                                 std::vector<MirInstruction> & out)
   {
     uses_scalar_float_ = true;
+    const LowType & result_type =
+      lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
     MirInstruction compare = machine_instruction(float_compare_opcode(instruction.op),
                                                  instruction.type);
     append_operand(compare, reg_operand(XR_RAX));
@@ -1381,13 +1383,19 @@ private:
     out.push_back(compare);
     MirOperand destination = reg_operand(XR_RAX);
     if(!result_is_immediate_return(block, instruction_index, instruction.dest)) {
-      destination = reg_operand(allocate_result(instruction.dest, out));
-      append_move(out, destination, reg_operand(XR_RAX));
+      X64Register result = XR_RSP;
+      if(try_allocate_result(instruction.dest, out, &result)) {
+        destination = reg_operand(result);
+        append_move(out, destination, reg_operand(XR_RAX));
+      } else {
+        destination = allocate_temp_home(instruction.dest, result_type);
+        append_store(out, destination, reg_operand(XR_RAX),
+          result_type);
+      }
     }
     consume(instruction.first);
     consume(instruction.second);
-    define(instruction.dest, lowir_model::builtin_lowir_type(lowir_model::LTK_I64),
-           destination);
+    define(instruction.dest, result_type, destination);
   }
   void emit_float_load(const Instruction & instruction,
                        std::vector<MirInstruction> & out)
