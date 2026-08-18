@@ -965,8 +965,9 @@ private:
     Function & function = program_.functions[function_index];
     std::vector<Instruction> source;
     source.swap(function.blocks[block_index].instructions);
-    const BlockId id = function.blocks[block_index].id;
-    const bool landing = eh.landing_blocks[id] != 0;
+    const std::uint32_t id = function.blocks[block_index].id;
+    const bool landing = id < eh.landing_blocks.size() &&
+      eh.landing_blocks[id] != 0;
     bool active = block_eh[id] != 0;
     bool batch_safe = true;
     for(std::size_t i = 0; batch_safe && i < source.size(); ++i) {
