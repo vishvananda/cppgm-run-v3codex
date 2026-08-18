@@ -1428,6 +1428,8 @@ private:
     define(instruction.dest, instruction.type, destination);
   }
   void emit_convert(const Instruction & instruction,
+                    const lowir_model::LowirBlock & block,
+                    std::size_t instruction_index,
                     std::vector<MirInstruction> & out)
   {
     const bool source_wide = wide::is_integer(instruction.source_type), destination_wide = wide::is_integer(instruction.type);
@@ -1525,7 +1527,10 @@ private:
        is_integer_or_pointer(instruction.type)) {
       MirOperand pressure_home;
       X64Register result = XR_RSP;
-      if(!try_allocate_result(instruction.dest, out, &result)) {
+      if(result_is_immediate_return(
+           block, instruction_index, instruction.dest)) {
+        result = XR_RAX;
+      } else if(!try_allocate_result(instruction.dest, out, &result)) {
         pressure_home = allocate_temp_home(instruction.dest, instruction.type);
         result = XR_RAX;
       }
@@ -2945,7 +2950,8 @@ private:
       if(unary_not_feeds_branch(block, instruction_index, instruction))
         emit_direct_unary_not_branch(instruction, block.instructions[instruction_index + 1], out);
       else emit_unary_value(instruction, block, instruction_index, out);
-    } else if(instruction.kind == Instruction::IK_CONVERT) emit_convert(instruction, out);
+    } else if(instruction.kind == Instruction::IK_CONVERT)
+      emit_convert(instruction, block, instruction_index, out);
     else if(instruction.kind == Instruction::IK_CALL)
       emit_call(instruction, block, instruction_index, out);
     else if(instruction.kind == Instruction::IK_COPYOBJ ||

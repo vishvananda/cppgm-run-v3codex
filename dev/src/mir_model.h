@@ -201,6 +201,8 @@ struct Instruction
     // carrier when doing so preserves both comparison inputs.
     MI_SETCC,
     MI_MOVZX,
+    // A sole-use integer conversion immediately returned should select the
+    // ABI return carrier instead of an intermediate general-purpose register.
     MI_SEXT,
     MI_ZEXT,
     MI_CQO,

@@ -129,6 +129,6 @@ multiply, or add instructions.
 
 `direct-return-placement.t` exercises immediately returned integer constants,
 integer loads, global addresses, frame addresses, and integer comparisons.
-It also covers an immediately returned integer negation. Each producer must
-write the ABI return register directly, without first assigning a
-general-purpose temporary that is used only by the return.
+It also covers immediately returned integer negation and conversion results.
+Each producer must write the ABI return register directly, without first
+assigning a general-purpose temporary that is used only by the return.

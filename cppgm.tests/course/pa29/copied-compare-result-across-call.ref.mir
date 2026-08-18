@@ -65,8 +65,7 @@ function @main
     mov rcx, 4
     mov r8, 5
     call @clobber_caller_saved [args=(rcx,rdx,rsi,rdi,r8)]
-    mov r8, rbx
-    zext.i8 r8
-    sext.i32 r8
-    mov rax, r8
+    mov rax, rbx
+    zext.i8 rax
+    sext.i32 rax
     ret rax

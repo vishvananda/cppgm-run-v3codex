@@ -178,7 +178,6 @@ function @main
     cmp.i64 r8, rdx
     sete r8
     movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    mov rax, r8
+    sext.i32 rax
     ret rax
