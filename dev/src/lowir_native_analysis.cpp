@@ -146,6 +146,43 @@ bool direct_memory_index_use(const FunctionFacts & facts,
   return load || store;
 }
 
+bool copy_may_share_frame_home(const Instruction & instruction)
+{
+  return instruction.kind == Instruction::IK_COPY &&
+    instruction.first.kind == Operand::OP_TEMP &&
+    ((instruction.type.kind >= lowir_model::LTK_I1 &&
+      instruction.type.kind <= lowir_model::LTK_I64) ||
+     instruction.type.kind == lowir_model::LTK_PTR);
+}
+
+void extend_shared_storage_liveness(
+    FunctionFacts & facts, const lowir_model::LowirFunction & function)
+{
+  for(std::size_t block = function.blocks.size(); block-- > 0; ) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    for(std::size_t index = instructions.size(); index-- > 0; ) {
+      const Instruction & copy = instructions[index];
+      if(!copy_may_share_frame_home(copy)) continue;
+      std::size_t end = 0;
+      const std::unordered_map<std::string, std::size_t>::const_iterator last =
+        facts.last_use.find(copy.dest);
+      if(last != facts.last_use.end()) end = last->second;
+      const std::unordered_map<std::string, std::size_t>::const_iterator shared =
+        facts.shared_storage_last_use.find(copy.dest);
+      if(shared != facts.shared_storage_last_use.end())
+        end = std::max(end, shared->second);
+      const std::unordered_map<std::string, std::size_t>::const_iterator source =
+        facts.last_use.find(copy.first.text);
+      if(source != facts.last_use.end() && end > source->second) {
+        std::size_t & extended =
+          facts.shared_storage_last_use[copy.first.text];
+        extended = std::max(extended, end);
+      }
+    }
+  }
+}
+
 void extend_loop_liveness(FunctionFacts & facts,
     const lowir_model::LowirFunction & function,
     const std::unordered_set<std::string> & parameter_names,
@@ -502,6 +539,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   // time and O(IR) storage for instructions, operands, blocks, and CFG edges.
   extend_loop_liveness(facts, function, parameter_names, definition_blocks,
     block_uses, block_first_position, block_last_position, clobber_positions);
+  extend_shared_storage_liveness(facts, function);
   for(std::unordered_set<std::string>::iterator value =
         facts.destructive_parameters.begin(); value != facts.destructive_parameters.end(); )
     if(facts.uses[*value] != 1) value = facts.destructive_parameters.erase(value);

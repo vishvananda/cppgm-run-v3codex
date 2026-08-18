@@ -182,6 +182,8 @@ make test
 
 - `tests/o1`
 - `tests/o2`
+- `tests/behavior/o1`
+- `tests/behavior/o2`
 
 Run the debug metadata preservation lanes with:
 
@@ -201,6 +203,9 @@ N3485 source-language clauses.
   backend cleanup.
 - `tests/o2` runs `lowir2native -O2` over LowIR inputs, repeats the `-O1`
   surface, and adds O2-only layout and frame cleanup cases.
+- `tests/behavior/o1` and `tests/behavior/o2` check successful lowering and
+  generated-program behavior where several valid machine-IR layouts are
+  possible. These tests do not compare a machine-IR oracle.
 - `tests/debuginfo/o1` and `tests/debuginfo/o2` run equivalent machine-IR
   rewrite cases carrying `!dbg(...)` metadata.
 
@@ -209,10 +214,14 @@ records implementation exit status, runs the generated program when the build
 succeeds, and compares:
 
 - implementation exit status
-- optimized raw machine-IR dump, with the checked-in `x.ref.mir` retained for
-  debugging and `x.ref.cmir` used as the structural machine-IR oracle
+- optimized raw machine-IR dump for structural tests, with the checked-in
+  `x.ref.mir` retained for debugging and `x.ref.cmir` used as the structural
+  machine-IR oracle
 - generated-program exit status
 - generated-program standard output, when relevant
+
+Behavior tests omit `x.ref.mir` and `x.ref.cmir`; their checked-in compilation
+status and generated-program results are the oracle.
 
 Failed reference builds are judged by implementation exit status. Successful
 reference builds are judged by structural machine-IR validation and

@@ -25,14 +25,6 @@ struct FrameUseFacts
   std::size_t load_index = 0;
 };
 
-struct FrameOffsetFacts
-{
-  std::size_t binding_count = 0;
-  FrameUseFacts single;
-  FrameUseFacts active;
-  bool has_active = false;
-};
-
 struct PlannedReload
 {
   std::size_t store_block = 0;
@@ -41,6 +33,51 @@ struct PlannedReload
   std::size_t load_index = 0;
   X64Register source = XR_RAX;
   bool adjacent = false;
+};
+
+bool eligible_reload_type(const std::string & type)
+{
+  return type == "ptr" || type == "i64" ||
+    type == "i32" || type == "u32" ||
+    type == "i16" || type == "u16" ||
+    type == "i8" || type == "u8" || type == "i1";
+}
+
+struct FrameBindingIndex
+{
+  std::vector<unsigned char> eligible;
+  std::unordered_map<long long, std::uint32_t> unique_offsets;
+
+  explicit FrameBindingIndex(const mir_model::MirFunction & function)
+    : eligible(function.frame_bindings.size() + 1, 0)
+  {
+    unique_offsets.reserve(function.frame_bindings.size());
+    for(std::size_t i = 0; i < function.frame_bindings.size(); ++i) {
+      const mir_model::MirFrameBinding & binding = function.frame_bindings[i];
+      if(binding.kind != mir_model::MirFrameBinding::FB_TEMP ||
+         !eligible_reload_type(binding.type) ||
+         (function.host_eh_enabled &&
+          (binding.offset == function.host_eh_exception_offset ||
+           binding.offset == function.host_eh_selector_offset)))
+        continue;
+      const std::uint32_t ordinal = static_cast<std::uint32_t>(i + 1);
+      eligible[ordinal] = 1;
+      const std::pair<std::unordered_map<long long, std::uint32_t>::iterator,
+                      bool> inserted = unique_offsets.emplace(
+        binding.offset, ordinal);
+      if(!inserted.second) inserted.first->second = 0;
+    }
+  }
+
+  std::uint32_t resolve(const MirOperand & operand) const
+  {
+    if(operand.frame_binding != 0)
+      return operand.frame_binding < eligible.size() &&
+        eligible[operand.frame_binding] ? operand.frame_binding : 0;
+    const std::unordered_map<long long, std::uint32_t>::const_iterator found =
+      unique_offsets.find(operand.offset);
+    return found == unique_offsets.end() ? 0 : found->second;
+  }
 };
 
 bool preserves_register(const MirInstruction & instruction,
@@ -81,16 +118,6 @@ void append_reload(const mir_model::MirFunction & function,
     if(!preserved) return;
   }
   reloads->push_back(reload);
-}
-
-void begin_reused_lifetime(const mir_model::MirFunction & function,
-                           FrameOffsetFacts * offset,
-                           std::vector<PlannedReload> * reloads)
-{
-  if(offset->has_active)
-    append_reload(function, offset->active, reloads);
-  offset->active = FrameUseFacts();
-  offset->has_active = true;
 }
 
 void build_action_table(const mir_model::MirFunction & function,
@@ -144,7 +171,10 @@ bool parse_reload(
      store.operands[1].kind != MirOperand::OP_REG ||
      load.operands[0].kind != MirOperand::OP_REG ||
      load.operands[1].kind != MirOperand::OP_FRAME ||
-     store.operands[0].offset != load.operands[1].offset)
+     store.operands[0].offset != load.operands[1].offset ||
+     (store.operands[0].frame_binding != 0 &&
+      load.operands[1].frame_binding != 0 &&
+      store.operands[0].frame_binding != load.operands[1].frame_binding))
     return false;
   *source = store.operands[1].reg;
   *destination = load.operands[0].reg;
@@ -153,28 +183,15 @@ bool parse_reload(
 
 FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
 {
-  std::unordered_map<long long, FrameOffsetFacts> uses;
-  uses.reserve(function.frame_bindings.size());
-  for(std::size_t i = 0; i < function.frame_bindings.size(); ++i) {
-    const mir_model::MirFrameBinding & binding = function.frame_bindings[i];
-    if(binding.kind == mir_model::MirFrameBinding::FB_TEMP &&
-       (binding.type == "ptr" || binding.type == "i64" ||
-        binding.type == "i32" || binding.type == "u32" ||
-        binding.type == "i16" || binding.type == "u16" ||
-        binding.type == "i8" || binding.type == "u8" ||
-        binding.type == "i1")) {
-      const std::pair<std::unordered_map<long long, FrameOffsetFacts>::iterator,
-                      bool> inserted =
-        uses.emplace(binding.offset, FrameOffsetFacts());
-      ++inserted.first->second.binding_count;
-    }
-  }
-  if(function.host_eh_enabled) {
-    uses.erase(function.host_eh_exception_offset);
-    uses.erase(function.host_eh_selector_offset);
-  }
+  // Frame offsets may be reused by disjoint temporary lifetimes.  Code-block
+  // layout is independent of LowIR definition order, so a defining store
+  // cannot delimit those lifetimes after block placement.  Track annotated
+  // homes by their compact binding ordinal instead.  The offset index is only
+  // a compatibility path for unique, unannotated homes.
+  const FrameBindingIndex bindings(function);
   FrameReloadPlan result;
-  if(uses.empty()) return result;
+  if(bindings.unique_offsets.empty()) return result;
+  std::vector<FrameUseFacts> uses(function.frame_bindings.size() + 1);
   std::vector<PlannedReload> reloads;
   reloads.reserve(function.frame_bindings.size());
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -186,57 +203,37 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
          instruction.operands.size() == 2 &&
          instruction.operands[0].kind == MirOperand::OP_FRAME &&
          instruction.operands[1].kind == MirOperand::OP_REG) {
-        const std::unordered_map<long long, FrameOffsetFacts>::iterator found =
-          uses.find(instruction.operands[0].offset);
-        if(found != uses.end()) {
-          FrameOffsetFacts & offset = found->second;
-          FrameUseFacts * facts = &offset.single;
-          if(offset.binding_count > 1) {
-            begin_reused_lifetime(function, &offset, &reloads);
-            facts = &offset.active;
-          }
-          facts->store = &instruction;
-          facts->store_block = i;
-          facts->store_index = j;
+        const MirOperand & operand = instruction.operands[0];
+        const std::uint32_t ordinal = bindings.resolve(operand);
+        if(ordinal != 0) {
+          uses[ordinal].store = &instruction;
+          uses[ordinal].store_block = i;
+          uses[ordinal].store_index = j;
         }
       }
       for(std::size_t k = 0; k < instructions[j].operands.size(); ++k) {
         const MirOperand & operand = instructions[j].operands[k];
         if(operand.kind != MirOperand::OP_FRAME) continue;
-        const std::unordered_map<long long, FrameOffsetFacts>::iterator found =
-          uses.find(operand.offset);
-        if(found == uses.end()) continue;
-        FrameOffsetFacts & offset = found->second;
-        if(offset.binding_count == 1) ++offset.single.count;
-        else if(offset.has_active) ++offset.active.count;
+        const std::uint32_t ordinal = bindings.resolve(operand);
+        if(ordinal != 0)
+          ++uses[ordinal].count;
       }
       if(instruction.operands.size() != 2) continue;
       if(instruction.opcode == MirInstruction::MI_LOAD &&
          instruction.operands[0].kind == MirOperand::OP_REG &&
          instruction.operands[1].kind == MirOperand::OP_FRAME) {
-        const std::unordered_map<long long, FrameOffsetFacts>::iterator found =
-          uses.find(instruction.operands[1].offset);
-        if(found != uses.end()) {
-          FrameOffsetFacts & offset = found->second;
-          FrameUseFacts * facts = offset.binding_count == 1 ?
-            &offset.single : offset.has_active ? &offset.active : 0;
-          if(facts) {
-            facts->load = &instruction;
-            facts->load_block = i;
-            facts->load_index = j;
-          }
+        const MirOperand & operand = instruction.operands[1];
+        const std::uint32_t ordinal = bindings.resolve(operand);
+        if(ordinal != 0) {
+          uses[ordinal].load = &instruction;
+          uses[ordinal].load_block = i;
+          uses[ordinal].load_index = j;
         }
       }
     }
   }
-  for(std::unordered_map<long long, FrameOffsetFacts>::const_iterator use =
-        uses.begin(); use != uses.end(); ++use) {
-    const FrameOffsetFacts & offset = use->second;
-    if(offset.binding_count == 1)
-      append_reload(function, offset.single, &reloads);
-    else if(offset.has_active)
-      append_reload(function, offset.active, &reloads);
-  }
+  for(std::size_t i = 1; i < uses.size(); ++i)
+    if(bindings.eligible[i]) append_reload(function, uses[i], &reloads);
   build_action_table(function, reloads, &result);
   return result;
 }

@@ -14,6 +14,11 @@ struct ValueFact
   bool parameter = false, fixed_register_home = false;
   bool frame_address = false, has_frame_provenance = false;
   long long frame_provenance = 0;
+  // A compiler-created scalar home remains attached to the value even while
+  // the current location is a register.  Its binding ordinal distinguishes
+  // disjoint lifetimes that reuse the same physical frame offset.
+  bool has_spill_home = false;
+  mir_model::MirOperand spill_home;
   mir_model::MirOperand pointer_global_cell;
   std::string forwarded_parameter;
   // A directly selected address keeps its LowIR inputs live until the memory

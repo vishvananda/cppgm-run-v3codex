@@ -7,6 +7,7 @@
 // model. Native emission and MIR dumping should consume the same facts.
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -128,6 +129,10 @@ struct Operand
   X64Register index = XR_RAX;
   unsigned scale = 1;
   XmmRegister xmm = XMM_0;
+  // Compiler-created frame homes carry their one-based binding ordinal.
+  // Zero means that the operand names storage only by its frame offset.
+  // The ordinal is internal identity and is not part of serialized MIR.
+  std::uint32_t frame_binding = 0;
   long long imm = 0;
   long double float_imm = 0.0L;
   long long offset = 0;
@@ -336,9 +341,10 @@ struct Function
   long long host_eh_selector_offset = 0;
   InstructionDebugLocation debug_location;
   std::vector<X64Register> callee_saved_regs;
-  // Compiler temporaries whose complete live intervals do not overlap may
-  // name the same frame offset when their size and alignment agree. Source
-  // slots and parameter slots retain their distinct storage identities.
+  // Compiler-created scalar temporaries whose complete storage lifetimes do
+  // not overlap may name the same frame offset when their size and alignment
+  // agree. A copied value that shares a home extends that storage lifetime.
+  // Source slots, parameter slots, and object homes remain distinct.
   std::vector<FrameBinding> frame_bindings;
   std::vector<DebugVariable> debug_variables;
   std::map<std::string, std::vector<HostEhClause> > host_eh_clauses;

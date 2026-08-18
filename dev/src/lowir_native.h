@@ -33,6 +33,9 @@ struct Stats
   std::size_t spill_candidates = 0;
   std::size_t spill_full_scan_fallbacks = 0;
   std::size_t spills = 0;
+  std::size_t temporary_frame_homes_created = 0;
+  std::size_t temporary_frame_homes_reused = 0;
+  std::size_t shared_storage_lifetime_extensions = 0;
   std::size_t reclaim_attempts = 0;
   std::size_t reclaim_parameter_visits = 0;
   std::size_t reclaims = 0;

@@ -460,6 +460,7 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
           if(folded_offset < 0) {
             operand.kind = MirOperand::OP_FRAME;
             operand.offset = folded_offset;
+            operand.frame_binding = replacement.frame_binding;
           }
         }
         if(operand.kind == MirOperand::OP_DEREF && operand.has_index) {

@@ -1278,6 +1278,12 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " spill_full_scan_fallbacks="
          << native_stats.spill_full_scan_fallbacks
          << " spills=" << native_stats.spills
+         << " temporary_frame_homes_created="
+         << native_stats.temporary_frame_homes_created
+         << " temporary_frame_homes_reused="
+         << native_stats.temporary_frame_homes_reused
+         << " shared_storage_lifetime_extensions="
+         << native_stats.shared_storage_lifetime_extensions
          << " reclaim_attempts=" << native_stats.reclaim_attempts
          << " reclaim_parameter_visits="
          << native_stats.reclaim_parameter_visits
@@ -1385,6 +1391,12 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << " spill_full_scan_fallbacks="
 			 << native_stats.spill_full_scan_fallbacks
 			 << " spills=" << native_stats.spills
+			 << " temporary_frame_homes_created="
+			 << native_stats.temporary_frame_homes_created
+			 << " temporary_frame_homes_reused="
+			 << native_stats.temporary_frame_homes_reused
+			 << " shared_storage_lifetime_extensions="
+			 << native_stats.shared_storage_lifetime_extensions
 			 << " reclaim_attempts=" << native_stats.reclaim_attempts
 			 << " reclaim_parameter_visits="
 			 << native_stats.reclaim_parameter_visits

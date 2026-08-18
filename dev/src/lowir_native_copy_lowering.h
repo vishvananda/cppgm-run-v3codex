@@ -45,9 +45,9 @@ protected:
         source.kind == mir_model::MirOperand::OP_SYMBOL ||
         (source.kind == mir_model::MirOperand::OP_FRAME &&
          (original.frame_address ||
-          (lowerer.spill_offsets_.count(instruction.first.text) &&
-           lowerer.spill_offsets_.find(instruction.first.text)->second ==
-             source.offset))) ||
+          (original.has_spill_home &&
+           original.spill_home.offset == source.offset &&
+           original.spill_home.frame_binding == source.frame_binding))) ||
         (source.kind == mir_model::MirOperand::OP_REG &&
          !lowerer.crosses_register_clobber(instruction.dest, source.reg));
       if(!original.parameter && stable &&

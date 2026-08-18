@@ -10,5 +10,8 @@ if (scalar(@ARGV) != 3)
 	die "Usage: compare_results.pl <ref_suffix> <my_suffix> <testlocation>";
 }
 
-exec("perl", "$repo_root/scripts/compare_results_common.pl", "mir_structural_t", @ARGV)
+my $tests_root = $ARGV[2];
+my $mode = $tests_root =~ m{(?:^|/)behavior(?:/|$)} ? "mir_t" : "mir_structural_t";
+
+exec("perl", "$repo_root/scripts/compare_results_common.pl", $mode, @ARGV)
 	or die "exec failed: $!";

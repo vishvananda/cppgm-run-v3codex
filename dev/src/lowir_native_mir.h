@@ -19,7 +19,8 @@ mir_model::MirOperand indexed_dereference(X64Register base,
                                           X64Register index,
                                           unsigned scale,
                                           long long offset = 0);
-mir_model::MirOperand frame_operand(long long offset);
+mir_model::MirOperand frame_operand(long long offset,
+                                    std::uint32_t frame_binding = 0);
 mir_model::MirInstruction machine_instruction(
     mir_model::MirInstruction::Opcode opcode,
     const std::string & type = std::string());

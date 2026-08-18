@@ -65,11 +65,13 @@ mir_model::MirOperand indexed_dereference(X64Register base,
   return out;
 }
 
-mir_model::MirOperand frame_operand(long long offset)
+mir_model::MirOperand frame_operand(long long offset,
+                                    std::uint32_t frame_binding)
 {
   mir_model::MirOperand out;
   out.kind = mir_model::MirOperand::OP_FRAME;
   out.offset = offset;
+  out.frame_binding = frame_binding;
   return out;
 }
 

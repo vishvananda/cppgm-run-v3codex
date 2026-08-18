@@ -17,6 +17,9 @@ struct FunctionFacts
   std::unordered_map<std::string, std::size_t> uses;
   std::unordered_map<std::string, std::size_t> first_use;
   std::unordered_map<std::string, std::size_t> last_use;
+  // A scalar copy may retain its source's immutable temporary frame home.
+  // Only sources whose shared storage outlives their own final use appear.
+  std::unordered_map<std::string, std::size_t> shared_storage_last_use;
   std::unordered_map<std::string, std::size_t> definition;
   std::unordered_set<std::string> parameters;
   std::vector<std::size_t> calls;
