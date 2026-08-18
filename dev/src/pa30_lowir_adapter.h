@@ -12,6 +12,7 @@ namespace cppgm
 // render or parse LowIR text.
 lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	const pa15_lowir_detail::TypedProgram& source,
-	lowir_model::LowirPreparationStats* preparation_stats = 0);
+	lowir_model::LowirPreparationStats* preparation_stats = 0,
+	bool preserve_literal_spellings = true);
 
 }

@@ -1,7 +1,6 @@
 #include "lowir_opt.h"
 #include "lowir_cleanup_o1.h"
 #include "lowir_inline_o1.h"
-#include "lowir_float_literal.h"
 
 #include <algorithm>
 #include <chrono>
@@ -171,14 +170,13 @@ bool same_operand(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_TEMP) return a.value == b.value;
   if(a.kind == Operand::OP_GLOBAL) return a.symbol == b.symbol;
   if(a.kind == Operand::OP_INTEGER) {
-    if(a.has_spelling && b.has_spelling) return a.literal == b.literal;
     return a.has_int_value == b.has_int_value &&
       a.int_value == b.int_value && a.int_high == b.int_high;
   }
   if(a.kind == Operand::OP_FLOAT) {
-    if(a.has_spelling && b.has_spelling) return a.literal == b.literal;
-    return (std::isnan(a.float_value) && std::isnan(b.float_value)) ||
-      a.float_value == b.float_value;
+    return a.has_float_bits == b.has_float_bits &&
+      a.literal_low == b.literal_low && a.literal_high == b.literal_high &&
+      same_lowir_type(a.literal_type, b.literal_type);
   }
   return true;
 }
@@ -190,6 +188,7 @@ Operand integer_operand(long long value, const LowType & type)
   result.has_int_value = true;
   result.int_value = value;
   result.int_high = value < 0 ? ~UINT64_C(0) : 0;
+  result.literal_type = type;
   return result;
 }
 
@@ -197,8 +196,10 @@ Operand floating_operand(long double value, const LowType & type)
 {
   Operand result;
   result.kind = Operand::OP_FLOAT;
-  result.float_value = value;
   result.literal_type = type;
+  lowir_model::lowir_floating_value_bits(
+    value, type, &result.literal_low, &result.literal_high);
+  result.has_float_bits = true;
   return result;
 }
 
@@ -322,14 +323,13 @@ bool operand_less(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_LABEL) return a.block < b.block;
   if(a.kind == Operand::OP_TEMP) return a.value < b.value;
   if(a.kind == Operand::OP_GLOBAL) return a.symbol < b.symbol;
-  if((a.kind == Operand::OP_INTEGER || a.kind == Operand::OP_FLOAT) &&
-     a.has_spelling && b.has_spelling)
-    return a.literal < b.literal;
   if(a.kind == Operand::OP_INTEGER)
     return a.int_high != b.int_high ? a.int_high < b.int_high :
       static_cast<std::uint64_t>(a.int_value) <
         static_cast<std::uint64_t>(b.int_value);
-  if(a.kind == Operand::OP_FLOAT) return a.float_value < b.float_value;
+  if(a.kind == Operand::OP_FLOAT)
+    return a.literal_high != b.literal_high ?
+      a.literal_high < b.literal_high : a.literal_low < b.literal_low;
   return false;
 }
 
@@ -339,17 +339,13 @@ struct ExpressionOperandKey
   std::uint32_t identity;
   long long int_value;
   std::uint64_t int_high;
-  long double float_value;
 
   bool operator==(const ExpressionOperandKey & other) const
   {
     if(kind != other.kind || identity != other.identity ||
        int_value != other.int_value || int_high != other.int_high)
       return false;
-    if(kind != Operand::OP_FLOAT || identity != lowir_model::kInvalidCompactId)
-      return true;
-    return (std::isnan(float_value) && std::isnan(other.float_value)) ||
-      float_value == other.float_value;
+    return true;
   }
 };
 
@@ -360,19 +356,15 @@ ExpressionOperandKey expression_operand_key(const Operand & operand)
   key.identity = lowir_model::kInvalidCompactId;
   key.int_value = 0;
   key.int_high = 0;
-  key.float_value = 0.0L;
   if(operand.kind == Operand::OP_SLOT) key.identity = operand.slot;
   else if(operand.kind == Operand::OP_LABEL) key.identity = operand.block;
   else if(operand.kind == Operand::OP_TEMP) key.identity = operand.value;
   else if(operand.kind == Operand::OP_GLOBAL) key.identity = operand.symbol;
-  else if((operand.kind == Operand::OP_INTEGER ||
-           operand.kind == Operand::OP_FLOAT) && operand.has_spelling)
-    key.identity = operand.literal;
-  else if(operand.kind == Operand::OP_INTEGER) {
+  else if(operand.kind == Operand::OP_INTEGER ||
+          operand.kind == Operand::OP_FLOAT) {
     key.int_value = operand.int_value;
     key.int_high = operand.int_high;
-  } else if(operand.kind == Operand::OP_FLOAT)
-    key.float_value = operand.float_value;
+  }
   return key;
 }
 
@@ -428,10 +420,6 @@ struct ExpressionKeyHash
       combine_hash(&result, operands[i].identity);
       combine_hash(&result, std::hash<long long>()(operands[i].int_value));
       combine_hash(&result, std::hash<std::uint64_t>()(operands[i].int_high));
-      const std::size_t floating = std::isnan(operands[i].float_value) ?
-        static_cast<std::size_t>(0x7ff80000U) :
-        std::hash<long double>()(operands[i].float_value);
-      combine_hash(&result, floating);
     }
     return result;
   }
@@ -593,8 +581,10 @@ bool fold_compare(const Instruction & ins, Operand * result)
     else return false;
   } else if(ins.first.kind == Operand::OP_FLOAT &&
             ins.second.kind == Operand::OP_FLOAT) {
-    const long double a = ins.first.float_value;
-    const long double b = ins.second.float_value;
+    const long double a = lowir_model::lowir_floating_value(
+      ins.first.literal_low, ins.first.literal_high, ins.first.literal_type);
+    const long double b = lowir_model::lowir_floating_value(
+      ins.second.literal_low, ins.second.literal_high, ins.second.literal_type);
     if(ins.op.kind == LowOperation::LOP_EQ) value = a == b;
     else if(ins.op.kind == LowOperation::LOP_NE) value = a != b;
     else if(ins.op.kind == LowOperation::LOP_LT) value = a < b;
@@ -657,7 +647,9 @@ bool fold_convert(const Instruction & ins, Operand * result)
   }
   if(ins.first.kind == Operand::OP_FLOAT && is_float_type(ins.type) &&
      (ins.op.kind == LowOperation::LOP_FPEXT || ins.op.kind == LowOperation::LOP_FPTRUNC)) {
-    *result = floating_operand(ins.first.float_value, ins.type);
+    *result = floating_operand(lowir_model::lowir_floating_value(
+      ins.first.literal_low, ins.first.literal_high, ins.first.literal_type),
+      ins.type);
     return true;
   }
   return false;
@@ -2820,7 +2812,6 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - started).count());
   }
-  lowir_model::intern_lowir_program_literals(program);
 }
 
 }  // namespace lowir_opt

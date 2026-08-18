@@ -135,13 +135,14 @@ remaining spelling only when the object writer creates the symbol or relocation
 record. Do not allocate or hash a symbol-name string for every call, address, or
 TLS fixup.
 
-Integer and floating immediate operands use a compact `StringId` whose spelling
-is interned once in a program-level string pool. Parameter names and frame-slot
-display names use identities from the same pool. Carry these identities through
-instruction selection and MIR processing, and resolve their spellings only for
-the MIR dump, diagnostics, or native encoding. Do not store a separate
-`std::string` in each MIR operand or metadata record. MIR debug locations also
-carry their source-file spelling through this pool.
+Integer immediates must preserve the complete input value, including values
+that use the high half of an `i128`. Floating immediates must be interpreted as
+their stated f32, f64, or f80 type so that globals, computations, and native
+data contain the correct target value. The same values must appear in the
+deterministic MIR dump and reach native encoding without loss.
+
+The deterministic MIR dump must retain the required parameter names,
+frame-slot display names, literal spellings, and debug source locations.
 
 Frame metadata is part of that final MIR contract. In particular, the
 callee-saved `preserve` list should name the callee-saved registers that the

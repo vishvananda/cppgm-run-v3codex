@@ -64,11 +64,16 @@ mir_model::MirGlobalDefinition lower_global(
         lowered.addr_addend = item.addr_addend;
       } else if(is_floating(item.type)) {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT;
-        lowered.literal = strings.map(item.literal_operand.literal);
+        lowered.literal_low = item.literal_operand.literal_low;
+        lowered.literal_high = item.literal_operand.literal_high;
+        if(item.literal_operand.has_spelling)
+          lowered.literal = strings.map(item.literal_operand.literal);
       } else {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
         lowered.int_value = selection::integer_value(item.literal_operand);
-		if(item.type.kind == lowir_model::LTK_I128)
+		lowered.literal_high = item.literal_operand.int_high;
+		if(item.type.kind == lowir_model::LTK_I128 &&
+		   item.literal_operand.has_spelling)
 		  lowered.literal = strings.map(item.literal_operand.literal);
       }
       target.data_items.push_back(lowered);
@@ -82,19 +87,23 @@ mir_model::MirGlobalDefinition lower_global(
       target.addr_addend = source.addr_addend;
     } else if(is_floating(source.type)) {
       target.init_kind = mir_model::MirGlobalDefinition::GI_FLOAT;
-      if(source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO)
-        target.literal = strings.intern(
-          source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
-          (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0"));
-      else target.literal = strings.map(source.init_operand.literal);
+      if(source.init_kind != lowir_model::LowirGlobalDefinition::INIT_ZERO) {
+        target.literal_low = source.init_operand.literal_low;
+        target.literal_high = source.init_operand.literal_high;
+        if(source.init_operand.has_spelling)
+          target.literal = strings.map(source.init_operand.literal);
+      }
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
       target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
         0 : selection::integer_value(source.init_operand);
-	  if(source.type.kind == lowir_model::LTK_I128)
-		target.literal = source.init_kind ==
-		  lowir_model::LowirGlobalDefinition::INIT_ZERO ?
-		  strings.intern("0") : strings.map(source.init_operand.literal);
+	  target.literal_high = source.init_kind ==
+	    lowir_model::LowirGlobalDefinition::INIT_ZERO ? 0 :
+	    source.init_operand.int_high;
+	  if(source.type.kind == lowir_model::LTK_I128 &&
+	     source.init_kind != lowir_model::LowirGlobalDefinition::INIT_ZERO &&
+	     source.init_operand.has_spelling)
+		target.literal = strings.map(source.init_operand.literal);
     }
   }
   return target;

@@ -387,7 +387,6 @@ bool register_was_clobbered_before(const FunctionFacts & facts,
 }
 
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
-                               const lowir_model::StringPool & strings,
                                Stats * stats)
 {
   FunctionFacts facts;
@@ -454,9 +453,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
          instruction.first.kind == Operand::OP_TEMP &&
          facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
          instruction.second.kind == Operand::OP_INTEGER &&
-         instruction.second.has_spelling &&
-		 (!stats || (++stats->native_semantic_string_reads, true)) &&
-		 strings.get(instruction.second.literal) == "0")
+         instruction.second.has_int_value &&
+		 instruction.second.int_value == 0 &&
+		 instruction.second.int_high == 0)
         facts.mark(instruction.first.value,
                    FunctionFacts::VF_ZERO_INDEX_PARAMETER);
       if(instruction.kind == Instruction::IK_SWITCH &&

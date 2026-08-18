@@ -14,77 +14,6 @@ using lowir_model::LowOperation;
 using mir_model::MirInstruction;
 using mir_model::MirOperand;
 
-Words add(Words left, Words right)
-{
-  Words result;
-  result.low = left.low + right.low;
-  result.high = left.high + right.high + (result.low < left.low ? 1 : 0);
-  return result;
-}
-
-Words twice(Words value)
-{
-  Words result;
-  result.high = (value.high << 1) | (value.low >> 63);
-  result.low = value.low << 1;
-  return result;
-}
-
-Words multiply_add(Words value, unsigned multiplier, unsigned digit)
-{
-  Words result;
-  Words addend = value;
-  while(multiplier) {
-    if(multiplier & 1) result = add(result, addend);
-    addend = twice(addend);
-    multiplier >>= 1;
-  }
-  Words tail;
-  tail.low = digit;
-  return add(result, tail);
-}
-
-unsigned digit_value(char c)
-{
-  if(c >= '0' && c <= '9') return static_cast<unsigned>(c - '0');
-  if(c >= 'a' && c <= 'f') return static_cast<unsigned>(c - 'a' + 10);
-  if(c >= 'A' && c <= 'F') return static_cast<unsigned>(c - 'A' + 10);
-  return 255;
-}
-
-Words parse_words(const std::string & text)
-{
-  if(text == "nullptr") return Words();
-  if(text.empty()) throw std::runtime_error("empty i128 literal");
-  std::size_t at = 0;
-  bool negative = false;
-  if(text[at] == '+' || text[at] == '-') {
-    negative = text[at] == '-';
-    if(++at == text.size()) throw std::runtime_error("invalid i128 literal: " + text);
-  }
-  unsigned base = 10;
-  if(at + 2 <= text.size() && text[at] == '0' &&
-     (text[at + 1] == 'x' || text[at + 1] == 'X')) {
-    base = 16;
-    at += 2;
-  } else if(at + 1 < text.size() && text[at] == '0') {
-    base = 8;
-    ++at;
-  }
-  if(at == text.size()) return Words();
-  Words result;
-  for(; at < text.size(); ++at) {
-    const unsigned digit = digit_value(text[at]);
-    if(digit >= base) throw std::runtime_error("invalid i128 literal: " + text);
-    result = multiply_add(result, base, digit);
-  }
-  if(negative) {
-    result.low = ~result.low + 1;
-    result.high = ~result.high + (result.low == 0 ? 1 : 0);
-  }
-  return result;
-}
-
 void append_address(std::vector<MirInstruction> & out, X64Register destination,
                     const MirOperand & storage)
 {
@@ -198,14 +127,6 @@ void append_register_immediate(MirInstruction::Opcode opcode,
 bool is_integer(const lowir_model::LowType & type)
 {
   return type.kind == lowir_model::LTK_I128;
-}
-
-Value literal_value(const std::string & text)
-{
-  Value result;
-  result.immediate = true;
-  result.words = parse_words(text);
-  return result;
 }
 
 Value literal_value(long long low, std::uint64_t high)
@@ -422,13 +343,5 @@ void append_atomic_compare_exchange(const MirOperand & object,
 }
 
 }  // namespace wide
-
-void parse_wide_literal_words(const std::string & text,
-                              std::uint64_t * low, std::uint64_t * high)
-{
-  const wide::Value value = wide::literal_value(text);
-  *low = value.words.low;
-  *high = value.words.high;
-}
 
 }  // namespace lowir_native

@@ -55,8 +55,30 @@ std::string dereference(const Operand & operand)
   return out.str();
 }
 
+std::string literal_text(std::uint64_t low, std::uint64_t high,
+                         const lowir_model::LowType & type,
+                         lowir_model::StringId literal,
+                         const Program & program)
+{
+  lowir_model::Operand operand;
+  operand.literal_type = type;
+  operand.literal_low = low;
+  operand.literal_high = high;
+  operand.has_spelling = literal.valid();
+  if(operand.has_spelling) operand.literal = literal;
+  if(type.kind >= lowir_model::LTK_F32 && type.kind <= lowir_model::LTK_F80) {
+    operand.kind = lowir_model::Operand::OP_FLOAT;
+    operand.has_float_bits = true;
+  } else {
+    operand.kind = lowir_model::Operand::OP_INTEGER;
+    operand.has_int_value = true;
+  }
+  return lowir_model::lowir_literal_text(operand, program.strings.get());
+}
+
 std::string operand_text(const Operand & operand, const Program & program,
-                         const Function * function)
+                         const Function * function,
+                         const lowir_model::LowType & type)
 {
   std::ostringstream out;
   switch(operand.kind) {
@@ -64,7 +86,8 @@ std::string operand_text(const Operand & operand, const Program & program,
   case Operand::OP_XMM: return xmm_name(operand.xmm);
   case Operand::OP_IMM: out << operand.imm; return out.str();
   case Operand::OP_FLOAT_IMM:
-    return mir_literal_spelling(program, operand.literal);
+    return literal_text(operand.literal_low, operand.literal_high,
+                        type, operand.literal, program);
   case Operand::OP_SYMBOL:
   case Operand::OP_GLOBAL: return mir_symbol_name(program, operand.symbol);
   case Operand::OP_LABEL:
@@ -186,7 +209,8 @@ void render_operands(std::ostringstream & out, const Instruction & instruction,
     else out << ", ";
     if(instruction.opcode == Instruction::MI_CALL_INDIRECT ||
        instruction.opcode == Instruction::MI_JMP_INDIRECT) out << '*';
-    out << operand_text(instruction.operands[i], program, function);
+    out << operand_text(
+      instruction.operands[i], program, function, instruction.type);
   }
 }
 
@@ -345,11 +369,10 @@ void render_global(std::ostringstream & out, const Program & program,
         out << '\n';
       } else {
         out << lowir_model::lowir_type_text(item.type) << ' ';
-        if(item.kind == GlobalDefinition::DataItem::ITEM_FLOAT)
-          out << mir_string(program, item.literal);
-		else if (item.type.kind == lowir_model::LTK_I128 &&
-		         item.literal.valid())
-		  out << mir_string(program, item.literal);
+        if(item.kind == GlobalDefinition::DataItem::ITEM_FLOAT ||
+           item.type.kind == lowir_model::LTK_I128)
+          out << literal_text(item.literal_low, item.literal_high,
+                              item.type, item.literal, program);
 		else out << item.int_value;
         out << '\n';
       }
@@ -365,12 +388,13 @@ void render_global(std::ostringstream & out, const Program & program,
     else if(global.addr_addend < 0) out << global.addr_addend;
   } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
     out << lowir_model::lowir_type_text(global.type) << ' '
-        << mir_string(program, global.literal);
+        << literal_text(global.literal_low, global.literal_high,
+                        global.type, global.literal, program);
   } else {
     out << lowir_model::lowir_type_text(global.type) << ' ';
-	if(global.type.kind == lowir_model::LTK_I128 &&
-	   global.literal.valid())
-	  out << mir_string(program, global.literal);
+	if(global.type.kind == lowir_model::LTK_I128)
+	  out << literal_text(global.literal_low, global.literal_high,
+	                      global.type, global.literal, program);
 	else out << global.int_value;
   }
   out << '\n';

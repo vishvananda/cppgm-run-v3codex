@@ -154,9 +154,12 @@ struct Operand
     address_binding;
 
   bool has_int_value;
-  // Literal operands retain one pooled spelling.  During explicit text/object
-  // parsing, named operands temporarily use the same field until resolution
-  // replaces it with the corresponding compact semantic identity.
+  bool has_float_bits;
+  // A literal's low/high words and literal_type are its semantic payload.
+  // has_spelling permits an exact input spelling to be retained only for
+  // serialization. During explicit text/object parsing, named operands
+  // temporarily use the same identity field until resolution replaces it
+  // with the corresponding compact semantic identity.
   bool has_spelling;
   union
   {
@@ -166,15 +169,16 @@ struct Operand
     SymbolId symbol;
     StringId literal;
   };
-  long long int_value;
-  std::uint64_t int_high;
-  long double float_value;
+  // Integers use int_value/int_high; floating values use the same storage as
+  // raw target-format literal_low/literal_high words.
+  union { long long int_value; std::uint64_t literal_low; };
+  union { std::uint64_t int_high; std::uint64_t literal_high; };
   LowType literal_type;
 
   Operand()
     : kind(OP_INTEGER), address_binding(ADDRESS_LOCAL), has_int_value(false),
-      has_spelling(false), block(), int_value(0), int_high(0),
-      float_value(0.0L) {}
+      has_float_bits(false), has_spelling(false), block(), literal_low(0),
+      literal_high(0) {}
 };
 
 enum SymbolRole
@@ -566,10 +570,21 @@ const std::string & lowir_parameter_name(const Program & program,
                                          const Parameter & parameter);
 bool parse_lowir_integer_literal(const std::string & text,
                                  long long * low, std::uint64_t * high);
+LowType lowir_floating_literal_type(const std::string & text);
+bool parse_lowir_floating_literal_bits(const std::string & text,
+                                       const LowType & type,
+                                       std::uint64_t * low,
+                                       std::uint64_t * high);
+void lowir_floating_value_bits(long double value, const LowType & type,
+                               std::uint64_t * low,
+                               std::uint64_t * high);
+long double lowir_floating_value(std::uint64_t low, std::uint64_t high,
+                                 const LowType & type);
+std::string lowir_literal_text(const Operand & operand,
+                               const StringPool * strings = 0);
 void resolve_lowir_function_operands(Function & function,
                                      const StringPool & strings);
 void resolve_lowir_program_symbols(Program & program);
-void intern_lowir_program_literals(Program & program);
 void remap_lowir_program_strings(Program & program,
                                  StringPool & destination);
 void remap_lowir_program_symbols(

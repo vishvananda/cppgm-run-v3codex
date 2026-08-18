@@ -1,5 +1,4 @@
 #include "lowir_model.h"
-#include "lowir_float_literal.h"
 #include "lowir_prepare.h"
 
 #include <algorithm>
@@ -316,8 +315,9 @@ private:
             (!text.empty() && (text.back() == 'f' || text.back() == 'L')))
     {
       result.kind = Operand::OP_FLOAT;
-      if(!parse_lowir_floating_literal(text, &result.float_value))
-        result.float_value = 0.0L;
+      result.literal_type = lowir_floating_literal_type(text);
+      result.has_float_bits = parse_lowir_floating_literal_bits(
+        text, result.literal_type, &result.literal_low, &result.literal_high);
     }
     else {
       result.kind = Operand::OP_INTEGER;
@@ -1410,6 +1410,89 @@ std::string read_file(const std::string & path)
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
+void assign_literal_type(Program & program, Operand & operand,
+                         const LowType & type)
+{
+  if(operand.kind != Operand::OP_INTEGER && operand.kind != Operand::OP_FLOAT)
+    return;
+  operand.literal_type = type;
+  if(operand.kind != Operand::OP_FLOAT) return;
+  if(!operand.has_spelling || !parse_lowir_floating_literal_bits(
+      program.strings.get(operand.literal), type,
+      &operand.literal_low, &operand.literal_high))
+    throw ParseError("invalid floating literal");
+  operand.has_float_bits = true;
+}
+
+void assign_instruction_literal_types(Program & program, Instruction & ins)
+{
+  const LowType & i64 = builtin_lowir_type(LTK_I64);
+  const LowType & ptr = builtin_lowir_type(LTK_PTR);
+  switch(ins.kind) {
+  case Instruction::IK_CONST:
+  case Instruction::IK_COPY:
+  case Instruction::IK_UNARY:
+    assign_literal_type(program, ins.first, ins.type);
+    break;
+  case Instruction::IK_BINARY:
+  case Instruction::IK_CMP:
+    assign_literal_type(program, ins.first, ins.type);
+    assign_literal_type(program, ins.second, ins.type);
+    break;
+  case Instruction::IK_CONVERT:
+    assign_literal_type(program, ins.first, ins.source_type);
+    break;
+  case Instruction::IK_STORE:
+  case Instruction::IK_ATOMIC_STORE:
+    assign_literal_type(program, ins.first, ins.type);
+    assign_literal_type(program, ins.second, ptr);
+    break;
+  case Instruction::IK_ATOMIC_EXCHANGE:
+  case Instruction::IK_ATOMIC_ADD_FETCH:
+    assign_literal_type(program, ins.first, ptr);
+    assign_literal_type(program, ins.second, ins.type);
+    break;
+  case Instruction::IK_ATOMIC_COMPARE_EXCHANGE:
+    assign_literal_type(program, ins.first, ptr);
+    assign_literal_type(program, ins.second, ins.type);
+    assign_literal_type(program, ins.third, ins.type);
+    break;
+  case Instruction::IK_STACK_ALLOC:
+  case Instruction::IK_BRANCH:
+    assign_literal_type(program, ins.first, i64);
+    break;
+  case Instruction::IK_RETURN:
+  case Instruction::IK_THROW:
+    assign_literal_type(program, ins.first, ins.type);
+    break;
+  case Instruction::IK_CALL:
+    if(ins.has_call_signature)
+      for(std::size_t i = 0; i < ins.args.size() && i < ins.call_params.size(); ++i)
+        assign_literal_type(program, ins.args[i], ins.call_params[i].type);
+    break;
+  default: break;
+  }
+}
+
+void assign_program_literal_types(Program & program)
+{
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    GlobalDefinition & global = program.globals[i];
+    if(global.init_kind == GlobalDefinition::INIT_INTEGER)
+      assign_literal_type(program, global.init_operand, global.type);
+    for(std::size_t j = 0; j < global.data_items.size(); ++j)
+      if(global.data_items[j].kind == GlobalDefinition::DataItem::ITEM_INTEGER)
+        assign_literal_type(program, global.data_items[j].literal_operand,
+                            global.data_items[j].type);
+  }
+  for(std::size_t f = 0; f < program.functions.size(); ++f)
+    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
+      for(std::size_t i = 0;
+          i < program.functions[f].blocks[b].instructions.size(); ++i)
+        assign_instruction_literal_types(
+          program, program.functions[f].blocks[b].instructions[i]);
+}
+
 Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
 {
   Program program;
@@ -1451,7 +1534,7 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     resolve_lowir_function_operands(program.functions[i], program.strings);
   resolve_lowir_program_symbols(program);
-  intern_lowir_program_literals(program);
+  assign_program_literal_types(program);
   propagate_direct_call_boundaries(program);
   program.token_count = token_count;
   finalize_lowir_object_model(program);

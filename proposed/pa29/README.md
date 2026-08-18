@@ -4,6 +4,12 @@ This directory holds native-lowering regression candidates whose behavior is
 valid but whose machine-IR shape differs from the course reference compiler.
 They are not part of the active golden suite.
 
+`typed-i128-high-word.t` checks that a non-sign-extended high word in an
+`i128` global reaches native data emission without being recovered from the
+literal spelling. The current compiler executes the input successfully, while
+the reference compiler rejects the otherwise valid wide integer literal, so
+the input cannot provide an active reference fixture.
+
 `i128-multiply-caller-saved-clobber.t` keeps scalar values live in the native
 caller-saved result pool across an `i128` multiplication.  Multiplication uses
 both RSI and RDI as fixed wide-operation scratch registers, so those live

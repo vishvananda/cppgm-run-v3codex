@@ -1,7 +1,6 @@
 #include "pa30_lowir_adapter.h"
 
 #include "decimal_spelling.h"
-#include "lowir_float_literal.h"
 
 #include <cerrno>
 #include <cstdlib>
@@ -20,8 +19,9 @@ using namespace pa15_lowir_detail;
 
 struct AdapterTelemetry
 {
-	explicit AdapterTelemetry(lowir_model::LowirPreparationStats* output_value)
-		: output(output_value) {}
+	AdapterTelemetry(lowir_model::LowirPreparationStats* output_value,
+		bool preserve_literal_spellings)
+		: output(output_value), preserve_literals(preserve_literal_spellings) {}
 
 	std::string Prefix(char prefix, const std::string& value)
 	{
@@ -69,6 +69,20 @@ struct AdapterTelemetry
 		return strings->intern(text, output ? &pool : 0);
 	}
 
+	lowir_model::StringId Literal(lowir_model::StringPool* strings,
+		const std::string& text)
+	{
+		return preserve_literals ? Intern(strings, text, true) :
+			lowir_model::StringId();
+	}
+
+	lowir_model::StringId IntegerLiteral(lowir_model::StringPool* strings,
+		std::int64_t low, std::uint64_t high, const LowType& type)
+	{
+		return preserve_literals ? Intern(strings, IntegerText(low, high, type), true) :
+			lowir_model::StringId();
+	}
+
 	void Finish(const lowir_model::LowirProgram& program)
 	{
 		if (!output) return;
@@ -81,6 +95,7 @@ struct AdapterTelemetry
 	}
 
 	lowir_model::LowirPreparationStats* output;
+	bool preserve_literals;
 	lowir_model::StringPoolStats pool;
 };
 
@@ -202,23 +217,26 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		result.int_value = operand.integer_value;
 		result.int_high = operand.integer_high;
 		result.has_int_value = true;
-		result.literal = telemetry->Intern(literals,
-			telemetry->IntegerText(operand.integer_value,
-				operand.integer_high, operand.type), true);
-		result.has_spelling = true;
+		result.literal = telemetry->IntegerLiteral(
+			literals, operand.integer_value, operand.integer_high, operand.type);
+		result.has_spelling = result.literal.valid();
 		break;
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
-		result.literal = telemetry->Intern(
-			literals, program.literals.Get(operand.id), true);
-		result.has_spelling = true;
-		lowir_model::parse_lowir_floating_literal(
-			literals->get(result.literal), &result.float_value);
+		if (result.literal_type.kind == lowir_model::LTK_INVALID)
+			result.literal_type = lowir_model::lowir_floating_literal_type(
+				program.literals.Get(operand.id));
+		result.literal = telemetry->Literal(
+			literals, program.literals.Get(operand.id));
+		result.has_spelling = result.literal.valid();
+		result.has_float_bits = lowir_model::parse_lowir_floating_literal_bits(
+			program.literals.Get(operand.id), result.literal_type,
+			&result.literal_low, &result.literal_high);
 		break;
 	case Operand::NULL_POINTER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
-		result.literal = telemetry->Intern(literals, "nullptr", true);
-		result.has_spelling = true;
+		result.literal = telemetry->Literal(literals, "nullptr");
+		result.has_spelling = result.literal.valid();
 		result.int_value = 0;
 		result.int_high = 0;
 		result.has_int_value = true;
@@ -671,10 +689,11 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			value.int_value = program.switch_case_values[source.extra_first + i];
 			value.int_high = value.int_value < 0 ? ~std::uint64_t(0) : 0;
 			value.has_int_value = true;
-			value.literal = telemetry->Intern(
-				literals, telemetry->IntegerText(
-					value.int_value, value.int_high, LowI64()), true);
-			value.has_spelling = true;
+			value.literal_type = lowir_model::builtin_lowir_type(
+				lowir_model::LTK_I64);
+			value.literal = telemetry->IntegerLiteral(
+				literals, value.int_value, value.int_high, LowI64());
+			value.has_spelling = value.literal.valid();
 			target.args.push_back(value);
 			const BlockId block =
 				program.switch_case_targets[source.extra_first + i];
@@ -722,9 +741,10 @@ void AppendExport(const Symbol& source, ir_model::ExportedSymbol* target,
 
 lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	const TypedProgram& source,
-	lowir_model::LowirPreparationStats* preparation_stats)
+	lowir_model::LowirPreparationStats* preparation_stats,
+	bool preserve_literal_spellings)
 {
-	AdapterTelemetry telemetry(preparation_stats);
+	AdapterTelemetry telemetry(preparation_stats, preserve_literal_spellings);
 	CountTypedNames(source, &telemetry);
 	lowir_model::LowirProgram target;
 	target.symbol_names.reserve(source.symbols.size());
@@ -809,10 +829,17 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					if (value.kind == Global::DataItem::FLOATING_ITEM)
 					{
 						data.literal_operand.kind = lowir_model::Operand::OP_FLOAT;
-						data.literal_operand.literal = telemetry.Intern(
-							&target.strings,
-							source.literals.Get(value.floating_spelling), true);
-						data.literal_operand.has_spelling = true;
+						const std::string& spelling =
+							source.literals.Get(value.floating_spelling);
+						data.literal_operand.literal = telemetry.Literal(
+							&target.strings, spelling);
+						data.literal_operand.has_spelling =
+							data.literal_operand.literal.valid();
+						data.literal_operand.has_float_bits =
+							lowir_model::parse_lowir_floating_literal_bits(
+								spelling, data.type,
+								&data.literal_operand.literal_low,
+								&data.literal_operand.literal_high);
 					}
 					else
 					{
@@ -820,10 +847,11 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 						data.literal_operand.int_value = value.integer_value;
 						data.literal_operand.int_high = value.integer_high;
 						data.literal_operand.has_int_value = true;
-						data.literal_operand.literal = telemetry.Intern(
-							&target.strings, telemetry.IntegerText(
-								value.integer_value, value.integer_high, value.type), true);
-						data.literal_operand.has_spelling = true;
+						data.literal_operand.literal = telemetry.IntegerLiteral(
+							&target.strings, value.integer_value,
+							value.integer_high, value.type);
+						data.literal_operand.has_spelling =
+							data.literal_operand.literal.valid();
 					}
 				}
 				result.data_items.push_back(std::move(data));
@@ -842,13 +870,21 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		else
 		{
 			result.init_kind = lowir_model::GlobalDefinition::INIT_INTEGER;
+			result.init_operand.literal_type = result.type;
 			if (item.initializer_kind == Global::FLOATING_VALUE)
 			{
 				result.init_operand.kind = lowir_model::Operand::OP_FLOAT;
-				result.init_operand.literal = telemetry.Intern(
-					&target.strings,
-					source.literals.Get(item.floating_initializer), true);
-				result.init_operand.has_spelling = true;
+				result.init_operand.literal_type = result.type;
+				const std::string& spelling =
+					source.literals.Get(item.floating_initializer);
+				result.init_operand.literal = telemetry.Literal(
+					&target.strings, spelling);
+				result.init_operand.has_spelling =
+					result.init_operand.literal.valid();
+				result.init_operand.has_float_bits =
+					lowir_model::parse_lowir_floating_literal_bits(
+						spelling, result.type, &result.init_operand.literal_low,
+						&result.init_operand.literal_high);
 			}
 			else
 			{
@@ -856,10 +892,11 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				result.init_operand.int_value = item.initializer;
 				result.init_operand.int_high = item.initializer_high;
 				result.init_operand.has_int_value = true;
-				result.init_operand.literal = telemetry.Intern(
-					&target.strings, telemetry.IntegerText(
-						item.initializer, item.initializer_high, item.type), true);
-				result.init_operand.has_spelling = true;
+				result.init_operand.literal = telemetry.IntegerLiteral(
+					&target.strings, item.initializer,
+					item.initializer_high, item.type);
+				result.init_operand.has_spelling =
+					result.init_operand.literal.valid();
 			}
 		}
 		target.globals.push_back(std::move(result));

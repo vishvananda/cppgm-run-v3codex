@@ -114,6 +114,7 @@ bool same_operand(const Operand & left, const Operand & right)
   if(left.kind != right.kind ||
      left.address_binding != right.address_binding ||
      left.has_int_value != right.has_int_value ||
+     left.has_float_bits != right.has_float_bits ||
      left.has_spelling != right.has_spelling ||
      left.int_value != right.int_value || left.int_high != right.int_high ||
      !same_type(left.literal_type, right.literal_type)) return false;
@@ -121,10 +122,10 @@ bool same_operand(const Operand & left, const Operand & right)
   if(left.kind == Operand::OP_SLOT) return left.slot == right.slot;
   if(left.kind == Operand::OP_TEMP) return left.value == right.value;
   if(left.kind == Operand::OP_GLOBAL) return left.symbol == right.symbol;
-  if(left.has_spelling) return left.literal == right.literal;
   if(left.kind == Operand::OP_FLOAT)
-    return (std::isnan(left.float_value) && std::isnan(right.float_value)) ||
-      left.float_value == right.float_value;
+    return left.literal_low == right.literal_low &&
+      left.literal_high == right.literal_high;
+  if(left.has_spelling) return left.literal == right.literal;
   return true;
 }
 
@@ -133,6 +134,7 @@ std::size_t operand_hash(const Operand & operand)
   std::size_t result = static_cast<std::size_t>(operand.kind);
   combine_hash(&result, static_cast<std::size_t>(operand.address_binding));
   combine_hash(&result, operand.has_int_value ? 1 : 0);
+  combine_hash(&result, operand.has_float_bits ? 1 : 0);
   combine_hash(&result, operand.has_spelling ? 1 : 0);
   combine_hash(&result, operand.kind == Operand::OP_LABEL ?
     static_cast<std::uint32_t>(operand.block) :
@@ -142,16 +144,11 @@ std::size_t operand_hash(const Operand & operand)
     static_cast<std::uint32_t>(operand.value) :
     operand.kind == Operand::OP_GLOBAL ?
     static_cast<std::uint32_t>(operand.symbol) :
-    (operand.kind == Operand::OP_FLOAT ||
-     operand.kind == Operand::OP_INTEGER) && operand.has_spelling ?
+    operand.kind != Operand::OP_FLOAT && operand.has_spelling ?
     static_cast<std::uint32_t>(operand.literal) :
     lowir_model::kInvalidCompactId);
   combine_hash(&result, std::hash<long long>()(operand.int_value));
   combine_hash(&result, std::hash<std::uint64_t>()(operand.int_high));
-  if(operand.kind == Operand::OP_FLOAT && !operand.has_spelling)
-    combine_hash(&result, std::isnan(operand.float_value) ?
-      static_cast<std::size_t>(0x7ff80000U) :
-      std::hash<long double>()(operand.float_value));
   combine_hash(&result, type_hash(operand.literal_type));
   return result;
 }

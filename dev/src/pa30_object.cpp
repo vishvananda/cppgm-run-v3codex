@@ -1,13 +1,14 @@
 #include "pa30_object.h"
-#include "lowir_float_literal.h"
 #include "lowir_prepare.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -278,8 +279,23 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value,
 	}
 	else if (value.kind == lowir_model::Operand::OP_GLOBAL)
 		out.String(lowir_model::lowir_symbol_name(program, value.symbol));
-	else out.String(value.has_spelling ?
-		program.strings.get(value.literal) : std::string());
+	else if (value.kind == lowir_model::Operand::OP_INTEGER ||
+		value.kind == lowir_model::Operand::OP_FLOAT)
+	{
+		if (!value.has_spelling &&
+			value.kind == lowir_model::Operand::OP_INTEGER &&
+			value.literal_type.kind == lowir_model::LTK_I128)
+		{
+			std::ostringstream text;
+			text << "0x" << std::hex << std::setfill('0') << std::setw(16)
+				<< value.int_high << std::setw(16)
+				<< static_cast<std::uint64_t>(value.int_value);
+			out.String(text.str());
+		}
+		else out.String(lowir_model::lowir_literal_text(
+			value, &program.strings));
+	}
+	else out.String(std::string());
 	out.I64(value.kind == lowir_model::Operand::OP_INTEGER && value.has_int_value ?
 		value.int_value : 0);
 }
@@ -308,8 +324,11 @@ lowir_model::Operand ReadOperand(Reader& in,
 	}
 	else if (value.kind == lowir_model::Operand::OP_FLOAT &&
 		value.has_spelling)
-		lowir_model::parse_lowir_floating_literal(
-			spelling, &value.float_value);
+	{
+		value.literal_type = lowir_model::lowir_floating_literal_type(spelling);
+		value.has_float_bits = lowir_model::parse_lowir_floating_literal_bits(
+			spelling, value.literal_type, &value.literal_low, &value.literal_high);
+	}
 	return value;
 }
 

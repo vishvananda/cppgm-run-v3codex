@@ -179,13 +179,17 @@ needs a fact, that fact must be representable in serialized LowIR text and
 recoverable by parsing that text back in.
 
 In the typed scaffold, operands use compact IDs for values, slots, blocks, and
-program symbols. Integer and floating literals keep their decoded numeric facts
-and a `StringId` for the exact spelling stored once in the program string pool.
-An explicit LowIR parser may use that spelling ID while resolving a name, but
-must replace it with the corresponding semantic ID before returning the typed
-program. Debug locations use a `StringId` from the same pool for their source
-file spelling. Do not store a separate owning `std::string` in every operand or
-debug-location record.
+program symbols. Integer literals must preserve their complete decoded value,
+including the high half of an `i128`. Floating literals must be interpreted as
+their stated f32, f64, or f80 type. Serializing the typed program must reproduce
+an equivalent LowIR literal even when the program created that value rather
+than reading its spelling from an input file.
+
+An explicit LowIR parser may use a pooled spelling ID while resolving a name,
+but must replace it with the corresponding semantic ID before returning the
+typed program. Debug locations use a `StringId` from the same pool for their
+source file spelling. Do not store a separate owning `std::string` in every
+operand or debug-location record.
 
 Top-level declarations and definitions carry `SymbolId`; the program symbol
 table maps each `SymbolId` to one pooled `StringId` for serialization and

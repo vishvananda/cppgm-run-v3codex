@@ -226,9 +226,7 @@ void write_operand(std::ostream & out, const Operand & operand,
   }
   if(operand.kind == Operand::OP_FLOAT ||
      operand.kind == Operand::OP_INTEGER) {
-    if(!operand.has_spelling)
-      throw std::logic_error("missing LowIR literal spelling");
-    const std::string & spelling = program.strings.get(operand.literal);
+    const std::string spelling = lowir_literal_text(operand, &program.strings);
     if(operand.kind == Operand::OP_FLOAT &&
        (spelling == "INFINITY" || spelling == "+INFINITY")) {
       out << "inf";

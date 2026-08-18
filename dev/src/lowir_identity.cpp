@@ -1,6 +1,11 @@
 #include "lowir_model.h"
 
+#include <algorithm>
+#include <cerrno>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -69,41 +74,12 @@ std::uint32_t PresentationName::generated_ordinal() const
 
 namespace {
 
-std::string generated_literal_spelling(const Operand & operand)
+std::string unsuffixed_floating_literal(const std::string & text)
 {
-  if(operand.kind == Operand::OP_INTEGER)
-    return std::to_string(operand.int_value);
-  if(operand.kind != Operand::OP_FLOAT)
-    throw std::logic_error("named LowIR operand has no presentation identity");
-  if(std::isinf(operand.float_value))
-    return operand.float_value < 0 ? "-inf" : "inf";
-  if(std::isnan(operand.float_value)) return "nan";
-  std::ostringstream text;
-  text.precision(20);
-  text << operand.float_value;
-  if(operand.literal_type.kind == LTK_F32) text << 'f';
-  else if(operand.literal_type.kind == LTK_F80) text << 'L';
-  return text.str();
-}
-
-void intern_operand_literal(Program & program, Operand & operand)
-{
-  if(operand.kind != Operand::OP_INTEGER &&
-     operand.kind != Operand::OP_FLOAT) return;
-  if(!operand.has_spelling) {
-    operand.literal = program.strings.intern(
-      generated_literal_spelling(operand));
-    operand.has_spelling = true;
-  }
-}
-
-void intern_instruction_literals(Program & program, Instruction & instruction)
-{
-  intern_operand_literal(program, instruction.first);
-  intern_operand_literal(program, instruction.second);
-  intern_operand_literal(program, instruction.third);
-  for(std::size_t i = 0; i < instruction.args.size(); ++i)
-    intern_operand_literal(program, instruction.args[i]);
+  if(!text.empty() && (text.back() == 'f' || text.back() == 'F' ||
+                       text.back() == 'l' || text.back() == 'L'))
+    return text.substr(0, text.size() - 1);
+  return text;
 }
 
 std::size_t hash_range(const std::string & text, std::size_t first,
@@ -167,6 +143,137 @@ bool parse_lowir_integer_literal(const std::string & text,
   *low = static_cast<long long>(static_cast<std::uint64_t>(value));
   *high = static_cast<std::uint64_t>(value >> 64);
   return true;
+}
+
+LowType lowir_floating_literal_type(const std::string & text)
+{
+  if(!text.empty() && (text.back() == 'f' || text.back() == 'F'))
+    return builtin_lowir_type(LTK_F32);
+  if(!text.empty() && (text.back() == 'l' || text.back() == 'L'))
+    return builtin_lowir_type(LTK_F80);
+  return builtin_lowir_type(LTK_F64);
+}
+
+bool parse_lowir_floating_literal_bits(const std::string & text,
+                                       const LowType & type,
+                                       std::uint64_t * low,
+                                       std::uint64_t * high)
+{
+  if(!low || !high) return false;
+  const std::string number = unsuffixed_floating_literal(text);
+  *low = 0;
+  *high = 0;
+  if(number == "snan" && type.kind == LTK_F32) {
+    *low = UINT64_C(0x7fa00000);
+    return true;
+  }
+  if(number == "snan" && type.kind == LTK_F64) {
+    *low = UINT64_C(0x7ff4000000000000);
+    return true;
+  }
+  if(number == "snan" && type.kind == LTK_F80) {
+    *low = UINT64_C(0xa000000000000000);
+    *high = UINT64_C(0x7fff);
+    return true;
+  }
+  errno = 0;
+  char * end = 0;
+  if(type.kind == LTK_F32) {
+    const float value = std::strtof(number.c_str(), &end);
+    if(errno || !end || *end) return false;
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    *low = bits;
+    return true;
+  }
+  if(type.kind == LTK_F64) {
+    const double value = std::strtod(number.c_str(), &end);
+    if(errno || !end || *end) return false;
+    std::memcpy(low, &value, sizeof(value));
+    return true;
+  }
+  if(type.kind != LTK_F80) return false;
+  const long double value = std::strtold(number.c_str(), &end);
+  if(errno || !end || *end) return false;
+  lowir_floating_value_bits(value, type, low, high);
+  return true;
+}
+
+void lowir_floating_value_bits(long double value, const LowType & type,
+                               std::uint64_t * low,
+                               std::uint64_t * high)
+{
+  if(!low || !high) return;
+  *low = 0;
+  *high = 0;
+  if(type.kind == LTK_F32) {
+    const float narrowed = static_cast<float>(value);
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &narrowed, sizeof(bits));
+    *low = bits;
+  } else if(type.kind == LTK_F64) {
+    const double narrowed = static_cast<double>(value);
+    std::memcpy(low, &narrowed, sizeof(narrowed));
+  } else if(type.kind == LTK_F80) {
+    unsigned char bytes[16] = {};
+    unsigned char native[sizeof(long double)] = {};
+    std::memcpy(native, &value, sizeof(value));
+    const std::size_t payload = std::min<std::size_t>(10, sizeof(value));
+    std::copy(native, native + payload, bytes);
+    std::memcpy(low, bytes, 8);
+    std::memcpy(high, bytes + 8, 8);
+  }
+}
+
+long double lowir_floating_value(std::uint64_t low, std::uint64_t high,
+                                 const LowType & type)
+{
+  if(type.kind == LTK_F32) {
+    const std::uint32_t bits = static_cast<std::uint32_t>(low);
+    float value = 0;
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+  }
+  if(type.kind == LTK_F64) {
+    double value = 0;
+    std::memcpy(&value, &low, sizeof(value));
+    return value;
+  }
+  if(type.kind != LTK_F80)
+    throw std::logic_error("non-floating LowIR literal type");
+  unsigned char native[sizeof(long double)] = {};
+  const std::size_t payload = std::min<std::size_t>(10, sizeof(long double));
+  unsigned char bytes[16] = {};
+  std::memcpy(bytes, &low, 8);
+  std::memcpy(bytes + 8, &high, 8);
+  std::copy(bytes, bytes + payload, native);
+  long double value = 0;
+  std::memcpy(&value, native, sizeof(value));
+  return value;
+}
+
+std::string lowir_literal_text(const Operand & operand,
+                               const StringPool * strings)
+{
+  if(operand.has_spelling) {
+    if(!strings) throw std::logic_error("literal spelling has no string pool");
+    return strings->get(operand.literal);
+  }
+  if(operand.kind == Operand::OP_INTEGER) {
+    return std::to_string(operand.int_value);
+  }
+  if(operand.kind != Operand::OP_FLOAT || !operand.has_float_bits)
+    throw std::logic_error("LowIR operand has no literal presentation");
+  const long double value = lowir_floating_value(
+    operand.literal_low, operand.literal_high, operand.literal_type);
+  if(std::isinf(value)) return value < 0 ? "-inf" : "inf";
+  if(std::isnan(value)) return "nan";
+  std::ostringstream text;
+  text.precision(20);
+  text << value;
+  if(operand.literal_type.kind == LTK_F32) text << 'f';
+  else if(operand.literal_type.kind == LTK_F80) text << 'L';
+  return text.str();
 }
 
 StringPool::StringPool() : slots_(32, 0), spelling_bytes_(0)
@@ -579,22 +686,6 @@ void resolve_lowir_program_symbols(Program & program)
       program.object_aliases[i].target_spelling, "undefined alias target");
     program.object_aliases[i].target_spelling = StringId();
   }
-}
-
-void intern_lowir_program_literals(Program & program)
-{
-  for(std::size_t i = 0; i < program.globals.size(); ++i) {
-    GlobalDefinition & global = program.globals[i];
-    intern_operand_literal(program, global.init_operand);
-    for(std::size_t j = 0; j < global.data_items.size(); ++j)
-      intern_operand_literal(program, global.data_items[j].literal_operand);
-  }
-  for(std::size_t f = 0; f < program.functions.size(); ++f)
-    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
-      for(std::size_t i = 0;
-          i < program.functions[f].blocks[b].instructions.size(); ++i)
-        intern_instruction_literals(
-          program, program.functions[f].blocks[b].instructions[i]);
 }
 
 void remap_lowir_program_strings(Program & program,

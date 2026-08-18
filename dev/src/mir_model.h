@@ -32,12 +32,14 @@ struct GlobalDefinition
     } kind = ITEM_INTEGER;
 
     MachineType type;
-    long long int_value = 0;
-    long double float_value = 0.0L;
+    union { long long int_value; std::uint64_t literal_low; };
+    std::uint64_t literal_high;
     lowir_model::StringId literal;
     lowir_model::SymbolId symbol;
     long long addr_addend = 0;
     std::size_t zero_bytes = 0;
+
+    DataItem() : int_value(0), literal_high(0) {}
   };
 
   enum StorageKind
@@ -62,12 +64,14 @@ struct GlobalDefinition
   lowir_model::StringId section_segment;
   lowir_model::StringId section_name;
   MachineType type;
-  long long int_value = 0;
-  long double float_value = 0.0L;
+  union { long long int_value; std::uint64_t literal_low; };
+  std::uint64_t literal_high;
   lowir_model::StringId literal;
   lowir_model::SymbolId init_symbol;
   long long addr_addend = 0;
   std::vector<DataItem> data_items;
+
+  GlobalDefinition() : int_value(0), literal_high(0) {}
 };
 
 struct ParamBinding
@@ -149,14 +153,19 @@ struct Operand
     lowir_model::SymbolId symbol;
     lowir_model::StringId literal;
   };
-  long long imm = 0;
-  long long offset = 0;
+  // OP_FLOAT_IMM stores raw target-format bits in these words. Its optional
+  // literal identity exists only to preserve an exact MIR dump spelling.
+  union { long long imm; std::uint64_t literal_low; };
+  union { long long offset; std::uint64_t literal_high; };
   // Keep consecutive operands on a cache-line stride.  The natural 56-byte
   // layout repeatedly straddles cache lines in instruction operand vectors.
   std::uint64_t cache_line_padding = 0;
 
-  Operand() : block() {}
+  Operand() : block(), imm(0), offset(0) {}
 };
+
+static_assert(sizeof(Operand) <= 64,
+              "MIR operands must remain within one cache line");
 
 struct InstructionDebugLocation
 {

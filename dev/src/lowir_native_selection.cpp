@@ -65,15 +65,6 @@ bool is_floating(const lowir_model::LowType & type)
   return is_scalar_float(type) || is_extended_float(type);
 }
 
-const lowir_model::LowType & floating_literal_type(const std::string & text)
-{
-  if(!text.empty() && (text.back() == 'f' || text.back() == 'F'))
-    return lowir_model::builtin_lowir_type(lowir_model::LTK_F32);
-  if(!text.empty() && (text.back() == 'l' || text.back() == 'L'))
-    return lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
-  return lowir_model::builtin_lowir_type(lowir_model::LTK_F64);
-}
-
 X86Condition predicate_condition(lowir_model::LowOperation predicate)
 {
   if(predicate.kind == LowOperation::LOP_EQ) return XC_E;

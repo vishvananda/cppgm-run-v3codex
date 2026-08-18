@@ -79,7 +79,7 @@ public:
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
       signatures_(signatures), strings_(strings), stats_(stats),
-      facts_(analyze_function(source, program.strings, stats)),
+      facts_(analyze_function(source, stats)),
       control_flow_(source), position_(0)
   {
     values_.resize(source_.value_names.size());
@@ -721,7 +721,10 @@ private:
     if(operand.kind == Operand::OP_INTEGER)
       return immediate(integer_value(operand));
     if(operand.kind == Operand::OP_FLOAT)
-      return float_immediate(strings_.map(operand.literal));
+      return float_immediate(
+        operand.literal_low, operand.literal_high,
+        operand.has_spelling ? strings_.map(operand.literal) :
+          lowir_model::StringId());
     if(operand.kind == Operand::OP_GLOBAL)
       return global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
@@ -739,10 +742,7 @@ private:
       return lowir_model::lowir_slot_type(source_, operand.slot);
     if(operand.kind == Operand::OP_GLOBAL)
       return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
-    if(operand.kind == Operand::OP_FLOAT) {
-		if(stats_) ++stats_->native_semantic_string_reads;
-      return floating_literal_type(program_.strings.get(operand.literal));
-    }
+    if(operand.kind == Operand::OP_FLOAT) return operand.literal_type;
     return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
   }
   void move_value_to_register(std::vector<MirInstruction> & out,
@@ -1315,7 +1315,12 @@ private:
   {
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     append_float_move(out, destination,
-                      float_immediate(strings_.map(instruction.first.literal)),
+                      float_immediate(
+                        instruction.first.literal_low,
+                        instruction.first.literal_high,
+                        instruction.first.has_spelling ?
+                          strings_.map(instruction.first.literal) :
+                          lowir_model::StringId()),
                       instruction.type);
     define(instruction.dest, instruction.type, destination);
   }

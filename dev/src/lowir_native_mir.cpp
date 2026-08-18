@@ -37,11 +37,14 @@ mir_model::MirOperand immediate(long long value)
   return out;
 }
 
-mir_model::MirOperand float_immediate(lowir_model::StringId literal)
+mir_model::MirOperand float_immediate(std::uint64_t low, std::uint64_t high,
+                                      lowir_model::StringId literal)
 {
   mir_model::MirOperand out;
   out.kind = mir_model::MirOperand::OP_FLOAT_IMM;
   out.literal = literal;
+  out.literal_low = low;
+  out.literal_high = high;
   return out;
 }
 

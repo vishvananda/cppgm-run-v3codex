@@ -20,7 +20,6 @@ bool is_integer_or_pointer(const lowir_model::LowType & type);
 bool is_scalar_float(const lowir_model::LowType & type);
 bool is_extended_float(const lowir_model::LowType & type);
 bool is_floating(const lowir_model::LowType & type);
-const lowir_model::LowType & floating_literal_type(const std::string & text);
 X86Condition predicate_condition(lowir_model::LowOperation predicate);
 mir_model::MirInstruction::Opcode float_binary_opcode(
     lowir_model::LowOperation operation);

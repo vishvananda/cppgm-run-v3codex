@@ -1,6 +1,5 @@
 #pragma once
 
-#include <string>
 #include <vector>
 
 #include "lowir_model.h"
@@ -24,7 +23,6 @@ struct Value
   mir_model::MirOperand storage;
 };
 
-Value literal_value(const std::string & text);
 Value literal_value(long long low, std::uint64_t high);
 Value literal_value(const lowir_model::Operand & operand);
 Value storage_value(const mir_model::MirOperand & storage);

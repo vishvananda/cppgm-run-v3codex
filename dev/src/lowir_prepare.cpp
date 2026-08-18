@@ -106,18 +106,11 @@ void derive_exports(Program& program)
 			program.functions[i].metadata);
 }
 
-void clear_serialized_operand_type(Operand& operand,
+void clear_serialized_operand_facts(Operand& operand,
 	LowirPreparationStats* stats)
 {
 	if (stats) ++stats->serialized_operand_visits;
-	operand.literal_type = LowType();
 	operand.address_binding = Operand::ADDRESS_LOCAL;
-	if (operand.kind != Operand::OP_INTEGER)
-	{
-		operand.has_int_value = false;
-		operand.int_value = 0;
-		operand.int_high = 0;
-	}
 }
 
 void restore_address_binding(Operand& operand,
@@ -312,9 +305,9 @@ void canonicalize_serialized_lowir_facts(Program& program,
 	{
 		if (program.globals[i].structured)
 			program.globals[i].type = LowType();
-		clear_serialized_operand_type(program.globals[i].init_operand, stats);
+		clear_serialized_operand_facts(program.globals[i].init_operand, stats);
 		for (std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
-			clear_serialized_operand_type(
+			clear_serialized_operand_facts(
 				program.globals[i].data_items[j].literal_operand, stats);
 	}
 	for (std::size_t f = 0; f < program.functions.size(); ++f)
@@ -324,11 +317,11 @@ void canonicalize_serialized_lowir_facts(Program& program,
 			{
 				Instruction& instruction =
 					program.functions[f].blocks[b].instructions[i];
-				clear_serialized_operand_type(instruction.first, stats);
-				clear_serialized_operand_type(instruction.second, stats);
-				clear_serialized_operand_type(instruction.third, stats);
+				clear_serialized_operand_facts(instruction.first, stats);
+				clear_serialized_operand_facts(instruction.second, stats);
+				clear_serialized_operand_facts(instruction.third, stats);
 				for (std::size_t j = 0; j < instruction.args.size(); ++j)
-					clear_serialized_operand_type(instruction.args[j], stats);
+					clear_serialized_operand_facts(instruction.args[j], stats);
 				if (instruction.kind == Instruction::IK_COPYOBJ ||
 					instruction.kind == Instruction::IK_ZEROINIT ||
 					instruction.kind == Instruction::IK_VA_START)

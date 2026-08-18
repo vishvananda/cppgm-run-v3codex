@@ -1086,11 +1086,35 @@ void clear_nonsemantic_source_stats(lowir_model::LowirProgram * program)
 	program->token_count = 0;
 }
 
+lowir_model::LowirProgram adapt_typed_lowir_for_object(
+	const cppgm::pa15_lowir_detail::TypedProgram & typed,
+	const cppgm::LowIRLoweringStats & lowering_stats,
+	bool collect_stats, bool preserve_literal_spellings,
+	lowir_model::LowirPreparationStats * preparation_stats,
+	uint64_t * elapsed_nanoseconds)
+{
+	chrono::steady_clock::time_point started;
+	if(collect_stats) started = chrono::steady_clock::now();
+	lowir_model::LowirProgram result = cppgm::AdaptTypedLowIRForNative(
+		typed, collect_stats ? preparation_stats : 0,
+		preserve_literal_spellings);
+	if(collect_stats) {
+		preparation_stats->typed_lowir_peak_live_bytes =
+			lowering_stats.typed_storage_bytes +
+			preparation_stats->lowir_model_storage_bytes;
+		*elapsed_nanoseconds = static_cast<uint64_t>(
+			chrono::duration_cast<chrono::nanoseconds>(
+				chrono::steady_clock::now() - started).count());
+	}
+	return result;
+}
+
 cppgm::pa30::CompilerObject compile_source_object(
     const string & path,
     const DriverInvocation & invocation,
-    const string & target,
-	bool prune_unreachable_weak_functions)
+	const string & target,
+	bool prune_unreachable_weak_functions,
+	bool preserve_literal_spellings)
 {
 	const bool collect_stats = invocation.collect_stats;
   const string source = read_source_file(path);
@@ -1135,14 +1159,9 @@ cppgm::pa30::CompilerObject compile_source_object(
 			if(collect_stats) typed_pipeline_nanoseconds = static_cast<uint64_t>(
 				chrono::duration_cast<chrono::nanoseconds>(
 					chrono::steady_clock::now() - started).count());
-			if(collect_stats) started = chrono::steady_clock::now();
-			object.lowir = cppgm::AdaptTypedLowIRForNative(typed,
-				collect_stats ? &preparation_stats : 0);
-			if(collect_stats) preparation_stats.typed_lowir_peak_live_bytes =
-				stats.typed_storage_bytes + preparation_stats.lowir_model_storage_bytes;
-			if(collect_stats) adapter_nanoseconds = static_cast<uint64_t>(
-				chrono::duration_cast<chrono::nanoseconds>(
-					chrono::steady_clock::now() - started).count());
+			object.lowir = adapt_typed_lowir_for_object(
+				typed, stats, collect_stats, preserve_literal_spellings,
+				&preparation_stats, &adapter_nanoseconds);
 		}
 		if(invocation.line_tables) {
 			chrono::steady_clock::time_point started;
@@ -1352,7 +1371,7 @@ int run_compile_driver(const DriverInvocation & invocation,
       cppgm::pa30::UsesPrivateCompilerObjectFormat(invocation.output);
   const cppgm::pa30::CompilerObject object =
 	  compile_source_object(invocation.inputs[0], invocation, target,
-		  !private_object);
+		  !private_object, private_object);
 	cppgm::pa30::ObjectSerializationStats serialization_stats;
   lowir_native::Stats native_stats;
   if(private_object) {
@@ -1511,7 +1530,7 @@ int run_link_driver(const DriverInvocation & invocation,
         invocation.inputs[i]);
     else
       objects.push_back(compile_source_object(invocation.inputs[i], invocation,
-                                              target, false));
+                                              target, false, false));
   }
   for(size_t i = 0; i < invocation.libraries.size(); ++i) {
     const string path = find_library_object(invocation, invocation.libraries[i]);
