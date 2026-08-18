@@ -1046,6 +1046,26 @@ slice receives no standalone timing credit.  It is retained because it removes
 heap-backed compatibility work from both O0 and optimized paths without
 changing output or a hot-record layout.
 
+### CI18: initialize dense host-EH clause storage once
+
+A cumulative comparison exposed a regression that CI9's load-contaminated
+timing had hidden.  `collect_host_eh_clauses` cleared and resized its dense
+BlockId-indexed clause table inside the outer MIR-block scan because the scan's
+closing brace was misplaced.  EH-enabled functions therefore performed a
+growing allocation and destruction cycle once per block.  Moving the table
+initialization after the scan restores the intended one-allocation-per-function
+algorithm without reverting compact block identity.
+
+PA29, PA30, PA31, PA32, PA37, and PA38 report 612/612 passing tests.  The
+frozen object's `.text` is unchanged.  Native lowering falls from approximately
+970 to 238 ms on direct phase samples.  Three A/B/B/A blocks against the
+pre-fix compact compiler produced baseline/candidate medians of 5.785/5.015
+seconds user, 6.315/5.530 seconds wall, and 364,866/365,318 KiB peak RSS.  The
+paired medians improve user time by 13.2% and wall time by 11.8%; the 0.3% RSS
+difference is within the semantic-frontend process-peak envelope.  No fixture
+changes are required because the defect affected allocation complexity, not
+MIR or object semantics.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

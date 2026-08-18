@@ -33,9 +33,9 @@ void collect_host_eh_clauses(mir_model::MirFunction * function)
         const std::uint32_t block = instruction.operands[0].block;
         if(block < landing_pads.size()) landing_pads[block] = 1;
       }
+    }
   function->host_eh_clauses.clear();
   function->host_eh_clauses.resize(function->block_labels.size());
-    }
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     std::vector<mir_model::MirHostEhClause> clauses;
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
