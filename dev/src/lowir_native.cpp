@@ -1309,36 +1309,6 @@ private:
       append_integer_normalization(out, operand_type(instruction.first), destination);
     return destination;
   }
-  MirInstruction::Opcode float_binary_opcode(LowOperation operation) const
-  {
-    if(operation == "add") return MirInstruction::MI_FADD;
-    if(operation == "sub") return MirInstruction::MI_FSUB;
-    if(operation == "mul") return MirInstruction::MI_FMUL;
-    if(operation == "div") return MirInstruction::MI_FDIV;
-    throw std::runtime_error("floating binary operation is not implemented: " + operation);
-  }
-  MirInstruction::Opcode float_compare_opcode(LowOperation predicate) const
-  {
-    if(predicate == "eq") return MirInstruction::MI_FEQ;
-    if(predicate == "ne") return MirInstruction::MI_FNE;
-    if(predicate == "lt") return MirInstruction::MI_FLT;
-    if(predicate == "gt") return MirInstruction::MI_FGT;
-    if(predicate == "le") return MirInstruction::MI_FLE;
-    if(predicate == "ge") return MirInstruction::MI_FGE;
-    throw std::runtime_error("floating comparison predicate is not implemented: " + predicate);
-  }
-  X86Condition float_predicate_condition(LowOperation predicate) const
-  {
-    // FCMP models the right operand compared with the left operand so the
-    // unsigned x86 conditions directly describe ordered floating predicates.
-    if(predicate == "eq") return XC_E;
-    if(predicate == "ne") return XC_NE;
-    if(predicate == "lt") return XC_A;
-    if(predicate == "gt") return XC_B;
-    if(predicate == "le") return XC_AE;
-    if(predicate == "ge") return XC_BE;
-    throw std::runtime_error("floating branch predicate is not implemented: " + predicate);
-  }
   void emit_float_const(const Instruction & instruction,
                         std::vector<MirInstruction> & out)
   {
@@ -1384,7 +1354,7 @@ private:
     MirInstruction unordered = machine_instruction(MirInstruction::MI_JCC);
     unordered.condition = XC_P;
     append_operand(unordered, native_block_operand(source_,
-      comparison.op == "ne" ? branch.second : branch.third));
+      comparison.op.kind == LowOperation::LOP_NE ? branch.second : branch.third));
     out.push_back(unordered);
     MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
     jump_true.condition = float_predicate_condition(comparison.op);
@@ -1462,8 +1432,9 @@ private:
   void emit_float_unary(const Instruction & instruction,
                         std::vector<MirInstruction> & out)
   {
-    if(instruction.op != "neg")
-      throw std::runtime_error("floating unary operation is not implemented: " + instruction.op);
+    if(instruction.op.kind != LowOperation::LOP_NEG)
+      throw std::runtime_error(std::string("floating unary operation is not implemented: ") +
+                               lowir_model::lowir_operation_text(instruction.op));
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     MirInstruction negate = machine_instruction(MirInstruction::MI_FNEG,
                                                 instruction.type);
@@ -1497,7 +1468,7 @@ private:
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
     }
-    if(destination_wide && is_integer_or_pointer(instruction.source_type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.source_type); append_integer_normalization(out, instruction.source_type, reg_operand(XR_RAX)); if(instruction.op == "sext") out.push_back(machine_instruction(MirInstruction::MI_CQO)); else append_move(out, reg_operand(XR_RDX), immediate(0)); append_store(out, destination, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64)); MirOperand high = destination; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), machine_type(lowir_model::LTK_I64)); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
+    if(destination_wide && is_integer_or_pointer(instruction.source_type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.source_type); append_integer_normalization(out, instruction.source_type, reg_operand(XR_RAX)); if(instruction.op.kind == LowOperation::LOP_SEXT) out.push_back(machine_instruction(MirInstruction::MI_CQO)); else append_move(out, reg_operand(XR_RDX), immediate(0)); append_store(out, destination, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64)); MirOperand high = destination; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), machine_type(lowir_model::LTK_I64)); consume(instruction.first); define(instruction.dest, instruction.type, destination); return; }
     const bool source_float = is_floating(instruction.source_type);
     const bool destination_float = is_floating(instruction.type);
     if(destination_wide && source_float) {
@@ -1505,10 +1476,11 @@ private:
       const MirOperand destination =
         allocate_temp_home(instruction.dest, instruction.type);
       MirInstruction::Opcode opcode;
-      if(instruction.op == "fptosi") opcode = MirInstruction::MI_FPTOSI;
-      else if(instruction.op == "fptoui") opcode = MirInstruction::MI_FPTOUI;
+      if(instruction.op.kind == LowOperation::LOP_FPTOSI) opcode = MirInstruction::MI_FPTOSI;
+      else if(instruction.op.kind == LowOperation::LOP_FPTOUI) opcode = MirInstruction::MI_FPTOUI;
       else throw std::runtime_error(
-        "floating-to-i128 conversion is not implemented: " + instruction.op);
+        std::string("floating-to-i128 conversion is not implemented: ") +
+        lowir_model::lowir_operation_text(instruction.op));
       MirInstruction conversion = machine_instruction(
         opcode, lowir_model::builtin_lowir_type(lowir_model::LTK_I128));
       conversion.source_type = instruction.source_type;
@@ -1529,13 +1501,14 @@ private:
     if(source_float || destination_float) {
       uses_scalar_float_ = true;
       MirInstruction::Opcode opcode = MirInstruction::MI_SITOFP;
-      if(instruction.op == "uitofp") opcode = MirInstruction::MI_UITOFP;
-      else if(instruction.op == "fptosi") opcode = MirInstruction::MI_FPTOSI;
-      else if(instruction.op == "fptoui") opcode = MirInstruction::MI_FPTOUI;
-      else if(instruction.op == "fpext") opcode = MirInstruction::MI_FPEXT;
-      else if(instruction.op == "fptrunc") opcode = MirInstruction::MI_FPTRUNC;
-      else if(instruction.op != "sitofp")
-        throw std::runtime_error("floating conversion is not implemented: " + instruction.op);
+      if(instruction.op.kind == LowOperation::LOP_UITOFP) opcode = MirInstruction::MI_UITOFP;
+      else if(instruction.op.kind == LowOperation::LOP_FPTOSI) opcode = MirInstruction::MI_FPTOSI;
+      else if(instruction.op.kind == LowOperation::LOP_FPTOUI) opcode = MirInstruction::MI_FPTOUI;
+      else if(instruction.op.kind == LowOperation::LOP_FPEXT) opcode = MirInstruction::MI_FPEXT;
+      else if(instruction.op.kind == LowOperation::LOP_FPTRUNC) opcode = MirInstruction::MI_FPTRUNC;
+      else if(instruction.op.kind != LowOperation::LOP_SITOFP)
+        throw std::runtime_error(std::string("floating conversion is not implemented: ") +
+                                 lowir_model::lowir_operation_text(instruction.op));
       MirOperand pressure_home;
       MirOperand destination;
       if(destination_float)
@@ -1592,10 +1565,10 @@ private:
       const MirOperand destination = reg_operand(result);
       move_value_to_register(out, destination.reg, resolve(instruction.first),
                              instruction.source_type);
-      if(instruction.op == "sext" || instruction.op == "zext") {
+      if(instruction.op.kind == LowOperation::LOP_SEXT || instruction.op.kind == LowOperation::LOP_ZEXT) {
         append_integer_extension(out, destination,
           lowir_model::lowir_type_bit_width(instruction.source_type),
-          instruction.op == "sext");
+          instruction.op.kind == LowOperation::LOP_SEXT);
       } else {
         append_integer_normalization(out, instruction.source_type, destination);
       }
@@ -1615,8 +1588,8 @@ private:
     move_value_to_register(out, XR_RCX, right,
                            operand_type(instruction.second));
     MirInstruction::Opcode opcode = MirInstruction::MI_SHL_CL;
-    if(instruction.op == "shr") opcode = MirInstruction::MI_SAR_CL;
-    else if(instruction.op == "ushr") opcode = MirInstruction::MI_SHR_CL;
+    if(instruction.op.kind == LowOperation::LOP_SHR) opcode = MirInstruction::MI_SAR_CL;
+    else if(instruction.op.kind == LowOperation::LOP_USHR) opcode = MirInstruction::MI_SHR_CL;
     MirInstruction shift = machine_instruction(opcode);
     append_operand(shift, destination);
     out.push_back(shift);
@@ -1659,8 +1632,8 @@ private:
       destination = reg_operand(XR_RAX);
       move_value_to_register(out, XR_RAX, left, operand_type(instruction.first));
     }
-    const bool shift = instruction.op == "shl" || instruction.op == "shr" ||
-                       instruction.op == "ushr";
+    const bool shift = instruction.op.kind == LowOperation::LOP_SHL || instruction.op.kind == LowOperation::LOP_SHR ||
+                       instruction.op.kind == LowOperation::LOP_USHR;
     if(!shift && (right.kind == MirOperand::OP_FRAME ||
        right.kind == MirOperand::OP_GLOBAL ||
        right.kind == MirOperand::OP_DEREF)) {
@@ -1668,19 +1641,19 @@ private:
       right = reg_operand(XR_RDX);
       append_integer_normalization(out, operand_type(instruction.second), right);
     }
-    const bool bitwise = instruction.op == "and" || instruction.op == "or" ||
-                         instruction.op == "xor";
+    const bool bitwise = instruction.op.kind == LowOperation::LOP_AND || instruction.op.kind == LowOperation::LOP_OR ||
+                         instruction.op.kind == LowOperation::LOP_XOR;
     if(right.kind == MirOperand::OP_IMM && !bitwise &&
        (right.imm < INT32_MIN || right.imm > INT32_MAX)) {
       append_move(out, reg_operand(XR_RDX), right);
       right = reg_operand(XR_RDX);
     }
     MirInstruction::Opcode opcode = MirInstruction::MI_ADD;
-    if(instruction.op == "sub") opcode = MirInstruction::MI_SUB;
-    else if(instruction.op == "mul") opcode = MirInstruction::MI_IMUL;
-    else if(instruction.op == "and") opcode = MirInstruction::MI_AND;
-    else if(instruction.op == "or") opcode = MirInstruction::MI_OR;
-    else if(instruction.op == "xor") opcode = MirInstruction::MI_XOR;
+    if(instruction.op.kind == LowOperation::LOP_SUB) opcode = MirInstruction::MI_SUB;
+    else if(instruction.op.kind == LowOperation::LOP_MUL) opcode = MirInstruction::MI_IMUL;
+    else if(instruction.op.kind == LowOperation::LOP_AND) opcode = MirInstruction::MI_AND;
+    else if(instruction.op.kind == LowOperation::LOP_OR) opcode = MirInstruction::MI_OR;
+    else if(instruction.op.kind == LowOperation::LOP_XOR) opcode = MirInstruction::MI_XOR;
     else if(division.valid) {
       division_detail::emit_division(division, destination,
         direct_division_return ? left : destination, right, out);
@@ -1692,8 +1665,8 @@ private:
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
-    } else if(instruction.op == "shl" || instruction.op == "shr" ||
-              instruction.op == "ushr") {
+    } else if(instruction.op.kind == LowOperation::LOP_SHL || instruction.op.kind == LowOperation::LOP_SHR ||
+              instruction.op.kind == LowOperation::LOP_USHR) {
       emit_shift(instruction, destination, right, out);
       append_integer_normalization(out, instruction.type, destination);
       consume(instruction.first, destination.reg);
@@ -1703,8 +1676,9 @@ private:
       define(instruction.dest, instruction.type,
              pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
       return;
-    } else if(instruction.op != "add") {
-      throw std::runtime_error("integer binary operation is not implemented: " + instruction.op);
+    } else if(instruction.op.kind != LowOperation::LOP_ADD) {
+      throw std::runtime_error(std::string("integer binary operation is not implemented: ") +
+                               lowir_model::lowir_operation_text(instruction.op));
     }
     MirInstruction operation = machine_instruction(opcode, instruction.type);
     append_operand(operation, destination);
@@ -1862,13 +1836,13 @@ private:
     }
     if(!is_integer_or_pointer(instruction.type))
       throw std::runtime_error("integer selector received non-integer unary operation");
-    if(instruction.op == "decay") {
+    if(instruction.op.kind == LowOperation::LOP_DECAY) {
       emit_copy(instruction, out,
         result_is_immediate_return(block, instruction_index, instruction.dest));
       return;
     }
     const MirOperand source = resolve(instruction.first);
-    const LowType result_type = instruction.op == "not" ?
+    const LowType result_type = instruction.op.kind == LowOperation::LOP_NOT ?
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64) : instruction.type;
     MirOperand pressure_home;
     MirOperand destination;
@@ -1885,7 +1859,7 @@ private:
       destination = binary_destination(
         instruction, source, out, false, &pressure_home, &result_type);
     }
-    if(instruction.op == "not") {
+    if(instruction.op.kind == LowOperation::LOP_NOT) {
       MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
                                                    instruction.type);
       append_operand(compare, destination);
@@ -1901,10 +1875,11 @@ private:
       out.push_back(extend);
     } else {
       MirInstruction::Opcode opcode = MirInstruction::MI_NEG;
-      if(instruction.op == "bitnot") opcode = MirInstruction::MI_NOT;
-      else if(instruction.op == "bswap") opcode = MirInstruction::MI_BSWAP;
-      else if(instruction.op != "neg")
-        throw std::runtime_error("integer unary operation is not implemented: " + instruction.op);
+      if(instruction.op.kind == LowOperation::LOP_BITNOT) opcode = MirInstruction::MI_NOT;
+      else if(instruction.op.kind == LowOperation::LOP_BSWAP) opcode = MirInstruction::MI_BSWAP;
+      else if(instruction.op.kind != LowOperation::LOP_NEG)
+        throw std::runtime_error(std::string("integer unary operation is not implemented: ") +
+                                 lowir_model::lowir_operation_text(instruction.op));
       MirInstruction operation = machine_instruction(opcode, instruction.type);
       append_operand(operation, destination);
       out.push_back(operation);
@@ -1920,7 +1895,7 @@ private:
                               std::size_t instruction_index,
                               const Instruction & instruction) const
   {
-    return instruction.op == "not" &&
+    return instruction.op.kind == LowOperation::LOP_NOT &&
       comparison_feeds_branch(block, instruction_index, instruction);
   }
   void emit_direct_unary_not_branch(const Instruction & instruction,

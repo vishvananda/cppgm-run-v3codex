@@ -77,25 +77,14 @@ struct LowOperation
 
   LowOperation() : kind(LOP_NONE) {}
   LowOperation(Kind value) : kind(value) {}
-  LowOperation(const char * text);
-  LowOperation(const std::string & text);
 
   bool empty() const { return kind == LOP_NONE; }
-  std::size_t size() const;
-  char operator[](std::size_t index) const;
-  operator std::string() const;
 };
 
 bool operator==(LowOperation left, LowOperation right);
 bool operator!=(LowOperation left, LowOperation right);
-bool operator==(LowOperation left, const char * right);
-bool operator!=(LowOperation left, const char * right);
-bool operator==(const char * left, LowOperation right);
-bool operator!=(const char * left, LowOperation right);
-std::string operator+(const char * left, LowOperation right);
-std::string operator+(const std::string & left, LowOperation right);
-std::string operator+(LowOperation left, const std::string & right);
 std::ostream & operator<<(std::ostream & out, LowOperation operation);
+LowOperation parse_lowir_operation(const std::string & text);
 const char * lowir_operation_text(LowOperation operation);
 std::size_t lowir_operation_hash(LowOperation operation);
 

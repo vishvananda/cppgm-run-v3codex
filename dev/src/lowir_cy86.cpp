@@ -821,7 +821,7 @@ void FunctionEmitter::EmitUnary(const Instruction & ins)
 {
   if(is_f80(ins.type)) {
     LoadF80(ins.first, 0);
-    if(ins.op != "neg") throw ParseError("unsupported f80 unary operation");
+    if(ins.op.kind != LowOperation::LOP_NEG) throw ParseError("unsupported f80 unary operation");
     out_.Instruction("move80 " + memory_bp(scratch_[1]) + " 0.0L");
     ZeroF80Padding(1);
     out_.Instruction("fsub80 " + memory_bp(scratch_[2]) + " " + memory_bp(scratch_[1]) +
@@ -831,15 +831,15 @@ void FunctionEmitter::EmitUnary(const Instruction & ins)
   EmitScalarValue(ins.first, ins.type, 'x');
   const TypeShape item = shape(ins.type);
   const std::string width = std::to_string(item.width);
-  if(ins.op == "neg") {
+  if(ins.op.kind == LowOperation::LOP_NEG) {
     out_.Instruction("move" + width + " y" + width + " 0");
     out_.Instruction((item.floating ? "fsub" : "isub") + width + " x" + width + " y" + width + " x" + width);
-  } else if(ins.op == "not") {
+  } else if(ins.op.kind == LowOperation::LOP_NOT) {
     out_.Instruction("ieq" + width + " z8 x" + width + " 0");
     out_.Instruction("move64 x64 0"); out_.Instruction("move8 x8 z8");
-  } else if(ins.op == "bitnot") out_.Instruction("not" + width + " x" + width + " x" + width);
-  else if(ins.op == "decay") {}
-  else if(ins.op == "bswap") out_.Instruction("bswap" + width + " x" + width + " x" + width);
+  } else if(ins.op.kind == LowOperation::LOP_BITNOT) out_.Instruction("not" + width + " x" + width + " x" + width);
+  else if(ins.op.kind == LowOperation::LOP_DECAY) {}
+  else if(ins.op.kind == LowOperation::LOP_BSWAP) out_.Instruction("bswap" + width + " x" + width + " x" + width);
   else throw ParseError("unsupported unary operator");
   StoreScalarTemp(ins.dest, instruction_result_type(ins), 'x');
 }
@@ -848,7 +848,7 @@ void FunctionEmitter::EmitBinary(const Instruction & ins)
 {
   if(is_f80(ins.type)) {
     LoadF80(ins.first, 0); LoadF80(ins.second, 1);
-    const std::string opcode = "f" + ins.op + "80";
+    const std::string opcode = std::string("f") + lowir_operation_text(ins.op) + "80";
     out_.Instruction(opcode + " " + memory_bp(scratch_[2]) + " " + memory_bp(scratch_[0]) +
                      " " + memory_bp(scratch_[1]));
     ZeroF80Padding(2); StoreF80Temp(ins.dest, 2); return;
@@ -858,19 +858,22 @@ void FunctionEmitter::EmitBinary(const Instruction & ins)
   EmitScalarValue(ins.second, ins.type, 'x');
   const std::string width = std::to_string(item.width);
   std::string opcode;
-  if(item.floating) opcode = "f" + ins.op;
-  else if(ins.op == "add") opcode = "iadd";
-  else if(ins.op == "sub") opcode = "isub";
-  else if(ins.op == "mul") opcode = "smul";
-  else if(ins.op == "div") opcode = "sdiv";
-  else if(ins.op == "mod") opcode = "smod";
-  else if(ins.op == "udiv" || ins.op == "umod") opcode = ins.op;
-  else if(ins.op == "and" || ins.op == "or" || ins.op == "xor") opcode = ins.op;
-  else if(ins.op == "shl") opcode = "lshift";
-  else if(ins.op == "shr") opcode = "srshift";
-  else if(ins.op == "ushr") opcode = "urshift";
+  if(item.floating) opcode = std::string("f") + lowir_operation_text(ins.op);
+  else if(ins.op.kind == LowOperation::LOP_ADD) opcode = "iadd";
+  else if(ins.op.kind == LowOperation::LOP_SUB) opcode = "isub";
+  else if(ins.op.kind == LowOperation::LOP_MUL) opcode = "smul";
+  else if(ins.op.kind == LowOperation::LOP_DIV) opcode = "sdiv";
+  else if(ins.op.kind == LowOperation::LOP_MOD) opcode = "smod";
+  else if(ins.op.kind == LowOperation::LOP_UDIV || ins.op.kind == LowOperation::LOP_UMOD)
+    opcode = lowir_operation_text(ins.op);
+  else if(ins.op.kind == LowOperation::LOP_AND || ins.op.kind == LowOperation::LOP_OR ||
+          ins.op.kind == LowOperation::LOP_XOR)
+    opcode = lowir_operation_text(ins.op);
+  else if(ins.op.kind == LowOperation::LOP_SHL) opcode = "lshift";
+  else if(ins.op.kind == LowOperation::LOP_SHR) opcode = "srshift";
+  else if(ins.op.kind == LowOperation::LOP_USHR) opcode = "urshift";
   else throw ParseError("unsupported binary operator");
-  if(ins.op == "shl" || ins.op == "shr" || ins.op == "ushr") {
+  if(ins.op.kind == LowOperation::LOP_SHL || ins.op.kind == LowOperation::LOP_SHR || ins.op.kind == LowOperation::LOP_USHR) {
     out_.Instruction("move64 z64 x64");
     out_.Instruction("move8 x8 z8");
     out_.Instruction(opcode + width + " x" + width + " y" + width + " x8");
@@ -882,16 +885,20 @@ void FunctionEmitter::EmitCompare(const Instruction & ins)
 {
   if(is_f80(ins.type)) {
     LoadF80(ins.first, 0); LoadF80(ins.second, 1);
-    out_.Instruction("f" + ins.op + "80 z8 " + memory_bp(scratch_[0]) + " " + memory_bp(scratch_[1]));
+    out_.Instruction(std::string("f") + lowir_operation_text(ins.op) + "80 z8 " +
+                     memory_bp(scratch_[0]) + " " + memory_bp(scratch_[1]));
   } else {
     const TypeShape item = shape(ins.type);
     EmitScalarValue(ins.first, ins.type, 'y'); EmitScalarValue(ins.second, ins.type, 'x');
     std::string prefix;
     if(item.floating) prefix = "f";
-    else if(ins.op == "eq" || ins.op == "ne") prefix = "i";
-    else if(!ins.op.empty() && ins.op[0] == 'u') prefix = "";
+    else if(ins.op.kind == LowOperation::LOP_EQ || ins.op.kind == LowOperation::LOP_NE) prefix = "i";
+    else if(ins.op.kind == LowOperation::LOP_ULT || ins.op.kind == LowOperation::LOP_ULE ||
+            ins.op.kind == LowOperation::LOP_UGT || ins.op.kind == LowOperation::LOP_UGE)
+      prefix = "";
     else prefix = "s";
-    out_.Instruction(prefix + ins.op + std::to_string(item.width) + " z8 " +
+    out_.Instruction(prefix + lowir_operation_text(ins.op) +
+                     std::to_string(item.width) + " z8 " +
                      register_name('y', item.width) + " " + register_name('x', item.width));
   }
   out_.Instruction("move64 x64 0"); out_.Instruction("move8 x8 z8");
@@ -963,10 +970,10 @@ void FunctionEmitter::EmitConvert(const Instruction & ins)
 {
   const TypeShape source = shape(ins.source_type);
   const TypeShape dest = shape(ins.type);
-  if((ins.op == "sext" || ins.op == "zext" || ins.op == "trunc") &&
+  if((ins.op.kind == LowOperation::LOP_SEXT || ins.op.kind == LowOperation::LOP_ZEXT || ins.op.kind == LowOperation::LOP_TRUNC) &&
      !source.floating && !dest.floating) {
     EmitScalarValue(ins.first, ins.source_type, 'x');
-    if(ins.op == "sext") EmitSignExtend('x', source.width);
+    if(ins.op.kind == LowOperation::LOP_SEXT) EmitSignExtend('x', source.width);
     StoreScalarTemp(ins.dest, ins.type, 'x');
     return;
   }
@@ -975,7 +982,7 @@ void FunctionEmitter::EmitConvert(const Instruction & ins)
     EmitScalarValue(ins.first, ins.source_type, 'x');
     std::string source_prefix;
     if(source.floating) source_prefix = "f" + std::to_string(source.width);
-    else source_prefix = (ins.op == "uitofp" ? "u" : "s") + std::to_string(source.width);
+    else source_prefix = (ins.op.kind == LowOperation::LOP_UITOFP ? "u" : "s") + std::to_string(source.width);
     out_.Instruction(source_prefix + "convf80 " + memory_bp(scratch_[0]) + " " +
                      register_name('x', source.width));
     ZeroF80Padding(0);
@@ -984,7 +991,7 @@ void FunctionEmitter::EmitConvert(const Instruction & ins)
   else {
     std::string dest_prefix;
     if(dest.floating) dest_prefix = "f" + std::to_string(dest.width);
-    else dest_prefix = (ins.op == "fptoui" ? "u" : "s") + std::to_string(dest.width);
+    else dest_prefix = (ins.op.kind == LowOperation::LOP_FPTOUI ? "u" : "s") + std::to_string(dest.width);
     out_.Instruction("f80conv" + dest_prefix + " " + ValueMemory(ins.dest) + " " + memory_bp(scratch_[0]));
   }
 }

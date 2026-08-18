@@ -11,6 +11,7 @@ namespace analysis {
 namespace {
 
 using lowir_model::Instruction;
+using lowir_model::LowOperation;
 using lowir_model::Operand;
 
 unsigned instruction_clobber_mask(const Instruction & instruction,
@@ -53,13 +54,13 @@ unsigned instruction_clobber_mask(const Instruction & instruction,
       register_mask(XR_RDI) | register_mask(XR_R10) |
       register_mask(XR_R11);
   if(instruction.kind == Instruction::IK_BINARY &&
-     (instruction.op == "div" || instruction.op == "mod" ||
-      instruction.op == "udiv" || instruction.op == "umod"))
+     (instruction.op.kind == LowOperation::LOP_DIV || instruction.op.kind == LowOperation::LOP_MOD ||
+      instruction.op.kind == LowOperation::LOP_UDIV || instruction.op.kind == LowOperation::LOP_UMOD))
     return register_mask(XR_RAX) | register_mask(XR_RCX) |
       register_mask(XR_RDX);
   if(instruction.kind == Instruction::IK_BINARY &&
-     (instruction.op == "shl" || instruction.op == "shr" ||
-      instruction.op == "ushr"))
+     (instruction.op.kind == LowOperation::LOP_SHL || instruction.op.kind == LowOperation::LOP_SHR ||
+      instruction.op.kind == LowOperation::LOP_USHR))
     return register_mask(XR_RCX);
   if(instruction.kind == Instruction::IK_INDEX &&
      instruction.second.kind != Operand::OP_INTEGER)

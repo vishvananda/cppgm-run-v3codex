@@ -10,6 +10,7 @@ namespace wide {
 namespace {
 
 using namespace build;
+using lowir_model::LowOperation;
 using mir_model::MirInstruction;
 using mir_model::MirOperand;
 
@@ -266,23 +267,24 @@ void append_compare(const Value & left, const Value & right,
 {
   append_pair_to_registers(left, XR_RAX, XR_RDX, XR_R11, out);
   append_pair_to_registers(right, XR_RCX, XR_RSI, XR_R11, out);
-  if(operation == "eq" || operation == "ne") {
+  if(operation.kind == LowOperation::LOP_EQ || operation.kind == LowOperation::LOP_NE) {
     append_equality_part(XR_RDX, XR_RSI, XR_R10, out);
     append_equality_part(XR_RAX, XR_RCX, XR_R11, out);
     append_register_binary(MirInstruction::MI_AND, XR_R10, XR_R11, out);
-    if(operation == "ne")
+    if(operation.kind == LowOperation::LOP_NE)
       append_register_immediate(MirInstruction::MI_XOR, XR_R10, 1, out);
     return;
   }
-  const bool less = operation == "lt" || operation == "le" ||
-                    operation == "ult" || operation == "ule";
-  const bool inclusive = operation == "le" || operation == "ge" ||
-                         operation == "ule" || operation == "uge";
-  const bool signed_high = operation == "lt" || operation == "le" ||
-                           operation == "gt" || operation == "ge";
-  if(!less && operation != "gt" && operation != "ge" &&
-     operation != "ugt" && operation != "uge")
-    throw std::runtime_error("unsupported i128 comparison: " + operation);
+  const bool less = operation.kind == LowOperation::LOP_LT || operation.kind == LowOperation::LOP_LE ||
+                    operation.kind == LowOperation::LOP_ULT || operation.kind == LowOperation::LOP_ULE;
+  const bool inclusive = operation.kind == LowOperation::LOP_LE || operation.kind == LowOperation::LOP_GE ||
+                         operation.kind == LowOperation::LOP_ULE || operation.kind == LowOperation::LOP_UGE;
+  const bool signed_high = operation.kind == LowOperation::LOP_LT || operation.kind == LowOperation::LOP_LE ||
+                           operation.kind == LowOperation::LOP_GT || operation.kind == LowOperation::LOP_GE;
+  if(!less && operation.kind != LowOperation::LOP_GT && operation.kind != LowOperation::LOP_GE &&
+     operation.kind != LowOperation::LOP_UGT && operation.kind != LowOperation::LOP_UGE)
+    throw std::runtime_error(std::string("unsupported i128 comparison: ") +
+                             lowir_model::lowir_operation_text(operation));
 
   MirInstruction low_compare = machine_instruction(MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
   append_operand(low_compare, reg_operand(XR_RAX));
@@ -313,15 +315,15 @@ void append_binary(const MirOperand & destination,
 {
   append_pair_to_registers(left, XR_RAX, XR_RDX, XR_R11, out);
   append_pair_to_registers(right, XR_RCX, XR_RSI, XR_R11, out);
-  if(operation == "add" || operation == "sub") {
-    append_register_binary(operation == "add" ? MirInstruction::MI_ADD :
+  if(operation.kind == LowOperation::LOP_ADD || operation.kind == LowOperation::LOP_SUB) {
+    append_register_binary(operation.kind == LowOperation::LOP_ADD ? MirInstruction::MI_ADD :
       MirInstruction::MI_SUB, XR_RAX, XR_RCX, out);
     append_condition(XR_R10, XC_B, out);
-    append_register_binary(operation == "add" ? MirInstruction::MI_ADD :
+    append_register_binary(operation.kind == LowOperation::LOP_ADD ? MirInstruction::MI_ADD :
       MirInstruction::MI_SUB, XR_RDX, XR_RSI, out);
-    append_register_binary(operation == "add" ? MirInstruction::MI_ADD :
+    append_register_binary(operation.kind == LowOperation::LOP_ADD ? MirInstruction::MI_ADD :
       MirInstruction::MI_SUB, XR_RDX, XR_R10, out);
-  } else if(operation == "mul") {
+  } else if(operation.kind == LowOperation::LOP_MUL) {
     append_move(out, reg_operand(XR_R10), reg_operand(XR_RAX));
     append_move(out, reg_operand(XR_RDI), reg_operand(XR_RDX));
     MirInstruction multiply = machine_instruction(MirInstruction::MI_MUL, machine_type(lowir_model::LTK_I64));
@@ -331,26 +333,27 @@ void append_binary(const MirOperand & destination,
     append_register_binary(MirInstruction::MI_ADD, XR_RDX, XR_R10, out);
     append_register_binary(MirInstruction::MI_IMUL, XR_RDI, XR_RCX, out);
     append_register_binary(MirInstruction::MI_ADD, XR_RDX, XR_RDI, out);
-  } else if(operation == "and" || operation == "or" || operation == "xor") {
-    MirInstruction::Opcode opcode = operation == "and" ? MirInstruction::MI_AND :
-      operation == "or" ? MirInstruction::MI_OR : MirInstruction::MI_XOR;
+  } else if(operation.kind == LowOperation::LOP_AND || operation.kind == LowOperation::LOP_OR || operation.kind == LowOperation::LOP_XOR) {
+    MirInstruction::Opcode opcode = operation.kind == LowOperation::LOP_AND ? MirInstruction::MI_AND :
+      operation.kind == LowOperation::LOP_OR ? MirInstruction::MI_OR : MirInstruction::MI_XOR;
     append_register_binary(opcode, XR_RAX, XR_RCX, out);
     append_register_binary(opcode, XR_RDX, XR_RSI, out);
-  } else if(operation == "shl" || operation == "shr" || operation == "ushr") {
+  } else if(operation.kind == LowOperation::LOP_SHL || operation.kind == LowOperation::LOP_SHR || operation.kind == LowOperation::LOP_USHR) {
     append_word_to_register(right, 0, XR_RCX, XR_R11, out);
-    MirInstruction::Opcode opcode = operation == "shl" ?
-      MirInstruction::MI_I128_SHL : operation == "shr" ?
+    MirInstruction::Opcode opcode = operation.kind == LowOperation::LOP_SHL ?
+      MirInstruction::MI_I128_SHL : operation.kind == LowOperation::LOP_SHR ?
       MirInstruction::MI_I128_SAR : MirInstruction::MI_I128_SHR;
     out.push_back(machine_instruction(opcode));
-  } else if(operation == "div" || operation == "mod" ||
-            operation == "udiv" || operation == "umod") {
-    MirInstruction::Opcode opcode = operation == "div" ?
-      MirInstruction::MI_I128_SDIV : operation == "mod" ?
-      MirInstruction::MI_I128_SMOD : operation == "udiv" ?
+  } else if(operation.kind == LowOperation::LOP_DIV || operation.kind == LowOperation::LOP_MOD ||
+            operation.kind == LowOperation::LOP_UDIV || operation.kind == LowOperation::LOP_UMOD) {
+    MirInstruction::Opcode opcode = operation.kind == LowOperation::LOP_DIV ?
+      MirInstruction::MI_I128_SDIV : operation.kind == LowOperation::LOP_MOD ?
+      MirInstruction::MI_I128_SMOD : operation.kind == LowOperation::LOP_UDIV ?
       MirInstruction::MI_I128_UDIV : MirInstruction::MI_I128_UMOD;
     out.push_back(machine_instruction(opcode));
   } else {
-    throw std::runtime_error("unsupported i128 binary operation: " + operation);
+    throw std::runtime_error(std::string("unsupported i128 binary operation: ") +
+                             lowir_model::lowir_operation_text(operation));
   }
   append_pair_store(destination, XR_RAX, XR_RDX, XR_R11, out);
 }
@@ -360,19 +363,20 @@ void append_unary(const MirOperand & destination,
                   std::vector<MirInstruction> & out)
 {
   append_pair_to_registers(source, XR_RAX, XR_RDX, XR_R11, out);
-  if(operation == "bitnot" || operation == "neg") {
+  if(operation.kind == LowOperation::LOP_BITNOT || operation.kind == LowOperation::LOP_NEG) {
     MirInstruction low = machine_instruction(MirInstruction::MI_NOT, machine_type(lowir_model::LTK_I64));
     append_operand(low, reg_operand(XR_RAX));
     out.push_back(low);
     MirInstruction high = machine_instruction(MirInstruction::MI_NOT, machine_type(lowir_model::LTK_I64));
     append_operand(high, reg_operand(XR_RDX));
     out.push_back(high);
-    if(operation == "neg") {
+    if(operation.kind == LowOperation::LOP_NEG) {
       append_register_immediate(MirInstruction::MI_ADD, XR_RAX, 1, out);
       append_condition(XR_R10, XC_B, out);
       append_register_binary(MirInstruction::MI_ADD, XR_RDX, XR_R10, out);
     }
-  } else throw std::runtime_error("unsupported i128 unary operation: " + operation);
+  } else throw std::runtime_error(std::string("unsupported i128 unary operation: ") +
+                                  lowir_model::lowir_operation_text(operation));
   append_pair_store(destination, XR_RAX, XR_RDX, XR_R11, out);
 }
 

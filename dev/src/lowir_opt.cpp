@@ -298,20 +298,20 @@ bool cse_eligible(Instruction::Kind kind)
 
 bool commutative(LowOperation op)
 {
-  return op == "add" || op == "mul" || op == "and" || op == "or" ||
-    op == "xor";
+  return op.kind == LowOperation::LOP_ADD || op.kind == LowOperation::LOP_MUL || op.kind == LowOperation::LOP_AND || op.kind == LowOperation::LOP_OR ||
+    op.kind == LowOperation::LOP_XOR;
 }
 
 LowOperation reverse_compare(LowOperation op)
 {
-  if(op == "lt") return "gt";
-  if(op == "le") return "ge";
-  if(op == "gt") return "lt";
-  if(op == "ge") return "le";
-  if(op == "ult") return "ugt";
-  if(op == "ule") return "uge";
-  if(op == "ugt") return "ult";
-  if(op == "uge") return "ule";
+  if(op.kind == LowOperation::LOP_LT) return LowOperation::LOP_GT;
+  if(op.kind == LowOperation::LOP_LE) return LowOperation::LOP_GE;
+  if(op.kind == LowOperation::LOP_GT) return LowOperation::LOP_LT;
+  if(op.kind == LowOperation::LOP_GE) return LowOperation::LOP_LE;
+  if(op.kind == LowOperation::LOP_ULT) return LowOperation::LOP_UGT;
+  if(op.kind == LowOperation::LOP_ULE) return LowOperation::LOP_UGE;
+  if(op.kind == LowOperation::LOP_UGT) return LowOperation::LOP_ULT;
+  if(op.kind == LowOperation::LOP_UGE) return LowOperation::LOP_ULE;
   return op;
 }
 
@@ -443,7 +443,7 @@ ExpressionKey expression_key(const Instruction & ins)
   const Operand * second = &ins.second;
   LowOperation op = ins.op;
   if((ins.kind == Instruction::IK_BINARY && commutative(op)) ||
-     (ins.kind == Instruction::IK_CMP && (op == "eq" || op == "ne"))) {
+     (ins.kind == Instruction::IK_CMP && (op.kind == LowOperation::LOP_EQ || op.kind == LowOperation::LOP_NE))) {
     if(operand_less(*second, *first)) std::swap(first, second);
   } else if(ins.kind == Instruction::IK_CMP && operand_less(*second, *first)) {
     std::swap(first, second);
@@ -466,7 +466,7 @@ ExpressionKey expression_key(const Instruction & ins)
 
 bool fold_unary(const Instruction & ins, Operand * result)
 {
-  if(ins.op == "decay" && ins.type.kind == lowir_model::LTK_PTR) {
+  if(ins.op.kind == LowOperation::LOP_DECAY && ins.type.kind == lowir_model::LTK_PTR) {
     *result = ins.first;
     return true;
   }
@@ -475,19 +475,19 @@ bool fold_unary(const Instruction & ins, Operand * result)
   if(lowir_model::lowir_type_bit_width(ins.type) > 64) {
     const WideUnsigned value = wide_integer(ins.first.int_value);
     WideUnsigned folded = 0;
-    if(ins.op == "neg") folded = -value;
-    else if(ins.op == "bitnot") folded = ~value;
-    else if(ins.op == "not")
+    if(ins.op.kind == LowOperation::LOP_NEG) folded = -value;
+    else if(ins.op.kind == LowOperation::LOP_BITNOT) folded = ~value;
+    else if(ins.op.kind == LowOperation::LOP_NOT)
       return (*result = integer_operand(value == 0, ins.type), true);
     else return false;
     return representable_wide_integer(folded, ins.type, result);
   }
   const std::uint64_t value = static_cast<std::uint64_t>(ins.first.int_value);
-  if(ins.op == "neg")
+  if(ins.op.kind == LowOperation::LOP_NEG)
     *result = integer_operand(normalize_integer(UINT64_C(0) - value, ins.type), ins.type);
-  else if(ins.op == "bitnot")
+  else if(ins.op.kind == LowOperation::LOP_BITNOT)
     *result = integer_operand(normalize_integer(~value, ins.type), ins.type);
-  else if(ins.op == "not")
+  else if(ins.op.kind == LowOperation::LOP_NOT)
     *result = integer_operand(value == 0, ins.type);
   else return false;
   return true;
@@ -502,25 +502,25 @@ bool fold_binary(const Instruction & ins, Operand * result)
     const WideUnsigned a = wide_integer(ins.first.int_value);
     const WideUnsigned b = wide_integer(ins.second.int_value);
     WideUnsigned value = 0;
-    if(ins.op == "add") value = a + b;
-    else if(ins.op == "sub") value = a - b;
-    else if(ins.op == "mul") value = a * b;
-    else if(ins.op == "and") value = a & b;
-    else if(ins.op == "or") value = a | b;
-    else if(ins.op == "xor") value = a ^ b;
-    else if(ins.op == "shl" && b < 128)
+    if(ins.op.kind == LowOperation::LOP_ADD) value = a + b;
+    else if(ins.op.kind == LowOperation::LOP_SUB) value = a - b;
+    else if(ins.op.kind == LowOperation::LOP_MUL) value = a * b;
+    else if(ins.op.kind == LowOperation::LOP_AND) value = a & b;
+    else if(ins.op.kind == LowOperation::LOP_OR) value = a | b;
+    else if(ins.op.kind == LowOperation::LOP_XOR) value = a ^ b;
+    else if(ins.op.kind == LowOperation::LOP_SHL && b < 128)
       value = a << static_cast<unsigned>(b);
-    else if(ins.op == "ushr" && b < 128)
+    else if(ins.op.kind == LowOperation::LOP_USHR && b < 128)
       value = a >> static_cast<unsigned>(b);
-    else if(ins.op == "shr" && b < 128)
+    else if(ins.op.kind == LowOperation::LOP_SHR && b < 128)
       value = static_cast<WideUnsigned>(static_cast<WideSigned>(a) >>
                                        static_cast<unsigned>(b));
-    else if((ins.op == "udiv" || ins.op == "umod") && b)
-      value = ins.op == "udiv" ? a / b : a % b;
-    else if((ins.op == "div" || ins.op == "mod") && b) {
+    else if((ins.op.kind == LowOperation::LOP_UDIV || ins.op.kind == LowOperation::LOP_UMOD) && b)
+      value = ins.op.kind == LowOperation::LOP_UDIV ? a / b : a % b;
+    else if((ins.op.kind == LowOperation::LOP_DIV || ins.op.kind == LowOperation::LOP_MOD) && b) {
       const WideSigned signed_a = static_cast<WideSigned>(a);
       const WideSigned signed_b = static_cast<WideSigned>(b);
-      value = static_cast<WideUnsigned>(ins.op == "div" ?
+      value = static_cast<WideUnsigned>(ins.op.kind == LowOperation::LOP_DIV ?
         signed_a / signed_b : signed_a % signed_b);
     } else return false;
     return representable_wide_integer(value, ins.type, result);
@@ -528,22 +528,22 @@ bool fold_binary(const Instruction & ins, Operand * result)
   const std::uint64_t a = static_cast<std::uint64_t>(ins.first.int_value);
   const std::uint64_t b = static_cast<std::uint64_t>(ins.second.int_value);
   std::uint64_t value = 0;
-  if(ins.op == "add") value = a + b;
-  else if(ins.op == "sub") value = a - b;
-  else if(ins.op == "mul") value = a * b;
-  else if(ins.op == "and") value = a & b;
-  else if(ins.op == "or") value = a | b;
-  else if(ins.op == "xor") value = a ^ b;
-  else if(ins.op == "shl" && b < 64) value = a << b;
-  else if(ins.op == "ushr" && b < 64) value = a >> b;
-  else if(ins.op == "shr" && b < 64)
+  if(ins.op.kind == LowOperation::LOP_ADD) value = a + b;
+  else if(ins.op.kind == LowOperation::LOP_SUB) value = a - b;
+  else if(ins.op.kind == LowOperation::LOP_MUL) value = a * b;
+  else if(ins.op.kind == LowOperation::LOP_AND) value = a & b;
+  else if(ins.op.kind == LowOperation::LOP_OR) value = a | b;
+  else if(ins.op.kind == LowOperation::LOP_XOR) value = a ^ b;
+  else if(ins.op.kind == LowOperation::LOP_SHL && b < 64) value = a << b;
+  else if(ins.op.kind == LowOperation::LOP_USHR && b < 64) value = a >> b;
+  else if(ins.op.kind == LowOperation::LOP_SHR && b < 64)
     value = static_cast<std::uint64_t>(ins.first.int_value >> b);
-  else if((ins.op == "udiv" || ins.op == "umod") && b)
-    value = ins.op == "udiv" ? a / b : a % b;
-  else if((ins.op == "div" || ins.op == "mod") && ins.second.int_value &&
+  else if((ins.op.kind == LowOperation::LOP_UDIV || ins.op.kind == LowOperation::LOP_UMOD) && b)
+    value = ins.op.kind == LowOperation::LOP_UDIV ? a / b : a % b;
+  else if((ins.op.kind == LowOperation::LOP_DIV || ins.op.kind == LowOperation::LOP_MOD) && ins.second.int_value &&
           !(ins.first.int_value == std::numeric_limits<long long>::min() &&
             ins.second.int_value == -1))
-    value = static_cast<std::uint64_t>(ins.op == "div" ?
+    value = static_cast<std::uint64_t>(ins.op.kind == LowOperation::LOP_DIV ?
       ins.first.int_value / ins.second.int_value :
       ins.first.int_value % ins.second.int_value);
   else return false;
@@ -563,16 +563,16 @@ bool fold_compare(const Instruction & ins, Operand * result)
       const WideSigned signed_b = static_cast<WideSigned>(b);
       const WideUnsigned unsigned_a = static_cast<WideUnsigned>(signed_a);
       const WideUnsigned unsigned_b = static_cast<WideUnsigned>(signed_b);
-      if(ins.op == "eq") value = unsigned_a == unsigned_b;
-      else if(ins.op == "ne") value = unsigned_a != unsigned_b;
-      else if(ins.op == "lt") value = signed_a < signed_b;
-      else if(ins.op == "le") value = signed_a <= signed_b;
-      else if(ins.op == "gt") value = signed_a > signed_b;
-      else if(ins.op == "ge") value = signed_a >= signed_b;
-      else if(ins.op == "ult") value = unsigned_a < unsigned_b;
-      else if(ins.op == "ule") value = unsigned_a <= unsigned_b;
-      else if(ins.op == "ugt") value = unsigned_a > unsigned_b;
-      else if(ins.op == "uge") value = unsigned_a >= unsigned_b;
+      if(ins.op.kind == LowOperation::LOP_EQ) value = unsigned_a == unsigned_b;
+      else if(ins.op.kind == LowOperation::LOP_NE) value = unsigned_a != unsigned_b;
+      else if(ins.op.kind == LowOperation::LOP_LT) value = signed_a < signed_b;
+      else if(ins.op.kind == LowOperation::LOP_LE) value = signed_a <= signed_b;
+      else if(ins.op.kind == LowOperation::LOP_GT) value = signed_a > signed_b;
+      else if(ins.op.kind == LowOperation::LOP_GE) value = signed_a >= signed_b;
+      else if(ins.op.kind == LowOperation::LOP_ULT) value = unsigned_a < unsigned_b;
+      else if(ins.op.kind == LowOperation::LOP_ULE) value = unsigned_a <= unsigned_b;
+      else if(ins.op.kind == LowOperation::LOP_UGT) value = unsigned_a > unsigned_b;
+      else if(ins.op.kind == LowOperation::LOP_UGE) value = unsigned_a >= unsigned_b;
       else return false;
       *result = integer_operand(value ? 1 : 0,
         lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
@@ -580,34 +580,34 @@ bool fold_compare(const Instruction & ins, Operand * result)
     }
     const std::uint64_t ua = static_cast<std::uint64_t>(a) & width_mask(ins.type);
     const std::uint64_t ub = static_cast<std::uint64_t>(b) & width_mask(ins.type);
-    if(ins.op == "eq") value = ua == ub;
-    else if(ins.op == "ne") value = ua != ub;
-    else if(ins.op == "lt") value = a < b;
-    else if(ins.op == "le") value = a <= b;
-    else if(ins.op == "gt") value = a > b;
-    else if(ins.op == "ge") value = a >= b;
-    else if(ins.op == "ult") value = ua < ub;
-    else if(ins.op == "ule") value = ua <= ub;
-    else if(ins.op == "ugt") value = ua > ub;
-    else if(ins.op == "uge") value = ua >= ub;
+    if(ins.op.kind == LowOperation::LOP_EQ) value = ua == ub;
+    else if(ins.op.kind == LowOperation::LOP_NE) value = ua != ub;
+    else if(ins.op.kind == LowOperation::LOP_LT) value = a < b;
+    else if(ins.op.kind == LowOperation::LOP_LE) value = a <= b;
+    else if(ins.op.kind == LowOperation::LOP_GT) value = a > b;
+    else if(ins.op.kind == LowOperation::LOP_GE) value = a >= b;
+    else if(ins.op.kind == LowOperation::LOP_ULT) value = ua < ub;
+    else if(ins.op.kind == LowOperation::LOP_ULE) value = ua <= ub;
+    else if(ins.op.kind == LowOperation::LOP_UGT) value = ua > ub;
+    else if(ins.op.kind == LowOperation::LOP_UGE) value = ua >= ub;
     else return false;
   } else if(ins.first.kind == Operand::OP_FLOAT &&
             ins.second.kind == Operand::OP_FLOAT) {
     const long double a = ins.first.float_value;
     const long double b = ins.second.float_value;
-    if(ins.op == "eq") value = a == b;
-    else if(ins.op == "ne") value = a != b;
-    else if(ins.op == "lt") value = a < b;
-    else if(ins.op == "le") value = a <= b;
-    else if(ins.op == "gt") value = a > b;
-    else if(ins.op == "ge") value = a >= b;
+    if(ins.op.kind == LowOperation::LOP_EQ) value = a == b;
+    else if(ins.op.kind == LowOperation::LOP_NE) value = a != b;
+    else if(ins.op.kind == LowOperation::LOP_LT) value = a < b;
+    else if(ins.op.kind == LowOperation::LOP_LE) value = a <= b;
+    else if(ins.op.kind == LowOperation::LOP_GT) value = a > b;
+    else if(ins.op.kind == LowOperation::LOP_GE) value = a >= b;
     else return false;
   } else if(!is_float_type(ins.type) &&
             same_operand(ins.first, ins.second)) {
-    if(ins.op == "eq" || ins.op == "le" || ins.op == "ge" ||
-       ins.op == "ule" || ins.op == "uge") value = true;
-    else if(ins.op == "ne" || ins.op == "lt" || ins.op == "gt" ||
-            ins.op == "ult" || ins.op == "ugt") value = false;
+    if(ins.op.kind == LowOperation::LOP_EQ || ins.op.kind == LowOperation::LOP_LE || ins.op.kind == LowOperation::LOP_GE ||
+       ins.op.kind == LowOperation::LOP_ULE || ins.op.kind == LowOperation::LOP_UGE) value = true;
+    else if(ins.op.kind == LowOperation::LOP_NE || ins.op.kind == LowOperation::LOP_LT || ins.op.kind == LowOperation::LOP_GT ||
+            ins.op.kind == LowOperation::LOP_ULT || ins.op.kind == LowOperation::LOP_UGT) value = false;
     else return false;
   } else return false;
   *result = integer_operand(value ? 1 : 0,
@@ -625,8 +625,8 @@ bool fold_convert(const Instruction & ins, Operand * result)
     if(is_integer_type(ins.type)) {
       if(lowir_model::lowir_type_bit_width(ins.type) > 64) {
         WideUnsigned value = wide_integer(ins.first.int_value);
-        if(ins.op == "zext") value &= wide_mask(ins.source_type);
-        else if(ins.op == "sext" &&
+        if(ins.op.kind == LowOperation::LOP_ZEXT) value &= wide_mask(ins.source_type);
+        else if(ins.op.kind == LowOperation::LOP_SEXT &&
                 lowir_model::lowir_type_bit_width(ins.source_type) < 128) {
           const WideUnsigned mask = wide_mask(ins.source_type);
           value &= mask;
@@ -640,14 +640,14 @@ bool fold_convert(const Instruction & ins, Operand * result)
         return representable_wide_integer(value, ins.type, result);
       }
       std::uint64_t value = static_cast<std::uint64_t>(ins.first.int_value);
-      if(ins.op == "zext") value &= width_mask(ins.source_type);
+      if(ins.op.kind == LowOperation::LOP_ZEXT) value &= width_mask(ins.source_type);
       *result = integer_operand(normalize_integer(value, ins.type), ins.type);
       return true;
     }
     if(is_float_type(ins.type) &&
        lowir_model::lowir_type_bit_width(ins.source_type) <= 64 &&
-       (ins.op == "sitofp" || ins.op == "uitofp")) {
-      const long double value = ins.op == "uitofp" ?
+       (ins.op.kind == LowOperation::LOP_SITOFP || ins.op.kind == LowOperation::LOP_UITOFP)) {
+      const long double value = ins.op.kind == LowOperation::LOP_UITOFP ?
         static_cast<long double>(static_cast<std::uint64_t>(ins.first.int_value) &
                                  width_mask(ins.source_type)) :
         static_cast<long double>(ins.first.int_value);
@@ -656,7 +656,7 @@ bool fold_convert(const Instruction & ins, Operand * result)
     }
   }
   if(ins.first.kind == Operand::OP_FLOAT && is_float_type(ins.type) &&
-     (ins.op == "fpext" || ins.op == "fptrunc")) {
+     (ins.op.kind == LowOperation::LOP_FPEXT || ins.op.kind == LowOperation::LOP_FPTRUNC)) {
     *result = floating_operand(ins.first.float_value, ins.type);
     return true;
   }
@@ -666,15 +666,15 @@ bool fold_convert(const Instruction & ins, Operand * result)
 bool algebraic_identity(const Instruction & ins, Operand * result)
 {
   if(ins.kind != Instruction::IK_BINARY) return false;
-  if((ins.op == "add" || ins.op == "or" || ins.op == "xor") && is_zero(ins.second))
+  if((ins.op.kind == LowOperation::LOP_ADD || ins.op.kind == LowOperation::LOP_OR || ins.op.kind == LowOperation::LOP_XOR) && is_zero(ins.second))
     *result = ins.first;
-  else if(ins.op == "add" && is_zero(ins.first)) *result = ins.second;
-  else if(ins.op == "sub" && is_zero(ins.second)) *result = ins.first;
-  else if((ins.op == "mul" || ins.op == "div" || ins.op == "udiv") &&
+  else if(ins.op.kind == LowOperation::LOP_ADD && is_zero(ins.first)) *result = ins.second;
+  else if(ins.op.kind == LowOperation::LOP_SUB && is_zero(ins.second)) *result = ins.first;
+  else if((ins.op.kind == LowOperation::LOP_MUL || ins.op.kind == LowOperation::LOP_DIV || ins.op.kind == LowOperation::LOP_UDIV) &&
           is_one(ins.second)) *result = ins.first;
-  else if(ins.op == "mul" && is_one(ins.first)) *result = ins.second;
-  else if(ins.op == "and" && is_minus_one(ins.second)) *result = ins.first;
-  else if(ins.op == "and" && is_minus_one(ins.first)) *result = ins.second;
+  else if(ins.op.kind == LowOperation::LOP_MUL && is_one(ins.first)) *result = ins.second;
+  else if(ins.op.kind == LowOperation::LOP_AND && is_minus_one(ins.second)) *result = ins.first;
+  else if(ins.op.kind == LowOperation::LOP_AND && is_minus_one(ins.first)) *result = ins.second;
   else return false;
   return true;
 }
@@ -1114,9 +1114,9 @@ bool simplify_values(Function * function, Stats * stats)
           algebraic_identity(ins, &replacement);
       } else if(ins.kind == Instruction::IK_CMP) {
         replace = fold_compare(ins, &replacement);
-        if(!replace && (ins.op == "eq" || ins.op == "ne") &&
-           ((is_zero(ins.second) && ins.op == "ne") ||
-            (is_one(ins.second) && ins.op == "eq"))) {
+        if(!replace && (ins.op.kind == LowOperation::LOP_EQ || ins.op.kind == LowOperation::LOP_NE) &&
+           ((is_zero(ins.second) && ins.op.kind == LowOperation::LOP_NE) ||
+            (is_one(ins.second) && ins.op.kind == LowOperation::LOP_EQ))) {
           const std::uint32_t id = ins.first.value;
           if(ins.first.kind == Operand::OP_TEMP &&
              id < definitions.size() && known_definitions[id] &&

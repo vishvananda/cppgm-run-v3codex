@@ -1,17 +1,14 @@
 # Plan: Eliminate LowIR-to-MIR Presentation Transit
 
-Status: planned
+Status: in progress
 
 Date: 2026-08-18
 
-Planning anchor: `38b086fe`
+Implementation anchor: `9960ff68`
 
-The working tree also contains a paused, uncommitted O0 value-placement slice
-in `lowir_native_address_lowering.h` and `lowir_native_index_lowering.h`.  That
-slice is not part of this plan and must not be mixed into any
-presentation-identity changeset.  It must first reach its own tested commit
-boundary.  No later O0 placement phase should begin until the work in this plan
-is complete.
+The preceding O0 value-placement slice reached its own clean, pushed test and
+inception boundary at the implementation anchor.  No later O0 placement phase
+begins until the work in this plan is complete.
 
 ## 1. Objective
 
@@ -606,7 +603,8 @@ Update one row after every accepted or rejected experiment.
 
 | Phase/commit | Removed work | Structural counters | User/wall/RSS | Output gate | Reports/audit/inception | Decision |
 | --- | --- | --- | --- | --- | --- | --- |
-| Anchor | Pending clean boundary after the paused O0 slice | Pending Phase 0 | Pending | Pending | Pending | Baseline |
+| Anchor `9960ff68` | Clean boundary after the paused O0 slice | Phase 0 counters pending | Frozen medians: 4.94 s user, 5.44 s wall, 365,846 KiB RSS | Frozen object 4,415,480 bytes, SHA-256 `25817b506e3444c9a89209ba81c7e5b8a9fee2ecd203a218321953d4aee324d1` | Prior full report/audit/32-way inception clean | Immutable baseline |
+| Typed operation boundary | Removed all LowOperation text equality, construction, conversion, indexing, and concatenation compatibility; PA15 adaptation is a fixed enum translation and only explicit readers/renderers cross text | Source audit finds zero legacy operation-text compatibility uses | 4.92 s user, 5.405 s wall, 365,214 KiB RSS; paired median user ratio 0.996 | Frozen object byte-identical to anchor | 5,204/5,204 report; zero-fatal audit; clean self/inception pending | Retained; structurally removes repeated rendering and comparison without regression |
 
 Rejected experiments remain in the ledger with their patch/commit identifier
 and measured reason.  Do not erase negative evidence.

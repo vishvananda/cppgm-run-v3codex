@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
-#include <cstring>
 #include <iterator>
 #include <sstream>
 #include <unordered_map>
@@ -811,7 +810,7 @@ private:
   void parse_unary(Instruction & out)
   {
     out.kind = Instruction::IK_UNARY;
-    out.op = take();
+    out.op = parse_lowir_operation(take());
     out.type = type();
     out.first = operand();
   }
@@ -819,7 +818,7 @@ private:
   void parse_binary(Instruction & out, Instruction::Kind kind)
   {
     out.kind = kind;
-    out.op = take();
+    out.op = parse_lowir_operation(take());
     out.type = type();
     out.first = operand();
     expect(",");
@@ -829,7 +828,7 @@ private:
   void parse_convert(Instruction & out)
   {
     out.kind = Instruction::IK_CONVERT;
-    out.op = take();
+    out.op = parse_lowir_operation(take());
     out.type = type();
     out.source_type = type();
     out.first = operand();
@@ -1339,8 +1338,8 @@ private:
   void validate_operation_types(const Instruction & ins)
   {
     if(ins.kind == Instruction::IK_UNARY) {
-      if(ins.op == "decay" && ins.type.kind != LTK_PTR) throw ParseError("decay requires ptr");
-      if(ins.op == "bswap" && ins.type.kind != LTK_I16 && ins.type.kind != LTK_U16 &&
+      if(ins.op.kind == LowOperation::LOP_DECAY && ins.type.kind != LTK_PTR) throw ParseError("decay requires ptr");
+      if(ins.op.kind == LowOperation::LOP_BSWAP && ins.type.kind != LTK_I16 && ins.type.kind != LTK_U16 &&
          ins.type.kind != LTK_I32 && ins.type.kind != LTK_U32 &&
          ins.type.kind != LTK_I64) throw ParseError("invalid bswap type");
     }
@@ -1357,12 +1356,12 @@ private:
     const std::size_t dst_f = float_width(ins.type);
     const std::size_t src_f = float_width(ins.source_type);
     if(same_lowir_type(ins.type, ins.source_type)) return;
-    if((ins.op == "sext" || ins.op == "zext") && dst_i && src_i && dst_i > src_i) return;
-    if(ins.op == "trunc" && dst_i && src_i && dst_i < src_i) return;
-    if((ins.op == "sitofp" || ins.op == "uitofp") && dst_f && src_i) return;
-    if((ins.op == "fptosi" || ins.op == "fptoui") && dst_i && src_f) return;
-    if(ins.op == "fpext" && dst_f && src_f && dst_f > src_f) return;
-    if(ins.op == "fptrunc" && dst_f && src_f && dst_f < src_f) return;
+    if((ins.op.kind == LowOperation::LOP_SEXT || ins.op.kind == LowOperation::LOP_ZEXT) && dst_i && src_i && dst_i > src_i) return;
+    if(ins.op.kind == LowOperation::LOP_TRUNC && dst_i && src_i && dst_i < src_i) return;
+    if((ins.op.kind == LowOperation::LOP_SITOFP || ins.op.kind == LowOperation::LOP_UITOFP) && dst_f && src_i) return;
+    if((ins.op.kind == LowOperation::LOP_FPTOSI || ins.op.kind == LowOperation::LOP_FPTOUI) && dst_i && src_f) return;
+    if(ins.op.kind == LowOperation::LOP_FPEXT && dst_f && src_f && dst_f > src_f) return;
+    if(ins.op.kind == LowOperation::LOP_FPTRUNC && dst_f && src_f && dst_f < src_f) return;
     throw ParseError("invalid conversion widths or categories");
   }
 
@@ -1461,13 +1460,10 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
 
 }  // namespace
 
-LowOperation::LowOperation(const char * text)
-  : kind(operation_kind(text ? std::string(text) : std::string()))
-{}
-
-LowOperation::LowOperation(const std::string & text)
-  : kind(operation_kind(text))
-{}
+LowOperation parse_lowir_operation(const std::string & text)
+{
+  return LowOperation(operation_kind(text));
+}
 
 const char * lowir_operation_text(LowOperation operation)
 {
@@ -1514,22 +1510,6 @@ const char * lowir_operation_text(LowOperation operation)
   throw ParseError("invalid compact LowIR operation identity");
 }
 
-std::size_t LowOperation::size() const
-{
-  return std::strlen(lowir_operation_text(*this));
-}
-
-char LowOperation::operator[](std::size_t index) const
-{
-  if(index >= size()) throw std::out_of_range("LowIR operation text index");
-  return lowir_operation_text(*this)[index];
-}
-
-LowOperation::operator std::string() const
-{
-  return std::string(lowir_operation_text(*this));
-}
-
 bool operator==(LowOperation left, LowOperation right)
 {
   return left.kind == right.kind;
@@ -1538,41 +1518,6 @@ bool operator==(LowOperation left, LowOperation right)
 bool operator!=(LowOperation left, LowOperation right)
 {
   return !(left == right);
-}
-
-bool operator==(LowOperation left, const char * right)
-{
-  return right && std::strcmp(lowir_operation_text(left), right) == 0;
-}
-
-bool operator!=(LowOperation left, const char * right)
-{
-  return !(left == right);
-}
-
-bool operator==(const char * left, LowOperation right)
-{
-  return right == left;
-}
-
-bool operator!=(const char * left, LowOperation right)
-{
-  return !(right == left);
-}
-
-std::string operator+(const char * left, LowOperation right)
-{
-  return std::string(left ? left : "") + lowir_operation_text(right);
-}
-
-std::string operator+(const std::string & left, LowOperation right)
-{
-  return left + lowir_operation_text(right);
-}
-
-std::string operator+(LowOperation left, const std::string & right)
-{
-  return std::string(lowir_operation_text(left)) + right;
 }
 
 std::ostream & operator<<(std::ostream & out, LowOperation operation)

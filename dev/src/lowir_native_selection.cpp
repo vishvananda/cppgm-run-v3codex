@@ -5,6 +5,8 @@
 namespace lowir_native {
 namespace selection {
 
+using lowir_model::LowOperation;
+
 long long integer_value(const lowir_model::Operand & operand)
 {
   if(operand.kind != lowir_model::Operand::OP_INTEGER)
@@ -74,17 +76,56 @@ const lowir_model::LowType & floating_literal_type(const std::string & text)
 
 X86Condition predicate_condition(lowir_model::LowOperation predicate)
 {
-  if(predicate == "eq") return XC_E;
-  if(predicate == "ne") return XC_NE;
-  if(predicate == "lt") return XC_L;
-  if(predicate == "le") return XC_LE;
-  if(predicate == "gt") return XC_G;
-  if(predicate == "ge") return XC_GE;
-  if(predicate == "ult") return XC_B;
-  if(predicate == "ule") return XC_BE;
-  if(predicate == "ugt") return XC_A;
-  if(predicate == "uge") return XC_AE;
-  throw std::runtime_error("unsupported integer comparison predicate: " + predicate);
+  if(predicate.kind == LowOperation::LOP_EQ) return XC_E;
+  if(predicate.kind == LowOperation::LOP_NE) return XC_NE;
+  if(predicate.kind == LowOperation::LOP_LT) return XC_L;
+  if(predicate.kind == LowOperation::LOP_LE) return XC_LE;
+  if(predicate.kind == LowOperation::LOP_GT) return XC_G;
+  if(predicate.kind == LowOperation::LOP_GE) return XC_GE;
+  if(predicate.kind == LowOperation::LOP_ULT) return XC_B;
+  if(predicate.kind == LowOperation::LOP_ULE) return XC_BE;
+  if(predicate.kind == LowOperation::LOP_UGT) return XC_A;
+  if(predicate.kind == LowOperation::LOP_UGE) return XC_AE;
+  throw std::runtime_error(std::string("unsupported integer comparison predicate: ") +
+                           lowir_model::lowir_operation_text(predicate));
+}
+
+mir_model::MirInstruction::Opcode float_binary_opcode(LowOperation operation)
+{
+  using mir_model::MirInstruction;
+  if(operation.kind == LowOperation::LOP_ADD) return MirInstruction::MI_FADD;
+  if(operation.kind == LowOperation::LOP_SUB) return MirInstruction::MI_FSUB;
+  if(operation.kind == LowOperation::LOP_MUL) return MirInstruction::MI_FMUL;
+  if(operation.kind == LowOperation::LOP_DIV) return MirInstruction::MI_FDIV;
+  throw std::runtime_error(std::string("floating binary operation is not implemented: ") +
+                           lowir_model::lowir_operation_text(operation));
+}
+
+mir_model::MirInstruction::Opcode float_compare_opcode(LowOperation predicate)
+{
+  using mir_model::MirInstruction;
+  if(predicate.kind == LowOperation::LOP_EQ) return MirInstruction::MI_FEQ;
+  if(predicate.kind == LowOperation::LOP_NE) return MirInstruction::MI_FNE;
+  if(predicate.kind == LowOperation::LOP_LT) return MirInstruction::MI_FLT;
+  if(predicate.kind == LowOperation::LOP_GT) return MirInstruction::MI_FGT;
+  if(predicate.kind == LowOperation::LOP_LE) return MirInstruction::MI_FLE;
+  if(predicate.kind == LowOperation::LOP_GE) return MirInstruction::MI_FGE;
+  throw std::runtime_error(std::string("floating comparison predicate is not implemented: ") +
+                           lowir_model::lowir_operation_text(predicate));
+}
+
+X86Condition float_predicate_condition(LowOperation predicate)
+{
+  // FCMP models the right operand compared with the left operand, so the
+  // unsigned x86 conditions directly describe ordered floating predicates.
+  if(predicate.kind == LowOperation::LOP_EQ) return XC_E;
+  if(predicate.kind == LowOperation::LOP_NE) return XC_NE;
+  if(predicate.kind == LowOperation::LOP_LT) return XC_A;
+  if(predicate.kind == LowOperation::LOP_GT) return XC_B;
+  if(predicate.kind == LowOperation::LOP_LE) return XC_AE;
+  if(predicate.kind == LowOperation::LOP_GE) return XC_BE;
+  throw std::runtime_error(std::string("floating branch predicate is not implemented: ") +
+                           lowir_model::lowir_operation_text(predicate));
 }
 
 std::size_t align_up(std::size_t value, std::size_t alignment)
@@ -113,7 +154,7 @@ bool result_is_immediate_unary_not_branch(
      facts.uses[destination] != 1) return false;
   const lowir_model::Instruction & unary = block.instructions[instruction_index + 1];
   const lowir_model::Instruction & branch = block.instructions[instruction_index + 2];
-  return unary.kind == lowir_model::Instruction::IK_UNARY && unary.op == "not" &&
+  return unary.kind == lowir_model::Instruction::IK_UNARY && unary.op.kind == LowOperation::LOP_NOT &&
     unary.first.kind == lowir_model::Operand::OP_TEMP &&
     unary.first.value == destination &&
     branch.kind == lowir_model::Instruction::IK_BRANCH &&

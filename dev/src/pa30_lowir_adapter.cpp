@@ -317,6 +317,56 @@ void AdaptProjection(IndexProjection source, lowir_model::Instruction* target)
 	}
 }
 
+lowir_model::LowOperation AdaptOperation(LowOperation source)
+{
+	static const lowir_model::LowOperation::Kind operations[] = {
+		lowir_model::LowOperation::LOP_NONE,
+		lowir_model::LowOperation::LOP_NEG,
+		lowir_model::LowOperation::LOP_BITNOT,
+		lowir_model::LowOperation::LOP_BSWAP,
+		lowir_model::LowOperation::LOP_ADD,
+		lowir_model::LowOperation::LOP_SUB,
+		lowir_model::LowOperation::LOP_MUL,
+		lowir_model::LowOperation::LOP_DIV,
+		lowir_model::LowOperation::LOP_UDIV,
+		lowir_model::LowOperation::LOP_MOD,
+		lowir_model::LowOperation::LOP_UMOD,
+		lowir_model::LowOperation::LOP_AND,
+		lowir_model::LowOperation::LOP_OR,
+		lowir_model::LowOperation::LOP_XOR,
+		lowir_model::LowOperation::LOP_SHL,
+		lowir_model::LowOperation::LOP_SHR,
+		lowir_model::LowOperation::LOP_USHR,
+		lowir_model::LowOperation::LOP_EQ,
+		lowir_model::LowOperation::LOP_NE,
+		lowir_model::LowOperation::LOP_LT,
+		lowir_model::LowOperation::LOP_ULT,
+		lowir_model::LowOperation::LOP_LE,
+		lowir_model::LowOperation::LOP_ULE,
+		lowir_model::LowOperation::LOP_GT,
+		lowir_model::LowOperation::LOP_UGT,
+		lowir_model::LowOperation::LOP_GE,
+		lowir_model::LowOperation::LOP_UGE,
+		lowir_model::LowOperation::LOP_TRUNC,
+		lowir_model::LowOperation::LOP_SEXT,
+		lowir_model::LowOperation::LOP_ZEXT,
+		lowir_model::LowOperation::LOP_SITOFP,
+		lowir_model::LowOperation::LOP_UITOFP,
+		lowir_model::LowOperation::LOP_FPTOSI,
+		lowir_model::LowOperation::LOP_FPTOUI,
+		lowir_model::LowOperation::LOP_FPTRUNC,
+		lowir_model::LowOperation::LOP_FPEXT,
+		lowir_model::LowOperation::LOP_DECAY
+	};
+	static_assert(sizeof(operations) / sizeof(operations[0]) ==
+		static_cast<std::size_t>(LOW_OP_DECAY) + 1,
+		"typed and compact LowIR operation tables must stay synchronized");
+	const std::size_t index = static_cast<std::size_t>(source);
+	if (index >= sizeof(operations) / sizeof(operations[0]))
+		throw std::logic_error("invalid typed LowIR operation");
+	return operations[index];
+}
+
 lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	const TypedProgram& program, const Function& function,
 	const AdaptedValues& values, lowir_model::StringPool* literals)
@@ -332,7 +382,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	if (source.type.kind != LOW_INVALID) target.type = AdaptType(source.type);
 	if (source.source_type.kind != LOW_INVALID)
 		target.source_type = AdaptType(source.source_type);
-	if (source.op != LOW_OP_NONE) target.op = LowOperationText(source.op);
+	target.op = AdaptOperation(source.op);
 	target.first = AdaptOperand(source.first, program, function, values, literals);
 	target.second = AdaptOperand(source.second, program, function, values, literals);
 	target.third = AdaptOperand(source.third, program, function, values, literals);

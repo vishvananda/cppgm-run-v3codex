@@ -455,7 +455,7 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
 			program.strings, function, value.dest) : std::string());
 	WriteType(out, value.type);
 	WriteType(out, value.source_type);
-	out.String(value.op);
+	out.String(lowir_model::lowir_operation_text(value.op));
 	out.U64(value.byte_count);
 	out.U64(value.byte_alignment);
 	out.Bool(value.has_eh_selector);
@@ -496,7 +496,7 @@ lowir_model::Instruction ReadInstruction(Reader& in,
 	const std::string destination = in.String();
 	value.type = ReadType(in);
 	value.source_type = ReadType(in);
-	value.op = in.String();
+	value.op = lowir_model::parse_lowir_operation(in.String());
 	value.byte_count = in.Size();
 	value.byte_alignment = in.Size();
 	value.has_eh_selector = in.Bool();
