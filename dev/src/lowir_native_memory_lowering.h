@@ -241,12 +241,18 @@ protected:
 		mir_model::MirOperand value = lowerer.resolve(instruction.first);
 		if (value.kind != mir_model::MirOperand::OP_REG)
 		{
+			X64Register scratch = XR_RAX;
+			if (instruction.second.kind == lowir_model::Operand::OP_TEMP &&
+				lowerer.value_known_[instruction.second.value] &&
+				operand_uses_register(
+					lowerer.values_[instruction.second.value].location, XR_RAX))
+				scratch = XR_R11;
 			if (lowerer.is_frame_address(instruction.first))
-				lowerer.emit_operand_address(out, XR_RAX, instruction.first);
+				lowerer.emit_operand_address(out, scratch, instruction.first);
 			else
-				lowerer.move_value_to_register(out, XR_RAX, value,
+				lowerer.move_value_to_register(out, scratch, value,
 					lowerer.operand_type(instruction.first));
-			value = reg_operand(XR_RAX);
+			value = reg_operand(scratch);
 		}
 		append_operand(store,
 			lowerer.materialized_storage(instruction.second, out));
