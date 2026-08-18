@@ -82,6 +82,9 @@ struct ParamBinding
   // PL_REG/PL_XMM describe the incoming ABI location. A lowering may retain
   // the parameter there when its complete live interval, including promoted
   // slot aliases, crosses no clobber; a separate home is required otherwise.
+  // A use before the first clobber may still read the incoming register when
+  // parameter setup and earlier selected results have left it intact, even if
+  // a fixed home carries the value across a later clobber.
   lowir_model::PresentationName name;
   X64Register reg = XR_RDI;
   XmmRegister xmm = XMM_0;

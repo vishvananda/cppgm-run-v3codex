@@ -38,6 +38,7 @@ protected:
 			ValueFact value = lowerer.values_[parameter];
 			value.type = instruction.type;
 			value.parameter = false;
+			value.forwarded_parameter = parameter;
 			if (!lowerer.facts_.calls.empty() &&
 				lowerer.incoming_parameter_register_known_[parameter])
 			{
@@ -90,7 +91,6 @@ protected:
 						append_move(out, reg_operand(forwarded), value.location);
 						value.location = reg_operand(forwarded);
 					}
-					value.forwarded_parameter = parameter;
 				}
 			}
 				lowerer.set_value(instruction.dest, value);

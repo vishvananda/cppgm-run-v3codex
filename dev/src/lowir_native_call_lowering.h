@@ -15,7 +15,7 @@ template <class Derived>
 class CallLowering
 {
 protected:
-  void stabilize_extended_register_sources(
+  bool stabilize_extended_register_sources(
       const lowir_model::Instruction & instruction,
       const std::vector<lowir_model::LowirParameter> & parameters,
       const abi::Plan & plan,
@@ -30,7 +30,7 @@ protected:
         break;
       }
     }
-    if(!copies_stack_object) return;
+    if(!copies_stack_object) return false;
 
     Derived & lowerer = static_cast<Derived &>(*this);
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
@@ -58,6 +58,7 @@ protected:
       if(!shared && lowerer.registers_.is_used(location.reg))
         lowerer.registers_.release(location.reg);
     }
+    return true;
   }
 };
 

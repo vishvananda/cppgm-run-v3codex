@@ -44,8 +44,8 @@ function @dispatch
     jmp ^miss
 
   block ^case
-    mov rdi, <gpr1>
-    mov rsi, <gpr0>
+    mov rdi, rsi
+    mov rsi, rdx
     call @touch [args=(rsi,rdi)]
     mov rdi, <gpr1>
     mov rsi, <gpr0>

@@ -519,6 +519,11 @@ To complete PA29, implement these goals:
    whenever a fixed-register operation or call can clobber its incoming
    register.
 
+   When a parameter needs a fixed home across a later clobber, an earlier use
+   may still read the incoming ABI register.  Do so only while parameter setup,
+   fixed-register instructions, calls, and earlier selected results have left
+   that register intact.  Uses after the first clobber must read the fixed home.
+
    When a sole-use scalar constant, load, copy, address, index, unary operation,
    or integer conversion is immediately returned, lower its result directly
    into the ABI return register when doing so does not overwrite an input needed

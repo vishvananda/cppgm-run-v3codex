@@ -16,6 +16,7 @@
 #include "lowir_native_intrinsic_lowering.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_memory_lowering.h"
+#include "lowir_native_parameter_lowering.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_return_lowering.h"
@@ -52,6 +53,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private copy_detail::CopyLowering<FunctionLowerer>,
                         private index_detail::IndexLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>,
+                        private parameter_detail::ParameterRegisterState<FunctionLowerer>,
                         private return_detail::ReturnLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
@@ -63,6 +65,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class copy_detail::CopyLowering<FunctionLowerer>;
   friend class index_detail::IndexLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
+  friend class parameter_detail::ParameterRegisterState<FunctionLowerer>;
   friend class return_detail::ReturnLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirProgram & program,
@@ -107,6 +110,7 @@ public:
     discarded_slots_.assign(source_.slot_names.size(), 0);
     plan_variadic_register_save();
     bind_parameters();
+    record_parameter_setup_clobbers();
     plan_slots();
     plan_host_eh();
   }
@@ -320,28 +324,7 @@ private:
   bool incoming_parameter_register_is_intact(
       lowir_model::ValueId name, X64Register reg) const
   {
-    if(analysis::register_was_clobbered_before(facts_, reg, position_))
-      return false;
-    if(crosses_register_clobber(name, reg)) return false;
-    for(std::size_t raw_value = 0; raw_value < values_.size(); ++raw_value) {
-      const lowir_model::ValueId value(static_cast<std::uint32_t>(raw_value));
-      if(!value_known_[value] || value == name ||
-         values_[value].location.kind != MirOperand::OP_REG ||
-         values_[value].location.reg != reg) continue;
-      if(facts_.definition[value] != FunctionFacts::missing_position() &&
-         facts_.definition[value] < position_) return false;
-    }
-    return true;
-  }
-  void reserve_direct_parameter_register(
-      const mir_model::MirParamBinding & binding,
-      const ValueFact & value, std::size_t uses)
-  {
-    if(!uses || binding.location != mir_model::MirParamBinding::PL_REG ||
-       value.location.kind != MirOperand::OP_REG ||
-       value.location.reg != binding.reg || !managed_register(binding.reg) ||
-       registers_.is_used(binding.reg)) return;
-    registers_.reserve(binding.reg);
+    return incoming_register_is_intact(name, reg);
   }
   void bind_mixed_parameters()
   {
@@ -712,6 +695,18 @@ private:
     if(operand.kind == Operand::OP_TEMP) {
       if(!value_known_[operand.value])
         throw std::runtime_error("missing lowered temporary");
+      lowir_model::ValueId incoming_value = operand.value;
+      if(values_[operand.value].forwarded_parameter.valid())
+        incoming_value = values_[operand.value].forwarded_parameter;
+      if(incoming_parameter_register_known_[incoming_value]) {
+        const X64Register incoming =
+          incoming_parameter_registers_[incoming_value];
+        if(!facts_.has(operand.value, FunctionFacts::VF_LOOP_INVARIANT) &&
+           !facts_.has(incoming_value, FunctionFacts::VF_LOOP_INVARIANT) &&
+           !(active_setup_register_clobbers_ & register_mask(incoming)) &&
+           incoming_register_is_available(incoming))
+          return reg_operand(incoming);
+      }
       return values_[operand.value].location;
     }
     if(operand.kind == Operand::OP_SLOT) {
@@ -1149,6 +1144,7 @@ private:
   void define(lowir_model::ValueId id, const LowType & type,
               const MirOperand & location)
   {
+    remember_selected_register_definition(location, position_);
     ValueFact value;
     value.location = location;
     value.type = type;
@@ -2473,7 +2469,11 @@ private:
       move_value_to_register(out, XR_R10, resolve(instruction.first),
                              operand_type(instruction.first));
     const abi::Plan plan = abi::classify(parameters);
-    stabilize_extended_register_sources(instruction, parameters, plan, out);
+    const unsigned saved_setup_clobbers = active_setup_register_clobbers_;
+    if(stabilize_extended_register_sources(
+         instruction, parameters, plan, out))
+      active_setup_register_clobbers_ |=
+        register_mask(XR_RDI) | register_mask(XR_RSI);
     std::vector<bool> needs_address(parameters.size(), false);
     std::vector<MirOperand> addressable(parameters.size());
     for(std::size_t i = 0; i < parameters.size(); ++i) {
@@ -2485,6 +2485,7 @@ private:
                                   addressable, needs_address, out);
     emit_extended_register_arguments(instruction, parameters, plan,
                                      addressable, needs_address, out);
+    active_setup_register_clobbers_ = saved_setup_clobbers;
     const bool variadic = call_is_variadic(instruction);
     if(variadic)
       append_move(out, reg_operand(XR_RAX),

@@ -34,16 +34,16 @@ function @sum8
     mov <gpr3>, r9
     mov r9, rsi
     mov <gpr4>, rdi
-    add <gpr4>, r9
-    add <gpr4>, <gpr0>
-    add <gpr4>, <gpr1>
-    add <gpr4>, <gpr2>
-    add <gpr4>, <gpr3>
+    add rdi, rsi
+    add rdi, rdx
+    add rdi, rcx
+    add rdi, r8
+    add rdi, <gpr3>
     load.i64 rdx, [rbp-<off0>]
-    add <gpr4>, rdx
+    add rdi, rdx
     load.i64 rdx, [rbp-<off1>]
-    add <gpr4>, rdx
-    ret <gpr4>
+    add rdi, rdx
+    ret rdi
 
 function @main
   abi

@@ -30,12 +30,12 @@ function @sum6
     mov r14, r9
     mov r9, rsi
     mov r15, rdi
-    add r15, r9
-    add r15, rbx
-    add r15, r12
-    add r15, r13
-    add r15, r14
-    ret r15
+    add rdi, rsi
+    add rdi, rdx
+    add rdi, rcx
+    add rdi, r8
+    add rdi, r14
+    ret rdi
 
 function @main
   abi
