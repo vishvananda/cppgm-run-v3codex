@@ -180,6 +180,7 @@ private:
   std::string LocalMemory(const std::string & name) const;
   std::string LocalAddress(const std::string & name) const;
   std::string BlockLabel(const std::string & block) const;
+  std::string BlockLabel(const Operand & block) const;
   std::string EpilogueLabel() const;
 };
 
@@ -494,6 +495,11 @@ std::string FunctionEmitter::BlockLabel(const std::string & block) const
   return "fn__" + strip_sigil(function_.name) + "__" + strip_sigil(block);
 }
 
+std::string FunctionEmitter::BlockLabel(const Operand & block) const
+{
+  return BlockLabel(lowir_model::lowir_block_label(function_, block.block));
+}
+
 std::string FunctionEmitter::EpilogueLabel() const
 {
   return "fn__" + strip_sigil(function_.name) + "__epilogue";
@@ -552,7 +558,7 @@ void FunctionEmitter::EmitParameterCopies()
 
 void FunctionEmitter::EmitBlock(const Block & block)
 {
-  out_.Label(BlockLabel(block.label));
+  out_.Label(BlockLabel(lowir_model::lowir_block_label(function_, block.id)));
   for(std::size_t i = 0; i < block.instructions.size(); ++i) {
     EmitInstruction(block.instructions[i]);
     ++instruction_count_;
@@ -1065,21 +1071,21 @@ void FunctionEmitter::EmitAtomic(const Instruction & ins)
 
 void FunctionEmitter::EmitControl(const Instruction & ins)
 {
-  if(ins.kind == Instruction::IK_JUMP) out_.Instruction("jump " + BlockLabel(ins.first.text));
+  if(ins.kind == Instruction::IK_JUMP) out_.Instruction("jump " + BlockLabel(ins.first));
   else if(ins.kind == Instruction::IK_BRANCH) {
     EmitScalarValue(ins.first, builtin_lowir_type(LTK_I64), 'x');
     out_.Instruction("ieq64 z8 x64 0");
-    out_.Instruction("jumpif z8 " + BlockLabel(ins.third.text));
-    out_.Instruction("jump " + BlockLabel(ins.second.text));
+    out_.Instruction("jumpif z8 " + BlockLabel(ins.third));
+    out_.Instruction("jump " + BlockLabel(ins.second));
   } else {
     const LowType & type = builtin_lowir_type(LTK_I64);
     EmitScalarValue(ins.first, type, 'x');
     for(std::size_t i = 0; i < ins.args.size(); i += 2) {
       EmitScalarValue(ins.args[i], type, 't');
       out_.Instruction("ieq64 z8 x64 t64");
-      out_.Instruction("jumpif z8 " + BlockLabel(ins.args[i + 1].text));
+      out_.Instruction("jumpif z8 " + BlockLabel(ins.args[i + 1]));
     }
-    out_.Instruction("jump " + BlockLabel(ins.second.text));
+    out_.Instruction("jump " + BlockLabel(ins.second));
   }
 }
 
@@ -1089,7 +1095,7 @@ void FunctionEmitter::EmitException(const Instruction & ins)
     out_.Instruction("isub64 sp sp 32");
     out_.Instruction("move64 z64 [" + owner_.EhTopLabel() + "]");
     out_.Instruction("move64 [sp] z64");
-    out_.Instruction("move64 z64 " + BlockLabel(ins.first.text));
+    out_.Instruction("move64 z64 " + BlockLabel(ins.first));
     out_.Instruction("move64 [sp+8] z64");
     out_.Instruction("move64 [sp+16] bp");
     out_.Instruction("move64 z64 sp"); out_.Instruction("iadd64 z64 z64 32");

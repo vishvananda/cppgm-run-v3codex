@@ -28,7 +28,7 @@ private:
 	};
 
 	void AppendSuccessor(std::size_t from, const lowir_model::Operand& target,
-		const std::unordered_map<std::string, std::size_t>& labels);
+		const std::vector<std::size_t>& blocks);
 	void RecordUse(const lowir_model::Operand& operand,
 		std::size_t position, std::size_t block);
 	bool CurrentBlockDominates(std::size_t target) const;

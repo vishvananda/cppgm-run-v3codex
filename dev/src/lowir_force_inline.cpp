@@ -14,12 +14,20 @@ namespace force_inline {
 namespace {
 
 using lowir_model::Block;
+using lowir_model::BlockId;
 using lowir_model::Function;
 using lowir_model::Instruction;
 using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
 typedef std::unordered_map<std::string, std::string> RenameMap;
+
+struct RenamedBlock
+{
+  BlockId id;
+};
+
+typedef std::vector<RenamedBlock> BlockMap;
 
 const std::size_t kNoFunction = static_cast<std::size_t>(-1);
 
@@ -32,12 +40,12 @@ bool direct_call_target(const Instruction & instruction, std::string * target)
   return true;
 }
 
-Instruction jump_to(const std::string & label)
+Instruction jump_to(BlockId block)
 {
   Instruction result;
   result.kind = Instruction::IK_JUMP;
   result.first.kind = Operand::OP_LABEL;
-  result.first.text = label;
+  result.first.block = block;
   return result;
 }
 
@@ -55,7 +63,8 @@ struct InlineNames
     for(std::size_t i = 0; i < function.slots.size(); ++i)
       slots.insert(function.slots[i].first);
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-      labels.insert(function.blocks[i].label);
+      labels.insert(
+        lowir_model::lowir_block_label(function, function.blocks[i].id));
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
         const std::string & dest = function.blocks[i].instructions[j].dest;
         if(!dest.empty()) values.insert(dest);
@@ -203,11 +212,17 @@ private:
   }
 
   static void RenameOperand(Operand * operand, const RenameMap & values,
-                            const RenameMap & slots, const RenameMap & labels)
+                            const RenameMap & slots, const BlockMap & blocks)
   {
+    if(operand->kind == Operand::OP_LABEL) {
+      const std::uint32_t id = operand->block;
+      if(id >= blocks.size() || !blocks[id].id.valid())
+        throw std::logic_error("force-inline block has no renamed identity");
+      operand->block = blocks[id].id;
+      return;
+    }
     const RenameMap * map = operand->kind == Operand::OP_TEMP ? &values :
-      operand->kind == Operand::OP_SLOT ? &slots :
-      operand->kind == Operand::OP_LABEL ? &labels : 0;
+      operand->kind == Operand::OP_SLOT ? &slots : 0;
     if(!map) return;
     const RenameMap::const_iterator found = map->find(operand->text);
     if(found == map->end())
@@ -218,7 +233,7 @@ private:
   static Instruction CloneInstruction(const Instruction & source,
                                       const RenameMap & values,
                                       const RenameMap & slots,
-                                      const RenameMap & labels)
+                                      const BlockMap & blocks)
   {
     Instruction result = source;
     if(!result.dest.empty()) {
@@ -227,24 +242,29 @@ private:
         throw std::logic_error("force-inline result has no renamed identity");
       result.dest = found->second;
     }
-    RenameOperand(&result.first, values, slots, labels);
-    RenameOperand(&result.second, values, slots, labels);
-    RenameOperand(&result.third, values, slots, labels);
+    RenameOperand(&result.first, values, slots, blocks);
+    RenameOperand(&result.second, values, slots, blocks);
+    RenameOperand(&result.third, values, slots, blocks);
     for(std::size_t i = 0; i < result.args.size(); ++i)
-      RenameOperand(&result.args[i], values, slots, labels);
+      RenameOperand(&result.args[i], values, slots, blocks);
     return result;
   }
 
-  void BuildRenameMaps(const Function & callee, InlineNames * names,
+  void BuildRenameMaps(Function * caller, const Function & callee,
+                       InlineNames * names,
                        RenameMap * values, RenameMap * slots,
-                       RenameMap * labels)
+                       BlockMap * blocks)
   {
     for(std::size_t i = 0; i < callee.params.size(); ++i)
       (*values)[callee.params[i].name] = names->value("parameter");
     for(std::size_t i = 0; i < callee.slots.size(); ++i)
       (*slots)[callee.slots[i].first] = names->slot("local");
+    blocks->resize(callee.next_block_id);
     for(std::size_t i = 0; i < callee.blocks.size(); ++i) {
-      (*labels)[callee.blocks[i].label] = names->label("block");
+      RenamedBlock block;
+      block.id = lowir_model::allocate_lowir_block_id(
+        *caller, names->label("block"));
+      (*blocks)[callee.blocks[i].id] = block;
       for(std::size_t j = 0; j < callee.blocks[i].instructions.size(); ++j) {
         const std::string & dest = callee.blocks[i].instructions[j].dest;
         if(!dest.empty()) (*values)[dest] = names->value("temporary");
@@ -253,13 +273,12 @@ private:
   }
 
   Block BuildPrologue(const Function & callee, const Instruction & call,
-                      const RenameMap & values, const std::string & label,
-                      const std::string & entry)
+                      const RenameMap & values, BlockId id, BlockId entry)
   {
     if(call.args.size() != callee.params.size())
       throw std::runtime_error("force-inline call argument count mismatch");
     Block result;
-    result.label = label;
+    result.id = id;
     for(std::size_t i = 0; i < callee.params.size(); ++i) {
       Instruction copy;
       copy.kind = Instruction::IK_COPY;
@@ -275,17 +294,17 @@ private:
 
   Block CloneBlock(const Block & source, const Function & callee,
                    const Instruction & call, const RenameMap & values,
-                   const RenameMap & slots, const RenameMap & labels,
-                   const std::string & continuation,
+                   const RenameMap & slots, const BlockMap & blocks,
+                   BlockId continuation,
                    const std::string & result_slot)
   {
     Block result;
-    result.label = labels.find(source.label)->second;
+    result.id = blocks[source.id].id;
     for(std::size_t i = 0; i < source.instructions.size(); ++i) {
       const Instruction & instruction = source.instructions[i];
       if(instruction.kind != Instruction::IK_RETURN) {
         result.instructions.push_back(CloneInstruction(
-          instruction, values, slots, labels));
+          instruction, values, slots, blocks));
         continue;
       }
       if(callee.return_type.kind != lowir_model::LTK_VOID) {
@@ -293,7 +312,7 @@ private:
         store.kind = Instruction::IK_STORE;
         store.type = callee.return_type;
         store.first = instruction.first;
-        RenameOperand(&store.first, values, slots, labels);
+        RenameOperand(&store.first, values, slots, blocks);
         store.second.kind = Operand::OP_SLOT;
         store.second.text = result_slot;
         store.second.literal_type = callee.return_type;
@@ -308,11 +327,11 @@ private:
 
   Block BuildContinuation(const Instruction & call,
                           const std::vector<Instruction> & tail,
-                          const std::string & label,
+                          BlockId id,
                           const std::string & result_slot)
   {
     Block result;
-    result.label = label;
+    result.id = id;
     if(!call.call_returns_void) {
       if(call.dest.empty() || result_slot.empty())
         throw std::logic_error("force-inline value call has no result identity");
@@ -338,10 +357,15 @@ private:
   {
     const Instruction call =
       caller->blocks[block_index].instructions[instruction_index];
-    RenameMap values, slots, labels;
-    BuildRenameMaps(callee, names, &values, &slots, &labels);
+    RenameMap values, slots;
+    BlockMap blocks;
+    BuildRenameMaps(caller, callee, names, &values, &slots, &blocks);
     const std::string prologue_label = names->label("prologue");
     const std::string continuation_label = names->label("continuation");
+    const BlockId prologue_id =
+      lowir_model::allocate_lowir_block_id(*caller, prologue_label);
+    const BlockId continuation_id =
+      lowir_model::allocate_lowir_block_id(*caller, continuation_label);
     std::string result_slot;
     if(!call.call_returns_void) {
       result_slot = names->slot("result");
@@ -354,16 +378,16 @@ private:
       caller->blocks[block_index].instructions.begin() + instruction_index + 1,
       caller->blocks[block_index].instructions.end());
     caller->blocks[block_index].instructions.resize(instruction_index);
-    caller->blocks[block_index].instructions.push_back(jump_to(prologue_label));
+    caller->blocks[block_index].instructions.push_back(jump_to(prologue_id));
     std::vector<Block> inserted;
     inserted.reserve(callee.blocks.size() + 2);
-    inserted.push_back(BuildPrologue(callee, call, values, prologue_label,
-      labels.find(callee.blocks[0].label)->second));
+    inserted.push_back(BuildPrologue(callee, call, values, prologue_id,
+      blocks[callee.blocks[0].id].id));
     for(std::size_t i = 0; i < callee.blocks.size(); ++i)
       inserted.push_back(CloneBlock(callee.blocks[i], callee, call,
-        values, slots, labels, continuation_label, result_slot));
+        values, slots, blocks, continuation_id, result_slot));
     inserted.push_back(BuildContinuation(
-      call, tail, continuation_label, result_slot));
+      call, tail, continuation_id, result_slot));
     caller->blocks.insert(caller->blocks.begin() + block_index + 1,
       inserted.begin(), inserted.end());
   }

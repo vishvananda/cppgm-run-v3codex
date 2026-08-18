@@ -250,10 +250,17 @@ lowir_model::LowType ReadType(Reader& in)
 	return value;
 }
 
-void WriteOperand(Writer& out, const lowir_model::Operand& value)
+void WriteOperand(Writer& out, const lowir_model::Operand& value,
+	const lowir_model::Function* function = 0)
 {
 	WriteEnum(out, value.kind);
-	out.String(value.text);
+	if (value.kind == lowir_model::Operand::OP_LABEL)
+	{
+		if (!function)
+			throw std::logic_error("compiler object block target lacks a function");
+		out.String(lowir_model::lowir_block_label(*function, value.block));
+	}
+	else out.String(value.text);
 	out.I64(value.kind == lowir_model::Operand::OP_INTEGER && value.has_int_value ?
 		value.int_value : 0);
 }
@@ -379,7 +386,8 @@ lowir_model::InstructionDebugLocation ReadDebug(Reader& in)
 	return value;
 }
 
-void WriteInstruction(Writer& out, const lowir_model::Instruction& value)
+void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
+	const lowir_model::Function& function)
 {
 	WriteEnum(out, value.kind);
 	out.String(value.dest);
@@ -391,12 +399,12 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value)
 	out.Bool(value.has_eh_selector);
 	out.I64(value.eh_selector);
 	WriteEnum(out, value.index_projection);
-	WriteOperand(out, value.first);
-	WriteOperand(out, value.second);
-	WriteOperand(out, value.third);
+	WriteOperand(out, value.first, &function);
+	WriteOperand(out, value.second, &function);
+	WriteOperand(out, value.third, &function);
 	out.U64(value.args.size());
 	for (std::size_t i = 0; i < value.args.size(); ++i)
-		WriteOperand(out, value.args[i]);
+		WriteOperand(out, value.args[i], &function);
 	out.Bool(value.call_returns_void);
 	out.Bool(value.has_call_signature);
 	WriteParameters(out, value.call_params);
@@ -537,10 +545,10 @@ void WriteFunction(Writer& out, const lowir_model::Function& value)
 	out.U64(value.blocks.size());
 	for (std::size_t i = 0; i < value.blocks.size(); ++i)
 	{
-		out.String(value.blocks[i].label);
+		out.String(lowir_model::lowir_block_label(value, value.blocks[i].id));
 		out.U64(value.blocks[i].instructions.size());
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
-			WriteInstruction(out, value.blocks[i].instructions[j]);
+			WriteInstruction(out, value.blocks[i].instructions[j], value);
 	}
 	WriteDebug(out, value.debug_location);
 	WriteBoundary(out, value.boundary);
@@ -562,11 +570,13 @@ lowir_model::Function ReadFunction(Reader& in)
 	value.blocks.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.blocks.size(); ++i)
 	{
-		value.blocks[i].label = in.String();
+		value.blocks[i].id =
+			lowir_model::allocate_lowir_block_id(value, in.String());
 		value.blocks[i].instructions.resize(in.Count(4));
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
 			value.blocks[i].instructions[j] = ReadInstruction(in);
 	}
+	lowir_model::resolve_lowir_block_operands(value);
 	value.debug_location = ReadDebug(in);
 	value.boundary = ReadBoundary(in);
 	value.metadata = ReadSymbolMetadata(in);
@@ -734,7 +744,7 @@ lowir_model::Function MakeLifecycleAggregate(const std::string& name,
 	result.metadata.role = role;
 	result.metadata.binding = lowir_model::SBM_INTERNAL;
 	lowir_model::Block block;
-	block.label = "^entry";
+	block.id = lowir_model::allocate_lowir_block_id(result, "^entry");
 	for (std::size_t i = 0; i < functions.size(); ++i)
 	{
 		const std::size_t index = reverse ? functions.size() - i - 1 : i;

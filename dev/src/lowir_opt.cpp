@@ -24,6 +24,7 @@ namespace lowir_opt {
 namespace {
 
 using lowir_model::Block;
+using lowir_model::BlockId;
 using lowir_model::Function;
 using lowir_model::FunctionBoundaryMetadata;
 using lowir_model::Instruction;
@@ -32,7 +33,7 @@ using lowir_model::LowTypeKind;
 using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
-typedef std::unordered_map<std::string, std::size_t> BlockIndex;
+const std::size_t kNoBlockIndex = static_cast<std::size_t>(-1);
 const std::size_t kNoBlock = static_cast<std::size_t>(-1);
 
 class PassArena
@@ -667,19 +668,25 @@ private:
 
 struct Graph
 {
-  BlockIndex index;
+  std::vector<std::size_t> index;
   std::vector<EdgeList> successors;
   std::vector<EdgeList> predecessors;
-  std::unordered_set<std::string> eh_targets;
+  std::vector<unsigned char> eh_targets;
+
+  std::size_t find(BlockId block) const
+  {
+    const std::uint32_t id = block;
+    return id < index.size() ? index[id] : kNoBlockIndex;
+  }
 };
 
 void add_edge(Graph * graph, std::size_t from, const Operand & target,
               Stats * stats)
 {
   if(target.kind != Operand::OP_LABEL) return;
-  const BlockIndex::const_iterator found = graph->index.find(target.text);
-  if(found == graph->index.end()) return;
-  graph->successors[from].insert_sorted_unique(found->second);
+  const std::size_t found = graph->find(target.block);
+  if(found == kNoBlockIndex) return;
+  graph->successors[from].insert_sorted_unique(found);
   if(stats) ++stats->cfg_edge_visits;
 }
 
@@ -688,8 +695,14 @@ Graph build_graph(const Function & function, Stats * stats)
   Graph result;
   result.successors.resize(function.blocks.size());
   result.predecessors.resize(function.blocks.size());
-  for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    result.index[function.blocks[i].label] = i;
+  result.index.assign(function.next_block_id, kNoBlockIndex);
+  result.eh_targets.assign(function.next_block_id, 0);
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const std::uint32_t id = function.blocks[i].id;
+    if(id >= result.index.size())
+      throw std::logic_error("invalid LowIR block identity in CFG");
+    result.index[id] = i;
+  }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const Block & block = function.blocks[i];
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
@@ -697,7 +710,7 @@ Graph build_graph(const Function & function, Stats * stats)
       if(ins.kind == Instruction::IK_EH_TRY ||
          ins.kind == Instruction::IK_EH_CLEANUP) {
         add_edge(&result, i, ins.first, stats);
-        result.eh_targets.insert(ins.first.text);
+        result.eh_targets[static_cast<std::uint32_t>(ins.first.block)] = 1;
       }
     }
     if(block.instructions.empty()) continue;
@@ -1254,20 +1267,20 @@ bool eliminate_dead_code(Function * function,
   return true;
 }
 
-std::vector<std::string> bypass_targets(const Function & function,
-                                        const Graph & graph)
+std::vector<BlockId> bypass_targets(const Function & function,
+                                    const Graph & graph)
 {
   const std::size_t count = function.blocks.size();
   std::vector<std::size_t> next(count, kNoBlock);
   for(std::size_t i = 0; i < count; ++i) {
     const Block & block = function.blocks[i];
-    if(graph.eh_targets.count(block.label) || block.instructions.size() != 1 ||
+    if(graph.eh_targets[static_cast<std::uint32_t>(block.id)] ||
+       block.instructions.size() != 1 ||
        block.instructions[0].kind != Instruction::IK_JUMP) continue;
-    const BlockIndex::const_iterator found =
-      graph.index.find(block.instructions[0].first.text);
-    if(found != graph.index.end()) next[i] = found->second;
+    const std::size_t found = graph.find(block.instructions[0].first.block);
+    if(found != kNoBlockIndex) next[i] = found;
   }
-  std::vector<std::string> result(count);
+  std::vector<BlockId> result(count);
   std::vector<unsigned char> state(count, 0);
   for(std::size_t start = 0; start < count; ++start) {
     if(state[start] == 2) continue;
@@ -1280,29 +1293,29 @@ std::vector<std::string> bypass_targets(const Function & function,
     }
     if(state[cursor] == 0) {
       state[cursor] = 2;
-      result[cursor] = function.blocks[cursor].label;
+      result[cursor] = function.blocks[cursor].id;
     }
     if(state[cursor] == 1) {
       std::size_t cycle = 0;
       while(cycle < path.size() && path[cycle] != cursor) ++cycle;
       for(std::size_t i = cycle; i < path.size(); ++i) {
-        result[path[i]] = function.blocks[path[i]].label;
+        result[path[i]] = function.blocks[path[i]].id;
         state[path[i]] = 2;
       }
       for(std::size_t i = cycle; i > 0; --i) {
-        result[path[i - 1]] = function.blocks[cursor].label;
+        result[path[i - 1]] = function.blocks[cursor].id;
         state[path[i - 1]] = 2;
       }
       continue;
     }
-    std::string target = result[cursor];
+    const BlockId target = result[cursor];
     for(std::size_t i = path.size(); i > 0; --i) {
       result[path[i - 1]] = target;
       state[path[i - 1]] = 2;
     }
   }
   for(std::size_t i = 0; i < count; ++i)
-    if(result[i].empty()) result[i] = function.blocks[i].label;
+    if(!result[i].valid()) result[i] = function.blocks[i].id;
   return result;
 }
 
@@ -1323,7 +1336,7 @@ bool cleanup_cfg(Function * function, Stats * stats)
         term.first = selected;
         term.debug_location = debug;
         changed = true;
-      } else if(term.second.text == term.third.text) {
+      } else if(term.second.block == term.third.block) {
         term.kind = Instruction::IK_JUMP;
         term.first = term.second;
         term.second = Operand();
@@ -1354,7 +1367,7 @@ bool cleanup_cfg(Function * function, Stats * stats)
   if(function->blocks.size() == 1) return changed;
 
   Graph graph = build_graph(*function, stats);
-  const std::vector<std::string> bypass = bypass_targets(*function, graph);
+  const std::vector<BlockId> bypass = bypass_targets(*function, graph);
   bool graph_targets_changed = false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
@@ -1367,30 +1380,30 @@ bool cleanup_cfg(Function * function, Stats * stats)
         targets[count++] = &ins.second; targets[count++] = &ins.third;
       } else if(ins.kind == Instruction::IK_SWITCH) targets[count++] = &ins.second;
       for(std::size_t k = 0; k < count; ++k) {
-        const BlockIndex::const_iterator found = graph.index.find(targets[k]->text);
-        const std::string target = found == graph.index.end() ?
-          targets[k]->text : bypass[found->second];
-        if(target != targets[k]->text &&
+        const std::size_t found = graph.find(targets[k]->block);
+        const BlockId target = found == kNoBlockIndex ?
+          targets[k]->block : bypass[found];
+        if(target != targets[k]->block &&
            ins.kind != Instruction::IK_EH_TRY &&
            ins.kind != Instruction::IK_EH_CLEANUP) {
-          targets[k]->text = target;
+          targets[k]->block = target;
           changed = true;
           graph_targets_changed = true;
         }
       }
       if(ins.kind == Instruction::IK_SWITCH)
         for(std::size_t k = 1; k < ins.args.size(); k += 2) {
-          const BlockIndex::const_iterator found = graph.index.find(ins.args[k].text);
-          const std::string target = found == graph.index.end() ?
-            ins.args[k].text : bypass[found->second];
-          if(target != ins.args[k].text) {
-            ins.args[k].text = target;
+          const std::size_t found = graph.find(ins.args[k].block);
+          const BlockId target = found == kNoBlockIndex ?
+            ins.args[k].block : bypass[found];
+          if(target != ins.args[k].block) {
+            ins.args[k].block = target;
             changed = true;
             graph_targets_changed = true;
           }
         }
       if(ins.kind == Instruction::IK_BRANCH &&
-         ins.second.text == ins.third.text) {
+         ins.second.block == ins.third.block) {
         const Operand selected = ins.second;
         const lowir_model::InstructionDebugLocation debug = ins.debug_location;
         ins = Instruction();
@@ -1528,15 +1541,16 @@ bool cleanup_cfg(Function * function, Stats * stats)
     const Block & block = function->blocks[i];
     if(block.instructions.empty() ||
        block.instructions.back().kind != Instruction::IK_JUMP) continue;
-    const BlockIndex::const_iterator target =
-      graph.index.find(block.instructions.back().first.text);
-    if(target == graph.index.end() || target->second == i ||
-       block_has_eh[i] || block_has_eh[target->second] ||
-       graph.eh_targets.count(block.label) ||
-       graph.eh_targets.count(block.instructions.back().first.text) ||
-       graph.predecessors[target->second].size() != 1) continue;
-    merge_next[i] = target->second;
-    merge_parent[target->second] = i;
+    const std::size_t target =
+      graph.find(block.instructions.back().first.block);
+    if(target == kNoBlockIndex || target == i ||
+       block_has_eh[i] || block_has_eh[target] ||
+       graph.eh_targets[static_cast<std::uint32_t>(block.id)] ||
+       graph.eh_targets[static_cast<std::uint32_t>(
+         block.instructions.back().first.block)] ||
+       graph.predecessors[target].size() != 1) continue;
+    merge_next[i] = target;
+    merge_parent[target] = i;
   }
   std::vector<unsigned char> consumed(function->blocks.size(), 0);
   std::vector<Block> merged(function->blocks.size());
@@ -1561,7 +1575,7 @@ bool cleanup_cfg(Function * function, Stats * stats)
     compact.reserve(function->blocks.size() - merged_edges);
     for(std::size_t i = 0; i < function->blocks.size(); ++i) {
       if(consumed[i]) continue;
-      if(merged[i].label.empty())
+      if(!merged[i].id.valid())
         compact.push_back(std::move(function->blocks[i]));
       else compact.push_back(std::move(merged[i]));
     }
@@ -1583,14 +1597,14 @@ void normal_successors(const Function & function, const Graph & graph,
     targets[0] = &term.second; targets[1] = &term.third;
   }
   for(std::size_t i = 0; i < 2; ++i)
-    if(targets[i] && graph.index.count(targets[i]->text))
-      out->push_back(graph.index.find(targets[i]->text)->second);
+    if(targets[i] && graph.find(targets[i]->block) != kNoBlockIndex)
+      out->push_back(graph.find(targets[i]->block));
   if(term.kind == Instruction::IK_SWITCH) {
-    if(graph.index.count(term.second.text))
-      out->push_back(graph.index.find(term.second.text)->second);
+    if(graph.find(term.second.block) != kNoBlockIndex)
+      out->push_back(graph.find(term.second.block));
     for(std::size_t i = 1; i < term.args.size(); i += 2)
-      if(graph.index.count(term.args[i].text))
-        out->push_back(graph.index.find(term.args[i].text)->second);
+      if(graph.find(term.args[i].block) != kNoBlockIndex)
+        out->push_back(graph.find(term.args[i].block));
   }
 }
 
@@ -1645,15 +1659,15 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     if(linear_single_block && !block.instructions.empty()) {
       const Instruction & term = block.instructions.back();
       if((term.kind == Instruction::IK_JUMP &&
-          term.first.text == block.label) ||
+          term.first.block == block.id) ||
          (term.kind == Instruction::IK_BRANCH &&
-          (term.second.text == block.label || term.third.text == block.label)))
+          (term.second.block == block.id || term.third.block == block.id)))
         linear_single_block = false;
       if(term.kind == Instruction::IK_SWITCH) {
-        linear_single_block = term.second.text != block.label;
+        linear_single_block = term.second.block != block.id;
         for(std::size_t i = 1;
             linear_single_block && i < term.args.size(); i += 2)
-          linear_single_block = term.args[i].text != block.label;
+          linear_single_block = term.args[i].block != block.id;
       }
     }
   }
@@ -1716,8 +1730,8 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
       Instruction & ins = instructions[index - 1];
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
-         graph.index.count(ins.first.text)) {
-        const LiveSlots & handler = live_in[graph.index.find(ins.first.text)->second];
+         graph.find(ins.first.block) != kNoBlockIndex) {
+        const LiveSlots & handler = live_in[graph.find(ins.first.block)];
         live.insert(handler.begin(), handler.end());
       }
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
@@ -1773,8 +1787,8 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
       Instruction & ins = instructions[index - 1];
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
-         graph.index.count(ins.first.text)) {
-        const LiveSlots & handler = live_in[graph.index.find(ins.first.text)->second];
+         graph.find(ins.first.block) != kNoBlockIndex) {
+        const LiveSlots & handler = live_in[graph.find(ins.first.block)];
         live.insert(handler.begin(), handler.end());
       }
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
@@ -2344,11 +2358,11 @@ bool promote_slots(Function * function, Stats * stats)
       ins.third = abstract_resolve(source.third, state);
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
-         graph.index.count(ins.first.text)) {
+         graph.find(ins.first.block) != kNoBlockIndex) {
         AbstractState handler = state;
         strip_local_facts(&handler, local_temporaries);
         exceptional.push_back(std::make_pair(
-          graph.index.find(ins.first.text)->second, handler));
+          graph.find(ins.first.block), handler));
       }
       if(ins.kind == Instruction::IK_STORE &&
          source.second.kind == Operand::OP_SLOT &&
@@ -2385,17 +2399,18 @@ bool promote_slots(Function * function, Stats * stats)
     if(!block.instructions.empty()) {
       const Instruction & term = block.instructions.back();
       const Operand selector = abstract_resolve(term.first, state);
-      if(term.kind == Instruction::IK_JUMP && graph.index.count(selector.text))
-        normal.push_back(graph.index.find(selector.text)->second);
+      if(term.kind == Instruction::IK_JUMP &&
+         graph.find(selector.block) != kNoBlockIndex)
+        normal.push_back(graph.find(selector.block));
       else if(term.kind == Instruction::IK_BRANCH) {
         const Operand & selected = selector.kind == Operand::OP_INTEGER &&
           selector.has_int_value ?
           (selector.int_value ? term.second : term.third) : term.second;
-        if(graph.index.count(selected.text))
-          normal.push_back(graph.index.find(selected.text)->second);
+        if(graph.find(selected.block) != kNoBlockIndex)
+          normal.push_back(graph.find(selected.block));
         if(!(selector.kind == Operand::OP_INTEGER && selector.has_int_value) &&
-           graph.index.count(term.third.text))
-          normal.push_back(graph.index.find(term.third.text)->second);
+           graph.find(term.third.block) != kNoBlockIndex)
+          normal.push_back(graph.find(term.third.block));
       } else if(term.kind == Instruction::IK_SWITCH) {
         Operand selected = term.second;
         if(selector.kind == Operand::OP_INTEGER && selector.has_int_value)
@@ -2404,12 +2419,12 @@ bool promote_slots(Function * function, Stats * stats)
             if(case_value.kind == Operand::OP_INTEGER && case_value.has_int_value &&
                case_value.int_value == selector.int_value) selected = term.args[i + 1];
           }
-        if(graph.index.count(selected.text))
-          normal.push_back(graph.index.find(selected.text)->second);
+        if(graph.find(selected.block) != kNoBlockIndex)
+          normal.push_back(graph.find(selected.block));
         if(!(selector.kind == Operand::OP_INTEGER && selector.has_int_value))
           for(std::size_t i = 1; i < term.args.size(); i += 2)
-            if(graph.index.count(term.args[i].text))
-              normal.push_back(graph.index.find(term.args[i].text)->second);
+            if(graph.find(term.args[i].block) != kNoBlockIndex)
+              normal.push_back(graph.find(term.args[i].block));
       }
     }
     strip_local_facts(&state, local_temporaries);

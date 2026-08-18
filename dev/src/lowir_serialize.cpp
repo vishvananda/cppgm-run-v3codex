@@ -191,8 +191,14 @@ void write_debug(std::ostream & out, const InstructionDebugLocation & location)
         << location.column << ')';
 }
 
-void write_operand(std::ostream & out, const Operand & operand)
+void write_operand(std::ostream & out, const Operand & operand,
+                   const Function * function = 0)
 {
+  if(operand.kind == Operand::OP_LABEL) {
+    if(!function) throw std::logic_error("LowIR block target lacks a function");
+    out << lowir_block_label(*function, operand.block);
+    return;
+  }
   if(operand.text.empty()) throw std::logic_error("missing LowIR operand text");
   if(operand.kind == Operand::OP_FLOAT) {
     if(operand.text == "INFINITY" || operand.text == "+INFINITY") {
@@ -240,7 +246,8 @@ void write_call(std::ostream & out, const Instruction & ins)
   }
 }
 
-void write_instruction(std::ostream & out, const Instruction & ins)
+void write_instruction(std::ostream & out, const Instruction & ins,
+                       const Function * function)
 {
   switch(ins.kind) {
   case Instruction::IK_CONST:
@@ -314,9 +321,9 @@ void write_instruction(std::ostream & out, const Instruction & ins)
     out << "zeroinit " << ins.byte_count << 'x' << ins.byte_alignment << ' ';
     write_operand(out, ins.first); break;
   case Instruction::IK_EH_TRY:
-    out << "eh_try "; write_operand(out, ins.first); break;
+    out << "eh_try "; write_operand(out, ins.first, function); break;
   case Instruction::IK_EH_CLEANUP:
-    out << "eh_cleanup "; write_operand(out, ins.first); break;
+    out << "eh_cleanup "; write_operand(out, ins.first, function); break;
   case Instruction::IK_EH_CLEANUP_CLAUSE: out << "eh_cleanup"; break;
   case Instruction::IK_EH_CATCH:
     out << "eh_catch "; write_operand(out, ins.first);
@@ -342,16 +349,17 @@ void write_instruction(std::ostream & out, const Instruction & ins)
     out << ins.dest << " = exception_selector " << lowir_type_text(ins.type); break;
   case Instruction::IK_RESUME: out << "resume"; break;
   case Instruction::IK_JUMP:
-    out << "jump "; write_operand(out, ins.first); break;
+    out << "jump "; write_operand(out, ins.first, function); break;
   case Instruction::IK_BRANCH:
     out << "branch "; write_operand(out, ins.first); out << ", ";
-    write_operand(out, ins.second); out << ", "; write_operand(out, ins.third); break;
+    write_operand(out, ins.second, function); out << ", ";
+    write_operand(out, ins.third, function); break;
   case Instruction::IK_SWITCH:
     out << "switch "; write_operand(out, ins.first); out << ", ";
-    write_operand(out, ins.second);
+    write_operand(out, ins.second, function);
     for(std::size_t i = 0; i + 1 < ins.args.size(); i += 2) {
       out << ", "; write_operand(out, ins.args[i]); out << ':';
-      write_operand(out, ins.args[i + 1]);
+      write_operand(out, ins.args[i + 1], function);
     }
     break;
   case Instruction::IK_RETURN:
@@ -431,10 +439,11 @@ void write_function(std::ostream & out, const Function & function)
   if(!function.slots.empty()) out << '\n';
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     if(i) out << '\n';
-    out << "  block " << function.blocks[i].label << ":\n";
+    out << "  block " << lowir_block_label(function, function.blocks[i].id)
+        << ":\n";
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       out << "    ";
-      write_instruction(out, function.blocks[i].instructions[j]);
+      write_instruction(out, function.blocks[i].instructions[j], &function);
       out << '\n';
     }
   }

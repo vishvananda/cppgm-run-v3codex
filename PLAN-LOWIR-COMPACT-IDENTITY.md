@@ -665,6 +665,30 @@ The frozen object remains byte-identical.  PA13 and the full through-PA13
 report pass 100/100 and 933/933 tests; PA15, PA29, PA30, PA37, and PA38 report
 554/554 passing tests.  The PA39 file audit has no fatal issues.
 
+### CI5: compact LowIR block identity
+
+LowIR control-flow and EH operands now carry `BlockId`; source lowering never
+renders a target label, and explicit textual LowIR resolves label tokens once
+after validation and releases the operand strings.  Each function owns one
+dense presentation-name table indexed by stable block identity, independently
+of block layout order.  Serialization and the LowIR-to-MIR boundary consult
+that table in constant time.
+
+CFG, loop, cleanup-context, inlining, force-inline, and native liveness state
+use dense ID-indexed vectors rather than block-label hash tables.  Inlining
+allocates fresh monotonic identities while preserving the historical emitted
+label spelling.  Private compiler-object payloads keep their exact byte-level
+format.  The native label materialization boundary is isolated in
+`lowir_native_block_labels.cpp`; the PA39 file audit has no fatal findings.
+
+The frozen object remains byte-identical with SHA-256
+`87bdd91604b0a3e62fdd0c7b2851a1104b2bf0f95c479f2c5a6613f9a6a19faa`.
+PA13 and the full through-PA13 report pass 100/100 and 933/933 tests; PA13,
+PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests.  Three A/B/B/A
+blocks against `36b01df4` produced baseline/candidate medians of 5.500/5.440
+seconds user, 5.990/5.960 seconds wall, and 364,610/365,302 KiB peak RSS.  The
+paired block medians are -1.36% user, -0.92% wall, and +0.10% RSS.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

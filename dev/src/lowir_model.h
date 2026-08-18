@@ -165,6 +165,7 @@ struct Operand
     address_binding = ADDRESS_LOCAL;
 
   bool has_int_value = false;
+  BlockId block;
   std::string text;
   long long int_value = 0;
   long double float_value = 0.0L;
@@ -454,7 +455,7 @@ struct Instruction
 
 struct Block
 {
-  std::string label;
+  BlockId id;
   std::vector<Instruction> instructions;
 };
 
@@ -465,6 +466,8 @@ struct Function
   LowType return_type;
   std::vector<std::pair<std::string, LowType> > slots;
   std::vector<Block> blocks;
+  std::vector<std::string> block_labels;
+  std::uint32_t next_block_id = 0;
   InstructionDebugLocation debug_location;
   FunctionBoundaryMetadata boundary;
   SymbolMetadata metadata;
@@ -509,6 +512,11 @@ using LowirGlobalDeclaration = GlobalDeclaration;
 using LowirGlobalDefinition = GlobalDefinition;
 using LowirObjectAlias = ObjectAlias;
 using LowirProgram = Program;
+
+BlockId allocate_lowir_block_id(Function & function,
+                               const std::string & label = std::string());
+const std::string & lowir_block_label(const Function & function, BlockId block);
+void resolve_lowir_block_operands(Function & function);
 
 enum LowirEntryPolicy
 {

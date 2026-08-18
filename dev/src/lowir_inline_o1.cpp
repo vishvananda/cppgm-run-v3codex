@@ -18,6 +18,7 @@ namespace lowir_opt {
 namespace {
 
 using lowir_model::Block;
+using lowir_model::BlockId;
 using lowir_model::Function;
 using lowir_model::Instruction;
 using lowir_model::LowType;
@@ -28,6 +29,13 @@ const std::size_t kNoFunction = static_cast<std::size_t>(-1);
 const std::size_t kInlineInstructionBudget = 128;
 typedef std::unordered_map<std::string, Operand> ValueMap;
 typedef std::unordered_map<std::string, std::string> NameMap;
+
+struct RenamedBlock
+{
+  BlockId id;
+};
+
+typedef std::vector<RenamedBlock> BlockMap;
 
 bool is_eh_instruction(Instruction::Kind kind)
 {
@@ -42,12 +50,12 @@ bool direct_call(const Instruction & instruction, const std::string ** target)
   return true;
 }
 
-Instruction jump_to(const std::string & label)
+Instruction jump_to(BlockId block)
 {
   Instruction result;
   result.kind = Instruction::IK_JUMP;
   result.first.kind = Operand::OP_LABEL;
-  result.first.text = label;
+  result.first.block = block;
   return result;
 }
 
@@ -112,8 +120,10 @@ struct Names
       collect_generated_id(function.slots[i].first, &site_ids);
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-      labels.insert(function.blocks[i].label);
-      collect_generated_id(function.blocks[i].label, &site_ids);
+      const std::string & label =
+        lowir_model::lowir_block_label(function, function.blocks[i].id);
+      labels.insert(label);
+      collect_generated_id(label, &site_ids);
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
         const Instruction & ins = function.blocks[i].instructions[j];
         if(!ins.dest.empty()) values.insert(ins.dest);
@@ -140,7 +150,7 @@ struct Names
 };
 
 void rename_operand(Operand * operand, const ValueMap & values,
-                    const NameMap & slots, const NameMap & labels)
+                    const NameMap & slots, const BlockMap & blocks)
 {
   if(operand->kind == Operand::OP_TEMP) {
     const ValueMap::const_iterator found = values.find(operand->text);
@@ -149,15 +159,16 @@ void rename_operand(Operand * operand, const ValueMap & values,
     const NameMap::const_iterator found = slots.find(operand->text);
     if(found != slots.end()) operand->text = found->second;
   } else if(operand->kind == Operand::OP_LABEL) {
-    const NameMap::const_iterator found = labels.find(operand->text);
-    if(found != labels.end()) operand->text = found->second;
+    const std::uint32_t id = operand->block;
+    if(id < blocks.size() && blocks[id].id.valid())
+      operand->block = blocks[id].id;
   }
 }
 
 Instruction clone_instruction(const Instruction & source,
                               const ValueMap & values,
                               const NameMap & slots,
-                              const NameMap & labels)
+                              const BlockMap & blocks)
 {
   Instruction result = source;
   if(!result.dest.empty()) {
@@ -166,11 +177,11 @@ Instruction clone_instruction(const Instruction & source,
       throw std::logic_error("inlined result has no value name");
     result.dest = found->second.text;
   }
-  rename_operand(&result.first, values, slots, labels);
-  rename_operand(&result.second, values, slots, labels);
-  rename_operand(&result.third, values, slots, labels);
+  rename_operand(&result.first, values, slots, blocks);
+  rename_operand(&result.second, values, slots, blocks);
+  rename_operand(&result.third, values, slots, blocks);
   for(std::size_t i = 0; i < result.args.size(); ++i)
-    rename_operand(&result.args[i], values, slots, labels);
+    rename_operand(&result.args[i], values, slots, blocks);
   return result;
 }
 
@@ -199,12 +210,11 @@ void replace_values(Function * function, const ValueMap & replacements)
     }
 }
 
-typedef std::unordered_map<std::string, std::size_t> BlockIndex;
-
 std::vector<std::size_t> normal_successors(const Function & function,
                                             std::size_t block,
-                                            const BlockIndex & index)
+                                            const std::vector<std::size_t> & index)
 {
+  const std::size_t no_block = static_cast<std::size_t>(-1);
   std::vector<std::size_t> result;
   if(function.blocks[block].instructions.empty()) return result;
   const Instruction & term = function.blocks[block].instructions.back();
@@ -214,15 +224,18 @@ std::vector<std::size_t> normal_successors(const Function & function,
     targets[0] = &term.second; targets[1] = &term.third;
   }
   for(std::size_t i = 0; i < 2; ++i) if(targets[i]) {
-    const BlockIndex::const_iterator found = index.find(targets[i]->text);
-    if(found != index.end()) result.push_back(found->second);
+    const std::uint32_t id = targets[i]->block;
+    if(id < index.size() && index[id] != no_block)
+      result.push_back(index[id]);
   }
   if(term.kind == Instruction::IK_SWITCH) {
-    const BlockIndex::const_iterator fallback = index.find(term.second.text);
-    if(fallback != index.end()) result.push_back(fallback->second);
+    const std::uint32_t fallback = term.second.block;
+    if(fallback < index.size() && index[fallback] != no_block)
+      result.push_back(index[fallback]);
     for(std::size_t i = 1; i < term.args.size(); i += 2) {
-      const BlockIndex::const_iterator found = index.find(term.args[i].text);
-      if(found != index.end()) result.push_back(found->second);
+      const std::uint32_t id = term.args[i].block;
+      if(id < index.size() && index[id] != no_block)
+        result.push_back(index[id]);
     }
   }
   return result;
@@ -231,9 +244,10 @@ std::vector<std::size_t> normal_successors(const Function & function,
 void remove_unreachable_blocks(Function * function)
 {
   if(function->blocks.empty()) return;
-  BlockIndex index;
+  const std::size_t no_block = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> index(function->next_block_id, no_block);
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
-    index[function->blocks[i].label] = i;
+    index[function->blocks[i].id] = i;
   std::vector<unsigned char> reachable(function->blocks.size(), 0);
   std::vector<std::size_t> pending(1, 0);
   reachable[0] = 1;
@@ -257,21 +271,23 @@ void remove_unreachable_blocks(Function * function)
 struct EhContext
 {
   std::vector<unsigned char> incoming;
-  std::unordered_set<std::string> landing_blocks;
+  std::vector<unsigned char> landing_blocks;
 };
 
 EhContext analyze_eh_context(const Function & function, Stats * stats)
 {
   EhContext result;
-  BlockIndex index;
+  const std::size_t no_block = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> index(function.next_block_id, no_block);
+  result.landing_blocks.assign(function.next_block_id, 0);
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    index[function.blocks[i].label] = i;
+    index[function.blocks[i].id] = i;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function.blocks[i].instructions[j];
       if(ins.kind == Instruction::IK_EH_TRY ||
          ins.kind == Instruction::IK_EH_CLEANUP)
-        result.landing_blocks.insert(ins.first.text);
+        result.landing_blocks[ins.first.block] = 1;
     }
   }
   if(function.blocks.empty()) return result;
@@ -636,9 +652,10 @@ private:
     return stripped;
   }
 
-  void build_maps(const Function & callee_function, const Instruction & call,
+  void build_maps(Function * caller, const Function & callee_function,
+                  const Instruction & call,
                   const std::string & prefix, Names * names, ValueMap * values,
-                  NameMap * slots, NameMap * labels)
+                  NameMap * slots, BlockMap * blocks)
   {
     if(callee_function.params.size() != call.args.size())
       throw std::runtime_error("inline call argument count mismatch");
@@ -650,10 +667,14 @@ private:
       (*slots)[callee_function.slots[i].first] = renamed;
       names->slots.insert(renamed);
     }
+    blocks->resize(callee_function.next_block_id);
     for(std::size_t i = 0; i < callee_function.blocks.size(); ++i) {
       const std::string renamed = "^" + prefix +
-        callee_function.blocks[i].label.substr(1);
-      (*labels)[callee_function.blocks[i].label] = renamed;
+        lowir_model::lowir_block_label(
+          callee_function, callee_function.blocks[i].id).substr(1);
+      RenamedBlock block;
+      block.id = lowir_model::allocate_lowir_block_id(*caller, renamed);
+      (*blocks)[callee_function.blocks[i].id] = block;
       names->labels.insert(renamed);
       for(std::size_t j = 0;
           j < callee_function.blocks[i].instructions.size(); ++j) {
@@ -688,9 +709,11 @@ private:
     const std::string prefix = "__o1inl" +
       std::to_string(names->next_site()) + "__";
     ValueMap values;
-    NameMap slots, labels;
-    build_maps(callee_function, call, prefix, names, &values, &slots, &labels);
     Function & caller = program_.functions[caller_index];
+    NameMap slots;
+    BlockMap blocks;
+    build_maps(&caller, callee_function, call, prefix, names, &values, &slots,
+               &blocks);
     for(std::size_t i = 0; i < callee_function.slots.size(); ++i)
       caller.slots.push_back(std::make_pair(
         slots.find(callee_function.slots[i].first)->second,
@@ -699,12 +722,12 @@ private:
     for(std::size_t i = 0; i < source.instructions.size(); ++i) {
       const Instruction & instruction = source.instructions[i];
       if(instruction.kind != Instruction::IK_RETURN) {
-        output->push_back(clone_instruction(instruction, values, slots, labels));
+        output->push_back(clone_instruction(instruction, values, slots, blocks));
         continue;
       }
       if(call.call_returns_void) continue;
       Operand returned = instruction.first;
-      rename_operand(&returned, values, slots, labels);
+      rename_operand(&returned, values, slots, blocks);
       (*replacements)[call.dest] = returned;
     }
   }
@@ -712,7 +735,7 @@ private:
   void inline_call(std::size_t caller_index, std::size_t block_index,
                    std::size_t instruction_index, const Function & callee_function,
                    Names * names, ValueMap * replacements,
-                   std::unordered_map<std::string, unsigned char> * block_eh,
+                   std::vector<unsigned char> * block_eh,
                    bool inside_eh)
   {
     Function & caller = program_.functions[caller_index];
@@ -720,10 +743,15 @@ private:
     const std::string prefix = "__o1inl" +
       std::to_string(names->next_site()) + "__";
     ValueMap values;
-    NameMap slots, labels;
-    build_maps(callee_function, call, prefix, names, &values, &slots, &labels);
-    for(NameMap::const_iterator it = labels.begin(); it != labels.end(); ++it)
-      (*block_eh)[it->second] = inside_eh ? 1 : 0;
+    NameMap slots;
+    BlockMap blocks;
+    build_maps(&caller, callee_function, call, prefix, names, &values, &slots,
+               &blocks);
+    if(block_eh->size() < caller.next_block_id)
+      block_eh->resize(caller.next_block_id, 0);
+    for(std::size_t i = 0; i < blocks.size(); ++i)
+      if(blocks[i].id.valid())
+        (*block_eh)[blocks[i].id] = inside_eh ? 1 : 0;
     for(std::size_t i = 0; i < callee_function.slots.size(); ++i)
       caller.slots.push_back(std::make_pair(
         slots.find(callee_function.slots[i].first)->second,
@@ -763,32 +791,36 @@ private:
           source.instructions[j].kind == Instruction::IK_CALL;
       void_call_wrapper = void_call_wrapper && wrapper_has_call;
       const std::string wrapper_continuation = "^" + prefix + "cont";
+      const BlockId wrapper_continuation_id = void_call_wrapper ?
+        lowir_model::allocate_lowir_block_id(caller, wrapper_continuation) :
+        BlockId();
       for(std::size_t j = 0; j < source.instructions.size(); ++j) {
         const Instruction & ins = source.instructions[j];
         if(ins.kind != Instruction::IK_RETURN) {
           caller.blocks[block_index].instructions.push_back(
-            clone_instruction(ins, values, slots, labels));
+            clone_instruction(ins, values, slots, blocks));
         } else if(void_call_wrapper) {
           caller.blocks[block_index].instructions.push_back(
-            jump_to(wrapper_continuation));
+            jump_to(wrapper_continuation_id));
         } else if(has_result && object_result) {
           single_object_return = ins.first;
-          rename_operand(&single_object_return, values, slots, labels);
+          rename_operand(&single_object_return, values, slots, blocks);
           have_single_object_return = true;
         } else if(has_result) {
           single_scalar_return = ins.first;
-          rename_operand(&single_scalar_return, values, slots, labels);
+          rename_operand(&single_scalar_return, values, slots, blocks);
           have_single_scalar_return = true;
         }
       }
       if(void_call_wrapper) {
         Block continuation_block;
-        continuation_block.label = wrapper_continuation;
+        continuation_block.id = wrapper_continuation_id;
         continuation_block.instructions = std::move(tail);
         caller.blocks.insert(caller.blocks.begin() + block_index + 1,
           std::move(continuation_block));
         names->labels.insert(wrapper_continuation);
-        (*block_eh)[wrapper_continuation] = inside_eh ? 1 : 0;
+        block_eh->resize(caller.next_block_id, 0);
+        (*block_eh)[wrapper_continuation_id] = inside_eh ? 1 : 0;
       } else caller.blocks[block_index].instructions.insert(
           caller.blocks[block_index].instructions.end(),
           std::make_move_iterator(tail.begin()),
@@ -801,23 +833,26 @@ private:
     }
 
     const std::string continuation = "^" + prefix + "cont";
+    const BlockId continuation_id =
+      lowir_model::allocate_lowir_block_id(caller, continuation);
     names->labels.insert(continuation);
-    (*block_eh)[continuation] = inside_eh ? 1 : 0;
+    block_eh->resize(caller.next_block_id, 0);
+    (*block_eh)[continuation_id] = inside_eh ? 1 : 0;
     caller.blocks[block_index].instructions.push_back(jump_to(
-      labels.find(callee_function.blocks[0].label)->second));
+      blocks[callee_function.blocks[0].id].id));
     std::vector<Block> inserted;
     for(std::size_t b = 0; b < callee_function.blocks.size(); ++b) {
       Block block;
-      block.label = labels.find(callee_function.blocks[b].label)->second;
+      block.id = blocks[callee_function.blocks[b].id].id;
       for(std::size_t j = 0;
           j < callee_function.blocks[b].instructions.size(); ++j) {
         const Instruction & ins = callee_function.blocks[b].instructions[j];
         if(ins.kind != Instruction::IK_RETURN) {
-          block.instructions.push_back(clone_instruction(ins, values, slots, labels));
+          block.instructions.push_back(clone_instruction(ins, values, slots, blocks));
           continue;
         }
         Operand returned = ins.first;
-        rename_operand(&returned, values, slots, labels);
+        rename_operand(&returned, values, slots, blocks);
         if(has_result && returns > 1) {
           Instruction merge;
           if(object_result) {
@@ -840,12 +875,12 @@ private:
           single_scalar_return = returned;
           have_single_scalar_return = true;
         }
-        block.instructions.push_back(jump_to(continuation));
+        block.instructions.push_back(jump_to(continuation_id));
       }
       inserted.push_back(std::move(block));
     }
     Block continuation_block;
-    continuation_block.label = continuation;
+    continuation_block.id = continuation_id;
     if(has_result && returns > 1 && !object_result) {
       Instruction load;
       load.kind = Instruction::IK_LOAD;
@@ -873,17 +908,16 @@ private:
   bool batch_inline_leaf_calls(std::size_t function_index,
                                std::size_t block_index,
                                const EhContext & eh,
-                               const std::unordered_map<std::string,
-                                 unsigned char> & block_eh,
+                               const std::vector<unsigned char> & block_eh,
                                Names * names, ValueMap * replacements,
                                std::size_t * inline_budget)
   {
     Function & function = program_.functions[function_index];
     std::vector<Instruction> source;
     source.swap(function.blocks[block_index].instructions);
-    const std::string label = function.blocks[block_index].label;
-    const bool landing = eh.landing_blocks.count(label) != 0;
-    bool active = block_eh.find(label)->second != 0;
+    const BlockId id = function.blocks[block_index].id;
+    const bool landing = eh.landing_blocks[id] != 0;
+    bool active = block_eh[id] != 0;
     bool batch_safe = true;
     for(std::size_t i = 0; batch_safe && i < source.size(); ++i) {
       const std::size_t target = callee(source[i]);
@@ -902,7 +936,7 @@ private:
 
     std::vector<Instruction> rebuilt;
     rebuilt.reserve(source.size());
-    active = block_eh.find(label)->second != 0;
+    active = block_eh[id] != 0;
     bool changed = false;
     for(std::size_t i = 0; i < source.size(); ++i) {
       const Instruction & ins = source[i];
@@ -949,11 +983,16 @@ private:
     EhContext eh;
     if(contains_eh_[function_index])
       eh = analyze_eh_context(program_.functions[function_index], stats_);
-    else eh.incoming.assign(
-      program_.functions[function_index].blocks.size(), 1);
-    std::unordered_map<std::string, unsigned char> block_eh;
+    else {
+      eh.incoming.assign(
+        program_.functions[function_index].blocks.size(), 1);
+      eh.landing_blocks.assign(
+        program_.functions[function_index].next_block_id, 0);
+    }
+    std::vector<unsigned char> block_eh(
+      program_.functions[function_index].next_block_id, 0);
     for(std::size_t b = 0; b < program_.functions[function_index].blocks.size(); ++b)
-      block_eh[program_.functions[function_index].blocks[b].label] =
+      block_eh[program_.functions[function_index].blocks[b].id] =
         b < eh.incoming.size() && eh.incoming[b] == 2 ? 1 : 0;
     ValueMap replacements;
     bool changed = false;
@@ -963,7 +1002,7 @@ private:
       changed |= batch_inline_leaf_calls(function_index, b, eh, block_eh,
         &names, &replacements, &inline_budget);
       bool active = block_eh[
-        program_.functions[function_index].blocks[b].label] != 0;
+        program_.functions[function_index].blocks[b].id] != 0;
       std::size_t j = 0;
       while(j < program_.functions[function_index].blocks[b].instructions.size()) {
         const Instruction & ins =
@@ -972,8 +1011,11 @@ private:
         if(target != kNoFunction) {
           if(stats_) ++stats_->inline_call_visits;
           if(candidate(function_index, target, ins,
-               eh.landing_blocks.count(
-                 program_.functions[function_index].blocks[b].label) != 0,
+               static_cast<std::uint32_t>(
+                 program_.functions[function_index].blocks[b].id) <
+                 eh.landing_blocks.size() &&
+               eh.landing_blocks[
+                 program_.functions[function_index].blocks[b].id] != 0,
                active) && consume_inline_budget(target, &inline_budget)) {
             inline_call(function_index, b, j, program_.functions[target],
               &names, &replacements, &block_eh, active);

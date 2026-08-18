@@ -95,7 +95,8 @@ void plan_program(const lowir_model::LowirProgram & source,
           target.uses_eh = true;
 }
 
-bool lower_marker(const lowir_model::Instruction & source,
+bool lower_marker(const lowir_model::Function & function,
+                  const lowir_model::Instruction & source,
                   std::vector<mir_model::MirInstruction> & target)
 {
   using namespace lowir_native::build;
@@ -105,7 +106,7 @@ bool lower_marker(const lowir_model::Instruction & source,
      source.kind == LowInstruction::IK_EH_CLEANUP) {
     MirInstruction push = machine_instruction(MirInstruction::MI_EH_PUSH);
     append_operand(push, named_operand(mir_model::MirOperand::OP_LABEL,
-                                       source.first.text));
+      lowir_model::lowir_block_label(function, source.first.block)));
     append_operand(push, immediate(source.kind == LowInstruction::IK_EH_CLEANUP));
     target.push_back(push);
   } else if(source.kind == LowInstruction::IK_EH_END)

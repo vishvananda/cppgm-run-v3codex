@@ -10,15 +10,17 @@ namespace analysis
 using lowir_model::Instruction;
 using lowir_model::Operand;
 
+const std::size_t kNoBlock = static_cast<std::size_t>(-1);
+
 ControlFlowQueries::ControlFlowQueries(
 	const lowir_model::LowirFunction& function)
 	: successors_(function.blocks.size()), reachable_(function.blocks.size()),
 	  dominated_(function.blocks.size()), current_block_(0),
 	  reachability_ready_(false), dominance_ready_(false)
 {
-	std::unordered_map<std::string, std::size_t> labels;
+	std::vector<std::size_t> blocks(function.next_block_id, kNoBlock);
 	for (std::size_t i = 0; i < function.blocks.size(); ++i)
-		labels[function.blocks[i].label] = i;
+		blocks[function.blocks[i].id] = i;
 	std::size_t position = 0;
 	for (std::size_t i = 0; i < function.blocks.size(); ++i)
 	{
@@ -33,22 +35,22 @@ ControlFlowQueries::ControlFlowQueries(
 				RecordUse(instruction.args[k], position, i);
 			if (instruction.kind == Instruction::IK_EH_TRY ||
 				instruction.kind == Instruction::IK_EH_CLEANUP)
-				AppendSuccessor(i, instruction.first, labels);
+				AppendSuccessor(i, instruction.first, blocks);
 		}
 		if (block.instructions.empty()) continue;
 		const Instruction& terminal = block.instructions.back();
 		if (terminal.kind == Instruction::IK_JUMP)
-			AppendSuccessor(i, terminal.first, labels);
+			AppendSuccessor(i, terminal.first, blocks);
 		else if (terminal.kind == Instruction::IK_BRANCH)
 		{
-			AppendSuccessor(i, terminal.second, labels);
-			AppendSuccessor(i, terminal.third, labels);
+			AppendSuccessor(i, terminal.second, blocks);
+			AppendSuccessor(i, terminal.third, blocks);
 		}
 		else if (terminal.kind == Instruction::IK_SWITCH)
 		{
-			AppendSuccessor(i, terminal.second, labels);
+			AppendSuccessor(i, terminal.second, blocks);
 			for (std::size_t j = 1; j < terminal.args.size(); j += 2)
-				AppendSuccessor(i, terminal.args[j], labels);
+				AppendSuccessor(i, terminal.args[j], blocks);
 		}
 		else if (terminal.kind != Instruction::IK_RETURN &&
 			terminal.kind != Instruction::IK_RESUME &&
@@ -56,23 +58,22 @@ ControlFlowQueries::ControlFlowQueries(
 		{
 			Operand fallthrough;
 			fallthrough.kind = Operand::OP_LABEL;
-			fallthrough.text = function.blocks[i + 1].label;
-			AppendSuccessor(i, fallthrough, labels);
+			fallthrough.block = function.blocks[i + 1].id;
+			AppendSuccessor(i, fallthrough, blocks);
 		}
 	}
 }
 
 void ControlFlowQueries::AppendSuccessor(std::size_t from,
 	const Operand& target,
-	const std::unordered_map<std::string, std::size_t>& labels)
+	const std::vector<std::size_t>& blocks)
 {
 	if (target.kind != Operand::OP_LABEL) return;
-	const std::unordered_map<std::string, std::size_t>::const_iterator found =
-		labels.find(target.text);
-	if (found == labels.end()) return;
+	const std::uint32_t id = target.block;
+	if (id >= blocks.size() || blocks[id] == kNoBlock) return;
 	std::vector<std::size_t>& successors = successors_[from];
-	if (std::find(successors.begin(), successors.end(), found->second) ==
-		successors.end()) successors.push_back(found->second);
+	if (std::find(successors.begin(), successors.end(), blocks[id]) ==
+		successors.end()) successors.push_back(blocks[id]);
 }
 
 void ControlFlowQueries::RecordUse(

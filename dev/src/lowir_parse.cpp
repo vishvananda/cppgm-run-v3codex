@@ -666,10 +666,12 @@ private:
            (block->instructions.empty() ||
             (block->instructions.back().kind != Instruction::IK_CALL &&
              block->instructions.back().kind != Instruction::IK_EH_END)))
-          throw ParseError("block has no terminator: " + block->label);
+          throw ParseError("block has no terminator: " +
+            lowir_block_label(function, block->id));
+        const std::string label = named('^', "block name");
         function.blocks.push_back(Block());
         block = &function.blocks.back();
-        block->label = named('^', "block name");
+        block->id = allocate_lowir_block_id(function, label);
         expect(":");
         terminated = false;
       } else {
@@ -683,7 +685,8 @@ private:
        (block->instructions.empty() ||
         (block->instructions.back().kind != Instruction::IK_CALL &&
          block->instructions.back().kind != Instruction::IK_EH_END)))
-      throw ParseError("block has no terminator: " + block->label);
+      throw ParseError("block has no terminator: " +
+        lowir_block_label(function, block->id));
   }
 
   bool is_terminator(Instruction::Kind kind) const
@@ -1125,7 +1128,8 @@ private:
         throw ParseError("duplicate slot");
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
-      if(!blocks.insert(function.blocks[i].label).second) throw ParseError("duplicate block");
+      if(!blocks.insert(lowir_block_label(function, function.blocks[i].id)).second)
+        throw ParseError("duplicate block");
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
       validate_block(function, function.blocks[i], values, slots, blocks);
   }
@@ -1153,7 +1157,8 @@ private:
 	  terminal != 0 && instruction_terminates(block.instructions[terminal - 1]) :
 	  instruction_terminates(block.instructions.back());
 	if(!terminated)
-	  throw ParseError("block has no terminator: " + block.label);
+	  throw ParseError("block has no terminator: " +
+	    lowir_block_label(function, block.id));
   }
 
   bool instruction_terminates(const Instruction & ins) const
@@ -1380,6 +1385,8 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
   std::vector<Token>().swap(tokens);
   propagate_direct_call_boundaries(program);
   Validator(program, entry_policy).Validate();
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    resolve_lowir_block_operands(program.functions[i]);
   program.token_count = token_count;
   finalize_lowir_object_model(program);
   return program;

@@ -4,6 +4,7 @@
 #include "lowir_native_analysis.h"
 #include "lowir_native_atomic_lowering.h"
 #include "lowir_native_bulk_lowering.h"
+#include "lowir_native_block_labels.h"
 #include "lowir_native_call_lowering.h"
 #include "lowir_native_compare_lowering.h"
 #include "lowir_native_control_flow.h"
@@ -96,7 +97,7 @@ public:
     target_.blocks.reserve(source_.blocks.size());
     for(std::size_t i = 0; i < source_.blocks.size(); ++i) {
       mir_model::MirBlock block;
-      block.label = source_.blocks[i].label;
+      block.label = lowir_model::lowir_block_label(source_, source_.blocks[i].id);
       block.instructions.reserve(source_.blocks[i].instructions.size() +
         (i == 0 ? parameter_moves_.size() : 0));
       control_flow_.SelectBlock(i);
@@ -711,7 +712,7 @@ private:
     if(operand.kind == Operand::OP_GLOBAL)
       return global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
-      return named_operand(MirOperand::OP_LABEL, operand.text);
+      return native_block_operand(source_, operand);
     throw std::runtime_error("foundation operand is not implemented: " + operand.text);
   }
   const LowType & operand_type(const Operand & operand) const
@@ -1389,15 +1390,15 @@ private:
     out.push_back(compare);
     MirInstruction unordered = machine_instruction(MirInstruction::MI_JCC);
     unordered.condition = XC_P;
-    append_operand(unordered, named_operand(MirOperand::OP_LABEL,
-      comparison.op == "ne" ? branch.second.text : branch.third.text));
+    append_operand(unordered, native_block_operand(source_,
+      comparison.op == "ne" ? branch.second : branch.third));
     out.push_back(unordered);
     MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
     jump_true.condition = float_predicate_condition(comparison.op);
-    append_operand(jump_true, named_operand(MirOperand::OP_LABEL, branch.second.text));
+    append_operand(jump_true, native_block_operand(source_, branch.second));
     out.push_back(jump_true);
     MirInstruction jump_false = machine_instruction(MirInstruction::MI_JMP);
-    append_operand(jump_false, named_operand(MirOperand::OP_LABEL, branch.third.text));
+    append_operand(jump_false, native_block_operand(source_, branch.third));
     out.push_back(jump_false);
     consume(comparison.first);
     consume(comparison.second);
@@ -1781,10 +1782,10 @@ private:
     out.push_back(compare);
     MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
     jump_true.condition = predicate_condition(comparison.op);
-    append_operand(jump_true, named_operand(MirOperand::OP_LABEL, branch.second.text));
+    append_operand(jump_true, native_block_operand(source_, branch.second));
     out.push_back(jump_true);
     MirInstruction jump_false = machine_instruction(MirInstruction::MI_JMP);
-    append_operand(jump_false, named_operand(MirOperand::OP_LABEL, branch.third.text));
+    append_operand(jump_false, native_block_operand(source_, branch.third));
     out.push_back(jump_false);
     consume(comparison.first);
     consume(comparison.second);
@@ -1949,10 +1950,10 @@ private:
     out.push_back(compare);
     MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
     jump_true.condition = XC_E;
-    append_operand(jump_true, named_operand(MirOperand::OP_LABEL, branch.second.text));
+    append_operand(jump_true, native_block_operand(source_, branch.second));
     out.push_back(jump_true);
     MirInstruction jump_false = machine_instruction(MirInstruction::MI_JMP);
-    append_operand(jump_false, named_operand(MirOperand::OP_LABEL, branch.third.text));
+    append_operand(jump_false, native_block_operand(source_, branch.third));
     out.push_back(jump_false);
     consume(instruction.first);
     skipped_position_ = position_ + 1;
@@ -2722,7 +2723,7 @@ private:
         MirOperand fallback_home;
         const bool forward_nonentry_branch =
           facts_.direct_branch_call_results.count(instruction.dest) &&
-          !source_.blocks.empty() && block.label != source_.blocks.front().label;
+          !source_.blocks.empty() && block.id != source_.blocks.front().id;
         if(!forward_nonentry_branch &&
            !result_is_immediate_return(block, instruction_index, instruction.dest) &&
            !selection::result_is_immediately_stored(
@@ -2781,10 +2782,10 @@ private:
     out.push_back(compare);
     MirInstruction branch = machine_instruction(MirInstruction::MI_JCC);
     branch.condition = XC_NE;
-    append_operand(branch, named_operand(MirOperand::OP_LABEL, instruction.second.text));
+    append_operand(branch, native_block_operand(source_, instruction.second));
     out.push_back(branch);
     MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
-    append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.third.text));
+    append_operand(jump, native_block_operand(source_, instruction.third));
     out.push_back(jump);
     consume(instruction.first);
   }
@@ -2811,13 +2812,13 @@ private:
       out.push_back(compare);
       MirInstruction branch = machine_instruction(MirInstruction::MI_JCC);
       branch.condition = XC_E;
-      append_operand(branch, named_operand(MirOperand::OP_LABEL,
-                                           instruction.args[i + 1].text));
+      append_operand(branch,
+        native_block_operand(source_, instruction.args[i + 1]));
       out.push_back(branch);
       consume(instruction.args[i]);
     }
     MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
-    append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.second.text));
+    append_operand(jump, native_block_operand(source_, instruction.second));
     out.push_back(jump);
     consume(instruction.first);
   }
@@ -2970,10 +2971,10 @@ private:
     } else if(instruction.kind == Instruction::IK_SWITCH) emit_switch(instruction, out);
     else if(instruction.kind == Instruction::IK_JUMP) {
       MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
-      append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.first.text));
+      append_operand(jump, native_block_operand(source_, instruction.first));
       out.push_back(jump);
     } else if(instruction.kind == Instruction::IK_RETURN) emit_return(instruction, out);
-    else if(eh::lower_marker(instruction, out)) return;
+    else if(eh::lower_marker(source_, instruction, out)) return;
     else if(instruction.kind == Instruction::IK_EXCEPTION ||
             instruction.kind == Instruction::IK_EXCEPTION_SELECTOR)
       emit_exception_value(instruction, out);

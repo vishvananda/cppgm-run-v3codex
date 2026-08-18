@@ -432,7 +432,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 		if (source.target >= function.blocks.size())
 			throw std::logic_error("invalid typed LowIR jump target");
 		target.first.kind = lowir_model::Operand::OP_LABEL;
-		target.first.text = Label(function.blocks[source.target].label);
+		target.first.block = lowir_model::BlockId(source.target);
 		break;
 	case Instruction::BRANCH:
 		target.kind = lowir_model::Instruction::IK_BRANCH;
@@ -440,16 +440,16 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			source.alternate >= function.blocks.size())
 			throw std::logic_error("invalid typed LowIR branch target");
 		target.second.kind = lowir_model::Operand::OP_LABEL;
-		target.second.text = Label(function.blocks[source.target].label);
+		target.second.block = lowir_model::BlockId(source.target);
 		target.third.kind = lowir_model::Operand::OP_LABEL;
-		target.third.text = Label(function.blocks[source.alternate].label);
+		target.third.block = lowir_model::BlockId(source.alternate);
 		break;
 	case Instruction::SWITCH:
 		target.kind = lowir_model::Instruction::IK_SWITCH;
 		if (source.target >= function.blocks.size())
 			throw std::logic_error("invalid typed LowIR switch target");
 		target.second.kind = lowir_model::Operand::OP_LABEL;
-		target.second.text = Label(function.blocks[source.target].label);
+		target.second.block = lowir_model::BlockId(source.target);
 		if (source.extra_count && (source.extra_first == kNoLowId ||
 			source.extra_first > program.switch_case_values.size() ||
 			source.extra_count > program.switch_case_values.size() -
@@ -472,7 +472,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 				throw std::logic_error("invalid typed LowIR switch case target");
 			lowir_model::Operand label;
 			label.kind = lowir_model::Operand::OP_LABEL;
-			label.text = Label(function.blocks[block].label);
+			label.block = lowir_model::BlockId(block);
 			target.args.push_back(label);
 		}
 		break;
@@ -491,7 +491,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			if (source.target >= function.blocks.size())
 				throw std::logic_error("invalid typed LowIR EH target");
 			target.first.kind = lowir_model::Operand::OP_LABEL;
-			target.first.text = Label(function.blocks[source.target].label);
+			target.first.block = lowir_model::BlockId(source.target);
 		}
 	}
 	return target;
@@ -654,6 +654,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			result.slots.push_back(std::make_pair(
 				Dollar(item.slots[j].name), AdaptType(item.slots[j].type)));
 		result.blocks.reserve(item.block_order.size());
+		result.block_labels.resize(item.blocks.size());
+		result.next_block_id = static_cast<std::uint32_t>(item.blocks.size());
 		for (std::size_t order = 0; order < item.block_order.size(); ++order)
 		{
 			const BlockId block_id = item.block_order[order];
@@ -661,7 +663,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				throw std::logic_error("invalid typed LowIR block order");
 			const Block& block = item.blocks[block_id];
 			lowir_model::Block lowered;
-			lowered.label = Label(block.label);
+			lowered.id = lowir_model::BlockId(block_id);
+			result.block_labels[block_id] = Label(block.label);
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(

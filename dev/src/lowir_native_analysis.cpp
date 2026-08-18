@@ -205,28 +205,29 @@ void extend_loop_liveness(FunctionFacts & facts,
     const std::vector<std::vector<std::size_t> > & clobber_positions)
 {
   const std::size_t block_count = function.blocks.size();
-  std::unordered_map<std::string, std::size_t> block_index;
+  const std::size_t no_block = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> block_index(function.next_block_id, no_block);
   for(std::size_t i = 0; i < block_count; ++i)
-    block_index[function.blocks[i].label] = i;
+    block_index[function.blocks[i].id] = i;
   std::vector<std::vector<std::size_t> > loop_ends_at(block_count);
   for(std::size_t i = 0; i < block_count; ++i) {
     if(function.blocks[i].instructions.empty()) continue;
     const Instruction & terminal = function.blocks[i].instructions.back();
-    std::vector<std::string> targets;
-    if(terminal.kind == Instruction::IK_JUMP) targets.push_back(terminal.first.text);
+    std::vector<lowir_model::BlockId> targets;
+    if(terminal.kind == Instruction::IK_JUMP) targets.push_back(terminal.first.block);
     else if(terminal.kind == Instruction::IK_BRANCH) {
-      targets.push_back(terminal.second.text);
-      targets.push_back(terminal.third.text);
+      targets.push_back(terminal.second.block);
+      targets.push_back(terminal.third.block);
     } else if(terminal.kind == Instruction::IK_SWITCH) {
-      targets.push_back(terminal.second.text);
+      targets.push_back(terminal.second.block);
       for(std::size_t k = 1; k < terminal.args.size(); k += 2)
-        targets.push_back(terminal.args[k].text);
+        targets.push_back(terminal.args[k].block);
     }
     for(std::size_t j = 0; j < targets.size(); ++j) {
-      const std::unordered_map<std::string, std::size_t>::const_iterator found =
-        block_index.find(targets[j]);
-      if(found != block_index.end() && found->second <= i)
-        loop_ends_at[found->second].push_back(i);
+      const std::uint32_t id = targets[j];
+      if(id < block_index.size() && block_index[id] != no_block &&
+         block_index[id] <= i)
+        loop_ends_at[block_index[id]].push_back(i);
     }
   }
   // A nested loop's blocks may follow the outer loop's textual backedge.

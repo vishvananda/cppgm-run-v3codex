@@ -15,6 +15,7 @@ namespace lowir_opt {
 namespace {
 
 using lowir_model::Block;
+using lowir_model::BlockId;
 using lowir_model::Function;
 using lowir_model::Instruction;
 using lowir_model::InstructionDebugLocation;
@@ -61,16 +62,16 @@ ResumeKey resume_key(const InstructionDebugLocation & location,
 }
 
 void redirect_target(Operand * target,
-    const std::unordered_map<std::string, std::string> & replacements)
+    const std::vector<BlockId> & replacements)
 {
   if(target->kind != Operand::OP_LABEL) return;
-  const std::unordered_map<std::string, std::string>::const_iterator found =
-    replacements.find(target->text);
-  if(found != replacements.end()) target->text = found->second;
+  const std::uint32_t id = target->block;
+  if(id < replacements.size() && replacements[id].valid())
+    target->block = replacements[id];
 }
 
 void redirect_instruction_targets(Instruction * instruction,
-    const std::unordered_map<std::string, std::string> & replacements)
+    const std::vector<BlockId> & replacements)
 {
   if(instruction->kind == Instruction::IK_JUMP ||
      instruction->kind == Instruction::IK_EH_TRY ||
@@ -112,7 +113,9 @@ bool same_operand(const Operand & left, const Operand & right)
   return left.kind == right.kind &&
     left.address_binding == right.address_binding &&
     left.has_int_value == right.has_int_value &&
-    left.text == right.text && left.int_value == right.int_value &&
+    (left.kind == Operand::OP_LABEL ? left.block == right.block :
+                                      left.text == right.text) &&
+    left.int_value == right.int_value &&
     same_type(left.literal_type, right.literal_type);
 }
 
@@ -121,7 +124,9 @@ std::size_t operand_hash(const Operand & operand)
   std::size_t result = static_cast<std::size_t>(operand.kind);
   combine_hash(&result, static_cast<std::size_t>(operand.address_binding));
   combine_hash(&result, operand.has_int_value ? 1 : 0);
-  combine_hash(&result, std::hash<std::string>()(operand.text));
+  combine_hash(&result, operand.kind == Operand::OP_LABEL ?
+    static_cast<std::uint32_t>(operand.block) :
+    std::hash<std::string>()(operand.text));
   combine_hash(&result, std::hash<long long>()(operand.int_value));
   combine_hash(&result, type_hash(operand.literal_type));
   return result;
@@ -251,7 +256,7 @@ bool may_be_shared_cleanup_instruction(Instruction::Kind kind)
 
 struct EhFrame
 {
-  std::string landing;
+  BlockId landing;
   bool consumed;
 
   bool operator==(const EhFrame & other) const
@@ -268,7 +273,7 @@ struct EhStateHash
   {
     std::size_t result = state.size();
     for(std::size_t i = 0; i < state.size(); ++i) {
-      combine_hash(&result, std::hash<std::string>()(state[i].landing));
+      combine_hash(&result, static_cast<std::uint32_t>(state[i].landing));
       combine_hash(&result, state[i].consumed ? 1 : 0);
     }
     return result;
@@ -327,10 +332,11 @@ CleanupContexts analyze_cleanup_contexts(const Function & function)
   result.cleanup_landing.assign(count, 0);
   if(count == 0) return result;
 
-  std::unordered_map<std::string, std::size_t> block_index;
+  const std::size_t no_block = static_cast<std::size_t>(-1);
+  std::vector<std::size_t> block_index(function.next_block_id, no_block);
   std::vector<unsigned char> has_catches(count, 0);
   for(std::size_t i = 0; i < count; ++i) {
-    block_index.emplace(function.blocks[i].label, i);
+    block_index[function.blocks[i].id] = i;
     has_catches[i] = block_has_catches(function.blocks[i]);
   }
   std::unordered_map<EhState, std::size_t, EhStateHash> context_ids;
@@ -364,9 +370,9 @@ CleanupContexts analyze_cleanup_contexts(const Function & function)
   };
   const auto merge_label = [&](const Operand & target, const EhState & state) {
     if(target.kind != Operand::OP_LABEL) return;
-    const std::unordered_map<std::string, std::size_t>::const_iterator found =
-      block_index.find(target.text);
-    if(found != block_index.end()) merge_entry(found->second, state);
+    const std::uint32_t id = target.block;
+    if(id < block_index.size() && block_index[id] != no_block)
+      merge_entry(block_index[id], state);
   };
 
   merge_entry(0, EhState());
@@ -381,17 +387,18 @@ CleanupContexts analyze_cleanup_contexts(const Function & function)
       const Instruction & instruction = block.instructions[i];
       if(instruction.kind == Instruction::IK_EH_TRY ||
          instruction.kind == Instruction::IK_EH_CLEANUP) {
-        const std::unordered_map<std::string, std::size_t>::const_iterator
-          target = block_index.find(instruction.first.text);
-        if(target != block_index.end()) {
+        const std::uint32_t target_id = instruction.first.block;
+        if(target_id < block_index.size() &&
+           block_index[target_id] != no_block) {
+          const std::size_t target = block_index[target_id];
           EhState landing = state;
-          landing.push_back(EhFrame{instruction.first.text, true});
-          merge_entry(target->second, landing);
+          landing.push_back(EhFrame{instruction.first.block, true});
+          merge_entry(target, landing);
           if(instruction.kind == Instruction::IK_EH_CLEANUP ||
-             !has_catches[target->second])
-            result.cleanup_landing[target->second] = 1;
+             !has_catches[target])
+            result.cleanup_landing[target] = 1;
         }
-        state.push_back(EhFrame{instruction.first.text, false});
+        state.push_back(EhFrame{instruction.first.block, false});
       } else if(instruction.kind == Instruction::IK_EH_END) {
         end_eh_region(&state);
       }
@@ -476,13 +483,13 @@ std::size_t candidate_benefit(
   return gross;
 }
 
-Instruction jump_to(const std::string & label,
+Instruction jump_to(BlockId block,
                     const InstructionDebugLocation & debug)
 {
   Instruction result;
   result.kind = Instruction::IK_JUMP;
   result.first.kind = Operand::OP_LABEL;
-  result.first.text = label;
+  result.first.block = block;
   result.debug_location = debug;
   return result;
 }
@@ -504,8 +511,9 @@ bool share_terminal_resume_blocks(Function * function, Stats * stats)
 
   const CleanupContexts contexts = analyze_cleanup_contexts(*function);
 
-  std::unordered_map<ResumeKey, std::string, ResumeKeyHash> canonical;
-  std::unordered_map<std::string, std::string> replacements;
+  std::unordered_map<ResumeKey, BlockId, ResumeKeyHash> canonical;
+  std::vector<BlockId> replacements(function->next_block_id);
+  std::size_t replacement_count = 0;
   std::vector<unsigned char> duplicate(function->blocks.size(), 0);
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     const Block & block = function->blocks[i];
@@ -517,15 +525,16 @@ bool share_terminal_resume_blocks(Function * function, Stats * stats)
       continue;
     const ResumeKey key = resume_key(block.instructions[0].debug_location,
                                      contexts.active[i]);
-    const std::unordered_map<ResumeKey, std::string,
+    const std::unordered_map<ResumeKey, BlockId,
       ResumeKeyHash>::const_iterator found = canonical.find(key);
-    if(found == canonical.end()) canonical.emplace(key, block.label);
+    if(found == canonical.end()) canonical.emplace(key, block.id);
     else {
-      replacements[block.label] = found->second;
+      replacements[block.id] = found->second;
+      ++replacement_count;
       duplicate[i] = 1;
     }
   }
-  if(replacements.empty()) return false;
+  if(replacement_count == 0) return false;
 
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j)
@@ -533,13 +542,13 @@ bool share_terminal_resume_blocks(Function * function, Stats * stats)
         &function->blocks[i].instructions[j], replacements);
 
   std::vector<Block> retained;
-  retained.reserve(function->blocks.size() - replacements.size());
+  retained.reserve(function->blocks.size() - replacement_count);
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     if(!duplicate[i]) retained.push_back(std::move(function->blocks[i]));
   function->blocks.swap(retained);
   if(stats) {
-    stats->cleanup_resume_blocks_removed += replacements.size();
-    stats->rewrites += replacements.size();
+    stats->cleanup_resume_blocks_removed += replacement_count;
+    stats->rewrites += replacement_count;
   }
   return true;
 }
@@ -666,7 +675,7 @@ bool share_exact_cleanup_tails(Function * function, Stats * stats)
   for(std::size_t i = 0; i < rewrites.size(); ++i) {
     const TailOccurrence canonical = rewrites[i].canonical;
     Block & canonical_block = function->blocks[canonical.block];
-    const std::string target = canonical_block.label;
+    const BlockId target = canonical_block.id;
     for(std::size_t j = 0; j < rewrites[i].others.size(); ++j) {
       const TailOccurrence occurrence = rewrites[i].others[j];
       Block & block = function->blocks[occurrence.block];

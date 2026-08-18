@@ -1,6 +1,7 @@
-#include "lowir_identity.h"
+#include "lowir_model.h"
 
 #include <stdexcept>
+#include <unordered_map>
 
 namespace lowir_model {
 namespace {
@@ -106,6 +107,60 @@ void StringPool::rehash(std::size_t capacity)
     replacement[slot] = id;
   }
   slots_.swap(replacement);
+}
+
+BlockId allocate_lowir_block_id(Function & function, const std::string & label)
+{
+  if(function.next_block_id == kInvalidCompactId)
+    throw std::runtime_error("too many LowIR blocks");
+  const BlockId result(function.next_block_id++);
+  function.block_labels.push_back(label);
+  return result;
+}
+
+const std::string & lowir_block_label(const Function & function, BlockId block)
+{
+  const std::uint32_t id = block;
+  if(id >= function.block_labels.size())
+    throw std::logic_error("invalid LowIR block identity");
+  return function.block_labels[id];
+}
+
+void resolve_lowir_block_operands(Function & function)
+{
+  std::unordered_map<std::string, BlockId> blocks;
+  blocks.reserve(function.blocks.size());
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    Block & block = function.blocks[i];
+    if(!block.id.valid()) block.id = allocate_lowir_block_id(function);
+    blocks.emplace(lowir_block_label(function, block.id), block.id);
+  }
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    std::vector<Instruction> & instructions = function.blocks[i].instructions;
+    for(std::size_t j = 0; j < instructions.size(); ++j) {
+      Instruction & instruction = instructions[j];
+      Operand * fixed[] = {
+        &instruction.first, &instruction.second, &instruction.third
+      };
+      for(std::size_t k = 0; k < 3; ++k) {
+        if(fixed[k]->kind != Operand::OP_LABEL) continue;
+        const std::unordered_map<std::string, BlockId>::const_iterator found =
+          blocks.find(fixed[k]->text);
+        if(found == blocks.end()) throw ParseError("undefined block target");
+        fixed[k]->block = found->second;
+        std::string().swap(fixed[k]->text);
+      }
+      for(std::size_t a = 0; a < instruction.args.size(); ++a) {
+        Operand & operand = instruction.args[a];
+        if(operand.kind != Operand::OP_LABEL) continue;
+        const std::unordered_map<std::string, BlockId>::const_iterator found =
+          blocks.find(operand.text);
+        if(found == blocks.end()) throw ParseError("undefined block target");
+        operand.block = found->second;
+        std::string().swap(operand.text);
+      }
+    }
+  }
 }
 
 }  // namespace lowir_model
