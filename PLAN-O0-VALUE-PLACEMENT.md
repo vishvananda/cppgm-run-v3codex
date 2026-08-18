@@ -953,3 +953,11 @@ passes 5,204/5,204.  The PA39 file audit has zero fatal findings and the same
 26 advisory warnings as the phase baseline; the index predicate remains an
 inline typed selection operation rather than adding implementation weight to
 the address-lowering owner.
+
+At commit `324f2356`, a clean 32-way self build takes 17.97 seconds wall,
+404.13 seconds aggregate user time, and 252,864 KiB peak RSS.  With no
+inception object tree present, the separate clean 32-way inception comparison
+takes 1:52.43 wall, 2,940.83 seconds aggregate user time, and 231,940 KiB peak
+RSS.  All 163 compared objects match.  The self and inception binaries are
+byte-identical at 16,754,968 bytes with SHA-256
+`013307fc2e0636b22b2b20b71d01de59727aa43fc2f62f3c71f98d2f954535e6`.
