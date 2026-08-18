@@ -37,7 +37,7 @@ private:
 		const LowType& type, bool reference)
 	{
 		Parameter parameter;
-		parameter.name = name;
+		parameter.name = output_.strings.intern(name);
 		parameter.type = type;
 		parameter.reference = reference;
 		function->parameters.push_back(parameter);
@@ -81,7 +81,7 @@ private:
 			AddParameter(&function, "arg" + std::to_string(i + 1),
 				source_types_.Lower(parameters[i]),
 				source_types_.IsReference(parameters[i]));
-		function.blocks.push_back(Block("entry"));
+		function.blocks.push_back(Block(output_.strings.intern("entry")));
 		function.blocks[0].selected = true;
 		function.block_order.push_back(BlockId(0));
 		const Operand adjusted(TempId(1), LowPtr());
@@ -125,7 +125,8 @@ private:
 			function.blocks[0].instructions.push_back(branch);
 			function.blocks[0].terminated = true;
 
-			function.blocks.push_back(Block("return_null"));
+			function.blocks.push_back(Block(
+				output_.strings.intern("return_null")));
 			function.blocks[1].selected = true;
 			function.block_order.push_back(BlockId(1));
 			Instruction null_result(Instruction::RETURN_VALUE);
@@ -134,7 +135,8 @@ private:
 			function.blocks[1].instructions.push_back(null_result);
 			function.blocks[1].terminated = true;
 
-			function.blocks.push_back(Block("adjust_return"));
+			function.blocks.push_back(Block(
+				output_.strings.intern("adjust_return")));
 			function.blocks[2].selected = true;
 			function.block_order.push_back(BlockId(2));
 			std::uint32_t next_temp = 4;

@@ -470,23 +470,16 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 		program.exception_filter_types.capacity() * sizeof(SymbolId) +
 		program.switch_case_values.capacity() * sizeof(std::int64_t) +
 		program.switch_case_targets.capacity() * sizeof(BlockId) +
-		program.literals.StorageBytes() +
+		program.strings.storage_bytes() +
 		program.string_literal_symbols.capacity() * sizeof(SymbolId) +
 		program.identities.StorageBytes() + program.symbol_index.StorageBytes() +
 		program.symbol_name_counts.StorageBytes();
-	for (std::size_t i = 0; i < program.symbols.size(); ++i)
-		bytes += program.symbols[i].name.capacity() +
-			program.symbols[i].object_name.capacity();
-	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
-		bytes += program.object_aliases[i].object_name.capacity();
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
 		bytes += program.globals[i].items.capacity() * sizeof(Global::DataItem);
 	for (std::size_t i = 0; i < program.declarations.size(); ++i)
 	{
 		const FunctionDeclaration& declaration = program.declarations[i];
 		bytes += declaration.parameters.capacity() * sizeof(Parameter);
-		for (std::size_t p = 0; p < declaration.parameters.size(); ++p)
-			bytes += declaration.parameters[p].name.capacity();
 	}
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
 	{
@@ -496,15 +489,10 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 			function.blocks.capacity() * sizeof(Block) +
 			function.block_order.capacity() * sizeof(BlockId) +
 			function.generated_name_reservations.storage_bytes();
-		for (std::size_t p = 0; p < function.parameters.size(); ++p)
-			bytes += function.parameters[p].name.capacity();
-		for (std::size_t s = 0; s < function.slots.size(); ++s)
-			bytes += function.slots[s].name.capacity();
 		for (std::size_t b = 0; b < function.blocks.size(); ++b)
 		{
 			const Block& block = function.blocks[b];
-			bytes += block.label.capacity() +
-				block.instructions.capacity() * sizeof(Instruction);
+			bytes += block.instructions.capacity() * sizeof(Instruction);
 		}
 	}
 	return bytes;

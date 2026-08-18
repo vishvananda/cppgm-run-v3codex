@@ -288,7 +288,7 @@ protected:
 		if (IncludesConstructionVtt(function.binding))
 		{
 			Parameter vtt;
-			vtt.name = "__vtt";
+			vtt.name = derived.output_.strings.intern("__vtt");
 			vtt.type = LowPtr();
 			parameters->insert(parameters->begin() + 1, vtt);
 		}
@@ -318,9 +318,10 @@ protected:
 					if (!CarriesVirtualBase(
 						function.binding, ordinal, base)) continue;
 					Parameter parameter;
-					parameter.name = implicit ?
+					const std::string name = implicit ?
 						"__vbptr" + std::to_string(member_index++) :
 						"__pvbptr" + std::to_string(parameter_index++);
+					parameter.name = derived.output_.strings.intern(name);
 					parameter.type = LowPtr();
 					parameters->push_back(parameter);
 				}
@@ -344,9 +345,10 @@ protected:
 			{
 				if (!CarriesVirtualBase(function.binding, i, base)) continue;
 				Parameter parameter;
-				parameter.name = implicit ?
+				const std::string name = implicit ?
 					"__vbptr" + std::to_string(member_index++) :
 					"__pvbptr" + std::to_string(parameter_index++);
+				parameter.name = derived.output_.strings.intern(name);
 				parameter.type = LowPtr();
 				parameters->push_back(parameter);
 			}
@@ -638,8 +640,8 @@ protected:
 			Slot slot;
 			const std::string name = parameter.text == 0 ? "__param" :
 				derived.program_.names.Get(parameter.text);
-			slot.name = derived.UniqueSlotName(
-				name + "__pvb" + std::to_string(local++));
+			slot.name = derived.output_.strings.intern(derived.UniqueSlotName(
+				name + "__pvb" + std::to_string(local++)));
 			slot.type = LowPtr();
 			fact.slot = static_cast<SlotId>(derived.function_->slots.size());
 			derived.function_->slots.push_back(slot);
@@ -937,7 +939,8 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		Slot slot;
-		slot.name = derived.GeneratedSlotName("basecast");
+		slot.name = derived.output_.strings.intern(
+			derived.GeneratedSlotName("basecast"));
 		slot.type = LowPtr();
 		const Operand result(
 			static_cast<SlotId>(derived.function_->slots.size()), LowPtr());

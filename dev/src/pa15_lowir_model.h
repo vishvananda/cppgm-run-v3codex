@@ -214,10 +214,10 @@ private:
 
 struct ObjectAlias
 {
-	std::string object_name;
+	lowir_model::StringId object_name;
 	SymbolId target;
 
-	ObjectAlias(const std::string& object_name_value, SymbolId target_value)
+	ObjectAlias(lowir_model::StringId object_name_value, SymbolId target_value)
 		: object_name(object_name_value), target(target_value) {}
 };
 
@@ -234,7 +234,7 @@ struct TypedProgram
 	std::vector<SymbolId> exception_filter_types;
 	std::vector<std::int64_t> switch_case_values;
 	std::vector<BlockId> switch_case_targets;
-	InternedStringTable literals;
+	lowir_model::StringPool strings;
 	std::vector<SymbolId> string_literal_symbols;
 	EmissionIdentityTable identities;
 	SymbolIdentityTable symbol_index;

@@ -56,8 +56,9 @@ SymbolId AddLifecycleHelperSymbol(TypedProgram* program,
 	const std::string name = count++ == 0 ? proposed :
 		proposed + "__sym" + std::to_string(count);
 	const SymbolId symbol = static_cast<SymbolId>(program->symbols.size());
-	program->symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL, name,
-		std::string(), false, true, false));
+	program->symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL,
+		program->strings.intern(name), lowir_model::StringId(),
+		false, true, false));
 	Symbol& record = program->symbols.back();
 	record.definition_emitted = true;
 	record.referenced = true;
@@ -96,7 +97,7 @@ void CoalesceLifecycleRole(TypedProgram* program, LowIRLoweringStats* stats,
 	aggregate.result = LowVoid();
 	aggregate.initializer = initializer;
 	aggregate.finalizer = !initializer;
-	Block entry("entry");
+	Block entry(program->strings.intern("entry"));
 	entry.selected = true;
 	for (std::size_t i = 0; i < helpers.size(); ++i)
 	{

@@ -52,7 +52,8 @@ protected:
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 		{
 			Parameter parameter;
-			parameter.name = "arg" + std::to_string(i);
+			parameter.name = derived.output_.strings.intern(
+				"arg" + std::to_string(i));
 			parameter.type = parameters[i];
 			declaration.parameters.push_back(parameter);
 		}
@@ -177,7 +178,8 @@ protected:
 		{
 			const SymbolId object = derived.thread_local_declarations_[i].first;
 			AddThreadLocalWrapper("__cppgm_tls_wrapper__" +
-				derived.output_.symbols[object].name,
+				derived.output_.strings.get(
+					derived.output_.symbols[object].name),
 				derived.thread_local_declarations_[i].second, object,
 				derived.output_.symbols[object].internal_linkage);
 		}
@@ -192,7 +194,8 @@ protected:
 				derived.thread_local_dynamic_[action_index] != 0;
 			const SymbolId object = derived.global_symbols_[
 				derived.program_.bindings[action.object].canonical];
-			const std::string& internal = derived.output_.symbols[object].name;
+			const std::string& internal = derived.output_.strings.get(
+				derived.output_.symbols[object].name);
 			SymbolId guard = kNoLowId;
 			if (dynamic)
 			{
@@ -272,8 +275,8 @@ protected:
 				derived.thread_local_declarations_[i].first;
 			const std::string& wrapper_object =
 				derived.thread_local_declarations_[i].second;
-			const std::string& object_internal =
-				derived.output_.symbols[object_symbol].name;
+			const std::string& object_internal = derived.output_.strings.get(
+				derived.output_.symbols[object_symbol].name);
 			AddThreadLocalWrapper("__cppgm_tls_wrapper__" + object_internal,
 				wrapper_object, object_symbol,
 				derived.output_.symbols[object_symbol].internal_linkage);
@@ -292,8 +295,8 @@ protected:
 			const bool lifecycle = dynamic || action.destructor != kNoDumpEdge;
 			const SymbolId object_symbol = derived.global_symbols_[
 				derived.program_.bindings[action.object].canonical];
-			const std::string& object_internal =
-				derived.output_.symbols[object_symbol].name;
+			const std::string& object_internal = derived.output_.strings.get(
+				derived.output_.symbols[object_symbol].name);
 			SymbolId guard_symbol = kNoLowId;
 			if (lifecycle)
 			{

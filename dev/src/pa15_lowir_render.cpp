@@ -64,9 +64,10 @@ void WriteType(std::ostream& output, const LowType& type)
 	throw std::logic_error("missing PA15 LowIR type");
 }
 
-void WriteParameter(std::ostream& output, const Parameter& parameter)
+void WriteParameter(std::ostream& output, const TypedProgram& program,
+	const Parameter& parameter)
 {
-	output << '%' << parameter.name << " : ";
+	output << '%' << program.strings.get(parameter.name) << " : ";
 	WriteType(output, parameter.type);
 	if (parameter.reference || parameter.decay || parameter.indirect_result ||
 		parameter.by_address ||
@@ -120,14 +121,15 @@ void WriteParameter(std::ostream& output, const Parameter& parameter)
 }
 
 void WriteBoundary(std::ostream& output,
-	const std::vector<Parameter>& parameters, const LowType& result,
+	const TypedProgram& program, const std::vector<Parameter>& parameters,
+	const LowType& result,
 	bool variadic)
 {
 	output << '(';
 	for (std::size_t i = 0; i < parameters.size(); ++i)
 	{
 		if (i != 0) output << ", ";
-		WriteParameter(output, parameters[i]);
+		WriteParameter(output, program, parameters[i]);
 	}
 	output << ") -> ";
 	WriteType(output, result);
@@ -143,20 +145,22 @@ void WriteOperand(std::ostream& output, const Operand& operand,
 	case Operand::PARAMETER:
 		if (operand.id >= function.parameters.size())
 			throw std::logic_error("invalid PA15 parameter reference");
-		output << '%' << function.parameters[operand.id].name;
+		output << '%' << program.strings.get(
+			function.parameters[operand.id].name);
 		break;
 	case Operand::SLOT:
 		if (operand.id >= function.slots.size())
 			throw std::logic_error("invalid PA15 slot reference");
-		output << '$' << function.slots[operand.id].name;
+		output << '$' << program.strings.get(function.slots[operand.id].name);
 		break;
 	case Operand::GLOBAL: case Operand::FUNCTION:
 		if (operand.id >= program.symbols.size())
 			throw std::logic_error("invalid PA15 symbol reference");
-		output << '@' << program.symbols[operand.id].name;
+		output << '@' << program.strings.get(program.symbols[operand.id].name);
 		break;
 	case Operand::INTEGER: output << operand.integer_value; break;
-	case Operand::FLOATING: output << program.literals.Get(operand.id); break;
+	case Operand::FLOATING:
+		output << program.strings.get(lowir_model::StringId(operand.id)); break;
 	case Operand::NULL_POINTER: output << "nullptr"; break;
 	case Operand::NONE: throw std::logic_error("missing PA15 LowIR operand");
 	}
@@ -389,7 +393,8 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 	case Instruction::EH_TRY:
 		if (instruction.target >= function.blocks.size())
 			throw std::logic_error("invalid PA16 eh_try target");
-		output << "eh_try ^" << function.blocks[instruction.target].label;
+		output << "eh_try ^" << program.strings.get(
+			function.blocks[instruction.target].label);
 		break;
 	case Instruction::EH_CLEANUP:
 		if (instruction.target == kNoLowId)
@@ -399,7 +404,8 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 		}
 		if (instruction.target >= function.blocks.size())
 			throw std::logic_error("invalid PA16 eh_cleanup target");
-		output << "eh_cleanup ^" << function.blocks[instruction.target].label;
+		output << "eh_cleanup ^" << program.strings.get(
+			function.blocks[instruction.target].label);
 		break;
 	case Instruction::EH_CATCH:
 		output << "eh_catch ";
@@ -417,7 +423,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			if (symbol >= program.symbols.size())
 				throw std::logic_error("invalid exception filter RTTI symbol");
 			output << (i == 0 ? " " : ", ") << "@" <<
-				program.symbols[symbol].name;
+				program.strings.get(program.symbols[symbol].name);
 		}
 		break;
 	case Instruction::EH_CATCH_ALL:
@@ -436,7 +442,8 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 	case Instruction::JUMP:
 		if (instruction.target >= function.blocks.size())
 			throw std::logic_error("invalid PA15 jump target");
-		output << "jump ^" << function.blocks[instruction.target].label;
+		output << "jump ^" << program.strings.get(
+			function.blocks[instruction.target].label);
 		break;
 	case Instruction::BRANCH:
 		if (instruction.target >= function.blocks.size() ||
@@ -444,8 +451,10 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			throw std::logic_error("invalid PA15 branch target");
 		output << "branch ";
 		WriteOperand(output, instruction.first, program, function);
-		output << ", ^" << function.blocks[instruction.target].label << ", ^"
-			<< function.blocks[instruction.alternate].label;
+		output << ", ^" << program.strings.get(
+			function.blocks[instruction.target].label) << ", ^"
+			<< program.strings.get(
+				function.blocks[instruction.alternate].label);
 		break;
 	case Instruction::SWITCH:
 		ValidateExtraRange(instruction, program.switch_case_values.size(),
@@ -456,7 +465,8 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 			throw std::logic_error("invalid PA15 switch default target");
 		output << "switch ";
 		WriteOperand(output, instruction.first, program, function);
-		output << ", ^" << function.blocks[instruction.target].label;
+		output << ", ^" << program.strings.get(
+			function.blocks[instruction.target].label);
 		for (std::size_t i = 0; i < instruction.extra_count; ++i)
 		{
 			const BlockId case_target =
@@ -465,7 +475,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 				throw std::logic_error("invalid PA15 switch case target");
 			output << ", "
 				<< program.switch_case_values[instruction.extra_first + i] << ":^"
-				<< function.blocks[case_target].label;
+				<< program.strings.get(function.blocks[case_target].label);
 		}
 		break;
 	case Instruction::RETURN_VALUE:
@@ -543,7 +553,8 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 		if (symbol.tls_for_symbol >= program.symbols.size())
 			throw std::logic_error("invalid PA16 TLS wrapper target");
 		if (separator) output << ", ";
-		output << "tls_for=@" << program.symbols[symbol.tls_for_symbol].name;
+		output << "tls_for=@" << program.strings.get(
+			program.symbols[symbol.tls_for_symbol].name);
 		separator = true;
 	}
 	if (!function && symbol.thread_local_storage)
@@ -555,7 +566,8 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	if (separator) output << ", ";
 	output << "binding=" << (symbol.internal_linkage ? "internal" :
 		symbol.weak_linkage ? "weak" : "strong");
-	if (!symbol.object_name.empty()) output << ", object=" << symbol.object_name;
+	if (symbol.object_name.valid())
+		output << ", object=" << program.strings.get(symbol.object_name);
 	if (symbol.prefer_local_object_binding) output << ", prefer_local=yes";
 	if (entry) output << ", keep_alias=yes";
 	if (symbol.object_output_root) output << ", object_root=yes";
@@ -575,7 +587,7 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		const Symbol& symbol = program.symbols[declaration.symbol];
 		if (symbol.definition_emitted || !symbol.referenced) continue;
 		if (wrote) output << '\n';
-		output << "declare global @" << symbol.name;
+		output << "declare global @" << program.strings.get(symbol.name);
 		if (declaration.typed)
 		{
 			output << " : ";
@@ -591,8 +603,8 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		const Symbol& symbol = program.symbols[declaration.symbol];
 		if (symbol.definition_emitted || !symbol.referenced) continue;
 		if (wrote) output << '\n';
-		output << "declare function @" << symbol.name;
-		WriteBoundary(output, declaration.parameters, declaration.result,
+		output << "declare function @" << program.strings.get(symbol.name);
+		WriteBoundary(output, program, declaration.parameters, declaration.result,
 			declaration.variadic);
 		WriteSymbolMetadata(output, symbol, program, false, true);
 		output << '\n';
@@ -603,7 +615,7 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		const Global& global = program.globals[i];
 		const Symbol& symbol = program.symbols[global.symbol];
 		if (wrote) output << '\n';
-		output << "global @" << symbol.name;
+		output << "global @" << program.strings.get(symbol.name);
 		if (global.initializer_kind != Global::STRUCTURED_VALUE)
 		{
 			output << " : ";
@@ -615,10 +627,11 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		else if (global.initializer_kind == Global::INTEGER_VALUE)
 			output << global.initializer << '\n';
 		else if (global.initializer_kind == Global::FLOATING_VALUE)
-			output << program.literals.Get(global.floating_initializer) << '\n';
+			output << program.strings.get(global.floating_initializer) << '\n';
 		else if (global.initializer_kind == Global::ADDRESS_VALUE)
 		{
-			output << "addr @" << program.symbols[global.address_symbol].name;
+			output << "addr @" << program.strings.get(
+				program.symbols[global.address_symbol].name);
 			if (global.address_offset > 0) output << " + " << global.address_offset;
 			else if (global.address_offset < 0)
 				output << " - " << -global.address_offset;
@@ -636,14 +649,15 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 					output << "zero " << item.zero_bytes;
 				else if (item.kind == Global::DataItem::ADDRESS_ITEM)
 				{
-					output << "ptr addr @" << program.symbols[item.symbol].name;
+					output << "ptr addr @" << program.strings.get(
+						program.symbols[item.symbol].name);
 					if (item.offset > 0) output << " + " << item.offset;
 					else if (item.offset < 0) output << " - " << -item.offset;
 				}
 				else if (item.kind == Global::DataItem::FLOATING_ITEM)
 				{
 					WriteType(output, item.type);
-					output << ' ' << program.literals.Get(item.floating_spelling);
+					output << ' ' << program.strings.get(item.floating_spelling);
 				}
 				else
 				{
@@ -661,14 +675,16 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		const Function& function = program.functions[i];
 		const Symbol& symbol = program.symbols[function.symbol];
 		if (wrote) output << '\n';
-		output << "function @" << symbol.name;
-		WriteBoundary(output, function.parameters, function.result, function.variadic);
+		output << "function @" << program.strings.get(symbol.name);
+		WriteBoundary(output, program, function.parameters, function.result,
+			function.variadic);
 		WriteSymbolMetadata(output, symbol, program, function.entry, true,
 			function.initializer, function.finalizer);
 		output << " {\n";
 		for (std::size_t s = 0; s < function.slots.size(); ++s)
 		{
-			output << "  slot $" << function.slots[s].name << " : ";
+			output << "  slot $" << program.strings.get(
+				function.slots[s].name) << " : ";
 			WriteType(output, function.slots[s].type);
 			output << '\n';
 		}
@@ -677,7 +693,8 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		{
 			const BlockId b = function.block_order[order];
 			if (order != 0) output << '\n';
-			output << "  block ^" << function.blocks[b].label << ":\n";
+			output << "  block ^" << program.strings.get(
+				function.blocks[b].label) << ":\n";
 			for (std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j)
 			{
 				output << "    ";
@@ -695,8 +712,9 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 		if (alias.target >= program.symbols.size())
 			throw std::logic_error("invalid PA15 object alias target");
 		if (wrote) output << '\n';
-		output << "alias object " << alias.object_name << " = @" <<
-			program.symbols[alias.target].name << '\n';
+		output << "alias object " << program.strings.get(alias.object_name) <<
+			" = @" << program.strings.get(
+				program.symbols[alias.target].name) << '\n';
 		wrote = true;
 	}
 }

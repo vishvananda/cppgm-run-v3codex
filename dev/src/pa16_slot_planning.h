@@ -164,14 +164,15 @@ protected:
 					if (record.kind == DUMP_PARAMETER && requested.empty())
 						requested = derived.parameter_slot_index_ <
 							derived.function_->parameters.size() ?
-							derived.function_->parameters[
-								derived.parameter_slot_index_].name : "__param";
+							derived.output_.strings.get(
+								derived.function_->parameters[
+									derived.parameter_slot_index_].name) : "__param";
 					const std::string name = derived.UniqueSlotName(requested);
 					derived.binding_slots_[record.binding] =
 						static_cast<SlotId>(derived.function_->slots.size());
 					derived.function_slot_bindings_.push_back(record.binding);
 					Slot slot;
-					slot.name = name;
+					slot.name = derived.output_.strings.intern(name);
 					slot.type = record.kind == DUMP_VARIABLE ?
 						derived.LowerVariableStorage(record) :
 						derived.LowerStorageType(record.type);

@@ -537,7 +537,9 @@ private:
 		const std::string name = count++ == 0 ? proposed :
 			proposed + "__sym" + std::to_string(count);
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
-		output_.symbols.push_back(Symbol(kind, name, object_name,
+		output_.symbols.push_back(Symbol(kind, output_.strings.intern(name),
+			object_name.empty() ? lowir_model::StringId() :
+				output_.strings.intern(object_name),
 			false, internal, false));
 		return symbol;
 	}
@@ -754,7 +756,8 @@ private:
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 		{
 			Parameter parameter;
-			parameter.name = "arg" + std::to_string(i);
+			parameter.name = output_.strings.intern(
+				"arg" + std::to_string(i));
 			parameter.type = parameters[i];
 			declaration.parameters.push_back(parameter);
 		}
@@ -822,14 +825,15 @@ private:
 		const TypeRecord& type = program_.types.Get(binding.type);
 		declaration.result = source_types_.Lower(type.child);
 		Parameter object;
-		object.name = "arg0";
+		object.name = output_.strings.intern("arg0");
 		object.type = LowPtr();
 		declaration.parameters.push_back(object);
 		const TypeId* parameters = program_.types.Parameters(binding.type);
 		for (std::size_t i = 0; i < type.parameter_count; ++i)
 		{
 			Parameter parameter;
-			parameter.name = "arg" + std::to_string(i + 1);
+			parameter.name = output_.strings.intern(
+				"arg" + std::to_string(i + 1));
 			parameter.type = source_types_.Lower(parameters[i]);
 			parameter.reference = source_types_.IsReference(parameters[i]);
 			declaration.parameters.push_back(parameter);
@@ -841,7 +845,8 @@ private:
 	std::string ThunkObjectName(SymbolId target,
 		std::int64_t adjustment) const
 	{
-		const std::string& target_name = output_.symbols[target].object_name;
+		const std::string& target_name = output_.strings.get(
+			output_.symbols[target].object_name);
 		if (target_name.size() < 2 || target_name[0] != '_' ||
 			target_name[1] != 'Z') return std::string();
 		return "_ZTh" + std::string(adjustment < 0 ? "n" : "") +
@@ -870,7 +875,8 @@ private:
 	std::string CovariantThunkObjectName(SymbolId target,
 		const VirtualSlotFact& slot) const
 	{
-		const std::string& target_name = output_.symbols[target].object_name;
+		const std::string& target_name = output_.strings.get(
+			output_.symbols[target].object_name);
 		if (target_name.size() < 2 || target_name[0] != '_' ||
 			target_name[1] != 'Z') return std::string();
 		const std::string result = slot.return_adjustment_virtual ?
@@ -990,7 +996,8 @@ private:
 		const std::uint64_t return_magnitude = slot.return_adjustment < 0 ?
 			static_cast<std::uint64_t>(-(slot.return_adjustment + 1)) + 1 :
 			static_cast<std::uint64_t>(slot.return_adjustment);
-		const std::string name = "_" + output_.symbols[target].name +
+		const std::string name = "_" + output_.strings.get(
+			output_.symbols[target].name) +
 			"__vtable_return_adjust__this_" + direction +
 			std::to_string(magnitude) + "__return_" + return_direction +
 			std::to_string(return_magnitude) +
@@ -1061,8 +1068,8 @@ private:
 		if (destructor < function_symbols_.size() &&
 			function_symbols_[destructor] != kNoLowId)
 		{
-			object_name = output_.symbols[
-				function_symbols_[destructor]].object_name;
+			object_name = output_.strings.get(output_.symbols[
+				function_symbols_[destructor]].object_name);
 			const std::size_t marker = object_name.rfind("D1E");
 			if (marker != std::string::npos)
 				object_name.replace(marker, 3, "D0E");
@@ -1092,7 +1099,7 @@ private:
 			declaration.symbol = symbol;
 			declaration.result = LowVoid();
 			Parameter object;
-			object.name = "this";
+			object.name = output_.strings.intern("this");
 			object.type = LowPtr();
 			declaration.parameters.push_back(object);
 			output_.declarations.push_back(declaration);
@@ -1969,7 +1976,7 @@ private:
 	{
 		const BlockId block =
 			static_cast<BlockId>(function_->blocks.size());
-		function_->blocks.push_back(Block(label));
+		function_->blocks.push_back(Block(output_.strings.intern(label)));
 		return block;
 	}
 
@@ -2192,11 +2199,11 @@ private:
 		result.symbol = symbol;
 		result.result = LowVoid();
 		Parameter parameter;
-		parameter.name = "this";
+		parameter.name = output_.strings.intern("this");
 		parameter.type = LowPtr();
 		result.parameters.push_back(parameter);
 		Slot this_record;
-		this_record.name = "this";
+		this_record.name = output_.strings.intern("this");
 		this_record.type = LowPtr();
 		this_record.parameter_origin = ParameterId(0);
 		result.slots.push_back(this_record);

@@ -29,7 +29,8 @@ protected:
 			throw std::runtime_error("too many PA15 LowIR blocks");
 		const BlockId block = static_cast<BlockId>(
 			derived.function_->blocks.size());
-		derived.function_->blocks.push_back(Block(label));
+		derived.function_->blocks.push_back(
+			Block(derived.output_.strings.intern(label)));
 		derived.block_incoming_.push_back(0);
 		return block;
 	}

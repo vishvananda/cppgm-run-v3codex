@@ -68,11 +68,12 @@ protected:
 				"local static function has no emission symbol");
 		const Symbol& owner = derived.output_.symbols[
 			derived.function_symbols_[action.function]];
-		std::string function_identity = owner.name;
+		std::string function_identity =
+			derived.output_.strings.get(owner.name);
 		if (weak)
 		{
-			const std::string& object = owner.object_name.empty() ?
-				owner.name : owner.object_name;
+			const std::string& object = derived.output_.strings.get(
+				owner.object_name.valid() ? owner.object_name : owner.name);
 			function_identity = "function_symbol_" +
 				HexLocalStaticSymbolComponent(object);
 		}
@@ -185,18 +186,20 @@ protected:
 			if (thread_local_object)
 				derived.AddThreadLocalWrapper(
 					"__cppgm_tls_wrapper__" +
-						derived.output_.symbols[symbol].name,
+						derived.output_.strings.get(
+							derived.output_.symbols[symbol].name),
 					std::string(), symbol, true);
 			if (dynamic)
 			{
 				derived.local_static_dynamic_[i] = 1;
 				const bool weak = derived.output_.symbols[symbol].weak_linkage;
-				const std::string guard_name =
-					derived.output_.symbols[symbol].name + "__guard";
-				const std::string& object_name =
+				const std::string guard_name = derived.output_.strings.get(
+					derived.output_.symbols[symbol].name) + "__guard";
+				const lowir_model::StringId object_name_id =
 					derived.output_.symbols[symbol].object_name;
 				const std::string guard_object_name = weak &&
-					!object_name.empty() ? object_name + "__guard" :
+					object_name_id.valid() ? derived.output_.strings.get(
+						object_name_id) + "__guard" :
 					std::string();
 				const SymbolId guard_symbol = derived.AddSyntheticSymbol(
 					Symbol::GLOBAL_SYMBOL, guard_name,
@@ -218,7 +221,8 @@ protected:
 				derived.local_static_destructor_symbols_[i] =
 					derived.EmitStaticDestructorWrapper(
 						"__cppgm_local_static_destructor__" +
-							derived.output_.symbols[symbol].name,
+							derived.output_.strings.get(
+								derived.output_.symbols[symbol].name),
 						derived.arena_.nodes[action.destructor]);
 			else if (action.destructor != kNoDumpEdge)
 				derived.local_static_finalizers_.push_back(
@@ -248,8 +252,9 @@ protected:
 			proposed + "__sym" + std::to_string(count);
 		const SymbolId symbol =
 			static_cast<SymbolId>(derived.output_.symbols.size());
-		derived.output_.symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL, name,
-			std::string(), false, true, false));
+		derived.output_.symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL,
+			derived.output_.strings.intern(name), lowir_model::StringId(),
+			false, true, false));
 		derived.output_.symbols.back().definition_emitted = true;
 
 		Function result;
@@ -300,8 +305,9 @@ protected:
 			proposed + "__sym" + std::to_string(count);
 		const SymbolId symbol =
 			static_cast<SymbolId>(derived.output_.symbols.size());
-		derived.output_.symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL, name,
-			std::string(), false, true, false));
+		derived.output_.symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL,
+			derived.output_.strings.intern(name), lowir_model::StringId(),
+			false, true, false));
 		derived.output_.symbols.back().definition_emitted = true;
 
 		Function result;

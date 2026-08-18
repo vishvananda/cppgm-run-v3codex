@@ -344,6 +344,8 @@ private:
 	SymbolId InternSymbol(const DumpNode& node, Symbol::Kind kind,
 		const std::string& proposed_name, const std::string& object_name)
 	{
+		const lowir_model::StringId object_name_id = object_name.empty() ?
+			lowir_model::StringId() : output_.strings.intern(object_name);
 		const BindingRecord& binding = program_.bindings[node.binding];
 		const BindingRecord& canonical_binding = program_.bindings[binding.canonical];
 		const bool class_template_member = binding.member_owner != kNoEntity &&
@@ -389,8 +391,8 @@ private:
 			Symbol& symbol = output_.symbols[found];
 			if (symbol.source_type != source_type)
 				throw std::runtime_error("conflicting cross-source PA15 symbol type");
-			if (!symbol.object_name.empty() && !object_name.empty() &&
-				symbol.object_name != object_name)
+			if (symbol.object_name.valid() && object_name_id.valid() &&
+				symbol.object_name != object_name_id)
 				throw std::logic_error("conflicting PA15 ABI object identity");
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
 			symbol.noreturn = symbol.noreturn || binding.noreturn_function ||
@@ -398,16 +400,17 @@ private:
 			symbol.weak_linkage |=
 				weak_linkage && !prefer_local && !symbol.internal_linkage;
 			symbol.prefer_local_object_binding |= prefer_local;
-			if (symbol.section_name.empty() &&
+			if (!symbol.section_name.valid() &&
 				canonical_binding.object_section_name != 0)
-				symbol.section_name = program_.names.Get(canonical_binding.object_section_name);
+				symbol.section_name = output_.strings.intern(
+					program_.names.Get(canonical_binding.object_section_name));
 			symbol.object_output_root |= binding.object_output_root;
 			symbol.demand_reason_mask |= canonical_binding.demand_reason_mask;
 			symbol.force_inline |= binding.force_inline || canonical_binding.force_inline;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function,
 				binding.hosted_memory_intrinsic);
-			pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(&symbol);
+			pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(output_, &symbol);
 			return found;
 		}
 		if (output_.symbols.size() >= kNoLowId)
@@ -416,21 +419,22 @@ private:
 		const std::string name = count++ == 0 ? proposed_name :
 			proposed_name + "__sym" + std::to_string(count);
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
-		output_.symbols.push_back(Symbol(kind, name,
-			object_name, c_linkage,
+		output_.symbols.push_back(Symbol(kind, output_.strings.intern(name),
+			object_name_id, c_linkage,
 			internal, binding.nonthrowing));
 		output_.symbols.back().noreturn = binding.noreturn_function ||
 			canonical_binding.noreturn_function;
 		pa15_lowering_abi::ApplyBuiltinSymbolMetadata(&output_.symbols.back(),
 			binding.builtin_function, binding.hosted_memory_intrinsic);
 		pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(
-			&output_.symbols.back());
+			output_, &output_.symbols.back());
 		output_.symbols.back().source_type = source_type;
 		output_.symbols.back().weak_linkage =
 			weak_linkage && !prefer_local && !internal;
 		output_.symbols.back().prefer_local_object_binding = prefer_local;
 		if (canonical_binding.object_section_name != 0)
-			output_.symbols.back().section_name = program_.names.Get(canonical_binding.object_section_name);
+			output_.symbols.back().section_name = output_.strings.intern(
+				program_.names.Get(canonical_binding.object_section_name));
 		output_.symbols.back().object_output_root = binding.object_output_root;
 		output_.symbols.back().demand_reason_mask =
 			canonical_binding.demand_reason_mask;
@@ -665,7 +669,9 @@ private:
 		const std::string name = count++ == 0 ? proposed :
 			proposed + "__sym" + std::to_string(count);
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
-		output_.symbols.push_back(Symbol(kind, name, object_name,
+		output_.symbols.push_back(Symbol(kind, output_.strings.intern(name),
+			object_name.empty() ? lowir_model::StringId() :
+				output_.strings.intern(object_name),
 			false, internal, false));
 		return symbol;
 	}
@@ -696,7 +702,7 @@ private:
 			if (normalized_suffix && type.kind == LOW_F32) numeric += "f";
 			else if (normalized_suffix && type.kind == LOW_F80) numeric += "L";
 		}
-		return Operand::Floating(output_.literals.Intern(numeric), type);
+		return Operand::Floating(output_.strings.intern(numeric), type);
 	}
 	void BeginSyntheticFunction(Function* function)
 	{
@@ -784,7 +790,7 @@ private:
 			throw std::runtime_error("too many PA15 LowIR slots");
 		const SlotId result = static_cast<SlotId>(function_->slots.size());
 		Slot slot;
-		slot.name = GeneratedSlotName(prefix);
+		slot.name = output_.strings.intern(GeneratedSlotName(prefix));
 		slot.type = type;
 		function_->slots.push_back(slot);
 		return result;

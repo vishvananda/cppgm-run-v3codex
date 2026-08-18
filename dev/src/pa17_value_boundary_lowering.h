@@ -145,7 +145,7 @@ protected:
 		if (indirect_result)
 		{
 			pa15_lowir_detail::Parameter parameter;
-			parameter.name = "ret";
+			parameter.name = derived.output_.strings.intern("ret");
 			parameter.type = pa15_lowir_detail::LowPtr();
 			parameter.indirect_result = true;
 			parameters->push_back(parameter);
@@ -168,12 +168,12 @@ protected:
 				derived.arena_.nodes[children[i]];
 			if (child.kind != pa12_semantic_detail::DUMP_PARAMETER) continue;
 			pa15_lowir_detail::Parameter parameter;
-			parameter.name = child.text == 0 ? std::string() :
+			std::string name = child.text == 0 ? std::string() :
 				derived.program_.names.Get(child.text);
-			if (parameter.name.empty()) parameter.name =
-				(declaration || record.kind ==
-					pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
-					"arg" : "__param") + std::to_string(parameter_index);
+			if (name.empty()) name = (declaration || record.kind ==
+				pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
+				"arg" : "__param") + std::to_string(parameter_index);
+			parameter.name = derived.output_.strings.intern(name);
 			const pa11::TypeId* source_parameters =
 				derived.program_.types.Parameters(record.type);
 			const bool by_address =
@@ -194,10 +194,11 @@ protected:
 		while (parameter_index < function_type.parameter_count)
 		{
 			pa15_lowir_detail::Parameter parameter;
-			parameter.name =
+			const std::string name =
 				(declaration || record.kind ==
 					pa12_semantic_detail::DUMP_FUNCTION_DECLARATION ?
 					"arg" : "__param") + std::to_string(parameter_index);
+			parameter.name = derived.output_.strings.intern(name);
 			const bool by_address =
 				UsesIndirectClassParameter(source_parameters[parameter_index]);
 			parameter.type = by_address ? pa15_lowir_detail::LowPtr() :

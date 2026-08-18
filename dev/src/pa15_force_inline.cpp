@@ -41,7 +41,8 @@ void ClassifyPresentationReservations(TypedProgram* program)
 		reservations.clear();
 		for (std::size_t i = 0; i < function.parameters.size(); ++i)
 		{
-			const std::string& name = function.parameters[i].name;
+			const std::string& name = program->strings.get(
+				function.parameters[i].name);
 			lowir_model::collect_o1_site_reservations(name, &reservations);
 			AppendOrdinalReservation(name, "__force_inline_parameter_",
 				lowir_model::GNR_FORCE_PARAMETER, &reservations);
@@ -50,7 +51,8 @@ void ClassifyPresentationReservations(TypedProgram* program)
 		}
 		for (std::size_t i = 0; i < function.slots.size(); ++i)
 		{
-			const std::string& name = function.slots[i].name;
+			const std::string& name = program->strings.get(
+				function.slots[i].name);
 			lowir_model::collect_o1_site_reservations(name, &reservations);
 			AppendOrdinalReservation(name, "__force_inline_slot_",
 				lowir_model::GNR_TYPED_FORCE_SLOT, &reservations);
@@ -65,7 +67,8 @@ void ClassifyPresentationReservations(TypedProgram* program)
 		}
 		for (std::size_t i = 0; i < function.blocks.size(); ++i)
 		{
-			const std::string& name = function.blocks[i].label;
+			const std::string& name = program->strings.get(
+				function.blocks[i].label);
 			lowir_model::collect_o1_site_reservations(name, &reservations);
 			AppendOrdinalReservation(name, "__force_inline_block_",
 				lowir_model::GNR_TYPED_FORCE_BLOCK, &reservations);
@@ -81,30 +84,31 @@ void ClassifyPresentationReservations(TypedProgram* program)
 class PresentationNames
 {
 public:
-	explicit PresentationNames(Function* function)
-		: function_(*function), next_(0) {}
+	PresentationNames(TypedProgram* program, Function* function)
+		: program_(*program), function_(*function), next_(0) {}
 
-	std::string SlotName()
+	lowir_model::StringId SlotName()
 	{
 		return Fresh(lowir_model::GNR_TYPED_FORCE_SLOT, "slot");
 	}
-	std::string BlockName()
+	lowir_model::StringId BlockName()
 	{
 		return Fresh(lowir_model::GNR_TYPED_FORCE_BLOCK, "block");
 	}
 
 private:
-	std::string Fresh(lowir_model::GeneratedNameReservationKind kind,
+	lowir_model::StringId Fresh(lowir_model::GeneratedNameReservationKind kind,
 		const char* role)
 	{
 		while (function_.generated_name_reservations.contains(kind, next_))
 			++next_;
 		const std::uint32_t ordinal = next_++;
 		function_.generated_name_reservations.reserve(kind, ordinal);
-		return "__force_inline_" + std::string(role) + "_" +
-			std::to_string(ordinal);
+		return program_.strings.intern("__force_inline_" +
+			std::string(role) + "_" + std::to_string(ordinal));
 	}
 
+	TypedProgram& program_;
 	Function& function_;
 	std::uint32_t next_;
 };
@@ -462,7 +466,7 @@ private:
 		const std::vector<TempId>& parameters,
 		const std::vector<TempId>& temporaries, std::size_t slot_base,
 		const std::vector<BlockId>& blocks, BlockId continuation,
-		SlotId result_slot, const std::string& name)
+		SlotId result_slot, lowir_model::StringId name)
 	{
 		Block result(name);
 		result.selected = source.selected;
@@ -644,7 +648,7 @@ private:
 	void InlineCalls(std::size_t function_index)
 	{
 		Function& caller = program_.functions[function_index];
-		PresentationNames names(&caller);
+		PresentationNames names(&program_, &caller);
 		std::uint32_t next_temp = NextTemp(caller);
 		for (std::size_t block = 0; block < caller.blocks.size(); ++block)
 			for (std::size_t instruction = 0;

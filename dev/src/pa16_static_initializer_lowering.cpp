@@ -121,7 +121,7 @@ SymbolId StaticInitializerLowering::EnsureStringLiteral(std::uint32_t node)
 SymbolId StaticInitializerLowering::EnsureStringLiteralSpelling(
 	const std::string& spelling)
 {
-	const InternedStringId literal = output_.literals.Intern(spelling);
+	const lowir_model::StringId literal = output_.strings.intern(spelling);
 	if (output_.string_literal_symbols.size() <= literal)
 		output_.string_literal_symbols.resize(
 			static_cast<std::size_t>(literal) + 1, kNoLowId);
@@ -130,8 +130,9 @@ SymbolId StaticInitializerLowering::EnsureStringLiteralSpelling(
 	const std::string name = "__strlit__" +
 		std::to_string(++output_.string_literal_count);
 	const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
-	output_.symbols.push_back(Symbol(Symbol::GLOBAL_SYMBOL, name,
-		std::string(), false, true, false));
+	output_.symbols.push_back(Symbol(Symbol::GLOBAL_SYMBOL,
+		output_.strings.intern(name), lowir_model::StringId(),
+		false, true, false));
 	output_.symbols.back().definition_emitted = true;
 	output_.symbols.back().referenced = true;
 	output_.string_literal_symbols[literal] = symbol;
@@ -345,7 +346,7 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 					Global::DataItem zero;
 					zero.kind = Global::DataItem::FLOATING_ITEM;
 					zero.type = member_type;
-					zero.floating_spelling = output_.literals.Intern(
+					zero.floating_spelling = output_.strings.intern(
 						member_type.kind == LOW_F32 ? "0.0F" :
 						member_type.kind == LOW_F80 ? "0.0L" : "0.0");
 					items->push_back(zero);
@@ -410,7 +411,7 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	if (IsFloating(low_type) && value.kind == DUMP_LITERAL)
 	{
 		item.kind = Global::DataItem::FLOATING_ITEM;
-		item.floating_spelling = output_.literals.Intern(
+		item.floating_spelling = output_.strings.intern(
 			program_.names.Get(value.text));
 		items->push_back(item);
 		return true;
@@ -668,7 +669,7 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	if (IsFloating(global->type) && initializer.kind == DUMP_LITERAL)
 	{
 		global->initializer_kind = Global::FLOATING_VALUE;
-		global->floating_initializer = output_.literals.Intern(
+		global->floating_initializer = output_.strings.intern(
 			program_.names.Get(initializer.text));
 		return true;
 	}

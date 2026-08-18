@@ -159,7 +159,8 @@ protected:
 		const SlotId progress_id = static_cast<SlotId>(
 			derived.function_->slots.size());
 		Slot progress_slot;
-		progress_slot.name = derived.GeneratedSlotName("constructor_array_index");
+		progress_slot.name = derived.output_.strings.intern(
+			derived.GeneratedSlotName("constructor_array_index"));
 		progress_slot.type = LowI64();
 		derived.function_->slots.push_back(progress_slot);
 		const Operand progress(progress_id, LowI64());

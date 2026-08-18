@@ -111,24 +111,31 @@ void CountTypedNames(const TypedProgram& program, AdapterTelemetry* telemetry)
 	if (!telemetry->output) return;
 	for (std::size_t i = 0; i < program.symbols.size(); ++i)
 	{
-		CountTypedName(program.symbols[i].name, telemetry);
-		CountTypedName(program.symbols[i].object_name, telemetry);
-		CountTypedName(program.symbols[i].section_name, telemetry);
+		CountTypedName(program.strings.get(program.symbols[i].name), telemetry);
+		if (program.symbols[i].object_name.valid())
+			CountTypedName(program.strings.get(
+				program.symbols[i].object_name), telemetry);
+		if (program.symbols[i].section_name.valid())
+			CountTypedName(program.strings.get(
+				program.symbols[i].section_name), telemetry);
 	}
 	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
-		CountTypedName(program.object_aliases[i].object_name, telemetry);
+		CountTypedName(program.strings.get(
+			program.object_aliases[i].object_name), telemetry);
 	for (std::size_t i = 0; i < program.declarations.size(); ++i)
 		for (std::size_t p = 0; p < program.declarations[i].parameters.size(); ++p)
-			CountTypedName(program.declarations[i].parameters[p].name, telemetry);
+			CountTypedName(program.strings.get(
+				program.declarations[i].parameters[p].name), telemetry);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
 	{
 		const Function& function = program.functions[i];
 		for (std::size_t p = 0; p < function.parameters.size(); ++p)
-			CountTypedName(function.parameters[p].name, telemetry);
+			CountTypedName(program.strings.get(
+				function.parameters[p].name), telemetry);
 		for (std::size_t s = 0; s < function.slots.size(); ++s)
-			CountTypedName(function.slots[s].name, telemetry);
+			CountTypedName(program.strings.get(function.slots[s].name), telemetry);
 		for (std::size_t b = 0; b < function.blocks.size(); ++b)
-			CountTypedName(function.blocks[b].label, telemetry);
+			CountTypedName(program.strings.get(function.blocks[b].label), telemetry);
 	}
 }
 
@@ -223,15 +230,19 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		break;
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
+		{
+			const std::string& spelling = program.strings.get(
+				lowir_model::StringId(operand.id));
 		if (result.literal_type.kind == lowir_model::LTK_INVALID)
 			result.literal_type = lowir_model::lowir_floating_literal_type(
-				program.literals.Get(operand.id));
+				spelling);
 		result.literal = telemetry->Literal(
-			literals, program.literals.Get(operand.id));
+			literals, spelling);
 		result.has_spelling = result.literal.valid();
 		result.has_float_bits = lowir_model::parse_lowir_floating_literal_bits(
-			program.literals.Get(operand.id), result.literal_type,
+			spelling, result.literal_type,
 			&result.literal_low, &result.literal_high);
+		}
 		break;
 	case Operand::NULL_POINTER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
@@ -247,11 +258,12 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 	return result;
 }
 
-void AdaptParameterFacts(const Parameter& source,
+void AdaptParameterFacts(const Parameter& source, const TypedProgram& program,
 	lowir_model::StringPool* strings, lowir_model::Parameter* target,
 	AdapterTelemetry* telemetry)
 {
-	target->name = telemetry->Intern(strings, telemetry->Percent(source.name));
+	target->name = telemetry->Intern(strings, telemetry->Percent(
+		program.strings.get(source.name)));
 	target->type = AdaptType(source.type);
 	if (source.reference)
 		target->metadata.passing = lowir_model::PPM_REFERENCE;
@@ -274,12 +286,13 @@ void AdaptParameterFacts(const Parameter& source,
 }
 
 std::vector<lowir_model::Parameter> AdaptParameters(
-	const std::vector<Parameter>& source, lowir_model::StringPool* strings,
+	const std::vector<Parameter>& source, const TypedProgram& program,
+	lowir_model::StringPool* strings,
 	AdapterTelemetry* telemetry)
 {
 	std::vector<lowir_model::Parameter> result(source.size());
 	for (std::size_t i = 0; i < source.size(); ++i)
-		AdaptParameterFacts(source[i], strings, &result[i], telemetry);
+		AdaptParameterFacts(source[i], program, strings, &result[i], telemetry);
 	return result;
 }
 
@@ -341,7 +354,7 @@ void AdaptBoundaryFacts(const Symbol& source,
 	if (source.noreturn) boundary->returns = lowir_model::CRM_NORETURN;
 }
 
-void AdaptSymbolFacts(const Symbol& source,
+void AdaptSymbolFacts(const Symbol& source, const TypedProgram& program,
 	lowir_model::StringPool* strings,
 	lowir_model::SymbolMetadata* symbol,
 	lowir_model::FunctionBoundaryMetadata* boundary,
@@ -351,10 +364,12 @@ void AdaptSymbolFacts(const Symbol& source,
 		lowir_model::LLM_CPP;
 	symbol->binding = source.internal_linkage ? lowir_model::SBM_INTERNAL :
 		source.weak_linkage ? lowir_model::SBM_WEAK : lowir_model::SBM_STRONG;
-	if (!source.object_name.empty())
-		symbol->object_symbol = telemetry->Intern(strings, source.object_name);
-	if (!source.section_name.empty())
-		symbol->section_name = telemetry->Intern(strings, source.section_name);
+	if (source.object_name.valid())
+		symbol->object_symbol = telemetry->Intern(
+			strings, program.strings.get(source.object_name));
+	if (source.section_name.valid())
+		symbol->section_name = telemetry->Intern(
+			strings, program.strings.get(source.section_name));
 	symbol->keep_internal_alias = false;
 	symbol->prefer_local_object_binding = source.prefer_local_object_binding;
 	symbol->object_output_root = source.object_output_root;
@@ -726,11 +741,12 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	return target;
 }
 
-void AppendExport(const Symbol& source, ir_model::ExportedSymbol* target,
-	AdapterTelemetry* telemetry)
+void AppendExport(const Symbol& source, const TypedProgram& program,
+	ir_model::ExportedSymbol* target, AdapterTelemetry* telemetry)
 {
-	target->internal_symbol = telemetry->At(source.name);
-	target->object_symbol = source.object_name;
+	target->internal_symbol = telemetry->At(program.strings.get(source.name));
+	target->object_symbol = source.object_name.valid() ?
+		program.strings.get(source.object_name) : std::string();
 	target->keep_internal_alias = source.keep_internal_object_alias;
 	target->prefer_local_object_binding = source.prefer_local_object_binding;
 	target->linkage = source.internal_linkage ? ir_model::SL_INTERNAL :
@@ -751,7 +767,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	for (std::size_t i = 0; i < source.symbols.size(); ++i)
 		lowir_model::append_lowir_symbol(target,
 			telemetry.Intern(&target.strings,
-				telemetry.At(source.symbols[i].name)));
+				telemetry.At(source.strings.get(source.symbols[i].name))));
 	target.global_declarations.reserve(source.global_declarations.size());
 	for (std::size_t i = 0; i < source.global_declarations.size(); ++i)
 	{
@@ -763,7 +779,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (item.typed) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
-		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0,
+		AdaptSymbolFacts(symbol, source, &target.strings, &result.metadata, 0,
 			&telemetry);
 		target.global_declarations.push_back(std::move(result));
 	}
@@ -775,12 +791,12 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		lowir_model::FunctionDeclaration result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
 		result.params = AdaptParameters(
-			item.parameters, &target.strings, &telemetry);
+			item.parameters, source, &target.strings, &telemetry);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
 		AdaptSymbolFacts(
-			symbol, &target.strings, &result.metadata, &result.boundary,
+			symbol, source, &target.strings, &result.metadata, &result.boundary,
 			&telemetry);
 		if (symbol.tls_for_symbol != kNoLowId)
 		{
@@ -799,7 +815,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (item.type.kind != LOW_INVALID) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
-		AdaptSymbolFacts(symbol, &target.strings, &result.metadata, 0,
+		AdaptSymbolFacts(symbol, source, &target.strings, &result.metadata, 0,
 			&telemetry);
 		if (item.initializer_kind == Global::STRUCTURED_VALUE)
 		{
@@ -829,8 +845,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					if (value.kind == Global::DataItem::FLOATING_ITEM)
 					{
 						data.literal_operand.kind = lowir_model::Operand::OP_FLOAT;
-						const std::string& spelling =
-							source.literals.Get(value.floating_spelling);
+						const std::string& spelling = source.strings.get(
+							value.floating_spelling);
 						data.literal_operand.literal = telemetry.Literal(
 							&target.strings, spelling);
 						data.literal_operand.has_spelling =
@@ -875,8 +891,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			{
 				result.init_operand.kind = lowir_model::Operand::OP_FLOAT;
 				result.init_operand.literal_type = result.type;
-				const std::string& spelling =
-					source.literals.Get(item.floating_initializer);
+				const std::string& spelling = source.strings.get(
+					item.floating_initializer);
 				result.init_operand.literal = telemetry.Literal(
 					&target.strings, spelling);
 				result.init_operand.has_spelling =
@@ -911,13 +927,13 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		result.generated_name_reservations =
 			item.generated_name_reservations;
 		result.params = AdaptParameters(
-			item.parameters, &target.strings, &telemetry);
+			item.parameters, source, &target.strings, &telemetry);
 		const AdaptedValues values = PrepareValues(item, target.strings, &result);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
 		AdaptSymbolFacts(
-			symbol, &target.strings, &result.metadata, &result.boundary,
+			symbol, source, &target.strings, &result.metadata, &result.boundary,
 			&telemetry);
 		if (item.entry)
 		{
@@ -935,7 +951,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		{
 			lowir_model::append_lowir_slot(result,
 				telemetry.Intern(&target.strings,
-					telemetry.Dollar(item.slots[j].name)),
+					telemetry.Dollar(source.strings.get(
+						item.slots[j].name))),
 				AdaptType(item.slots[j].type));
 			if (item.slots[j].parameter_origin.valid())
 			{
@@ -959,7 +976,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			lowir_model::Block lowered;
 			lowered.id = lowir_model::BlockId(block_id);
 			result.block_labels[block_id] =
-				telemetry.Intern(&target.strings, telemetry.Label(block.label));
+				telemetry.Intern(&target.strings, telemetry.Label(
+					source.strings.get(block.label)));
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(
@@ -977,7 +995,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		lowir_model::ObjectAlias alias;
 		alias.object_symbol =
 			telemetry.Intern(
-				&target.strings, source.object_aliases[i].object_name);
+				&target.strings, source.strings.get(
+					source.object_aliases[i].object_name));
 		alias.target_id = lowir_model::SymbolId(source.object_aliases[i].target);
 		const Symbol& alias_target =
 			source.symbols[source.object_aliases[i].target];
@@ -986,7 +1005,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (source.host_object_emission)
 		{
 			ir_model::ExportedSymbol exported_alias;
-			AppendExport(alias_target, &exported_alias, &telemetry);
+			AppendExport(alias_target, source, &exported_alias, &telemetry);
 			exported_alias.object_symbol =
 				target.strings.get(alias.object_symbol);
 			target.exported_symbols.push_back(std::move(exported_alias));
@@ -996,7 +1015,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	for (std::size_t i = 0; i < source.symbols.size(); ++i)
 	{
 		ir_model::ExportedSymbol symbol;
-		AppendExport(source.symbols[i], &symbol, &telemetry);
+		AppendExport(source.symbols[i], source, &symbol, &telemetry);
 		target.exported_symbols.push_back(std::move(symbol));
 	}
 	canonicalize_frontend_lowir(target, preparation_stats);

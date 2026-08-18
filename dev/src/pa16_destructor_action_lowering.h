@@ -78,7 +78,8 @@ protected:
 				 std::string("<invalid>")) + " in " +
 				(derived.function_ &&
 				 derived.function_->symbol < derived.output_.symbols.size() ?
-				 derived.output_.symbols[derived.function_->symbol].name :
+				 derived.output_.strings.get(derived.output_.symbols[
+					derived.function_->symbol].name) :
 				 std::string("<synthetic>")));
 		Instruction call(Instruction::CALL);
 		call.type = LowVoid();
@@ -200,7 +201,8 @@ protected:
 		const SlotId progress_id = static_cast<SlotId>(
 			derived.function_->slots.size());
 		Slot progress_slot;
-		progress_slot.name = derived.GeneratedSlotName("destructor_array_index");
+		progress_slot.name = derived.output_.strings.intern(
+			derived.GeneratedSlotName("destructor_array_index"));
 		progress_slot.type = LowI64();
 		derived.function_->slots.push_back(progress_slot);
 		const Operand progress(progress_id, LowI64());

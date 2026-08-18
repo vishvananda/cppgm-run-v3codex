@@ -91,9 +91,11 @@ public:
 			{
 				++result.unreachable_internal_functions;
 				const Symbol& internal = program_.symbols[symbol];
+				const lowir_model::StringId presentation =
+					internal.object_name.valid() ? internal.object_name :
+						internal.name;
 				result.unreachable_internal_names.push_back(
-					internal.object_name.empty() ? internal.name :
-					internal.object_name);
+					program_.strings.get(presentation));
 			}
 		}
 		ClassifyRetainedFunctions(&result);
@@ -228,8 +230,10 @@ private:
 				++result->retained_conservative_fallback;
 				const Symbol& symbol = program_.symbols[
 					program_.functions[i].symbol];
+				const lowir_model::StringId presentation =
+					symbol.object_name.valid() ? symbol.object_name : symbol.name;
 				result->retained_conservative_fallback_names.push_back(
-					symbol.object_name.empty() ? symbol.name : symbol.object_name);
+					program_.strings.get(presentation));
 			}
 		}
 	}

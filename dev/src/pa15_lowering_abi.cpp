@@ -117,8 +117,10 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 		node.kind != pa12_semantic_detail::DUMP_FUNCTION_DEFINITION ||
 		!shared_base_entry) return;
 	const std::string alias = MangleFunction(program, node, true);
-	if (!alias.empty() && alias != record.object_name)
-		output->object_aliases.push_back(ObjectAlias(alias, symbol));
+	if (!alias.empty() && (!record.object_name.valid() ||
+		alias != output->strings.get(record.object_name)))
+		output->object_aliases.push_back(ObjectAlias(
+			output->strings.intern(alias), symbol));
 }
 
 namespace
@@ -2025,13 +2027,16 @@ void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	}
 }
 
-void ApplyNativeRuntimeSymbolMetadata(pa15_lowir_detail::Symbol* symbol)
+void ApplyNativeRuntimeSymbolMetadata(
+	const pa15_lowir_detail::TypedProgram& program,
+	pa15_lowir_detail::Symbol* symbol)
 {
 	using pa15_lowir_detail::Symbol;
-	if (!symbol->c_linkage) return;
-	if (symbol->object_name == "malloc")
+	if (!symbol->c_linkage || !symbol->object_name.valid()) return;
+	const std::string& object_name = program.strings.get(symbol->object_name);
+	if (object_name == "malloc")
 		symbol->runtime_role = Symbol::RUNTIME_ROLE_ALLOCATE_MEMORY;
-	else if (symbol->object_name == "free")
+	else if (object_name == "free")
 		symbol->runtime_role = Symbol::RUNTIME_ROLE_FREE_MEMORY;
 }
 

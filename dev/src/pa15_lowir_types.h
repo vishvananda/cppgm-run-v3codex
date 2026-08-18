@@ -149,7 +149,8 @@ struct Operand
 	Operand(std::int64_t low, std::uint64_t high, const LowType& type_value)
 		: kind(INTEGER), id(kNoLowId), integer_value(low),
 		  integer_high(high), type(type_value) {}
-	static Operand Floating(InternedStringId spelling, const LowType& type_value)
+	static Operand Floating(lowir_model::StringId spelling,
+		const LowType& type_value)
 	{
 		Operand result;
 		result.kind = FLOATING;
@@ -302,12 +303,12 @@ inline bool IsTerminator(const Instruction& instruction)
 
 struct Block
 {
-	std::string label;
+	lowir_model::StringId label;
 	std::vector<Instruction> instructions;
 	bool terminated;
 	bool selected;
 
-	explicit Block(const std::string& label_value)
+	explicit Block(lowir_model::StringId label_value)
 		: label(label_value), terminated(false), selected(false) {}
 };
 
@@ -317,7 +318,7 @@ struct Parameter
 	enum Access : std::uint8_t { ACCESS_DEFAULT, ACCESS_READ, ACCESS_WRITE,
 		ACCESS_READWRITE } access;
 	enum Alias : std::uint8_t { ALIAS_DEFAULT, ALIAS_NOALIAS } alias;
-	std::string name;
+	lowir_model::StringId name;
 	LowType type;
 	bool reference, decay, indirect_result, by_address;
 
@@ -328,7 +329,7 @@ struct Parameter
 
 struct Slot
 {
-	std::string name;
+	lowir_model::StringId name;
 	LowType type;
 	// The source boundary parameter whose object storage this slot owns.
 	// Invalid for ordinary locals and compiler-created temporaries.
@@ -382,7 +383,7 @@ struct Global
 		LowType type;
 		std::int64_t integer_value;
 		std::uint64_t integer_high;
-		InternedStringId floating_spelling;
+		lowir_model::StringId floating_spelling;
 		SymbolId symbol;
 		std::int64_t offset;
 		std::size_t zero_bytes;
@@ -396,7 +397,7 @@ struct Global
 	LowType type;
 	std::int64_t initializer;
 	std::uint64_t initializer_high;
-	InternedStringId floating_initializer;
+	lowir_model::StringId floating_initializer;
 	SymbolId address_symbol;
 	std::int64_t address_offset;
 	std::vector<DataItem> items;
@@ -442,9 +443,9 @@ struct Symbol
 		RUNTIME_ROLE_RTTI_VMI,
 		RUNTIME_ROLE_RTTI_DATA
 	} runtime_role;
-	std::string name;
-	std::string object_name;
-	std::string section_name;
+	lowir_model::StringId name;
+	lowir_model::StringId object_name;
+	lowir_model::StringId section_name;
 	bool c_linkage;
 	bool internal_linkage;
 	bool weak_linkage;
@@ -464,8 +465,8 @@ struct Symbol
 	bool force_inline;
 	bool no_inline;
 
-	Symbol(Kind kind_value, const std::string& name_value,
-		const std::string& object_name_value, bool c_linkage_value,
+	Symbol(Kind kind_value, lowir_model::StringId name_value,
+		lowir_model::StringId object_name_value, bool c_linkage_value,
 		bool internal_linkage_value, bool nonthrowing_value)
 		: kind(kind_value), effects(EFFECTS_DEFAULT),
 		  runtime_role(RUNTIME_ROLE_NONE), name(name_value),
