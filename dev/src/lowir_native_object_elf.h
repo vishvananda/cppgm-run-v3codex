@@ -50,7 +50,7 @@ struct EncodedObjectLabel
 struct EncodedSection
 {
   std::string name;
-  std::string comdat_signature;
+  lowir_model::StringId comdat_signature;
   std::uint64_t flags = 0;
   std::size_t alignment = 1;
   std::vector<unsigned char> bytes;

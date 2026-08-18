@@ -282,7 +282,7 @@ std::vector<EncodedSection> partition_weak_text(
       EncodedSection grouped;
       const std::string & signature_name = program.strings.get(signature);
       grouped.name = ".text." + signature_name;
-      grouped.comdat_signature = signature_name;
+      grouped.comdat_signature = signature;
       grouped.flags = source.flags | 0x200;
       grouped.alignment = 2;
       if(emitted_weak_objects[object])
@@ -1389,13 +1389,15 @@ void append_function_comdat_groups(
     const std::vector<std::uint16_t> & text_indexes,
     const std::vector<std::uint16_t> & text_relocation_indexes,
     std::uint16_t symtab_index,
-    const std::unordered_map<std::string, std::size_t> & symbol_indexes)
+    const std::vector<std::size_t> & object_symbol_indexes)
 {
   for(std::size_t i = 0; i < text_sections.size(); ++i) {
-    if(text_sections[i].comdat_signature.empty()) continue;
-    const std::unordered_map<std::string, std::size_t>::const_iterator signature =
-      symbol_indexes.find(text_sections[i].comdat_signature);
-    if(signature == symbol_indexes.end())
+    const lowir_model::StringId signature =
+      text_sections[i].comdat_signature;
+    if(!signature.valid()) continue;
+    const std::uint32_t object = signature;
+    if(object >= object_symbol_indexes.size() ||
+       object_symbol_indexes[object] == lowir_model::kInvalidCompactId)
       throw std::logic_error("function COMDAT has no signature symbol");
     HostSection group;
     group.name = ".group";
@@ -1403,7 +1405,7 @@ void append_function_comdat_groups(
     group.alignment = 4;
     group.entry_size = 4;
     group.link = symtab_index;
-    group.info = static_cast<std::uint32_t>(signature->second);
+    group.info = static_cast<std::uint32_t>(object_symbol_indexes[object]);
     append_little(group.bytes, 1, 4);
     append_little(group.bytes, text_indexes[i], 4);
     if(text_relocation_indexes[i])
@@ -1701,7 +1703,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
 
   append_function_comdat_groups(
     sections, text_sections, text_indexes, text_relocation_indexes,
-    symtab_index, symbol_indexes);
+    symtab_index, object_symbol_indexes);
 	const std::chrono::steady_clock::time_point section_strings_started = stats ?
 		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(std::size_t i = 1; i < sections.size(); ++i)
