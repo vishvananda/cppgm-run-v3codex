@@ -44,5 +44,4 @@ function @main
     movzx rdi, rdi
     add r8, r9
     add r8, rdi
-    mov rax, r8
-    ret rax
+    ret r8

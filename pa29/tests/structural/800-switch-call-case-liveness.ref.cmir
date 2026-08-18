@@ -21,8 +21,7 @@ function @touch
 
   block ^entry
     store.ptr [rbp-<off0>], rdi
-    mov rax, rsi
-    ret rax
+    ret rsi
 
 function @dispatch
   abi

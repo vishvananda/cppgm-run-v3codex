@@ -43,8 +43,7 @@ function @sum8
     add <gpr4>, rdx
     load.i64 rdx, [rbp-<off1>]
     add <gpr4>, rdx
-    mov rax, <gpr4>
-    ret rax
+    ret <gpr4>
 
 function @main
   abi
@@ -71,5 +70,4 @@ function @main
     store.i64 [rbp-<off0>], rax
     load.i64 r8, [rbp-<off0>]
     sub r8, 36
-    mov rax, r8
-    ret rax
+    ret r8

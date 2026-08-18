@@ -244,6 +244,8 @@ struct Instruction
     MI_JMP_INDIRECT,
     MI_JNE,
     MI_FRET,
+    // A scalar return names its selected logical register. Native encoding
+    // performs the final ABI transfer when that register is not the carrier.
     MI_RET,
     MI_EXIT
   } opcode = MI_MOV;

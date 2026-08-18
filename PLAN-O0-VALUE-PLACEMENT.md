@@ -210,7 +210,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
 | VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases; direct unary returns change no existing fixture; direct integer-conversion returns change 4 exact and 1 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied. Direct unary returns: object/text -16 bytes and 4 instructions/moves; paired user -0.35%, wall -0.48%, RSS +0.63%. Direct integer-conversion returns: object -32 bytes, text -20 bytes, and 6 instructions/moves; paired user -1.05%, wall -0.40%, and RSS -0.21% | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, promoted-slot interval extension, dense slot-analysis state, and integer comparison/unary/conversion return placement complete; broader producer placement pending |
 | VP4 | 3 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%; full report 5,192/5,192; audit zero fatal | caller-saved pool, clobber-safe reuse, typed-immediate rematerialization, safe copy sharing, direct ALU/shift constraints, and intact ABI-parameter retention complete; address rematerialization and spill-slot reuse pending |
-| VP5 | 0 | 3 strict PA29 MIR fixtures for bulk copy/zero placement | Logical bulk operands reshape individual functions but leave aggregate `.text*` (943,292 bytes) and x86 instruction-family counts unchanged; total object -32 bytes. Two-block ABBA medians are user tied at 5.665 s, wall -0.28%, and RSS -0.04%; affected report 357/357 | logical bulk operands complete; remaining scalar compatibility rewrites pending |
+| VP5 | 0 | 3 strict PA29 MIR fixtures for bulk copy/zero placement; logical scalar returns change 18 strict, 19 structural, 3 behavior-exact, and 1 course-exact report cases (60 MIR/CMIR files) | Logical bulk operands reshape individual functions but leave aggregate `.text*` (943,292 bytes) and x86 instruction-family counts unchanged; total object -32 bytes. Two-block ABBA medians are user tied at 5.665 s, wall -0.28%, and RSS -0.04%. Logical scalar returns remove 355 hidden operand rewrites and 355 dead definitions; frozen object -32 bytes, text -24 bytes, and 6 moves/instructions; paired user -0.89%, wall -0.65%, RSS +0.19%; affected report 357/357 | logical bulk and scalar-return operands complete; remaining scalar compatibility rewrites pending |
 
 The VP1 proposed call-argument input predates the public MIR placement rule and
 is now supplemental to the active `900-symbolic-global-call-argument` fixture.
@@ -331,6 +331,54 @@ remain 234,717 x86 instructions, 98,327 moves, 26,788 `lea` instructions,
 of 5.665/5.665 seconds user, 6.245/6.230 seconds wall, and 365,076/364,652 KiB
 peak RSS. Existing exact fixtures cover both copy and zero forms, so no
 duplicate reducer was added.
+
+The logical-scalar-return slice lets `ret` retain an already selected GPR.
+The encoder performs the final transfer to RAX, just as it already does for a
+non-RAX explicit return operand. Immediate, memory, and symbolic results still
+materialize in RAX because `ret` accepts a register operand only. Adjacent
+sole-use producers still select RAX directly under the VP3 rule; this slice
+removes a separately serialized ABI-only move from other returns.
+
+The migration changes strict PA29 MIR for `100-copyobj`,
+`100-direct-call-branch`, `100-object-abi-lowered`, `100-zeroinit`,
+`200-class-constructor-member-init`, `200-class-template-field`,
+`200-indirect-call-six-register-args`, `200-non-type-class-specialization`,
+`200-pass-by-value-lvalue`, `300-atomic-compare-exchange-failure`,
+`300-atomic-compare-exchange-success`, `300-atomic-exchange`,
+`300-unsigned-compare-predicates`, `300-unsigned-int-ops`,
+`600-atomic-i32-exchange`, `600-readonly-global-extra-section-runtime`,
+`600-thread-local-direct-native-runtime`, and
+`800-atomic-i128-compare-exchange`. It changes raw and canonical structural
+MIR for `200-stack-arguments-beyond-six`,
+`300-integral-float-conversions`, `400-call-clobber-register-pressure`,
+`400-float-width-conversions`, `400-i64-leaf-register-chain`,
+`400-u32-compare-value-materialize`, `500-f64-compare-value-materialize`,
+`500-i16-leaf-normalize-chain`, `500-mixed-gpr-xmm-call-abi`,
+`500-ptr-index-arithmetic`, `600-indirect-mixed-gpr-xmm-call-abi`,
+`600-ptr-compare-value-materialize`,
+`700-call-setup-forwarding-no-preserve`, `800-conditional-edge-liveness`,
+`800-forwarded-param-identity-live-across-call`,
+`800-slot-address-rematerialization`, `800-switch-call-case-liveness`,
+`800-xmm-live-across-integer-call`, and
+`900-symbolic-global-call-argument`. Behavior-exact cases
+`800-reactive-spill-bulk-storage`, `800-reactive-spill-signed-div`, and
+`800-register-param-r8-home-clobber`, plus course-exact case
+`scalar-copy-location-sharing`, also change. Every difference removes
+`mov rax, rN` and changes the following `ret rax` to `ret rN`; existing cases
+cover the contract, so no duplicate reducer was added. The older course
+reference retains the explicit move and therefore does not define the new
+shape.
+
+On the frozen input, hidden baseline preparation falls from 1,314 to 959
+operand rewrites and from 1,228 to 873 dead-definition removals. In particular,
+MOV-to-return forwarding falls from 515 to 173 cases and MOV-to-MOV forwarding
+from 508 to 495. Against `3bbffaa2`, the object falls from 4,417,304 to
+4,417,272 bytes, aggregate `.text*` from 931,960 to 931,936 bytes, and x86
+instructions from 230,911 to 230,905; all six removed instructions are moves.
+`.eh_frame` and `.gcc_except_table` remain unchanged. Two ABBA blocks give
+baseline/candidate medians of 5.635/5.585 seconds user, 6.195/6.155 seconds
+wall, and 364,470/365,168 KiB peak RSS. All four objects in each arm are
+byte-identical.
 
 The direct call-result-consumer slice keeps a sole-use scalar result in RAX
 when the immediately following instruction passes it as a direct-value call

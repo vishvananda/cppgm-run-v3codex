@@ -23,5 +23,4 @@ function @main
     load.i64 r9, @dst
     load.i64 rdi, [r8+8]
     add r9, rdi
-    mov rax, r9
-    ret rax
+    ret r9

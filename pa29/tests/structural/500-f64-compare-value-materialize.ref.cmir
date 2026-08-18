@@ -16,5 +16,4 @@ function @main
     feq.f64 rax, 1.5, 1.5
     mov r8, rax
     add r8, r8
-    mov rax, r8
-    ret rax
+    ret r8

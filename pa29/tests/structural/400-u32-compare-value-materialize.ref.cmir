@@ -19,5 +19,4 @@ function @main
     setb r8
     movzx r8, r8
     add r8, r8
-    mov rax, r8
-    ret rax
+    ret r8

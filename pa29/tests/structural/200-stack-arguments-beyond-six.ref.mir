@@ -43,8 +43,7 @@ function @sum8
     add r15, rdx
     load.i64 rdx, [rbp-16]
     add r15, rdx
-    mov rax, r15
-    ret rax
+    ret r15
 
 function @main
   abi
@@ -71,5 +70,4 @@ function @main
     store.i64 [rbp-8], rax
     load.i64 r8, [rbp-8]
     sub r8, 36
-    mov rax, r8
-    ret rax
+    ret r8

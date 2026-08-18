@@ -48,8 +48,7 @@ function @f
     load.i64 r8, [rbp-<off0>]
     load.i64 r9, [rbp-<off1>]
     add r8, r9
-    mov rax, r8
-    ret rax
+    ret r8
 
 function @main
   abi

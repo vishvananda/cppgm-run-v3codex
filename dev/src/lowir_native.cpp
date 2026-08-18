@@ -14,6 +14,7 @@
 #include "lowir_native_memory_lowering.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
+#include "lowir_native_return_lowering.h"
 #include "lowir_native_selection.h"
 #include "lowir_native_session.h"
 #include "lowir_native_stack.h"
@@ -44,7 +45,8 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private bulk_detail::BulkLowering<FunctionLowerer>,
                         private copy_detail::CopyLowering<FunctionLowerer>,
                         private index_detail::IndexLowering<FunctionLowerer>,
-                        private memory_detail::MemoryLowering<FunctionLowerer>
+                        private memory_detail::MemoryLowering<FunctionLowerer>,
+                        private return_detail::ReturnLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
   friend class AddressLowering<FunctionLowerer>;
@@ -53,6 +55,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class copy_detail::CopyLowering<FunctionLowerer>;
   friend class index_detail::IndexLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
+  friend class return_detail::ReturnLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirFunction & source,
                   const std::unordered_set<std::string> & pointer_globals,
@@ -2757,65 +2760,6 @@ private:
     MirInstruction jump = machine_instruction(MirInstruction::MI_JMP);
     append_operand(jump, named_operand(MirOperand::OP_LABEL, instruction.second.text));
     out.push_back(jump);
-    consume(instruction.first);
-  }
-  void emit_return(const Instruction & instruction, std::vector<MirInstruction> & out)
-  {
-    const LowType & source_type = instruction.type.kind == lowir_model::LTK_VOID ?
-      instruction.type : operand_type(instruction.first);
-    if(wide::is_integer(instruction.type)) {
-      const wide::Value value = wide_value(instruction.first); wide::append_word_to_register(value, 0, XR_RAX, XR_R11, out); wide::append_word_to_register(value, 1, XR_RDX, XR_R11, out);
-    } else if(instruction.type.kind == lowir_model::LTK_OBJECT) {
-      if(instruction.type.storage_size > 16)
-        throw std::runtime_error("direct object return exceeds two SysV eightbytes");
-      const std::size_t chunks = (instruction.type.storage_size + 7) / 8;
-      if(instruction.first.kind == Operand::OP_INTEGER &&
-         integer_value(instruction.first) == 0) {
-        for(std::size_t chunk = 0; chunk < chunks; ++chunk)
-          append_move(out, reg_operand(chunk ? XR_RDX : XR_RAX), immediate(0));
-      } else {
-        emit_operand_address(out, XR_R11, instruction.first);
-        for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
-          const LowType & chunk_type = abi::object_chunk_type(
-            instruction.type.storage_size - chunk * 8);
-          append_load(out, reg_operand(chunk ? XR_RDX : XR_RAX),
-                      dereference(XR_R11, static_cast<long long>(chunk * 8)),
-                      chunk_type.text);
-        }
-      }
-    } else if(is_extended_float(instruction.type)) {
-      uses_scalar_float_ = true;
-      MirOperand source = resolve(instruction.first);
-      if(is_floating(source_type) &&
-         !lowir_model::same_lowir_type(source_type, instruction.type)) {
-        const MirOperand converted = allocate_temp_home("%f80-return", instruction.type);
-        append_float_width_conversion(out, converted, source, source_type, instruction.type);
-        source = converted;
-      }
-      MirInstruction result = machine_instruction(MirInstruction::MI_FRET,
-                                                  instruction.type.text);
-      append_operand(result, source);
-      out.push_back(result);
-      consume(instruction.first);
-      return;
-    } else if(is_scalar_float(instruction.type)) {
-      uses_scalar_float_ = true;
-      if(is_extended_float(source_type))
-        append_float_width_conversion(out, xmm_operand(XMM_0),
-                                      resolve(instruction.first), source_type,
-                                      instruction.type);
-      else
-        append_float_move(out, xmm_operand(XMM_0), resolve(instruction.first),
-                          instruction.type.text);
-    } else if(instruction.type.kind != lowir_model::LTK_VOID)
-      move_value_to_register(out, XR_RAX, resolve(instruction.first), instruction.type);
-    MirInstruction ret = machine_instruction(MirInstruction::MI_RET);
-    if(instruction.type.kind != lowir_model::LTK_VOID &&
-      !is_scalar_float(instruction.type) &&
-       !is_extended_float(instruction.type) &&
-       instruction.type.kind != lowir_model::LTK_OBJECT)
-      append_operand(ret, reg_operand(XR_RAX));
-    out.push_back(ret);
     consume(instruction.first);
   }
   bool nonparameter_value_live_in_register(X64Register reg) const

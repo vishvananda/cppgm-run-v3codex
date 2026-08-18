@@ -14,8 +14,7 @@ function @helper
     scratch_bytes 0
 
   block ^entry
-    mov rax, rdi
-    ret rax
+    ret rdi
 
 function @main
   abi

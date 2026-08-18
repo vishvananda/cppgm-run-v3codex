@@ -40,5 +40,4 @@ function @main
     add r8, r9
     add r8, rdi
     add r8, rsi
-    mov rax, r8
-    ret rax
+    ret r8

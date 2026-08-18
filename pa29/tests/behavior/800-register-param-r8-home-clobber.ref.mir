@@ -61,8 +61,7 @@ function @target
     mov r12, rax
     mov rdi, rbx
     call @consume [args=(rdi)]
-    mov rax, r12
-    ret rax
+    ret r12
 
 function @main
   abi

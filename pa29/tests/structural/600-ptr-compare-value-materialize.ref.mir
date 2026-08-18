@@ -28,5 +28,4 @@ function @main
     setne r9
     movzx r9, r9
     add rdi, r9
-    mov rax, rdi
-    ret rax
+    ret rdi

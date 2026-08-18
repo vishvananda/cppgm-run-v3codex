@@ -42,5 +42,4 @@ function @main
     mov r8, rax
     add <gpr0>, <gpr2>
     add <gpr0>, r8
-    mov rax, <gpr0>
-    ret rax
+    ret <gpr0>

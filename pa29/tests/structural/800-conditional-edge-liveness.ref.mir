@@ -21,8 +21,7 @@ function @f
     jmp ^else
 
   block ^then
-    mov rax, r8
-    ret rax
+    ret r8
 
   block ^else
     mov rax, 0

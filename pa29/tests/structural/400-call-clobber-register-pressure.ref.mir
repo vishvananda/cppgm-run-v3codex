@@ -15,8 +15,7 @@ function @add1
 
   block ^entry
     add rdi, 1
-    mov rax, rdi
-    ret rax
+    ret rdi
 
 function @main
   abi
@@ -33,5 +32,4 @@ function @main
     call @add1 [args=(rdi)]
     mov r8, rax
     add rbx, r8
-    mov rax, rbx
-    ret rax
+    ret rbx

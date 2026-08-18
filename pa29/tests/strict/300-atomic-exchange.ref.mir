@@ -31,5 +31,4 @@ function @main
     sete rdi
     movzx rdi, rdi
     and r9, rdi
-    mov rax, r9
-    ret rax
+    ret r9

@@ -492,6 +492,11 @@ To complete PA29, implement these goals:
    overwrite an input needed by that instruction.  MIR should not introduce a
    temporary register followed only by a return-register copy.
 
+   Otherwise, a scalar `ret` operand names the result's selected logical
+   register.  Native encoding performs the final transfer to the ABI return
+   register when necessary; do not serialize a separate MIR move solely for
+   that transfer.
+
    A sole-use scalar call result may likewise remain in its ABI return register
    when the immediately following instruction stores it or passes it as a
    direct-value call argument.  Emit only the move required by that consumer;

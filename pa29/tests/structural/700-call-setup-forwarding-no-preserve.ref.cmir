@@ -28,8 +28,7 @@ function @mix
     add <gpr1>, rsi
     add r9, <gpr0>
     add <gpr1>, r9
-    mov rax, <gpr1>
-    ret rax
+    ret <gpr1>
 
 function @main
   abi

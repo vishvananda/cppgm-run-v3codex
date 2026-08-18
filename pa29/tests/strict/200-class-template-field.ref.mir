@@ -27,8 +27,7 @@ function @main
     sub rbx, 7
     lea rdi, [rbp-8]
     call @Box_int____Box [args=(rdi)]
-    mov rax, rbx
-    ret rax
+    ret rbx
 
 function @Box_int___Box
   abi

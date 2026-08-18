@@ -28,8 +28,7 @@ function @mix
     add r12, rsi
     add r9, rbx
     add r12, r9
-    mov rax, r12
-    ret rax
+    ret r12
 
 function @main
   abi

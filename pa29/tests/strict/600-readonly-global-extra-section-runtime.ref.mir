@@ -20,5 +20,4 @@ function @main
     load.i64 r8, @g
     and r8, 4294967295
     sext.i32 r8
-    mov rax, r8
-    ret rax
+    ret r8

@@ -64,5 +64,4 @@ function @main
     mov rbx, rax
     lea rdi, [rbp-8]
     call @Y___Y [args=(rdi)]
-    mov rax, rbx
-    ret rax
+    ret rbx

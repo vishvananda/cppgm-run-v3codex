@@ -22,8 +22,7 @@ function @main
     mov rbx, rax
     lea rdi, [rbp-8]
     call @Box_3____Box [args=(rdi)]
-    mov rax, rbx
-    ret rax
+    ret rbx
 
 function @Box_3___get
   abi
