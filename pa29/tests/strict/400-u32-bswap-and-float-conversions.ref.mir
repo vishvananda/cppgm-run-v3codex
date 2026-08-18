@@ -32,9 +32,7 @@ function @main
     cmp.i64 r9, rdx
     sete r9
     movzx r9, r9
-    mov rax, r9
-    mov rdx, 0
-    cmp.i64 rax, rdx
+    cmp.i64 r9, 0
     sete rax
     movzx rax, rax
     ret rax

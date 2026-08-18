@@ -219,8 +219,9 @@ struct Instruction
     MI_CMP,
     MI_TEST,
     MI_JCC,
-    // A sole-use comparison immediately returned should select the ABI return
-    // carrier when doing so preserves both comparison inputs.
+    // A sole-use comparison immediately returned writes its Boolean result to
+    // the ABI return carrier while its compare operands retain their selected
+    // source locations.
     MI_SETCC,
     MI_MOVZX,
     // A sole-use integer conversion immediately returned should select the

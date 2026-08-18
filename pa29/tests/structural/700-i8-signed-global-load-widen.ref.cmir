@@ -19,9 +19,7 @@ function @main
   block ^entry
     load.i8 r8, @g
     sext.i8 r8
-    mov rax, r8
-    mov rdx, -1
-    cmp.i64 rax, rdx
+    cmp.i64 r8, -1
     sete rax
     movzx rax, rax
     ret rax

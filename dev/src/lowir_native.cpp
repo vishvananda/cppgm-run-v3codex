@@ -1807,42 +1807,39 @@ private:
     }
     if(!is_integer_or_pointer(instruction.type))
       throw std::runtime_error("integer selector received non-integer comparison");
-    const MirOperand left = resolve(instruction.first);
     const LowType result_type =
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
-    MirOperand right = resolve(instruction.second);
+    MirOperand right;
     MirOperand pressure_home;
     MirOperand destination;
-    const bool left_already_in_rax =
-      left.kind == MirOperand::OP_REG && left.reg == XR_RAX;
-    if(direct_return &&
-       (left_already_in_rax || !operand_uses_register(right, XR_RAX))) {
+    MirOperand comparison_left;
+    if(direct_return) {
       destination = reg_operand(XR_RAX);
-      move_value_to_register(
-        out, destination.reg, left, operand_type(instruction.first));
-      if(left.kind == MirOperand::OP_FRAME ||
-         left.kind == MirOperand::OP_GLOBAL ||
-         left.kind == MirOperand::OP_DEREF)
-        append_integer_normalization(out, operand_type(instruction.first), destination);
+      select_direct_return_compare_operands(
+        instruction, comparison_left, right, out);
     } else {
+      const MirOperand left = resolve(instruction.first);
+      right = resolve(instruction.second);
       destination = binary_destination(
         instruction, left, out, false, &pressure_home, &result_type);
-    }
-    if(right.kind != MirOperand::OP_REG) {
-      const bool encodable_immediate = right.kind == MirOperand::OP_IMM &&
-        (lowir_model::lowir_type_bit_width(instruction.type) < 64 ||
-         (right.imm >= INT32_MIN && right.imm <= INT32_MAX));
-      if(!encodable_immediate || !operand_uses_register(destination, XR_RDX)) {
-        const X64Register scratch = operand_uses_register(destination, XR_RDX) ?
-          XR_RAX : XR_RDX;
-        move_value_to_register(
-          out, scratch, right, operand_type(instruction.second));
-        right = reg_operand(scratch);
+      comparison_left = destination;
+      if(right.kind != MirOperand::OP_REG) {
+        const bool encodable_immediate = right.kind == MirOperand::OP_IMM &&
+          (lowir_model::lowir_type_bit_width(instruction.type) < 64 ||
+           (right.imm >= INT32_MIN && right.imm <= INT32_MAX));
+        if(!encodable_immediate ||
+           !operand_uses_register(destination, XR_RDX)) {
+          const X64Register scratch =
+            operand_uses_register(destination, XR_RDX) ? XR_RAX : XR_RDX;
+          move_value_to_register(
+            out, scratch, right, operand_type(instruction.second));
+          right = reg_operand(scratch);
+        }
       }
     }
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
                                                  instruction.type);
-    append_operand(compare, destination);
+    append_operand(compare, comparison_left);
     append_operand(compare, right);
     out.push_back(compare);
     MirInstruction set = machine_instruction(MirInstruction::MI_SETCC);

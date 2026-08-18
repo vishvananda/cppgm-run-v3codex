@@ -31,9 +31,7 @@ function @accept
     movzx r11, r11
     and r10, r11
     mov r8, r10
-    mov rax, r8
-    mov rdx, 0
-    cmp.i64 rax, rdx
+    cmp.i64 r8, 0
     sete rax
     movzx rax, rax
     ret rax

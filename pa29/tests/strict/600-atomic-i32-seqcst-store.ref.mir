@@ -22,9 +22,7 @@ function @main
     xchg.i32 [r8], rax
     load.i32 r9, [r8]
     sext.i32 r9
-    mov rax, r9
-    mov rdx, 11
-    cmp.i32 rax, rdx
+    cmp.i32 r9, 11
     sete rax
     movzx rax, rax
     ret rax

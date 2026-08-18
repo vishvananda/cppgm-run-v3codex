@@ -49,8 +49,7 @@ function @main
     call @read [args=(rdi), unwind=no]
     mov r9, rax
     eh_pop
-    mov rdx, 0
-    cmp.i64 r9, rdx
+    test.i64 r9, r9
     setne rax
     movzx rax, rax
     ret rax

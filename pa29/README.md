@@ -519,10 +519,13 @@ To complete PA29, implement these goals:
    whenever a fixed-register operation or call can clobber its incoming
    register.
 
-   When a sole-use scalar constant, load, copy, address, index, or integer
-   comparison, unary operation, or integer conversion is immediately returned,
-   lower it directly into the ABI return register when doing so does not
-   overwrite an input needed by that instruction.  MIR should not introduce a
+   When a sole-use scalar constant, load, copy, address, index, unary operation,
+   or integer conversion is immediately returned, lower its result directly
+   into the ABI return register when doing so does not overwrite an input needed
+   by that instruction.  For an immediately returned integer comparison, place
+   the Boolean result in the ABI return register while keeping each comparison
+   input in its selected source location.  MIR should not copy an input into the
+   return register merely because `setcc` writes the result there, or introduce a
    temporary register followed only by a return-register copy.
 
    Otherwise, a scalar `ret` operand names the result's selected logical

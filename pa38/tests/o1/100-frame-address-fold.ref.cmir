@@ -18,8 +18,7 @@ function @main
     store.i8 [rbp-<off0>], rax
     load.i8 r8, [rbp-<off0>]
     sext.i8 r8
-    mov rdx, -1
-    cmp.i64 r8, rdx
+    cmp.i64 r8, -1
     sete rax
     movzx rax, rax
     ret rax

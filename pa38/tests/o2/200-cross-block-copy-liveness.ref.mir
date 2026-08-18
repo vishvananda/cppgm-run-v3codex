@@ -31,8 +31,7 @@ function @main
 
   block ^check
     load.i64 r9, [r8]
-    mov rdx, 77
-    cmp.i64 r9, rdx
+    cmp.i64 r9, 77
     setne rax
     movzx rax, rax
     ret rax
