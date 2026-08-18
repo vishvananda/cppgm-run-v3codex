@@ -130,14 +130,19 @@ void SemanticAnalyzer::RecordExpressionFacts(const ExpressionInfo& value)
 		address->kind == CONSTEXPR_ADDRESS_NULL;
 	// Floating literal identity is retained for lowering, but PA15's runtime
 	// control-flow lowering must not reinterpret a PA21 semantic float fact as
-	// an optimization request.
-	node.constant = value.constant && !value.floating_constant &&
+	// an optimization request.  An integral source that was converted to a
+	// floating target still needs its original integer fact for PA15 to lower
+	// the source side of that conversion.
+	const bool retain_integral_source =
+		value.floating_constant && IsIntegral(node.type, true);
+	node.constant = value.constant &&
+		(!value.floating_constant || retain_integral_source) &&
 		value.constexpr_object == kNoConstexprObject &&
 		(value.constexpr_address == kNoConstexprAddress || null_address);
 	node.integer_literal_zero = value.integer_literal_zero;
 	if (IsMemberPointer(value.type) && node.binding == kNoBinding)
 		node.binding = value.binding;
-	if (!value.floating_constant &&
+	if ((!value.floating_constant || retain_integral_source) &&
 		value.constexpr_object == kNoConstexprObject &&
 		(value.constexpr_address == kNoConstexprAddress || null_address))
 	{

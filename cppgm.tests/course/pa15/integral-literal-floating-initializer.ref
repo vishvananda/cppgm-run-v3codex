@@ -1,0 +1,27 @@
+function @make_float_zero() -> f32 [binding=strong, object=_Z15make_float_zerov] {
+  slot $value : f32
+
+  block ^entry:
+    %t1 = convert sitofp f32 i32 0
+    store f32 %t1, $value
+    %t2 = load f32 $value
+    return f32 %t2
+}
+function @make_double_one() -> f64 [binding=strong, object=_Z15make_double_onev] {
+  slot $value : f64
+
+  block ^entry:
+    %t1 = convert sitofp f64 i32 1
+    store f64 %t1, $value
+    %t2 = load f64 $value
+    return f64 %t2
+}
+function @make_long_double_two() -> f80 [binding=strong, object=_Z20make_long_double_twov] {
+  slot $value : f80
+
+  block ^entry:
+    %t1 = convert sitofp f80 i32 2
+    store f80 %t1, $value
+    %t2 = load f80 $value
+    return f80 %t2
+}
