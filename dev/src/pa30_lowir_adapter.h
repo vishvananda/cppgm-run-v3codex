@@ -11,8 +11,9 @@ namespace cppgm
 // LowIR model.  This is an in-memory phase adapter; it deliberately does not
 // render or parse LowIR text.
 lowir_model::LowirProgram AdaptTypedLowIRForNative(
-	const pa15_lowir_detail::TypedProgram& source,
+	pa15_lowir_detail::TypedProgram&& source,
 	lowir_model::LowirPreparationStats* preparation_stats = 0,
-	bool preserve_literal_spellings = true);
+	lowir_model::PresentationPolicy presentation_policy =
+		lowir_model::PRESENTATION_SERIALIZABLE);
 
 }

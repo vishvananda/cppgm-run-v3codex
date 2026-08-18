@@ -391,6 +391,7 @@ struct Function
   // clauses. The label spelling remains in block_labels for serialization.
   std::vector<std::vector<HostEhClause> > host_eh_clauses;
   std::vector<lowir_model::StringId> block_labels;
+  std::vector<std::uint32_t> block_presentation_order;
   std::vector<Block> blocks;
 };
 

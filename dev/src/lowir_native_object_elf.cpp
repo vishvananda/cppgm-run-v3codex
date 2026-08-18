@@ -249,6 +249,7 @@ struct HostSection
 struct HostSymbol
 {
   std::string name;
+  bool internal_program_symbol = false;
   unsigned binding = 0;
   unsigned type = 0;
   std::uint16_t section = 0;
@@ -820,6 +821,46 @@ void collect_host_symbols(
 {
   std::unordered_map<std::string, std::size_t> local_index;
   std::unordered_map<std::string, std::size_t> global_index;
+  typedef std::pair<std::size_t, lowir_model::SymbolId> ProgramLabelIdentity;
+  std::vector<std::vector<ProgramLabelIdentity> > program_text_labels(
+    text_sections.size());
+  std::vector<std::vector<ProgramLabelIdentity> > program_data_labels(
+    data_sections.size());
+  const auto record_program_data_label =
+    [&program, &encoded_labels,
+     &program_data_labels](lowir_model::SymbolId symbol) {
+      const EncodedLabelIndex::const_iterator found = encoded_labels.find(
+        lowir_model::lowir_symbol_name(program, symbol));
+      if(found == encoded_labels.end() || found->second.text) return;
+      program_data_labels[found->second.section].push_back(
+        std::make_pair(found->second.offset, symbol));
+    };
+  for(std::size_t i = 0; i < functions.size(); ++i)
+    if(functions[i].program_symbol.valid())
+      program_text_labels[functions[i].text_section].push_back(
+        std::make_pair(functions[i].offset, functions[i].program_symbol));
+  for(std::size_t i = 0; i < program.globals.size(); ++i)
+    record_program_data_label(program.globals[i].symbol);
+  for(std::size_t i = 0; i < program_text_labels.size(); ++i)
+    std::sort(program_text_labels[i].begin(), program_text_labels[i].end());
+  for(std::size_t i = 0; i < program_data_labels.size(); ++i)
+    std::sort(program_data_labels[i].begin(), program_data_labels[i].end());
+  const auto is_program_label =
+    [&program, &program_text_labels, &program_data_labels](
+        const std::string & name, bool text,
+        std::size_t section, std::size_t offset) {
+      const std::vector<ProgramLabelIdentity> & labels = text ?
+        program_text_labels[section] : program_data_labels[section];
+      std::vector<ProgramLabelIdentity>::const_iterator found =
+        std::lower_bound(labels.begin(), labels.end(),
+          ProgramLabelIdentity(offset, lowir_model::SymbolId(0)));
+      while(found != labels.end() && found->first == offset) {
+        if(lowir_model::lowir_symbol_name(program, found->second) == name)
+          return true;
+        ++found;
+      }
+      return false;
+    };
   std::unordered_set<std::string> required_local_labels;
   const auto require_relocation_labels =
     [&encoded_labels, &required_local_labels](
@@ -862,6 +903,8 @@ void collect_host_symbols(
          !required_local_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
+      symbol.internal_program_symbol = is_program_label(
+        symbol.name, true, section, it->second);
       symbol.section = text_section_indexes[section];
       symbol.value = it->second;
       symbol.size = function_size_at(function_sizes, section, it->second);
@@ -876,6 +919,8 @@ void collect_host_symbols(
          !required_local_labels.count(it->first)) continue;
       HostSymbol symbol;
       symbol.name = it->first;
+      symbol.internal_program_symbol = is_program_label(
+        symbol.name, false, section, it->second);
       symbol.section = data_section_indexes[section];
       symbol.value = it->second;
       symbol.type = (data_sections[section].flags & 0x400) ? 6 : 1;
@@ -974,7 +1019,19 @@ void collect_host_symbols(
   }
   const auto stable_symbol_order = [](const HostSymbol & left,
                                       const HostSymbol & right) {
-    if(left.name != right.name) return left.name < right.name;
+    const std::size_t left_size = left.name.size() +
+      (left.internal_program_symbol ? 1 : 0);
+    const std::size_t right_size = right.name.size() +
+      (right.internal_program_symbol ? 1 : 0);
+    const std::size_t common = std::min(left_size, right_size);
+    for(std::size_t i = 0; i < common; ++i) {
+      const char left_char = left.internal_program_symbol && i == 0 ? '@' :
+        left.name[i - (left.internal_program_symbol ? 1 : 0)];
+      const char right_char = right.internal_program_symbol && i == 0 ? '@' :
+        right.name[i - (right.internal_program_symbol ? 1 : 0)];
+      if(left_char != right_char) return left_char < right_char;
+    }
+    if(left_size != right_size) return left_size < right_size;
     if(left.section != right.section) return left.section < right.section;
     return left.value < right.value;
   };
@@ -1017,6 +1074,16 @@ std::size_t add_string(std::vector<unsigned char> & strings,
   return offset;
 }
 
+std::size_t add_symbol_string(std::vector<unsigned char> & strings,
+                              const HostSymbol & symbol)
+{
+  const std::size_t offset = strings.size();
+  if(symbol.internal_program_symbol) strings.push_back('@');
+  strings.insert(strings.end(), symbol.name.begin(), symbol.name.end());
+  strings.push_back(0);
+  return offset;
+}
+
 std::vector<unsigned char> make_symbol_table(
     const std::vector<HostSymbol> & locals,
     const std::vector<HostSymbol> & globals,
@@ -1041,7 +1108,7 @@ std::vector<unsigned char> make_symbol_table(
       const HostSymbol & symbol = symbols[i];
       const std::size_t index = table.size() / 24;
       if(!indexes.count(symbol.name)) indexes[symbol.name] = index;
-      append_little(table, add_string(strings, symbol.name), 4);
+      append_little(table, add_symbol_string(strings, symbol), 4);
       table.push_back(static_cast<unsigned char>((symbol.binding << 4) |
                                                  symbol.type));
       table.push_back(0);

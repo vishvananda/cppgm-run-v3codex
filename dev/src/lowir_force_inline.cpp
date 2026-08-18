@@ -53,10 +53,13 @@ struct InlineNames
 {
   lowir_model::StringPool & strings;
   Function & function;
+  bool retain;
   std::uint32_t next = 0;
 
   InlineNames(LowirProgram & program, Function & function_value)
-    : strings(program.strings), function(function_value) {}
+    : strings(program.strings), function(function_value),
+      retain(program.presentation_policy ==
+        lowir_model::PRESENTATION_SERIALIZABLE) {}
 
   lowir_model::StringId fresh(
       lowir_model::GeneratedNameReservationKind kind, const char * prefix)
@@ -64,7 +67,8 @@ struct InlineNames
     while(function.generated_name_reservations.contains(kind, next)) ++next;
     const std::uint32_t ordinal = next++;
     function.generated_name_reservations.reserve(kind, ordinal);
-    return strings.intern(std::string(prefix) + std::to_string(ordinal));
+    return retain ? strings.intern(
+      std::string(prefix) + std::to_string(ordinal)) : lowir_model::StringId();
   }
 
   lowir_model::StringId parameter()
@@ -266,10 +270,14 @@ private:
                        BlockMap * blocks)
   {
     values->resize(callee.value_names.size());
-    for(std::size_t i = 0; i < callee.params.size(); ++i)
-      (*values)[callee.params[i].value] = lowir_model::append_lowir_value(
-        *caller, names->parameter(),
-        callee.params[i].type);
+    for(std::size_t i = 0; i < callee.params.size(); ++i) {
+      const lowir_model::StringId name = names->parameter();
+      (*values)[callee.params[i].value] = name.valid() ?
+        lowir_model::append_lowir_value(
+          *caller, name, callee.params[i].type) :
+        lowir_model::append_lowir_unnamed_value(
+          *caller, callee.params[i].type);
+    }
     slots->resize(callee.slot_names.size());
     for(std::size_t i = 0; i < callee.slots.size(); ++i) {
       const lowir_model::SlotId source = callee.slots[i];
@@ -286,10 +294,14 @@ private:
       for(std::size_t j = 0; j < callee.blocks[i].instructions.size(); ++j) {
         const lowir_model::ValueId dest =
           callee.blocks[i].instructions[j].dest;
-        if(dest.valid())
-          (*values)[dest] = lowir_model::append_lowir_value(
-            *caller, names->temporary(),
-            lowir_model::lowir_value_type(callee, dest));
+        if(dest.valid()) {
+          const lowir_model::StringId name = names->temporary();
+          (*values)[dest] = name.valid() ?
+            lowir_model::append_lowir_value(
+              *caller, name, lowir_model::lowir_value_type(callee, dest)) :
+            lowir_model::append_lowir_unnamed_value(
+              *caller, lowir_model::lowir_value_type(callee, dest));
+        }
       }
     }
   }

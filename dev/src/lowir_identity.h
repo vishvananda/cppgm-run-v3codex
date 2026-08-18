@@ -146,6 +146,7 @@ public:
 
   const std::string & get(StringId id) const;
   std::size_t size() const;
+  std::size_t retained_size() const;
   std::size_t spelling_bytes() const;
   std::size_t storage_bytes() const;
   bool valid() const;
@@ -175,8 +176,13 @@ public:
   StringId intern_range(const std::string & text, std::size_t first,
                         std::size_t count, StringPoolStats * stats = 0);
   void reserve(std::size_t expected_strings);
+  // Discard spelling storage not selected by the dense ID-indexed mask while
+  // preserving every surviving StringId.  This is used once at the
+  // presentation boundary; ordinary lookup and interning remain unchanged.
+  void retain_only(const std::vector<unsigned char> & retained);
   const std::string & get(StringId id) const;
   std::size_t size() const;
+  std::size_t retained_size() const;
   std::size_t spelling_bytes() const;
   std::size_t storage_bytes() const;
   SealedStringPool seal() const;

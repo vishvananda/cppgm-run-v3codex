@@ -131,10 +131,13 @@ struct Names
 {
   lowir_model::StringPool & strings;
   Function & function;
+  bool retain;
   std::uint32_t next_site_id;
 
   Names(LowirProgram & program, Function & function_value)
-    : strings(program.strings), function(function_value), next_site_id(0) {}
+    : strings(program.strings), function(function_value),
+      retain(program.presentation_policy ==
+        lowir_model::PRESENTATION_SERIALIZABLE), next_site_id(0) {}
 
   std::uint32_t next_site()
   {
@@ -158,6 +161,8 @@ struct Names
       lowir_model::GeneratedNameReservationKind suffix_kind,
       std::uint32_t first_suffix = 1)
   {
+    if(!retain)
+      throw std::logic_error("object-only LowIR requested a display name");
     std::uint32_t suffix = first_suffix;
     while(source.contains(suffix_kind, suffix)) ++suffix;
     return strings.intern(stem + std::to_string(suffix));
@@ -681,35 +686,44 @@ private:
     slots->resize(callee_function.slot_names.size());
     for(std::size_t i = 0; i < callee_function.slots.size(); ++i) {
       const lowir_model::SlotId source = callee_function.slots[i];
-      const std::string renamed = prefix +
-        lowir_model::lowir_slot_name(
-          program_.strings, callee_function, source);
-      const lowir_model::StringId renamed_id = program_.strings.intern(renamed);
+      lowir_model::StringId renamed_id;
+      if(names->retain) {
+        const std::string renamed = prefix +
+          lowir_model::lowir_slot_name(
+            program_.strings, callee_function, source);
+        renamed_id = program_.strings.intern(renamed);
+      }
       (*slots)[source] = lowir_model::append_lowir_slot(
         *caller, renamed_id,
         lowir_model::lowir_slot_type(callee_function, source));
     }
     blocks->resize(callee_function.next_block_id);
     for(std::size_t i = 0; i < callee_function.blocks.size(); ++i) {
-      const std::string renamed = prefix +
-        lowir_model::lowir_block_label(
-          program_.strings, callee_function,
-          callee_function.blocks[i].id);
       RenamedBlock block;
-      block.id = lowir_model::allocate_lowir_block_id(
-        *caller, program_.strings.intern(renamed));
+      lowir_model::StringId renamed_id;
+      if(names->retain) {
+        const std::string renamed = prefix +
+          lowir_model::lowir_block_label(
+            program_.strings, callee_function,
+            callee_function.blocks[i].id);
+        renamed_id = program_.strings.intern(renamed);
+      }
+      block.id = lowir_model::allocate_lowir_block_id(*caller, renamed_id);
       (*blocks)[callee_function.blocks[i].id] = block;
       for(std::size_t j = 0;
           j < callee_function.blocks[i].instructions.size(); ++j) {
         const Instruction & ins = callee_function.blocks[i].instructions[j];
         if(!ins.dest.valid()) continue;
-        const std::string value = prefix +
-          lowir_model::lowir_value_name(
-            program_.strings, callee_function, ins.dest);
         const LowType & type = lowir_model::lowir_value_type(
           callee_function, ins.dest);
-        const lowir_model::ValueId renamed = lowir_model::append_lowir_value(
-          *caller, program_.strings.intern(value), type);
+        lowir_model::ValueId renamed;
+        if(names->retain) {
+          const std::string value = prefix +
+            lowir_model::lowir_value_name(
+              program_.strings, callee_function, ins.dest);
+          renamed = lowir_model::append_lowir_value(
+            *caller, program_.strings.intern(value), type);
+        } else renamed = lowir_model::append_lowir_unnamed_value(*caller, type);
         values->set(ins.dest, value_operand(renamed, type));
       }
     }
@@ -734,8 +748,9 @@ private:
                         std::vector<Instruction> * output)
   {
     const Block & source = callee_function.blocks[0];
-    const std::string prefix = "__o1inl" +
-      std::to_string(names->next_site()) + "__";
+    const std::uint32_t site = names->next_site();
+    const std::string prefix = names->retain ?
+      "__o1inl" + std::to_string(site) + "__" : std::string();
     ValueMap values;
     Function & caller = program_.functions[caller_index];
     SlotMap slots;
@@ -763,8 +778,9 @@ private:
   {
     Function & caller = program_.functions[caller_index];
     const Instruction call = caller.blocks[block_index].instructions[instruction_index];
-    const std::string prefix = "__o1inl" +
-      std::to_string(names->next_site()) + "__";
+    const std::uint32_t site = names->next_site();
+    const std::string prefix = names->retain ?
+      "__o1inl" + std::to_string(site) + "__" : std::string();
     ValueMap values;
     SlotMap slots;
     BlockMap blocks;
@@ -785,11 +801,13 @@ private:
     const bool has_result = !call.call_returns_void;
     lowir_model::SlotId merge_slot;
     if(has_result && returns > 1) {
-      const lowir_model::StringId name = names->unique_slot(
-        prefix + (object_result ? "retmergeobj__" : "retmerge__"),
-        callee_function.generated_name_reservations,
-        object_result ? lowir_model::GNR_O1_OBJECT_MERGE_SUFFIX :
-          lowir_model::GNR_O1_SCALAR_MERGE_SUFFIX);
+      const lowir_model::StringId name = names->retain ?
+        names->unique_slot(
+          prefix + (object_result ? "retmergeobj__" : "retmerge__"),
+          callee_function.generated_name_reservations,
+          object_result ? lowir_model::GNR_O1_OBJECT_MERGE_SUFFIX :
+            lowir_model::GNR_O1_SCALAR_MERGE_SUFFIX) :
+        lowir_model::StringId();
       merge_slot = lowir_model::append_lowir_slot(
         caller, name, call.type);
     }
@@ -812,10 +830,11 @@ private:
         wrapper_has_call = wrapper_has_call ||
           source.instructions[j].kind == Instruction::IK_CALL;
       void_call_wrapper = void_call_wrapper && wrapper_has_call;
-      const std::string wrapper_continuation = prefix + "cont";
       const BlockId wrapper_continuation_id = void_call_wrapper ?
         lowir_model::allocate_lowir_block_id(
-          caller, program_.strings.intern(wrapper_continuation)) :
+          caller, names->retain ?
+            program_.strings.intern(prefix + "cont") :
+            lowir_model::StringId()) :
         BlockId();
       for(std::size_t j = 0; j < source.instructions.size(); ++j) {
         const Instruction & ins = source.instructions[j];
@@ -854,10 +873,10 @@ private:
       return;
     }
 
-    const std::string continuation = prefix + "cont";
     const BlockId continuation_id =
       lowir_model::allocate_lowir_block_id(
-        caller, program_.strings.intern(continuation));
+        caller, names->retain ? program_.strings.intern(prefix + "cont") :
+          lowir_model::StringId());
     block_eh->resize(caller.next_block_id, 0);
     (*block_eh)[continuation_id] = inside_eh ? 1 : 0;
     caller.blocks[block_index].instructions.push_back(jump_to(

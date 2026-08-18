@@ -31,6 +31,7 @@ std::size_t mir_function_storage_bytes(const mir_model::MirFunction & function)
 		function.host_eh_clauses.capacity() *
 			sizeof(std::vector<mir_model::MirHostEhClause>) +
 		function.block_labels.capacity() * sizeof(lowir_model::StringId) +
+		function.block_presentation_order.capacity() * sizeof(std::uint32_t) +
 		function.blocks.capacity() * sizeof(mir_model::MirBlock);
 	for(std::size_t i = 0; i < function.debug_variables.size(); ++i)
 		bytes += function.debug_variables[i].ranges.capacity() *
@@ -99,7 +100,7 @@ struct ProgramLoweringSession::Impl
 	shell.symbol_names = source.symbol_names;
 	shell.strings = source.strings.seal();
 	if(stats) {
-	  stats->mir_string_entries = shell.strings.size();
+	  stats->mir_string_entries = shell.strings.retained_size();
 	  stats->mir_spelling_bytes = shell.strings.spelling_bytes();
 	  stats->mir_string_storage_bytes = shell.strings.storage_bytes();
 	}

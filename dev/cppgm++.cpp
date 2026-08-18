@@ -1087,17 +1087,17 @@ void clear_nonsemantic_source_stats(lowir_model::LowirProgram * program)
 }
 
 lowir_model::LowirProgram adapt_typed_lowir_for_object(
-	const cppgm::pa15_lowir_detail::TypedProgram & typed,
+	cppgm::pa15_lowir_detail::TypedProgram && typed,
 	const cppgm::LowIRLoweringStats & lowering_stats,
-	bool collect_stats, bool preserve_literal_spellings,
+	bool collect_stats, lowir_model::PresentationPolicy presentation_policy,
 	lowir_model::LowirPreparationStats * preparation_stats,
 	uint64_t * elapsed_nanoseconds)
 {
 	chrono::steady_clock::time_point started;
 	if(collect_stats) started = chrono::steady_clock::now();
 	lowir_model::LowirProgram result = cppgm::AdaptTypedLowIRForNative(
-		typed, collect_stats ? preparation_stats : 0,
-		preserve_literal_spellings);
+		std::move(typed), collect_stats ? preparation_stats : 0,
+		presentation_policy);
 	if(collect_stats) {
 		preparation_stats->typed_lowir_peak_live_bytes =
 			lowering_stats.typed_storage_bytes +
@@ -1114,7 +1114,7 @@ cppgm::pa30::CompilerObject compile_source_object(
     const DriverInvocation & invocation,
 	const string & target,
 	bool prune_unreachable_weak_functions,
-	bool preserve_literal_spellings)
+	lowir_model::PresentationPolicy presentation_policy)
 {
 	const bool collect_stats = invocation.collect_stats;
   const string source = read_source_file(path);
@@ -1151,7 +1151,7 @@ cppgm::pa30::CompilerObject compile_source_object(
 		{
 			chrono::steady_clock::time_point started;
 			if(collect_stats) started = chrono::steady_clock::now();
-			const cppgm::pa15_lowir_detail::TypedProgram typed =
+			cppgm::pa15_lowir_detail::TypedProgram typed =
 				cppgm::BuildTypedLowIRProgram(sources,
 					options,
 					collect_stats ? &stats : 0, true, true,
@@ -1160,7 +1160,7 @@ cppgm::pa30::CompilerObject compile_source_object(
 				chrono::duration_cast<chrono::nanoseconds>(
 					chrono::steady_clock::now() - started).count());
 			object.lowir = adapt_typed_lowir_for_object(
-				typed, stats, collect_stats, preserve_literal_spellings,
+				std::move(typed), stats, collect_stats, presentation_policy,
 				&preparation_stats, &adapter_nanoseconds);
 		}
 		if(invocation.line_tables) {
@@ -1367,11 +1367,15 @@ int run_compile_driver(const DriverInvocation & invocation,
 {
   if(invocation.inputs.size() != 1 || invocation.output.empty())
     throw logic_error("compile mode requires one input and -o");
-  const bool private_object =
+	const bool private_object =
       cppgm::pa30::UsesPrivateCompilerObjectFormat(invocation.output);
+	const lowir_model::PresentationPolicy presentation_policy =
+		private_object || invocation.line_tables ?
+		lowir_model::PRESENTATION_SERIALIZABLE :
+		lowir_model::PRESENTATION_OBJECT_ONLY;
   const cppgm::pa30::CompilerObject object =
 	  compile_source_object(invocation.inputs[0], invocation, target,
-		  !private_object, private_object);
+		  !private_object, presentation_policy);
 	cppgm::pa30::ObjectSerializationStats serialization_stats;
   lowir_native::Stats native_stats;
   if(private_object) {
@@ -1528,9 +1532,12 @@ int run_link_driver(const DriverInvocation & invocation,
       throw runtime_error(
         "native or invalid object cannot be linked by cppgm++: " +
         invocation.inputs[i]);
-    else
-      objects.push_back(compile_source_object(invocation.inputs[i], invocation,
-                                              target, false, false));
+	else
+		objects.push_back(compile_source_object(invocation.inputs[i], invocation,
+											  target, false,
+			invocation.line_tables ?
+				lowir_model::PRESENTATION_SERIALIZABLE :
+				lowir_model::PRESENTATION_OBJECT_ONLY));
   }
   for(size_t i = 0; i < invocation.libraries.size(); ++i) {
     const string path = find_library_object(invocation, invocation.libraries[i]);
@@ -1547,6 +1554,8 @@ int run_link_driver(const DriverInvocation & invocation,
   cppgm::pa30::LinkStats link_stats;
   const lowir_model::LowirProgram lowir = cppgm::pa30::LinkCompilerObjects(
       std::move(objects), target,
+	  invocation.line_tables ? lowir_model::PRESENTATION_SERIALIZABLE :
+		lowir_model::PRESENTATION_OBJECT_ONLY,
       collect_stats ? &link_stats : 0);
   lowir_native::Stats native_stats;
   lowir_native::write_linux_executable(invocation.output, lowir, target,
@@ -2045,10 +2054,10 @@ int run_emit_lowir_mode(const vector<string> & args)
 		cppgm::ConfigureHostedPreprocessing(&options, true);
 		lowir_model::LowirProgram program;
 		{
-			const cppgm::pa15_lowir_detail::TypedProgram typed =
+			cppgm::pa15_lowir_detail::TypedProgram typed =
 				cppgm::BuildTypedLowIRProgram(sources, options,
 					invocation.collect_stats ? &stats : 0, true, true, false);
-			program = cppgm::AdaptTypedLowIRForNative(typed);
+			program = cppgm::AdaptTypedLowIRForNative(std::move(typed));
 		}
 		if(invocation.line_tables && sources.size() == 1)
 			attach_line_table_debug(&program, sources[0].path, sources[0].source);

@@ -17,10 +17,15 @@ struct StringPoolStorage
 {
   std::vector<std::string> strings;
   std::vector<std::uint32_t> slots;
+  // Empty until retain_only() creates holes.  A dense byte vector preserves
+  // stable IDs without introducing a string-keyed side table.
+  std::vector<unsigned char> retained;
   std::size_t spelling_bytes;
+  std::size_t retained_count;
   bool sealed;
 
-  StringPoolStorage() : slots(32, 0), spelling_bytes(0), sealed(false)
+  StringPoolStorage()
+    : slots(32, 0), spelling_bytes(0), retained_count(0), sealed(false)
   {
     strings.push_back(std::string());
   }
@@ -470,9 +475,11 @@ StringPool::StringPool(const StringPool & other)
   : storage_(new StringPoolStorage)
 {
   storage_->strings = other.storage_->strings;
+  storage_->retained = other.storage_->retained;
   storage_->spelling_bytes = other.storage_->spelling_bytes;
+  storage_->retained_count = other.storage_->retained_count;
   std::size_t capacity = 32;
-  while(storage_->strings.size() > capacity * 7 / 10) capacity *= 2;
+  while(storage_->retained_count + 1 > capacity * 7 / 10) capacity *= 2;
   storage_->slots.assign(capacity, 0);
   rehash(capacity);
 }
@@ -512,7 +519,7 @@ StringId StringPool::intern_range(const std::string & text, std::size_t first,
     ++stats->intern_calls;
     stats->hash_bytes += count;
   }
-  if((storage_->strings.size() + 1) * 10 > storage_->slots.size() * 7)
+  if((storage_->retained_count + 2) * 10 > storage_->slots.size() * 7)
     rehash(storage_->slots.size() * 2);
   const std::size_t mask = storage_->slots.size() - 1;
   std::size_t slot = hash_range(text, first, count) & mask;
@@ -530,7 +537,9 @@ StringId StringPool::intern_range(const std::string & text, std::size_t first,
     throw std::runtime_error("too many pooled LowIR strings");
   const std::uint32_t id = static_cast<std::uint32_t>(storage_->strings.size());
   storage_->strings.push_back(text.substr(first, count));
+  if(!storage_->retained.empty()) storage_->retained.push_back(1);
   storage_->spelling_bytes += count;
+  ++storage_->retained_count;
   storage_->slots[slot] = id;
   if(stats) ++stats->intern_misses;
   return StringId(id);
@@ -543,15 +552,40 @@ void StringPool::reserve(std::size_t expected_strings)
   if(expected_strings >= kInvalidCompactId)
     expected_strings = kInvalidCompactId - 1;
   storage_->strings.reserve(expected_strings + 1);
+  if(!storage_->retained.empty()) storage_->retained.reserve(expected_strings + 1);
   std::size_t capacity = storage_->slots.size();
   while(expected_strings + 1 > capacity * 7 / 10) capacity *= 2;
   if(capacity > storage_->slots.size()) rehash(capacity);
 }
 
+void StringPool::retain_only(const std::vector<unsigned char> & retained)
+{
+  if(storage_->sealed)
+    throw std::logic_error("cannot prune sealed LowIR presentation storage");
+  if(retained.size() != storage_->strings.size())
+    throw std::logic_error("invalid LowIR presentation retention mask");
+  const std::vector<unsigned char> previously_retained = storage_->retained;
+  storage_->retained.assign(storage_->strings.size(), 0);
+  storage_->retained_count = 0;
+  storage_->spelling_bytes = 0;
+  for(std::size_t id = 1; id < storage_->strings.size(); ++id) {
+    if(retained[id] &&
+       (previously_retained.empty() || previously_retained[id])) {
+      storage_->retained[id] = 1;
+      ++storage_->retained_count;
+      storage_->spelling_bytes += storage_->strings[id].size();
+    } else std::string().swap(storage_->strings[id]);
+  }
+  std::size_t capacity = 32;
+  while(storage_->retained_count + 1 > capacity * 7 / 10) capacity *= 2;
+  rehash(capacity);
+}
+
 const std::string & StringPool::get(StringId id) const
 {
   const std::uint32_t index = id;
-  if(index >= storage_->strings.size())
+  if(index >= storage_->strings.size() ||
+     (!storage_->retained.empty() && !storage_->retained[index]))
     throw std::logic_error("invalid pooled LowIR string identity " +
       std::to_string(index) + " for " +
       std::to_string(storage_->strings.size()) +
@@ -560,15 +594,19 @@ const std::string & StringPool::get(StringId id) const
 }
 
 std::size_t StringPool::size() const { return storage_->strings.size() - 1; }
+std::size_t StringPool::retained_size() const
+  { return storage_->retained_count; }
 std::size_t StringPool::spelling_bytes() const
   { return storage_->spelling_bytes; }
 
 std::size_t StringPool::storage_bytes() const
 {
   std::size_t bytes = storage_->strings.capacity() * sizeof(std::string) +
-    storage_->slots.capacity() * sizeof(std::uint32_t);
+    storage_->slots.capacity() * sizeof(std::uint32_t) +
+    storage_->retained.capacity() * sizeof(unsigned char);
   for(std::size_t i = 1; i < storage_->strings.size(); ++i)
-    bytes += storage_->strings[i].capacity();
+    if(storage_->retained.empty() || storage_->retained[i])
+      bytes += storage_->strings[i].capacity();
   return bytes;
 }
 
@@ -586,6 +624,7 @@ void StringPool::rehash(std::size_t capacity)
   std::vector<std::uint32_t> replacement(capacity, 0);
   const std::size_t mask = capacity - 1;
   for(std::uint32_t id = 1; id < storage_->strings.size(); ++id) {
+    if(!storage_->retained.empty() && !storage_->retained[id]) continue;
     std::size_t slot = hash_range(storage_->strings[id], 0,
                                   storage_->strings[id].size()) & mask;
     while(replacement[slot] != 0) slot = (slot + 1) & mask;
@@ -609,7 +648,8 @@ const std::string & SealedStringPool::get(StringId id) const
   if(!storage_)
     throw std::logic_error("missing sealed LowIR presentation storage");
   const std::uint32_t index = id;
-  if(index >= storage_->strings.size())
+  if(index >= storage_->strings.size() ||
+     (!storage_->retained.empty() && !storage_->retained[index]))
     throw std::logic_error("invalid sealed LowIR string identity " +
       std::to_string(index) + " for " +
       std::to_string(storage_->strings.size()) + " entries");
@@ -619,6 +659,11 @@ const std::string & SealedStringPool::get(StringId id) const
 std::size_t SealedStringPool::size() const
 {
   return storage_ ? storage_->strings.size() - 1 : 0;
+}
+
+std::size_t SealedStringPool::retained_size() const
+{
+  return storage_ ? storage_->retained_count : 0;
 }
 
 std::size_t SealedStringPool::spelling_bytes() const
@@ -631,7 +676,9 @@ std::size_t SealedStringPool::storage_bytes() const
   if(!storage_) return 0;
   std::size_t bytes = storage_->strings.capacity() * sizeof(std::string);
   for(std::size_t i = 1; i < storage_->strings.size(); ++i)
-    bytes += storage_->strings[i].capacity();
+    if(storage_->retained.empty() || storage_->retained[i])
+      bytes += storage_->strings[i].capacity();
+  bytes += storage_->retained.capacity() * sizeof(unsigned char);
   return bytes;
 }
 
@@ -643,6 +690,7 @@ BlockId allocate_lowir_block_id(Function & function, StringId label)
     throw std::runtime_error("too many LowIR blocks");
   const BlockId result(function.next_block_id++);
   function.block_labels.push_back(label);
+  function.block_presentation_order.push_back(result);
   return result;
 }
 
@@ -707,6 +755,12 @@ ValueId append_lowir_value(Function & function, StringId name,
   if(!name.valid()) throw std::logic_error("empty named LowIR value");
   return append_value_identity(
     function, PresentationName::pooled(name, preserve_copy), type);
+}
+
+ValueId append_lowir_unnamed_value(Function & function,
+                                   const LowType & type)
+{
+  return append_value_identity(function, PresentationName(), type);
 }
 
 ValueId append_lowir_generated_value(Function & function,
@@ -833,6 +887,24 @@ void classify_lowir_generated_name_reservations(
   reservations.normalize();
 }
 
+void compute_lowir_block_presentation_order(
+    Function & function, const StringPool & strings)
+{
+  std::vector<BlockId> order;
+  order.reserve(function.blocks.size());
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    order.push_back(function.blocks[i].id);
+  std::sort(order.begin(), order.end(),
+    [&function, &strings](BlockId left, BlockId right) {
+      return lowir_block_label(strings, function, left) <
+             lowir_block_label(strings, function, right);
+    });
+  function.block_presentation_order.resize(function.next_block_id);
+  for(std::size_t rank = 0; rank < order.size(); ++rank)
+    function.block_presentation_order[order[rank]] =
+      static_cast<std::uint32_t>(rank);
+}
+
 SymbolId append_lowir_symbol(Program & program, const std::string & name)
 {
   return append_lowir_symbol(program, program.strings.intern(name));
@@ -951,6 +1023,7 @@ void resolve_lowir_function_operands(Function & function,
     }
   }
   classify_lowir_generated_name_reservations(function, strings);
+  compute_lowir_block_presentation_order(function, strings);
 }
 
 void resolve_lowir_program_symbols(Program & program)
@@ -1105,6 +1178,82 @@ void remap_lowir_program_strings(Program & program,
   }
 }
 
+void discard_unreferenced_lowir_strings(Program & program)
+{
+  std::vector<unsigned char> retained(program.strings.size() + 1, 0);
+  const auto retain = [&retained](StringId id) {
+    if(!id.valid()) return;
+    const std::uint32_t index = id;
+    if(index >= retained.size())
+      throw std::logic_error("invalid retained LowIR presentation identity");
+    retained[index] = 1;
+  };
+  const auto retain_operand = [&retain](const Operand & operand) {
+    if(operand.has_spelling) retain(operand.literal);
+  };
+  const auto retain_parameters = [&retain](
+      const std::vector<Parameter> & parameters) {
+    for(std::size_t i = 0; i < parameters.size(); ++i)
+      retain(parameters[i].name);
+  };
+  const auto retain_metadata = [&retain](const SymbolMetadata & metadata) {
+    retain(metadata.object_symbol);
+    retain(metadata.tls_for_spelling);
+    retain(metadata.section_segment);
+    retain(metadata.section_name);
+  };
+
+  for(std::size_t i = 0; i < program.symbol_names.size(); ++i)
+    retain(program.symbol_names[i]);
+  for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
+    retain_metadata(program.global_declarations[i].metadata);
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
+    retain_metadata(program.function_declarations[i].metadata);
+    retain_parameters(program.function_declarations[i].params);
+  }
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    const GlobalDefinition & global = program.globals[i];
+    retain_metadata(global.metadata);
+    retain_operand(global.init_operand);
+    for(std::size_t j = 0; j < global.data_items.size(); ++j) {
+      retain_operand(global.data_items[j].literal_operand);
+      retain(global.data_items[j].symbol_spelling);
+    }
+  }
+  for(std::size_t f = 0; f < program.functions.size(); ++f) {
+    const Function & function = program.functions[f];
+    retain_metadata(function.metadata);
+    retain_parameters(function.params);
+    for(std::size_t i = 0; i < function.slot_names.size(); ++i)
+      retain(function.slot_names[i]);
+    for(std::size_t i = 0; i < function.value_names.size(); ++i) {
+      const PresentationName name = function.value_names[i];
+      if(name.valid() && !name.generated() && !name.fixed())
+        retain(name.spelling());
+    }
+    for(std::size_t i = 0; i < function.block_labels.size(); ++i)
+      retain(function.block_labels[i]);
+    retain(function.debug_location.file);
+    for(std::size_t b = 0; b < function.blocks.size(); ++b)
+      for(std::size_t i = 0;
+          i < function.blocks[b].instructions.size(); ++i) {
+        const Instruction & instruction = function.blocks[b].instructions[i];
+        retain_parameters(instruction.call_params);
+        retain(instruction.debug_location.file);
+        retain_operand(instruction.first);
+        retain_operand(instruction.second);
+        retain_operand(instruction.third);
+        for(std::size_t a = 0; a < instruction.args.size(); ++a)
+          retain_operand(instruction.args[a]);
+      }
+  }
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
+    retain(program.object_aliases[i].object_symbol);
+    retain(program.object_aliases[i].target_spelling);
+  }
+  program.strings.retain_only(retained);
+}
+
 std::size_t lowir_program_storage_bytes(const Program & program)
 {
 	std::size_t bytes = program.strings.storage_bytes() +
@@ -1132,6 +1281,7 @@ std::size_t lowir_program_storage_bytes(const Program & program)
 			function.value_types.capacity() * sizeof(LowType) +
 			function.blocks.capacity() * sizeof(Block) +
 			function.block_labels.capacity() * sizeof(StringId) +
+			function.block_presentation_order.capacity() * sizeof(std::uint32_t) +
 			function.generated_name_reservations.storage_bytes();
 		for(std::size_t b = 0; b < function.blocks.size(); ++b) {
 			const std::vector<Instruction> & instructions =

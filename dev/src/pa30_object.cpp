@@ -870,7 +870,9 @@ lowir_model::Function MakeLifecycleAggregate(lowir_model::LowirProgram& program,
 	result.metadata.binding = lowir_model::SBM_INTERNAL;
 	lowir_model::Block block;
 	block.id = lowir_model::allocate_lowir_block_id(
-		result, program.strings.intern("^entry"));
+		result, program.presentation_policy ==
+			lowir_model::PRESENTATION_SERIALIZABLE ?
+			program.strings.intern("entry") : lowir_model::StringId());
 	for (std::size_t i = 0; i < functions.size(); ++i)
 	{
 		const std::size_t index = reverse ? functions.size() - i - 1 : i;
@@ -1076,6 +1078,7 @@ CompilerObject ReadCompilerObject(const std::string& path)
 
 lowir_model::LowirProgram LinkCompilerObjects(
 	std::vector<CompilerObject> objects, const std::string& target,
+	lowir_model::PresentationPolicy presentation_policy,
 	LinkStats* stats)
 {
 	if (objects.empty()) throw std::runtime_error("no linker inputs");
@@ -1085,6 +1088,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 	std::unordered_map<std::string, std::string> external_names;
 	std::vector<lowir_model::SymbolId> linked_symbols(1);
 	lowir_model::LowirProgram result;
+	result.presentation_policy = presentation_policy;
 	for (std::size_t i = 0; i < objects.size(); ++i)
 	{
 		if (objects[i].target != target)
@@ -1232,11 +1236,11 @@ lowir_model::LowirProgram LinkCompilerObjects(
 	}
 	if (!initializers.empty())
 		result.functions.push_back(MakeLifecycleAggregate(
-			result, "@__cppgm_link_init", lowir_model::SR_INIT,
+			result, "__cppgm_link_init", lowir_model::SR_INIT,
 			initializers, false));
 	if (!finalizers.empty())
 		result.functions.push_back(MakeLifecycleAggregate(
-			result, "@__cppgm_link_fini", lowir_model::SR_FINI,
+			result, "__cppgm_link_fini", lowir_model::SR_FINI,
 			finalizers, true));
 
 	std::vector<lowir_model::SymbolId> aliases(result.strings.size() + 1);

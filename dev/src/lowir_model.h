@@ -349,6 +349,12 @@ struct Parameter
   ParameterMetadata metadata;
 };
 
+enum PresentationPolicy : std::uint8_t
+{
+  PRESENTATION_SERIALIZABLE,
+  PRESENTATION_OBJECT_ONLY
+};
+
 struct InstructionDebugLocation
 {
   StringId file;
@@ -491,6 +497,9 @@ struct Function
   std::vector<LowType> value_types;
   std::vector<Block> blocks;
   std::vector<StringId> block_labels;
+  // Dense lexical rank captured while block presentation is available.  EH
+  // layout consumes this compact order and never needs the label bytes.
+  std::vector<std::uint32_t> block_presentation_order;
   GeneratedNameReservations generated_name_reservations;
   std::uint32_t next_block_id = 0;
   InstructionDebugLocation debug_location;
@@ -527,6 +536,7 @@ struct Program
   std::vector<ir_model::ExportedSymbol> exported_symbols;
   std::size_t source_bytes = 0;
   std::size_t token_count = 0;
+  PresentationPolicy presentation_policy = PRESENTATION_SERIALIZABLE;
 };
 
 using LowirType = LowType;
@@ -554,6 +564,8 @@ const LowType & lowir_slot_type(const Function & function, SlotId slot);
 ValueId append_lowir_value(Function & function, StringId name,
                            const LowType & type,
                            bool preserve_copy = false);
+ValueId append_lowir_unnamed_value(Function & function,
+                                   const LowType & type);
 ValueId append_lowir_generated_value(Function & function,
                                      std::uint32_t ordinal,
                                      const LowType & type);
@@ -588,10 +600,13 @@ std::string lowir_literal_text(const Operand & operand,
 void resolve_lowir_function_operands(Function & function,
                                      const StringPool & strings);
 void classify_lowir_generated_name_reservations(
-    Function & function, const StringPool & strings);
+  Function & function, const StringPool & strings);
+void compute_lowir_block_presentation_order(
+  Function & function, const StringPool & strings);
 void resolve_lowir_program_symbols(Program & program);
 void remap_lowir_program_strings(Program & program,
                                  StringPool & destination);
+void discard_unreferenced_lowir_strings(Program & program);
 void remap_lowir_program_symbols(
   Program & program, const std::vector<SymbolId> & symbols);
 std::size_t lowir_program_storage_bytes(const Program & program);

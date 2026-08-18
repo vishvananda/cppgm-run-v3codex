@@ -51,6 +51,8 @@ bool IsCompilerObject(const std::string& path);
 lowir_model::LowirProgram LinkCompilerObjects(
 	std::vector<CompilerObject> objects,
 	const std::string& target,
+	lowir_model::PresentationPolicy presentation_policy =
+		lowir_model::PRESENTATION_OBJECT_ONLY,
 	LinkStats* stats = 0);
 
 }

@@ -89,6 +89,7 @@ public:
     if(source.metadata.object_symbol.valid())
       target_.object_symbol = source.metadata.object_symbol;
     target_.block_labels = source.block_labels;
+    target_.block_presentation_order = source.block_presentation_order;
     target_.return_type = source.return_type;
     target_.debug_location.file = source.debug_location.file;
     target_.debug_location.line = source.debug_location.line;
@@ -206,7 +207,8 @@ private:
   {
     return frame_layout::append_binding(
       target_, frame_bytes_, kind,
-      lowir_model::PresentationName::pooled(name), type);
+      name.valid() ? lowir_model::PresentationName::pooled(name) :
+        lowir_model::PresentationName(), type);
   }
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    lowir_model::PresentationName name,
@@ -295,7 +297,9 @@ private:
       }
       slot_offsets_[slot] = allocate_frame_binding(
         mir_model::MirFrameBinding::FB_SLOT,
-        lowir_model::PresentationName::pooled(source_.slot_names[slot]), type);
+        source_.slot_names[slot].valid() ?
+          lowir_model::PresentationName::pooled(source_.slot_names[slot]) :
+          lowir_model::PresentationName(), type);
       slot_offset_known_[slot] = 1;
     }
   }
@@ -345,8 +349,9 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = lowir_model::PresentationName::pooled(
-        parameter.name);
+      binding.name = parameter.name.valid() ?
+        lowir_model::PresentationName::pooled(parameter.name) :
+        lowir_model::PresentationName();
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -436,8 +441,9 @@ private:
       const lowir_model::LowirParameter & parameter =
         source_.params[piece.parameter_index];
       mir_model::MirParamBinding binding;
-      binding.name = lowir_model::PresentationName::pooled(
-        parameter.name);
+      binding.name = parameter.name.valid() ?
+        lowir_model::PresentationName::pooled(parameter.name) :
+        lowir_model::PresentationName();
       binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ||
         wide::is_integer(parameter.type) ?
         piece.type : parameter.type;
@@ -513,8 +519,9 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = lowir_model::PresentationName::pooled(
-        parameter.name);
+      binding.name = parameter.name.valid() ?
+        lowir_model::PresentationName::pooled(parameter.name) :
+        lowir_model::PresentationName();
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;

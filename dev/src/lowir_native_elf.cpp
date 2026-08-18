@@ -1,5 +1,6 @@
 #include "lowir_native.h"
 #include "lowir_native_address_folding.h"
+#include "lowir_native_block_labels.h"
 #include "lowir_native_code_buffer.h"
 #include "lowir_native_data_layout.h"
 #include "lowir_native_eh.h"
@@ -2339,7 +2340,7 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
 }
 
 HostFunctionLayout emit_host_tls_wrapper(
-    CodeBuffer & out, const std::string & internal_symbol,
+    CodeBuffer & out, lowir_model::SymbolId symbol,
     const lowir_model::LowirProgram & program,
     const lowir_model::SymbolMetadata & metadata)
 {
@@ -2347,6 +2348,9 @@ HostFunctionLayout emit_host_tls_wrapper(
     throw std::logic_error("TLS wrapper has no storage target");
   out.align(2);
   HostFunctionLayout layout;
+  layout.program_symbol = symbol;
+  const std::string & internal_symbol =
+    lowir_model::lowir_symbol_name(program, symbol);
   layout.internal_symbol = internal_symbol;
   if(metadata.object_symbol.valid())
     layout.object_symbol = program.strings.get(metadata.object_symbol);
@@ -2559,6 +2563,7 @@ HostFunctionLayout emit_prepared_host_function(
   }
   out.align(2);
   HostFunctionLayout layout;
+  layout.program_symbol = function.symbol;
   layout.internal_symbol = function_name;
   if(function.object_symbol.valid())
     layout.object_symbol = out.literal_spelling(function.object_symbol);
@@ -2572,13 +2577,8 @@ HostFunctionLayout emit_prepared_host_function(
       layout.clause_order.push_back(lowir_model::BlockId(
         static_cast<std::uint32_t>(block)));
     }
-  std::sort(layout.clause_order.begin(), layout.clause_order.end(),
-    [&](lowir_model::BlockId left, lowir_model::BlockId right) {
-      return out.literal_spelling(function.block_labels[
-               static_cast<std::uint32_t>(left)]) <
-             out.literal_spelling(function.block_labels[
-               static_cast<std::uint32_t>(right)]);
-    });
+  sort_blocks_by_presentation_order(
+    &layout.clause_order, function.block_presentation_order);
   out.label(function.symbol);
   const std::string object_symbol =
     native_object_symbol(out, function.object_symbol);
@@ -2864,8 +2864,7 @@ void write_linux_relocatable(
        !emitted_tls_wrappers.insert(lowir_model::lowir_symbol_name(
          source, wrapper.symbol)).second) continue;
     functions.push_back(emit_host_tls_wrapper(
-      text, lowir_model::lowir_symbol_name(source, wrapper.symbol),
-      source, wrapper.metadata));
+      text, wrapper.symbol, source, wrapper.metadata));
   }
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     mir_model::MirFunction function = lowering.lower_function(i);
