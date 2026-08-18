@@ -910,3 +910,11 @@ the shape witness remains proposed.  The affected report passes 368/368, the
 PA29 suite passes 224/224, the through-PA29 report passes 4,116/4,116, the
 full report passes 5,204/5,204, and the PA39 file audit has zero fatal
 findings.
+
+At commit `c78ed5f7`, a clean 32-way self build takes 17.97 seconds wall,
+405.26 seconds aggregate user time, and 241,004 KiB peak RSS.  With no
+inception object tree present, the separate clean 32-way inception comparison
+takes 1:49.99 wall, 2,926.58 seconds aggregate user time, and 232,488 KiB peak
+RSS.  All 163 compared objects match.  The self and inception binaries are
+byte-identical at 16,754,800 bytes with SHA-256
+`4ebaf46822cf80b50aefc7f7fb4f0fa506b4a6e3e73140389e02c28bccdd64a3`.
