@@ -21,7 +21,9 @@ struct HostEhRegionPlan
 bool requires_host_eh_storage(const lowir_model::LowirFunction & function);
 void collect_host_eh_clauses(mir_model::MirFunction * function);
 HostEhRegionPlan analyze_host_eh_regions(
-  const mir_model::MirFunction & function);
+  const mir_model::MirFunction & function,
+  const lowir_model::StringPool & strings,
+  const std::string & function_name);
 
 }  // namespace host_eh_detail
 }  // namespace lowir_native

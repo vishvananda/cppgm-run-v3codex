@@ -82,12 +82,12 @@ public:
     value_known_.assign(source_.value_names.size(), 0);
     incoming_parameter_registers_.resize(source_.value_names.size(), XR_RSP);
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
-    target_.name = lowir_model::lowir_symbol_name(program, source.symbol);
+    target_.symbol = source.symbol;
     target_.object_symbol = source.metadata.object_symbol;
     target_.block_labels.resize(source.block_labels.size());
     for(std::size_t i = 0; i < source.block_labels.size(); ++i)
       if(source.block_labels[i].valid())
-        target_.block_labels[i] = program.strings.get(source.block_labels[i]);
+        target_.block_labels[i] = strings_.map(source.block_labels[i]);
     target_.return_type = source.return_type;
     target_.debug_location.file = strings_.map(source.debug_location.file);
     target_.debug_location.line = source.debug_location.line;

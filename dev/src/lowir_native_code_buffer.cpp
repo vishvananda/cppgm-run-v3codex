@@ -93,6 +93,11 @@ void CodeBuffer::label(const std::string& name)
 	label_offsets_.push_back(&inserted.first->second);
 }
 
+void CodeBuffer::label(lowir_model::SymbolId symbol)
+{
+	label(symbol_name(symbol));
+}
+
 lowir_model::LocalLabelId CodeBuffer::allocate_local_label()
 {
 	if (local_label_offsets_.size() >= lowir_model::kInvalidCompactId)
@@ -147,6 +152,12 @@ void CodeBuffer::alias(const std::string& name, const std::string& target)
 	label_at(name, found->second);
 }
 
+void CodeBuffer::alias(const std::string& name,
+	lowir_model::SymbolId target)
+{
+	alias(name, symbol_name(target));
+}
+
 void CodeBuffer::begin_function_blocks(std::size_t count)
 {
 	if (!local_fixups_.empty() || !short_relative_fixups_.empty() ||
@@ -179,7 +190,8 @@ bool CodeBuffer::relocatable_addresses() const
 	return relocatable_addresses_;
 }
 
-void CodeBuffer::bind_symbol_names(const std::vector<std::string>& names)
+void CodeBuffer::bind_symbol_names(
+	const std::vector<lowir_model::StringId>& names)
 {
 	symbol_names_ = &names;
 }
@@ -187,14 +199,21 @@ void CodeBuffer::bind_symbol_names(const std::vector<std::string>& names)
 const std::string& CodeBuffer::symbol_name(lowir_model::SymbolId symbol) const
 {
 	const std::uint32_t index = symbol;
-	if (!symbol_names_ || !symbol.valid() || index >= symbol_names_->size())
+	if (!symbol_names_ || !strings_ || !symbol.valid() ||
+		index >= symbol_names_->size())
 		throw std::logic_error("invalid native symbol identity");
-	return (*symbol_names_)[index];
+	return strings_->get((*symbol_names_)[index]);
 }
 
 void CodeBuffer::bind_strings(const lowir_model::StringPool& strings)
 {
 	strings_ = &strings;
+}
+
+const lowir_model::StringPool& CodeBuffer::strings() const
+{
+	if (!strings_) throw std::logic_error("native string pool is not bound");
+	return *strings_;
 }
 
 const std::string& CodeBuffer::literal_spelling(

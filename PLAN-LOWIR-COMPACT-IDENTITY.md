@@ -1287,6 +1287,43 @@ All 162 self/inception objects match byte-for-byte.  The final binaries are
 byte-identical at 16,845,168 bytes with SHA-256
 `bffbff85d1c7b22a0fde2c0bd389b5ff5f1044ce6c2550a164942df0fd9e7c2a`.
 
+### CI24: preserve semantic and pooled identity through MIR
+
+MIR no longer copies semantic symbol names into globals, functions, aliases,
+runtime records, initializer addresses, or data items.  These fields carry the
+original dense `SymbolId`; the MIR symbol table carries pooled `StringId`
+presentation.  Function block-label tables likewise carry pooled `StringId`
+rather than one owning `std::string` per block.  The corresponding per-entry
+storage falls from a typical 32-byte string object to a four-byte identity.
+
+The native code buffer now accepts semantic labels and fixups directly and
+resolves them through the bound MIR symbol/presentation tables only at the
+native label, relocation, LSDA, serialization, or diagnostic boundary.  The
+runtime-data lookup moved from the oversized ELF writer to the EH planning
+module and returns `SymbolId`.  Host-EH diagnostics still render the original
+function and block spellings through a read-only pool reference; no diagnostic
+text is retained in analysis state.
+
+PA29, PA30, PA37, and PA38 report 443/443 passing tests.  The final full root
+report passes 5,204/5,204 tests and the PA39 file audit has zero fatal
+findings.  All MIR fixtures are unchanged.  The frozen object remains
+byte-identical to CI23 at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+
+Three final A/B/B/A blocks against the immutable CI23 compiler produced
+baseline/candidate medians of 5.000/4.980 seconds user, 5.475/5.480 seconds
+wall, and 363,996/365,646 KiB peak RSS.  The paired candidate/baseline medians
+were 0.9960 for user time, 0.9945 for wall time, and 1.0033 for RSS.  These
+sub-percent movements are neutral within host noise, so the phase takes no
+standalone benchmark credit.
+
+A clean 32-way self build takes 18.10 seconds wall, 404.05 seconds aggregate
+user time, and 233,604 KiB peak RSS.  A separate 32-way inception compare takes
+1:52.09 wall, 2,930.44 seconds aggregate user time, and 235,560 KiB peak RSS.
+All 162 self/inception objects match byte-for-byte.  The final binaries are
+byte-identical at 16,843,400 bytes with SHA-256
+`3e55a11e491c27e87d2782ddb15c8f18613ddca80050651984da2c4188e136df`.
+
 ## 11. Current residual audit and next slices
 
 The cumulative hot-path milestone now passes the performance gate.  Three
@@ -1314,9 +1351,9 @@ follows:
 | --- | --- | --- | --- |
 | LowIR top-level model | Completed in CI22: declarations, definitions, global address data, and alias targets carry `SymbolId`; the symbol table carries pooled `StringId` presentation | Keep rendering at serialization, diagnostic, and object-output boundaries; explicit-input forward spellings are transient pooled IDs | Complete |
 | LowIR function presentation | Completed in CI21: slots and blocks use pooled IDs; values use one tagged pooled spelling or generated ordinal, with explicit behavior bits | Keep rendering confined to serialization and diagnostics; do not add a parallel name index | Complete for LowIR; MIR block-label presentation remains below |
-| LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
+| LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings and are copied into MIR | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
 | PA37 inliners | Completed in CI23: semantic allocation is monotonic by compact ID; exact-name collision state uses numeric generated ordinals and pooled slot IDs | Keep the sparse numeric reservation for arbitrary explicit input; do not rebuild full caller string sets | Complete |
-| MIR program shell | functions, globals, global data items, aliases, runtime records, and block-label tables repeat semantic/object names | Carry `SymbolId`, pooled object-name IDs, `BlockId`, and literal IDs; derive fixed runtime names from the existing runtime enum | Medium for O0; high structural value |
+| MIR program shell | CI24 completes semantic symbols and pooled block labels; object names, section names, and global literal spellings remain owning strings | Pool genuine output presentation once and render only at MIR/ELF boundaries | Semantic identity complete; presentation pooling remains |
 | MIR debug metadata | `DebugVariable::name` remains owning text | Intern once in the existing MIR pool and carry `StringId` | Low on the frozen no-debug lane |
 | Native encoding before ELF | named `CodeBuffer` labels/fixups and object/EH planning maps still hash runtime, global-data, host-EH, declaration, COMDAT, and section spellings | Extend tagged fixup targets to runtime/object/EH IDs; use dense vectors for compiler-owned domains and resolve names once when constructing ELF symbol, relocation, section, and string tables | High within encoding |
 | Explicit `.lowir` parsing and private-object joining | arbitrary input spellings require string maps to diagnose duplicates and unite independently owned programs | Keep transient boundary resolvers, preferably keyed by interned IDs/spans, and destroy them after producing compact identity | Not on frozen source hot path |
@@ -1324,8 +1361,8 @@ follows:
 
 The next changesets should therefore be:
 
-1. Convert the MIR program shell and global data to semantic and pooled object
-   IDs, including fixed-runtime enum lookup.  Do not introduce a parallel name
+1. Pool LowIR/MIR ABI and global-literal presentation, including object names,
+   sections, and fixed zero spellings.  Do not introduce a parallel name
    index.
 2. Finish the executable/global-data/host-EH encoder boundary so the ELF writer
    is the only owner that hashes output spellings.

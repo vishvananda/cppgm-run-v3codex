@@ -2,6 +2,7 @@
 #include "lowir_native_address_folding.h"
 #include "lowir_native_code_buffer.h"
 #include "lowir_native_data_layout.h"
+#include "lowir_native_eh.h"
 #include "lowir_native_float_bits.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_lsda.h"
@@ -1857,9 +1858,10 @@ void emit_prepared_function(
   // entry at least two-byte aligned so a direct target cannot carry that tag.
   out.align(2);
   const std::size_t function_start = out.size();
-  out.label(function.name);
+  const std::string & function_name = out.symbol_name(function.symbol);
+  out.label(function.symbol);
   const std::string object_symbol = native_object_symbol(function.object_symbol);
-  if(!object_symbol.empty() && object_symbol != function.name)
+  if(!object_symbol.empty() && object_symbol != function_name)
     out.label(object_symbol);
   out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
@@ -1939,9 +1941,10 @@ void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
 void emit_runtime_labels(CodeBuffer & out,
                          const mir_model::MirRuntimeFunction & runtime)
 {
-  out.label(runtime.name);
+  const std::string & runtime_name = out.symbol_name(runtime.symbol);
+  out.label(runtime.symbol);
   const std::string object_symbol = native_object_symbol(runtime.object_symbol);
-  if(!object_symbol.empty() && object_symbol != runtime.name)
+  if(!object_symbol.empty() && object_symbol != runtime_name)
     out.label(object_symbol);
 }
 
@@ -2040,15 +2043,6 @@ void emit_malloc_runtime(CodeBuffer & out)
   out.byte(0x0f); out.byte(0x05); out.byte(0xc3);
 }
 
-std::string runtime_data_name(
-    const std::vector<mir_model::MirRuntimeData> & data,
-    mir_model::RuntimeData::Kind kind)
-{
-  for(std::size_t i = 0; i < data.size(); ++i)
-    if(data[i].kind == kind) return data[i].name;
-  return std::string();
-}
-
 void emit_dynamic_cast_find(
     CodeBuffer & out, const std::vector<mir_model::MirRuntimeData> & data)
 {
@@ -2065,9 +2059,9 @@ void emit_dynamic_cast_find(
     out.internal_label("dynamic_cast_done");
   const lowir_model::LocalLabelId ambiguous =
     out.internal_label("dynamic_cast_ambiguous");
-  const std::string si_type = runtime_data_name(
+  const lowir_model::SymbolId si_type = eh::runtime_data_symbol(
     data, mir_model::RuntimeData::RD_RTTI_SI);
-  const std::string vmi_type = runtime_data_name(
+  const lowir_model::SymbolId vmi_type = eh::runtime_data_symbol(
     data, mir_model::RuntimeData::RD_RTTI_VMI);
   out.label(helper);
   emit_push(out, XR_RBP); emit_register_move(out, XR_RBP, XR_RSP);
@@ -2080,14 +2074,14 @@ void emit_dynamic_cast_find(
   emit_register_alu(out, 0x39, XR_R12, XR_R13);
   emit_condition_jump(out, XC_E, record);
   emit_load(out, XR_RCX, XR_R12, 0, 64);
-  if(!si_type.empty()) {
+  if(si_type.valid()) {
     emit_symbol_move(out, XR_RAX, si_type,
                      mir_model::MirOperand::ADDRESS_PREEMPTIBLE);
     emit_lea(out, XR_RAX, XR_RAX, 16);
     emit_register_alu(out, 0x39, XR_RCX, XR_RAX);
     emit_condition_jump(out, XC_E, si);
   }
-  if(!vmi_type.empty()) {
+  if(vmi_type.valid()) {
     emit_symbol_move(out, XR_RAX, vmi_type,
                      mir_model::MirOperand::ADDRESS_PREEMPTIBLE);
     emit_lea(out, XR_RAX, XR_RAX, 16);
@@ -2287,10 +2281,12 @@ void emit_eh_data(CodeBuffer & out, const mir_model::MirProgram & program)
   }
   for(std::size_t i = 0; i < program.runtime_data.size(); ++i) {
     out.align(16);
-    out.label(program.runtime_data[i].name);
+    const std::string & runtime_name =
+      out.symbol_name(program.runtime_data[i].symbol);
+    out.label(program.runtime_data[i].symbol);
     const std::string object_symbol =
       native_object_symbol(program.runtime_data[i].object_symbol);
-    if(!object_symbol.empty() && object_symbol != program.runtime_data[i].name)
+    if(!object_symbol.empty() && object_symbol != runtime_name)
       out.label(object_symbol);
     out.zeros(32);
   }
@@ -2324,16 +2320,17 @@ void emit_float_data(CodeBuffer & out, const std::string & text,
 void emit_global(CodeBuffer & out, const mir_model::MirGlobalDefinition & global)
 {
   out.align(global_alignment(global));
-  out.label(global.name);
+  const std::string & global_name = out.symbol_name(global.symbol);
+  out.label(global.symbol);
   const std::string object_symbol = native_object_symbol(global.object_symbol);
-  if(!object_symbol.empty() && object_symbol != global.name)
+  if(!object_symbol.empty() && object_symbol != global_name)
     out.label(object_symbol);
-  if(global.thread_local_storage && !global.thread_local_wrapper_symbol.empty())
+  if(global.thread_local_storage && global.thread_local_wrapper_symbol.valid())
     out.label(global.thread_local_wrapper_symbol);
   if(global.storage_kind == mir_model::MirGlobalDefinition::GS_SCALAR) {
     const std::size_t size = type_size(global.type);
     if(global.init_kind == mir_model::MirGlobalDefinition::GI_ADDR) {
-      out.absolute64(global.symbol, global.addr_addend);
+      out.absolute64(global.init_symbol, global.addr_addend);
     } else if(global.init_kind == mir_model::MirGlobalDefinition::GI_FLOAT) {
       emit_float_data(out, global.literal_text, global.type);
     } else {
@@ -2564,9 +2561,11 @@ void emit_host_instruction(
 HostFunctionLayout emit_prepared_host_function(
     CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
+  const std::string & function_name = out.symbol_name(function.symbol);
   host_eh_detail::HostEhRegionPlan region_plan;
   if(function.host_eh_enabled)
-    region_plan = host_eh_detail::analyze_host_eh_regions(function);
+    region_plan = host_eh_detail::analyze_host_eh_regions(
+      function, out.strings(), function_name);
   if(stats && function.host_eh_enabled) {
     stats->eh_region_states += region_plan.state_count;
     stats->eh_region_edges += region_plan.edge_count;
@@ -2574,18 +2573,20 @@ HostFunctionLayout emit_prepared_host_function(
   }
   out.align(2);
   HostFunctionLayout layout;
-  layout.internal_symbol = function.name;
+  layout.internal_symbol = function_name;
   layout.object_symbol = function.object_symbol;
   layout.offset = out.size();
   layout.callee_saved_regs = function.callee_saved_regs;
   for(std::size_t block = 0; block < function.host_eh_clauses.size(); ++block)
-    if(!function.host_eh_clauses[block].empty())
-      layout.clauses[mir_model::mir_block_label(
-        function, lowir_model::BlockId(static_cast<std::uint32_t>(block)))] =
-          function.host_eh_clauses[block];
-  out.label(function.name);
+    if(!function.host_eh_clauses[block].empty()) {
+      if(block >= function.block_labels.size())
+        throw std::logic_error("invalid MIR block identity");
+      layout.clauses[out.literal_spelling(function.block_labels[block])] =
+        function.host_eh_clauses[block];
+    }
+  out.label(function.symbol);
   const std::string object_symbol = native_object_symbol(function.object_symbol);
-  if(!object_symbol.empty() && object_symbol != function.name)
+  if(!object_symbol.empty() && object_symbol != function_name)
     out.label(object_symbol);
   out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
@@ -2596,13 +2597,16 @@ HostFunctionLayout emit_prepared_host_function(
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
     out.label(out.block_label(block.id));
-    out.label_at(function.name + "::" +
-      mir_model::mir_block_label(function, block.id), out.size());
+    const std::uint32_t block_id = block.id;
+    if(block_id >= function.block_labels.size())
+      throw std::logic_error("invalid MIR block identity");
+    const std::string & block_name =
+      out.literal_spelling(function.block_labels[block_id]);
+    out.label_at(function_name + "::" + block_name, out.size());
     const address_folding::TransientScratchUsePlan scratch_uses(
       block.instructions);
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
-    const std::uint32_t block_id = block.id;
     if(block_id < function.host_eh_clauses.size() &&
        !function.host_eh_clauses[block_id].empty()) {
       emit_store(out, XR_RBP,
@@ -2662,18 +2666,19 @@ HostFunctionLayout emit_prepared_host_function(
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
       emit_host_instruction(out, block.instructions[j], function,
-        landing_block ? mir_model::mir_block_label(
-          function, function.blocks[landing_block - 1].id) :
+        landing_block ? out.literal_spelling(function.block_labels[
+          static_cast<std::uint32_t>(
+            function.blocks[landing_block - 1].id)]) :
                         no_landing_pad,
         layout, stack_cleanups);
     }
   }
   for(std::size_t i = 0; i < stack_cleanups.size(); ++i) {
-    out.label(function.name + "::" + stack_cleanups[i].label);
+    out.label(function_name + "::" + stack_cleanups[i].label);
     emit_stack_adjust(out, false,
       static_cast<unsigned>(stack_cleanups[i].stack_bytes));
     emit_unconditional_jump(
-      out, function.name + "::" + stack_cleanups[i].landing_pad);
+      out, function_name + "::" + stack_cleanups[i].landing_pad);
   }
   const CodeOffsetAdjustment adjustment =
     out.relax_forward_branches(layout.offset);
@@ -2888,7 +2893,7 @@ void write_linux_relocatable(
     host_external_global_definitions(source, program);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
-    if(suppressed_globals.count(global.name)) continue;
+    if(suppressed_globals.count(text.symbol_name(global.symbol))) continue;
     const std::string section_name = !global.section_name.empty() ?
       global.section_name : global.thread_local_storage ? ".tdata" : ".data";
     const std::uint64_t flags = 2 | (global.readonly ? 0 : 1) |

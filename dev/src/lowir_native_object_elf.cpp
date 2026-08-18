@@ -996,11 +996,12 @@ std::unordered_set<std::string> host_external_global_definitions(
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
     if(!external_objects.count(global.object_symbol)) continue;
-    suppressed.insert(global.name);
+    suppressed.insert(mir_model::mir_symbol_name(program, global.symbol));
     for(std::size_t j = 0; j < global.data_items.size(); ++j)
       if(global.data_items[j].kind ==
            mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR)
-        suppressed.insert(global.data_items[j].symbol);
+        suppressed.insert(mir_model::mir_symbol_name(
+          program, global.data_items[j].symbol));
   }
   return suppressed;
 }

@@ -39,7 +39,7 @@ mir_model::MirGlobalDefinition lower_global(
     const lowir_model::LowirGlobalDefinition & source)
 {
   mir_model::MirGlobalDefinition target;
-  target.name = lowir_model::lowir_symbol_name(program, source.symbol);
+  target.symbol = source.symbol;
   target.object_symbol = source.metadata.object_symbol;
   target.readonly = source.storage == lowir_model::GSM_READONLY;
   target.thread_local_storage = source.storage == lowir_model::GSM_THREAD_LOCAL;
@@ -56,7 +56,7 @@ mir_model::MirGlobalDefinition lower_global(
         lowered.zero_bytes = item.zero_bytes;
       } else if(item.kind == lowir_model::LowirGlobalDefinition::DataItem::ITEM_ADDR) {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_ADDR;
-        lowered.symbol = lowir_model::lowir_symbol_name(program, item.symbol_id);
+        lowered.symbol = item.symbol_id;
         lowered.addr_addend = item.addr_addend;
       } else if(is_floating(item.type)) {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT;
@@ -75,8 +75,7 @@ mir_model::MirGlobalDefinition lower_global(
     target.type = source.type;
     if(source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ADDR) {
       target.init_kind = mir_model::MirGlobalDefinition::GI_ADDR;
-      target.symbol =
-        lowir_model::lowir_symbol_name(program, source.init_operand.symbol);
+      target.init_symbol = source.init_operand.symbol;
       target.addr_addend = source.addr_addend;
     } else if(is_floating(source.type)) {
       target.init_kind = mir_model::MirGlobalDefinition::GI_FLOAT;

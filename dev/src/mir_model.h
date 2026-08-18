@@ -35,7 +35,7 @@ struct GlobalDefinition
     long long int_value = 0;
     long double float_value = 0.0L;
     std::string literal_text;
-    std::string symbol;
+    lowir_model::SymbolId symbol;
     long long addr_addend = 0;
     std::size_t zero_bytes = 0;
   };
@@ -54,18 +54,18 @@ struct GlobalDefinition
     GI_ADDR
   } init_kind = GI_ZERO;
 
-  std::string name;
+  lowir_model::SymbolId symbol;
   std::string object_symbol;
   bool readonly = false;
   bool thread_local_storage = false;
-  std::string thread_local_wrapper_symbol;
+  lowir_model::SymbolId thread_local_wrapper_symbol;
   std::string section_segment;
   std::string section_name;
   MachineType type;
   long long int_value = 0;
   long double float_value = 0.0L;
   std::string literal_text;
-  std::string symbol;
+  lowir_model::SymbolId init_symbol;
   long long addr_addend = 0;
   std::vector<DataItem> data_items;
 };
@@ -341,7 +341,7 @@ struct HostEhClause
 
 struct Function
 {
-  std::string name;
+  lowir_model::SymbolId symbol;
   std::string object_symbol;
   std::vector<ParamBinding> params;
   MachineType return_type;
@@ -367,14 +367,14 @@ struct Function
   // Indexed by BlockId. Empty entries are blocks without landing-pad
   // clauses. The label spelling remains in block_labels for serialization.
   std::vector<std::vector<HostEhClause> > host_eh_clauses;
-  std::vector<std::string> block_labels;
+  std::vector<lowir_model::StringId> block_labels;
   std::vector<Block> blocks;
 };
 
 struct ObjectAlias
 {
   std::string object_symbol;
-  std::string target;
+  lowir_model::SymbolId target;
 };
 
 struct RuntimeFunction
@@ -396,7 +396,7 @@ struct RuntimeFunction
     RF_BAD_TYPEID
   } kind = RF_EH_PERSONALITY;
 
-  std::string name;
+  lowir_model::SymbolId symbol;
   std::string object_symbol;
 };
 
@@ -404,7 +404,7 @@ struct RuntimeData
 {
   enum Kind { RD_OPAQUE, RD_RTTI_CLASS, RD_RTTI_SI, RD_RTTI_VMI }
     kind = RD_OPAQUE;
-  std::string name;
+  lowir_model::SymbolId symbol;
   std::string object_symbol;
 };
 
@@ -413,7 +413,7 @@ struct Program
   Program();
 
   std::string target;
-  std::vector<std::string> symbol_names;
+  std::vector<lowir_model::StringId> symbol_names;
   // Presentation identities are dense in MIR.  The shared pool lets streamed
   // function lowering intern literals and metadata after the program shell
   // has moved to the object writer, without copying the larger LowIR pool.
@@ -442,7 +442,8 @@ using MirRuntimeFunction = RuntimeFunction;
 using MirRuntimeData = RuntimeData;
 using MirProgram = Program;
 
-const std::string & mir_block_label(const MirFunction & function,
+const std::string & mir_block_label(const MirProgram & program,
+                                    const MirFunction & function,
                                     lowir_model::BlockId block);
 const std::string & mir_symbol_name(const MirProgram & program,
                                     lowir_model::SymbolId symbol);

@@ -70,7 +70,7 @@ std::string operand_text(const Operand & operand, const Program & program,
   case Operand::OP_LABEL:
     if(!function)
       throw std::logic_error("MIR label operand outside function");
-    return mir_block_label(*function, operand.block);
+    return mir_block_label(program, *function, operand.block);
   case Operand::OP_FRAME: return frame_address(operand.offset);
   case Operand::OP_DEREF: return dereference(operand);
   }
@@ -326,7 +326,7 @@ std::string rendered_instruction_text(const Instruction & instruction,
 void render_global(std::ostringstream & out, const Program & program,
                    const GlobalDefinition & global)
 {
-  out << "global " << global.name;
+  out << "global " << mir_symbol_name(program, global.symbol);
   if(global.readonly) out << " readonly";
   if(global.thread_local_storage) out << " thread_local";
   out << '\n';
@@ -339,7 +339,7 @@ void render_global(std::ostringstream & out, const Program & program,
         out << "zero " << item.zero_bytes << '\n';
       } else if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
         out << lowir_model::lowir_type_text(item.type) << " addr "
-            << item.symbol;
+            << mir_symbol_name(program, item.symbol);
         if(item.addr_addend > 0) out << '+' << item.addr_addend;
         else if(item.addr_addend < 0) out << item.addr_addend;
         out << '\n';
@@ -360,7 +360,7 @@ void render_global(std::ostringstream & out, const Program & program,
       << '\n';
   out << "  init ";
   if(global.init_kind == GlobalDefinition::GI_ADDR) {
-    out << "addr " << global.symbol;
+    out << "addr " << mir_symbol_name(program, global.init_symbol);
     if(global.addr_addend > 0) out << '+' << global.addr_addend;
     else if(global.addr_addend < 0) out << global.addr_addend;
   } else if(global.init_kind == GlobalDefinition::GI_FLOAT) {
@@ -379,7 +379,8 @@ void render_global(std::ostringstream & out, const Program & program,
 void render_function(std::ostringstream & out, const Program & program,
                      const Function & function)
 {
-  out << "function " << function.name << "\n  abi\n";
+  out << "function " << mir_symbol_name(program, function.symbol)
+      << "\n  abi\n";
   for(std::size_t i = 0; i < function.params.size(); ++i) {
     const ParamBinding & param = function.params[i];
     out << "    param " << mir_presentation_name(program, param.name)
@@ -416,7 +417,8 @@ void render_function(std::ostringstream & out, const Program & program,
         << " : " << lowir_model::lowir_type_text(binding.type) << '\n';
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
-    out << "\n  block " << mir_block_label(function, function.blocks[i].id)
+    out << "\n  block " << mir_block_label(
+      program, function, function.blocks[i].id)
         << '\n';
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
       out << "    " << rendered_instruction_text(
@@ -431,13 +433,14 @@ Program::Program()
 {
 }
 
-const std::string & mir_block_label(const MirFunction & function,
+const std::string & mir_block_label(const MirProgram & program,
+                                    const MirFunction & function,
                                     lowir_model::BlockId block)
 {
   const std::uint32_t index = block;
   if(!block.valid() || index >= function.block_labels.size())
     throw std::logic_error("invalid MIR block identity");
-  return function.block_labels[index];
+  return mir_string(program, function.block_labels[index]);
 }
 
 const std::string & mir_symbol_name(const MirProgram & program,
@@ -446,7 +449,7 @@ const std::string & mir_symbol_name(const MirProgram & program,
   const std::uint32_t index = symbol;
   if(!symbol.valid() || index >= program.symbol_names.size())
     throw std::logic_error("invalid MIR symbol identity");
-  return program.symbol_names[index];
+  return mir_string(program, program.symbol_names[index]);
 }
 
 const std::string & mir_literal_spelling(const MirProgram & program,

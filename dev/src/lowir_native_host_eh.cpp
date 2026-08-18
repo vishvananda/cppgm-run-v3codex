@@ -246,7 +246,9 @@ bool is_catch_dispatch_block(const mir_model::MirBlock & block)
 }  // namespace
 
 HostEhRegionPlan analyze_host_eh_regions(
-    const mir_model::MirFunction & function)
+    const mir_model::MirFunction & function,
+    const lowir_model::StringPool & strings,
+    const std::string & function_name)
 {
   HostEhRegionPlan result;
   result.call_landing_blocks.resize(function.blocks.size());
@@ -265,6 +267,13 @@ HostEhRegionPlan analyze_host_eh_regions(
   const auto block_position = [&](lowir_model::BlockId id) {
     const std::uint32_t index = id;
     return id.valid() && index < block_index.size() ? block_index[index] : unknown;
+  };
+  const auto block_name = [&](lowir_model::BlockId id)
+      -> const std::string & {
+    const std::uint32_t index = id;
+    if(!id.valid() || index >= function.block_labels.size())
+      throw std::logic_error("invalid MIR block identity");
+    return strings.get(function.block_labels[index]);
   };
 
   RegionStateInterner states;
@@ -310,9 +319,8 @@ HostEhRegionPlan analyze_host_eh_regions(
           existing_active == 0 && incoming_active == 0))
         return;
       throw std::logic_error(
-        "host EH protected-region state mismatch in " + function.name +
-        " at MIR block " +
-        mir_model::mir_block_label(function, function.blocks[block].id) +
+        "host EH protected-region state mismatch in " + function_name +
+        " at MIR block " + block_name(function.blocks[block].id) +
         " (existing state " + std::to_string(entries[block]) +
         ", incoming state " + std::to_string(state) +
         ", existing active " + std::to_string(existing_active) +
@@ -324,7 +332,7 @@ HostEhRegionPlan analyze_host_eh_regions(
     const std::size_t target = block_position(label);
     if(target == unknown)
       throw std::logic_error("host EH control-flow target has no MIR block: " +
-                             mir_model::mir_block_label(function, label));
+                             block_name(label));
     merge_entry(target, state, pending);
   };
 
@@ -343,7 +351,7 @@ HostEhRegionPlan analyze_host_eh_regions(
       if(target == unknown)
         throw std::logic_error(
           "host EH control-flow target has no MIR block: " +
-          mir_model::mir_block_label(function, instruction.operands[0].block));
+          block_name(instruction.operands[0].block));
       catch_entry_blocks[target] = true;
     }
     if(i + 1 < function.blocks.size() &&
@@ -361,7 +369,7 @@ HostEhRegionPlan analyze_host_eh_regions(
       else if(catch_entry_states[target] != state)
         throw std::logic_error(
           "host EH catch-entry state mismatch at MIR block: " +
-          mir_model::mir_block_label(function, function.blocks[target].id));
+          block_name(function.blocks[target].id));
       merge_entry(target, state, pending);
     } else if(catch_entry_blocks[target]) {
       // A failed inner catch enters the enclosing catch through the same
@@ -388,7 +396,7 @@ HostEhRegionPlan analyze_host_eh_regions(
       if(block_position(instruction.operands[0].block) == unknown)
         throw std::logic_error(
           "host EH landing pad has no MIR block: " +
-          mir_model::mir_block_label(function, instruction.operands[0].block));
+          block_name(instruction.operands[0].block));
     }
 
   std::size_t next = 0;
@@ -410,7 +418,7 @@ HostEhRegionPlan analyze_host_eh_regions(
         if(landing == unknown)
           throw std::logic_error(
             "host EH landing pad has no MIR block: " +
-            mir_model::mir_block_label(function, instruction.operands[0].block));
+            block_name(instruction.operands[0].block));
         state = states.Push(state, landing + 1);
         if(instruction.operands[1].kind != mir_model::MirOperand::OP_IMM)
           throw std::logic_error(
@@ -430,7 +438,7 @@ HostEhRegionPlan analyze_host_eh_regions(
         if(state == 0)
           throw std::logic_error(
             "host EH protected-region stack underflow at MIR block: " +
-            mir_model::mir_block_label(function, block.id));
+            block_name(block.id));
         state = states.Parent(state);
       }
 
@@ -456,7 +464,7 @@ HostEhRegionPlan analyze_host_eh_regions(
         if(target == unknown)
           throw std::logic_error(
             "host EH control-flow target has no MIR block: " +
-            mir_model::mir_block_label(function, instruction.operands[0].block));
+            block_name(instruction.operands[0].block));
         merge_control_flow_edge(block_number, target, state, &worklist);
       }
       if(is_function_exit(instruction) && state != 0)

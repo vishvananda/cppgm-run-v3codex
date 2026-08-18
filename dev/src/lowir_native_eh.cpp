@@ -72,8 +72,7 @@ void plan_program(const lowir_model::LowirProgram & source,
       source.global_declarations[i];
     mir_model::MirRuntimeData data;
     if(!data_kind(declaration.metadata.role, data.kind)) continue;
-    data.name = lowir_model::lowir_symbol_name(
-      source, declaration.symbol);
+    data.symbol = declaration.symbol;
     data.object_symbol = declaration.metadata.object_symbol;
     target.runtime_data.push_back(data);
   }
@@ -82,8 +81,7 @@ void plan_program(const lowir_model::LowirProgram & source,
       source.function_declarations[i];
     mir_model::MirRuntimeFunction runtime;
     if(!runtime_kind(declaration.metadata.role, runtime.kind)) continue;
-    runtime.name = lowir_model::lowir_symbol_name(
-      source, declaration.symbol);
+    runtime.symbol = declaration.symbol;
     runtime.object_symbol = declaration.metadata.object_symbol;
     target.runtime_functions.push_back(runtime);
     if(runtime.kind <= mir_model::RuntimeFunction::RF_EH_RESUME)
@@ -96,6 +94,15 @@ void plan_program(const lowir_model::LowirProgram & source,
         if(is_eh_instruction(
              source.functions[i].blocks[j].instructions[k].kind))
           target.uses_eh = true;
+}
+
+lowir_model::SymbolId runtime_data_symbol(
+    const std::vector<mir_model::MirRuntimeData> & data,
+    mir_model::RuntimeData::Kind kind)
+{
+  for(std::size_t i = 0; i < data.size(); ++i)
+    if(data[i].kind == kind) return data[i].symbol;
+  return lowir_model::SymbolId();
 }
 
 bool lower_marker(const lowir_model::Program & program,
