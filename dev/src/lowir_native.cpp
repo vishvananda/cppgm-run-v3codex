@@ -1821,8 +1821,20 @@ private:
     const LowType result_type = instruction.op == "not" ?
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64) : instruction.type;
     MirOperand pressure_home;
-    const MirOperand destination = binary_destination(
-      instruction, source, out, false, &pressure_home, &result_type);
+    MirOperand destination;
+    if(result_is_immediate_return(block, instruction_index,
+                                  instruction.dest)) {
+      destination = reg_operand(XR_RAX);
+      move_value_to_register(
+        out, destination.reg, source, operand_type(instruction.first));
+      if(source.kind == MirOperand::OP_FRAME ||
+         source.kind == MirOperand::OP_GLOBAL ||
+         source.kind == MirOperand::OP_DEREF)
+        normalize_integer(operand_type(instruction.first), destination, out);
+    } else {
+      destination = binary_destination(
+        instruction, source, out, false, &pressure_home, &result_type);
+    }
     if(instruction.op == "not") {
       MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
                                                    instruction.type.text);

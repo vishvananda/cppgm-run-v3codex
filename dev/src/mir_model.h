@@ -189,6 +189,8 @@ struct Instruction
     MI_AND,
     MI_OR,
     MI_XOR,
+    // A sole-use scalar unary result immediately returned should select the
+    // ABI return carrier instead of an intermediate general-purpose register.
     MI_NEG,
     MI_NOT,
     MI_BSWAP,
