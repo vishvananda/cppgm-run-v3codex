@@ -72,7 +72,7 @@ const lowir_model::LowType & floating_literal_type(const std::string & text)
   return lowir_model::builtin_lowir_type(lowir_model::LTK_F64);
 }
 
-X86Condition predicate_condition(const std::string & predicate)
+X86Condition predicate_condition(lowir_model::LowOperation predicate)
 {
   if(predicate == "eq") return XC_E;
   if(predicate == "ne") return XC_NE;

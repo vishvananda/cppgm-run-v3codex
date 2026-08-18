@@ -32,7 +32,7 @@
 #include <vector>
 namespace lowir_native {
 namespace {
-using lowir_model::Instruction; using lowir_model::LowType; using lowir_model::Operand;
+using lowir_model::Instruction; using lowir_model::LowOperation; using lowir_model::LowType; using lowir_model::Operand;
 using mir_model::MirInstruction; using mir_model::MirOperand;
 using abi::FunctionSignature; using abi::FunctionSignatureIndex;
 using analysis::FunctionFacts; using analysis::StorageFacts;
@@ -1312,7 +1312,7 @@ private:
       append_integer_normalization(out, operand_type(instruction.first), destination);
     return destination;
   }
-  MirInstruction::Opcode float_binary_opcode(const std::string & operation) const
+  MirInstruction::Opcode float_binary_opcode(LowOperation operation) const
   {
     if(operation == "add") return MirInstruction::MI_FADD;
     if(operation == "sub") return MirInstruction::MI_FSUB;
@@ -1320,7 +1320,7 @@ private:
     if(operation == "div") return MirInstruction::MI_FDIV;
     throw std::runtime_error("floating binary operation is not implemented: " + operation);
   }
-  MirInstruction::Opcode float_compare_opcode(const std::string & predicate) const
+  MirInstruction::Opcode float_compare_opcode(LowOperation predicate) const
   {
     if(predicate == "eq") return MirInstruction::MI_FEQ;
     if(predicate == "ne") return MirInstruction::MI_FNE;
@@ -1330,7 +1330,7 @@ private:
     if(predicate == "ge") return MirInstruction::MI_FGE;
     throw std::runtime_error("floating comparison predicate is not implemented: " + predicate);
   }
-  X86Condition float_predicate_condition(const std::string & predicate) const
+  X86Condition float_predicate_condition(LowOperation predicate) const
   {
     // FCMP models the right operand compared with the left operand so the
     // unsigned x86 conditions directly describe ordered floating predicates.

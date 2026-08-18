@@ -39,14 +39,14 @@ void append_word_store(const mir_model::MirOperand & destination,
 void append_copy(const mir_model::MirOperand & destination, const Value & source,
                  std::vector<mir_model::MirInstruction> & out);
 void append_compare(const Value & left, const Value & right,
-                    const std::string & operation,
+                    lowir_model::LowOperation operation,
                     std::vector<mir_model::MirInstruction> & out);
 void append_binary(const mir_model::MirOperand & destination,
                    const Value & left, const Value & right,
-                   const std::string & operation,
+                   lowir_model::LowOperation operation,
                    std::vector<mir_model::MirInstruction> & out);
 void append_unary(const mir_model::MirOperand & destination,
-                  const Value & source, const std::string & operation,
+                  const Value & source, lowir_model::LowOperation operation,
                   std::vector<mir_model::MirInstruction> & out);
 void append_atomic_load(const mir_model::MirOperand & object,
                         const mir_model::MirOperand & destination,

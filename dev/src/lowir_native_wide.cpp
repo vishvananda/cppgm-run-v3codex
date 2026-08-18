@@ -261,7 +261,7 @@ void append_copy(const MirOperand & destination, const Value & source,
 }
 
 void append_compare(const Value & left, const Value & right,
-                    const std::string & operation,
+                    lowir_model::LowOperation operation,
                     std::vector<MirInstruction> & out)
 {
   append_pair_to_registers(left, XR_RAX, XR_RDX, XR_R11, out);
@@ -308,7 +308,7 @@ void append_compare(const Value & left, const Value & right,
 
 void append_binary(const MirOperand & destination,
                    const Value & left, const Value & right,
-                   const std::string & operation,
+                   lowir_model::LowOperation operation,
                    std::vector<MirInstruction> & out)
 {
   append_pair_to_registers(left, XR_RAX, XR_RDX, XR_R11, out);
@@ -356,7 +356,7 @@ void append_binary(const MirOperand & destination,
 }
 
 void append_unary(const MirOperand & destination,
-                  const Value & source, const std::string & operation,
+                  const Value & source, lowir_model::LowOperation operation,
                   std::vector<MirInstruction> & out)
 {
   append_pair_to_registers(source, XR_RAX, XR_RDX, XR_R11, out);

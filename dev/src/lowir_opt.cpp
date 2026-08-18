@@ -28,6 +28,7 @@ using lowir_model::BlockId;
 using lowir_model::Function;
 using lowir_model::FunctionBoundaryMetadata;
 using lowir_model::Instruction;
+using lowir_model::LowOperation;
 using lowir_model::LowType;
 using lowir_model::LowTypeKind;
 using lowir_model::LowirProgram;
@@ -295,13 +296,13 @@ bool cse_eligible(Instruction::Kind kind)
     kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT;
 }
 
-bool commutative(const std::string & op)
+bool commutative(LowOperation op)
 {
   return op == "add" || op == "mul" || op == "and" || op == "or" ||
     op == "xor";
 }
 
-std::string reverse_compare(const std::string & op)
+LowOperation reverse_compare(LowOperation op)
 {
   if(op == "lt") return "gt";
   if(op == "le") return "ge";
@@ -378,7 +379,7 @@ ExpressionOperandKey expression_operand_key(const Operand & operand)
 struct ExpressionKey
 {
   Instruction::Kind kind;
-  std::string op;
+  LowOperation op;
   LowTypeKind type_kind;
   std::size_t type_size;
   std::size_t type_alignment;
@@ -413,7 +414,7 @@ struct ExpressionKeyHash
   std::size_t operator()(const ExpressionKey & key) const
   {
     std::size_t result = static_cast<std::size_t>(key.kind);
-    combine_hash(&result, std::hash<std::string>()(key.op));
+    combine_hash(&result, lowir_model::lowir_operation_hash(key.op));
     combine_hash(&result, static_cast<std::size_t>(key.type_kind));
     combine_hash(&result, key.type_size);
     combine_hash(&result, key.type_alignment);
@@ -440,7 +441,7 @@ ExpressionKey expression_key(const Instruction & ins)
 {
   const Operand * first = &ins.first;
   const Operand * second = &ins.second;
-  std::string op = ins.op;
+  LowOperation op = ins.op;
   if((ins.kind == Instruction::IK_BINARY && commutative(op)) ||
      (ins.kind == Instruction::IK_CMP && (op == "eq" || op == "ne"))) {
     if(operand_less(*second, *first)) std::swap(first, second);
@@ -450,7 +451,7 @@ ExpressionKey expression_key(const Instruction & ins)
   }
   ExpressionKey key;
   key.kind = ins.kind;
-  key.op = std::move(op);
+  key.op = op;
   key.type_kind = ins.type.kind;
   key.type_size = ins.type.storage_size;
   key.type_alignment = ins.type.alignment;
@@ -977,7 +978,7 @@ LowType result_type(const Instruction & ins)
 struct DefinitionFact
 {
   Instruction::Kind kind;
-  std::string op;
+  LowOperation op;
   LowTypeKind type_kind;
   std::size_t type_size;
   std::size_t type_alignment;

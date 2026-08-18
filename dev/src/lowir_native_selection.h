@@ -20,7 +20,7 @@ bool is_scalar_float(const lowir_model::LowType & type);
 bool is_extended_float(const lowir_model::LowType & type);
 bool is_floating(const lowir_model::LowType & type);
 const lowir_model::LowType & floating_literal_type(const std::string & text);
-X86Condition predicate_condition(const std::string & predicate);
+X86Condition predicate_condition(lowir_model::LowOperation predicate);
 std::size_t align_up(std::size_t value, std::size_t alignment);
 bool result_is_immediate_return(const lowir_model::LowirBlock & block,
                                 std::size_t instruction_index,

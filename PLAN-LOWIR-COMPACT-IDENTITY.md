@@ -1029,6 +1029,23 @@ the intended boundary.  Whole-object hashing still observes the pre-existing
 equivalent relocation-order variants; output size, tests, and the expected
 deterministic object are unchanged.
 
+### CI17: retain typed operation identity in consumers
+
+PA37 expression keys and definition facts, plus O0 wide-integer and floating
+instruction selection, now consume `LowOperation` directly.  They no longer
+invoke the operation's presentation conversion merely to compare, reverse, or
+hash an opcode.  Expression hashing uses the compact operation value, and
+diagnostics remain the only path that renders its spelling.
+
+PA29, PA37, and PA38 report 343/343 passing tests, and the frozen `.text`
+section is byte-identical to CI16.  Three A/B/B/A `-O0` blocks produced
+baseline/candidate medians of 5.740/5.705 seconds user, 6.230/6.200 seconds
+wall, and 363,686/364,098 KiB peak RSS.  Paired medians are effectively
+neutral (0.09% user and 0.40% wall improvement; 0.18% RSS increase), so this
+slice receives no standalone timing credit.  It is retained because it removes
+heap-backed compatibility work from both O0 and optimized paths without
+changing output or a hot-record layout.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one
