@@ -117,6 +117,12 @@ without renumbering identities. Resolve the spelling only when producing the
 MIR dump or a diagnostic; control-flow, exception, and layout analysis should
 use the compact identity directly.
 
+Native encoding should map those block IDs to function-local `LocalLabelId`
+values and keep their bound offsets in a dense table. Branch and local-address
+fixups carry the local identity directly; they must not render and hash a
+`function::block` string. Resolve or retain names only for symbols and EH/object
+metadata that actually needs a spelling in the emitted file.
+
 Program symbols use the corresponding program-wide `SymbolId`. Direct calls,
 global storage operands, TLS references, and exception type references should
 carry that identity through MIR optimization and native selection. Keep the

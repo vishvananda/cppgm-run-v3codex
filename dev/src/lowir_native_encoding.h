@@ -23,6 +23,9 @@ void emit_symbol_move(
     const std::string & symbol,
     mir_model::MirOperand::AddressBinding address_binding =
       mir_model::MirOperand::ADDRESS_LOCAL);
+void emit_symbol_move(elf_detail::CodeBuffer & out,
+                      X64Register destination,
+                      lowir_model::LocalLabelId label);
 void emit_tls_address(elf_detail::CodeBuffer & out,
                       X64Register destination, const std::string & symbol);
 void emit_memory_modrm(elf_detail::CodeBuffer & out, unsigned reg,
@@ -76,6 +79,9 @@ void emit_register_alu(elf_detail::CodeBuffer & out, unsigned opcode,
 void emit_condition_jump(elf_detail::CodeBuffer & out,
                          X86Condition condition,
                          const std::string & target);
+void emit_condition_jump(elf_detail::CodeBuffer & out,
+                         X86Condition condition,
+                         lowir_model::LocalLabelId target);
 std::size_t emit_constant_division(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,

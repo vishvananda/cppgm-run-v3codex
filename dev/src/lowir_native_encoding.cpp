@@ -50,6 +50,21 @@ void emit_symbol_move(
   }
 }
 
+void emit_symbol_move(CodeBuffer & out, X64Register destination,
+                      lowir_model::LocalLabelId label)
+{
+  if(out.relocatable_addresses()) {
+    emit_rex(out, true, destination, XR_RBP);
+    out.byte(0x8d);
+    emit_modrm(out, 0, destination, 5);
+    out.address32(label);
+  } else {
+    emit_rex(out, true, XR_RAX, destination);
+    out.byte(0xb8 + (static_cast<unsigned>(destination) & 7));
+    out.absolute64(label);
+  }
+}
+
 void emit_tls_address(CodeBuffer & out, X64Register destination,
                       const std::string & symbol)
 {
@@ -309,6 +324,16 @@ void emit_register_alu(CodeBuffer & out, unsigned opcode,
 
 void emit_condition_jump(CodeBuffer & out, X86Condition condition,
                          const std::string & target)
+{
+  if(out.short_relative(
+       0x70 + static_cast<unsigned>(condition), target)) return;
+  out.byte(0x0f);
+  out.byte(0x80 + static_cast<unsigned>(condition));
+  out.relative32(target);
+}
+
+void emit_condition_jump(CodeBuffer & out, X86Condition condition,
+                         lowir_model::LocalLabelId target)
 {
   if(out.short_relative(
        0x70 + static_cast<unsigned>(condition), target)) return;
@@ -839,8 +864,8 @@ std::size_t emit_constant_division(
 void emit_i128_shift(CodeBuffer & out,
                      mir_model::MirInstruction::Opcode opcode)
 {
-  const std::string high = out.internal_label("i128_shift_high");
-  const std::string done = out.internal_label("i128_shift_done");
+  const lowir_model::LocalLabelId high = out.internal_label("i128_shift_high");
+  const lowir_model::LocalLabelId done = out.internal_label("i128_shift_done");
   // cmp rcx, 64; jae high
   out.byte(0x48); out.byte(0x83); out.byte(0xf9); out.byte(0x40);
   out.byte(0x0f); out.byte(0x83); out.relative32(high);
@@ -915,9 +940,10 @@ void emit_i128_division(CodeBuffer & out,
   emit_register_alu(out, 0x31, XR_R11, XR_R11); // xor remainder high
   emit_immediate_move(out, XR_RCX, 128);
 
-  const std::string loop = out.internal_label("i128_div_loop");
-  const std::string subtract = out.internal_label("i128_div_subtract");
-  const std::string skip = out.internal_label("i128_div_skip");
+  const lowir_model::LocalLabelId loop = out.internal_label("i128_div_loop");
+  const lowir_model::LocalLabelId subtract =
+    out.internal_label("i128_div_subtract");
+  const lowir_model::LocalLabelId skip = out.internal_label("i128_div_skip");
   out.label(loop);
   out.byte(0x48); out.byte(0xd1); out.byte(0xe0); // shl rax,1
   out.byte(0x48); out.byte(0xd1); out.byte(0xd2); // rcl rdx,1

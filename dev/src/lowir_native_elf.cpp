@@ -656,12 +656,20 @@ X64Register materialize_integer_operand(CodeBuffer & out,
 }
 
 void emit_near_jump(CodeBuffer & out, X86Condition condition,
-                    const std::string & target)
+                    lowir_model::LocalLabelId target)
 {
   emit_condition_jump(out, condition, target);
 }
 
 void emit_unconditional_jump(CodeBuffer & out, const std::string & target)
+{
+  if(out.short_relative(0xeb, target)) return;
+  out.byte(0xe9);
+  out.relative32(target);
+}
+
+void emit_unconditional_jump(CodeBuffer & out,
+                             lowir_model::LocalLabelId target)
 {
   if(out.short_relative(0xeb, target)) return;
   out.byte(0xe9);
@@ -703,7 +711,8 @@ void emit_x87_load_unsigned_integer(CodeBuffer & out,
   emit_rex(out, true, value, value);
   out.byte(0x85);
   emit_modrm(out, 3, value, value);
-  const std::string nonnegative = out.internal_label("uitofp_done");
+  const lowir_model::LocalLabelId nonnegative =
+    out.internal_label("uitofp_done");
   emit_near_jump(out, XC_NS, nonnegative);
   emit_x87_load_spelling(out, "18446744073709551616.0L",
     lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
@@ -755,8 +764,8 @@ void emit_x87_store_truncated_unsigned(CodeBuffer & out, X64Register destination
   emit_x87_load_spelling(out, "9223372036854775808.0L", extended, function);
   out.byte(0xdf);
   out.byte(0xe9); // Compare 2^63 with the retained input and pop the threshold.
-  const std::string high = out.internal_label("fptoui_high");
-  const std::string done = out.internal_label("fptoui_done");
+  const lowir_model::LocalLabelId high = out.internal_label("fptoui_high");
+  const lowir_model::LocalLabelId done = out.internal_label("fptoui_done");
   emit_near_jump(out, XC_BE, high);
   emit_x87_memory(out, 0xdd, 1, scratch, function);
   emit_load(out, destination, XR_RSP, 0, 64);
@@ -839,8 +848,9 @@ void emit_float_to_integer(CodeBuffer & out,
 
     const bool signed_conversion =
       instruction.opcode == mir_model::MirInstruction::MI_FPTOSI;
-    const std::string magnitude = out.internal_label("fptoi128_magnitude");
-    const std::string done = out.internal_label("fptoi128_done");
+    const lowir_model::LocalLabelId magnitude =
+      out.internal_label("fptoi128_magnitude");
+    const lowir_model::LocalLabelId done = out.internal_label("fptoi128_done");
     if(signed_conversion) {
       emit_immediate_move(out, XR_R11, 0);
       out.byte(0xd9);
@@ -1107,13 +1117,12 @@ void emit_shift(CodeBuffer & out, const mir_model::MirInstruction & instruction,
   emit_modrm(out, 3, extension, destination);
 }
 
-std::string block_target(const mir_model::MirFunction & function,
-                         const mir_model::MirOperand & operand)
+lowir_model::LocalLabelId block_target(CodeBuffer & out,
+                                       const mir_model::MirOperand & operand)
 {
   if(operand.kind != mir_model::MirOperand::OP_LABEL)
     throw std::logic_error("native branch target is not a label");
-  return function.name + "::" +
-    mir_model::mir_block_label(function, operand.block);
+  return out.block_label(operand.block);
 }
 
 const char * const kEhTop = ".__cppgm_eh_top";
@@ -1230,8 +1239,7 @@ void emit_eh_push(CodeBuffer & out,
   emit_symbol_move(out, XR_R11, kEhTop);
   emit_load(out, XR_RAX, XR_R11, 0, 64);
   emit_store(out, XR_RSP, 0, XR_RAX, 64);
-  emit_symbol_move(out, XR_RAX, block_target(function,
-                                              instruction.operands[0]));
+  emit_symbol_move(out, XR_RAX, block_target(out, instruction.operands[0]));
   emit_store(out, XR_RSP, 8, XR_RAX, 64);
   emit_store(out, XR_RSP, 16, XR_RBP, 64);
   emit_lea(out, XR_RAX, XR_RSP, 80);
@@ -1258,7 +1266,8 @@ void emit_eh_pop(CodeBuffer & out)
 
 void emit_eh_enter_catch(CodeBuffer & out)
 {
-  const std::string done = out.internal_label("eh_enter_catch_done");
+  const lowir_model::LocalLabelId done =
+    out.internal_label("eh_enter_catch_done");
   emit_symbol_move(out, XR_R11, kEhTop);
   emit_load(out, XR_RAX, XR_R11, 0, 64);
   emit_test_register(out, XR_RAX);
@@ -1278,13 +1287,14 @@ void emit_eh_catch(CodeBuffer & out,
   if(instruction.operands.size() != 1 && instruction.operands.size() != 2)
     throw std::logic_error("invalid MIR EH catch operands");
   emit_eh_enter_catch(out);
-  const std::string done = out.internal_label("eh_catch_done");
+  const lowir_model::LocalLabelId done = out.internal_label("eh_catch_done");
   emit_symbol_move(out, XR_R11, kEhSelector);
   emit_load(out, XR_RAX, XR_R11, 0, 64);
   emit_test_register(out, XR_RAX);
   emit_condition_jump(out, XC_NE, done);
-  std::string exact;
-  const std::string selected = out.internal_label("eh_catch_selected");
+  lowir_model::LocalLabelId exact;
+  const lowir_model::LocalLabelId selected =
+    out.internal_label("eh_catch_selected");
   if(instruction.operands.size() == 2) {
     exact = out.internal_label("eh_catch_exact");
     emit_symbol_move(out, XR_RAX,
@@ -1307,7 +1317,7 @@ void emit_eh_catch(CodeBuffer & out,
     emit_symbol_move(out, XR_R11, kEhValue);
     emit_load(out, XR_RAX, XR_R11, 0, 64);
   }
-  if(!exact.empty()) {
+  if(exact.valid()) {
     emit_unconditional_jump(out, selected);
     out.label(exact);
     emit_symbol_move(out, XR_R11, kEhValue);
@@ -1639,13 +1649,13 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     if(!function) throw std::logic_error("conditional branch outside function");
     require_operands(instruction, 1);
     emit_condition_jump(out, instruction.condition,
-      block_target(*function, instruction.operands[0]));
+      block_target(out, instruction.operands[0]));
     return;
   case mir_model::MirInstruction::MI_JMP:
     if(!function) throw std::logic_error("jump outside function");
     require_operands(instruction, 1);
     emit_unconditional_jump(out,
-      block_target(*function, instruction.operands[0]));
+      block_target(out, instruction.operands[0]));
     return;
   case mir_model::MirInstruction::MI_CALL:
     require_operands(instruction, 1);
@@ -1851,13 +1861,13 @@ void emit_prepared_function(
   const std::string object_symbol = native_object_symbol(function.object_symbol);
   if(!object_symbol.empty() && object_symbol != function.name)
     out.label(object_symbol);
+  out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
   const frame_forwarding::FrameReloadPlan frame_reload_plan =
     frame_forwarding::find_single_use_reloads(function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
-    out.label(function.name + "::" +
-      mir_model::mir_block_label(function, block.id));
+    out.label(out.block_label(block.id));
     const address_folding::TransientScratchUsePlan scratch_uses(
       block.instructions);
     const std::vector<bool> flags_live =
@@ -2043,13 +2053,18 @@ void emit_dynamic_cast_find(
     CodeBuffer & out, const std::vector<mir_model::MirRuntimeData> & data)
 {
   const std::string helper = ".__cppgm_dynamic_cast_find";
-  const std::string si = out.internal_label("dynamic_cast_si");
-  const std::string vmi = out.internal_label("dynamic_cast_vmi");
-  const std::string loop = out.internal_label("dynamic_cast_loop");
-  const std::string skip = out.internal_label("dynamic_cast_skip");
-  const std::string record = out.internal_label("dynamic_cast_record");
-  const std::string done = out.internal_label("dynamic_cast_done");
-  const std::string ambiguous = out.internal_label("dynamic_cast_ambiguous");
+  const lowir_model::LocalLabelId si = out.internal_label("dynamic_cast_si");
+  const lowir_model::LocalLabelId vmi = out.internal_label("dynamic_cast_vmi");
+  const lowir_model::LocalLabelId loop =
+    out.internal_label("dynamic_cast_loop");
+  const lowir_model::LocalLabelId skip =
+    out.internal_label("dynamic_cast_skip");
+  const lowir_model::LocalLabelId record =
+    out.internal_label("dynamic_cast_record");
+  const lowir_model::LocalLabelId done =
+    out.internal_label("dynamic_cast_done");
+  const lowir_model::LocalLabelId ambiguous =
+    out.internal_label("dynamic_cast_ambiguous");
   const std::string si_type = runtime_data_name(
     data, mir_model::RuntimeData::RD_RTTI_SI);
   const std::string vmi_type = runtime_data_name(
@@ -2099,7 +2114,8 @@ void emit_dynamic_cast_find(
   emit_rex(out, true, XR_RAX, XR_RAX); out.byte(0xc1);
   emit_modrm(out, 3, 7, XR_RAX); out.byte(8);
   emit_test_immediate(out, XR_RCX, 1);
-  const std::string direct = out.internal_label("dynamic_cast_direct");
+  const lowir_model::LocalLabelId direct =
+    out.internal_label("dynamic_cast_direct");
   emit_condition_jump(out, XC_E, direct);
   emit_load(out, XR_R11, XR_RBX, 0, 64);
   emit_register_alu(out, 0x01, XR_R11, XR_RAX);
@@ -2138,8 +2154,10 @@ void emit_dynamic_cast_runtime(
     CodeBuffer & out, const std::vector<mir_model::MirRuntimeData> & data,
     bool emit_find)
 {
-  const std::string null_result = out.internal_label("dynamic_cast_null");
-  const std::string done = out.internal_label("dynamic_cast_runtime_done");
+  const lowir_model::LocalLabelId null_result =
+    out.internal_label("dynamic_cast_null");
+  const lowir_model::LocalLabelId done =
+    out.internal_label("dynamic_cast_runtime_done");
   emit_test_register(out, XR_RDI); emit_condition_jump(out, XC_E, null_result);
   emit_load(out, XR_RAX, XR_RDI, 0, 64);
   emit_load(out, XR_R11, XR_RAX, -16, 64);
@@ -2569,6 +2587,7 @@ HostFunctionLayout emit_prepared_host_function(
   const std::string object_symbol = native_object_symbol(function.object_symbol);
   if(!object_symbol.empty() && object_symbol != function.name)
     out.label(object_symbol);
+  out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
   const frame_forwarding::FrameReloadPlan frame_reload_plan =
     frame_forwarding::find_single_use_reloads(function);
@@ -2576,8 +2595,9 @@ HostFunctionLayout emit_prepared_host_function(
   std::vector<HostEhStackCleanup> stack_cleanups;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const mir_model::MirBlock & block = function.blocks[i];
-    out.label(function.name + "::" +
-      mir_model::mir_block_label(function, block.id));
+    out.label(out.block_label(block.id));
+    out.label_at(function.name + "::" +
+      mir_model::mir_block_label(function, block.id), out.size());
     const address_folding::TransientScratchUsePlan scratch_uses(
       block.instructions);
     const std::vector<bool> flags_live =

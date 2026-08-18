@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <climits>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -92,6 +93,37 @@ void CodeBuffer::label(const std::string& name)
 	label_offsets_.push_back(&inserted.first->second);
 }
 
+lowir_model::LocalLabelId CodeBuffer::allocate_local_label()
+{
+	if (local_label_offsets_.size() >= lowir_model::kInvalidCompactId)
+		throw std::runtime_error("too many native local labels");
+	const lowir_model::LocalLabelId result(
+		static_cast<std::uint32_t>(local_label_offsets_.size()));
+	local_label_offsets_.push_back(std::numeric_limits<std::size_t>::max());
+	return result;
+}
+
+std::size_t CodeBuffer::local_label_offset(
+	lowir_model::LocalLabelId label) const
+{
+	const std::uint32_t index = label;
+	if (!label.valid() || index >= local_label_offsets_.size() ||
+		local_label_offsets_[index] == std::numeric_limits<std::size_t>::max())
+		throw std::logic_error("unbound native local label");
+	return local_label_offsets_[index];
+}
+
+void CodeBuffer::label(lowir_model::LocalLabelId label)
+{
+	const std::uint32_t index = label;
+	if (!label.valid() || index >= local_label_offsets_.size())
+		throw std::logic_error("invalid native local label");
+	if (local_label_offsets_[index] != std::numeric_limits<std::size_t>::max())
+		throw std::logic_error("duplicate native local label");
+	local_label_offsets_[index] = bytes_.size();
+	bound_local_labels_.push_back(label);
+}
+
 void CodeBuffer::label_at(const std::string& name, std::size_t offset)
 {
 	if (offset > bytes_.size())
@@ -113,6 +145,28 @@ void CodeBuffer::alias(const std::string& name, const std::string& target)
 	if (found == labels_.end())
 		throw std::runtime_error("native alias has undefined target: " + target);
 	label_at(name, found->second);
+}
+
+void CodeBuffer::begin_function_blocks(std::size_t count)
+{
+	if (!local_fixups_.empty() || !short_relative_fixups_.empty() ||
+		!named_short_relative_fixups_.empty())
+		throw std::logic_error("native local labels outlive their function");
+	local_label_offsets_.clear();
+	bound_local_labels_.clear();
+	block_labels_.clear();
+	block_labels_.reserve(count);
+	for (std::size_t i = 0; i < count; ++i)
+		block_labels_.push_back(allocate_local_label());
+}
+
+lowir_model::LocalLabelId CodeBuffer::block_label(
+	lowir_model::BlockId block) const
+{
+	const std::uint32_t index = block;
+	if (!block.valid() || index >= block_labels_.size())
+		throw std::logic_error("invalid native block label");
+	return block_labels_[index];
 }
 
 std::size_t CodeBuffer::size() const
@@ -167,6 +221,28 @@ bool CodeBuffer::short_relative(unsigned opcode, const std::string& target)
 		static_cast<std::int64_t>(bytes_.size() + 2);
 	if (delta < INT8_MIN || delta > INT8_MAX) return false;
 	byte(opcode);
+	NamedShortRelativeFixup fixup;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	named_short_relative_fixups_.push_back(fixup);
+	byte(static_cast<std::uint8_t>(delta));
+	return true;
+}
+
+bool CodeBuffer::short_relative(unsigned opcode,
+	lowir_model::LocalLabelId target)
+{
+	const std::uint32_t target_index = target;
+	if (!target.valid() || target_index >= local_label_offsets_.size())
+		throw std::logic_error("invalid native local branch target");
+	const std::size_t target_offset = local_label_offsets_[target_index];
+	if (target_offset == std::numeric_limits<std::size_t>::max()) return false;
+	if (target_offset > static_cast<std::size_t>(LLONG_MAX) ||
+		bytes_.size() > static_cast<std::size_t>(LLONG_MAX - 2)) return false;
+	const std::int64_t delta = static_cast<std::int64_t>(target_offset) -
+		static_cast<std::int64_t>(bytes_.size() + 2);
+	if (delta < INT8_MIN || delta > INT8_MAX) return false;
+	byte(opcode);
 	ShortRelativeFixup fixup;
 	fixup.offset = bytes_.size();
 	fixup.target = target;
@@ -182,6 +258,20 @@ void CodeBuffer::resolve_short_relatives(std::size_t begin)
 	for (std::size_t i = first; i < short_relative_fixups_.size(); ++i)
 	{
 		const ShortRelativeFixup& fixup = short_relative_fixups_[i];
+		const std::int64_t delta = static_cast<std::int64_t>(
+			local_label_offset(fixup.target)) -
+			static_cast<std::int64_t>(fixup.offset + 1);
+		if (delta < INT8_MIN || delta > INT8_MAX)
+			throw std::logic_error("native branch displacement exceeds rel8");
+		patch(fixup.offset, static_cast<std::uint8_t>(delta), 1);
+	}
+	short_relative_fixups_.resize(first);
+	first = named_short_relative_fixups_.size();
+	while (first && named_short_relative_fixups_[first - 1].offset >= begin)
+		--first;
+	for (std::size_t i = first; i < named_short_relative_fixups_.size(); ++i)
+	{
+		const NamedShortRelativeFixup& fixup = named_short_relative_fixups_[i];
 		const std::unordered_map<std::string, std::size_t>::const_iterator
 			target = labels_.find(fixup.target);
 		if (target == labels_.end())
@@ -192,7 +282,7 @@ void CodeBuffer::resolve_short_relatives(std::size_t begin)
 			throw std::logic_error("native branch displacement exceeds rel8");
 		patch(fixup.offset, static_cast<std::uint8_t>(delta), 1);
 	}
-	short_relative_fixups_.resize(first);
+	named_short_relative_fixups_.resize(first);
 }
 
 CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
@@ -206,16 +296,16 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 		std::size_t size = 0;
 		unsigned opcode = 0;
 		bool omit = false;
-		std::string target;
+		lowir_model::LocalLabelId target;
 	};
-	std::size_t fixup_begin = fixups_.size();
-	while (fixup_begin && fixups_[fixup_begin - 1].offset >= begin)
+	std::size_t fixup_begin = local_fixups_.size();
+	while (fixup_begin && local_fixups_[fixup_begin - 1].offset >= begin)
 		--fixup_begin;
 	std::vector<Candidate> candidates;
-	for (std::size_t i = fixup_begin; i < fixups_.size(); ++i)
+	for (std::size_t i = fixup_begin; i < local_fixups_.size(); ++i)
 	{
-		const Fixup& fixup = fixups_[i];
-		if (fixup.kind != Fixup::RELATIVE32 || fixup.offset < begin ||
+		const LocalFixup& fixup = local_fixups_[i];
+		if (fixup.kind != LocalFixup::RELATIVE32 || fixup.offset < begin ||
 			fixup.offset + 4 > bytes_.size()) continue;
 		Candidate candidate;
 		candidate.fixup = i;
@@ -237,13 +327,11 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 			candidate.opcode = 0xeb;
 		}
 		else continue;
-		const std::unordered_map<std::string, std::size_t>::const_iterator
-			target = labels_.find(candidate.target);
-		if (target == labels_.end() || target->second <= candidate.start ||
-			target->second > bytes_.size()) continue;
+		const std::size_t target = local_label_offset(candidate.target);
+		if (target <= candidate.start || target > bytes_.size()) continue;
 		candidate.omit = candidate.opcode == 0xeb &&
-			target->second == candidate.start + candidate.size;
-		const std::size_t delta = target->second - (candidate.start + 2);
+			target == candidate.start + candidate.size;
+		const std::size_t delta = target - (candidate.start + 2);
 		if (!candidate.omit && delta > static_cast<std::size_t>(INT8_MAX))
 			continue;
 		candidates.push_back(candidate);
@@ -257,6 +345,7 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 	if (candidates.empty())
 	{
 		resolve_short_relatives(begin);
+		resolve_local_fixups(begin);
 		return adjustment;
 	}
 	const std::size_t old_size = bytes_.size();
@@ -302,6 +391,16 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 		--label_begin;
 	for (std::size_t i = label_begin; i < label_offsets_.size(); ++i)
 		*label_offsets_[i] = adjustment.translate(*label_offsets_[i]);
+	std::size_t local_label_begin = bound_local_labels_.size();
+	while (local_label_begin && local_label_offset(
+		bound_local_labels_[local_label_begin - 1]) >= begin)
+		--local_label_begin;
+	for (std::size_t i = local_label_begin; i < bound_local_labels_.size(); ++i)
+	{
+		const std::uint32_t label = bound_local_labels_[i];
+		local_label_offsets_[label] = adjustment.translate(
+			local_label_offsets_[label]);
+	}
 	std::size_t short_begin = short_relative_fixups_.size();
 	while (short_begin &&
 		short_relative_fixups_[short_begin - 1].offset >= begin)
@@ -309,33 +408,44 @@ CodeOffsetAdjustment CodeBuffer::relax_forward_branches(std::size_t begin)
 	for (std::size_t i = short_begin; i < short_relative_fixups_.size(); ++i)
 		short_relative_fixups_[i].offset =
 			adjustment.translate(short_relative_fixups_[i].offset);
+	std::size_t named_short_begin = named_short_relative_fixups_.size();
+	while (named_short_begin &&
+		named_short_relative_fixups_[named_short_begin - 1].offset >= begin)
+		--named_short_begin;
+	for (std::size_t i = named_short_begin;
+		i < named_short_relative_fixups_.size(); ++i)
+		named_short_relative_fixups_[i].offset =
+			adjustment.translate(named_short_relative_fixups_[i].offset);
 	std::vector<unsigned char> removed_fixups(
-		fixups_.size() - fixup_begin, 0);
+		local_fixups_.size() - fixup_begin, 0);
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 		removed_fixups[candidates[i].fixup - fixup_begin] = 1;
 	std::size_t fixup_write = fixup_begin;
-	for (std::size_t i = fixup_begin; i < fixups_.size(); ++i)
+	for (std::size_t i = fixup_begin; i < local_fixups_.size(); ++i)
 	{
 		if (removed_fixups[i - fixup_begin]) continue;
-		Fixup fixup = std::move(fixups_[i]);
+		LocalFixup fixup = local_fixups_[i];
 		fixup.offset = adjustment.translate(fixup.offset);
-		fixups_[fixup_write++] = std::move(fixup);
+		local_fixups_[fixup_write++] = fixup;
 	}
-	fixups_.resize(fixup_write);
+	local_fixups_.resize(fixup_write);
+	std::size_t external_fixup_begin = fixups_.size();
+	while (external_fixup_begin && fixups_[external_fixup_begin - 1].offset >= begin)
+		--external_fixup_begin;
+	for (std::size_t i = external_fixup_begin; i < fixups_.size(); ++i)
+		fixups_[i].offset = adjustment.translate(fixups_[i].offset);
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 	{
 		if (candidates[i].omit) continue;
-		const std::unordered_map<std::string, std::size_t>::const_iterator
-			target = labels_.find(candidates[i].target);
-		if (target == labels_.end())
-			throw std::logic_error("relaxed native branch lost its target");
-		const std::int64_t delta = static_cast<std::int64_t>(target->second) -
+		const std::int64_t delta = static_cast<std::int64_t>(
+			local_label_offset(candidates[i].target)) -
 			static_cast<std::int64_t>(short_starts[i] + 2);
 		if (delta < INT8_MIN || delta > INT8_MAX)
 			throw std::logic_error("relaxed native branch exceeds rel8");
 		bytes_[short_starts[i] + 1] = static_cast<unsigned char>(delta);
 	}
 	resolve_short_relatives(begin);
+	resolve_local_fixups(begin);
 	return adjustment;
 }
 
@@ -346,6 +456,16 @@ void CodeBuffer::relative32(const std::string& target)
 	fixup.offset = bytes_.size();
 	fixup.target = target;
 	fixups_.push_back(fixup);
+	zeros(4);
+}
+
+void CodeBuffer::relative32(lowir_model::LocalLabelId target)
+{
+	LocalFixup fixup;
+	fixup.kind = LocalFixup::RELATIVE32;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	local_fixups_.push_back(fixup);
 	zeros(4);
 }
 
@@ -360,6 +480,16 @@ void CodeBuffer::absolute64(const std::string& target, long long addend)
 	zeros(8);
 }
 
+void CodeBuffer::absolute64(lowir_model::LocalLabelId target)
+{
+	LocalFixup fixup;
+	fixup.kind = LocalFixup::ABSOLUTE64;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	local_fixups_.push_back(fixup);
+	zeros(8);
+}
+
 void CodeBuffer::address32(
 	const std::string& target,
 	mir_model::MirOperand::AddressBinding address_binding)
@@ -370,6 +500,16 @@ void CodeBuffer::address32(
 	fixup.offset = bytes_.size();
 	fixup.target = target;
 	fixups_.push_back(fixup);
+	zeros(4);
+}
+
+void CodeBuffer::address32(lowir_model::LocalLabelId target)
+{
+	LocalFixup fixup;
+	fixup.kind = LocalFixup::ADDRESS32;
+	fixup.offset = bytes_.size();
+	fixup.target = target;
+	local_fixups_.push_back(fixup);
 	zeros(4);
 }
 
@@ -409,9 +549,37 @@ void CodeBuffer::absolute64_at(std::size_t offset,
 	fixups_.push_back(fixup);
 }
 
+void CodeBuffer::resolve_local_fixups(std::size_t begin)
+{
+	std::size_t first = local_fixups_.size();
+	while (first && local_fixups_[first - 1].offset >= begin) --first;
+	for (std::size_t i = first; i < local_fixups_.size(); ++i)
+	{
+		const LocalFixup& fixup = local_fixups_[i];
+		const std::size_t target = local_label_offset(fixup.target);
+		if (fixup.kind == LocalFixup::ABSOLUTE64)
+		{
+			const std::uint64_t address = kLoadAddress +
+				kExecutableContentOffset + target;
+			patch(fixup.offset, address, 8);
+			continue;
+		}
+		if (target > static_cast<std::size_t>(LLONG_MAX) ||
+			fixup.offset > static_cast<std::size_t>(LLONG_MAX - 4))
+			throw std::runtime_error("native local fixup exceeds rel32");
+		const std::int64_t delta = static_cast<std::int64_t>(target) -
+			static_cast<std::int64_t>(fixup.offset + 4);
+		if (delta < INT32_MIN || delta > INT32_MAX)
+			throw std::runtime_error("native local fixup exceeds rel32");
+		patch(fixup.offset, static_cast<std::uint32_t>(delta), 4);
+	}
+	local_fixups_.resize(first);
+}
+
 void CodeBuffer::resolve()
 {
 	resolve_short_relatives(0);
+	resolve_local_fixups(0);
 	for (std::size_t i = 0; i < fixups_.size(); ++i)
 	{
 		const Fixup& fixup = fixups_[i];
@@ -463,6 +631,7 @@ const std::vector<unsigned char>& CodeBuffer::bytes() const
 std::vector<unsigned char> CodeBuffer::take_bytes()
 {
 	resolve_short_relatives(0);
+	resolve_local_fixups(0);
 	return std::move(bytes_);
 }
 
@@ -481,10 +650,9 @@ std::size_t CodeBuffer::fixup_count() const
 	return fixups_.size();
 }
 
-std::string CodeBuffer::internal_label(const char* purpose)
+lowir_model::LocalLabelId CodeBuffer::internal_label(const char*)
 {
-	return std::string(".__cppgm_x87_") + purpose + "_" +
-		std::to_string(next_internal_label_++);
+	return allocate_local_label();
 }
 
 }

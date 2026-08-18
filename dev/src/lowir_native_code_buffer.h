@@ -39,6 +39,15 @@ struct Fixup
 	long long addend = 0;
 };
 
+struct LocalFixup
+{
+	enum Kind { RELATIVE32, ABSOLUTE64, ADDRESS32 };
+
+	Kind kind = RELATIVE32;
+	std::size_t offset = 0;
+	lowir_model::LocalLabelId target;
+};
+
 class CodeBuffer
 {
 public:
@@ -52,8 +61,11 @@ public:
 	void patch(std::size_t offset, std::uint64_t value, unsigned count);
 	void align(std::size_t alignment);
 	void label(const std::string& name);
+	void label(lowir_model::LocalLabelId label);
 	void label_at(const std::string& name, std::size_t offset);
 	void alias(const std::string& name, const std::string& target);
+	void begin_function_blocks(std::size_t count);
+	lowir_model::LocalLabelId block_label(lowir_model::BlockId block) const;
 	std::size_t size() const;
 	bool relocatable_addresses() const;
 	void bind_symbol_names(const std::vector<std::string>& names);
@@ -62,11 +74,15 @@ public:
 	const std::string& literal_spelling(lowir_model::StringId literal) const;
 	void append(const std::vector<unsigned char>& bytes);
 	bool short_relative(unsigned opcode, const std::string& target);
+	bool short_relative(unsigned opcode, lowir_model::LocalLabelId target);
 	CodeOffsetAdjustment relax_forward_branches(std::size_t begin);
 	void relative32(const std::string& target);
+	void relative32(lowir_model::LocalLabelId target);
 	void absolute64(const std::string& target, long long addend = 0);
+	void absolute64(lowir_model::LocalLabelId target);
 	void address32(const std::string& target,
 		mir_model::MirOperand::AddressBinding address_binding);
+	void address32(lowir_model::LocalLabelId target);
 	void tls_offset32(const std::string& target);
 	void relative32_at(std::size_t offset, const std::string& target,
 		long long elf_addend);
@@ -78,16 +94,24 @@ public:
 	const std::unordered_map<std::string, std::size_t>& labels() const;
 	const std::vector<Fixup>& fixups() const;
 	std::size_t fixup_count() const;
-	std::string internal_label(const char* purpose);
+	lowir_model::LocalLabelId internal_label(const char* purpose);
 
 private:
 	struct ShortRelativeFixup
+	{
+		std::size_t offset = 0;
+		lowir_model::LocalLabelId target;
+	};
+	struct NamedShortRelativeFixup
 	{
 		std::size_t offset = 0;
 		std::string target;
 	};
 
 	void resolve_short_relatives(std::size_t begin);
+	void resolve_local_fixups(std::size_t begin);
+	lowir_model::LocalLabelId allocate_local_label();
+	std::size_t local_label_offset(lowir_model::LocalLabelId label) const;
 	std::size_t base_offset_;
 	bool relocatable_addresses_;
 	const std::vector<std::string>* symbol_names_;
@@ -96,8 +120,12 @@ private:
 	std::unordered_map<std::string, std::size_t> labels_;
 	std::vector<std::size_t*> label_offsets_;
 	std::vector<Fixup> fixups_;
+	std::vector<LocalFixup> local_fixups_;
+	std::vector<std::size_t> local_label_offsets_;
+	std::vector<lowir_model::LocalLabelId> bound_local_labels_;
+	std::vector<lowir_model::LocalLabelId> block_labels_;
 	std::vector<ShortRelativeFixup> short_relative_fixups_;
-	std::size_t next_internal_label_ = 0;
+	std::vector<NamedShortRelativeFixup> named_short_relative_fixups_;
 };
 
 }

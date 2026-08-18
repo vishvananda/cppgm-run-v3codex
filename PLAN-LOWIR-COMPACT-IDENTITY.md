@@ -977,6 +977,34 @@ native DWARF sections).  Candidate outputs were compared directly with CI13
 and are unchanged; those behavioral/fixture issues are not hidden by this
 representation changeset.
 
+### CI15: direct local-label encoding and fixups
+
+Ordinary MIR branches no longer render `function::block` strings at the native
+boundary.  Each function allocates a dense `LocalLabelId` table indexed by its
+stable `BlockId`; local branches, local addresses, and encoder-created helper
+labels carry that identity into a separate compact fixup stream.  The code
+buffer patches these local fixups directly after per-function branch
+relaxation, then releases their scope before the next function.
+
+The existing string label map now contains only externally visible symbols and
+the host-EH labels whose spelling is required by LSDA/object construction.
+Host-EH block presentation labels are emitted once at block binding, while all
+machine branches still use the dense local identity.  External symbol
+relocations remain in their existing fixup stream for the following slice.
+
+The frozen object is byte-identical to CI14 at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+PA29, PA30, PA31, PA32, PA37, and PA38 report 612/612 passing tests, and the
+PA39 file audit has no fatal findings.
+
+Three A/B/B/A blocks against `61864e08` produced baseline/candidate medians of
+5.750/5.720 seconds user, 6.230/6.220 seconds wall, and 364,542/365,832 KiB
+peak RSS.  Paired block medians improve user time by 0.35%, with wall and RSS
+inside the noise envelope.  Three additional phase samples reduce median
+native encoding time from 302.9 to 282.7 ms (6.7%), confirming that the
+end-to-end signal is a real backend improvement masked by the much larger
+frontend interval.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one
