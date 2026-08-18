@@ -245,6 +245,11 @@ public:
   {
     return function_known_[symbol] ? &functions_by_id_[symbol] : 0;
   }
+  const std::string & OperandText(const Operand & operand) const
+  {
+    return operand.kind == Operand::OP_FLOAT ?
+      program_.strings.get(operand.literal) : operand.text;
+  }
 
   std::string EhTopLabel() const
   {
@@ -408,9 +413,10 @@ void ProgramEmitter::EmitDataItem(const GlobalDefinition::DataItem & item,
     if(item.addr_addend < 0) value = '(' + value + std::to_string(item.addr_addend) + ')';
     out_.Instruction("data64 " + value);
     offset += 8;
-  } else if(item.type.kind == LTK_F80) EmitF80Data(item.literal_operand.text, offset);
+  } else if(item.type.kind == LTK_F80) EmitF80Data(OperandText(item.literal_operand), offset);
   else {
-    out_.Instruction("data" + std::to_string(item_shape.width) + " " + item.literal_operand.text);
+    out_.Instruction("data" + std::to_string(item_shape.width) + " " +
+                     OperandText(item.literal_operand));
     offset += item_shape.size;
   }
 }
@@ -424,11 +430,12 @@ void ProgramEmitter::EmitGlobal(const GlobalDefinition & global)
       EmitDataItem(global.data_items[i], offset);
   } else if(global.type.kind == LTK_F80) {
     if(global.init_kind == GlobalDefinition::INIT_ZERO) EmitF80Data("0.0L", offset);
-    else EmitF80Data(global.init_operand.text, offset);
+    else EmitF80Data(OperandText(global.init_operand), offset);
   } else {
     const TypeShape global_shape = shape(global.type);
     std::string value = "0";
-    if(global.init_kind == GlobalDefinition::INIT_INTEGER) value = global.init_operand.text;
+    if(global.init_kind == GlobalDefinition::INIT_INTEGER)
+      value = OperandText(global.init_operand);
     else if(global.init_kind == GlobalDefinition::INIT_ADDR) {
       value = SymbolLabel(global.init_operand.symbol);
       if(global.addr_addend > 0) value = '(' + value + '+' + std::to_string(global.addr_addend) + ')';
@@ -652,7 +659,8 @@ void FunctionEmitter::EmitScalarValue(const Operand & value, const LowType & typ
   const TypeShape item = shape(type);
   const std::string reg = register_name(bank, item.width);
   const std::string reg64 = register_name(bank, 64);
-  std::string literal = value.text == "nullptr" ? "0" : value.text;
+  const std::string & spelling = owner_.OperandText(value);
+  std::string literal = spelling == "nullptr" ? "0" : spelling;
   if(value.kind == Operand::OP_INTEGER || value.kind == Operand::OP_FLOAT) {
     const std::size_t move_width = item.floating ? item.width : 64;
     out_.Instruction("move" + std::to_string(move_width) + " " +
@@ -686,7 +694,9 @@ void FunctionEmitter::EmitAddressValue(const Operand & value, char bank)
       out_.Instruction("isub64 " + reg + " bp " + std::to_string(location.offset));
     else out_.Instruction("move64 " + reg + " " + memory_bp(location.offset));
   } else {
-    out_.Instruction("move64 " + reg + " " + (value.text == "nullptr" ? "0" : value.text));
+    const std::string & spelling = owner_.OperandText(value);
+    out_.Instruction("move64 " + reg + " " +
+                     (spelling == "nullptr" ? "0" : spelling));
   }
 }
 
@@ -805,7 +815,7 @@ void FunctionEmitter::EmitUnary(const Instruction & ins)
   if(is_f80(ins.type)) {
     LoadF80(ins.first, 0);
     if(ins.op != "neg") throw ParseError("unsupported f80 unary operation");
-    Operand zero; zero.kind = Operand::OP_FLOAT; zero.text = "0.0L";
+    Operand zero; zero.kind = Operand::OP_INTEGER; zero.text = "0.0L";
     LoadF80(zero, 1);
     out_.Instruction("fsub80 " + memory_bp(scratch_[2]) + " " + memory_bp(scratch_[1]) +
                      " " + memory_bp(scratch_[0]));
@@ -926,7 +936,8 @@ void FunctionEmitter::LoadF80FromAddress(char bank, std::size_t scratch_index)
 void FunctionEmitter::LoadF80(const Operand & value, std::size_t scratch_index)
 {
   if(value.kind == Operand::OP_FLOAT || value.kind == Operand::OP_INTEGER) {
-    out_.Instruction("move80 " + memory_bp(scratch_[scratch_index]) + " " + value.text);
+    out_.Instruction("move80 " + memory_bp(scratch_[scratch_index]) + " " +
+                     owner_.OperandText(value));
     ZeroF80Padding(scratch_index);
   } else {
     EmitAddressValue(value, 'x');

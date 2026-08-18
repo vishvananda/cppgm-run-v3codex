@@ -63,7 +63,8 @@ std::string operand_text(const Operand & operand, const Program & program,
   case Operand::OP_REG: return register_name(operand.reg);
   case Operand::OP_XMM: return xmm_name(operand.xmm);
   case Operand::OP_IMM: out << operand.imm; return out.str();
-  case Operand::OP_FLOAT_IMM: return operand.text;
+  case Operand::OP_FLOAT_IMM:
+    return mir_literal_spelling(program, operand.literal);
   case Operand::OP_SYMBOL:
   case Operand::OP_GLOBAL: return mir_symbol_name(program, operand.symbol);
   case Operand::OP_LABEL:
@@ -422,6 +423,11 @@ void render_function(std::ostringstream & out, const Program & program,
 
 }  // namespace
 
+Program::Program()
+  : literal_spellings(new std::vector<std::string>(1))
+{
+}
+
 const std::string & mir_block_label(const MirFunction & function,
                                     lowir_model::BlockId block)
 {
@@ -438,6 +444,16 @@ const std::string & mir_symbol_name(const MirProgram & program,
   if(!symbol.valid() || index >= program.symbol_names.size())
     throw std::logic_error("invalid MIR symbol identity");
   return program.symbol_names[index];
+}
+
+const std::string & mir_literal_spelling(const MirProgram & program,
+                                         lowir_model::StringId literal)
+{
+  const std::uint32_t index = literal;
+  if(!program.literal_spellings || !literal.valid() ||
+     index >= program.literal_spellings->size())
+    throw std::logic_error("invalid MIR literal identity");
+  return (*program.literal_spellings)[index];
 }
 
 std::string serialize_mir_program(const MirProgram & program)

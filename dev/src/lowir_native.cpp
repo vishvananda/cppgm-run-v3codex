@@ -70,10 +70,11 @@ public:
                   const std::vector<unsigned char> & pointer_globals,
                   const std::vector<lowir_model::SymbolId> & tls_wrappers,
                   const FunctionSignatureIndex & signatures,
+                  session_detail::LiteralIdentityMap & literals,
                   lowir_native::Stats * stats)
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
-      signatures_(signatures), stats_(stats),
+      signatures_(signatures), literals_(literals), stats_(stats),
       facts_(analyze_function(source)), control_flow_(source), position_(0)
   {
     values_.resize(source_.value_names.size());
@@ -180,6 +181,7 @@ private:
   const std::vector<unsigned char> & pointer_globals_;
   const std::vector<lowir_model::SymbolId> & tls_wrappers_;
   const FunctionSignatureIndex & signatures_;
+  session_detail::LiteralIdentityMap & literals_;
   lowir_native::Stats * stats_;
   FunctionFacts facts_;
   StorageFacts storage_facts_;
@@ -724,7 +726,8 @@ private:
     }
     if(operand.kind == Operand::OP_INTEGER)
       return immediate(integer_value(operand));
-    if(operand.kind == Operand::OP_FLOAT) return float_immediate(operand.text);
+    if(operand.kind == Operand::OP_FLOAT)
+      return float_immediate(literals_.map(operand.literal));
     if(operand.kind == Operand::OP_GLOBAL)
       return global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
@@ -743,7 +746,7 @@ private:
     if(operand.kind == Operand::OP_GLOBAL)
       return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
     if(operand.kind == Operand::OP_FLOAT) {
-      return floating_literal_type(operand.text);
+      return floating_literal_type(program_.strings.get(operand.literal));
     }
     return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
   }
@@ -1343,7 +1346,8 @@ private:
                         std::vector<MirInstruction> & out)
   {
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
-    append_float_move(out, destination, float_immediate(instruction.first.text),
+    append_float_move(out, destination,
+                      float_immediate(literals_.map(instruction.first.literal)),
                       instruction.type);
     define(instruction.dest, instruction.type, destination);
   }
@@ -2986,10 +2990,11 @@ mir_model::MirFunction session_detail::lower_native_function(
     const std::vector<unsigned char> & pointer_globals,
     const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
+    session_detail::LiteralIdentityMap & literals,
     lowir_native::Stats * stats)
 {
   return FunctionLowerer(program, function, pointer_globals, tls_wrappers,
-                         signatures, stats).lower();
+                         signatures, literals, stats).lower();
 }
 
 }  // namespace lowir_native

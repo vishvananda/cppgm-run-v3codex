@@ -1025,6 +1025,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 		}
 		RenameProgram(&objects[i].lowir, names, stats);
 		lowir_model::materialize_lowir_program_symbol_text(objects[i].lowir);
+		lowir_model::materialize_lowir_program_literal_text(objects[i].lowir);
 		std::vector<ir_model::ExportedSymbol>().swap(
 			objects[i].lowir.exported_symbols);
 	}
@@ -1135,6 +1136,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 	}
 	result.object_aliases.swap(unique_aliases);
 	lowir_model::resolve_lowir_program_symbols(result);
+	lowir_model::intern_lowir_program_literals(result);
 	lowir_model::finalize_lowir_object_model(result);
 	if (stats)
 	{

@@ -58,6 +58,8 @@ public:
 	bool relocatable_addresses() const;
 	void bind_symbol_names(const std::vector<std::string>& names);
 	const std::string& symbol_name(lowir_model::SymbolId symbol) const;
+	void bind_literal_spellings(const std::vector<std::string>& spellings);
+	const std::string& literal_spelling(lowir_model::StringId literal) const;
 	void append(const std::vector<unsigned char>& bytes);
 	bool short_relative(unsigned opcode, const std::string& target);
 	CodeOffsetAdjustment relax_forward_branches(std::size_t begin);
@@ -89,6 +91,7 @@ private:
 	std::size_t base_offset_;
 	bool relocatable_addresses_;
 	const std::vector<std::string>* symbol_names_;
+	const std::vector<std::string>* literal_spellings_;
 	std::vector<unsigned char> bytes_;
 	std::unordered_map<std::string, std::size_t> labels_;
 	std::vector<std::size_t*> label_offsets_;

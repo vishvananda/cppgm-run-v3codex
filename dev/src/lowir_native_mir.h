@@ -17,7 +17,7 @@ const lowir_model::LowType & integer_machine_type(std::size_t width);
 mir_model::MirOperand reg_operand(X64Register reg);
 mir_model::MirOperand xmm_operand(XmmRegister xmm);
 mir_model::MirOperand immediate(long long value);
-mir_model::MirOperand float_immediate(const std::string & text);
+mir_model::MirOperand float_immediate(lowir_model::StringId literal);
 mir_model::MirOperand symbol_operand(mir_model::MirOperand::Kind kind,
                                      lowir_model::SymbolId symbol);
 mir_model::MirOperand global_operand(mir_model::MirOperand::Kind kind,

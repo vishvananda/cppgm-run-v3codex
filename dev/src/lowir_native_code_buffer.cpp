@@ -41,13 +41,14 @@ std::size_t CodeOffsetAdjustment::bytes_removed() const
 
 CodeBuffer::CodeBuffer()
 	: base_offset_(kExecutableContentOffset), relocatable_addresses_(false),
-	  symbol_names_(0)
+	  symbol_names_(0), literal_spellings_(0)
 {
 }
 
 CodeBuffer::CodeBuffer(std::size_t base_offset, bool relocatable_addresses)
 	: base_offset_(base_offset),
-	  relocatable_addresses_(relocatable_addresses), symbol_names_(0)
+	  relocatable_addresses_(relocatable_addresses), symbol_names_(0),
+	  literal_spellings_(0)
 {
 }
 
@@ -135,6 +136,22 @@ const std::string& CodeBuffer::symbol_name(lowir_model::SymbolId symbol) const
 	if (!symbol_names_ || !symbol.valid() || index >= symbol_names_->size())
 		throw std::logic_error("invalid native symbol identity");
 	return (*symbol_names_)[index];
+}
+
+void CodeBuffer::bind_literal_spellings(
+	const std::vector<std::string>& spellings)
+{
+	literal_spellings_ = &spellings;
+}
+
+const std::string& CodeBuffer::literal_spelling(
+	lowir_model::StringId literal) const
+{
+	const std::uint32_t index = literal;
+	if (!literal_spellings_ || !literal.valid() ||
+		index >= literal_spellings_->size())
+		throw std::logic_error("invalid native literal identity");
+	return (*literal_spellings_)[index];
 }
 
 void CodeBuffer::append(const std::vector<unsigned char>& bytes)

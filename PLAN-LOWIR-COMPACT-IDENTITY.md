@@ -360,8 +360,16 @@ The design targets these upper bounds after layout review:
 
 - LowIR operand: at most 32 bytes;
 - LowIR instruction: at most 192 bytes, preferably materially smaller;
-- MIR operand: at most 48 bytes; and
+- MIR operand: 64 bytes, using a cache-line stride; and
 - MIR instruction: at most 128 bytes.
+
+The MIR operand's semantic payload naturally fits in 56 bytes after removing
+its owning literal string.  Frozen-benchmark measurements showed that
+56-byte operand vectors repeatedly straddled cache lines and made native
+lowering about 13% slower.  One reserved 64-bit word produces a 64-byte stride
+and makes the compact representation faster than the former 112-byte record.
+The reserved word is therefore an intentional layout choice, not compatibility
+state.
 
 Size assertions and a record-layout report must enforce the intended result.
 
@@ -839,6 +847,42 @@ medians of 5.815/5.810 seconds user, 6.350/6.335 seconds wall, and
 is 0.33%, below the semantic-frontend process peak.  This slice receives no
 standalone timing credit; it is retained because it removes symbol allocation
 and lookup without growing any hot record or changing output.
+
+### CI11: compact LowIR and MIR floating-literal identity
+
+LowIR floating operands now carry a pooled `StringId`.  Source lowering interns
+the spelling while it constructs the operand; the explicit LowIR parser does
+the same at its input boundary.  The private compiler-object linker
+materializes spellings only while joining independently owned pools, then
+interns the merged result.  LowIR serialization, legacy CY86 output, constant
+folding, and typed comparisons resolve or compare the compact identity without
+restoring per-operand text.
+
+MIR uses its own dense literal identities.  A session-owned direct remap vector
+translates a LowIR `StringId` on the first floating-operand use and appends that
+one spelling to a shared dense MIR table.  The table is shared with the moved
+program shell so function-at-a-time object emission remains valid; it does not
+copy or scan the frontend's 113,563-entry general string pool.  MIR dumping and
+native encoding are the only consumers that resolve the spelling.
+
+Removing the MIR operand string gives a natural 56-byte record, but controlled
+measurements found that layout slowed native lowering from about 1.03 to 1.17
+seconds.  Restoring the old 112-byte stride removed the regression, identifying
+cache-line straddling rather than literal mapping as the cause.  The final
+64-byte layout retains nearly all of the storage reduction and improves native
+lowering.  `MirInstruction` remains 176 bytes and `MirFunction` remains 352
+bytes.
+
+The frozen object is byte-identical to CI10 at 4,417,192 bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+PA13, PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests, and the
+PA39 file audit has no fatal findings.
+
+Three A/B/B/A blocks against `f88b1065` produced baseline/candidate medians of
+5.870/5.830 seconds user, 6.415/6.350 seconds wall, and 365,126/365,998 KiB peak
+RSS.  Native-lowering medians improve from 1.032 to 0.997 seconds (3.4%); total
+user and wall time improve by 0.7% and 1.0%.  The 0.24% RSS difference is below
+the semantic-frontend process-peak noise envelope.
 
 ## 11. Completion definition
 

@@ -171,6 +171,7 @@ struct Operand
     SlotId slot;
     ValueId value;
     SymbolId symbol;
+    StringId literal;
   };
   std::string text;
   long long int_value;
@@ -556,6 +557,8 @@ SymbolId append_lowir_symbol(Program & program, const std::string & name);
 const std::string & lowir_symbol_name(const Program & program, SymbolId symbol);
 void resolve_lowir_function_operands(Function & function);
 void resolve_lowir_program_symbols(Program & program);
+void intern_lowir_program_literals(Program & program);
+void materialize_lowir_program_literal_text(Program & program);
 void materialize_lowir_program_symbol_text(Program & program);
 
 enum LowirEntryPolicy

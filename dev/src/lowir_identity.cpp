@@ -6,6 +6,22 @@
 namespace lowir_model {
 namespace {
 
+void intern_operand_literal(Program & program, Operand & operand)
+{
+  if(operand.kind != Operand::OP_FLOAT) return;
+  if(!operand.literal.valid()) operand.literal = program.strings.intern(operand.text);
+  operand.text.clear();
+}
+
+void intern_instruction_literals(Program & program, Instruction & instruction)
+{
+  intern_operand_literal(program, instruction.first);
+  intern_operand_literal(program, instruction.second);
+  intern_operand_literal(program, instruction.third);
+  for(std::size_t i = 0; i < instruction.args.size(); ++i)
+    intern_operand_literal(program, instruction.args[i]);
+}
+
 std::size_t hash_range(const std::string & text, std::size_t first,
                        std::size_t count)
 {
@@ -81,7 +97,9 @@ const std::string & StringPool::get(StringId id) const
 {
   const std::uint32_t index = id;
   if(index >= strings_.size())
-    throw std::logic_error("invalid pooled LowIR string identity");
+    throw std::logic_error("invalid pooled LowIR string identity " +
+      std::to_string(index) + " for " + std::to_string(strings_.size()) +
+      " entries");
   return strings_[index];
 }
 
@@ -392,6 +410,48 @@ void resolve_lowir_program_symbols(Program & program)
     if(found == symbols.end()) throw ParseError("undefined alias target");
     program.object_aliases[i].target_id = found->second;
   }
+}
+
+void intern_lowir_program_literals(Program & program)
+{
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    GlobalDefinition & global = program.globals[i];
+    intern_operand_literal(program, global.init_operand);
+    for(std::size_t j = 0; j < global.data_items.size(); ++j)
+      intern_operand_literal(program, global.data_items[j].literal_operand);
+  }
+  for(std::size_t f = 0; f < program.functions.size(); ++f)
+    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
+      for(std::size_t i = 0;
+          i < program.functions[f].blocks[b].instructions.size(); ++i)
+        intern_instruction_literals(
+          program, program.functions[f].blocks[b].instructions[i]);
+}
+
+void materialize_lowir_program_literal_text(Program & program)
+{
+  const auto materialize = [&program](Operand & operand) {
+    if(operand.kind != Operand::OP_FLOAT || !operand.literal.valid()) return;
+    operand.text = program.strings.get(operand.literal);
+    operand.literal = StringId();
+  };
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    materialize(program.globals[i].init_operand);
+    for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
+      materialize(program.globals[i].data_items[j].literal_operand);
+  }
+  for(std::size_t f = 0; f < program.functions.size(); ++f)
+    for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
+      for(std::size_t i = 0;
+          i < program.functions[f].blocks[b].instructions.size(); ++i) {
+        Instruction & instruction =
+          program.functions[f].blocks[b].instructions[i];
+        materialize(instruction.first);
+        materialize(instruction.second);
+        materialize(instruction.third);
+        for(std::size_t a = 0; a < instruction.args.size(); ++a)
+          materialize(instruction.args[a]);
+      }
 }
 
 void materialize_lowir_program_symbol_text(Program & program)

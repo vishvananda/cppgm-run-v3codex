@@ -213,17 +213,20 @@ void write_operand(std::ostream & out, const Operand & operand,
     out << lowir_symbol_name(program, operand.symbol);
     return;
   }
-  if(operand.text.empty()) throw std::logic_error("missing LowIR operand text");
   if(operand.kind == Operand::OP_FLOAT) {
-    if(operand.text == "INFINITY" || operand.text == "+INFINITY") {
+    const std::string & spelling = program.strings.get(operand.literal);
+    if(spelling == "INFINITY" || spelling == "+INFINITY") {
       out << "inf";
       return;
     }
-    if(operand.text == "-INFINITY") {
+    if(spelling == "-INFINITY") {
       out << "-inf";
       return;
     }
+    out << spelling;
+    return;
   }
+  if(operand.text.empty()) throw std::logic_error("missing LowIR operand text");
   out << operand.text;
 }
 

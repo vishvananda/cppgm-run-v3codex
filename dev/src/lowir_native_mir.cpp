@@ -37,11 +37,11 @@ mir_model::MirOperand immediate(long long value)
   return out;
 }
 
-mir_model::MirOperand float_immediate(const std::string & text)
+mir_model::MirOperand float_immediate(lowir_model::StringId literal)
 {
   mir_model::MirOperand out;
   out.kind = mir_model::MirOperand::OP_FLOAT_IMM;
-  out.text = text;
+  out.literal = literal;
   return out;
 }
 

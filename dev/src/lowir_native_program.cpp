@@ -60,7 +60,8 @@ mir_model::MirGlobalDefinition lower_global(
         lowered.addr_addend = item.addr_addend;
       } else if(is_floating(item.type)) {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_FLOAT;
-        lowered.literal_text = item.literal_operand.text;
+        lowered.literal_text = program.strings.get(
+          item.literal_operand.literal);
       } else {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
         lowered.int_value = selection::integer_value(item.literal_operand);
@@ -81,7 +82,7 @@ mir_model::MirGlobalDefinition lower_global(
       target.literal_text = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?
         (source.type.kind == lowir_model::LTK_F32 ? "0.0f" :
          (source.type.kind == lowir_model::LTK_F80 ? "0.0L" : "0.0")) :
-        source.init_operand.text;
+        program.strings.get(source.init_operand.literal);
     } else {
       target.init_kind = mir_model::MirGlobalDefinition::GI_INTEGER;
       target.int_value = source.init_kind == lowir_model::LowirGlobalDefinition::INIT_ZERO ?

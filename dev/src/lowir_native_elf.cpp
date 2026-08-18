@@ -257,6 +257,23 @@ void emit_x87_store_pop_memory(CodeBuffer & out,
   else throw std::logic_error("x87 store requires a floating type");
 }
 
+void emit_x87_load_spelling(CodeBuffer & out, const std::string & spelling,
+                            const lowir_model::LowType & type,
+                            const mir_model::MirFunction & function)
+{
+  emit_stack_adjust(out, true, 16);
+  const mir_model::MirOperand scratch = memory_operand(XR_RSP);
+  if(type.kind == lowir_model::LTK_F80)
+    emit_extended_immediate_store(out, scratch, spelling, function);
+  else {
+    emit_immediate_move(out, XR_R10, scalar(spelling, type));
+    emit_store(out, XR_RSP, 0, XR_R10,
+               type.kind == lowir_model::LTK_F32 ? 32 : 64);
+  }
+  emit_x87_load_memory(out, scratch, type, function);
+  emit_stack_adjust(out, false, 16);
+}
+
 void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
                    const lowir_model::LowType & type,
                    const mir_model::MirFunction & function)
@@ -267,18 +284,20 @@ void emit_x87_load(CodeBuffer & out, const mir_model::MirOperand & source,
     emit_x87_load_memory(out, source, type, function);
     return;
   }
+  if(source.kind == mir_model::MirOperand::OP_FLOAT_IMM) {
+    emit_x87_load_spelling(
+      out, out.literal_spelling(source.literal), type, function);
+    return;
+  }
   emit_stack_adjust(out, true, 16);
   const mir_model::MirOperand scratch = memory_operand(XR_RSP);
   if(source.kind == mir_model::MirOperand::OP_XMM) {
     emit_xmm_store(out, scratch, source.xmm, type, function);
   } else if(type.kind == lowir_model::LTK_F80) {
-    const std::string text = source.kind == mir_model::MirOperand::OP_FLOAT_IMM ?
-      source.text : std::to_string(source.imm);
-    emit_extended_immediate_store(out, scratch, text, function);
+    emit_extended_immediate_store(
+      out, scratch, std::to_string(source.imm), function);
   } else {
-    const std::string text = source.kind == mir_model::MirOperand::OP_FLOAT_IMM ?
-      source.text : std::to_string(source.imm);
-    emit_immediate_move(out, XR_R10, scalar(text, type));
+    emit_immediate_move(out, XR_R10, scalar(std::to_string(source.imm), type));
     emit_store(out, XR_RSP, 0, XR_R10,
                type.kind == lowir_model::LTK_F32 ? 32 : 64);
   }
@@ -347,7 +366,8 @@ void materialize_float_operand(CodeBuffer & out, XmmRegister destination,
     if(source.xmm != destination)
       emit_xmm_register_move(out, destination, source.xmm, type);
   } else if(source.kind == mir_model::MirOperand::OP_FLOAT_IMM) {
-    emit_immediate_move(out, XR_R11, scalar(source.text, type));
+    emit_immediate_move(out, XR_R11,
+      scalar(out.literal_spelling(source.literal), type));
     emit_gpr_to_xmm(out, destination, XR_R11,
                     type.kind == lowir_model::LTK_F32 ? 32 : 64);
   } else if(source.kind == mir_model::MirOperand::OP_IMM) {
@@ -371,7 +391,8 @@ void emit_float_move(CodeBuffer & out, const mir_model::MirInstruction & instruc
        source.kind == mir_model::MirOperand::OP_IMM) {
       emit_extended_immediate_store(out, destination,
         source.kind == mir_model::MirOperand::OP_FLOAT_IMM ?
-          source.text : std::to_string(source.imm), function);
+          out.literal_spelling(source.literal) : std::to_string(source.imm),
+        function);
       return;
     }
     emit_x87_load(out, source, instruction.type, function);
@@ -684,10 +705,7 @@ void emit_x87_load_unsigned_integer(CodeBuffer & out,
   emit_modrm(out, 3, value, value);
   const std::string nonnegative = out.internal_label("uitofp_done");
   emit_near_jump(out, XC_NS, nonnegative);
-  mir_model::MirOperand two64;
-  two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
-  two64.text = "18446744073709551616.0L";
-  emit_x87_load(out, two64,
+  emit_x87_load_spelling(out, "18446744073709551616.0L",
     lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
   out.byte(0xde);
   out.byte(0xc1); // faddp st1, st0
@@ -732,11 +750,9 @@ void emit_x87_store_truncated_unsigned(CodeBuffer & out, X64Register destination
 
   emit_stack_adjust(out, true, 16);
   const mir_model::MirOperand scratch = memory_operand(XR_RSP);
-  mir_model::MirOperand threshold;
-  threshold.kind = mir_model::MirOperand::OP_FLOAT_IMM;
-  threshold.text = "9223372036854775808.0L";
-  emit_x87_load(out, threshold,
-    lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
+  const lowir_model::LowType & extended =
+    lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
+  emit_x87_load_spelling(out, "9223372036854775808.0L", extended, function);
   out.byte(0xdf);
   out.byte(0xe9); // Compare 2^63 with the retained input and pop the threshold.
   const std::string high = out.internal_label("fptoui_high");
@@ -746,8 +762,7 @@ void emit_x87_store_truncated_unsigned(CodeBuffer & out, X64Register destination
   emit_load(out, destination, XR_RSP, 0, 64);
   emit_unconditional_jump(out, done);
   out.label(high);
-  emit_x87_load(out, threshold,
-    lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
+  emit_x87_load_spelling(out, "9223372036854775808.0L", extended, function);
   out.byte(0xde);
   out.byte(0xe9); // fsubp st1, st0
   emit_x87_memory(out, 0xdd, 1, scratch, function);
@@ -774,10 +789,7 @@ void emit_integer_to_float(CodeBuffer & out,
       emit_x87_load_unsigned_integer(out, high, 64, function);
     else
       emit_x87_load_signed_integer(out, high, 64, function);
-    mir_model::MirOperand two64;
-    two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
-    two64.text = "18446744073709551616.0L";
-    emit_x87_load(out, two64,
+    emit_x87_load_spelling(out, "18446744073709551616.0L",
       lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
     out.byte(0xde);
     out.byte(0xc9); // fmulp st1, st0
@@ -845,18 +857,17 @@ void emit_float_to_integer(CodeBuffer & out,
 
     out.byte(0xd9);
     out.byte(0xc0); // fld st0
-    mir_model::MirOperand two64;
-    two64.kind = mir_model::MirOperand::OP_FLOAT_IMM;
-    two64.text = "18446744073709551616.0L";
-    emit_x87_load(out, two64,
-      lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
+    const lowir_model::LowType & extended =
+      lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
+    emit_x87_load_spelling(
+      out, "18446744073709551616.0L", extended, function);
     out.byte(0xde);
     out.byte(0xf9); // fdivp st1, st0
     emit_x87_store_truncated_unsigned(out, high, 64, function);
     emit_x87_load_unsigned_integer(out,
       instruction.operands[1], 64, function);
-    emit_x87_load(out, two64,
-      lowir_model::builtin_lowir_type(lowir_model::LTK_F80), function);
+    emit_x87_load_spelling(
+      out, "18446744073709551616.0L", extended, function);
     out.byte(0xde);
     out.byte(0xc9); // fmulp st1, st0
     out.byte(0xde);
@@ -2746,6 +2757,7 @@ void write_linux_executable(const std::string & path,
   if(stats) encode_start = std::chrono::steady_clock::now();
   CodeBuffer content;
   content.bind_symbol_names(program.symbol_names);
+  content.bind_literal_spellings(*program.literal_spellings);
   content.label("__startup");
   for(std::size_t i = 0; i < program.startup.size(); ++i)
     emit_instruction(content, program.startup[i], 0);
@@ -2768,6 +2780,7 @@ void write_linux_executable(const std::string & path,
     throw std::runtime_error("native executable has no startup entry");
   CodeBuffer content;
   content.bind_symbol_names(program.symbol_names);
+  content.bind_literal_spellings(*program.literal_spellings);
   std::uint64_t encode_nanoseconds = 0;
   std::chrono::steady_clock::time_point encode_started;
   if(stats) encode_started = std::chrono::steady_clock::now();
@@ -2805,6 +2818,7 @@ void write_linux_relocatable(
   mir_model::MirProgram program = lowering.take_program_shell();
   CodeBuffer text(0, true);
   text.bind_symbol_names(program.symbol_names);
+  text.bind_literal_spellings(*program.literal_spellings);
   std::vector<HostFunctionLayout> functions;
   functions.reserve(lowering.function_count() + source.function_declarations.size());
   std::uint64_t encode_nanoseconds = 0;
@@ -2832,6 +2846,7 @@ void write_linux_relocatable(
   std::unordered_map<std::string, std::size_t> data_section_indexes;
   intern_data_section(".data", 3, data_sections, data_section_indexes);
   data_sections[0].content.bind_symbol_names(program.symbol_names);
+  data_sections[0].content.bind_literal_spellings(*program.literal_spellings);
   const std::unordered_set<std::string> suppressed_globals =
     host_external_global_definitions(source, program);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
@@ -2845,6 +2860,7 @@ void write_linux_relocatable(
       section_name, flags, data_sections, data_section_indexes);
     DataSectionBuffer & section = data_sections[section_index];
     section.content.bind_symbol_names(program.symbol_names);
+    section.content.bind_literal_spellings(*program.literal_spellings);
     section.alignment = std::max(section.alignment, global_alignment(global));
     emit_global(section.content, global);
   }

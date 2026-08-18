@@ -403,7 +403,7 @@ bool same_operand(const MirOperand & left, const MirOperand & right)
   if(left.kind == MirOperand::OP_LABEL) return left.block == right.block;
   if(left.kind == MirOperand::OP_SYMBOL || left.kind == MirOperand::OP_GLOBAL)
     return left.symbol == right.symbol;
-  if(left.kind == MirOperand::OP_FLOAT_IMM) return left.text == right.text;
+  if(left.kind == MirOperand::OP_FLOAT_IMM) return left.literal == right.literal;
   if(left.kind == MirOperand::OP_DEREF)
     return left.reg == right.reg && left.offset == right.offset &&
       left.has_index == right.has_index &&

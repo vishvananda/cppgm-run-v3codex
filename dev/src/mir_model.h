@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -141,11 +142,13 @@ struct Operand
   {
     lowir_model::BlockId block;
     lowir_model::SymbolId symbol;
+    lowir_model::StringId literal;
   };
   long long imm = 0;
-  long double float_imm = 0.0L;
   long long offset = 0;
-  std::string text;
+  // Keep consecutive operands on a cache-line stride.  The natural 56-byte
+  // layout repeatedly straddles cache lines in instruction operand vectors.
+  std::uint64_t cache_line_padding = 0;
 
   Operand() : block() {}
 };
@@ -407,8 +410,14 @@ struct RuntimeData
 
 struct Program
 {
+  Program();
+
   std::string target;
   std::vector<std::string> symbol_names;
+  // Literal identities are dense in MIR.  The shared table lets streamed
+  // function lowering populate those identities after the program shell has
+  // moved to the object writer, without copying the much larger LowIR pool.
+  std::shared_ptr<std::vector<std::string> > literal_spellings;
   bool uses_eh = false;
   std::vector<Instruction> startup;
   std::vector<GlobalDefinition> globals;
@@ -437,6 +446,8 @@ const std::string & mir_block_label(const MirFunction & function,
                                     lowir_model::BlockId block);
 const std::string & mir_symbol_name(const MirProgram & program,
                                     lowir_model::SymbolId symbol);
+const std::string & mir_literal_spelling(const MirProgram & program,
+                                         lowir_model::StringId literal);
 std::string serialize_mir_program(const MirProgram & program);
 void write_mir_program_file(const std::string & path,
                             const MirProgram & program);

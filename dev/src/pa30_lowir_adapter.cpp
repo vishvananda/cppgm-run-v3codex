@@ -81,7 +81,7 @@ struct AdaptedValues
 
 lowir_model::Operand AdaptOperand(const Operand& operand,
 	const TypedProgram& program, const Function& function,
-	const AdaptedValues& values)
+	const AdaptedValues& values, lowir_model::StringPool* literals)
 {
 	lowir_model::Operand result;
 	if (operand.type.kind != LOW_INVALID)
@@ -130,9 +130,9 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		break;
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
-		result.text = program.literals.Get(operand.id);
+		result.literal = literals->intern(program.literals.Get(operand.id));
 		lowir_model::parse_lowir_floating_literal(
-			result.text, &result.float_value);
+			literals->get(result.literal), &result.float_value);
 		break;
 	case Operand::NULL_POINTER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
@@ -308,7 +308,7 @@ void AdaptProjection(IndexProjection source, lowir_model::Instruction* target)
 
 lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	const TypedProgram& program, const Function& function,
-	const AdaptedValues& values)
+	const AdaptedValues& values, lowir_model::StringPool* literals)
 {
 	lowir_model::Instruction target;
 	if (source.dest != kNoLowId)
@@ -322,9 +322,9 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	if (source.source_type.kind != LOW_INVALID)
 		target.source_type = AdaptType(source.source_type);
 	if (source.op != LOW_OP_NONE) target.op = LowOperationText(source.op);
-	target.first = AdaptOperand(source.first, program, function, values);
-	target.second = AdaptOperand(source.second, program, function, values);
-	target.third = AdaptOperand(source.third, program, function, values);
+	target.first = AdaptOperand(source.first, program, function, values, literals);
+	target.second = AdaptOperand(source.second, program, function, values, literals);
+	target.third = AdaptOperand(source.third, program, function, values, literals);
 	AdaptProjection(source.projection, &target);
 	switch (source.kind)
 	{
@@ -335,18 +335,18 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::ATOMIC_LOAD:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_LOAD;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values));
+			program, function, values, literals));
 		break;
 	case Instruction::STORE: target.kind = lowir_model::Instruction::IK_STORE; break;
 	case Instruction::ATOMIC_STORE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_STORE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values));
+			program, function, values, literals));
 		break;
 	case Instruction::ATOMIC_EXCHANGE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_EXCHANGE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values));
+			program, function, values, literals));
 		break;
 	case Instruction::COPY_OBJECT:
 		target.kind = lowir_model::Instruction::IK_COPYOBJ;
@@ -366,15 +366,15 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::ATOMIC_ADD_FETCH:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_ADD_FETCH;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values));
+			program, function, values, literals));
 		break;
 	case Instruction::ATOMIC_COMPARE_EXCHANGE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_COMPARE_EXCHANGE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values));
+			program, function, values, literals));
 		target.args.push_back(AdaptOperand(
 			Operand(source.atomic_failure_order, LowI32()), program, function,
-			values));
+			values, literals));
 		break;
 	case Instruction::ATOMIC_THREAD_FENCE:
 	case Instruction::ATOMIC_SIGNAL_FENCE:
@@ -382,7 +382,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			lowir_model::Instruction::IK_ATOMIC_THREAD_FENCE :
 			lowir_model::Instruction::IK_ATOMIC_SIGNAL_FENCE;
 		target.first = AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function, values);
+			program, function, values, literals);
 		break;
 	case Instruction::STACK_ALLOC:
 		target.kind = lowir_model::Instruction::IK_STACK_ALLOC; break;
@@ -412,7 +412,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			for (std::size_t i = 0; i < source.extra_count; ++i)
 				target.args.push_back(AdaptOperand(
 					program.call_arguments[source.extra_first + i], program, function,
-					values));
+					values, literals));
 		}
 		if (source.indirect)
 		{
@@ -654,8 +654,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					if (value.kind == Global::DataItem::FLOATING_ITEM)
 					{
 						data.literal_operand.kind = lowir_model::Operand::OP_FLOAT;
-						data.literal_operand.text =
-							source.literals.Get(value.floating_spelling);
+						data.literal_operand.literal = target.strings.intern(
+							source.literals.Get(value.floating_spelling));
 					}
 					else
 					{
@@ -685,7 +685,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			if (item.initializer_kind == Global::FLOATING_VALUE)
 			{
 				result.init_operand.kind = lowir_model::Operand::OP_FLOAT;
-				result.init_operand.text = source.literals.Get(item.floating_initializer);
+				result.init_operand.literal = target.strings.intern(
+					source.literals.Get(item.floating_initializer));
 			}
 			else
 			{
@@ -753,7 +754,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(
-					block.instructions[j], source, item, values));
+					block.instructions[j], source, item, values, &target.strings));
 			result.blocks.push_back(std::move(lowered));
 		}
 		target.functions.push_back(std::move(result));

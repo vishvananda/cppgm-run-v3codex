@@ -169,6 +169,9 @@ bool same_operand(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_SLOT) return a.slot == b.slot;
   if(a.kind == Operand::OP_TEMP) return a.value == b.value;
   if(a.kind == Operand::OP_GLOBAL) return a.symbol == b.symbol;
+  if(a.kind == Operand::OP_FLOAT)
+    return a.literal.valid() && b.literal.valid() ?
+      a.literal == b.literal : a.text == b.text;
   return a.text == b.text;
 }
 
@@ -320,6 +323,8 @@ bool operand_less(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_LABEL) return a.block < b.block;
   if(a.kind == Operand::OP_TEMP) return a.value < b.value;
   if(a.kind == Operand::OP_GLOBAL) return a.symbol < b.symbol;
+  if(a.kind == Operand::OP_FLOAT && a.literal.valid() && b.literal.valid())
+    return a.literal < b.literal;
   return a.text < b.text;
 }
 
@@ -555,10 +560,8 @@ bool fold_compare(const Instruction & ins, Operand * result)
     else return false;
   } else if(ins.first.kind == Operand::OP_FLOAT &&
             ins.second.kind == Operand::OP_FLOAT) {
-    long double a = 0.0L, b = 0.0L;
-    if(!lowir_model::parse_lowir_floating_literal(ins.first.text, &a) ||
-       !lowir_model::parse_lowir_floating_literal(ins.second.text, &b))
-      return false;
+    const long double a = ins.first.float_value;
+    const long double b = ins.second.float_value;
     if(ins.op == "eq") value = a == b;
     else if(ins.op == "ne") value = a != b;
     else if(ins.op == "lt") value = a < b;
@@ -2782,6 +2785,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - started).count());
   }
+  lowir_model::intern_lowir_program_literals(program);
 }
 
 }  // namespace lowir_opt
