@@ -126,7 +126,35 @@ const std::string & lowir_block_label(const Function & function, BlockId block)
   return function.block_labels[id];
 }
 
-void resolve_lowir_block_operands(Function & function)
+SlotId append_lowir_slot(Function & function, const std::string & name,
+                         const LowType & type)
+{
+  if(function.slot_names.size() == kInvalidCompactId)
+    throw std::runtime_error("too many LowIR slots");
+  const SlotId result(static_cast<std::uint32_t>(function.slot_names.size()));
+  function.slot_names.push_back(name);
+  function.slot_types.push_back(type);
+  function.slots.push_back(result);
+  return result;
+}
+
+const std::string & lowir_slot_name(const Function & function, SlotId slot)
+{
+  const std::uint32_t id = slot;
+  if(id >= function.slot_names.size())
+    throw std::logic_error("invalid LowIR slot identity");
+  return function.slot_names[id];
+}
+
+const LowType & lowir_slot_type(const Function & function, SlotId slot)
+{
+  const std::uint32_t id = slot;
+  if(id >= function.slot_types.size())
+    throw std::logic_error("invalid LowIR slot identity");
+  return function.slot_types[id];
+}
+
+void resolve_lowir_function_operands(Function & function)
 {
   std::unordered_map<std::string, BlockId> blocks;
   blocks.reserve(function.blocks.size());
@@ -135,6 +163,11 @@ void resolve_lowir_block_operands(Function & function)
     if(!block.id.valid()) block.id = allocate_lowir_block_id(function);
     blocks.emplace(lowir_block_label(function, block.id), block.id);
   }
+  std::unordered_map<std::string, SlotId> slots;
+  slots.reserve(function.slots.size());
+  for(std::size_t i = 0; i < function.slots.size(); ++i)
+    slots.emplace(lowir_slot_name(function, function.slots[i]),
+                  function.slots[i]);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     std::vector<Instruction> & instructions = function.blocks[i].instructions;
     for(std::size_t j = 0; j < instructions.size(); ++j) {
@@ -143,20 +176,32 @@ void resolve_lowir_block_operands(Function & function)
         &instruction.first, &instruction.second, &instruction.third
       };
       for(std::size_t k = 0; k < 3; ++k) {
-        if(fixed[k]->kind != Operand::OP_LABEL) continue;
-        const std::unordered_map<std::string, BlockId>::const_iterator found =
-          blocks.find(fixed[k]->text);
-        if(found == blocks.end()) throw ParseError("undefined block target");
-        fixed[k]->block = found->second;
+        if(fixed[k]->kind == Operand::OP_LABEL) {
+          const std::unordered_map<std::string, BlockId>::const_iterator found =
+            blocks.find(fixed[k]->text);
+          if(found == blocks.end()) throw ParseError("undefined block target");
+          fixed[k]->block = found->second;
+        } else if(fixed[k]->kind == Operand::OP_SLOT) {
+          const std::unordered_map<std::string, SlotId>::const_iterator found =
+            slots.find(fixed[k]->text);
+          if(found == slots.end()) throw ParseError("undefined slot operand");
+          fixed[k]->slot = found->second;
+        } else continue;
         std::string().swap(fixed[k]->text);
       }
       for(std::size_t a = 0; a < instruction.args.size(); ++a) {
         Operand & operand = instruction.args[a];
-        if(operand.kind != Operand::OP_LABEL) continue;
-        const std::unordered_map<std::string, BlockId>::const_iterator found =
-          blocks.find(operand.text);
-        if(found == blocks.end()) throw ParseError("undefined block target");
-        operand.block = found->second;
+        if(operand.kind == Operand::OP_LABEL) {
+          const std::unordered_map<std::string, BlockId>::const_iterator found =
+            blocks.find(operand.text);
+          if(found == blocks.end()) throw ParseError("undefined block target");
+          operand.block = found->second;
+        } else if(operand.kind == Operand::OP_SLOT) {
+          const std::unordered_map<std::string, SlotId>::const_iterator found =
+            slots.find(operand.text);
+          if(found == slots.end()) throw ParseError("undefined slot operand");
+          operand.slot = found->second;
+        } else continue;
         std::string().swap(operand.text);
       }
     }

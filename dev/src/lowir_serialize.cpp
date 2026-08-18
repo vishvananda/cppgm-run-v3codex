@@ -199,6 +199,11 @@ void write_operand(std::ostream & out, const Operand & operand,
     out << lowir_block_label(*function, operand.block);
     return;
   }
+  if(operand.kind == Operand::OP_SLOT) {
+    if(!function) throw std::logic_error("LowIR slot lacks a function");
+    out << lowir_slot_name(*function, operand.slot);
+    return;
+  }
   if(operand.text.empty()) throw std::logic_error("missing LowIR operand text");
   if(operand.kind == Operand::OP_FLOAT) {
     if(operand.text == "INFINITY" || operand.text == "+INFINITY") {
@@ -225,15 +230,16 @@ const char * projection_name(IndexProjectionKind projection)
   throw std::logic_error("invalid LowIR index projection");
 }
 
-void write_call(std::ostream & out, const Instruction & ins)
+void write_call(std::ostream & out, const Instruction & ins,
+                const Function * function)
 {
   if(!ins.dest.empty()) out << ins.dest << " = ";
   out << "call " << (ins.call_returns_void ? "void" : lowir_type_text(ins.type)) << ' ';
-  write_operand(out, ins.first);
+  write_operand(out, ins.first, function);
   out << '(';
   for(std::size_t i = 0; i < ins.args.size(); ++i) {
     if(i) out << ", ";
-    write_operand(out, ins.args[i]);
+    write_operand(out, ins.args[i], function);
   }
   out << ')';
   if(ins.has_call_signature) {
@@ -252,87 +258,87 @@ void write_instruction(std::ostream & out, const Instruction & ins,
   switch(ins.kind) {
   case Instruction::IK_CONST:
     out << ins.dest << " = const " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); break;
+    write_operand(out, ins.first, function); break;
   case Instruction::IK_COPY:
     out << ins.dest << " = copy " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); break;
+    write_operand(out, ins.first, function); break;
   case Instruction::IK_ADDR:
-    out << ins.dest << " = addr "; write_operand(out, ins.first); break;
+    out << ins.dest << " = addr "; write_operand(out, ins.first, function); break;
   case Instruction::IK_LOAD:
     out << ins.dest << " = load " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); break;
+    write_operand(out, ins.first, function); break;
   case Instruction::IK_ATOMIC_LOAD:
     out << ins.dest << " = atomic_load " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); out << ", "; write_operand(out, ins.args.at(0)); break;
+    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.args.at(0), function); break;
   case Instruction::IK_STORE:
-    out << "store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first);
-    out << ", "; write_operand(out, ins.second); break;
+    out << "store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, function);
+    out << ", "; write_operand(out, ins.second, function); break;
   case Instruction::IK_ATOMIC_STORE:
-    out << "atomic_store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first);
-    out << ", "; write_operand(out, ins.second); out << ", ";
-    write_operand(out, ins.args.at(0)); break;
+    out << "atomic_store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, function);
+    out << ", "; write_operand(out, ins.second, function); out << ", ";
+    write_operand(out, ins.args.at(0), function); break;
   case Instruction::IK_ATOMIC_EXCHANGE:
     out << ins.dest << " = atomic_exchange " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); out << ", "; write_operand(out, ins.second);
-    out << ", "; write_operand(out, ins.args.at(0)); break;
+    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function);
+    out << ", "; write_operand(out, ins.args.at(0), function); break;
   case Instruction::IK_INDEX:
     out << ins.dest << " = index " << lowir_type_text(ins.type);
     if(const char * projection = projection_name(ins.index_projection))
       out << " [projection=" << projection << ']';
-    out << ' '; write_operand(out, ins.first); out << ", ";
-    write_operand(out, ins.second); break;
+    out << ' '; write_operand(out, ins.first, function); out << ", ";
+    write_operand(out, ins.second, function); break;
   case Instruction::IK_UNARY:
     out << ins.dest << " = unary " << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); break;
+    write_operand(out, ins.first, function); break;
   case Instruction::IK_BINARY:
   case Instruction::IK_CMP:
     out << ins.dest << (ins.kind == Instruction::IK_BINARY ? " = binary " : " = cmp ")
         << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); out << ", "; write_operand(out, ins.second); break;
+    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function); break;
   case Instruction::IK_CONVERT:
     out << ins.dest << " = convert " << ins.op << ' ' << lowir_type_text(ins.type) << ' '
-        << lowir_type_text(ins.source_type) << ' '; write_operand(out, ins.first); break;
+        << lowir_type_text(ins.source_type) << ' '; write_operand(out, ins.first, function); break;
   case Instruction::IK_ATOMIC_ADD_FETCH:
     out << ins.dest << " = atomic_add_fetch " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); out << ", "; write_operand(out, ins.second);
-    out << ", "; write_operand(out, ins.args.at(0)); break;
+    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function);
+    out << ", "; write_operand(out, ins.args.at(0), function); break;
   case Instruction::IK_ATOMIC_COMPARE_EXCHANGE:
     out << ins.dest << " = atomic_compare_exchange " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); out << ", "; write_operand(out, ins.second);
-    out << ", "; write_operand(out, ins.third); out << ", ";
-    write_operand(out, ins.args.at(0)); out << ", "; write_operand(out, ins.args.at(1)); break;
+    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function);
+    out << ", "; write_operand(out, ins.third, function); out << ", ";
+    write_operand(out, ins.args.at(0), function); out << ", "; write_operand(out, ins.args.at(1), function); break;
   case Instruction::IK_ATOMIC_THREAD_FENCE:
   case Instruction::IK_ATOMIC_SIGNAL_FENCE:
     out << (ins.kind == Instruction::IK_ATOMIC_THREAD_FENCE ?
       "atomic_thread_fence " : "atomic_signal_fence ");
-    write_operand(out, ins.first); break;
+    write_operand(out, ins.first, function); break;
   case Instruction::IK_VA_START:
-    out << "va_start "; write_operand(out, ins.first); break;
+    out << "va_start "; write_operand(out, ins.first, function); break;
   case Instruction::IK_VA_ARG:
     out << ins.dest << " = va_arg " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first); break;
+    write_operand(out, ins.first, function); break;
   case Instruction::IK_STACK_ALLOC:
-    out << ins.dest << " = stack_alloc "; write_operand(out, ins.first); break;
-  case Instruction::IK_CALL: write_call(out, ins); break;
+    out << ins.dest << " = stack_alloc "; write_operand(out, ins.first, function); break;
+  case Instruction::IK_CALL: write_call(out, ins, function); break;
   case Instruction::IK_COPYOBJ:
     out << "copyobj " << ins.byte_count << 'x' << ins.byte_alignment << ' ';
-    write_operand(out, ins.first); out << ", "; write_operand(out, ins.second); break;
+    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function); break;
   case Instruction::IK_ZEROINIT:
     out << "zeroinit " << ins.byte_count << 'x' << ins.byte_alignment << ' ';
-    write_operand(out, ins.first); break;
+    write_operand(out, ins.first, function); break;
   case Instruction::IK_EH_TRY:
     out << "eh_try "; write_operand(out, ins.first, function); break;
   case Instruction::IK_EH_CLEANUP:
     out << "eh_cleanup "; write_operand(out, ins.first, function); break;
   case Instruction::IK_EH_CLEANUP_CLAUSE: out << "eh_cleanup"; break;
   case Instruction::IK_EH_CATCH:
-    out << "eh_catch "; write_operand(out, ins.first);
+    out << "eh_catch "; write_operand(out, ins.first, function);
     if(ins.has_eh_selector) out << ", " << ins.eh_selector;
     break;
   case Instruction::IK_EH_FILTER:
     out << "eh_filter";
     for(std::size_t i = 0; i < ins.args.size(); ++i) {
-      out << (i ? ", " : " "); write_operand(out, ins.args[i]);
+      out << (i ? ", " : " "); write_operand(out, ins.args[i], function);
     }
     if(ins.has_eh_selector) out << (ins.args.empty() ? " " : ", ") << ins.eh_selector;
     break;
@@ -342,7 +348,7 @@ void write_instruction(std::ostream & out, const Instruction & ins,
     break;
   case Instruction::IK_EH_END: out << "eh_end"; break;
   case Instruction::IK_THROW:
-    out << "throw " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first); break;
+    out << "throw " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, function); break;
   case Instruction::IK_EXCEPTION:
     out << ins.dest << " = exception " << lowir_type_text(ins.type); break;
   case Instruction::IK_EXCEPTION_SELECTOR:
@@ -351,20 +357,20 @@ void write_instruction(std::ostream & out, const Instruction & ins,
   case Instruction::IK_JUMP:
     out << "jump "; write_operand(out, ins.first, function); break;
   case Instruction::IK_BRANCH:
-    out << "branch "; write_operand(out, ins.first); out << ", ";
+    out << "branch "; write_operand(out, ins.first, function); out << ", ";
     write_operand(out, ins.second, function); out << ", ";
     write_operand(out, ins.third, function); break;
   case Instruction::IK_SWITCH:
-    out << "switch "; write_operand(out, ins.first); out << ", ";
+    out << "switch "; write_operand(out, ins.first, function); out << ", ";
     write_operand(out, ins.second, function);
     for(std::size_t i = 0; i + 1 < ins.args.size(); i += 2) {
-      out << ", "; write_operand(out, ins.args[i]); out << ':';
+      out << ", "; write_operand(out, ins.args[i], function); out << ':';
       write_operand(out, ins.args[i + 1], function);
     }
     break;
   case Instruction::IK_RETURN:
     out << "return " << lowir_type_text(ins.type);
-    if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first); }
+    if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first, function); }
     break;
   }
   write_debug(out, ins.debug_location);
@@ -434,8 +440,8 @@ void write_function(std::ostream & out, const Function & function)
   write_debug(out, function.debug_location);
   out << " {\n";
   for(std::size_t i = 0; i < function.slots.size(); ++i)
-    out << "  slot " << function.slots[i].first << " : "
-        << lowir_type_text(function.slots[i].second) << '\n';
+    out << "  slot " << lowir_slot_name(function, function.slots[i]) << " : "
+        << lowir_type_text(lowir_slot_type(function, function.slots[i])) << '\n';
   if(!function.slots.empty()) out << '\n';
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     if(i) out << '\n';

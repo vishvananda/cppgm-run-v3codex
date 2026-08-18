@@ -795,7 +795,8 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		struct LocalLocation { size_t line = 0; size_t statement = 1; size_t rhs = 1; };
 		unordered_map<string, LocalLocation> locals;
 		for(size_t i = 0; i < function.slots.size(); ++i) {
-			const string name = function.slots[i].first.substr(1);
+			const string name = lowir_model::lowir_slot_name(
+				function, function.slots[i]).substr(1);
 			if(parameters.count(name)) continue;
 			WordOccurrence local_occurrence;
 			if(find_word(name, function_line + 1, false, true, &local_occurrence)) {

@@ -689,6 +689,36 @@ blocks against `36b01df4` produced baseline/candidate medians of 5.500/5.440
 seconds user, 5.990/5.960 seconds wall, and 364,610/365,302 KiB peak RSS.  The
 paired block medians are -1.36% user, -0.92% wall, and +0.10% RSS.
 
+### CI6: compact LowIR slot identity
+
+Function-local storage operands now carry `SlotId`.  Source lowering writes
+the existing PA15 slot identity directly, while explicit textual LowIR and
+private compiler objects resolve each spelling once at their input boundary
+and release operand text.  Functions retain one stable dense slot-name and
+slot-type table for serialization and diagnostics; removing a slot from layout
+does not renumber later identities.
+
+PA37 slot liveness, forwarding, promotion, and dead-store state, plus native
+storage analysis, frame layout, and discarded-slot state, now use dense
+ID-indexed vectors.  Both inliners allocate fresh caller IDs and clone operands
+through direct ID maps.  A reducer exposed one remaining expression-CSE key
+that still compared cleared slot text; the key now includes compact operand
+identity, preventing distinct storage objects from aliasing.
+
+The frozen operand and instruction records remain 96 and 560 bytes.  The
+frozen object remains byte-identical with SHA-256
+`87bdd91604b0a3e62fdd0c7b2851a1104b2bf0f95c479f2c5a6613f9a6a19faa`.
+PA13, PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests; the full
+through-PA13 report is 933/933, and the PA39 file audit has no fatal findings.
+
+Three A/B/B/A blocks against `52607081` produced baseline/candidate medians of
+5.535/5.525 seconds user, 6.060/6.040 seconds wall, and 365,492/363,828 KiB
+peak RSS.  The paired block medians are +0.18% user, 0.00% wall, and -0.37%
+RSS, all inside the noise envelope.  This slice receives no timing credit by
+itself; it is retained because it removes the slot-name hot structures without
+growing core records or changing output.  Cumulative performance is judged
+after value identity removes the substantially larger string-map domain.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

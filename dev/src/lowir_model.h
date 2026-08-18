@@ -166,6 +166,7 @@ struct Operand
 
   bool has_int_value = false;
   BlockId block;
+  SlotId slot;
   std::string text;
   long long int_value = 0;
   long double float_value = 0.0L;
@@ -464,7 +465,9 @@ struct Function
   std::string name;
   std::vector<Parameter> params;
   LowType return_type;
-  std::vector<std::pair<std::string, LowType> > slots;
+  std::vector<SlotId> slots;
+  std::vector<std::string> slot_names;
+  std::vector<LowType> slot_types;
   std::vector<Block> blocks;
   std::vector<std::string> block_labels;
   std::uint32_t next_block_id = 0;
@@ -516,7 +519,11 @@ using LowirProgram = Program;
 BlockId allocate_lowir_block_id(Function & function,
                                const std::string & label = std::string());
 const std::string & lowir_block_label(const Function & function, BlockId block);
-void resolve_lowir_block_operands(Function & function);
+SlotId append_lowir_slot(Function & function, const std::string & name,
+                         const LowType & type);
+const std::string & lowir_slot_name(const Function & function, SlotId slot);
+const LowType & lowir_slot_type(const Function & function, SlotId slot);
+void resolve_lowir_function_operands(Function & function);
 
 enum LowirEntryPolicy
 {

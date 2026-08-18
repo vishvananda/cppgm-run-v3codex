@@ -29,6 +29,7 @@ const std::size_t kNoFunction = static_cast<std::size_t>(-1);
 const std::size_t kInlineInstructionBudget = 128;
 typedef std::unordered_map<std::string, Operand> ValueMap;
 typedef std::unordered_map<std::string, std::string> NameMap;
+typedef std::vector<lowir_model::SlotId> SlotMap;
 
 struct RenamedBlock
 {
@@ -65,6 +66,15 @@ Operand named_operand(Operand::Kind kind, const std::string & text,
   Operand result;
   result.kind = kind;
   result.text = text;
+  return result;
+}
+
+Operand slot_operand(lowir_model::SlotId slot, const LowType & type)
+{
+  Operand result;
+  result.kind = Operand::OP_SLOT;
+  result.slot = slot;
+  result.literal_type = type;
   return result;
 }
 
@@ -116,8 +126,10 @@ struct Names
       collect_generated_id(function.params[i].name, &site_ids);
     }
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
-      slots.insert(function.slots[i].first);
-      collect_generated_id(function.slots[i].first, &site_ids);
+      const std::string & slot =
+        lowir_model::lowir_slot_name(function, function.slots[i]);
+      slots.insert(slot);
+      collect_generated_id(slot, &site_ids);
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
       const std::string & label =
@@ -150,14 +162,14 @@ struct Names
 };
 
 void rename_operand(Operand * operand, const ValueMap & values,
-                    const NameMap & slots, const BlockMap & blocks)
+                    const SlotMap & slots, const BlockMap & blocks)
 {
   if(operand->kind == Operand::OP_TEMP) {
     const ValueMap::const_iterator found = values.find(operand->text);
     if(found != values.end()) *operand = found->second;
   } else if(operand->kind == Operand::OP_SLOT) {
-    const NameMap::const_iterator found = slots.find(operand->text);
-    if(found != slots.end()) operand->text = found->second;
+    const std::uint32_t id = operand->slot;
+    if(id < slots.size() && slots[id].valid()) operand->slot = slots[id];
   } else if(operand->kind == Operand::OP_LABEL) {
     const std::uint32_t id = operand->block;
     if(id < blocks.size() && blocks[id].id.valid())
@@ -167,7 +179,7 @@ void rename_operand(Operand * operand, const ValueMap & values,
 
 Instruction clone_instruction(const Instruction & source,
                               const ValueMap & values,
-                              const NameMap & slots,
+                              const SlotMap & slots,
                               const BlockMap & blocks)
 {
   Instruction result = source;
@@ -655,16 +667,19 @@ private:
   void build_maps(Function * caller, const Function & callee_function,
                   const Instruction & call,
                   const std::string & prefix, Names * names, ValueMap * values,
-                  NameMap * slots, BlockMap * blocks)
+                  SlotMap * slots, BlockMap * blocks)
   {
     if(callee_function.params.size() != call.args.size())
       throw std::runtime_error("inline call argument count mismatch");
     for(std::size_t i = 0; i < callee_function.params.size(); ++i)
       (*values)[callee_function.params[i].name] = call.args[i];
+    slots->resize(callee_function.slot_names.size());
     for(std::size_t i = 0; i < callee_function.slots.size(); ++i) {
+      const lowir_model::SlotId source = callee_function.slots[i];
       const std::string renamed = "$" + prefix +
-        callee_function.slots[i].first.substr(1);
-      (*slots)[callee_function.slots[i].first] = renamed;
+        lowir_model::lowir_slot_name(callee_function, source).substr(1);
+      (*slots)[source] = lowir_model::append_lowir_slot(
+        *caller, renamed, lowir_model::lowir_slot_type(callee_function, source));
       names->slots.insert(renamed);
     }
     blocks->resize(callee_function.next_block_id);
@@ -710,15 +725,10 @@ private:
       std::to_string(names->next_site()) + "__";
     ValueMap values;
     Function & caller = program_.functions[caller_index];
-    NameMap slots;
+    SlotMap slots;
     BlockMap blocks;
     build_maps(&caller, callee_function, call, prefix, names, &values, &slots,
                &blocks);
-    for(std::size_t i = 0; i < callee_function.slots.size(); ++i)
-      caller.slots.push_back(std::make_pair(
-        slots.find(callee_function.slots[i].first)->second,
-        callee_function.slots[i].second));
-
     for(std::size_t i = 0; i < source.instructions.size(); ++i) {
       const Instruction & instruction = source.instructions[i];
       if(instruction.kind != Instruction::IK_RETURN) {
@@ -743,7 +753,7 @@ private:
     const std::string prefix = "__o1inl" +
       std::to_string(names->next_site()) + "__";
     ValueMap values;
-    NameMap slots;
+    SlotMap slots;
     BlockMap blocks;
     build_maps(&caller, callee_function, call, prefix, names, &values, &slots,
                &blocks);
@@ -752,11 +762,6 @@ private:
     for(std::size_t i = 0; i < blocks.size(); ++i)
       if(blocks[i].id.valid())
         (*block_eh)[blocks[i].id] = inside_eh ? 1 : 0;
-    for(std::size_t i = 0; i < callee_function.slots.size(); ++i)
-      caller.slots.push_back(std::make_pair(
-        slots.find(callee_function.slots[i].first)->second,
-        callee_function.slots[i].second));
-
     std::size_t returns = 0;
     for(std::size_t b = 0; b < callee_function.blocks.size(); ++b)
       for(std::size_t j = 0; j < callee_function.blocks[b].instructions.size(); ++j)
@@ -765,11 +770,11 @@ private:
     const bool object_result =
       callee_function.return_type.kind == lowir_model::LTK_OBJECT;
     const bool has_result = !call.call_returns_void;
-    std::string merge_slot;
+    lowir_model::SlotId merge_slot;
     if(has_result && returns > 1) {
-      merge_slot = names->unique_slot("$" + prefix +
+      const std::string name = names->unique_slot("$" + prefix +
         (object_result ? "retmergeobj__" : "retmerge__"), call.type);
-      caller.slots.push_back(std::make_pair(merge_slot, call.type));
+      merge_slot = lowir_model::append_lowir_slot(caller, name, call.type);
     }
 
     std::vector<Instruction> tail(
@@ -860,12 +865,12 @@ private:
             merge.byte_count = call.type.storage_size;
             merge.byte_alignment = call.type.alignment;
             merge.first = returned;
-            merge.second = named_operand(Operand::OP_SLOT, merge_slot, call.type);
+            merge.second = slot_operand(merge_slot, call.type);
           } else {
             merge.kind = Instruction::IK_STORE;
             merge.type = call.type;
             merge.first = returned;
-            merge.second = named_operand(Operand::OP_SLOT, merge_slot, call.type);
+            merge.second = slot_operand(merge_slot, call.type);
           }
           block.instructions.push_back(merge);
         } else if(has_result && object_result) {
@@ -886,7 +891,7 @@ private:
       load.kind = Instruction::IK_LOAD;
       load.dest = call.dest;
       load.type = call.type;
-      load.first = named_operand(Operand::OP_SLOT, merge_slot, call.type);
+      load.first = slot_operand(merge_slot, call.type);
       continuation_block.instructions.push_back(load);
     }
     continuation_block.instructions.insert(continuation_block.instructions.end(),
@@ -898,7 +903,7 @@ private:
       std::make_move_iterator(inserted.end()));
     if(has_result && object_result) {
       const Operand replacement = returns > 1 ?
-        named_operand(Operand::OP_SLOT, merge_slot, call.type) : single_object_return;
+        slot_operand(merge_slot, call.type) : single_object_return;
       (*replacements)[call.dest] = replacement;
     }
     if(has_result && !object_result && returns == 1 && have_single_scalar_return)

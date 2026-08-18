@@ -51,16 +51,17 @@ struct FunctionFacts
 
 struct StorageFacts
 {
-  std::unordered_map<std::string, std::string> parameter_slot_aliases;
-  std::unordered_map<std::string, std::string> promoted_parameter_slots;
-  std::unordered_map<std::string, std::string> forwarded_parameter_slots;
+  std::vector<std::string> parameter_slot_aliases;
+  std::vector<std::string> promoted_parameter_slots;
+  std::vector<std::string> forwarded_parameter_slots;
   std::unordered_set<std::string> promoted_parameters;
   std::unordered_set<std::string> promoted_parameters_across_call;
   // Indexed by LowIR parameter ordinal; each mask uses the fixed x86 GPR IDs.
   std::vector<unsigned> promoted_parameter_clobbers;
   std::unordered_set<std::string> dead_slot_only_parameters;
-  std::unordered_set<std::string> dead_store_slots;
+  std::vector<unsigned char> dead_store_slots;
   std::unordered_set<std::string> tls_store_inputs;
+  bool has_promoted_parameter_slots = false;
 };
 
 unsigned register_mask(X64Register reg);

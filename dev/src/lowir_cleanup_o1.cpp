@@ -114,7 +114,8 @@ bool same_operand(const Operand & left, const Operand & right)
     left.address_binding == right.address_binding &&
     left.has_int_value == right.has_int_value &&
     (left.kind == Operand::OP_LABEL ? left.block == right.block :
-                                      left.text == right.text) &&
+     left.kind == Operand::OP_SLOT ? left.slot == right.slot :
+                                     left.text == right.text) &&
     left.int_value == right.int_value &&
     same_type(left.literal_type, right.literal_type);
 }
@@ -126,6 +127,8 @@ std::size_t operand_hash(const Operand & operand)
   combine_hash(&result, operand.has_int_value ? 1 : 0);
   combine_hash(&result, operand.kind == Operand::OP_LABEL ?
     static_cast<std::uint32_t>(operand.block) :
+    operand.kind == Operand::OP_SLOT ?
+    static_cast<std::uint32_t>(operand.slot) :
     std::hash<std::string>()(operand.text));
   combine_hash(&result, std::hash<long long>()(operand.int_value));
   combine_hash(&result, type_hash(operand.literal_type));

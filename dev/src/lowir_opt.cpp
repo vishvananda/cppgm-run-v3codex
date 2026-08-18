@@ -164,7 +164,10 @@ bool operator!=(const PassAllocator<T> & left,
 
 bool same_operand(const Operand & a, const Operand & b)
 {
-  return a.kind == b.kind && a.text == b.text;
+  if(a.kind != b.kind) return false;
+  if(a.kind == Operand::OP_LABEL) return a.block == b.block;
+  if(a.kind == Operand::OP_SLOT) return a.slot == b.slot;
+  return a.text == b.text;
 }
 
 Operand integer_operand(long long value, const LowType & type)
@@ -311,7 +314,16 @@ std::string reverse_compare(const std::string & op)
 bool operand_less(const Operand & a, const Operand & b)
 {
   if(a.kind != b.kind) return a.kind < b.kind;
+  if(a.kind == Operand::OP_SLOT) return a.slot < b.slot;
+  if(a.kind == Operand::OP_LABEL) return a.block < b.block;
   return a.text < b.text;
+}
+
+std::uint32_t operand_compact_identity(const Operand & operand)
+{
+  if(operand.kind == Operand::OP_SLOT) return operand.slot;
+  if(operand.kind == Operand::OP_LABEL) return operand.block;
+  return lowir_model::kInvalidCompactId;
 }
 
 struct ExpressionKey
@@ -326,8 +338,10 @@ struct ExpressionKey
   std::size_t source_type_alignment;
   lowir_model::IndexProjectionKind index_projection;
   Operand::Kind first_kind;
+  std::uint32_t first_identity;
   std::string first;
   Operand::Kind second_kind;
+  std::uint32_t second_identity;
   std::string second;
 
   bool operator==(const ExpressionKey & other) const
@@ -339,8 +353,10 @@ struct ExpressionKey
       source_type_size == other.source_type_size &&
       source_type_alignment == other.source_type_alignment &&
       index_projection == other.index_projection &&
-      first_kind == other.first_kind && first == other.first &&
-      second_kind == other.second_kind && second == other.second;
+      first_kind == other.first_kind &&
+      first_identity == other.first_identity && first == other.first &&
+      second_kind == other.second_kind &&
+      second_identity == other.second_identity && second == other.second;
   }
 };
 
@@ -364,8 +380,10 @@ struct ExpressionKeyHash
     combine_hash(&result, key.source_type_alignment);
     combine_hash(&result, static_cast<std::size_t>(key.index_projection));
     combine_hash(&result, static_cast<std::size_t>(key.first_kind));
+    combine_hash(&result, key.first_identity);
     combine_hash(&result, std::hash<std::string>()(key.first));
     combine_hash(&result, static_cast<std::size_t>(key.second_kind));
+    combine_hash(&result, key.second_identity);
     combine_hash(&result, std::hash<std::string>()(key.second));
     return result;
   }
@@ -394,8 +412,10 @@ ExpressionKey expression_key(const Instruction & ins)
   key.source_type_alignment = ins.source_type.alignment;
   key.index_projection = ins.index_projection;
   key.first_kind = first->kind;
+  key.first_identity = operand_compact_identity(*first);
   key.first = first->text;
   key.second_kind = second->kind;
+  key.second_identity = operand_compact_identity(*second);
   key.second = second->text;
   return key;
 }
@@ -1621,12 +1641,8 @@ bool exceeds_state_budget(std::size_t blocks, std::size_t facts,
 bool eliminate_dead_slot_stores(Function * function, Stats * stats)
 {
   if(function->slots.empty() || function->blocks.empty()) return false;
-  PassArena arena;
-  typedef PassAllocator<std::string> StringAllocator;
-  std::unordered_set<std::string, std::hash<std::string>,
-    std::equal_to<std::string>, StringAllocator> escaped(
-      0, std::hash<std::string>(), std::equal_to<std::string>(),
-      StringAllocator(&arena));
+  const std::size_t slot_count = function->slot_names.size();
+  std::vector<unsigned char> escaped(slot_count, 0);
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
@@ -1635,10 +1651,10 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
         if(operands[k]->kind == Operand::OP_SLOT &&
            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
              (ins.kind == Instruction::IK_STORE && k == 1)))
-          escaped.insert(operands[k]->text);
+          escaped[operands[k]->slot] = 1;
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_SLOT)
-          escaped.insert(ins.args[k].text);
+          escaped[ins.args[k].slot] = 1;
     }
   std::size_t instruction_total = 0;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
@@ -1672,10 +1688,7 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     }
   }
   if(linear_single_block) {
-    typedef std::unordered_set<std::string, std::hash<std::string>,
-      std::equal_to<std::string>, StringAllocator> LiveSlots;
-    LiveSlots live(0, std::hash<std::string>(), std::equal_to<std::string>(),
-                   StringAllocator(&arena));
+    std::vector<unsigned char> live(slot_count, 0);
     std::vector<Instruction> & instructions =
       function->blocks[0].instructions;
     std::vector<unsigned char> dead(instructions.size(), 0);
@@ -1684,25 +1697,25 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
       Instruction & ins = instructions[index - 1];
       if(ins.kind == Instruction::IK_LOAD &&
          ins.first.kind == Operand::OP_SLOT)
-        live.insert(ins.first.text);
+        live[ins.first.slot] = 1;
       else if(ins.kind == Instruction::IK_STORE &&
               ins.second.kind == Operand::OP_SLOT &&
-              !escaped.count(ins.second.text)) {
-        if(!live.count(ins.second.text)) {
+              !escaped[ins.second.slot]) {
+        if(!live[ins.second.slot]) {
           dead[index - 1] = 1;
           ++removed;
           if(stats) ++stats->rewrites;
           continue;
         }
-        live.erase(ins.second.text);
+        live[ins.second.slot] = 0;
       } else {
         const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
         for(std::size_t i = 0; i < 3; ++i)
           if(operands[i]->kind == Operand::OP_SLOT)
-            live.insert(operands[i]->text);
+            live[operands[i]->slot] = 1;
         for(std::size_t i = 0; i < ins.args.size(); ++i)
           if(ins.args[i].kind == Operand::OP_SLOT)
-            live.insert(ins.args[i].text);
+            live[ins.args[i].slot] = 1;
       }
     }
     if(!removed) return false;
@@ -1716,14 +1729,16 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     return true;
   }
   const Graph graph = build_graph(*function, stats);
-  typedef std::unordered_set<std::string> LiveSlots;
-  std::vector<LiveSlots> live_in(function->blocks.size());
+  typedef std::vector<unsigned char> LiveSlots;
+  std::vector<LiveSlots> live_in(
+    function->blocks.size(), LiveSlots(slot_count, 0));
   const auto transfer = [&](std::size_t block) {
-    LiveSlots live;
+    LiveSlots live(slot_count, 0);
     std::vector<std::size_t> successors;
     normal_successors(*function, graph, block, &successors);
     for(std::size_t i = 0; i < successors.size(); ++i)
-      live.insert(live_in[successors[i]].begin(), live_in[successors[i]].end());
+      for(std::size_t slot = 0; slot < slot_count; ++slot)
+        live[slot] |= live_in[successors[i]][slot];
     std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
     for(std::size_t index = instructions.size(); index > 0; --index) {
@@ -1732,20 +1747,23 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
           ins.kind == Instruction::IK_EH_CLEANUP) &&
          graph.find(ins.first.block) != kNoBlockIndex) {
         const LiveSlots & handler = live_in[graph.find(ins.first.block)];
-        live.insert(handler.begin(), handler.end());
+        for(std::size_t slot = 0; slot < slot_count; ++slot)
+          live[slot] |= handler[slot];
       }
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
-        live.insert(ins.first.text);
+        live[ins.first.slot] = 1;
       else if(ins.kind == Instruction::IK_STORE &&
               ins.second.kind == Operand::OP_SLOT &&
-              !escaped.count(ins.second.text))
-        live.erase(ins.second.text);
+              !escaped[ins.second.slot])
+        live[ins.second.slot] = 0;
       else {
         const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
         for(std::size_t i = 0; i < 3; ++i)
-          if(operands[i]->kind == Operand::OP_SLOT) live.insert(operands[i]->text);
+          if(operands[i]->kind == Operand::OP_SLOT)
+            live[operands[i]->slot] = 1;
         for(std::size_t i = 0; i < ins.args.size(); ++i)
-          if(ins.args[i].kind == Operand::OP_SLOT) live.insert(ins.args[i].text);
+          if(ins.args[i].kind == Operand::OP_SLOT)
+            live[ins.args[i].slot] = 1;
       }
       if(stats) ++stats->instruction_visits;
     }
@@ -1775,11 +1793,12 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
   bool changed = false;
   for(std::size_t reverse = function->blocks.size(); reverse > 0; --reverse) {
     const std::size_t block = reverse - 1;
-    LiveSlots live;
+    LiveSlots live(slot_count, 0);
     std::vector<std::size_t> successors;
     normal_successors(*function, graph, block, &successors);
     for(std::size_t i = 0; i < successors.size(); ++i)
-      live.insert(live_in[successors[i]].begin(), live_in[successors[i]].end());
+      for(std::size_t slot = 0; slot < slot_count; ++slot)
+        live[slot] |= live_in[successors[i]][slot];
     std::vector<Instruction> kept_reverse;
     std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
@@ -1789,25 +1808,28 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
           ins.kind == Instruction::IK_EH_CLEANUP) &&
          graph.find(ins.first.block) != kNoBlockIndex) {
         const LiveSlots & handler = live_in[graph.find(ins.first.block)];
-        live.insert(handler.begin(), handler.end());
+        for(std::size_t slot = 0; slot < slot_count; ++slot)
+          live[slot] |= handler[slot];
       }
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
-        live.insert(ins.first.text);
+        live[ins.first.slot] = 1;
       else if(ins.kind == Instruction::IK_STORE &&
               ins.second.kind == Operand::OP_SLOT &&
-              !escaped.count(ins.second.text)) {
-        if(!live.count(ins.second.text)) {
+              !escaped[ins.second.slot]) {
+        if(!live[ins.second.slot]) {
           changed = true;
           if(stats) ++stats->rewrites;
           continue;
         }
-        live.erase(ins.second.text);
+        live[ins.second.slot] = 0;
       } else {
         const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
         for(std::size_t i = 0; i < 3; ++i)
-          if(operands[i]->kind == Operand::OP_SLOT) live.insert(operands[i]->text);
+          if(operands[i]->kind == Operand::OP_SLOT)
+            live[operands[i]->slot] = 1;
         for(std::size_t i = 0; i < ins.args.size(); ++i)
-          if(ins.args[i].kind == Operand::OP_SLOT) live.insert(ins.args[i].text);
+          if(ins.args[i].kind == Operand::OP_SLOT)
+            live[ins.args[i].slot] = 1;
       }
       kept_reverse.push_back(std::move(ins));
     }
@@ -1820,40 +1842,30 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
 bool remove_dead_slots(Function * function, Stats * stats)
 {
   if(function->slots.empty()) return false;
-  PassArena arena;
-  typedef PassAllocator<std::pair<const std::string, std::size_t> >
-    SizeAllocator;
-  typedef PassAllocator<std::string> StringAllocator;
-  std::unordered_map<std::string, std::size_t, std::hash<std::string>,
-    std::equal_to<std::string>, SizeAllocator> loads(
-      0, std::hash<std::string>(), std::equal_to<std::string>(),
-      SizeAllocator(&arena));
-  std::unordered_set<std::string, std::hash<std::string>,
-    std::equal_to<std::string>, StringAllocator> escaped(
-      0, std::hash<std::string>(), std::equal_to<std::string>(),
-      StringAllocator(&arena));
+  std::vector<std::size_t> loads(function->slot_names.size(), 0);
+  std::vector<unsigned char> escaped(function->slot_names.size(), 0);
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
-        ++loads[ins.first.text];
+        ++loads[ins.first.slot];
       const Operand * values[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(values[k]->kind == Operand::OP_SLOT &&
            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
              (ins.kind == Instruction::IK_STORE && k == 1)))
-          escaped.insert(values[k]->text);
+          escaped[values[k]->slot] = 1;
       for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_SLOT) escaped.insert(ins.args[k].text);
+        if(ins.args[k].kind == Operand::OP_SLOT)
+          escaped[ins.args[k].slot] = 1;
     }
-  std::unordered_set<std::string, std::hash<std::string>,
-    std::equal_to<std::string>, StringAllocator> dead(
-      0, std::hash<std::string>(), std::equal_to<std::string>(),
-      StringAllocator(&arena));
-  for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(!loads[function->slots[i].first] && !escaped.count(function->slots[i].first))
-      dead.insert(function->slots[i].first);
-  if(dead.empty()) return false;
+  std::vector<unsigned char> dead(function->slot_names.size(), 0);
+  std::size_t dead_count = 0;
+  for(std::size_t i = 0; i < function->slots.size(); ++i) {
+    const lowir_model::SlotId slot = function->slots[i];
+    if(!loads[slot] && !escaped[slot]) { dead[slot] = 1; ++dead_count; }
+  }
+  if(dead_count == 0) return false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     std::vector<Instruction> & instructions =
       function->blocks[i].instructions;
@@ -1862,9 +1874,11 @@ bool remove_dead_slots(Function * function, Stats * stats)
     for(std::size_t j = 0; j < original_size; ++j) {
       Instruction & ins = instructions[j];
       if((ins.kind == Instruction::IK_LOAD &&
-          dead.count(ins.first.text)) ||
+          ins.first.kind == Operand::OP_SLOT &&
+          dead[ins.first.slot]) ||
          (ins.kind == Instruction::IK_STORE &&
-          dead.count(ins.second.text))) {
+          ins.second.kind == Operand::OP_SLOT &&
+          dead[ins.second.slot])) {
         if(stats) ++stats->rewrites;
         continue;
       }
@@ -1876,7 +1890,7 @@ bool remove_dead_slots(Function * function, Stats * stats)
   const std::size_t original_slots = function->slots.size();
   std::size_t kept_slots = 0;
   for(std::size_t i = 0; i < original_slots; ++i)
-    if(!dead.count(function->slots[i].first)) {
+    if(!dead[function->slots[i]]) {
       if(kept_slots != i)
         function->slots[kept_slots] = std::move(function->slots[i]);
       ++kept_slots;
@@ -1922,10 +1936,8 @@ bool local_slot_forward(Function * function, Stats * stats)
     PassArena block_arena;
     typedef PassAllocator<std::pair<const std::string, Operand> >
       OperandAllocator;
-    std::unordered_map<std::string, Operand, std::hash<std::string>,
-      std::equal_to<std::string>, OperandAllocator> values(
-        0, std::hash<std::string>(), std::equal_to<std::string>(),
-        OperandAllocator(&block_arena));
+    std::vector<Operand> values(function->slot_names.size());
+    std::vector<unsigned char> has_value(function->slot_names.size(), 0);
     std::unordered_map<std::string, Operand, std::hash<std::string>,
       std::equal_to<std::string>, OperandAllocator> aliases(
         0, std::hash<std::string>(), std::equal_to<std::string>(),
@@ -1952,26 +1964,27 @@ bool local_slot_forward(Function * function, Stats * stats)
         if(slot_operands[k]->kind == Operand::OP_SLOT &&
            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
              (ins.kind == Instruction::IK_STORE && k == 1)))
-          values.erase(slot_operands[k]->text);
+          has_value[slot_operands[k]->slot] = 0;
       if((ins.kind == Instruction::IK_STORE ||
           ins.kind == Instruction::IK_ATOMIC_STORE) &&
          ins.second.kind != Operand::OP_SLOT)
-        values.clear();
+        std::fill(has_value.begin(), has_value.end(), 0);
       if(ins.kind == Instruction::IK_STORE && ins.second.kind == Operand::OP_SLOT) {
-        values[ins.second.text] = ins.first;
+        values[ins.second.slot] = ins.first;
+        has_value[ins.second.slot] = 1;
       } else if(ins.kind == Instruction::IK_LOAD &&
-                ins.first.kind == Operand::OP_SLOT && values.count(ins.first.text) &&
+                ins.first.kind == Operand::OP_SLOT && has_value[ins.first.slot] &&
                 (!use_blocks.count(ins.dest) ||
                  (!use_blocks.find(ins.dest)->second.multiple &&
                   use_blocks.find(ins.dest)->second.first == i))) {
-        aliases[ins.dest] = values[ins.first.text];
+        aliases[ins.dest] = values[ins.first.slot];
         changed = true;
         if(stats) ++stats->rewrites;
         continue;
       } else {
         if(ins.kind == Instruction::IK_CALL || ins.kind == Instruction::IK_COPYOBJ ||
            ins.kind == Instruction::IK_ZEROINIT || is_eh_instruction(ins.kind))
-          values.clear();
+          std::fill(has_value.begin(), has_value.end(), 0);
       }
       if(kept != j) instructions[kept] = std::move(ins);
       ++kept;
@@ -2001,34 +2014,27 @@ bool forward_single_store_slots(Function * function, Stats * stats)
     std::string destination;
   };
   PassArena arena;
-  typedef PassAllocator<std::pair<const std::string, std::size_t> >
-    SizeAllocator;
   typedef PassAllocator<std::pair<const std::string, Operand> >
     OperandAllocator;
   typedef PassAllocator<std::string> StringAllocator;
-  std::unordered_map<std::string, std::size_t, std::hash<std::string>,
-    std::equal_to<std::string>, SizeAllocator> slot_index(
-      0, std::hash<std::string>(), std::equal_to<std::string>(),
-      SizeAllocator(&arena));
-  slot_index.reserve(function->slots.size());
-  std::vector<SlotFact> facts(function->slots.size());
-  std::vector<unsigned char> eligible(function->slots.size(), 0);
+  std::vector<SlotFact> facts(function->slot_names.size());
+  std::vector<unsigned char> eligible(function->slot_names.size(), 0);
   std::vector<LoadFact> loads;
   std::unordered_set<std::string, std::hash<std::string>,
     std::equal_to<std::string>, StringAllocator> storage_temporaries(
       0, std::hash<std::string>(), std::equal_to<std::string>(),
       StringAllocator(&arena));
   std::size_t first_exception_edge = kNoBlock;
-  for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(function->slots[i].second.kind != lowir_model::LTK_OBJECT) {
-      slot_index[function->slots[i].first] = i;
-      eligible[i] = 1;
-    }
-  const auto find_slot = [&slot_index](const Operand & operand) {
+  for(std::size_t i = 0; i < function->slots.size(); ++i) {
+    const lowir_model::SlotId slot = function->slots[i];
+    if(lowir_model::lowir_slot_type(*function, slot).kind !=
+       lowir_model::LTK_OBJECT)
+      eligible[slot] = 1;
+  }
+  const auto find_slot = [&eligible](const Operand & operand) {
     if(operand.kind != Operand::OP_SLOT) return kNoBlock;
-    const std::unordered_map<std::string, std::size_t>::const_iterator found =
-      slot_index.find(operand.text);
-    return found == slot_index.end() ? kNoBlock : found->second;
+    const std::uint32_t slot = operand.slot;
+    return slot < eligible.size() && eligible[slot] ? slot : kNoBlock;
   };
   for(std::size_t b = 0; b < function->blocks.size(); ++b)
     for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
@@ -2151,7 +2157,7 @@ bool forward_single_store_slots(Function * function, Stats * stats)
   const std::size_t original_slots = function->slots.size();
   std::size_t kept_slots = 0;
   for(std::size_t i = 0; i < original_slots; ++i)
-    if(!forwarded[i]) {
+    if(!forwarded[function->slots[i]]) {
       if(kept_slots != i)
         function->slots[kept_slots] = std::move(function->slots[i]);
       ++kept_slots;
@@ -2164,6 +2170,8 @@ struct AbstractState
 {
   bool executable = false;
   std::unordered_map<std::string, Operand> values;
+  std::vector<Operand> slots;
+  std::vector<unsigned char> known_slots;
 };
 
 bool meet_state(AbstractState * target, const AbstractState & incoming)
@@ -2180,14 +2188,28 @@ bool meet_state(AbstractState * target, const AbstractState & incoming)
       changed = true;
     } else ++it;
   }
+  for(std::size_t slot = 0; slot < target->known_slots.size(); ++slot)
+    if(target->known_slots[slot] &&
+       (!incoming.known_slots[slot] ||
+        !same_operand(target->slots[slot], incoming.slots[slot]))) {
+      target->known_slots[slot] = 0;
+      changed = true;
+    }
   return changed;
 }
 
 Operand abstract_resolve(Operand value, const AbstractState & state)
 {
-  for(std::size_t step = 0; step < state.values.size() &&
+  for(std::size_t step = 0;
+      step < state.values.size() + state.slots.size() &&
       (value.kind == Operand::OP_TEMP || value.kind == Operand::OP_SLOT);
       ++step) {
+    if(value.kind == Operand::OP_SLOT) {
+      const std::uint32_t slot = value.slot;
+      if(slot >= state.known_slots.size() || !state.known_slots[slot]) break;
+      value = state.slots[slot];
+      continue;
+    }
     const std::unordered_map<std::string, Operand>::const_iterator found =
       state.values.find(value.text);
     if(found == state.values.end()) break;
@@ -2209,10 +2231,15 @@ void strip_local_facts(AbstractState * state,
       it = state->values.erase(it);
     else ++it;
   }
+  for(std::size_t slot = 0; slot < state->known_slots.size(); ++slot)
+    if(state->known_slots[slot] &&
+       state->slots[slot].kind == Operand::OP_TEMP &&
+       locals.count(state->slots[slot].text))
+      state->known_slots[slot] = 0;
 }
 
 void rewrite_promoted_slots(Function * function,
-                            const std::unordered_set<std::string> & promoted,
+                            const std::vector<unsigned char> & promoted,
                             const std::unordered_set<std::string> & storage,
                             const std::unordered_map<std::string, Operand> & loads,
                             Stats * stats)
@@ -2253,7 +2280,8 @@ void rewrite_promoted_slots(Function * function,
         *operands[k] = resolve(*operands[k]);
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         ins.args[k] = resolve(ins.args[k]);
-      if(ins.kind == Instruction::IK_LOAD && promoted.count(ins.first.text) &&
+      if(ins.kind == Instruction::IK_LOAD &&
+         ins.first.kind == Operand::OP_SLOT && promoted[ins.first.slot] &&
          storage.count(ins.dest)) {
         ins.first = resolve_load(loads.find(ins.dest)->second);
         ins.kind = ins.first.kind == Operand::OP_INTEGER ||
@@ -2263,9 +2291,11 @@ void rewrite_promoted_slots(Function * function,
         ins.third = Operand();
         if(stats) ++stats->rewrites;
       } else if((ins.kind == Instruction::IK_LOAD &&
-                 promoted.count(ins.first.text)) ||
+                 ins.first.kind == Operand::OP_SLOT &&
+                 promoted[ins.first.slot]) ||
                 (ins.kind == Instruction::IK_STORE &&
-                 promoted.count(ins.second.text))) {
+                 ins.second.kind == Operand::OP_SLOT &&
+                 promoted[ins.second.slot])) {
         if(stats) ++stats->rewrites;
         continue;
       }
@@ -2277,7 +2307,7 @@ void rewrite_promoted_slots(Function * function,
   const std::size_t original_slots = function->slots.size();
   std::size_t kept_slots = 0;
   for(std::size_t i = 0; i < original_slots; ++i)
-    if(!promoted.count(function->slots[i].first)) {
+    if(!promoted[function->slots[i]]) {
       if(kept_slots != i)
         function->slots[kept_slots] = std::move(function->slots[i]);
       ++kept_slots;
@@ -2285,30 +2315,51 @@ void rewrite_promoted_slots(Function * function,
   function->slots.resize(kept_slots);
 }
 
-bool promote_slots(Function * function, Stats * stats)
+std::vector<unsigned char> find_promotable_slots(
+    const Function & function, std::size_t * count)
 {
-  if(function->blocks.empty() || function->slots.empty()) return false;
-  std::unordered_set<std::string> eligible;
-  for(std::size_t i = 0; i < function->slots.size(); ++i)
-    if(function->slots[i].second.kind != lowir_model::LTK_OBJECT)
-      eligible.insert(function->slots[i].first);
-  for(std::size_t i = 0; i < function->blocks.size(); ++i)
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[i].instructions[j];
+  std::vector<unsigned char> eligible(function.slot_names.size(), 0);
+  *count = 0;
+  for(std::size_t i = 0; i < function.slots.size(); ++i) {
+    const lowir_model::SlotId slot = function.slots[i];
+    if(lowir_model::lowir_slot_type(function, slot).kind !=
+       lowir_model::LTK_OBJECT) {
+      eligible[slot] = 1;
+      ++*count;
+    }
+  }
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function.blocks[i].instructions[j];
       const Operand * values[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(values[k]->kind == Operand::OP_SLOT &&
-           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)))
-          eligible.erase(values[k]->text);
+          !((ins.kind == Instruction::IK_LOAD && k == 0) ||
+             (ins.kind == Instruction::IK_STORE && k == 1)) &&
+           eligible[values[k]->slot]) {
+          eligible[values[k]->slot] = 0;
+          --*count;
+        }
       for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_SLOT) eligible.erase(ins.args[k].text);
-  }
-  if(eligible.empty()) return false;
+        if(ins.args[k].kind == Operand::OP_SLOT && eligible[ins.args[k].slot]) {
+          eligible[ins.args[k].slot] = 0;
+          --*count;
+        }
+    }
+  return eligible;
+}
+
+bool promote_slots(Function * function, Stats * stats)
+{
+  if(function->blocks.empty() || function->slots.empty()) return false;
+  std::size_t eligible_count = 0;
+  const std::vector<unsigned char> eligible =
+    find_promotable_slots(*function, &eligible_count);
+  if(eligible_count == 0) return false;
   std::size_t instruction_total = 0;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     instruction_total += function->blocks[i].instructions.size();
-  if(exceeds_state_budget(function->blocks.size(), eligible.size(),
+  if(exceeds_state_budget(function->blocks.size(), eligible_count,
                           instruction_total)) {
     if(stats) ++stats->budget_skips;
     return false;
@@ -2330,6 +2381,10 @@ bool promote_slots(Function * function, Stats * stats)
 
   const Graph graph = build_graph(*function, stats);
   std::vector<AbstractState> incoming(function->blocks.size());
+  for(std::size_t i = 0; i < incoming.size(); ++i) {
+    incoming[i].slots.resize(function->slot_names.size());
+    incoming[i].known_slots.assign(function->slot_names.size(), 0);
+  }
   incoming[0].executable = true;
   std::deque<std::size_t> work;
   std::vector<unsigned char> queued(function->blocks.size(), 0);
@@ -2366,17 +2421,17 @@ bool promote_slots(Function * function, Stats * stats)
       }
       if(ins.kind == Instruction::IK_STORE &&
          source.second.kind == Operand::OP_SLOT &&
-         eligible.count(source.second.text))
-        state.values[source.second.text] = ins.first;
+         eligible[source.second.slot]) {
+        state.slots[source.second.slot] = ins.first;
+        state.known_slots[source.second.slot] = 1;
+      }
       else if(ins.kind == Instruction::IK_LOAD &&
               source.first.kind == Operand::OP_SLOT &&
-              eligible.count(source.first.text)) {
-        const std::unordered_map<std::string, Operand>::const_iterator value =
-          state.values.find(source.first.text);
-        if(value != state.values.end()) {
-          state.values[ins.dest] = value->second;
+              eligible[source.first.slot]) {
+        if(state.known_slots[source.first.slot]) {
+          state.values[ins.dest] = state.slots[source.first.slot];
           local_temporaries.push_back(ins.dest);
-          replacements[block_index][ins.dest] = value->second;
+          replacements[block_index][ins.dest] = state.slots[source.first.slot];
         }
       } else if(!ins.dest.empty()) {
         Operand folded;
@@ -2466,17 +2521,18 @@ bool promote_slots(Function * function, Stats * stats)
           replacement_definitions[destination] = block;
       }
   }
-  std::unordered_set<std::string> slots_with_loads;
-  std::unordered_set<std::string> slots_with_unresolved_loads;
-  std::unordered_map<std::string, std::string> load_slots;
+  std::vector<unsigned char> slots_with_loads(function->slot_names.size(), 0);
+  std::vector<unsigned char> slots_with_unresolved_loads(
+    function->slot_names.size(), 0);
+  std::unordered_map<std::string, lowir_model::SlotId> load_slots;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
       if(ins.kind != Instruction::IK_LOAD || ins.first.kind != Operand::OP_SLOT ||
-         !eligible.count(ins.first.text))
+         !eligible[ins.first.slot])
         continue;
-      slots_with_loads.insert(ins.first.text);
-      load_slots[ins.dest] = ins.first.text;
+      slots_with_loads[ins.first.slot] = 1;
+      load_slots[ins.dest] = ins.first.slot;
       const std::unordered_map<std::string, Operand>::const_iterator replacement =
         replacements[i].find(ins.dest);
       bool textually_available = replacement != replacements[i].end();
@@ -2488,20 +2544,25 @@ bool promote_slots(Function * function, Stats * stats)
           definition->second <= i;
       }
       if(!textually_available)
-        slots_with_unresolved_loads.insert(ins.first.text);
+        slots_with_unresolved_loads[ins.first.slot] = 1;
     }
-  std::unordered_set<std::string> promoted;
-  for(std::unordered_set<std::string>::const_iterator slot = eligible.begin();
-      slot != eligible.end(); ++slot)
-    if(slots_with_loads.count(*slot) && !slots_with_unresolved_loads.count(*slot))
-      promoted.insert(*slot);
-  if(promoted.empty()) return false;
+  std::vector<unsigned char> promoted(function->slot_names.size(), 0);
+  std::size_t promoted_count = 0;
+  for(std::size_t i = 0; i < function->slots.size(); ++i) {
+    const lowir_model::SlotId slot = function->slots[i];
+    if(eligible[slot] && slots_with_loads[slot] &&
+       !slots_with_unresolved_loads[slot]) {
+      promoted[slot] = 1;
+      ++promoted_count;
+    }
+  }
+  if(promoted_count == 0) return false;
   std::unordered_map<std::string, Operand> load_aliases;
   for(std::size_t i = 0; i < replacements.size(); ++i)
     for(std::unordered_map<std::string, Operand>::const_iterator it =
           replacements[i].begin(); it != replacements[i].end(); ++it)
       if(load_slots.count(it->first) &&
-         promoted.count(load_slots.find(it->first)->second))
+         promoted[load_slots.find(it->first)->second])
         load_aliases[it->first] = it->second;
   rewrite_promoted_slots(function, promoted, storage_temporaries,
     load_aliases, stats);

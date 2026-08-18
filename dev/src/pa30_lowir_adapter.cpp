@@ -99,7 +99,7 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		if (operand.id >= function.slots.size())
 			throw std::logic_error("invalid typed LowIR slot operand");
 		result.kind = lowir_model::Operand::OP_SLOT;
-		result.text = Dollar(function.slots[operand.id].name);
+		result.slot = lowir_model::SlotId(operand.id);
 		break;
 	case Operand::GLOBAL:
 	case Operand::FUNCTION:
@@ -649,10 +649,9 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		if (symbol.tls_for_symbol != kNoLowId)
 			result.metadata.tls_for_symbol =
 				At(source.symbols[symbol.tls_for_symbol].name);
-		result.slots.reserve(item.slots.size());
 		for (std::size_t j = 0; j < item.slots.size(); ++j)
-			result.slots.push_back(std::make_pair(
-				Dollar(item.slots[j].name), AdaptType(item.slots[j].type)));
+			lowir_model::append_lowir_slot(result, Dollar(item.slots[j].name),
+				AdaptType(item.slots[j].type));
 		result.blocks.reserve(item.block_order.size());
 		result.block_labels.resize(item.blocks.size());
 		result.next_block_id = static_cast<std::uint32_t>(item.blocks.size());

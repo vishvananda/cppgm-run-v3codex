@@ -660,7 +660,7 @@ private:
         if(block) throw ParseError("slot declaration after first block");
         const std::string name = named('$', "slot name");
         expect(":");
-        function.slots.push_back(std::make_pair(name, type()));
+        append_lowir_slot(function, name, type());
       } else if(accept("block")) {
         if(block && !terminated &&
            (block->instructions.empty() ||
@@ -1124,7 +1124,8 @@ private:
     for(std::size_t i = 0; i < function.params.size(); ++i)
       values[function.params[i].name] = &function.params[i].type;
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
-      if(!slots.emplace(function.slots[i].first, &function.slots[i].second).second)
+      if(!slots.emplace(lowir_slot_name(function, function.slots[i]),
+                        &lowir_slot_type(function, function.slots[i])).second)
         throw ParseError("duplicate slot");
     }
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
@@ -1386,7 +1387,7 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
   propagate_direct_call_boundaries(program);
   Validator(program, entry_policy).Validate();
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    resolve_lowir_block_operands(program.functions[i]);
+    resolve_lowir_function_operands(program.functions[i]);
   program.token_count = token_count;
   finalize_lowir_object_model(program);
   return program;

@@ -21,6 +21,7 @@ using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
 typedef std::unordered_map<std::string, std::string> RenameMap;
+typedef std::vector<lowir_model::SlotId> SlotMap;
 
 struct RenamedBlock
 {
@@ -61,7 +62,7 @@ struct InlineNames
     for(std::size_t i = 0; i < function.params.size(); ++i)
       values.insert(function.params[i].name);
     for(std::size_t i = 0; i < function.slots.size(); ++i)
-      slots.insert(function.slots[i].first);
+      slots.insert(lowir_model::lowir_slot_name(function, function.slots[i]));
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
       labels.insert(
         lowir_model::lowir_block_label(function, function.blocks[i].id));
@@ -212,7 +213,7 @@ private:
   }
 
   static void RenameOperand(Operand * operand, const RenameMap & values,
-                            const RenameMap & slots, const BlockMap & blocks)
+                            const SlotMap & slots, const BlockMap & blocks)
   {
     if(operand->kind == Operand::OP_LABEL) {
       const std::uint32_t id = operand->block;
@@ -221,8 +222,15 @@ private:
       operand->block = blocks[id].id;
       return;
     }
+    if(operand->kind == Operand::OP_SLOT) {
+      const std::uint32_t id = operand->slot;
+      if(id >= slots.size() || !slots[id].valid())
+        throw std::logic_error("force-inline slot has no renamed identity");
+      operand->slot = slots[id];
+      return;
+    }
     const RenameMap * map = operand->kind == Operand::OP_TEMP ? &values :
-      operand->kind == Operand::OP_SLOT ? &slots : 0;
+      0;
     if(!map) return;
     const RenameMap::const_iterator found = map->find(operand->text);
     if(found == map->end())
@@ -232,7 +240,7 @@ private:
 
   static Instruction CloneInstruction(const Instruction & source,
                                       const RenameMap & values,
-                                      const RenameMap & slots,
+                                      const SlotMap & slots,
                                       const BlockMap & blocks)
   {
     Instruction result = source;
@@ -252,13 +260,17 @@ private:
 
   void BuildRenameMaps(Function * caller, const Function & callee,
                        InlineNames * names,
-                       RenameMap * values, RenameMap * slots,
+                       RenameMap * values, SlotMap * slots,
                        BlockMap * blocks)
   {
     for(std::size_t i = 0; i < callee.params.size(); ++i)
       (*values)[callee.params[i].name] = names->value("parameter");
-    for(std::size_t i = 0; i < callee.slots.size(); ++i)
-      (*slots)[callee.slots[i].first] = names->slot("local");
+    slots->resize(callee.slot_names.size());
+    for(std::size_t i = 0; i < callee.slots.size(); ++i) {
+      const lowir_model::SlotId source = callee.slots[i];
+      (*slots)[source] = lowir_model::append_lowir_slot(
+        *caller, names->slot("local"), lowir_model::lowir_slot_type(callee, source));
+    }
     blocks->resize(callee.next_block_id);
     for(std::size_t i = 0; i < callee.blocks.size(); ++i) {
       RenamedBlock block;
@@ -294,9 +306,9 @@ private:
 
   Block CloneBlock(const Block & source, const Function & callee,
                    const Instruction & call, const RenameMap & values,
-                   const RenameMap & slots, const BlockMap & blocks,
+                   const SlotMap & slots, const BlockMap & blocks,
                    BlockId continuation,
-                   const std::string & result_slot)
+                   lowir_model::SlotId result_slot)
   {
     Block result;
     result.id = blocks[source.id].id;
@@ -314,7 +326,7 @@ private:
         store.first = instruction.first;
         RenameOperand(&store.first, values, slots, blocks);
         store.second.kind = Operand::OP_SLOT;
-        store.second.text = result_slot;
+        store.second.slot = result_slot;
         store.second.literal_type = callee.return_type;
         store.debug_location = instruction.debug_location;
         result.instructions.push_back(store);
@@ -328,19 +340,19 @@ private:
   Block BuildContinuation(const Instruction & call,
                           const std::vector<Instruction> & tail,
                           BlockId id,
-                          const std::string & result_slot)
+                          lowir_model::SlotId result_slot)
   {
     Block result;
     result.id = id;
     if(!call.call_returns_void) {
-      if(call.dest.empty() || result_slot.empty())
+      if(call.dest.empty() || !result_slot.valid())
         throw std::logic_error("force-inline value call has no result identity");
       Instruction load;
       load.kind = Instruction::IK_LOAD;
       load.dest = call.dest;
       load.type = call.type;
       load.first.kind = Operand::OP_SLOT;
-      load.first.text = result_slot;
+      load.first.slot = result_slot;
       load.first.literal_type = call.type;
       load.debug_location = call.debug_location;
       result.instructions.push_back(load);
@@ -357,7 +369,8 @@ private:
   {
     const Instruction call =
       caller->blocks[block_index].instructions[instruction_index];
-    RenameMap values, slots;
+    RenameMap values;
+    SlotMap slots;
     BlockMap blocks;
     BuildRenameMaps(caller, callee, names, &values, &slots, &blocks);
     const std::string prologue_label = names->label("prologue");
@@ -366,14 +379,10 @@ private:
       lowir_model::allocate_lowir_block_id(*caller, prologue_label);
     const BlockId continuation_id =
       lowir_model::allocate_lowir_block_id(*caller, continuation_label);
-    std::string result_slot;
-    if(!call.call_returns_void) {
-      result_slot = names->slot("result");
-      caller->slots.push_back(std::make_pair(result_slot, call.type));
-    }
-    for(std::size_t i = 0; i < callee.slots.size(); ++i)
-      caller->slots.push_back(std::make_pair(
-        slots.find(callee.slots[i].first)->second, callee.slots[i].second));
+    lowir_model::SlotId result_slot;
+    if(!call.call_returns_void)
+      result_slot = lowir_model::append_lowir_slot(
+        *caller, names->slot("result"), call.type);
     std::vector<Instruction> tail(
       caller->blocks[block_index].instructions.begin() + instruction_index + 1,
       caller->blocks[block_index].instructions.end());

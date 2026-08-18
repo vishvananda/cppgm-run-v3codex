@@ -179,6 +179,7 @@ private:
   std::string MemoryAt(const MemoryRef & memory, std::size_t byte_offset) const;
   std::string LocalMemory(const std::string & name) const;
   std::string LocalAddress(const std::string & name) const;
+  const std::string & SlotName(const Operand & slot) const;
   std::string BlockLabel(const std::string & block) const;
   std::string BlockLabel(const Operand & block) const;
   std::string EpilogueLabel() const;
@@ -456,7 +457,8 @@ void FunctionEmitter::BuildLayout()
     AddLocation(param.name, param.type, is_f80(param.type), used);
   }
   for(std::size_t i = 0; i < function_.slots.size(); ++i)
-    AddLocation(function_.slots[i].first, function_.slots[i].second, true, used);
+    AddLocation(lowir_model::lowir_slot_name(function_, function_.slots[i]),
+      lowir_model::lowir_slot_type(function_, function_.slots[i]), true, used);
   for(std::size_t b = 0; b < function_.blocks.size(); ++b)
     for(std::size_t i = 0; i < function_.blocks[b].instructions.size(); ++i) {
       const Instruction & ins = function_.blocks[b].instructions[i];
@@ -493,6 +495,11 @@ std::string FunctionEmitter::LocalAddress(const std::string & name) const
 std::string FunctionEmitter::BlockLabel(const std::string & block) const
 {
   return "fn__" + strip_sigil(function_.name) + "__" + strip_sigil(block);
+}
+
+const std::string & FunctionEmitter::SlotName(const Operand & slot) const
+{
+  return lowir_model::lowir_slot_name(function_, slot.slot);
 }
 
 std::string FunctionEmitter::BlockLabel(const Operand & block) const
@@ -605,7 +612,7 @@ void FunctionEmitter::EmitScalarValue(const Operand & value, const LowType & typ
     out_.Instruction("move" + std::to_string(move_width) + " " +
                      register_name(bank, move_width) + " " + literal);
   } else if(value.kind == Operand::OP_SLOT) {
-    out_.Instruction("isub64 " + reg64 + " bp " + LocalAddress(value.text));
+    out_.Instruction("isub64 " + reg64 + " bp " + LocalAddress(SlotName(value)));
   } else if(value.kind == Operand::OP_GLOBAL) {
     out_.Instruction("move64 " + reg64 + " " + owner_.SymbolLabel(value.text));
   } else {
@@ -624,7 +631,7 @@ void FunctionEmitter::EmitAddressValue(const Operand & value, char bank)
 {
   const std::string reg = register_name(bank, 64);
   if(value.kind == Operand::OP_SLOT) {
-    out_.Instruction("isub64 " + reg + " bp " + LocalAddress(value.text));
+    out_.Instruction("isub64 " + reg + " bp " + LocalAddress(SlotName(value)));
   } else if(value.kind == Operand::OP_GLOBAL) {
     out_.Instruction("move64 " + reg + " " + owner_.SymbolLabel(value.text));
   } else if(value.kind == Operand::OP_TEMP) {
@@ -642,7 +649,8 @@ void FunctionEmitter::EmitStorageLoad(const Operand & storage, const LowType & t
   const TypeShape item = shape(type);
   const std::string reg = register_name(bank, item.width);
   if(storage.kind == Operand::OP_SLOT)
-    out_.Instruction("move" + std::to_string(item.width) + " " + reg + " " + LocalMemory(storage.text));
+    out_.Instruction("move" + std::to_string(item.width) + " " + reg + " " +
+                     LocalMemory(SlotName(storage)));
   else if(storage.kind == Operand::OP_GLOBAL)
     out_.Instruction("move" + std::to_string(item.width) + " " + reg + " [" +
                      owner_.SymbolLabel(storage.text) + "]");
@@ -658,7 +666,8 @@ void FunctionEmitter::EmitStorageStore(const Operand & storage, const LowType & 
   const TypeShape item = shape(type);
   const std::string reg = register_name(bank, item.width);
   if(storage.kind == Operand::OP_SLOT)
-    out_.Instruction("move" + std::to_string(item.width) + " " + LocalMemory(storage.text) + " " + reg);
+    out_.Instruction("move" + std::to_string(item.width) + " " +
+                     LocalMemory(SlotName(storage)) + " " + reg);
   else if(storage.kind == Operand::OP_GLOBAL)
     out_.Instruction("move" + std::to_string(item.width) + " [" + owner_.SymbolLabel(storage.text) +
                      "] " + reg);

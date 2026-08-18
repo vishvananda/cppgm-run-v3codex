@@ -87,6 +87,9 @@ public:
         facts_.shared_storage_last_use.size();
     if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
     storage_facts_ = analyze_storage(source_, facts_, tls_wrappers_);
+    slot_offsets_.resize(source_.slot_names.size(), 0);
+    slot_offset_known_.assign(source_.slot_names.size(), 0);
+    discarded_slots_.assign(source_.slot_names.size(), 0);
     plan_variadic_register_save();
     bind_parameters();
     plan_slots();
@@ -137,7 +140,8 @@ public:
     const bool needs_call_scratch = uses_scalar_float_ ||
       (source_.metadata.keep_internal_alias && !facts_.calls.empty());
     target_.scratch_bytes = needs_call_scratch ? 48 : 0;
-    const std::size_t direct_parameter_bytes = storage_facts_.promoted_parameter_slots.empty() &&
+    const std::size_t direct_parameter_bytes =
+      !storage_facts_.has_promoted_parameter_slots &&
       !facts_.has_direct_branch_parameter ?
       abi::direct_parameter_bytes(source_.params) : 0;
     if(needs_call_scratch) {
@@ -174,10 +178,10 @@ private:
   std::unordered_map<std::string, ValueFact> values_;
   std::vector<const std::string *> live_gpr_values_[16];
   std::vector<const std::string *> live_xmm_values_[8];
-  std::unordered_map<std::string, long long> slot_offsets_;
-  std::unordered_map<std::string, LowType> slot_types_;
+  std::vector<long long> slot_offsets_;
+  std::vector<unsigned char> slot_offset_known_;
   std::unordered_map<std::string, X64Register> incoming_parameter_registers_;
-  std::unordered_set<std::string> discarded_slots_;
+  std::vector<unsigned char> discarded_slots_;
   std::vector<MirInstruction> parameter_moves_;
   const Instruction * active_instruction_ = 0;
   std::size_t position_, frame_bytes_ = 0;
@@ -264,22 +268,23 @@ private:
   void plan_slots()
   {
     for(std::size_t i = 0; i < source_.slots.size(); ++i) {
-      const std::string & name = source_.slots[i].first;
-      const LowType & type = source_.slots[i].second;
-      slot_types_[name] = type;
-      if(storage_facts_.parameter_slot_aliases.count(name) ||
-         storage_facts_.promoted_parameter_slots.count(name))
+      const lowir_model::SlotId slot = source_.slots[i];
+      const std::string & name = lowir_model::lowir_slot_name(source_, slot);
+      const LowType & type = lowir_model::lowir_slot_type(source_, slot);
+      if(!storage_facts_.parameter_slot_aliases[slot].empty() ||
+         !storage_facts_.promoted_parameter_slots[slot].empty())
         continue;
-      if(storage_facts_.forwarded_parameter_slots.count(name)) {
-        discarded_slots_.insert(name);
-        continue;
-      }
-      if(storage_facts_.dead_store_slots.count(name)) {
-        discarded_slots_.insert(name);
+      if(!storage_facts_.forwarded_parameter_slots[slot].empty()) {
+        discarded_slots_[slot] = 1;
         continue;
       }
-      slot_offsets_[name] = allocate_frame_binding(
+      if(storage_facts_.dead_store_slots[slot]) {
+        discarded_slots_[slot] = 1;
+        continue;
+      }
+      slot_offsets_[slot] = allocate_frame_binding(
         mir_model::MirFrameBinding::FB_SLOT, name, type);
+      slot_offset_known_[slot] = 1;
     }
   }
   void plan_host_eh()
@@ -292,10 +297,6 @@ private:
     target_.host_eh_selector_offset = allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP, "%host-eh-selector",
       lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
-  }
-  static X64Register argument_register(std::size_t index)
-  {
-    return abi::argument_register(index);
   }
   bool crosses_call(const std::string & name) const
   {
@@ -368,7 +369,7 @@ private:
       } else if(!is_scalar_float(parameter.type) && gpr_index < 6) {
         binding.location = mir_model::MirParamBinding::PL_REG;
         const std::size_t parameter_gpr_index = gpr_index++;
-        binding.reg = argument_register(parameter_gpr_index);
+        binding.reg = abi::argument_register(parameter_gpr_index);
         value.location = reg_operand(binding.reg);
         const std::size_t uses = facts_.uses[parameter.name];
         const bool clobbered =
@@ -426,14 +427,16 @@ private:
       }
       set_value(parameter.name, value);
     }
-    for(std::unordered_map<std::string, std::string>::const_iterator alias =
-        storage_facts_.parameter_slot_aliases.begin();
-        alias != storage_facts_.parameter_slot_aliases.end(); ++alias) {
+    for(std::size_t slot = 0;
+        slot < storage_facts_.parameter_slot_aliases.size(); ++slot) {
+      const std::string & alias = storage_facts_.parameter_slot_aliases[slot];
+      if(alias.empty()) continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
-        parameter_indices.find(alias->second);
+        parameter_indices.find(alias);
       if(parameter == parameter_indices.end())
         throw std::logic_error("parameter slot alias has no parameter");
-      slot_offsets_[alias->first] = homes[parameter->second];
+      slot_offsets_[slot] = homes[parameter->second];
+      slot_offset_known_[slot] = 1;
     }
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
       const abi::Piece & piece = plan.pieces[i];
@@ -491,7 +494,7 @@ private:
     if(!wide_gpr_boundary || constrained_wide_pressure()) {
       for(std::size_t i = 4; i < source_.params.size() && i < 6; ++i) {
         if(facts_.uses[source_.params[i].name] == 0) continue;
-        registers_.reserve(argument_register(i));
+        registers_.reserve(abi::argument_register(i));
         incoming_pool_reserved[i] = true;
       }
     }
@@ -531,7 +534,7 @@ private:
         continue;
       }
       binding.location = mir_model::MirParamBinding::PL_REG;
-      binding.reg = argument_register(i);
+      binding.reg = abi::argument_register(i);
       incoming_parameter_registers_[parameter.name] = binding.reg;
       target_.params.push_back(binding);
       value.location = reg_operand(binding.reg);
@@ -620,7 +623,7 @@ private:
       const X64Register destination = destinations[index];
       registers_.reserve(destination);
       append_move(parameter_moves_, reg_operand(destination),
-                  reg_operand(argument_register(index)));
+                  reg_operand(abi::argument_register(index)));
       set_value_location(name, reg_operand(destination));
       values_[name].parameter = false;
       values_[name].fixed_register_home =
@@ -701,10 +704,10 @@ private:
       return found->second.location;
     }
     if(operand.kind == Operand::OP_SLOT) {
-      const std::unordered_map<std::string, long long>::const_iterator found =
-        slot_offsets_.find(operand.text);
-      if(found == slot_offsets_.end()) throw std::runtime_error("missing frame slot");
-      return frame_operand(found->second);
+      const std::uint32_t slot = operand.slot;
+      if(slot >= slot_offsets_.size() || !slot_offset_known_[slot])
+        throw std::runtime_error("missing frame slot");
+      return frame_operand(slot_offsets_[slot]);
     }
     if(operand.kind == Operand::OP_INTEGER)
       return immediate(integer_value(operand));
@@ -723,12 +726,8 @@ private:
       if(found == values_.end()) throw std::runtime_error("missing operand type");
       return found->second.type;
     }
-    if(operand.kind == Operand::OP_SLOT) {
-      const std::unordered_map<std::string, LowType>::const_iterator found =
-        slot_types_.find(operand.text);
-      if(found == slot_types_.end()) throw std::runtime_error("missing slot type");
-      return found->second;
-    }
+    if(operand.kind == Operand::OP_SLOT)
+      return lowir_model::lowir_slot_type(source_, operand.slot);
     if(operand.kind == Operand::OP_GLOBAL)
       return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
     if(operand.kind == Operand::OP_FLOAT) {
@@ -753,10 +752,10 @@ private:
     if(operand.kind == Operand::OP_GLOBAL)
       return global_operand(MirOperand::OP_GLOBAL, operand);
     if(operand.kind == Operand::OP_SLOT) {
-      const std::unordered_map<std::string, long long>::const_iterator found =
-        slot_offsets_.find(operand.text);
-      if(found == slot_offsets_.end()) throw std::runtime_error("missing frame slot");
-      return frame_operand(found->second);
+      const std::uint32_t slot = operand.slot;
+      if(slot >= slot_offsets_.size() || !slot_offset_known_[slot])
+        throw std::runtime_error("missing frame slot");
+      return frame_operand(slot_offsets_[slot]);
     }
     const MirOperand address = resolve(operand);
     if(address.kind != MirOperand::OP_REG)
@@ -1253,10 +1252,9 @@ private:
   bool frame_provenance(const Operand & operand, long long & offset) const
   {
     if(operand.kind == Operand::OP_SLOT) {
-      const std::unordered_map<std::string, long long>::const_iterator found =
-        slot_offsets_.find(operand.text);
-      if(found == slot_offsets_.end()) return false;
-      offset = found->second;
+      const std::uint32_t slot = operand.slot;
+      if(slot >= slot_offsets_.size() || !slot_offset_known_[slot]) return false;
+      offset = slot_offsets_[slot];
       return true;
     }
     if(operand.kind != Operand::OP_TEMP) return false;
@@ -2021,7 +2019,7 @@ private:
     for(std::size_t i = 0; i < instruction.args.size() && gpr_index < 6; ++i) {
       if(is_scalar_float(operand_type(instruction.args[i]))) continue;
       GprMove move;
-      move.destination = argument_register(gpr_index++);
+      move.destination = abi::argument_register(gpr_index++);
       move.source = resolve(instruction.args[i]);
       if(instruction.args[i].kind == Operand::OP_TEMP) {
         const ValueFact & value = values_.find(instruction.args[i].text)->second;

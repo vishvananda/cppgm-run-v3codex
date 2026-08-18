@@ -260,6 +260,12 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value,
 			throw std::logic_error("compiler object block target lacks a function");
 		out.String(lowir_model::lowir_block_label(*function, value.block));
 	}
+	else if (value.kind == lowir_model::Operand::OP_SLOT)
+	{
+		if (!function)
+			throw std::logic_error("compiler object slot lacks a function");
+		out.String(lowir_model::lowir_slot_name(*function, value.slot));
+	}
 	else out.String(value.text);
 	out.I64(value.kind == lowir_model::Operand::OP_INTEGER && value.has_int_value ?
 		value.int_value : 0);
@@ -539,8 +545,8 @@ void WriteFunction(Writer& out, const lowir_model::Function& value)
 	out.U64(value.slots.size());
 	for (std::size_t i = 0; i < value.slots.size(); ++i)
 	{
-		out.String(value.slots[i].first);
-		WriteType(out, value.slots[i].second);
+		out.String(lowir_model::lowir_slot_name(value, value.slots[i]));
+		WriteType(out, lowir_model::lowir_slot_type(value, value.slots[i]));
 	}
 	out.U64(value.blocks.size());
 	for (std::size_t i = 0; i < value.blocks.size(); ++i)
@@ -561,11 +567,11 @@ lowir_model::Function ReadFunction(Reader& in)
 	value.name = in.String();
 	value.params = ReadParameters(in);
 	value.return_type = ReadType(in);
-	value.slots.resize(in.Count(8));
-	for (std::size_t i = 0; i < value.slots.size(); ++i)
+	const std::size_t slot_count = in.Count(8);
+	for (std::size_t i = 0; i < slot_count; ++i)
 	{
-		value.slots[i].first = in.String();
-		value.slots[i].second = ReadType(in);
+		const std::string name = in.String();
+		lowir_model::append_lowir_slot(value, name, ReadType(in));
 	}
 	value.blocks.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.blocks.size(); ++i)
@@ -576,7 +582,7 @@ lowir_model::Function ReadFunction(Reader& in)
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
 			value.blocks[i].instructions[j] = ReadInstruction(in);
 	}
-	lowir_model::resolve_lowir_block_operands(value);
+	lowir_model::resolve_lowir_function_operands(value);
 	value.debug_location = ReadDebug(in);
 	value.boundary = ReadBoundary(in);
 	value.metadata = ReadSymbolMetadata(in);

@@ -589,6 +589,26 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   return facts;
 }
 
+struct StorageParameterIndexes
+{
+  std::unordered_map<std::string, std::size_t> by_name;
+  std::unordered_map<std::string, std::size_t> by_suffix;
+};
+
+StorageParameterIndexes index_storage_parameters(
+    const lowir_model::LowirFunction & function)
+{
+  StorageParameterIndexes result;
+  result.by_name.reserve(function.params.size());
+  result.by_suffix.reserve(function.params.size());
+  for(std::size_t p = 0; p < function.params.size(); ++p) {
+    result.by_name[function.params[p].name] = p;
+    if(function.params[p].name.size() >= 2)
+      result.by_suffix[function.params[p].name.substr(1)] = p;
+  }
+  return result;
+}
+
 StorageFacts analyze_storage(
     const lowir_model::LowirFunction & function,
     const FunctionFacts & function_facts,
@@ -596,15 +616,11 @@ StorageFacts analyze_storage(
 {
   StorageFacts facts;
   facts.promoted_parameter_clobbers.assign(function.params.size(), 0);
-  std::unordered_map<std::string, std::size_t> parameters_by_name;
-  std::unordered_map<std::string, std::size_t> parameters_by_suffix;
-  parameters_by_name.reserve(function.params.size());
-  parameters_by_suffix.reserve(function.params.size());
-  for(std::size_t p = 0; p < function.params.size(); ++p) {
-    parameters_by_name[function.params[p].name] = p;
-    if(function.params[p].name.size() >= 2)
-      parameters_by_suffix[function.params[p].name.substr(1)] = p;
-  }
+  facts.parameter_slot_aliases.resize(function.slot_names.size());
+  facts.promoted_parameter_slots.resize(function.slot_names.size());
+  facts.forwarded_parameter_slots.resize(function.slot_names.size());
+  facts.dead_store_slots.assign(function.slot_names.size(), 0);
+  const StorageParameterIndexes parameters = index_storage_parameters(function);
 
   const std::size_t no_index = std::numeric_limits<std::size_t>::max();
   enum SlotFlag {
@@ -612,21 +628,22 @@ StorageFacts analyze_storage(
     SF_OBSERVED = 2,
     SF_OBJECT_SEEN = 4
   };
-  std::unordered_map<std::string, std::size_t> slots_by_name;
-  slots_by_name.reserve(function.slots.size());
-  std::vector<unsigned char> slot_flags(function.slots.size(), 0);
-  std::vector<std::size_t> object_slot_parameters(function.slots.size(), no_index);
+  std::vector<unsigned char> slot_flags(function.slot_names.size(), 0);
+  std::vector<std::size_t> object_slot_parameters(
+    function.slot_names.size(), no_index);
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
-    const std::string & slot = function.slots[s].first;
-    slots_by_name[slot] = s;
-    if(function.slots[s].second.kind == lowir_model::LTK_OBJECT) {
+    const lowir_model::SlotId slot_id = function.slots[s];
+    const std::string & slot = lowir_model::lowir_slot_name(function, slot_id);
+    const lowir_model::LowType & slot_type =
+      lowir_model::lowir_slot_type(function, slot_id);
+    if(slot_type.kind == lowir_model::LTK_OBJECT) {
       if(slot.size() < 2) continue;
       const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
-        parameters_by_suffix.find(slot.substr(1));
-      if(parameter != parameters_by_suffix.end() &&
+        parameters.by_suffix.find(slot.substr(1));
+      if(parameter != parameters.by_suffix.end() &&
          lowir_model::same_lowir_type(function.params[parameter->second].type,
-                                      function.slots[s].second))
-        object_slot_parameters[s] = parameter->second;
+                                      slot_type))
+        object_slot_parameters[slot_id] = parameter->second;
     }
   }
 
@@ -643,15 +660,19 @@ StorageFacts analyze_storage(
     const std::string * loaded_name = 0;
     unsigned intervening_clobbers = 0;
   };
-  std::vector<std::size_t> scalar_state_indexes(function.slots.size(), no_index);
+  std::vector<std::size_t> scalar_state_indexes(
+    function.slot_names.size(), no_index);
   std::vector<ScalarSlotState> scalar_states;
   if(function.blocks.size() == 1) {
     scalar_states.reserve(function.slots.size());
-    for(std::size_t s = 0; s < function.slots.size(); ++s)
-      if(function.slots[s].second.kind != lowir_model::LTK_OBJECT) {
-        scalar_state_indexes[s] = scalar_states.size();
+    for(std::size_t s = 0; s < function.slots.size(); ++s) {
+      const lowir_model::SlotId slot = function.slots[s];
+      if(lowir_model::lowir_slot_type(function, slot).kind !=
+         lowir_model::LTK_OBJECT) {
+        scalar_state_indexes[slot] = scalar_states.size();
         scalar_states.push_back(ScalarSlotState());
       }
+    }
   }
   std::array<std::size_t, 16> last_clobber;
   last_clobber.fill(std::numeric_limits<std::size_t>::max());
@@ -666,9 +687,8 @@ StorageFacts analyze_storage(
       std::size_t operand_slots[] = {no_index, no_index, no_index};
       for(std::size_t k = 0; k < sizeof(operands) / sizeof(operands[0]); ++k) {
         if(operands[k]->kind != Operand::OP_SLOT) continue;
-        const std::unordered_map<std::string, std::size_t>::const_iterator slot =
-          slots_by_name.find(operands[k]->text);
-        if(slot != slots_by_name.end()) operand_slots[k] = slot->second;
+        const std::uint32_t slot = operands[k]->slot;
+        if(slot < slot_flags.size()) operand_slots[k] = slot;
       }
       const bool has_dead_store_candidate =
         instruction.kind == Instruction::IK_STORE &&
@@ -683,11 +703,10 @@ StorageFacts analyze_storage(
           slot_flags[operand_slots[k]] |= SF_OBSERVED;
       for(std::size_t k = 0; k < instruction.args.size(); ++k) {
         if(instruction.args[k].kind != Operand::OP_SLOT) continue;
-        const std::unordered_map<std::string, std::size_t>::const_iterator slot =
-          slots_by_name.find(instruction.args[k].text);
-        if(slot != slots_by_name.end() &&
-           (!has_dead_store_candidate || slot->second != operand_slots[1]))
-          slot_flags[slot->second] |= SF_OBSERVED;
+        const std::uint32_t slot = instruction.args[k].slot;
+        if(slot < slot_flags.size() &&
+           (!has_dead_store_candidate || slot != operand_slots[1]))
+          slot_flags[slot] |= SF_OBSERVED;
       }
       if(instruction.kind == Instruction::IK_STORE &&
          instruction.first.kind == Operand::OP_TEMP &&
@@ -725,8 +744,7 @@ StorageFacts analyze_storage(
                copy.first.kind == Operand::OP_TEMP && copy.first.text == parameter.name &&
                copy.second.kind == Operand::OP_TEMP && copy.second.text == instruction.dest &&
                copy.byte_count == parameter.type.storage_size)
-              facts.parameter_slot_aliases[function.slots[slot_index].first] =
-                parameter.name;
+              facts.parameter_slot_aliases[slot_index] = parameter.name;
           }
         }
 
@@ -738,10 +756,11 @@ StorageFacts analyze_storage(
         if(!state.initialized && instruction.kind == Instruction::IK_STORE && second &&
            instruction.first.kind == Operand::OP_TEMP) {
           const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
-            parameters_by_name.find(instruction.first.text);
-          if(parameter != parameters_by_name.end() &&
+            parameters.by_name.find(instruction.first.text);
+          if(parameter != parameters.by_name.end() &&
              lowir_model::same_lowir_type(function.params[parameter->second].type,
-                                          function.slots[slot_index].second)) {
+                lowir_model::lowir_slot_type(
+                  function, lowir_model::SlotId(slot_index)))) {
             state.initialized = true;
             state.parameter = parameter->second;
             state.store_position = i;
@@ -774,17 +793,20 @@ StorageFacts analyze_storage(
     }
   }
 
-  for(std::size_t s = 0; s < function.slots.size(); ++s)
-    if((slot_flags[s] & SF_WRITTEN) && !(slot_flags[s] & SF_OBSERVED))
-      facts.dead_store_slots.insert(function.slots[s].first);
+  for(std::size_t s = 0; s < function.slots.size(); ++s) {
+    const lowir_model::SlotId slot = function.slots[s];
+    if((slot_flags[slot] & SF_WRITTEN) && !(slot_flags[slot] & SF_OBSERVED))
+      facts.dead_store_slots[slot] = 1;
+  }
 
   std::unordered_map<std::string, std::size_t> loaded_slots;
   loaded_slots.reserve(scalar_states.size());
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
-    if(scalar_state_indexes[s] == no_index) continue;
-    const ScalarSlotState & state = scalar_states[scalar_state_indexes[s]];
+    const lowir_model::SlotId slot = function.slots[s];
+    if(scalar_state_indexes[slot] == no_index) continue;
+    const ScalarSlotState & state = scalar_states[scalar_state_indexes[slot]];
     if(state.valid && state.initialized && state.loaded)
-      loaded_slots[*state.loaded_name] = s;
+      loaded_slots[*state.loaded_name] = slot;
   }
   for(std::size_t i = 0; i < (function.blocks.empty() ? 0 :
       function.blocks[0].instructions.size()); ++i) {
@@ -802,18 +824,20 @@ StorageFacts analyze_storage(
     }
   }
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
-    if(scalar_state_indexes[s] == no_index) continue;
-    const ScalarSlotState & state = scalar_states[scalar_state_indexes[s]];
+    const lowir_model::SlotId slot = function.slots[s];
+    if(scalar_state_indexes[slot] == no_index) continue;
+    const ScalarSlotState & state = scalar_states[scalar_state_indexes[slot]];
     if(!state.valid || !state.initialized || !state.loaded ||
        (!function_facts.calls.empty() && state.load_count != 1))
       continue;
     const std::string & parameter = function.params[state.parameter].name;
     if(!function_facts.calls.empty() && function_facts.uses.find(parameter)->second != 1)
       continue;
-    if(state.read_through)
-      facts.promoted_parameter_slots[function.slots[s].first] = parameter;
-    else
-      facts.forwarded_parameter_slots[function.slots[s].first] = parameter;
+    if(state.read_through) {
+      facts.promoted_parameter_slots[slot] = parameter;
+      facts.has_promoted_parameter_slots = true;
+    } else
+      facts.forwarded_parameter_slots[slot] = parameter;
     facts.promoted_parameters.insert(parameter);
     facts.promoted_parameter_clobbers[state.parameter] |=
       state.intervening_clobbers;

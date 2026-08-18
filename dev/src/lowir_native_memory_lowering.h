@@ -24,18 +24,17 @@ protected:
 		using namespace build;
 		Derived& lowerer = static_cast<Derived&>(*this);
 		if (instruction.first.kind == lowir_model::Operand::OP_SLOT &&
-			(lowerer.storage_facts_.promoted_parameter_slots.count(
-				instruction.first.text) ||
-			 lowerer.storage_facts_.forwarded_parameter_slots.count(
-				instruction.first.text)))
+			(!lowerer.storage_facts_.promoted_parameter_slots[
+				instruction.first.slot].empty() ||
+			 !lowerer.storage_facts_.forwarded_parameter_slots[
+				instruction.first.slot].empty()))
 		{
-			const std::string& parameter =
-				lowerer.storage_facts_.promoted_parameter_slots.count(
-					instruction.first.text) ?
-				lowerer.storage_facts_.promoted_parameter_slots.find(
-					instruction.first.text)->second :
-				lowerer.storage_facts_.forwarded_parameter_slots.find(
-					instruction.first.text)->second;
+			const std::string& promoted =
+				lowerer.storage_facts_.promoted_parameter_slots[
+					instruction.first.slot];
+			const std::string& parameter = !promoted.empty() ? promoted :
+				lowerer.storage_facts_.forwarded_parameter_slots[
+					instruction.first.slot];
 			ValueFact value = lowerer.values_.find(parameter)->second;
 			value.type = instruction.type;
 			value.parameter = false;
@@ -179,16 +178,16 @@ protected:
 		using namespace build;
 		Derived& lowerer = static_cast<Derived&>(*this);
 		if (instruction.second.kind == lowir_model::Operand::OP_SLOT &&
-			(lowerer.storage_facts_.promoted_parameter_slots.count(
-				instruction.second.text) ||
-			 lowerer.storage_facts_.forwarded_parameter_slots.count(
-				instruction.second.text)) &&
+			(!lowerer.storage_facts_.promoted_parameter_slots[
+				instruction.second.slot].empty() ||
+			 !lowerer.storage_facts_.forwarded_parameter_slots[
+				instruction.second.slot].empty()) &&
 			instruction.first.kind == lowir_model::Operand::OP_TEMP &&
 			lowerer.storage_facts_.promoted_parameters.count(
 				instruction.first.text))
 			return;
 		if (instruction.second.kind == lowir_model::Operand::OP_SLOT &&
-			lowerer.discarded_slots_.count(instruction.second.text))
+			lowerer.discarded_slots_[instruction.second.slot])
 		{
 			lowerer.consume(instruction.first);
 			lowerer.consume(instruction.second);
