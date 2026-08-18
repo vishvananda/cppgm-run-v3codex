@@ -192,7 +192,7 @@ void write_debug(std::ostream & out, const InstructionDebugLocation & location)
 }
 
 void write_operand(std::ostream & out, const Operand & operand,
-                   const Function * function = 0)
+                   const Program & program, const Function * function = 0)
 {
   if(operand.kind == Operand::OP_TEMP) {
     if(!function) throw std::logic_error("LowIR value lacks a function");
@@ -207,6 +207,10 @@ void write_operand(std::ostream & out, const Operand & operand,
   if(operand.kind == Operand::OP_SLOT) {
     if(!function) throw std::logic_error("LowIR slot lacks a function");
     out << lowir_slot_name(*function, operand.slot);
+    return;
+  }
+  if(operand.kind == Operand::OP_GLOBAL) {
+    out << lowir_symbol_name(program, operand.symbol);
     return;
   }
   if(operand.text.empty()) throw std::logic_error("missing LowIR operand text");
@@ -244,15 +248,15 @@ const char * projection_name(IndexProjectionKind projection)
 }
 
 void write_call(std::ostream & out, const Instruction & ins,
-                const Function * function)
+                const Program & program, const Function * function)
 {
   if(ins.dest.valid()) { write_result(out, ins, function); out << " = "; }
   out << "call " << (ins.call_returns_void ? "void" : lowir_type_text(ins.type)) << ' ';
-  write_operand(out, ins.first, function);
+  write_operand(out, ins.first, program, function);
   out << '(';
   for(std::size_t i = 0; i < ins.args.size(); ++i) {
     if(i) out << ", ";
-    write_operand(out, ins.args[i], function);
+    write_operand(out, ins.args[i], program, function);
   }
   out << ')';
   if(ins.has_call_signature) {
@@ -266,92 +270,92 @@ void write_call(std::ostream & out, const Instruction & ins,
 }
 
 void write_instruction(std::ostream & out, const Instruction & ins,
-                       const Function * function)
+                       const Program & program, const Function * function)
 {
   switch(ins.kind) {
   case Instruction::IK_CONST:
     write_result(out, ins, function); out << " = const " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); break;
+    write_operand(out, ins.first, program, function); break;
   case Instruction::IK_COPY:
     write_result(out, ins, function); out << " = copy " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); break;
+    write_operand(out, ins.first, program, function); break;
   case Instruction::IK_ADDR:
-    write_result(out, ins, function); out << " = addr "; write_operand(out, ins.first, function); break;
+    write_result(out, ins, function); out << " = addr "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_LOAD:
     write_result(out, ins, function); out << " = load " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); break;
+    write_operand(out, ins.first, program, function); break;
   case Instruction::IK_ATOMIC_LOAD:
     write_result(out, ins, function); out << " = atomic_load " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.args.at(0), function); break;
+    write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_STORE:
-    out << "store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, function);
-    out << ", "; write_operand(out, ins.second, function); break;
+    out << "store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, program, function);
+    out << ", "; write_operand(out, ins.second, program, function); break;
   case Instruction::IK_ATOMIC_STORE:
-    out << "atomic_store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, function);
-    out << ", "; write_operand(out, ins.second, function); out << ", ";
-    write_operand(out, ins.args.at(0), function); break;
+    out << "atomic_store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, program, function);
+    out << ", "; write_operand(out, ins.second, program, function); out << ", ";
+    write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_ATOMIC_EXCHANGE:
     write_result(out, ins, function); out << " = atomic_exchange " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function);
-    out << ", "; write_operand(out, ins.args.at(0), function); break;
+    write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function);
+    out << ", "; write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_INDEX:
     write_result(out, ins, function); out << " = index " << lowir_type_text(ins.type);
     if(const char * projection = projection_name(ins.index_projection))
       out << " [projection=" << projection << ']';
-    out << ' '; write_operand(out, ins.first, function); out << ", ";
-    write_operand(out, ins.second, function); break;
+    out << ' '; write_operand(out, ins.first, program, function); out << ", ";
+    write_operand(out, ins.second, program, function); break;
   case Instruction::IK_UNARY:
     write_result(out, ins, function); out << " = unary " << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); break;
+    write_operand(out, ins.first, program, function); break;
   case Instruction::IK_BINARY:
   case Instruction::IK_CMP:
     write_result(out, ins, function); out << (ins.kind == Instruction::IK_BINARY ? " = binary " : " = cmp ")
         << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function); break;
+    write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function); break;
   case Instruction::IK_CONVERT:
     write_result(out, ins, function); out << " = convert " << ins.op << ' ' << lowir_type_text(ins.type) << ' '
-        << lowir_type_text(ins.source_type) << ' '; write_operand(out, ins.first, function); break;
+        << lowir_type_text(ins.source_type) << ' '; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_ATOMIC_ADD_FETCH:
     write_result(out, ins, function); out << " = atomic_add_fetch " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function);
-    out << ", "; write_operand(out, ins.args.at(0), function); break;
+    write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function);
+    out << ", "; write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_ATOMIC_COMPARE_EXCHANGE:
     write_result(out, ins, function); out << " = atomic_compare_exchange " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function);
-    out << ", "; write_operand(out, ins.third, function); out << ", ";
-    write_operand(out, ins.args.at(0), function); out << ", "; write_operand(out, ins.args.at(1), function); break;
+    write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function);
+    out << ", "; write_operand(out, ins.third, program, function); out << ", ";
+    write_operand(out, ins.args.at(0), program, function); out << ", "; write_operand(out, ins.args.at(1), program, function); break;
   case Instruction::IK_ATOMIC_THREAD_FENCE:
   case Instruction::IK_ATOMIC_SIGNAL_FENCE:
     out << (ins.kind == Instruction::IK_ATOMIC_THREAD_FENCE ?
       "atomic_thread_fence " : "atomic_signal_fence ");
-    write_operand(out, ins.first, function); break;
+    write_operand(out, ins.first, program, function); break;
   case Instruction::IK_VA_START:
-    out << "va_start "; write_operand(out, ins.first, function); break;
+    out << "va_start "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_VA_ARG:
     write_result(out, ins, function); out << " = va_arg " << lowir_type_text(ins.type) << ' ';
-    write_operand(out, ins.first, function); break;
+    write_operand(out, ins.first, program, function); break;
   case Instruction::IK_STACK_ALLOC:
-    write_result(out, ins, function); out << " = stack_alloc "; write_operand(out, ins.first, function); break;
-  case Instruction::IK_CALL: write_call(out, ins, function); break;
+    write_result(out, ins, function); out << " = stack_alloc "; write_operand(out, ins.first, program, function); break;
+  case Instruction::IK_CALL: write_call(out, ins, program, function); break;
   case Instruction::IK_COPYOBJ:
     out << "copyobj " << ins.byte_count << 'x' << ins.byte_alignment << ' ';
-    write_operand(out, ins.first, function); out << ", "; write_operand(out, ins.second, function); break;
+    write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function); break;
   case Instruction::IK_ZEROINIT:
     out << "zeroinit " << ins.byte_count << 'x' << ins.byte_alignment << ' ';
-    write_operand(out, ins.first, function); break;
+    write_operand(out, ins.first, program, function); break;
   case Instruction::IK_EH_TRY:
-    out << "eh_try "; write_operand(out, ins.first, function); break;
+    out << "eh_try "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_EH_CLEANUP:
-    out << "eh_cleanup "; write_operand(out, ins.first, function); break;
+    out << "eh_cleanup "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_EH_CLEANUP_CLAUSE: out << "eh_cleanup"; break;
   case Instruction::IK_EH_CATCH:
-    out << "eh_catch "; write_operand(out, ins.first, function);
+    out << "eh_catch "; write_operand(out, ins.first, program, function);
     if(ins.has_eh_selector) out << ", " << ins.eh_selector;
     break;
   case Instruction::IK_EH_FILTER:
     out << "eh_filter";
     for(std::size_t i = 0; i < ins.args.size(); ++i) {
-      out << (i ? ", " : " "); write_operand(out, ins.args[i], function);
+      out << (i ? ", " : " "); write_operand(out, ins.args[i], program, function);
     }
     if(ins.has_eh_selector) out << (ins.args.empty() ? " " : ", ") << ins.eh_selector;
     break;
@@ -361,35 +365,36 @@ void write_instruction(std::ostream & out, const Instruction & ins,
     break;
   case Instruction::IK_EH_END: out << "eh_end"; break;
   case Instruction::IK_THROW:
-    out << "throw " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, function); break;
+    out << "throw " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_EXCEPTION:
     write_result(out, ins, function); out << " = exception " << lowir_type_text(ins.type); break;
   case Instruction::IK_EXCEPTION_SELECTOR:
     write_result(out, ins, function); out << " = exception_selector " << lowir_type_text(ins.type); break;
   case Instruction::IK_RESUME: out << "resume"; break;
   case Instruction::IK_JUMP:
-    out << "jump "; write_operand(out, ins.first, function); break;
+    out << "jump "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_BRANCH:
-    out << "branch "; write_operand(out, ins.first, function); out << ", ";
-    write_operand(out, ins.second, function); out << ", ";
-    write_operand(out, ins.third, function); break;
+    out << "branch "; write_operand(out, ins.first, program, function); out << ", ";
+    write_operand(out, ins.second, program, function); out << ", ";
+    write_operand(out, ins.third, program, function); break;
   case Instruction::IK_SWITCH:
-    out << "switch "; write_operand(out, ins.first, function); out << ", ";
-    write_operand(out, ins.second, function);
+    out << "switch "; write_operand(out, ins.first, program, function); out << ", ";
+    write_operand(out, ins.second, program, function);
     for(std::size_t i = 0; i + 1 < ins.args.size(); i += 2) {
-      out << ", "; write_operand(out, ins.args[i], function); out << ':';
-      write_operand(out, ins.args[i + 1], function);
+      out << ", "; write_operand(out, ins.args[i], program, function); out << ':';
+      write_operand(out, ins.args[i + 1], program, function);
     }
     break;
   case Instruction::IK_RETURN:
     out << "return " << lowir_type_text(ins.type);
-    if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first, function); }
+    if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first, program, function); }
     break;
   }
   write_debug(out, ins.debug_location);
 }
 
-void write_global_declaration(std::ostream & out, const GlobalDeclaration & item)
+void write_global_declaration(std::ostream & out, const GlobalDeclaration & item,
+                              const Program &)
 {
   out << "declare global " << item.name;
   if(item.has_type) out << " : " << lowir_type_text(item.type);
@@ -398,7 +403,8 @@ void write_global_declaration(std::ostream & out, const GlobalDeclaration & item
 }
 
 void write_function_declaration(std::ostream & out,
-                                const FunctionDeclaration & item)
+                                const FunctionDeclaration & item,
+                                const Program &)
 {
   out << "declare function " << item.name;
   write_parameters(out, item.params);
@@ -407,7 +413,8 @@ void write_function_declaration(std::ostream & out,
   out << '\n';
 }
 
-void write_global(std::ostream & out, const GlobalDefinition & item)
+void write_global(std::ostream & out, const GlobalDefinition & item,
+                  const Program & program)
 {
   out << "global " << item.name;
   if(!item.structured) out << " : " << lowir_type_text(item.type);
@@ -421,12 +428,13 @@ void write_global(std::ostream & out, const GlobalDefinition & item)
       if(data.kind == GlobalDefinition::DataItem::ITEM_ZERO)
         out << "zero " << data.zero_bytes;
       else if(data.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
-        out << lowir_type_text(data.type) << " addr " << data.symbol;
+        out << lowir_type_text(data.type) << " addr "
+            << lowir_symbol_name(program, data.symbol_id);
         if(data.addr_addend > 0) out << " + " << data.addr_addend;
         else if(data.addr_addend < 0) out << " - " << -data.addr_addend;
       } else {
         out << lowir_type_text(data.type) << ' ';
-        write_operand(out, data.literal_operand);
+        write_operand(out, data.literal_operand, program);
       }
       out << '\n';
     }
@@ -435,16 +443,17 @@ void write_global(std::ostream & out, const GlobalDefinition & item)
   }
   if(item.init_kind == GlobalDefinition::INIT_ZERO) out << "zero";
   else if(item.init_kind == GlobalDefinition::INIT_INTEGER)
-    write_operand(out, item.init_operand);
+    write_operand(out, item.init_operand, program);
   else {
-    out << "addr "; write_operand(out, item.init_operand);
+    out << "addr "; write_operand(out, item.init_operand, program);
     if(item.addr_addend > 0) out << " + " << item.addr_addend;
     else if(item.addr_addend < 0) out << " - " << -item.addr_addend;
   }
   out << '\n';
 }
 
-void write_function(std::ostream & out, const Function & function)
+void write_function(std::ostream & out, const Function & function,
+                    const Program & program)
 {
   out << "function " << function.name;
   write_parameters(out, function.params);
@@ -462,7 +471,7 @@ void write_function(std::ostream & out, const Function & function)
         << ":\n";
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       out << "    ";
-      write_instruction(out, function.blocks[i].instructions[j], &function);
+      write_instruction(out, function.blocks[i].instructions[j], program, &function);
       out << '\n';
     }
   }
@@ -478,7 +487,7 @@ std::string serialize_lowir_program(const LowirProgram & program)
 #define WRITE_GROUP(VECTOR, WRITER) \
   if(!(VECTOR).empty() && wrote) out << '\n'; \
   for(std::size_t i = 0; i < (VECTOR).size(); ++i) { \
-    WRITER(out, (VECTOR)[i]); \
+    WRITER(out, (VECTOR)[i], program); \
     wrote = true; \
   }
   WRITE_GROUP(program.global_declarations, write_global_declaration)

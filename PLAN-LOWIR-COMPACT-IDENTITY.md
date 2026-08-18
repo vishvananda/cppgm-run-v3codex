@@ -752,6 +752,37 @@ peak RSS.  Paired block medians improve user time by 6.83% and wall time by
 large timing win and exceeds the cumulative plan's initial 5% acceptance gate
 before the symbol and MIR identity domains are migrated.
 
+### CI8: compact LowIR symbol identity
+
+Global operands, global address data, top-level declarations/definitions, and
+aliases now carry the stable `SymbolId` already assigned by typed PA15 LowIR.
+The source adapter initializes one program symbol-name table and never renders
+an `@name` for each operand.  Explicit LowIR parsing and private-object linking
+retain transient spelling maps at their input boundary, then resolve every
+reference to the same compact model.
+
+Preparation, call-boundary propagation, weak-function reachability,
+force-inlining, O1 inlining, native signature lookup, pointer-global and TLS
+classification, legacy CY86 lowering, and native storage analysis now use
+dense symbol-indexed vectors.  Object-slot to parameter relationships are
+recorded once as `ValueId` rather than rediscovered in native lowering with a
+string-to-index map.  The remaining LowIR string sets are confined to explicit
+text parsing or generated presentation-name collision checks.
+
+All mutually exclusive operand identities share one tagged payload rather than
+reserving separate block, slot, value, and symbol fields.  `Operand` therefore
+remains 96 bytes and `Instruction` falls from 560 to 528 bytes, avoiding the
+112/576-byte layout that a naive parallel symbol field produced.  The frozen
+object remains byte-identical to CI7 at 4,417,192 bytes with SHA-256
+`98f77be43c75d46d29b75809bd6784a921578303484ece5355eef14693231283`.
+
+PA13 and the full through-PA13 report pass 100/100 and 933/933 tests; PA13,
+PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests, and the PA39 file
+audit has no fatal findings.  Three A/B/B/A blocks against `bc299fc0` produced
+baseline/candidate medians of 5.130/5.095 seconds user, 5.655/5.600 seconds
+wall, and 364,774/364,734 KiB peak RSS.  Paired block medians improve user time
+by 0.68% and wall time by 1.06%, with peak RSS unchanged within noise.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

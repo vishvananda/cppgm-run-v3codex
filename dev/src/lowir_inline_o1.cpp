@@ -63,7 +63,6 @@ private:
   std::vector<unsigned char> known_;
   std::size_t count_;
 };
-typedef std::unordered_map<std::string, std::string> NameMap;
 typedef std::vector<lowir_model::SlotId> SlotMap;
 
 struct RenamedBlock
@@ -78,11 +77,12 @@ bool is_eh_instruction(Instruction::Kind kind)
   return kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_EH_END;
 }
 
-bool direct_call(const Instruction & instruction, const std::string ** target)
+bool direct_call(const Instruction & instruction,
+                 lowir_model::SymbolId * target)
 {
   if(instruction.kind != Instruction::IK_CALL ||
      instruction.first.kind != Operand::OP_GLOBAL) return false;
-  if(target) *target = &instruction.first.text;
+  if(target) *target = instruction.first.symbol;
   return true;
 }
 
@@ -383,19 +383,21 @@ class Inliner
 {
 public:
   Inliner(LowirProgram * program,
-          const std::unordered_set<std::string> & prepared_oversized_functions,
+          const std::vector<unsigned char> & prepared_oversized_symbols,
           const std::vector<std::size_t> & original_instruction_counts,
-          std::unordered_set<std::string> * rewritten_functions,
+          std::vector<unsigned char> * rewritten_symbols,
           Stats * stats)
-    : program_(*program), rewritten_functions_(rewritten_functions),
+    : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
-      prepared_oversized_functions_(prepared_oversized_functions),
+      definition_(program->symbol_names.size(), kNoFunction),
+      no_unwind_(program->symbol_names.size(), 0),
+      prepared_oversized_symbols_(prepared_oversized_symbols),
       original_instruction_counts_(original_instruction_counts), rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
-      definition_[program_.functions[i].name] = i;
+      definition_[program_.functions[i].symbol] = i;
     contains_eh_.resize(program_.functions.size(), 0);
     instruction_counts_.resize(program_.functions.size(), 0);
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
@@ -434,8 +436,8 @@ public:
           strip_explicit_no_unwind_eh(&program_.functions[caller]);
         if(caller_stripped) {
           ++rewrites_;
-          if(rewritten_functions_)
-            rewritten_functions_->insert(program_.functions[caller].name);
+          if(rewritten_symbols_)
+            (*rewritten_symbols_)[program_.functions[caller].symbol] = 1;
         }
         contains_eh_[caller] = contains_eh(program_.functions[caller]);
         instruction_counts_[caller] =
@@ -454,11 +456,11 @@ public:
 
 private:
   LowirProgram & program_;
-  std::unordered_set<std::string> * rewritten_functions_;
+  std::vector<unsigned char> * rewritten_symbols_;
   Stats * stats_;
-  std::unordered_map<std::string, std::size_t> definition_;
-  std::unordered_set<std::string> no_unwind_;
-  const std::unordered_set<std::string> & prepared_oversized_functions_;
+  std::vector<std::size_t> definition_;
+  std::vector<unsigned char> no_unwind_;
+  const std::vector<unsigned char> & prepared_oversized_symbols_;
   const std::vector<std::size_t> & original_instruction_counts_;
   std::vector<unsigned char> recursive_, state_, contains_eh_;
   std::vector<std::size_t> instruction_counts_;
@@ -469,11 +471,9 @@ private:
 
   std::size_t callee(const Instruction & instruction) const
   {
-    const std::string * name = 0;
-    if(!direct_call(instruction, &name)) return kNoFunction;
-    const std::unordered_map<std::string, std::size_t>::const_iterator found =
-      definition_.find(*name);
-    return found == definition_.end() ? kNoFunction : found->second;
+    lowir_model::SymbolId symbol;
+    if(!direct_call(instruction, &symbol)) return kNoFunction;
+    return definition_[symbol];
   }
 
   bool has_eh_blocked_callers(std::size_t target) const
@@ -488,16 +488,17 @@ private:
   {
     for(std::size_t i = 0; i < program_.function_declarations.size(); ++i)
       if(program_.function_declarations[i].boundary.unwind == lowir_model::CUM_NO)
-        no_unwind_.insert(program_.function_declarations[i].name);
+        no_unwind_[program_.function_declarations[i].symbol] = 1;
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
       if(program_.functions[i].boundary.unwind == lowir_model::CUM_NO)
-        no_unwind_.insert(program_.functions[i].name);
+        no_unwind_[program_.functions[i].symbol] = 1;
     std::vector<std::size_t> unresolved(program_.functions.size(), 0);
     std::vector<unsigned char> unsafe(program_.functions.size(), 0);
-    std::unordered_map<std::string, std::vector<std::size_t> > dependents;
+    std::vector<std::vector<std::size_t> > dependents(
+      program_.symbol_names.size());
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       const Function & function = program_.functions[i];
-      if(no_unwind_.count(function.name)) continue;
+      if(no_unwind_[function.symbol]) continue;
       unsafe[i] = contains_eh_[i];
       for(std::size_t b = 0; b < function.blocks.size(); ++b)
         for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
@@ -505,38 +506,38 @@ private:
           if(ins.kind == Instruction::IK_THROW || ins.kind == Instruction::IK_RESUME)
             unsafe[i] = 1;
           else if(ins.kind == Instruction::IK_CALL) {
-            const std::string * target = 0;
+            lowir_model::SymbolId target;
             if(!direct_call(ins, &target)) {
               unsafe[i] = 1;
               continue;
             }
-            if(no_unwind_.count(*target)) continue;
+            if(no_unwind_[target]) continue;
             ++unresolved[i];
-            dependents[*target].push_back(i);
+			dependents[target].push_back(i);
           }
         }
     }
     std::deque<std::size_t> work;
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
       if(!unsafe[i] && unresolved[i] == 0 &&
-         no_unwind_.insert(program_.functions[i].name).second) {
+         !no_unwind_[program_.functions[i].symbol]) {
+        no_unwind_[program_.functions[i].symbol] = 1;
         work.push_back(i);
         if(stats_) ++stats_->worklist_pushes;
       }
     while(!work.empty()) {
       const std::size_t resolved = work.front();
       work.pop_front();
-      const std::unordered_map<std::string,
-        std::vector<std::size_t> >::const_iterator found =
-          dependents.find(program_.functions[resolved].name);
-      if(found == dependents.end()) continue;
-      for(std::size_t i = 0; i < found->second.size(); ++i) {
-        const std::size_t caller = found->second[i];
+      const std::vector<std::size_t> & found =
+        dependents[program_.functions[resolved].symbol];
+      for(std::size_t i = 0; i < found.size(); ++i) {
+        const std::size_t caller = found[i];
         if(unsafe[caller] || unresolved[caller] == 0) continue;
         --unresolved[caller];
         if(stats_) ++stats_->dataflow_updates;
         if(unresolved[caller] == 0 &&
-           no_unwind_.insert(program_.functions[caller].name).second) {
+           !no_unwind_[program_.functions[caller].symbol]) {
+          no_unwind_[program_.functions[caller].symbol] = 1;
           work.push_back(caller);
           if(stats_) ++stats_->worklist_pushes;
         }
@@ -620,7 +621,7 @@ private:
       return false;
     if(instruction_counts_[target] > 40 &&
        !callee_function.metadata.prefer_local_object_binding) return false;
-    if(prepared_oversized_functions_.count(callee_function.name) &&
+    if(prepared_oversized_symbols_[callee_function.symbol] &&
        (instruction_counts_[target] > 4 ||
         !leaf_inline_shape(callee_function))) return false;
     if(landing) return false;
@@ -629,7 +630,7 @@ private:
     // inferred no-throw body is not part of that external ABI contract.
     if(inside_eh && !callee_function.metadata.object_symbol.empty())
       return false;
-    if(inside_eh && !no_unwind_.count(callee_function.name)) return false;
+    if(inside_eh && !no_unwind_[callee_function.symbol]) return false;
     if(contains_eh_[target]) {
       if(callee_function.boundary.unwind == lowir_model::CUM_NO &&
          instruction_counts_[target] <= 8) {
@@ -661,8 +662,8 @@ private:
       for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
         const Instruction & ins = function->blocks[b].instructions[j];
         if(ins.kind == Instruction::IK_CALL) {
-          const std::string * target = 0;
-          if(!direct_call(ins, &target) || !no_unwind_.count(*target)) return false;
+          lowir_model::SymbolId target;
+          if(!direct_call(ins, &target) || !no_unwind_[target]) return false;
         } else if(ins.kind == Instruction::IK_THROW) return false;
       }
     bool changed = false;
@@ -693,8 +694,8 @@ private:
       strip_explicit_no_unwind_eh(&program_.functions[function_index]);
     if(stripped) {
       ++rewrites_;
-      if(rewritten_functions_)
-        rewritten_functions_->insert(program_.functions[function_index].name);
+      if(rewritten_symbols_)
+        (*rewritten_symbols_)[program_.functions[function_index].symbol] = 1;
     }
     contains_eh_[function_index] = contains_eh(program_.functions[function_index]);
     instruction_counts_[function_index] =
@@ -1082,8 +1083,8 @@ private:
       }
     }
     replace_values(&program_.functions[function_index], replacements);
-    if(changed && rewritten_functions_)
-      rewritten_functions_->insert(program_.functions[function_index].name);
+    if(changed && rewritten_symbols_)
+      (*rewritten_symbols_)[program_.functions[function_index].symbol] = 1;
   }
 };
 
@@ -1091,13 +1092,13 @@ private:
 
 std::size_t inline_o1_calls(
   LowirProgram & program,
-  const std::unordered_set<std::string> & prepared_oversized_functions,
+  const std::vector<unsigned char> & prepared_oversized_symbols,
   const std::vector<std::size_t> & original_instruction_counts,
-  std::unordered_set<std::string> * rewritten_functions,
+  std::vector<unsigned char> * rewritten_symbols,
   Stats * stats)
 {
-  Inliner inliner(&program, prepared_oversized_functions,
-    original_instruction_counts, rewritten_functions, stats);
+  Inliner inliner(&program, prepared_oversized_symbols,
+    original_instruction_counts, rewritten_symbols, stats);
   return inliner.run();
 }
 

@@ -7,8 +7,6 @@
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 namespace lowir_cy86 {
@@ -118,8 +116,13 @@ class ProgramEmitter;
 
 struct FunctionTarget
 {
-  const std::vector<Parameter> * params;
-  const Function * definition;
+  const std::vector<Parameter> * params = 0;
+  const Function * definition = 0;
+
+  FunctionTarget() {}
+  FunctionTarget(const std::vector<Parameter> * parameters,
+                 const Function * body)
+    : params(parameters), definition(body) {}
 };
 
 class FunctionEmitter
@@ -195,18 +198,18 @@ public:
     : program_(program), stats_(stats), uses_eh_(false), eh_label_counter_(0),
       atomic_label_counter_(0)
   {
+	functions_by_id_.resize(program.symbol_names.size());
+	function_known_.assign(program.symbol_names.size(), 0);
     for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
       const FunctionDeclaration & function = program.function_declarations[i];
-      functions_[function.name] = FunctionTarget{&function.params, 0};
+	  functions_by_id_[function.symbol] = FunctionTarget{&function.params, 0};
+	  function_known_[function.symbol] = 1;
     }
     for(std::size_t i = 0; i < program.functions.size(); ++i) {
       const Function & function = program.functions[i];
-      functions_[function.name] = FunctionTarget{&function.params, &function};
+	  functions_by_id_[function.symbol] = FunctionTarget{&function.params, &function};
+	  function_known_[function.symbol] = 1;
     }
-    for(std::size_t i = 0; i < program.global_declarations.size(); ++i)
-      globals_.insert(program.global_declarations[i].name);
-    for(std::size_t i = 0; i < program.globals.size(); ++i)
-      globals_.insert(program.globals[i].name);
     FindRoles();
   }
 
@@ -223,7 +226,7 @@ public:
         stats_->instructions += emitter.InstructionCount();
       }
     }
-    if(uses_eh_ && eh_unhandled_.empty()) EmitDefaultUnhandled();
+    if(uses_eh_ && !eh_unhandled_.valid()) EmitDefaultUnhandled();
     for(std::size_t i = 0; i < program_.globals.size(); ++i) EmitGlobal(program_.globals[i]);
     if(uses_eh_) EmitDefaultEhGlobals();
     std::string result = out_.Take();
@@ -231,31 +234,30 @@ public:
     return result;
   }
 
-  std::string SymbolLabel(const std::string & symbol) const
+  std::string SymbolLabel(SymbolId symbol) const
   {
-    if(functions_.count(symbol)) return "fn__" + strip_sigil(symbol);
-    return "g__" + strip_sigil(symbol);
+    const std::string & name = lowir_symbol_name(program_, symbol);
+    return (function_known_[symbol] ? "fn__" : "g__") + strip_sigil(name);
   }
 
-  bool IsFunction(const std::string & symbol) const { return functions_.count(symbol) != 0; }
-  const FunctionTarget * FindFunction(const std::string & symbol) const
+  bool IsFunction(SymbolId symbol) const { return function_known_[symbol] != 0; }
+  const FunctionTarget * FindFunction(SymbolId symbol) const
   {
-    const std::unordered_map<std::string, FunctionTarget>::const_iterator found =
-      functions_.find(symbol);
-    return found == functions_.end() ? 0 : &found->second;
+    return function_known_[symbol] ? &functions_by_id_[symbol] : 0;
   }
 
   std::string EhTopLabel() const
   {
-    return eh_top_.empty() ? "g____cppgm_eh_top" : SymbolLabel(eh_top_);
+    return !eh_top_.valid() ? "g____cppgm_eh_top" : SymbolLabel(eh_top_);
   }
   std::string EhValueLabel() const
   {
-    return eh_value_.empty() ? "g____cppgm_eh_value" : SymbolLabel(eh_value_);
+    return !eh_value_.valid() ? "g____cppgm_eh_value" : SymbolLabel(eh_value_);
   }
   std::string EhUnhandledLabel() const
   {
-    return eh_unhandled_.empty() ? "fn____cppgm_eh_unhandled" : SymbolLabel(eh_unhandled_);
+    return !eh_unhandled_.valid() ? "fn____cppgm_eh_unhandled" :
+      SymbolLabel(eh_unhandled_);
   }
 
 private:
@@ -263,20 +265,22 @@ private:
   const Program & program_;
   Stats * stats_;
   TextOutput out_;
-  std::unordered_map<std::string, FunctionTarget> functions_;
-  std::unordered_set<std::string> globals_;
-  std::string entry_;
-  std::string init_;
-  std::string fini_;
-  std::string eh_top_;
-  std::string eh_value_;
-  std::string eh_unhandled_;
+  std::vector<FunctionTarget> functions_by_id_;
+  std::vector<unsigned char> function_known_;
+  SymbolId entry_;
+  SymbolId init_;
+  SymbolId fini_;
+  SymbolId eh_top_;
+  SymbolId eh_value_;
+  SymbolId eh_unhandled_;
   bool uses_eh_;
   std::size_t eh_label_counter_;
   std::size_t atomic_label_counter_;
 
   void FindRoles();
-  void RecordRole(const std::string & name, SymbolRole role);
+  SymbolId FindSymbol(const std::string & name) const;
+  bool HasGlobal(SymbolId symbol) const;
+  void RecordRole(SymbolId symbol, SymbolRole role);
   void DetectEh();
   void EmitStart();
   void EmitGlobal(const GlobalDefinition & global);
@@ -287,36 +291,59 @@ private:
   void EmitDefaultEhGlobals();
 };
 
-void ProgramEmitter::RecordRole(const std::string & name, SymbolRole role)
+SymbolId ProgramEmitter::FindSymbol(const std::string & name) const
 {
-  if(role == SR_ENTRY) entry_ = name;
-  else if(role == SR_INIT) init_ = name;
-  else if(role == SR_FINI) fini_ = name;
-  else if(role == SR_EH_TOP) eh_top_ = name;
-  else if(role == SR_EH_VALUE) eh_value_ = name;
-  else if(role == SR_EH_UNHANDLED) eh_unhandled_ = name;
+  for(std::size_t i = 0; i < program_.symbol_names.size(); ++i)
+    if(program_.symbol_names[i] == name)
+      return SymbolId(static_cast<std::uint32_t>(i));
+  return SymbolId();
+}
+
+bool ProgramEmitter::HasGlobal(SymbolId symbol) const
+{
+  if(!symbol.valid()) return false;
+  for(std::size_t i = 0; i < program_.global_declarations.size(); ++i)
+    if(program_.global_declarations[i].symbol == symbol) return true;
+  for(std::size_t i = 0; i < program_.globals.size(); ++i)
+    if(program_.globals[i].symbol == symbol) return true;
+  return false;
+}
+
+void ProgramEmitter::RecordRole(SymbolId symbol, SymbolRole role)
+{
+  if(role == SR_ENTRY) entry_ = symbol;
+  else if(role == SR_INIT) init_ = symbol;
+  else if(role == SR_FINI) fini_ = symbol;
+  else if(role == SR_EH_TOP) eh_top_ = symbol;
+  else if(role == SR_EH_VALUE) eh_value_ = symbol;
+  else if(role == SR_EH_UNHANDLED) eh_unhandled_ = symbol;
 }
 
 void ProgramEmitter::FindRoles()
 {
   for(std::size_t i = 0; i < program_.global_declarations.size(); ++i)
-    RecordRole(program_.global_declarations[i].name, program_.global_declarations[i].metadata.role);
+    RecordRole(program_.global_declarations[i].symbol,
+      program_.global_declarations[i].metadata.role);
   for(std::size_t i = 0; i < program_.globals.size(); ++i)
-    RecordRole(program_.globals[i].name, program_.globals[i].metadata.role);
+    RecordRole(program_.globals[i].symbol, program_.globals[i].metadata.role);
   for(std::size_t i = 0; i < program_.function_declarations.size(); ++i) {
     const FunctionDeclaration & function = program_.function_declarations[i];
     if(function.metadata.role != SR_ENTRY && function.metadata.role != SR_INIT &&
-       function.metadata.role != SR_FINI) RecordRole(function.name, function.metadata.role);
+       function.metadata.role != SR_FINI)
+      RecordRole(function.symbol, function.metadata.role);
   }
   for(std::size_t i = 0; i < program_.functions.size(); ++i)
-    RecordRole(program_.functions[i].name, program_.functions[i].metadata.role);
-  const FunctionTarget * main = FindFunction("@main");
-  const FunctionTarget * init = FindFunction("@__cppgm_init");
-  const FunctionTarget * fini = FindFunction("@__cppgm_fini");
-  if(entry_.empty() && main && main->definition) entry_ = "@main";
-  if(init_.empty() && init && init->definition) init_ = "@__cppgm_init";
-  if(fini_.empty() && fini && fini->definition) fini_ = "@__cppgm_fini";
-  if(entry_.empty()) throw ParseError("LowIR program has no entry definition");
+    RecordRole(program_.functions[i].symbol, program_.functions[i].metadata.role);
+  const SymbolId main_symbol = FindSymbol("@main");
+  const SymbolId init_symbol = FindSymbol("@__cppgm_init");
+  const SymbolId fini_symbol = FindSymbol("@__cppgm_fini");
+  const FunctionTarget * main = main_symbol.valid() ? FindFunction(main_symbol) : 0;
+  const FunctionTarget * init = init_symbol.valid() ? FindFunction(init_symbol) : 0;
+  const FunctionTarget * fini = fini_symbol.valid() ? FindFunction(fini_symbol) : 0;
+  if(!entry_.valid() && main && main->definition) entry_ = main_symbol;
+  if(!init_.valid() && init && init->definition) init_ = init_symbol;
+  if(!fini_.valid() && fini && fini->definition) fini_ = fini_symbol;
+  if(!entry_.valid()) throw ParseError("LowIR program has no entry definition");
 }
 
 void ProgramEmitter::DetectEh()
@@ -333,9 +360,9 @@ void ProgramEmitter::EmitStart()
 {
   out_.Label("start");
   out_.Instruction("move64 bp sp");
-  if(!init_.empty()) out_.Instruction("call " + SymbolLabel(init_));
+  if(init_.valid()) out_.Instruction("call " + SymbolLabel(init_));
   out_.Instruction("call " + SymbolLabel(entry_));
-  if(!fini_.empty()) {
+  if(fini_.valid()) {
     out_.Instruction("isub64 sp sp 8");
     out_.Instruction("move64 [sp] x64");
     out_.Instruction("call " + SymbolLabel(fini_));
@@ -376,7 +403,7 @@ void ProgramEmitter::EmitDataItem(const GlobalDefinition::DataItem & item,
   const std::size_t aligned = align_up(offset, item_shape.alignment);
   EmitPadding(aligned - offset, offset);
   if(item.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
-    std::string value = SymbolLabel(item.symbol);
+    std::string value = SymbolLabel(item.symbol_id);
     if(item.addr_addend > 0) value = '(' + value + '+' + std::to_string(item.addr_addend) + ')';
     if(item.addr_addend < 0) value = '(' + value + std::to_string(item.addr_addend) + ')';
     out_.Instruction("data64 " + value);
@@ -390,7 +417,7 @@ void ProgramEmitter::EmitDataItem(const GlobalDefinition::DataItem & item,
 
 void ProgramEmitter::EmitGlobal(const GlobalDefinition & global)
 {
-  out_.Label(SymbolLabel(global.name));
+  out_.Label(SymbolLabel(global.symbol));
   std::size_t offset = 0;
   if(global.structured) {
     for(std::size_t i = 0; i < global.data_items.size(); ++i)
@@ -403,7 +430,7 @@ void ProgramEmitter::EmitGlobal(const GlobalDefinition & global)
     std::string value = "0";
     if(global.init_kind == GlobalDefinition::INIT_INTEGER) value = global.init_operand.text;
     else if(global.init_kind == GlobalDefinition::INIT_ADDR) {
-      value = SymbolLabel(global.init_operand.text);
+      value = SymbolLabel(global.init_operand.symbol);
       if(global.addr_addend > 0) value = '(' + value + '+' + std::to_string(global.addr_addend) + ')';
       if(global.addr_addend < 0) value = '(' + value + std::to_string(global.addr_addend) + ')';
     }
@@ -421,10 +448,10 @@ void ProgramEmitter::EmitDefaultUnhandled()
 
 void ProgramEmitter::EmitDefaultEhGlobals()
 {
-  if(eh_top_.empty() && !globals_.count("@__cppgm_eh_top")) {
+  if(!eh_top_.valid() && !HasGlobal(FindSymbol("@__cppgm_eh_top"))) {
     out_.Label("g____cppgm_eh_top"); out_.Instruction("data64 0"); out_.Blank();
   }
-  if(eh_value_.empty() && !globals_.count("@__cppgm_eh_value")) {
+  if(!eh_value_.valid() && !HasGlobal(FindSymbol("@__cppgm_eh_value"))) {
     out_.Label("g____cppgm_eh_value"); out_.Instruction("data64 0"); out_.Blank();
   }
 }
@@ -544,7 +571,7 @@ void FunctionEmitter::Emit()
 
 void FunctionEmitter::EmitPrologue()
 {
-  out_.Label(owner_.SymbolLabel(function_.name));
+  out_.Label(owner_.SymbolLabel(function_.symbol));
   out_.Instruction("isub64 sp sp 8");
   out_.Instruction("move64 [sp] bp");
   out_.Instruction("move64 bp sp");
@@ -633,7 +660,7 @@ void FunctionEmitter::EmitScalarValue(const Operand & value, const LowType & typ
   } else if(value.kind == Operand::OP_SLOT) {
     out_.Instruction("isub64 " + reg64 + " bp " + SlotAddress(value.slot));
   } else if(value.kind == Operand::OP_GLOBAL) {
-    out_.Instruction("move64 " + reg64 + " " + owner_.SymbolLabel(value.text));
+    out_.Instruction("move64 " + reg64 + " " + owner_.SymbolLabel(value.symbol));
   } else {
     const Location & location = value_locations_.at(value.value);
     if(location.address_value)
@@ -652,7 +679,7 @@ void FunctionEmitter::EmitAddressValue(const Operand & value, char bank)
   if(value.kind == Operand::OP_SLOT) {
     out_.Instruction("isub64 " + reg + " bp " + SlotAddress(value.slot));
   } else if(value.kind == Operand::OP_GLOBAL) {
-    out_.Instruction("move64 " + reg + " " + owner_.SymbolLabel(value.text));
+    out_.Instruction("move64 " + reg + " " + owner_.SymbolLabel(value.symbol));
   } else if(value.kind == Operand::OP_TEMP) {
     const Location & location = value_locations_.at(value.value);
     if(location.address_value)
@@ -672,7 +699,7 @@ void FunctionEmitter::EmitStorageLoad(const Operand & storage, const LowType & t
                      SlotMemory(storage.slot));
   else if(storage.kind == Operand::OP_GLOBAL)
     out_.Instruction("move" + std::to_string(item.width) + " " + reg + " [" +
-                     owner_.SymbolLabel(storage.text) + "]");
+                     owner_.SymbolLabel(storage.symbol) + "]");
   else {
     EmitAddressValue(storage, bank);
     out_.Instruction("move" + std::to_string(item.width) + " " + reg + " [" +
@@ -688,7 +715,7 @@ void FunctionEmitter::EmitStorageStore(const Operand & storage, const LowType & 
     out_.Instruction("move" + std::to_string(item.width) + " " +
                      SlotMemory(storage.slot) + " " + reg);
   else if(storage.kind == Operand::OP_GLOBAL)
-    out_.Instruction("move" + std::to_string(item.width) + " [" + owner_.SymbolLabel(storage.text) +
+    out_.Instruction("move" + std::to_string(item.width) + " [" + owner_.SymbolLabel(storage.symbol) +
                      "] " + reg);
   else {
     EmitAddressValue(storage, 'y');
@@ -948,7 +975,8 @@ void FunctionEmitter::EmitCall(const Instruction & ins)
 {
   static const char banks[] = {'x', 'y', 'z', 't'};
   const bool large_return = is_large_value(ins.type);
-  const bool direct = ins.first.kind == Operand::OP_GLOBAL && owner_.IsFunction(ins.first.text);
+  const bool direct = ins.first.kind == Operand::OP_GLOBAL &&
+    owner_.IsFunction(ins.first.symbol);
   const std::size_t abi_count = ins.args.size() + (large_return ? 1 : 0);
   const std::size_t extras = abi_count > 4 ? abi_count - 4 : 0;
   const std::size_t reserve = extras ? extras * 8 + (direct ? 0 : 8) : (direct ? 0 : 8);
@@ -988,7 +1016,7 @@ void FunctionEmitter::EmitCall(const Instruction & ins)
         EmitAddressValue(ins.args[i], banks[abi_index]);
       else EmitScalarValue(ins.args[i], arg_type, banks[abi_index]);
     }
-    const std::string callee = direct ? owner_.SymbolLabel(ins.first.text) :
+    const std::string callee = direct ? owner_.SymbolLabel(ins.first.symbol) :
       "[sp+" + std::to_string(callee_offset) + "]";
     out_.Instruction("call " + callee);
     out_.Instruction("iadd64 sp sp " + std::to_string(reserve));
@@ -1021,7 +1049,8 @@ void FunctionEmitter::EmitCall(const Instruction & ins)
       out_.Instruction("move64 " + target + " x64");
     }
   }
-  out_.Instruction("call " + (direct ? owner_.SymbolLabel(ins.first.text) : "[sp]"));
+  out_.Instruction("call " +
+    (direct ? owner_.SymbolLabel(ins.first.symbol) : "[sp]"));
   if(reserve) out_.Instruction("iadd64 sp sp " + std::to_string(reserve));
   if(!ins.call_returns_void && !large_return) StoreScalarTemp(ins.dest, ins.type, 'x');
 }
@@ -1031,7 +1060,8 @@ const LowType & FunctionEmitter::CallArgumentType(const Instruction & ins,
                                                   bool direct) const
 {
   if(ins.has_call_signature && index < ins.call_params.size()) return ins.call_params[index].type;
-  const FunctionTarget * function = direct ? owner_.FindFunction(ins.first.text) : 0;
+  const FunctionTarget * function = direct ?
+    owner_.FindFunction(ins.first.symbol) : 0;
   if(function && index < function->params->size()) return (*function->params)[index].type;
   return builtin_lowir_type(LTK_I64);
 }

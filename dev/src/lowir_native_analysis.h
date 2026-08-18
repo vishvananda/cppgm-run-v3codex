@@ -105,7 +105,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function);
 StorageFacts analyze_storage(
     const lowir_model::LowirFunction & function,
     const FunctionFacts & function_facts,
-    const std::unordered_map<std::string, std::string> & tls_wrappers);
+    const std::vector<lowir_model::SymbolId> & tls_wrappers);
 
 }  // namespace analysis
 }  // namespace lowir_native

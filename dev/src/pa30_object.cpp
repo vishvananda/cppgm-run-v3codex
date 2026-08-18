@@ -251,6 +251,7 @@ lowir_model::LowType ReadType(Reader& in)
 }
 
 void WriteOperand(Writer& out, const lowir_model::Operand& value,
+	const lowir_model::LowirProgram& program,
 	const lowir_model::Function* function = 0)
 {
 	WriteEnum(out, value.kind);
@@ -272,6 +273,8 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value,
 			throw std::logic_error("compiler object value lacks a function");
 		out.String(lowir_model::lowir_value_name(*function, value.value));
 	}
+	else if (value.kind == lowir_model::Operand::OP_GLOBAL)
+		out.String(lowir_model::lowir_symbol_name(program, value.symbol));
 	else out.String(value.text);
 	out.I64(value.kind == lowir_model::Operand::OP_INTEGER && value.has_int_value ?
 		value.int_value : 0);
@@ -399,6 +402,7 @@ lowir_model::InstructionDebugLocation ReadDebug(Reader& in)
 }
 
 void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
+	const lowir_model::LowirProgram& program,
 	const lowir_model::Function& function)
 {
 	WriteEnum(out, value.kind);
@@ -412,12 +416,12 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
 	out.Bool(value.has_eh_selector);
 	out.I64(value.eh_selector);
 	WriteEnum(out, value.index_projection);
-	WriteOperand(out, value.first, &function);
-	WriteOperand(out, value.second, &function);
-	WriteOperand(out, value.third, &function);
+	WriteOperand(out, value.first, program, &function);
+	WriteOperand(out, value.second, program, &function);
+	WriteOperand(out, value.third, program, &function);
 	out.U64(value.args.size());
 	for (std::size_t i = 0; i < value.args.size(); ++i)
-		WriteOperand(out, value.args[i], &function);
+		WriteOperand(out, value.args[i], program, &function);
 	out.Bool(value.call_returns_void);
 	out.Bool(value.has_call_signature);
 	WriteParameters(out, value.call_params);
@@ -492,14 +496,15 @@ lowir_model::GlobalDeclaration ReadGlobalDeclaration(Reader& in)
 	return value;
 }
 
-void WriteGlobal(Writer& out, const lowir_model::GlobalDefinition& value)
+void WriteGlobal(Writer& out, const lowir_model::GlobalDefinition& value,
+	const lowir_model::LowirProgram& program)
 {
 	out.String(value.name);
 	out.Bool(value.structured);
 	WriteEnum(out, value.storage);
 	WriteType(out, value.type);
 	WriteEnum(out, value.init_kind);
-	WriteOperand(out, value.init_operand);
+	WriteOperand(out, value.init_operand, program);
 	out.I64(value.addr_addend);
 	out.U64(value.data_items.size());
 	for (std::size_t i = 0; i < value.data_items.size(); ++i)
@@ -507,8 +512,9 @@ void WriteGlobal(Writer& out, const lowir_model::GlobalDefinition& value)
 		const lowir_model::GlobalDefinition::DataItem& item = value.data_items[i];
 		WriteEnum(out, item.kind);
 		WriteType(out, item.type);
-		WriteOperand(out, item.literal_operand);
-		out.String(item.symbol);
+		WriteOperand(out, item.literal_operand, program);
+		out.String(item.kind == lowir_model::GlobalDefinition::DataItem::ITEM_ADDR ?
+			lowir_model::lowir_symbol_name(program, item.symbol_id) : item.symbol);
 		out.I64(item.addr_addend);
 		out.U64(item.zero_bytes);
 	}
@@ -561,7 +567,8 @@ lowir_model::FunctionDeclaration ReadFunctionDeclaration(Reader& in)
 	return value;
 }
 
-void WriteFunction(Writer& out, const lowir_model::Function& value)
+void WriteFunction(Writer& out, const lowir_model::Function& value,
+	const lowir_model::LowirProgram& program)
 {
 	out.String(value.name);
 	WriteParameters(out, value.params);
@@ -578,7 +585,7 @@ void WriteFunction(Writer& out, const lowir_model::Function& value)
 		out.String(lowir_model::lowir_block_label(value, value.blocks[i].id));
 		out.U64(value.blocks[i].instructions.size());
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
-			WriteInstruction(out, value.blocks[i].instructions[j], value);
+			WriteInstruction(out, value.blocks[i].instructions[j], program, value);
 	}
 	WriteDebug(out, value.debug_location);
 	WriteBoundary(out, value.boundary);
@@ -645,13 +652,13 @@ void WriteProgram(Writer& out, const lowir_model::LowirProgram& value)
 		WriteGlobalDeclaration(out, value.global_declarations[i]);
 	out.U64(value.globals.size());
 	for (std::size_t i = 0; i < value.globals.size(); ++i)
-		WriteGlobal(out, value.globals[i]);
+		WriteGlobal(out, value.globals[i], value);
 	out.U64(value.function_declarations.size());
 	for (std::size_t i = 0; i < value.function_declarations.size(); ++i)
 		WriteFunctionDeclaration(out, value.function_declarations[i]);
 	out.U64(value.functions.size());
 	for (std::size_t i = 0; i < value.functions.size(); ++i)
-		WriteFunction(out, value.functions[i]);
+		WriteFunction(out, value.functions[i], value);
 	out.U64(value.object_aliases.size());
 	for (std::size_t i = 0; i < value.object_aliases.size(); ++i)
 	{
@@ -721,6 +728,8 @@ void RenameMetadata(lowir_model::SymbolMetadata* value,
 void RenameProgram(lowir_model::LowirProgram* program,
 	const RenameMap& names, LinkStats* stats)
 {
+	for (std::size_t i = 0; i < program->symbol_names.size(); ++i)
+		RenameString(&program->symbol_names[i], names, stats);
 	for (std::size_t i = 0; i < program->global_declarations.size(); ++i)
 	{
 		lowir_model::GlobalDeclaration& item = program->global_declarations[i];
@@ -978,7 +987,6 @@ CompilerObject ReadCompilerObject(const std::string& path)
 	result.target = input.String();
 	result.lowir = ReadProgram(input);
 	input.RequireEnd();
-	lowir_model::finalize_lowir_object_model(result.lowir);
 	return result;
 }
 
@@ -1016,6 +1024,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			}
 		}
 		RenameProgram(&objects[i].lowir, names, stats);
+		lowir_model::materialize_lowir_program_symbol_text(objects[i].lowir);
 		std::vector<ir_model::ExportedSymbol>().swap(
 			objects[i].lowir.exported_symbols);
 	}
@@ -1125,6 +1134,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 				alias.object_symbol);
 	}
 	result.object_aliases.swap(unique_aliases);
+	lowir_model::resolve_lowir_program_symbols(result);
 	lowir_model::finalize_lowir_object_model(result);
 	if (stats)
 	{

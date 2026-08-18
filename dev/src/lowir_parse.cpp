@@ -1403,10 +1403,11 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
   }
   const std::size_t token_count = tokens.size();
   std::vector<Token>().swap(tokens);
-  propagate_direct_call_boundaries(program);
   Validator(program, entry_policy).Validate();
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     resolve_lowir_function_operands(program.functions[i]);
+  resolve_lowir_program_symbols(program);
+  propagate_direct_call_boundaries(program);
   program.token_count = token_count;
   finalize_lowir_object_model(program);
   return program;

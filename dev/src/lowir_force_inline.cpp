@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -32,12 +31,13 @@ typedef std::vector<RenamedBlock> BlockMap;
 
 const std::size_t kNoFunction = static_cast<std::size_t>(-1);
 
-bool direct_call_target(const Instruction & instruction, std::string * target)
+bool direct_call_target(const Instruction & instruction,
+                        lowir_model::SymbolId * target)
 {
   if(instruction.kind != Instruction::IK_CALL ||
      instruction.first.kind != Operand::OP_GLOBAL)
     return false;
-  if(target) *target = instruction.first.text;
+  if(target) *target = instruction.first.symbol;
   return true;
 }
 
@@ -93,12 +93,13 @@ struct InlineNames
 class Inliner {
 public:
   explicit Inliner(LowirProgram * program)
-    : program_(*program), tarjan_next_(0)
+    : program_(*program), candidate_by_symbol_(program->symbol_names.size(),
+        kNoFunction), candidate_count_(0), tarjan_next_(0)
   {
     IndexCandidates();
   }
 
-  bool has_candidates() const { return !candidate_by_name_.empty(); }
+  bool has_candidates() const { return candidate_count_ != 0; }
 
   void run()
   {
@@ -110,7 +111,8 @@ public:
 
 private:
   LowirProgram & program_;
-  std::unordered_map<std::string, std::size_t> candidate_by_name_;
+  std::vector<std::size_t> candidate_by_symbol_;
+  std::size_t candidate_count_;
   std::vector<bool> recursive_;
   std::vector<int> tarjan_index_, tarjan_low_;
   std::vector<bool> tarjan_stacked_;
@@ -120,30 +122,30 @@ private:
 
   void IndexCandidates()
   {
-    std::unordered_set<std::string> forced;
+    std::vector<unsigned char> forced(program_.symbol_names.size(), 0);
     for(std::size_t i = 0; i < program_.function_declarations.size(); ++i)
       if(program_.function_declarations[i].metadata.force_inline)
-        forced.insert(program_.function_declarations[i].name);
+        forced[program_.function_declarations[i].symbol] = 1;
     for(std::size_t i = 0; i < program_.functions.size(); ++i)
       if(program_.functions[i].metadata.force_inline)
-        forced.insert(program_.functions[i].name);
+        forced[program_.functions[i].symbol] = 1;
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       const Function & function = program_.functions[i];
-      if(!forced.count(function.name) ||
+      if(!forced[function.symbol] ||
          function.boundary.arity == lowir_model::CAM_VARIADIC)
         continue;
-      if(!candidate_by_name_.emplace(function.name, i).second)
+      if(candidate_by_symbol_[function.symbol] != kNoFunction)
         throw std::runtime_error("multiple force-inline function definitions");
+      candidate_by_symbol_[function.symbol] = i;
+      ++candidate_count_;
     }
   }
 
   std::size_t Candidate(const Instruction & instruction) const
   {
-    std::string target;
+    lowir_model::SymbolId target;
     if(!direct_call_target(instruction, &target)) return kNoFunction;
-    const std::unordered_map<std::string, std::size_t>::const_iterator found =
-      candidate_by_name_.find(target);
-    return found == candidate_by_name_.end() ? kNoFunction : found->second;
+    return candidate_by_symbol_[target];
   }
 
   void VisitCandidate(std::size_t function_index)
@@ -190,9 +192,9 @@ private:
     tarjan_index_.assign(count, -1);
     tarjan_low_.assign(count, -1);
     tarjan_stacked_.assign(count, false);
-    for(std::unordered_map<std::string, std::size_t>::const_iterator it =
-          candidate_by_name_.begin(); it != candidate_by_name_.end(); ++it)
-      if(tarjan_index_[it->second] < 0) VisitCandidate(it->second);
+    for(std::size_t i = 0; i < program_.functions.size(); ++i)
+      if(candidate_by_symbol_[program_.functions[i].symbol] == i &&
+         tarjan_index_[i] < 0) VisitCandidate(i);
   }
 
   void ExpandFunction(std::size_t function_index)
@@ -437,14 +439,15 @@ std::unique_ptr<LowirProgram> rewrite_program(const LowirProgram & source)
 			break;
 		}
 	if(!has_forced_definition) {
-		std::unordered_set<std::string> forced_declarations;
+		std::vector<unsigned char> forced_declarations(
+			source.symbol_names.size(), 0);
 		for(std::size_t i = 0; i < source.function_declarations.size(); ++i)
 			if(source.function_declarations[i].metadata.force_inline)
-				forced_declarations.insert(source.function_declarations[i].name);
+				forced_declarations[source.function_declarations[i].symbol] = 1;
 		for(std::size_t i = 0;
 			!has_forced_definition && i < source.functions.size(); ++i)
 			has_forced_definition =
-				forced_declarations.count(source.functions[i].name) != 0 &&
+				forced_declarations[source.functions[i].symbol] != 0 &&
 				source.functions[i].boundary.arity != lowir_model::CAM_VARIADIC;
 	}
 	if(!has_forced_definition) return std::unique_ptr<LowirProgram>();

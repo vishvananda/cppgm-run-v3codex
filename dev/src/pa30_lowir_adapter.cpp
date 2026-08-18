@@ -114,7 +114,7 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		result.kind = lowir_model::Operand::OP_GLOBAL;
 		{
 			const Symbol& symbol = program.symbols[operand.id];
-			result.text = At(symbol.name);
+			result.symbol = lowir_model::SymbolId(operand.id);
 			result.address_binding = symbol.definition_emitted &&
 				!symbol.weak_linkage ?
 				lowir_model::Operand::ADDRESS_LOCAL :
@@ -472,7 +472,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 				throw std::logic_error("invalid exception filter RTTI symbol");
 			lowir_model::Operand type;
 			type.kind = lowir_model::Operand::OP_GLOBAL;
-			type.text = At(program.symbols[symbol].name);
+			type.symbol = lowir_model::SymbolId(symbol);
 			target.args.push_back(type);
 		}
 		break;
@@ -574,12 +574,16 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	lowir_model::LowirPreparationStats* preparation_stats)
 {
 	lowir_model::LowirProgram target;
+	target.symbol_names.reserve(source.symbols.size());
+	for (std::size_t i = 0; i < source.symbols.size(); ++i)
+		lowir_model::append_lowir_symbol(target, At(source.symbols[i].name));
 	target.global_declarations.reserve(source.global_declarations.size());
 	for (std::size_t i = 0; i < source.global_declarations.size(); ++i)
 	{
 		const GlobalDeclaration& item = source.global_declarations[i];
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::GlobalDeclaration result;
+		result.symbol = lowir_model::SymbolId(item.symbol);
 		result.name = At(symbol.name);
 		result.has_type = item.typed;
 		if (item.typed) result.type = AdaptType(item.type);
@@ -594,6 +598,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const FunctionDeclaration& item = source.declarations[i];
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::FunctionDeclaration result;
+		result.symbol = lowir_model::SymbolId(item.symbol);
 		result.name = At(symbol.name);
 		result.params = AdaptParameters(item.parameters);
 		result.return_type = AdaptType(item.result);
@@ -601,8 +606,12 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			lowir_model::CAM_FIXED;
 		AdaptSymbolFacts(symbol, &result.metadata, &result.boundary);
 		if (symbol.tls_for_symbol != kNoLowId)
+		{
+			result.metadata.tls_for_symbol_id =
+				lowir_model::SymbolId(symbol.tls_for_symbol);
 			result.metadata.tls_for_symbol =
 				At(source.symbols[symbol.tls_for_symbol].name);
+		}
 		target.function_declarations.push_back(std::move(result));
 	}
 	target.globals.reserve(source.globals.size());
@@ -611,6 +620,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Global& item = source.globals[i];
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::GlobalDefinition result;
+		result.symbol = lowir_model::SymbolId(item.symbol);
 		result.name = At(symbol.name);
 		if (item.type.kind != LOW_INVALID) result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
@@ -633,7 +643,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				{
 					data.kind = lowir_model::GlobalDefinition::DataItem::ITEM_ADDR;
 					data.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
-					data.symbol = At(source.symbols[value.symbol].name);
+					data.symbol_id = lowir_model::SymbolId(value.symbol);
 					data.addr_addend = value.offset;
 				}
 				else
@@ -663,7 +673,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		{
 			result.init_kind = lowir_model::GlobalDefinition::INIT_ADDR;
 			result.init_operand.kind = lowir_model::Operand::OP_GLOBAL;
-			result.init_operand.text = At(source.symbols[item.address_symbol].name);
+			result.init_operand.symbol =
+				lowir_model::SymbolId(item.address_symbol);
 			result.addr_addend = item.address_offset;
 		}
 		else if (item.initializer_kind == Global::ZERO)
@@ -693,6 +704,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		const Function& item = source.functions[i];
 		const Symbol& symbol = source.symbols[item.symbol];
 		lowir_model::Function result;
+		result.symbol = lowir_model::SymbolId(item.symbol);
 		result.name = At(symbol.name);
 		result.params = AdaptParameters(item.parameters);
 		const AdaptedValues values = PrepareValues(item, &result);
@@ -708,11 +720,24 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		else if (item.initializer) result.metadata.role = lowir_model::SR_INIT;
 		else if (item.finalizer) result.metadata.role = lowir_model::SR_FINI;
 		if (symbol.tls_for_symbol != kNoLowId)
+		{
+			result.metadata.tls_for_symbol_id =
+				lowir_model::SymbolId(symbol.tls_for_symbol);
 			result.metadata.tls_for_symbol =
 				At(source.symbols[symbol.tls_for_symbol].name);
+		}
 		for (std::size_t j = 0; j < item.slots.size(); ++j)
+		{
 			lowir_model::append_lowir_slot(result, Dollar(item.slots[j].name),
 				AdaptType(item.slots[j].type));
+			for (std::size_t p = 0; p < item.parameters.size(); ++p)
+				if (item.slots[j].name == item.parameters[p].name &&
+					SameType(item.slots[j].type, item.parameters[p].type))
+				{
+					result.slot_parameter_values[j] = values.parameters[p];
+					break;
+				}
+		}
 		result.blocks.reserve(item.block_order.size());
 		result.block_labels.resize(item.blocks.size());
 		result.next_block_id = static_cast<std::uint32_t>(item.blocks.size());
@@ -740,6 +765,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 	{
 		lowir_model::ObjectAlias alias;
 		alias.object_symbol = source.object_aliases[i].object_name;
+		alias.target_id = lowir_model::SymbolId(source.object_aliases[i].target);
 		const Symbol& alias_target =
 			source.symbols[source.object_aliases[i].target];
 		alias.target = At(alias_target.name);

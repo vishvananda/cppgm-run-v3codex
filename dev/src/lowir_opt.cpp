@@ -168,6 +168,7 @@ bool same_operand(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_LABEL) return a.block == b.block;
   if(a.kind == Operand::OP_SLOT) return a.slot == b.slot;
   if(a.kind == Operand::OP_TEMP) return a.value == b.value;
+  if(a.kind == Operand::OP_GLOBAL) return a.symbol == b.symbol;
   return a.text == b.text;
 }
 
@@ -318,6 +319,7 @@ bool operand_less(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_SLOT) return a.slot < b.slot;
   if(a.kind == Operand::OP_LABEL) return a.block < b.block;
   if(a.kind == Operand::OP_TEMP) return a.value < b.value;
+  if(a.kind == Operand::OP_GLOBAL) return a.symbol < b.symbol;
   return a.text < b.text;
 }
 
@@ -326,6 +328,7 @@ std::uint32_t operand_compact_identity(const Operand & operand)
   if(operand.kind == Operand::OP_SLOT) return operand.slot;
   if(operand.kind == Operand::OP_LABEL) return operand.block;
   if(operand.kind == Operand::OP_TEMP) return operand.value;
+  if(operand.kind == Operand::OP_GLOBAL) return operand.symbol;
   return lowir_model::kInvalidCompactId;
 }
 
@@ -1129,25 +1132,26 @@ bool simplify_values(Function * function, Stats * stats)
   return changed;
 }
 
+struct FunctionBoundaries
+{
+  std::vector<FunctionBoundaryMetadata> values;
+  std::vector<unsigned char> known;
+};
+
 bool call_is_removable(const Instruction & ins,
-                       const std::unordered_map<std::string,
-                         FunctionBoundaryMetadata> & boundaries)
+                       const FunctionBoundaries & boundaries)
 {
   if(ins.kind != Instruction::IK_CALL || !ins.dest.valid()) return false;
   FunctionBoundaryMetadata boundary = ins.call_boundary;
-  if(ins.first.kind == Operand::OP_GLOBAL) {
-    const std::unordered_map<std::string, FunctionBoundaryMetadata>::const_iterator
-      found = boundaries.find(ins.first.text);
-    if(found != boundaries.end()) boundary = found->second;
-  }
+  if(ins.first.kind == Operand::OP_GLOBAL && boundaries.known[ins.first.symbol])
+    boundary = boundaries.values[ins.first.symbol];
   return boundary.effects == lowir_model::CFXM_READNONE &&
     boundary.unwind == lowir_model::CUM_NO &&
     boundary.returns != lowir_model::CRM_NORETURN;
 }
 
 bool eliminate_dead_code(Function * function,
-                         const std::unordered_map<std::string,
-                           FunctionBoundaryMetadata> & boundaries,
+                         const FunctionBoundaries & boundaries,
                          Stats * stats)
 {
   bool has_candidate = false;
@@ -2534,15 +2538,23 @@ bool promote_slots(Function * function, Stats * stats)
   return true;
 }
 
-std::unordered_map<std::string, FunctionBoundaryMetadata>
+FunctionBoundaries
 function_boundaries(const LowirProgram & program)
 {
-  std::unordered_map<std::string, FunctionBoundaryMetadata> result;
-  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-    result[program.function_declarations[i].name] =
-      program.function_declarations[i].boundary;
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
-    result[program.functions[i].name] = program.functions[i].boundary;
+  FunctionBoundaries result;
+  result.values.resize(program.symbol_names.size());
+  result.known.assign(program.symbol_names.size(), 0);
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i) {
+    const lowir_model::SymbolId symbol =
+      program.function_declarations[i].symbol;
+    result.values[symbol] = program.function_declarations[i].boundary;
+    result.known[symbol] = 1;
+  }
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    const lowir_model::SymbolId symbol = program.functions[i].symbol;
+    result.values[symbol] = program.functions[i].boundary;
+    result.known[symbol] = 1;
+  }
   return result;
 }
 
@@ -2606,8 +2618,7 @@ bool timed_function_pass(FunctionPass pass, Function * function,
 }
 
 bool timed_dce(Function * function,
-               const std::unordered_map<std::string,
-                 FunctionBoundaryMetadata> & boundaries,
+               const FunctionBoundaries & boundaries,
                Stats * stats)
 {
   if(!stats) return eliminate_dead_code(function, boundaries, 0);
@@ -2623,8 +2634,7 @@ bool timed_dce(Function * function,
 }
 
 bool prepare_for_inlining(Function * function,
-                          const std::unordered_map<std::string,
-                            FunctionBoundaryMetadata> & boundaries,
+                          const FunctionBoundaries & boundaries,
                           Stats * stats)
 {
   timed_function_pass(simplify_values, function, stats,
@@ -2661,9 +2671,10 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     }
     return;
   }
-  const std::unordered_map<std::string, FunctionBoundaryMetadata> boundaries =
+  const FunctionBoundaries boundaries =
     function_boundaries(program);
-  std::unordered_set<std::string> prepared_oversized_functions;
+  std::vector<unsigned char> prepared_oversized_symbols(
+    program.symbol_names.size(), 0);
   std::vector<std::size_t> original_instruction_counts(
     program.functions.size(), 0);
   std::vector<unsigned char> post_cfg_values_changed(
@@ -2676,18 +2687,19 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     original_instruction_counts[i] = original_instructions;
     if(original_instructions > 40 &&
        !program.functions[i].metadata.prefer_local_object_binding)
-      prepared_oversized_functions.insert(program.functions[i].name);
+      prepared_oversized_symbols[program.functions[i].symbol] = 1;
     post_cfg_values_changed[i] =
       prepare_for_inlining(&program.functions[i], boundaries, stats) ? 1 : 0;
   }
-  std::unordered_set<std::string> inlined_functions;
+  std::vector<unsigned char> inlined_symbols(program.symbol_names.size(), 0);
   std::chrono::steady_clock::time_point inline_started;
   if(stats) inline_started = std::chrono::steady_clock::now();
   const std::size_t inline_rewrites =
-    inline_o1_calls(program, prepared_oversized_functions,
-      original_instruction_counts, &inlined_functions, stats);
+    inline_o1_calls(program, prepared_oversized_symbols,
+      original_instruction_counts, &inlined_symbols, stats);
   if(stats) {
-    stats->inline_changed_callers = inlined_functions.size();
+    stats->inline_changed_callers =
+      std::count(inlined_symbols.begin(), inlined_symbols.end(), 1);
     stats->rewrites += inline_rewrites;
     stats->inline_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -2699,7 +2711,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     // a preceding transform can have exposed work in that stage; the
     // individual propagation and liveness analyses use their own dirty
     // worklists.
-    if(inlined_functions.count(function.name))
+    if(inlined_symbols[function.symbol])
       post_cfg_values_changed[i] =
         prepare_for_inlining(&function, boundaries, stats) ? 1 : 0;
     const std::chrono::steady_clock::time_point cleanup_resume_started =
@@ -2719,11 +2731,11 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - cleanup_tail_started).count());
     bool slot_values_changed = false;
-    if(inlined_functions.count(function.name) || level >= 2)
+    if(inlined_symbols[function.symbol] || level >= 2)
       slot_values_changed = timed_function_pass(
         forward_single_store_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds);
-    if(inlined_functions.count(function.name))
+    if(inlined_symbols[function.symbol])
       slot_values_changed = timed_function_pass(
         local_slot_forward, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds) || slot_values_changed;

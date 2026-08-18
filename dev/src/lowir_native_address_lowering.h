@@ -251,10 +251,10 @@ protected:
 			}
 		}
 		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
-			derived.tls_wrappers_.count(instruction.first.text))
+			derived.tls_wrappers_[instruction.first.symbol].valid())
 		{
-			const std::unordered_map<std::string, std::string>::const_iterator
-				wrapper = derived.tls_wrappers_.find(instruction.first.text);
+			const lowir_model::SymbolId wrapper =
+				derived.tls_wrappers_[instruction.first.symbol];
 			mir_model::MirOperand target;
 			X64Register result = XR_RSP;
 			if (derived.result_is_immediate_return(
@@ -279,8 +279,10 @@ protected:
 				machine_instruction(mir_model::MirInstruction::MI_TLS_ADDR);
 			append_operand(address, target);
 			append_operand(address,
-				named_operand(mir_model::MirOperand::OP_SYMBOL, wrapper->second));
-			address.tls_storage_symbol = instruction.first.text;
+				named_operand(mir_model::MirOperand::OP_SYMBOL,
+					lowir_model::lowir_symbol_name(derived.program_, wrapper)));
+			address.tls_storage_symbol = lowir_model::lowir_symbol_name(
+				derived.program_, instruction.first.symbol);
 			out.push_back(address);
 			if (destination.kind == mir_model::MirOperand::OP_FRAME)
 				append_store(out, destination, target, machine_type(lowir_model::LTK_PTR));
@@ -291,7 +293,7 @@ protected:
 			// A symbol address is already a complete target operand.  Retain it
 			// until call setup selects the ABI register instead of assigning an
 			// unrelated persistent register and immediately copying from it.
-			destination = global_operand(
+			destination = derived.global_operand(
 				mir_model::MirOperand::OP_SYMBOL, instruction.first);
 		}
 		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
@@ -324,9 +326,9 @@ protected:
 				derived.storage(instruction.first).offset;
 		}
 		if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
-			derived.pointer_globals_.count(instruction.first.text))
+			derived.pointer_globals_[instruction.first.symbol])
 			derived.values_[instruction.dest].pointer_global_cell =
-				global_operand(mir_model::MirOperand::OP_GLOBAL,
+				derived.global_operand(mir_model::MirOperand::OP_GLOBAL,
 					instruction.first);
 	}
 };

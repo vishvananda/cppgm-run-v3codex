@@ -1,8 +1,6 @@
 #pragma once
 
 #include <cstddef>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "lowir_model.h"
@@ -19,7 +17,7 @@ struct FunctionSignature
   const lowir_model::FunctionBoundaryMetadata * boundary = 0;
 };
 
-typedef std::unordered_map<std::string, FunctionSignature> FunctionSignatureIndex;
+typedef std::vector<FunctionSignature> FunctionSignatureIndex;
 
 enum PieceLocation
 {

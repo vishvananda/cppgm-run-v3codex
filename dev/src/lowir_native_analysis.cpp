@@ -608,27 +608,10 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   return facts;
 }
 
-struct StorageParameterIndexes
-{
-  std::unordered_map<std::string, std::size_t> by_suffix;
-};
-
-StorageParameterIndexes index_storage_parameters(
-    const lowir_model::LowirFunction & function)
-{
-  StorageParameterIndexes result;
-  result.by_suffix.reserve(function.params.size());
-  for(std::size_t p = 0; p < function.params.size(); ++p) {
-    if(function.params[p].name.size() >= 2)
-      result.by_suffix[function.params[p].name.substr(1)] = p;
-  }
-  return result;
-}
-
 StorageFacts analyze_storage(
     const lowir_model::LowirFunction & function,
     const FunctionFacts & function_facts,
-    const std::unordered_map<std::string, std::string> & tls_wrappers)
+    const std::vector<lowir_model::SymbolId> & tls_wrappers)
 {
   StorageFacts facts;
   facts.promoted_parameter_clobbers.assign(function.params.size(), 0);
@@ -637,8 +620,6 @@ StorageFacts analyze_storage(
   facts.forwarded_parameter_slots.resize(function.slot_names.size());
   facts.value_flags.assign(function.value_names.size(), 0);
   facts.dead_store_slots.assign(function.slot_names.size(), 0);
-  const StorageParameterIndexes parameters = index_storage_parameters(function);
-
   const std::size_t no_index = std::numeric_limits<std::size_t>::max();
   std::vector<std::size_t> value_parameters(function.value_names.size(), no_index);
   for(std::size_t parameter = 0; parameter < function.params.size(); ++parameter)
@@ -653,17 +634,13 @@ StorageFacts analyze_storage(
     function.slot_names.size(), no_index);
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
     const lowir_model::SlotId slot_id = function.slots[s];
-    const std::string & slot = lowir_model::lowir_slot_name(function, slot_id);
     const lowir_model::LowType & slot_type =
       lowir_model::lowir_slot_type(function, slot_id);
     if(slot_type.kind == lowir_model::LTK_OBJECT) {
-      if(slot.size() < 2) continue;
-      const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
-        parameters.by_suffix.find(slot.substr(1));
-      if(parameter != parameters.by_suffix.end() &&
-         lowir_model::same_lowir_type(function.params[parameter->second].type,
-                                      slot_type))
-        object_slot_parameters[slot_id] = parameter->second;
+      const lowir_model::ValueId parameter_value =
+        function.slot_parameter_values[slot_id];
+      if(parameter_value.valid())
+		object_slot_parameters[slot_id] = value_parameters[parameter_value];
     }
   }
 
@@ -731,7 +708,7 @@ StorageFacts analyze_storage(
       if(instruction.kind == Instruction::IK_STORE &&
          instruction.first.kind == Operand::OP_TEMP &&
          instruction.second.kind == Operand::OP_GLOBAL &&
-         tls_wrappers.count(instruction.second.text))
+         tls_wrappers[instruction.second.symbol].valid())
         facts.mark(instruction.first.value, StorageFacts::VF_TLS_STORE_INPUT);
       if(instruction.kind == Instruction::IK_STORE &&
          instruction.first.kind == Operand::OP_TEMP &&

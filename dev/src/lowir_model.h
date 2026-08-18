@@ -159,19 +159,27 @@ struct Operand
     OP_LABEL,
     OP_INTEGER,
     OP_FLOAT
-  } kind = OP_INTEGER;
+  } kind;
 
   enum AddressBinding { ADDRESS_LOCAL, ADDRESS_PREEMPTIBLE }
-    address_binding = ADDRESS_LOCAL;
+    address_binding;
 
-  bool has_int_value = false;
-  BlockId block;
-  SlotId slot;
-  ValueId value;
+  bool has_int_value;
+  union
+  {
+    BlockId block;
+    SlotId slot;
+    ValueId value;
+    SymbolId symbol;
+  };
   std::string text;
-  long long int_value = 0;
-  long double float_value = 0.0L;
+  long long int_value;
+  long double float_value;
   LowType literal_type;
+
+  Operand()
+    : kind(OP_INTEGER), address_binding(ADDRESS_LOCAL), has_int_value(false),
+      block(), int_value(0), float_value(0.0L) {}
 };
 
 enum SymbolRole
@@ -304,6 +312,7 @@ struct SymbolMetadata
   SymbolBindingMode binding = SBM_DEFAULT;
   std::string object_symbol;
   std::string tls_for_symbol;
+  SymbolId tls_for_symbol_id;
   std::string section_segment;
   std::string section_name;
   bool keep_internal_alias = false;
@@ -350,6 +359,7 @@ struct InstructionDebugLocation
 
 struct GlobalDeclaration
 {
+  SymbolId symbol;
   std::string name;
   bool has_type = false;
   LowType type;
@@ -371,10 +381,12 @@ struct GlobalDefinition
     LowType type;
     Operand literal_operand;
     std::string symbol;
+    SymbolId symbol_id;
     long long addr_addend = 0;
     std::size_t zero_bytes = 0;
   };
 
+  SymbolId symbol;
   std::string name;
   bool structured = false;
   GlobalStorageMode storage = GSM_DEFAULT;
@@ -464,12 +476,14 @@ struct Block
 
 struct Function
 {
+  SymbolId symbol;
   std::string name;
   std::vector<Parameter> params;
   LowType return_type;
   std::vector<SlotId> slots;
   std::vector<std::string> slot_names;
   std::vector<LowType> slot_types;
+  std::vector<ValueId> slot_parameter_values;
   std::vector<std::string> value_names;
   std::vector<std::uint32_t> generated_value_ordinals;
   std::vector<LowType> value_types;
@@ -483,6 +497,7 @@ struct Function
 
 struct FunctionDeclaration
 {
+  SymbolId symbol;
   std::string name;
   std::vector<Parameter> params;
   LowType return_type;
@@ -493,12 +508,14 @@ struct FunctionDeclaration
 struct ObjectAlias
 {
   std::string object_symbol;
+  SymbolId target_id;
   std::string target;
 };
 
 struct Program
 {
   StringPool strings;
+  std::vector<std::string> symbol_names;
   std::vector<GlobalDeclaration> global_declarations;
   std::vector<GlobalDefinition> globals;
   std::vector<FunctionDeclaration> function_declarations;
@@ -535,7 +552,11 @@ ValueId append_lowir_generated_value(Function & function,
                                      const LowType & type);
 std::string lowir_value_name(const Function & function, ValueId value);
 const LowType & lowir_value_type(const Function & function, ValueId value);
+SymbolId append_lowir_symbol(Program & program, const std::string & name);
+const std::string & lowir_symbol_name(const Program & program, SymbolId symbol);
 void resolve_lowir_function_operands(Function & function);
+void resolve_lowir_program_symbols(Program & program);
+void materialize_lowir_program_symbol_text(Program & program);
 
 enum LowirEntryPolicy
 {

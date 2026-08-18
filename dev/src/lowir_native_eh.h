@@ -10,7 +10,8 @@ namespace eh {
 
 void plan_program(const lowir_model::LowirProgram & source,
                   mir_model::MirProgram & target);
-bool lower_marker(const lowir_model::Function & function,
+bool lower_marker(const lowir_model::Program & program,
+                  const lowir_model::Function & function,
                   const lowir_model::Instruction & source,
                   std::vector<mir_model::MirInstruction> & target);
 

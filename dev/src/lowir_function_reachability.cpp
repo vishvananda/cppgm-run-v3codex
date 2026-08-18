@@ -3,7 +3,6 @@
 #include "lowir_prepare.h"
 
 #include <stdexcept>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -16,14 +15,17 @@ class FunctionReachability
 {
 public:
 	explicit FunctionReachability(const Program& program) : program_(program),
+		functions_(program.symbol_names.size(), no_function()),
 		reachable_(program.functions.size(), 0)
 	{
-		functions_.reserve(program.functions.size());
 		for (std::size_t i = 0; i < program.functions.size(); ++i)
-			if (!functions_.insert(std::make_pair(
-				program.functions[i].name, i)).second)
+		{
+			const SymbolId symbol = program.functions[i].symbol;
+			if (functions_[symbol] != no_function())
 				throw std::logic_error(
 					"function reachability has duplicate definitions");
+			functions_[symbol] = i;
+		}
 	}
 
 	void Run()
@@ -42,22 +44,23 @@ public:
 
 private:
 	const Program& program_;
-	std::unordered_map<std::string, std::size_t> functions_;
+	std::vector<std::size_t> functions_;
 	std::vector<unsigned char> reachable_;
 	std::vector<std::size_t> pending_;
 
-	void MarkSymbol(const std::string& symbol)
+	static std::size_t no_function() { return static_cast<std::size_t>(-1); }
+
+	void MarkSymbol(SymbolId symbol)
 	{
-		const std::unordered_map<std::string, std::size_t>::const_iterator found =
-			functions_.find(symbol);
-		if (found == functions_.end() || reachable_[found->second]) return;
-		reachable_[found->second] = 1;
-		pending_.push_back(found->second);
+		const std::size_t found = functions_[symbol];
+		if (found == no_function() || reachable_[found]) return;
+		reachable_[found] = 1;
+		pending_.push_back(found);
 	}
 
 	void MarkOperand(const Operand& operand)
 	{
-		if (operand.kind == Operand::OP_GLOBAL) MarkSymbol(operand.text);
+		if (operand.kind == Operand::OP_GLOBAL) MarkSymbol(operand.symbol);
 	}
 
 	void MarkRoots()
@@ -71,7 +74,7 @@ private:
 				function.metadata.role == SR_INIT ||
 				function.metadata.role == SR_FINI ||
 				!function.metadata.tls_for_symbol.empty())
-				MarkSymbol(function.name);
+				MarkSymbol(function.symbol);
 		}
 		for (std::size_t i = 0; i < program_.globals.size(); ++i)
 		{
@@ -80,7 +83,7 @@ private:
 			for (std::size_t j = 0; j < global.data_items.size(); ++j)
 				if (global.data_items[j].kind ==
 					GlobalDefinition::DataItem::ITEM_ADDR)
-					MarkSymbol(global.data_items[j].symbol);
+					MarkSymbol(global.data_items[j].symbol_id);
 		}
 	}
 
@@ -110,7 +113,7 @@ FunctionPruningSummary prune_unreachable_weak_functions(Program& program)
 	reachability.Run();
 	FunctionPruningSummary result;
 	result.reachable_functions = reachability.ReachableCount();
-	std::unordered_map<std::string, bool> removed;
+	std::vector<unsigned char> removed(program.symbol_names.size(), 0);
 	std::vector<Function> retained;
 	retained.reserve(result.reachable_functions);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
@@ -118,7 +121,7 @@ FunctionPruningSummary prune_unreachable_weak_functions(Program& program)
 		if (!reachability.Reachable(i) &&
 			program.functions[i].metadata.binding == SBM_WEAK)
 		{
-			removed[program.functions[i].name] = true;
+			removed[program.functions[i].symbol] = 1;
 			++result.pruned_functions;
 		}
 		else retained.push_back(std::move(program.functions[i]));
@@ -127,7 +130,7 @@ FunctionPruningSummary prune_unreachable_weak_functions(Program& program)
 	std::vector<ObjectAlias> aliases;
 	aliases.reserve(program.object_aliases.size());
 	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
-		if (!removed.count(program.object_aliases[i].target))
+		if (!removed[program.object_aliases[i].target_id])
 			aliases.push_back(std::move(program.object_aliases[i]));
 	program.object_aliases.swap(aliases);
 	derive_lowir_object_facts(program);

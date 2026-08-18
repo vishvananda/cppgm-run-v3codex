@@ -20,8 +20,8 @@ struct ProgramLoweringSession::Impl
   Stats * stats;
   int optimization_level;
   mir_model::MirProgram shell;
-  std::unordered_map<std::string, std::string> tls_wrappers;
-  std::unordered_set<std::string> pointer_globals;
+  std::vector<lowir_model::SymbolId> tls_wrappers;
+  std::vector<unsigned char> pointer_globals;
   abi::FunctionSignatureIndex signatures;
 
   Impl(const lowir_model::LowirProgram & program, const std::string & target,
@@ -35,24 +35,27 @@ struct ProgramLoweringSession::Impl
     if(target != "linux")
       throw std::runtime_error("unsupported native target: " + target);
     shell.target = target;
+	pointer_globals.assign(source.symbol_names.size(), 0);
+	signatures.resize(source.symbol_names.size());
     eh::plan_program(source, shell);
     program_lowering::lower_startup(source, shell);
     tls_wrappers = program_lowering::tls_wrapper_index(source);
     for(std::size_t i = 0; i < source.global_declarations.size(); ++i)
       if(source.global_declarations[i].has_type &&
          source.global_declarations[i].type.kind == lowir_model::LTK_PTR)
-        pointer_globals.insert(source.global_declarations[i].name);
+		pointer_globals[source.global_declarations[i].symbol] = 1;
     for(std::size_t i = 0; i < source.globals.size(); ++i)
       if(!source.globals[i].structured &&
          source.globals[i].type.kind == lowir_model::LTK_PTR)
-        pointer_globals.insert(source.globals[i].name);
+		pointer_globals[source.globals[i].symbol] = 1;
     for(std::size_t i = 0; i < source.globals.size(); ++i) {
       mir_model::MirGlobalDefinition global =
-        program_lowering::lower_global(source.globals[i]);
-      const std::unordered_map<std::string, std::string>::const_iterator wrapper =
-        tls_wrappers.find(source.globals[i].name);
-      if(wrapper != tls_wrappers.end())
-        global.thread_local_wrapper_symbol = wrapper->second;
+        program_lowering::lower_global(source, source.globals[i]);
+      const lowir_model::SymbolId wrapper =
+        tls_wrappers[source.globals[i].symbol];
+      if(wrapper.valid())
+        global.thread_local_wrapper_symbol =
+          lowir_model::lowir_symbol_name(source, wrapper);
       shell.globals.push_back(std::move(global));
     }
     IndexSignatures();
@@ -73,14 +76,14 @@ struct ProgramLoweringSession::Impl
       signature.params = &source.function_declarations[i].params;
       signature.return_type = &source.function_declarations[i].return_type;
       signature.boundary = &source.function_declarations[i].boundary;
-      signatures[source.function_declarations[i].name] = signature;
+      signatures[source.function_declarations[i].symbol] = signature;
     }
     for(std::size_t i = 0; i < source.functions.size(); ++i) {
       abi::FunctionSignature signature;
       signature.params = &source.functions[i].params;
       signature.return_type = &source.functions[i].return_type;
       signature.boundary = &source.functions[i].boundary;
-      signatures[source.functions[i].name] = signature;
+      signatures[source.functions[i].symbol] = signature;
     }
   }
 
@@ -106,7 +109,8 @@ struct ProgramLoweringSession::Impl
     std::chrono::steady_clock::time_point started;
     if(stats) started = std::chrono::steady_clock::now();
     mir_model::MirFunction result = session_detail::lower_native_function(
-      source.functions[index], pointer_globals, tls_wrappers, signatures, stats);
+      source, source.functions[index], pointer_globals, tls_wrappers,
+      signatures, stats);
     machine_opt::Stats opt_stats;
     machine_opt::optimize_function(result, optimization_level,
                                    stats ? &opt_stats : 0);

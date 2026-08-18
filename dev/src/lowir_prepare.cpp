@@ -2,8 +2,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -22,12 +20,12 @@ std::uint64_t elapsed_nanoseconds(const Clock::time_point& started)
 }
 
 void note_operand_reference(const Operand& operand,
-	std::unordered_set<std::string>* referenced,
+	std::vector<unsigned char>* referenced,
 	LowirPreparationStats* stats)
 {
 	if (stats) ++stats->reference_operand_visits;
 	if (operand.kind == Operand::OP_GLOBAL)
-		referenced->insert(operand.text);
+		(*referenced)[operand.symbol] = 1;
 }
 
 void canonicalize_frontend_symbol(const std::string& name,
@@ -67,29 +65,28 @@ void append_export(Program& program, const std::string& name,
 
 void derive_exports(Program& program)
 {
-	std::unordered_map<std::string, ir_model::SymbolLinkage> linkage;
+	std::vector<ir_model::SymbolLinkage> linkage(
+		program.symbol_names.size(), ir_model::SL_EXTERNAL);
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
-		linkage[program.global_declarations[i].name] =
+		linkage[program.global_declarations[i].symbol] =
 			exported_linkage(program.global_declarations[i].metadata.binding);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		linkage[program.function_declarations[i].name] =
+		linkage[program.function_declarations[i].symbol] =
 			exported_linkage(program.function_declarations[i].metadata.binding);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
-		linkage[program.globals[i].name] =
+		linkage[program.globals[i].symbol] =
 			exported_linkage(program.globals[i].metadata.binding);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		linkage[program.functions[i].name] =
+		linkage[program.functions[i].symbol] =
 			exported_linkage(program.functions[i].metadata.binding);
 	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
 	{
 		const ObjectAlias& object_alias = program.object_aliases[i];
 		ir_model::ExportedSymbol alias;
-		alias.internal_symbol = object_alias.target;
+		alias.internal_symbol =
+			lowir_symbol_name(program, object_alias.target_id);
 		alias.object_symbol = object_alias.object_symbol;
-		const std::unordered_map<std::string,
-			ir_model::SymbolLinkage>::const_iterator found =
-			linkage.find(alias.internal_symbol);
-		if (found != linkage.end()) alias.linkage = found->second;
+		alias.linkage = linkage[object_alias.target_id];
 		program.exported_symbols.push_back(alias);
 	}
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
@@ -120,12 +117,12 @@ void clear_serialized_operand_type(Operand& operand,
 }
 
 void restore_address_binding(Operand& operand,
-	const std::unordered_set<std::string>& local,
+	const std::vector<unsigned char>& local,
 	LowirPreparationStats* stats)
 {
 	if (stats) ++stats->derived_operand_visits;
 	if (operand.kind != Operand::OP_GLOBAL) return;
-	operand.address_binding = local.count(operand.text) ?
+	operand.address_binding = local[operand.symbol] ?
 		Operand::ADDRESS_LOCAL : Operand::ADDRESS_PREEMPTIBLE;
 }
 
@@ -135,7 +132,7 @@ void canonicalize_frontend_lowir(Program& program,
 	LowirPreparationStats* stats)
 {
 	const Clock::time_point started = Clock::now();
-	std::unordered_set<std::string> referenced;
+	std::vector<unsigned char> referenced(program.symbol_names.size(), 0);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
 	{
 		const GlobalDefinition& global = program.globals[i];
@@ -145,7 +142,7 @@ void canonicalize_frontend_lowir(Program& program,
 			if (stats) ++stats->reference_operand_visits;
 			if (global.data_items[j].kind ==
 				GlobalDefinition::DataItem::ITEM_ADDR)
-				referenced.insert(global.data_items[j].symbol);
+				referenced[global.data_items[j].symbol_id] = 1;
 		}
 	}
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
@@ -165,24 +162,25 @@ void canonicalize_frontend_lowir(Program& program,
 	// instruction names the variable directly.  It must participate in the
 	// same declaration liveness calculation as operand references.
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		if (!program.function_declarations[i].metadata.tls_for_symbol.empty())
-			referenced.insert(
-				program.function_declarations[i].metadata.tls_for_symbol);
+		if (program.function_declarations[i].metadata.tls_for_symbol_id.valid())
+			referenced[program.function_declarations[i].metadata.tls_for_symbol_id] = 1;
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		if (!program.functions[i].metadata.tls_for_symbol.empty())
-			referenced.insert(program.functions[i].metadata.tls_for_symbol);
-	if (stats) stats->referenced_symbols += referenced.size();
+		if (program.functions[i].metadata.tls_for_symbol_id.valid())
+			referenced[program.functions[i].metadata.tls_for_symbol_id] = 1;
+	if (stats) stats->referenced_symbols +=
+		std::count(referenced.begin(), referenced.end(), 1);
 
 	std::vector<GlobalDeclaration> globals;
 	globals.reserve(program.global_declarations.size());
-	std::unordered_set<std::string> retained_global_declarations;
+	std::vector<unsigned char> retained_global_declarations(
+		program.symbol_names.size(), 0);
 	for (std::size_t i = 0; i < program.global_declarations.size(); ++i)
 	{
 		if (stats) ++stats->declaration_visits;
-		if (referenced.count(program.global_declarations[i].name) &&
-			retained_global_declarations.insert(
-				program.global_declarations[i].name).second)
+		const SymbolId symbol = program.global_declarations[i].symbol;
+		if (referenced[symbol] && !retained_global_declarations[symbol])
 		{
+			retained_global_declarations[symbol] = 1;
 			globals.push_back(std::move(program.global_declarations[i]));
 			if (stats) ++stats->retained_declarations;
 		}
@@ -191,25 +189,28 @@ void canonicalize_frontend_lowir(Program& program,
 
 	std::vector<FunctionDeclaration> functions;
 	functions.reserve(program.function_declarations.size());
-	std::unordered_set<std::string> retained_function_declarations;
+	std::vector<unsigned char> retained_function_declarations(
+		program.symbol_names.size(), 0);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
 	{
 		if (stats) ++stats->declaration_visits;
-		if ((referenced.count(program.function_declarations[i].name) ||
-			 !program.function_declarations[i].metadata.tls_for_symbol.empty()) &&
-			retained_function_declarations.insert(
-				program.function_declarations[i].name).second)
+		const SymbolId symbol = program.function_declarations[i].symbol;
+		if ((referenced[symbol] ||
+			 program.function_declarations[i].metadata.tls_for_symbol_id.valid()) &&
+			!retained_function_declarations[symbol])
 		{
+			retained_function_declarations[symbol] = 1;
 			functions.push_back(std::move(program.function_declarations[i]));
 			if (stats) ++stats->retained_declarations;
 		}
 	}
 	program.function_declarations.swap(functions);
 
-	std::unordered_map<std::string, std::size_t> function_index;
-	function_index.reserve(program.functions.size());
+	const std::size_t no_function = static_cast<std::size_t>(-1);
+	std::vector<std::size_t> function_index(
+		program.symbol_names.size(), no_function);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		function_index[program.functions[i].name] = i;
+		function_index[program.functions[i].symbol] = i;
 	std::vector<std::size_t> order;
 	order.reserve(program.functions.size());
 	std::vector<unsigned char> queued(program.functions.size(), 0);
@@ -230,12 +231,11 @@ void canonicalize_frontend_lowir(Program& program,
 				const Instruction& ins = function.blocks[b].instructions[j];
 				if (ins.kind != Instruction::IK_CALL ||
 					ins.first.kind != Operand::OP_GLOBAL) continue;
-				const std::unordered_map<std::string, std::size_t>::const_iterator
-					found = function_index.find(ins.first.text);
-				if (found != function_index.end() && !queued[found->second])
+				const std::size_t found = function_index[ins.first.symbol];
+				if (found != no_function && !queued[found])
 				{
-					queued[found->second] = 1;
-					order.push_back(found->second);
+					queued[found] = 1;
+					order.push_back(found);
 				}
 			}
 	}
@@ -252,22 +252,21 @@ void canonicalize_frontend_lowir(Program& program,
 
 	std::vector<ObjectAlias> ordered_aliases;
 	ordered_aliases.reserve(program.object_aliases.size());
-	std::unordered_map<std::string, std::vector<std::size_t> > aliases_by_target;
+	std::vector<std::vector<std::size_t> > aliases_by_target(
+		program.symbol_names.size());
 	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
 	{
-		aliases_by_target[program.object_aliases[i].target].push_back(i);
+		aliases_by_target[program.object_aliases[i].target_id].push_back(i);
 		if (stats) ++stats->alias_order_visits;
 	}
 	std::vector<unsigned char> alias_used(program.object_aliases.size(), 0);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
 	{
-		const std::unordered_map<std::string,
-			std::vector<std::size_t> >::const_iterator found =
-			aliases_by_target.find(program.functions[i].name);
-		if (found == aliases_by_target.end()) continue;
-		for (std::size_t j = 0; j < found->second.size(); ++j)
+		const std::vector<std::size_t>& found =
+			aliases_by_target[program.functions[i].symbol];
+		for (std::size_t j = 0; j < found.size(); ++j)
 		{
-			const std::size_t alias = found->second[j];
+			const std::size_t alias = found[j];
 			alias_used[alias] = 1;
 			ordered_aliases.push_back(std::move(program.object_aliases[alias]));
 			if (stats) ++stats->alias_moves;
@@ -352,14 +351,19 @@ void canonicalize_serialized_lowir_facts(Program& program,
 void propagate_direct_call_boundaries(Program& program,
 	LowirPreparationStats* stats)
 {
-	std::unordered_map<std::string, FunctionBoundaryMetadata> boundaries;
-	boundaries.reserve(program.function_declarations.size() +
-		program.functions.size());
+	std::vector<FunctionBoundaryMetadata> boundaries(program.symbol_names.size());
+	std::vector<unsigned char> known(program.symbol_names.size(), 0);
 	for (std::size_t i = 0; i < program.function_declarations.size(); ++i)
-		boundaries[program.function_declarations[i].name] =
-			program.function_declarations[i].boundary;
-	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		boundaries[program.functions[i].name] = program.functions[i].boundary;
+	{
+		const SymbolId symbol = program.function_declarations[i].symbol;
+		boundaries[symbol] = program.function_declarations[i].boundary;
+		known[symbol] = 1;
+	}
+	for (std::size_t i = 0; i < program.functions.size(); ++i) {
+		const SymbolId symbol = program.functions[i].symbol;
+		boundaries[symbol] = program.functions[i].boundary;
+		known[symbol] = 1;
+	}
 	for (std::size_t f = 0; f < program.functions.size(); ++f)
 		for (std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
 			for (std::size_t i = 0;
@@ -371,10 +375,8 @@ void propagate_direct_call_boundaries(Program& program,
 					ins.has_call_signature ||
 					ins.first.kind != Operand::OP_GLOBAL) continue;
 				if (stats) ++stats->boundary_call_visits;
-				const std::unordered_map<std::string,
-					FunctionBoundaryMetadata>::const_iterator found =
-					boundaries.find(ins.first.text);
-				if (found != boundaries.end()) ins.call_boundary = found->second;
+				if (known[ins.first.symbol])
+					ins.call_boundary = boundaries[ins.first.symbol];
 			}
 }
 
@@ -382,14 +384,13 @@ void derive_lowir_object_facts(Program& program,
 	LowirPreparationStats* stats)
 {
 	const Clock::time_point started = Clock::now();
-	std::unordered_set<std::string> local_definitions;
-	local_definitions.reserve(program.globals.size() + program.functions.size());
+	std::vector<unsigned char> local_definitions(program.symbol_names.size(), 0);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
 		if (program.globals[i].metadata.binding != SBM_WEAK)
-			local_definitions.insert(program.globals[i].name);
+			local_definitions[program.globals[i].symbol] = 1;
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
 		if (program.functions[i].metadata.binding != SBM_WEAK)
-			local_definitions.insert(program.functions[i].name);
+			local_definitions[program.functions[i].symbol] = 1;
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
 	{
 		restore_address_binding(

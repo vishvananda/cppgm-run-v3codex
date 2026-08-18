@@ -28,8 +28,6 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
-#include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 namespace lowir_native {
@@ -67,12 +65,14 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
   friend class return_detail::ReturnLowering<FunctionLowerer>;
 public:
-  FunctionLowerer(const lowir_model::LowirFunction & source,
-                  const std::unordered_set<std::string> & pointer_globals,
-                  const std::unordered_map<std::string, std::string> & tls_wrappers,
+  FunctionLowerer(const lowir_model::LowirProgram & program,
+                  const lowir_model::LowirFunction & source,
+                  const std::vector<unsigned char> & pointer_globals,
+                  const std::vector<lowir_model::SymbolId> & tls_wrappers,
                   const FunctionSignatureIndex & signatures,
                   lowir_native::Stats * stats)
-    : source_(source), pointer_globals_(pointer_globals), tls_wrappers_(tls_wrappers),
+    : program_(program), source_(source), pointer_globals_(pointer_globals),
+      tls_wrappers_(tls_wrappers),
       signatures_(signatures), stats_(stats),
       facts_(analyze_function(source)), control_flow_(source), position_(0)
   {
@@ -174,9 +174,10 @@ public:
     return target_;
   }
 private:
+  const lowir_model::LowirProgram & program_;
   const lowir_model::LowirFunction & source_;
-  const std::unordered_set<std::string> & pointer_globals_;
-  const std::unordered_map<std::string, std::string> & tls_wrappers_;
+  const std::vector<unsigned char> & pointer_globals_;
+  const std::vector<lowir_model::SymbolId> & tls_wrappers_;
   const FunctionSignatureIndex & signatures_;
   lowir_native::Stats * stats_;
   FunctionFacts facts_;
@@ -670,9 +671,8 @@ private:
     std::vector<lowir_model::LowirParameter> parameters;
     if(call.has_call_signature) parameters = call.call_params;
     else if(call.first.kind == Operand::OP_GLOBAL) {
-      const FunctionSignatureIndex::const_iterator found = signatures_.find(call.first.text);
-      if(found != signatures_.end() && found->second.params)
-        parameters = *found->second.params;
+      const FunctionSignature & found = signatures_[call.first.symbol];
+      if(found.params) parameters = *found.params;
     }
     for(std::size_t i = 0; i < call.args.size() && i < parameters.size(); ++i)
       if(call.args[i].kind == Operand::OP_TEMP &&
@@ -692,9 +692,7 @@ private:
     const std::vector<lowir_model::LowirParameter> * parameters = 0;
     if(call.has_call_signature) parameters = &call.call_params;
     else if(call.first.kind == Operand::OP_GLOBAL) {
-      const FunctionSignatureIndex::const_iterator found =
-        signatures_.find(call.first.text);
-      if(found != signatures_.end()) parameters = found->second.params;
+      parameters = signatures_[call.first.symbol].params;
     }
     for(std::size_t i = 0; i < call.args.size(); ++i) {
       if(call.args[i].kind != Operand::OP_TEMP ||
@@ -704,6 +702,11 @@ private:
         producer.type.kind == lowir_model::LTK_PTR;
     }
     return false;
+  }
+  MirOperand global_operand(MirOperand::Kind kind,
+                            const Operand & operand) const
+  {
+    return build::global_operand(kind, program_, operand);
   }
   MirOperand resolve(const Operand & operand) const
   {
@@ -774,13 +777,14 @@ private:
                                   std::vector<MirInstruction> & out)
   {
     if(operand.kind == Operand::OP_GLOBAL) {
-      const std::unordered_map<std::string, std::string>::const_iterator wrapper =
-        tls_wrappers_.find(operand.text);
-      if(wrapper == tls_wrappers_.end()) return storage(operand);
+      const lowir_model::SymbolId wrapper = tls_wrappers_[operand.symbol];
+      if(!wrapper.valid()) return storage(operand);
       MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
       append_operand(address, reg_operand(XR_R11));
-      append_operand(address, named_operand(MirOperand::OP_SYMBOL, wrapper->second));
-      address.tls_storage_symbol = operand.text;
+      append_operand(address, named_operand(MirOperand::OP_SYMBOL,
+        lowir_model::lowir_symbol_name(program_, wrapper)));
+      address.tls_storage_symbol =
+        lowir_model::lowir_symbol_name(program_, operand.symbol);
       out.push_back(address);
       return dereference(XR_R11);
     }
@@ -1184,13 +1188,14 @@ private:
       return;
     }
     if(operand.kind == Operand::OP_GLOBAL) {
-      const std::unordered_map<std::string, std::string>::const_iterator wrapper =
-        tls_wrappers_.find(operand.text);
-      if(wrapper != tls_wrappers_.end()) {
+      const lowir_model::SymbolId wrapper = tls_wrappers_[operand.symbol];
+      if(wrapper.valid()) {
         MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
         append_operand(address, reg_operand(destination));
-        append_operand(address, named_operand(MirOperand::OP_SYMBOL, wrapper->second));
-        address.tls_storage_symbol = operand.text;
+        append_operand(address, named_operand(MirOperand::OP_SYMBOL,
+          lowir_model::lowir_symbol_name(program_, wrapper)));
+        address.tls_storage_symbol =
+          lowir_model::lowir_symbol_name(program_, operand.symbol);
         out.push_back(address);
         return;
       }
@@ -2173,10 +2178,8 @@ private:
     std::vector<lowir_model::LowirParameter> parameters;
     if(instruction.has_call_signature) parameters = instruction.call_params;
     else if(instruction.first.kind == Operand::OP_GLOBAL) {
-      const FunctionSignatureIndex::const_iterator found =
-        signatures_.find(instruction.first.text);
-      if(found != signatures_.end() && found->second.params)
-        parameters = *found->second.params;
+      const FunctionSignature & found = signatures_[instruction.first.symbol];
+      if(found.params) parameters = *found.params;
     }
     if(parameters.size() > instruction.args.size())
       parameters.resize(instruction.args.size());
@@ -2193,10 +2196,9 @@ private:
     if(instruction.has_call_signature)
       return instruction.call_boundary.arity == lowir_model::CAM_VARIADIC;
     if(instruction.first.kind != Operand::OP_GLOBAL) return false;
-    const FunctionSignatureIndex::const_iterator found =
-      signatures_.find(instruction.first.text);
-    return found != signatures_.end() && found->second.boundary &&
-      found->second.boundary->arity == lowir_model::CAM_VARIADIC;
+    const FunctionSignature & found = signatures_[instruction.first.symbol];
+    return found.boundary &&
+      found.boundary->arity == lowir_model::CAM_VARIADIC;
   }
   bool argument_needs_address(const lowir_model::LowirParameter & parameter,
                               const Operand & argument) const
@@ -2501,7 +2503,7 @@ private:
     call.call_stack_bytes = plan.stack_bytes;
     abi::record_argument_registers(call, plan);
     append_operand(call, direct ?
-      named_operand(MirOperand::OP_SYMBOL, instruction.first.text) :
+      global_operand(MirOperand::OP_SYMBOL, instruction.first) :
       reg_operand(XR_R10));
     out.push_back(call);
     emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
@@ -2662,7 +2664,8 @@ private:
       call.call_returns_noreturn = instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
       call.call_stack_bytes = stack_bytes;
       abi::record_argument_registers(call, parameters);
-      append_operand(call, named_operand(MirOperand::OP_SYMBOL, instruction.first.text));
+      append_operand(call,
+        global_operand(MirOperand::OP_SYMBOL, instruction.first));
       out.push_back(call);
     } else {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL_INDIRECT);
@@ -2967,7 +2970,7 @@ private:
       append_operand(jump, native_block_operand(source_, instruction.first));
       out.push_back(jump);
     } else if(instruction.kind == Instruction::IK_RETURN) emit_return(instruction, out);
-    else if(eh::lower_marker(source_, instruction, out)) return;
+    else if(eh::lower_marker(program_, source_, instruction, out)) return;
     else if(instruction.kind == Instruction::IK_EXCEPTION ||
             instruction.kind == Instruction::IK_EXCEPTION_SELECTOR)
       emit_exception_value(instruction, out);
@@ -2980,13 +2983,14 @@ private:
 }  // namespace
 
 mir_model::MirFunction session_detail::lower_native_function(
+    const lowir_model::LowirProgram & program,
     const lowir_model::LowirFunction & function,
-    const std::unordered_set<std::string> & pointer_globals,
-    const std::unordered_map<std::string, std::string> & tls_wrappers,
+    const std::vector<unsigned char> & pointer_globals,
+    const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
     lowir_native::Stats * stats)
 {
-  return FunctionLowerer(function, pointer_globals, tls_wrappers,
+  return FunctionLowerer(program, function, pointer_globals, tls_wrappers,
                          signatures, stats).lower();
 }
 

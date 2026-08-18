@@ -114,7 +114,7 @@ protected:
 		if (lowerer.facts_.has(instruction.dest,
 				analysis::FunctionFacts::VF_DIRECT_COMPARE_STORAGE) &&
 			!(instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
-			  lowerer.tls_wrappers_.count(instruction.first.text)))
+			  lowerer.tls_wrappers_[instruction.first.symbol].valid()))
 		{
 			lowerer.define(instruction.dest, instruction.type,
 				lowerer.storage(instruction.first));
@@ -203,7 +203,7 @@ protected:
 		}
 		if (lowerer.emit_object_store(instruction, out)) return;
 		if (instruction.second.kind == lowir_model::Operand::OP_GLOBAL &&
-			lowerer.tls_wrappers_.count(instruction.second.text))
+			lowerer.tls_wrappers_[instruction.second.symbol].valid())
 		{
 			mir_model::MirOperand value = lowerer.resolve(instruction.first);
 			X64Register stable = XR_RSP;

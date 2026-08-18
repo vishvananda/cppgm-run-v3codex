@@ -55,9 +55,11 @@ mir_model::MirOperand named_operand(mir_model::MirOperand::Kind kind,
 }
 
 mir_model::MirOperand global_operand(mir_model::MirOperand::Kind kind,
+                                     const lowir_model::Program & program,
                                      const lowir_model::Operand & operand)
 {
-  mir_model::MirOperand out = named_operand(kind, operand.text);
+  mir_model::MirOperand out = named_operand(
+    kind, lowir_model::lowir_symbol_name(program, operand.symbol));
   out.address_binding = operand.address_binding ==
     lowir_model::Operand::ADDRESS_PREEMPTIBLE ?
       mir_model::MirOperand::ADDRESS_PREEMPTIBLE :
