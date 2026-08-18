@@ -1066,7 +1066,66 @@ difference is within the semantic-frontend process-peak envelope.  No fixture
 changes are required because the defect affected allocation complexity, not
 MIR or object semantics.
 
-## 11. Completion definition
+## 11. Current residual audit and next slices
+
+The cumulative hot-path milestone now passes the performance gate.  Three
+A/B/B/A blocks against CI6, the last compiler before dense LowIR value and
+symbol identity, produced baseline/candidate medians of 5.555/5.000 seconds
+user and 6.075/5.490 seconds wall.  The paired median improves both by about
+11.8%.  One candidate sample was externally loaded at 7.11 seconds; its other
+five samples are tightly grouped from 4.94 to 5.02 seconds, so the interleaved
+median is robust.  Peak RSS changes from 364,176 to 364,898 KiB (0.2%).  The
+full root report passes 5,201/5,201 tests and the PA39 file audit has no fatal
+findings.
+
+The current source path has no string-keyed value, slot, block, symbol, or
+fixup identity in native analysis and selection.  LowIR types, operations, and
+operands are compact; MIR operands, instructions, blocks, debug files, and
+fixups carry typed identities.  Explicit LowIR parsing still uses transient
+string maps to resolve arbitrary user spellings, and the serializers and ELF
+writer still own output text.  Those are intentional boundaries.
+
+The remaining avoidable text is lower-volume and should be handled in this
+order:
+
+1. Pool LowIR parameter and other surviving display names.  In particular,
+   call-signature `Parameter::name` is still an owning string in variable
+   instruction data, and cleanup-tail equality hashes it as text.  Carry a
+   program `StringId`, compare the ID, and resolve only for LowIR/MIR display.
+   Generated value, slot, and block names should retain a numeric presentation
+   recipe where possible instead of interning `%tN`-style text.
+2. Remove duplicated top-level semantic names.  Functions, declarations, and
+   globals already have `SymbolId` but also retain a `name` string.  MIR
+   functions and global address data should carry that symbol identity; actual
+   object, TLS-wrapper, COMDAT, and section spellings should use a pooled
+   `ObjectSymbolId` or `StringId` because they are ABI presentation, not
+   semantic identity.
+3. Replace the O1/force-inliner's string collision sets with numeric generated
+   identity allocation.  Arbitrary explicit-input names may be checked once at
+   the parse boundary, while inlining appends fresh values, slots, and blocks
+   monotonically.  This is PA37 work and must preserve exact optimized LowIR.
+4. Finish the executable and global-data encoder boundary.  Relocatable symbol
+   fixups are compact now, but fixed runtime/object labels and MIR global data
+   still enter the named `CodeBuffer` stream.  Give semantic targets typed IDs,
+   keep fixed external names in the object-name pool, and render only while
+   emitting ELF symbol and relocation records.
+5. Pool `MirDebugVariable::name` and any other diagnostic-only MIR metadata.
+   These fields are not on the frozen no-debug hot path, so they follow the
+   identity and object work above.
+
+String-keyed maps in `lowir_parse.cpp`, the resolution portion of
+`lowir_identity.cpp`, and the ELF symbol/string-table builder remain valid.
+They resolve input or construct required output bytes and are destroyed with
+that boundary.  `lowir_cy86.cpp` may also construct output opcode and address
+text, but it must continue consuming compact LowIR identities internally.
+
+Each residual slice remains separately measured and committed.  A slice that
+adds a parallel string index, changes broad LowIR output, or loses the current
+frozen timing is rejected or deferred.  Parameter/display work is owned by
+PA13/PA15; MIR and native identity work by PA29; optimized name generation by
+PA37/PA38; and ELF object identity by PA30-PA32.
+
+## 12. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one
 compact LowIR model; PA37, native lowering, MIR optimization, EH, and encoding
