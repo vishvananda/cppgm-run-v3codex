@@ -4,6 +4,7 @@
 #include "lowir_native_analysis.h"
 #include "lowir_native_atomic_lowering.h"
 #include "lowir_native_bulk_lowering.h"
+#include "lowir_native_compare_lowering.h"
 #include "lowir_native_control_flow.h"
 #include "lowir_native_copy_lowering.h"
 #include "lowir_native_eh.h"
@@ -45,6 +46,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
                         private AtomicLowering<FunctionLowerer>,
                         private bulk_detail::BulkLowering<FunctionLowerer>,
+                        private comparison_detail::CompareLowering<FunctionLowerer>,
                         private copy_detail::CopyLowering<FunctionLowerer>,
                         private index_detail::IndexLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>,
@@ -54,6 +56,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class AddressLowering<FunctionLowerer>;
   friend class AtomicLowering<FunctionLowerer>;
   friend class bulk_detail::BulkLowering<FunctionLowerer>;
+  friend class comparison_detail::CompareLowering<FunctionLowerer>;
   friend class copy_detail::CopyLowering<FunctionLowerer>;
   friend class index_detail::IndexLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
@@ -1741,19 +1744,6 @@ private:
     append_move(out, reg_operand(XR_RAX), source);
     return reg_operand(XR_RAX);
   }
-  MirOperand direct_compare_right(const Operand & operand, const LowType & type,
-                                  std::vector<MirInstruction> & out)
-  {
-    const MirOperand source = resolve(operand);
-    if(source.kind == MirOperand::OP_IMM && type.bit_width >= 32 &&
-       (type.bit_width < 64 || (source.imm >= INT32_MIN && source.imm <= INT32_MAX)))
-      return source;
-    if(source.kind == MirOperand::OP_REG || source.kind == MirOperand::OP_FRAME ||
-       source.kind == MirOperand::OP_GLOBAL || source.kind == MirOperand::OP_DEREF)
-      return source;
-    move_value_to_register(out, XR_RDX, source, operand_type(operand));
-    return reg_operand(XR_RDX);
-  }
   void emit_direct_compare_branch(const Instruction & comparison,
                                   const Instruction & branch,
                                   std::vector<MirInstruction> & out,
@@ -1767,7 +1757,8 @@ private:
       move_value_to_register(out, XR_RAX, left, comparison.type);
       left = reg_operand(XR_RAX);
     }
-    MirOperand right = direct_compare_right(comparison.second, comparison.type, out);
+    MirOperand right = direct_compare_right(
+      comparison.second, comparison.type, left, out);
     const bool left_memory = left.kind == MirOperand::OP_FRAME ||
       left.kind == MirOperand::OP_GLOBAL || left.kind == MirOperand::OP_DEREF;
     const bool right_memory = right.kind == MirOperand::OP_FRAME ||
@@ -1835,8 +1826,16 @@ private:
         instruction, left, out, false, &pressure_home, &result_type);
     }
     if(right.kind != MirOperand::OP_REG) {
-      move_value_to_register(out, XR_RDX, right, operand_type(instruction.second));
-      right = reg_operand(XR_RDX);
+      const bool encodable_immediate = right.kind == MirOperand::OP_IMM &&
+        (instruction.type.bit_width < 64 ||
+         (right.imm >= INT32_MIN && right.imm <= INT32_MAX));
+      if(!encodable_immediate || !operand_uses_register(destination, XR_RDX)) {
+        const X64Register scratch = operand_uses_register(destination, XR_RDX) ?
+          XR_RAX : XR_RDX;
+        move_value_to_register(
+          out, scratch, right, operand_type(instruction.second));
+        right = reg_operand(scratch);
+      }
     }
     MirInstruction compare = machine_instruction(MirInstruction::MI_CMP,
                                                  instruction.type.text);
