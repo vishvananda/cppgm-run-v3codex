@@ -99,19 +99,22 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
   metadata.finish();
 }
 
-void write_parameter(std::ostream & out, const Parameter & parameter)
+void write_parameter(std::ostream & out, const Parameter & parameter,
+                     const Program & program)
 {
-  out << parameter.name << " : " << lowir_type_text(parameter.type);
+  out << lowir_parameter_name(program, parameter) << " : "
+      << lowir_type_text(parameter.type);
   write_parameter_metadata(out, parameter.metadata);
 }
 
 void write_parameters(std::ostream & out,
-                      const std::vector<Parameter> & parameters)
+                      const std::vector<Parameter> & parameters,
+                      const Program & program)
 {
   out << '(';
   for(std::size_t i = 0; i < parameters.size(); ++i) {
     if(i) out << ", ";
-    write_parameter(out, parameters[i]);
+    write_parameter(out, parameters[i], program);
   }
   out << ')';
 }
@@ -269,7 +272,7 @@ void write_call(std::ostream & out, const Instruction & ins,
   out << ')';
   if(ins.has_call_signature) {
     out << " as ";
-    write_parameters(out, ins.call_params);
+    write_parameters(out, ins.call_params, program);
     out << " -> " << lowir_type_text(ins.call_return_type);
     MetadataWriter metadata(out);
     write_boundary_metadata(metadata, ins.call_boundary);
@@ -412,10 +415,10 @@ void write_global_declaration(std::ostream & out, const GlobalDeclaration & item
 
 void write_function_declaration(std::ostream & out,
                                 const FunctionDeclaration & item,
-                                const Program &)
+                                const Program & program)
 {
   out << "declare function " << item.name;
-  write_parameters(out, item.params);
+  write_parameters(out, item.params, program);
   out << " -> " << lowir_type_text(item.return_type);
   write_function_metadata(out, item.boundary, item.metadata);
   out << '\n';
@@ -464,7 +467,7 @@ void write_function(std::ostream & out, const Function & function,
                     const Program & program)
 {
   out << "function " << function.name;
-  write_parameters(out, function.params);
+  write_parameters(out, function.params, program);
   out << " -> " << lowir_type_text(function.return_type);
   write_function_metadata(out, function.boundary, function.metadata);
   write_debug(out, function.debug_location, program);

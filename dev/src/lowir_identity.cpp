@@ -292,6 +292,14 @@ const LowType & lowir_value_type(const Function & function, ValueId value)
   return function.value_types[id];
 }
 
+const std::string & lowir_parameter_name(const Program & program,
+                                         const Parameter & parameter)
+{
+  if(!parameter.name.valid())
+    throw std::logic_error("LowIR parameter has no presentation identity");
+  return program.strings.get(parameter.name);
+}
+
 SymbolId append_lowir_symbol(Program & program, const std::string & name)
 {
   if(program.symbol_names.size() == kInvalidCompactId)
@@ -387,16 +395,19 @@ void resolve_lowir_function_operands(Function & function,
     const SlotId slot = function.slots[s];
     if(lowir_slot_type(function, slot).kind != LTK_OBJECT) continue;
     const std::string & slot_name = lowir_slot_name(function, slot);
-    for(std::size_t p = 0; p < function.params.size(); ++p)
-      if(slot_name.size() > 1 && function.params[p].name.size() > 1 &&
+    for(std::size_t p = 0; p < function.params.size(); ++p) {
+      const std::string & parameter_name =
+        strings.get(function.params[p].name);
+      if(slot_name.size() > 1 && parameter_name.size() > 1 &&
          slot_name.compare(1, std::string::npos,
-                           function.params[p].name, 1,
+                           parameter_name, 1,
                            std::string::npos) == 0 &&
          same_lowir_type(lowir_slot_type(function, slot),
                          function.params[p].type)) {
         function.slot_parameter_values[slot] = function.params[p].value;
         break;
       }
+    }
   }
 }
 
@@ -513,6 +524,13 @@ void remap_lowir_program_strings(Program & program,
     if(!operand.has_spelling) return;
     operand.literal = destination.intern(program.strings.get(operand.literal));
   };
+  const auto remap_parameters = [&remap_string](
+      std::vector<Parameter> & parameters) {
+    for(std::size_t i = 0; i < parameters.size(); ++i)
+      remap_string(parameters[i].name);
+  };
+  for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+    remap_parameters(program.function_declarations[i].params);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     remap(program.globals[i].init_operand);
     for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
@@ -520,12 +538,14 @@ void remap_lowir_program_strings(Program & program,
   }
   for(std::size_t f = 0; f < program.functions.size(); ++f)
   {
+    remap_parameters(program.functions[f].params);
     remap_string(program.functions[f].debug_location.file);
     for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
       for(std::size_t i = 0;
           i < program.functions[f].blocks[b].instructions.size(); ++i) {
         Instruction & instruction =
           program.functions[f].blocks[b].instructions[i];
+        remap_parameters(instruction.call_params);
         remap_string(instruction.debug_location.file);
         remap(instruction.first);
         remap(instruction.second);

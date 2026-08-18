@@ -367,9 +367,10 @@ lowir_model::FunctionBoundaryMetadata ReadBoundary(Reader& in)
 	return value;
 }
 
-void WriteParameter(Writer& out, const lowir_model::Parameter& value)
+void WriteParameter(Writer& out, const lowir_model::Parameter& value,
+	const lowir_model::LowirProgram& program)
 {
-	out.String(value.name);
+	out.String(lowir_model::lowir_parameter_name(program, value));
 	WriteType(out, value.type);
 	WriteEnum(out, value.metadata.passing);
 	WriteEnum(out, value.metadata.capture);
@@ -377,10 +378,11 @@ void WriteParameter(Writer& out, const lowir_model::Parameter& value)
 	WriteEnum(out, value.metadata.alias);
 }
 
-lowir_model::Parameter ReadParameter(Reader& in)
+lowir_model::Parameter ReadParameter(Reader& in,
+	lowir_model::StringPool& strings)
 {
 	lowir_model::Parameter value;
-	value.name = in.String();
+	value.name = strings.intern(in.String());
 	value.type = ReadType(in);
 	value.metadata.passing = ReadEnum<lowir_model::ParamPassingMode>(in);
 	value.metadata.capture = ReadEnum<lowir_model::ParamCaptureMode>(in);
@@ -390,18 +392,20 @@ lowir_model::Parameter ReadParameter(Reader& in)
 }
 
 void WriteParameters(Writer& out,
-	const std::vector<lowir_model::Parameter>& values)
+	const std::vector<lowir_model::Parameter>& values,
+	const lowir_model::LowirProgram& program)
 {
 	out.U64(values.size());
 	for (std::size_t i = 0; i < values.size(); ++i)
-		WriteParameter(out, values[i]);
+		WriteParameter(out, values[i], program);
 }
 
-std::vector<lowir_model::Parameter> ReadParameters(Reader& in)
+std::vector<lowir_model::Parameter> ReadParameters(Reader& in,
+	lowir_model::StringPool& strings)
 {
 	std::vector<lowir_model::Parameter> values(in.Count(8));
 	for (std::size_t i = 0; i < values.size(); ++i)
-		values[i] = ReadParameter(in);
+		values[i] = ReadParameter(in, strings);
 	return values;
 }
 
@@ -448,7 +452,7 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
 		WriteOperand(out, value.args[i], program, &function);
 	out.Bool(value.call_returns_void);
 	out.Bool(value.has_call_signature);
-	WriteParameters(out, value.call_params);
+	WriteParameters(out, value.call_params, program);
 	WriteType(out, value.call_return_type);
 	WriteBoundary(out, value.call_boundary);
 	WriteDebug(out, value.debug_location, program);
@@ -489,7 +493,7 @@ lowir_model::Instruction ReadInstruction(Reader& in,
 		value.args[i] = ReadOperand(in, program.strings);
 	value.call_returns_void = in.Bool();
 	value.has_call_signature = in.Bool();
-	value.call_params = ReadParameters(in);
+	value.call_params = ReadParameters(in, program.strings);
 	value.call_return_type = ReadType(in);
 	value.call_boundary = ReadBoundary(in);
 	value.debug_location = ReadDebug(in, program.strings);
@@ -572,20 +576,22 @@ lowir_model::GlobalDefinition ReadGlobal(Reader& in,
 }
 
 void WriteFunctionDeclaration(Writer& out,
-	const lowir_model::FunctionDeclaration& value)
+	const lowir_model::FunctionDeclaration& value,
+	const lowir_model::LowirProgram& program)
 {
 	out.String(value.name);
-	WriteParameters(out, value.params);
+	WriteParameters(out, value.params, program);
 	WriteType(out, value.return_type);
 	WriteBoundary(out, value.boundary);
 	WriteSymbolMetadata(out, value.metadata);
 }
 
-lowir_model::FunctionDeclaration ReadFunctionDeclaration(Reader& in)
+lowir_model::FunctionDeclaration ReadFunctionDeclaration(Reader& in,
+	lowir_model::LowirProgram& program)
 {
 	lowir_model::FunctionDeclaration value;
 	value.name = in.String();
-	value.params = ReadParameters(in);
+	value.params = ReadParameters(in, program.strings);
 	value.return_type = ReadType(in);
 	value.boundary = ReadBoundary(in);
 	value.metadata = ReadSymbolMetadata(in);
@@ -596,7 +602,7 @@ void WriteFunction(Writer& out, const lowir_model::Function& value,
 	const lowir_model::LowirProgram& program)
 {
 	out.String(value.name);
-	WriteParameters(out, value.params);
+	WriteParameters(out, value.params, program);
 	WriteType(out, value.return_type);
 	out.U64(value.slots.size());
 	for (std::size_t i = 0; i < value.slots.size(); ++i)
@@ -622,11 +628,12 @@ lowir_model::Function ReadFunction(Reader& in,
 {
 	lowir_model::Function value;
 	value.name = in.String();
-	value.params = ReadParameters(in);
+	value.params = ReadParameters(in, program.strings);
 	value.return_type = ReadType(in);
 	for (std::size_t i = 0; i < value.params.size(); ++i)
 		value.params[i].value = lowir_model::append_lowir_value(
-			value, value.params[i].name, value.params[i].type);
+			value, lowir_model::lowir_parameter_name(program, value.params[i]),
+			value.params[i].type);
 	const std::size_t slot_count = in.Count(8);
 	for (std::size_t i = 0; i < slot_count; ++i)
 	{
@@ -681,7 +688,7 @@ void WriteProgram(Writer& out, const lowir_model::LowirProgram& value)
 		WriteGlobal(out, value.globals[i], value);
 	out.U64(value.function_declarations.size());
 	for (std::size_t i = 0; i < value.function_declarations.size(); ++i)
-		WriteFunctionDeclaration(out, value.function_declarations[i]);
+		WriteFunctionDeclaration(out, value.function_declarations[i], value);
 	out.U64(value.functions.size());
 	for (std::size_t i = 0; i < value.functions.size(); ++i)
 		WriteFunction(out, value.functions[i], value);
@@ -709,7 +716,7 @@ lowir_model::LowirProgram ReadProgram(Reader& in)
 		value.globals[i] = ReadGlobal(in, value);
 	value.function_declarations.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.function_declarations.size(); ++i)
-		value.function_declarations[i] = ReadFunctionDeclaration(in);
+		value.function_declarations[i] = ReadFunctionDeclaration(in, value);
 	value.functions.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.functions.size(); ++i)
 		value.functions[i] = ReadFunction(in, value);

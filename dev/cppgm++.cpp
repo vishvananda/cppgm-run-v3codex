@@ -792,7 +792,8 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 			first_source_column(lines[function_line]));
 		unordered_set<string> parameters;
 		for(size_t i = 0; i < function.params.size(); ++i)
-			parameters.insert(function.params[i].name.substr(1));
+			parameters.insert(lowir_model::lowir_parameter_name(
+				*program, function.params[i]).substr(1));
 		struct LocalLocation { size_t line = 0; size_t statement = 1; size_t rhs = 1; };
 		unordered_map<string, LocalLocation> locals;
 		for(size_t i = 0; i < function.slots.size(); ++i) {

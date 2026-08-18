@@ -57,10 +57,11 @@ struct InlineNames
   std::unordered_set<std::string> labels;
   std::size_t next = 0;
 
-  explicit InlineNames(const Function & function)
+  InlineNames(const LowirProgram & program, const Function & function)
   {
     for(std::size_t i = 0; i < function.params.size(); ++i)
-      values.insert(function.params[i].name);
+      values.insert(
+        lowir_model::lowir_parameter_name(program, function.params[i]));
     for(std::size_t i = 0; i < function.slots.size(); ++i)
       slots.insert(lowir_model::lowir_slot_name(function, function.slots[i]));
     for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -412,7 +413,7 @@ private:
   void InlineCalls(std::size_t function_index)
   {
     Function & caller = program_.functions[function_index];
-    InlineNames names(caller);
+    InlineNames names(program_, caller);
     for(std::size_t block = 0; block < caller.blocks.size(); ++block) {
       for(std::size_t instruction = 0;
           instruction < caller.blocks[block].instructions.size(); ++instruction) {

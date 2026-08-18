@@ -1093,6 +1093,48 @@ objects match; the final self and inception binaries are byte-identical at
 16,781,400 bytes with SHA-256
 `6645e3a9f7e204c601567a148ca514c50c0aa0c4c654cdb943c06b6dba6f2e7a`.
 
+### CI20: pooled LowIR parameter presentation identity
+
+Function, declaration, and indirect-call signature parameters now carry a
+program `StringId` instead of an owning `std::string`.  Source lowering and
+explicit LowIR parsing intern each presentation name once.  Private compiler
+objects preserve their byte-level format, intern names while reading, and
+remap the IDs when object programs are joined.  LowIR serialization and debug
+attachment resolve the spelling only when text is required; native lowering
+uses the session's direct LowIR-to-MIR string-ID map.
+
+The parameter record falls from 72 to 40 bytes.  The frozen serialized LowIR
+contains 10,698 parameter records, including 239 indirect-call signature
+records, so this removes at least 342,336 bytes of inline owning-string state
+before allocator metadata and avoided copies are counted.  ABI-only fallback
+parameters no longer synthesize unused `%argN` presentation strings.
+
+The migration exposed a latent typed-identity error in O0 branch selection.
+The selector queried a temporary-value fact through `Operand::value` even
+when the operand was an integer literal.  That union member then contained a
+`StringId`, so pooling changed whether the numeric bits happened to collide
+with a flagged `ValueId`.  The selector now queries value facts only for a
+temporary operand.  PA29's behavioral
+`literal-branch-identity-isolation` reducer makes the collision deterministic
+and verifies the resulting executable, without imposing an unrelated exact
+MIR layout on the assignment.
+
+The full report passes 5,204/5,204 tests and the PA39 file audit has zero fatal
+findings.  Three A/B/B/A blocks against the immutable CI19 compiler produced
+baseline/candidate medians of 4.945/4.955 seconds user, 5.450/5.445 seconds
+wall, and 363,252/364,016 KiB peak RSS.  Paired medians are -0.30% user,
+-0.27% wall, and +0.20% RSS, all inside the noise envelope, so this slice
+receives no standalone timing credit.  The frozen object remains exact at
+4,417,192 bytes with SHA-256
+`98f77be43c75d46d29b75809bd6784a921578303484ece5355eef14693231283`.
+
+A clean 32-way self build takes 18.06 seconds wall, 401.21 seconds aggregate
+user time, and 256,068 KiB peak RSS.  A separate 32-way inception build takes
+1:50.52 wall, 2,906.18 seconds aggregate user time, and 237,156 KiB peak RSS.
+All 160 inception objects match; the self and inception binaries are
+byte-identical at 16,782,616 bytes with SHA-256
+`5ff3ea4f850186a60ff8dac197607f32223354b1c2c1a03d2edf849398efd71d`.
+
 ## 11. Current residual audit and next slices
 
 The cumulative hot-path milestone now passes the performance gate.  Three
@@ -1102,8 +1144,8 @@ user and 6.075/5.490 seconds wall.  The paired median improves both by about
 11.8%.  One candidate sample was externally loaded at 7.11 seconds; its other
 five samples are tightly grouped from 4.94 to 5.02 seconds, so the interleaved
 median is robust.  Peak RSS changes from 364,176 to 364,898 KiB (0.2%).  The
-full root report passes 5,201/5,201 tests and the PA39 file audit has no fatal
-findings.
+latest full root report passes 5,204/5,204 tests and the PA39 file audit has
+zero fatal findings.
 
 The current source path has no string-keyed value, slot, block, symbol, or
 fixup identity in native analysis and selection.  LowIR types, operations, and
@@ -1112,33 +1154,39 @@ fixups carry typed identities.  Explicit LowIR parsing still uses transient
 string maps to resolve arbitrary user spellings, and the serializers and ELF
 writer still own output text.  Those are intentional boundaries.
 
-The remaining avoidable text is lower-volume and should be handled in this
-order:
+The remaining avoidable text is lower-volume than the value/slot/block maps
+already removed.  A source-wide field and string-key audit classifies it as
+follows:
 
-1. Pool LowIR parameter and other surviving display names.  In particular,
-   call-signature `Parameter::name` is still an owning string in variable
-   instruction data, and cleanup-tail equality hashes it as text.  Carry a
-   program `StringId`, compare the ID, and resolve only for LowIR/MIR display.
-   Generated value, slot, and block names should retain a numeric presentation
-   recipe where possible instead of interning `%tN`-style text.
-2. Remove duplicated top-level semantic names.  Functions, declarations, and
-   globals already have `SymbolId` but also retain a `name` string.  MIR
-   functions and global address data should carry that symbol identity; actual
-   object, TLS-wrapper, COMDAT, and section spellings should use a pooled
-   `ObjectSymbolId` or `StringId` because they are ABI presentation, not
-   semantic identity.
-3. Replace the O1/force-inliner's string collision sets with numeric generated
-   identity allocation.  Arbitrary explicit-input names may be checked once at
-   the parse boundary, while inlining appends fresh values, slots, and blocks
-   monotonically.  This is PA37 work and must preserve exact optimized LowIR.
-4. Finish the executable and global-data encoder boundary.  Relocatable symbol
-   fixups are compact now, but fixed runtime/object labels and MIR global data
-   still enter the named `CodeBuffer` stream.  Give semantic targets typed IDs,
-   keep fixed external names in the object-name pool, and render only while
-   emitting ELF symbol and relocation records.
-5. Pool `MirDebugVariable::name` and any other diagnostic-only MIR metadata.
-   These fields are not on the frozen no-debug hot path, so they follow the
-   identity and object work above.
+| Owner | Avoidable representation | Efficient replacement | Benchmark priority |
+| --- | --- | --- | --- |
+| LowIR top-level model | `GlobalDeclaration`, `GlobalDefinition`, `Function`, and `FunctionDeclaration` duplicate `name` beside `SymbolId`; global data duplicates an address `symbol` beside `symbol_id`; aliases duplicate `target` beside `target_id` | Keep `SymbolId` as semantic identity and make the program symbol table a dense `StringId` view used by dumps and object output | High |
+| LowIR function presentation | `slot_names`, `value_names`, and `block_labels` own strings even for source-generated numeric identities | Store an optional pooled display ID only for arbitrary textual input; otherwise store a compact generated-name recipe/ordinal and render at serialization | High because the frozen input has many generated values |
+| LowIR ABI metadata | object symbols, TLS-wrapper names, section segment/name, and aliases are owning strings | Use pooled `ObjectSymbolId`/`StringId`; retain bytes only once because they are genuine ABI output presentation | Medium |
+| PA37 inliners | value, slot, and label collision sets hash rendered strings and generate new text during every inline | Allocate fresh `ValueId`, `SlotId`, and `BlockId` monotonically; retain one numeric presentation ordinal and consult an explicit-input reservation table only when an exact dump needs collision avoidance | O1/O2 only; correctness owner is PA37 |
+| MIR program shell | functions, globals, global data items, aliases, runtime records, and block-label tables repeat semantic/object names | Carry `SymbolId`, pooled object-name IDs, `BlockId`, and literal IDs; derive fixed runtime names from the existing runtime enum | Medium for O0; high structural value |
+| MIR debug metadata | `DebugVariable::name` remains owning text | Intern once in the existing MIR pool and carry `StringId` | Low on the frozen no-debug lane |
+| Native encoding before ELF | named `CodeBuffer` labels/fixups and object/EH planning maps still hash runtime, global-data, host-EH, declaration, COMDAT, and section spellings | Extend tagged fixup targets to runtime/object/EH IDs; use dense vectors for compiler-owned domains and resolve names once when constructing ELF symbol, relocation, section, and string tables | High within encoding |
+| Explicit `.lowir` parsing and private-object joining | arbitrary input spellings require string maps to diagnose duplicates and unite independently owned programs | Keep transient boundary resolvers, preferably keyed by interned IDs/spans, and destroy them after producing compact identity | Not on frozen source hot path |
+| ELF construction | final symbol, COMDAT, section, relocation, and string-table indexes require byte identity | Keep string lookup at this output boundary; do not force it back into MIR or native analysis | Required output work |
+
+The next changesets should therefore be:
+
+1. Remove duplicated LowIR top-level names and source-generated function-local
+   presentation strings.  First preserve arbitrary textual names through an
+   optional `StringId`; source-generated values, slots, and blocks use a tagged
+   numeric display recipe.  This is the largest remaining source-path string
+   owner and the best candidate for another visible `-O0` improvement.
+2. Replace the O1/force-inliner's string collision sets with monotonic numeric
+   allocation.  This is PA37 work and must preserve exact optimized LowIR;
+   optimization-level policy tests belong in PA38.
+3. Convert the MIR program shell and global data to semantic and pooled object
+   IDs, including fixed-runtime enum lookup.  Do not introduce a parallel name
+   index.
+4. Finish the executable/global-data/host-EH encoder boundary so the ELF writer
+   is the only owner that hashes output spellings.
+5. Pool `MirDebugVariable::name` and remaining diagnostic-only metadata after
+   the O0 hot path is clean.
 
 String-keyed maps in `lowir_parse.cpp`, the resolution portion of
 `lowir_identity.cpp`, and the ELF symbol/string-table builder remain valid.
@@ -1148,9 +1196,13 @@ text, but it must continue consuming compact LowIR identities internally.
 
 Each residual slice remains separately measured and committed.  A slice that
 adds a parallel string index, changes broad LowIR output, or loses the current
-frozen timing is rejected or deferred.  Parameter/display work is owned by
-PA13/PA15; MIR and native identity work by PA29; optimized name generation by
-PA37/PA38; and ELF object identity by PA30-PA32.
+frozen timing is rejected or deferred.  The remaining tranche must show a
+repeatable end-to-end improvement against the CI20 anchor; for smaller slices,
+a material reduction in their isolated adapter/native/encoding phase is
+acceptable until the cumulative interleaved measurement is large enough to
+clear host noise.  LowIR presentation work is owned by PA13/PA15; MIR and
+native identity work by PA29; optimized name generation by PA37/PA38; and ELF
+object identity by PA30-PA32.
 
 ## 12. Completion definition
 

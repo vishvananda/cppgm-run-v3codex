@@ -152,9 +152,9 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 }
 
 void AdaptParameterFacts(const Parameter& source,
-	lowir_model::Parameter* target)
+	lowir_model::StringPool* strings, lowir_model::Parameter* target)
 {
-	target->name = Percent(source.name);
+	target->name = strings->intern(Percent(source.name));
 	target->type = AdaptType(source.type);
 	if (source.reference)
 		target->metadata.passing = lowir_model::PPM_REFERENCE;
@@ -177,11 +177,11 @@ void AdaptParameterFacts(const Parameter& source,
 }
 
 std::vector<lowir_model::Parameter> AdaptParameters(
-	const std::vector<Parameter>& source)
+	const std::vector<Parameter>& source, lowir_model::StringPool* strings)
 {
 	std::vector<lowir_model::Parameter> result(source.size());
 	for (std::size_t i = 0; i < source.size(); ++i)
-		AdaptParameterFacts(source[i], &result[i]);
+		AdaptParameterFacts(source[i], strings, &result[i]);
 	return result;
 }
 
@@ -198,14 +198,14 @@ lowir_model::LowType AdaptResultType(const Instruction& instruction)
 }
 
 AdaptedValues PrepareValues(const Function& source,
-	lowir_model::Function* target)
+	const lowir_model::StringPool& strings, lowir_model::Function* target)
 {
 	AdaptedValues result;
 	result.parameters.resize(target->params.size());
 	for (std::size_t i = 0; i < target->params.size(); ++i)
 	{
 		result.parameters[i] = lowir_model::append_lowir_value(
-			*target, target->params[i].name, target->params[i].type);
+			*target, strings.get(target->params[i].name), target->params[i].type);
 		target->params[i].value = result.parameters[i];
 	}
 	for (std::size_t order = 0; order < source.block_order.size(); ++order)
@@ -427,11 +427,11 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			for (std::size_t i = 0; i < source.extra_count; ++i)
 			{
 				lowir_model::Parameter& parameter = target.call_params[i];
-				parameter.name = i + source.virtual_base_argument_count >=
+				parameter.name = literals->intern(i + source.virtual_base_argument_count >=
 					source.extra_count ?
 					Percent("__pvbptr" + std::to_string(i +
 						source.virtual_base_argument_count - source.extra_count)) :
-					Percent("arg" + std::to_string(i));
+					Percent("arg" + std::to_string(i)));
 				parameter.type = target.args[i].literal_type;
 				if (source.extra_first + i <
 					program.call_argument_references.size())
@@ -607,7 +607,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		lowir_model::FunctionDeclaration result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
 		result.name = At(symbol.name);
-		result.params = AdaptParameters(item.parameters);
+		result.params = AdaptParameters(item.parameters, &target.strings);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
@@ -722,8 +722,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		lowir_model::Function result;
 		result.symbol = lowir_model::SymbolId(item.symbol);
 		result.name = At(symbol.name);
-		result.params = AdaptParameters(item.parameters);
-		const AdaptedValues values = PrepareValues(item, &result);
+		result.params = AdaptParameters(item.parameters, &target.strings);
+		const AdaptedValues values = PrepareValues(item, target.strings, &result);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;

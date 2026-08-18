@@ -483,7 +483,7 @@ private:
   Parameter parameter()
   {
     Parameter result;
-    result.name = named('%', "parameter name");
+    result.name = strings_->intern(named('%', "parameter name"));
     expect(":");
     result.type = type();
     const Metadata items = metadata();
@@ -657,7 +657,7 @@ private:
     result.debug_location = debug_location();
     for(std::size_t i = 0; i < result.params.size(); ++i)
       result.params[i].value = append_lowir_value(
-        result, result.params[i].name, result.params[i].type);
+        result, strings_->get(result.params[i].name), result.params[i].type);
     expect("{");
     parse_function_body(result);
     program.functions.push_back(result);
@@ -1132,7 +1132,8 @@ private:
     std::unordered_set<std::string> names;
     for(std::size_t i = 0; i < params.size(); ++i) {
       const Parameter & param = params[i];
-      if(!names.insert(param.name).second) throw ParseError("duplicate parameter");
+      if(!names.insert(lowir_parameter_name(program_, param)).second)
+        throw ParseError("duplicate parameter");
       const bool pointer = param.type.kind == LTK_PTR;
       if(param.metadata.passing != PPM_DIRECT && !pointer)
         throw ParseError("non-direct passing requires ptr");
@@ -1156,7 +1157,8 @@ private:
     TypeIndex slots;
     std::unordered_set<std::string> blocks;
     for(std::size_t i = 0; i < function.params.size(); ++i)
-      values[function.params[i].name] = &function.params[i].type;
+      values[lowir_parameter_name(program_, function.params[i])] =
+        &function.params[i].type;
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
       if(!slots.emplace(lowir_slot_name(function, function.slots[i]),
                         &lowir_slot_type(function, function.slots[i])).second)

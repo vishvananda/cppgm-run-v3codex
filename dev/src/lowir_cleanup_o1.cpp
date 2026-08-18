@@ -185,7 +185,7 @@ bool same_parameter(const lowir_model::Parameter & left,
 
 std::size_t parameter_hash(const lowir_model::Parameter & parameter)
 {
-  std::size_t result = std::hash<std::string>()(parameter.name);
+  std::size_t result = static_cast<std::uint32_t>(parameter.name);
   combine_hash(&result, type_hash(parameter.type));
   combine_hash(&result, static_cast<std::size_t>(parameter.metadata.passing));
   combine_hash(&result, static_cast<std::size_t>(parameter.metadata.capture));

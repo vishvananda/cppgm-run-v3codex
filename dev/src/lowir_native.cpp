@@ -10,6 +10,7 @@
 #include "lowir_native_control_flow.h"
 #include "lowir_native_copy_lowering.h"
 #include "lowir_native_eh.h"
+#include "lowir_native_frame_layout.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_index_lowering.h"
 #include "lowir_native_intrinsic_lowering.h"
@@ -41,7 +42,6 @@ using analysis::register_was_clobbered_before;
 using allocation::RegisterPool; using allocation::XmmPool;
 using allocation::is_callee_saved;
 using namespace build;
-
 using namespace selection;
 class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
@@ -213,15 +213,15 @@ private:
                                    const std::string & name,
                                    const LowType & type)
   {
-    frame_bytes_ = align_up(frame_bytes_, type.alignment);
-    frame_bytes_ += abi::frame_storage_size(type);
-    mir_model::MirFrameBinding binding;
-    binding.kind = kind;
-    binding.name = strings_.intern(name);
-    binding.offset = -static_cast<long long>(frame_bytes_);
-    binding.type = type;
-    target_.frame_bindings.push_back(binding);
-    return binding.offset;
+    return frame_layout::append_binding(
+      target_, frame_bytes_, kind, strings_.intern(name), type);
+  }
+  long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
+                                   lowir_model::StringId name,
+                                   const LowType & type)
+  {
+    return frame_layout::append_binding(
+      target_, frame_bytes_, kind, strings_.map(name), type);
   }
   std::uint32_t append_frame_binding(
                             mir_model::MirFrameBinding::Kind kind,
@@ -369,7 +369,7 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = strings_.intern(parameter.name);
+      binding.name = strings_.map(parameter.name);
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -459,7 +459,7 @@ private:
       const lowir_model::LowirParameter & parameter =
         source_.params[piece.parameter_index];
       mir_model::MirParamBinding binding;
-      binding.name = strings_.intern(parameter.name);
+      binding.name = strings_.map(parameter.name);
       binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ||
         wide::is_integer(parameter.type) ?
         piece.type : parameter.type;
@@ -535,7 +535,7 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = strings_.intern(parameter.name);
+      binding.name = strings_.map(parameter.name);
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -2186,7 +2186,6 @@ private:
       parameters.resize(instruction.args.size());
     while(parameters.size() < instruction.args.size()) {
       lowir_model::LowirParameter parameter;
-      parameter.name = "%arg" + std::to_string(parameters.size());
       parameter.type = operand_type(instruction.args[parameters.size()]);
       parameters.push_back(parameter);
     }
@@ -2770,7 +2769,8 @@ private:
       append_operand(combine, reg_operand(XR_RAX));
       append_operand(combine, reg_operand(XR_RDX));
       out.push_back(combine);
-    } else if(!facts_.has(instruction.first.value,
+    } else if(instruction.first.kind != Operand::OP_TEMP ||
+              !facts_.has(instruction.first.value,
                           FunctionFacts::VF_DIRECT_BRANCH_CALL_RESULT))
       move_value_to_register(out, XR_RAX, resolve(instruction.first),
                              condition_type);

@@ -154,11 +154,14 @@ struct Names
   std::unordered_set<std::size_t> site_ids;
   std::size_t next_site_id;
 
-  explicit Names(const Function & function) : next_site_id(0)
+  Names(const LowirProgram & program, const Function & function)
+    : next_site_id(0)
   {
     for(std::size_t i = 0; i < function.params.size(); ++i) {
-      values.insert(function.params[i].name);
-      collect_generated_id(function.params[i].name, &site_ids);
+      const std::string & name =
+        lowir_model::lowir_parameter_name(program, function.params[i]);
+      values.insert(name);
+      collect_generated_id(name, &site_ids);
     }
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
       const std::string & slot =
@@ -1030,7 +1033,7 @@ private:
       }
     if(!has_candidate) return;
 
-    Names names(program_.functions[function_index]);
+    Names names(program_, program_.functions[function_index]);
     EhContext eh;
     if(contains_eh_[function_index])
       eh = analyze_eh_context(program_.functions[function_index], stats_);

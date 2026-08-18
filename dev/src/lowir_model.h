@@ -349,7 +349,7 @@ struct ParameterMetadata
 struct Parameter
 {
   ValueId value;
-  std::string name;
+  StringId name;
   LowType type;
   ParameterMetadata metadata;
 };
@@ -560,6 +560,8 @@ std::string lowir_value_name(const Function & function, ValueId value);
 const LowType & lowir_value_type(const Function & function, ValueId value);
 SymbolId append_lowir_symbol(Program & program, const std::string & name);
 const std::string & lowir_symbol_name(const Program & program, SymbolId symbol);
+const std::string & lowir_parameter_name(const Program & program,
+                                         const Parameter & parameter);
 bool parse_lowir_integer_literal(const std::string & text,
                                  long long * low, std::uint64_t * high);
 void resolve_lowir_function_operands(Function & function,
