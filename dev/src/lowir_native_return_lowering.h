@@ -68,7 +68,7 @@ protected:
 				!lowir_model::same_lowir_type(source_type, instruction.type))
 			{
 				const mir_model::MirOperand converted =
-					lowerer.allocate_temp_home("%f80-return", instruction.type);
+					lowerer.allocate_named_temp_home("%f80-return", instruction.type);
 				lowerer.append_float_width_conversion(out, converted, source,
 					source_type, instruction.type);
 				source = converted;

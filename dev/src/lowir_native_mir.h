@@ -20,6 +20,10 @@ mir_model::MirOperand immediate(long long value);
 mir_model::MirOperand float_immediate(const std::string & text);
 mir_model::MirOperand named_operand(mir_model::MirOperand::Kind kind,
                                     const std::string & text);
+mir_model::MirOperand global_operand(mir_model::MirOperand::Kind kind,
+                                     const lowir_model::Operand & operand);
+bool operand_uses_register(const mir_model::MirOperand & operand,
+                           X64Register reg);
 mir_model::MirOperand dereference(X64Register reg, long long offset = 0);
 mir_model::MirOperand indexed_dereference(X64Register base,
                                           X64Register index,

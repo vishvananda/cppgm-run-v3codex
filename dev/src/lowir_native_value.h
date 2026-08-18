@@ -3,8 +3,6 @@
 #include "lowir_model.h"
 #include "mir_model.h"
 
-#include <string>
-
 namespace lowir_native {
 
 struct ValueFact
@@ -20,7 +18,7 @@ struct ValueFact
   bool has_spill_home = false;
   mir_model::MirOperand spill_home;
   mir_model::MirOperand pointer_global_cell;
-  std::string forwarded_parameter;
+  lowir_model::ValueId forwarded_parameter;
   // A directly selected address keeps its LowIR inputs live until the memory
   // instruction consumes the address.  This avoids manufacturing a pointer
   // temporary solely to feed an x86 addressing mode.

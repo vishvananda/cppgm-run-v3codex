@@ -133,7 +133,9 @@ private:
   ProgramEmitter & owner_;
   const Function & function_;
   TextOutput & out_;
-  std::unordered_map<std::string, Location> locations_;
+  std::vector<Location> value_locations_;
+  std::vector<Location> slot_locations_;
+  Location return_location_;
   std::size_t frame_size_;
   std::size_t scratch_[4];
   std::size_t instruction_count_;
@@ -141,8 +143,8 @@ private:
   bool indirect_result_;
 
   void BuildLayout();
-  void AddLocation(const std::string & name, const LowType & type,
-                   bool address_value, std::size_t & used);
+  Location AddLocation(const LowType & type, bool address_value,
+                       std::size_t & used);
   void EmitPrologue();
   void EmitParameterCopies();
   void EmitBlock(const Block & block);
@@ -169,17 +171,18 @@ private:
   void EmitAddressValue(const Operand & value, char bank);
   void EmitStorageLoad(const Operand & storage, const LowType & type, char bank);
   void EmitStorageStore(const Operand & storage, const LowType & type, char bank);
-  void StoreScalarTemp(const std::string & name, const LowType & type, char bank);
+  void StoreScalarTemp(ValueId value, const LowType & type, char bank);
   void EmitSignExtend(char bank, std::size_t width);
   void LoadF80(const Operand & value, std::size_t scratch_index);
   void LoadF80FromAddress(char bank, std::size_t scratch_index);
-  void StoreF80Temp(const std::string & name, std::size_t scratch_index);
+  void StoreF80Temp(ValueId value, std::size_t scratch_index);
   void ZeroF80Padding(std::size_t scratch_index);
   void CopyBytes(const MemoryRef & source, const MemoryRef & dest, std::size_t bytes);
   std::string MemoryAt(const MemoryRef & memory, std::size_t byte_offset) const;
-  std::string LocalMemory(const std::string & name) const;
-  std::string LocalAddress(const std::string & name) const;
-  const std::string & SlotName(const Operand & slot) const;
+  std::string ValueMemory(ValueId value) const;
+  std::string ValueAddress(ValueId value) const;
+  std::string SlotMemory(SlotId slot) const;
+  std::string SlotAddress(SlotId slot) const;
   std::string BlockLabel(const std::string & block) const;
   std::string BlockLabel(const Operand & block) const;
   std::string EpilogueLabel() const;
@@ -433,38 +436,44 @@ FunctionEmitter::FunctionEmitter(ProgramEmitter & owner, const Function & functi
     indirect_result_(is_large_value(function.return_type))
 {
   std::fill(scratch_, scratch_ + 4, 0);
+  value_locations_.resize(function_.value_names.size());
+  slot_locations_.resize(function_.slot_names.size());
   BuildLayout();
 }
 
-void FunctionEmitter::AddLocation(const std::string & name, const LowType & type,
-                                  bool address_value, std::size_t & used)
+Location FunctionEmitter::AddLocation(const LowType & type,
+                                      bool address_value, std::size_t & used)
 {
   const TypeShape item = shape(type);
   const std::size_t bytes = is_large_value(type) ? item.size : 8;
   used = align_up(used, 8) + bytes;
-  locations_[name] = Location{used, address_value};
   if(is_f80(type)) has_f80_ = true;
+  return Location{used, address_value};
 }
 
 void FunctionEmitter::BuildLayout()
 {
   std::size_t used = 0;
-  if(indirect_result_) {
-    AddLocation("#return", builtin_lowir_type(LTK_PTR), false, used);
-  }
+  if(indirect_result_)
+    return_location_ = AddLocation(
+      builtin_lowir_type(LTK_PTR), false, used);
   for(std::size_t i = 0; i < function_.params.size(); ++i) {
     const Parameter & param = function_.params[i];
-    AddLocation(param.name, param.type, is_f80(param.type), used);
+    value_locations_[param.value] =
+      AddLocation(param.type, is_f80(param.type), used);
   }
-  for(std::size_t i = 0; i < function_.slots.size(); ++i)
-    AddLocation(lowir_model::lowir_slot_name(function_, function_.slots[i]),
-      lowir_model::lowir_slot_type(function_, function_.slots[i]), true, used);
+  for(std::size_t i = 0; i < function_.slots.size(); ++i) {
+    const SlotId slot = function_.slots[i];
+    slot_locations_[slot] = AddLocation(
+      lowir_model::lowir_slot_type(function_, slot), true, used);
+  }
   for(std::size_t b = 0; b < function_.blocks.size(); ++b)
     for(std::size_t i = 0; i < function_.blocks[b].instructions.size(); ++i) {
       const Instruction & ins = function_.blocks[b].instructions[i];
-      if(!ins.dest.empty()) {
+      if(ins.dest.valid()) {
         const LowType & result_type = instruction_result_type(ins);
-        AddLocation(ins.dest, result_type, is_large_value(result_type), used);
+        value_locations_[ins.dest] = AddLocation(
+          result_type, is_large_value(result_type), used);
       }
       if(is_f80(ins.type) || is_f80(ins.source_type) || ins.kind == Instruction::IK_CONVERT)
         has_f80_ = true;
@@ -478,28 +487,37 @@ void FunctionEmitter::BuildLayout()
   frame_size_ = used;
 }
 
-std::string FunctionEmitter::LocalMemory(const std::string & name) const
+std::string FunctionEmitter::ValueMemory(ValueId value) const
 {
-  const std::unordered_map<std::string, Location>::const_iterator found = locations_.find(name);
-  if(found == locations_.end()) throw ParseError("missing local layout: " + name);
-  return memory_bp(found->second.offset);
+  if(static_cast<std::uint32_t>(value) >= value_locations_.size())
+    throw ParseError("missing LowIR value layout");
+  return memory_bp(value_locations_[value].offset);
 }
 
-std::string FunctionEmitter::LocalAddress(const std::string & name) const
+std::string FunctionEmitter::ValueAddress(ValueId value) const
 {
-  const std::unordered_map<std::string, Location>::const_iterator found = locations_.find(name);
-  if(found == locations_.end()) throw ParseError("missing local layout: " + name);
-  return std::to_string(found->second.offset);
+  if(static_cast<std::uint32_t>(value) >= value_locations_.size())
+    throw ParseError("missing LowIR value layout");
+  return std::to_string(value_locations_[value].offset);
+}
+
+std::string FunctionEmitter::SlotMemory(SlotId slot) const
+{
+  if(static_cast<std::uint32_t>(slot) >= slot_locations_.size())
+    throw ParseError("missing LowIR slot layout");
+  return memory_bp(slot_locations_[slot].offset);
+}
+
+std::string FunctionEmitter::SlotAddress(SlotId slot) const
+{
+  if(static_cast<std::uint32_t>(slot) >= slot_locations_.size())
+    throw ParseError("missing LowIR slot layout");
+  return std::to_string(slot_locations_[slot].offset);
 }
 
 std::string FunctionEmitter::BlockLabel(const std::string & block) const
 {
   return "fn__" + strip_sigil(function_.name) + "__" + strip_sigil(block);
-}
-
-const std::string & FunctionEmitter::SlotName(const Operand & slot) const
-{
-  return lowir_model::lowir_slot_name(function_, slot.slot);
 }
 
 std::string FunctionEmitter::BlockLabel(const Operand & block) const
@@ -539,19 +557,20 @@ void FunctionEmitter::EmitParameterCopies()
   static const char banks[] = {'x', 'y', 'z', 't'};
   std::size_t abi_index = 0;
   if(indirect_result_) {
-    out_.Instruction("move64 " + LocalMemory("#return") + " x64");
+    out_.Instruction("move64 " + memory_bp(return_location_.offset) + " x64");
     ++abi_index;
   }
   for(std::size_t i = 0; i < function_.params.size(); ++i, ++abi_index) {
     const Parameter & param = function_.params[i];
     const TypeShape item = shape(param.type);
-    const std::string dest = LocalMemory(param.name);
+    const std::string dest = ValueMemory(param.value);
     if(abi_index < 4) {
       const char bank = banks[abi_index];
       if(is_large_value(param.type)) {
         out_.Instruction("move64 x64 " + register_name(bank, 64));
         CopyBytes(MemoryRef{MemoryRef::ADDRESS_REGISTER, 0, 'x'},
-                  MemoryRef{MemoryRef::LOCAL, locations_.at(param.name).offset, 0}, item.size);
+                  MemoryRef{MemoryRef::LOCAL,
+                    value_locations_[param.value].offset, 0}, item.size);
       } else {
         out_.Instruction("move" + std::to_string(item.width) + " " + dest + " " +
                          register_name(bank, item.width));
@@ -612,11 +631,11 @@ void FunctionEmitter::EmitScalarValue(const Operand & value, const LowType & typ
     out_.Instruction("move" + std::to_string(move_width) + " " +
                      register_name(bank, move_width) + " " + literal);
   } else if(value.kind == Operand::OP_SLOT) {
-    out_.Instruction("isub64 " + reg64 + " bp " + LocalAddress(SlotName(value)));
+    out_.Instruction("isub64 " + reg64 + " bp " + SlotAddress(value.slot));
   } else if(value.kind == Operand::OP_GLOBAL) {
     out_.Instruction("move64 " + reg64 + " " + owner_.SymbolLabel(value.text));
   } else {
-    const Location & location = locations_.at(value.text);
+    const Location & location = value_locations_.at(value.value);
     if(location.address_value)
       out_.Instruction("isub64 " + reg64 + " bp " + std::to_string(location.offset));
     else {
@@ -631,11 +650,11 @@ void FunctionEmitter::EmitAddressValue(const Operand & value, char bank)
 {
   const std::string reg = register_name(bank, 64);
   if(value.kind == Operand::OP_SLOT) {
-    out_.Instruction("isub64 " + reg + " bp " + LocalAddress(SlotName(value)));
+    out_.Instruction("isub64 " + reg + " bp " + SlotAddress(value.slot));
   } else if(value.kind == Operand::OP_GLOBAL) {
     out_.Instruction("move64 " + reg + " " + owner_.SymbolLabel(value.text));
   } else if(value.kind == Operand::OP_TEMP) {
-    const Location & location = locations_.at(value.text);
+    const Location & location = value_locations_.at(value.value);
     if(location.address_value)
       out_.Instruction("isub64 " + reg + " bp " + std::to_string(location.offset));
     else out_.Instruction("move64 " + reg + " " + memory_bp(location.offset));
@@ -650,7 +669,7 @@ void FunctionEmitter::EmitStorageLoad(const Operand & storage, const LowType & t
   const std::string reg = register_name(bank, item.width);
   if(storage.kind == Operand::OP_SLOT)
     out_.Instruction("move" + std::to_string(item.width) + " " + reg + " " +
-                     LocalMemory(SlotName(storage)));
+                     SlotMemory(storage.slot));
   else if(storage.kind == Operand::OP_GLOBAL)
     out_.Instruction("move" + std::to_string(item.width) + " " + reg + " [" +
                      owner_.SymbolLabel(storage.text) + "]");
@@ -667,7 +686,7 @@ void FunctionEmitter::EmitStorageStore(const Operand & storage, const LowType & 
   const std::string reg = register_name(bank, item.width);
   if(storage.kind == Operand::OP_SLOT)
     out_.Instruction("move" + std::to_string(item.width) + " " +
-                     LocalMemory(SlotName(storage)) + " " + reg);
+                     SlotMemory(storage.slot) + " " + reg);
   else if(storage.kind == Operand::OP_GLOBAL)
     out_.Instruction("move" + std::to_string(item.width) + " [" + owner_.SymbolLabel(storage.text) +
                      "] " + reg);
@@ -677,10 +696,10 @@ void FunctionEmitter::EmitStorageStore(const Operand & storage, const LowType & 
   }
 }
 
-void FunctionEmitter::StoreScalarTemp(const std::string & name, const LowType & type, char bank)
+void FunctionEmitter::StoreScalarTemp(ValueId value, const LowType & type, char bank)
 {
   const TypeShape item = shape(type);
-  out_.Instruction("move" + std::to_string(item.width) + " " + LocalMemory(name) + " " +
+  out_.Instruction("move" + std::to_string(item.width) + " " + ValueMemory(value) + " " +
                    register_name(bank, item.width));
 }
 
@@ -888,9 +907,9 @@ void FunctionEmitter::LoadF80(const Operand & value, std::size_t scratch_index)
   }
 }
 
-void FunctionEmitter::StoreF80Temp(const std::string & name, std::size_t scratch_index)
+void FunctionEmitter::StoreF80Temp(ValueId value, std::size_t scratch_index)
 {
-  const std::size_t dest = locations_.at(name).offset;
+  const std::size_t dest = value_locations_.at(value).offset;
   CopyBytes(MemoryRef{MemoryRef::LOCAL, scratch_[scratch_index], 0},
             MemoryRef{MemoryRef::LOCAL, dest, 0}, 16);
 }
@@ -921,7 +940,7 @@ void FunctionEmitter::EmitConvert(const Instruction & ins)
     std::string dest_prefix;
     if(dest.floating) dest_prefix = "f" + std::to_string(dest.width);
     else dest_prefix = (ins.op == "fptoui" ? "u" : "s") + std::to_string(dest.width);
-    out_.Instruction("f80conv" + dest_prefix + " " + LocalMemory(ins.dest) + " " + memory_bp(scratch_[0]));
+    out_.Instruction("f80conv" + dest_prefix + " " + ValueMemory(ins.dest) + " " + memory_bp(scratch_[0]));
   }
 }
 
@@ -960,7 +979,7 @@ void FunctionEmitter::EmitCall(const Instruction & ins)
     if(large_return) {
       Operand result;
       result.kind = Operand::OP_TEMP;
-      result.text = ins.dest;
+      result.value = ins.dest;
       EmitAddressValue(result, banks[abi_index++]);
     }
     for(std::size_t i = 0; i < ins.args.size() && abi_index < 4; ++i, ++abi_index) {
@@ -981,7 +1000,7 @@ void FunctionEmitter::EmitCall(const Instruction & ins)
   if(large_return) {
     Operand result;
     result.kind = Operand::OP_TEMP;
-    result.text = ins.dest;
+    result.value = ins.dest;
     EmitAddressValue(result, 'x');
     out_.Instruction("move64 " + register_name(banks[abi_index], 64) + " x64");
     ++abi_index;
@@ -1148,12 +1167,12 @@ void FunctionEmitter::EmitReturn(const Instruction & ins)
     if(is_large_value(ins.type)) {
       if(is_f80(ins.type)) {
         LoadF80(ins.first, 0);
-        out_.Instruction("move64 x64 " + LocalMemory("#return"));
+        out_.Instruction("move64 x64 " + memory_bp(return_location_.offset));
         CopyBytes(MemoryRef{MemoryRef::LOCAL, scratch_[0], 0},
                   MemoryRef{MemoryRef::ADDRESS_REGISTER, 0, 'x'}, 16);
       } else {
         EmitAddressValue(ins.first, 'x');
-        out_.Instruction("move64 y64 " + LocalMemory("#return"));
+        out_.Instruction("move64 y64 " + memory_bp(return_location_.offset));
         CopyBytes(MemoryRef{MemoryRef::ADDRESS_REGISTER, 0, 'x'},
                   MemoryRef{MemoryRef::ADDRESS_REGISTER, 0, 'y'}, shape(ins.type).size);
       }

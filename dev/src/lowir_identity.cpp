@@ -154,6 +154,57 @@ const LowType & lowir_slot_type(const Function & function, SlotId slot)
   return function.slot_types[id];
 }
 
+namespace {
+
+ValueId append_value_identity(Function & function, const std::string & name,
+                              std::uint32_t generated_ordinal,
+                              const LowType & type)
+{
+  if(function.value_names.size() == kInvalidCompactId)
+    throw std::runtime_error("too many LowIR values");
+  const ValueId result(static_cast<std::uint32_t>(function.value_names.size()));
+  function.value_names.push_back(name);
+  function.generated_value_ordinals.push_back(generated_ordinal);
+  function.value_types.push_back(type);
+  return result;
+}
+
+}  // namespace
+
+ValueId append_lowir_value(Function & function, const std::string & name,
+                           const LowType & type)
+{
+  if(name.empty()) throw std::logic_error("empty named LowIR value");
+  return append_value_identity(function, name, kInvalidCompactId, type);
+}
+
+ValueId append_lowir_generated_value(Function & function,
+                                     std::uint32_t ordinal,
+                                     const LowType & type)
+{
+  return append_value_identity(function, std::string(), ordinal, type);
+}
+
+std::string lowir_value_name(const Function & function, ValueId value)
+{
+  const std::uint32_t id = value;
+  if(id >= function.value_names.size())
+    throw std::logic_error("invalid LowIR value identity");
+  if(!function.value_names[id].empty()) return function.value_names[id];
+  const std::uint32_t ordinal = function.generated_value_ordinals[id];
+  if(ordinal == kInvalidCompactId)
+    throw std::logic_error("LowIR value has no presentation identity");
+  return "%t" + std::to_string(ordinal);
+}
+
+const LowType & lowir_value_type(const Function & function, ValueId value)
+{
+  const std::uint32_t id = value;
+  if(id >= function.value_types.size())
+    throw std::logic_error("invalid LowIR value type identity");
+  return function.value_types[id];
+}
+
 void resolve_lowir_function_operands(Function & function)
 {
   std::unordered_map<std::string, BlockId> blocks;
@@ -168,6 +219,12 @@ void resolve_lowir_function_operands(Function & function)
   for(std::size_t i = 0; i < function.slots.size(); ++i)
     slots.emplace(lowir_slot_name(function, function.slots[i]),
                   function.slots[i]);
+  std::unordered_map<std::string, ValueId> values;
+  values.reserve(function.value_names.size());
+  for(std::size_t i = 0; i < function.value_names.size(); ++i) {
+    const ValueId value(static_cast<std::uint32_t>(i));
+    values.emplace(lowir_value_name(function, value), value);
+  }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     std::vector<Instruction> & instructions = function.blocks[i].instructions;
     for(std::size_t j = 0; j < instructions.size(); ++j) {
@@ -186,6 +243,11 @@ void resolve_lowir_function_operands(Function & function)
             slots.find(fixed[k]->text);
           if(found == slots.end()) throw ParseError("undefined slot operand");
           fixed[k]->slot = found->second;
+        } else if(fixed[k]->kind == Operand::OP_TEMP) {
+          const std::unordered_map<std::string, ValueId>::const_iterator found =
+            values.find(fixed[k]->text);
+          if(found == values.end()) throw ParseError("undefined value operand");
+          fixed[k]->value = found->second;
         } else continue;
         std::string().swap(fixed[k]->text);
       }
@@ -201,6 +263,11 @@ void resolve_lowir_function_operands(Function & function)
             slots.find(operand.text);
           if(found == slots.end()) throw ParseError("undefined slot operand");
           operand.slot = found->second;
+        } else if(operand.kind == Operand::OP_TEMP) {
+          const std::unordered_map<std::string, ValueId>::const_iterator found =
+            values.find(operand.text);
+          if(found == values.end()) throw ParseError("undefined value operand");
+          operand.value = found->second;
         } else continue;
         std::string().swap(operand.text);
       }

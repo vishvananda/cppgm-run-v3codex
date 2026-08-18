@@ -20,7 +20,7 @@ using lowir_model::Instruction;
 using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
-typedef std::unordered_map<std::string, std::string> RenameMap;
+typedef std::vector<lowir_model::ValueId> RenameMap;
 typedef std::vector<lowir_model::SlotId> SlotMap;
 
 struct RenamedBlock
@@ -67,8 +67,10 @@ struct InlineNames
       labels.insert(
         lowir_model::lowir_block_label(function, function.blocks[i].id));
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-        const std::string & dest = function.blocks[i].instructions[j].dest;
-        if(!dest.empty()) values.insert(dest);
+        const lowir_model::ValueId dest =
+          function.blocks[i].instructions[j].dest;
+        if(dest.valid())
+          values.insert(lowir_model::lowir_value_name(function, dest));
       }
     }
   }
@@ -229,13 +231,11 @@ private:
       operand->slot = slots[id];
       return;
     }
-    const RenameMap * map = operand->kind == Operand::OP_TEMP ? &values :
-      0;
-    if(!map) return;
-    const RenameMap::const_iterator found = map->find(operand->text);
-    if(found == map->end())
+    if(operand->kind != Operand::OP_TEMP) return;
+    const std::uint32_t id = operand->value;
+    if(id >= values.size() || !values[id].valid())
       throw std::logic_error("force-inline operand has no renamed identity");
-    operand->text = found->second;
+    operand->value = values[id];
   }
 
   static Instruction CloneInstruction(const Instruction & source,
@@ -244,11 +244,11 @@ private:
                                       const BlockMap & blocks)
   {
     Instruction result = source;
-    if(!result.dest.empty()) {
-      const RenameMap::const_iterator found = values.find(result.dest);
-      if(found == values.end())
+    if(result.dest.valid()) {
+      const std::uint32_t id = result.dest;
+      if(id >= values.size() || !values[id].valid())
         throw std::logic_error("force-inline result has no renamed identity");
-      result.dest = found->second;
+      result.dest = values[id];
     }
     RenameOperand(&result.first, values, slots, blocks);
     RenameOperand(&result.second, values, slots, blocks);
@@ -263,8 +263,10 @@ private:
                        RenameMap * values, SlotMap * slots,
                        BlockMap * blocks)
   {
+    values->resize(callee.value_names.size());
     for(std::size_t i = 0; i < callee.params.size(); ++i)
-      (*values)[callee.params[i].name] = names->value("parameter");
+      (*values)[callee.params[i].value] = lowir_model::append_lowir_value(
+        *caller, names->value("parameter"), callee.params[i].type);
     slots->resize(callee.slot_names.size());
     for(std::size_t i = 0; i < callee.slots.size(); ++i) {
       const lowir_model::SlotId source = callee.slots[i];
@@ -278,8 +280,12 @@ private:
         *caller, names->label("block"));
       (*blocks)[callee.blocks[i].id] = block;
       for(std::size_t j = 0; j < callee.blocks[i].instructions.size(); ++j) {
-        const std::string & dest = callee.blocks[i].instructions[j].dest;
-        if(!dest.empty()) (*values)[dest] = names->value("temporary");
+        const lowir_model::ValueId dest =
+          callee.blocks[i].instructions[j].dest;
+        if(dest.valid())
+          (*values)[dest] = lowir_model::append_lowir_value(
+            *caller, names->value("temporary"),
+            lowir_model::lowir_value_type(callee, dest));
       }
     }
   }
@@ -294,7 +300,7 @@ private:
     for(std::size_t i = 0; i < callee.params.size(); ++i) {
       Instruction copy;
       copy.kind = Instruction::IK_COPY;
-      copy.dest = values.find(callee.params[i].name)->second;
+      copy.dest = values[callee.params[i].value];
       copy.type = callee.params[i].type;
       copy.first = call.args[i];
       copy.debug_location = call.debug_location;
@@ -345,7 +351,7 @@ private:
     Block result;
     result.id = id;
     if(!call.call_returns_void) {
-      if(call.dest.empty() || !result_slot.valid())
+      if(!call.dest.valid() || !result_slot.valid())
         throw std::logic_error("force-inline value call has no result identity");
       Instruction load;
       load.kind = Instruction::IK_LOAD;

@@ -27,7 +27,7 @@ protected:
         (source.imm >= INT32_MIN && source.imm <= INT32_MAX)))
       return source;
     if(source.kind == mir_model::MirOperand::OP_IMM && width < 32 &&
-       lowerer.operand_uses_register(left, XR_RDX))
+       operand_uses_register(left, XR_RDX))
       return source;
     if(source.kind == mir_model::MirOperand::OP_REG ||
        source.kind == mir_model::MirOperand::OP_FRAME ||

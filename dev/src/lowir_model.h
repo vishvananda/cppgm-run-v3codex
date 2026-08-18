@@ -167,6 +167,7 @@ struct Operand
   bool has_int_value = false;
   BlockId block;
   SlotId slot;
+  ValueId value;
   std::string text;
   long long int_value = 0;
   long double float_value = 0.0L;
@@ -332,6 +333,7 @@ struct ParameterMetadata
 
 struct Parameter
 {
+  ValueId value;
   std::string name;
   LowType type;
   ParameterMetadata metadata;
@@ -433,7 +435,7 @@ struct Instruction
     IK_RETURN
   } kind = IK_CONST;
 
-  std::string dest;
+  ValueId dest;
   LowType type;
   LowType source_type;
   LowOperation op;
@@ -468,6 +470,9 @@ struct Function
   std::vector<SlotId> slots;
   std::vector<std::string> slot_names;
   std::vector<LowType> slot_types;
+  std::vector<std::string> value_names;
+  std::vector<std::uint32_t> generated_value_ordinals;
+  std::vector<LowType> value_types;
   std::vector<Block> blocks;
   std::vector<std::string> block_labels;
   std::uint32_t next_block_id = 0;
@@ -523,6 +528,13 @@ SlotId append_lowir_slot(Function & function, const std::string & name,
                          const LowType & type);
 const std::string & lowir_slot_name(const Function & function, SlotId slot);
 const LowType & lowir_slot_type(const Function & function, SlotId slot);
+ValueId append_lowir_value(Function & function, const std::string & name,
+                           const LowType & type);
+ValueId append_lowir_generated_value(Function & function,
+                                     std::uint32_t ordinal,
+                                     const LowType & type);
+std::string lowir_value_name(const Function & function, ValueId value);
+const LowType & lowir_value_type(const Function & function, ValueId value);
 void resolve_lowir_function_operands(Function & function);
 
 enum LowirEntryPolicy

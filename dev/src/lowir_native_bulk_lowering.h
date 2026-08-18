@@ -93,12 +93,12 @@ protected:
     derived.consume(destination);
   }
 
-  void emit_object_value(const std::string& name, const LowType& type,
+  void emit_object_value(lowir_model::ValueId value, const LowType& type,
                          const Operand& source,
                          std::vector<MirInstruction>& out)
   {
     Derived& derived = static_cast<Derived&>(*this);
-    const MirOperand home = derived.allocate_temp_home(name, type);
+    const MirOperand home = derived.allocate_temp_home(value, type);
     X64Register source_register = XR_RSI;
     const bool direct_source =
       direct_address_register(source, &source_register);
@@ -110,7 +110,7 @@ protected:
     append_object_copy(type.storage_size, type.alignment,
                        destination_register, source_register, out);
     derived.consume(source);
-    derived.define_object_result(name, type, 0, home);
+    derived.define_object_result(value, type, 0, home);
   }
 
   void emit_object_load(const Instruction& instruction,

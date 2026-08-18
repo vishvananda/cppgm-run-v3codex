@@ -114,9 +114,11 @@ unsigned instruction_clobber_mask(const Instruction & instruction,
 void note_operand(FunctionFacts & facts, const Operand & operand, std::size_t position)
 {
   if(operand.kind != Operand::OP_TEMP) return;
-  ++facts.uses[operand.text];
-  if(!facts.first_use.count(operand.text)) facts.first_use[operand.text] = position;
-  facts.last_use[operand.text] = position;
+  const lowir_model::ValueId value = operand.value;
+  ++facts.uses[value];
+  if(facts.first_use[value] == FunctionFacts::missing_position())
+    facts.first_use[value] = position;
+  facts.last_use[value] = position;
 }
 
 void note_instruction_operands(FunctionFacts & facts,
@@ -137,10 +139,8 @@ bool direct_memory_index_use(const FunctionFacts & facts,
   if(index + 1 >= instructions.size()) return false;
   const Instruction & instruction = instructions[index];
   if(instruction.kind != Instruction::IK_INDEX ||
-     facts.edge_live.count(instruction.dest)) return false;
-  const std::unordered_map<std::string, std::size_t>::const_iterator uses =
-    facts.uses.find(instruction.dest);
-  if(uses == facts.uses.end() || uses->second != 1) return false;
+     facts.has(instruction.dest, FunctionFacts::VF_EDGE_LIVE)) return false;
+  if(facts.uses[instruction.dest] != 1) return false;
   const std::size_t scale = instruction.type.storage_size;
   if(scale != 1 && scale != 2 && scale != 4 && scale != 8) return false;
   const Instruction & consumer = instructions[index + 1];
@@ -151,10 +151,10 @@ bool direct_memory_index_use(const FunctionFacts & facts,
      consumer.type.kind == lowir_model::LTK_OBJECT) return false;
   const bool load = consumer.kind == Instruction::IK_LOAD &&
     consumer.first.kind == Operand::OP_TEMP &&
-    consumer.first.text == instruction.dest;
+    consumer.first.value == instruction.dest;
   const bool store = consumer.kind == Instruction::IK_STORE &&
     consumer.second.kind == Operand::OP_TEMP &&
-    consumer.second.text == instruction.dest;
+    consumer.second.value == instruction.dest;
   return load || store;
 }
 
@@ -176,19 +176,16 @@ void extend_shared_storage_liveness(
     for(std::size_t index = instructions.size(); index-- > 0; ) {
       const Instruction & copy = instructions[index];
       if(!copy_may_share_frame_home(copy)) continue;
-      std::size_t end = 0;
-      const std::unordered_map<std::string, std::size_t>::const_iterator last =
-        facts.last_use.find(copy.dest);
-      if(last != facts.last_use.end()) end = last->second;
-      const std::unordered_map<std::string, std::size_t>::const_iterator shared =
-        facts.shared_storage_last_use.find(copy.dest);
-      if(shared != facts.shared_storage_last_use.end())
-        end = std::max(end, shared->second);
-      const std::unordered_map<std::string, std::size_t>::const_iterator source =
-        facts.last_use.find(copy.first.text);
-      if(source != facts.last_use.end() && end > source->second) {
-        std::size_t & extended =
-          facts.shared_storage_last_use[copy.first.text];
+      std::size_t end = facts.last_use[copy.dest] ==
+          FunctionFacts::missing_position() ? 0 : facts.last_use[copy.dest];
+      if(facts.shared_storage_last_use[copy.dest] !=
+         FunctionFacts::missing_position())
+        end = std::max(end, facts.shared_storage_last_use[copy.dest]);
+      const lowir_model::ValueId source = copy.first.value;
+      if(facts.last_use[source] != FunctionFacts::missing_position() &&
+         end > facts.last_use[source]) {
+        std::size_t & extended = facts.shared_storage_last_use[source];
+        if(extended == FunctionFacts::missing_position()) extended = 0;
         extended = std::max(extended, end);
       }
     }
@@ -197,9 +194,8 @@ void extend_shared_storage_liveness(
 
 void extend_loop_liveness(FunctionFacts & facts,
     const lowir_model::LowirFunction & function,
-    const std::unordered_set<std::string> & parameter_names,
-    const std::unordered_map<std::string, std::size_t> & definition_blocks,
-    const std::vector<std::pair<std::string, std::size_t> > & block_uses,
+    const std::vector<std::size_t> & definition_blocks,
+    const std::vector<std::pair<lowir_model::ValueId, std::size_t> > & block_uses,
     const std::vector<std::size_t> & block_first_position,
     const std::vector<std::size_t> & block_last_position,
     const std::vector<std::vector<std::size_t> > & clobber_positions)
@@ -310,38 +306,36 @@ void extend_loop_liveness(FunctionFacts & facts,
   for(std::size_t i = 0; i < block_uses.size(); ++i) {
     const std::size_t use_block = block_uses[i].second;
     const std::size_t loop_end = loop_end_for_block[use_block];
-    const std::unordered_map<std::string, std::size_t>::const_iterator definition =
-      definition_blocks.find(block_uses[i].first);
-    const bool parameter = parameter_names.count(block_uses[i].first) != 0;
+    const lowir_model::ValueId value = block_uses[i].first;
+    const std::size_t definition = definition_blocks[value];
+    const bool parameter = facts.has(value, FunctionFacts::VF_PARAMETER);
     const bool loop_invariant =
       loop_start_for_block[use_block] != block_count &&
-      definition != definition_blocks.end() &&
-      (parameter || definition->second < loop_start_for_block[use_block]);
+      definition != no_block &&
+      (parameter || definition < loop_start_for_block[use_block]);
     const bool region_invariant =
       loop_region_start[use_block] != block_count &&
-      definition != definition_blocks.end() &&
-      (parameter || definition->second < loop_region_start[use_block]);
+      definition != no_block &&
+      (parameter || definition < loop_region_start[use_block]);
     if(loop_invariant || region_invariant) {
-      facts.loop_invariant_values.insert(block_uses[i].first);
-      facts.last_use[block_uses[i].first] = std::max(
-        facts.last_use[block_uses[i].first],
+      facts.mark(value, FunctionFacts::VF_LOOP_INVARIANT);
+      facts.last_use[value] = std::max(facts.last_use[value],
         block_last_position[region_invariant ?
           std::max(loop_end, loop_region_end[use_block]) : loop_end]);
     }
     if(call_loop_start_for_block[use_block] != block_count &&
-       definition != definition_blocks.end() &&
+       definition != no_block &&
        (parameter ||
-        definition->second < call_loop_start_for_block[use_block]))
-      facts.live_across_call.insert(block_uses[i].first);
+        definition < call_loop_start_for_block[use_block]))
+      facts.mark(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
   }
-  for(std::unordered_map<std::string, std::size_t>::const_iterator value =
-      facts.last_use.begin(); value != facts.last_use.end(); ++value) {
-    const std::unordered_map<std::string, std::size_t>::const_iterator definition =
-      facts.definition.find(value->first);
-    if(definition == facts.definition.end()) continue;
-    const std::size_t start = facts.parameters.count(value->first) ? 0 :
-      definition->second + 1;
-    const std::size_t end = value->second;
+  for(std::size_t raw_value = 0; raw_value < facts.last_use.size(); ++raw_value) {
+    const lowir_model::ValueId value(static_cast<std::uint32_t>(raw_value));
+    if(facts.last_use[value] == FunctionFacts::missing_position() ||
+       facts.definition[value] == FunctionFacts::missing_position()) continue;
+    const std::size_t start = facts.has(value, FunctionFacts::VF_PARAMETER) ? 0 :
+      facts.definition[value] + 1;
+    const std::size_t end = facts.last_use[value];
     if(start >= end) continue;
     unsigned mask = 0;
     for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg) {
@@ -350,19 +344,21 @@ void extend_loop_liveness(FunctionFacts & facts,
       if(clobber != clobber_positions[reg].end() && *clobber < end)
         mask |= 1u << reg;
     }
-    if(mask) facts.live_across_clobbers[value->first] |= mask;
+    if(mask) facts.live_across_clobbers[value] |= mask;
     const std::vector<std::size_t>::const_iterator call = std::lower_bound(
       facts.calls.begin(), facts.calls.end(), start);
     if(call != facts.calls.end() && *call < end)
-      facts.live_across_call.insert(value->first);
+      facts.mark(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
   }
   for(std::size_t i = 0; i < block_count; ++i)
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       const Instruction & instruction = function.blocks[i].instructions[j];
       if(instruction.kind == Instruction::IK_INDEX &&
-         parameter_names.count(instruction.first.text) &&
-         facts.live_across_call.count(instruction.dest))
-        facts.forwarded_parameters_across_call.insert(instruction.first.text);
+         instruction.first.kind == Operand::OP_TEMP &&
+         facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
+         facts.has(instruction.dest, FunctionFacts::VF_LIVE_ACROSS_CALL))
+        facts.mark(instruction.first.value,
+                   FunctionFacts::VF_FORWARDED_PARAMETER_ACROSS_CALL);
     }
 }
 
@@ -374,12 +370,9 @@ unsigned register_mask(X64Register reg)
 }
 
 bool crosses_register_clobber(const FunctionFacts & facts,
-                              const std::string & name, X64Register reg)
+                              lowir_model::ValueId value, X64Register reg)
 {
-  const std::unordered_map<std::string, unsigned>::const_iterator found =
-    facts.live_across_clobbers.find(name);
-  return found != facts.live_across_clobbers.end() &&
-    (found->second & register_mask(reg)) != 0;
+  return (facts.live_across_clobbers[value] & register_mask(reg)) != 0;
 }
 
 bool register_was_clobbered_before(const FunctionFacts & facts,
@@ -393,22 +386,32 @@ bool register_was_clobbered_before(const FunctionFacts & facts,
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
 {
   FunctionFacts facts;
+  const std::size_t value_count = function.value_names.size();
+  facts.uses.assign(value_count, 0);
+  facts.first_use.assign(value_count, FunctionFacts::missing_position());
+  facts.last_use.assign(value_count, FunctionFacts::missing_position());
+  facts.shared_storage_last_use.assign(
+    value_count, FunctionFacts::missing_position());
+  facts.definition.assign(value_count, FunctionFacts::missing_position());
+  facts.value_flags.assign(value_count, 0);
+  facts.deferred_branch_comparisons.assign(value_count, 0);
+  facts.live_across_clobbers.assign(value_count, 0);
   facts.first_register_clobber.assign(
     16, std::numeric_limits<std::size_t>::max());
-  std::unordered_set<std::string> call_arguments;
-  std::unordered_set<std::string> other_uses;
-  std::unordered_set<std::string> parameter_names;
-  std::unordered_map<std::string, std::size_t> definition_blocks;
-  std::vector<std::pair<std::string, std::size_t> > block_uses;
+  std::vector<unsigned char> call_arguments(value_count, 0);
+  std::vector<unsigned char> other_uses(value_count, 0);
+  std::vector<std::size_t> definition_blocks(
+    value_count, FunctionFacts::missing_position());
+  std::vector<std::pair<lowir_model::ValueId, std::size_t> > block_uses;
   std::vector<std::size_t> block_first_position(function.blocks.size(), 0);
   std::vector<std::size_t> block_last_position(function.blocks.size(), 0);
   std::vector<std::vector<std::size_t> > clobber_positions(16);
   std::size_t position = 0;
   for(std::size_t i = 0; i < function.params.size(); ++i) {
-    facts.definition[function.params[i].name] = 0;
-    facts.parameters.insert(function.params[i].name);
-    parameter_names.insert(function.params[i].name);
-    definition_blocks[function.params[i].name] = 0;
+    const lowir_model::ValueId value = function.params[i].value;
+    facts.definition[value] = 0;
+    facts.mark(value, FunctionFacts::VF_PARAMETER);
+    definition_blocks[value] = 0;
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     block_first_position[i] = position;
@@ -420,42 +423,44 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
       };
       for(std::size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); ++k)
         if(fixed[k]->kind == Operand::OP_TEMP) {
-          other_uses.insert(fixed[k]->text);
-          block_uses.push_back(std::make_pair(fixed[k]->text, i));
-          const std::unordered_map<std::string, std::size_t>::const_iterator definition =
-            definition_blocks.find(fixed[k]->text);
-          if(definition != definition_blocks.end() && definition->second != i)
-            facts.edge_live.insert(fixed[k]->text);
+          const lowir_model::ValueId value = fixed[k]->value;
+          other_uses[value] = 1;
+          block_uses.push_back(std::make_pair(value, i));
+          if(definition_blocks[value] != FunctionFacts::missing_position() &&
+             definition_blocks[value] != i)
+            facts.mark(value, FunctionFacts::VF_EDGE_LIVE);
         }
       for(std::size_t k = 0; k < instruction.args.size(); ++k)
         if(instruction.args[k].kind == Operand::OP_TEMP) {
-          block_uses.push_back(std::make_pair(instruction.args[k].text, i));
-          const std::unordered_map<std::string, std::size_t>::const_iterator definition =
-            definition_blocks.find(instruction.args[k].text);
-          if(definition != definition_blocks.end() && definition->second != i)
-            facts.edge_live.insert(instruction.args[k].text);
+          const lowir_model::ValueId value = instruction.args[k].value;
+          block_uses.push_back(std::make_pair(value, i));
+          if(definition_blocks[value] != FunctionFacts::missing_position() &&
+             definition_blocks[value] != i)
+            facts.mark(value, FunctionFacts::VF_EDGE_LIVE);
           if(instruction.kind == Instruction::IK_CALL)
-            call_arguments.insert(instruction.args[k].text);
-          else other_uses.insert(instruction.args[k].text);
+            call_arguments[value] = 1;
+          else other_uses[value] = 1;
         }
-      if(!instruction.dest.empty()) {
+      if(instruction.dest.valid()) {
         facts.definition[instruction.dest] = position;
         definition_blocks[instruction.dest] = i;
       }
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
-         parameter_names.count(instruction.first.text) &&
+         facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
          instruction.second.kind == Operand::OP_INTEGER &&
          instruction.second.text == "0")
-        facts.zero_index_parameters.insert(instruction.first.text);
+        facts.mark(instruction.first.value,
+                   FunctionFacts::VF_ZERO_INDEX_PARAMETER);
       if(instruction.kind == Instruction::IK_SWITCH &&
          instruction.first.kind == Operand::OP_TEMP &&
-         parameter_names.count(instruction.first.text))
-        facts.switch_parameters.insert(instruction.first.text);
+         facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER))
+        facts.mark(instruction.first.value, FunctionFacts::VF_SWITCH_PARAMETER);
       if(instruction.kind == Instruction::IK_BINARY &&
          instruction.first.kind == Operand::OP_TEMP &&
-         parameter_names.count(instruction.first.text))
-        facts.destructive_parameters.insert(instruction.first.text);
+         facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER))
+        facts.mark(instruction.first.value,
+                   FunctionFacts::VF_DESTRUCTIVE_PARAMETER);
       if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
       if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
       if(instruction.kind == Instruction::IK_STACK_ALLOC)
@@ -467,30 +472,45 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
     }
     block_last_position[i] = position ? position - 1 : 0;
   }
-  for(std::unordered_set<std::string>::const_iterator value = call_arguments.begin();
-      value != call_arguments.end(); ++value)
-    if(!other_uses.count(*value)) facts.only_call_arguments.insert(*value);
+  for(std::size_t value = 0; value < value_count; ++value)
+    if(call_arguments[value] && !other_uses[value])
+      facts.mark(lowir_model::ValueId(static_cast<std::uint32_t>(value)),
+                 FunctionFacts::VF_ONLY_CALL_ARGUMENT);
 
   position = 0;
+  std::vector<std::size_t> comparisons(
+    value_count, FunctionFacts::missing_position());
+  std::vector<std::size_t> definitions(
+    value_count, FunctionFacts::missing_position());
+  std::vector<lowir_model::ValueId> touched_comparisons;
+  std::vector<lowir_model::ValueId> touched_definitions;
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     const std::vector<Instruction> & instructions = function.blocks[i].instructions;
-    std::unordered_map<std::string, std::size_t> comparisons;
-    std::unordered_map<std::string, std::size_t> definitions;
+    for(std::size_t value = 0; value < touched_comparisons.size(); ++value)
+      comparisons[touched_comparisons[value]] = FunctionFacts::missing_position();
+    for(std::size_t value = 0; value < touched_definitions.size(); ++value)
+      definitions[touched_definitions[value]] = FunctionFacts::missing_position();
+    touched_comparisons.clear();
+    touched_definitions.clear();
     const std::size_t block_start = position;
     for(std::size_t j = 0; j < instructions.size(); ++j, ++position) {
       const Instruction & instruction = instructions[j];
-      if(!instruction.dest.empty()) definitions[instruction.dest] = j;
-      if(instruction.kind == Instruction::IK_CMP)
+      if(instruction.dest.valid()) {
+        definitions[instruction.dest] = j;
+        touched_definitions.push_back(instruction.dest);
+      }
+      if(instruction.kind == Instruction::IK_CMP) {
         comparisons[instruction.dest] = j;
+        touched_comparisons.push_back(instruction.dest);
+      }
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
-         parameter_names.count(instruction.first.text) &&
-         facts.uses.find(instruction.first.text) != facts.uses.end() &&
-         facts.uses.find(instruction.first.text)->second == 1)
-        facts.sole_index_bases.insert(instruction.first.text);
+         facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
+         facts.uses[instruction.first.value] == 1)
+        facts.mark(instruction.first.value, FunctionFacts::VF_SOLE_INDEX_BASE);
       const bool direct_index = direct_memory_index_use(facts, instructions, j);
       if(direct_index)
-        facts.direct_memory_index_values.insert(instruction.dest);
+        facts.mark(instruction.dest, FunctionFacts::VF_DIRECT_MEMORY_INDEX);
       const unsigned clobbers =
         instruction_clobber_mask(instruction, direct_index);
       for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg)
@@ -502,72 +522,72 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
         }
       if(instruction.kind != Instruction::IK_BRANCH ||
          instruction.first.kind != Operand::OP_TEMP) continue;
-      const std::unordered_map<std::string, std::size_t>::const_iterator branch_definition =
-        definitions.find(instruction.first.text);
-      bool return_register_preserved = branch_definition != definitions.end();
+      const lowir_model::ValueId branch_value = instruction.first.value;
+      const std::size_t branch_definition = definitions[branch_value];
+      bool return_register_preserved =
+        branch_definition != FunctionFacts::missing_position();
       if(return_register_preserved) {
         const std::vector<std::size_t> & rax_clobbers =
           clobber_positions[static_cast<unsigned>(XR_RAX)];
         const std::vector<std::size_t>::const_iterator clobber =
           std::lower_bound(rax_clobbers.begin(), rax_clobbers.end(),
-                           block_start + branch_definition->second + 1);
+                           block_start + branch_definition + 1);
         return_register_preserved =
           clobber == rax_clobbers.end() || *clobber >= block_start + j;
       }
-      if(branch_definition != definitions.end() &&
-         instructions[branch_definition->second].kind == Instruction::IK_CALL &&
-         facts.uses.find(instruction.first.text) != facts.uses.end() &&
-         facts.uses.find(instruction.first.text)->second == 1 &&
+      if(branch_definition != FunctionFacts::missing_position() &&
+         instructions[branch_definition].kind == Instruction::IK_CALL &&
+         facts.uses[branch_value] == 1 &&
          return_register_preserved)
-        facts.direct_branch_call_results.insert(instruction.first.text);
-      const std::unordered_map<std::string, std::size_t>::const_iterator comparison =
-        comparisons.find(instruction.first.text);
-      if(comparison == comparisons.end() ||
-         facts.uses.find(instruction.first.text) == facts.uses.end() ||
-         facts.uses.find(instruction.first.text)->second != 1) continue;
-      const Instruction & source = instructions[comparison->second];
+        facts.mark(branch_value, FunctionFacts::VF_DIRECT_BRANCH_CALL_RESULT);
+      const std::size_t comparison = comparisons[branch_value];
+      if(comparison == FunctionFacts::missing_position() ||
+         facts.uses[branch_value] != 1) continue;
+      const Instruction & source = instructions[comparison];
       const Operand * operands[] = {&source.first, &source.second};
       for(std::size_t operand = 0; operand < 2; ++operand) {
         if(operands[operand]->kind == Operand::OP_TEMP) {
-          facts.direct_branch_sources.insert(operands[operand]->text);
-          if(parameter_names.count(operands[operand]->text))
+          facts.mark(operands[operand]->value,
+                     FunctionFacts::VF_DIRECT_BRANCH_SOURCE);
+          if(facts.has(operands[operand]->value, FunctionFacts::VF_PARAMETER))
             facts.has_direct_branch_parameter = true;
         }
-        const std::unordered_map<std::string, std::size_t>::const_iterator definition =
-          definitions.find(operands[operand]->text);
-        if(comparison->second + 1 != j || definition == definitions.end()) continue;
-        const Instruction & producer = instructions[definition->second];
+        if(operands[operand]->kind != Operand::OP_TEMP) continue;
+        const std::size_t definition = definitions[operands[operand]->value];
+        if(comparison + 1 != j ||
+           definition == FunctionFacts::missing_position()) continue;
+        const Instruction & producer = instructions[definition];
         if(producer.kind != Instruction::IK_LOAD ||
            !lowir_model::same_lowir_type(producer.type, source.type) ||
            (producer.first.kind != Operand::OP_SLOT &&
             producer.first.kind != Operand::OP_GLOBAL) ||
-           facts.uses.find(producer.dest) == facts.uses.end() ||
-           facts.uses.find(producer.dest)->second != 1) continue;
-        if(definition->second + 1 == comparison->second)
-          facts.direct_compare_storage_values.insert(producer.dest);
-        else if(operand == 0 && definition->second + 2 == comparison->second &&
-                instructions[definition->second + 1].kind == Instruction::IK_LOAD &&
+           facts.uses[producer.dest] != 1) continue;
+        if(definition + 1 == comparison)
+          facts.mark(producer.dest, FunctionFacts::VF_DIRECT_COMPARE_STORAGE);
+        else if(operand == 0 && definition + 2 == comparison &&
+                instructions[definition + 1].kind == Instruction::IK_LOAD &&
                 source.second.kind == Operand::OP_TEMP &&
-                instructions[definition->second + 1].dest == source.second.text &&
-                (instructions[definition->second + 1].first.kind ==
+                instructions[definition + 1].dest == source.second.value &&
+                (instructions[definition + 1].first.kind ==
                    Operand::OP_SLOT ||
-                 instructions[definition->second + 1].first.kind ==
+                 instructions[definition + 1].first.kind ==
                    Operand::OP_GLOBAL))
-          facts.direct_compare_rax_values.insert(producer.dest);
+          facts.mark(producer.dest, FunctionFacts::VF_DIRECT_COMPARE_RAX);
       }
-      if(comparison->second + 1 == j) continue;
-      facts.deferred_branch_comparisons[instruction.first.text] = &source;
+      if(comparison + 1 == j) continue;
+      facts.deferred_branch_comparisons[branch_value] = &source;
       for(std::size_t operand = 0; operand < 2; ++operand) {
         if(operands[operand]->kind != Operand::OP_TEMP) continue;
-        const std::string & name = operands[operand]->text;
-        facts.last_use[name] = std::max(facts.last_use[name], block_start + j);
-        for(std::size_t k = comparison->second + 1; k < j; ++k) {
+        const lowir_model::ValueId value = operands[operand]->value;
+        facts.last_use[value] = std::max(facts.last_use[value], block_start + j);
+        for(std::size_t k = comparison + 1; k < j; ++k) {
           const unsigned clobbers = instruction_clobber_mask(
             instructions[k],
-            facts.direct_memory_index_values.count(instructions[k].dest));
-          facts.live_across_clobbers[name] |= clobbers;
+            facts.has(instructions[k].dest,
+                      FunctionFacts::VF_DIRECT_MEMORY_INDEX));
+          facts.live_across_clobbers[value] |= clobbers;
           if(instructions[k].kind == Instruction::IK_CALL)
-            facts.live_across_call.insert(name);
+            facts.mark(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
         }
       }
     }
@@ -579,19 +599,17 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
   // interval query without materializing the values x blocks liveness
   // relation.  The register set is fixed at 16, so this remains O(IR log IR)
   // time and O(IR) storage for instructions, operands, blocks, and CFG edges.
-  extend_loop_liveness(facts, function, parameter_names, definition_blocks,
+  extend_loop_liveness(facts, function, definition_blocks,
     block_uses, block_first_position, block_last_position, clobber_positions);
   extend_shared_storage_liveness(facts, function);
-  for(std::unordered_set<std::string>::iterator value =
-        facts.destructive_parameters.begin(); value != facts.destructive_parameters.end(); )
-    if(facts.uses[*value] != 1) value = facts.destructive_parameters.erase(value);
-    else ++value;
+  for(std::size_t value = 0; value < value_count; ++value)
+    if(facts.uses[value] != 1)
+      facts.value_flags[value] &= ~FunctionFacts::VF_DESTRUCTIVE_PARAMETER;
   return facts;
 }
 
 struct StorageParameterIndexes
 {
-  std::unordered_map<std::string, std::size_t> by_name;
   std::unordered_map<std::string, std::size_t> by_suffix;
 };
 
@@ -599,10 +617,8 @@ StorageParameterIndexes index_storage_parameters(
     const lowir_model::LowirFunction & function)
 {
   StorageParameterIndexes result;
-  result.by_name.reserve(function.params.size());
   result.by_suffix.reserve(function.params.size());
   for(std::size_t p = 0; p < function.params.size(); ++p) {
-    result.by_name[function.params[p].name] = p;
     if(function.params[p].name.size() >= 2)
       result.by_suffix[function.params[p].name.substr(1)] = p;
   }
@@ -619,10 +635,14 @@ StorageFacts analyze_storage(
   facts.parameter_slot_aliases.resize(function.slot_names.size());
   facts.promoted_parameter_slots.resize(function.slot_names.size());
   facts.forwarded_parameter_slots.resize(function.slot_names.size());
+  facts.value_flags.assign(function.value_names.size(), 0);
   facts.dead_store_slots.assign(function.slot_names.size(), 0);
   const StorageParameterIndexes parameters = index_storage_parameters(function);
 
   const std::size_t no_index = std::numeric_limits<std::size_t>::max();
+  std::vector<std::size_t> value_parameters(function.value_names.size(), no_index);
+  for(std::size_t parameter = 0; parameter < function.params.size(); ++parameter)
+    value_parameters[function.params[parameter].value] = parameter;
   enum SlotFlag {
     SF_WRITTEN = 1,
     SF_OBSERVED = 2,
@@ -657,7 +677,7 @@ StorageFacts analyze_storage(
     bool valid = true;
     bool read_through = true;
     std::size_t parameter = no_index;
-    const std::string * loaded_name = 0;
+    lowir_model::ValueId loaded_value;
     unsigned intervening_clobbers = 0;
   };
   std::vector<std::size_t> scalar_state_indexes(
@@ -712,13 +732,13 @@ StorageFacts analyze_storage(
          instruction.first.kind == Operand::OP_TEMP &&
          instruction.second.kind == Operand::OP_GLOBAL &&
          tls_wrappers.count(instruction.second.text))
-        facts.tls_store_inputs.insert(instruction.first.text);
+        facts.mark(instruction.first.value, StorageFacts::VF_TLS_STORE_INPUT);
       if(instruction.kind == Instruction::IK_STORE &&
          instruction.first.kind == Operand::OP_TEMP &&
          instruction.second.kind == Operand::OP_SLOT &&
-         function_facts.uses.find(instruction.first.text) != function_facts.uses.end() &&
-         function_facts.uses.find(instruction.first.text)->second == 1)
-        facts.dead_slot_only_parameters.insert(instruction.first.text);
+         function_facts.uses[instruction.first.value] == 1)
+        facts.mark(instruction.first.value,
+                   StorageFacts::VF_DEAD_SLOT_ONLY_PARAMETER);
 
       std::size_t mentioned[3];
       std::size_t mentioned_count = 0;
@@ -741,10 +761,12 @@ StorageFacts analyze_storage(
               function.params[object_parameter];
             const Instruction & copy = instructions[i + 1];
             if(copy.kind == Instruction::IK_COPYOBJ &&
-               copy.first.kind == Operand::OP_TEMP && copy.first.text == parameter.name &&
-               copy.second.kind == Operand::OP_TEMP && copy.second.text == instruction.dest &&
+               copy.first.kind == Operand::OP_TEMP &&
+               copy.first.value == parameter.value &&
+               copy.second.kind == Operand::OP_TEMP &&
+               copy.second.value == instruction.dest &&
                copy.byte_count == parameter.type.storage_size)
-              facts.parameter_slot_aliases[slot_index] = parameter.name;
+              facts.parameter_slot_aliases[slot_index] = parameter.value;
           }
         }
 
@@ -755,14 +777,13 @@ StorageFacts analyze_storage(
         const bool third = operand_slots[2] == slot_index;
         if(!state.initialized && instruction.kind == Instruction::IK_STORE && second &&
            instruction.first.kind == Operand::OP_TEMP) {
-          const std::unordered_map<std::string, std::size_t>::const_iterator parameter =
-            parameters.by_name.find(instruction.first.text);
-          if(parameter != parameters.by_name.end() &&
-             lowir_model::same_lowir_type(function.params[parameter->second].type,
+          const std::size_t parameter = value_parameters[instruction.first.value];
+          if(parameter != no_index &&
+             lowir_model::same_lowir_type(function.params[parameter].type,
                 lowir_model::lowir_slot_type(
                   function, lowir_model::SlotId(slot_index)))) {
             state.initialized = true;
-            state.parameter = parameter->second;
+            state.parameter = parameter;
             state.store_position = i;
           } else {
             state.valid = false;
@@ -771,12 +792,9 @@ StorageFacts analyze_storage(
           state.loaded = true;
           ++state.load_count;
           state.load_position = i;
-          state.loaded_name = &instruction.dest;
-          const std::unordered_map<std::string, unsigned>::const_iterator
-            result_clobbers =
-              function_facts.live_across_clobbers.find(instruction.dest);
-          if(result_clobbers != function_facts.live_across_clobbers.end())
-            state.intervening_clobbers |= result_clobbers->second;
+          state.loaded_value = instruction.dest;
+          state.intervening_clobbers |=
+            function_facts.live_across_clobbers[instruction.dest];
           for(std::size_t reg = 0; reg < last_clobber.size(); ++reg)
             if(last_clobber[reg] != std::numeric_limits<std::size_t>::max() &&
                last_clobber[reg] > state.store_position)
@@ -787,7 +805,8 @@ StorageFacts analyze_storage(
       }
       const unsigned clobbers = instruction_clobber_mask(
         instruction,
-        function_facts.direct_memory_index_values.count(instruction.dest));
+        function_facts.has(instruction.dest,
+                           FunctionFacts::VF_DIRECT_MEMORY_INDEX));
       for(std::size_t reg = 0; reg < last_clobber.size(); ++reg)
         if(clobbers & (1u << reg)) last_clobber[reg] = i;
     }
@@ -799,14 +818,13 @@ StorageFacts analyze_storage(
       facts.dead_store_slots[slot] = 1;
   }
 
-  std::unordered_map<std::string, std::size_t> loaded_slots;
-  loaded_slots.reserve(scalar_states.size());
+  std::vector<std::size_t> loaded_slots(function.value_names.size(), no_index);
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
     const lowir_model::SlotId slot = function.slots[s];
     if(scalar_state_indexes[slot] == no_index) continue;
     const ScalarSlotState & state = scalar_states[scalar_state_indexes[slot]];
     if(state.valid && state.initialized && state.loaded)
-      loaded_slots[*state.loaded_name] = slot;
+      loaded_slots[state.loaded_value] = slot;
   }
   for(std::size_t i = 0; i < (function.blocks.empty() ? 0 :
       function.blocks[0].instructions.size()); ++i) {
@@ -816,11 +834,10 @@ StorageFacts analyze_storage(
     };
     for(std::size_t k = 0; k < sizeof(operands) / sizeof(operands[0]); ++k) {
       if(operands[k]->kind != Operand::OP_TEMP) continue;
-      const std::unordered_map<std::string, std::size_t>::const_iterator slot =
-        loaded_slots.find(operands[k]->text);
-      if(slot != loaded_slots.end() &&
+      const std::size_t slot = loaded_slots[operands[k]->value];
+      if(slot != no_index &&
          !(instruction.kind == Instruction::IK_LOAD && k == 0))
-        scalar_states[scalar_state_indexes[slot->second]].read_through = false;
+        scalar_states[scalar_state_indexes[slot]].read_through = false;
     }
   }
   for(std::size_t s = 0; s < function.slots.size(); ++s) {
@@ -830,24 +847,25 @@ StorageFacts analyze_storage(
     if(!state.valid || !state.initialized || !state.loaded ||
        (!function_facts.calls.empty() && state.load_count != 1))
       continue;
-    const std::string & parameter = function.params[state.parameter].name;
-    if(!function_facts.calls.empty() && function_facts.uses.find(parameter)->second != 1)
+    const lowir_model::ValueId parameter = function.params[state.parameter].value;
+    if(!function_facts.calls.empty() && function_facts.uses[parameter] != 1)
       continue;
     if(state.read_through) {
       facts.promoted_parameter_slots[slot] = parameter;
       facts.has_promoted_parameter_slots = true;
     } else
       facts.forwarded_parameter_slots[slot] = parameter;
-    facts.promoted_parameters.insert(parameter);
+    facts.mark(parameter, StorageFacts::VF_PROMOTED_PARAMETER);
     facts.promoted_parameter_clobbers[state.parameter] |=
       state.intervening_clobbers;
     const std::vector<std::size_t>::const_iterator call = std::upper_bound(
       function_facts.calls.begin(), function_facts.calls.end(),
       state.store_position);
-    if(function_facts.live_across_call.count(*state.loaded_name) ||
+    if(function_facts.has(state.loaded_value,
+                          FunctionFacts::VF_LIVE_ACROSS_CALL) ||
        (call != function_facts.calls.end() &&
         *call < state.load_position))
-      facts.promoted_parameters_across_call.insert(parameter);
+      facts.mark(parameter, StorageFacts::VF_PROMOTED_ACROSS_CALL);
   }
   return facts;
 }

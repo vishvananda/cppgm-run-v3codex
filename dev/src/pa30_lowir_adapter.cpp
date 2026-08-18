@@ -30,10 +30,6 @@ std::string Prefix(char prefix, const std::string& value)
 std::string At(const std::string& value) { return Prefix('@', value); }
 std::string Percent(const std::string& value) { return Prefix('%', value); }
 std::string Dollar(const std::string& value) { return Prefix('$', value); }
-std::string Temp(std::uint32_t value)
-{
-	return detail::PrefixedUnsignedDecimal("%t", 2, value);
-}
 std::string Label(const std::string& value) { return Prefix('^', value); }
 
 std::string IntegerText(std::int64_t low, std::uint64_t high,
@@ -77,8 +73,15 @@ lowir_model::LowType AdaptType(const LowType& type)
 	throw std::logic_error("invalid typed LowIR type at native boundary");
 }
 
+struct AdaptedValues
+{
+	std::vector<lowir_model::ValueId> parameters;
+	std::vector<lowir_model::ValueId> temporaries;
+};
+
 lowir_model::Operand AdaptOperand(const Operand& operand,
-	const TypedProgram& program, const Function& function)
+	const TypedProgram& program, const Function& function,
+	const AdaptedValues& values)
 {
 	lowir_model::Operand result;
 	if (operand.type.kind != LOW_INVALID)
@@ -86,14 +89,17 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 	switch (operand.kind)
 	{
 	case Operand::TEMP:
+		if (operand.id >= values.temporaries.size() ||
+			!values.temporaries[operand.id].valid())
+			throw std::logic_error("invalid typed LowIR temporary operand");
 		result.kind = lowir_model::Operand::OP_TEMP;
-		result.text = Temp(operand.id);
+		result.value = values.temporaries[operand.id];
 		break;
 	case Operand::PARAMETER:
-		if (operand.id >= function.parameters.size())
+		if (operand.id >= values.parameters.size())
 			throw std::logic_error("invalid typed LowIR parameter operand");
 		result.kind = lowir_model::Operand::OP_TEMP;
-		result.text = Percent(function.parameters[operand.id].name);
+		result.value = values.parameters[operand.id];
 		break;
 	case Operand::SLOT:
 		if (operand.id >= function.slots.size())
@@ -171,6 +177,51 @@ std::vector<lowir_model::Parameter> AdaptParameters(
 	std::vector<lowir_model::Parameter> result(source.size());
 	for (std::size_t i = 0; i < source.size(); ++i)
 		AdaptParameterFacts(source[i], &result[i]);
+	return result;
+}
+
+lowir_model::LowType AdaptResultType(const Instruction& instruction)
+{
+	if (instruction.kind == Instruction::ADDR ||
+		instruction.kind == Instruction::INDEX)
+		return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+	if (instruction.kind == Instruction::CMP ||
+		instruction.kind == Instruction::ATOMIC_COMPARE_EXCHANGE ||
+		instruction.kind == Instruction::EXCEPTION_SELECTOR)
+		return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+	return AdaptType(instruction.type);
+}
+
+AdaptedValues PrepareValues(const Function& source,
+	lowir_model::Function* target)
+{
+	AdaptedValues result;
+	result.parameters.resize(target->params.size());
+	for (std::size_t i = 0; i < target->params.size(); ++i)
+	{
+		result.parameters[i] = lowir_model::append_lowir_value(
+			*target, target->params[i].name, target->params[i].type);
+		target->params[i].value = result.parameters[i];
+	}
+	for (std::size_t order = 0; order < source.block_order.size(); ++order)
+	{
+		const BlockId block = source.block_order[order];
+		if (block >= source.blocks.size())
+			throw std::logic_error("invalid typed LowIR block order");
+		for (std::size_t i = 0; i < source.blocks[block].instructions.size(); ++i)
+		{
+			const Instruction& instruction = source.blocks[block].instructions[i];
+			if (instruction.dest == kNoLowId) continue;
+			if (result.temporaries.size() <= instruction.dest)
+				result.temporaries.resize(
+					static_cast<std::size_t>(instruction.dest) + 1);
+			if (result.temporaries[instruction.dest].valid())
+				throw std::logic_error("duplicate typed LowIR result identity");
+			result.temporaries[instruction.dest] =
+				lowir_model::append_lowir_generated_value(
+					*target, instruction.dest, AdaptResultType(instruction));
+		}
+	}
 	return result;
 }
 
@@ -256,17 +307,24 @@ void AdaptProjection(IndexProjection source, lowir_model::Instruction* target)
 }
 
 lowir_model::Instruction AdaptInstruction(const Instruction& source,
-	const TypedProgram& program, const Function& function)
+	const TypedProgram& program, const Function& function,
+	const AdaptedValues& values)
 {
 	lowir_model::Instruction target;
-	if (source.dest != kNoLowId) target.dest = Temp(source.dest);
+	if (source.dest != kNoLowId)
+	{
+		if (source.dest >= values.temporaries.size() ||
+			!values.temporaries[source.dest].valid())
+			throw std::logic_error("invalid typed LowIR result identity");
+		target.dest = values.temporaries[source.dest];
+	}
 	if (source.type.kind != LOW_INVALID) target.type = AdaptType(source.type);
 	if (source.source_type.kind != LOW_INVALID)
 		target.source_type = AdaptType(source.source_type);
 	if (source.op != LOW_OP_NONE) target.op = LowOperationText(source.op);
-	target.first = AdaptOperand(source.first, program, function);
-	target.second = AdaptOperand(source.second, program, function);
-	target.third = AdaptOperand(source.third, program, function);
+	target.first = AdaptOperand(source.first, program, function, values);
+	target.second = AdaptOperand(source.second, program, function, values);
+	target.third = AdaptOperand(source.third, program, function, values);
 	AdaptProjection(source.projection, &target);
 	switch (source.kind)
 	{
@@ -277,18 +335,18 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::ATOMIC_LOAD:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_LOAD;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function));
+			program, function, values));
 		break;
 	case Instruction::STORE: target.kind = lowir_model::Instruction::IK_STORE; break;
 	case Instruction::ATOMIC_STORE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_STORE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function));
+			program, function, values));
 		break;
 	case Instruction::ATOMIC_EXCHANGE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_EXCHANGE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function));
+			program, function, values));
 		break;
 	case Instruction::COPY_OBJECT:
 		target.kind = lowir_model::Instruction::IK_COPYOBJ;
@@ -308,14 +366,15 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	case Instruction::ATOMIC_ADD_FETCH:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_ADD_FETCH;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function));
+			program, function, values));
 		break;
 	case Instruction::ATOMIC_COMPARE_EXCHANGE:
 		target.kind = lowir_model::Instruction::IK_ATOMIC_COMPARE_EXCHANGE;
 		target.args.push_back(AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function));
+			program, function, values));
 		target.args.push_back(AdaptOperand(
-			Operand(source.atomic_failure_order, LowI32()), program, function));
+			Operand(source.atomic_failure_order, LowI32()), program, function,
+			values));
 		break;
 	case Instruction::ATOMIC_THREAD_FENCE:
 	case Instruction::ATOMIC_SIGNAL_FENCE:
@@ -323,7 +382,7 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			lowir_model::Instruction::IK_ATOMIC_THREAD_FENCE :
 			lowir_model::Instruction::IK_ATOMIC_SIGNAL_FENCE;
 		target.first = AdaptOperand(Operand(source.atomic_order, LowI32()),
-			program, function);
+			program, function, values);
 		break;
 	case Instruction::STACK_ALLOC:
 		target.kind = lowir_model::Instruction::IK_STACK_ALLOC; break;
@@ -352,7 +411,8 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 				throw std::logic_error("invalid typed LowIR call arguments");
 			for (std::size_t i = 0; i < source.extra_count; ++i)
 				target.args.push_back(AdaptOperand(
-					program.call_arguments[source.extra_first + i], program, function));
+					program.call_arguments[source.extra_first + i], program, function,
+					values));
 		}
 		if (source.indirect)
 		{
@@ -635,6 +695,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 		lowir_model::Function result;
 		result.name = At(symbol.name);
 		result.params = AdaptParameters(item.parameters);
+		const AdaptedValues values = PrepareValues(item, &result);
 		result.return_type = AdaptType(item.result);
 		result.boundary.arity = item.variadic ? lowir_model::CAM_VARIADIC :
 			lowir_model::CAM_FIXED;
@@ -667,7 +728,7 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(
-					block.instructions[j], source, item));
+					block.instructions[j], source, item, values));
 			result.blocks.push_back(std::move(lowered));
 		}
 		target.functions.push_back(std::move(result));

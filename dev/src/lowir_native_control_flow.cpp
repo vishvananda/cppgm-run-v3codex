@@ -14,7 +14,8 @@ const std::size_t kNoBlock = static_cast<std::size_t>(-1);
 
 ControlFlowQueries::ControlFlowQueries(
 	const lowir_model::LowirFunction& function)
-	: successors_(function.blocks.size()), reachable_(function.blocks.size()),
+	: successors_(function.blocks.size()), use_sites_(function.value_names.size()),
+	  reachable_(function.blocks.size()),
 	  dominated_(function.blocks.size()), current_block_(0),
 	  reachability_ready_(false), dominance_ready_(false)
 {
@@ -83,7 +84,7 @@ void ControlFlowQueries::RecordUse(
 	ValueUseSite site;
 	site.position = position;
 	site.block = block;
-	use_sites_[operand.text].push_back(site);
+	use_sites_[operand.value].push_back(site);
 }
 
 void ControlFlowQueries::SelectBlock(std::size_t block)
@@ -149,15 +150,13 @@ bool ControlFlowQueries::CurrentBlockIsCyclic() const
 }
 
 bool ControlFlowQueries::SpillIsSafe(
-	const std::string& name, std::size_t position) const
+	lowir_model::ValueId value, std::size_t position) const
 {
 	if (CurrentBlockIsCyclic()) return false;
-	const std::unordered_map<std::string,
-		std::vector<ValueUseSite> >::const_iterator uses = use_sites_.find(name);
-	if (uses == use_sites_.end()) return true;
-	for (std::size_t i = 0; i < uses->second.size(); ++i)
+	const std::vector<ValueUseSite>& uses = use_sites_[value];
+	for (std::size_t i = 0; i < uses.size(); ++i)
 	{
-		const ValueUseSite& use = uses->second[i];
+		const ValueUseSite& use = uses[i];
 		if (use.position <= position && CurrentBlockReaches(use.block)) return false;
 		if (use.position > position && !CurrentBlockDominates(use.block)) return false;
 	}

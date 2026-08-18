@@ -25,17 +25,17 @@ X86Condition predicate_condition(const std::string & predicate);
 std::size_t align_up(std::size_t value, std::size_t alignment);
 bool result_is_immediate_return(const lowir_model::LowirBlock & block,
                                 std::size_t instruction_index,
-                                const std::string & destination,
+                                lowir_model::ValueId destination,
                                 const analysis::FunctionFacts & facts);
 bool result_is_immediate_unary_not_branch(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
-    const std::string & destination, const analysis::FunctionFacts & facts);
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts);
 bool result_is_immediately_stored(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
-    const std::string & destination, const analysis::FunctionFacts & facts);
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts);
 bool result_is_immediate_store_address_with_later_use(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
-    const std::string & destination, const analysis::FunctionFacts & facts);
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts);
 
 }  // namespace selection
 }  // namespace lowir_native

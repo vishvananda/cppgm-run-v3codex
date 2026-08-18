@@ -24,34 +24,35 @@ protected:
 		using namespace build;
 		Derived& lowerer = static_cast<Derived&>(*this);
 		if (instruction.first.kind == lowir_model::Operand::OP_SLOT &&
-			(!lowerer.storage_facts_.promoted_parameter_slots[
-				instruction.first.slot].empty() ||
-			 !lowerer.storage_facts_.forwarded_parameter_slots[
-				instruction.first.slot].empty()))
+			(lowerer.storage_facts_.promoted_parameter_slots[
+				instruction.first.slot].valid() ||
+			 lowerer.storage_facts_.forwarded_parameter_slots[
+				instruction.first.slot].valid()))
 		{
-			const std::string& promoted =
+			const lowir_model::ValueId promoted =
 				lowerer.storage_facts_.promoted_parameter_slots[
 					instruction.first.slot];
-			const std::string& parameter = !promoted.empty() ? promoted :
+			const lowir_model::ValueId parameter = promoted.valid() ? promoted :
 				lowerer.storage_facts_.forwarded_parameter_slots[
 					instruction.first.slot];
-			ValueFact value = lowerer.values_.find(parameter)->second;
+			ValueFact value = lowerer.values_[parameter];
 			value.type = instruction.type;
 			value.parameter = false;
 			if (!lowerer.facts_.calls.empty() &&
-				lowerer.incoming_parameter_registers_.count(parameter))
+				lowerer.incoming_parameter_register_known_[parameter])
 			{
 				const std::size_t load_position =
 					lowerer.facts_.definition[instruction.dest];
 				if (load_position < lowerer.facts_.calls.front() &&
-					lowerer.facts_.only_call_arguments.count(instruction.dest) &&
+					lowerer.facts_.has(instruction.dest,
+						analysis::FunctionFacts::VF_ONLY_CALL_ARGUMENT) &&
 					!lowerer.result_crosses_call(instruction.dest) &&
 					lowerer.incoming_parameter_register_is_intact(
 						parameter,
-						lowerer.incoming_parameter_registers_.find(parameter)->second))
+						lowerer.incoming_parameter_registers_[parameter]))
 				{
 					const X64Register incoming =
-						lowerer.incoming_parameter_registers_.find(parameter)->second;
+						lowerer.incoming_parameter_registers_[parameter];
 					// A promoted load may deliberately reuse the untouched ABI
 					// register all the way to its first call.  Make that reuse a
 					// real allocator lifetime: otherwise a later indirect-call
@@ -68,7 +69,8 @@ protected:
 						lowerer.result_crosses_call(instruction.dest);
 					const bool direct_call_alias =
 						value.fixed_register_home && !preserved &&
-						lowerer.facts_.only_call_arguments.count(instruction.dest);
+						lowerer.facts_.has(instruction.dest,
+							analysis::FunctionFacts::VF_ONLY_CALL_ARGUMENT);
 					X64Register forwarded = XR_R9;
 					bool allocated = true;
 					if (direct_call_alias)
@@ -109,8 +111,8 @@ protected:
 			lowerer.emit_float_load(instruction, out);
 			return;
 		}
-		if (lowerer.facts_.direct_compare_storage_values.count(
-				instruction.dest) &&
+		if (lowerer.facts_.has(instruction.dest,
+				analysis::FunctionFacts::VF_DIRECT_COMPARE_STORAGE) &&
 			!(instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
 			  lowerer.tls_wrappers_.count(instruction.first.text)))
 		{
@@ -135,8 +137,8 @@ protected:
 				lowerer.allocate_temp_home(instruction.dest, instruction.type);
 			destination = reg_operand(XR_RAX);
 		}
-		else if (lowerer.facts_.direct_compare_rax_values.count(
-				instruction.dest) ||
+		else if (lowerer.facts_.has(instruction.dest,
+				analysis::FunctionFacts::VF_DIRECT_COMPARE_RAX) ||
 			(selection::result_is_immediately_stored(block, instruction_index,
 				instruction.dest, lowerer.facts_) ||
 			 lowerer.result_is_immediate_return(block, instruction_index,
@@ -178,13 +180,14 @@ protected:
 		using namespace build;
 		Derived& lowerer = static_cast<Derived&>(*this);
 		if (instruction.second.kind == lowir_model::Operand::OP_SLOT &&
-			(!lowerer.storage_facts_.promoted_parameter_slots[
-				instruction.second.slot].empty() ||
-			 !lowerer.storage_facts_.forwarded_parameter_slots[
-				instruction.second.slot].empty()) &&
+			(lowerer.storage_facts_.promoted_parameter_slots[
+				instruction.second.slot].valid() ||
+			 lowerer.storage_facts_.forwarded_parameter_slots[
+				instruction.second.slot].valid()) &&
 			instruction.first.kind == lowir_model::Operand::OP_TEMP &&
-			lowerer.storage_facts_.promoted_parameters.count(
-				instruction.first.text))
+			lowerer.storage_facts_.has(
+				instruction.first.value,
+				analysis::StorageFacts::VF_PROMOTED_PARAMETER))
 			return;
 		if (instruction.second.kind == lowir_model::Operand::OP_SLOT &&
 			lowerer.discarded_slots_[instruction.second.slot])

@@ -24,10 +24,9 @@ protected:
       const lowir_model::Instruction & instruction) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
-    const std::unordered_map<std::string, std::size_t>::const_iterator uses =
-      lowerer.facts_.uses.find(instruction.dest);
-    if(uses == lowerer.facts_.uses.end() || uses->second != 1 ||
-       lowerer.facts_.edge_live.count(instruction.dest) ||
+    if(lowerer.facts_.uses[instruction.dest] != 1 ||
+       lowerer.facts_.has(instruction.dest,
+                          analysis::FunctionFacts::VF_EDGE_LIVE) ||
        instruction_index + 1 >= block.instructions.size()) return false;
     const std::size_t scale = instruction.type.storage_size;
     if(scale != 1 && scale != 2 && scale != 4 && scale != 8) return false;
@@ -39,12 +38,12 @@ protected:
     if(!scalar) return false;
     if(consumer.kind == lowir_model::Instruction::IK_LOAD &&
        consumer.first.kind == lowir_model::Operand::OP_TEMP &&
-       consumer.first.text == instruction.dest)
-      return !lowerer.facts_.direct_compare_storage_values.count(
-        consumer.dest);
+       consumer.first.value == instruction.dest)
+      return !lowerer.facts_.has(
+        consumer.dest, analysis::FunctionFacts::VF_DIRECT_COMPARE_STORAGE);
     return consumer.kind == lowir_model::Instruction::IK_STORE &&
       consumer.second.kind == lowir_model::Operand::OP_TEMP &&
-      consumer.second.text == instruction.dest;
+      consumer.second.value == instruction.dest;
   }
 
   void emit_index(const lowir_model::LowirBlock & block,
@@ -84,22 +83,22 @@ protected:
       return;
     }
     if(instruction.first.kind == lowir_model::Operand::OP_TEMP &&
-       lowerer.facts_.first_use[instruction.first.text] == lowerer.position_ &&
+       lowerer.facts_.first_use[instruction.first.value] == lowerer.position_ &&
        !lowerer.result_crosses_call(instruction.dest) &&
-       lowerer.incoming_parameter_registers_.count(instruction.first.text)) {
+       lowerer.incoming_parameter_register_known_[instruction.first.value]) {
       const X64Register incoming =
-        lowerer.incoming_parameter_registers_.find(
-          instruction.first.text)->second;
+        lowerer.incoming_parameter_registers_[instruction.first.value];
       if(lowerer.incoming_parameter_register_is_intact(
-           instruction.first.text, incoming))
+           instruction.first.value, incoming))
         base = reg_operand(incoming);
     }
 materialize_index:
     mir_model::MirOperand destination;
     const bool forwarded_alias = offset == 0 &&
       instruction.first.kind == lowir_model::Operand::OP_TEMP &&
-      lowerer.facts_.forwarded_parameters_across_call.count(
-        instruction.first.text);
+      lowerer.facts_.has(
+        instruction.first.value,
+        analysis::FunctionFacts::VF_FORWARDED_PARAMETER_ACROSS_CALL);
     const bool safe_reuse = base.kind == mir_model::MirOperand::OP_REG &&
       constant_index && (lowerer.can_reuse(instruction.first) ||
       forwarded_alias) &&
@@ -121,9 +120,11 @@ materialize_index:
     else {
       const bool force_preserved =
         instruction.first.kind == lowir_model::Operand::OP_TEMP &&
-        lowerer.values_.find(instruction.first.text)->second.parameter &&
+        lowerer.values_[instruction.first.value].parameter &&
         offset != 0 &&
-        !lowerer.facts_.zero_index_parameters.count(instruction.first.text);
+        !lowerer.facts_.has(
+          instruction.first.value,
+          analysis::FunctionFacts::VF_ZERO_INDEX_PARAMETER);
       X64Register result = XR_RSP;
       if(lowerer.try_allocate_result(
            instruction.dest, out, &result, force_preserved))

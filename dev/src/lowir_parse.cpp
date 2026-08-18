@@ -646,6 +646,9 @@ private:
     result.return_type = type();
     apply_symbol_metadata(metadata(), result.metadata, &result.boundary, 0, false);
     result.debug_location = debug_location();
+    for(std::size_t i = 0; i < result.params.size(); ++i)
+      result.params[i].value = append_lowir_value(
+        result, result.params[i].name, result.params[i].type);
     expect("{");
     parse_function_body(result);
     program.functions.push_back(result);
@@ -677,7 +680,7 @@ private:
       } else {
         if(!block) throw ParseError("instruction outside block");
         if(terminated) throw ParseError("instruction after terminator");
-        block->instructions.push_back(instruction());
+        block->instructions.push_back(instruction(function));
         terminated = is_terminator(block->instructions.back().kind);
       }
     }
@@ -696,15 +699,30 @@ private:
            kind == Instruction::IK_THROW || kind == Instruction::IK_RESUME;
   }
 
-  Instruction instruction()
+  const LowType & parsed_result_type(const Instruction & ins) const
+  {
+    if(ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX)
+      return builtin_lowir_type(LTK_PTR);
+    if(ins.kind == Instruction::IK_CMP ||
+       ins.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE ||
+       ins.kind == Instruction::IK_EXCEPTION_SELECTOR)
+      return builtin_lowir_type(LTK_I64);
+    return ins.type;
+  }
+
+  Instruction instruction(Function & function)
   {
     Instruction result;
+    std::string destination;
     if(starts_with(peek(), '%') && peek(1) == "=") {
-      result.dest = take();
+      destination = take();
       expect("=");
       parse_rvalue(result);
     } else parse_void_instruction(result);
     result.debug_location = debug_location();
+    if(!destination.empty())
+      result.dest = append_lowir_value(
+        function, destination, parsed_result_type(result));
     return result;
   }
 
@@ -1144,9 +1162,10 @@ private:
     for(std::size_t i = 0; i < block.instructions.size(); ++i) {
       const Instruction & ins = block.instructions[i];
       validate_instruction(function, ins, values, slots, blocks);
-      if(!ins.dest.empty()) {
-        if(values.count(ins.dest)) throw ParseError("duplicate temporary definition");
-        values[ins.dest] = &result_type(ins);
+      if(ins.dest.valid()) {
+        const std::string name = lowir_value_name(function, ins.dest);
+        if(values.count(name)) throw ParseError("duplicate temporary definition");
+        values[name] = &lowir_value_type(function, ins.dest);
       }
     }
 	std::size_t terminal = block.instructions.size();

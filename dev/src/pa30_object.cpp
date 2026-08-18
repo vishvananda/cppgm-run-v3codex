@@ -266,6 +266,12 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value,
 			throw std::logic_error("compiler object slot lacks a function");
 		out.String(lowir_model::lowir_slot_name(*function, value.slot));
 	}
+	else if (value.kind == lowir_model::Operand::OP_TEMP)
+	{
+		if (!function)
+			throw std::logic_error("compiler object value lacks a function");
+		out.String(lowir_model::lowir_value_name(*function, value.value));
+	}
 	else out.String(value.text);
 	out.I64(value.kind == lowir_model::Operand::OP_INTEGER && value.has_int_value ?
 		value.int_value : 0);
@@ -396,7 +402,8 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
 	const lowir_model::Function& function)
 {
 	WriteEnum(out, value.kind);
-	out.String(value.dest);
+	out.String(value.dest.valid() ?
+		lowir_model::lowir_value_name(function, value.dest) : std::string());
 	WriteType(out, value.type);
 	WriteType(out, value.source_type);
 	out.String(value.op);
@@ -419,11 +426,25 @@ void WriteInstruction(Writer& out, const lowir_model::Instruction& value,
 	WriteDebug(out, value.debug_location);
 }
 
-lowir_model::Instruction ReadInstruction(Reader& in)
+const lowir_model::LowType& InstructionResultType(
+	const lowir_model::Instruction& value)
+{
+	if (value.kind == lowir_model::Instruction::IK_ADDR ||
+		value.kind == lowir_model::Instruction::IK_INDEX)
+		return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+	if (value.kind == lowir_model::Instruction::IK_CMP ||
+		value.kind == lowir_model::Instruction::IK_ATOMIC_COMPARE_EXCHANGE ||
+		value.kind == lowir_model::Instruction::IK_EXCEPTION_SELECTOR)
+		return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+	return value.type;
+}
+
+lowir_model::Instruction ReadInstruction(Reader& in,
+	lowir_model::Function& function)
 {
 	lowir_model::Instruction value;
 	value.kind = ReadEnum<lowir_model::Instruction::Kind>(in);
-	value.dest = in.String();
+	const std::string destination = in.String();
 	value.type = ReadType(in);
 	value.source_type = ReadType(in);
 	value.op = in.String();
@@ -444,6 +465,9 @@ lowir_model::Instruction ReadInstruction(Reader& in)
 	value.call_return_type = ReadType(in);
 	value.call_boundary = ReadBoundary(in);
 	value.debug_location = ReadDebug(in);
+	if (!destination.empty())
+		value.dest = lowir_model::append_lowir_value(
+			function, destination, InstructionResultType(value));
 	return value;
 }
 
@@ -567,6 +591,9 @@ lowir_model::Function ReadFunction(Reader& in)
 	value.name = in.String();
 	value.params = ReadParameters(in);
 	value.return_type = ReadType(in);
+	for (std::size_t i = 0; i < value.params.size(); ++i)
+		value.params[i].value = lowir_model::append_lowir_value(
+			value, value.params[i].name, value.params[i].type);
 	const std::size_t slot_count = in.Count(8);
 	for (std::size_t i = 0; i < slot_count; ++i)
 	{
@@ -580,7 +607,7 @@ lowir_model::Function ReadFunction(Reader& in)
 			lowir_model::allocate_lowir_block_id(value, in.String());
 		value.blocks[i].instructions.resize(in.Count(4));
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
-			value.blocks[i].instructions[j] = ReadInstruction(in);
+			value.blocks[i].instructions[j] = ReadInstruction(in, value);
 	}
 	lowir_model::resolve_lowir_function_operands(value);
 	value.debug_location = ReadDebug(in);

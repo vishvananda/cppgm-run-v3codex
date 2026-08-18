@@ -219,7 +219,7 @@ bool same_instruction(const Instruction & left, const Instruction & right)
 std::size_t instruction_hash(const Instruction & instruction)
 {
   std::size_t result = static_cast<std::size_t>(instruction.kind);
-  combine_hash(&result, std::hash<std::string>()(instruction.dest));
+  combine_hash(&result, static_cast<std::uint32_t>(instruction.dest));
   combine_hash(&result, type_hash(instruction.type));
   combine_hash(&result, type_hash(instruction.source_type));
   combine_hash(&result, lowir_model::lowir_operation_hash(instruction.op));

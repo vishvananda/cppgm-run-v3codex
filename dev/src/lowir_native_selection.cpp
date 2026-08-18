@@ -105,60 +105,57 @@ std::size_t align_up(std::size_t value, std::size_t alignment)
 
 bool result_is_immediate_return(const lowir_model::LowirBlock & block,
                                 std::size_t instruction_index,
-                                const std::string & destination,
+                                lowir_model::ValueId destination,
                                 const analysis::FunctionFacts & facts)
 {
-  if(facts.uses.find(destination) == facts.uses.end() ||
-     facts.uses.find(destination)->second != 1 ||
+  if(facts.uses[destination] != 1 ||
      instruction_index + 1 >= block.instructions.size()) return false;
   const lowir_model::Instruction & next = block.instructions[instruction_index + 1];
   return next.kind == lowir_model::Instruction::IK_RETURN &&
-    next.first.text == destination;
+    next.first.kind == lowir_model::Operand::OP_TEMP &&
+    next.first.value == destination;
 }
 
 bool result_is_immediate_unary_not_branch(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
-    const std::string & destination, const analysis::FunctionFacts & facts)
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts)
 {
   if(instruction_index + 2 >= block.instructions.size() ||
-     facts.uses.find(destination) == facts.uses.end() ||
-     facts.uses.find(destination)->second != 1) return false;
+     facts.uses[destination] != 1) return false;
   const lowir_model::Instruction & unary = block.instructions[instruction_index + 1];
   const lowir_model::Instruction & branch = block.instructions[instruction_index + 2];
   return unary.kind == lowir_model::Instruction::IK_UNARY && unary.op == "not" &&
-    unary.first.text == destination &&
+    unary.first.kind == lowir_model::Operand::OP_TEMP &&
+    unary.first.value == destination &&
     branch.kind == lowir_model::Instruction::IK_BRANCH &&
-    branch.first.text == unary.dest;
+    branch.first.kind == lowir_model::Operand::OP_TEMP &&
+    branch.first.value == unary.dest;
 }
 
 bool result_is_immediately_stored(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
-    const std::string & destination, const analysis::FunctionFacts & facts)
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts)
 {
-  const std::unordered_map<std::string, std::size_t>::const_iterator uses =
-    facts.uses.find(destination);
   if(instruction_index + 1 >= block.instructions.size() ||
-     uses == facts.uses.end() || uses->second != 1) return false;
+     facts.uses[destination] != 1) return false;
   const lowir_model::Instruction & store =
     block.instructions[instruction_index + 1];
   return store.kind == lowir_model::Instruction::IK_STORE &&
     store.first.kind == lowir_model::Operand::OP_TEMP &&
-    store.first.text == destination;
+    store.first.value == destination;
 }
 
 bool result_is_immediate_store_address_with_later_use(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
-    const std::string & destination, const analysis::FunctionFacts & facts)
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts)
 {
   if(instruction_index + 1 >= block.instructions.size()) return false;
-  const std::unordered_map<std::string, std::size_t>::const_iterator uses =
-    facts.uses.find(destination);
-  if(uses == facts.uses.end() || uses->second <= 1) return false;
+  if(facts.uses[destination] <= 1) return false;
   const lowir_model::Instruction & store =
     block.instructions[instruction_index + 1];
   return store.kind == lowir_model::Instruction::IK_STORE &&
     store.second.kind == lowir_model::Operand::OP_TEMP &&
-    store.second.text == destination;
+    store.second.value == destination;
 }
 
 }  // namespace selection

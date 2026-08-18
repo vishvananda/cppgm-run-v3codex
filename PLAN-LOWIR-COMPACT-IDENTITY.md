@@ -719,6 +719,39 @@ itself; it is retained because it removes the slot-name hot structures without
 growing core records or changing output.  Cumulative performance is judged
 after value identity removes the substantially larger string-map domain.
 
+### CI7: compact LowIR value identity
+
+LowIR parameters, temporary operands, and instruction results now carry a
+dense `ValueId`.  Source lowering preserves PA15's numeric identity directly;
+the explicit parser and private-object reader resolve arbitrary presentation
+names once at their input boundaries.  A function owns a single indexed value
+name/type table for serialization and diagnostics, and generated definitions
+append monotonically without rebuilding a name index.
+
+PA37 value facts, replacements, liveness, inliner remapping, and legacy CY86
+locations now use dense tables.  Native analysis and selection replace use,
+definition, lifetime, placement, deferred-instruction, register-occupant, and
+parameter-home string maps and sets with indexed vectors and bit flags.  The
+source-to-native hot path no longer probes a string map for temporary identity.
+The duplicated storage-address analysis and generic MIR operand queries were
+also separated from the oversized optimizer/native owners; the PA39 file audit
+has no fatal findings.
+
+Serialized frozen LowIR is byte-identical to CI6.  Numeric value order makes a
+previously unspecified unordered-map register-allocation tie deterministic;
+no checked-in MIR fixture changes, while the frozen object changes by 16 bytes
+from 4,417,176 to 4,417,192 bytes.  The candidate SHA-256 is
+`98f77be43c75d46d29b75809bd6784a921578303484ece5355eef14693231283`.
+PA13 and the full through-PA13 report pass 100/100 and 933/933 tests; PA13,
+PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests.
+
+Three A/B/B/A blocks against `52607081` produced baseline/candidate medians of
+5.520/5.125 seconds user, 6.015/5.640 seconds wall, and 364,970/364,946 KiB
+peak RSS.  Paired block medians improve user time by 6.83% and wall time by
+5.99%, with peak RSS unchanged within noise.  This is the first individually
+large timing win and exceeds the cumulative plan's initial 5% acceptance gate
+before the symbol and MIR identity domains are migrated.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

@@ -54,6 +54,26 @@ mir_model::MirOperand named_operand(mir_model::MirOperand::Kind kind,
   return out;
 }
 
+mir_model::MirOperand global_operand(mir_model::MirOperand::Kind kind,
+                                     const lowir_model::Operand & operand)
+{
+  mir_model::MirOperand out = named_operand(kind, operand.text);
+  out.address_binding = operand.address_binding ==
+    lowir_model::Operand::ADDRESS_PREEMPTIBLE ?
+      mir_model::MirOperand::ADDRESS_PREEMPTIBLE :
+      mir_model::MirOperand::ADDRESS_LOCAL;
+  return out;
+}
+
+bool operand_uses_register(const mir_model::MirOperand & operand,
+                           X64Register reg)
+{
+  return (operand.kind == mir_model::MirOperand::OP_REG &&
+          operand.reg == reg) ||
+    (operand.kind == mir_model::MirOperand::OP_DEREF &&
+     (operand.reg == reg || (operand.has_index && operand.index == reg)));
+}
+
 mir_model::MirOperand dereference(X64Register reg, long long offset)
 {
   mir_model::MirOperand out;

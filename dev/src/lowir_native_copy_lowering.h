@@ -40,7 +40,7 @@ protected:
     const mir_model::MirOperand source = lowerer.resolve(instruction.first);
     if(instruction.first.kind == lowir_model::Operand::OP_TEMP) {
       const ValueFact & original =
-        lowerer.values_.find(instruction.first.text)->second;
+        lowerer.values_[instruction.first.value];
       const bool stable = source.kind == mir_model::MirOperand::OP_IMM ||
         source.kind == mir_model::MirOperand::OP_SYMBOL ||
         (source.kind == mir_model::MirOperand::OP_FRAME &&

@@ -17,49 +17,49 @@ class AddressLowering
 {
 protected:
 	bool address_is_immediately_loaded(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (instruction_index + 1 >= block.instructions.size()) return false;
 		const lowir_model::Instruction& next =
 			block.instructions[instruction_index + 1];
 		return next.kind == lowir_model::Instruction::IK_LOAD &&
-			next.first.text == destination &&
-			derived.facts_.uses.find(destination) != derived.facts_.uses.end() &&
-			derived.facts_.uses.find(destination)->second == 1;
+			next.first.kind == lowir_model::Operand::OP_TEMP &&
+			next.first.value == destination &&
+			derived.facts_.uses[destination] == 1;
 	}
 
 	bool address_is_immediately_stored(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (instruction_index + 1 >= block.instructions.size()) return false;
 		const lowir_model::Instruction& next =
 			block.instructions[instruction_index + 1];
 		return next.kind == lowir_model::Instruction::IK_STORE &&
-			next.second.text == destination &&
-			derived.facts_.uses.find(destination) != derived.facts_.uses.end() &&
-			derived.facts_.uses.find(destination)->second == 1;
+			next.second.kind == lowir_model::Operand::OP_TEMP &&
+			next.second.value == destination &&
+			derived.facts_.uses[destination] == 1;
 	}
 
 	bool address_is_next_bulk_operand(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		if (instruction_index + 1 >= block.instructions.size()) return false;
 		const lowir_model::Instruction& next =
 			block.instructions[instruction_index + 1];
 		if (next.kind == lowir_model::Instruction::IK_ZEROINIT)
 			return next.first.kind == lowir_model::Operand::OP_TEMP &&
-				next.first.text == destination;
+				next.first.value == destination;
 		if (next.kind != lowir_model::Instruction::IK_COPYOBJ) return false;
 		return (next.first.kind == lowir_model::Operand::OP_TEMP &&
-			next.first.text == destination) ||
+			next.first.value == destination) ||
 			(next.second.kind == lowir_model::Operand::OP_TEMP &&
-			 next.second.text == destination);
+			 next.second.value == destination);
 	}
 
 	bool address_precedes_elided_copy(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (instruction_index + 1 >= block.instructions.size()) return false;
@@ -67,7 +67,7 @@ protected:
 			block.instructions[instruction_index + 1];
 		if (next.kind != lowir_model::Instruction::IK_COPYOBJ ||
 			next.second.kind != lowir_model::Operand::OP_TEMP ||
-			next.second.text != destination) return false;
+			next.second.value != destination) return false;
 		long long source_offset = 0;
 		long long destination_offset = 0;
 		return derived.frame_provenance(next.first, source_offset) &&
@@ -76,47 +76,45 @@ protected:
 			source_offset == destination_offset;
 	}
 
-	bool address_is_call_argument(const std::string& destination) const
+	bool address_is_call_argument(lowir_model::ValueId destination) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		return derived.facts_.uses.find(destination) != derived.facts_.uses.end() &&
-			derived.facts_.uses.find(destination)->second == 1 &&
-			derived.facts_.only_call_arguments.count(destination);
+		return derived.facts_.uses[destination] == 1 &&
+			derived.facts_.has(destination,
+				analysis::FunctionFacts::VF_ONLY_CALL_ARGUMENT);
 	}
 
 	bool address_is_next_atomic_expected(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
-		if (derived.facts_.uses.find(destination) == derived.facts_.uses.end() ||
-			derived.facts_.uses.find(destination)->second != 1) return false;
+		if (derived.facts_.uses[destination] != 1) return false;
 		for (std::size_t i = instruction_index + 1;
 			i < block.instructions.size() && i <= instruction_index + 2; ++i)
 		{
 			const lowir_model::Instruction& next = block.instructions[i];
 			if (next.kind == lowir_model::Instruction::IK_ATOMIC_COMPARE_EXCHANGE)
 				return next.second.kind == lowir_model::Operand::OP_TEMP &&
-					next.second.text == destination;
+					next.second.value == destination;
 		}
 		return false;
 	}
 
 	bool address_is_next_va_start(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (instruction_index + 1 >= block.instructions.size() ||
-			derived.facts_.uses.find(destination) == derived.facts_.uses.end() ||
-			derived.facts_.uses.find(destination)->second != 1) return false;
+			derived.facts_.uses[destination] != 1) return false;
 		const lowir_model::Instruction& next =
 			block.instructions[instruction_index + 1];
 		return next.kind == lowir_model::Instruction::IK_VA_START &&
 			next.first.kind == lowir_model::Operand::OP_TEMP &&
-			next.first.text == destination;
+			next.first.value == destination;
 	}
 
 	bool address_is_va_list_operand(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		for (std::size_t i = instruction_index + 1;
 			i < block.instructions.size(); ++i)
@@ -125,7 +123,7 @@ protected:
 			if ((instruction.kind == lowir_model::Instruction::IK_VA_START ||
 				 instruction.kind == lowir_model::Instruction::IK_VA_ARG) &&
 				instruction.first.kind == lowir_model::Operand::OP_TEMP &&
-				instruction.first.text == destination)
+				instruction.first.value == destination)
 				return true;
 		}
 		return false;
@@ -133,7 +131,7 @@ protected:
 
 	bool address_is_object_result_destination(
 		const lowir_model::LowirBlock& block, std::size_t instruction_index,
-		const std::string& destination) const
+		lowir_model::ValueId destination) const
 	{
 		if (instruction_index + 2 >= block.instructions.size()) return false;
 		const lowir_model::Instruction& call =
@@ -144,13 +142,13 @@ protected:
 			!call.call_returns_void && call.type.kind == lowir_model::LTK_OBJECT &&
 			copy.kind == lowir_model::Instruction::IK_COPYOBJ &&
 			copy.first.kind == lowir_model::Operand::OP_TEMP &&
-			copy.first.text == call.dest &&
+			copy.first.value == call.dest &&
 			copy.second.kind == lowir_model::Operand::OP_TEMP &&
-			copy.second.text == destination;
+			copy.second.value == destination;
 	}
 
 	X64Register direct_slot_address_register(const lowir_model::LowirBlock& block,
-		std::size_t instruction_index, const std::string& destination) const
+		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		for (std::size_t i = instruction_index + 1;
@@ -159,8 +157,10 @@ protected:
 			const lowir_model::Instruction& comparison = block.instructions[i];
 			if (comparison.kind != lowir_model::Instruction::IK_CMP) continue;
 			if (!derived.comparison_feeds_branch(block, i, comparison)) break;
-			if (comparison.first.text == destination) return XR_RAX;
-			if (comparison.second.text == destination) return XR_RDX;
+			if (comparison.first.kind == lowir_model::Operand::OP_TEMP &&
+				comparison.first.value == destination) return XR_RAX;
+			if (comparison.second.kind == lowir_model::Operand::OP_TEMP &&
+				comparison.second.value == destination) return XR_RDX;
 		}
 		return XR_RSP;
 	}
@@ -173,7 +173,7 @@ protected:
 		using namespace build;
 		using namespace selection;
 		Derived& derived = static_cast<Derived&>(*this);
-		if (!derived.facts_.uses.count(instruction.dest)) return;
+		if (derived.facts_.uses[instruction.dest] == 0) return;
 		const lowir_model::LowType pointer_type =
 			lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
 		mir_model::MirOperand destination;
@@ -291,7 +291,7 @@ protected:
 			// A symbol address is already a complete target operand.  Retain it
 			// until call setup selects the ABI register instead of assigning an
 			// unrelated persistent register and immediately copying from it.
-			destination = derived.global_operand(
+			destination = global_operand(
 				mir_model::MirOperand::OP_SYMBOL, instruction.first);
 		}
 		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
@@ -326,7 +326,7 @@ protected:
 		if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
 			derived.pointer_globals_.count(instruction.first.text))
 			derived.values_[instruction.dest].pointer_global_cell =
-				derived.global_operand(mir_model::MirOperand::OP_GLOBAL,
+				global_operand(mir_model::MirOperand::OP_GLOBAL,
 					instruction.first);
 	}
 };

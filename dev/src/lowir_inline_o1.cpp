@@ -27,7 +27,42 @@ using lowir_model::Operand;
 
 const std::size_t kNoFunction = static_cast<std::size_t>(-1);
 const std::size_t kInlineInstructionBudget = 128;
-typedef std::unordered_map<std::string, Operand> ValueMap;
+class ValueMap
+{
+public:
+  explicit ValueMap(std::size_t size = 0)
+    : values_(size), known_(size, 0), count_(0) {}
+
+  void resize(std::size_t size)
+  {
+    if(values_.size() < size) {
+      values_.resize(size);
+      known_.resize(size, 0);
+    }
+  }
+
+  void set(lowir_model::ValueId value, const Operand & replacement)
+  {
+    const std::uint32_t id = value;
+    resize(static_cast<std::size_t>(id) + 1);
+    if(!known_[id]) { known_[id] = 1; ++count_; }
+    values_[id] = replacement;
+  }
+
+  const Operand * find(lowir_model::ValueId value) const
+  {
+    const std::uint32_t id = value;
+    return id < values_.size() && known_[id] ? &values_[id] : 0;
+  }
+
+  bool empty() const { return count_ == 0; }
+  std::size_t size() const { return values_.size(); }
+
+private:
+  std::vector<Operand> values_;
+  std::vector<unsigned char> known_;
+  std::size_t count_;
+};
 typedef std::unordered_map<std::string, std::string> NameMap;
 typedef std::vector<lowir_model::SlotId> SlotMap;
 
@@ -60,12 +95,12 @@ Instruction jump_to(BlockId block)
   return result;
 }
 
-Operand named_operand(Operand::Kind kind, const std::string & text,
-                      const LowType & = LowType())
+Operand value_operand(lowir_model::ValueId value, const LowType & type)
 {
   Operand result;
-  result.kind = kind;
-  result.text = text;
+  result.kind = Operand::OP_TEMP;
+  result.value = value;
+  result.literal_type = type;
   return result;
 }
 
@@ -138,8 +173,12 @@ struct Names
       collect_generated_id(label, &site_ids);
       for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
         const Instruction & ins = function.blocks[i].instructions[j];
-        if(!ins.dest.empty()) values.insert(ins.dest);
-        collect_generated_id(ins.dest, &site_ids);
+        if(ins.dest.valid()) {
+          const std::string name = lowir_model::lowir_value_name(
+            function, ins.dest);
+          values.insert(name);
+          collect_generated_id(name, &site_ids);
+        }
       }
     }
   }
@@ -165,8 +204,8 @@ void rename_operand(Operand * operand, const ValueMap & values,
                     const SlotMap & slots, const BlockMap & blocks)
 {
   if(operand->kind == Operand::OP_TEMP) {
-    const ValueMap::const_iterator found = values.find(operand->text);
-    if(found != values.end()) *operand = found->second;
+    const Operand * found = values.find(operand->value);
+    if(found) *operand = *found;
   } else if(operand->kind == Operand::OP_SLOT) {
     const std::uint32_t id = operand->slot;
     if(id < slots.size() && slots[id].valid()) operand->slot = slots[id];
@@ -183,11 +222,11 @@ Instruction clone_instruction(const Instruction & source,
                               const BlockMap & blocks)
 {
   Instruction result = source;
-  if(!result.dest.empty()) {
-    const ValueMap::const_iterator found = values.find(result.dest);
-    if(found == values.end() || found->second.kind != Operand::OP_TEMP)
+  if(result.dest.valid()) {
+    const Operand * found = values.find(result.dest);
+    if(!found || found->kind != Operand::OP_TEMP)
       throw std::logic_error("inlined result has no value name");
-    result.dest = found->second.text;
+    result.dest = found->value;
   }
   rename_operand(&result.first, values, slots, blocks);
   rename_operand(&result.second, values, slots, blocks);
@@ -201,9 +240,9 @@ Operand resolve_replacement(Operand value, const ValueMap & replacements)
 {
   for(std::size_t step = 0;
       step < replacements.size() && value.kind == Operand::OP_TEMP; ++step) {
-    const ValueMap::const_iterator found = replacements.find(value.text);
-    if(found == replacements.end()) break;
-    value = found->second;
+    const Operand * found = replacements.find(value.value);
+    if(!found) break;
+    value = *found;
   }
   return value;
 }
@@ -672,7 +711,7 @@ private:
     if(callee_function.params.size() != call.args.size())
       throw std::runtime_error("inline call argument count mismatch");
     for(std::size_t i = 0; i < callee_function.params.size(); ++i)
-      (*values)[callee_function.params[i].name] = call.args[i];
+      values->set(callee_function.params[i].value, call.args[i]);
     slots->resize(callee_function.slot_names.size());
     for(std::size_t i = 0; i < callee_function.slots.size(); ++i) {
       const lowir_model::SlotId source = callee_function.slots[i];
@@ -694,9 +733,14 @@ private:
       for(std::size_t j = 0;
           j < callee_function.blocks[i].instructions.size(); ++j) {
         const Instruction & ins = callee_function.blocks[i].instructions[j];
-        if(ins.dest.empty()) continue;
-        const std::string value = "%" + prefix + ins.dest.substr(1);
-        (*values)[ins.dest] = named_operand(Operand::OP_TEMP, value);
+        if(!ins.dest.valid()) continue;
+        const std::string value = "%" + prefix +
+          lowir_model::lowir_value_name(callee_function, ins.dest).substr(1);
+        const LowType & type = lowir_model::lowir_value_type(
+          callee_function, ins.dest);
+        const lowir_model::ValueId renamed = lowir_model::append_lowir_value(
+          *caller, value, type);
+        values->set(ins.dest, value_operand(renamed, type));
         names->values.insert(value);
       }
     }
@@ -738,7 +782,7 @@ private:
       if(call.call_returns_void) continue;
       Operand returned = instruction.first;
       rename_operand(&returned, values, slots, blocks);
-      (*replacements)[call.dest] = returned;
+      replacements->set(call.dest, returned);
     }
   }
 
@@ -831,9 +875,9 @@ private:
           std::make_move_iterator(tail.begin()),
           std::make_move_iterator(tail.end()));
       if(have_single_object_return)
-        (*replacements)[call.dest] = single_object_return;
+        replacements->set(call.dest, single_object_return);
       if(have_single_scalar_return)
-        (*replacements)[call.dest] = single_scalar_return;
+        replacements->set(call.dest, single_scalar_return);
       return;
     }
 
@@ -904,10 +948,10 @@ private:
     if(has_result && object_result) {
       const Operand replacement = returns > 1 ?
         slot_operand(merge_slot, call.type) : single_object_return;
-      (*replacements)[call.dest] = replacement;
+      replacements->set(call.dest, replacement);
     }
     if(has_result && !object_result && returns == 1 && have_single_scalar_return)
-      (*replacements)[call.dest] = single_scalar_return;
+      replacements->set(call.dest, single_scalar_return);
   }
 
   bool batch_inline_leaf_calls(std::size_t function_index,

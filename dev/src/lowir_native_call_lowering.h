@@ -6,8 +6,6 @@
 #include "lowir_native_wide.h"
 
 #include <cstddef>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace lowir_native {
@@ -44,20 +42,19 @@ protected:
         continue;
       const lowir_model::Operand & argument = instruction.args[parameter];
       if(argument.kind != lowir_model::Operand::OP_TEMP) continue;
-      typename std::unordered_map<std::string, ValueFact>::iterator value =
-        lowerer.values_.find(argument.text);
-      if(value == lowerer.values_.end() ||
-         value->second.location.kind != mir_model::MirOperand::OP_REG ||
-         (value->second.location.reg != XR_RDI &&
-          value->second.location.reg != XR_RSI))
+      ValueFact & value = lowerer.values_[argument.value];
+      if(!lowerer.value_known_[argument.value] ||
+         value.location.kind != mir_model::MirOperand::OP_REG ||
+         (value.location.reg != XR_RDI && value.location.reg != XR_RSI))
         continue;
-      const mir_model::MirOperand location = value->second.location;
-      const bool shared = lowerer.has_live_location_alias(argument.text, location);
-      const mir_model::MirOperand home = value->second.has_spill_home ?
-        value->second.spill_home :
-        lowerer.allocate_temp_home(argument.text, value->second.type);
-      build::append_store(out, home, location, value->second.type);
-      lowerer.set_value_location(argument.text, home);
+      const mir_model::MirOperand location = value.location;
+      const bool shared =
+        lowerer.has_live_location_alias(argument.value, location);
+      const mir_model::MirOperand home = value.has_spill_home ?
+        value.spill_home :
+        lowerer.allocate_temp_home(argument.value, value.type);
+      build::append_store(out, home, location, value.type);
+      lowerer.set_value_location(argument.value, home);
       if(!shared && lowerer.registers_.is_used(location.reg))
         lowerer.registers_.release(location.reg);
     }

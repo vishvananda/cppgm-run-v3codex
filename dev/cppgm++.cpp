@@ -829,29 +829,32 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 				lowir_model::Instruction ins = function.blocks[b].instructions[j];
 				if(ins.kind == lowir_model::Instruction::IK_RETURN)
 					ins.debug_location = return_loc;
-				else if(ins.kind == lowir_model::Instruction::IK_STORE &&
-						ins.second.kind == lowir_model::Operand::OP_SLOT) {
-					const string slot = ins.second.text.substr(1);
+					else if(ins.kind == lowir_model::Instruction::IK_STORE &&
+							ins.second.kind == lowir_model::Operand::OP_SLOT) {
+						const string slot = lowir_model::lowir_slot_name(
+							function, ins.second.slot).substr(1);
 					if(parameters.count(slot)) ins.debug_location = function_loc;
 					else if(locals.count(slot)) {
 						const LocalLocation & loc = locals[slot];
 						ins.debug_location = source_location(path, loc.line + 1,
 							loc.statement);
-						lowir_model::Instruction copy;
-						copy.kind = lowir_model::Instruction::IK_COPY;
-						copy.dest = "%dbg_" + slot + "__1";
-						copy.type = ins.type;
+							lowir_model::Instruction copy;
+							copy.kind = lowir_model::Instruction::IK_COPY;
+							copy.type = ins.type;
+							copy.dest = lowir_model::append_lowir_value(function,
+								"%dbg_" + slot + "__1", copy.type);
 						copy.first = ins.first;
 						copy.debug_location = ins.debug_location;
-						lowir_model::Operand debug_value;
-						debug_value.kind = lowir_model::Operand::OP_TEMP;
-						debug_value.text = copy.dest;
+							lowir_model::Operand debug_value;
+							debug_value.kind = lowir_model::Operand::OP_TEMP;
+							debug_value.value = copy.dest;
 						ins.first = std::move(debug_value);
 						with_debug.push_back(copy);
 					}
-				} else if(ins.kind == lowir_model::Instruction::IK_LOAD &&
-						  ins.first.kind == lowir_model::Operand::OP_SLOT) {
-					const string slot = ins.first.text.substr(1);
+					} else if(ins.kind == lowir_model::Instruction::IK_LOAD &&
+							  ins.first.kind == lowir_model::Operand::OP_SLOT) {
+						const string slot = lowir_model::lowir_slot_name(
+							function, ins.first.slot).substr(1);
 					if(locals.count(slot)) ins.debug_location = return_loc;
 					else if(!locals.empty()) {
 						const LocalLocation & loc = locals.begin()->second;

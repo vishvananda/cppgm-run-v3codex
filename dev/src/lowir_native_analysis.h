@@ -1,9 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "lowir_model.h"
@@ -14,59 +14,91 @@ namespace analysis {
 
 struct FunctionFacts
 {
-  std::unordered_map<std::string, std::size_t> uses;
-  std::unordered_map<std::string, std::size_t> first_use;
-  std::unordered_map<std::string, std::size_t> last_use;
+  enum ValueFlag
+  {
+    VF_PARAMETER = 1u << 0,
+    VF_LIVE_ACROSS_CALL = 1u << 1,
+    VF_EDGE_LIVE = 1u << 2,
+    VF_LOOP_INVARIANT = 1u << 3,
+    VF_ONLY_CALL_ARGUMENT = 1u << 4,
+    VF_DIRECT_BRANCH_SOURCE = 1u << 5,
+    VF_DIRECT_COMPARE_STORAGE = 1u << 6,
+    VF_DIRECT_COMPARE_RAX = 1u << 7,
+    VF_DIRECT_BRANCH_CALL_RESULT = 1u << 8,
+    VF_DIRECT_MEMORY_INDEX = 1u << 9,
+    VF_SOLE_INDEX_BASE = 1u << 10,
+    VF_ZERO_INDEX_PARAMETER = 1u << 11,
+    VF_FORWARDED_PARAMETER_ACROSS_CALL = 1u << 12,
+    VF_SWITCH_PARAMETER = 1u << 13,
+    VF_DESTRUCTIVE_PARAMETER = 1u << 14
+  };
+
+  std::vector<std::size_t> uses;
+  std::vector<std::size_t> first_use;
+  std::vector<std::size_t> last_use;
   // A scalar copy may retain its source's immutable temporary frame home.
   // Only sources whose shared storage outlives their own final use appear.
-  std::unordered_map<std::string, std::size_t> shared_storage_last_use;
-  std::unordered_map<std::string, std::size_t> definition;
-  std::unordered_set<std::string> parameters;
+  std::vector<std::size_t> shared_storage_last_use;
+  std::vector<std::size_t> definition;
+  std::vector<unsigned> value_flags;
   std::vector<std::size_t> calls;
   // The first LowIR position that destroys each physical GPR's incoming
   // value.  This is a fixed 16-entry table populated by analyze_function.
   std::vector<std::size_t> first_register_clobber;
-  std::unordered_set<std::string> live_across_call;
-  std::unordered_set<std::string> edge_live;
-  std::unordered_set<std::string> loop_invariant_values;
-  std::unordered_set<std::string> only_call_arguments;
-  std::unordered_set<std::string> direct_branch_sources;
-  std::unordered_set<std::string> direct_compare_storage_values;
-  std::unordered_set<std::string> direct_compare_rax_values;
-  std::unordered_set<std::string> direct_branch_call_results;
-  std::unordered_set<std::string> direct_memory_index_values;
-  std::unordered_set<std::string> sole_index_bases;
-  std::unordered_set<std::string> zero_index_parameters;
-  std::unordered_set<std::string> forwarded_parameters_across_call;
-  std::unordered_set<std::string> switch_parameters;
-  std::unordered_set<std::string> destructive_parameters;
-  std::unordered_map<std::string, const lowir_model::Instruction *>
-    deferred_branch_comparisons;
-  std::unordered_map<std::string, unsigned> live_across_clobbers;
+  std::vector<const lowir_model::Instruction *> deferred_branch_comparisons;
+  std::vector<unsigned> live_across_clobbers;
   bool has_va_start = false;
   bool has_dynamic_stack = false;
   bool has_i128_atomic = false;
   bool has_direct_branch_parameter = false;
+
+  static std::size_t missing_position()
+  {
+    return std::numeric_limits<std::size_t>::max();
+  }
+  bool has(lowir_model::ValueId value, ValueFlag flag) const
+  {
+    return value.valid() &&
+      (value_flags[static_cast<std::uint32_t>(value)] & flag) != 0;
+  }
+  void mark(lowir_model::ValueId value, ValueFlag flag)
+  {
+    value_flags[static_cast<std::uint32_t>(value)] |= flag;
+  }
 };
 
 struct StorageFacts
 {
-  std::vector<std::string> parameter_slot_aliases;
-  std::vector<std::string> promoted_parameter_slots;
-  std::vector<std::string> forwarded_parameter_slots;
-  std::unordered_set<std::string> promoted_parameters;
-  std::unordered_set<std::string> promoted_parameters_across_call;
+  enum ValueFlag
+  {
+    VF_PROMOTED_PARAMETER = 1u << 0,
+    VF_PROMOTED_ACROSS_CALL = 1u << 1,
+    VF_DEAD_SLOT_ONLY_PARAMETER = 1u << 2,
+    VF_TLS_STORE_INPUT = 1u << 3
+  };
+  std::vector<lowir_model::ValueId> parameter_slot_aliases;
+  std::vector<lowir_model::ValueId> promoted_parameter_slots;
+  std::vector<lowir_model::ValueId> forwarded_parameter_slots;
+  std::vector<unsigned char> value_flags;
   // Indexed by LowIR parameter ordinal; each mask uses the fixed x86 GPR IDs.
   std::vector<unsigned> promoted_parameter_clobbers;
-  std::unordered_set<std::string> dead_slot_only_parameters;
   std::vector<unsigned char> dead_store_slots;
-  std::unordered_set<std::string> tls_store_inputs;
   bool has_promoted_parameter_slots = false;
+
+  bool has(lowir_model::ValueId value, ValueFlag flag) const
+  {
+    return value.valid() &&
+      (value_flags[static_cast<std::uint32_t>(value)] & flag) != 0;
+  }
+  void mark(lowir_model::ValueId value, ValueFlag flag)
+  {
+    value_flags[static_cast<std::uint32_t>(value)] |= flag;
+  }
 };
 
 unsigned register_mask(X64Register reg);
 bool crosses_register_clobber(const FunctionFacts & facts,
-                              const std::string & name, X64Register reg);
+                              lowir_model::ValueId value, X64Register reg);
 bool register_was_clobbered_before(const FunctionFacts & facts,
                                    X64Register reg, std::size_t position);
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function);
