@@ -82,7 +82,7 @@ struct ParamBinding
   // PL_REG/PL_XMM describe the incoming ABI location. A lowering may retain
   // the parameter there when its complete live interval, including promoted
   // slot aliases, crosses no clobber; a separate home is required otherwise.
-  std::string name;
+  lowir_model::StringId name;
   X64Register reg = XR_RDI;
   XmmRegister xmm = XMM_0;
   long long stack_offset = 0;
@@ -99,7 +99,7 @@ struct FrameBinding
     FB_TEMP
   } kind = FB_TEMP;
 
-  std::string name;
+  lowir_model::StringId name;
   long long offset = 0;
   MachineType type;
 };
@@ -414,10 +414,10 @@ struct Program
 
   std::string target;
   std::vector<std::string> symbol_names;
-  // Literal identities are dense in MIR.  The shared table lets streamed
-  // function lowering populate those identities after the program shell has
-  // moved to the object writer, without copying the much larger LowIR pool.
-  std::shared_ptr<std::vector<std::string> > literal_spellings;
+  // Presentation identities are dense in MIR.  The shared pool lets streamed
+  // function lowering intern literals and metadata after the program shell
+  // has moved to the object writer, without copying the larger LowIR pool.
+  std::shared_ptr<lowir_model::StringPool> strings;
   bool uses_eh = false;
   std::vector<Instruction> startup;
   std::vector<GlobalDefinition> globals;
@@ -446,6 +446,8 @@ const std::string & mir_block_label(const MirFunction & function,
                                     lowir_model::BlockId block);
 const std::string & mir_symbol_name(const MirProgram & program,
                                     lowir_model::SymbolId symbol);
+const std::string & mir_string(const MirProgram & program,
+                               lowir_model::StringId string);
 const std::string & mir_literal_spelling(const MirProgram & program,
                                          lowir_model::StringId literal);
 std::string serialize_mir_program(const MirProgram & program);

@@ -912,6 +912,34 @@ RSS.  Adapter-build time falls from 154.5 to 128.2 ms (17.0%), the enclosing
 adapt interval from 198.7 to 166.2 ms (16.4%), and native lowering from 995.5
 to 982.1 ms (1.3%).  Total user and wall time improve by 0.8% and 0.9%.
 
+### CI13: pool MIR parameter and frame presentation names
+
+MIR parameter bindings and frame bindings now carry `StringId` rather than an
+owning `std::string`.  A lowering session owns one shared MIR `StringPool` for
+floating-literal spellings and metadata presentation names.  Parameter and
+frame names are interned while their records are created, then resolved only
+by MIR serialization.  Native analysis and encoding continue to use parameter
+locations, frame offsets, and numeric frame-binding identities directly.
+
+This generalizes the former literal-only table without copying the much larger
+frontend pool.  `MirParamBinding` falls from 80 to 48 bytes and
+`MirFrameBinding` from 64 to 32 bytes.  The 64-byte `MirOperand` and 176-byte
+`MirInstruction` layouts are unchanged.
+
+The frozen object remains 4,417,192 bytes.  Both implementations emitted the
+same two pre-existing object variants during the interleaved run; the expected
+variant has SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+PA13, PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests, and the
+PA39 file audit has no fatal findings.
+
+Three A/B/B/A blocks against `32c794e7` produced baseline/candidate medians of
+5.715/5.705 seconds user, 6.205/6.200 seconds wall, and 364,318/364,346 KiB
+peak RSS.  The paired medians are +0.09% user, 0.00% wall, and +0.18% RSS, all
+inside the noise envelope.  This slice receives no standalone timing credit;
+it is retained because it halves the two records without adding a hot lookup
+or changing their semantic consumers.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

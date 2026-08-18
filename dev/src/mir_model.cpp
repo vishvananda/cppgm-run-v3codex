@@ -381,7 +381,7 @@ void render_function(std::ostringstream & out, const Program & program,
   out << "function " << function.name << "\n  abi\n";
   for(std::size_t i = 0; i < function.params.size(); ++i) {
     const ParamBinding & param = function.params[i];
-    out << "    param " << param.name << " -> ";
+    out << "    param " << mir_string(program, param.name) << " -> ";
     if(param.location == ParamBinding::PL_REG) out << register_name(param.reg);
     else if(param.location == ParamBinding::PL_XMM) out << xmm_name(param.xmm);
     else out << "[rbp+" << param.stack_offset << ']';
@@ -409,7 +409,7 @@ void render_function(std::ostringstream & out, const Program & program,
     if(binding.kind == FrameBinding::FB_PARAM_SLOT) out << "param-slot ";
     else if(binding.kind == FrameBinding::FB_SLOT) out << "slot ";
     else out << "temp ";
-    out << binding.name << " -> " << frame_address(binding.offset)
+    out << mir_string(program, binding.name) << " -> " << frame_address(binding.offset)
         << " : " << lowir_model::lowir_type_text(binding.type) << '\n';
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -424,7 +424,7 @@ void render_function(std::ostringstream & out, const Program & program,
 }  // namespace
 
 Program::Program()
-  : literal_spellings(new std::vector<std::string>(1))
+  : strings(new lowir_model::StringPool)
 {
 }
 
@@ -449,11 +449,15 @@ const std::string & mir_symbol_name(const MirProgram & program,
 const std::string & mir_literal_spelling(const MirProgram & program,
                                          lowir_model::StringId literal)
 {
-  const std::uint32_t index = literal;
-  if(!program.literal_spellings || !literal.valid() ||
-     index >= program.literal_spellings->size())
-    throw std::logic_error("invalid MIR literal identity");
-  return (*program.literal_spellings)[index];
+  return mir_string(program, literal);
+}
+
+const std::string & mir_string(const MirProgram & program,
+                               lowir_model::StringId string)
+{
+  if(!program.strings || !string.valid())
+    throw std::logic_error("invalid MIR string identity");
+  return program.strings->get(string);
 }
 
 std::string serialize_mir_program(const MirProgram & program)

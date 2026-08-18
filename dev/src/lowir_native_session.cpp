@@ -8,46 +8,48 @@
 
 #include <algorithm>
 #include <chrono>
-#include <limits>
 #include <stdexcept>
 #include <utility>
 
 namespace lowir_native {
 
-session_detail::LiteralIdentityMap::LiteralIdentityMap(
+session_detail::StringIdentityMap::StringIdentityMap(
     const lowir_model::StringPool & source)
   : source_(source), mapped_(source.size() + 1),
-    spellings_(new std::vector<std::string>(1))
+    strings_(new lowir_model::StringPool)
 {
 }
 
-lowir_model::StringId session_detail::LiteralIdentityMap::map(
+lowir_model::StringId session_detail::StringIdentityMap::map(
     lowir_model::StringId source_literal)
 {
   const std::uint32_t source_index = source_literal;
   if(!source_literal.valid() || source_index >= mapped_.size())
     throw std::logic_error("invalid LowIR literal identity");
   if(mapped_[source_index].valid()) return mapped_[source_index];
-  if(spellings_->size() >= std::numeric_limits<std::uint32_t>::max())
-    throw std::runtime_error("too many MIR literals");
-  const lowir_model::StringId target(
-    static_cast<std::uint32_t>(spellings_->size()));
-  spellings_->push_back(source_.get(source_literal));
+  const lowir_model::StringId target = strings_->intern(
+    source_.get(source_literal));
   mapped_[source_index] = target;
   return target;
 }
 
-std::shared_ptr<std::vector<std::string> >
-session_detail::LiteralIdentityMap::spellings() const
+lowir_model::StringId session_detail::StringIdentityMap::intern(
+    const std::string & spelling)
 {
-  return spellings_;
+  return strings_->intern(spelling);
+}
+
+std::shared_ptr<lowir_model::StringPool>
+session_detail::StringIdentityMap::strings() const
+{
+  return strings_;
 }
 
 struct ProgramLoweringSession::Impl
 {
   std::unique_ptr<lowir_model::LowirProgram> rewritten;
   const lowir_model::LowirProgram & source;
-  session_detail::LiteralIdentityMap literals;
+  session_detail::StringIdentityMap strings;
   Stats * stats;
   int optimization_level;
   mir_model::MirProgram shell;
@@ -58,7 +60,7 @@ struct ProgramLoweringSession::Impl
   Impl(const lowir_model::LowirProgram & program, const std::string & target,
        int level, Stats * output_stats)
     : rewritten(force_inline::rewrite_program(program)),
-      source(rewritten ? *rewritten : program), literals(source.strings),
+      source(rewritten ? *rewritten : program), strings(source.strings),
       stats(output_stats),
       optimization_level(level)
   {
@@ -68,7 +70,7 @@ struct ProgramLoweringSession::Impl
       throw std::runtime_error("unsupported native target: " + target);
 	shell.target = target;
 	shell.symbol_names = source.symbol_names;
-	shell.literal_spellings = literals.spellings();
+	shell.strings = strings.strings();
 	pointer_globals.assign(source.symbol_names.size(), 0);
 	signatures.resize(source.symbol_names.size());
     eh::plan_program(source, shell);
@@ -144,7 +146,7 @@ struct ProgramLoweringSession::Impl
     if(stats) started = std::chrono::steady_clock::now();
     mir_model::MirFunction result = session_detail::lower_native_function(
       source, source.functions[index], pointer_globals, tls_wrappers,
-      signatures, literals, stats);
+      signatures, strings, stats);
     machine_opt::Stats opt_stats;
     machine_opt::optimize_function(result, optimization_level,
                                    stats ? &opt_stats : 0);

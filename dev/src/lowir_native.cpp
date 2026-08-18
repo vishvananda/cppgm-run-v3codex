@@ -70,11 +70,11 @@ public:
                   const std::vector<unsigned char> & pointer_globals,
                   const std::vector<lowir_model::SymbolId> & tls_wrappers,
                   const FunctionSignatureIndex & signatures,
-                  session_detail::LiteralIdentityMap & literals,
+                  session_detail::StringIdentityMap & strings,
                   lowir_native::Stats * stats)
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
-      signatures_(signatures), literals_(literals), stats_(stats),
+      signatures_(signatures), strings_(strings), stats_(stats),
       facts_(analyze_function(source, program.strings)),
       control_flow_(source), position_(0)
   {
@@ -182,7 +182,7 @@ private:
   const std::vector<unsigned char> & pointer_globals_;
   const std::vector<lowir_model::SymbolId> & tls_wrappers_;
   const FunctionSignatureIndex & signatures_;
-  session_detail::LiteralIdentityMap & literals_;
+  session_detail::StringIdentityMap & strings_;
   lowir_native::Stats * stats_;
   FunctionFacts facts_;
   StorageFacts storage_facts_;
@@ -217,7 +217,7 @@ private:
     frame_bytes_ += abi::frame_storage_size(type);
     mir_model::MirFrameBinding binding;
     binding.kind = kind;
-    binding.name = name;
+    binding.name = strings_.intern(name);
     binding.offset = -static_cast<long long>(frame_bytes_);
     binding.type = type;
     target_.frame_bindings.push_back(binding);
@@ -233,7 +233,7 @@ private:
       throw std::runtime_error("too many native frame bindings");
     mir_model::MirFrameBinding binding;
     binding.kind = kind;
-    binding.name = name;
+    binding.name = strings_.intern(name);
     binding.offset = offset;
     binding.type = type;
     target_.frame_bindings.push_back(binding);
@@ -369,7 +369,7 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = parameter.name;
+      binding.name = strings_.intern(parameter.name);
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -459,7 +459,7 @@ private:
       const lowir_model::LowirParameter & parameter =
         source_.params[piece.parameter_index];
       mir_model::MirParamBinding binding;
-      binding.name = parameter.name;
+      binding.name = strings_.intern(parameter.name);
       binding.type = parameter.type.kind == lowir_model::LTK_OBJECT ||
         wide::is_integer(parameter.type) ?
         piece.type : parameter.type;
@@ -535,7 +535,7 @@ private:
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
-      binding.name = parameter.name;
+      binding.name = strings_.intern(parameter.name);
       binding.type = parameter.type;
       ValueFact value;
       value.type = parameter.type;
@@ -728,7 +728,7 @@ private:
     if(operand.kind == Operand::OP_INTEGER)
       return immediate(integer_value(operand));
     if(operand.kind == Operand::OP_FLOAT)
-      return float_immediate(literals_.map(operand.literal));
+      return float_immediate(strings_.map(operand.literal));
     if(operand.kind == Operand::OP_GLOBAL)
       return global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
@@ -1347,7 +1347,7 @@ private:
   {
     const MirOperand destination = allocate_float_result(instruction.dest, instruction.type);
     append_float_move(out, destination,
-                      float_immediate(literals_.map(instruction.first.literal)),
+                      float_immediate(strings_.map(instruction.first.literal)),
                       instruction.type);
     define(instruction.dest, instruction.type, destination);
   }
@@ -2990,11 +2990,11 @@ mir_model::MirFunction session_detail::lower_native_function(
     const std::vector<unsigned char> & pointer_globals,
     const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
-    session_detail::LiteralIdentityMap & literals,
+    session_detail::StringIdentityMap & strings,
     lowir_native::Stats * stats)
 {
   return FunctionLowerer(program, function, pointer_globals, tls_wrappers,
-                         signatures, literals, stats).lower();
+                         signatures, strings, stats).lower();
 }
 
 }  // namespace lowir_native
