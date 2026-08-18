@@ -74,8 +74,8 @@ protected:
     }
     const mir_model::MirOperand destination = build::reg_operand(
       derived.allocate_result(instruction.dest, out));
-    const std::string & scalar_type = lowir_model::builtin_lowir_type(
-      instruction.type.kind).text;
+    const std::string scalar_type = lowir_model::lowir_type_text(
+      lowir_model::builtin_lowir_type(instruction.type.kind));
     build::append_load(out, destination, build::dereference(XR_R8),
                        scalar_type);
     derived.normalize_integer(instruction.type, destination, out);

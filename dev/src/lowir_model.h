@@ -118,7 +118,6 @@ enum LowTypeKind
 
 struct LowType
 {
-  std::string text;
   LowTypeKind kind = LTK_INVALID;
   std::size_t bit_width = 0;
   std::size_t storage_size = 0;
@@ -126,6 +125,7 @@ struct LowType
 };
 
 const LowType & builtin_lowir_type(LowTypeKind kind);
+std::string lowir_type_text(const LowType & type);
 bool same_lowir_type(const LowType & left, const LowType & right);
 
 struct Operand

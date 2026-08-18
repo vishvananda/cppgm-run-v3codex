@@ -71,8 +71,6 @@ lowir_model::LowType AdaptType(const LowType& type)
 		result.bit_width = static_cast<std::size_t>(type.width);
 		result.storage_size = static_cast<std::size_t>(type.width / 8);
 		result.alignment = type.alignment;
-		result.text = "obj<" + std::to_string(result.storage_size) + "x" +
-			std::to_string(result.alignment) + ">";
 		return result;
 	}
 	case LOW_INVALID: break;

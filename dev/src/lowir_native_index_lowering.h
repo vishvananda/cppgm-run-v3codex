@@ -218,7 +218,7 @@ materialize_index:
     const lowir_model::LowType pointer_type =
       lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
     if(pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, pointer_type.text);
+      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(pointer_type));
     lowerer.define(
       instruction.dest, pointer_type,
       pressure_home.kind == mir_model::MirOperand::OP_FRAME ?

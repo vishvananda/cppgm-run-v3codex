@@ -32,7 +32,7 @@ protected:
 		std::vector<mir_model::MirInstruction>& out)
 	{
 		using namespace build;
-		mir_model::MirInstruction atomic = machine_instruction(opcode, type.text);
+		mir_model::MirInstruction atomic = machine_instruction(opcode, lowir_model::lowir_type_text(type));
 		append_operand(atomic, address);
 		append_operand(atomic, reg_operand(source));
 		out.push_back(atomic);
@@ -61,7 +61,7 @@ protected:
 				block, instruction_index, instruction.dest) ? reg_operand(XR_RAX) :
 			reg_operand(derived.allocate_result(instruction.dest, out));
 		append_load(out, destination,
-			derived.materialized_storage(instruction.first, out), instruction.type.text);
+			derived.materialized_storage(instruction.first, out), lowir_model::lowir_type_text(instruction.type));
 		derived.normalize_integer(instruction.type, destination, out);
 		derived.consume(instruction.first, destination.reg);
 		derived.consume(instruction.args[0]);
@@ -86,7 +86,7 @@ protected:
 		if (sequential)
 			append_atomic(mir_model::MirInstruction::MI_XCHG,
 				instruction.type, address, XR_RAX, out);
-		else append_store(out, address, value, instruction.type.text);
+		else append_store(out, address, value, lowir_model::lowir_type_text(instruction.type));
 		derived.consume(instruction.first);
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
@@ -124,7 +124,7 @@ protected:
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
 		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, destination, instruction.type.text);
+			append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
 		derived.define(instruction.dest, instruction.type,
 			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
 			pressure_home : destination);
@@ -168,7 +168,7 @@ protected:
 		derived.consume(instruction.second);
 		derived.consume(instruction.args[0]);
 		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-			append_store(out, pressure_home, destination, instruction.type.text);
+			append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
 		derived.define(instruction.dest, instruction.type,
 			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
 			pressure_home : destination);
@@ -213,12 +213,12 @@ protected:
 		}
 		derived.emit_parallel_gpr_moves(moves, out);
 		append_load(out, reg_operand(XR_RAX), dereference(XR_RDX),
-			instruction.type.text);
+			lowir_model::lowir_type_text(instruction.type));
 		derived.emit_gpr_move(desired, out);
 		append_atomic(mir_model::MirInstruction::MI_LOCK_CMPXCHG,
 			instruction.type, dereference(XR_RCX), XR_RSI, out);
 		append_store(out, dereference(XR_RDX), reg_operand(XR_RAX),
-			instruction.type.text);
+			lowir_model::lowir_type_text(instruction.type));
 		mir_model::MirInstruction equal =
 			machine_instruction(mir_model::MirInstruction::MI_SETCC);
 		equal.condition = XC_E;

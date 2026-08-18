@@ -610,6 +610,26 @@ peak RSS.  One late baseline run was heavily host-loaded; the interleaved
 median and the unchanged output hash are retained, but cumulative timing will
 be remeasured after the larger type and identity slices.
 
+### CI2: typed LowIR type identity
+
+The second Phase 1 slice removes `LowType::text`.  Type kind, width, storage,
+and alignment are now the sole internal facts; the textual spelling is formed
+only by `lowir_type_text` at LowIR/MIR serialization, diagnostic, and the
+still-textual MIR compatibility boundary.  Private compiler-object payloads
+retain their exact historical type spelling, but decoding discards that
+presentation field immediately.
+
+`LowType` falls from 64 to 32 bytes, `Operand` from 144 to 112 bytes, and
+`Instruction` from 848 to 656 bytes.  The frozen object remains byte-identical
+with the same SHA-256.  PA13, PA15, PA29, PA30, PA31, PA32, PA37, and PA38
+report 825/825 passing tests.
+
+Three A/B/B/A blocks against `dec6dd59` produced baseline/candidate medians of
+5.755/5.590 seconds user, 6.340/6.130 seconds wall, and 364,280/365,316 KiB
+peak RSS.  One candidate and one adjacent baseline sample were host-loaded;
+the interleaved median remains favorable, while the small RSS difference is
+inside observed noise because semantic analysis still owns the process peak.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

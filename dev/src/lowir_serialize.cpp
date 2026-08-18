@@ -101,7 +101,7 @@ void write_parameter_metadata(std::ostream & out, const ParameterMetadata & valu
 
 void write_parameter(std::ostream & out, const Parameter & parameter)
 {
-  out << parameter.name << " : " << parameter.type.text;
+  out << parameter.name << " : " << lowir_type_text(parameter.type);
   write_parameter_metadata(out, parameter.metadata);
 }
 
@@ -222,7 +222,7 @@ const char * projection_name(IndexProjectionKind projection)
 void write_call(std::ostream & out, const Instruction & ins)
 {
   if(!ins.dest.empty()) out << ins.dest << " = ";
-  out << "call " << (ins.call_returns_void ? "void" : ins.type.text) << ' ';
+  out << "call " << (ins.call_returns_void ? "void" : lowir_type_text(ins.type)) << ' ';
   write_operand(out, ins.first);
   out << '(';
   for(std::size_t i = 0; i < ins.args.size(); ++i) {
@@ -233,7 +233,7 @@ void write_call(std::ostream & out, const Instruction & ins)
   if(ins.has_call_signature) {
     out << " as ";
     write_parameters(out, ins.call_params);
-    out << " -> " << ins.call_return_type.text;
+    out << " -> " << lowir_type_text(ins.call_return_type);
     MetadataWriter metadata(out);
     write_boundary_metadata(metadata, ins.call_boundary);
     metadata.finish();
@@ -244,53 +244,53 @@ void write_instruction(std::ostream & out, const Instruction & ins)
 {
   switch(ins.kind) {
   case Instruction::IK_CONST:
-    out << ins.dest << " = const " << ins.type.text << ' ';
+    out << ins.dest << " = const " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); break;
   case Instruction::IK_COPY:
-    out << ins.dest << " = copy " << ins.type.text << ' ';
+    out << ins.dest << " = copy " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); break;
   case Instruction::IK_ADDR:
     out << ins.dest << " = addr "; write_operand(out, ins.first); break;
   case Instruction::IK_LOAD:
-    out << ins.dest << " = load " << ins.type.text << ' ';
+    out << ins.dest << " = load " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); break;
   case Instruction::IK_ATOMIC_LOAD:
-    out << ins.dest << " = atomic_load " << ins.type.text << ' ';
+    out << ins.dest << " = atomic_load " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); out << ", "; write_operand(out, ins.args.at(0)); break;
   case Instruction::IK_STORE:
-    out << "store " << ins.type.text << ' '; write_operand(out, ins.first);
+    out << "store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first);
     out << ", "; write_operand(out, ins.second); break;
   case Instruction::IK_ATOMIC_STORE:
-    out << "atomic_store " << ins.type.text << ' '; write_operand(out, ins.first);
+    out << "atomic_store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first);
     out << ", "; write_operand(out, ins.second); out << ", ";
     write_operand(out, ins.args.at(0)); break;
   case Instruction::IK_ATOMIC_EXCHANGE:
-    out << ins.dest << " = atomic_exchange " << ins.type.text << ' ';
+    out << ins.dest << " = atomic_exchange " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); out << ", "; write_operand(out, ins.second);
     out << ", "; write_operand(out, ins.args.at(0)); break;
   case Instruction::IK_INDEX:
-    out << ins.dest << " = index " << ins.type.text;
+    out << ins.dest << " = index " << lowir_type_text(ins.type);
     if(const char * projection = projection_name(ins.index_projection))
       out << " [projection=" << projection << ']';
     out << ' '; write_operand(out, ins.first); out << ", ";
     write_operand(out, ins.second); break;
   case Instruction::IK_UNARY:
-    out << ins.dest << " = unary " << ins.op << ' ' << ins.type.text << ' ';
+    out << ins.dest << " = unary " << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); break;
   case Instruction::IK_BINARY:
   case Instruction::IK_CMP:
     out << ins.dest << (ins.kind == Instruction::IK_BINARY ? " = binary " : " = cmp ")
-        << ins.op << ' ' << ins.type.text << ' ';
+        << ins.op << ' ' << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); out << ", "; write_operand(out, ins.second); break;
   case Instruction::IK_CONVERT:
-    out << ins.dest << " = convert " << ins.op << ' ' << ins.type.text << ' '
-        << ins.source_type.text << ' '; write_operand(out, ins.first); break;
+    out << ins.dest << " = convert " << ins.op << ' ' << lowir_type_text(ins.type) << ' '
+        << lowir_type_text(ins.source_type) << ' '; write_operand(out, ins.first); break;
   case Instruction::IK_ATOMIC_ADD_FETCH:
-    out << ins.dest << " = atomic_add_fetch " << ins.type.text << ' ';
+    out << ins.dest << " = atomic_add_fetch " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); out << ", "; write_operand(out, ins.second);
     out << ", "; write_operand(out, ins.args.at(0)); break;
   case Instruction::IK_ATOMIC_COMPARE_EXCHANGE:
-    out << ins.dest << " = atomic_compare_exchange " << ins.type.text << ' ';
+    out << ins.dest << " = atomic_compare_exchange " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); out << ", "; write_operand(out, ins.second);
     out << ", "; write_operand(out, ins.third); out << ", ";
     write_operand(out, ins.args.at(0)); out << ", "; write_operand(out, ins.args.at(1)); break;
@@ -302,7 +302,7 @@ void write_instruction(std::ostream & out, const Instruction & ins)
   case Instruction::IK_VA_START:
     out << "va_start "; write_operand(out, ins.first); break;
   case Instruction::IK_VA_ARG:
-    out << ins.dest << " = va_arg " << ins.type.text << ' ';
+    out << ins.dest << " = va_arg " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first); break;
   case Instruction::IK_STACK_ALLOC:
     out << ins.dest << " = stack_alloc "; write_operand(out, ins.first); break;
@@ -335,11 +335,11 @@ void write_instruction(std::ostream & out, const Instruction & ins)
     break;
   case Instruction::IK_EH_END: out << "eh_end"; break;
   case Instruction::IK_THROW:
-    out << "throw " << ins.type.text << ' '; write_operand(out, ins.first); break;
+    out << "throw " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first); break;
   case Instruction::IK_EXCEPTION:
-    out << ins.dest << " = exception " << ins.type.text; break;
+    out << ins.dest << " = exception " << lowir_type_text(ins.type); break;
   case Instruction::IK_EXCEPTION_SELECTOR:
-    out << ins.dest << " = exception_selector " << ins.type.text; break;
+    out << ins.dest << " = exception_selector " << lowir_type_text(ins.type); break;
   case Instruction::IK_RESUME: out << "resume"; break;
   case Instruction::IK_JUMP:
     out << "jump "; write_operand(out, ins.first); break;
@@ -355,7 +355,7 @@ void write_instruction(std::ostream & out, const Instruction & ins)
     }
     break;
   case Instruction::IK_RETURN:
-    out << "return " << ins.type.text;
+    out << "return " << lowir_type_text(ins.type);
     if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first); }
     break;
   }
@@ -365,7 +365,7 @@ void write_instruction(std::ostream & out, const Instruction & ins)
 void write_global_declaration(std::ostream & out, const GlobalDeclaration & item)
 {
   out << "declare global " << item.name;
-  if(item.has_type) out << " : " << item.type.text;
+  if(item.has_type) out << " : " << lowir_type_text(item.type);
   write_global_metadata(out, item.storage, item.metadata);
   out << '\n';
 }
@@ -375,7 +375,7 @@ void write_function_declaration(std::ostream & out,
 {
   out << "declare function " << item.name;
   write_parameters(out, item.params);
-  out << " -> " << item.return_type.text;
+  out << " -> " << lowir_type_text(item.return_type);
   write_function_metadata(out, item.boundary, item.metadata);
   out << '\n';
 }
@@ -383,7 +383,7 @@ void write_function_declaration(std::ostream & out,
 void write_global(std::ostream & out, const GlobalDefinition & item)
 {
   out << "global " << item.name;
-  if(!item.structured) out << " : " << item.type.text;
+  if(!item.structured) out << " : " << lowir_type_text(item.type);
   write_global_metadata(out, item.storage, item.metadata);
   out << " = ";
   if(item.structured) {
@@ -394,11 +394,11 @@ void write_global(std::ostream & out, const GlobalDefinition & item)
       if(data.kind == GlobalDefinition::DataItem::ITEM_ZERO)
         out << "zero " << data.zero_bytes;
       else if(data.kind == GlobalDefinition::DataItem::ITEM_ADDR) {
-        out << data.type.text << " addr " << data.symbol;
+        out << lowir_type_text(data.type) << " addr " << data.symbol;
         if(data.addr_addend > 0) out << " + " << data.addr_addend;
         else if(data.addr_addend < 0) out << " - " << -data.addr_addend;
       } else {
-        out << data.type.text << ' ';
+        out << lowir_type_text(data.type) << ' ';
         write_operand(out, data.literal_operand);
       }
       out << '\n';
@@ -421,13 +421,13 @@ void write_function(std::ostream & out, const Function & function)
 {
   out << "function " << function.name;
   write_parameters(out, function.params);
-  out << " -> " << function.return_type.text;
+  out << " -> " << lowir_type_text(function.return_type);
   write_function_metadata(out, function.boundary, function.metadata);
   write_debug(out, function.debug_location);
   out << " {\n";
   for(std::size_t i = 0; i < function.slots.size(); ++i)
     out << "  slot " << function.slots[i].first << " : "
-        << function.slots[i].second.text << '\n';
+        << lowir_type_text(function.slots[i].second) << '\n';
   if(!function.slots.empty()) out << '\n';
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     if(i) out << '\n';

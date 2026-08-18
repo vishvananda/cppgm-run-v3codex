@@ -227,7 +227,7 @@ Enum ReadEnum(Reader& in)
 
 void WriteType(Writer& out, const lowir_model::LowType& value)
 {
-	out.String(value.text);
+	out.String(lowir_model::lowir_type_text(value));
 	WriteEnum(out, value.kind);
 	out.U64(value.bit_width);
 	out.U64(value.storage_size);
@@ -237,7 +237,7 @@ void WriteType(Writer& out, const lowir_model::LowType& value)
 lowir_model::LowType ReadType(Reader& in)
 {
 	lowir_model::LowType value;
-	value.text = in.String();
+	(void)in.String();
 	value.kind = ReadEnum<lowir_model::LowTypeKind>(in);
 	value.bit_width = in.Size();
 	value.storage_size = in.Size();

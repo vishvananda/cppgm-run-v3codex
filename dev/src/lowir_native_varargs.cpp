@@ -9,7 +9,6 @@ namespace {
 lowir_model::LowType make_register_save_type()
 {
   lowir_model::LowType type;
-  type.text = "obj<176x16>";
   type.kind = lowir_model::LTK_OBJECT;
   type.bit_width = 176 * 8;
   type.storage_size = 176;

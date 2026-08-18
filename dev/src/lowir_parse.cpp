@@ -156,12 +156,10 @@ void parse_span_text(const std::string & text, std::size_t & bytes,
     throw ParseError("object alignment is not a power of two");
 }
 
-LowType make_builtin_type(const char * text, LowTypeKind kind,
-                          std::size_t bit_width, std::size_t storage_size,
-                          std::size_t alignment)
+LowType make_builtin_type(LowTypeKind kind, std::size_t bit_width,
+                          std::size_t storage_size, std::size_t alignment)
 {
   LowType result;
-  result.text = text;
   result.kind = kind;
   result.bit_width = bit_width;
   result.storage_size = storage_size;
@@ -186,7 +184,6 @@ LowType parse_type_text(const std::string & text)
     parse_span_text(text.substr(4, text.size() - 5), bytes, alignment);
     if(alignment > bytes) throw ParseError("object alignment exceeds size");
     LowType result;
-    result.text = text;
     result.kind = LTK_OBJECT;
     result.storage_size = bytes;
     result.alignment = alignment;
@@ -1515,20 +1512,20 @@ std::size_t lowir_operation_hash(LowOperation operation)
 
 const LowType & builtin_lowir_type(LowTypeKind kind)
 {
-  static const LowType void_type = make_builtin_type("void", LTK_VOID, 0, 0, 1);
-  static const LowType i1_type = make_builtin_type("i1", LTK_I1, 1, 1, 1);
-  static const LowType i8_type = make_builtin_type("i8", LTK_I8, 8, 1, 1);
-  static const LowType u8_type = make_builtin_type("u8", LTK_U8, 8, 1, 1);
-  static const LowType i16_type = make_builtin_type("i16", LTK_I16, 16, 2, 2);
-  static const LowType u16_type = make_builtin_type("u16", LTK_U16, 16, 2, 2);
-  static const LowType i32_type = make_builtin_type("i32", LTK_I32, 32, 4, 4);
-  static const LowType u32_type = make_builtin_type("u32", LTK_U32, 32, 4, 4);
-  static const LowType i64_type = make_builtin_type("i64", LTK_I64, 64, 8, 8);
-  static const LowType i128_type = make_builtin_type("i128", LTK_I128, 128, 16, 16);
-  static const LowType f32_type = make_builtin_type("f32", LTK_F32, 32, 4, 4);
-  static const LowType f64_type = make_builtin_type("f64", LTK_F64, 64, 8, 8);
-  static const LowType f80_type = make_builtin_type("f80", LTK_F80, 80, 16, 16);
-  static const LowType ptr_type = make_builtin_type("ptr", LTK_PTR, 64, 8, 8);
+  static const LowType void_type = make_builtin_type(LTK_VOID, 0, 0, 1);
+  static const LowType i1_type = make_builtin_type(LTK_I1, 1, 1, 1);
+  static const LowType i8_type = make_builtin_type(LTK_I8, 8, 1, 1);
+  static const LowType u8_type = make_builtin_type(LTK_U8, 8, 1, 1);
+  static const LowType i16_type = make_builtin_type(LTK_I16, 16, 2, 2);
+  static const LowType u16_type = make_builtin_type(LTK_U16, 16, 2, 2);
+  static const LowType i32_type = make_builtin_type(LTK_I32, 32, 4, 4);
+  static const LowType u32_type = make_builtin_type(LTK_U32, 32, 4, 4);
+  static const LowType i64_type = make_builtin_type(LTK_I64, 64, 8, 8);
+  static const LowType i128_type = make_builtin_type(LTK_I128, 128, 16, 16);
+  static const LowType f32_type = make_builtin_type(LTK_F32, 32, 4, 4);
+  static const LowType f64_type = make_builtin_type(LTK_F64, 64, 8, 8);
+  static const LowType f80_type = make_builtin_type(LTK_F80, 80, 16, 16);
+  static const LowType ptr_type = make_builtin_type(LTK_PTR, 64, 8, 8);
 
   switch(kind) {
   case LTK_VOID: return void_type;
@@ -1547,6 +1544,31 @@ const LowType & builtin_lowir_type(LowTypeKind kind)
   case LTK_PTR: return ptr_type;
   default: throw ParseError("invalid built-in LowIR type identity");
   }
+}
+
+std::string lowir_type_text(const LowType & type)
+{
+  switch(type.kind) {
+  case LTK_INVALID: return std::string();
+  case LTK_VOID: return "void";
+  case LTK_I1: return "i1";
+  case LTK_I8: return "i8";
+  case LTK_U8: return "u8";
+  case LTK_I16: return "i16";
+  case LTK_U16: return "u16";
+  case LTK_I32: return "i32";
+  case LTK_U32: return "u32";
+  case LTK_I64: return "i64";
+  case LTK_I128: return "i128";
+  case LTK_F32: return "f32";
+  case LTK_F64: return "f64";
+  case LTK_F80: return "f80";
+  case LTK_PTR: return "ptr";
+  case LTK_OBJECT:
+    return "obj<" + std::to_string(type.storage_size) + "x" +
+      std::to_string(type.alignment) + ">";
+  }
+  throw ParseError("invalid compact LowIR type identity");
 }
 
 bool InstructionDebugLocation::present() const

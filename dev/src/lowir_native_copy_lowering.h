@@ -92,7 +92,7 @@ protected:
       lowerer.normalize_integer(instruction.type, destination, out);
     lowerer.consume(instruction.first, destination.reg);
     if(pressure_home.kind == mir_model::MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, instruction.type.text);
+      append_store(out, pressure_home, destination, lowir_model::lowir_type_text(instruction.type));
     lowerer.define(instruction.dest, instruction.type,
       pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
         pressure_home : destination);

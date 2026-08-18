@@ -247,7 +247,7 @@ protected:
 				append_operand(lea, derived.storage(instruction.first));
 				out.push_back(lea);
 				if (destination.kind == mir_model::MirOperand::OP_FRAME)
-					append_store(out, destination, target, pointer_type.text);
+					append_store(out, destination, target, lowir_model::lowir_type_text(pointer_type));
 			}
 		}
 		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
@@ -313,7 +313,7 @@ protected:
 					instruction.dest, pointer_type);
 				append_move(out, reg_operand(XR_RAX),
 					derived.resolve(instruction.first));
-				append_store(out, destination, reg_operand(XR_RAX), pointer_type.text);
+				append_store(out, destination, reg_operand(XR_RAX), lowir_model::lowir_type_text(pointer_type));
 			}
 		}
 		derived.define(instruction.dest, pointer_type, destination);

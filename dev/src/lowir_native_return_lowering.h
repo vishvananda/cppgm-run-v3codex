@@ -56,7 +56,7 @@ protected:
 							instruction.type.storage_size - chunk * 8);
 					append_load(out, reg_operand(chunk ? XR_RDX : XR_RAX),
 						dereference(XR_R11,
-							static_cast<long long>(chunk * 8)), chunk_type.text);
+							static_cast<long long>(chunk * 8)), lowir_model::lowir_type_text(chunk_type));
 				}
 			}
 		}
@@ -74,7 +74,7 @@ protected:
 				source = converted;
 			}
 			mir_model::MirInstruction result = machine_instruction(
-				mir_model::MirInstruction::MI_FRET, instruction.type.text);
+				mir_model::MirInstruction::MI_FRET, lowir_model::lowir_type_text(instruction.type));
 			append_operand(result, source);
 			out.push_back(result);
 			lowerer.consume(instruction.first);
@@ -89,7 +89,7 @@ protected:
 					instruction.type);
 			else
 				append_float_move(out, xmm_operand(XMM_0),
-					lowerer.resolve(instruction.first), instruction.type.text);
+					lowerer.resolve(instruction.first), lowir_model::lowir_type_text(instruction.type));
 		}
 		else if (instruction.type.kind != lowir_model::LTK_VOID)
 		{
