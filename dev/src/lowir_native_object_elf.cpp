@@ -1130,8 +1130,10 @@ void collect_host_symbols(
   std::vector<unsigned char> defined_objects(program.strings.size() + 1, 0);
   const auto mark_defined = [&defined, &defined_objects](
       const HostSymbol & symbol) {
-    defined.insert(symbol.name);
-    if(!symbol.object_symbol.valid()) return;
+    if(!symbol.object_symbol.valid()) {
+      if(!symbol.program_symbol.valid()) defined.insert(symbol.name);
+      return;
+    }
     const std::uint32_t object = symbol.object_symbol;
     if(object >= defined_objects.size())
       throw std::logic_error("invalid defined object-symbol identity");
@@ -1185,7 +1187,6 @@ void collect_host_symbols(
         if(declared_tls_objects[object]) symbol.type = 6;
         add_unique_symbol(globals, global_index, symbol);
         defined_objects[object] = 1;
-        defined.insert(symbol.name);
         continue;
       }
       if(section_symbols.count(relocations[i].target) ||
@@ -1224,19 +1225,23 @@ std::vector<unsigned char> host_external_global_definitions(
     const lowir_model::LowirProgram & source,
     const mir_model::MirProgram & program)
 {
-  std::unordered_set<std::string> external_objects;
+  std::vector<unsigned char> external_objects(source.strings.size() + 1, 0);
   for(std::size_t i = 0; i < source.global_declarations.size(); ++i)
     if(source.global_declarations[i].metadata.role ==
          lowir_model::SR_RTTI_DATA &&
-       source.global_declarations[i].metadata.object_symbol.valid())
-      external_objects.insert(
-        source.strings.get(
-          source.global_declarations[i].metadata.object_symbol));
+       source.global_declarations[i].metadata.object_symbol.valid()) {
+      const std::uint32_t object =
+        source.global_declarations[i].metadata.object_symbol;
+      if(object >= external_objects.size())
+        throw std::logic_error("invalid external RTTI object identity");
+      external_objects[object] = 1;
+    }
   std::vector<unsigned char> suppressed(program.symbol_names.size(), 0);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
-    if(!global.object_symbol.valid() || !external_objects.count(
-         mir_model::mir_string(program, global.object_symbol))) continue;
+    const std::uint32_t object = global.object_symbol;
+    if(!global.object_symbol.valid() || object >= external_objects.size() ||
+       !external_objects[object]) continue;
     suppressed[global.symbol] = 1;
     for(std::size_t j = 0; j < global.data_items.size(); ++j)
       if(global.data_items[j].kind ==

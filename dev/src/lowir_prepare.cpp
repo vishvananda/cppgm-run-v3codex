@@ -34,11 +34,7 @@ void canonicalize_frontend_symbol(const Program& program, SymbolId symbol,
 	if (metadata->linkage == LLM_CPP) metadata->linkage = LLM_DEFAULT;
 	if (metadata->binding == SBM_INTERNAL ||
 		!metadata->object_symbol.valid()) return;
-	const std::string& name = program.strings.get(
-		lowir_symbol_spelling(program, symbol));
-	const std::string& object_name =
-		program.strings.get(metadata->object_symbol);
-	if (name == object_name)
+	if (lowir_symbol_spelling(program, symbol) == metadata->object_symbol)
 		metadata->object_symbol = StringId();
 }
 
