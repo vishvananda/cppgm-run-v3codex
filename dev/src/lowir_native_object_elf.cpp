@@ -345,8 +345,7 @@ std::vector<EncodedSection> partition_weak_text(
       if(object >= emitted_weak_objects.size())
         throw std::logic_error("invalid weak signature identity");
       EncodedSection grouped;
-      const std::string & signature_name = program.strings.get(signature);
-      grouped.name = ".text." + signature_name;
+      grouped.name = SectionIdentity(SK_TEXT_COMDAT, signature);
       grouped.comdat_signature = signature;
       grouped.flags = source.flags | 0x200;
       grouped.alignment = 2;
@@ -422,7 +421,7 @@ std::vector<EncodedSection> partition_weak_text(
 
 struct HostSection
 {
-  std::string name;
+  SectionIdentity name;
   std::uint32_t type = 1;
   std::uint64_t flags = 0;
   std::size_t alignment = 1;
@@ -459,11 +458,11 @@ void append_little(std::vector<unsigned char> & out, std::uint64_t value,
 
 HostSection make_host_lifecycle_array(
     const lowir_model::LowirProgram & program,
-    lowir_model::SymbolRole role, const std::string & name,
+    lowir_model::SymbolRole role, SectionKind kind,
     std::uint32_t type, std::vector<HostRelocation> & relocations)
 {
   HostSection section;
-  section.name = name;
+  section.name = SectionIdentity(kind);
   section.type = type;
   section.flags = 3;
   section.alignment = 8;
@@ -548,7 +547,7 @@ HostSection make_host_lsda(
     std::vector<HostRelocation> & relocations)
 {
   HostSection section;
-  section.name = ".gcc_except_table";
+  section.name = SectionIdentity(SK_GCC_EXCEPT_TABLE);
   section.flags = 2;
   section.alignment = 4;
   for(std::size_t i = 0; i < functions.size(); ++i) {
@@ -755,7 +754,7 @@ HostSection make_host_eh_frame(
     std::vector<HostRelocation> & relocations)
 {
   HostSection section;
-  section.name = ".eh_frame";
+  section.name = SectionIdentity(SK_EH_FRAME);
   section.flags = 2;
   section.alignment = 8;
   const std::size_t basic_cie = append_cie(section, false, relocations);
@@ -1399,6 +1398,59 @@ std::size_t add_string(std::vector<unsigned char> & strings,
   return offset;
 }
 
+void append_c_string(std::vector<unsigned char> & out, const char * text)
+{
+  while(*text) out.push_back(static_cast<unsigned char>(*text++));
+}
+
+const char * fixed_section_name(SectionKind kind)
+{
+  switch(kind) {
+  case SK_TEXT: return ".text";
+  case SK_DATA: return ".data";
+  case SK_TDATA: return ".tdata";
+  case SK_INIT_ARRAY: return ".init_array";
+  case SK_FINI_ARRAY: return ".fini_array";
+  case SK_GCC_EXCEPT_TABLE: return ".gcc_except_table";
+  case SK_EH_FRAME: return ".eh_frame";
+  case SK_NOTE_GNU_STACK: return ".note.GNU-stack";
+  case SK_SYMTAB: return ".symtab";
+  case SK_STRTAB: return ".strtab";
+  case SK_SHSTRTAB: return ".shstrtab";
+  case SK_GROUP: return ".group";
+  default: return 0;
+  }
+}
+
+std::size_t add_section_string(
+    std::vector<unsigned char> & strings,
+    const SectionIdentity & identity,
+    const lowir_model::StringPool & spellings)
+{
+  if(identity.kind == SK_NONE)
+    throw std::logic_error("ELF section has no identity");
+  const std::size_t offset = strings.size();
+  if(identity.relocation) append_c_string(strings, ".rela");
+  if(identity.kind == SK_TEXT_COMDAT) {
+    if(!identity.spelling.valid())
+      throw std::logic_error("COMDAT text section has no spelling identity");
+    append_c_string(strings, ".text.");
+    const std::string & suffix = spellings.get(identity.spelling);
+    strings.insert(strings.end(), suffix.begin(), suffix.end());
+  } else if(identity.kind == SK_CUSTOM) {
+    if(!identity.spelling.valid())
+      throw std::logic_error("custom section has no spelling identity");
+    const std::string & name = spellings.get(identity.spelling);
+    strings.insert(strings.end(), name.begin(), name.end());
+  } else {
+    const char * name = fixed_section_name(identity.kind);
+    if(!name) throw std::logic_error("invalid fixed ELF section identity");
+    append_c_string(strings, name);
+  }
+  strings.push_back(0);
+  return offset;
+}
+
 std::size_t add_symbol_string(std::vector<unsigned char> & strings,
                               const HostSymbol & symbol)
 {
@@ -1412,7 +1464,7 @@ std::size_t add_symbol_string(std::vector<unsigned char> & strings,
 std::vector<unsigned char> make_symbol_table(
     const std::vector<HostSymbol> & locals,
     const std::vector<HostSymbol> & globals,
-    const std::vector<std::pair<std::string, std::uint16_t> > & section_symbols,
+    const std::vector<std::uint16_t> & section_symbols,
     std::vector<unsigned char> & strings,
     std::unordered_map<std::string, std::size_t> & indexes,
     std::vector<std::size_t> & section_indexes,
@@ -1425,14 +1477,14 @@ std::vector<unsigned char> make_symbol_table(
   std::vector<unsigned char> table(24, 0);
   for(std::size_t i = 0; i < section_symbols.size(); ++i) {
     const std::size_t index = table.size() / 24;
-    const std::uint16_t section = section_symbols[i].second;
+    const std::uint16_t section = section_symbols[i];
     if(section >= section_indexes.size())
       throw std::logic_error("invalid ELF section-symbol identity");
     section_indexes[section] = index;
     append_little(table, 0, 4);
     table.push_back(3);
     table.push_back(0);
-    append_little(table, section_symbols[i].second, 2);
+    append_little(table, section, 2);
     append_little(table, 0, 8);
     append_little(table, 0, 8);
   }
@@ -1578,7 +1630,7 @@ void append_function_comdat_groups(
        object_symbol_indexes[object] == lowir_model::kInvalidCompactId)
       throw std::logic_error("function COMDAT has no signature symbol");
     HostSection group;
-    group.name = ".group";
+    group.name = SectionIdentity(SK_GROUP);
     group.type = 17;
     group.alignment = 4;
     group.entry_size = 4;
@@ -1641,8 +1693,7 @@ void record_final_elf_storage(Stats * stats,
   stats->final_elf_live_bytes = image.capacity() +
     sections.capacity() * sizeof(HostSection);
   for(std::size_t i = 1; i < sections.size(); ++i)
-    stats->final_elf_live_bytes += sections[i].bytes.capacity() +
-      sections[i].name.capacity();
+    stats->final_elf_live_bytes += sections[i].bytes.capacity();
 }
 
 }  // namespace
@@ -1699,11 +1750,11 @@ std::vector<unsigned char> make_linux_relocatable_image(
     };
   const auto append_relocations =
     [&append_section, &pending_relocations, &sections](
-      const std::string & name, std::uint16_t target,
+      SectionIdentity name, std::uint16_t target,
       const std::vector<HostRelocation> & relocations) -> std::uint16_t {
       if(relocations.empty()) return 0;
       HostSection section;
-      section.name = ".rela" + name;
+      section.name = name.relocation_identity();
       section.type = 4;
       section.flags = 0x40 |
         ((sections[target].flags & 0x200) ? 0x200 : 0);
@@ -1745,7 +1796,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   }
   std::vector<HostRelocation> init_array_relocations;
   HostSection init_array = make_host_lifecycle_array(
-    program, lowir_model::SR_INIT, ".init_array", 14,
+    program, lowir_model::SR_INIT, SK_INIT_ARRAY, 14,
     init_array_relocations);
   std::uint16_t init_array_index = 0;
   if(!init_array.bytes.empty()) {
@@ -1755,7 +1806,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   }
   std::vector<HostRelocation> fini_array_relocations;
   HostSection fini_array = make_host_lifecycle_array(
-    program, lowir_model::SR_FINI, ".fini_array", 15,
+    program, lowir_model::SR_FINI, SK_FINI_ARRAY, 15,
     fini_array_relocations);
   std::uint16_t fini_array_index = 0;
   if(!fini_array.bytes.empty()) {
@@ -1784,22 +1835,18 @@ std::vector<unsigned char> make_linux_relocatable_image(
                        eh_relocations,
                        locals, globals);
 
-  std::vector<std::pair<std::string, std::uint16_t> > section_symbols;
+  std::vector<std::uint16_t> section_symbols;
   for(std::size_t i = 0; i < text_sections.size(); ++i)
-    section_symbols.push_back(std::make_pair(
-      text_sections[i].name, text_indexes[i]));
+    section_symbols.push_back(text_indexes[i]);
   for(std::size_t i = 0; i < mutable_data.size(); ++i)
-    section_symbols.push_back(std::make_pair(mutable_data[i].name,
-                                             data_indexes[i]));
+    section_symbols.push_back(data_indexes[i]);
   if(init_array_index != 0)
-    section_symbols.push_back(std::make_pair(init_array.name,
-                                             init_array_index));
+    section_symbols.push_back(init_array_index);
   if(fini_array_index != 0)
-    section_symbols.push_back(std::make_pair(fini_array.name,
-                                             fini_array_index));
+    section_symbols.push_back(fini_array_index);
   if(lsda_index != 0)
-    section_symbols.push_back(std::make_pair(lsda.name, lsda_index));
-  section_symbols.push_back(std::make_pair(eh.name, eh_index));
+    section_symbols.push_back(lsda_index);
+  section_symbols.push_back(eh_index);
 
   std::vector<unsigned char> strings(1, 0);
   std::unordered_map<std::string, std::size_t> symbol_indexes;
@@ -1824,10 +1871,10 @@ std::vector<unsigned char> make_linux_relocatable_image(
 	  locals.size() + globals.size(), string_table_started);
 
   HostSection note;
-  note.name = ".note.GNU-stack";
+  note.name = SectionIdentity(SK_NOTE_GNU_STACK);
   append_section(std::move(note));
   HostSection symtab;
-  symtab.name = ".symtab";
+  symtab.name = SectionIdentity(SK_SYMTAB);
   symtab.type = 2;
   symtab.alignment = 8;
   symtab.entry_size = 24;
@@ -1836,13 +1883,13 @@ std::vector<unsigned char> make_linux_relocatable_image(
   symtab.bytes.swap(symbol_table);
   const std::uint16_t symtab_index = append_section(std::move(symtab));
   HostSection strtab;
-  strtab.name = ".strtab";
+  strtab.name = SectionIdentity(SK_STRTAB);
   strtab.type = 3;
   strtab.bytes.swap(strings);
   const std::uint16_t strtab_index = append_section(std::move(strtab));
   sections[symtab_index].link = strtab_index;
   HostSection shstrtab;
-  shstrtab.name = ".shstrtab";
+  shstrtab.name = SectionIdentity(SK_SHSTRTAB);
   shstrtab.type = 3;
   shstrtab.bytes.push_back(0);
   const std::uint16_t shstrtab_index = append_section(std::move(shstrtab));
@@ -1862,8 +1909,8 @@ std::vector<unsigned char> make_linux_relocatable_image(
 	const std::chrono::steady_clock::time_point section_strings_started = stats ?
 		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(std::size_t i = 1; i < sections.size(); ++i)
-    sections[i].name_offset = add_string(
-      sections[shstrtab_index].bytes, sections[i].name);
+    sections[i].name_offset = add_section_string(
+      sections[shstrtab_index].bytes, sections[i].name, program.strings);
 	record_section_string_table(
 		stats, sections, shstrtab_index, section_strings_started);
 

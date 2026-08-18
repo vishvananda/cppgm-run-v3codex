@@ -2657,7 +2657,7 @@ HostFunctionLayout emit_prepared_host_function(
 }
 
 EncodedSection encoded_section(CodeBuffer && source,
-                               const std::string & name,
+                               object_elf_detail::SectionIdentity name,
                                std::uint64_t flags,
                                std::size_t alignment)
 {
@@ -2778,15 +2778,15 @@ std::size_t intern_data_section(
   return index;
 }
 
-const std::string & data_section_name(
-    const lowir_model::SealedStringPool & strings,
+object_elf_detail::SectionIdentity data_section_identity(
     const DataSectionBuffer & section)
 {
-  static const std::string data = ".data";
-  static const std::string tdata = ".tdata";
-  return section.kind == DataSectionBuffer::DSK_DATA ? data :
-    section.kind == DataSectionBuffer::DSK_TDATA ? tdata :
-    strings.get(section.custom_name);
+  return section.kind == DataSectionBuffer::DSK_DATA ?
+    object_elf_detail::SectionIdentity(object_elf_detail::SK_DATA) :
+    section.kind == DataSectionBuffer::DSK_TDATA ?
+    object_elf_detail::SectionIdentity(object_elf_detail::SK_TDATA) :
+    object_elf_detail::SectionIdentity(
+      object_elf_detail::SK_CUSTOM, section.custom_name);
 }
 
 }  // namespace
@@ -2948,11 +2948,12 @@ void write_linux_relocatable(
   for(std::size_t i = 0; i < data_sections.size(); ++i)
     encoded_data_sections.push_back(encoded_section(
       std::move(data_sections[i].content),
-      data_section_name(program.strings, data_sections[i]),
+      data_section_identity(data_sections[i]),
       data_sections[i].flags, data_sections[i].alignment));
   const std::vector<unsigned char> image = make_linux_relocatable_image(
     source, std::move(host_declarations),
-    encoded_section(std::move(text), ".text", 6, 16),
+    encoded_section(std::move(text),
+      object_elf_detail::SectionIdentity(object_elf_detail::SK_TEXT), 6, 16),
     std::move(encoded_data_sections),
     functions,
     relocations,

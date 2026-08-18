@@ -47,6 +47,49 @@ struct EncodedObjectLabel
   std::size_t offset = 0;
 };
 
+enum SectionKind : std::uint8_t
+{
+  SK_NONE,
+  SK_TEXT,
+  SK_TEXT_COMDAT,
+  SK_DATA,
+  SK_TDATA,
+  SK_CUSTOM,
+  SK_INIT_ARRAY,
+  SK_FINI_ARRAY,
+  SK_GCC_EXCEPT_TABLE,
+  SK_EH_FRAME,
+  SK_NOTE_GNU_STACK,
+  SK_SYMTAB,
+  SK_STRTAB,
+  SK_SHSTRTAB,
+  SK_GROUP
+};
+
+struct SectionIdentity
+{
+  SectionKind kind = SK_NONE;
+  bool relocation = false;
+  lowir_model::StringId spelling;
+
+  SectionIdentity() {}
+  explicit SectionIdentity(SectionKind section_kind)
+    : kind(section_kind) {}
+  SectionIdentity(SectionKind section_kind,
+                  lowir_model::StringId section_spelling)
+    : kind(section_kind), spelling(section_spelling) {}
+
+  SectionIdentity relocation_identity() const
+  {
+    SectionIdentity result = *this;
+    result.relocation = true;
+    return result;
+  }
+};
+
+static_assert(sizeof(SectionIdentity) <= 8,
+  "ELF section identity must remain compact");
+
 struct EncodedEhTypeRefLabel
 {
   lowir_model::SymbolId symbol;
@@ -55,7 +98,7 @@ struct EncodedEhTypeRefLabel
 
 struct EncodedSection
 {
-  std::string name;
+  SectionIdentity name;
   lowir_model::StringId comdat_signature;
   std::uint64_t flags = 0;
   std::size_t alignment = 1;
