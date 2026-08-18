@@ -178,6 +178,13 @@ text format, not a replacement for it: if a later backend or object writer
 needs a fact, that fact must be representable in serialized LowIR text and
 recoverable by parsing that text back in.
 
+In the typed scaffold, operands use compact IDs for values, slots, blocks, and
+program symbols. Integer and floating literals keep their decoded numeric facts
+and a `StringId` for the exact spelling stored once in the program string pool.
+An explicit LowIR parser may use that spelling ID while resolving a name, but
+must replace it with the corresponding semantic ID before returning the typed
+program. Do not store a separate owning `std::string` in every operand.
+
 Required instructions:
 
 - `const`, `copy`, `addr`, `load`, and `store`

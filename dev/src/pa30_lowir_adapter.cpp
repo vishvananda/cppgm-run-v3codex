@@ -124,20 +124,25 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 	case Operand::INTEGER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
 		result.int_value = operand.integer_value;
+		result.int_high = operand.integer_high;
 		result.has_int_value = true;
-		result.text = IntegerText(operand.integer_value,
-			operand.integer_high, operand.type);
+		result.literal = literals->intern(IntegerText(operand.integer_value,
+			operand.integer_high, operand.type));
+		result.has_spelling = true;
 		break;
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
 		result.literal = literals->intern(program.literals.Get(operand.id));
+		result.has_spelling = true;
 		lowir_model::parse_lowir_floating_literal(
 			literals->get(result.literal), &result.float_value);
 		break;
 	case Operand::NULL_POINTER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
-		result.text = "nullptr";
+		result.literal = literals->intern("nullptr");
+		result.has_spelling = true;
 		result.int_value = 0;
+		result.int_high = 0;
 		result.has_int_value = true;
 		break;
 	case Operand::NONE:
@@ -523,8 +528,10 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 			lowir_model::Operand value;
 			value.kind = lowir_model::Operand::OP_INTEGER;
 			value.int_value = program.switch_case_values[source.extra_first + i];
+			value.int_high = value.int_value < 0 ? ~std::uint64_t(0) : 0;
 			value.has_int_value = true;
-			value.text = std::to_string(value.int_value);
+			value.literal = literals->intern(std::to_string(value.int_value));
+			value.has_spelling = true;
 			target.args.push_back(value);
 			const BlockId block =
 				program.switch_case_targets[source.extra_first + i];
@@ -656,14 +663,18 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 						data.literal_operand.kind = lowir_model::Operand::OP_FLOAT;
 						data.literal_operand.literal = target.strings.intern(
 							source.literals.Get(value.floating_spelling));
+						data.literal_operand.has_spelling = true;
 					}
 					else
 					{
 						data.literal_operand.kind = lowir_model::Operand::OP_INTEGER;
 						data.literal_operand.int_value = value.integer_value;
+						data.literal_operand.int_high = value.integer_high;
 						data.literal_operand.has_int_value = true;
-						data.literal_operand.text = IntegerText(value.integer_value,
-							value.integer_high, value.type);
+						data.literal_operand.literal = target.strings.intern(
+							IntegerText(value.integer_value, value.integer_high,
+								value.type));
+						data.literal_operand.has_spelling = true;
 					}
 				}
 				result.data_items.push_back(std::move(data));
@@ -687,14 +698,18 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				result.init_operand.kind = lowir_model::Operand::OP_FLOAT;
 				result.init_operand.literal = target.strings.intern(
 					source.literals.Get(item.floating_initializer));
+				result.init_operand.has_spelling = true;
 			}
 			else
 			{
 				result.init_operand.kind = lowir_model::Operand::OP_INTEGER;
 				result.init_operand.int_value = item.initializer;
+				result.init_operand.int_high = item.initializer_high;
 				result.init_operand.has_int_value = true;
-				result.init_operand.text = IntegerText(item.initializer,
-					item.initializer_high, item.type);
+				result.init_operand.literal = target.strings.intern(
+					IntegerText(item.initializer, item.initializer_high,
+						item.type));
+				result.init_operand.has_spelling = true;
 			}
 		}
 		target.globals.push_back(std::move(result));

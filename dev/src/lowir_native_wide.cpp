@@ -207,6 +207,23 @@ Value literal_value(const std::string & text)
   return result;
 }
 
+Value literal_value(long long low, std::uint64_t high)
+{
+  Value result;
+  result.immediate = true;
+  result.words.low = static_cast<std::uint64_t>(low);
+  result.words.high = high;
+  return result;
+}
+
+Value literal_value(const lowir_model::Operand & operand)
+{
+  if(operand.kind != lowir_model::Operand::OP_INTEGER ||
+     !operand.has_int_value)
+    throw std::logic_error("wide literal requires a decoded integer operand");
+  return literal_value(operand.int_value, operand.int_high);
+}
+
 Value storage_value(const MirOperand & storage)
 {
   Value result;

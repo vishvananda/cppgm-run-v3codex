@@ -165,6 +165,10 @@ struct Operand
     address_binding;
 
   bool has_int_value;
+  // Literal operands retain one pooled spelling.  During explicit text/object
+  // parsing, named operands temporarily use the same field until resolution
+  // replaces it with the corresponding compact semantic identity.
+  bool has_spelling;
   union
   {
     BlockId block;
@@ -173,14 +177,15 @@ struct Operand
     SymbolId symbol;
     StringId literal;
   };
-  std::string text;
   long long int_value;
+  std::uint64_t int_high;
   long double float_value;
   LowType literal_type;
 
   Operand()
     : kind(OP_INTEGER), address_binding(ADDRESS_LOCAL), has_int_value(false),
-      block(), int_value(0), float_value(0.0L) {}
+      has_spelling(false), block(), int_value(0), int_high(0),
+      float_value(0.0L) {}
 };
 
 enum SymbolRole
@@ -555,11 +560,15 @@ std::string lowir_value_name(const Function & function, ValueId value);
 const LowType & lowir_value_type(const Function & function, ValueId value);
 SymbolId append_lowir_symbol(Program & program, const std::string & name);
 const std::string & lowir_symbol_name(const Program & program, SymbolId symbol);
-void resolve_lowir_function_operands(Function & function);
+bool parse_lowir_integer_literal(const std::string & text,
+                                 long long * low, std::uint64_t * high);
+void resolve_lowir_function_operands(Function & function,
+                                     const StringPool & strings);
 void resolve_lowir_program_symbols(Program & program);
 void intern_lowir_program_literals(Program & program);
-void materialize_lowir_program_literal_text(Program & program);
-void materialize_lowir_program_symbol_text(Program & program);
+void remap_lowir_program_operand_spellings(Program & program,
+                                           StringPool & destination);
+void materialize_lowir_program_symbol_spellings(Program & program);
 
 enum LowirEntryPolicy
 {

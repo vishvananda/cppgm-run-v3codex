@@ -1,28 +1,17 @@
 #include "lowir_native_selection.h"
 
-#include <cerrno>
-#include <cstdlib>
 #include <stdexcept>
 
 namespace lowir_native {
 namespace selection {
 
-long long integer_literal(const std::string & text)
-{
-  errno = 0;
-  char * end = 0;
-  const long long value = std::strtoll(text.c_str(), &end, 0);
-  if(errno || !end || *end)
-    throw std::runtime_error("invalid integer literal: " + text);
-  return value;
-}
-
 long long integer_value(const lowir_model::Operand & operand)
 {
   if(operand.kind != lowir_model::Operand::OP_INTEGER)
     throw std::runtime_error("integer value requires an integer operand");
-  return operand.has_int_value ? operand.int_value :
-    integer_literal(operand.text);
+  if(!operand.has_int_value)
+    throw std::runtime_error("integer operand has no decoded value");
+  return operand.int_value;
 }
 
 long long canonical_integer_constant(long long value,

@@ -169,10 +169,17 @@ bool same_operand(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_SLOT) return a.slot == b.slot;
   if(a.kind == Operand::OP_TEMP) return a.value == b.value;
   if(a.kind == Operand::OP_GLOBAL) return a.symbol == b.symbol;
-  if(a.kind == Operand::OP_FLOAT)
-    return a.literal.valid() && b.literal.valid() ?
-      a.literal == b.literal : a.text == b.text;
-  return a.text == b.text;
+  if(a.kind == Operand::OP_INTEGER) {
+    if(a.has_spelling && b.has_spelling) return a.literal == b.literal;
+    return a.has_int_value == b.has_int_value &&
+      a.int_value == b.int_value && a.int_high == b.int_high;
+  }
+  if(a.kind == Operand::OP_FLOAT) {
+    if(a.has_spelling && b.has_spelling) return a.literal == b.literal;
+    return (std::isnan(a.float_value) && std::isnan(b.float_value)) ||
+      a.float_value == b.float_value;
+  }
+  return true;
 }
 
 Operand integer_operand(long long value, const LowType & type)
@@ -181,7 +188,7 @@ Operand integer_operand(long long value, const LowType & type)
   result.kind = Operand::OP_INTEGER;
   result.has_int_value = true;
   result.int_value = value;
-  result.text = std::to_string(value);
+  result.int_high = value < 0 ? ~UINT64_C(0) : 0;
   return result;
 }
 
@@ -190,16 +197,7 @@ Operand floating_operand(long double value, const LowType & type)
   Operand result;
   result.kind = Operand::OP_FLOAT;
   result.float_value = value;
-  if(std::isinf(value)) result.text = value < 0 ? "-inf" : "inf";
-  else if(std::isnan(value)) result.text = "nan";
-  else {
-    std::ostringstream text;
-    text.precision(20);
-    text << value;
-    result.text = text.str();
-    if(type.kind == lowir_model::LTK_F32) result.text += 'f';
-    else if(type.kind == lowir_model::LTK_F80) result.text += 'L';
-  }
+  result.literal_type = type;
   return result;
 }
 
@@ -323,18 +321,58 @@ bool operand_less(const Operand & a, const Operand & b)
   if(a.kind == Operand::OP_LABEL) return a.block < b.block;
   if(a.kind == Operand::OP_TEMP) return a.value < b.value;
   if(a.kind == Operand::OP_GLOBAL) return a.symbol < b.symbol;
-  if(a.kind == Operand::OP_FLOAT && a.literal.valid() && b.literal.valid())
+  if((a.kind == Operand::OP_INTEGER || a.kind == Operand::OP_FLOAT) &&
+     a.has_spelling && b.has_spelling)
     return a.literal < b.literal;
-  return a.text < b.text;
+  if(a.kind == Operand::OP_INTEGER)
+    return a.int_high != b.int_high ? a.int_high < b.int_high :
+      static_cast<std::uint64_t>(a.int_value) <
+        static_cast<std::uint64_t>(b.int_value);
+  if(a.kind == Operand::OP_FLOAT) return a.float_value < b.float_value;
+  return false;
 }
 
-std::uint32_t operand_compact_identity(const Operand & operand)
+struct ExpressionOperandKey
 {
-  if(operand.kind == Operand::OP_SLOT) return operand.slot;
-  if(operand.kind == Operand::OP_LABEL) return operand.block;
-  if(operand.kind == Operand::OP_TEMP) return operand.value;
-  if(operand.kind == Operand::OP_GLOBAL) return operand.symbol;
-  return lowir_model::kInvalidCompactId;
+  Operand::Kind kind;
+  std::uint32_t identity;
+  long long int_value;
+  std::uint64_t int_high;
+  long double float_value;
+
+  bool operator==(const ExpressionOperandKey & other) const
+  {
+    if(kind != other.kind || identity != other.identity ||
+       int_value != other.int_value || int_high != other.int_high)
+      return false;
+    if(kind != Operand::OP_FLOAT || identity != lowir_model::kInvalidCompactId)
+      return true;
+    return (std::isnan(float_value) && std::isnan(other.float_value)) ||
+      float_value == other.float_value;
+  }
+};
+
+ExpressionOperandKey expression_operand_key(const Operand & operand)
+{
+  ExpressionOperandKey key;
+  key.kind = operand.kind;
+  key.identity = lowir_model::kInvalidCompactId;
+  key.int_value = 0;
+  key.int_high = 0;
+  key.float_value = 0.0L;
+  if(operand.kind == Operand::OP_SLOT) key.identity = operand.slot;
+  else if(operand.kind == Operand::OP_LABEL) key.identity = operand.block;
+  else if(operand.kind == Operand::OP_TEMP) key.identity = operand.value;
+  else if(operand.kind == Operand::OP_GLOBAL) key.identity = operand.symbol;
+  else if((operand.kind == Operand::OP_INTEGER ||
+           operand.kind == Operand::OP_FLOAT) && operand.has_spelling)
+    key.identity = operand.literal;
+  else if(operand.kind == Operand::OP_INTEGER) {
+    key.int_value = operand.int_value;
+    key.int_high = operand.int_high;
+  } else if(operand.kind == Operand::OP_FLOAT)
+    key.float_value = operand.float_value;
+  return key;
 }
 
 struct ExpressionKey
@@ -348,12 +386,8 @@ struct ExpressionKey
   std::size_t source_type_size;
   std::size_t source_type_alignment;
   lowir_model::IndexProjectionKind index_projection;
-  Operand::Kind first_kind;
-  std::uint32_t first_identity;
-  std::string first;
-  Operand::Kind second_kind;
-  std::uint32_t second_identity;
-  std::string second;
+  ExpressionOperandKey first;
+  ExpressionOperandKey second;
 
   bool operator==(const ExpressionKey & other) const
   {
@@ -364,10 +398,7 @@ struct ExpressionKey
       source_type_size == other.source_type_size &&
       source_type_alignment == other.source_type_alignment &&
       index_projection == other.index_projection &&
-      first_kind == other.first_kind &&
-      first_identity == other.first_identity && first == other.first &&
-      second_kind == other.second_kind &&
-      second_identity == other.second_identity && second == other.second;
+      first == other.first && second == other.second;
   }
 };
 
@@ -390,12 +421,17 @@ struct ExpressionKeyHash
     combine_hash(&result, key.source_type_size);
     combine_hash(&result, key.source_type_alignment);
     combine_hash(&result, static_cast<std::size_t>(key.index_projection));
-    combine_hash(&result, static_cast<std::size_t>(key.first_kind));
-    combine_hash(&result, key.first_identity);
-    combine_hash(&result, std::hash<std::string>()(key.first));
-    combine_hash(&result, static_cast<std::size_t>(key.second_kind));
-    combine_hash(&result, key.second_identity);
-    combine_hash(&result, std::hash<std::string>()(key.second));
+    const ExpressionOperandKey operands[] = {key.first, key.second};
+    for(std::size_t i = 0; i < 2; ++i) {
+      combine_hash(&result, static_cast<std::size_t>(operands[i].kind));
+      combine_hash(&result, operands[i].identity);
+      combine_hash(&result, std::hash<long long>()(operands[i].int_value));
+      combine_hash(&result, std::hash<std::uint64_t>()(operands[i].int_high));
+      const std::size_t floating = std::isnan(operands[i].float_value) ?
+        static_cast<std::size_t>(0x7ff80000U) :
+        std::hash<long double>()(operands[i].float_value);
+      combine_hash(&result, floating);
+    }
     return result;
   }
 };
@@ -422,12 +458,8 @@ ExpressionKey expression_key(const Instruction & ins)
   key.source_type_size = ins.source_type.storage_size;
   key.source_type_alignment = ins.source_type.alignment;
   key.index_projection = ins.index_projection;
-  key.first_kind = first->kind;
-  key.first_identity = operand_compact_identity(*first);
-  key.first = first->text;
-  key.second_kind = second->kind;
-  key.second_identity = operand_compact_identity(*second);
-  key.second = second->text;
+  key.first = expression_operand_key(*first);
+  key.second = expression_operand_key(*second);
   return key;
 }
 

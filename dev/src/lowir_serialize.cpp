@@ -213,21 +213,24 @@ void write_operand(std::ostream & out, const Operand & operand,
     out << lowir_symbol_name(program, operand.symbol);
     return;
   }
-  if(operand.kind == Operand::OP_FLOAT) {
+  if(operand.kind == Operand::OP_FLOAT ||
+     operand.kind == Operand::OP_INTEGER) {
+    if(!operand.has_spelling)
+      throw std::logic_error("missing LowIR literal spelling");
     const std::string & spelling = program.strings.get(operand.literal);
-    if(spelling == "INFINITY" || spelling == "+INFINITY") {
+    if(operand.kind == Operand::OP_FLOAT &&
+       (spelling == "INFINITY" || spelling == "+INFINITY")) {
       out << "inf";
       return;
     }
-    if(spelling == "-INFINITY") {
+    if(operand.kind == Operand::OP_FLOAT && spelling == "-INFINITY") {
       out << "-inf";
       return;
     }
     out << spelling;
     return;
   }
-  if(operand.text.empty()) throw std::logic_error("missing LowIR operand text");
-  out << operand.text;
+  throw std::logic_error("unsupported LowIR operand identity");
 }
 
 void write_result(std::ostream & out, const Instruction & instruction,

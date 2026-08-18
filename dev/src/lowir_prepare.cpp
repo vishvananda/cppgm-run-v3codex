@@ -113,6 +113,7 @@ void clear_serialized_operand_type(Operand& operand,
 	{
 		operand.has_int_value = false;
 		operand.int_value = 0;
+		operand.int_high = 0;
 	}
 }
 

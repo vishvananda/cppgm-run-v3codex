@@ -383,7 +383,8 @@ bool register_was_clobbered_before(const FunctionFacts & facts,
     facts.first_register_clobber[index] < position;
 }
 
-FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
+FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
+                               const lowir_model::StringPool & strings)
 {
   FunctionFacts facts;
   const std::size_t value_count = function.value_names.size();
@@ -449,7 +450,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function)
          instruction.first.kind == Operand::OP_TEMP &&
          facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
          instruction.second.kind == Operand::OP_INTEGER &&
-         instruction.second.text == "0")
+         instruction.second.has_spelling &&
+         strings.get(instruction.second.literal) == "0")
         facts.mark(instruction.first.value,
                    FunctionFacts::VF_ZERO_INDEX_PARAMETER);
       if(instruction.kind == Instruction::IK_SWITCH &&

@@ -101,7 +101,8 @@ bool crosses_register_clobber(const FunctionFacts & facts,
                               lowir_model::ValueId value, X64Register reg);
 bool register_was_clobbered_before(const FunctionFacts & facts,
                                    X64Register reg, std::size_t position);
-FunctionFacts analyze_function(const lowir_model::LowirFunction & function);
+FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
+                               const lowir_model::StringPool & strings);
 StorageFacts analyze_storage(
     const lowir_model::LowirFunction & function,
     const FunctionFacts & function_facts,

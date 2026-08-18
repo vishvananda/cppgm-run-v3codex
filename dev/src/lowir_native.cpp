@@ -75,7 +75,8 @@ public:
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
       signatures_(signatures), literals_(literals), stats_(stats),
-      facts_(analyze_function(source)), control_flow_(source), position_(0)
+      facts_(analyze_function(source, program.strings)),
+      control_flow_(source), position_(0)
   {
     values_.resize(source_.value_names.size());
     value_known_.assign(source_.value_names.size(), 0);
@@ -732,7 +733,7 @@ private:
       return global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
       return native_block_operand(source_, operand);
-    throw std::runtime_error("foundation operand is not implemented: " + operand.text);
+    throw std::runtime_error("foundation operand kind is not implemented");
   }
   const LowType & operand_type(const Operand & operand) const
   {
@@ -808,7 +809,7 @@ private:
   wide::Value wide_value(const Operand & operand) const
   {
     if(operand.kind == Operand::OP_INTEGER)
-      return wide::literal_value(operand.text);
+      return wide::literal_value(operand);
     return wide::storage_value(resolve(operand));
   }
   bool can_reuse(const Operand & operand) const
@@ -1204,8 +1205,7 @@ private:
       return;
     }
     if(operand.kind != Operand::OP_TEMP)
-      throw std::runtime_error("bulk object operand is not addressable: " +
-        operand.text + " (kind " + std::to_string(operand.kind) + ")");
+      throw std::runtime_error("bulk object operand kind is not addressable");
     if(!value_known_[operand.value])
       throw std::runtime_error("missing address value");
     const ValueFact & value = values_[operand.value];
@@ -2876,7 +2876,7 @@ private:
     if(instruction.kind == Instruction::IK_CONST) {
       if(wide::is_integer(instruction.type)) {
         const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
-        wide::append_copy(destination, wide::literal_value(instruction.first.text), out);
+        wide::append_copy(destination, wide::literal_value(instruction.first), out);
         define(instruction.dest, instruction.type, destination);
         return;
       }

@@ -10,7 +10,6 @@
 namespace lowir_native {
 namespace selection {
 
-long long integer_literal(const std::string & text);
 long long integer_value(const lowir_model::Operand & operand);
 long long canonical_integer_constant(long long value,
                                      const lowir_model::LowType & type);

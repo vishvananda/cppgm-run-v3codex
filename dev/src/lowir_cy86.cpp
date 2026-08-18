@@ -247,8 +247,10 @@ public:
   }
   const std::string & OperandText(const Operand & operand) const
   {
-    return operand.kind == Operand::OP_FLOAT ?
-      program_.strings.get(operand.literal) : operand.text;
+    if((operand.kind != Operand::OP_FLOAT &&
+        operand.kind != Operand::OP_INTEGER) || !operand.has_spelling)
+      throw std::logic_error("CY86 operand has no literal spelling");
+    return program_.strings.get(operand.literal);
   }
 
   std::string EhTopLabel() const
@@ -659,9 +661,9 @@ void FunctionEmitter::EmitScalarValue(const Operand & value, const LowType & typ
   const TypeShape item = shape(type);
   const std::string reg = register_name(bank, item.width);
   const std::string reg64 = register_name(bank, 64);
-  const std::string & spelling = owner_.OperandText(value);
-  std::string literal = spelling == "nullptr" ? "0" : spelling;
   if(value.kind == Operand::OP_INTEGER || value.kind == Operand::OP_FLOAT) {
+    const std::string & spelling = owner_.OperandText(value);
+    const std::string literal = spelling == "nullptr" ? "0" : spelling;
     const std::size_t move_width = item.floating ? item.width : 64;
     out_.Instruction("move" + std::to_string(move_width) + " " +
                      register_name(bank, move_width) + " " + literal);
@@ -815,8 +817,8 @@ void FunctionEmitter::EmitUnary(const Instruction & ins)
   if(is_f80(ins.type)) {
     LoadF80(ins.first, 0);
     if(ins.op != "neg") throw ParseError("unsupported f80 unary operation");
-    Operand zero; zero.kind = Operand::OP_INTEGER; zero.text = "0.0L";
-    LoadF80(zero, 1);
+    out_.Instruction("move80 " + memory_bp(scratch_[1]) + " 0.0L");
+    ZeroF80Padding(1);
     out_.Instruction("fsub80 " + memory_bp(scratch_[2]) + " " + memory_bp(scratch_[1]) +
                      " " + memory_bp(scratch_[0]));
     ZeroF80Padding(2); StoreF80Temp(ins.dest, 2); return;

@@ -65,7 +65,8 @@ mir_model::MirGlobalDefinition lower_global(
       } else {
         lowered.kind = mir_model::MirGlobalDefinition::DataItem::ITEM_INTEGER;
         lowered.int_value = selection::integer_value(item.literal_operand);
-		lowered.literal_text = item.literal_operand.text;
+		lowered.literal_text = program.strings.get(
+		  item.literal_operand.literal);
       }
       target.data_items.push_back(lowered);
     }
@@ -89,7 +90,7 @@ mir_model::MirGlobalDefinition lower_global(
         0 : selection::integer_value(source.init_operand);
 	  target.literal_text = source.init_kind ==
 		lowir_model::LowirGlobalDefinition::INIT_ZERO ? "0" :
-		source.init_operand.text;
+		program.strings.get(source.init_operand.literal);
     }
   }
   return target;

@@ -1,16 +1,39 @@
 #include "lowir_model.h"
 
+#include <cmath>
+#include <sstream>
 #include <stdexcept>
 #include <unordered_map>
 
 namespace lowir_model {
 namespace {
 
+std::string generated_literal_spelling(const Operand & operand)
+{
+  if(operand.kind == Operand::OP_INTEGER)
+    return std::to_string(operand.int_value);
+  if(operand.kind != Operand::OP_FLOAT)
+    throw std::logic_error("named LowIR operand has no presentation identity");
+  if(std::isinf(operand.float_value))
+    return operand.float_value < 0 ? "-inf" : "inf";
+  if(std::isnan(operand.float_value)) return "nan";
+  std::ostringstream text;
+  text.precision(20);
+  text << operand.float_value;
+  if(operand.literal_type.kind == LTK_F32) text << 'f';
+  else if(operand.literal_type.kind == LTK_F80) text << 'L';
+  return text.str();
+}
+
 void intern_operand_literal(Program & program, Operand & operand)
 {
-  if(operand.kind != Operand::OP_FLOAT) return;
-  if(!operand.literal.valid()) operand.literal = program.strings.intern(operand.text);
-  operand.text.clear();
+  if(operand.kind != Operand::OP_INTEGER &&
+     operand.kind != Operand::OP_FLOAT) return;
+  if(!operand.has_spelling) {
+    operand.literal = program.strings.intern(
+      generated_literal_spelling(operand));
+    operand.has_spelling = true;
+  }
 }
 
 void intern_instruction_literals(Program & program, Instruction & instruction)
@@ -39,6 +62,51 @@ std::size_t hash_range(const std::string & text, std::size_t first,
 }
 
 }  // namespace
+
+bool parse_lowir_integer_literal(const std::string & text,
+                                 long long * low, std::uint64_t * high)
+{
+  if(!low || !high) return false;
+  if(text == "nullptr") {
+    *low = 0;
+    *high = 0;
+    return true;
+  }
+  if(text.empty()) return false;
+  std::size_t at = 0;
+  bool negative = false;
+  if(text[at] == '+' || text[at] == '-') {
+    negative = text[at] == '-';
+    if(++at == text.size()) return false;
+  }
+  unsigned base = 10;
+  if(at + 2 <= text.size() && text[at] == '0' &&
+     (text[at + 1] == 'x' || text[at + 1] == 'X')) {
+    base = 16;
+    at += 2;
+  } else if(at + 1 < text.size() && text[at] == '0') {
+    base = 8;
+    ++at;
+  }
+  typedef unsigned __int128 WideUnsigned;
+  WideUnsigned value = 0;
+  for(; at < text.size(); ++at) {
+    unsigned digit;
+    if(text[at] >= '0' && text[at] <= '9')
+      digit = static_cast<unsigned>(text[at] - '0');
+    else if(text[at] >= 'a' && text[at] <= 'f')
+      digit = static_cast<unsigned>(text[at] - 'a' + 10);
+    else if(text[at] >= 'A' && text[at] <= 'F')
+      digit = static_cast<unsigned>(text[at] - 'A' + 10);
+    else return false;
+    if(digit >= base) return false;
+    value = value * base + digit;
+  }
+  if(negative) value = -value;
+  *low = static_cast<long long>(static_cast<std::uint64_t>(value));
+  *high = static_cast<std::uint64_t>(value >> 64);
+  return true;
+}
 
 StringPool::StringPool() : slots_(32, 0), spelling_bytes_(0)
 {
@@ -242,7 +310,8 @@ const std::string & lowir_symbol_name(const Program & program, SymbolId symbol)
   return program.symbol_names[id];
 }
 
-void resolve_lowir_function_operands(Function & function)
+void resolve_lowir_function_operands(Function & function,
+                                     const StringPool & strings)
 {
   std::unordered_map<std::string, BlockId> blocks;
   blocks.reserve(function.blocks.size());
@@ -270,43 +339,47 @@ void resolve_lowir_function_operands(Function & function)
         &instruction.first, &instruction.second, &instruction.third
       };
       for(std::size_t k = 0; k < 3; ++k) {
+        if(!fixed[k]->has_spelling) continue;
+        const std::string & spelling = strings.get(fixed[k]->literal);
         if(fixed[k]->kind == Operand::OP_LABEL) {
           const std::unordered_map<std::string, BlockId>::const_iterator found =
-            blocks.find(fixed[k]->text);
+            blocks.find(spelling);
           if(found == blocks.end()) throw ParseError("undefined block target");
           fixed[k]->block = found->second;
         } else if(fixed[k]->kind == Operand::OP_SLOT) {
           const std::unordered_map<std::string, SlotId>::const_iterator found =
-            slots.find(fixed[k]->text);
+            slots.find(spelling);
           if(found == slots.end()) throw ParseError("undefined slot operand");
           fixed[k]->slot = found->second;
         } else if(fixed[k]->kind == Operand::OP_TEMP) {
           const std::unordered_map<std::string, ValueId>::const_iterator found =
-            values.find(fixed[k]->text);
+            values.find(spelling);
           if(found == values.end()) throw ParseError("undefined value operand");
           fixed[k]->value = found->second;
         } else continue;
-        std::string().swap(fixed[k]->text);
+        fixed[k]->has_spelling = false;
       }
       for(std::size_t a = 0; a < instruction.args.size(); ++a) {
         Operand & operand = instruction.args[a];
+        if(!operand.has_spelling) continue;
+        const std::string & spelling = strings.get(operand.literal);
         if(operand.kind == Operand::OP_LABEL) {
           const std::unordered_map<std::string, BlockId>::const_iterator found =
-            blocks.find(operand.text);
+            blocks.find(spelling);
           if(found == blocks.end()) throw ParseError("undefined block target");
           operand.block = found->second;
         } else if(operand.kind == Operand::OP_SLOT) {
           const std::unordered_map<std::string, SlotId>::const_iterator found =
-            slots.find(operand.text);
+            slots.find(spelling);
           if(found == slots.end()) throw ParseError("undefined slot operand");
           operand.slot = found->second;
         } else if(operand.kind == Operand::OP_TEMP) {
           const std::unordered_map<std::string, ValueId>::const_iterator found =
-            values.find(operand.text);
+            values.find(spelling);
           if(found == values.end()) throw ParseError("undefined value operand");
           operand.value = found->second;
         } else continue;
-        std::string().swap(operand.text);
+        operand.has_spelling = false;
       }
     }
   }
@@ -370,13 +443,15 @@ void resolve_lowir_program_symbols(Program & program)
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     resolve_tls(program.functions[i].metadata);
 
-  const auto resolve_operand = [&symbols](Operand & operand) {
+  const auto resolve_operand = [&program, &symbols](Operand & operand) {
     if(operand.kind != Operand::OP_GLOBAL) return;
+    if(!operand.has_spelling) return;
+    const std::string & spelling = program.strings.get(operand.literal);
     const std::unordered_map<std::string, SymbolId>::const_iterator found =
-      symbols.find(operand.text);
+      symbols.find(spelling);
     if(found == symbols.end()) throw ParseError("undefined top-level symbol");
     operand.symbol = found->second;
-    std::string().swap(operand.text);
+    operand.has_spelling = false;
   };
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     GlobalDefinition & global = program.globals[i];
@@ -428,17 +503,17 @@ void intern_lowir_program_literals(Program & program)
           program, program.functions[f].blocks[b].instructions[i]);
 }
 
-void materialize_lowir_program_literal_text(Program & program)
+void remap_lowir_program_operand_spellings(Program & program,
+                                           StringPool & destination)
 {
-  const auto materialize = [&program](Operand & operand) {
-    if(operand.kind != Operand::OP_FLOAT || !operand.literal.valid()) return;
-    operand.text = program.strings.get(operand.literal);
-    operand.literal = StringId();
+  const auto remap = [&program, &destination](Operand & operand) {
+    if(!operand.has_spelling) return;
+    operand.literal = destination.intern(program.strings.get(operand.literal));
   };
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
-    materialize(program.globals[i].init_operand);
+    remap(program.globals[i].init_operand);
     for(std::size_t j = 0; j < program.globals[i].data_items.size(); ++j)
-      materialize(program.globals[i].data_items[j].literal_operand);
+      remap(program.globals[i].data_items[j].literal_operand);
   }
   for(std::size_t f = 0; f < program.functions.size(); ++f)
     for(std::size_t b = 0; b < program.functions[f].blocks.size(); ++b)
@@ -446,20 +521,24 @@ void materialize_lowir_program_literal_text(Program & program)
           i < program.functions[f].blocks[b].instructions.size(); ++i) {
         Instruction & instruction =
           program.functions[f].blocks[b].instructions[i];
-        materialize(instruction.first);
-        materialize(instruction.second);
-        materialize(instruction.third);
+        remap(instruction.first);
+        remap(instruction.second);
+        remap(instruction.third);
         for(std::size_t a = 0; a < instruction.args.size(); ++a)
-          materialize(instruction.args[a]);
+          remap(instruction.args[a]);
       }
 }
 
-void materialize_lowir_program_symbol_text(Program & program)
+void materialize_lowir_program_symbol_spellings(Program & program)
 {
   if(program.symbol_names.empty()) return;
   const auto materialize_operand = [&program](Operand & operand) {
-    if(operand.kind == Operand::OP_GLOBAL && operand.symbol.valid())
-      operand.text = lowir_symbol_name(program, operand.symbol);
+    if(operand.kind == Operand::OP_GLOBAL && !operand.has_spelling &&
+       operand.symbol.valid()) {
+      operand.literal = program.strings.intern(
+        lowir_symbol_name(program, operand.symbol));
+      operand.has_spelling = true;
+    }
   };
   const auto materialize_metadata = [&program](SymbolMetadata & metadata) {
     if(metadata.tls_for_symbol_id.valid())

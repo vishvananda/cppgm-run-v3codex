@@ -210,18 +210,22 @@ typedef std::vector<std::pair<std::string, std::string> > Metadata;
 class Parser
 {
 public:
-  explicit Parser(const std::vector<Token> & tokens) : tokens_(tokens), at_(0) {}
+  explicit Parser(const std::vector<Token> & tokens)
+    : tokens_(tokens), at_(0), strings_(0) {}
 
   Program Parse()
   {
     Program program;
+    strings_ = &program.strings;
     while(!done()) parse_top_level(program);
+    strings_ = 0;
     return program;
   }
 
 private:
   const std::vector<Token> & tokens_;
   std::size_t at_;
+  StringPool * strings_;
 
   bool done() const { return at_ == tokens_.size(); }
 
@@ -283,41 +287,43 @@ private:
   {
     Operand result;
     const bool negative = accept("-");
-    result.text = (negative ? "-" : "") + take();
-    if(!result.text.empty() &&
-       (result.text.back() == 'e' || result.text.back() == 'E' ||
-        result.text.back() == 'p' || result.text.back() == 'P') &&
+    std::string text = (negative ? "-" : "") + take();
+    if(!text.empty() &&
+       (text.back() == 'e' || text.back() == 'E' ||
+        text.back() == 'p' || text.back() == 'P') &&
        (peek() == "+" || peek() == "-")) {
-      result.text += take();
-      result.text += take();
+      text += take();
+      text += take();
     }
-    if(starts_with(result.text, '%')) result.kind = Operand::OP_TEMP;
-    else if(starts_with(result.text, '$')) result.kind = Operand::OP_SLOT;
-    else if(starts_with(result.text, '@')) result.kind = Operand::OP_GLOBAL;
-    else if(starts_with(result.text, '^')) result.kind = Operand::OP_LABEL;
-    else if(result.text == "nullptr") {
+    if(!strings_) throw std::logic_error("LowIR parser has no string pool");
+    result.literal = strings_->intern(text);
+    result.has_spelling = true;
+    if(starts_with(text, '%')) result.kind = Operand::OP_TEMP;
+    else if(starts_with(text, '$')) result.kind = Operand::OP_SLOT;
+    else if(starts_with(text, '@')) result.kind = Operand::OP_GLOBAL;
+    else if(starts_with(text, '^')) result.kind = Operand::OP_LABEL;
+    else if(text == "nullptr") {
       result.kind = Operand::OP_INTEGER;
       result.int_value = 0;
+      result.int_high = 0;
       result.has_int_value = true;
     }
-    else if(result.text == "inf" || result.text == "+inf" ||
-            result.text == "-inf" || result.text == "INFINITY" ||
-            result.text == "+INFINITY" || result.text == "-INFINITY" ||
-            result.text == "nan" || result.text == "NAN" ||
-            result.text == "snan" || result.text == "SNAN" ||
-            result.text.find_first_of(".eEpP") != std::string::npos ||
-            (!result.text.empty() && (result.text.back() == 'f' || result.text.back() == 'L')))
+    else if(text == "inf" || text == "+inf" ||
+            text == "-inf" || text == "INFINITY" ||
+            text == "+INFINITY" || text == "-INFINITY" ||
+            text == "nan" || text == "NAN" ||
+            text == "snan" || text == "SNAN" ||
+            text.find_first_of(".eEpP") != std::string::npos ||
+            (!text.empty() && (text.back() == 'f' || text.back() == 'L')))
     {
       result.kind = Operand::OP_FLOAT;
-      if(!parse_lowir_floating_literal(result.text, &result.float_value))
+      if(!parse_lowir_floating_literal(text, &result.float_value))
         result.float_value = 0.0L;
     }
     else {
       result.kind = Operand::OP_INTEGER;
-      errno = 0;
-      char * end = 0;
-      result.int_value = std::strtoll(result.text.c_str(), &end, 0);
-      result.has_int_value = !errno && end && !*end;
+      result.has_int_value = parse_lowir_integer_literal(
+        text, &result.int_value, &result.int_high);
     }
     return result;
   }
@@ -600,7 +606,9 @@ private:
     if(accept("zero")) result.init_kind = GlobalDefinition::INIT_ZERO;
     else if(accept("addr")) {
       result.init_kind = GlobalDefinition::INIT_ADDR;
-      result.init_operand.text = named('@', "address initializer symbol");
+      result.init_operand.literal = strings_->intern(
+        named('@', "address initializer symbol"));
+      result.init_operand.has_spelling = true;
       result.init_operand.kind = Operand::OP_GLOBAL;
       result.addr_addend = address_addend();
     } else {
@@ -992,6 +1000,13 @@ private:
   std::unordered_map<std::string, GlobalStorageMode> global_storage_;
   std::unordered_map<std::string, FunctionInfo> functions_;
 
+  const std::string & operand_spelling(const Operand & operand) const
+  {
+    if(!operand.has_spelling)
+      throw ParseError("operand has no input spelling");
+    return program_.strings.get(operand.literal);
+  }
+
   void add_top(const std::string & name)
   {
     if(!top_symbols_.insert(name).second)
@@ -1079,7 +1094,7 @@ private:
             throw ParseError("undefined structured global address target");
         }
       } else if(global.init_kind == GlobalDefinition::INIT_ADDR &&
-                !top_symbols_.count(global.init_operand.text)) {
+                !top_symbols_.count(operand_spelling(global.init_operand))) {
         throw ParseError("undefined global address initializer target");
       }
     }
@@ -1194,7 +1209,7 @@ private:
     FunctionBoundaryMetadata boundary = ins.call_boundary;
     if(ins.first.kind == Operand::OP_GLOBAL) {
       const std::unordered_map<std::string, FunctionInfo>::const_iterator found =
-        functions_.find(ins.first.text);
+        functions_.find(operand_spelling(ins.first));
       if(found != functions_.end()) boundary = *found->second.boundary;
     }
     return boundary.returns == CRM_NORETURN;
@@ -1205,19 +1220,21 @@ private:
                         const TypeIndex & slots,
                         bool allow_label = false) const
   {
-    if(operand.kind == Operand::OP_TEMP && !values.count(operand.text))
-      throw ParseError("undefined temporary: " + operand.text);
-    if(operand.kind == Operand::OP_SLOT && !slots.count(operand.text))
-      throw ParseError("undefined slot: " + operand.text);
-    if(operand.kind == Operand::OP_GLOBAL && !top_symbols_.count(operand.text))
-      throw ParseError("undefined top-level symbol: " + operand.text);
+    const std::string & spelling = operand_spelling(operand);
+    if(operand.kind == Operand::OP_TEMP && !values.count(spelling))
+      throw ParseError("undefined temporary: " + spelling);
+    if(operand.kind == Operand::OP_SLOT && !slots.count(spelling))
+      throw ParseError("undefined slot: " + spelling);
+    if(operand.kind == Operand::OP_GLOBAL && !top_symbols_.count(spelling))
+      throw ParseError("undefined top-level symbol: " + spelling);
     if(operand.kind == Operand::OP_LABEL && !allow_label)
       throw ParseError("block label used as value");
   }
 
   void validate_target(const Operand & target, const std::unordered_set<std::string> & blocks) const
   {
-    if(target.kind != Operand::OP_LABEL || !blocks.count(target.text))
+    if(target.kind != Operand::OP_LABEL ||
+       !blocks.count(operand_spelling(target)))
       throw ParseError("undefined or invalid block target");
   }
 
@@ -1246,13 +1263,15 @@ private:
 	if(kind == Instruction::IK_VA_START) {
       if(function.boundary.arity != CAM_VARIADIC)
         throw ParseError("va_start requires a variadic function");
-      const TypeIndex::const_iterator value = values.find(ins.first.text);
+      const TypeIndex::const_iterator value = values.find(
+        operand_spelling(ins.first));
       if(ins.first.kind != Operand::OP_TEMP || value == values.end() ||
          value->second->kind != LTK_PTR)
         throw ParseError("va_start requires a pointer value");
 	}
 	if(kind == Instruction::IK_VA_ARG) {
-	  const TypeIndex::const_iterator value = values.find(ins.first.text);
+	  const TypeIndex::const_iterator value = values.find(
+        operand_spelling(ins.first));
 	  if(ins.first.kind != Operand::OP_TEMP || value == values.end() ||
 	     value->second->kind != LTK_PTR)
 	    throw ParseError("va_arg requires a pointer value");
@@ -1266,8 +1285,10 @@ private:
 	if(kind == Instruction::IK_STACK_ALLOC) {
 	  LowTypeKind size = ins.first.kind == Operand::OP_INTEGER ?
 	    LTK_I64 : ins.first.literal_type.kind;
-	  const TypeIndex::const_iterator value = values.find(ins.first.text);
-	  const TypeIndex::const_iterator slot = slots.find(ins.first.text);
+      const TypeIndex::const_iterator value = values.find(
+        operand_spelling(ins.first));
+      const TypeIndex::const_iterator slot = slots.find(
+        operand_spelling(ins.first));
 	  if(ins.first.kind == Operand::OP_TEMP && value != values.end())
 	    size = value->second->kind;
 	  else if(ins.first.kind == Operand::OP_SLOT && slot != slots.end())
@@ -1286,7 +1307,7 @@ private:
   {
     const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
     for(std::size_t i = 0; i < 3; ++i)
-      if(!operands[i]->text.empty()) validate_operand(*operands[i], values, slots,
+      if(operands[i]->has_spelling) validate_operand(*operands[i], values, slots,
         ins.kind == Instruction::IK_EH_TRY || ins.kind == Instruction::IK_EH_CLEANUP);
     for(std::size_t i = 0; i < ins.args.size(); ++i)
       validate_operand(ins.args[i], values, slots);
@@ -1329,7 +1350,7 @@ private:
     validate_operand(ins.first, values, slots);
     for(std::size_t i = 0; i < ins.args.size(); ++i) validate_operand(ins.args[i], values, slots);
     const std::unordered_map<std::string, FunctionInfo>::const_iterator found =
-      functions_.find(ins.first.text);
+      functions_.find(operand_spelling(ins.first));
     const bool direct = ins.first.kind == Operand::OP_GLOBAL && found != functions_.end();
     if(!direct && !ins.has_call_signature) throw ParseError("indirect call requires signature");
     if(ins.has_call_signature) {
@@ -1405,7 +1426,7 @@ Program parse_tokens(std::vector<Token> & tokens, LowirEntryPolicy entry_policy)
   std::vector<Token>().swap(tokens);
   Validator(program, entry_policy).Validate();
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    resolve_lowir_function_operands(program.functions[i]);
+    resolve_lowir_function_operands(program.functions[i], program.strings);
   resolve_lowir_program_symbols(program);
   intern_lowir_program_literals(program);
   propagate_direct_call_boundaries(program);

@@ -123,10 +123,11 @@ carry that identity through MIR optimization and native selection. Keep the
 symbol spelling once in the MIR program's symbol-name table and resolve it only
 for the MIR dump, a diagnostic, or native object emission.
 
-Floating immediate operands use a compact `StringId` whose spelling is interned
-once in a program-level literal table. Carry the identity through instruction
-selection and MIR processing, and resolve its spelling only for the MIR dump or
-native encoding. Do not store a separate `std::string` in each MIR operand.
+Integer and floating immediate operands use a compact `StringId` whose spelling
+is interned once in a program-level literal table. Carry the identity through
+instruction selection and MIR processing, and resolve its spelling only for
+the MIR dump or native encoding. Do not store a separate `std::string` in each
+MIR operand.
 
 Frame metadata is part of that final MIR contract. In particular, the
 callee-saved `preserve` list should name the callee-saved registers that the

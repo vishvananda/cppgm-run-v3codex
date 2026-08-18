@@ -884,6 +884,34 @@ RSS.  Native-lowering medians improve from 1.032 to 0.997 seconds (3.4%); total
 user and wall time improve by 0.7% and 1.0%.  The 0.24% RSS difference is below
 the semantic-frontend process-peak noise envelope.
 
+### CI12: remove owning text from LowIR operands
+
+LowIR operands no longer contain `std::string`.  Integer and floating literals
+carry one pooled spelling identity plus decoded numeric facts; i128 integers
+retain their low and high 64-bit words directly.  Source lowering interns each
+spelling at construction.  Explicit LowIR parsing interns the token once and
+temporarily uses that ID for arbitrary named operands, then replaces it with a
+`ValueId`, `SlotId`, `BlockId`, or `SymbolId` during validation/resolution.
+
+Private compiler-object input follows the same boundary rule.  Independent
+object pools are remapped directly into the result pool before definitions are
+moved, rather than materializing operand strings and then scanning the joined
+program to intern them again.  Legacy CY86, LowIR serialization, O1/O2 cleanup
+keys, native analysis, wide-integer selection, and global lowering consume the
+decoded value or pooled identity without a textual compatibility path.
+
+`LowirOperand` falls from 96 to 64 bytes and `LowirInstruction` from 528 to 432
+bytes.  The frozen object is byte-identical to CI11 at 4,417,192 bytes with
+SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+PA13, PA15, PA29, PA30, PA37, and PA38 report 654/654 passing tests.
+
+Three A/B/B/A blocks against `6f8ff0e2` produced baseline/candidate medians of
+5.870/5.825 seconds user, 6.360/6.305 seconds wall, and 365,342/365,200 KiB peak
+RSS.  Adapter-build time falls from 154.5 to 128.2 ms (17.0%), the enclosing
+adapt interval from 198.7 to 166.2 ms (16.4%), and native lowering from 995.5
+to 982.1 ms (1.3%).  Total user and wall time improve by 0.8% and 0.9%.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

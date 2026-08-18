@@ -1,4 +1,5 @@
 #include "pa30_object.h"
+#include "lowir_float_literal.h"
 #include "lowir_prepare.h"
 
 #include <algorithm>
@@ -275,18 +276,38 @@ void WriteOperand(Writer& out, const lowir_model::Operand& value,
 	}
 	else if (value.kind == lowir_model::Operand::OP_GLOBAL)
 		out.String(lowir_model::lowir_symbol_name(program, value.symbol));
-	else out.String(value.text);
+	else out.String(value.has_spelling ?
+		program.strings.get(value.literal) : std::string());
 	out.I64(value.kind == lowir_model::Operand::OP_INTEGER && value.has_int_value ?
 		value.int_value : 0);
 }
 
-lowir_model::Operand ReadOperand(Reader& in)
+lowir_model::Operand ReadOperand(Reader& in,
+	lowir_model::StringPool& strings)
 {
 	lowir_model::Operand value;
 	value.kind = ReadEnum<lowir_model::Operand::Kind>(in);
-	value.text = in.String();
-	value.int_value = in.I64();
-	value.has_int_value = value.kind == lowir_model::Operand::OP_INTEGER;
+	const std::string spelling = in.String();
+	const long long stored_integer = in.I64();
+	if (!spelling.empty())
+	{
+		value.literal = strings.intern(spelling);
+		value.has_spelling = true;
+	}
+	if (value.kind == lowir_model::Operand::OP_INTEGER)
+	{
+		value.has_int_value = lowir_model::parse_lowir_integer_literal(
+			spelling, &value.int_value, &value.int_high);
+		if (!value.has_int_value)
+		{
+			value.int_value = stored_integer;
+			value.int_high = stored_integer < 0 ? ~std::uint64_t(0) : 0;
+		}
+	}
+	else if (value.kind == lowir_model::Operand::OP_FLOAT &&
+		value.has_spelling)
+		lowir_model::parse_lowir_floating_literal(
+			spelling, &value.float_value);
 	return value;
 }
 
@@ -444,7 +465,7 @@ const lowir_model::LowType& InstructionResultType(
 }
 
 lowir_model::Instruction ReadInstruction(Reader& in,
-	lowir_model::Function& function)
+	lowir_model::LowirProgram& program, lowir_model::Function& function)
 {
 	lowir_model::Instruction value;
 	value.kind = ReadEnum<lowir_model::Instruction::Kind>(in);
@@ -457,12 +478,12 @@ lowir_model::Instruction ReadInstruction(Reader& in,
 	value.has_eh_selector = in.Bool();
 	value.eh_selector = in.I64();
 	value.index_projection = ReadEnum<lowir_model::IndexProjectionKind>(in);
-	value.first = ReadOperand(in);
-	value.second = ReadOperand(in);
-	value.third = ReadOperand(in);
+	value.first = ReadOperand(in, program.strings);
+	value.second = ReadOperand(in, program.strings);
+	value.third = ReadOperand(in, program.strings);
 	value.args.resize(in.Count(4));
 	for (std::size_t i = 0; i < value.args.size(); ++i)
-		value.args[i] = ReadOperand(in);
+		value.args[i] = ReadOperand(in, program.strings);
 	value.call_returns_void = in.Bool();
 	value.has_call_signature = in.Bool();
 	value.call_params = ReadParameters(in);
@@ -521,7 +542,8 @@ void WriteGlobal(Writer& out, const lowir_model::GlobalDefinition& value,
 	WriteSymbolMetadata(out, value.metadata);
 }
 
-lowir_model::GlobalDefinition ReadGlobal(Reader& in)
+lowir_model::GlobalDefinition ReadGlobal(Reader& in,
+	lowir_model::LowirProgram& program)
 {
 	lowir_model::GlobalDefinition value;
 	value.name = in.String();
@@ -529,7 +551,7 @@ lowir_model::GlobalDefinition ReadGlobal(Reader& in)
 	value.storage = ReadEnum<lowir_model::GlobalStorageMode>(in);
 	value.type = ReadType(in);
 	value.init_kind = ReadEnum<lowir_model::GlobalDefinition::InitKind>(in);
-	value.init_operand = ReadOperand(in);
+	value.init_operand = ReadOperand(in, program.strings);
 	value.addr_addend = in.I64();
 	value.data_items.resize(in.Count(4));
 	for (std::size_t i = 0; i < value.data_items.size(); ++i)
@@ -537,7 +559,7 @@ lowir_model::GlobalDefinition ReadGlobal(Reader& in)
 		lowir_model::GlobalDefinition::DataItem& item = value.data_items[i];
 		item.kind = ReadEnum<lowir_model::GlobalDefinition::DataItem::Kind>(in);
 		item.type = ReadType(in);
-		item.literal_operand = ReadOperand(in);
+		item.literal_operand = ReadOperand(in, program.strings);
 		item.symbol = in.String();
 		item.addr_addend = in.I64();
 		item.zero_bytes = in.Size();
@@ -592,7 +614,8 @@ void WriteFunction(Writer& out, const lowir_model::Function& value,
 	WriteSymbolMetadata(out, value.metadata);
 }
 
-lowir_model::Function ReadFunction(Reader& in)
+lowir_model::Function ReadFunction(Reader& in,
+	lowir_model::LowirProgram& program)
 {
 	lowir_model::Function value;
 	value.name = in.String();
@@ -614,9 +637,9 @@ lowir_model::Function ReadFunction(Reader& in)
 			lowir_model::allocate_lowir_block_id(value, in.String());
 		value.blocks[i].instructions.resize(in.Count(4));
 		for (std::size_t j = 0; j < value.blocks[i].instructions.size(); ++j)
-			value.blocks[i].instructions[j] = ReadInstruction(in, value);
+			value.blocks[i].instructions[j] = ReadInstruction(in, program, value);
 	}
-	lowir_model::resolve_lowir_function_operands(value);
+	lowir_model::resolve_lowir_function_operands(value, program.strings);
 	value.debug_location = ReadDebug(in);
 	value.boundary = ReadBoundary(in);
 	value.metadata = ReadSymbolMetadata(in);
@@ -680,13 +703,13 @@ lowir_model::LowirProgram ReadProgram(Reader& in)
 		value.global_declarations[i] = ReadGlobalDeclaration(in);
 	value.globals.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.globals.size(); ++i)
-		value.globals[i] = ReadGlobal(in);
+		value.globals[i] = ReadGlobal(in, value);
 	value.function_declarations.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.function_declarations.size(); ++i)
 		value.function_declarations[i] = ReadFunctionDeclaration(in);
 	value.functions.resize(in.Count(8));
 	for (std::size_t i = 0; i < value.functions.size(); ++i)
-		value.functions[i] = ReadFunction(in);
+		value.functions[i] = ReadFunction(in, value);
 	value.object_aliases.resize(in.Count(16));
 	for (std::size_t i = 0; i < value.object_aliases.size(); ++i)
 	{
@@ -712,11 +735,16 @@ void RenameString(std::string* value, const RenameMap& names,
 	if (found != names.end()) *value = found->second;
 }
 
-void RenameOperand(lowir_model::Operand* value, const RenameMap& names,
-	LinkStats* stats)
+void RenameOperand(lowir_model::LowirProgram* program,
+	lowir_model::Operand* value, const RenameMap& names, LinkStats* stats)
 {
-	if (value->kind != lowir_model::Operand::OP_GLOBAL) return;
-	RenameString(&value->text, names, stats);
+	if (value->kind != lowir_model::Operand::OP_GLOBAL ||
+		!value->has_spelling) return;
+	const std::string& spelling = program->strings.get(value->literal);
+	if (stats) ++stats->rename_probes;
+	const RenameMap::const_iterator found = names.find(spelling);
+	if (found != names.end())
+		value->literal = program->strings.intern(found->second);
 }
 
 void RenameMetadata(lowir_model::SymbolMetadata* value,
@@ -740,10 +768,11 @@ void RenameProgram(lowir_model::LowirProgram* program,
 	{
 		lowir_model::GlobalDefinition& item = program->globals[i];
 		RenameString(&item.name, names, stats);
-		RenameOperand(&item.init_operand, names, stats);
+		RenameOperand(program, &item.init_operand, names, stats);
 		for (std::size_t j = 0; j < item.data_items.size(); ++j)
 		{
-			RenameOperand(&item.data_items[j].literal_operand, names, stats);
+			RenameOperand(program, &item.data_items[j].literal_operand,
+				names, stats);
 			RenameString(&item.data_items[j].symbol, names, stats);
 		}
 		RenameMetadata(&item.metadata, names, stats);
@@ -765,18 +794,19 @@ void RenameProgram(lowir_model::LowirProgram* program,
 			{
 				lowir_model::Instruction& instruction =
 					item.blocks[j].instructions[k];
-				RenameOperand(&instruction.first, names, stats);
-				RenameOperand(&instruction.second, names, stats);
-				RenameOperand(&instruction.third, names, stats);
+				RenameOperand(program, &instruction.first, names, stats);
+				RenameOperand(program, &instruction.second, names, stats);
+				RenameOperand(program, &instruction.third, names, stats);
 				for (std::size_t a = 0; a < instruction.args.size(); ++a)
-					RenameOperand(&instruction.args[a], names, stats);
+					RenameOperand(program, &instruction.args[a], names, stats);
 			}
 	}
 	for (std::size_t i = 0; i < program->object_aliases.size(); ++i)
 		RenameString(&program->object_aliases[i].target, names, stats);
 }
 
-lowir_model::Function MakeLifecycleAggregate(const std::string& name,
+lowir_model::Function MakeLifecycleAggregate(lowir_model::LowirProgram& program,
+	const std::string& name,
 	lowir_model::SymbolRole role, const std::vector<std::string>& functions,
 	bool reverse)
 {
@@ -795,7 +825,8 @@ lowir_model::Function MakeLifecycleAggregate(const std::string& name,
 		call.call_returns_void = true;
 		call.type = lowir_model::builtin_lowir_type(lowir_model::LTK_VOID);
 		call.first.kind = lowir_model::Operand::OP_GLOBAL;
-		call.first.text = functions[index];
+		call.first.literal = program.strings.intern(functions[index]);
+		call.first.has_spelling = true;
 		block.instructions.push_back(call);
 	}
 	lowir_model::Instruction ret;
@@ -999,6 +1030,7 @@ lowir_model::LowirProgram LinkCompilerObjects(
 	std::chrono::steady_clock::time_point started;
 	if (stats) started = std::chrono::steady_clock::now();
 	std::unordered_map<std::string, std::string> external_names;
+	lowir_model::LowirProgram result;
 	for (std::size_t i = 0; i < objects.size(); ++i)
 	{
 		if (objects[i].target != target)
@@ -1024,13 +1056,14 @@ lowir_model::LowirProgram LinkCompilerObjects(
 			}
 		}
 		RenameProgram(&objects[i].lowir, names, stats);
-		lowir_model::materialize_lowir_program_symbol_text(objects[i].lowir);
-		lowir_model::materialize_lowir_program_literal_text(objects[i].lowir);
+		lowir_model::materialize_lowir_program_symbol_spellings(
+			objects[i].lowir);
+		lowir_model::remap_lowir_program_operand_spellings(
+			objects[i].lowir, result.strings);
 		std::vector<ir_model::ExportedSymbol>().swap(
 			objects[i].lowir.exported_symbols);
 	}
 
-	lowir_model::LowirProgram result;
 	std::unordered_map<std::string, std::size_t> globals;
 	std::unordered_map<std::string, std::size_t> functions;
 	std::vector<std::string> initializers;
@@ -1117,10 +1150,12 @@ lowir_model::LowirProgram LinkCompilerObjects(
 	}
 	if (!initializers.empty())
 		result.functions.push_back(MakeLifecycleAggregate(
-			"@__cppgm_link_init", lowir_model::SR_INIT, initializers, false));
+			result, "@__cppgm_link_init", lowir_model::SR_INIT,
+			initializers, false));
 	if (!finalizers.empty())
 		result.functions.push_back(MakeLifecycleAggregate(
-			"@__cppgm_link_fini", lowir_model::SR_FINI, finalizers, true));
+			result, "@__cppgm_link_fini", lowir_model::SR_FINI,
+			finalizers, true));
 
 	std::unordered_map<std::string, std::string> aliases;
 	std::vector<lowir_model::ObjectAlias> unique_aliases;
@@ -1136,7 +1171,6 @@ lowir_model::LowirProgram LinkCompilerObjects(
 	}
 	result.object_aliases.swap(unique_aliases);
 	lowir_model::resolve_lowir_program_symbols(result);
-	lowir_model::intern_lowir_program_literals(result);
 	lowir_model::finalize_lowir_object_model(result);
 	if (stats)
 	{
