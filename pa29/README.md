@@ -117,6 +117,12 @@ without renumbering identities. Resolve the spelling only when producing the
 MIR dump or a diagnostic; control-flow, exception, and layout analysis should
 use the compact identity directly.
 
+Program symbols use the corresponding program-wide `SymbolId`. Direct calls,
+global storage operands, TLS references, and exception type references should
+carry that identity through MIR optimization and native selection. Keep the
+symbol spelling once in the MIR program's symbol-name table and resolve it only
+for the MIR dump, a diagnostic, or native object emission.
+
 Frame metadata is part of that final MIR contract. In particular, the
 callee-saved `preserve` list should name the callee-saved registers that the
 final instruction body actually uses after local setup/copy cleanup, and the

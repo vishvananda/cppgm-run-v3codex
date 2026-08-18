@@ -279,10 +279,8 @@ protected:
 				machine_instruction(mir_model::MirInstruction::MI_TLS_ADDR);
 			append_operand(address, target);
 			append_operand(address,
-				named_operand(mir_model::MirOperand::OP_SYMBOL,
-					lowir_model::lowir_symbol_name(derived.program_, wrapper)));
-			address.tls_storage_symbol = lowir_model::lowir_symbol_name(
-				derived.program_, instruction.first.symbol);
+				symbol_operand(mir_model::MirOperand::OP_SYMBOL, wrapper));
+			address.tls_storage_symbol = instruction.first.symbol;
 			out.push_back(address);
 			if (destination.kind == mir_model::MirOperand::OP_FRAME)
 				append_store(out, destination, target, machine_type(lowir_model::LTK_PTR));

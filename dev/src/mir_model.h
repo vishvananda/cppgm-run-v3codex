@@ -137,11 +137,17 @@ struct Operand
   std::uint32_t frame_binding = 0;
   // Function-local control-flow targets retain the dense LowIR block
   // identity.  The function owns the corresponding presentation spelling.
-  lowir_model::BlockId block;
+  union
+  {
+    lowir_model::BlockId block;
+    lowir_model::SymbolId symbol;
+  };
   long long imm = 0;
   long double float_imm = 0.0L;
   long long offset = 0;
   std::string text;
+
+  Operand() : block() {}
 };
 
 struct InstructionDebugLocation
@@ -267,7 +273,7 @@ struct Instruction
   X86Condition condition = XC_E;
   std::size_t byte_count = 0;
   std::size_t byte_alignment = 1;
-  std::string tls_storage_symbol;
+  lowir_model::SymbolId tls_storage_symbol;
   bool call_unwind_no = false;
   bool call_returns_noreturn = false;
   bool call_variadic = false;
@@ -326,8 +332,8 @@ struct HostEhClause
   } kind = HC_CATCH;
   bool catch_all = false;
   long long selector = 0;
-  std::string type_symbol;
-  std::vector<std::string> filter_type_symbols;
+  lowir_model::SymbolId type_symbol;
+  std::vector<lowir_model::SymbolId> filter_type_symbols;
 };
 
 struct Function
@@ -402,6 +408,7 @@ struct RuntimeData
 struct Program
 {
   std::string target;
+  std::vector<std::string> symbol_names;
   bool uses_eh = false;
   std::vector<Instruction> startup;
   std::vector<GlobalDefinition> globals;
@@ -428,6 +435,8 @@ using MirProgram = Program;
 
 const std::string & mir_block_label(const MirFunction & function,
                                     lowir_model::BlockId block);
+const std::string & mir_symbol_name(const MirProgram & program,
+                                    lowir_model::SymbolId symbol);
 std::string serialize_mir_program(const MirProgram & program);
 void write_mir_program_file(const std::string & path,
                             const MirProgram & program);

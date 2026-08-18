@@ -126,7 +126,8 @@ void float_address(CodeBuffer & out, const mir_model::MirOperand & address,
     base = XR_RBP;
     displacement = actual_frame_offset(function, address.offset);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
+    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+                     address.address_binding);
     base = XR_R11;
     displacement = 0;
   } else throw std::logic_error("unsupported SSE memory operand");
@@ -553,9 +554,11 @@ void emit_move(CodeBuffer & out, const mir_model::MirInstruction & instruction)
   else if(source.kind == mir_model::MirOperand::OP_IMM)
     emit_immediate_move(out, destination, static_cast<std::uint64_t>(source.imm));
   else if(source.kind == mir_model::MirOperand::OP_SYMBOL)
-    emit_symbol_move(out, destination, source.text, source.address_binding);
+    emit_symbol_move(out, destination, out.symbol_name(source.symbol),
+                     source.address_binding);
   else if(source.kind == mir_model::MirOperand::OP_GLOBAL)
-    emit_symbol_move(out, destination, source.text, source.address_binding);
+    emit_symbol_move(out, destination, out.symbol_name(source.symbol),
+                     source.address_binding);
   else throw std::logic_error("unsupported native move operand");
 }
 
@@ -569,7 +572,8 @@ void emit_address_load(CodeBuffer & out, X64Register destination,
                         address.scale, address.offset, width);
     else emit_load(out, destination, address.reg, address.offset, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
+    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+                     address.address_binding);
     emit_load(out, destination, XR_R11, 0, width);
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_load(out, destination, XR_RBP,
@@ -587,7 +591,8 @@ void emit_address_store(CodeBuffer & out, const mir_model::MirOperand & address,
                          address.offset, source, width);
     else emit_store(out, address.reg, address.offset, source, width);
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
+    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+                     address.address_binding);
     emit_store(out, XR_R11, 0, source, width);
   } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
     emit_store(out, XR_RBP, actual_frame_offset(function, address.offset),
@@ -972,7 +977,8 @@ void emit_memory_compare(CodeBuffer & out,
     base = address.reg;
     displacement = address.offset;
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
+    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+                     address.address_binding);
     base = XR_R11;
   } else {
     throw std::logic_error("unsupported memory compare address");
@@ -1010,7 +1016,8 @@ void emit_register_memory_compare(CodeBuffer & out,
     base = address.reg;
     displacement = address.offset;
   } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.text, address.address_binding);
+    emit_symbol_move(out, XR_R11, out.symbol_name(address.symbol),
+                     address.address_binding);
     base = XR_R11;
   } else {
     throw std::logic_error("unsupported register-memory compare address");
@@ -1269,7 +1276,8 @@ void emit_eh_catch(CodeBuffer & out,
   const std::string selected = out.internal_label("eh_catch_selected");
   if(instruction.operands.size() == 2) {
     exact = out.internal_label("eh_catch_exact");
-    emit_symbol_move(out, XR_RAX, instruction.operands[1].text,
+    emit_symbol_move(out, XR_RAX,
+                     out.symbol_name(instruction.operands[1].symbol),
                      instruction.operands[1].address_binding);
     emit_symbol_move(out, XR_R11, kEhType);
     emit_load(out, XR_RCX, XR_R11, 0, 64);
@@ -1410,14 +1418,14 @@ void emit_tls_address_instruction(
 {
   require_operands(instruction, 2);
   if(instruction.operands[1].kind != mir_model::MirOperand::OP_SYMBOL ||
-     instruction.tls_storage_symbol.empty())
+     !instruction.tls_storage_symbol.valid())
     throw std::logic_error("TLS address source has invalid symbol facts");
   if(out.relocatable_addresses())
     emit_tls_address(out, require_register(instruction.operands[0]),
-                     instruction.tls_storage_symbol);
+                     out.symbol_name(instruction.tls_storage_symbol));
   else
     emit_symbol_move(out, require_register(instruction.operands[0]),
-                     instruction.operands[1].text,
+                     out.symbol_name(instruction.operands[1].symbol),
                      instruction.operands[1].address_binding);
 }
 
@@ -1633,7 +1641,7 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     if(instruction.operands[0].kind != mir_model::MirOperand::OP_SYMBOL)
       throw std::logic_error("direct call target is not a symbol");
     out.byte(0xe8);
-    out.relative32(instruction.operands[0].text);
+    out.relative32(out.symbol_name(instruction.operands[0].symbol));
     return;
   case mir_model::MirInstruction::MI_CALL_INDIRECT:
     require_operands(instruction, 1);
@@ -2737,6 +2745,7 @@ void write_linux_executable(const std::string & path,
   std::chrono::steady_clock::time_point encode_start;
   if(stats) encode_start = std::chrono::steady_clock::now();
   CodeBuffer content;
+  content.bind_symbol_names(program.symbol_names);
   content.label("__startup");
   for(std::size_t i = 0; i < program.startup.size(); ++i)
     emit_instruction(content, program.startup[i], 0);
@@ -2758,6 +2767,7 @@ void write_linux_executable(const std::string & path,
   if(program.startup.empty())
     throw std::runtime_error("native executable has no startup entry");
   CodeBuffer content;
+  content.bind_symbol_names(program.symbol_names);
   std::uint64_t encode_nanoseconds = 0;
   std::chrono::steady_clock::time_point encode_started;
   if(stats) encode_started = std::chrono::steady_clock::now();
@@ -2794,6 +2804,7 @@ void write_linux_relocatable(
   ProgramLoweringSession lowering(source, target, optimization_level, stats);
   mir_model::MirProgram program = lowering.take_program_shell();
   CodeBuffer text(0, true);
+  text.bind_symbol_names(program.symbol_names);
   std::vector<HostFunctionLayout> functions;
   functions.reserve(lowering.function_count() + source.function_declarations.size());
   std::uint64_t encode_nanoseconds = 0;
@@ -2820,6 +2831,7 @@ void write_linux_relocatable(
   std::vector<DataSectionBuffer> data_sections;
   std::unordered_map<std::string, std::size_t> data_section_indexes;
   intern_data_section(".data", 3, data_sections, data_section_indexes);
+  data_sections[0].content.bind_symbol_names(program.symbol_names);
   const std::unordered_set<std::string> suppressed_globals =
     host_external_global_definitions(source, program);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
@@ -2832,6 +2844,7 @@ void write_linux_relocatable(
     const std::size_t section_index = intern_data_section(
       section_name, flags, data_sections, data_section_indexes);
     DataSectionBuffer & section = data_sections[section_index];
+    section.content.bind_symbol_names(program.symbol_names);
     section.alignment = std::max(section.alignment, global_alignment(global));
     emit_global(section.content, global);
   }
@@ -2839,8 +2852,12 @@ void write_linux_relocatable(
   const std::unordered_map<std::string, std::string> host_declarations =
     declaration_object_symbols(source);
   std::unordered_set<std::string> catch_types;
-  const auto record_eh_type = [&](const std::string & symbol) {
-    const auto named = host_declarations.find(symbol); catch_types.insert(named == host_declarations.end() ? host_symbol_spelling(symbol) : named->second);
+  const auto record_eh_type = [&](lowir_model::SymbolId symbol) {
+    const std::string & symbol_name =
+      lowir_model::lowir_symbol_name(source, symbol);
+    const auto named = host_declarations.find(symbol_name);
+    catch_types.insert(named == host_declarations.end() ?
+      host_symbol_spelling(symbol_name) : named->second);
   };
   for(std::size_t i = 0; i < functions.size(); ++i)
   {

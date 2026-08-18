@@ -811,6 +811,35 @@ are not credited to either implementation.  The unchanged output, eliminated
 label maps, stable record sizes, and passing tests justify retaining the
 structural slice; cumulative timing will be repeated under comparable load.
 
+### CI10: compact MIR symbol operands and EH type identity
+
+MIR direct-call, global-storage, TLS, EH catch, and EH filter operands now
+carry `SymbolId`.  The MIR program owns one symbol-name table copied from the
+compact LowIR program.  The MIR serializer resolves IDs from that table, while
+the native `CodeBuffer` receives a read-only symbol view and resolves names
+only when it creates its current string-based relocation boundary.  The
+generic named-operand constructor has been removed.
+
+Host-EH clauses retain catch and filter type IDs through region analysis and
+LSDA planning.  Type spellings are created only while building ELF
+relocations.  One existing PA29 structural test caught a pointer-global call
+path that had used nonempty operand text as an internal presence sentinel;
+that path now tests the operand kind and valid `SymbolId` directly.
+
+Removing the per-instruction TLS string reduces `MirInstruction` from 200 to
+176 bytes; `MirOperand` remains 112 bytes pending removal of its float-literal
+presentation string.  The frozen object is byte-identical to CI9 at 4,417,192
+bytes with SHA-256
+`98f77be4b76e5f097be61797fa6559d80266f1e2bb096ac76328b3aabc731283`.
+PA29, PA30, PA37, and PA38 report 441/441 passing tests.
+
+Four interleaved runs per lane against `f76dbcf1` produced baseline/candidate
+medians of 5.815/5.810 seconds user, 6.350/6.335 seconds wall, and
+364,114/365,330 KiB peak RSS.  Time is neutral within noise and the RSS delta
+is 0.33%, below the semantic-frontend process peak.  This slice receives no
+standalone timing credit; it is retained because it removes symbol allocation
+and lookup without growing any hot record or changing output.
+
 ## 11. Completion definition
 
 The work is complete when the source and explicit-text paths meet in one

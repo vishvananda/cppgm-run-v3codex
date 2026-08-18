@@ -339,6 +339,7 @@ std::string host_symbol_spelling(const std::string & raw);
 HostSection make_host_lsda(
     std::vector<HostFunctionLayout> & functions,
     const EncodedLabelIndex & encoded_labels,
+    const lowir_model::LowirProgram & program,
     const std::unordered_map<std::string, std::string> & declarations,
     std::vector<HostRelocation> & relocations)
 {
@@ -353,9 +354,9 @@ HostSection make_host_lsda(
     std::vector<unsigned char> call_table;
     std::vector<unsigned char> actions;
     std::map<std::string, std::size_t> action_offsets;
-    std::map<long long, std::string> type_symbols;
-    std::map<std::string, long long> selectors_by_type;
-    std::map<std::vector<std::string>, long long> filter_selectors;
+    std::map<long long, lowir_model::SymbolId> type_symbols;
+    std::map<lowir_model::SymbolId, long long> selectors_by_type;
+    std::map<std::vector<lowir_model::SymbolId>, long long> filter_selectors;
     std::vector<unsigned char> exception_specs;
     long long max_selector = 0;
     for(std::map<std::string,
@@ -367,7 +368,7 @@ HostSection make_host_lsda(
         if(list[clause].kind != mir_model::MirHostEhClause::HC_CATCH) continue;
         max_selector = std::max(max_selector, list[clause].selector);
         type_symbols[list[clause].selector] = list[clause].catch_all ?
-          std::string() : list[clause].type_symbol;
+          lowir_model::SymbolId() : list[clause].type_symbol;
         if(!list[clause].catch_all)
           selectors_by_type[list[clause].type_symbol] = list[clause].selector;
       }
@@ -386,9 +387,9 @@ HostSection make_host_lsda(
         filter_selectors[list[clause].filter_type_symbols] = selector;
         for(std::size_t type = 0;
             type < list[clause].filter_type_symbols.size(); ++type) {
-          const std::string & symbol =
+          const lowir_model::SymbolId symbol =
             list[clause].filter_type_symbols[type];
-          std::map<std::string, long long>::const_iterator selected =
+          std::map<lowir_model::SymbolId, long long>::const_iterator selected =
             selectors_by_type.find(symbol);
           if(selected == selectors_by_type.end()) {
             const long long index = ++max_selector;
@@ -489,18 +490,20 @@ HostSection make_host_lsda(
     if(max_selector) {
       const std::size_t types_begin = section.bytes.size();
       for(long long selector = max_selector; selector != 0; --selector) {
-        const std::map<long long, std::string>::const_iterator type =
+        const std::map<long long, lowir_model::SymbolId>::const_iterator type =
           type_symbols.find(selector);
-        const std::string symbol = type == type_symbols.end() ?
-          std::string() : type->second;
-        if(!symbol.empty()) {
+        const lowir_model::SymbolId symbol = type == type_symbols.end() ?
+          lowir_model::SymbolId() : type->second;
+        if(symbol.valid()) {
+          const std::string & symbol_name =
+            lowir_model::lowir_symbol_name(program, symbol);
           HostRelocation relocation;
           relocation.kind = HostRelocation::HR_PC32;
           relocation.offset = section.bytes.size();
           const std::unordered_map<std::string, std::string>::const_iterator named =
-            declarations.find(symbol);
+            declarations.find(symbol_name);
           relocation.target = "DW.ref." + (named == declarations.end() ?
-            host_symbol_spelling(symbol) : named->second);
+            host_symbol_spelling(symbol_name) : named->second);
           relocations.push_back(relocation);
         }
         append_little(section.bytes, 0, 4);
@@ -1104,7 +1107,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
       mutable_data[i], encoded_labels, declarations);
   std::vector<HostRelocation> lsda_relocations;
   HostSection lsda = make_host_lsda(
-    functions, encoded_labels, declarations, lsda_relocations);
+    functions, encoded_labels, program, declarations, lsda_relocations);
   std::vector<HostRelocation> eh_relocations;
   HostSection eh = make_host_eh_frame(
     functions, text_sections, eh_relocations);

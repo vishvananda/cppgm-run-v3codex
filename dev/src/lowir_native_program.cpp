@@ -12,8 +12,8 @@ namespace {
 using lowir_native::build::append_move;
 using lowir_native::build::append_operand;
 using lowir_native::build::machine_instruction;
-using lowir_native::build::named_operand;
 using lowir_native::build::reg_operand;
+using lowir_native::build::symbol_operand;
 using mir_model::MirInstruction;
 using mir_model::MirOperand;
 
@@ -24,11 +24,11 @@ bool is_floating(const lowir_model::LowType & type)
 }
 
 void append_startup_call(std::vector<MirInstruction> & startup,
-                         const std::string & name)
+                         lowir_model::SymbolId symbol)
 {
   MirInstruction call = machine_instruction(MirInstruction::MI_CALL);
   call.call_argument_registers_known = true;
-  append_operand(call, named_operand(MirOperand::OP_SYMBOL, name));
+  append_operand(call, symbol_operand(MirOperand::OP_SYMBOL, symbol));
   startup.push_back(call);
 }
 
@@ -125,19 +125,19 @@ std::vector<lowir_model::SymbolId> tls_wrapper_index(
 void lower_startup(const lowir_model::LowirProgram & source,
                    mir_model::MirProgram & target)
 {
-  std::string entry;
-  std::string init;
-  std::string fini;
+  lowir_model::SymbolId entry;
+  lowir_model::SymbolId init;
+  lowir_model::SymbolId fini;
   for(std::size_t i = 0; i < source.functions.size(); ++i) {
     const lowir_model::LowirFunction & function = source.functions[i];
-    if(function.metadata.role == lowir_model::SR_ENTRY) entry = function.name;
-    if(function.metadata.role == lowir_model::SR_INIT) init = function.name;
-    if(function.metadata.role == lowir_model::SR_FINI) fini = function.name;
+    if(function.metadata.role == lowir_model::SR_ENTRY) entry = function.symbol;
+    if(function.metadata.role == lowir_model::SR_INIT) init = function.symbol;
+    if(function.metadata.role == lowir_model::SR_FINI) fini = function.symbol;
   }
-  if(entry.empty()) return;
-  if(!init.empty()) append_startup_call(target.startup, init);
+  if(!entry.valid()) return;
+  if(init.valid()) append_startup_call(target.startup, init);
   append_startup_call(target.startup, entry);
-  if(!fini.empty()) {
+  if(fini.valid()) {
     append_move(target.startup, reg_operand(XR_R12), reg_operand(XR_RAX));
     append_startup_call(target.startup, fini);
     append_move(target.startup, reg_operand(XR_RDI), reg_operand(XR_R12));

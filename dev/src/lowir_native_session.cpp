@@ -35,6 +35,7 @@ struct ProgramLoweringSession::Impl
     if(target != "linux")
       throw std::runtime_error("unsupported native target: " + target);
     shell.target = target;
+	shell.symbol_names = source.symbol_names;
 	pointer_globals.assign(source.symbol_names.size(), 0);
 	signatures.resize(source.symbol_names.size());
     eh::plan_program(source, shell);

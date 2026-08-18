@@ -51,7 +51,7 @@ void collect_host_eh_clauses(mir_model::MirFunction * function)
         clause.selector = instruction.operands[0].imm;
         clause.catch_all = instruction.operands.size() == 1;
         if(!clause.catch_all)
-          clause.type_symbol = instruction.operands[1].text;
+          clause.type_symbol = instruction.operands[1].symbol;
       } else if(instruction.opcode ==
                   mir_model::MirInstruction::MI_EH_FILTER) {
 		if(instruction.operands.empty() ||
@@ -61,7 +61,7 @@ void collect_host_eh_clauses(mir_model::MirFunction * function)
         clause.selector = instruction.operands[0].imm;
         for(std::size_t type = 1; type < instruction.operands.size(); ++type)
           clause.filter_type_symbols.push_back(
-            instruction.operands[type].text);
+            instruction.operands[type].symbol);
       } else continue;
       clauses.push_back(clause);
     }

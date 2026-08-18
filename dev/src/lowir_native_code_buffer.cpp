@@ -40,13 +40,14 @@ std::size_t CodeOffsetAdjustment::bytes_removed() const
 }
 
 CodeBuffer::CodeBuffer()
-	: base_offset_(kExecutableContentOffset), relocatable_addresses_(false)
+	: base_offset_(kExecutableContentOffset), relocatable_addresses_(false),
+	  symbol_names_(0)
 {
 }
 
 CodeBuffer::CodeBuffer(std::size_t base_offset, bool relocatable_addresses)
 	: base_offset_(base_offset),
-	  relocatable_addresses_(relocatable_addresses)
+	  relocatable_addresses_(relocatable_addresses), symbol_names_(0)
 {
 }
 
@@ -121,6 +122,19 @@ std::size_t CodeBuffer::size() const
 bool CodeBuffer::relocatable_addresses() const
 {
 	return relocatable_addresses_;
+}
+
+void CodeBuffer::bind_symbol_names(const std::vector<std::string>& names)
+{
+	symbol_names_ = &names;
+}
+
+const std::string& CodeBuffer::symbol_name(lowir_model::SymbolId symbol) const
+{
+	const std::uint32_t index = symbol;
+	if (!symbol_names_ || !symbol.valid() || index >= symbol_names_->size())
+		throw std::logic_error("invalid native symbol identity");
+	return (*symbol_names_)[index];
 }
 
 void CodeBuffer::append(const std::vector<unsigned char>& bytes)

@@ -707,7 +707,7 @@ private:
   MirOperand global_operand(MirOperand::Kind kind,
                             const Operand & operand) const
   {
-    return build::global_operand(kind, program_, operand);
+    return build::global_operand(kind, operand);
   }
   MirOperand resolve(const Operand & operand) const
   {
@@ -782,10 +782,8 @@ private:
       if(!wrapper.valid()) return storage(operand);
       MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
       append_operand(address, reg_operand(XR_R11));
-      append_operand(address, named_operand(MirOperand::OP_SYMBOL,
-        lowir_model::lowir_symbol_name(program_, wrapper)));
-      address.tls_storage_symbol =
-        lowir_model::lowir_symbol_name(program_, operand.symbol);
+      append_operand(address, symbol_operand(MirOperand::OP_SYMBOL, wrapper));
+      address.tls_storage_symbol = operand.symbol;
       out.push_back(address);
       return dereference(XR_R11);
     }
@@ -1193,10 +1191,8 @@ private:
       if(wrapper.valid()) {
         MirInstruction address = machine_instruction(MirInstruction::MI_TLS_ADDR);
         append_operand(address, reg_operand(destination));
-        append_operand(address, named_operand(MirOperand::OP_SYMBOL,
-          lowir_model::lowir_symbol_name(program_, wrapper)));
-        address.tls_storage_symbol =
-          lowir_model::lowir_symbol_name(program_, operand.symbol);
+        append_operand(address, symbol_operand(MirOperand::OP_SYMBOL, wrapper));
+        address.tls_storage_symbol = operand.symbol;
         out.push_back(address);
         return;
       }
@@ -2616,7 +2612,8 @@ private:
         if(value_known_[instruction.first.value])
           pointer_cell = values_[instruction.first.value].pointer_global_cell;
       }
-      if(!pointer_cell.text.empty()) {
+      if(pointer_cell.kind == MirOperand::OP_GLOBAL &&
+         pointer_cell.symbol.valid()) {
         MirInstruction load = machine_instruction(MirInstruction::MI_LOAD, machine_type(lowir_model::LTK_PTR));
         append_operand(load, reg_operand(XR_R10));
         append_operand(load, pointer_cell);

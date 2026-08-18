@@ -55,7 +55,8 @@ std::string dereference(const Operand & operand)
   return out.str();
 }
 
-std::string operand_text(const Operand & operand, const Function * function)
+std::string operand_text(const Operand & operand, const Program & program,
+                         const Function * function)
 {
   std::ostringstream out;
   switch(operand.kind) {
@@ -64,7 +65,7 @@ std::string operand_text(const Operand & operand, const Function * function)
   case Operand::OP_IMM: out << operand.imm; return out.str();
   case Operand::OP_FLOAT_IMM: return operand.text;
   case Operand::OP_SYMBOL:
-  case Operand::OP_GLOBAL: return operand.text;
+  case Operand::OP_GLOBAL: return mir_symbol_name(program, operand.symbol);
   case Operand::OP_LABEL:
     if(!function)
       throw std::logic_error("MIR label operand outside function");
@@ -175,6 +176,7 @@ const char * opcode_name(Instruction::Opcode opcode)
 }
 
 void render_operands(std::ostringstream & out, const Instruction & instruction,
+                     const Program & program,
                      const Function * function,
                      bool leading_comma = false)
 {
@@ -183,7 +185,7 @@ void render_operands(std::ostringstream & out, const Instruction & instruction,
     else out << ", ";
     if(instruction.opcode == Instruction::MI_CALL_INDIRECT ||
        instruction.opcode == Instruction::MI_JMP_INDIRECT) out << '*';
-    out << operand_text(instruction.operands[i], function);
+    out << operand_text(instruction.operands[i], program, function);
   }
 }
 
@@ -240,34 +242,35 @@ void render_call_facts(std::ostringstream & out,
 }
 
 std::string instruction_text(const Instruction & instruction,
+                             const Program & program,
                              const Function * function)
 {
   std::ostringstream out;
   if(instruction.opcode == Instruction::MI_COPY_BYTES) {
     out << "copy_bytes " << instruction.byte_count << 'x'
         << instruction.byte_alignment;
-    render_operands(out, instruction, function, true);
+    render_operands(out, instruction, program, function, true);
     return out.str();
   }
   if(instruction.opcode == Instruction::MI_ZERO_BYTES) {
     out << "zero_bytes " << instruction.byte_count << 'x'
         << instruction.byte_alignment;
-    render_operands(out, instruction, function, true);
+    render_operands(out, instruction, program, function, true);
     return out.str();
   }
   if(instruction.opcode == Instruction::MI_JCC) {
     out << 'j' << condition_suffix(instruction.condition);
-    render_operands(out, instruction, function);
+    render_operands(out, instruction, program, function);
     return out.str();
   }
   if(instruction.opcode == Instruction::MI_SETCC) {
     out << "set" << condition_suffix(instruction.condition);
-    render_operands(out, instruction, function);
+    render_operands(out, instruction, program, function);
     return out.str();
   }
   if(instruction.opcode == Instruction::MI_LOCK_CMPXCHG16B) {
     out << "lock_cmpxchg16b";
-    render_operands(out, instruction, function);
+    render_operands(out, instruction, program, function);
     out << ", expected=rdx:rax, desired=rcx:rbx";
     return out.str();
   }
@@ -275,7 +278,7 @@ std::string instruction_text(const Instruction & instruction,
      instruction.opcode == Instruction::MI_SHR_CL ||
      instruction.opcode == Instruction::MI_SAR_CL) {
     out << opcode_name(instruction.opcode);
-    render_operands(out, instruction, function);
+    render_operands(out, instruction, program, function);
     out << ", cl";
     return out.str();
   }
@@ -300,16 +303,17 @@ std::string instruction_text(const Instruction & instruction,
       out << lowir_model::lowir_type_text(instruction.source_type) << '.';
     out << lowir_model::lowir_type_text(instruction.type);
   }
-  render_operands(out, instruction, function);
+  render_operands(out, instruction, program, function);
   render_call_facts(out, instruction);
   return out.str();
 }
 
 std::string rendered_instruction_text(const Instruction & instruction,
+                                      const Program & program,
                                       const Function * function = 0)
 {
   std::ostringstream out;
-  out << instruction_text(instruction, function);
+  out << instruction_text(instruction, program, function);
   if(instruction.debug_location.present())
     out << " !dbg(" << instruction.debug_location.file << ", "
         << instruction.debug_location.line << ", "
@@ -317,7 +321,8 @@ std::string rendered_instruction_text(const Instruction & instruction,
   return out.str();
 }
 
-void render_global(std::ostringstream & out, const GlobalDefinition & global)
+void render_global(std::ostringstream & out, const Program & program,
+                   const GlobalDefinition & global)
 {
   out << "global " << global.name;
   if(global.readonly) out << " readonly";
@@ -369,7 +374,8 @@ void render_global(std::ostringstream & out, const GlobalDefinition & global)
   out << '\n';
 }
 
-void render_function(std::ostringstream & out, const Function & function)
+void render_function(std::ostringstream & out, const Program & program,
+                     const Function & function)
 {
   out << "function " << function.name << "\n  abi\n";
   for(std::size_t i = 0; i < function.params.size(); ++i) {
@@ -410,7 +416,7 @@ void render_function(std::ostringstream & out, const Function & function)
         << '\n';
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j)
       out << "    " << rendered_instruction_text(
-        function.blocks[i].instructions[j], &function) << '\n';
+        function.blocks[i].instructions[j], program, &function) << '\n';
   }
 }
 
@@ -425,6 +431,15 @@ const std::string & mir_block_label(const MirFunction & function,
   return function.block_labels[index];
 }
 
+const std::string & mir_symbol_name(const MirProgram & program,
+                                    lowir_model::SymbolId symbol)
+{
+  const std::uint32_t index = symbol;
+  if(!symbol.valid() || index >= program.symbol_names.size())
+    throw std::logic_error("invalid MIR symbol identity");
+  return program.symbol_names[index];
+}
+
 std::string serialize_mir_program(const MirProgram & program)
 {
   std::ostringstream out;
@@ -432,15 +447,16 @@ std::string serialize_mir_program(const MirProgram & program)
   if(!program.startup.empty()) {
     out << "\nstartup\n";
     for(std::size_t i = 0; i < program.startup.size(); ++i)
-      out << "    " << rendered_instruction_text(program.startup[i]) << '\n';
+      out << "    " << rendered_instruction_text(
+        program.startup[i], program) << '\n';
   }
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     out << '\n';
-    render_global(out, program.globals[i]);
+    render_global(out, program, program.globals[i]);
   }
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     out << '\n';
-    render_function(out, program.functions[i]);
+    render_function(out, program, program.functions[i]);
   }
   return out.str();
 }
