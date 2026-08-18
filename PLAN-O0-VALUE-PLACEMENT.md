@@ -411,6 +411,18 @@ sequential ABBA gives baseline/candidate medians of 5.630/5.655 seconds user,
 passes 27/27, the full report passes 5,194/5,194, and the PA39 file audit has
 zero fatal findings.
 
+The first clean self-host gate after this slice exposed an earlier VP2 encoder
+contract error. The MIR correctly represented `lea base+index; load`, and the
+dead-setup fold retained the indexed address fact, but its emitter always used
+the base-only load encoder. The resulting self compiler treated every simple
+post-token as invalid once O1 LowIR exposed the indexed lookup shape. The fix
+emits the indexed load directly, preserving the eliminated `lea` and its size
+benefit. Reference-backed PA38 behavior cases cover both O1 and O2 without
+requiring an exact MIR layout. The frozen O0 object remains 4,417,192 bytes
+with 931,862 aggregate text bytes; a quiet confirmation run took 5.78 seconds
+user and 6.37 seconds wall at 365,104 KiB peak RSS. The full report passes
+5,196/5,196 and the PA39 file audit remains zero-fatal.
+
 The logical-bulk-operand slice changes strict PA29 MIR for `100-copyobj`,
 `100-zeroinit`, and `200-pass-by-value-lvalue`. `copy_bytes` and `zero_bytes`
 now retain the selected logical address registers in serialized MIR; the

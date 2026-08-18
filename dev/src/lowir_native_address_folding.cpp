@@ -197,8 +197,13 @@ std::size_t emit_dead_setup_load(
   } else if(address.kind != MirOperand::OP_DEREF) {
     throw std::logic_error("folded native load address is not memory-shaped");
   }
-  emit_load(out, load.operands[0].reg, base, offset,
-            data_layout::type_width(load.type));
+  if(address.has_index)
+    emit_indexed_load(out, load.operands[0].reg, base, address.index,
+                      address.scale, offset,
+                      data_layout::type_width(load.type));
+  else
+    emit_load(out, load.operands[0].reg, base, offset,
+              data_layout::type_width(load.type));
   return count;
 }
 
