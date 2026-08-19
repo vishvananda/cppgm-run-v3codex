@@ -447,9 +447,8 @@ private:
 		if (function_symbols_[record.binding] == kNoLowId)
 		{
 			const BindingRecord& binding = program_.bindings[record.binding];
-			const std::string base = SanitizeSymbol(presentation_names_.Apply(
-				program_.names.Get(binding.qualified_name != 0 ?
-					binding.qualified_name : record.text)));
+			const std::string base = SanitizeSymbol(
+				presentation_names_.Apply(binding.owner, binding.name));
 			const std::uint32_t ordinal =
 				program_.bindings[record.binding].overload_ordinal;
 			const std::string name = ordinal <= 1 ? base :

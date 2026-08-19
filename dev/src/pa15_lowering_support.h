@@ -7,7 +7,6 @@
 #include <stdexcept>
 #include <streambuf>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace cppgm
@@ -44,12 +43,14 @@ bool DecodeFloatingLiteral(const std::string& spelling,
 
 class PresentationNameMap
 {
-public:
+	public:
 	explicit PresentationNameMap(const pa11::Program& program);
-	std::string Apply(const std::string& qualified) const;
+	std::string Apply(pa11::ScopeId owner, pa11::NameId terminal) const;
 
 private:
-	std::unordered_map<std::string, std::string> names_;
+	const pa11::Program& program_;
+	std::vector<pa11::NameId> replacements_;
+	mutable std::vector<pa11::NameId> path_;
 };
 
 class FlatIdMap
