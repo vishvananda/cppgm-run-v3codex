@@ -137,6 +137,21 @@ struct AbiMangleStats
   unsigned long long encode_nanoseconds = 0;
 };
 
+class AbiMangleContext
+{
+public:
+  explicit AbiMangleContext(AbiMangleStats * stats = nullptr);
+  ~AbiMangleContext();
+
+  std::string mangle_case(const AbiFactCase & fact_case);
+
+private:
+  AbiMangleContext(const AbiMangleContext &);
+  AbiMangleContext & operator=(const AbiMangleContext &);
+  struct Impl;
+  Impl * impl_;
+};
+
 AbiFactRecord parse_fact_record_words(const std::vector<std::string> & words);
 AbiFactFile parse_fact_text(const std::string & text);
 std::string serialize_fact_file(const AbiFactFile & file);

@@ -89,7 +89,9 @@ public:
 	GraphLowerer(const SemanticGraphView& graph, TypedProgram& output,
 		LowIRLoweringStats* stats, std::size_t source_ordinal)
 		: graph_(graph), program_(graph.program), arena_(graph.arena),
-		  output_(output), stats_(stats), function_(0), current_block_(0), current_result_(LowVoid()),
+		  output_(output), stats_(stats),
+		  abi_context_(stats ? &stats->abi : 0),
+		  function_(0), current_block_(0), current_result_(LowVoid()),
 		  current_result_reference_(false), current_indirect_result_(false),
 		  temp_counter_(0), initialized_bit_field_owner_(kNoEntity),
 		  initialized_bit_field_offset_(0), initialized_bit_field_unit_valid_(false),
@@ -458,8 +460,10 @@ private:
 				name + "__base_entry" : name;
 			function_symbols_[record.binding] = InternSymbol(record, Symbol::FUNCTION_SYMBOL, entry_name,
 				pa15_lowering_abi::MangleFunction(program_, record, false,
-					stats_ ? &stats_->abi : 0));
-			pa15_lowering_abi::ApplyLifecycleSymbolMetadata(program_, record, &output_, function_symbols_[record.binding]);
+					stats_ ? &stats_->abi : 0, &abi_context_));
+			pa15_lowering_abi::ApplyLifecycleSymbolMetadata(program_, record,
+				&output_, function_symbols_[record.binding], &abi_context_,
+				stats_ ? &stats_->abi : 0);
 		}
 		if (record.kind == DUMP_FUNCTION_DEFINITION)
 		{
@@ -575,7 +579,8 @@ private:
 											std::make_pair(symbol,
 											pa15_lowering_abi::MangleThreadLocalWrapper(
 												program_, record.binding, record.text,
-												stats_ ? &stats_->abi : 0)));
+												stats_ ? &stats_->abi : 0,
+												&abi_context_)));
 								}
 						}
 						else
@@ -643,7 +648,7 @@ private:
 				std::make_pair(action_index,
 					pa15_lowering_abi::MangleThreadLocalWrapper(
 						program_, record.binding, record.text,
-						stats_ ? &stats_->abi : 0)));
+						stats_ ? &stats_->abi : 0, &abi_context_)));
 		bool keep_global_class_address = false;
 		if (!SetExplicitVariableZero(record, &global) &&
 			!static_initializers_.Lower(action, thread_local_object, &global,
@@ -2421,6 +2426,7 @@ private:
 	const DumpArena& arena_;
 	TypedProgram& output_;
 	LowIRLoweringStats* stats_;
+	abi_mangle::AbiMangleContext abi_context_;
 	std::vector<SymbolId> function_symbols_;
 	std::vector<SymbolId> global_symbols_;
 	std::vector<SymbolId> literal_symbols_;

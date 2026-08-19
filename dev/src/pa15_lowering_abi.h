@@ -17,7 +17,8 @@ namespace pa15_lowering_abi
 {
 
 std::string MangleType(const pa11::Program& program, pa11::TypeId type,
-	abi_mangle::AbiMangleStats* stats = 0);
+	abi_mangle::AbiMangleStats* stats = 0,
+	abi_mangle::AbiMangleContext* context = 0);
 bool IsFunctionEmissionDemanded(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	bool host_object_emission = false);
@@ -30,14 +31,17 @@ bool HasWeakLinkage(
 std::string MangleFunction(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	bool force_lifecycle_base_entry = false,
-	abi_mangle::AbiMangleStats* stats = 0);
+	abi_mangle::AbiMangleStats* stats = 0,
+	abi_mangle::AbiMangleContext* context = 0);
 std::string MangleVariable(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	const std::string& qualified_name_override = std::string(),
-	abi_mangle::AbiMangleStats* stats = 0);
+	abi_mangle::AbiMangleStats* stats = 0,
+	abi_mangle::AbiMangleContext* context = 0);
 std::string MangleThreadLocalWrapper(const pa11::Program& program,
 	pa11::BindingId binding, pa11::NameId fallback_name,
-	abi_mangle::AbiMangleStats* stats = 0);
+	abi_mangle::AbiMangleStats* stats = 0,
+	abi_mangle::AbiMangleContext* context = 0);
 void ApplyBuiltinSymbolMetadata(pa15_lowir_detail::Symbol* symbol,
 	pa11::BuiltinFunctionKind kind,
 	hosted_builtin::MemoryIntrinsicKind memory_kind);
@@ -50,7 +54,9 @@ void ApplyBuiltinParameterMetadata(pa15_lowir_detail::Parameter* parameter,
 void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	pa15_lowir_detail::TypedProgram* output,
-	pa15_lowir_detail::SymbolId symbol);
+	pa15_lowir_detail::SymbolId symbol,
+	abi_mangle::AbiMangleContext* context = 0,
+	abi_mangle::AbiMangleStats* stats = 0);
 
 }
 }

@@ -369,15 +369,35 @@ bool is_builtin_name(const string & name)
 class FactGraph
 {
 public:
+  explicit FactGraph(AbiMangleStats * stats)
+    : paths(strings, stats), stats_(stats) {}
+
   FactGraph(const AbiFactCase & fact_case, AbiMangleStats * stats)
     : paths(strings, stats), stats_(stats)
   {
+	begin_case(fact_case);
+  }
+
+  void begin_case(const AbiFactCase & fact_case)
+  {
+	require(definitions.empty(), "ABI graph case is already active");
     for(const AbiFactRecord & record : fact_case.records) {
       if(record.kind != ABI_FACT_RECORD_DEFINITION) continue;
       const AbiDefinitionRecord & definition = record.definition;
       require(definitions.insert(std::make_pair(definition.id, &definition)).second,
               "duplicate ABI definition id '" + definition.id + "'");
     }
+  }
+
+  void end_case()
+  {
+	definitions.clear();
+	type_definitions.clear();
+	argument_definitions.clear();
+	expression_definitions.clear();
+	resolving_types.clear();
+	resolving_arguments.clear();
+	resolving_expressions.clear();
   }
 
   size_t resolve_type(const AbiType & source)
@@ -2223,6 +2243,41 @@ private:
 };
 
 }  // namespace
+
+struct AbiMangleContext::Impl
+{
+  explicit Impl(AbiMangleStats * stats_value)
+    : stats(stats_value), graph(stats_value) {}
+
+  AbiMangleStats * stats;
+  FactGraph graph;
+};
+
+AbiMangleContext::AbiMangleContext(AbiMangleStats * stats)
+  : impl_(new Impl(stats)) {}
+
+AbiMangleContext::~AbiMangleContext()
+{
+  delete impl_;
+}
+
+string AbiMangleContext::mangle_case(const AbiFactCase & fact_case)
+{
+  if(impl_->stats) {
+    ++impl_->stats->cases;
+    impl_->stats->records += fact_case.records.size();
+  }
+  impl_->graph.begin_case(fact_case);
+  try {
+    const string name = Encoder(fact_case, impl_->graph, impl_->stats).mangle();
+    impl_->graph.end_case();
+    if(impl_->stats) impl_->stats->output_bytes += name.size() + 1;
+    return name;
+  } catch(...) {
+    impl_->graph.end_case();
+    throw;
+  }
+}
 
 string mangle_fact_file(const AbiFactFile & file)
 {
