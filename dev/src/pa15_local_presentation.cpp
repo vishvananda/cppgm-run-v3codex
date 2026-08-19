@@ -108,6 +108,22 @@ bool PresentationLess(const BlockPresentationName& left,
 	return lhs.size() < rhs.size();
 }
 
+bool RequiresBlockPresentationOrder(const Function& function)
+{
+	for (std::size_t block = 0; block < function.blocks.size(); ++block)
+		for (std::size_t instruction = 0;
+			instruction < function.blocks[block].instructions.size(); ++instruction)
+		{
+			const Instruction& item =
+				function.blocks[block].instructions[instruction];
+			if (item.kind == Instruction::EH_TRY ||
+				(item.kind == Instruction::EH_CLEANUP &&
+				 item.target != kNoLowId))
+				return true;
+		}
+	return false;
+}
+
 }
 
 void FinalizeBlockPresentation(TypedProgram* program)
@@ -119,6 +135,12 @@ void FinalizeBlockPresentation(TypedProgram* program)
 		if (function.block_presentations.size() != function.blocks.size())
 			throw std::logic_error(
 				"object-only function has incomplete block presentation");
+		if (!RequiresBlockPresentationOrder(function))
+		{
+			std::vector<BlockPresentationName>().swap(
+				function.block_presentations);
+			continue;
+		}
 		std::vector<BlockId> order = function.block_order;
 		for (std::size_t b = 0; b < order.size(); ++b)
 			if (order[b] >= function.blocks.size())

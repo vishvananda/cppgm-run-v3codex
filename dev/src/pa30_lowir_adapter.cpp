@@ -930,7 +930,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 				result, source.strings);
 		else
 		{
-			if (item.block_presentation_order.size() != item.blocks.size())
+			if (!item.block_presentation_order.empty() &&
+				item.block_presentation_order.size() != item.blocks.size())
 				throw std::logic_error(
 					"typed LowIR has no compact block presentation order");
 			result.block_presentation_order = item.block_presentation_order;
