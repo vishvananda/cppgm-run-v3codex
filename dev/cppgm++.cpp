@@ -1272,7 +1272,30 @@ void report_source_compile_stats(
 				cppgm::NAME_PATH_PARSE_SYNTAX_FALLBACK]
 			 << " name_path_parse_declarations="
 			 << semantic.name_path_parse_families[
-				cppgm::NAME_PATH_PARSE_DECLARATION]
+				cppgm::NAME_PATH_PARSE_DECLARATION_CLASS] +
+				semantic.name_path_parse_families[
+					cppgm::NAME_PATH_PARSE_DECLARATION_ENUM] +
+				semantic.name_path_parse_families[
+					cppgm::NAME_PATH_PARSE_DECLARATION_PARAMETER] +
+				semantic.name_path_parse_families[
+					cppgm::NAME_PATH_PARSE_DECLARATION_MEMBER_POINTER] +
+				semantic.name_path_parse_families[
+					cppgm::NAME_PATH_PARSE_DECLARATION_USING]
+			 << " name_path_parse_declaration_classes="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_DECLARATION_CLASS]
+			 << " name_path_parse_declaration_enums="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_DECLARATION_ENUM]
+			 << " name_path_parse_declaration_parameters="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_DECLARATION_PARAMETER]
+			 << " name_path_parse_declaration_member_pointers="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_DECLARATION_MEMBER_POINTER]
+			 << " name_path_parse_declaration_using="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_DECLARATION_USING]
 			 << " name_path_parse_calls="
 			 << semantic.name_path_parse_families[
 				cppgm::NAME_PATH_PARSE_CALL]
