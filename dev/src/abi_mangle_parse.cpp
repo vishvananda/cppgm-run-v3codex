@@ -402,6 +402,7 @@ AbiFunctionTarget parse_function_target(const vector<string> & words, size_t beg
     target.context_ref = words[begin + 1];
     target.qualified_name = words[begin + 2];
     target.terminal = words[begin + 3];
+    target.terminal_code = abi_terminal_kind(target.terminal);
     target.discriminator = words[begin + 4];
     require(begin + 5 == words.size(), "local function target has extra operands");
     return target;
@@ -412,6 +413,7 @@ AbiFunctionTarget parse_function_target(const vector<string> & words, size_t beg
     target.context_ref = words[begin + 1];
     target.discriminator = words[begin + 2];
     target.terminal = words[begin + 3];
+    target.terminal_code = abi_terminal_kind(target.terminal);
     for(size_t i = begin + 4; i < words.size(); ++i) {
       target.signature_parameter_types.push_back(compact_type(words[i]));
     }
@@ -422,6 +424,7 @@ AbiFunctionTarget parse_function_target(const vector<string> & words, size_t beg
     target.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
     target.source_name = words[begin + 1];
     target.terminal = words[begin + 2];
+    target.terminal_code = abi_terminal_kind(target.terminal);
     target.namespace_qualifiers.assign(words.begin() + begin + 3, words.end());
     return target;
   }
@@ -785,6 +788,7 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
     require(words.size() == 2, "terminal takes one semantic terminal");
     record.kind = ABI_FUNCTION_RECORD_TERMINAL;
     record.terminal = words[1];
+    record.terminal_code = abi_terminal_kind(record.terminal);
   } else if(form == "variadic") {
     require(words.size() == 1, "variadic takes no operands");
     record.kind = ABI_FUNCTION_RECORD_VARIADIC;
@@ -811,6 +815,7 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
             "operator-terminal has invalid operands");
     record.kind = ABI_FUNCTION_RECORD_OPERATOR_TERMINAL;
     record.terminal = words[1];
+    record.terminal_code = abi_terminal_kind(record.terminal);
     if(words.size() == 3) record.literal_suffix = words[2];
   } else if(form == "conversion-terminal") {
     require(words.size() >= 2, "conversion-terminal needs a type");

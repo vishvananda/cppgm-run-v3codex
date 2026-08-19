@@ -114,6 +114,13 @@ void AbiReferenceList::move(AbiReferenceList & other) noexcept
 
 namespace {
 
+static_assert(sizeof(AbiTemplateArgument) == 1976,
+              "typed ABI terminal must not widen template arguments");
+static_assert(sizeof(AbiFunctionTarget) == 1104,
+              "typed ABI terminal must not widen function targets");
+static_assert(sizeof(AbiFunctionRecord) == 840,
+              "typed ABI terminal must not widen function records");
+
 std::size_t text_bytes(const std::string & value)
 {
   return value.size();

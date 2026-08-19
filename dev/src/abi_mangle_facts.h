@@ -2,6 +2,9 @@
 
 // Reusable typed vocabulary for Itanium ABI naming facts.
 
+#include "abi_mangle_reference.h"
+#include "abi_mangle_terminal.h"
+
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -15,43 +18,6 @@ enum AbiSemanticSubstitutionKind
   ABI_SEMANTIC_SUBSTITUTION_CLASS,
   ABI_SEMANTIC_SUBSTITUTION_TEMPLATE_ARGUMENT,
   ABI_SEMANTIC_SUBSTITUTION_MEMBER_TEMPLATE
-};
-
-// A fact-file record carries textual definition names, while the integrated
-// compiler carries translation-unit graph IDs.  Only the active form owns
-// storage, keeping production references dense without enlarging the PA14
-// adapter with a second vector.
-class AbiReferenceList
-{
-public:
-  AbiReferenceList();
-  AbiReferenceList(const AbiReferenceList & other);
-  AbiReferenceList(AbiReferenceList && other) noexcept;
-  AbiReferenceList & operator=(const AbiReferenceList & other);
-  AbiReferenceList & operator=(AbiReferenceList && other) noexcept;
-  ~AbiReferenceList();
-
-  bool resolved() const;
-  bool empty() const;
-  std::size_t size() const;
-  void push_name(const std::string & name);
-  void push_resolved(std::size_t id);
-  const std::vector<std::string> & names() const;
-  const std::vector<std::size_t> & resolved_ids() const;
-
-private:
-  enum Mode { NAMES, RESOLVED } mode_;
-  union Storage
-  {
-    Storage() {}
-    ~Storage() {}
-    std::vector<std::string> names;
-    std::vector<std::size_t> resolved;
-  } storage_;
-
-  void destroy();
-  void copy(const AbiReferenceList & other);
-  void move(AbiReferenceList & other) noexcept;
 };
 
 enum AbiFactRecordKind
@@ -122,7 +88,7 @@ enum AbiTemplateArgumentKind
   ABI_TEMPLATE_ARGUMENT_PACK
 };
 
-enum AbiMemberFunctionTerminalKind
+enum AbiMemberFunctionTerminalKind : std::uint8_t
 {
   ABI_MEMBER_FUNCTION_TERMINAL_SOURCE,
   ABI_MEMBER_FUNCTION_TERMINAL_OPERATOR,
@@ -307,6 +273,7 @@ struct AbiTemplateArgument
   // an already-rendered member symbol.
   AbiMemberFunctionTerminalKind member_function_terminal_kind =
     ABI_MEMBER_FUNCTION_TERMINAL_SOURCE;
+  AbiTerminalKind member_function_terminal_code = ABI_TERMINAL_NONE;
   std::string member_function_terminal;
   std::string member_function_literal_suffix;
   AbiType member_function_conversion_type;
@@ -360,6 +327,7 @@ struct AbiFunctionTarget
   AbiType result_type;
   bool has_result_type = false;
   bool variadic = false;
+  AbiTerminalKind terminal_code = ABI_TERMINAL_NONE;
 
   bool has_resolved_source_name() const;
   void set_resolved_source_name(std::size_t name);

@@ -262,7 +262,7 @@ struct ArgumentNode
   bool member_variadic = false;
   AbiMemberFunctionTerminalKind member_terminal_kind =
     ABI_MEMBER_FUNCTION_TERMINAL_SOURCE;
-  size_t member_terminal = NO_ID;
+  AbiTerminalKind member_terminal_code = ABI_TERMINAL_NONE;
   size_t member_literal_suffix = NO_ID;
   size_t member_conversion_type = NO_ID;
   size_t member_result_type = NO_ID;
@@ -288,7 +288,7 @@ struct ArgumentNode
            && member_rvalue_ref == other.member_rvalue_ref
            && member_variadic == other.member_variadic
            && member_terminal_kind == other.member_terminal_kind
-           && member_terminal == other.member_terminal
+           && member_terminal_code == other.member_terminal_code
            && member_literal_suffix == other.member_literal_suffix
            && member_conversion_type == other.member_conversion_type
            && member_result_type == other.member_result_type
@@ -311,7 +311,7 @@ size_t argument_hash(const ArgumentNode & argument)
   hash = mix_hash(hash, argument.substitution);
   hash = mix_hash(hash, argument.symbol);
   hash = mix_hash(hash, static_cast<size_t>(argument.member_terminal_kind));
-  hash = mix_hash(hash, argument.member_terminal);
+  hash = mix_hash(hash, static_cast<size_t>(argument.member_terminal_code));
   hash = mix_hash(hash, argument.member_literal_suffix);
   hash = mix_hash(hash, argument.member_conversion_type);
   hash = mix_hash(hash, argument.member_result_type);
@@ -914,9 +914,10 @@ private:
     node.member_rvalue_ref = source.member_function_rvalue_ref;
     node.member_variadic = source.member_function_variadic;
     node.member_terminal_kind = source.member_function_terminal_kind;
-    if(!source.member_function_terminal.empty()) {
-      node.member_terminal = strings.intern(source.member_function_terminal);
-    }
+    node.member_terminal_code = source.member_function_terminal_code !=
+      ABI_TERMINAL_NONE ? source.member_function_terminal_code :
+      !source.member_function_terminal.empty() ?
+        abi_terminal_kind(source.member_function_terminal) : ABI_TERMINAL_NONE;
     if(!source.member_function_literal_suffix.empty()) {
       node.member_literal_suffix = strings.intern(source.member_function_literal_suffix);
     }
@@ -1879,16 +1880,16 @@ private:
           output_ += source_name(graph_.strings.get(argument.name));
         } else if(argument.member_terminal_kind ==
                   ABI_MEMBER_FUNCTION_TERMINAL_OPERATOR) {
-          require(argument.member_terminal != NO_ID,
+          require(argument.member_terminal_code != ABI_TERMINAL_NONE,
                   "structured member operator has no typed terminal");
-          const string & terminal = graph_.strings.get(argument.member_terminal);
-          if(terminal == "literal") {
+          if(argument.member_terminal_code == ABI_TERMINAL_LITERAL) {
             require(argument.member_literal_suffix != NO_ID,
                     "structured literal operator has no suffix");
             output_ += "li" + source_name(
               graph_.strings.get(argument.member_literal_suffix));
           } else {
-            output_ += operator_code(terminal, true, argument.parameters.size());
+            output_ += abi_terminal_code(
+              argument.member_terminal_code, true, argument.parameters.size());
           }
         } else {
           require(argument.member_terminal_kind ==
@@ -2264,9 +2265,10 @@ private:
       if(terminal.kind == ABI_FUNCTION_RECORD_TERMINAL_SOURCE) {
         output_ += source_name(component_name(terminal));
       } else if(terminal.kind == ABI_FUNCTION_RECORD_TERMINAL) {
-        output_ += semantic_terminal(terminal.terminal);
+        output_ += semantic_terminal(resolved_terminal(
+          terminal.terminal_code, terminal.terminal));
       } else if(terminal.kind == ABI_FUNCTION_RECORD_OPERATOR_TERMINAL) {
-        output_ += operator_terminal(terminal, member, parameter_count);
+        emit_operator_terminal(terminal, member, parameter_count);
       } else if(terminal.kind == ABI_FUNCTION_RECORD_CONVERSION_TERMINAL) {
         output_ += "cv";
         encode_type(graph_.resolve_type(terminal.type));
@@ -2462,7 +2464,9 @@ private:
     } else {
       output_ += source_name(target.qualified_name) + discriminator(target.discriminator);
     }
-    output_ += terminal_from_word(target.terminal, facts, true);
+    output_ += abi_terminal_code(
+      resolved_terminal(target.terminal_code, target.terminal), true,
+      facts.parameters.size());
     if(!facts.template_arguments.empty()) {
       output_ += 'I'; encode_arguments(facts.template_arguments); output_ += 'E';
     }
@@ -2537,7 +2541,9 @@ private:
     if(facts.terminal) {
       emit_function_terminal(nullptr, facts, true, facts.parameters.size());
     }
-    else output_ += operator_code(target.terminal, true, facts.parameters.size());
+    else output_ += abi_terminal_code(
+      resolved_terminal(target.terminal_code, target.terminal), true,
+      facts.parameters.size());
     if(!facts.template_arguments.empty()) {
       output_ += 'I'; encode_arguments(facts.template_arguments); output_ += 'E';
     }
@@ -2644,57 +2650,34 @@ private:
     for(size_t tag : tags) output_ += 'B' + source_name(graph_.strings.get(tag));
   }
 
-  string semantic_terminal(const string & terminal) const
+  AbiTerminalKind resolved_terminal(AbiTerminalKind kind,
+                                    const string & word) const
   {
-    if(terminal == "constructor-complete") return "C1";
-    if(terminal == "constructor-base") return "C2";
-    if(terminal == "destructor-deleting") return "D0";
-    if(terminal == "destructor-complete") return "D1";
-    if(terminal == "destructor-base") return "D2";
-    if(terminal == "operator-call") return "cl";
-    throw std::logic_error("unknown semantic ABI terminal '" + terminal + "'");
+    return kind != ABI_TERMINAL_NONE ? kind : abi_terminal_kind(word);
   }
 
-  string terminal_from_word(const string & terminal, const FunctionFacts & facts, bool member)
+  const char * semantic_terminal(AbiTerminalKind terminal) const
   {
-    if(terminal == "operator-call") return "cl";
-    if(terminal.compare(0, 12, "constructor-") == 0
-       || terminal.compare(0, 11, "destructor-") == 0) return semantic_terminal(terminal);
-    AbiFunctionRecord record;
-    record.kind = ABI_FUNCTION_RECORD_OPERATOR_TERMINAL;
-    record.terminal = terminal;
-    return operator_terminal(record, member, facts.parameters.size());
+    if((terminal >= ABI_TERMINAL_CONSTRUCTOR_COMPLETE &&
+        terminal <= ABI_TERMINAL_DESTRUCTOR_BASE) ||
+       terminal == ABI_TERMINAL_CALL)
+      return abi_terminal_code(terminal, true, 0);
+    throw std::logic_error("invalid semantic ABI terminal");
   }
 
-  string operator_terminal(const AbiFunctionRecord & terminal, bool member,
-                           size_t parameter_count) const
+  void emit_operator_terminal(const AbiFunctionRecord & terminal, bool member,
+                              size_t parameter_count)
   {
-    if(terminal.terminal == "literal") return "li" + source_name(terminal.literal_suffix);
-    return operator_code(terminal.terminal, member, parameter_count);
-  }
-
-  string operator_code(const string & name, bool member, size_t parameter_count) const
-  {
-    static const struct Entry { const char * name; const char * code; } entries[] = {
-      {"unary-plus", "ps"}, {"binary-plus", "pl"}, {"unary-minus", "ng"},
-      {"binary-minus", "mi"}, {"address-of", "ad"}, {"deref", "de"},
-      {"new", "nw"}, {"new-array", "na"}, {"delete", "dl"}, {"delete-array", "da"},
-      {"multiply", "ml"}, {"divide", "dv"}, {"remainder", "rm"}, {"bit-and", "an"},
-      {"bit-or", "or"}, {"bit-xor", "eo"}, {"assign", "aS"}, {"plus-assign", "pL"},
-      {"minus-assign", "mI"}, {"multiply-assign", "mL"}, {"divide-assign", "dV"},
-      {"remainder-assign", "rM"}, {"and-assign", "aN"}, {"or-assign", "oR"},
-      {"xor-assign", "eO"}, {"left-shift", "ls"}, {"right-shift", "rs"},
-      {"left-shift-assign", "lS"}, {"right-shift-assign", "rS"}, {"equal", "eq"},
-      {"not-equal", "ne"}, {"less", "lt"}, {"greater", "gt"}, {"less-equal", "le"},
-      {"greater-equal", "ge"}, {"logical-not", "nt"}, {"logical-and", "aa"},
-      {"logical-or", "oo"}, {"increment", "pp"}, {"decrement", "mm"},
-      {"comma", "cm"}, {"member-pointer", "pm"}, {"arrow", "pt"},
-      {"call", "cl"}, {"operator-call", "cl"}, {"index", "ix"}
-    };
-    if(name == "plus") return (member ? parameter_count == 0 : parameter_count == 1) ? "ps" : "pl";
-    if(name == "minus") return (member ? parameter_count == 0 : parameter_count == 1) ? "ng" : "mi";
-    for(const Entry & entry : entries) if(name == entry.name) return entry.code;
-    throw std::logic_error("unknown ABI operator terminal '" + name + "'");
+    const AbiTerminalKind kind = resolved_terminal(
+      terminal.terminal_code, terminal.terminal);
+    if(kind == ABI_TERMINAL_LITERAL) {
+      output_ += "li" + source_name(terminal.literal_suffix);
+      return;
+    }
+    if(kind >= ABI_TERMINAL_CONSTRUCTOR_COMPLETE &&
+       kind <= ABI_TERMINAL_DESTRUCTOR_BASE)
+      throw std::logic_error("invalid operator ABI terminal");
+    output_ += abi_terminal_code(kind, member, parameter_count);
   }
 
   string template_parameter(size_t index) const

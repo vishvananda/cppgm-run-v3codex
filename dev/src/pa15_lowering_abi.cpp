@@ -272,7 +272,7 @@ void AppendComponentAbiTagFacts(const Program& program,
 	}
 }
 
-std::string OperatorTerminal(OperatorKind kind, bool member,
+abi_mangle::AbiTerminalKind OperatorTerminal(OperatorKind kind, bool member,
 	std::size_t parameter_count);
 
 std::string LambdaDiscriminator(std::uint32_t ordinal)
@@ -798,8 +798,9 @@ public:
 				{
 					target.member_function_terminal_kind =
 						ABI_MEMBER_FUNCTION_TERMINAL_OPERATOR;
-					target.member_function_terminal =
-						value.operator_kind == OPERATOR_LITERAL ? "literal" :
+					target.member_function_terminal_code =
+						value.operator_kind == OPERATOR_LITERAL ?
+							ABI_TERMINAL_LITERAL :
 						OperatorTerminal(value.operator_kind, true,
 							member_type.parameter_count);
 					if (value.operator_kind == OPERATOR_LITERAL)
@@ -999,7 +1000,7 @@ public:
 					target.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
 					SetPath(&target, path);
 				}
-				target.terminal = "operator-call";
+				target.terminal_code = ABI_TERMINAL_CALL;
 				if ((type.cv & CV_CONST) != 0)
 					context.qualifiers.push_back(
 						ABI_FUNCTION_QUALIFIER_CONST);
@@ -1959,58 +1960,59 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 	return true;
 }
 
-std::string OperatorTerminal(OperatorKind kind, bool member,
+abi_mangle::AbiTerminalKind OperatorTerminal(OperatorKind kind, bool member,
 	std::size_t parameter_count)
 {
+	using namespace abi_mangle;
 	switch (kind)
 	{
-	case OPERATOR_PLUS: return "plus";
-	case OPERATOR_MINUS: return "minus";
+	case OPERATOR_PLUS: return ABI_TERMINAL_PLUS;
+	case OPERATOR_MINUS: return ABI_TERMINAL_MINUS;
 	case OPERATOR_STAR:
 		return (member ? parameter_count == 0 : parameter_count == 1) ?
-			"deref" : "multiply";
+			ABI_TERMINAL_DEREFERENCE : ABI_TERMINAL_MULTIPLY;
 	case OPERATOR_AMPERSAND:
 		return (member ? parameter_count == 0 : parameter_count == 1) ?
-			"address-of" : "bit-and";
-	case OPERATOR_DIVIDE: return "divide";
-	case OPERATOR_REMAINDER: return "remainder";
-	case OPERATOR_BIT_OR: return "bit-or";
-	case OPERATOR_BIT_XOR: return "bit-xor";
-	case OPERATOR_ASSIGN: return "assign";
-	case OPERATOR_PLUS_ASSIGN: return "plus-assign";
-	case OPERATOR_MINUS_ASSIGN: return "minus-assign";
-	case OPERATOR_MULTIPLY_ASSIGN: return "multiply-assign";
-	case OPERATOR_DIVIDE_ASSIGN: return "divide-assign";
-	case OPERATOR_REMAINDER_ASSIGN: return "remainder-assign";
-	case OPERATOR_AND_ASSIGN: return "and-assign";
-	case OPERATOR_OR_ASSIGN: return "or-assign";
-	case OPERATOR_XOR_ASSIGN: return "xor-assign";
-	case OPERATOR_LEFT_SHIFT: return "left-shift";
-	case OPERATOR_RIGHT_SHIFT: return "right-shift";
-	case OPERATOR_LEFT_SHIFT_ASSIGN: return "left-shift-assign";
-	case OPERATOR_RIGHT_SHIFT_ASSIGN: return "right-shift-assign";
-	case OPERATOR_EQUAL: return "equal";
-	case OPERATOR_NOT_EQUAL: return "not-equal";
-	case OPERATOR_LESS: return "less";
-	case OPERATOR_GREATER: return "greater";
-	case OPERATOR_LESS_EQUAL: return "less-equal";
-	case OPERATOR_GREATER_EQUAL: return "greater-equal";
-	case OPERATOR_LOGICAL_NOT: return "logical-not";
-	case OPERATOR_LOGICAL_AND: return "logical-and";
-	case OPERATOR_LOGICAL_OR: return "logical-or";
-	case OPERATOR_INCREMENT: return "increment";
-	case OPERATOR_DECREMENT: return "decrement";
-	case OPERATOR_COMMA: return "comma";
-	case OPERATOR_MEMBER_POINTER: return "member-pointer";
-	case OPERATOR_ARROW: return "arrow";
-	case OPERATOR_CALL: return "call";
-	case OPERATOR_INDEX: return "index";
-	case OPERATOR_NEW: return "new";
-	case OPERATOR_NEW_ARRAY: return "new-array";
-	case OPERATOR_DELETE: return "delete";
-	case OPERATOR_DELETE_ARRAY: return "delete-array";
+			ABI_TERMINAL_ADDRESS_OF : ABI_TERMINAL_BIT_AND;
+	case OPERATOR_DIVIDE: return ABI_TERMINAL_DIVIDE;
+	case OPERATOR_REMAINDER: return ABI_TERMINAL_REMAINDER;
+	case OPERATOR_BIT_OR: return ABI_TERMINAL_BIT_OR;
+	case OPERATOR_BIT_XOR: return ABI_TERMINAL_BIT_XOR;
+	case OPERATOR_ASSIGN: return ABI_TERMINAL_ASSIGN;
+	case OPERATOR_PLUS_ASSIGN: return ABI_TERMINAL_PLUS_ASSIGN;
+	case OPERATOR_MINUS_ASSIGN: return ABI_TERMINAL_MINUS_ASSIGN;
+	case OPERATOR_MULTIPLY_ASSIGN: return ABI_TERMINAL_MULTIPLY_ASSIGN;
+	case OPERATOR_DIVIDE_ASSIGN: return ABI_TERMINAL_DIVIDE_ASSIGN;
+	case OPERATOR_REMAINDER_ASSIGN: return ABI_TERMINAL_REMAINDER_ASSIGN;
+	case OPERATOR_AND_ASSIGN: return ABI_TERMINAL_AND_ASSIGN;
+	case OPERATOR_OR_ASSIGN: return ABI_TERMINAL_OR_ASSIGN;
+	case OPERATOR_XOR_ASSIGN: return ABI_TERMINAL_XOR_ASSIGN;
+	case OPERATOR_LEFT_SHIFT: return ABI_TERMINAL_LEFT_SHIFT;
+	case OPERATOR_RIGHT_SHIFT: return ABI_TERMINAL_RIGHT_SHIFT;
+	case OPERATOR_LEFT_SHIFT_ASSIGN: return ABI_TERMINAL_LEFT_SHIFT_ASSIGN;
+	case OPERATOR_RIGHT_SHIFT_ASSIGN: return ABI_TERMINAL_RIGHT_SHIFT_ASSIGN;
+	case OPERATOR_EQUAL: return ABI_TERMINAL_EQUAL;
+	case OPERATOR_NOT_EQUAL: return ABI_TERMINAL_NOT_EQUAL;
+	case OPERATOR_LESS: return ABI_TERMINAL_LESS;
+	case OPERATOR_GREATER: return ABI_TERMINAL_GREATER;
+	case OPERATOR_LESS_EQUAL: return ABI_TERMINAL_LESS_EQUAL;
+	case OPERATOR_GREATER_EQUAL: return ABI_TERMINAL_GREATER_EQUAL;
+	case OPERATOR_LOGICAL_NOT: return ABI_TERMINAL_LOGICAL_NOT;
+	case OPERATOR_LOGICAL_AND: return ABI_TERMINAL_LOGICAL_AND;
+	case OPERATOR_LOGICAL_OR: return ABI_TERMINAL_LOGICAL_OR;
+	case OPERATOR_INCREMENT: return ABI_TERMINAL_INCREMENT;
+	case OPERATOR_DECREMENT: return ABI_TERMINAL_DECREMENT;
+	case OPERATOR_COMMA: return ABI_TERMINAL_COMMA;
+	case OPERATOR_MEMBER_POINTER: return ABI_TERMINAL_MEMBER_POINTER;
+	case OPERATOR_ARROW: return ABI_TERMINAL_ARROW;
+	case OPERATOR_CALL: return ABI_TERMINAL_CALL;
+	case OPERATOR_INDEX: return ABI_TERMINAL_INDEX;
+	case OPERATOR_NEW: return ABI_TERMINAL_NEW;
+	case OPERATOR_NEW_ARRAY: return ABI_TERMINAL_NEW_ARRAY;
+	case OPERATOR_DELETE: return ABI_TERMINAL_DELETE;
+	case OPERATOR_DELETE_ARRAY: return ABI_TERMINAL_DELETE_ARRAY;
 	case OPERATOR_NONE:
-	case OPERATOR_LITERAL: return std::string();
+	case OPERATOR_LITERAL: return ABI_TERMINAL_NONE;
 	}
 	throw std::logic_error("invalid typed operator terminal");
 }
@@ -2372,7 +2374,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 		function.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
 		facts.SetPath(&function, path);
 	}
-	function.terminal = "operator-call";
+	function.terminal_code = ABI_TERMINAL_CALL;
 	const TypeRecord& lambda_type = program.types.Get(binding.type);
 	AbiFactRecord qualifier;
 	qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
@@ -2551,7 +2553,7 @@ std::string MangleFunction(const pa11::Program& program,
 		if (!qualifier.function.qualifiers.empty())
 			AppendTypedFact(&fact_case, &qualifier);
 	}
-	const std::string operator_terminal =
+	const AbiTerminalKind operator_terminal =
 		OperatorTerminal(binding.operator_kind, member,
 			program.types.Get(binding.type).parameter_count);
 	if (structured_owner && binding.operator_kind == OPERATOR_NONE &&
@@ -2566,18 +2568,18 @@ std::string MangleFunction(const pa11::Program& program,
 		AppendTypedFact(&fact_case, &terminal);
 	}
 	if (binding.operator_kind == OPERATOR_LITERAL ||
-		!operator_terminal.empty())
+		operator_terminal != ABI_TERMINAL_NONE)
 	{
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_OPERATOR_TERMINAL;
 		if (binding.operator_kind == OPERATOR_LITERAL)
 		{
-			terminal.function.terminal = "literal";
+			terminal.function.terminal_code = ABI_TERMINAL_LITERAL;
 			terminal.function.literal_suffix =
 				program.names.Get(binding.operator_literal_suffix);
 		}
-		else terminal.function.terminal = operator_terminal;
+		else terminal.function.terminal_code = operator_terminal;
 		AppendTypedFact(&fact_case, &terminal);
 	}
 	else if (binding.conversion_function)
@@ -2593,9 +2595,10 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
-		terminal.function.terminal =
+		terminal.function.terminal_code =
 			binding.constructor_base_entry || force_lifecycle_base_entry ?
-			"constructor-base" : "constructor-complete";
+			ABI_TERMINAL_CONSTRUCTOR_BASE :
+			ABI_TERMINAL_CONSTRUCTOR_COMPLETE;
 		AppendTypedFact(&fact_case, &terminal);
 	}
 	else if (binding.destructor)
@@ -2603,9 +2606,10 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord terminal;
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_TERMINAL;
-		terminal.function.terminal = binding.destructor_base_entry ||
+		terminal.function.terminal_code = binding.destructor_base_entry ||
 			force_lifecycle_base_entry ?
-			"destructor-base" : "destructor-complete";
+			ABI_TERMINAL_DESTRUCTOR_BASE :
+			ABI_TERMINAL_DESTRUCTOR_COMPLETE;
 		AppendTypedFact(&fact_case, &terminal);
 	}
 	const std::size_t first_parameter = member ? 1 : 0;
