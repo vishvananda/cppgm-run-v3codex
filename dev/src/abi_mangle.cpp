@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -1046,6 +1047,8 @@ enum SubstitutionKind
   SUBSTITUTION_FUNCTION_TEMPLATE_PREFIX,
   SUBSTITUTION_EXPLICIT,
   SUBSTITUTION_RESOLVED,
+  SUBSTITUTION_MEMBER_TEMPLATE_PREFIX,
+  SUBSTITUTION_COMPOSITE,
   SUBSTITUTION_LOCAL_LAMBDA
 };
 
@@ -1073,6 +1076,25 @@ struct SubstitutionHash
   {
     return mix_hash(mix_hash(static_cast<size_t>(key.kind), key.id),
                     key.secondary);
+  }
+};
+
+struct CompositeSubstitutionKey
+{
+  SubstitutionKey base;
+  vector<size_t> tags;
+
+  bool operator==(const CompositeSubstitutionKey & other) const
+  {
+    return base == other.base && tags == other.tags;
+  }
+};
+
+struct CompositeSubstitutionHash
+{
+  size_t operator()(const CompositeSubstitutionKey & key) const
+  {
+    return vector_hash(SubstitutionHash()(key.base), key.tags);
   }
 };
 
@@ -1112,14 +1134,36 @@ public:
     if(stats_) ++stats_->substitution_entries;
   }
 
+  SubstitutionKey composite_key(const SubstitutionKey & base,
+                                const vector<size_t> & tags)
+  {
+    if(tags.empty()) return base;
+    if(!composites_) composites_.reset(new CompositePool);
+    const CompositeSubstitutionKey key{base, tags};
+    const auto found = composites_->indexes.find(key);
+    if(found != composites_->indexes.end())
+      return SubstitutionKey{SUBSTITUTION_COMPOSITE, found->second};
+    const size_t id = composites_->indexes.size();
+    composites_->indexes.insert(std::make_pair(key, id));
+    return SubstitutionKey{SUBSTITUTION_COMPOSITE, id};
+  }
+
   void swap(SubstitutionTable & other)
   {
     indexes_.swap(other.indexes_);
+    composites_.swap(other.composites_);
   }
 
 private:
+  struct CompositePool
+  {
+    std::unordered_map<CompositeSubstitutionKey, size_t,
+                       CompositeSubstitutionHash> indexes;
+  };
+
   AbiMangleStats * stats_;
   std::unordered_map<SubstitutionKey, size_t, SubstitutionHash> indexes_;
+  std::unique_ptr<CompositePool> composites_;
 };
 
 string source_name(const string & name)
@@ -2670,31 +2714,21 @@ private:
     const SubstitutionKey base = component.has_resolved_name_component() ?
       SubstitutionKey{SUBSTITUTION_PATH, component.resolved_name_path()} :
       explicit_or_path_key(component.substitution, component.name);
-    if(tags.empty()) return base;
-    string identity = "__cppgm_abi_tagged_component_";
-    identity += std::to_string(static_cast<unsigned>(base.kind));
-    identity += '_' + std::to_string(base.id);
-    for(size_t tag : tags) identity += '\x1f' + graph_.strings.get(tag);
-    return SubstitutionKey{
-      SUBSTITUTION_EXPLICIT, graph_.strings.intern(identity)};
+    return substitutions_.composite_key(base, tags);
   }
 
   SubstitutionKey tagged_path_key(size_t path, const vector<size_t> & tags)
   {
-    string identity = "__cppgm_abi_tagged_path_" + std::to_string(path);
-    for(size_t tag : tags) identity += '\x1f' + graph_.strings.get(tag);
-    return SubstitutionKey{
-      SUBSTITUTION_EXPLICIT, graph_.strings.intern(identity)};
+    return substitutions_.composite_key(
+      SubstitutionKey{SUBSTITUTION_PATH, path}, tags);
   }
 
   SubstitutionKey member_template_prefix_key(const TypeNode & type)
   {
-    string identity = "__cppgm_abi_member_template_prefix_";
-    identity += std::to_string(type.children.at(0));
-    identity += '_' + std::to_string(type.symbol);
-    for(size_t tag : type.tags) identity += '\x1f' + graph_.strings.get(tag);
-    return SubstitutionKey{
-      SUBSTITUTION_EXPLICIT, graph_.strings.intern(identity)};
+    return substitutions_.composite_key(
+      SubstitutionKey{SUBSTITUTION_MEMBER_TEMPLATE_PREFIX,
+                      type.children.at(0), type.symbol},
+      type.tags);
   }
 
   FactGraph & graph_;
