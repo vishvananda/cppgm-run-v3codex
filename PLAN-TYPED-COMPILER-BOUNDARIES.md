@@ -2,18 +2,16 @@
 
 Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
-emission presentation, T4b3 typed entity/scope presentation, and T4c1 lazy
-class-specialization presentation are complete; the T4c2 lambda-renderer
-responsibility split is complete and typed lambda identity is the next
-acceptance slice
+emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
+class-specialization presentation, and T4c2 typed lambda identity are
+complete; T4d generated private identity is the next acceptance slice
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `f5e9277b` (T4c2 lambda-presentation
-responsibility split on top of the accepted T4c1 implementation; typed lambda
-identity remains unaccepted until the gates in section 9.9 pass)
+Current accepted execution checkpoint: `62c26eb6` (T4c2 typed lambda identity
+and lazy presentation; measurements and gates are recorded in section 9.9)
 
 ## 1. Objective
 
@@ -274,7 +272,7 @@ owns its disposition.
 | Standalone PA11 `TypeAnalyzer` | T2y removed joined-name parsing from namespace, declaration, declarator, type, id-expression, and `decltype` paths.  Literals and operators still use their spellings. | Preserve typed-name parity and leave operator and literal representation to the shared T6/T7 designs so PA11 does not create a private competing enum or scalar model. | PA10/PA11, T2y complete; T6/T7 remain |
 | PA12 name lookup compatibility APIs | `ParseNamePath`, `LookupSpelling`, no-syntax template overloads, qualified-enum/member-pointer fallbacks, and explicit spelling adapters remain in source after the frozen production count reached zero. | Retain only callers whose input is genuinely arbitrary text, give them adapter-specific counters, and delete an overload after its last such caller is gone.  Any exercised syntax-owned fallback is a correctness/architecture bug at its earliest semantic owner. | PA12/feature owner, T4/T6/T9 closeout |
 | Ordinary semantic presentation: `ScopePrefixId`, `DisplayName`, `EmissionName`, declaration `qualified_name`/`display_name`, and scope prefix vectors | Owner/name paths are rendered, interned, and retained even though scope, binding, entity, and terminal IDs already exist. | Store owner plus terminal or a compact path identity.  Render on demand for exact semantic dumps, diagnostics, pretty-function text, or final symbol emission.  Do not retain both old text IDs and new typed identities on common records. | PA12/PA22, T4a/T4c |
-| Template and lambda presentation: `CanonicalTemplateArgumentPresentation`, `ExplicitArgumentPresentation`, class-specialization names, `LambdaContextIdentity`, and `LambdaIdentityComponent` | Canonical template arguments, pattern IDs, owners, token ranges, and ordinals are rendered and sanitized into semantic/storage names.  Some of those names then become retained identity. | Use pattern/argument-list/partition/owner IDs for specialization identity and an owner/token-range/ordinal tuple for lambda identity.  Keep rendering only where an exact dump, source-identity builtin, ABI spelling, or object symbol consumes it. | PA19/PA20/PA22, T4b/T4c |
+| Template and lambda presentation: `CanonicalTemplateArgumentPresentation`, `ExplicitArgumentPresentation`, class-specialization names, and the lambda renderer | T4c1 and T4c2 removed retained specialization and lambda presentation identity.  Specializations retain canonical argument facts; lambdas retain canonical enclosing context/ordinal identity and a numeric token range used only to reproduce required presentation. | Preserve the accepted typed forms and lazy renderers.  The remaining work is the T4e consumer closeout: prove that exact dump, source-identity, ABI, and object consumers are the only render sites and delete obsolete overloads. | PA19/PA20/PA22, T4c complete; T4e remains |
 | Generated semantic names: default-constructor emission, anonymous/local types, range-for temporaries, initializer backing objects, and template-shape sentinels | Several paths concatenate or slice qualified names (`rfind("::")`) or format ordinals into interned synthetic names. | First distinguish observable serialized names from private identity.  Replace private identity with kind plus owner/ordinal/source identity; render checked-in semantic names lazily.  The default-constructor owner/leaf recovery is a definite T4 typed-path conversion. | PA12/PA19/PA25/PA26, T4d/T9 |
 | Fixed syntax and semantic vocabulary: operators, cv/ref markers, `default`/`delete`, linkage, traits, builtins, attributes, and predefined identifiers | PA11-PA34 repeatedly compare payload/name strings.  Operation strings flow through overload resolution, constant evaluation, and lowering; backend code calls `StripOperationPrefix`. | Carry a packed `SemanticOperatorKind` and small feature-specific enums.  Use preinterned `NameId`s for extensible identifier registries.  Keep source `TextId` for dumps/diagnostics, but make semantic control flow enum/ID based. | PA2/PA10/PA12/PA15 and feature owners, T6 |
 | Literal semantics and constant evaluation: PA11/PA12 literal parsing, `InternNumber`, `InternScalar`, PA20/PA21 constants, and PA15/PA16 lowering | Values decoded by post-tokenization are incompletely retained; semantics redecodes spelling, evaluated scalars are formatted into a `NameId`, and lowering later consumes text. | Publish one compact tagged literal/scalar fact.  Carry integer/floating bits, type, suffix ID, and a byte/code-unit arena slice.  Render only for exact semantic/IR output. | PA2/PA10/PA11/PA12/PA15/PA16/PA20/PA21, T7 |
@@ -288,9 +286,9 @@ owns its disposition.
 
 #### Accepted-checkpoint audit snapshot
 
-The source-wide queries in section 5.5 were repeated at `f5e9277b`.  They
-find 22 string-to-number candidates, 250 qualification/prefix/format
-candidates, 80 string-container candidates, and 99 payload/name comparison
+The source-wide queries in section 5.5 were repeated at `62c26eb6`.  They
+find 22 string-to-number candidates, 255 qualification/prefix/format
+candidates, 80 string-container candidates, and 101 payload/name comparison
 candidates.  These are deliberately broad static counts, not counts of
 architecture defects or estimates of runtime cost.
 
@@ -315,14 +313,16 @@ semantic identity.  `resolve_lowir_function_operands` builds name maps only
 for explicitly textual LowIR input; the integrated source-to-object path
 arrives with typed block, slot, value, and symbol IDs.
 
-The 99 payload/name comparisons are heterogeneous.  The actionable common
+The 101 payload/name comparisons are heterogeneous.  The actionable common
 family is fixed language vocabulary—operators, qualifiers, special
 initializers, traits, and builtins—which belongs to T6.  Source grammar,
 user-visible identifiers, assembly strings, diagnostics, and public adapter
-words remain text.  The 250 qualification/prefix/format candidates are
+words remain text.  The 255 qualification/prefix/format candidates are
 dominated by final rendering, CY86 emission, diagnostics, and object-label
-construction; only the explicitly owned T4d/T4e, T5, T7, T8, and T9 packages
-may convert them.
+construction.  The increase from the earlier snapshot is expected: T4c2
+centralized six lambda-format operations in the final renderer instead of
+retaining their results as semantic identity.  Only the explicitly owned
+T4d/T4e, T5, T7, T8, and T9 packages may convert the remaining candidates.
 
 This snapshot is the baseline for the remaining audit.  A later source count
 may rise when a renderer is extracted or a test boundary becomes explicit;
@@ -383,9 +383,9 @@ the evidence required to close it.  A package may be split further to satisfy
 the file audit or to isolate a measured change, but its proof obligations may
 not be silently weakened.
 
-At the accepted `f5e9277b` checkpoint, the broad static queries in section 5.5
-produce 22 string-to-number candidates, 250 qualification/prefix/format
-candidates, 80 string-container candidates, and 99 payload/name comparison
+At the accepted `62c26eb6` checkpoint, the broad static queries in section 5.5
+produce 22 string-to-number candidates, 255 qualification/prefix/format
+candidates, 80 string-container candidates, and 101 payload/name comparison
 candidates.
 These are candidate counts, not defect counts.  Most are boundary rendering,
 diagnostics, standalone adapters, or output indexes.  Dynamic counters and
@@ -394,7 +394,7 @@ producer-to-consumer tracing decide whether a candidate is production work.
 | Package | Fact currently transported or recovered as text | Replacement and ownership | Required closeout evidence |
 | --- | --- | --- | --- |
 | T4c1 class-specialization presentation | PA19 renders and interns a sanitized specialization name even though the entity already owns its primary `NameId` and canonical template-argument slice.  PA15 then builds an eager terminal replacement map from `EntityRecord::presentation_name`. | Make the PA19 renderer a presentation responsibility.  Mark entities whose exact external presentation differs, retain only primary/entity/argument IDs, and have PA15 render lazily for a consumer that needs the replacement.  Any memoization is indexed by `EntityId`, allocated only in the presentation consumer, and does not become semantic identity. | Frozen specialization renders, retained values/bytes, map construction, lazy reads, interner work, `EntityRecord` size, exact semantic/LowIR/MIR/object output, PA19 owner and through report, selected template/lowering reports, full report, audit, and screened A/B timing. |
-| T4c2 lambda presentation | PA22 constructs a sanitized lambda component from rendered enclosing context and source ordinals, then stores the result under the exceptional rendered entity-emission form.  The canonical lambda key is already typed. | Carry namespace/local context, canonical enclosing signature and template arguments, recursive outer-lambda context, token range, and ordinal as the lambda identity.  Derive emission presentation only for a semantic dump, source-identity builtin, ABI name, or final object consumer.  Do not add a string-keyed lambda cache. | Zero retained rendered lambda entity names on the object path; exact PA22/PA25 semantic and ABI fixtures; overloaded, nested, templated, local-static, and namespace lambda reducers; unchanged common record sizes; full report and audit. |
+| T4c2 lambda presentation | PA22 constructed a sanitized lambda component from rendered enclosing context and source ordinals, then stored the result under the exceptional rendered entity-emission form. | Carry namespace/local context, canonical enclosing signature and template arguments, recursive outer-lambda context, and ordinal as semantic identity.  Retain the token range as typed source-presentation input, not as cross-source canonical equality.  Derive text only for a semantic dump, source-identity builtin, ABI name, or final object consumer.  Do not add a string-keyed lambda cache. | Complete at `62c26eb6`: zero retained rendered lambda entity names on the object path; active overload reducer plus proposed specialization reducer; unchanged common record sizes; exact frozen object; full report and zero-fatal audit. |
 | T4d generated private identities | Default constructors are already typed, but anonymous/local types, range-for temporaries, initializer-list backing objects, local statics, and template-shape sentinels still contain mixtures of observable names and formatted private ordinals. | Classify every family before changing it.  Private identity becomes a packed kind plus owner/source/ordinal tuple.  A checked-in serialized spelling remains a lazy renderer.  A final ELF symbol component remains boundary text. | Per-family render/consumer counts, an earliest-owned reducer, exact existing fixtures, explicit disposition for any retained spelling, and no dual text-plus-typed identity in an ordinary record. |
 | T4e presentation closeout | Dump, diagnostic, pretty-function, source-identity, ABI, and object consumers legitimately need text, but obsolete helper overloads or eager fields can keep hidden production rendering alive. | Route each true consumer through one owner-specific renderer; delete old fields and syntax-owned spelling fallbacks after the last caller.  Keep counters separated by consumer so final output work is not confused with semantic identity work. | Source audit of all scope/display/emission/specialization/lambda helpers; zero unclassified eager renders; retained-text census; exact output; full report, audit, and cumulative T4 timing. |
 | T5 object-only block collation | EH block ordering repeatedly compares virtual presentation characters and decimal ordinals.  The result is typed, but comparison reconstructs presentation on every compare. | Compute one exact compact collation key per participating block, using fixed components and a decimal-order representation that is byte-for-byte equivalent to lexical presentation.  Sort key/`BlockId` pairs; do not intern rendered block names. | PA15/PA26/PA29 reducers for prefix, decimal-width, and tie boundaries; comparison/character counters; exact block order, MIR, LSDA, and object; selected and full reports; screened timing. |
@@ -1264,14 +1264,21 @@ consumers.  The semantic analyzer already knows all facts needed for identity,
 so retaining the spelling is a typed-to-text downgrade rather than a language
 requirement.
 
-The canonical replacement is a typed lambda identity with these components:
+The replacement separates canonical equality from presentation input.  The
+canonical typed lambda identity has these components:
 
 1. the enclosing namespace path or local function/member context;
 2. the canonical enclosing function signature;
 3. canonical enclosing template arguments, when any;
-4. recursively, the typed identity of an enclosing lambda context;
-5. the source token range; and
-6. the same-context lambda ordinal.
+4. recursively, the typed identity of an enclosing lambda context; and
+5. the same-context lambda ordinal.
+
+The source token range remains a pair of integers on the lambda entity because
+the checked-in presentation contract uses it.  It is not part of canonical
+cross-source equality: token positions can change without changing the
+semantic entity, and using them in the LowIR key would recreate source-layout
+identity in typed form.  This distinction is part of the T4c2 closeout, not a
+future cleanup.
 
 The signature and template context are mandatory.  A name plus ordinal alone
 collides for overloaded functions with the same terminal, while a signature
@@ -1327,17 +1334,56 @@ representation change does not require student-facing README text; if an
 actual assignment contract changes, the README states only what the student
 must implement, with implementation suggestions confined to its Design Notes.
 
-T4c2 acceptance requires unchanged 136/208/208-byte common semantic records,
-zero retained rendered lambda identity on the object path, exact active
-semantic/LowIR/MIR/object fixtures, `make test-pa25`,
-`make test-report-through-pa25`, a selected PA14/15/22/25/29/30/34/37/38
-report, root `make test-report`, and a zero-fatal file audit.  The frozen
-explicit-`-O0` object must match the immutable object exactly before timing.
-Then run screened interleaved baseline/candidate timing and record lambda
-renders, retained bytes, interner work, typed-path entries, side-storage
-bytes, user/wall time, and peak RSS.  Any collision, common-record growth,
-broad LowIR change, or measurable compile-time regression rejects the slice
-until the representation is corrected.
+The accepted implementation is `62c26eb6`.  It removes the rendered lambda
+entity form and stores a lambda-specific form with numeric token range and
+ordinal.  Kind-disjoint unions keep `EntityRecord` at 208 bytes and
+`BindingRecord` at 136 bytes; `FunctionInfo` remains 208 bytes and `DumpNode`
+remains 152 bytes.  Captureless invocation bindings retain a typed lambda
+owner and use the private-unique declaration path, so their shared internal
+token never enters ordinary overload or signature indexes.  LowIR path
+components are `(parent, value, kind)` records, with a numeric lambda ordinal;
+local identity additionally interns the canonical enclosing signature,
+template arguments, and recursive outer-lambda context.  ABI, dump, member,
+source-identity, and object consumers invoke the isolated renderer only when
+they need text.
+
+The active PA25 overload reducer proves that two same-named overload contexts
+do not collide and agrees with the pinned reference.  The function-template
+specialization/local-static reducer is retained under `proposed/pa25/`: the
+reference and implementation differ only in serialized LowIR presentation,
+while both preserve distinct objects and equivalent behavior.  Existing
+coverage plus focused checks exercise nested lambdas, captureless invocation,
+lifecycle members, namespace presentation, and the proposed specialization
+case.  This representation-only change does not alter the student-facing
+assignment contract and therefore adds no README text.
+
+On the frozen compile, interner calls remain 1,296,012, but hits rise
+1,247,586 -> 1,247,678 and misses fall 48,426 -> 48,334.  Hashed spelling
+falls 13,601,876 -> 13,597,175 bytes, shared string storage falls
+8,509,590 -> 8,501,671 bytes, retained scope-emission values fall
+17,656 -> 17,625, and their spelling bytes fall 424,506 -> 421,497.  Lambda
+presentation renders fall 31 -> 30; the remaining 30 are actual boundary
+demands and produce 2,298 bytes.  Typed storage falls 61,452,167 ->
+61,435,253 bytes.  The typed identity table contains 4,086 paths and 16,722
+types using 2,673,136 bytes.  Accounted semantic program and peak storage
+remain 151,860,952 and 427,203,372 bytes.
+
+The frozen explicit-`-O0` object is exact at 4,415,448 bytes with SHA-256
+`d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`.
+Three final A/B/B/A blocks compared the immutable `f5e9277b` baseline with the
+candidate.  Baseline/candidate medians were 4.415/4.330 seconds user,
+4.905/4.825 seconds wall, and 359,482/359,870 KiB RSS.  The observed window is
+favorable by 1.93% user and 1.63% wall with RSS +0.11%; because host load is
+intermittent, acceptance rests on exactness and structural removal rather
+than treating one window as a guaranteed speedup.
+
+PA25 passes 121 assignment and 21 course tests; the through-PA25 report passes
+3,643/3,643; the selected PA14/15/22/25/29/30/34/37/38 report passes
+1,501/1,501; root `make test-report` passes 5,213/5,213; and the PA39 file
+audit has zero fatal findings with 27 warnings.  The audit initially found two
+function-size violations; extracting resolved-type classification and member-
+function qualifier rendering fixed them without weakening the representation
+or tests.
 
 ## 10. Phase 4: replace object-only block text comparison
 
@@ -1751,8 +1797,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T4b3 | Store ordinary entity and named-scope emission presentation as typed owner plus terminal | Emission renders fall 12,562 -> 185 and display renders fall 52,971 -> 44,790. Interner calls fall by 25,758, misses by 17,445, hashed spelling by 1,250,787 bytes, and shared string storage by 857,461 bytes. `EntityRecord` remains 208 bytes; the constructor path has no qualified-name parse. | Three A/B/B/A blocks: baseline/candidate median user 4.355/4.350 s, wall 4.845/4.820 s, RSS 359,730/360,440 KiB; accepted as timing-neutral structural work | Exact frozen object and baseline SHA; no fixture changes | PA11 and PA12 owner tests; through PA12 833/833; selected report 2,652/2,652; full report 5,212/5,212; zero-fatal audit with 27 warnings | `285ef075`; accepted |
 | T4c1 | Render class-specialization presentation lazily from typed entity arguments | Retained presentation falls 8,715 values / 749,951 spelling bytes -> 0; renders fall 15,987 -> 1,007; interner calls fall by 22,833 and shared string storage by 746,856 bytes. `EntityRecord` remains 208 bytes. | Three retained A/B/B/A blocks: baseline/candidate medians 4.315/4.285 s user, 4.800/4.775 s wall, and 359,242/359,786 KiB RSS; favorable by 0.70%/0.52% with RSS +0.15% | Exact frozen object and baseline SHA; no fixture changes | PA19 and through PA19 pass; selected report 2,155/2,155; full report 5,212/5,212; zero-fatal audit with 30 warnings | Split `5616a8e3`; implementation `563000b5`; ledger `8d8023e9`; accepted |
 | T4c2r | Isolate exact lambda presentation behind one owner | Pure responsibility split; no representation or output change | Not timed independently | No fixture changes | PA25 141/141; through PA25 3,642/3,642; selected report 1,269/1,269; full report 5,212/5,212; zero-fatal audit with 27 warnings | `f5e9277b`; accepted base only |
-| T4c2 | Carry canonical lambda context/signature/template/parent/token/ordinal identity and render only at boundaries | Planned in section 9.9; must remove the exceptional rendered entity form without growing common semantic records or adding string-keyed caches | Screened interleaved explicit-`-O0` comparison required | Exact active semantic/LowIR/MIR/object output; standard-supported reference disagreement stays in `proposed/` | PA22/25 owner coverage, selected PA14/15/22/25/29/30/34/37/38, full report, and audit | Next acceptance slice |
-| T4d-e | Type generated private identities and close lazy presentation | Planned from the residual registry and T4 census | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Planned after T4c2 |
+| T4c2 | Carry canonical lambda context/signature/template/parent/ordinal identity, retain token ranges only as typed presentation facts, and render only at boundaries | Rendered lambda entity identity is gone. Interner misses fall by 92, hashed spelling by 4,701 bytes, shared string storage by 7,919 bytes, retained scope-emission spelling by 3,009 bytes, and typed storage by 16,914 bytes. Common records remain 136/208/208 bytes. | Three A/B/B/A blocks: baseline/candidate medians 4.415/4.330 s user, 4.905/4.825 s wall, and 359,482/359,870 KiB RSS; favorable by 1.93%/1.63% with RSS +0.11% in the screened window | Exact frozen object and SHA; active PA25 overload fixture agrees with the reference; specialization/local-static LowIR-presentation disagreement is documented under `proposed/pa25/` | PA25 142/142; through PA25 3,643/3,643; selected report 1,501/1,501; full report 5,213/5,213; zero-fatal audit with 27 warnings | `62c26eb6`; accepted |
+| T4d-e | Type generated private identities and close lazy presentation | Planned from the residual registry and T4 census | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4c2 |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
@@ -1785,7 +1831,7 @@ this plan remain the decision criteria.
 
 ## 22. Ordered execution plan from the current checkpoint
 
-This is the authoritative order after `f5e9277b`.  Later rows may be
+This is the authoritative order after `62c26eb6`.  Later rows may be
 re-prioritized only by updating this document with the new dependency or
 measurement; do not silently skip an unresolved closeout gate.
 
@@ -1803,7 +1849,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 10 | T4b3 typed entity/scope emission presentation (complete) | Owner-plus-terminal entity and scope presentation, no constructor text parse, unchanged common records, exact object/dumps, reports, audit, and screened timing are recorded in section 9.7 | `285ef075`; accepted structural removal |
 | 11 | T4c1 lazy class-specialization presentation (complete) | Zero retained entity presentation strings, lazy typed reconstruction, unchanged common record sizes, exact outputs, reports, audit, and screened timing are recorded in section 9.8 | `5616a8e3` responsibility split; `563000b5` implementation; ledger recorded |
 | 12 | T4c2 lambda renderer split (complete) | Exact renderer responsibility, no representation or output change, owner/through/selected/full reports, and audit are recorded in section 9.9 | `f5e9277b`; accepted base only |
-| 13 | T4c2 typed lambda identity | Complete context/signature/template/parent/token/ordinal key; zero retained rendered identity; nested/overload/specialization reducers; unchanged common records; exact frozen object; reports, audit, and screened timing | One typed-identity implementation commit, then one measured ledger commit |
+| 13 | T4c2 typed lambda identity (complete) | Canonical context/signature/template/recursive-parent/ordinal identity; typed token-range presentation facts; zero retained rendered identity; active overload and proposed specialization reducers; unchanged common records; exact frozen object; reports, audit, and screened timing recorded in section 9.9 | `62c26eb6`; ledger recorded |
 | 14 | T4d/e generated and final lazy presentation | Per-family typed private identity, explicitly retained output spelling, exact dumps, and no common-record growth or dual identity | One commit per generated family, then one presentation closeout commit |
 | 15 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
 | 16 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
