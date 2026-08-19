@@ -49,7 +49,8 @@ TypeId SemanticAnalyzer::UnaryAddressOperandTarget(
 TypeId SemanticAnalyzer::UnaryAddressContextTarget(
 	const std::string& operation, TypeId target, NodeId operand, ScopeId scope)
 {
-	return operation == "&" && target == kNoType ?
+	return ClassifyOperationSpelling(operation) == OP_AMP &&
+		target == kNoType ?
 		MemberPointerAddressSyntaxTarget(operand, scope) : target;
 }
 
@@ -266,6 +267,7 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	const ExpressionInfo& left, const ExpressionInfo& right,
 	ExpressionInfo* result)
 {
+	const int op = ClassifyOperationSpelling(operation);
 	if (operation != ".*" && operation != "->*") return false;
 	if (!result) throw std::logic_error("missing member pointer result");
 	const TypeId pointer_type = program_->types.RemoveTopCv(
@@ -278,7 +280,7 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 		return true;
 	}
 	ExpressionInfo object_expression = left;
-	if (operation == ".*" && object_expression.category == VALUE_PRVALUE &&
+	if (op == OP_DOTSTAR && object_expression.category == VALUE_PRVALUE &&
 		IsClassObjectType(object_expression.type) &&
 		dump_.nodes[object_expression.node].kind != DUMP_TEMPORARY_OBJECT)
 		object_expression = MaterializeTemporary(object_expression);
@@ -289,7 +291,7 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	if (qualified_object_record.kind == TYPE_QUALIFIED)
 		object_cv = qualified_object_record.cv;
 	TypeId object_type = program_->types.RemoveTopCv(qualified_object);
-	if (operation == "->*")
+	if (op == OP_ARROWSTAR)
 	{
 		const TypeRecord object_pointer = program_->types.Get(Decay(object_type));
 		if (object_pointer.kind != TYPE_POINTER)
@@ -317,7 +319,7 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	if (function_member)
 	{
 		ExpressionInfo invocation_object = object_expression;
-		if (operation == "->*") invocation_object.category = VALUE_LVALUE;
+		if (op == OP_ARROWSTAR) invocation_object.category = VALUE_LVALUE;
 		const TypeRecord& function_type = program_->types.Get(pointer.child);
 		const bool ref_qualifier_viable =
 			function_type.ref_qualifier == FUNCTION_REF_NONE ||
@@ -335,7 +337,7 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 	if (!function_member && object_cv != CV_NONE)
 		result_type = program_->types.Qualify(result_type, object_cv);
 	const ValueCategory category = function_member ? VALUE_LVALUE :
-		operation == "->*" || object_expression.category == VALUE_LVALUE ?
+		op == OP_ARROWSTAR || object_expression.category == VALUE_LVALUE ?
 		VALUE_LVALUE : VALUE_XVALUE;
 	const std::uint32_t expression = MakeDump(DUMP_BINARY_EXPRESSION,
 		result_type, category, program_->names.Intern(display_operation));
@@ -394,7 +396,7 @@ bool SemanticAnalyzer::TryAnalyzeMemberPointerApplication(
 				ExpressionObject(object_expression);
 			const std::uint32_t complete_object =
 				ExpressionCompleteObject(object_expression);
-			std::uint32_t object_address = operation == "->*" ?
+			std::uint32_t object_address = op == OP_ARROWSTAR ?
 				ExpressionAddress(object_expression) :
 				LvalueAddress(&object_expression);
 			if (projection_offset != 0 &&

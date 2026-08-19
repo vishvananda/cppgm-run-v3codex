@@ -261,29 +261,30 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 	const WideBits right = NormalizeBits(Bits(right_value), width, is_unsigned);
 	const bool left_negative = !is_unsigned && SignBit(left, width);
 	const bool right_negative = !is_unsigned && SignBit(right, width);
-	if (operation == "==" || operation == "!=" || operation == "<" ||
-		operation == ">" || operation == "<=" || operation == ">=")
+	const int op = ClassifyOperationSpelling(operation);
+	if (op == OP_EQ || op == OP_NE || op == OP_LT ||
+		op == OP_GT || op == OP_LE || op == OP_GE)
 	{
 		const int compared = is_unsigned ? CompareUnsigned(left, right) :
 			CompareSigned(left, right, width);
-		const bool result = operation == "==" ? compared == 0 :
-			operation == "!=" ? compared != 0 : operation == "<" ? compared < 0 :
-			operation == ">" ? compared > 0 : operation == "<=" ? compared <= 0 :
+		const bool result = op == OP_EQ ? compared == 0 :
+			op == OP_NE ? compared != 0 : op == OP_LT ? compared < 0 :
+			op == OP_GT ? compared > 0 : op == OP_LE ? compared <= 0 :
 			compared >= 0;
 		return ConstexprScalarValue(static_cast<std::int64_t>(result));
 	}
-	if (operation == "&") return Scalar(NormalizeBits(
+	if (op == OP_AMP) return Scalar(NormalizeBits(
 		WideBits(left.low & right.low, left.high & right.high), width, is_unsigned));
-	if (operation == "|") return Scalar(NormalizeBits(
+	if (op == OP_BOR) return Scalar(NormalizeBits(
 		WideBits(left.low | right.low, left.high | right.high), width, is_unsigned));
-	if (operation == "^") return Scalar(NormalizeBits(
+	if (op == OP_XOR) return Scalar(NormalizeBits(
 		WideBits(left.low ^ right.low, left.high ^ right.high), width, is_unsigned));
-	if (operation == "<<" || operation == ">>")
+	if (op == OP_LSHIFT || op == OP_RSHIFT)
 	{
 		if (right.high != 0 || right_negative || right.low >= width)
 			throw std::runtime_error("invalid constant shift count");
 		const std::size_t count = static_cast<std::size_t>(right.low);
-		if (operation == "<<")
+		if (op == OP_LSHIFT)
 		{
 			if (left_negative)
 				throw std::runtime_error("invalid negative constant left shift");
@@ -303,14 +304,14 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 		return Scalar(NormalizeBits(shifted, width, is_unsigned));
 	}
 	WideBits result;
-	if (operation == "+" || operation == "-")
+	if (op == OP_PLUS || op == OP_MINUS)
 	{
-		result = operation == "+" ? Add(left, right) : Subtract(left, right);
+		result = op == OP_PLUS ? Add(left, right) : Subtract(left, right);
 		result = NormalizeBits(result, width, is_unsigned);
 		if (!is_unsigned)
 		{
 			const bool result_negative = SignBit(result, width);
-			const bool overflow = operation == "+" ?
+			const bool overflow = op == OP_PLUS ?
 				left_negative == right_negative && result_negative != left_negative :
 				left_negative != right_negative && result_negative != left_negative;
 			if (overflow)
@@ -318,7 +319,7 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 		}
 		return Scalar(result);
 	}
-	if (operation == "*")
+	if (op == OP_STAR)
 	{
 		WideBits left_magnitude = left_negative ? Negate(left) : left;
 		WideBits right_magnitude = right_negative ? Negate(right) : right;
@@ -338,7 +339,7 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 		else result = ProductLow(product);
 		return Scalar(NormalizeBits(result, width, is_unsigned));
 	}
-	if (operation == "/" || operation == "%")
+	if (op == OP_DIV || op == OP_MOD)
 	{
 		WideBits left_magnitude = left_negative ? Negate(left) : left;
 		WideBits right_magnitude = right_negative ? Negate(right) : right;
@@ -348,8 +349,8 @@ ConstexprScalarValue ApplyWideConstantBinary(const std::string& operation,
 			right_magnitude.high == 0 && right_negative &&
 			SignBit(quotient, width))
 			throw std::runtime_error("signed division overflow");
-		result = operation == "/" ? quotient : remainder;
-		if (operation == "/" ? left_negative != right_negative : left_negative)
+		result = op == OP_DIV ? quotient : remainder;
+		if (op == OP_DIV ? left_negative != right_negative : left_negative)
 			result = Negate(result);
 		return Scalar(NormalizeBits(result, width, is_unsigned));
 	}
@@ -362,7 +363,8 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantIntegralUnary(
 {
 	const std::size_t width = IntegralWidth(type);
 	const bool is_unsigned = IsUnsignedIntegral(type);
-	if (operation == "-")
+	const int op = ClassifyOperationSpelling(operation);
+	if (op == OP_MINUS)
 	{
 		if (width > 64) return NegateWideConstant(
 			value, width, is_unsigned);
@@ -377,7 +379,7 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantIntegralUnary(
 			- static_cast<std::uint64_t>(value.integral));
 		return NormalizeScalarConstant(type, result);
 	}
-	if (operation == "~")
+	if (op == OP_COMPL)
 	{
 		if (width > 64) return ComplementWideConstant(
 			value, width, is_unsigned);

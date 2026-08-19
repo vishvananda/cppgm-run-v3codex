@@ -778,24 +778,25 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantScalarBinary(
 	const std::string& operation, const ConstexprScalarValue& left,
 	const ConstexprScalarValue& right, TypeId operand_type) const
 {
-	if (operation == "&&")
+	const int op = ClassifyOperationSpelling(operation);
+	if (op == OP_LAND)
 		return ConstexprScalarValue(static_cast<std::int64_t>(
 			ScalarTruth(left) && ScalarTruth(right)));
-	if (operation == "||")
+	if (op == OP_LOR)
 		return ConstexprScalarValue(static_cast<std::int64_t>(
 			ScalarTruth(left) || ScalarTruth(right)));
-	if (operation == ",") return right;
+	if (op == OP_COMMA) return right;
 	if (left.kind == CONSTEXPR_SCALAR_MEMBER_POINTER ||
 		right.kind == CONSTEXPR_SCALAR_MEMBER_POINTER)
 	{
 		if (left.kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
 			right.kind != CONSTEXPR_SCALAR_MEMBER_POINTER ||
-			(operation != "==" && operation != "!="))
+			(op != OP_EQ && op != OP_NE))
 			throw std::runtime_error(
 				"unsupported member pointer constant operator");
 		const bool equal = left == right;
 		return ConstexprScalarValue(static_cast<std::int64_t>(
-			operation == "==" ? equal : !equal));
+			op == OP_EQ ? equal : !equal));
 	}
 	if (operand_type != kNoType && IsFloating(operand_type))
 	{
@@ -804,19 +805,19 @@ ConstexprScalarValue SemanticAnalyzer::ApplyConstantScalarBinary(
 			throw std::logic_error("unnormalized floating constant operands");
 		const long double l = left.floating;
 		const long double r = right.floating;
-		if (operation == "==" || operation == "!=" || operation == "<" ||
-			operation == ">" || operation == "<=" || operation == ">=")
+		if (op == OP_EQ || op == OP_NE || op == OP_LT ||
+			op == OP_GT || op == OP_LE || op == OP_GE)
 		{
-			const bool compared = operation == "==" ? l == r :
-				operation == "!=" ? l != r : operation == "<" ? l < r :
-				operation == ">" ? l > r : operation == "<=" ? l <= r : l >= r;
+			const bool compared = op == OP_EQ ? l == r :
+				op == OP_NE ? l != r : op == OP_LT ? l < r :
+				op == OP_GT ? l > r : op == OP_LE ? l <= r : l >= r;
 			return ConstexprScalarValue(static_cast<std::int64_t>(compared));
 		}
-		if (operation == "/" && r == 0.0L)
+		if (op == OP_DIV && r == 0.0L)
 			throw std::runtime_error("floating constant division by zero");
-		long double calculated = operation == "+" ? l + r :
-			operation == "-" ? l - r : operation == "*" ? l * r :
-			operation == "/" ? l / r :
+		long double calculated = op == OP_PLUS ? l + r :
+			op == OP_MINUS ? l - r : op == OP_STAR ? l * r :
+			op == OP_DIV ? l / r :
 			throw std::runtime_error("unsupported floating constant operator");
 		return NormalizeScalarConstant(
 			operand_type, ConstexprScalarValue(calculated));

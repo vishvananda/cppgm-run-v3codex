@@ -1974,20 +1974,21 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 		if (arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_PTR_OPERATOR))
 		{
 			const std::string operation = PayloadSource(child);
+			const int op = PayloadTokenKind(child);
 			if (deduced_placeholder && !saw_function_suffix)
 			{
 				ApplyPlaceholderDeclaratorOperator(operation, &result);
 				continue;
 			}
-			if (operation == "*") type = CandidateTypeFormation(
+			if (op == OP_STAR) type = CandidateTypeFormation(
 				program_->types.TryPointer(type), "pointer to reference type");
-			else if (operation == "^") type = CandidateTypeFormation(
+			else if (op == OP_XOR) type = CandidateTypeFormation(
 				program_->types.TryBlockPointer(type),
 				"block pointer target is not a function type");
-			else if (operation == "&")
+			else if (op == OP_AMP)
 				type = CandidateTypeFormation(program_->types.TryReference(
 					TYPE_LVALUE_REFERENCE, type), "reference to void type");
-			else if (operation == "&&")
+			else if (op == OP_LAND)
 				type = CandidateTypeFormation(program_->types.TryReference(
 					TYPE_RVALUE_REFERENCE, type), "reference to void type");
 			else if (operation.size() > 3 &&

@@ -2129,13 +2129,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 		arena_->NextEdge(first);
 	if (second == kNoEdge) throw std::runtime_error("invalid member expression");
 	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(first), scope);
-	const std::string source_operation = PayloadSource(node);
-	if (source_operation == "." && object.category == VALUE_PRVALUE &&
+	const int source_op = PayloadTokenKind(node);
+	if (source_op == OP_DOT && object.category == VALUE_PRVALUE &&
 		EntityOf(object.type) != kNoEntity &&
 		dump_.nodes[object.node].kind != DUMP_TEMPORARY_OBJECT)
 		object = MaterializeTemporary(object);
 	TypeId owner_type = EffectiveType(object.type);
-	if (source_operation == "->")
+	if (source_op == OP_ARROW)
 		owner_type = ResolveArrowOperand(
 			&object, scope, arena_->EdgeChild(first));
 	EnsureClassDefinition(owner_type);
@@ -2193,7 +2193,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	if (colon != std::string::npos) operation.erase(colon + 1);
 	operation += program_->names.Get(name);
 	ValueCategory member_category = VALUE_LVALUE;
-	if (source_operation != "->" && member_binding.non_static_data_member &&
+	if (source_op != OP_ARROW && member_binding.non_static_data_member &&
 		object.category != VALUE_LVALUE &&
 		!program_->types.IsReference(member_binding.type))
 		member_category = VALUE_XVALUE;
@@ -2220,7 +2220,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeMember(NodeId node, ScopeId scope)
 	result.binding = found.ordinary;
 	if (member_binding.non_static_data_member && unevaluated_depth_ == 0)
 	{
-		std::uint32_t object_address = source_operation == "->" ?
+		std::uint32_t object_address = source_op == OP_ARROW ?
 			ExpressionAddress(object) : LvalueAddress(&object);
 		if (object_address != kNoConstexprAddress &&
 			member_layout.member_offset <=

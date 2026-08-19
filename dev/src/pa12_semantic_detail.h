@@ -70,6 +70,7 @@ void PublishFunctionTemplateInternalEmission(Program* program,
 void PublishInternalIdentityFacts(Program* program);
 bool IsExtendedFloatingFundamental(FundamentalKind kind);
 int FloatingConversionRank(FundamentalKind kind);
+int ClassifyOperationSpelling(const std::string& operation);
 std::uint32_t NextComparableTemplateSyntaxEdge(const SyntaxArena& arena,
 	std::uint32_t edge, bool ignore_global_qualifier);
 bool EquivalentNormalizedTemplateSyntax(const SyntaxArena& arena,
@@ -277,6 +278,7 @@ private:
 	NameId ReadFunctionSourceDisplayName(const FunctionInfo& function);
 	NameId DumpFunctionText(const DumpNode& node);
 	std::uint8_t OperationKindForName(NameId text);
+	int PayloadTokenKind(NodeId node);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
 	ScopeId NewNamedScope(ScopeId parent, ScopeKind kind, NameId lookup_name,
@@ -1980,9 +1982,8 @@ private:
 	std::vector<NameId> scope_prefix_scratch_;
 	IndexedSequenceTable function_sets_;
 	IndexedSequenceTable ordinary_function_sets_;
-	// ADL combines ordinary declarations with function-template deduction.
-	// Keep the direct non-specialization slice indexed so that it need not scan
-	// every prior instantiation of the same template name.
+	// ADL combines ordinary declarations with deduction; keep the direct
+	// non-specialization slice indexed to avoid instantiation scans.
 	IndexedSequenceTable ordinary_nontemplate_function_sets_;
 	IndexedSequenceTable local_type_occurrences_;
 	EnumOperatorCandidateTable enum_operator_candidates_;
@@ -2018,12 +2019,11 @@ private:
 	std::vector<std::uint32_t> variable_node_by_binding_;
 	std::vector<ClassSpecialMemberFacts> class_special_members_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
-	// Unifies generated anonymous/local class identities across repeated
-	// analysis of one syntax node by typed facts instead of name lookup.
+	// Unifies generated class identities across repeated node analysis.
 	struct GeneratedTypeIdentity { NodeId node; ScopeId owner;
 		EntityId entity; };
 	std::vector<GeneratedTypeIdentity> generated_type_identities_;
-	std::vector<std::uint8_t> operation_kind_by_name_;
+	std::vector<std::uint8_t> operation_kind_by_name_, payload_token_kind_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
 	// Canonical constructor identity owns this monotonic elision fact.  A

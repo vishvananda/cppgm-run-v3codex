@@ -41,41 +41,6 @@ const std::string& SemanticAnalyzer::PayloadSource(NodeId node) const
 {
 	return arena_->SemanticPayload(node);
 }
-namespace
-{
-
-// Maps a rendered simple-token name such as "OP_PLUS" back to its kind once;
-// the table is built from the same vocabulary that rendered the text.
-std::uint8_t ClassifyOperationText(const std::string& text)
-{
-	const std::size_t colon = text.find(':');
-	if (colon == std::string::npos)
-	{
-		// Synthesized operations carry the bare fixed spelling.
-		SimpleTokenKind kind = OP_PLUS;
-		return ClassifySimpleSpelling(text, &kind) ?
-			static_cast<std::uint8_t>(kind + 1) : 0;
-	}
-	const std::string prefix = text.substr(0, colon);
-	for (int kind = 0; kind <= OP_ARROW; ++kind)
-		if (prefix == SimpleTokenKindName(static_cast<SimpleTokenKind>(kind)))
-			return static_cast<std::uint8_t>(kind + 1);
-	return 0;
-}
-
-}
-
-std::uint8_t SemanticAnalyzer::OperationKindForName(NameId text)
-{
-	if (text == 0) return 0;
-	if (operation_kind_by_name_.size() <= text)
-		operation_kind_by_name_.resize(
-			static_cast<std::size_t>(text) + 1, 255);
-	std::uint8_t& slot = operation_kind_by_name_[text];
-	if (slot == 255) slot = ClassifyOperationText(program_->names.Get(text));
-	return slot;
-}
-
 std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	ValueCategory category, NameId text, BindingId binding)
 {
@@ -711,23 +676,23 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_KEYWORD_LITERAL))
 	{
-		const std::string spelling = PayloadSource(node);
+		const int keyword = PayloadTokenKind(node);
 		ExpressionInfo result;
-		if (spelling == "this")
+		if (keyword == KW_THIS)
 			result = AnalyzeThisExpression(scope);
-		else if (spelling == "nullptr")
+		else if (keyword == KW_NULLPTR)
 		{
 			result = MakeLiteral(program_->types.Fundamental(FUND_NULLPTR_T),
 				program_->names.UseInterned(arena_->PayloadId(node)));
 			result.constant = true;
 			result.value = 0;
 		}
-		else if (spelling == "true" || spelling == "false")
+		else if (keyword == KW_TRUE || keyword == KW_FALSE)
 		{
 			result = MakeLiteral(program_->types.Fundamental(FUND_BOOL),
 				program_->names.UseInterned(arena_->PayloadId(node)));
 			result.constant = true;
-			result.value = spelling == "true";
+			result.value = keyword == KW_TRUE;
 		}
 		else throw std::runtime_error("unsupported keyword literal");
 		return ApplyTarget(result, target);
@@ -785,14 +750,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeExpression(NodeId node, ScopeId scope,
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_SIZEOF_PACK_EXPRESSION)) return ApplyTarget(AnalyzeSizeofPackExpression(node, scope), target);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION) &&
-		(PayloadSource(node) == "alignof" || PayloadSource(node) == "__alignof" ||
-		 PayloadSource(node) == "__alignof__"))
+		PayloadTokenKind(node) == KW_ALIGNOF)
 		return ApplyTarget(AnalyzeSizeof(node, scope), target);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION) &&
-		PayloadSource(node) == "noexcept")
+		PayloadTokenKind(node) == KW_NOEXCEPT)
 		return ApplyTarget(AnalyzeNoexcept(node, scope), target);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_TRAIT_EXPRESSION) &&
-		PayloadSource(node) == "typeid")
+		PayloadTokenKind(node) == KW_TYPEID)
 		return ApplyTarget(AnalyzeTypeid(node, scope), target);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST))
 		return AnalyzeBracedInit(node, scope, target);
@@ -1554,7 +1518,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	const NodeId left_syntax = arena_->EdgeChild(first);
 	const NodeId right_syntax = arena_->EdgeChild(second);
 	const std::string operation = PayloadSource(node);
-	const bool braced_assignment = operation == "=" &&
+	const int op = PayloadTokenKind(node);
+	const bool braced_assignment = op == OP_ASS &&
 		arena_->IsTag(right_syntax, ::cppgm::pa10_syntax_detail::STAG_BRACED_INIT_LIST);
 	if (braced_assignment && !braced_initialization_context_)
 		return AnalyzeAssignmentInBracedContext(node, scope);
@@ -1572,29 +1537,29 @@ ExpressionInfo SemanticAnalyzer::AnalyzeAssignment(NodeId node, ScopeId scope)
 	overloaded_operands.push_back(right);
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
-		overloaded_operands, operation == "=", kNoType, &overloaded))
+		overloaded_operands, op == OP_ASS, kNoType, &overloaded))
 		return overloaded;
 	if (right.type == kNoType && braced_assignment)
 		right = AnalyzeBracedInit(right_syntax, scope, EffectiveType(left.type));
 	(void)ApplyBuiltinAssignmentConversion(operation, left, &right);
-	if (operation == "=") right = ApplyTarget(right, EffectiveType(left.type));
+	if (op == OP_ASS) right = ApplyTarget(right, EffectiveType(left.type));
 	if (!IsModifiableLvalue(left))
 		return CandidateExpressionFailure(
 			"assignment requires modifiable lvalue");
 	const bool pointer_add = IsPointerToCompleteObject(left.type) &&
-		(operation == "+=" || operation == "-=") && IsIntegral(right.type);
-	const bool reverse_pointer_add = operation == "+=" &&
+		(op == OP_PLUSASS || op == OP_MINUSASS) && IsIntegral(right.type);
+	const bool reverse_pointer_add = op == OP_PLUSASS &&
 		program_->types.RemoveTopCv(EffectiveType(left.type)) ==
 			program_->types.Fundamental(FUND_BOOL) &&
 		IsPointerToCompleteObject(Decay(right.type));
 	if (operation != "=")
 	{
-		const bool additive = operation == "+=" || operation == "-=";
-		const bool arithmetic_operation = additive || operation == "*=" ||
-			operation == "/=";
-		const bool integral_operation = operation == "%=" ||
-			operation == "<<=" || operation == ">>=" || operation == "&=" ||
-			operation == "|=" || operation == "^=";
+		const bool additive = op == OP_PLUSASS || op == OP_MINUSASS;
+		const bool arithmetic_operation = additive || op == OP_STARASS ||
+			op == OP_DIVASS;
+		const bool integral_operation = op == OP_MODASS ||
+			op == OP_LSHIFTASS || op == OP_RSHIFTASS || op == OP_BANDASS ||
+			op == OP_BORASS || op == OP_XORASS;
 		const bool arithmetic = arithmetic_operation &&
 			IsArithmetic(left.type) && IsArithmetic(right.type);
 		const bool integral = integral_operation && IsIntegral(left.type) &&

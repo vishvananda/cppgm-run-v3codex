@@ -611,11 +611,14 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 	TypeId left_type, const ExpressionInfo& right, TypeId right_type,
 	TypeId* left_target, TypeId* right_target)
 {
+	// The subscript resolver passes the synthesized "[]" pseudo-spelling.
+	const int op = operation == "[]" ? static_cast<int>(OP_LSQUARE) :
+		ClassifyOperationSpelling(operation);
 	left_type = Decay(left_type);
 	right_type = Decay(right_type);
 	*left_target = left_type;
 	*right_target = right_type;
-	if (operation == "&&" || operation == "||")
+	if (op == OP_LAND || op == OP_LOR)
 	{
 		const bool left_member_pointer =
 			program_->types.Get(left_type).kind == TYPE_MEMBER_POINTER;
@@ -629,12 +632,12 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 			program_->types.Fundamental(FUND_BOOL);
 		return true;
 	}
-	const bool comparison = operation == "==" || operation == "!=" ||
-		operation == "<" || operation == ">" || operation == "<=" ||
-		operation == ">=";
+	const bool comparison = op == OP_EQ || op == OP_NE ||
+		op == OP_LT || op == OP_GT || op == OP_LE ||
+		op == OP_GE;
 	if (comparison)
 	{
-		const bool equality = operation == "==" || operation == "!=";
+		const bool equality = op == OP_EQ || op == OP_NE;
 		if (IsArithmetic(left_type) && IsArithmetic(right_type))
 		{
 			*left_target = *right_target =
@@ -687,20 +690,20 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 		}
 		return false;
 	}
-	if (operation == "+" || operation == "-" || operation == "[]")
+	if (op == OP_PLUS || op == OP_MINUS || op == OP_LSQUARE)
 	{
 		if (IsPointer(left_type) && IsIntegral(right_type))
 		{
 			*right_target = IntegralPromotionType(right_type);
 			return true;
 		}
-		if ((operation == "+" || operation == "[]") &&
+		if ((op == OP_PLUS || op == OP_LSQUARE) &&
 			IsIntegral(left_type) && IsPointer(right_type))
 		{
 			*left_target = IntegralPromotionType(left_type);
 			return true;
 		}
-		if (operation == "-" && IsPointer(left_type) &&
+		if (op == OP_MINUS && IsPointer(left_type) &&
 			IsPointer(right_type))
 		{
 			const ConversionRank right_to_left = Conversion(right_type,
@@ -719,14 +722,14 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 			CommonArithmeticType(left_type, right_type);
 		return true;
 	}
-	const bool integral_only = operation == "%" || operation == "<<" ||
-		operation == ">>" || operation == "&" || operation == "|" ||
-		operation == "^";
+	const bool integral_only = op == OP_MOD || op == OP_LSHIFT ||
+		op == OP_RSHIFT || op == OP_AMP || op == OP_BOR ||
+		op == OP_XOR;
 	if (integral_only && (!IsIntegral(left_type) || !IsIntegral(right_type)))
 		return false;
 	if (!integral_only &&
 		(!IsArithmetic(left_type) || !IsArithmetic(right_type))) return false;
-	if (operation == "<<" || operation == ">>")
+	if (op == OP_LSHIFT || op == OP_RSHIFT)
 	{
 		*left_target = IntegralPromotionType(left_type);
 		*right_target = IntegralPromotionType(right_type);
@@ -739,8 +742,11 @@ bool SemanticAnalyzer::BuiltinBinaryParameterTypes(
 bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
 	const std::string& operation, ExpressionInfo* operand)
 {
+	// The subscript resolver passes the synthesized "[]" pseudo-spelling.
+	const int op = operation == "[]" ? static_cast<int>(OP_LSQUARE) :
+		ClassifyOperationSpelling(operation);
 	if (EntityOf(operand->type) == kNoEntity) return true;
-	if (operation == "!")
+	if (op == OP_LNOT)
 	{
 		const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
 		const CallConversionFact conversion =
@@ -749,7 +755,7 @@ bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
 		*operand = ApplyCallArgument(*operand, boolean, &conversion);
 		return true;
 	}
-	if (operation == "++" || operation == "--")
+	if (op == OP_INC || op == OP_DEC)
 	{
 		std::vector<BindingId> functions;
 		AppendConversionFunctions(EntityOf(operand->type), &functions);
@@ -784,11 +790,11 @@ bool SemanticAnalyzer::ApplyBuiltinUnaryConversion(
 	for (std::size_t i = 0; i < results.size(); ++i)
 	{
 		TypeId target = results[i];
-		const bool viable = operation == "*" ? IsPointer(target) :
-			operation == "~" ? IsIntegral(target) :
-			(operation == "+" || operation == "-") ?
+		const bool viable = op == OP_STAR ? IsPointer(target) :
+			op == OP_COMPL ? IsIntegral(target) :
+			(op == OP_PLUS || op == OP_MINUS) ?
 				(IsArithmetic(target) ||
-				 (operation == "+" && IsPointer(target))) : false;
+				 (op == OP_PLUS && IsPointer(target))) : false;
 		if (!viable) continue;
 		if (IsIntegral(target)) target = IntegralPromotionType(target);
 		if (std::find(targets.begin(), targets.end(), target) == targets.end())
@@ -807,6 +813,9 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 	ExpressionInfo* right, std::vector<ConversionRank>* selected_ranks,
 	bool apply)
 {
+	// The subscript resolver passes the synthesized "[]" pseudo-spelling.
+	const int op = operation == "[]" ? static_cast<int>(OP_LSQUARE) :
+		ClassifyOperationSpelling(operation);
 	if (left->type == kNoType || right->type == kNoType) return false;
 	const EntityId left_entity = EntityOf(left->type);
 	const EntityId right_entity = EntityOf(right->type);
@@ -818,7 +827,7 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 		(program_->entities[right_entity].flavor == NAMED_STRUCT ||
 		 program_->entities[right_entity].flavor == NAMED_CLASS ||
 		 program_->entities[right_entity].flavor == NAMED_UNION);
-	if (operation == ",")
+	if (op == OP_COMMA)
 	{
 		if (selected_ranks)
 		{
@@ -845,7 +854,7 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 			selected_ranks->push_back(left_rank);
 			selected_ranks->push_back(right_rank);
 		}
-		const bool constant_logical = (operation == "&&" || operation == "||") &&
+		const bool constant_logical = (op == OP_LAND || op == OP_LOR) &&
 			(constant_expression_required_depth_ != 0 ||
 			 constexpr_evaluation_depth_ != 0);
 		if (apply && (EnumOperatorOperandType(left->type) != kNoType ||
@@ -856,7 +865,7 @@ bool SemanticAnalyzer::ApplyBuiltinBinaryConversions(
 			*right = ApplyTarget(*right, right_target, right_rank);
 		return true;
 	}
-	if (operation == "&&" || operation == "||")
+	if (op == OP_LAND || op == OP_LOR)
 	{
 		const TypeId boolean = program_->types.Fundamental(FUND_BOOL);
 		CallConversionFact left_conversion;
@@ -993,8 +1002,11 @@ bool SemanticAnalyzer::ApplyBuiltinAssignmentConversion(
 	const std::string& operation, const ExpressionInfo& left,
 	ExpressionInfo* right)
 {
+	// The subscript resolver passes the synthesized "[]" pseudo-spelling.
+	const int op = operation == "[]" ? static_cast<int>(OP_LSQUARE) :
+		ClassifyOperationSpelling(operation);
 	if (EntityOf(right->type) == kNoEntity) return true;
-	if (operation == "=")
+	if (op == OP_ASS)
 	{
 		const TypeId target = EffectiveType(left.type);
 		const CallConversionFact conversion =

@@ -14,8 +14,10 @@ namespace pa12_semantic_detail
 static LogicalOperation ClassifyBuiltinLogicalOperation(
 	const std::string& operation)
 {
-	return operation == "&&" ? LOGICAL_OPERATION_AND :
-		operation == "||" ? LOGICAL_OPERATION_OR : LOGICAL_OPERATION_NONE;
+	SimpleTokenKind kind = OP_PLUS;
+	if (!ClassifySimpleSpelling(operation, &kind)) return LOGICAL_OPERATION_NONE;
+	return kind == OP_LAND ? LOGICAL_OPERATION_AND :
+		kind == OP_LOR ? LOGICAL_OPERATION_OR : LOGICAL_OPERATION_NONE;
 }
 
 bool SemanticAnalyzer::IsMeasurableObjectType(
@@ -226,6 +228,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 
 ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId target) {
 	const bool postfix = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_POSTFIX_EXPRESSION); const std::string operation = PayloadSource(node);
+	const int op = PayloadTokenKind(node);
 	const NodeId operand_syntax = FirstSemanticChild(node); const TypeId address_context_target = UnaryAddressContextTarget(operation, target, operand_syntax, scope);
 	const TypeId operand_target =
 		UnaryAddressOperandTarget(operation, address_context_target);
@@ -233,13 +236,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 	if (CandidateSubstitutionFailed()) return operand;
 	if (operand.type == kNoType)
 	{
-		if (operation == "&" && target == kNoType) return operand;
+		if (op == OP_AMP && target == kNoType) return operand;
 		throw std::runtime_error("unresolved unary operand");
 	}
 	if (operation == "__real__" || operation == "__imag__") return AnalyzeComplexComponent(operation, operand, target);
 	std::vector<NodeId> overloaded_syntax(1, operand_syntax);
 	std::vector<ExpressionInfo> overloaded_operands(1, operand);
-	if (postfix && (operation == "++" || operation == "--"))
+	if (postfix && (op == OP_INC || op == OP_DEC))
 	{
 		ExpressionInfo dummy = MakeLiteral(
 			program_->types.Fundamental(FUND_INT), program_->names.Intern("0"));
@@ -259,10 +262,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 		operand, operand_syntax, address_context_target);
 	const bool member_pointer_address =
 		address_target != kNoType && IsMemberPointer(address_target);
-	if (operation == "&" && operand.binding != kNoBinding &&
+	if (op == OP_AMP && operand.binding != kNoBinding &&
 		!member_pointer_address)
 		EnsureStaticMemberStorage(operand.binding, true);
-	if (operation == "&" && operand.binding != kNoBinding &&
+	if (op == OP_AMP && operand.binding != kNoBinding &&
 		program_->bindings[operand.binding].bit_field)
 		throw std::runtime_error("address-of bit-field unsupported");
 	TypeId result_type = EffectiveType(operand.type);
@@ -271,14 +274,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 	ConstexprScalarValue scalar;
 	std::uint32_t address = ExpressionAddress(operand);
 	if (address == kNoConstexprAddress &&
-		(operation == "*" || operation == "+") &&
+		(op == OP_STAR || op == OP_PLUS) &&
 		IsPointer(Decay(operand.type)))
 		address = LvalueAddress(&operand);
 	std::uint32_t lvalue_address = kNoConstexprAddress;
 	BindingId selected_member = kNoBinding;
 	if (constant && address == kNoConstexprAddress)
 		scalar = ExpressionScalar(operand);
-	if (operation == "&")
+	if (op == OP_AMP)
 	{
 		if (operand.category != VALUE_LVALUE)
 			throw std::runtime_error("address-of requires lvalue");
@@ -296,7 +299,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 			constant = address != kNoConstexprAddress;
 		}
 	}
-	else if (operation == "*")
+	else if (op == OP_STAR)
 	{
 		TypeId decayed = Decay(result_type);
 		const TypeRecord pointer = program_->types.Get(decayed);
@@ -311,7 +314,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 		lvalue_address = address;
 		constant = false;
 	}
-	else if (operation == "++" || operation == "--")
+	else if (op == OP_INC || op == OP_DEC)
 	{
 		if (!IsModifiableLvalue(operand) ||
 			(!IsArithmetic(result_type) && !IsPointer(result_type)) ||
@@ -340,7 +343,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 					program_->SizeOf(pointer.child));
 				const std::uint32_t previous = local.address;
 				const std::uint32_t updated = OffsetConstexprAddress(previous,
-					operation == "++" ? step : -step, false);
+					op == OP_INC ? step : -step, false);
 				if (updated != kNoConstexprAddress)
 				{
 					local.address = updated;
@@ -355,14 +358,14 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 					ConstexprScalarValue(1.0L) :
 					ConstexprScalarValue(static_cast<std::int64_t>(1));
 				const ConstexprScalarValue updated = ApplyConstantScalarBinary(
-					operation == "++" ? "+" : "-", previous, one, result_type);
+					op == OP_INC ? "+" : "-", previous, one, result_type);
 				local.value = updated;
 				constant = true;
 				scalar = postfix ? previous : updated;
 			}
 		}
 	}
-	else if (operation == "!")
+	else if (op == OP_LNOT)
 	{
 		const TypeRecord operand_shape = program_->types.Get(
 			program_->types.RemoveTopCv(EffectiveType(result_type)));
@@ -375,15 +378,15 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 			static_cast<std::int64_t>(!ExpressionTruth(operand)));
 		address = kNoConstexprAddress;
 	}
-	else if (operation == "+" || operation == "-" || operation == "~")
+	else if (op == OP_PLUS || op == OP_MINUS || op == OP_COMPL)
 	{
-		if (operation == "+" && IsPointer(Decay(result_type)))
+		if (op == OP_PLUS && IsPointer(Decay(result_type)))
 		{
 			result_type = Decay(result_type);
 			constant = address != kNoConstexprAddress;
 		}
-		else if ((operation == "~" && !IsIntegral(result_type)) ||
-			(operation != "~" && !IsArithmetic(result_type)))
+		else if ((op == OP_COMPL && !IsIntegral(result_type)) ||
+			(op != OP_COMPL && !IsArithmetic(result_type)))
 			throw std::runtime_error("invalid unary arithmetic operand");
 		else if (IsIntegral(result_type) &&
 			(IntegralRank(result_type) < 3 ||
@@ -394,13 +397,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 		{
 			if (IsFloating(result_type))
 			{
-				if (operation == "-") scalar.floating = -scalar.floating;
+				if (op == OP_MINUS) scalar.floating = -scalar.floating;
 				scalar = NormalizeScalarConstant(result_type, scalar);
 			}
-			else if (operation == "-")
+			else if (op == OP_MINUS)
 				scalar = ApplyConstantIntegralUnary(
 					operation, scalar, result_type);
-			else if (operation == "~")
+			else if (op == OP_COMPL)
 				scalar = ApplyConstantIntegralUnary(
 					operation, scalar, result_type);
 			else if (IsIntegral(result_type, true))
@@ -425,10 +428,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeUnary(NodeId node, ScopeId scope, TypeId
 	else if (constant) SetExpressionScalar(&result, scalar);
 	if (lvalue_address != kNoConstexprAddress)
 		SetExpressionLvalueAddress(&result, lvalue_address);
-	if (operation == "&" && operand_object != kNoConstexprObject)
+	if (op == OP_AMP && operand_object != kNoConstexprObject)
 		SetExpressionSubobject(
 			&result, operand_object, operand_complete_object);
-	if (operation == "*" && operand_object != kNoConstexprObject)
+	if (op == OP_STAR && operand_object != kNoConstexprObject)
 		SetExpressionSubobject(
 			&result, operand_object, operand_complete_object);
 	RecordUnaryDereferenceConstant(
@@ -480,9 +483,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 	ExpressionInfo left = AnalyzeExpression(left_syntax, scope);
 	if (CandidateSubstitutionFailed()) return left;
 	const std::string operation = PayloadSource(node);
+	const int op = PayloadTokenKind(node);
 	const bool short_circuit = left.constant &&
-		((operation == "&&" && !ExpressionTruth(left)) ||
-		 (operation == "||" && ExpressionTruth(left)));
+		((op == OP_LAND && !ExpressionTruth(left)) ||
+		 (op == OP_LOR && ExpressionTruth(left)));
 	if (short_circuit) ++constant_evaluation_suppressed_depth_;
 	ExpressionInfo right;
 	try
@@ -503,7 +507,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeBinary(NodeId node, ScopeId scope)
 bool SemanticAnalyzer::PrepareBuiltinComparison(const std::string& operation,
 	ExpressionInfo* left, ExpressionInfo* right, TypeId* operand_type)
 {
-	const bool equality = operation == "==" || operation == "!=";
+	const int op = ClassifyOperationSpelling(operation);
+	const bool equality = op == OP_EQ || op == OP_NE;
 	const TypeId left_unqualified = program_->types.RemoveTopCv(
 		EffectiveType(left->type));
 	const TypeId right_unqualified = program_->types.RemoveTopCv(
@@ -612,9 +617,10 @@ TypeId SemanticAnalyzer::PrepareBuiltinArithmetic(
 	const std::string& operation, const ExpressionInfo& left,
 	const ExpressionInfo& right)
 {
-	const bool integral_only = operation == "%" || operation == "<<" ||
-		operation == ">>" || operation == "&" || operation == "|" ||
-		operation == "^";
+	const int op = ClassifyOperationSpelling(operation);
+	const bool integral_only = op == OP_MOD || op == OP_LSHIFT ||
+		op == OP_RSHIFT || op == OP_AMP || op == OP_BOR ||
+		op == OP_XOR;
 	if ((integral_only &&
 		(!IsIntegral(left.type) || !IsIntegral(right.type))) ||
 		(!integral_only &&
@@ -623,7 +629,7 @@ TypeId SemanticAnalyzer::PrepareBuiltinArithmetic(
 		(void)CandidateExpressionFailure("invalid binary arithmetic operands");
 		return kNoType;
 	}
-	return operation == "<<" || operation == ">>" ?
+	return op == OP_LSHIFT || op == OP_RSHIFT ?
 		IntegralPromotionType(left.type) :
 		CommonArithmeticType(left.type, right.type);
 }
@@ -633,6 +639,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	NodeId left_syntax, NodeId right_syntax, ExpressionInfo left,
 	ExpressionInfo right, ScopeId scope)
 {
+	const int op = ClassifyOperationSpelling(operation);
 	ExpressionInfo typeid_comparison; if (TryAnalyzeTypeidComparison(operation, display_operation, left_syntax, right_syntax, left, right, scope, &typeid_comparison)) return typeid_comparison;
 	std::vector<NodeId> overloaded_syntax;
 	overloaded_syntax.push_back(left_syntax);
@@ -643,7 +650,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	std::vector<ConversionRank> builtin_ranks;
 	const bool builtin_viable = ApplyBuiltinBinaryConversions(operation,
 		&left, &right, &builtin_ranks, false);
-	const bool builtin_competes = builtin_viable && operation != ",";
+	const bool builtin_competes = builtin_viable && op != OP_COMMA;
 	ExpressionInfo overloaded;
 	if (TryAnalyzeOverloadedOperator(operation, scope, overloaded_syntax,
 		overloaded_operands, false, kNoType, &overloaded,
@@ -655,26 +662,26 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	TypeId result_type = kNoType;
 	TypeId operand_type = kNoType;
 	ValueCategory result_category = VALUE_PRVALUE;
-	if (operation == "&&" || operation == "||")
+	if (op == OP_LAND || op == OP_LOR)
 	{
 		if (!IsBuiltinLogicalOperand(left) || !IsBuiltinLogicalOperand(right))
 			throw std::runtime_error("invalid logical operands");
 		result_type = program_->types.Fundamental(FUND_BOOL);
 	}
-	else if (operation == "==" || operation == "!=" || operation == "<" ||
-		operation == ">" || operation == "<=" || operation == ">=")
+	else if (op == OP_EQ || op == OP_NE || op == OP_LT ||
+		op == OP_GT || op == OP_LE || op == OP_GE)
 	{
 		if (!PrepareBuiltinComparison(
 			operation, &left, &right, &operand_type)) return ExpressionInfo();
 		result_type = operand_type != kNoType && program_->types.Get(operand_type).kind == TYPE_VECTOR ? operand_type : program_->types.Fundamental(FUND_BOOL);
 	}
-	else if (operation == ",")
+	else if (op == OP_COMMA)
 	{
 		left = MaterializeDiscardedClassResult(left);
 		result_type = EffectiveType(right.type);
 		result_category = right.category;
 	}
-	else if (operation == "+" || operation == "-")
+	else if (op == OP_PLUS || op == OP_MINUS)
 	{
 		if (IsPointer(Decay(left.type)) && IsIntegral(right.type))
 		{
@@ -687,7 +694,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 			}
 			result_type = Decay(left.type);
 		}
-		else if (operation == "+" && IsIntegral(left.type) &&
+		else if (op == OP_PLUS && IsIntegral(left.type) &&
 			IsPointer(Decay(right.type)))
 		{
 			if (!IsPointerToCompleteObject(Decay(right.type)))
@@ -699,7 +706,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 			}
 			result_type = Decay(right.type);
 		}
-		else if (operation == "-" && IsPointer(Decay(left.type)) &&
+		else if (op == OP_MINUS && IsPointer(Decay(left.type)) &&
 			IsPointer(Decay(right.type)))
 		{
 			if (!IsPointerToCompleteObject(Decay(left.type)) ||
@@ -733,12 +740,12 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 	result.type = result_type;
 	result.category = result_category;
 	const bool short_circuit = left.constant &&
-		((operation == "&&" && !ExpressionTruth(left)) ||
-		 (operation == "||" && ExpressionTruth(left)));
+		((op == OP_LAND && !ExpressionTruth(left)) ||
+		 (op == OP_LOR && ExpressionTruth(left)));
 	result.constant = constant_evaluation_suppressed_depth_ == 0 && (short_circuit || (left.constant && right.constant));
 	if (result.constant)
 	{
-		if (operation == ",")
+		if (op == OP_COMMA)
 		{
 			result = right;
 			result.node = expression;
@@ -756,19 +763,19 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 		if (right_address == kNoConstexprAddress &&
 			IsPointer(Decay(right.type)))
 			right_address = LvalueAddress(&right);
-		if (operation == "&&" || operation == "||")
+		if (op == OP_LAND || op == OP_LOR)
 		{
 			SetExpressionScalar(&result, ConstexprScalarValue(
 				static_cast<std::int64_t>(short_circuit ?
 					ExpressionTruth(left) :
-					(operation == "&&" ?
+					(op == OP_LAND ?
 					 ExpressionTruth(left) && ExpressionTruth(right) :
 					 ExpressionTruth(left) || ExpressionTruth(right)))));
 			++expression_count_;
 			return result;
 		}
-		if ((operation == "==" || operation == "!=" || operation == "<" ||
-			operation == ">" || operation == "<=" || operation == ">=") &&
+		if ((op == OP_EQ || op == OP_NE || op == OP_LT ||
+			op == OP_GT || op == OP_LE || op == OP_GE) &&
 			(left_address != kNoConstexprAddress ||
 			 right_address != kNoConstexprAddress))
 		{
@@ -781,14 +788,14 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 				const bool same_base = a->kind == b->kind &&
 					a->identity == b->identity;
 				bool compared = false;
-				if (operation == "==")
+				if (op == OP_EQ)
 					compared = same_base && a->offset == b->offset;
-				else if (operation == "!=")
+				else if (op == OP_NE)
 					compared = !(same_base && a->offset == b->offset);
 				else if (!same_base) result.constant = false;
-				else if (operation == "<") compared = a->offset < b->offset;
-				else if (operation == ">") compared = a->offset > b->offset;
-				else if (operation == "<=") compared = a->offset <= b->offset;
+				else if (op == OP_LT) compared = a->offset < b->offset;
+				else if (op == OP_GT) compared = a->offset > b->offset;
+				else if (op == OP_LE) compared = a->offset <= b->offset;
 				else compared = a->offset >= b->offset;
 				if (result.constant) SetExpressionScalar(&result,
 					ConstexprScalarValue(static_cast<std::int64_t>(compared)));
@@ -796,7 +803,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 			++expression_count_;
 			return result;
 		}
-		if ((operation == "+" || operation == "-") &&
+		if ((op == OP_PLUS || op == OP_MINUS) &&
 			(left_address != kNoConstexprAddress ||
 			 right_address != kNoConstexprAddress))
 		{
@@ -807,7 +814,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 					ConstexprAddressAt(left_address);
 				const ConstexprAddressValue* b =
 					ConstexprAddressAt(right_address);
-				if (operation != "-" || !a || !b || a->kind != b->kind ||
+				if (op != OP_MINUS || !a || !b || a->kind != b->kind ||
 					a->identity != b->identity)
 					result.constant = false;
 				else
@@ -840,7 +847,7 @@ ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
 				else
 				{
 					std::int64_t delta = count * step;
-					if (operation == "-" && pointer_left) delta = -delta;
+					if (op == OP_MINUS && pointer_left) delta = -delta;
 					const std::uint32_t advanced = OffsetConstexprAddress(
 						pointer_left ? left_address : right_address,
 						delta, false);
