@@ -115,6 +115,8 @@ struct AbiFactFile
 
 struct AbiMangleStats
 {
+	std::size_t production_mangles = 0;
+	std::size_t production_fact_bytes = 0;
   std::size_t source_files = 0;
   std::size_t source_bytes = 0;
   std::size_t cases = 0;
@@ -138,6 +140,7 @@ struct AbiMangleStats
 AbiFactRecord parse_fact_record_words(const std::vector<std::string> & words);
 AbiFactFile parse_fact_text(const std::string & text);
 std::string serialize_fact_file(const AbiFactFile & file);
+std::size_t abi_fact_storage_bytes(const AbiFactFile & file);
 std::string mangle_fact_file(const AbiFactFile & file);
 void mangle_fact_file_to_stream(const AbiFactFile & file, std::ostream & output,
                                 AbiMangleStats * stats = nullptr);

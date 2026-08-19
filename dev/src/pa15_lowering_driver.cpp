@@ -248,7 +248,7 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 
 LowIRLoweringStats::LowIRLoweringStats()
 	: source_bytes(0), semantic(), lowered_nodes(0), functions(0), globals(0),
-	  blocks(0), instructions(0), binding_index_probes(0),
+	  blocks(0), instructions(0), abi(), binding_index_probes(0),
 	  slot_implicit_object_fact_reads(0),
 	  virtual_calls(0), vptr_stores(0), virtual_base_boundary_scan_nodes(0),
 	  virtual_base_boundary_facts(0),

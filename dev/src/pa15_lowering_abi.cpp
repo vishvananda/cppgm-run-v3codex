@@ -5,6 +5,7 @@
 #include "pa18_polymorphism_lowering.h"
 
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -1903,7 +1904,30 @@ std::string OperatorTerminal(OperatorKind kind, bool member,
 
 }
 
-std::string MangleType(const pa11::Program& program, pa11::TypeId type)
+namespace
+{
+
+std::string MangleProductionFile(const abi_mangle::AbiFactFile& file,
+	abi_mangle::AbiMangleStats* stats)
+{
+	if (stats)
+	{
+		++stats->production_mangles;
+		stats->production_fact_bytes +=
+			abi_mangle::abi_fact_storage_bytes(file);
+	}
+	std::ostringstream output;
+	abi_mangle::mangle_fact_file_to_stream(file, output, stats);
+	std::string result = output.str();
+	if (!result.empty() && result[result.size() - 1] == '\n')
+		result.resize(result.size() - 1);
+	return result;
+}
+
+}
+
+std::string MangleType(const pa11::Program& program, pa11::TypeId type,
+	abi_mangle::AbiMangleStats* stats)
 {
 	using namespace abi_mangle;
 	AbiFactFile file;
@@ -1914,10 +1938,7 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type)
 	target.target.kind = ABI_TARGET_FACT_TYPE;
 	target.target.type = facts.MakeType(type);
 	file.cases[0].records.push_back(target);
-	std::string result = mangle_fact_file(file);
-	if (!result.empty() && result[result.size() - 1] == '\n')
-		result.resize(result.size() - 1);
-	return result;
+	return MangleProductionFile(file, stats);
 }
 
 bool IsFunctionEmissionDemanded(const pa11::Program& program,
@@ -2166,7 +2187,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 
 std::string MangleLambdaCallOperator(const pa11::Program& program,
 	const pa11::BindingRecord& binding,
-	const pa11::EntityRecord& lambda)
+	const pa11::EntityRecord& lambda, abi_mangle::AbiMangleStats* stats)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -2249,15 +2270,12 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 		file.cases[0].records.push_back(parameter);
 	}
 	file.cases[0].records.push_back(lambda_target);
-	std::string result = mangle_fact_file(file);
-	if (!result.empty() && result[result.size() - 1] == '\n')
-		result.resize(result.size() - 1);
-	return result;
+	return MangleProductionFile(file, stats);
 }
 
 std::string MangleFunction(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
-	bool force_lifecycle_base_entry)
+	bool force_lifecycle_base_entry, abi_mangle::AbiMangleStats* stats)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -2293,7 +2311,7 @@ std::string MangleFunction(const pa11::Program& program,
 		&program.entities[binding.member_owner];
 	if (lambda && lambda->lambda_closure &&
 		binding.operator_kind == OPERATOR_CALL)
-		return MangleLambdaCallOperator(program, binding, *lambda);
+		return MangleLambdaCallOperator(program, binding, *lambda, stats);
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
 	AbiFactBuilder facts(program, file.cases[0]);
@@ -2493,15 +2511,13 @@ std::string MangleFunction(const pa11::Program& program,
 		variadic.function.kind = ABI_FUNCTION_RECORD_VARIADIC;
 		file.cases[0].records.push_back(variadic);
 	}
-	std::string result = mangle_fact_file(file);
-	if (!result.empty() && result[result.size() - 1] == '\n')
-		result.resize(result.size() - 1);
-	return result;
+	return MangleProductionFile(file, stats);
 }
 
 std::string MangleVariable(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
-	const std::string& qualified_name_override)
+	const std::string& qualified_name_override,
+	abi_mangle::AbiMangleStats* stats)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -2587,14 +2603,12 @@ std::string MangleVariable(const pa11::Program& program,
 			file.cases[0].records.push_back(argument);
 		}
 	}
-	std::string result = mangle_fact_file(file);
-	if (!result.empty() && result[result.size() - 1] == '\n')
-		result.resize(result.size() - 1);
-	return result;
+	return MangleProductionFile(file, stats);
 }
 
 std::string MangleThreadLocalWrapper(const pa11::Program& program,
-	pa11::BindingId binding_id, pa11::NameId fallback_name)
+	pa11::BindingId binding_id, pa11::NameId fallback_name,
+	abi_mangle::AbiMangleStats* stats)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -2616,10 +2630,7 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 			std::to_string(binding.name) + ", fallback " +
 			std::to_string(fallback_name) + ")");
 	file.cases[0].records.push_back(target);
-	std::string result = mangle_fact_file(file);
-	if (!result.empty() && result[result.size() - 1] == '\n')
-		result.resize(result.size() - 1);
-	return result;
+	return MangleProductionFile(file, stats);
 }
 
 }

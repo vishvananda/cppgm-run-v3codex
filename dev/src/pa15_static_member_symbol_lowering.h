@@ -41,7 +41,8 @@ protected:
 			derived.global_symbols_[canonical] = derived.InternSymbol(record,
 				Symbol::GLOBAL_SYMBOL, SanitizeSymbol(source_name),
 				pa15_lowering_abi::MangleVariable(
-					derived.program_, record, qualified_name));
+					derived.program_, record, qualified_name,
+					derived.stats_ ? &derived.stats_->abi : 0));
 		}
 		derived.global_symbols_[record.binding] =
 			derived.global_symbols_[canonical];

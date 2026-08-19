@@ -1315,6 +1315,24 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " instructions=" << stats.instructions
+			 << " abi_production_mangles="
+			 << stats.abi.production_mangles
+			 << " abi_fact_records=" << stats.abi.records
+			 << " abi_fact_bytes=" << stats.abi.production_fact_bytes
+			 << " abi_canonical_types=" << stats.abi.canonical_types
+			 << " abi_canonical_arguments="
+			 << stats.abi.canonical_arguments
+			 << " abi_canonical_expressions="
+			 << stats.abi.canonical_expressions
+			 << " abi_definition_cache_hits="
+			 << stats.abi.definition_cache_hits
+			 << " abi_path_components=" << stats.abi.path_components
+			 << " abi_substitution_lookups="
+			 << stats.abi.substitution_lookups
+			 << " abi_substitution_hits="
+			 << stats.abi.substitution_hits
+			 << " abi_substitution_entries="
+			 << stats.abi.substitution_entries
 			 << " force_inline_candidates=" << stats.force_inline_candidates
 			 << " force_inline_recursive_candidates="
 			 << stats.force_inline_recursive_candidates
@@ -2346,6 +2364,24 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << " globals=" << stats.globals
 			 << " blocks=" << stats.blocks
 			 << " instructions=" << stats.instructions
+			 << " abi_production_mangles="
+			 << stats.abi.production_mangles
+			 << " abi_fact_records=" << stats.abi.records
+			 << " abi_fact_bytes=" << stats.abi.production_fact_bytes
+			 << " abi_canonical_types=" << stats.abi.canonical_types
+			 << " abi_canonical_arguments="
+			 << stats.abi.canonical_arguments
+			 << " abi_canonical_expressions="
+			 << stats.abi.canonical_expressions
+			 << " abi_definition_cache_hits="
+			 << stats.abi.definition_cache_hits
+			 << " abi_path_components=" << stats.abi.path_components
+			 << " abi_substitution_lookups="
+			 << stats.abi.substitution_lookups
+			 << " abi_substitution_hits="
+			 << stats.abi.substitution_hits
+			 << " abi_substitution_entries="
+			 << stats.abi.substitution_entries
 			 << " binding_index_probes=" << stats.binding_index_probes
 			 << " slot_implicit_object_fact_reads="
 			 << stats.slot_implicit_object_fact_reads

@@ -457,7 +457,8 @@ private:
 				name + "__base_entry" : binding.destructor_base_entry ?
 				name + "__base_entry" : name;
 			function_symbols_[record.binding] = InternSymbol(record, Symbol::FUNCTION_SYMBOL, entry_name,
-				pa15_lowering_abi::MangleFunction(program_, record));
+				pa15_lowering_abi::MangleFunction(program_, record, false,
+					stats_ ? &stats_->abi : 0));
 			pa15_lowering_abi::ApplyLifecycleSymbolMetadata(program_, record, &output_, function_symbols_[record.binding]);
 		}
 		if (record.kind == DUMP_FUNCTION_DEFINITION)
@@ -572,8 +573,9 @@ private:
 										thread_local_storage)
 										thread_local_declarations_.push_back(
 											std::make_pair(symbol,
-												pa15_lowering_abi::MangleThreadLocalWrapper(
-													program_, record.binding, record.text)));
+											pa15_lowering_abi::MangleThreadLocalWrapper(
+												program_, record.binding, record.text,
+												stats_ ? &stats_->abi : 0)));
 								}
 						}
 						else
@@ -640,7 +642,8 @@ private:
 			thread_local_objects_.push_back(
 				std::make_pair(action_index,
 					pa15_lowering_abi::MangleThreadLocalWrapper(
-						program_, record.binding, record.text)));
+						program_, record.binding, record.text,
+						stats_ ? &stats_->abi : 0)));
 		bool keep_global_class_address = false;
 		if (!SetExplicitVariableZero(record, &global) &&
 			!static_initializers_.Lower(action, thread_local_object, &global,

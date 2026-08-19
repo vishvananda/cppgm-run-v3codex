@@ -1,5 +1,6 @@
 #pragma once
 
+#include "abi_mangle.h"
 #include "pa12_semantic.h"
 #include "pa15_lowir_model.h"
 
@@ -30,6 +31,7 @@ struct LowIRLoweringStats
 	std::size_t globals;
 	std::size_t blocks;
 	std::size_t instructions;
+	abi_mangle::AbiMangleStats abi;
 	std::size_t binding_index_probes;
 	std::size_t slot_implicit_object_fact_reads;
 	std::size_t virtual_calls;
