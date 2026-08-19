@@ -413,12 +413,19 @@ void derive_lowir_object_facts(Program& program,
 						instruction.args[j], local_definitions, stats);
 			}
 	propagate_direct_call_boundaries(program, stats);
+	publish_prederived_lowir_object_facts(program, stats);
+	if (stats)
+		stats->derived_facts_nanoseconds += elapsed_nanoseconds(started);
+}
+
+void publish_prederived_lowir_object_facts(Program& program,
+	LowirPreparationStats* stats)
+{
 	program.exported_symbols.clear();
 	derive_exports(program);
 	if (stats)
 	{
 		stats->exports += program.exported_symbols.size();
-		stats->derived_facts_nanoseconds += elapsed_nanoseconds(started);
 	}
 }
 

@@ -60,6 +60,11 @@ void canonicalize_serialized_lowir_facts(
 void derive_lowir_object_facts(
 	LowirProgram& program, LowirPreparationStats* stats = 0);
 
+// Publish the object-boundary tables for a typed producer that has already
+// supplied canonical operand bindings and direct-call boundary facts.
+void publish_prederived_lowir_object_facts(
+	LowirProgram& program, LowirPreparationStats* stats = 0);
+
 // Complete the persistent and derived object boundary in one call.
 void finalize_lowir_object_model(
 	LowirProgram& program, LowirPreparationStats* stats = 0);
