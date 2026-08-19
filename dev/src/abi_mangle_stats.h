@@ -26,6 +26,12 @@ struct AbiMangleStats
   std::size_t canonical_expressions = 0;
   std::size_t typed_expression_operations = 0;
   std::size_t text_expression_operations = 0;
+  std::size_t typed_builtin_types = 0;
+  std::size_t text_builtin_types = 0;
+  std::size_t typed_standard_substitutions = 0;
+  std::size_t text_standard_substitutions = 0;
+  std::size_t typed_vendor_qualifiers = 0;
+  std::size_t text_vendor_qualifiers = 0;
   std::size_t canonical_cache_hits = 0;
   std::size_t definition_cache_hits = 0;
   std::size_t path_components = 0;

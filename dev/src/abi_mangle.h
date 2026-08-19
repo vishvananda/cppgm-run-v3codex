@@ -69,6 +69,8 @@ struct AbiFunctionRecord
   bool standard_substitution_includes_arguments = false;
   bool discriminator_after_terminal = false;
   AbiTerminalKind terminal_code = ABI_TERMINAL_NONE;
+  AbiStandardSubstitutionKind standard_substitution_code =
+    ABI_STANDARD_SUBSTITUTION_TEXT;
   std::string context_ref;
   // Local/lambda context records use these as context storage and case
   // identity. Name-component records use the same kind-disjoint slots as a

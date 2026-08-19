@@ -153,8 +153,9 @@ bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
 			source.bound == 0)
 			throw std::runtime_error("dependent _BitInt has no ABI encoding");
 		result->kind = ABI_TYPE_BUILTIN;
-		result->name = std::string(source.bitint_unsigned ?
-			"ubitint" : "bitint") + std::to_string(source.bound);
+		result->builtin_type = source.bitint_unsigned ?
+			ABI_BUILTIN_TYPE_UNSIGNED_BITINT : ABI_BUILTIN_TYPE_BITINT;
+		result->index = source.bound;
 		return true;
 	}
 	if (source.kind == TYPE_COMPLEX)
@@ -165,47 +166,41 @@ bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
 		result->kind = ABI_TYPE_BUILTIN;
 		switch (element.fundamental)
 		{
-		case FUND_FLOAT: result->name = "complex-float"; return true;
-		case FUND_DOUBLE: result->name = "complex-double"; return true;
-		case FUND_LONG_DOUBLE: result->name = "complex-longdouble"; return true;
+		case FUND_FLOAT:
+			result->builtin_type = ABI_BUILTIN_TYPE_COMPLEX_FLOAT;
+			return true;
+		case FUND_DOUBLE:
+			result->builtin_type = ABI_BUILTIN_TYPE_COMPLEX_DOUBLE;
+			return true;
+		case FUND_LONG_DOUBLE:
+			result->builtin_type = ABI_BUILTIN_TYPE_COMPLEX_LONG_DOUBLE;
+			return true;
 		default:
 			throw std::runtime_error("unsupported complex ABI element type");
 		}
 	}
 	if (source.kind != TYPE_FUNDAMENTAL) return false;
+	static const AbiBuiltinTypeKind fundamental_types[] = {
+		ABI_BUILTIN_TYPE_BOOL, ABI_BUILTIN_TYPE_CHAR,
+		ABI_BUILTIN_TYPE_SIGNED_CHAR, ABI_BUILTIN_TYPE_UNSIGNED_CHAR,
+		ABI_BUILTIN_TYPE_SHORT, ABI_BUILTIN_TYPE_UNSIGNED_SHORT,
+		ABI_BUILTIN_TYPE_INT, ABI_BUILTIN_TYPE_UNSIGNED_INT,
+		ABI_BUILTIN_TYPE_LONG, ABI_BUILTIN_TYPE_UNSIGNED_LONG,
+		ABI_BUILTIN_TYPE_LONG_LONG, ABI_BUILTIN_TYPE_UNSIGNED_LONG_LONG,
+		ABI_BUILTIN_TYPE_FLOAT, ABI_BUILTIN_TYPE_DOUBLE,
+		ABI_BUILTIN_TYPE_LONG_DOUBLE, ABI_BUILTIN_TYPE_VOID,
+		ABI_BUILTIN_TYPE_NULLPTR, ABI_BUILTIN_TYPE_WCHAR,
+		ABI_BUILTIN_TYPE_CHAR16, ABI_BUILTIN_TYPE_CHAR32,
+		ABI_BUILTIN_TYPE_INT128, ABI_BUILTIN_TYPE_UINT128,
+		ABI_BUILTIN_TYPE_FLOAT16, ABI_BUILTIN_TYPE_FLOAT32,
+		ABI_BUILTIN_TYPE_FLOAT32X, ABI_BUILTIN_TYPE_FLOAT64,
+		ABI_BUILTIN_TYPE_FLOAT64X, ABI_BUILTIN_TYPE_STDFLOAT128,
+		ABI_BUILTIN_TYPE_FLOAT128
+	};
+	static_assert(sizeof(fundamental_types) / sizeof(fundamental_types[0]) ==
+		FUND_FLOAT128 + 1, "fundamental ABI type table is incomplete");
 	result->kind = ABI_TYPE_BUILTIN;
-	switch (source.fundamental)
-	{
-	case FUND_VOID: result->name = "void"; break;
-	case FUND_BOOL: result->name = "bool"; break;
-	case FUND_CHAR: result->name = "char"; break;
-	case FUND_SIGNED_CHAR: result->name = "schar"; break;
-	case FUND_UNSIGNED_CHAR: result->name = "uchar"; break;
-	case FUND_SHORT_INT: result->name = "short"; break;
-	case FUND_UNSIGNED_SHORT_INT: result->name = "ushort"; break;
-	case FUND_INT: result->name = "int"; break;
-	case FUND_UNSIGNED_INT: result->name = "uint"; break;
-	case FUND_LONG_INT: result->name = "long"; break;
-	case FUND_UNSIGNED_LONG_INT: result->name = "ulong"; break;
-	case FUND_LONG_LONG_INT: result->name = "longlong"; break;
-	case FUND_UNSIGNED_LONG_LONG_INT: result->name = "ulonglong"; break;
-	case FUND_INT128: result->name = "int128"; break;
-	case FUND_UINT128: result->name = "uint128"; break;
-	case FUND_FLOAT: result->name = "float"; break;
-	case FUND_DOUBLE: result->name = "double"; break;
-	case FUND_LONG_DOUBLE: result->name = "longdouble"; break;
-	case FUND_FLOAT16: result->name = "float16"; break;
-	case FUND_FLOAT32: result->name = "float32"; break;
-	case FUND_FLOAT32X: result->name = "float32x"; break;
-	case FUND_FLOAT64: result->name = "float64"; break;
-	case FUND_FLOAT64X: result->name = "float64x"; break;
-	case FUND_STDFLOAT128: result->name = "stdfloat128"; break;
-	case FUND_FLOAT128: result->name = "float128"; break;
-	case FUND_WCHAR_T: result->name = "wchar"; break;
-	case FUND_CHAR16_T: result->name = "char16"; break;
-	case FUND_CHAR32_T: result->name = "char32"; break;
-	case FUND_NULLPTR_T: result->name = "nullptr"; break;
-	}
+	result->builtin_type = fundamental_types[source.fundamental];
 	return true;
 }
 
@@ -282,10 +277,12 @@ std::string LambdaDiscriminator(std::uint32_t ordinal)
 
 struct StandardTemplateSubstitution
 {
-	const char* code;
+	abi_mangle::AbiStandardSubstitutionKind code;
 	bool includes_arguments;
 
-	StandardTemplateSubstitution(const char* code_value = 0,
+	StandardTemplateSubstitution(
+		abi_mangle::AbiStandardSubstitutionKind code_value =
+			abi_mangle::ABI_STANDARD_SUBSTITUTION_TEXT,
 		bool includes_arguments_value = false)
 		: code(code_value), includes_arguments(includes_arguments_value) {}
 };
@@ -388,20 +385,26 @@ StandardTemplateSubstitution StandardSubstitutionFor(
 	if (terminal_id == 0) return StandardTemplateSubstitution();
 	const std::string& terminal = program.names.Get(terminal_id);
 	if (terminal == "allocator")
-		return StandardTemplateSubstitution("Sa", false);
+		return StandardTemplateSubstitution(
+			abi_mangle::ABI_STANDARD_SUBSTITUTION_ALLOCATOR, false);
 	if (terminal == "basic_string")
 		return HasExactStandardCharacterArguments(program, entity, true) ?
-			StandardTemplateSubstitution("Ss", true) :
-			StandardTemplateSubstitution("Sb", false);
+			StandardTemplateSubstitution(
+				abi_mangle::ABI_STANDARD_SUBSTITUTION_STRING, true) :
+			StandardTemplateSubstitution(
+				abi_mangle::ABI_STANDARD_SUBSTITUTION_BASIC_STRING, false);
 	if (terminal == "basic_istream" &&
 		HasExactStandardCharacterArguments(program, entity, false))
-		return StandardTemplateSubstitution("Si", true);
+		return StandardTemplateSubstitution(
+			abi_mangle::ABI_STANDARD_SUBSTITUTION_ISTREAM, true);
 	if (terminal == "basic_ostream" &&
 		HasExactStandardCharacterArguments(program, entity, false))
-		return StandardTemplateSubstitution("So", true);
+		return StandardTemplateSubstitution(
+			abi_mangle::ABI_STANDARD_SUBSTITUTION_OSTREAM, true);
 	if (terminal == "basic_iostream" &&
 		HasExactStandardCharacterArguments(program, entity, false))
-		return StandardTemplateSubstitution("Sd", true);
+		return StandardTemplateSubstitution(
+			abi_mangle::ABI_STANDARD_SUBSTITUTION_IOSTREAM, true);
 	return StandardTemplateSubstitution();
 }
 
@@ -1668,7 +1671,8 @@ public:
 		abi_mangle::AbiType result)
 	{
 		result.kind = abi_mangle::ABI_TYPE_VENDOR_QUALIFIED;
-		result.name = "block_pointer";
+		result.vendor_qualifier =
+			abi_mangle::ABI_VENDOR_QUALIFIER_BLOCK_POINTER;
 		result.types.push_back(MakeType(function_type, function, recipe));
 		return result;
 	}
@@ -1877,12 +1881,13 @@ public:
 			{
 				const StandardTemplateSubstitution standard =
 					StandardSubstitutionFor(program_, entity);
-				result.kind = standard.code ?
+				result.kind = standard.code !=
+					ABI_STANDARD_SUBSTITUTION_TEXT ?
 					ABI_TYPE_STD_TEMPLATE_SPECIALIZATION :
 					ABI_TYPE_TEMPLATE_SPECIALIZATION;
-				if (standard.code)
+				if (standard.code != ABI_STANDARD_SUBSTITUTION_TEXT)
 				{
-					result.standard_substitution = standard.code;
+					result.standard_substitution_code = standard.code;
 					result.standard_substitution_includes_arguments =
 						standard.includes_arguments;
 				}
@@ -1920,7 +1925,8 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 		StandardSubstitutionFor(program, entity);
 	// Standard template substitutions include their `std::` owner. Do not emit
 	// that namespace again when the substitution is a nested-name prefix.
-	const std::size_t path_begin = standard.code && path.size() == 2 ? 1 : 0;
+	const std::size_t path_begin = standard.code !=
+		ABI_STANDARD_SUBSTITUTION_TEXT && path.size() == 2 ? 1 : 0;
 	std::size_t resolved_prefix = ABI_NO_RESOLVED_REFERENCE;
 	for (std::size_t i = path_begin; i < path.size(); ++i)
 	{
@@ -1937,8 +1943,7 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 						ABI_SEMANTIC_SUBSTITUTION_CLASS,
 						binding.member_owner);
 			else component.function.complete_substitution = "-";
-			component.function.standard_substitution =
-				standard.code ? standard.code : "-";
+			component.function.standard_substitution_code = standard.code;
 			component.function.standard_substitution_includes_arguments =
 				standard.includes_arguments;
 			const std::size_t pack = entity.template_argument_pack_begin;

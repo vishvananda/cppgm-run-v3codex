@@ -5,6 +5,7 @@
 #include "abi_mangle_expression.h"
 #include "abi_mangle_reference.h"
 #include "abi_mangle_terminal.h"
+#include "abi_mangle_type_vocabulary.h"
 
 #include <cstddef>
 #include <string>
@@ -37,7 +38,7 @@ enum AbiDefinitionKind
   ABI_DEFINITION_ENTITY
 };
 
-enum AbiTypeKind
+enum AbiTypeKind : std::uint8_t
 {
   ABI_TYPE_NAME_OR_REFERENCE,
   ABI_TYPE_NAMED,
@@ -215,6 +216,10 @@ struct AbiTypeModifier
 struct AbiType
 {
   AbiTypeKind kind = ABI_TYPE_NAME_OR_REFERENCE;
+  AbiBuiltinTypeKind builtin_type = ABI_BUILTIN_TYPE_NONE;
+  AbiStandardSubstitutionKind standard_substitution_code =
+    ABI_STANDARD_SUBSTITUTION_TEXT;
+  AbiVendorQualifierKind vendor_qualifier = ABI_VENDOR_QUALIFIER_TEXT;
   std::string name;
   std::string substitution;
   std::string standard_substitution;

@@ -1,4 +1,5 @@
 #include "abi_mangle.h"
+#include "abi_mangle_graph_type.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -16,6 +17,8 @@ namespace {
 using std::size_t;
 using std::string;
 using std::vector;
+using detail::TypeNode;
+using detail::type_node_hash;
 
 const size_t NO_ID = std::numeric_limits<size_t>::max();
 
@@ -162,82 +165,6 @@ private:
   std::unordered_map<PathNode, size_t, PathHash> indexes_;
 };
 
-struct TypeNode
-{
-  AbiTypeKind kind = ABI_TYPE_BUILTIN;
-  size_t symbol = NO_ID;
-  size_t path = NO_ID;
-  size_t expression = NO_ID;
-  size_t context = NO_ID;
-  size_t context_identity = NO_ID;
-  size_t discriminator = NO_ID;
-  size_t substitution = NO_ID;
-  size_t index = 0;
-  AbiArrayBoundKind bound_kind = ABI_ARRAY_BOUND_VALUE;
-  bool is_const = false;
-  bool is_volatile = false;
-  bool variadic = false;
-  bool lvalue_ref = false;
-  bool rvalue_ref = false;
-  bool substitutable = false;
-  bool suppress_template_prefix_substitution = false;
-  bool standard_includes_arguments = false;
-  bool substitution_resolved = false;
-  bool context_resolved = false;
-  bool uses_case_facts = false;
-  vector<size_t> children;
-  vector<size_t> arguments;
-  vector<size_t> namespaces;
-  vector<size_t> tags;
-
-  bool operator==(const TypeNode & other) const
-  {
-    return kind == other.kind && symbol == other.symbol && path == other.path
-           && expression == other.expression
-           && (!context_resolved ? context == other.context : true)
-           && context_identity == other.context_identity
-           && discriminator == other.discriminator
-           && substitution == other.substitution
-           && index == other.index && bound_kind == other.bound_kind
-           && is_const == other.is_const && is_volatile == other.is_volatile
-           && variadic == other.variadic && lvalue_ref == other.lvalue_ref
-           && rvalue_ref == other.rvalue_ref
-           && substitutable == other.substitutable
-           && suppress_template_prefix_substitution ==
-                other.suppress_template_prefix_substitution
-           && standard_includes_arguments == other.standard_includes_arguments
-           && substitution_resolved == other.substitution_resolved
-           && context_resolved == other.context_resolved
-           && children == other.children && arguments == other.arguments
-           && namespaces == other.namespaces && tags == other.tags;
-  }
-};
-
-size_t type_hash(const TypeNode & type)
-{
-  size_t hash = static_cast<size_t>(type.kind);
-  hash = mix_hash(hash, type.symbol);
-  hash = mix_hash(hash, type.path);
-  hash = mix_hash(hash, type.expression);
-  hash = mix_hash(hash, type.context_resolved ? NO_ID : type.context);
-  hash = mix_hash(hash, type.context_identity);
-  hash = mix_hash(hash, type.discriminator);
-  hash = mix_hash(hash, type.substitution);
-  hash = mix_hash(hash, type.index);
-  hash = mix_hash(hash, static_cast<size_t>(type.bound_kind));
-  hash = mix_hash(hash, type.is_const | (type.is_volatile << 1) | (type.variadic << 2)
-                        | (type.standard_includes_arguments << 3)
-                        | (type.substitutable << 4)
-                        | (type.suppress_template_prefix_substitution << 5)
-                        | (type.lvalue_ref << 6) | (type.rvalue_ref << 7)
-                        | (type.context_resolved << 8)
-                        | (type.substitution_resolved << 9));
-  hash = vector_hash(hash, type.children);
-  hash = vector_hash(hash, type.arguments);
-  hash = vector_hash(hash, type.namespaces);
-  return vector_hash(hash, type.tags);
-}
-
 struct ArgumentNode
 {
   AbiTemplateArgumentKind kind = ABI_TEMPLATE_ARGUMENT_TYPE;
@@ -381,29 +308,6 @@ size_t expression_hash(const ExpressionNode & expression)
   return vector_hash(hash, expression.types);
 }
 
-bool is_builtin_name(const string & name)
-{
-  static const char * names[] = {
-    "void", "bool", "char", "schar", "uchar", "wchar", "char16", "char32",
-    "short", "ushort", "int", "uint", "long", "ulong", "longlong", "ulonglong",
-    "int128", "uint128",
-    "float", "double", "longdouble", "float16", "float32", "float32x",
-    "float64", "float64x", "stdfloat128", "float128", "complex-float",
-    "complex-double", "complex-longdouble", "nullptr"
-  };
-  for(const char * candidate : names) {
-    if(name == candidate) return true;
-  }
-  const size_t first = name.compare(0, 7, "ubitint") == 0 ? 7 :
-    name.compare(0, 6, "bitint") == 0 ? 6 : string::npos;
-  if(first != string::npos && first < name.size()) {
-    for(size_t i = first; i < name.size(); ++i)
-      if(name[i] < '0' || name[i] > '9') return false;
-    return true;
-  }
-  return false;
-}
-
 bool has_resolved_type_substitution(const AbiType & type)
 {
   return type.resolved_expression != ABI_NO_RESOLVED_REFERENCE &&
@@ -537,6 +441,28 @@ public:
     }
     TypeNode node;
     node.kind = source.kind;
+    std::size_t bitint_width = source.index;
+    AbiBuiltinTypeKind builtin_type = source.builtin_type;
+    if(builtin_type == ABI_BUILTIN_TYPE_NONE &&
+       (source.kind == ABI_TYPE_NAME_OR_REFERENCE ||
+        source.kind == ABI_TYPE_BUILTIN))
+      builtin_type = abi_builtin_type_kind(source.name, &bitint_width);
+    const bool builtin_word = source.kind == ABI_TYPE_BUILTIN ||
+      builtin_type != ABI_BUILTIN_TYPE_NONE ||
+      (source.kind == ABI_TYPE_NAME_OR_REFERENCE &&
+       (source.name.compare(0, 7, "ubitint") == 0 ||
+        source.name.compare(0, 6, "bitint") == 0) &&
+       abi_is_builtin_type_word(source.name));
+    AbiStandardSubstitutionKind standard_substitution =
+      source.standard_substitution_code;
+    if(standard_substitution == ABI_STANDARD_SUBSTITUTION_TEXT &&
+       !source.standard_substitution.empty())
+      standard_substitution = abi_standard_substitution_kind(
+        source.standard_substitution);
+    AbiVendorQualifierKind vendor_qualifier = source.vendor_qualifier;
+    if(vendor_qualifier == ABI_VENDOR_QUALIFIER_TEXT &&
+       source.kind == ABI_TYPE_VENDOR_QUALIFIED && !source.name.empty())
+      vendor_qualifier = abi_vendor_qualifier_kind(source.name);
     bool resolved_path = false;
     bool resolved_source_name = false;
     bool resolved_namespace_path = false;
@@ -558,9 +484,19 @@ public:
         default: break;
       }
     }
-    if(source.kind == ABI_TYPE_NAME_OR_REFERENCE && is_builtin_name(source.name)) {
+    if(builtin_word) {
       node.kind = ABI_TYPE_BUILTIN;
-      node.symbol = strings.intern(source.name);
+      node.builtin_type = builtin_type;
+      if(builtin_type == ABI_BUILTIN_TYPE_BITINT ||
+         builtin_type == ABI_BUILTIN_TYPE_UNSIGNED_BITINT)
+        node.index = bitint_width;
+      else if(builtin_type == ABI_BUILTIN_TYPE_NONE)
+        node.symbol = strings.intern(source.name);
+      if(stats_) {
+        if(builtin_type == ABI_BUILTIN_TYPE_NONE)
+          ++stats_->text_builtin_types;
+        else ++stats_->typed_builtin_types;
+      }
     } else if(source.kind == ABI_TYPE_NAME_OR_REFERENCE || source.kind == ABI_TYPE_NAMED) {
       node.kind = ABI_TYPE_NAMED;
 	  node.path = resolved_path ? checked_path(source.index - 1) :
@@ -568,9 +504,16 @@ public:
 			stats_ ? &stats_->text_type_path_components : nullptr);
 	  if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
     } else {
+      node.standard_substitution = standard_substitution;
+      node.vendor_qualifier = vendor_qualifier;
       if(resolved_source_name)
         node.symbol = source.index - 1;
-      else if(!source.name.empty()) node.symbol = strings.intern(source.name);
+      else if(!source.name.empty() &&
+              !(source.kind == ABI_TYPE_VENDOR_QUALIFIED &&
+                vendor_qualifier != ABI_VENDOR_QUALIFIER_TEXT) &&
+              !(source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION &&
+                standard_substitution != ABI_STANDARD_SUBSTITUTION_TEXT))
+        node.symbol = strings.intern(source.name);
       if(resolved_namespace_path)
         node.path = checked_path(source.index - 1);
       if((source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
@@ -580,8 +523,19 @@ public:
 		  paths.intern(source.name,
 			stats_ ? &stats_->text_type_path_components : nullptr);
       }
-      if(!source.standard_substitution.empty()) {
+      if(standard_substitution == ABI_STANDARD_SUBSTITUTION_TEXT &&
+         !source.standard_substitution.empty()) {
         node.symbol = strings.intern(source.standard_substitution);
+      }
+      if(stats_ && source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION) {
+        if(standard_substitution == ABI_STANDARD_SUBSTITUTION_TEXT)
+          ++stats_->text_standard_substitutions;
+        else ++stats_->typed_standard_substitutions;
+      }
+      if(stats_ && source.kind == ABI_TYPE_VENDOR_QUALIFIED) {
+        if(vendor_qualifier == ABI_VENDOR_QUALIFIER_TEXT)
+          ++stats_->text_vendor_qualifiers;
+        else ++stats_->typed_vendor_qualifiers;
       }
       if(has_resolved_type_substitution(source)) {
         node.substitution = source.resolved_expression;
@@ -854,7 +808,7 @@ private:
 
   size_t intern_type(const TypeNode & node)
   {
-    const size_t hash = type_hash(node);
+    const size_t hash = type_node_hash(node);
     vector<size_t> & bucket = type_buckets[hash];
     for(size_t id : bucket) {
       if(types[id] == node) {
@@ -1238,30 +1192,6 @@ string discriminator(const string & occurrence)
   return "__" + std::to_string(value) + "_";
 }
 
-string builtin_code(const string & name)
-{
-  static const struct Entry { const char * name; const char * code; } entries[] = {
-    {"void", "v"}, {"bool", "b"}, {"char", "c"}, {"schar", "a"},
-    {"uchar", "h"}, {"wchar", "w"}, {"char16", "Ds"}, {"char32", "Di"},
-    {"short", "s"}, {"ushort", "t"}, {"int", "i"}, {"uint", "j"},
-    {"long", "l"}, {"ulong", "m"}, {"longlong", "x"}, {"ulonglong", "y"},
-    {"int128", "n"}, {"uint128", "o"},
-    {"float", "f"}, {"double", "d"}, {"longdouble", "e"},
-    {"float16", "DF16_"}, {"float32", "DF32_"},
-    {"float32x", "DF32x"}, {"float64", "DF64_"},
-    {"float64x", "DF64x"}, {"stdfloat128", "DF128_"},
-    {"float128", "g"},
-    {"complex-float", "Cf"}, {"complex-double", "Cd"},
-    {"complex-longdouble", "Ce"}, {"nullptr", "Dn"}
-  };
-  for(const Entry & entry : entries) if(name == entry.name) return entry.code;
-  if(name.compare(0, 7, "ubitint") == 0)
-    return "DU" + name.substr(7) + '_';
-  if(name.compare(0, 6, "bitint") == 0)
-    return "DB" + name.substr(6) + '_';
-  throw std::logic_error("unknown ABI builtin type '" + name + "'");
-}
-
 class Encoder
 {
 public:
@@ -1511,7 +1441,7 @@ private:
     for(;;) {
       const TypeNode & type = graph_.type(id);
       if(type.kind == ABI_TYPE_BUILTIN) {
-        output_ += builtin_code(graph_.strings.get(type.symbol));
+        emit_builtin_type(type);
         break;
       }
       if(type.kind == ABI_TYPE_TEMPLATE_PARAMETER && !type.substitutable) {
@@ -1553,7 +1483,7 @@ private:
           if(type.is_volatile) output_ += 'V';
           if(type.is_const) output_ += 'K';
         } else if(type.kind == ABI_TYPE_VENDOR_QUALIFIED) {
-          output_ += 'U' + source_name(graph_.strings.get(type.symbol));
+          emit_vendor_qualifier(type);
 		} else if(type.kind == ABI_TYPE_VECTOR) {
 		  output_ += "Dv";
 		  if(type.symbol != NO_ID) output_ += graph_.strings.get(type.symbol);
@@ -1599,7 +1529,7 @@ private:
         encode_type(type.children.at(0));
         return;
       case ABI_TYPE_VENDOR_QUALIFIED:
-        output_ += 'U' + source_name(graph_.strings.get(type.symbol));
+        emit_vendor_qualifier(type);
         encode_type(type.children.at(0));
         return;
 	  case ABI_TYPE_ARRAY:
@@ -1648,7 +1578,9 @@ private:
         output_ += 'E';
         return;
       case ABI_TYPE_STD_TEMPLATE_SPECIALIZATION:
-        output_ += graph_.strings.get(type.symbol);
+        if(type.standard_substitution != ABI_STANDARD_SUBSTITUTION_TEXT)
+          output_ += abi_standard_substitution_code(type.standard_substitution);
+        else output_ += graph_.strings.get(type.symbol);
         emit_tags(type.tags);
         if(!type.standard_includes_arguments) {
           output_ += 'I'; encode_arguments(type.arguments); output_ += 'E';
@@ -1976,13 +1908,39 @@ private:
   {
     const TypeNode & type = graph_.type(type_id);
     if(type.kind == ABI_TYPE_BUILTIN && value < 0) {
-      const string & name = graph_.strings.get(type.symbol);
-      if(name == "uint") return std::to_string(static_cast<uint32_t>(value));
-      if(name == "ulong" || name == "ulonglong" || name == "uint128") {
+      if(type.builtin_type == ABI_BUILTIN_TYPE_UNSIGNED_INT)
+        return std::to_string(static_cast<uint32_t>(value));
+      if(type.builtin_type == ABI_BUILTIN_TYPE_UNSIGNED_LONG ||
+         type.builtin_type == ABI_BUILTIN_TYPE_UNSIGNED_LONG_LONG ||
+         type.builtin_type == ABI_BUILTIN_TYPE_UINT128) {
         return std::to_string(static_cast<uint64_t>(value));
+      }
+      if(type.builtin_type == ABI_BUILTIN_TYPE_NONE) {
+        const string & name = graph_.strings.get(type.symbol);
+        if(name == "uint") return std::to_string(static_cast<uint32_t>(value));
+        if(name == "ulong" || name == "ulonglong" || name == "uint128")
+          return std::to_string(static_cast<uint64_t>(value));
       }
     }
     return number(value);
+  }
+
+  void emit_builtin_type(const TypeNode & type)
+  {
+    if(type.builtin_type == ABI_BUILTIN_TYPE_BITINT ||
+       type.builtin_type == ABI_BUILTIN_TYPE_UNSIGNED_BITINT) {
+      output_ += type.builtin_type == ABI_BUILTIN_TYPE_BITINT ? "DB" : "DU";
+      output_ += std::to_string(type.index) + '_';
+    } else if(type.builtin_type != ABI_BUILTIN_TYPE_NONE) {
+      output_ += abi_builtin_type_code(type.builtin_type);
+    } else output_ += abi_builtin_type_text_code(graph_.strings.get(type.symbol));
+  }
+
+  void emit_vendor_qualifier(const TypeNode & type)
+  {
+    if(type.vendor_qualifier != ABI_VENDOR_QUALIFIER_TEXT)
+      output_ += abi_vendor_qualifier_code(type.vendor_qualifier);
+    else output_ += 'U' + source_name(graph_.strings.get(type.symbol));
   }
 
   void emit_expression_operation(const ExpressionNode & expression,
@@ -2427,14 +2385,27 @@ private:
     }
     require(component.kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE,
             "invalid structured ABI prefix component");
-    if(component.standard_substitution != "-"
+    const bool fixed_standard = component.standard_substitution_code !=
+      ABI_STANDARD_SUBSTITUTION_TEXT;
+    const bool text_standard = !component.standard_substitution.empty() &&
+      component.standard_substitution != "-";
+    if((fixed_standard || text_standard) && stats_) {
+      if(fixed_standard) ++stats_->typed_standard_substitutions;
+      else ++stats_->text_standard_substitutions;
+    }
+    if((fixed_standard || text_standard)
        && component.standard_substitution_includes_arguments) {
-      output_ += component.standard_substitution;
+      output_ += fixed_standard ?
+        abi_standard_substitution_code(component.standard_substitution_code) :
+        component.standard_substitution;
       return;
     }
     const SubstitutionKey prefix = structured_component_key(component, tags);
     if(substitutions_.emit_if_known(prefix, output_)) return;
-    if(component.standard_substitution != "-") output_ += component.standard_substitution;
+    if(fixed_standard)
+      output_ += abi_standard_substitution_code(
+        component.standard_substitution_code);
+    else if(text_standard) output_ += component.standard_substitution;
     else output_ += source_name(component_name(component));
     emit_tags(tags);
     substitutions_.add(prefix);

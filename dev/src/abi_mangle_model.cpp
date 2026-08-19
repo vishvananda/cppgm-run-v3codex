@@ -114,6 +114,8 @@ void AbiReferenceList::move(AbiReferenceList & other) noexcept
 
 namespace {
 
+static_assert(sizeof(AbiType) == 416,
+              "typed ABI vocabulary must not widen types");
 static_assert(sizeof(AbiTemplateArgument) == 1976,
               "typed ABI terminal must not widen template arguments");
 static_assert(sizeof(AbiDependentExpression) == 1056,

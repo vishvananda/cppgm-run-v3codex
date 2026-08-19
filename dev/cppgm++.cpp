@@ -1374,6 +1374,18 @@ void report_source_compile_stats(
 			 << stats.abi.typed_expression_operations
 			 << " abi_text_expression_operations="
 			 << stats.abi.text_expression_operations
+			 << " abi_typed_builtin_types="
+			 << stats.abi.typed_builtin_types
+			 << " abi_text_builtin_types="
+			 << stats.abi.text_builtin_types
+			 << " abi_typed_standard_substitutions="
+			 << stats.abi.typed_standard_substitutions
+			 << " abi_text_standard_substitutions="
+			 << stats.abi.text_standard_substitutions
+			 << " abi_typed_vendor_qualifiers="
+			 << stats.abi.typed_vendor_qualifiers
+			 << " abi_text_vendor_qualifiers="
+			 << stats.abi.text_vendor_qualifiers
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
@@ -2439,6 +2451,18 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.abi.typed_expression_operations
 			 << " abi_text_expression_operations="
 			 << stats.abi.text_expression_operations
+			 << " abi_typed_builtin_types="
+			 << stats.abi.typed_builtin_types
+			 << " abi_text_builtin_types="
+			 << stats.abi.text_builtin_types
+			 << " abi_typed_standard_substitutions="
+			 << stats.abi.typed_standard_substitutions
+			 << " abi_text_standard_substitutions="
+			 << stats.abi.text_standard_substitutions
+			 << " abi_typed_vendor_qualifiers="
+			 << stats.abi.typed_vendor_qualifiers
+			 << " abi_text_vendor_qualifiers="
+			 << stats.abi.text_vendor_qualifiers
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components

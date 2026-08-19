@@ -268,6 +268,7 @@ AbiType parse_type(const vector<string> & words, size_t begin)
     AbiType type;
     type.kind = ABI_TYPE_VENDOR_QUALIFIED;
     type.name = words[begin + 1];
+    type.vendor_qualifier = abi_vendor_qualifier_kind(type.name);
     type.types.push_back(parse_type(words, begin + 2));
     return type;
   }
@@ -312,6 +313,8 @@ AbiType parse_type(const vector<string> & words, size_t begin)
     AbiType type;
     type.kind = ABI_TYPE_STD_TEMPLATE_SPECIALIZATION;
     type.standard_substitution = words[begin + 1];
+    type.standard_substitution_code =
+      abi_standard_substitution_kind(type.standard_substitution);
     type.standard_substitution_includes_arguments = parse_yes_no(words[begin + 2]);
     type.name = words[begin + 3];
     append_reference_names(&type.argument_refs, words, begin + 4);
@@ -751,6 +754,8 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
     record.substitution = words[2];
     record.complete_substitution = words[3];
     record.standard_substitution = words[4];
+    record.standard_substitution_code =
+      abi_standard_substitution_kind(record.standard_substitution);
     record.standard_substitution_includes_arguments = parse_yes_no(words[5]);
     append_reference_names(&record.argument_refs, words, 6);
   } else if(form == "function-template-arg") {
@@ -842,7 +847,13 @@ string unmodified_type_text(const AbiType & type)
   switch(type.kind) {
     case ABI_TYPE_NAME_OR_REFERENCE: return type.name;
     case ABI_TYPE_NAMED: return "named:" + type.name;
-    case ABI_TYPE_BUILTIN: return type.name;
+    case ABI_TYPE_BUILTIN:
+      if(!type.name.empty()) return type.name;
+      if(type.builtin_type == ABI_BUILTIN_TYPE_BITINT ||
+         type.builtin_type == ABI_BUILTIN_TYPE_UNSIGNED_BITINT)
+        return std::string(type.builtin_type == ABI_BUILTIN_TYPE_BITINT ?
+          "bitint" : "ubitint") + std::to_string(type.index);
+      return abi_builtin_type_word(type.builtin_type);
     case ABI_TYPE_POINTER: return "ptr:" + type_text(type.types.at(0));
     case ABI_TYPE_LVALUE_REFERENCE: return "ref:" + type_text(type.types.at(0));
     case ABI_TYPE_RVALUE_REFERENCE: return "rref:" + type_text(type.types.at(0));
@@ -863,7 +874,9 @@ string unmodified_type_text(const AbiType & type)
       return string(type.substitutable ? "template-param-subst " : "template-param ")
              + std::to_string(type.index);
     case ABI_TYPE_VENDOR_QUALIFIED:
-      return "vendor " + type.name + " " + type_text(type.types.at(0));
+      return "vendor " + (type.name.empty() ?
+        std::string(abi_vendor_qualifier_word(type.vendor_qualifier)) :
+        type.name) + " " + type_text(type.types.at(0));
     case ABI_TYPE_ARRAY:
       return "array:" + type.array_bound.value + ":" + type_text(type.types.at(0));
     case ABI_TYPE_VECTOR:
@@ -889,7 +902,10 @@ string unmodified_type_text(const AbiType & type)
       return result;
     }
     case ABI_TYPE_STD_TEMPLATE_SPECIALIZATION: {
-      string result = "std-template " + type.standard_substitution + " "
+      const string standard = type.standard_substitution.empty() ?
+        abi_standard_substitution_code(type.standard_substitution_code) :
+        type.standard_substitution;
+      string result = "std-template " + standard + " "
                       + (type.standard_substitution_includes_arguments ? "yes " : "no ")
                       + type.name;
       for(const string & argument : type.argument_refs.names()) result += " " + argument;
@@ -1178,8 +1194,13 @@ string function_record_text(const AbiFunctionRecord & function)
   }
   if(function.kind == ABI_FUNCTION_RECORD_NAME_STD) return "name-std";
   if(function.kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE) {
+    const string standard = function.standard_substitution_code !=
+      ABI_STANDARD_SUBSTITUTION_TEXT ?
+      abi_standard_substitution_code(function.standard_substitution_code) :
+      function.standard_substitution.empty() ? "-" :
+      function.standard_substitution;
     string result = "name-template " + function.name + " " + function.substitution + " "
-                    + function.complete_substitution + " " + function.standard_substitution
+                    + function.complete_substitution + " " + standard
                     + " " + bool_text(function.standard_substitution_includes_arguments);
     for(const string & argument : function.argument_refs.names()) result += " " + argument;
     return result;

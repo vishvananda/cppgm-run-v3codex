@@ -87,6 +87,14 @@ int run_abimangle(int argc, char ** argv)
          << " canonical_types=" << stats.canonical_types
          << " canonical_arguments=" << stats.canonical_arguments
          << " canonical_expressions=" << stats.canonical_expressions
+         << " typed_builtin_types=" << stats.typed_builtin_types
+         << " text_builtin_types=" << stats.text_builtin_types
+         << " typed_standard_substitutions="
+         << stats.typed_standard_substitutions
+         << " text_standard_substitutions="
+         << stats.text_standard_substitutions
+         << " typed_vendor_qualifiers=" << stats.typed_vendor_qualifiers
+         << " text_vendor_qualifiers=" << stats.text_vendor_qualifiers
          << " canonical_cache_hits=" << stats.canonical_cache_hits
          << " definition_cache_hits=" << stats.definition_cache_hits
          << " path_components=" << stats.path_components
