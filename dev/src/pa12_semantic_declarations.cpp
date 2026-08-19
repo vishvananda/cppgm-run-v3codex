@@ -78,6 +78,7 @@ OperatorKind ClassifyOperator(const std::string& name,
 	}
 	return OPERATOR_NONE;
 }
+}
 BindingId LocalTypeContext(const Program& program, ScopeId owner,
 	BindingId current_function)
 {
@@ -91,7 +92,6 @@ BindingId LocalTypeContext(const Program& program, ScopeId owner,
 			return kNoBinding;
 	}
 	return kNoBinding;
-}
 }
 TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	const std::string& hint, bool elaborated,
@@ -111,20 +111,36 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		arena_->Payload(node).empty() && !hint.empty();
 	std::string spelling;
 	NamePath path;
+	bool generated_identity = false;
 	BuildClassDeclarationNamePath(
-		node, hint, specialization_name, &spelling, &path);
+		node, hint, specialization_name, &spelling, &path,
+		&generated_identity);
 	const NameId name = path.Last();
 	const NameId lookup_name = specialization_lookup_name == 0 ?
 		name : specialization_lookup_name;
 	const ScopeId owner = specialization_owner == kNoScope ?
 		ResolveOwner(scope, path) : specialization_owner;
 	if (owner == kNoScope) throw std::runtime_error("class owner not found");
-	const LookupResult old = path.global || path.Size() > 1 ?
+	// A generated anonymous/local identity names a fresh entity: it never
+	// matches a source declaration and must not enter ordinary type lookup,
+	// where it could collide with a user type of the same spelling.
+	const LookupResult old = generated_identity ? LookupResult() :
+		path.global || path.Size() > 1 ?
 		program_->LookupDirect(owner, lookup_name, LOOKUP_TYPE) :
 		(elaborated && specialization_lookup_name == 0 ?
 		 program_->LookupName(scope, lookup_name, LOOKUP_TYPE) :
 		 program_->LookupDirect(owner, lookup_name, LOOKUP_TYPE));
 	EntityId entity = kNoEntity;
+	// Repeated analysis of one generated-identity node (the class-template
+	// shell and definition passes) unifies through the typed table.
+	if (generated_identity)
+		for (std::size_t i = 0; i < generated_type_identities_.size(); ++i)
+			if (generated_type_identities_[i].node == node &&
+				generated_type_identities_[i].owner == owner)
+			{
+				entity = generated_type_identities_[i].entity;
+				break;
+			}
 	if (old.type != kNoType)
 	{
 		const TypeRecord named = program_->types.Get(
@@ -138,7 +154,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			 previous != NAMED_UNION))
 			throw std::runtime_error("incompatible class redeclaration");
 	}
-	else
+	else if (entity == kNoEntity)
 	{
 		if ((path.global || path.Size() > 1) && elaborated)
 			throw std::runtime_error("qualified class was not declared");
@@ -161,7 +177,17 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		program_->entities[entity].local_context = local_context;
 		program_->entities[entity].unnamed_class = unnamed_class;
 		RegisterLocalTypeAbiIdentity(entity);
-		program_->SetTypeName(owner, lookup_name,
+		if (generated_identity)
+		{
+			// The typed table is the identity; the generated spelling is
+			// presentation and stays out of ordinary lookup.
+			GeneratedTypeIdentity record;
+			record.node = node;
+			record.owner = owner;
+			record.entity = entity;
+			generated_type_identities_.push_back(record);
+		}
+		else program_->SetTypeName(owner, lookup_name,
 			program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
@@ -451,8 +477,10 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 							generated_name, 2);
 					const NameId storage_name =
 						program_->names.Intern(generated_name);
-					const BindingId storage = program_->AddBinding(member_scope,
-						BIND_VARIABLE, storage_name, nested_type);
+					// Private storage identity stays out of name lookup.
+					const BindingId storage = program_->AddUnindexedBinding(
+						member_scope, BIND_VARIABLE, storage_name,
+						nested_type, kNoBinding);
 					BindingRecord& storage_record = program_->bindings[storage];
 					storage_record.member_owner = entity;
 					storage_record.access = member_access;
@@ -1473,123 +1501,6 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		(source_definition || (!defaulted && !deleted));
 	RegisterClassSpecialMember(constructor);
 }
-TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint, bool elaborated)
-{
-	std::string spelling;
-	NamePath path;
-	BuildEnumDeclarationNamePath(node, hint, &spelling, &path);
-	const bool scoped = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_KEY) != kNoNode;
-	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
-	const NameId name = path.Last();
-	const ScopeId owner = ResolveOwner(scope, path);
-	if (owner == kNoScope) throw std::runtime_error("enum owner not found");
-	const NodeId underlying_node = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID);
-	TypeId underlying = underlying_node == kNoNode ?
-		program_->types.Fundamental(FUND_INT) :
-		BuildTypeId(underlying_node, owner);
-	const LookupResult old = path.global || path.Size() > 1 ?
-		program_->LookupDirect(owner, name, LOOKUP_TYPE) :
-		(elaborated ? program_->LookupName(scope, name, LOOKUP_TYPE) :
-		 program_->LookupDirect(owner, name, LOOKUP_TYPE));
-	if (elaborated)
-	{
-		if (old.type == kNoType) throw std::runtime_error("unknown enum type");
-		return old.type;
-	}
-	EntityId entity = kNoEntity;
-	if (old.type != kNoType)
-	{
-		const TypeRecord named = program_->types.Get(
-			program_->types.RemoveTopCv(old.type));
-		if (named.kind != TYPE_NAMED)
-			throw std::runtime_error("enum redeclared as non-enum");
-		entity = named.entity;
-		if (program_->entities[entity].flavor != flavor)
-			throw std::runtime_error("incompatible enum redeclaration");
-	}
-	else
-	{
-		entity = program_->NewEntity(name, flavor, true, underlying, owner);
-		program_->entities[entity].local_context = LocalTypeContext(
-			*program_, owner, current_function_context_);
-		RegisterLocalTypeAbiIdentity(entity);
-		program_->SetTypeName(owner, name, program_->entities[entity].type);
-		if (arena_->Payload(node).size() != 0)
-			program_->AddBinding(owner, BIND_TYPE, name,
-				program_->entities[entity].type, false, 0, flavor);
-	}
-	const TypeId type = program_->entities[entity].type;
-	ScopeId value_scope = owner;
-	if (scoped)
-	{
-		value_scope = program_->entities[entity].member_scope;
-		if (value_scope == kNoScope)
-		{
-			value_scope = NewNamedScope(
-				owner, SCOPE_ENUM, name, owner, name);
-			program_->SetEntityScope(entity, value_scope);
-		}
-	}
-	std::int64_t next = 0;
-	std::int64_t minimum = 0;
-	std::int64_t maximum = 0;
-	std::vector<BindingId> enumerators;
-	for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
-		edge = arena_->NextEdge(edge))
-	{
-		const NodeId enumerator = arena_->EdgeChild(edge);
-		if (!arena_->IsTag(enumerator, ::cppgm::pa10_syntax_detail::STAG_ENUMERATOR)) continue;
-		const NodeId initializer = FirstSemanticChild(enumerator);
-		std::int64_t value = next;
-		if (initializer != kNoNode)
-		{
-			// A specialization demanded from a discarded expression arm still
-			// analyzes its enumerators as independent constant-expression roots.
-			const std::size_t outer_suppression =
-				constant_evaluation_suppressed_depth_;
-			constant_evaluation_suppressed_depth_ = 0;
-			ExpressionInfo expression;
-			try
-			{
-				expression = AnalyzeExpression(initializer, value_scope);
-			}
-			catch (...)
-			{
-				constant_evaluation_suppressed_depth_ = outer_suppression;
-				throw;
-			}
-			constant_evaluation_suppressed_depth_ = outer_suppression;
-			if (!expression.constant)
-				throw std::runtime_error("nonconstant enumerator");
-			value = expression.value;
-		}
-		const NameId enumerator_name =
-			program_->names.UseInterned(arena_->PayloadId(enumerator));
-		const BindingId binding = program_->AddBinding(value_scope,
-			BIND_ENUMERATOR, enumerator_name, underlying, true, value);
-		enumerators.push_back(binding);
-		if (value < minimum) minimum = value;
-		if (value > maximum) maximum = value;
-		if (value == INT64_MAX) throw std::runtime_error("enumerator overflow");
-		next = value + 1;
-	}
-	if (underlying_node == kNoNode && !scoped)
-	{
-		if (minimum >= std::numeric_limits<std::int32_t>::min() &&
-			maximum <= std::numeric_limits<std::int32_t>::max())
-			underlying = program_->types.Fundamental(FUND_INT);
-		else if (minimum >= 0 &&
-			static_cast<std::uint64_t>(maximum) <=
-				std::numeric_limits<std::uint32_t>::max())
-			underlying = program_->types.Fundamental(FUND_UNSIGNED_INT);
-		else underlying = program_->types.Fundamental(FUND_LONG_LONG_INT);
-		program_->entities[entity].underlying = underlying;
-	}
-	for (std::size_t i = 0; i < enumerators.size(); ++i)
-		program_->bindings[enumerators[i]].type = type;
-	return type;
-}
-
 SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 	const std::string& hint, bool has_declarators, bool type_id_context,
 	TypeId deferred_type)

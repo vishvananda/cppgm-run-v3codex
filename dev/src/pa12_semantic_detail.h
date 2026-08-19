@@ -550,9 +550,9 @@ private:
 		NameId typedef_linkage_name = 0);
 	void BuildClassDeclarationNamePath(NodeId node, const std::string& hint,
 		const std::string& specialization_name, std::string* spelling,
-		NamePath* path);
+		NamePath* path, bool* generated_identity);
 	void BuildEnumDeclarationNamePath(NodeId node, const std::string& hint,
-		std::string* spelling, NamePath* path);
+		std::string* spelling, NamePath* path, bool* generated_identity);
 	bool CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
 		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
 		NameId lookup_name, ScopeId specialization_owner,
@@ -2017,6 +2017,11 @@ private:
 	std::vector<std::uint32_t> variable_node_by_binding_;
 	std::vector<ClassSpecialMemberFacts> class_special_members_;
 	std::vector<BindingId> implicit_constructor_by_entity_;
+	// Unifies generated anonymous/local class identities across repeated
+	// analysis of one syntax node by typed facts instead of name lookup.
+	struct GeneratedTypeIdentity { NodeId node; ScopeId owner;
+		EntityId entity; };
+	std::vector<GeneratedTypeIdentity> generated_type_identities_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
 	// Canonical constructor identity owns this monotonic elision fact.  A

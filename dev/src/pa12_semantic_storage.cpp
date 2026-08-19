@@ -62,6 +62,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		implicit_constructor_by_entity_.capacity() * sizeof(BindingId) +
 		constructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
 		destructor_base_entry_by_binding_.capacity() * sizeof(BindingId) +
+		generated_type_identities_.capacity() *
+			sizeof(GeneratedTypeIdentity) +
 		static_member_storage_by_binding_.capacity() * sizeof(std::uint32_t) +
 		explicit_static_member_specialization_states_.capacity() *
 			sizeof(std::uint8_t) +
