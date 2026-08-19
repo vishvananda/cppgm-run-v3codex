@@ -247,13 +247,11 @@ protected:
 			derived.local_static_eager_initializers_.empty() &&
 			!derived.needs_global_class_initializer_) return;
 		const std::string proposed = "__cppgm_init";
-		std::size_t& count = derived.output_.symbol_name_counts[proposed];
-		const std::string name = count++ == 0 ? proposed :
-			proposed + "__sym" + std::to_string(count);
 		const SymbolId symbol =
 			static_cast<SymbolId>(derived.output_.symbols.size());
 		derived.output_.symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL,
-			derived.output_.strings.intern(name), lowir_model::StringId(),
+			derived.output_.InternUniqueSymbolName(proposed),
+			lowir_model::StringId(),
 			false, true, false));
 		derived.output_.symbols.back().definition_emitted = true;
 
@@ -300,13 +298,11 @@ protected:
 		if (derived.dynamic_finalizers_.empty() &&
 			derived.local_static_finalizers_.empty()) return;
 		const std::string proposed = "__cppgm_fini";
-		std::size_t& count = derived.output_.symbol_name_counts[proposed];
-		const std::string name = count++ == 0 ? proposed :
-			proposed + "__sym" + std::to_string(count);
 		const SymbolId symbol =
 			static_cast<SymbolId>(derived.output_.symbols.size());
 		derived.output_.symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL,
-			derived.output_.strings.intern(name), lowir_model::StringId(),
+			derived.output_.InternUniqueSymbolName(proposed),
+			lowir_model::StringId(),
 			false, true, false));
 		derived.output_.symbols.back().definition_emitted = true;
 

@@ -238,7 +238,7 @@ struct TypedProgram
 	std::vector<SymbolId> string_literal_symbols;
 	EmissionIdentityTable identities;
 	SymbolIdentityTable symbol_index;
-	StringCounterTable symbol_name_counts;
+	std::vector<std::uint32_t> symbol_name_counts;
 	std::size_t string_literal_count;
 	SymbolId terminate_runtime_symbol, terminate_helper_symbol;
 	SymbolId call_unexpected_symbol;
@@ -249,6 +249,9 @@ struct TypedProgram
 		: string_literal_count(0), terminate_runtime_symbol(kNoLowId),
 		  terminate_helper_symbol(kNoLowId), call_unexpected_symbol(kNoLowId),
 		  host_object_emission(false), retain_local_names(true) {}
+
+	lowir_model::StringId InternUniqueSymbolName(
+		const std::string& proposed);
 };
 
 inline lowir_model::StringId InternLocalName(

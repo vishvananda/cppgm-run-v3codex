@@ -457,6 +457,21 @@ std::size_t StringCounterTable::StorageBytes() const
 	return names_.StorageBytes() + values_.capacity() * sizeof(std::size_t);
 }
 
+lowir_model::StringId TypedProgram::InternUniqueSymbolName(
+	const std::string& proposed)
+{
+	const lowir_model::StringId base = strings.intern(proposed);
+	const std::uint32_t index = base;
+	if (symbol_name_counts.size() <= index)
+		symbol_name_counts.resize(static_cast<std::size_t>(index) + 1, 0);
+	std::uint32_t& ordinal = symbol_name_counts[index];
+	if (ordinal == std::numeric_limits<std::uint32_t>::max())
+		throw std::runtime_error("too many typed LowIR symbol name collisions");
+	++ordinal;
+	return ordinal == 1 ? base : strings.intern(
+		proposed + "__sym" + std::to_string(ordinal));
+}
+
 std::size_t TypedStorageBytes(const TypedProgram& program)
 {
 	std::size_t bytes = program.symbols.capacity() * sizeof(Symbol) +
@@ -473,7 +488,7 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 		program.strings.storage_bytes() +
 		program.string_literal_symbols.capacity() * sizeof(SymbolId) +
 		program.identities.StorageBytes() + program.symbol_index.StorageBytes() +
-		program.symbol_name_counts.StorageBytes();
+		program.symbol_name_counts.capacity() * sizeof(std::uint32_t);
 	for (std::size_t i = 0; i < program.globals.size(); ++i)
 		bytes += program.globals[i].items.capacity() * sizeof(Global::DataItem);
 	for (std::size_t i = 0; i < program.declarations.size(); ++i)

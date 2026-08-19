@@ -53,12 +53,9 @@ private:
 SymbolId AddLifecycleHelperSymbol(TypedProgram* program,
 	const std::string& proposed)
 {
-	std::size_t& count = program->symbol_name_counts[proposed];
-	const std::string name = count++ == 0 ? proposed :
-		proposed + "__sym" + std::to_string(count);
 	const SymbolId symbol = static_cast<SymbolId>(program->symbols.size());
 	program->symbols.push_back(Symbol(Symbol::FUNCTION_SYMBOL,
-		program->strings.intern(name), lowir_model::StringId(),
+		program->InternUniqueSymbolName(proposed), lowir_model::StringId(),
 		false, true, false));
 	Symbol& record = program->symbols.back();
 	record.definition_emitted = true;

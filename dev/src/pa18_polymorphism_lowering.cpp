@@ -534,11 +534,9 @@ private:
 	SymbolId AddSyntheticSymbol(Symbol::Kind kind, const std::string& proposed,
 		const std::string& object_name, bool internal)
 	{
-		std::size_t& count = output_.symbol_name_counts[proposed];
-		const std::string name = count++ == 0 ? proposed :
-			proposed + "__sym" + std::to_string(count);
 		const SymbolId symbol = static_cast<SymbolId>(output_.symbols.size());
-		output_.symbols.push_back(Symbol(kind, output_.strings.intern(name),
+		output_.symbols.push_back(Symbol(kind,
+			output_.InternUniqueSymbolName(proposed),
 			object_name.empty() ? lowir_model::StringId() :
 				output_.strings.intern(object_name),
 			false, internal, false));
