@@ -181,6 +181,7 @@ struct TypeNode
   bool substitutable = false;
   bool suppress_template_prefix_substitution = false;
   bool standard_includes_arguments = false;
+  bool substitution_resolved = false;
   bool context_resolved = false;
   bool uses_case_facts = false;
   vector<size_t> children;
@@ -204,6 +205,7 @@ struct TypeNode
            && suppress_template_prefix_substitution ==
                 other.suppress_template_prefix_substitution
            && standard_includes_arguments == other.standard_includes_arguments
+           && substitution_resolved == other.substitution_resolved
            && context_resolved == other.context_resolved
            && children == other.children && arguments == other.arguments
            && namespaces == other.namespaces && tags == other.tags;
@@ -227,7 +229,8 @@ size_t type_hash(const TypeNode & type)
                         | (type.substitutable << 4)
                         | (type.suppress_template_prefix_substitution << 5)
                         | (type.lvalue_ref << 6) | (type.rvalue_ref << 7)
-                        | (type.context_resolved << 8));
+                        | (type.context_resolved << 8)
+                        | (type.substitution_resolved << 9));
   hash = vector_hash(hash, type.children);
   hash = vector_hash(hash, type.arguments);
   hash = vector_hash(hash, type.namespaces);
@@ -263,6 +266,7 @@ struct ArgumentNode
   size_t member_conversion_type = NO_ID;
   size_t member_result_type = NO_ID;
   bool member_has_result_type = false;
+  bool substitution_resolved = false;
   bool entity_resolved = false;
   bool uses_case_facts = false;
   vector<size_t> parameters;
@@ -288,6 +292,7 @@ struct ArgumentNode
            && member_conversion_type == other.member_conversion_type
            && member_result_type == other.member_result_type
            && member_has_result_type == other.member_has_result_type
+           && substitution_resolved == other.substitution_resolved
            && entity_resolved == other.entity_resolved
            && parameters == other.parameters && arguments == other.arguments;
   }
@@ -317,7 +322,8 @@ size_t argument_hash(const ArgumentNode & argument)
                         | (argument.member_rvalue_ref << 6) | (argument.member_variadic << 7)
                         | (argument.member_has_result_type << 8)
 						| (argument.pack_expansion << 9)
-                        | (argument.entity_resolved << 10));
+                        | (argument.entity_resolved << 10)
+                        | (argument.substitution_resolved << 11));
   hash = vector_hash(hash, argument.parameters);
   return vector_hash(hash, argument.arguments);
 }
@@ -394,6 +400,14 @@ bool is_builtin_name(const string & name)
   return false;
 }
 
+bool has_resolved_type_substitution(const AbiType & type)
+{
+  return type.resolved_expression != ABI_NO_RESOLVED_REFERENCE &&
+    (type.kind == ABI_TYPE_RESOLVED ||
+     type.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION ||
+     type.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION);
+}
+
 class FactGraph
 {
 public:
@@ -457,11 +471,17 @@ public:
       require(source.index < types.size(),
               "invalid resolved ABI type id");
       result = source.index;
-      if(!source.substitution.empty() || source.substitutable
+      if(!source.substitution.empty() || has_resolved_type_substitution(source)
+         || source.substitutable
          || source.suppress_template_prefix_substitution) {
         TypeNode overlaid = types[result];
-        if(!source.substitution.empty())
+        if(has_resolved_type_substitution(source)) {
+          overlaid.substitution = source.resolved_expression;
+          overlaid.substitution_resolved = true;
+        } else if(!source.substitution.empty()) {
           overlaid.substitution = strings.intern(source.substitution);
+          overlaid.substitution_resolved = false;
+        }
         overlaid.substitutable = overlaid.substitutable
           || source.substitutable;
         overlaid.suppress_template_prefix_substitution =
@@ -538,7 +558,10 @@ public:
       if(!source.standard_substitution.empty()) {
         node.symbol = strings.intern(source.standard_substitution);
       }
-      if(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE)
+      if(has_resolved_type_substitution(source)) {
+        node.substitution = source.resolved_expression;
+        node.substitution_resolved = true;
+      } else if(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE)
         node.expression = checked_expression(source.resolved_expression);
       else if(!source.expression_ref.empty())
         node.expression = resolve_expression_ref(source.expression_ref);
@@ -554,7 +577,10 @@ public:
       if(source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
          !source.discriminator.empty())
         node.discriminator = strings.intern(source.discriminator);
-      if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
+      if(!source.substitution.empty()) {
+        node.substitution = strings.intern(source.substitution);
+        node.substitution_resolved = false;
+      }
       if(!resolved_path) node.index = source.index;
       node.bound_kind = source.array_bound.kind;
       if(source.array_bound.resolved_expression !=
@@ -844,7 +870,14 @@ private:
       } else node.entity = strings.intern(source.entity_ref);
     }
     if(!source.name.empty()) node.name = strings.intern(source.name);
-    if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
+    if(source.kind == ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY &&
+       source.resolved_expression != ABI_NO_RESOLVED_REFERENCE) {
+      node.substitution = source.resolved_expression;
+      node.substitution_resolved = true;
+    } else if(!source.substitution.empty()) {
+      node.substitution = strings.intern(source.substitution);
+      node.substitution_resolved = false;
+    }
     if(!source.symbol.empty()) node.symbol = strings.intern(source.symbol);
     node.index = source.index;
     node.value = source.value;
@@ -1012,6 +1045,7 @@ enum SubstitutionKind
   SUBSTITUTION_TYPE,
   SUBSTITUTION_FUNCTION_TEMPLATE_PREFIX,
   SUBSTITUTION_EXPLICIT,
+  SUBSTITUTION_RESOLVED,
   SUBSTITUTION_LOCAL_LAMBDA
 };
 
@@ -1408,7 +1442,11 @@ private:
                                         graph_.strings.get(type.context),
                                         graph_.strings.get(type.discriminator)))
                                     : type.substitution != NO_ID
-                                    ? SubstitutionKey{SUBSTITUTION_EXPLICIT, type.substitution}
+                                    ? SubstitutionKey{
+                                        type.substitution_resolved ?
+                                          SUBSTITUTION_RESOLVED :
+                                          SUBSTITUTION_EXPLICIT,
+                                        type.substitution}
                                     : type.kind == ABI_TYPE_NAMED && type.tags.empty()
                                     ? SubstitutionKey{SUBSTITUTION_PATH, type.path}
                                     : SubstitutionKey{SUBSTITUTION_TYPE, id};
@@ -1600,7 +1638,11 @@ private:
   {
     const TypeNode & type = graph_.type(id);
     const SubstitutionKey key = type.substitution != NO_ID
-                                  ? SubstitutionKey{SUBSTITUTION_EXPLICIT, type.substitution}
+                                  ? SubstitutionKey{
+                                      type.substitution_resolved ?
+                                        SUBSTITUTION_RESOLVED :
+                                        SUBSTITUTION_EXPLICIT,
+                                      type.substitution}
                                   : type.kind == ABI_TYPE_NAMED && type.tags.empty()
                                   ? SubstitutionKey{SUBSTITUTION_PATH, type.path}
                                   : SubstitutionKey{SUBSTITUTION_TYPE, id};
@@ -1789,7 +1831,10 @@ private:
           require(argument.substitution != NO_ID,
                   "structured member function template has no canonical prefix");
           substitutions_.add(
-            SubstitutionKey{SUBSTITUTION_EXPLICIT, argument.substitution});
+            SubstitutionKey{
+              argument.substitution_resolved ? SUBSTITUTION_RESOLVED :
+                SUBSTITUTION_EXPLICIT,
+              argument.substitution});
           output_ += 'I';
           encode_arguments(argument.arguments);
           output_ += 'E';
@@ -1827,7 +1872,8 @@ private:
       encode_prefix_type(argument.owner_type);
     }
     const SubstitutionKey member_key{
-      SUBSTITUTION_EXPLICIT,
+      argument.substitution != NO_ID && argument.substitution_resolved ?
+        SUBSTITUTION_RESOLVED : SUBSTITUTION_EXPLICIT,
       argument.substitution != NO_ID ? argument.substitution : argument.name
     };
     if(!substitutions_.emit_if_known(member_key, output_)) {
@@ -2299,7 +2345,11 @@ private:
     graph_.append_argument_refs(component.argument_refs, &arguments);
     for(size_t argument : arguments) encode_argument(argument);
     output_ += 'E';
-    if(!component.complete_substitution.empty() && component.complete_substitution != "-") {
+    if(component.type.resolved_expression != ABI_NO_RESOLVED_REFERENCE) {
+      substitutions_.add(SubstitutionKey{
+        SUBSTITUTION_RESOLVED, component.type.resolved_expression});
+    } else if(!component.complete_substitution.empty()
+              && component.complete_substitution != "-") {
       substitutions_.add(SubstitutionKey{SUBSTITUTION_EXPLICIT,
                                           graph_.strings.intern(component.complete_substitution)});
     }
@@ -2654,6 +2704,18 @@ private:
 };
 
 }  // namespace
+
+size_t make_semantic_substitution(AbiSemanticSubstitutionKind kind,
+                                  size_t identity)
+{
+  const size_t kind_count = 3;
+  const size_t kind_value = static_cast<size_t>(kind);
+  if(kind_value >= kind_count ||
+     identity > (std::numeric_limits<size_t>::max() - kind_value - 1) /
+       kind_count)
+    throw std::logic_error("semantic ABI substitution identity is invalid");
+  return identity * kind_count + kind_value;
+}
 
 bool AbiFunctionTarget::has_resolved_source_name() const
 {

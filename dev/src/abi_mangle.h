@@ -8,6 +8,9 @@
 
 namespace abi_mangle {
 
+std::size_t make_semantic_substitution(
+  AbiSemanticSubstitutionKind kind, std::size_t identity);
+
 struct AbiDefinitionRecord
 {
   AbiDefinitionRecord();

@@ -717,8 +717,8 @@ public:
 				// are substitution candidates in the ABI grammar.
 				target.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
 				target.type = MakeType(source.type, function, recipe);
-				target.type.substitution = "__cppgm_abi_template_argument_" +
-					std::to_string(identity);
+				target.type.resolved_expression = make_semantic_substitution(
+					ABI_SEMANTIC_SUBSTITUTION_TEMPLATE_ARGUMENT, identity);
 			}
 			return context_->resolve_argument(target);
 		}
@@ -841,8 +841,9 @@ public:
 					if (member_recipe.template_parameter_pack)
 						target.argument_refs.push_resolved(AddTemplateArgumentPack(
 							first + fixed, count - fixed, &value, &member_recipe));
-					target.substitution = "__cppgm_abi_member_template_" +
-						std::to_string(value.canonical);
+					target.resolved_expression = make_semantic_substitution(
+						ABI_SEMANTIC_SUBSTITUTION_MEMBER_TEMPLATE,
+						value.canonical);
 					target.member_function_has_result_type =
 						!value.conversion_function;
 					if (target.member_function_has_result_type)
@@ -1884,8 +1885,8 @@ public:
 					result.standard_substitution_includes_arguments =
 						standard.includes_arguments;
 				}
-				else result.substitution = "__cppgm_abi_class_" +
-					std::to_string(record->entity);
+				else result.resolved_expression = make_semantic_substitution(
+					ABI_SEMANTIC_SUBSTITUTION_CLASS, record->entity);
 				result.index = ResolvePath(
 					entity.owner, entity.identity_name) + 1;
 				AppendClassTemplateArguments(entity, function, recipe, &result);
@@ -1929,9 +1930,12 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 		if (i + 1 == path.size())
 		{
 			component.function.kind = ABI_FUNCTION_RECORD_NAME_TEMPLATE;
-			component.function.complete_substitution =
-				retain_complete_substitution ? "__cppgm_abi_class_" +
-					std::to_string(binding.member_owner) : "-";
+			if (retain_complete_substitution)
+				component.function.type.resolved_expression =
+					make_semantic_substitution(
+						ABI_SEMANTIC_SUBSTITUTION_CLASS,
+						binding.member_owner);
+			else component.function.complete_substitution = "-";
 			component.function.standard_substitution =
 				standard.code ? standard.code : "-";
 			component.function.standard_substitution_includes_arguments =

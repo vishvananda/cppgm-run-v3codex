@@ -10,6 +10,13 @@ namespace abi_mangle {
 
 const std::size_t ABI_NO_RESOLVED_REFERENCE = static_cast<std::size_t>(-1);
 
+enum AbiSemanticSubstitutionKind
+{
+  ABI_SEMANTIC_SUBSTITUTION_CLASS,
+  ABI_SEMANTIC_SUBSTITUTION_TEMPLATE_ARGUMENT,
+  ABI_SEMANTIC_SUBSTITUTION_MEMBER_TEMPLATE
+};
+
 // A fact-file record carries textual definition names, while the integrated
 // compiler carries translation-unit graph IDs.  Only the active form owns
 // storage, keeping production references dense without enlarging the PA14
