@@ -270,12 +270,13 @@ LowIRLoweringStats::LowIRLoweringStats()
 TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	const PreprocessingOptions& options, LowIRLoweringStats* stats,
 	bool complete_constructor_unwind, bool host_object_emission,
-	bool prune_unreachable_weak_functions)
+	bool prune_unreachable_weak_functions, bool retain_local_names)
 {
 	if (sources.empty()) throw std::runtime_error("no PA15 source inputs");
 	if (stats) *stats = LowIRLoweringStats();
 	TypedProgram program;
 	program.host_object_emission = host_object_emission;
+	program.retain_local_names = retain_local_names;
 	for (std::size_t i = 0; i < sources.size(); ++i)
 	{
 		GraphConsumer consumer(program, stats, i);

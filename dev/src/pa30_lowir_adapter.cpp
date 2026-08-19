@@ -62,36 +62,37 @@ void CountTypedName(const std::string& name, AdapterTelemetry* telemetry)
 	telemetry->output->typed_name_bytes += name.size();
 }
 
+void CountTypedName(lowir_model::StringId name, const TypedProgram& program,
+	AdapterTelemetry* telemetry)
+{
+	if (name.valid()) CountTypedName(program.strings.get(name), telemetry);
+}
+
 void CountTypedNames(const TypedProgram& program, AdapterTelemetry* telemetry)
 {
 	if (!telemetry->output) return;
 	for (std::size_t i = 0; i < program.symbols.size(); ++i)
 	{
-		CountTypedName(program.strings.get(program.symbols[i].name), telemetry);
-		if (program.symbols[i].object_name.valid())
-			CountTypedName(program.strings.get(
-				program.symbols[i].object_name), telemetry);
-		if (program.symbols[i].section_name.valid())
-			CountTypedName(program.strings.get(
-				program.symbols[i].section_name), telemetry);
+		CountTypedName(program.symbols[i].name, program, telemetry);
+		CountTypedName(program.symbols[i].object_name, program, telemetry);
+		CountTypedName(program.symbols[i].section_name, program, telemetry);
 	}
 	for (std::size_t i = 0; i < program.object_aliases.size(); ++i)
-		CountTypedName(program.strings.get(
-			program.object_aliases[i].object_name), telemetry);
+		CountTypedName(
+			program.object_aliases[i].object_name, program, telemetry);
 	for (std::size_t i = 0; i < program.declarations.size(); ++i)
 		for (std::size_t p = 0; p < program.declarations[i].parameters.size(); ++p)
-			CountTypedName(program.strings.get(
-				program.declarations[i].parameters[p].name), telemetry);
+			CountTypedName(
+				program.declarations[i].parameters[p].name, program, telemetry);
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
 	{
 		const Function& function = program.functions[i];
 		for (std::size_t p = 0; p < function.parameters.size(); ++p)
-			CountTypedName(program.strings.get(
-				function.parameters[p].name), telemetry);
+			CountTypedName(function.parameters[p].name, program, telemetry);
 		for (std::size_t s = 0; s < function.slots.size(); ++s)
-			CountTypedName(program.strings.get(function.slots[s].name), telemetry);
+			CountTypedName(function.slots[s].name, program, telemetry);
 		for (std::size_t b = 0; b < function.blocks.size(); ++b)
-			CountTypedName(program.strings.get(function.blocks[b].label), telemetry);
+			CountTypedName(function.blocks[b].label, program, telemetry);
 	}
 }
 

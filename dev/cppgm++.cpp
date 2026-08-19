@@ -1155,7 +1155,9 @@ cppgm::pa30::CompilerObject compile_source_object(
 				cppgm::BuildTypedLowIRProgram(sources,
 					options,
 					collect_stats ? &stats : 0, true, true,
-					prune_unreachable_weak_functions);
+					prune_unreachable_weak_functions,
+					presentation_policy ==
+						lowir_model::PRESENTATION_SERIALIZABLE);
 			if(collect_stats) typed_pipeline_nanoseconds = static_cast<uint64_t>(
 				chrono::duration_cast<chrono::nanoseconds>(
 					chrono::steady_clock::now() - started).count());

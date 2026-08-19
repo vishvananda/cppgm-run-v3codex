@@ -4,6 +4,7 @@
 #include "pa15_control_flow_lowering.h"
 #include "pa15_conditional_lowering.h"
 #include "pa15_lowering_abi.h"
+#include "pa15_local_presentation.h"
 #include "pa15_lowering_support.h"
 #include "pa15_scalar_unary_lowering.h"
 #include "pa15_source_type_lowering.h"
@@ -91,7 +92,7 @@ public:
 		: graph_(graph), program_(graph.program), arena_(graph.arena),
 		  output_(output), stats_(stats), function_(0), current_block_(0), current_result_(LowVoid()),
 		  current_result_reference_(false), current_indirect_result_(false),
-		  temp_counter_(0), block_counter_(0), generated_slot_ordinal_(0), initialized_bit_field_owner_(kNoEntity),
+		  temp_counter_(0), initialized_bit_field_owner_(kNoEntity),
 		  initialized_bit_field_offset_(0), initialized_bit_field_unit_valid_(false),
 		  source_ordinal_(source_ordinal), needs_global_class_initializer_(false), lowering_namespace_object_(false),
 		  lowering_thread_local_initializer_object_(kNoLowId),
@@ -677,32 +678,8 @@ private:
 	}
 	Operand FloatingOperand(const std::string& spelling, const LowType& type)
 	{
-		std::string numeric = spelling;
-		if (!numeric.empty() &&
-			((numeric[0] >= '0' && numeric[0] <= '9') || numeric[0] == '.'))
-		{
-			static const char* const suffixes[] = {
-				"F128", "f128", "F32x", "f32x", "F64x", "f64x",
-				"F16", "f16", "F32", "f32", "F64", "f64", "Q", "q"
-			};
-			bool normalized_suffix = false;
-			for (std::size_t i = 0;
-				i < sizeof(suffixes) / sizeof(suffixes[0]); ++i)
-			{
-				const std::size_t count =
-					std::char_traits<char>::length(suffixes[i]);
-				if (numeric.size() >= count && numeric.compare(
-					numeric.size() - count, count, suffixes[i]) == 0)
-				{
-					numeric.erase(numeric.size() - count);
-					normalized_suffix = true;
-					break;
-				}
-			}
-			if (normalized_suffix && type.kind == LOW_F32) numeric += "f";
-			else if (normalized_suffix && type.kind == LOW_F80) numeric += "L";
-		}
-		return Operand::Floating(output_.strings.intern(numeric), type);
+		return Operand::Floating(output_.strings.intern(
+			NormalizeFloatingLiteral(spelling, type)), type);
 	}
 	void BeginSyntheticFunction(Function* function)
 	{
@@ -711,8 +688,6 @@ private:
 		current_result_reference_ = false;
 		current_indirect_result_ = false;
 		temp_counter_ = 0;
-		block_counter_ = 0;
-		generated_slot_ordinal_ = 0;
 		ResetFunctionSlots(); ResetControlFlowReachability();
 		ResetFullExpressionFunctionState();
 		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
@@ -720,9 +695,7 @@ private:
 		continue_targets_.clear();
 		label_blocks_.Clear();
 		ResetInitializedBitFieldUnit();
-		used_names_.Clear();
-		assigned_names_.Clear();
-		slot_name_counts_.Clear();
+		local_presentation_.Reset(output_.retain_local_names);
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = kNoEntity;
 		ResetVirtualBaseBoundary();
@@ -746,33 +719,12 @@ private:
 
 	std::string UniqueSlotName(const std::string& requested)
 	{
-		std::string base = requested.empty() ? "__slot" : requested;
-		std::size_t& count = slot_name_counts_[base];
-		++count;
-		std::string candidate = count == 1 ? base :
-			base + "__shadow" + std::to_string(count);
-		while (assigned_names_[candidate])
-		{
-			++count;
-			candidate = base + "__shadow" + std::to_string(count);
-		}
-		assigned_names_[candidate] = true;
-		used_names_[candidate] = true;
-		return candidate;
+		return local_presentation_.UniqueSlotName(requested);
 	}
 
 	std::string GeneratedSlotName(const std::string& prefix)
 	{
-		while (true)
-		{
-			const std::string candidate = prefix + "__" +
-				std::to_string(++generated_slot_ordinal_);
-			if (!used_names_[candidate])
-			{
-				used_names_[candidate] = true;
-				return candidate;
-			}
-		}
+		return local_presentation_.GeneratedSlotName(prefix);
 	}
 
 	SlotId EnsureGeneratedSlot(std::uint32_t node, const std::string& prefix,
@@ -790,7 +742,7 @@ private:
 			throw std::runtime_error("too many PA15 LowIR slots");
 		const SlotId result = static_cast<SlotId>(function_->slots.size());
 		Slot slot;
-		slot.name = output_.strings.intern(GeneratedSlotName(prefix));
+		slot.name = InternLocalName(output_, GeneratedSlotName(prefix));
 		slot.type = type;
 		function_->slots.push_back(slot);
 		return result;
@@ -798,19 +750,8 @@ private:
 
 	void CollectSourceNames(std::uint32_t node)
 	{
-		std::vector<std::uint32_t> pending(1, node);
-		while (!pending.empty())
-		{
-			const std::uint32_t current = pending.back();
-			pending.pop_back();
-			const DumpNode& record = arena_.nodes[current];
-			if ((record.kind == DUMP_PARAMETER || record.kind == DUMP_VARIABLE) &&
-				record.text != 0)
-				used_names_[program_.names.Get(record.text)] = true;
-			const NodeChildren children = Children(current);
-			for (std::size_t i = children.size(); i != 0; --i)
-				pending.push_back(children[i - 1]);
-		}
+		local_presentation_.CollectSourceNames(program_, arena_, node,
+			&function_->generated_name_reservations);
 	}
 
 	Function LowerFunction(std::uint32_t node)
@@ -826,15 +767,11 @@ private:
 		const TypeRecord& source_function = program_.types.Get(record.type); current_indirect_result_ = UsesIndirectClassResult(source_function.child, record.binding);
 		current_result_reference_ = IsReferenceType(source_function.child);
 		temp_counter_ = 0;
-		block_counter_ = 0;
 		break_targets_.clear();
 		continue_targets_.clear();
 		label_blocks_.Clear();
 		ResetInitializedBitFieldUnit();
-		used_names_.Clear();
-		assigned_names_.Clear();
-		slot_name_counts_.Clear();
-		generated_slot_ordinal_ = 0;
+		local_presentation_.Reset(output_.retain_local_names);
 		ResetFunctionSlots(); ResetControlFlowReachability();
 		ResetLifetimeFunctionState(); ResetFullExpressionFunctionState();
 		ResetExceptionFunctionState(); ResetInitializerListFunctionState();
@@ -920,7 +857,7 @@ private:
 	Block& CurrentBlock() { return function_->blocks[current_block_]; }
 	std::string NewLabel(const std::string& prefix)
 	{
-		return prefix + "_" + std::to_string(++block_counter_);
+		return local_presentation_.GeneratedBlockName(prefix);
 	}
 
 	TempId NewTemp()
@@ -930,7 +867,7 @@ private:
 			if (temp_counter_ + 1 >= kNoLowId)
 				throw std::runtime_error("too many PA15 LowIR temporaries");
 			const TempId candidate = static_cast<TempId>(++temp_counter_);
-			if (!used_names_[detail::PrefixedUnsignedDecimal("t", 1, candidate)])
+			if (!local_presentation_.ReservesTemporary(candidate))
 				return candidate;
 		}
 	}
@@ -2934,12 +2871,11 @@ private:
 	LowType current_result_;
 	bool current_result_reference_, current_indirect_result_;
 	std::size_t temp_counter_;
-	std::size_t block_counter_;
-	std::size_t generated_slot_ordinal_;
 	pa18_lowering_detail::PolymorphismLoweringState polymorphism_;
 	std::vector<SlotId> binding_slots_;
 	std::vector<ParameterId> binding_indirect_parameters_; std::vector<BindingId> function_slot_bindings_;
 	std::vector<SlotId> generated_slots_; std::vector<std::uint32_t> generated_slot_nodes_;
+	pa15_local_presentation::LocalPresentationState local_presentation_;
 	FlatIdMap temporary_lifetime_slots_;
 	std::vector<BlockId> switch_case_blocks_;
 	std::vector<std::uint32_t> block_incoming_;
@@ -2958,9 +2894,6 @@ private:
 	EntityId initialized_bit_field_owner_;
 	std::uint64_t initialized_bit_field_offset_;
 	bool initialized_bit_field_unit_valid_;
-	StringCounterTable used_names_;
-	StringCounterTable assigned_names_;
-	StringCounterTable slot_name_counts_;
 	std::size_t parameter_slot_index_;
 	std::size_t source_ordinal_;
 	bool needs_global_class_initializer_;

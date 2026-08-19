@@ -147,7 +147,7 @@ protected:
 		function_exception_object_slot_ = static_cast<SlotId>(
 			derived.function_->slots.size());
 		Slot slot;
-		slot.name = derived.output_.strings.intern(
+		slot.name = InternLocalName(derived.output_,
 			derived.GeneratedSlotName("function_exception"));
 		slot.type = LowPtr();
 		derived.function_->slots.push_back(slot);
@@ -385,7 +385,8 @@ protected:
 		declaration.symbol = symbol;
 		declaration.result = LowVoid();
 		Parameter exception;
-		exception.name = derived.output_.strings.intern("exception_object");
+		exception.name = InternLocalName(
+			derived.output_, "exception_object");
 		exception.type = LowPtr();
 		declaration.parameters.push_back(exception);
 		derived.output_.declarations.push_back(declaration);

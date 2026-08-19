@@ -1,6 +1,7 @@
 #include "pa18_polymorphism_lowering.h"
 
 #include "pa15_lowering_abi.h"
+#include "pa15_local_presentation.h"
 #include "pa15_lowering_support.h"
 #include "pa15_source_type_lowering.h"
 
@@ -756,8 +757,8 @@ private:
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 		{
 			Parameter parameter;
-			parameter.name = output_.strings.intern(
-				"arg" + std::to_string(i));
+			parameter.name = pa15_local_presentation::InternOrdinalName(
+				output_, "arg", 3, static_cast<std::uint32_t>(i));
 			parameter.type = parameters[i];
 			declaration.parameters.push_back(parameter);
 		}
@@ -825,15 +826,15 @@ private:
 		const TypeRecord& type = program_.types.Get(binding.type);
 		declaration.result = source_types_.Lower(type.child);
 		Parameter object;
-		object.name = output_.strings.intern("arg0");
+		object.name = InternLocalName(output_, "arg0");
 		object.type = LowPtr();
 		declaration.parameters.push_back(object);
 		const TypeId* parameters = program_.types.Parameters(binding.type);
 		for (std::size_t i = 0; i < type.parameter_count; ++i)
 		{
 			Parameter parameter;
-			parameter.name = output_.strings.intern(
-				"arg" + std::to_string(i + 1));
+			parameter.name = pa15_local_presentation::InternOrdinalName(
+				output_, "arg", 3, static_cast<std::uint32_t>(i + 1));
 			parameter.type = source_types_.Lower(parameters[i]);
 			parameter.reference = source_types_.IsReference(parameters[i]);
 			declaration.parameters.push_back(parameter);
@@ -1099,7 +1100,7 @@ private:
 			declaration.symbol = symbol;
 			declaration.result = LowVoid();
 			Parameter object;
-			object.name = output_.strings.intern("this");
+			object.name = InternLocalName(output_, "this");
 			object.type = LowPtr();
 			declaration.parameters.push_back(object);
 			output_.declarations.push_back(declaration);
@@ -2199,11 +2200,11 @@ private:
 		result.symbol = symbol;
 		result.result = LowVoid();
 		Parameter parameter;
-		parameter.name = output_.strings.intern("this");
+		parameter.name = InternLocalName(output_, "this");
 		parameter.type = LowPtr();
 		result.parameters.push_back(parameter);
 		Slot this_record;
-		this_record.name = output_.strings.intern("this");
+		this_record.name = InternLocalName(output_, "this");
 		this_record.type = LowPtr();
 		this_record.parameter_origin = ParameterId(0);
 		result.slots.push_back(this_record);

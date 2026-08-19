@@ -9,6 +9,31 @@ namespace cppgm
 namespace pa15_lowering_support
 {
 
+std::string NormalizeFloatingLiteral(const std::string& spelling,
+	const pa15_lowir_detail::LowType& type)
+{
+	std::string numeric = spelling;
+	if (numeric.empty() ||
+		!((numeric[0] >= '0' && numeric[0] <= '9') || numeric[0] == '.'))
+		return numeric;
+	static const char* const suffixes[] = {
+		"F128", "f128", "F32x", "f32x", "F64x", "f64x",
+		"F16", "f16", "F32", "f32", "F64", "f64", "Q", "q"
+	};
+	for (std::size_t i = 0; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i)
+	{
+		const std::size_t count = std::char_traits<char>::length(suffixes[i]);
+		if (numeric.size() < count ||
+			numeric.compare(numeric.size() - count, count, suffixes[i]) != 0)
+			continue;
+		numeric.erase(numeric.size() - count);
+		if (type.kind == pa15_lowir_detail::LOW_F32) numeric += "f";
+		else if (type.kind == pa15_lowir_detail::LOW_F80) numeric += "L";
+		break;
+	}
+	return numeric;
+}
+
 PresentationNameMap::PresentationNameMap(const pa11::Program& program)
 {
 	for (std::size_t i = 0; i < program.entities.size(); ++i)

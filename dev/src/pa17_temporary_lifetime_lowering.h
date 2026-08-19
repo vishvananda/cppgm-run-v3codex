@@ -183,7 +183,7 @@ protected:
 		const SlotId result = static_cast<SlotId>(
 			derived.function_->slots.size());
 		Slot slot;
-		slot.name = derived.output_.strings.intern(
+		slot.name = InternLocalName(derived.output_,
 			derived.GeneratedSlotName("lifetime"));
 		slot.type = LowU8();
 		derived.function_->slots.push_back(slot);

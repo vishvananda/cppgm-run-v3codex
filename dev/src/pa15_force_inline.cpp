@@ -33,6 +33,12 @@ void AppendOrdinalReservation(const std::string& name, const char* prefix,
 
 void ClassifyPresentationReservations(TypedProgram* program)
 {
+	if (!program->retain_local_names)
+	{
+		for (std::size_t f = 0; f < program->functions.size(); ++f)
+			program->functions[f].generated_name_reservations.normalize();
+		return;
+	}
 	for (std::size_t f = 0; f < program->functions.size(); ++f)
 	{
 		Function& function = program->functions[f];
@@ -104,6 +110,9 @@ private:
 			++next_;
 		const std::uint32_t ordinal = next_++;
 		function_.generated_name_reservations.reserve(kind, ordinal);
+		if (!program_.retain_local_names && kind ==
+			lowir_model::GNR_TYPED_FORCE_SLOT)
+			return lowir_model::StringId();
 		return program_.strings.intern("__force_inline_" +
 			std::string(role) + "_" + std::to_string(ordinal));
 	}

@@ -1,5 +1,6 @@
 #include "pa18_polymorphism_lowering.h"
 
+#include "pa15_local_presentation.h"
 #include "pa15_source_type_lowering.h"
 
 #include <stdexcept>
@@ -33,11 +34,12 @@ public:
 	}
 
 private:
-	void AddParameter(Function* function, const std::string& name,
+	void AddParameter(Function* function, std::uint32_t ordinal,
 		const LowType& type, bool reference)
 	{
 		Parameter parameter;
-		parameter.name = output_.strings.intern(name);
+		parameter.name = pa15_local_presentation::InternOrdinalName(
+			output_, "arg", 3, ordinal);
 		parameter.type = type;
 		parameter.reference = reference;
 		function->parameters.push_back(parameter);
@@ -76,9 +78,9 @@ private:
 		function.symbol = thunk.symbol;
 		function.result = source_types_.Lower(type.child);
 		function.variadic = type.variadic;
-		AddParameter(&function, "arg0", LowPtr(), false);
+		AddParameter(&function, 0, LowPtr(), false);
 		for (std::size_t i = 0; i < type.parameter_count; ++i)
-			AddParameter(&function, "arg" + std::to_string(i + 1),
+			AddParameter(&function, static_cast<std::uint32_t>(i + 1),
 				source_types_.Lower(parameters[i]),
 				source_types_.IsReference(parameters[i]));
 		function.blocks.push_back(Block(output_.strings.intern("entry")));

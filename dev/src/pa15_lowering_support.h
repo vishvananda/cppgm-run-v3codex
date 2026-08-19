@@ -36,6 +36,8 @@ bool IsLambdaCaptureMember(
 	const pa11::Program& program, pa11::BindingId binding);
 std::string MissingStorageBindingDetail(
 	const pa11::Program& program, pa11::BindingId binding);
+std::string NormalizeFloatingLiteral(const std::string& spelling,
+	const pa15_lowir_detail::LowType& type);
 
 class PresentationNameMap
 {

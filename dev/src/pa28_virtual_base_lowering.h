@@ -4,6 +4,7 @@
 #include "pa11_model.h"
 #include "pa12_semantic_model.h"
 #include "pa15_lowering_support.h"
+#include "pa15_local_presentation.h"
 #include "pa15_lowir_model.h"
 
 #include <algorithm>
@@ -288,7 +289,7 @@ protected:
 		if (IncludesConstructionVtt(function.binding))
 		{
 			Parameter vtt;
-			vtt.name = derived.output_.strings.intern("__vtt");
+			vtt.name = InternLocalName(derived.output_, "__vtt");
 			vtt.type = LowPtr();
 			parameters->insert(parameters->begin() + 1, vtt);
 		}
@@ -318,10 +319,11 @@ protected:
 					if (!CarriesVirtualBase(
 						function.binding, ordinal, base)) continue;
 					Parameter parameter;
-					const std::string name = implicit ?
-						"__vbptr" + std::to_string(member_index++) :
-						"__pvbptr" + std::to_string(parameter_index++);
-					parameter.name = derived.output_.strings.intern(name);
+					parameter.name = implicit ?
+						pa15_local_presentation::InternOrdinalName(derived.output_,
+							"__vbptr", 7, static_cast<std::uint32_t>(member_index++)) :
+						pa15_local_presentation::InternOrdinalName(derived.output_,
+							"__pvbptr", 8, static_cast<std::uint32_t>(parameter_index++));
 					parameter.type = LowPtr();
 					parameters->push_back(parameter);
 				}
@@ -345,10 +347,11 @@ protected:
 			{
 				if (!CarriesVirtualBase(function.binding, i, base)) continue;
 				Parameter parameter;
-				const std::string name = implicit ?
-					"__vbptr" + std::to_string(member_index++) :
-					"__pvbptr" + std::to_string(parameter_index++);
-				parameter.name = derived.output_.strings.intern(name);
+				parameter.name = implicit ?
+					pa15_local_presentation::InternOrdinalName(derived.output_,
+						"__vbptr", 7, static_cast<std::uint32_t>(member_index++)) :
+					pa15_local_presentation::InternOrdinalName(derived.output_,
+						"__pvbptr", 8, static_cast<std::uint32_t>(parameter_index++));
 				parameter.type = LowPtr();
 				parameters->push_back(parameter);
 			}
@@ -638,10 +641,13 @@ protected:
 			VirtualBaseBoundaryFact& fact = current_virtual_base_boundary_[i];
 			if (fact.binding != parameter.binding || fact.direct_parameter) continue;
 			Slot slot;
-			const std::string name = parameter.text == 0 ? "__param" :
-				derived.program_.names.Get(parameter.text);
-			slot.name = derived.output_.strings.intern(derived.UniqueSlotName(
-				name + "__pvb" + std::to_string(local++)));
+			if (derived.output_.retain_local_names)
+			{
+				const std::string name = parameter.text == 0 ? "__param" :
+					derived.program_.names.Get(parameter.text);
+				slot.name = InternLocalName(derived.output_, derived.UniqueSlotName(
+					name + "__pvb" + std::to_string(local++)));
+			}
 			slot.type = LowPtr();
 			fact.slot = static_cast<SlotId>(derived.function_->slots.size());
 			derived.function_->slots.push_back(slot);
@@ -939,7 +945,7 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		Slot slot;
-		slot.name = derived.output_.strings.intern(
+		slot.name = InternLocalName(derived.output_,
 			derived.GeneratedSlotName("basecast"));
 		slot.type = LowPtr();
 		const Operand result(

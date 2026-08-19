@@ -243,12 +243,20 @@ struct TypedProgram
 	SymbolId terminate_runtime_symbol, terminate_helper_symbol;
 	SymbolId call_unexpected_symbol;
 	bool host_object_emission;
+	bool retain_local_names;
 
 	TypedProgram()
 		: string_literal_count(0), terminate_runtime_symbol(kNoLowId),
 		  terminate_helper_symbol(kNoLowId), call_unexpected_symbol(kNoLowId),
-		  host_object_emission(false) {}
+		  host_object_emission(false), retain_local_names(true) {}
 };
+
+inline lowir_model::StringId InternLocalName(
+	TypedProgram& program, const std::string& name)
+{
+	return program.retain_local_names ? program.strings.intern(name) :
+		lowir_model::StringId();
+}
 
 std::size_t TypedStorageBytes(const TypedProgram& program);
 

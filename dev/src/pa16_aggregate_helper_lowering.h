@@ -109,9 +109,10 @@ protected:
 					derived.IsReferenceType(source_parameters[p]);
 				parameter.decay = p != 0 && derived.IsArrayType(
 					derived.program_.bindings[helper.members[p - 1]].type);
-				parameter.name = derived.output_.strings.intern(p == 0 ?
-					std::string("this") : derived.program_.names.Get(
-						derived.program_.bindings[helper.members[p - 1]].name));
+				if (derived.output_.retain_local_names)
+					parameter.name = derived.output_.strings.intern(p == 0 ?
+						std::string("this") : derived.program_.names.Get(
+							derived.program_.bindings[helper.members[p - 1]].name));
 				result.parameters.push_back(parameter);
 				Slot slot;
 				slot.name = parameter.name;

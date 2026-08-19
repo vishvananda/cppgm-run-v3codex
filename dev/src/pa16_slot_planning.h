@@ -159,20 +159,23 @@ protected:
 				}
 				else if (derived.binding_slots_[record.binding] == kNoLowId)
 				{
-					std::string requested = record.text == 0 ? std::string() :
-						derived.program_.names.Get(record.text);
-					if (record.kind == DUMP_PARAMETER && requested.empty())
-						requested = derived.parameter_slot_index_ <
-							derived.function_->parameters.size() ?
-							derived.output_.strings.get(
-								derived.function_->parameters[
-									derived.parameter_slot_index_].name) : "__param";
-					const std::string name = derived.UniqueSlotName(requested);
 					derived.binding_slots_[record.binding] =
 						static_cast<SlotId>(derived.function_->slots.size());
 					derived.function_slot_bindings_.push_back(record.binding);
 					Slot slot;
-					slot.name = derived.output_.strings.intern(name);
+					if (derived.output_.retain_local_names)
+					{
+						std::string requested = record.text == 0 ? std::string() :
+							derived.program_.names.Get(record.text);
+						if (record.kind == DUMP_PARAMETER && requested.empty())
+							requested = derived.parameter_slot_index_ <
+								derived.function_->parameters.size() ?
+								derived.output_.strings.get(
+									derived.function_->parameters[
+										derived.parameter_slot_index_].name) : "__param";
+						slot.name = InternLocalName(
+							derived.output_, derived.UniqueSlotName(requested));
+					}
 					slot.type = record.kind == DUMP_VARIABLE ?
 						derived.LowerVariableStorage(record) :
 						derived.LowerStorageType(record.type);

@@ -99,7 +99,8 @@ pa15_lowir_detail::TypedProgram BuildTypedLowIRProgram(
 	LowIRLoweringStats* stats = 0,
 	bool complete_constructor_unwind = false,
 	bool host_object_emission = false,
-	bool prune_unreachable_weak_functions = false);
+	bool prune_unreachable_weak_functions = false,
+	bool retain_local_names = true);
 
 // Analyze all inputs through PA12, lower directly from the borrowed canonical
 // graph into one typed LowIR program, and serialize the PA15 assignment view.
