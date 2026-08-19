@@ -1229,6 +1229,20 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " declarations=" << semantic.declarations
 			 << " canonical_types=" << semantic.canonical_types
 			 << " scopes=" << semantic.scopes
+			 << " name_path_parses="
+			 << semantic.name_path_parse_requests
+			 << " name_path_components="
+			 << semantic.name_path_parse_components
+			 << " name_path_single_component="
+			 << semantic.name_path_single_component_parses
+			 << " structured_name_paths="
+			 << semantic.structured_name_path_requests
+			 << " lookup_spelling_requests="
+			 << semantic.lookup_spelling_requests
+			 << " declarator_name_requests="
+			 << semantic.declarator_name_requests
+			 << " declarator_name_path_requests="
+			 << semantic.declarator_name_path_requests
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
 			 << " lookup_edge_visits=" << semantic.lookup_edge_visits

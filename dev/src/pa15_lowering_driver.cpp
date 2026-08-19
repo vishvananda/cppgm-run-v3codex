@@ -226,6 +226,21 @@ void AccumulateSemanticStorageStats(SemanticAnalysisStats* target,
 		target->peak_stage_storage_bytes, source.peak_stage_storage_bytes);
 }
 
+void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
+	const SemanticAnalysisStats& source)
+{
+	target->name_path_parse_requests += source.name_path_parse_requests;
+	target->name_path_parse_components += source.name_path_parse_components;
+	target->name_path_single_component_parses +=
+		source.name_path_single_component_parses;
+	target->structured_name_path_requests +=
+		source.structured_name_path_requests;
+	target->lookup_spelling_requests += source.lookup_spelling_requests;
+	target->declarator_name_requests += source.declarator_name_requests;
+	target->declarator_name_path_requests +=
+		source.declarator_name_path_requests;
+}
+
 }
 
 LowIRLoweringStats::LowIRLoweringStats()
@@ -299,6 +314,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 			semantic.scopes += semantic_stats.scopes;
 			semantic.declarations += semantic_stats.declarations;
 			semantic.expressions += semantic_stats.expressions;
+			AccumulateSemanticNameStats(&semantic, semantic_stats);
 			semantic.class_layouts += semantic_stats.class_layouts;
 			semantic.class_layout_member_visits += semantic_stats.class_layout_member_visits;
 			AccumulateVirtualBaseStats(&semantic, semantic_stats);

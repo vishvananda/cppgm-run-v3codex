@@ -1854,6 +1854,7 @@ TypeId SemanticAnalyzer::BuildTypeId(NodeId node, ScopeId scope)
 
 NamePath SemanticAnalyzer::DeclaratorNamePath(NodeId node)
 {
+	if (stats_) ++stats_->declarator_name_path_requests;
 	const NodeId identifier = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
 	if (identifier != kNoNode)
 	{
@@ -1880,6 +1881,7 @@ NodeId SemanticAnalyzer::DeclaratorNameStructure(NodeId node) const
 
 NameId SemanticAnalyzer::DeclaratorName(NodeId node)
 {
+	if (stats_) ++stats_->declarator_name_requests;
 	return DeclaratorNamePath(node).Last();
 }
 

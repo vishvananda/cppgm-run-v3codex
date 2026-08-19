@@ -532,6 +532,7 @@ LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
 
 NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
 {
+	if (stats_) ++stats_->structured_name_path_requests;
 	NamePath path;
 	const NodeId structure = syntax != kNoNode &&
 		arena_->IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) ? syntax :
@@ -553,6 +554,7 @@ NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
 LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
 	const std::string& spelling, LookupKind kind)
 {
+	if (stats_) ++stats_->lookup_spelling_requests;
 	return LookupPath(scope, ParseNamePath(spelling), kind);
 }
 

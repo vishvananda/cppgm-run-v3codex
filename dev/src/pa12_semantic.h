@@ -29,6 +29,13 @@ struct SemanticAnalysisStats
 	std::size_t scopes;
 	std::size_t declarations;
 	std::size_t expressions;
+	std::size_t name_path_parse_requests;
+	std::size_t name_path_parse_components;
+	std::size_t name_path_single_component_parses;
+	std::size_t structured_name_path_requests;
+	std::size_t lookup_spelling_requests;
+	std::size_t declarator_name_requests;
+	std::size_t declarator_name_path_requests;
 	std::size_t class_layouts;
 	std::size_t class_layout_member_visits;
 	std::size_t virtual_base_layout_edge_visits;
