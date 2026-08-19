@@ -77,7 +77,7 @@ protected:
 		const NodeId specifiers = parser.ParseDeclSpecifierSeq(false);
 		if (specifiers == kNoNode)
 			throw parser.Error("expected range declaration specifiers");
-		std::string name;
+		pa10_syntax_detail::TextId name = 0;
 		const NodeId declarator = parser.ParseDeclarator(false, &name);
 		parser.SkipAttributes();
 		if (declarator == kNoNode)
@@ -96,7 +96,7 @@ protected:
 		parser.arena_.Add(initializer, value);
 		parser.arena_.Add(statement, initializer);
 		parser.Expect(OP_RPAREN);
-		if (!name.empty())
+		if (name != 0)
 		{
 			parser.SetNameFact(name, Derived::kKnownType, false);
 			parser.SetNameFact(name, Derived::kActiveNonTypeParameter);

@@ -667,7 +667,7 @@ private:
 	NodeId ParseBracedInitList();
 	NodeId ParsePackExpansion(NodeId value);
 	NodeId ParseParameterClause();
-	NodeId ParseDeclarator(bool abstract, std::string* name = 0);
+	NodeId ParseDeclarator(bool abstract, TextId* name = 0);
 	NodeId ParseDeclSpecifierSeq(bool for_type_id, std::string* first_type = 0);
 	bool ParseTypeId(NodeId parent, bool attach = true);
 	NodeId ParseCtorInitializer();
@@ -899,7 +899,7 @@ NodeId Parser::ParseParameterClause()
 		arena_.Add(parameter, specifiers);
 		bool pack_before_name = Match(OP_DOTS);
 		const Mark declarator_mark = Checkpoint();
-		std::string name;
+		TextId name = 0;
 		NodeId declarator = kNoNode;
 		if (At(OP_LPAREN) && position_ + 2 < tokens_.size() &&
 			tokens_[position_ + 1].Kind() == kIdentifierToken &&
@@ -933,8 +933,7 @@ NodeId Parser::ParseParameterClause()
 			if (pack_before_name)
 				arena_.Prepend(declarator, arena_.Make("parameter-pack", "..."));
 			arena_.Add(parameter, declarator);
-			if (!name.empty()) arena_.SetSemanticPayload(
-				parameter, strings_.Intern(name));
+			if (name != 0) arena_.SetSemanticPayload(parameter, name);
 		}
 		else if (pack_before_name)
 		{
@@ -964,7 +963,7 @@ NodeId Parser::ParseParameterClause()
 	Expect(OP_RPAREN);
 	return clause;
 }
-NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
+NodeId Parser::ParseDeclarator(bool abstract, TextId* name)
 {
 	const Mark mark = Checkpoint();
 	const NodeId result = arena_.Make(abstract ?
@@ -1019,7 +1018,7 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 	if (!abstract_function_suffix && Match(OP_LPAREN))
 	{
 		const NodeId nested_declarator = arena_.Make("nested-declarator");
-		std::string nested_name;
+		TextId nested_name = 0;
 		const NodeId nested = ParseDeclarator(abstract, &nested_name);
 		if (nested == kNoNode)
 		{
@@ -1050,10 +1049,10 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		{
 			if (conversion_type != kNoNode)
 				arena_.Add(result, conversion_type);
-			if (name) *name = parsed_name;
 			const NodeId identifier = MakeStructuredNode(
 				"identifier", parsed_name, name_structure);
 			arena_.SetSemanticPayload(identifier, terminal_name);
+			if (name) *name = arena_.PayloadId(identifier);
 			arena_.Add(result, identifier);
 			consumed = true;
 		}
@@ -1766,7 +1765,7 @@ NodeId Parser::ParseCondition(SimpleTokenKind terminator)
 		const NodeId specifiers = ParseDeclSpecifierSeq(false, &type_name);
 		if (specifiers != kNoNode)
 		{
-			std::string name;
+			TextId name = 0;
 			const NodeId declarator = ParseDeclarator(false, &name);
 			const NodeId initializer = declarator == kNoNode ? kNoNode :
 				ParseInitializer();
@@ -2154,22 +2153,21 @@ NodeId Parser::ParseNonTypeTemplateParameter()
 	if (Match(OP_DOTS))
 		arena_.Add(parameter, arena_.Make("parameter-pack", "..."));
 	const Mark declarator_mark = Checkpoint();
-	std::string parameter_name;
+	TextId parameter_name = 0;
 	const NodeId declarator = ParseDeclarator(false, &parameter_name);
 	if (declarator != kNoNode) arena_.Add(parameter, declarator);
 	else Rollback(declarator_mark);
-	if (!parameter_name.empty())
+	if (parameter_name != 0)
 	{
 		SetNameFact(parameter_name, kKnownNonTemplate);
-		const TextId parameter_id = strings_.Intern(parameter_name);
-		SetNameFact(parameter_id, kActiveNonTypeParameter);
-		active_non_type_parameter_names_.push_back(parameter_id);
+		SetNameFact(parameter_name, kActiveNonTypeParameter);
+		active_non_type_parameter_names_.push_back(parameter_name);
 	}
 	if (Match(OP_ASS))
 	{
 		const NodeId argument = arena_.Make("default-template-argument");
 		NodeId value;
-		if (bare_int_parameter && parameter_name.empty() && AtLiteral()) {
+		if (bare_int_parameter && parameter_name == 0 && AtLiteral()) {
 			const std::size_t token = position_++;
 			value = arena_.Make("literal", "TT_LITERAL:" + Spelling(token));
 			arena_.SetLiteralFact(value, tokens_[token].LiteralFact());
@@ -2343,26 +2341,30 @@ NodeId Parser::ParseSpecialMember(bool)
 		}
 	}
 	position_ = name_start;
-	std::string declarator_name;
+	TextId declarator_name = 0;
 	const NodeId declarator = ParseDeclarator(false, &declarator_name);
 	if (declarator == kNoNode)
 	{
 		Rollback(mark);
 		return kNoNode;
 	}
-	if (declarator_name.find("operator ") != std::string::npos)
-		name = declarator_name;
+	// The declarator payload is the exact serialized spelling; this branch
+	// still adjusts operator spacing for the special-member payload text.
+	std::string declarator_spelling = strings_.Get(declarator_name);
+	if (declarator_spelling.find("operator ") != std::string::npos)
+		name = declarator_spelling;
 	if (qualified)
 	{
-		const std::size_t op = declarator_name.rfind("::operator");
+		const std::size_t op = declarator_spelling.rfind("::operator");
 		if (op != std::string::npos)
 		{
 			const std::size_t after = op + std::string("::operator").size();
-			if (after < declarator_name.size() &&
-				std::isalnum(static_cast<unsigned char>(declarator_name[after])))
-				declarator_name.insert(after, " ");
+			if (after < declarator_spelling.size() &&
+				std::isalnum(static_cast<unsigned char>(
+					declarator_spelling[after])))
+				declarator_spelling.insert(after, " ");
 		}
-		name = declarator_name;
+		name = declarator_spelling;
 	}
 	NodeId ctor_initializer = kNoNode;
 	const bool function_try = At(KW_TRY);
@@ -2728,12 +2730,12 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 		return declaration;
 	}
 	const NodeId list = arena_.Make("init-declarator-list");
-	std::vector<std::string> names;
+	std::vector<TextId> names;
 	while (true)
 	{
 		const std::size_t item_first = position_;
 		const NodeId item = arena_.Make("init-declarator");
-		std::string name;
+		TextId name = 0;
 		const NodeId declarator = ParseDeclarator(false, &name);
 		if (declarator == kNoNode)
 		{
@@ -2746,7 +2748,7 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 			const NodeId declaration = arena_.Make("function-definition");
 			arena_.Add(declaration, specifiers);
 			arena_.Add(declaration, declarator);
-			if (!name.empty()) { SetNameFact(name, kKnownType, false);
+			if (name != 0) { SetNameFact(name, kKnownType, false);
 				SetNameFact(name, kKnownNonTemplate); }
 			const std::size_t parameter_fact_mark = name_fact_changes_.size();
 			ApplyFunctionParameterFacts(declarator);
@@ -2754,8 +2756,7 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 				ParseFunctionTryBlock(false) : ParseCompoundStatement());
 			RestoreNameFacts(parameter_fact_mark);
 			last_declared_names_.clear();
-			if (!name.empty())
-				last_declared_names_.push_back(strings_.Intern(name));
+			if (name != 0) last_declared_names_.push_back(name);
 			return declaration;
 		}
 		AppendDeclaratorNames(declarator, name, &names);
@@ -2778,17 +2779,17 @@ NodeId Parser::FinishSimpleOrFunction(const Mark& mark,
 	last_declared_names_.clear();
 	last_declared_names_.reserve(names.size());
 	for (std::size_t i = 0; i < names.size(); ++i)
-		if (!names[i].empty())
-			last_declared_names_.push_back(strings_.Intern(names[i]));
+		if (names[i] != 0)
+			last_declared_names_.push_back(names[i]);
 	if (is_typedef)
 	{
 		for (std::size_t i = 0; i < names.size(); ++i)
-			if (!names[i].empty()) SetNameFact(names[i], kKnownType);
+			if (names[i] != 0) SetNameFact(names[i], kKnownType);
 	}
 	else
 	{
 		for (std::size_t i = 0; i < names.size(); ++i)
-			if (!names[i].empty())
+			if (names[i] != 0)
 			{
 				SetNameFact(names[i], kKnownType, false);
 				if (compound_depth_) SetNameFact(names[i], kActiveNonTypeParameter);

@@ -75,8 +75,9 @@ protected:
 		return designated;
 	}
 
-	void AppendDeclaratorNames(NodeId declarator, const std::string& fallback,
-		std::vector<std::string>* names) const
+	void AppendDeclaratorNames(NodeId declarator,
+		pa10_syntax_detail::TextId fallback,
+		std::vector<pa10_syntax_detail::TextId>* names) const
 	{
 		const Derived& parser = static_cast<const Derived&>(*this);
 		for (std::uint32_t edge = parser.arena_.FirstEdge(declarator);
@@ -86,7 +87,7 @@ protected:
 			if (!parser.arena_.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_BINDING)) continue;
 			for (std::uint32_t binding = parser.arena_.FirstEdge(child);
 				binding != kNoEdge; binding = parser.arena_.NextEdge(binding))
-				names->push_back(parser.arena_.Payload(
+				names->push_back(parser.arena_.PayloadId(
 					parser.arena_.EdgeChild(binding)));
 			return;
 		}
