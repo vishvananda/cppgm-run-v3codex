@@ -630,8 +630,22 @@ fatal findings with 26 warnings.
 ## 9. Phase 3: make semantic presentation lazy
 
 Before changing retained presentation, close the residual Phase 1 name-path
-inventory as T2x.  Add caller-family counters to the remaining 34,823 frozen
-`ParseNamePath` requests and split them into:
+inventory as T2x.  The T2x0 measurement anchor classifies all 34,823 frozen
+`ParseNamePath` requests:
+
+| Caller family | Frozen requests | Initial disposition |
+| --- | ---: | --- |
+| Declaration analysis | 17,866 | Split syntax-owned names from anonymous/generated and true spelling adapters before conversion |
+| Syntax-path fallback | 9,343 | Identify missing PA10 path payloads by syntax tag and backfill the earliest-owned facts |
+| Semantic-ID recovery | 5,183 | Convert first: the terminal is already a `NameId`, so parsing its spelling is redundant |
+| Call analysis | 2,272 | Reuse the path already built by the caller and eliminate duplicate lookup parsing |
+| Friend analysis | 153 | Use the structured/syntax path already present at the PA22 boundary |
+| Fixed generated library names | 4 | Build from preinterned component IDs, not a parsed qualified spelling |
+| Template analysis | 2 | Convert with its owning template slice |
+| Literal and PA19 ambiguity recovery | 0 | Retain separately named counters; PA19 ambiguity remains assigned to Phase 8 |
+
+The family sum equals the total exactly.  These measurements split the work
+into:
 
 - syntax-owned names that can use `SyntaxNamePath` or an existing semantic
   payload ID;
@@ -639,12 +653,15 @@ inventory as T2x.  Add caller-family counters to the remaining 34,823 frozen
 - arbitrary spelling adapters that must remain text; and
 - the PA19 ambiguity recovery, which remains assigned to Phase 8.
 
-Convert the first two classes in call-count order.  In particular, audit the
-PA11 `TypeAnalyzer` declarator/type lookup path, PA22 friend-class lookup, and
-string overloads in function-template discovery/instantiation.  Do not delete
-a string overload until every caller has been classified.  The T2x exit
-counter is zero syntax-owned and zero fixed-generated path reparses; adapter
-and PA19 counts remain separately named.
+Convert direct semantic-ID recovery first because it removes known-redundant
+work without changing parser or lookup semantics.  Then subdivide the larger
+declaration and syntax-fallback families by source fact and convert them in
+measured call-count order.  In particular, audit the PA11 `TypeAnalyzer`
+declarator/type lookup path, PA22 friend-class lookup, and string overloads in
+function-template discovery/instantiation.  Do not delete a string overload
+until every caller has been classified.  The T2x exit counter is zero
+syntax-owned, semantic-ID-recovery, and fixed-generated path reparses; true
+adapters and PA19 recovery remain separately named.
 
 ### 9.1 Current path
 
@@ -679,17 +696,25 @@ must render from the typed facts without fixture churn.
 
 ### 9.3 Changeset sequence
 
-1. **T2x0:** add per-caller residual name-path counters without changing
-   behavior.
-2. **T2x1:** convert PA11/PA12 syntax-owned terminal and path recovery using
-   existing syntax semantic payloads; do not enlarge every syntax node.
-3. **T2x2:** convert template/friend call sites and fixed generated paths;
-   retain explicitly classified adapters.
-4. **T4a:** replace ordinary scope-prefix/display/emission retention with
+1. **T2x0 (complete):** retain compact per-family residual name-path counters
+   without changing behavior.  Add finer counters only inside a heterogeneous
+   family whose representation cannot be selected from the source audit.
+2. **T2x1:** remove semantic-ID-to-spelling-to-path recovery.  Pass the
+   existing `NameId` or one-component `NamePath` directly to lookup.
+3. **T2x2:** split declaration recovery into syntax-owned, anonymous/fixed
+   generated, and adapter paths; convert the first two without enlarging every
+   syntax node.
+4. **T2x3:** classify syntax fallbacks by syntax tag and add the missing path
+   fact at the earliest PA10 owner where the existing node already has the
+   necessary components.
+5. **T2x4:** convert call, friend, template, and generated-library paths by
+   reusing their structured paths or preinterned component IDs; retain
+   explicitly classified adapters.
+6. **T4a:** replace ordinary scope-prefix/display/emission retention with
    owner scope plus terminal `NameId` or a compact path ID.
-5. **T4b:** replace class/function-template specialization presentation
+7. **T4b:** replace class/function-template specialization presentation
    identity with pattern, argument-list, owner, and partition IDs.
-6. **T4c:** add lazy renderers for semantic dumps, diagnostics,
+8. **T4c:** add lazy renderers for semantic dumps, diagnostics,
    `__PRETTY_FUNCTION__`, and final external names, then remove the obsolete
    eager fields and counters.
 
@@ -1017,7 +1042,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T3w5 | Replace residual ABI fallback names with semantic paths and type the `main` context | The measurement anchor found all seven internal fallback categories at zero on the frozen source and classified the 679 live text occurrences as final external spellings: 50 assembly, 595 C-function, 21 builtin-runtime, and 13 C-variable names. The PA35 addressability fixture exposed one explicit variable override and two text object-path components; both fall to zero when its existing semantic owner/name path is used. A main-local-type reducer records one typed main context and zero text-path components. Fact bytes and graph counts remain 52,530,664 and 4,260/3,503/3. | Not timed independently: every changed frozen category has zero occurrences, so this is architecture cleanup rather than a compile-time claim | The frozen object remains exact at 4,415,448 bytes and the baseline SHA. The PA35 object and the new PA30 main-local-type object are byte-identical before/after; the pinned reference agrees on `_Z8use_typeIZ4mainE5LocalEiv`. One earliest object-emission regression was added. | Selected ABI/semantic/lowering/object report 2,038/2,038; full report 5,212/5,212; zero-fatal audit with 26 warnings | Counter anchor `bd4d29a3`; implementation `5732e547`; accepted |
 | T3x | Close the production ABI-string audit | Every production fact constructor is accounted for. Production assigns no text identity field; exact emitted names are interned under semantic IDs, while direct strings are final external spellings, completed aliases, read-only enum/effect recognition, diagnostics, final formatting, or PA14 adapter data. All text fact/path counters and synthetic identity searches are zero. | Audit-only closeout; no independent timing claim | Frozen object, PA35 override object, and PA30 main-context object remain exact; no fixture changes beyond T3w5 | Reuses T3w5 selected 2,038/2,038 and full 5,212/5,212 reports; zero-fatal audit with 26 warnings | Accepted closeout; section 8.8 |
 | T3 | Typed translation-unit ABI context replaces production fact files | Complete: production definitions/references, semantic paths, ordinary source names, type ABI tags, fixed ABI vocabulary, dependent-expression facts, numeric presentation, substitution keys, and residual paths use typed graph/per-mangle identities. Text remains only for exact emitted bytes, final external symbols, diagnostics, and PA14 input/output. | Accepted T3 slices are cumulatively faster and reduce fact-owned storage by more than two thirds from T3d | Exact mangles, symbols, binding, and object behavior | PA14/15/17/18/19/20/22/23/26/30/32/33/34/37/38 plus full report | Complete; proceed to T2x |
-| T2x | Close residual semantic name-path recovery by caller family | Planned; syntax-owned and fixed-generated reparses must reach zero, while adapter and PA19 counts remain separate | Planned | Exact syntax/semantic serialization | PA11/12 plus feature owners and full report | After T3x, before T4 |
+| T2x0 | Count residual semantic name-path recovery by caller family | All 34,823 requests are classified: 17,866 declaration, 9,343 syntax fallback, 5,183 semantic-ID recovery, 2,272 call, 153 friend, 4 generated-library, 2 template, and 0 literal/ambiguity. The family sum equals the total. | Measurement-only; timing intentionally deferred because counters are consumed under `--stats` | Frozen stats object remains exact at 4,415,448 bytes with the baseline SHA; no fixture changes | Selected semantic report 1,953/1,953; full report 5,212/5,212; zero-fatal audit with 29 warnings, identical to an audit of the clean parent archive | `870e329a`; accepted measurement anchor |
+| T2x | Close residual semantic name-path recovery by caller family | In progress; syntax-owned, semantic-ID-recovery, and fixed-generated reparses must reach zero, while true adapters and PA19 recovery remain separate | Pending after T2x0 | Exact syntax/semantic serialization | PA10/11/12 plus feature owners and full report | T2x1 next; before T4 |
 | T4 | Lazy semantic emission/display/specialization identity | Planned | Planned | Exact semantic serialization expected | PA12/19/20/22 plus downstream reports | Planned |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
@@ -1061,7 +1087,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 2 | T3w4 member-template specialization identity (complete) | PA32 reducer, pinned-reference/Clang terminal parity, zero joined production path, full report, and audit recorded in the ledger | `eefb458a`; ledger recorded |
 | 3 | T3w5 residual ABI fallbacks (complete) | Per-category counter anchor, final-boundary classification, PA30/PA35 reducers, exact frozen/object outputs, full report, and audit recorded in section 8.7 | `bd4d29a3` counter anchor; `5732e547` implementation; ledger recorded |
 | 4 | T3x Phase 2 closeout (complete) | Source audit, complete retained-text classification, zero production fixed-word/path/numeric/synthetic-identity recovery, and exact frozen object recorded in section 8.8 | Closeout ledger recorded |
-| 5 | T2x residual semantic name paths | Per-caller baseline, earliest-owned reducers, zero syntax-owned/fixed-generated reparses | One commit per caller family, each followed by ledger |
+| 5 | T2x residual semantic name paths (in progress) | T2x0 accounts for all 34,823 requests; T2x1 removes the 5,183 semantic-ID recoveries first, followed by measured declaration/syntax and smaller caller families; earliest-owned reducers and zero syntax-owned/semantic-ID/fixed-generated reparses are required | `870e329a` measurement anchor; one implementation commit per independently testable family, each followed by ledger |
 | 6 | T4 lazy semantic presentation | Render-on-demand counters, semantic record sizes, exact dumps, no dual retained identity | One commit per ordinary/specialization/output family |
 | 7 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
 | 8 | T6 operator enums | Packed representation proof, zero lowering prefix strips, exact fixtures | One pipeline family at a time |
