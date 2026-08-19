@@ -248,6 +248,8 @@ struct AbiType
   std::string context_ref;
   std::string discriminator;
   AbiArrayBound array_bound;
+  // Template-parameter and resolved-type kinds use their documented ordinal.
+  // A production named/template type with an empty name stores path ID + 1.
   std::size_t index = 0;
   std::size_t resolved_expression = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;

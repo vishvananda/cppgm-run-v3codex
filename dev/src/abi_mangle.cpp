@@ -118,6 +118,14 @@ public:
     return id;
   }
 
+  size_t intern(const vector<size_t> & components)
+  {
+    require(!components.empty(), "empty ABI component path");
+    size_t path = NO_ID;
+    for(size_t component : components) path = intern(path, component);
+    return path;
+  }
+
   const PathNode & get(size_t id) const
   {
     require(id < paths_.size(), "invalid ABI path id");
@@ -503,19 +511,25 @@ public:
     }
     TypeNode node;
     node.kind = source.kind;
+    const bool resolved_path = source.name.empty() && source.index != 0
+      && (source.kind == ABI_TYPE_NAMED
+          || source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
+          || source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION);
     if(source.kind == ABI_TYPE_NAME_OR_REFERENCE && is_builtin_name(source.name)) {
       node.kind = ABI_TYPE_BUILTIN;
       node.symbol = strings.intern(source.name);
     } else if(source.kind == ABI_TYPE_NAME_OR_REFERENCE || source.kind == ABI_TYPE_NAMED) {
       node.kind = ABI_TYPE_NAMED;
-      node.path = paths.intern(source.name);
+	  node.path = resolved_path ?
+		checked_path(source.index - 1) : paths.intern(source.name);
 	  if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
     } else {
       if(!source.name.empty()) node.symbol = strings.intern(source.name);
       if((source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
           || source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION)
-         && !source.name.empty()) {
-        node.path = paths.intern(source.name);
+		 && (resolved_path || !source.name.empty())) {
+		node.path = resolved_path ?
+		  checked_path(source.index - 1) : paths.intern(source.name);
       }
       if(!source.standard_substitution.empty()) {
         node.symbol = strings.intern(source.standard_substitution);
@@ -537,7 +551,7 @@ public:
          !source.discriminator.empty())
         node.discriminator = strings.intern(source.discriminator);
       if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
-      node.index = source.index;
+      if(!resolved_path) node.index = source.index;
       node.bound_kind = source.array_bound.kind;
       if(source.array_bound.resolved_expression !=
          ABI_NO_RESOLVED_REFERENCE) {
@@ -737,6 +751,12 @@ private:
   size_t checked_context(size_t id) const
   {
     require(id < contexts.size(), "invalid resolved ABI context id");
+    return id;
+  }
+
+  size_t checked_path(size_t id) const
+  {
+    paths.get(id);
     return id;
   }
 
@@ -2612,6 +2632,7 @@ struct AbiMangleContext::Impl
   FactGraph graph;
   vector<ResolvedTypeEntry> resolved_types;
   vector<std::uint32_t> resolved_type_slots;
+  vector<size_t> external_names;
 };
 
 AbiMangleContext::AbiMangleContext(AbiMangleStats * stats)
@@ -2683,6 +2704,21 @@ size_t AbiMangleContext::store_context(const AbiLocalContext & context)
 size_t AbiMangleContext::store_entity(const AbiEntityFact & entity)
 {
   return impl_->graph.store_entity(entity);
+}
+
+size_t AbiMangleContext::resolve_external_name(size_t source,
+                                               const string & spelling)
+{
+  if(source >= impl_->external_names.size())
+    impl_->external_names.resize(source + 1, NO_ID);
+  size_t & resolved = impl_->external_names[source];
+  if(resolved == NO_ID) resolved = impl_->graph.strings.intern(spelling);
+  return resolved;
+}
+
+size_t AbiMangleContext::resolve_path(const vector<size_t> & components)
+{
+  return impl_->graph.paths.intern(components);
 }
 
 bool AbiMangleContext::resolved_type_uses_case_facts(size_t type) const

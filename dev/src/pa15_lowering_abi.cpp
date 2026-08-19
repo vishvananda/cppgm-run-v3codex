@@ -443,6 +443,8 @@ class AbiFactBuilder
 	std::size_t next_argument_;
 	std::vector<TypeArgumentCacheEntry> type_argument_cache_;
 	std::vector<std::uint32_t> type_argument_cache_slots_;
+	std::vector<pa11::NameId> semantic_path_scratch_;
+	std::vector<std::size_t> resolved_path_scratch_;
 
 	TypeArgumentCacheKey TypeArgumentKey(pa11::TypeId type,
 		const pa11::BindingRecord* function,
@@ -517,6 +519,20 @@ class AbiFactBuilder
 		type_argument_cache_.push_back(TypeArgumentCacheEntry(key, id));
 		type_argument_cache_slots_[slot] =
 			static_cast<std::uint32_t>(type_argument_cache_.size());
+	}
+
+	std::size_t ResolvePath(pa11::ScopeId owner, pa11::NameId terminal)
+	{
+		program_.BuildEmissionPath(owner, terminal, &semantic_path_scratch_);
+		resolved_path_scratch_.clear();
+		resolved_path_scratch_.reserve(semantic_path_scratch_.size());
+		for (std::size_t i = 0; i < semantic_path_scratch_.size(); ++i)
+		{
+			const pa11::NameId name = semantic_path_scratch_[i];
+			resolved_path_scratch_.push_back(context_->resolve_external_name(
+				name, program_.names.Get(name)));
+		}
+		return context_->resolve_path(resolved_path_scratch_);
 	}
 
 	LocalContextHandle StoreLocalContext(
@@ -1375,14 +1391,20 @@ public:
 			result.kind = source.child == kNoFunctionTemplateAbiType ?
 				ABI_TYPE_TEMPLATE_SPECIALIZATION :
 				ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION;
-			std::vector<NameId> path;
 			const EntityRecord& entity = program_.entities[source.entity];
-			program_.BuildEmissionPath(
-				entity.owner, entity.identity_name, &path);
-			for (std::size_t i = 0; i < path.size(); ++i)
+			if (source.child == kNoFunctionTemplateAbiType)
+				result.index = ResolvePath(
+					entity.owner, entity.identity_name) + 1;
+			else
 			{
-				if (i != 0) result.name += "::";
-				result.name += program_.names.Get(path[i]);
+				std::vector<NameId> path;
+				program_.BuildEmissionPath(
+					entity.owner, entity.identity_name, &path);
+				for (std::size_t i = 0; i < path.size(); ++i)
+				{
+					if (i != 0) result.name += "::";
+					result.name += program_.names.Get(path[i]);
+				}
 			}
 			if (source.child != kNoFunctionTemplateAbiType)
 				result.types.push_back(
@@ -1795,14 +1817,8 @@ public:
 			else if (!IsClassTemplateSpecialization(entity))
 			{
 				result.kind = ABI_TYPE_NAMED;
-				std::vector<NameId> path;
-				program_.BuildEmissionPath(
-					entity.owner, entity.identity_name, &path);
-				for (std::size_t i = 0; i < path.size(); ++i)
-				{
-					if (i != 0) result.name += "::";
-					result.name += program_.names.Get(path[i]);
-				}
+				result.index = ResolvePath(
+					entity.owner, entity.identity_name) + 1;
 			}
 			else
 			{
@@ -1819,13 +1835,8 @@ public:
 				}
 				else result.substitution = "__cppgm_abi_class_" +
 					std::to_string(record->entity);
-				std::vector<NameId> path;
-				program_.BuildEmissionPath(entity.owner, entity.identity_name, &path);
-				for (std::size_t i = 0; i < path.size(); ++i)
-				{
-					if (i != 0) result.name += "::";
-					result.name += program_.names.Get(path[i]);
-				}
+				result.index = ResolvePath(
+					entity.owner, entity.identity_name) + 1;
 				AppendClassTemplateArguments(entity, function, recipe, &result);
 			}
 			AppendAbiTagStrings(program_, entity.abi_tag_begin,

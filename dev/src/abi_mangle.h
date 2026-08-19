@@ -177,6 +177,9 @@ public:
   std::size_t resolve_expression(const AbiDependentExpression & expression);
   std::size_t store_context(const AbiLocalContext & context);
   std::size_t store_entity(const AbiEntityFact & entity);
+  std::size_t resolve_external_name(std::size_t source,
+                                    const std::string & spelling);
+  std::size_t resolve_path(const std::vector<std::size_t> & components);
   bool resolved_type_uses_case_facts(std::size_t type) const;
   bool find_resolved_type(std::size_t source, std::size_t function,
                           std::size_t recipe, std::size_t * result) const;
