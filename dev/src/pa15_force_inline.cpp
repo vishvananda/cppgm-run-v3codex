@@ -677,7 +677,8 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 		prune_unreachable_weak_functions ?
 		pa15_function_reachability::PruneUnreachableWeakFunctions(program) :
 		pa15_function_reachability::Analyze(*program);
-	pa15_local_presentation::FinalizeBlockPresentation(program);
+	pa15_local_presentation::FinalizeBlockPresentation(program,
+		stats ? &stats->local_presentation : 0);
 	if (stats)
 	{
 		const pa15_function_reachability::Summary internal_audit =

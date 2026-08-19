@@ -96,13 +96,16 @@ struct BlockNameView
 
 bool PresentationLess(const BlockPresentationName& left,
 	const BlockPresentationName& right,
-	const lowir_model::StringPool& strings)
+	const lowir_model::StringPool& strings,
+	LocalPresentationCounters* counters)
 {
 	const BlockNameView lhs(left, strings);
 	const BlockNameView rhs(right, strings);
 	const std::size_t common = std::min(lhs.size(), rhs.size());
+	if (counters) ++counters->block_order_comparisons;
 	for (std::size_t i = 0; i < common; ++i)
 	{
+		if (counters) ++counters->block_order_characters;
 		if (lhs.at(i) != rhs.at(i)) return lhs.at(i) < rhs.at(i);
 	}
 	return lhs.size() < rhs.size();
@@ -126,7 +129,8 @@ bool RequiresBlockPresentationOrder(const Function& function)
 
 }
 
-void FinalizeBlockPresentation(TypedProgram* program)
+void FinalizeBlockPresentation(TypedProgram* program,
+	LocalPresentationCounters* counters)
 {
 	if (!program || program->retain_local_names) return;
 	for (std::size_t f = 0; f < program->functions.size(); ++f)
@@ -141,15 +145,17 @@ void FinalizeBlockPresentation(TypedProgram* program)
 				function.block_presentations);
 			continue;
 		}
+		if (counters) ++counters->block_order_functions;
 		std::vector<BlockId> order = function.block_order;
 		for (std::size_t b = 0; b < order.size(); ++b)
 			if (order[b] >= function.blocks.size())
 				throw std::logic_error(
 					"object-only function has invalid block order");
 		std::sort(order.begin(), order.end(),
-			[&function, program](BlockId left, BlockId right) {
+			[&function, program, counters](BlockId left, BlockId right) {
 				return PresentationLess(function.block_presentations[left],
-					function.block_presentations[right], program->strings);
+					function.block_presentations[right], program->strings,
+					counters);
 			});
 		function.block_presentation_order.assign(function.blocks.size(), 0);
 		for (std::size_t rank = 0; rank < order.size(); ++rank)
@@ -161,14 +167,16 @@ void FinalizeBlockPresentation(TypedProgram* program)
 }
 
 LocalPresentationState::LocalPresentationState()
-	: retain_names_(true), generated_slot_ordinal_(0),
+	: retain_names_(true), counters_(0), generated_slot_ordinal_(0),
 	  generated_block_ordinal_(0)
 {
 }
 
-void LocalPresentationState::Reset(bool retain_names)
+void LocalPresentationState::Reset(bool retain_names,
+	LocalPresentationCounters* counters)
 {
 	retain_names_ = retain_names;
+	counters_ = counters;
 	generated_slot_ordinal_ = 0;
 	generated_block_ordinal_ = 0;
 	used_names_.Clear();
@@ -192,6 +200,11 @@ void LocalPresentationState::CollectSourceNames(const pa11::Program& program,
 			record.text != 0)
 		{
 			const std::string& name = program.names.Get(record.text);
+			if (counters_)
+			{
+				++counters_->source_names_scanned;
+				counters_->source_name_bytes += name.size();
+			}
 			if (retain_names_) used_names_[name] = true;
 			else RecordSourceName(name, generated);
 		}
@@ -229,11 +242,17 @@ void LocalPresentationState::RecordSourceName(const std::string& name,
 		std::uint32_t ordinal = 0;
 		if (lowir_model::parse_generated_name_ordinal(
 			name, patterns[i].prefix, &ordinal))
+		{
+			if (counters_) ++counters_->reservation_matches;
 			generated->reserve(patterns[i].kind, ordinal);
+		}
 	}
 	std::uint32_t temporary = 0;
 	if (lowir_model::parse_generated_name_ordinal(name, "t", &temporary))
+	{
+		if (counters_) ++counters_->temporary_reservations;
 		temporaries_.push_back(temporary);
+	}
 }
 
 void LocalPresentationState::FinalizeSourceNames(
@@ -290,9 +309,12 @@ BlockPresentationName LocalPresentationState::GeneratedBlockName(
 
 bool LocalPresentationState::ReservesTemporary(std::uint32_t ordinal)
 {
-	if (retain_names_)
-		return used_names_[detail::PrefixedUnsignedDecimal("t", 1, ordinal)] != 0;
-	return std::binary_search(temporaries_.begin(), temporaries_.end(), ordinal);
+	if (counters_) ++counters_->temporary_probes;
+	const bool reserved = retain_names_ ?
+		used_names_[detail::PrefixedUnsignedDecimal("t", 1, ordinal)] != 0 :
+		std::binary_search(temporaries_.begin(), temporaries_.end(), ordinal);
+	if (reserved && counters_) ++counters_->temporary_hits;
+	return reserved;
 }
 
 }

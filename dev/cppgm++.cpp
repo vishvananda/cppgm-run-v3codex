@@ -1054,6 +1054,24 @@ void report_compile_phase_stats(
 		adapter_nanoseconds - preparation_nanoseconds : 0;
 	cerr << " typed_identity_paths=" << stats.typed_identity_paths
 		 << " typed_identity_types=" << stats.typed_identity_types
+		 << " local_source_names_scanned="
+		 << stats.local_presentation.source_names_scanned
+		 << " local_source_name_bytes="
+		 << stats.local_presentation.source_name_bytes
+		 << " local_reservation_matches="
+		 << stats.local_presentation.reservation_matches
+		 << " local_temporary_reservations="
+		 << stats.local_presentation.temporary_reservations
+		 << " local_temporary_probes="
+		 << stats.local_presentation.temporary_probes
+		 << " local_temporary_hits="
+		 << stats.local_presentation.temporary_hits
+		 << " block_order_functions="
+		 << stats.local_presentation.block_order_functions
+		 << " block_order_comparisons="
+		 << stats.local_presentation.block_order_comparisons
+		 << " block_order_characters="
+		 << stats.local_presentation.block_order_characters
 		 << " typed_identity_bytes=" << stats.typed_identity_bytes
 		 << " typed_bytes=" << stats.typed_storage_bytes
 		 << " preprocess_ns=" << semantic.preprocessing.elapsed_nanoseconds

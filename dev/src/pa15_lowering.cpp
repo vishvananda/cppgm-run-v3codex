@@ -732,7 +732,8 @@ private:
 		continue_targets_.clear();
 		label_blocks_.Clear();
 		ResetInitializedBitFieldUnit();
-		local_presentation_.Reset(output_.retain_local_names);
+		local_presentation_.Reset(output_.retain_local_names,
+			stats_ ? &stats_->local_presentation : 0);
 		current_this_binding_ = kNoBinding;
 		current_member_owner_ = kNoEntity;
 		ResetVirtualBaseBoundary();
@@ -811,7 +812,8 @@ private:
 		continue_targets_.clear();
 		label_blocks_.Clear();
 		ResetInitializedBitFieldUnit();
-		local_presentation_.Reset(output_.retain_local_names);
+		local_presentation_.Reset(output_.retain_local_names,
+			stats_ ? &stats_->local_presentation : 0);
 		ResetFunctionSlots(); ResetControlFlowReachability();
 		ResetLifetimeFunctionState(); ResetFullExpressionFunctionState();
 		ResetExceptionFunctionState(); ResetInitializerListFunctionState();

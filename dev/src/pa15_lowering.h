@@ -3,6 +3,7 @@
 #include "abi_mangle.h"
 #include "pa12_semantic.h"
 #include "pa15_lowir_model.h"
+#include "pa15_local_presentation.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +25,7 @@ struct LowIRSource
 
 struct LowIRLoweringStats
 {
+	pa15_local_presentation::LocalPresentationCounters local_presentation;
 	std::size_t source_bytes;
 	SemanticAnalysisStats semantic;
 	std::size_t lowered_nodes;
