@@ -2608,9 +2608,11 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 	std::size_t key = std::numeric_limits<std::size_t>::max();
 	if (At(KW_CLASS) || At(KW_STRUCT)) key = position_++;
 	SkipAttributes(); std::string name;
+	NodeId name_structure = kNoNode;
 	if (AtIdentifier())
 	{
-		if (!ParseName(&name, true, false)) throw Error("expected enum name");
+		if (!ParseName(&name, true, false, true, &name_structure))
+			throw Error("expected enum name");
 	}
 	SkipAttributes();
 	NodeId underlying = kNoNode;
@@ -2622,6 +2624,7 @@ NodeId Parser::ParseEnum(bool require_semicolon)
 		arena_.Add(underlying, specifiers);
 	}
 	const NodeId declaration = arena_.Make("enum-specifier", name);
+	if (name_structure != kNoNode) arena_.Add(declaration, name_structure);
 	if (key != std::numeric_limits<std::size_t>::max())
 		arena_.Add(declaration, MakeTokenNode("enum-key", key));
 	if (underlying != kNoNode) arena_.Add(declaration, underlying);

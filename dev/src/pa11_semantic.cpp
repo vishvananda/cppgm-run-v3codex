@@ -110,10 +110,11 @@ private:
 	bool CanContainBlockOrDeclaration(NodeId node) const;
 	NamePath ParseNamePath(const std::string& spelling,
 		TypeNamePathParseFamily family);
-	LookupResult LookupSpelling(ScopeId scope, const std::string& spelling,
-		LookupKind kind, TypeNamePathParseFamily family);
-	ScopeId ResolveScopeSpelling(ScopeId scope, const std::string& spelling,
+	NamePath StructuredNamePath(NodeId syntax);
+	NamePath SyntaxNamePath(NodeId syntax,
 		TypeNamePathParseFamily family);
+	LookupResult LookupSyntaxName(ScopeId scope, NodeId syntax,
+		LookupKind kind, TypeNamePathParseFamily family);
 	ScopeId ResolveOwner(ScopeId scope, const NamePath& name);
 	bool IsDeclaration(NodeId node) const;
 	void AnalyzeDeclaration(NodeId node, ScopeId scope);
@@ -225,24 +226,53 @@ NamePath TypeAnalyzer::ParseNamePath(const std::string& spelling,
 	return result;
 }
 
-LookupResult TypeAnalyzer::LookupSpelling(ScopeId scope,
-	const std::string& spelling, LookupKind kind,
-	TypeNamePathParseFamily family)
+NamePath TypeAnalyzer::StructuredNamePath(NodeId syntax)
 {
-	if (stats_)
+	if (stats_) ++stats_->structured_name_path_requests;
+	NamePath path;
+	const NodeId structure = syntax != kNoNode && arena_->IsTag(syntax,
+		::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) ? syntax :
+		syntax == kNoNode ? kNoNode : FindChild(syntax,
+			::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	if (structure == kNoNode) return path;
+	path.global = FindChild(structure,
+		::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
 	{
-		++stats_->lookup_spelling_requests;
-		++stats_->lookup_spelling_families[family];
+		const NodeId component = arena_->EdgeChild(edge);
+		if (arena_->IsTag(component,
+			::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+			path.Push(program_->names.UseInterned(
+				arena_->SemanticPayloadId(component)));
 	}
-	if (spelling.find("::") == std::string::npos)
-		return program_->LookupName(scope, program_->names.Intern(spelling), kind);
-	return program_->Lookup(scope, ParseNamePath(spelling, family), kind);
+	return path;
 }
 
-ScopeId TypeAnalyzer::ResolveScopeSpelling(ScopeId scope,
-	const std::string& spelling, TypeNamePathParseFamily family)
+NamePath TypeAnalyzer::SyntaxNamePath(NodeId syntax,
+	TypeNamePathParseFamily family)
 {
-	return program_->ResolveScope(scope, ParseNamePath(spelling, family));
+	if (stats_) ++stats_->syntax_name_path_requests;
+	NamePath path = StructuredNamePath(syntax);
+	if (!path.Empty()) return path;
+	if (syntax != kNoNode && (arena_->HasSemanticPayload(syntax) ||
+		PayloadSource(syntax).find("::") == std::string::npos))
+	{
+		if (stats_) ++stats_->syntax_name_path_direct;
+		path.Push(program_->names.UseInterned(
+			arena_->HasSemanticPayload(syntax) ?
+			arena_->SemanticPayloadId(syntax) : arena_->PayloadId(syntax)));
+		return path;
+	}
+	if (stats_) ++stats_->syntax_name_path_fallbacks;
+	return syntax == kNoNode ? path :
+		ParseNamePath(PayloadSource(syntax), family);
+}
+
+LookupResult TypeAnalyzer::LookupSyntaxName(ScopeId scope, NodeId syntax,
+	LookupKind kind, TypeNamePathParseFamily family)
+{
+	return program_->Lookup(scope, SyntaxNamePath(syntax, family), kind);
 }
 
 ScopeId TypeAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
@@ -363,8 +393,8 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 	const std::string target = arena_->Payload(target_node);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION))
 	{
-		const ScopeId target_scope = ResolveScopeSpelling(
-			scope, target, TYPE_NAME_PATH_PARSE_USING);
+		const ScopeId target_scope = program_->ResolveScope(
+			scope, SyntaxNamePath(target_node, TYPE_NAME_PATH_PARSE_USING));
 		if (target_scope == kNoScope)
 			throw std::runtime_error("namespace alias target is not a namespace");
 		program_->AddNamespaceAlias(scope,
@@ -373,8 +403,8 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 	}
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
-		const ScopeId target_scope = ResolveScopeSpelling(
-			scope, target, TYPE_NAME_PATH_PARSE_USING);
+		const ScopeId target_scope = program_->ResolveScope(
+			scope, SyntaxNamePath(target_node, TYPE_NAME_PATH_PARSE_USING));
 		if (target_scope == kNoScope)
 			throw std::runtime_error("using-directive target is not a namespace");
 		program_->AddUsingEdge(scope, target_scope);
@@ -382,8 +412,8 @@ void TypeAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope)
 	}
 	if (target.find('<') != std::string::npos)
 		throw std::runtime_error("using-declaration names a template-id");
-	const NamePath target_name = ParseNamePath(
-		target, TYPE_NAME_PATH_PARSE_USING);
+	const NamePath target_name = SyntaxNamePath(
+		target_node, TYPE_NAME_PATH_PARSE_USING);
 	const NameId name = target_name.Last();
 	const LookupResult type = program_->Lookup(scope, target_name, LOOKUP_TYPE);
 	if (type.type != kNoType)
@@ -484,7 +514,12 @@ TypeId TypeAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			std::to_string(arena_->TokenLast(node));
 	}
 	if (spelling.empty()) throw std::runtime_error("unnamed class has no owner");
-	const NamePath declared_name = ParseNamePath(
+	NamePath declared_name;
+	if (!arena_->Payload(node).empty())
+		declared_name = SyntaxNamePath(node, TYPE_NAME_PATH_PARSE_CLASS);
+	else if (spelling.find("::") == std::string::npos)
+		declared_name.Push(program_->names.Intern(spelling));
+	else declared_name = ParseNamePath(
 		spelling, TYPE_NAME_PATH_PARSE_CLASS);
 	const bool qualified = declared_name.global || declared_name.Size() > 1;
 	const NameId name = declared_name.Last();
@@ -570,7 +605,12 @@ TypeId TypeAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope,
 	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
 	const bool definition =
 		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0;
-	const NamePath declared_name = ParseNamePath(
+	NamePath declared_name;
+	if (!arena_->Payload(node).empty())
+		declared_name = SyntaxNamePath(node, TYPE_NAME_PATH_PARSE_ENUM);
+	else if (spelling.find("::") == std::string::npos)
+		declared_name.Push(program_->names.Intern(spelling));
+	else declared_name = ParseNamePath(
 		spelling, TYPE_NAME_PATH_PARSE_ENUM);
 	const bool qualified = declared_name.global || declared_name.Size() > 1;
 	const NameId name = declared_name.Last();
@@ -749,9 +789,8 @@ SpecInfo TypeAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 				spelling != "thread_local" && spelling != "inline" &&
 				spelling != "virtual")
 			{
-				const LookupResult found =
-					LookupSpelling(scope, spelling, LOOKUP_TYPE,
-						TYPE_NAME_PATH_PARSE_TYPE_LOOKUP);
+				const LookupResult found = LookupSyntaxName(scope, child,
+					LOOKUP_TYPE, TYPE_NAME_PATH_PARSE_TYPE_LOOKUP);
 				if (found.type == kNoType)
 					throw std::runtime_error("unknown type name: " + spelling);
 				result.type = found.type;
@@ -813,8 +852,8 @@ NamePath TypeAnalyzer::DeclaratorNamePath(NodeId node)
 {
 	const NodeId identifier = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
 	if (identifier != kNoNode)
-		return ParseNamePath(arena_->Payload(identifier),
-			TYPE_NAME_PATH_PARSE_DECLARATOR);
+		return SyntaxNamePath(
+			identifier, TYPE_NAME_PATH_PARSE_DECLARATOR);
 	const NodeId nested = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_NESTED_DECLARATOR);
 	return nested == kNoNode ? NamePath() :
 		DeclaratorNamePath(FirstSemanticChild(nested));
@@ -1184,8 +1223,7 @@ ConstantValue TypeAnalyzer::EvaluateTrait(NodeId node, ScopeId scope)
 	if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_ID)) type = BuildTypeId(operand, scope);
 	else if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
-		const LookupResult named = LookupSpelling(scope,
-			arena_->Payload(operand), LOOKUP_TYPE,
+		const LookupResult named = LookupSyntaxName(scope, operand, LOOKUP_TYPE,
 			TYPE_NAME_PATH_PARSE_EXPRESSION);
 		if (named.type != kNoType) type = named.type;
 	}
@@ -1220,8 +1258,8 @@ ConstantValue TypeAnalyzer::Evaluate(NodeId node, ScopeId scope)
 	}
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
-		const LookupResult found = LookupSpelling(scope,
-			arena_->Payload(node), LOOKUP_ORDINARY,
+		const LookupResult found = LookupSyntaxName(
+			scope, node, LOOKUP_ORDINARY,
 			TYPE_NAME_PATH_PARSE_EXPRESSION);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error("constant name was not found");
@@ -1279,8 +1317,8 @@ TypeId TypeAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 	}
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
-		const LookupResult found = LookupSpelling(scope,
-			arena_->Payload(node), LOOKUP_ORDINARY,
+		const LookupResult found = LookupSyntaxName(
+			scope, node, LOOKUP_ORDINARY,
 			TYPE_NAME_PATH_PARSE_EXPRESSION);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error("decltype name was not found");
