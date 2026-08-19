@@ -59,56 +59,28 @@ Block MakePresentedBlock(TypedProgram& program, Function* function,
 namespace
 {
 
-struct BlockNameView
+// Renders one block presentation into the shared key buffer exactly as the
+// retained lexical spelling would read: label text, then an underscore and
+// the decimal ordinal for generated names.
+void AppendBlockOrderKey(const BlockPresentationName& name,
+	const lowir_model::StringPool& strings, std::string* bytes)
 {
-	const std::string& text;
-	char digits[10];
-	std::size_t digit_begin;
-	bool generated;
-
-	BlockNameView(const BlockPresentationName& name,
-		const lowir_model::StringPool& strings)
-		: text(strings.get(name.text)), digit_begin(sizeof(digits)),
-		  generated(name.generated())
+	const std::string& text = strings.get(name.text);
+	bytes->append(text);
+	if (name.generated())
 	{
-		if (!generated) return;
+		char digits[10];
+		std::size_t begin = sizeof(digits);
 		std::uint32_t value = name.ordinal;
 		do
 		{
-			digits[--digit_begin] = static_cast<char>('0' + value % 10);
+			digits[--begin] = static_cast<char>('0' + value % 10);
 			value /= 10;
 		}
 		while (value != 0);
+		bytes->push_back('_');
+		bytes->append(digits + begin, sizeof(digits) - begin);
 	}
-
-	std::size_t size() const
-	{
-		return text.size() + (generated ? 1 + sizeof(digits) - digit_begin : 0);
-	}
-
-	char at(std::size_t index) const
-	{
-		if (index < text.size()) return text[index];
-		if (index == text.size()) return '_';
-		return digits[digit_begin + index - text.size() - 1];
-	}
-};
-
-bool PresentationLess(const BlockPresentationName& left,
-	const BlockPresentationName& right,
-	const lowir_model::StringPool& strings,
-	LocalPresentationCounters* counters)
-{
-	const BlockNameView lhs(left, strings);
-	const BlockNameView rhs(right, strings);
-	const std::size_t common = std::min(lhs.size(), rhs.size());
-	if (counters) ++counters->block_order_comparisons;
-	for (std::size_t i = 0; i < common; ++i)
-	{
-		if (counters) ++counters->block_order_characters;
-		if (lhs.at(i) != rhs.at(i)) return lhs.at(i) < rhs.at(i);
-	}
-	return lhs.size() < rhs.size();
 }
 
 bool RequiresBlockPresentationOrder(const Function& function)
@@ -133,6 +105,8 @@ void FinalizeBlockPresentation(TypedProgram* program,
 	LocalPresentationCounters* counters)
 {
 	if (!program || program->retain_local_names) return;
+	std::string key_bytes;
+	std::vector<std::pair<std::uint32_t, std::uint32_t> > key_spans;
 	for (std::size_t f = 0; f < program->functions.size(); ++f)
 	{
 		Function& function = program->functions[f];
@@ -151,11 +125,32 @@ void FinalizeBlockPresentation(TypedProgram* program,
 			if (order[b] >= function.blocks.size())
 				throw std::logic_error(
 					"object-only function has invalid block order");
+		// Render each presentation's exact lexical bytes once, then sort by
+		// flat byte spans instead of reconstructing characters per compare.
+		key_bytes.clear();
+		key_spans.assign(function.blocks.size(),
+			std::pair<std::uint32_t, std::uint32_t>(0, 0));
+		for (std::size_t b = 0; b < order.size(); ++b)
+		{
+			const std::uint32_t begin =
+				static_cast<std::uint32_t>(key_bytes.size());
+			AppendBlockOrderKey(function.block_presentations[order[b]],
+				program->strings, &key_bytes);
+			key_spans[order[b]] = std::pair<std::uint32_t, std::uint32_t>(
+				begin, static_cast<std::uint32_t>(key_bytes.size()));
+		}
+		if (counters) counters->block_order_characters += key_bytes.size();
+		const char* keys = key_bytes.data();
 		std::sort(order.begin(), order.end(),
-			[&function, program, counters](BlockId left, BlockId right) {
-				return PresentationLess(function.block_presentations[left],
-					function.block_presentations[right], program->strings,
-					counters);
+			[&key_spans, keys, counters](BlockId left, BlockId right) {
+				if (counters) ++counters->block_order_comparisons;
+				const std::pair<std::uint32_t, std::uint32_t>& lhs =
+					key_spans[left];
+				const std::pair<std::uint32_t, std::uint32_t>& rhs =
+					key_spans[right];
+				return std::lexicographical_compare(
+					keys + lhs.first, keys + lhs.second,
+					keys + rhs.first, keys + rhs.second);
 			});
 		function.block_presentation_order.assign(function.blocks.size(), 0);
 		for (std::size_t rank = 0; rank < order.size(); ++rank)

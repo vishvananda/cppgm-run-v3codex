@@ -1,0 +1,256 @@
+static int order_sum = 0;
+static int throws = 0;
+struct Guard {
+  int id;
+  Guard(int i) : id(i) {}
+  ~Guard() { order_sum += id; }
+};
+struct failure {};
+int work(int x) {
+  int total = 0;
+  Guard g1(1);
+  if (x > 1) { total += 1; } else { total -= 1; }
+  Guard g2(2);
+  if (x > 2) { total += 2; } else { total -= 1; }
+  Guard g3(3);
+  if (x > 3) { total += 3; } else { total -= 1; }
+  Guard g4(4);
+  if (x > 4) { total += 4; } else { total -= 1; }
+  Guard g5(5);
+  if (x > 5) { total += 5; } else { total -= 1; }
+  Guard g6(6);
+  if (x > 6) { total += 6; } else { total -= 1; }
+  Guard g7(7);
+  if (x > 0) { total += 7; } else { total -= 1; }
+  Guard g8(8);
+  if (x > 1) { total += 8; } else { total -= 1; }
+  Guard g9(9);
+  if (x > 2) { total += 9; } else { total -= 1; }
+  Guard g10(10);
+  if (x > 3) { total += 10; } else { total -= 1; }
+  Guard g11(11);
+  if (x > 4) { total += 11; } else { total -= 1; }
+  Guard g12(12);
+  if (x > 5) { total += 12; } else { total -= 1; }
+  Guard g13(13);
+  if (x > 6) { total += 13; } else { total -= 1; }
+  Guard g14(14);
+  if (x > 0) { total += 14; } else { total -= 1; }
+  Guard g15(15);
+  if (x > 1) { total += 15; } else { total -= 1; }
+  Guard g16(16);
+  if (x > 2) { total += 16; } else { total -= 1; }
+  Guard g17(17);
+  if (x > 3) { total += 17; } else { total -= 1; }
+  Guard g18(18);
+  if (x > 4) { total += 18; } else { total -= 1; }
+  Guard g19(19);
+  if (x > 5) { total += 19; } else { total -= 1; }
+  Guard g20(20);
+  if (x > 6) { total += 20; } else { total -= 1; }
+  Guard g21(21);
+  if (x > 0) { total += 21; } else { total -= 1; }
+  Guard g22(22);
+  if (x > 1) { total += 22; } else { total -= 1; }
+  Guard g23(23);
+  if (x > 2) { total += 23; } else { total -= 1; }
+  Guard g24(24);
+  if (x > 3) { total += 24; } else { total -= 1; }
+  Guard g25(25);
+  if (x > 4) { total += 25; } else { total -= 1; }
+  Guard g26(26);
+  if (x > 5) { total += 26; } else { total -= 1; }
+  Guard g27(27);
+  if (x > 6) { total += 27; } else { total -= 1; }
+  Guard g28(28);
+  if (x > 0) { total += 28; } else { total -= 1; }
+  Guard g29(29);
+  if (x > 1) { total += 29; } else { total -= 1; }
+  Guard g30(30);
+  if (x > 2) { total += 30; } else { total -= 1; }
+  Guard g31(31);
+  if (x > 3) { total += 31; } else { total -= 1; }
+  Guard g32(32);
+  if (x > 4) { total += 32; } else { total -= 1; }
+  Guard g33(33);
+  if (x > 5) { total += 33; } else { total -= 1; }
+  Guard g34(34);
+  if (x > 6) { total += 34; } else { total -= 1; }
+  Guard g35(35);
+  if (x > 0) { total += 35; } else { total -= 1; }
+  Guard g36(36);
+  if (x > 1) { total += 36; } else { total -= 1; }
+  Guard g37(37);
+  if (x > 2) { total += 37; } else { total -= 1; }
+  Guard g38(38);
+  if (x > 3) { total += 38; } else { total -= 1; }
+  Guard g39(39);
+  if (x > 4) { total += 39; } else { total -= 1; }
+  Guard g40(40);
+  if (x > 5) { total += 40; } else { total -= 1; }
+  Guard g41(41);
+  if (x > 6) { total += 41; } else { total -= 1; }
+  Guard g42(42);
+  if (x > 0) { total += 42; } else { total -= 1; }
+  Guard g43(43);
+  if (x > 1) { total += 43; } else { total -= 1; }
+  Guard g44(44);
+  if (x > 2) { total += 44; } else { total -= 1; }
+  Guard g45(45);
+  if (x > 3) { total += 45; } else { total -= 1; }
+  Guard g46(46);
+  if (x > 4) { total += 46; } else { total -= 1; }
+  Guard g47(47);
+  if (x > 5) { total += 47; } else { total -= 1; }
+  Guard g48(48);
+  if (x > 6) { total += 48; } else { total -= 1; }
+  Guard g49(49);
+  if (x > 0) { total += 49; } else { total -= 1; }
+  Guard g50(50);
+  if (x > 1) { total += 50; } else { total -= 1; }
+  Guard g51(51);
+  if (x > 2) { total += 51; } else { total -= 1; }
+  Guard g52(52);
+  if (x > 3) { total += 52; } else { total -= 1; }
+  Guard g53(53);
+  if (x > 4) { total += 53; } else { total -= 1; }
+  Guard g54(54);
+  if (x > 5) { total += 54; } else { total -= 1; }
+  Guard g55(55);
+  if (x > 6) { total += 55; } else { total -= 1; }
+  Guard g56(56);
+  if (x > 0) { total += 56; } else { total -= 1; }
+  Guard g57(57);
+  if (x > 1) { total += 57; } else { total -= 1; }
+  Guard g58(58);
+  if (x > 2) { total += 58; } else { total -= 1; }
+  Guard g59(59);
+  if (x > 3) { total += 59; } else { total -= 1; }
+  Guard g60(60);
+  if (x > 4) { total += 60; } else { total -= 1; }
+  Guard g61(61);
+  if (x > 5) { total += 61; } else { total -= 1; }
+  Guard g62(62);
+  if (x > 6) { total += 62; } else { total -= 1; }
+  Guard g63(63);
+  if (x > 0) { total += 63; } else { total -= 1; }
+  Guard g64(64);
+  if (x > 1) { total += 64; } else { total -= 1; }
+  Guard g65(65);
+  if (x > 2) { total += 65; } else { total -= 1; }
+  Guard g66(66);
+  if (x > 3) { total += 66; } else { total -= 1; }
+  Guard g67(67);
+  if (x > 4) { total += 67; } else { total -= 1; }
+  Guard g68(68);
+  if (x > 5) { total += 68; } else { total -= 1; }
+  Guard g69(69);
+  if (x > 6) { total += 69; } else { total -= 1; }
+  Guard g70(70);
+  if (x > 0) { total += 70; } else { total -= 1; }
+  Guard g71(71);
+  if (x > 1) { total += 71; } else { total -= 1; }
+  Guard g72(72);
+  if (x > 2) { total += 72; } else { total -= 1; }
+  Guard g73(73);
+  if (x > 3) { total += 73; } else { total -= 1; }
+  Guard g74(74);
+  if (x > 4) { total += 74; } else { total -= 1; }
+  Guard g75(75);
+  if (x > 5) { total += 75; } else { total -= 1; }
+  Guard g76(76);
+  if (x > 6) { total += 76; } else { total -= 1; }
+  Guard g77(77);
+  if (x > 0) { total += 77; } else { total -= 1; }
+  Guard g78(78);
+  if (x > 1) { total += 78; } else { total -= 1; }
+  Guard g79(79);
+  if (x > 2) { total += 79; } else { total -= 1; }
+  Guard g80(80);
+  if (x > 3) { total += 80; } else { total -= 1; }
+  Guard g81(81);
+  if (x > 4) { total += 81; } else { total -= 1; }
+  Guard g82(82);
+  if (x > 5) { total += 82; } else { total -= 1; }
+  Guard g83(83);
+  if (x > 6) { total += 83; } else { total -= 1; }
+  Guard g84(84);
+  if (x > 0) { total += 84; } else { total -= 1; }
+  Guard g85(85);
+  if (x > 1) { total += 85; } else { total -= 1; }
+  Guard g86(86);
+  if (x > 2) { total += 86; } else { total -= 1; }
+  Guard g87(87);
+  if (x > 3) { total += 87; } else { total -= 1; }
+  Guard g88(88);
+  if (x > 4) { total += 88; } else { total -= 1; }
+  Guard g89(89);
+  if (x > 5) { total += 89; } else { total -= 1; }
+  Guard g90(90);
+  if (x > 6) { total += 90; } else { total -= 1; }
+  Guard g91(91);
+  if (x > 0) { total += 91; } else { total -= 1; }
+  Guard g92(92);
+  if (x > 1) { total += 92; } else { total -= 1; }
+  Guard g93(93);
+  if (x > 2) { total += 93; } else { total -= 1; }
+  Guard g94(94);
+  if (x > 3) { total += 94; } else { total -= 1; }
+  Guard g95(95);
+  if (x > 4) { total += 95; } else { total -= 1; }
+  Guard g96(96);
+  if (x > 5) { total += 96; } else { total -= 1; }
+  Guard g97(97);
+  if (x > 6) { total += 97; } else { total -= 1; }
+  Guard g98(98);
+  if (x > 0) { total += 98; } else { total -= 1; }
+  Guard g99(99);
+  if (x > 1) { total += 99; } else { total -= 1; }
+  Guard g100(100);
+  if (x > 2) { total += 100; } else { total -= 1; }
+  Guard g101(101);
+  if (x > 3) { total += 101; } else { total -= 1; }
+  Guard g102(102);
+  if (x > 4) { total += 102; } else { total -= 1; }
+  Guard g103(103);
+  if (x > 5) { total += 103; } else { total -= 1; }
+  Guard g104(104);
+  if (x > 6) { total += 104; } else { total -= 1; }
+  Guard g105(105);
+  if (x > 0) { total += 105; } else { total -= 1; }
+  Guard g106(106);
+  if (x > 1) { total += 106; } else { total -= 1; }
+  Guard g107(107);
+  if (x > 2) { total += 107; } else { total -= 1; }
+  Guard g108(108);
+  if (x > 3) { total += 108; } else { total -= 1; }
+  Guard g109(109);
+  if (x > 4) { total += 109; } else { total -= 1; }
+  Guard g110(110);
+  if (x > 5) { total += 110; } else { total -= 1; }
+  Guard g111(111);
+  if (x > 6) { total += 111; } else { total -= 1; }
+  Guard g112(112);
+  if (x > 0) { total += 112; } else { total -= 1; }
+  Guard g113(113);
+  if (x > 1) { total += 113; } else { total -= 1; }
+  Guard g114(114);
+  if (x > 2) { total += 114; } else { total -= 1; }
+  Guard g115(115);
+  if (x > 3) { total += 115; } else { total -= 1; }
+  if (x == 99) goto if_3;
+  try {
+    if (x > 4) throw failure();
+    total += 1;
+  } catch (failure&) {
+    ++throws;
+  }
+if_3:
+  return total;
+}
+int main() {
+  int result = work(5);
+  if (order_sum != 6670) return 1;
+  if (throws != 1) return 2;
+  return result > 0 ? 0 : 3;
+}
