@@ -1,11 +1,12 @@
 #include "abi_mangle.h"
 #include "abi_mangle_graph_type.h"
+#include "abi_mangle_presentation.h"
+#include "abi_mangle_substitution.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <limits>
-#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -17,6 +18,24 @@ namespace {
 using std::size_t;
 using std::string;
 using std::vector;
+using detail::append_generated_lambda_source;
+using detail::base36;
+using detail::discriminator;
+using detail::lambda_discriminator;
+using detail::local_discriminator;
+using detail::number;
+using detail::source_name;
+using detail::SUBSTITUTION_EXPLICIT;
+using detail::SUBSTITUTION_FUNCTION_TEMPLATE_PREFIX;
+using detail::SUBSTITUTION_LOCAL_LAMBDA;
+using detail::SUBSTITUTION_LOCAL_LAMBDA_ORDINAL;
+using detail::SUBSTITUTION_MEMBER_TEMPLATE_PREFIX;
+using detail::SUBSTITUTION_PATH;
+using detail::SUBSTITUTION_RESOLVED;
+using detail::SUBSTITUTION_TYPE;
+using detail::SubstitutionKind;
+using detail::SubstitutionKey;
+using detail::SubstitutionTable;
 using detail::TypeNode;
 using detail::type_node_hash;
 
@@ -411,16 +430,21 @@ public:
       node.children.push_back(result);
       node.uses_case_facts = types[result].uses_case_facts;
       node.bound_kind = modifier->array_bound.kind;
-      if(stats_ && !modifier->array_bound.value.empty() &&
-         node.bound_kind != ABI_ARRAY_BOUND_EXPRESSION)
-        ++stats_->text_array_bounds;
-      if(modifier->array_bound.resolved_expression !=
-         ABI_NO_RESOLVED_REFERENCE) {
+      if(node.bound_kind == ABI_ARRAY_BOUND_INTEGER) {
+        require(modifier->array_bound.resolved_expression !=
+                  ABI_NO_RESOLVED_REFERENCE,
+                "integer ABI array bound has no value");
+        node.index = modifier->array_bound.resolved_expression;
+        if(stats_) ++stats_->typed_array_bounds;
+      } else if(modifier->array_bound.resolved_expression !=
+                ABI_NO_RESOLVED_REFERENCE) {
         node.expression = checked_expression(
           modifier->array_bound.resolved_expression);
         node.uses_case_facts = node.uses_case_facts
           || expressions[node.expression].uses_case_facts;
       } else if(!modifier->array_bound.value.empty()) {
+        if(stats_ && node.bound_kind != ABI_ARRAY_BOUND_EXPRESSION)
+          ++stats_->text_array_bounds;
         if(node.bound_kind == ABI_ARRAY_BOUND_EXPRESSION)
           node.expression = resolve_expression_ref(modifier->array_bound.value);
         else
@@ -509,6 +533,7 @@ public:
     } else {
       node.standard_substitution = standard_substitution;
       node.vendor_qualifier = vendor_qualifier;
+      node.local_presentation = source.local_presentation;
       if(resolved_source_name)
         node.symbol = source.index - 1;
       else if(!source.name.empty() &&
@@ -543,6 +568,13 @@ public:
       if(has_resolved_type_substitution(source)) {
         node.substitution = source.resolved_expression;
         node.substitution_resolved = true;
+      } else if(source.local_presentation != ABI_LOCAL_PRESENTATION_TEXT) {
+        require(source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
+                  source.kind == ABI_TYPE_LOCAL_TYPE,
+                "typed local presentation used by non-local ABI type");
+        require(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE,
+                "typed local ABI presentation has no ordinal");
+        node.discriminator = source.resolved_expression;
       } else if(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE)
         node.expression = checked_expression(source.resolved_expression);
       else if(!source.expression_ref.empty())
@@ -556,12 +588,16 @@ public:
       } else if(!source.context_ref.empty()) {
         node.context = strings.intern(source.context_ref);
       }
-      if(source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
-         !source.discriminator.empty())
+      if(source.local_presentation == ABI_LOCAL_PRESENTATION_TEXT &&
+         (source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
+          !source.discriminator.empty()))
         node.discriminator = strings.intern(source.discriminator);
       if(stats_ && (source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
-                    source.kind == ABI_TYPE_LOCAL_TYPE))
-        ++stats_->text_local_presentations;
+                    source.kind == ABI_TYPE_LOCAL_TYPE)) {
+        if(source.local_presentation == ABI_LOCAL_PRESENTATION_TEXT)
+          ++stats_->text_local_presentations;
+        else ++stats_->typed_local_presentations;
+      }
       if(!source.substitution.empty()) {
         node.substitution = strings.intern(source.substitution);
         node.substitution_resolved = false;
@@ -569,16 +605,24 @@ public:
       if(!resolved_path && !resolved_source_name && !resolved_namespace_path)
         node.index = source.index;
       node.bound_kind = source.array_bound.kind;
-      if(stats_ && (source.kind == ABI_TYPE_ARRAY ||
-                    source.kind == ABI_TYPE_VECTOR) &&
-         !source.array_bound.value.empty() &&
-         node.bound_kind != ABI_ARRAY_BOUND_EXPRESSION)
-        ++stats_->text_array_bounds;
-      if(source.array_bound.resolved_expression !=
-         ABI_NO_RESOLVED_REFERENCE) {
+      if(node.bound_kind == ABI_ARRAY_BOUND_INTEGER) {
+        require(source.kind == ABI_TYPE_ARRAY ||
+                  source.kind == ABI_TYPE_VECTOR,
+                "integer ABI array bound used by non-array type");
+        require(source.array_bound.resolved_expression !=
+                  ABI_NO_RESOLVED_REFERENCE,
+                "integer ABI array bound has no value");
+        node.index = source.array_bound.resolved_expression;
+        if(stats_) ++stats_->typed_array_bounds;
+      } else if(source.array_bound.resolved_expression !=
+                ABI_NO_RESOLVED_REFERENCE) {
         node.expression = checked_expression(
           source.array_bound.resolved_expression);
       } else if(!source.array_bound.value.empty()) {
+        if(stats_ && (source.kind == ABI_TYPE_ARRAY ||
+                      source.kind == ABI_TYPE_VECTOR) &&
+           node.bound_kind != ABI_ARRAY_BOUND_EXPRESSION)
+          ++stats_->text_array_bounds;
         if(node.bound_kind == ABI_ARRAY_BOUND_EXPRESSION)
           node.expression = resolve_expression_ref(source.array_bound.value);
         else
@@ -1045,164 +1089,6 @@ private:
   std::unordered_map<size_t, vector<size_t> > expression_buckets;
 };
 
-enum SubstitutionKind
-{
-  SUBSTITUTION_PATH,
-  SUBSTITUTION_TYPE,
-  SUBSTITUTION_FUNCTION_TEMPLATE_PREFIX,
-  SUBSTITUTION_EXPLICIT,
-  SUBSTITUTION_RESOLVED,
-  SUBSTITUTION_MEMBER_TEMPLATE_PREFIX,
-  SUBSTITUTION_COMPOSITE,
-  SUBSTITUTION_LOCAL_LAMBDA
-};
-
-struct SubstitutionKey
-{
-  SubstitutionKind kind = SUBSTITUTION_TYPE;
-  size_t id = 0;
-  size_t secondary = 0;
-
-  SubstitutionKey() {}
-  SubstitutionKey(SubstitutionKind kind_value, size_t id_value,
-                  size_t secondary_value = 0)
-    : kind(kind_value), id(id_value), secondary(secondary_value) {}
-
-  bool operator==(const SubstitutionKey & other) const
-  {
-    return kind == other.kind && id == other.id
-      && secondary == other.secondary;
-  }
-};
-
-struct SubstitutionHash
-{
-  size_t operator()(const SubstitutionKey & key) const
-  {
-    return mix_hash(mix_hash(static_cast<size_t>(key.kind), key.id),
-                    key.secondary);
-  }
-};
-
-struct CompositeSubstitutionKey
-{
-  SubstitutionKey base;
-  vector<size_t> tags;
-
-  bool operator==(const CompositeSubstitutionKey & other) const
-  {
-    return base == other.base && tags == other.tags;
-  }
-};
-
-struct CompositeSubstitutionHash
-{
-  size_t operator()(const CompositeSubstitutionKey & key) const
-  {
-    return vector_hash(SubstitutionHash()(key.base), key.tags);
-  }
-};
-
-string base36(size_t value)
-{
-  const char digits[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  string result;
-  do {
-    result.push_back(digits[value % 36]);
-    value /= 36;
-  } while(value != 0);
-  std::reverse(result.begin(), result.end());
-  return result;
-}
-
-class SubstitutionTable
-{
-public:
-  explicit SubstitutionTable(AbiMangleStats * stats = nullptr) : stats_(stats) {}
-
-  bool emit_if_known(const SubstitutionKey & key, string & output) const
-  {
-    if(stats_) ++stats_->substitution_lookups;
-    const auto found = indexes_.find(key);
-    if(found == indexes_.end()) return false;
-    if(stats_) ++stats_->substitution_hits;
-    output += 'S';
-    if(found->second != 0) output += base36(found->second - 1);
-    output += '_';
-    return true;
-  }
-
-  void add(const SubstitutionKey & key)
-  {
-    if(indexes_.find(key) != indexes_.end()) return;
-    indexes_.insert(std::make_pair(key, indexes_.size()));
-    if(stats_) ++stats_->substitution_entries;
-  }
-
-  SubstitutionKey composite_key(const SubstitutionKey & base,
-                                const vector<size_t> & tags)
-  {
-    if(tags.empty()) return base;
-    if(!composites_) composites_.reset(new CompositePool);
-    const CompositeSubstitutionKey key{base, tags};
-    const auto found = composites_->indexes.find(key);
-    if(found != composites_->indexes.end())
-      return SubstitutionKey{SUBSTITUTION_COMPOSITE, found->second};
-    const size_t id = composites_->indexes.size();
-    composites_->indexes.insert(std::make_pair(key, id));
-    return SubstitutionKey{SUBSTITUTION_COMPOSITE, id};
-  }
-
-  void swap(SubstitutionTable & other)
-  {
-    indexes_.swap(other.indexes_);
-    composites_.swap(other.composites_);
-  }
-
-private:
-  struct CompositePool
-  {
-    std::unordered_map<CompositeSubstitutionKey, size_t,
-                       CompositeSubstitutionHash> indexes;
-  };
-
-  AbiMangleStats * stats_;
-  std::unordered_map<SubstitutionKey, size_t, SubstitutionHash> indexes_;
-  std::unique_ptr<CompositePool> composites_;
-};
-
-string source_name(const string & name)
-{
-  return std::to_string(name.size()) + name;
-}
-
-string number(long long value)
-{
-  if(value >= 0) return std::to_string(value);
-  const unsigned long long magnitude = static_cast<unsigned long long>(-(value + 1)) + 1;
-  return "n" + std::to_string(magnitude);
-}
-
-string discriminator(const string & occurrence)
-{
-  if(occurrence.empty() || occurrence == "0") return string();
-  size_t value = 0;
-  for(char ch : occurrence) {
-    if(ch < '0' || ch > '9') {
-      throw std::logic_error("invalid local discriminator '" + occurrence + "'");
-    }
-    const size_t digit = static_cast<size_t>(ch - '0');
-    if(value > (std::numeric_limits<size_t>::max() - digit) / 10) {
-      throw std::logic_error("local discriminator out of range '" + occurrence + "'");
-    }
-    value = value * 10 + digit;
-  }
-  require(value != 0, "invalid local discriminator");
-  --value;
-  if(value < 10) return "_" + std::to_string(value);
-  return "__" + std::to_string(value) + "_";
-}
-
 class Encoder
 {
 public:
@@ -1265,6 +1151,18 @@ private:
   {
     return SubstitutionKey{SUBSTITUTION_LOCAL_LAMBDA,
       context, graph_.strings.intern(discriminator)};
+  }
+
+  SubstitutionKey local_lambda_key(const string & context, size_t ordinal)
+  {
+    return SubstitutionKey{SUBSTITUTION_LOCAL_LAMBDA_ORDINAL,
+      graph_.strings.intern(context), ordinal};
+  }
+
+  SubstitutionKey local_lambda_key(size_t context, size_t ordinal)
+  {
+    return SubstitutionKey{SUBSTITUTION_LOCAL_LAMBDA_ORDINAL,
+      context, ordinal};
   }
 
   FunctionFacts collect_function_facts(const vector<const AbiFunctionRecord *> & records)
@@ -1461,11 +1359,22 @@ private:
       }
       const SubstitutionKey key = type.kind == ABI_TYPE_LAMBDA_CLOSURE
                                     ? (type.context_resolved ?
-                                      local_lambda_key(type.context_identity,
-                                        graph_.strings.get(type.discriminator)) :
-                                      local_lambda_key(
-                                        graph_.strings.get(type.context),
-                                        graph_.strings.get(type.discriminator)))
+                                      (type.local_presentation ==
+                                         ABI_LOCAL_PRESENTATION_TEXT ?
+                                        local_lambda_key(type.context_identity,
+                                          graph_.strings.get(
+                                            type.discriminator)) :
+                                        local_lambda_key(type.context_identity,
+                                          type.discriminator)) :
+                                      (type.local_presentation ==
+                                         ABI_LOCAL_PRESENTATION_TEXT ?
+                                        local_lambda_key(
+                                          graph_.strings.get(type.context),
+                                          graph_.strings.get(
+                                            type.discriminator)) :
+                                        local_lambda_key(
+                                          graph_.strings.get(type.context),
+                                          type.discriminator)))
                                     : type.substitution != NO_ID
                                     ? SubstitutionKey{
                                         type.substitution_resolved ?
@@ -1497,12 +1406,17 @@ private:
           emit_vendor_qualifier(type);
 		} else if(type.kind == ABI_TYPE_VECTOR) {
 		  output_ += "Dv";
-		  if(type.symbol != NO_ID) output_ += graph_.strings.get(type.symbol);
+		  if(type.bound_kind == ABI_ARRAY_BOUND_INTEGER)
+		    output_ += std::to_string(type.index);
+		  else if(type.symbol != NO_ID)
+		    output_ += graph_.strings.get(type.symbol);
 		  output_ += '_';
 		} else {
 		  output_ += 'A';
 		  if(type.bound_kind == ABI_ARRAY_BOUND_EXPRESSION) {
 			encode_expression(type.expression);
+		  } else if(type.bound_kind == ABI_ARRAY_BOUND_INTEGER) {
+			output_ += std::to_string(type.index);
 		  } else if(type.symbol != NO_ID) {
 			output_ += graph_.strings.get(type.symbol);
 		  }
@@ -1547,6 +1461,8 @@ private:
 		output_ += 'A';
 		if(type.bound_kind == ABI_ARRAY_BOUND_EXPRESSION) {
 		  encode_expression(type.expression);
+		} else if(type.bound_kind == ABI_ARRAY_BOUND_INTEGER) {
+		  output_ += std::to_string(type.index);
 		} else if(type.symbol != NO_ID) {
 		  output_ += graph_.strings.get(type.symbol);
 		}
@@ -1555,7 +1471,10 @@ private:
         return;
 	  case ABI_TYPE_VECTOR:
 		output_ += "Dv";
-		if(type.symbol != NO_ID) output_ += graph_.strings.get(type.symbol);
+		if(type.bound_kind == ABI_ARRAY_BOUND_INTEGER)
+		  output_ += std::to_string(type.index);
+		else if(type.symbol != NO_ID)
+		  output_ += graph_.strings.get(type.symbol);
 		output_ += '_';
 		encode_type(type.children.at(0));
 		return;
@@ -2454,7 +2373,11 @@ private:
   void encode_direct_local_function(const AbiFunctionTarget & target,
                                     const FunctionFacts & facts)
   {
-    if(stats_) ++stats_->text_local_presentations;
+    if(stats_) {
+      if(target.local_presentation == ABI_LOCAL_PRESENTATION_TEXT)
+        ++stats_->text_local_presentations;
+      else ++stats_->typed_local_presentations;
+    }
     if(target.resolved_context != ABI_NO_RESOLVED_REFERENCE)
       encode_local_prefix(target.resolved_context);
     else encode_local_prefix(target.context_ref);
@@ -2464,13 +2387,33 @@ private:
       vector<size_t> signature;
       for(const AbiType & type : target.signature_parameter_types) signature.push_back(graph_.resolve_type(type));
       encode_bare_parameters(signature, false);
-      output_ += 'E' + target.discriminator + '_';
-      substitutions_.add(target.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
-        local_lambda_key(target.resolved_context_identity,
-                         target.discriminator) :
-        local_lambda_key(target.context_ref, target.discriminator));
+      output_ += 'E';
+      if(target.local_presentation == ABI_LOCAL_PRESENTATION_TEXT)
+        output_ += target.discriminator;
+      else output_ += lambda_discriminator(target.resolved_path);
+      output_ += '_';
+      if(target.local_presentation == ABI_LOCAL_PRESENTATION_TEXT)
+        substitutions_.add(
+          target.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
+            local_lambda_key(target.resolved_context_identity,
+                             target.discriminator) :
+            local_lambda_key(target.context_ref, target.discriminator));
+      else
+        substitutions_.add(
+          target.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
+            local_lambda_key(target.resolved_context_identity,
+                             target.resolved_path) :
+            local_lambda_key(target.context_ref, target.resolved_path));
     } else {
-      output_ += source_name(target.qualified_name) + discriminator(target.discriminator);
+      if(target.local_presentation ==
+         ABI_LOCAL_PRESENTATION_GENERATED_LAMBDA)
+        append_generated_lambda_source(output_, target.resolved_path);
+      else {
+        output_ += source_name(target.qualified_name);
+        output_ += target.local_presentation == ABI_LOCAL_PRESENTATION_TEXT ?
+          discriminator(target.discriminator) :
+          local_discriminator(target.resolved_path);
+      }
     }
     output_ += abi_terminal_code(
       resolved_terminal(target.terminal_code, target.terminal), true,
@@ -2486,8 +2429,15 @@ private:
 
   void encode_structured_local(const FunctionFacts & facts)
   {
-    if(stats_) ++stats_->text_local_presentations;
     const AbiFunctionRecord & local = facts.local ? *facts.local : *facts.lambda;
+    const bool text_presentation = local.local_presentation ==
+      ABI_LOCAL_PRESENTATION_TEXT;
+    const size_t ordinal = text_presentation ? 0 :
+      local.type.resolved_expression;
+    if(stats_) {
+      if(text_presentation) ++stats_->text_local_presentations;
+      else ++stats_->typed_local_presentations;
+    }
     if(local.resolved_context != ABI_NO_RESOLVED_REFERENCE)
       encode_local_prefix(local.resolved_context);
     else encode_local_prefix(local.context_ref);
@@ -2497,21 +2447,33 @@ private:
       vector<size_t> signature;
       for(const AbiType & type : local.types) signature.push_back(graph_.resolve_type(type));
       encode_bare_parameters(signature, false);
-      output_ += 'E' + local.discriminator + '_';
-      substitutions_.add(local.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
-        local_lambda_key(local.resolved_context_identity,
-                         local.discriminator) :
-        local_lambda_key(local.context_ref, local.discriminator));
+      output_ += 'E';
+      output_ += text_presentation ? local.discriminator :
+        lambda_discriminator(ordinal);
+      output_ += '_';
+      if(text_presentation)
+        substitutions_.add(
+          local.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
+            local_lambda_key(local.resolved_context_identity,
+                             local.discriminator) :
+            local_lambda_key(local.context_ref, local.discriminator));
+      else
+        substitutions_.add(
+          local.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
+            local_lambda_key(local.resolved_context_identity, ordinal) :
+            local_lambda_key(local.context_ref, ordinal));
     } else if(local.name.empty()) {
       output_ += "Ut";
-      const size_t ordinal = static_cast<size_t>(std::stoul(local.discriminator));
-      if(ordinal != 0) output_ += base36(ordinal - 1);
+      const size_t unnamed_ordinal = text_presentation ?
+        static_cast<size_t>(std::stoul(local.discriminator)) : ordinal;
+      if(unnamed_ordinal != 0) output_ += base36(unnamed_ordinal - 1);
       output_ += '_';
     } else {
       output_ += source_name(local.name);
       emit_tags(component_tags(facts, &local));
       if(!local.discriminator_after_terminal)
-        output_ += discriminator(local.discriminator);
+        output_ += text_presentation ? discriminator(local.discriminator) :
+          local_discriminator(ordinal);
     }
     if(facts.terminal) {
       emit_function_terminal(nullptr, facts, true, facts.parameters.size());
@@ -2526,7 +2488,8 @@ private:
     }
     output_ += 'E';
     if(local.discriminator_after_terminal)
-      output_ += discriminator(local.discriminator);
+      output_ += text_presentation ? discriminator(local.discriminator) :
+        local_discriminator(ordinal);
     if(!facts.template_arguments.empty() && !facts.result_types.empty())
       encode_type(facts.result_types.front());
     encode_bare_parameters(facts.parameters, facts.variadic);
@@ -2574,21 +2537,38 @@ private:
     if(stable.kind == ABI_TYPE_LAMBDA_CLOSURE) {
       output_ += "Ul";
       encode_bare_parameters(stable.children, false);
-      output_ += 'E' + graph_.strings.get(stable.discriminator) + '_';
-      substitutions_.add(stable.context_resolved ?
-        local_lambda_key(stable.context_identity,
-          graph_.strings.get(stable.discriminator)) :
-        local_lambda_key(graph_.strings.get(stable.context),
-          graph_.strings.get(stable.discriminator)));
+      output_ += 'E';
+      if(stable.local_presentation == ABI_LOCAL_PRESENTATION_TEXT)
+        output_ += graph_.strings.get(stable.discriminator);
+      else output_ += lambda_discriminator(stable.discriminator);
+      output_ += '_';
+      if(stable.local_presentation == ABI_LOCAL_PRESENTATION_TEXT)
+        substitutions_.add(stable.context_resolved ?
+          local_lambda_key(stable.context_identity,
+            graph_.strings.get(stable.discriminator)) :
+          local_lambda_key(graph_.strings.get(stable.context),
+            graph_.strings.get(stable.discriminator)));
+      else
+        substitutions_.add(stable.context_resolved ?
+          local_lambda_key(stable.context_identity, stable.discriminator) :
+          local_lambda_key(graph_.strings.get(stable.context),
+            stable.discriminator));
+    } else if(stable.local_presentation ==
+              ABI_LOCAL_PRESENTATION_GENERATED_LAMBDA) {
+      append_generated_lambda_source(output_, stable.discriminator);
     } else if(stable.symbol == NO_ID) {
       output_ += "Ut";
-      const size_t ordinal = static_cast<size_t>(
-        std::stoul(graph_.strings.get(stable.discriminator)));
+      const size_t ordinal = stable.local_presentation ==
+        ABI_LOCAL_PRESENTATION_TEXT ? static_cast<size_t>(
+          std::stoul(graph_.strings.get(stable.discriminator))) :
+        stable.discriminator;
       if(ordinal != 0) output_ += base36(ordinal - 1);
       output_ += '_';
     } else {
-      output_ += source_name(graph_.strings.get(stable.symbol))
-                 + discriminator(graph_.strings.get(stable.discriminator));
+      output_ += source_name(graph_.strings.get(stable.symbol));
+      output_ += stable.local_presentation == ABI_LOCAL_PRESENTATION_TEXT ?
+        discriminator(graph_.strings.get(stable.discriminator)) :
+        local_discriminator(stable.discriminator);
     }
     emit_tags(stable.tags);
   }

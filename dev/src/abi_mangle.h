@@ -71,6 +71,7 @@ struct AbiFunctionRecord
   AbiTerminalKind terminal_code = ABI_TERMINAL_NONE;
   AbiStandardSubstitutionKind standard_substitution_code =
     ABI_STANDARD_SUBSTITUTION_TEXT;
+  AbiLocalPresentationKind local_presentation = ABI_LOCAL_PRESENTATION_TEXT;
   std::string context_ref;
   // Local/lambda context records use these as context storage and case
   // identity. Name-component records use the same kind-disjoint slots as a
@@ -81,6 +82,8 @@ struct AbiFunctionRecord
   std::string discriminator;
   std::string terminal;
   std::string literal_suffix;
+  // A typed local-context record stores its local-name ordinal in this
+  // kind-disjoint type payload without enlarging the function record.
   AbiType type;
   std::vector<AbiType> types;
   AbiReferenceList argument_refs;

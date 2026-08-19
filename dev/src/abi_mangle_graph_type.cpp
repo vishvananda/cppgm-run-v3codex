@@ -27,6 +27,7 @@ bool TypeNode::operator==(const TypeNode & other) const
   return kind == other.kind && builtin_type == other.builtin_type
     && standard_substitution == other.standard_substitution
     && vendor_qualifier == other.vendor_qualifier
+    && local_presentation == other.local_presentation
     && symbol == other.symbol && path == other.path
     && expression == other.expression
     && (!context_resolved ? context == other.context : true)
@@ -54,6 +55,7 @@ std::size_t type_node_hash(const TypeNode & type)
   hash = mix_hash(hash, static_cast<std::size_t>(type.builtin_type));
   hash = mix_hash(hash, static_cast<std::size_t>(type.standard_substitution));
   hash = mix_hash(hash, static_cast<std::size_t>(type.vendor_qualifier));
+  hash = mix_hash(hash, static_cast<std::size_t>(type.local_presentation));
   hash = mix_hash(hash, type.symbol);
   hash = mix_hash(hash, type.path);
   hash = mix_hash(hash, type.expression);

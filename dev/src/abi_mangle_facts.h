@@ -71,7 +71,16 @@ enum AbiArrayBoundKind
 {
   ABI_ARRAY_BOUND_VALUE,
   ABI_ARRAY_BOUND_RAW,
-  ABI_ARRAY_BOUND_EXPRESSION
+  ABI_ARRAY_BOUND_EXPRESSION,
+  ABI_ARRAY_BOUND_INTEGER
+};
+
+enum AbiLocalPresentationKind : std::uint8_t
+{
+  ABI_LOCAL_PRESENTATION_TEXT,
+  ABI_LOCAL_PRESENTATION_LAMBDA_DISCRIMINATOR,
+  ABI_LOCAL_PRESENTATION_NAME_ORDINAL,
+  ABI_LOCAL_PRESENTATION_GENERATED_LAMBDA
 };
 
 enum AbiTemplateArgumentKind
@@ -199,6 +208,8 @@ struct AbiArrayBound
 {
   AbiArrayBoundKind kind = ABI_ARRAY_BOUND_VALUE;
   std::string value;
+  // Expression bounds store a graph expression handle. Integer bounds store
+  // the extent itself in the same kind-disjoint slot.
   std::size_t resolved_expression = ABI_NO_RESOLVED_REFERENCE;
 };
 
@@ -220,6 +231,7 @@ struct AbiType
   AbiStandardSubstitutionKind standard_substitution_code =
     ABI_STANDARD_SUBSTITUTION_TEXT;
   AbiVendorQualifierKind vendor_qualifier = ABI_VENDOR_QUALIFIER_TEXT;
+  AbiLocalPresentationKind local_presentation = ABI_LOCAL_PRESENTATION_TEXT;
   std::string name;
   std::string substitution;
   std::string standard_substitution;
@@ -230,6 +242,9 @@ struct AbiType
   // Template-parameter and resolved-type kinds use their documented ordinal.
   // A production named/template type with an empty name stores path ID + 1.
   std::size_t index = 0;
+  // Local presentation kinds store their semantic ordinal here. Other kinds
+  // retain the resolved expression or substitution identity documented by
+  // their kind.
   std::size_t resolved_expression = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context_identity = ABI_NO_RESOLVED_REFERENCE;
@@ -323,6 +338,8 @@ struct AbiFunctionTarget
   AbiFunctionTargetKind kind = ABI_FUNCTION_TARGET_PATH;
   std::string qualified_name;
   std::string context_ref;
+  // Paths use a graph path ID. Typed local/lambda targets use the same
+  // kind-disjoint slot for their semantic ordinal.
   std::size_t resolved_path = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context_identity = ABI_NO_RESOLVED_REFERENCE;
@@ -337,6 +354,7 @@ struct AbiFunctionTarget
   bool has_result_type = false;
   bool variadic = false;
   AbiTerminalKind terminal_code = ABI_TERMINAL_NONE;
+  AbiLocalPresentationKind local_presentation = ABI_LOCAL_PRESENTATION_TEXT;
 
   bool has_resolved_source_name() const;
   void set_resolved_source_name(std::size_t name);

@@ -17,6 +17,7 @@ struct TypeNode
   AbiStandardSubstitutionKind standard_substitution =
     ABI_STANDARD_SUBSTITUTION_TEXT;
   AbiVendorQualifierKind vendor_qualifier = ABI_VENDOR_QUALIFIER_TEXT;
+  AbiLocalPresentationKind local_presentation = ABI_LOCAL_PRESENTATION_TEXT;
   std::size_t symbol = ABI_NO_RESOLVED_REFERENCE;
   std::size_t path = ABI_NO_RESOLVED_REFERENCE;
   std::size_t expression = ABI_NO_RESOLVED_REFERENCE;

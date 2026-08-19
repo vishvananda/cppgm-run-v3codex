@@ -270,11 +270,6 @@ void AppendComponentAbiTagFacts(const Program& program,
 abi_mangle::AbiTerminalKind OperatorTerminal(OperatorKind kind, bool member,
 	std::size_t parameter_count);
 
-std::string LambdaDiscriminator(std::uint32_t ordinal)
-{
-	return ordinal == 0 ? std::string() : std::to_string(ordinal - 1);
-}
-
 struct StandardTemplateSubstitution
 {
 	abi_mangle::AbiStandardSubstitutionKind code;
@@ -981,16 +976,18 @@ public:
 					target.kind = ABI_FUNCTION_TARGET_LOCAL;
 					AssignLocalContext(&target,
 						AddLocalContext(owner.local_context));
-					target.qualified_name = "$_" +
-						std::to_string(owner.lambda_ordinal);
+					target.local_presentation =
+						ABI_LOCAL_PRESENTATION_GENERATED_LAMBDA;
+					target.resolved_path = owner.lambda_ordinal;
 				}
 				else if (owner.local_context != kNoBinding)
 				{
 					target.kind = ABI_FUNCTION_TARGET_LAMBDA;
 					AssignLocalContext(&target,
 						AddLocalContext(owner.local_context));
-					target.discriminator =
-						LambdaDiscriminator(owner.lambda_ordinal);
+					target.local_presentation =
+						ABI_LOCAL_PRESENTATION_LAMBDA_DISCRIMINATOR;
+					target.resolved_path = owner.lambda_ordinal;
 				}
 				else
 				{
@@ -1528,7 +1525,10 @@ public:
 					AddTemplateParameterExpression(source.parameter);
 			}
 			else if (source.bound != 0)
-				modifier.array_bound.value = std::to_string(source.bound);
+			{
+				modifier.array_bound.kind = ABI_ARRAY_BOUND_INTEGER;
+				modifier.array_bound.resolved_expression = source.bound;
+			}
 		}
 		else throw std::logic_error(
 			"function template ABI result node kind is invalid");
@@ -1741,7 +1741,10 @@ public:
 							record->dependent_bound_parameter);
 				}
 				else if (record->bound != 0 || record->zero_length_array)
-					modifier.array_bound.value = std::to_string(record->bound);
+				{
+					modifier.array_bound.kind = ABI_ARRAY_BOUND_INTEGER;
+					modifier.array_bound.resolved_expression = record->bound;
+				}
 			}
 			else modifier.kind = record->kind == TYPE_POINTER ? ABI_TYPE_POINTER :
 				record->kind == TYPE_LVALUE_REFERENCE ? ABI_TYPE_LVALUE_REFERENCE :
@@ -1789,8 +1792,9 @@ public:
 		if (record->kind == TYPE_VECTOR)
 		{
 			result.kind = ABI_TYPE_VECTOR;
-			result.array_bound.value = std::to_string(
-				record->bound / program_.SizeOf(record->child));
+			result.array_bound.kind = ABI_ARRAY_BOUND_INTEGER;
+			result.array_bound.resolved_expression =
+				record->bound / program_.SizeOf(record->child);
 			result.types.push_back(MakeType(record->child, function, recipe));
 			return result;
 		}
@@ -1807,17 +1811,18 @@ public:
 					result.kind = ABI_TYPE_LOCAL_TYPE;
 					AssignLocalContext(&result,
 						AddLocalContext(entity.local_context));
-					result.name = "$_" +
-						std::to_string(entity.lambda_ordinal);
-					result.discriminator = "0";
+					result.local_presentation =
+						ABI_LOCAL_PRESENTATION_GENERATED_LAMBDA;
+					result.resolved_expression = entity.lambda_ordinal;
 				}
 				else if (entity.local_context != kNoBinding)
 				{
 					result.kind = ABI_TYPE_LAMBDA_CLOSURE;
 					AssignLocalContext(&result,
 						AddLocalContext(entity.local_context));
-					result.discriminator =
-						LambdaDiscriminator(entity.lambda_ordinal);
+					result.local_presentation =
+						ABI_LOCAL_PRESENTATION_LAMBDA_DISCRIMINATOR;
+					result.resolved_expression = entity.lambda_ordinal;
 					if (entity.lambda_call_operator == kNoBinding ||
 						entity.lambda_call_operator >= program_.bindings.size())
 						throw std::logic_error(
@@ -1851,8 +1856,9 @@ public:
 					AddLocalContext(entity.local_context));
 				if (!entity.unnamed_class)
 					result.index = ResolveName(entity.identity_name) + 1;
-				result.discriminator =
-					std::to_string(entity.local_name_ordinal);
+				result.local_presentation =
+					ABI_LOCAL_PRESENTATION_NAME_ORDINAL;
+				result.resolved_expression = entity.local_name_ordinal;
 			}
 			else if (entity.enclosing_class != kNoEntity)
 			{
@@ -2361,15 +2367,18 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 		function.kind = ABI_FUNCTION_TARGET_LOCAL;
 		AbiFactBuilder::AssignLocalContext(&function,
 			facts.AddLocalContext(lambda.local_context));
-		function.qualified_name = "$_" +
-			std::to_string(lambda.lambda_ordinal);
+		function.local_presentation =
+			ABI_LOCAL_PRESENTATION_GENERATED_LAMBDA;
+		function.resolved_path = lambda.lambda_ordinal;
 	}
 	else if (lambda.local_context != kNoBinding)
 	{
 		function.kind = ABI_FUNCTION_TARGET_LAMBDA;
 		AbiFactBuilder::AssignLocalContext(&function,
 			facts.AddLocalContext(lambda.local_context));
-		function.discriminator = LambdaDiscriminator(lambda.lambda_ordinal);
+		function.local_presentation =
+			ABI_LOCAL_PRESENTATION_LAMBDA_DISCRIMINATOR;
+		function.resolved_path = lambda.lambda_ordinal;
 	}
 	else
 	{
@@ -2433,7 +2442,9 @@ void AppendLocalFunctionOwner(const pa11::Program& program,
 		facts->AddLocalContext(owner.local_context));
 	if (!owner.unnamed_class)
 		local.function.name = program.names.Get(owner.identity_name);
-	local.function.discriminator = std::to_string(owner.local_name_ordinal);
+	local.function.local_presentation =
+		ABI_LOCAL_PRESENTATION_NAME_ORDINAL;
+	local.function.type.resolved_expression = owner.local_name_ordinal;
 	local.function.discriminator_after_terminal = !owner.unnamed_class;
 	AppendTypedFact(fact_case, &local);
 	AppendComponentAbiTagFacts(program, owner, context, fact_case);
