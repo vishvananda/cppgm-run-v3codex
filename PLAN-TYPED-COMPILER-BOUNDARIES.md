@@ -4,17 +4,18 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; T4 and T5 are complete, the cumulative frozen compile beats the
-immutable audit anchor by 9.4% median user time (success criterion 3 is
-exceeded), the T6a anchor is recorded, and the T6 representation slices
-are next
+complete; T4 and T5 are complete, the anchor comparison exceeds success
+criterion 3 at 9.4%, and T6 operation transport into lowering is complete
+with zero integrated prefix strips; the semantic-dispatch and
+fixed-vocabulary T6 slices are next
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `271c3564` (T5b byte-key block
-collation; measurements and gates are recorded in section 10.2)
+Current accepted execution checkpoint: `5e9f3ce5` (T6 packed operation
+transport into lowering; measurements and gates are recorded in section
+11.3)
 
 ## 1. Objective
 
@@ -1949,17 +1950,28 @@ fixed-vocabulary feature.  Existing textual fixtures should remain exact.
    sizes are 32-byte `SyntaxNode`, 152-byte `DumpNode`, and 112-byte
    `ExpressionInfo`.  Anchor commit `88c2e583`; the frozen object remains exact and the
    full report passes 5,218/5,218.
-2. **T6b:** define one compact `SemanticOperatorKind` mapping at the PA2/PA10
-   boundary.  Pack it into existing flags or a dense syntax sidecar and retain
-   the source `TextId` for exact serialization.
+2. **T6b (complete):** the vocabulary is `SimpleTokenKind` itself.  PA2
+   exports `ClassifySimpleSpelling` over its fixed spelling table, and
+   `MakeDump` classifies each distinct operation `NameId` once (both the
+   serialized `OP_<KIND>:<spelling>` form and bare synthesized spellings)
+   through a dense memo, storing kind + 1 in a one-byte `DumpNode` slot
+   that fits existing padding (`DumpNode` remains 152 bytes).  Dump text is
+   retained unchanged for exact serialization.
 3. **T6c:** change PA11/PA12 overload resolution, builtin conversions,
    member-pointer logic, and constant evaluation to accept the enum.  Convert
    one operator family at a time so reducers identify the earliest semantic
    owner.
-4. **T6d:** carry the enum through `DumpNode` or a compact parallel arena and
-   change PA15/PA16/PA21/PA27/PA34 lowering to switch on it.  Delete
-   `StripOperationPrefix` after its last integrated caller; arbitrary textual
-   adapter operations remain separately classified.
+4. **T6d (complete):** all fourteen lowering consumers in
+   PA15/PA16/PA21/PA27 now switch on the packed kind through
+   `DumpNode::OperationIs` and integer compares; the frozen
+   `StripOperationPrefix` count fell 15,013 -> 0 and the helper is deleted
+   after its last integrated caller.  The frozen object is exact in stats
+   and all 12 timed runs, the full report passes 5,218/5,218, the audit
+   has zero fatal findings, and three A/B/B/A blocks against immutable
+   T5b measured 4.330/4.275 seconds user (paired -0.81% user, -0.83%
+   wall, -0.30% RSS).  During development the bare-spelling synthesized
+   operation form was caught by the frozen exactness gate and folded into
+   the classifier.  The accepted implementation is `5e9f3ce5`.
 5. **T6e:** convert small fixed vocabularies (`default`/`delete`, linkage,
    traits, attributes, builtins, predefined identifiers) to existing syntax
    kinds, byte enums, or preinterned `NameId`s.  Do not force extensible or
@@ -2315,7 +2327,7 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T5a | Remove object-only generated local-name reservation scanning | Frozen anchor: 10,863 names/58,852 bytes scanned, 0 matches, 0 reservations, 88,157 probes/0 hits. The object-only dump-tree walk is removed; serializable and textual-LowIR scans unchanged; EH block naming never consulted reservations. | Three A/B/B/A blocks against the immutable `0b03e001` anchor: 4.345/4.315 s user, 4.820/4.780 s wall; paired -0.69% user, -1.04% wall, +0.13% RSS | Frozen object exact in stats and all 12 timed runs; collision probe byte-identical in object and serializable modes; reference `tN` numbering divergence documented under proposed/pa15 | Full report 5,217/5,217; zero-fatal audit with 27 warnings | Counter `0b03e001`; implementation `9c5c379f`; accepted |
 | T4-T5 anchor milestone | Cumulative typed-boundary work against the original immutable `c349d7f5` audit anchor | The anchor compiler was rebuilt from its commit and compared over five interleaved A/B/B/A blocks (20 runs). Every object, both directions, is byte-exact at 4,415,448 bytes with the audit SHA. | Baseline/candidate medians 4.765/4.290 s user, 5.240/4.770 s wall, 364,464/359,340 KiB RSS; paired candidate -9.37% user, -9.13% wall, -1.50% RSS. Success criterion 3 (at least 5% median user, 5-10% working target) is exceeded at the T5 boundary; criterion 4 holds with RSS improved. | Exact objects in all 20 runs | Five-block protocol per section 17; measured at checkpoint `271c3564` | Milestone recorded; the final completion gate still requires the section 19 self-build and inception lanes |
 | T5b | Sort EH block order by once-rendered byte keys | Examined characters fall 5,694,676 -> 573,751 on 885 frozen EH functions; comparator count unchanged; no interned block names; per-function reused key buffer | Three A/B/B/A blocks against immutable T5a: 4.325/4.315 s user; paired -0.23% user, +0.21% wall, -0.17% RSS; timing-neutral structural work | Frozen object byte-exact in stats and all 12 timed runs, proving order equivalence including decimal boundaries; PA34 run reducer covers 9/10 and 99/100 ordinals plus label collision with reference agreement | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `271c3564`; accepted |
-| T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
+| T6b/T6d | Packed operation kinds flow from classification into lowering | `DumpNode` carries `SimpleTokenKind`+1 in existing padding, classified once per distinct operation name; all fourteen lowering strip/compare sites switch on the kind; `StripOperationPrefix` deleted (15,013 frozen calls -> 0). | Three A/B/B/A blocks against immutable T5b: 4.330/4.275 s user; paired -0.81% user, -0.83% wall, -0.30% RSS | Frozen object exact in stats and all 12 timed runs; the bare-spelling synthesized form was caught by the exactness gate during development | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `5e9f3ce5`; accepted; T6c/T6e remain |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
 | T8 | Integrated spelling handles and dense emitted-spelling remap | Planned | Planned | Exact PA2/4/10 fixtures expected | PA2/4/10 plus full report | Planned |
 | T9 | Secondary specialized text parsers use retained typed facts | Planned | Planned | Per-item decision | Earliest owner per item | Planned |
@@ -2372,7 +2384,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 18 | T4e final lazy-presentation closeout (complete) | Every residual `DumpNode::text` read classified (operators/literals to T6/T7, labels and parameter names as boundaries, dead TLS fallback); entry detection typed; function presentation rendered only at the dump boundary; dead `EmissionName` helper deleted; cumulative T4 timing -3.38% user against the rebuilt `b9e05991` anchor | Commit `9bfd03fc` accepted; ledger recorded |
 | 19 | T5a generated local-name reservations (complete) | Scan/match/probe counters (`0b03e001`); byte-identical object and serialized LowIR on a reservation-colliding probe; object-only scan removed entirely; serializable boundary retained; reference numbering divergence recorded under proposed/pa15 | Counter `0b03e001`; implementation `9c5c379f`; ledger recorded |
 | 20 | T5b block collation (complete) | Render-once byte keys replace per-compare virtual characters (5,694,676 -> 573,751 examined); frozen object exact; PA34 decimal-boundary EH reducer with reference agreement | Commit `271c3564` accepted; ledger recorded |
-| 21 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
+| 21 | T6 operator and fixed-vocabulary enums (transport and lowering complete) | Packed `SimpleTokenKind` transport on `DumpNode` (152 bytes held); zero integrated lowering prefix strips (15,013 -> 0) and helper deleted; semantic-dispatch (T6c) and fixed-vocabulary (T6e) conversions remain | Counter anchor `88c2e583`; transport/lowering `5e9f3ce5`; remaining slices staged |
 | 22 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
 | 23 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
 | 24 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
