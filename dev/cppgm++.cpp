@@ -1370,6 +1370,10 @@ void report_source_compile_stats(
 			 << stats.abi.canonical_arguments
 			 << " abi_canonical_expressions="
 			 << stats.abi.canonical_expressions
+			 << " abi_typed_expression_operations="
+			 << stats.abi.typed_expression_operations
+			 << " abi_text_expression_operations="
+			 << stats.abi.text_expression_operations
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
@@ -2431,6 +2435,10 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.abi.canonical_arguments
 			 << " abi_canonical_expressions="
 			 << stats.abi.canonical_expressions
+			 << " abi_typed_expression_operations="
+			 << stats.abi.typed_expression_operations
+			 << " abi_text_expression_operations="
+			 << stats.abi.text_expression_operations
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components

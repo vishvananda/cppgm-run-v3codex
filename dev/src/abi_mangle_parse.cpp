@@ -602,6 +602,7 @@ AbiDependentExpression parse_expression(const vector<string> & words)
     require(words.size() == 4 + operands, form + " expression has invalid operands");
     expression.kind = form == "unary" ? ABI_EXPRESSION_UNARY : ABI_EXPRESSION_BINARY;
     expression.op = words[3];
+    expression.operation = abi_expression_operation_kind(expression.op);
     append_reference_names(&expression.expression_refs, words, 4);
   } else if(form == "conditional") {
     require(words.size() == 6, "conditional expression needs three operands");
@@ -619,6 +620,7 @@ AbiDependentExpression parse_expression(const vector<string> & words)
     require(words.size() == 6, "cast expression needs operator, type, and operand");
     expression.kind = ABI_EXPRESSION_CAST;
     expression.op = words[3];
+    expression.operation = abi_expression_operation_kind(expression.op);
     expression.type = compact_type(words[4]);
     expression.expression_refs.push_name(words[5]);
   } else if(form == "template-id") {
@@ -647,6 +649,7 @@ AbiDependentExpression parse_expression(const vector<string> & words)
     require(words.size() >= 6, "object member expression has invalid operands");
     expression.kind = ABI_EXPRESSION_OBJECT_MEMBER;
     expression.op = words[3];
+    expression.operation = abi_expression_operation_kind(expression.op);
     expression.expression_refs.push_name(words[4]);
     expression.text = words[5];
     append_reference_names(&expression.argument_refs, words, 6);

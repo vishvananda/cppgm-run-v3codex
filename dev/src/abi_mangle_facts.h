@@ -2,6 +2,7 @@
 
 // Reusable typed vocabulary for Itanium ABI naming facts.
 
+#include "abi_mangle_expression.h"
 #include "abi_mangle_reference.h"
 #include "abi_mangle_terminal.h"
 
@@ -292,10 +293,13 @@ struct AbiDependentExpression
   std::string op;
   std::string entity_ref;
   long long value = 0;
+  // Parameter expressions store their ordinal.  Production member and
+  // template-id expressions store resolved source string ID + 1.
   std::size_t index = 0;
   std::size_t resolved_entity = ABI_NO_RESOLVED_REFERENCE;
   bool close_member_owner = false;
   bool address_of = false;
+  AbiExpressionOperationKind operation = ABI_EXPRESSION_OPERATION_TEXT;
   AbiReferenceList expression_refs;
   AbiReferenceList argument_refs;
   std::vector<AbiType> type_arguments;

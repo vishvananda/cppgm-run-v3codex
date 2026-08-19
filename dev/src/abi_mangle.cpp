@@ -343,6 +343,7 @@ struct ExpressionNode
   bool address_of = false;
   bool entity_resolved = false;
   bool uses_case_facts = false;
+  AbiExpressionOperationKind operation = ABI_EXPRESSION_OPERATION_TEXT;
   vector<size_t> expressions;
   vector<size_t> arguments;
   vector<size_t> types;
@@ -355,6 +356,7 @@ struct ExpressionNode
            && close_member_owner == other.close_member_owner
            && address_of == other.address_of
            && entity_resolved == other.entity_resolved
+           && operation == other.operation
            && expressions == other.expressions
            && arguments == other.arguments && types == other.types;
   }
@@ -368,6 +370,7 @@ size_t expression_hash(const ExpressionNode & expression)
   hash = mix_hash(hash, expression.type);
   hash = mix_hash(hash, expression.value_type);
   hash = mix_hash(hash, expression.entity);
+  hash = mix_hash(hash, static_cast<size_t>(expression.operation));
   hash = mix_hash(hash, expression.index);
   hash = mix_hash(hash, std::hash<long long>()(expression.value));
   hash = mix_hash(hash, expression.close_member_owner
@@ -976,9 +979,23 @@ private:
   {
     ExpressionNode node;
     node.kind = source.kind;
-    const string spelling = !source.text.empty() ? source.text : source.op;
-    if(!spelling.empty()) node.symbol = strings.intern(spelling);
-    if(!source.op.empty()) node.op = strings.intern(source.op);
+    node.operation = source.operation;
+    if(stats_) {
+      if(source.operation != ABI_EXPRESSION_OPERATION_TEXT)
+        ++stats_->typed_expression_operations;
+      else if(!source.op.empty()) ++stats_->text_expression_operations;
+    }
+    const bool resolved_source_name = source.text.empty() && source.index != 0
+      && (source.kind == ABI_EXPRESSION_MEMBER
+          || source.kind == ABI_EXPRESSION_OBJECT_MEMBER
+          || source.kind == ABI_EXPRESSION_TEMPLATE_ID
+          || source.kind == ABI_EXPRESSION_TYPE_TRAIT);
+    if(resolved_source_name) node.symbol = source.index - 1;
+    else if(!source.text.empty()) node.symbol = strings.intern(source.text);
+    if(source.operation == ABI_EXPRESSION_OPERATION_TEXT && !source.op.empty()) {
+      node.op = strings.intern(source.op);
+      if(source.text.empty()) node.symbol = node.op;
+    }
     if(source.kind == ABI_EXPRESSION_CAST || source.kind == ABI_EXPRESSION_SIZEOF_TYPE
        || source.kind == ABI_EXPRESSION_MEMBER) node.type = resolve_type(source.type);
     if(source.kind == ABI_EXPRESSION_INTEGRAL_VALUE) node.value_type = resolve_type(source.value_type);
@@ -989,7 +1006,7 @@ private:
     } else if(!source.entity_ref.empty()) {
       node.entity = strings.intern(source.entity_ref);
     }
-    node.index = source.index;
+    if(!resolved_source_name) node.index = source.index;
     node.value = source.value;
     node.close_member_owner = source.close_member_owner;
     node.address_of = source.address_of;
@@ -1968,6 +1985,14 @@ private:
     return number(value);
   }
 
+  void emit_expression_operation(const ExpressionNode & expression,
+                                 size_t text)
+  {
+    if(expression.operation == ABI_EXPRESSION_OPERATION_TEXT)
+      output_ += graph_.strings.get(text);
+    else output_ += abi_expression_operation_code(expression.operation);
+  }
+
   void encode_expression(size_t id)
   {
     const ExpressionNode & expression = graph_.expression(id);
@@ -1983,7 +2008,7 @@ private:
         output_ += "Li" + graph_.strings.get(expression.symbol) + 'E'; return;
       case ABI_EXPRESSION_UNARY:
       case ABI_EXPRESSION_BINARY:
-        output_ += graph_.strings.get(expression.symbol);
+        emit_expression_operation(expression, expression.symbol);
         for(size_t child : expression.expressions) encode_expression(child);
         return;
       case ABI_EXPRESSION_CONDITIONAL:
@@ -1998,7 +2023,7 @@ private:
         output_ += 'E';
         return;
       case ABI_EXPRESSION_CAST:
-        output_ += graph_.strings.get(expression.symbol);
+        emit_expression_operation(expression, expression.symbol);
         encode_type(expression.type);
         encode_expression(expression.expressions.at(0));
         return;
@@ -2020,7 +2045,7 @@ private:
         output_ += source_name(graph_.strings.get(expression.symbol));
         return;
       case ABI_EXPRESSION_OBJECT_MEMBER:
-        output_ += graph_.strings.get(expression.op);
+        emit_expression_operation(expression, expression.op);
         encode_expression(expression.expressions.at(0));
         output_ += source_name(graph_.strings.get(expression.symbol));
         if(!expression.arguments.empty()) {

@@ -1303,15 +1303,17 @@ public:
 			target.kind = ABI_EXPRESSION_MEMBER;
 			target.type = MakeFunctionTemplateAbiType(source.type, recipe);
 			target.type.suppress_template_prefix_substitution = true;
-			target.text = program_.names.Get(source.name);
+			target.index = ResolveName(source.name) + 1;
 			target.close_member_owner = true;
 		}
 		else if (source.kind ==
 			FUNCTION_TEMPLATE_ABI_EXPRESSION_OBJECT_MEMBER)
 		{
 			target.kind = ABI_EXPRESSION_OBJECT_MEMBER;
-			target.op = source.indirect_member ? "pt" : "dt";
-			target.text = program_.names.Get(source.name);
+			target.operation = source.indirect_member ?
+				ABI_EXPRESSION_OPERATION_INDIRECT_MEMBER :
+				ABI_EXPRESSION_OPERATION_MEMBER;
+			target.index = ResolveName(source.name) + 1;
 			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 		}
@@ -1327,7 +1329,7 @@ public:
 			if (source.operation != OPERATOR_STAR)
 				throw std::logic_error(
 					"unsupported retained dependent unary operation");
-			target.op = "de";
+			target.operation = ABI_EXPRESSION_OPERATION_DEREFERENCE;
 			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 		}
@@ -1337,7 +1339,7 @@ public:
 			if (source.operation != OPERATOR_MINUS)
 				throw std::logic_error(
 					"unsupported retained dependent binary operation");
-			target.op = "mi";
+			target.operation = ABI_EXPRESSION_OPERATION_SUBTRACT;
 			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 			target.expression_refs.push_resolved(
@@ -1353,7 +1355,7 @@ public:
 				throw std::logic_error(
 					"retained dependent template-id is invalid");
 			target.kind = ABI_EXPRESSION_TEMPLATE_ID;
-			target.text = program_.names.Get(source.name);
+			target.index = ResolveName(source.name) + 1;
 			for (std::size_t i = 0; i < source.argument_count; ++i)
 				target.argument_refs.push_resolved(AddFunctionTemplateAbiArgument(
 					program_.function_template_abi_arguments[

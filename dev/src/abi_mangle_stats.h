@@ -1,0 +1,47 @@
+#pragma once
+
+// Numeric counters for standalone and integrated ABI mangling.
+
+#include <cstddef>
+
+namespace abi_mangle {
+
+struct AbiMangleStats
+{
+  std::size_t production_mangles = 0;
+  std::size_t production_fact_bytes = 0;
+  std::size_t production_type_definitions = 0;
+  std::size_t production_argument_definitions = 0;
+  std::size_t production_expression_definitions = 0;
+  std::size_t production_context_definitions = 0;
+  std::size_t production_entity_definitions = 0;
+  std::size_t resolved_type_cache_requests = 0;
+  std::size_t resolved_type_cache_hits = 0;
+  std::size_t source_files = 0;
+  std::size_t source_bytes = 0;
+  std::size_t cases = 0;
+  std::size_t records = 0;
+  std::size_t canonical_types = 0;
+  std::size_t canonical_arguments = 0;
+  std::size_t canonical_expressions = 0;
+  std::size_t typed_expression_operations = 0;
+  std::size_t text_expression_operations = 0;
+  std::size_t canonical_cache_hits = 0;
+  std::size_t definition_cache_hits = 0;
+  std::size_t path_components = 0;
+  std::size_t text_type_path_components = 0;
+  std::size_t text_function_path_components = 0;
+  std::size_t text_object_path_components = 0;
+  std::size_t text_entity_path_components = 0;
+  std::size_t text_substitution_path_components = 0;
+  std::size_t substitution_lookups = 0;
+  std::size_t substitution_hits = 0;
+  std::size_t substitution_entries = 0;
+  std::size_t isolated_entity_encodings = 0;
+  std::size_t output_bytes = 0;
+  std::size_t peak_input_bytes = 0;
+  unsigned long long parse_nanoseconds = 0;
+  unsigned long long encode_nanoseconds = 0;
+};
+
+}  // namespace abi_mangle

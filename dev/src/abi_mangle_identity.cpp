@@ -5,6 +5,27 @@
 
 namespace abi_mangle {
 
+AbiExpressionOperationKind abi_expression_operation_kind(
+  const std::string & word)
+{
+  if(word == "de") return ABI_EXPRESSION_OPERATION_DEREFERENCE;
+  if(word == "mi") return ABI_EXPRESSION_OPERATION_SUBTRACT;
+  if(word == "dt") return ABI_EXPRESSION_OPERATION_MEMBER;
+  if(word == "pt") return ABI_EXPRESSION_OPERATION_INDIRECT_MEMBER;
+  return ABI_EXPRESSION_OPERATION_TEXT;
+}
+
+const char * abi_expression_operation_code(AbiExpressionOperationKind kind)
+{
+  static const char * codes[] = {nullptr, "de", "mi", "dt", "pt"};
+  static_assert(sizeof(codes) / sizeof(codes[0]) ==
+                  ABI_EXPRESSION_OPERATION_INDIRECT_MEMBER + 1,
+                "ABI expression operation table is incomplete");
+  if(kind > ABI_EXPRESSION_OPERATION_INDIRECT_MEMBER || codes[kind] == nullptr)
+    throw std::logic_error("ABI expression operation has no fixed encoding");
+  return codes[kind];
+}
+
 AbiTerminalKind abi_terminal_kind(const std::string & word)
 {
   static const struct Entry

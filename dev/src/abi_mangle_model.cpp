@@ -116,6 +116,8 @@ namespace {
 
 static_assert(sizeof(AbiTemplateArgument) == 1976,
               "typed ABI terminal must not widen template arguments");
+static_assert(sizeof(AbiDependentExpression) == 1056,
+              "typed ABI operation must not widen dependent expressions");
 static_assert(sizeof(AbiFunctionTarget) == 1104,
               "typed ABI terminal must not widen function targets");
 static_assert(sizeof(AbiFunctionRecord) == 840,
