@@ -4,15 +4,16 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; the T4d generated-identity producer census is complete and
-constructor lifecycle base entries are the next acceptance slice
+complete; the T4d generated-identity producer census and the T4d1a
+constructor lifecycle base entries are complete, and destructor lifecycle
+base entries (T4d1b) are the next acceptance slice
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `ca85deb3` (T4d generated-identity
-producer census; measurements and gates are recorded in section 9.10)
+Current accepted execution checkpoint: `7df2fe9d` (T4d1a typed constructor
+base-entry identity; measurements and gates are recorded in section 9.10)
 
 ## 1. Objective
 
@@ -1513,17 +1514,20 @@ This keeps object-only compilation from paying for semantic-dump presentation.
 
 1. **T4d0 (complete):** numeric producer-family anchor.  Preserve aggregate
    T4 counters and exact output.
-2. **T4d1a:** constructor base entries.  Add typed lifecycle role/source to
-   symbol identity, stop interning the numeric binding-derived terminal for
-   semantic identity, use private/unindexed declaration placement, and derive
-   lifecycle presentation from the source terminal plus role at the existing
-   lowering suffix site.  No tracked consumer pins the current
-   binding-numbered spelling, so the slice must not contort to reproduce it;
-   the serialized-presentation change is recorded per section 15.2.
+2. **T4d1a (complete):** constructor base entries.  Add typed lifecycle
+   role/source to symbol identity, stop interning the numeric binding-derived
+   terminal for semantic identity, use private/unindexed declaration
+   placement, and derive lifecycle presentation from the source terminal plus
+   role at the existing lowering suffix site.  No tracked consumer pins the
+   current binding-numbered spelling, so the slice must not contort to
+   reproduce it; the serialized-presentation change is recorded per section
+   15.2.  Results are recorded below.
 3. **T4d1b:** destructor base entries using the same lifecycle discriminator.
    Keep this separate because destructor spelling and complete/base aliasing
    differ from constructors, and because the current semantic terminal already
-   embeds the `__base_entry` suffix that lowering appends again.
+   embeds the `__base_entry` suffix that lowering appends again.  The
+   destructor variant of the T4d1a predefined-name divergence (`__func__` in a
+   base-entry body renders `~T__base_entry`) is fixed and reduced here.
 4. **T4d2a:** anonymous enums, then local types.  Preserve declaration-order
    presentation while making source node/owner/ordinal the identity.
 5. **T4d2b:** anonymous union type and storage facts.  Share the source-range
@@ -1571,6 +1575,58 @@ with SHA-256
 The selected PA12/19/20/22/23/25/34/38 report passes 1,917/1,917, the full
 report passes 5,213/5,213, and the PA39 file audit has zero fatal findings
 with 27 warnings.  It is measurement-only, so it makes no timing claim.
+
+#### T4d1a results
+
+T4d1a removes the interned `__cppgm_constructor_base_<binding>` semantic
+terminal.  A constructor base entry now carries the source constructor's
+name through the unindexed declaration path, so it never enters ordinary
+name lookup or the scope name table, and `SymbolIdentity` carries a
+lifecycle role in its existing padding (compile-time asserted at 32 bytes)
+so complete and base symbols sharing one source path and signature remain
+distinct.  Presentation derives from the typed flag at the two renderer
+boundaries: the lowering suffix site now emits
+`Owner__Source[__ovN]__base_entry`, which is exactly the checked-in
+reference convention, and the semantic dump/action renderer emits
+`Owner::Source__base_entry` from the source terminal plus role.
+
+The slice also owns a behavior correction: `__func__` and
+`__PRETTY_FUNCTION__` inside a constructor body previously rendered the
+generated terminal in the base-subobject variant
+(`Base::__cppgm_constructor_base_9`) while the complete variant rendered
+`Base::Base`.  The PA34 predefined-name builtins now route through the
+plain source-display accessor, so both variants render identically.  The
+pinned reference agrees; a new PA34 run reducer asserts variant equality
+for both builtins, fails (exit 1) on the immutable `ca85deb3` compiler, and
+passes on the candidate.
+
+On the frozen compile, relative to `ca85deb3`:
+
+- constructor base-entry renders: 508 -> 0 (508 components and 15,586
+  bytes -> 0); total generated-identity renders: 770 -> 262;
+- interner calls: 1,296,012 -> 1,295,504; misses: 48,334 -> 47,716;
+  hashed bytes: 13,597,175 -> 13,577,326;
+- shared string storage: 8,501,671 -> 8,475,673 bytes (-25,998); and
+- `BindingRecord`, `EntityRecord`, `FunctionInfo`, and `DumpNode` remain
+  136/208/208/152 bytes.
+
+The frozen object is exact at 4,415,448 bytes with the baseline SHA in the
+stats run and all 12 timed runs.  The semantic-dump and serialized-LowIR
+presentation changes are the section 15.2 record for this slice: no tracked
+fixture pins the old spellings, and the new LowIR form converges with the
+reference `.ref` convention.  Three interleaved explicit-`-O0` A/B/B/A
+blocks against the immutable `ca85deb3` compiler measured baseline/candidate
+medians of 4.335/4.290 seconds user, 4.800/4.780 seconds wall, and
+360,948/360,008 KiB RSS; paired candidate -0.58% user, -0.31% wall, and
+-0.28% RSS, accepted as timing-neutral structural removal with the
+interleaved design compensating for background host load.
+
+PA16 passes 243 assignment and 52 course tests; PA34 passes 45 preproc, 281
+compile, 42 run (including the new reducer), and 3 course tests; PA12
+passes 166 assignment and 14 course tests; the through-PA16 report passes
+1,459/1,459; the full report passes 5,214/5,214; and the PA39 file audit
+has zero fatal findings with 27 warnings.  The accepted implementation is
+`7df2fe9d`.
 
 ## 10. Phase 4: finish object-only LowIR presentation identity
 
@@ -2036,7 +2092,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T4c2r | Isolate exact lambda presentation behind one owner | Pure responsibility split; no representation or output change | Not timed independently | No fixture changes | PA25 141/141; through PA25 3,642/3,642; selected report 1,269/1,269; full report 5,212/5,212; zero-fatal audit with 27 warnings | `f5e9277b`; accepted base only |
 | T4c2 | Carry canonical lambda context/signature/template/parent/ordinal identity, retain token ranges only as typed presentation facts, and render only at boundaries | Rendered lambda entity identity is gone. Interner misses fall by 92, hashed spelling by 4,701 bytes, shared string storage by 7,919 bytes, retained scope-emission spelling by 3,009 bytes, and typed storage by 16,914 bytes. Common records remain 136/208/208 bytes. | Three A/B/B/A blocks: baseline/candidate medians 4.415/4.330 s user, 4.905/4.825 s wall, and 359,482/359,870 KiB RSS; favorable by 1.93%/1.63% with RSS +0.11% in the screened window | Exact frozen object and SHA; active PA25 overload fixture agrees with the reference; specialization/local-static LowIR-presentation disagreement is documented under `proposed/pa25/` | PA25 142/142; through PA25 3,643/3,643; selected report 1,501/1,501; full report 5,213/5,213; zero-fatal audit with 27 warnings | `62c26eb6`; accepted |
 | T4d0 | Classify every generated semantic identity producer by family | Frozen total is 770 renders, 784 components, and 21,168 bytes. Constructor base entries contribute 508 renders/15,586 bytes; anonymous enums contribute 147/2,685; the remaining 12 families are individually recorded in section 9.10. | Stats-only measurement anchor; no timing claim | Exact frozen 4,415,448-byte object and baseline SHA; no fixture changes | Selected PA12/19/20/22/23/25/34/38 report 1,917/1,917; full report 5,213/5,213; zero-fatal audit with 27 warnings | `ca85deb3`; accepted measurement anchor |
-| T4d1-e | Type generated private identities and close lazy presentation | Planned per-family from the T4d0 census; constructor lifecycle base entries are first | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4d0 |
+| T4d1a | Carry constructor base-entry identity as source name plus typed lifecycle role | Constructor base-entry renders fall 508 -> 0 and total generated renders 770 -> 262. The base entry uses the unindexed declaration path with the source name; `SymbolIdentity` gains a lifecycle role in existing padding (asserted 32 bytes). Interner calls fall by 508, misses by 618, hashed bytes by 19,849, and shared string storage by 25,998 bytes; common records remain 136/208/208/152. | Three A/B/B/A blocks against immutable `ca85deb3`: baseline/candidate medians 4.335/4.290 s user, 4.800/4.780 s wall, 360,948/360,008 KiB RSS; paired -0.58% user, -0.31% wall, -0.28% RSS; timing-neutral structural removal | Frozen object exact in stats and all 12 timed runs. Semantic dump and LowIR base-entry presentation now derive from source terminal plus role (`Owner::Source__base_entry`; `@Owner__Source__base_entry` matches the reference convention); no tracked fixture pins the old spellings. `__func__`/`__PRETTY_FUNCTION__` in base-entry bodies now match the complete variant; the reference agrees. | PA16 243+52; PA34 45/281/42/3 with the new predefined-name variant reducer failing on the pre-change compiler; PA12 166+14; through PA16 1,459/1,459; full report 5,214/5,214; zero-fatal audit with 27 warnings | `7df2fe9d`; accepted |
+| T4d1b-e | Type remaining generated private identities and close lazy presentation | Planned per-family from the T4d0 census; destructor lifecycle base entries are next | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4d1a |
 | T5a | Remove or type object-only generated local-name reservations | Planned from the residual LowIR presentation audit | Planned | Exact serializable LowIR and frozen object expected; any EH-layout dependency must be explicit | PA15/37 plus full report | Planned after T4e |
 | T5b | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned after T5a |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
@@ -2090,7 +2147,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 12 | T4c2 lambda renderer split (complete) | Exact renderer responsibility, no representation or output change, owner/through/selected/full reports, and audit are recorded in section 9.9 | `f5e9277b`; accepted base only |
 | 13 | T4c2 typed lambda identity (complete) | Canonical context/signature/template/recursive-parent/ordinal identity; typed token-range presentation facts; zero retained rendered identity; active overload and proposed specialization reducers; unchanged common records; exact frozen object; reports, audit, and screened timing recorded in section 9.9 | `62c26eb6`; ledger recorded |
 | 14 | T4d0 generated-identity producer census (complete) | Fourteen semantic producer families, exact frozen object, selected/full reports, and audit recorded in section 9.10 | `ca85deb3`; accepted measurement anchor |
-| 15 | T4d1 lifecycle base entries | Per-family consumer census; typed source/role symbol identity; source-terminal-plus-role lifecycle presentation with the serialized-LowIR spelling change recorded per section 15.2; exact frozen object; no ordinary lookup or common-record growth | Constructor and destructor commits remain separate |
+| 15 | T4d1 lifecycle base entries (constructor half complete) | Per-family consumer census; typed source/role symbol identity; source-terminal-plus-role lifecycle presentation with the serialized-LowIR spelling change recorded per section 15.2; exact frozen object; no ordinary lookup or common-record growth | Constructor commit `7df2fe9d` accepted; destructor commit remains separate |
 | 16 | T4d2 anonymous/local identity | Anonymous enum, local type, anonymous-union type/storage facts keyed by owner/source/ordinal; exact dumps and owner reducers | One commit per independently observable family |
 | 17 | T4d3/4 template shapes and hidden storage | Typed singleton/cache/source keys for each shape; typed range-for and structured-binding roles; zero-occurrence families recorded without timing claims | One owner-family commit at a time |
 | 18 | T4e final lazy-presentation closeout | Every residual read classified as dump/diagnostic/source identity/ABI/LowIR/object; initializer-list and local-static final names explicitly retained; zero unclassified eager renders | One presentation closeout commit |
