@@ -409,6 +409,7 @@ class AbiFactBuilder
 
 	const pa11::Program& program_;
 	abi_mangle::AbiFactCase& facts_;
+	abi_mangle::AbiMangleContext* context_;
 	std::size_t next_argument_;
 	std::vector<TypeArgumentCacheEntry> type_argument_cache_;
 	std::vector<std::uint32_t> type_argument_cache_slots_;
@@ -490,8 +491,9 @@ class AbiFactBuilder
 
 public:
 	AbiFactBuilder(const pa11::Program& program,
-		abi_mangle::AbiFactCase& facts)
-		: program_(program), facts_(facts), next_argument_(0),
+		abi_mangle::AbiFactCase& facts,
+		abi_mangle::AbiMangleContext* context = 0)
+		: program_(program), facts_(facts), context_(context), next_argument_(0),
 		  type_argument_cache_slots_(32, 0) {}
 
 	std::string AddTypeArgument(pa11::TypeId type,
@@ -1150,6 +1152,31 @@ public:
 		return recipe ? MakeType(type, &function, recipe) : MakeType(type);
 	}
 
+	abi_mangle::AbiType MakeType(pa11::TypeId type,
+		const pa11::BindingRecord* function,
+		const pa11::FunctionTemplateAbiRecipe* recipe)
+	{
+		const TypeArgumentCacheKey key =
+			TypeArgumentKey(type, function, recipe);
+		std::size_t cached = 0;
+		if (context_ && context_->find_resolved_type(
+			key.type, key.function, key.recipe, &cached))
+		{
+			abi_mangle::AbiType direct;
+			direct.kind = abi_mangle::ABI_TYPE_RESOLVED;
+			direct.index = cached;
+			return direct;
+		}
+		abi_mangle::AbiType result =
+			MakeTypeCore(type, function, recipe);
+		if (!CanResolveType(result)) return result;
+		abi_mangle::AbiType direct;
+		direct.kind = abi_mangle::ABI_TYPE_RESOLVED;
+		direct.index = context_->cache_resolved_type(
+			key.type, key.function, key.recipe, result);
+		return direct;
+	}
+
 	pa11::FunctionTemplateAbiTypeId FunctionTemplateParameterAbiType(
 		const pa11::FunctionTemplateAbiRecipe& recipe,
 		std::size_t parameter) const
@@ -1572,7 +1599,26 @@ public:
 		return result;
 	}
 
-	abi_mangle::AbiType MakeType(pa11::TypeId type,
+	bool CanResolveType(const abi_mangle::AbiType& type) const
+	{
+		using namespace abi_mangle;
+		if (!context_) return false;
+		if (type.kind == ABI_TYPE_RESOLVED) return true;
+		if (type.kind == ABI_TYPE_NAME_OR_REFERENCE ||
+			!type.expression_ref.empty() || !type.context_ref.empty() ||
+			!type.argument_refs.empty()) return false;
+		if (type.array_bound.kind == ABI_ARRAY_BOUND_EXPRESSION &&
+			!type.array_bound.value.empty()) return false;
+		for (std::size_t i = 0; i < type.modifiers.size(); ++i)
+			if (type.modifiers[i].array_bound.kind ==
+					ABI_ARRAY_BOUND_EXPRESSION &&
+				!type.modifiers[i].array_bound.value.empty()) return false;
+		for (std::size_t i = 0; i < type.types.size(); ++i)
+			if (!CanResolveType(type.types[i])) return false;
+		return true;
+	}
+
+	abi_mangle::AbiType MakeTypeCore(pa11::TypeId type,
 		const pa11::BindingRecord* function,
 		const pa11::FunctionTemplateAbiRecipe* recipe)
 	{
@@ -1944,7 +1990,7 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type,
 	using namespace abi_mangle;
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0]);
+	AbiFactBuilder facts(program, file.cases[0], context);
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_TYPE;
@@ -2208,7 +2254,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 		throw std::logic_error("invalid lambda call-operator ABI identity");
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0]);
+	AbiFactBuilder facts(program, file.cases[0], context);
 	const FunctionTemplateAbiRecipe* recipe = 0;
 	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
 	{
@@ -2329,7 +2375,7 @@ std::string MangleFunction(const pa11::Program& program,
 			program, binding, *lambda, stats, context);
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0]);
+	AbiFactBuilder facts(program, file.cases[0], context);
 	const FunctionTemplateAbiRecipe* recipe = 0;
 	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
 	{
@@ -2553,7 +2599,7 @@ std::string MangleVariable(const pa11::Program& program,
 		return program.names.Get(binding.name);
 	AbiFactFile file;
 	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0]);
+	AbiFactBuilder facts(program, file.cases[0], context);
 	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
 		ClassOwnerHasAbiTags(program, binding.member_owner);
 	const bool nested_specialized_class_owner =

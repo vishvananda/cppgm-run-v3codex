@@ -402,7 +402,13 @@ public:
 
   size_t resolve_type(const AbiType & source)
   {
-    size_t result = resolve_type_core(source);
+    size_t result = NO_ID;
+    if(source.kind == ABI_TYPE_RESOLVED) {
+      require(source.index < types.size(),
+              "invalid resolved ABI type id");
+      result = source.index;
+    }
+    else result = resolve_type_core(source);
     for(auto modifier = source.modifiers.rbegin();
         modifier != source.modifiers.rend(); ++modifier) {
       TypeNode node;
@@ -2246,11 +2252,49 @@ private:
 
 struct AbiMangleContext::Impl
 {
+  struct ResolvedTypeKey
+  {
+    size_t source;
+    size_t function;
+    size_t recipe;
+
+    bool operator==(const ResolvedTypeKey & other) const
+    {
+      return source == other.source && function == other.function
+        && recipe == other.recipe;
+    }
+  };
+
+  struct ResolvedTypeEntry
+  {
+    ResolvedTypeKey key;
+    size_t type;
+  };
+
   explicit Impl(AbiMangleStats * stats_value)
-    : stats(stats_value), graph(stats_value) {}
+    : stats(stats_value), graph(stats_value), resolved_type_slots(32, 0) {}
+
+  static size_t resolved_type_hash(const ResolvedTypeKey & key)
+  {
+    return mix_hash(mix_hash(key.source, key.function), key.recipe);
+  }
+
+  void rehash_resolved_types(size_t capacity)
+  {
+    vector<std::uint32_t> replacement(capacity, 0);
+    const size_t mask = capacity - 1;
+    for(size_t entry = 0; entry < resolved_types.size(); ++entry) {
+      size_t slot = resolved_type_hash(resolved_types[entry].key) & mask;
+      while(replacement[slot] != 0) slot = (slot + 1) & mask;
+      replacement[slot] = static_cast<std::uint32_t>(entry + 1);
+    }
+    resolved_type_slots.swap(replacement);
+  }
 
   AbiMangleStats * stats;
   FactGraph graph;
+  vector<ResolvedTypeEntry> resolved_types;
+  vector<std::uint32_t> resolved_type_slots;
 };
 
 AbiMangleContext::AbiMangleContext(AbiMangleStats * stats)
@@ -2277,6 +2321,57 @@ string AbiMangleContext::mangle_case(const AbiFactCase & fact_case)
     impl_->graph.end_case();
     throw;
   }
+}
+
+size_t AbiMangleContext::resolve_type(const AbiType & type)
+{
+  return impl_->graph.resolve_type(type);
+}
+
+bool AbiMangleContext::find_resolved_type(size_t source, size_t function,
+                                          size_t recipe, size_t * result) const
+{
+  if(impl_->stats) ++impl_->stats->resolved_type_cache_requests;
+  const Impl::ResolvedTypeKey key{source, function, recipe};
+  const size_t mask = impl_->resolved_type_slots.size() - 1;
+  size_t slot = Impl::resolved_type_hash(key) & mask;
+  while(impl_->resolved_type_slots[slot] != 0) {
+    const Impl::ResolvedTypeEntry & entry = impl_->resolved_types[
+      impl_->resolved_type_slots[slot] - 1];
+    if(entry.key == key) {
+      if(impl_->stats) ++impl_->stats->resolved_type_cache_hits;
+      *result = entry.type;
+      return true;
+    }
+    slot = (slot + 1) & mask;
+  }
+  return false;
+}
+
+size_t AbiMangleContext::cache_resolved_type(size_t source, size_t function,
+                                             size_t recipe,
+                                             const AbiType & type)
+{
+  const Impl::ResolvedTypeKey key{source, function, recipe};
+  size_t found = 0;
+  if(find_resolved_type(source, function, recipe, &found)) return found;
+  if((impl_->resolved_types.size() + 1) * 10 >
+     impl_->resolved_type_slots.size() * 7)
+    impl_->rehash_resolved_types(impl_->resolved_type_slots.size() * 2);
+  if(impl_->resolved_types.size() >=
+     std::numeric_limits<std::uint32_t>::max())
+    throw std::logic_error("too many resolved ABI types");
+  const size_t id = impl_->graph.resolve_type(type);
+  const size_t mask = impl_->resolved_type_slots.size() - 1;
+  size_t slot = Impl::resolved_type_hash(key) & mask;
+  while(impl_->resolved_type_slots[slot] != 0) slot = (slot + 1) & mask;
+  Impl::ResolvedTypeEntry entry;
+  entry.key = key;
+  entry.type = id;
+  impl_->resolved_types.push_back(entry);
+  impl_->resolved_type_slots[slot] =
+    static_cast<std::uint32_t>(impl_->resolved_types.size());
+  return id;
 }
 
 string mangle_fact_file(const AbiFactFile & file)

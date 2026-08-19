@@ -1319,6 +1319,10 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << stats.abi.production_mangles
 			 << " abi_fact_records=" << stats.abi.records
 			 << " abi_fact_bytes=" << stats.abi.production_fact_bytes
+			 << " abi_type_cache_requests="
+			 << stats.abi.resolved_type_cache_requests
+			 << " abi_type_cache_hits="
+			 << stats.abi.resolved_type_cache_hits
 			 << " abi_canonical_types=" << stats.abi.canonical_types
 			 << " abi_canonical_arguments="
 			 << stats.abi.canonical_arguments
@@ -2368,6 +2372,10 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.abi.production_mangles
 			 << " abi_fact_records=" << stats.abi.records
 			 << " abi_fact_bytes=" << stats.abi.production_fact_bytes
+			 << " abi_type_cache_requests="
+			 << stats.abi.resolved_type_cache_requests
+			 << " abi_type_cache_hits="
+			 << stats.abi.resolved_type_cache_hits
 			 << " abi_canonical_types=" << stats.abi.canonical_types
 			 << " abi_canonical_arguments="
 			 << stats.abi.canonical_arguments

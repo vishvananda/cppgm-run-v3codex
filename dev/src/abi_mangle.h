@@ -117,6 +117,8 @@ struct AbiMangleStats
 {
 	std::size_t production_mangles = 0;
 	std::size_t production_fact_bytes = 0;
+	std::size_t resolved_type_cache_requests = 0;
+	std::size_t resolved_type_cache_hits = 0;
   std::size_t source_files = 0;
   std::size_t source_bytes = 0;
   std::size_t cases = 0;
@@ -144,6 +146,11 @@ public:
   ~AbiMangleContext();
 
   std::string mangle_case(const AbiFactCase & fact_case);
+  std::size_t resolve_type(const AbiType & type);
+  bool find_resolved_type(std::size_t source, std::size_t function,
+                          std::size_t recipe, std::size_t * result) const;
+  std::size_t cache_resolved_type(std::size_t source, std::size_t function,
+                                  std::size_t recipe, const AbiType & type);
 
 private:
   AbiMangleContext(const AbiMangleContext &);

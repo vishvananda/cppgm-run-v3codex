@@ -901,6 +901,8 @@ string unmodified_type_text(const AbiType & type)
       for(const string & qualifier : type.namespace_qualifiers) result += " " + qualifier;
       return result;
     }
+    case ABI_TYPE_RESOLVED:
+      throw std::logic_error("resolved ABI type is not a fact-file form");
   }
   throw std::logic_error("unknown ABI type form in canonical serializer");
 }
