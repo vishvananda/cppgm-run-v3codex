@@ -2552,9 +2552,13 @@ private:
 
   void encode_local_prefix(const AbiLocalContext & context)
   {
-    if(context.kind == ABI_CONTEXT_RAW) {
+    if(context.kind == ABI_CONTEXT_MAIN) {
+      output_ += "Z4mainE";
+    } else if(context.kind == ABI_CONTEXT_RAW) {
       output_ += context.fragment;
     } else {
+      require(context.kind == ABI_CONTEXT_FUNCTION,
+              "invalid typed ABI local context kind");
       FunctionFacts facts;
       facts.qualifiers = context.qualifiers;
       if(context.target_signature_is_parameter_list) {

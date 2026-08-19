@@ -1109,6 +1109,9 @@ string definition_text(const AbiDefinitionRecord & definition)
     return result;
   }
   if(definition.kind == ABI_DEFINITION_CONTEXT) {
+    if(definition.context.kind == ABI_CONTEXT_MAIN) {
+      return "let-context " + definition.id + " raw Z4mainE";
+    }
     if(definition.context.kind == ABI_CONTEXT_RAW) {
       return "let-context " + definition.id + " raw " + definition.context.fragment;
     }

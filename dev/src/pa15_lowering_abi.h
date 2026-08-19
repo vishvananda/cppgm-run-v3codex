@@ -35,7 +35,6 @@ std::string MangleFunction(const pa11::Program& program,
 	abi_mangle::AbiMangleContext* context = 0);
 std::string MangleVariable(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
-	const std::string& qualified_name_override = std::string(),
 	abi_mangle::AbiMangleStats* stats = 0,
 	abi_mangle::AbiMangleContext* context = 0);
 std::string MangleThreadLocalWrapper(const pa11::Program& program,

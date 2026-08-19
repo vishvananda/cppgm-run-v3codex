@@ -1412,21 +1412,7 @@ void report_source_compile_stats(
 			 << stats.abi.typed_literal_suffixes
 			 << " abi_text_literal_suffixes="
 			 << stats.abi.text_literal_suffixes
-			 << " abi_text_entity_function_fallbacks="
-			 << stats.abi.text_entity_function_fallbacks
-			 << " abi_text_entity_variable_fallbacks="
-			 << stats.abi.text_entity_variable_fallbacks
-			 << " abi_text_local_context_fallbacks="
-			 << stats.abi.text_local_context_fallbacks
-			 << " abi_text_variable_explicit_overrides="
-			 << stats.abi.text_variable_explicit_overrides
-			 << " abi_text_variable_qualified_fallbacks="
-			 << stats.abi.text_variable_qualified_fallbacks
-			 << " abi_text_variable_node_fallbacks="
-			 << stats.abi.text_variable_node_fallbacks
-			 << " abi_text_tls_wrapper_fallbacks="
-			 << stats.abi.text_tls_wrapper_fallbacks
-			 << " abi_raw_main_contexts=" << stats.abi.raw_main_contexts
+			 << " abi_typed_main_contexts=" << stats.abi.typed_main_contexts
 			 << " abi_external_assembly_names="
 			 << stats.abi.external_assembly_names
 			 << " abi_external_c_function_names="
@@ -2540,21 +2526,7 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.abi.typed_literal_suffixes
 			 << " abi_text_literal_suffixes="
 			 << stats.abi.text_literal_suffixes
-			 << " abi_text_entity_function_fallbacks="
-			 << stats.abi.text_entity_function_fallbacks
-			 << " abi_text_entity_variable_fallbacks="
-			 << stats.abi.text_entity_variable_fallbacks
-			 << " abi_text_local_context_fallbacks="
-			 << stats.abi.text_local_context_fallbacks
-			 << " abi_text_variable_explicit_overrides="
-			 << stats.abi.text_variable_explicit_overrides
-			 << " abi_text_variable_qualified_fallbacks="
-			 << stats.abi.text_variable_qualified_fallbacks
-			 << " abi_text_variable_node_fallbacks="
-			 << stats.abi.text_variable_node_fallbacks
-			 << " abi_text_tls_wrapper_fallbacks="
-			 << stats.abi.text_tls_wrapper_fallbacks
-			 << " abi_raw_main_contexts=" << stats.abi.raw_main_contexts
+			 << " abi_typed_main_contexts=" << stats.abi.typed_main_contexts
 			 << " abi_external_assembly_names="
 			 << stats.abi.external_assembly_names
 			 << " abi_external_c_function_names="

@@ -112,21 +112,7 @@ int run_abimangle(int argc, char ** argv)
          << " text_local_source_names=" << stats.text_local_source_names
          << " typed_literal_suffixes=" << stats.typed_literal_suffixes
          << " text_literal_suffixes=" << stats.text_literal_suffixes
-         << " text_entity_function_fallbacks="
-         << stats.text_entity_function_fallbacks
-         << " text_entity_variable_fallbacks="
-         << stats.text_entity_variable_fallbacks
-         << " text_local_context_fallbacks="
-         << stats.text_local_context_fallbacks
-         << " text_variable_explicit_overrides="
-         << stats.text_variable_explicit_overrides
-         << " text_variable_qualified_fallbacks="
-         << stats.text_variable_qualified_fallbacks
-         << " text_variable_node_fallbacks="
-         << stats.text_variable_node_fallbacks
-         << " text_tls_wrapper_fallbacks="
-         << stats.text_tls_wrapper_fallbacks
-         << " raw_main_contexts=" << stats.raw_main_contexts
+         << " typed_main_contexts=" << stats.typed_main_contexts
          << " external_assembly_names=" << stats.external_assembly_names
          << " external_c_function_names=" << stats.external_c_function_names
          << " external_builtin_runtime_names="

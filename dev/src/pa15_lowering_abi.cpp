@@ -659,14 +659,10 @@ public:
 		{
 			entity.kind = ABI_ENTITY_FACT_FUNCTION;
 			entity.function.kind = ABI_FUNCTION_TARGET_PATH;
-			if (binding.name != 0)
-				SetPath(&entity.function, binding.owner, binding.name);
-			else
-			{
-				if (stats_) ++stats_->text_entity_function_fallbacks;
-				entity.function.qualified_name =
-					program_.names.Get(binding.qualified_name);
-			}
+			if (binding.name == 0)
+				throw std::logic_error(
+					"function ABI entity has no semantic name");
+			SetPath(&entity.function, binding.owner, binding.name);
 			const TypeRecord& function = program_.types.Get(binding.type);
 			const TypeId* parameters =
 				program_.types.Parameters(binding.type);
@@ -677,13 +673,10 @@ public:
 		else
 		{
 			entity.kind = ABI_ENTITY_FACT_VARIABLE;
-			if (binding.name != 0)
-				SetPath(&entity.function, binding.owner, binding.name);
-			else
-			{
-				if (stats_) ++stats_->text_entity_variable_fallbacks;
-				entity.qualified_name = program_.names.Get(binding.qualified_name);
-			}
+			if (binding.name == 0)
+				throw std::logic_error(
+					"variable ABI entity has no semantic name");
+			SetPath(&entity.function, binding.owner, binding.name);
 			entity.internal_linkage =
 				binding.storage_class == STORAGE_CLASS_STATIC &&
 				binding.member_owner == kNoEntity &&
@@ -1063,21 +1056,17 @@ public:
 		if (function.owner == program_.GlobalScope() &&
 			program_.names.Get(function.name) == "main")
 		{
-			if (stats_) ++stats_->raw_main_contexts;
-			context_fact.kind = ABI_CONTEXT_RAW;
-			context_fact.fragment = "Z4mainE";
+			if (stats_) ++stats_->typed_main_contexts;
+			context_fact.kind = ABI_CONTEXT_MAIN;
 			return StoreLocalContext(context_fact, identity);
 		}
 		context_fact.kind = ABI_CONTEXT_FUNCTION;
 		AbiFunctionTarget& target = context_fact.function;
 		target.kind = ABI_FUNCTION_TARGET_PATH;
-		if (function.name != 0)
-			SetPath(&target, function.owner, function.name);
-		else
-		{
-			if (stats_) ++stats_->text_local_context_fallbacks;
-			target.qualified_name = program_.names.Get(function.qualified_name);
-		}
+		if (function.name == 0)
+			throw std::logic_error(
+				"function ABI local context has no semantic name");
+		SetPath(&target, function.owner, function.name);
 		const FunctionTemplateAbiRecipe* recipe = 0;
 		if (function.function_template_abi_recipe !=
 			kNoFunctionTemplateAbiRecipe)
@@ -2700,7 +2689,6 @@ std::string MangleFunction(const pa11::Program& program,
 
 std::string MangleVariable(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
-	const std::string& qualified_name_override,
 	abi_mangle::AbiMangleStats* stats,
 	abi_mangle::AbiMangleContext* context)
 {
@@ -2764,30 +2752,9 @@ std::string MangleVariable(const pa11::Program& program,
 		 binding.template_argument_count != 0);
 	if (needs_path)
 	{
-		if (qualified_name_override.empty() && binding.name != 0)
-			facts.SetPath(
-				&target.target.function, binding.owner, binding.name);
-		else
-		{
-			if (!qualified_name_override.empty())
-			{
-				if (stats) ++stats->text_variable_explicit_overrides;
-				target.target.qualified_name = qualified_name_override;
-			}
-			else if (binding.qualified_name != 0)
-			{
-				if (stats) ++stats->text_variable_qualified_fallbacks;
-				target.target.qualified_name =
-					program.names.Get(binding.qualified_name);
-			}
-			else
-			{
-				if (stats) ++stats->text_variable_node_fallbacks;
-				target.target.qualified_name = program.names.Get(node.text);
-			}
-			target.target.function.qualified_name =
-				target.target.qualified_name;
-		}
+		if (binding.name == 0)
+			throw std::logic_error("variable ABI target has no semantic name");
+		facts.SetPath(&target.target.function, binding.owner, binding.name);
 	}
 	if (typed_class_owner)
 	{
@@ -2853,14 +2820,7 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 	const NameId terminal = binding.name != 0 ? binding.name : fallback_name;
 	if (terminal != 0 && !program.names.Get(terminal).empty())
 		facts.SetPath(&target.target.function, binding.owner, terminal);
-	else if (binding.qualified_name != 0)
-	{
-		if (stats) ++stats->text_tls_wrapper_fallbacks;
-		target.target.qualified_name =
-			program.names.Get(binding.qualified_name);
-	}
-	if (target.target.function.resolved_path == ABI_NO_RESOLVED_REFERENCE &&
-		target.target.qualified_name.empty())
+	if (target.target.function.resolved_path == ABI_NO_RESOLVED_REFERENCE)
 		throw std::logic_error("thread-local wrapper has no semantic name (binding " +
 			std::to_string(binding_id) + ", qualified " +
 			std::to_string(binding.qualified_name) + ", terminal " +

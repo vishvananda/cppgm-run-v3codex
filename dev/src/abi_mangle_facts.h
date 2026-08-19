@@ -131,7 +131,8 @@ enum AbiExpressionKind
 enum AbiContextFactKind
 {
   ABI_CONTEXT_RAW,
-  ABI_CONTEXT_FUNCTION
+  ABI_CONTEXT_FUNCTION,
+  ABI_CONTEXT_MAIN
 };
 
 enum AbiEntityFactKind

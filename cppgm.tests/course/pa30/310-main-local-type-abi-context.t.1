@@ -1,0 +1,11 @@
+template<class T>
+__attribute__((noinline)) int use_type()
+{
+  return sizeof(T);
+}
+
+int main()
+{
+  struct Local { int value; };
+  return use_type<Local>() == sizeof(Local) ? 0 : 1;
+}
