@@ -1394,6 +1394,24 @@ void report_source_compile_stats(
 			 << stats.abi.typed_local_presentations
 			 << " abi_text_local_presentations="
 			 << stats.abi.text_local_presentations
+			 << " abi_typed_type_source_names="
+			 << stats.abi.typed_type_source_names
+			 << " abi_text_type_source_names="
+			 << stats.abi.text_type_source_names
+			 << " abi_typed_type_tags=" << stats.abi.typed_type_tags
+			 << " abi_text_type_tags=" << stats.abi.text_type_tags
+			 << " abi_typed_argument_source_names="
+			 << stats.abi.typed_argument_source_names
+			 << " abi_text_argument_source_names="
+			 << stats.abi.text_argument_source_names
+			 << " abi_typed_local_source_names="
+			 << stats.abi.typed_local_source_names
+			 << " abi_text_local_source_names="
+			 << stats.abi.text_local_source_names
+			 << " abi_typed_literal_suffixes="
+			 << stats.abi.typed_literal_suffixes
+			 << " abi_text_literal_suffixes="
+			 << stats.abi.text_literal_suffixes
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
@@ -2479,6 +2497,24 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.abi.typed_local_presentations
 			 << " abi_text_local_presentations="
 			 << stats.abi.text_local_presentations
+			 << " abi_typed_type_source_names="
+			 << stats.abi.typed_type_source_names
+			 << " abi_text_type_source_names="
+			 << stats.abi.text_type_source_names
+			 << " abi_typed_type_tags=" << stats.abi.typed_type_tags
+			 << " abi_text_type_tags=" << stats.abi.text_type_tags
+			 << " abi_typed_argument_source_names="
+			 << stats.abi.typed_argument_source_names
+			 << " abi_text_argument_source_names="
+			 << stats.abi.text_argument_source_names
+			 << " abi_typed_local_source_names="
+			 << stats.abi.typed_local_source_names
+			 << " abi_text_local_source_names="
+			 << stats.abi.text_local_source_names
+			 << " abi_typed_literal_suffixes="
+			 << stats.abi.typed_literal_suffixes
+			 << " abi_text_literal_suffixes="
+			 << stats.abi.text_literal_suffixes
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components

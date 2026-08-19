@@ -511,6 +511,15 @@ public:
         default: break;
       }
     }
+    const bool source_name_type = source.kind == ABI_TYPE_BUILTIN_TRANSFORM ||
+      source.kind == ABI_TYPE_MEMBER ||
+      source.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION ||
+      source.kind == ABI_TYPE_LOCAL_TYPE;
+    if(stats_ && source_name_type &&
+       (resolved_source_name || !source.name.empty())) {
+      if(resolved_source_name) ++stats_->typed_type_source_names;
+      else ++stats_->text_type_source_names;
+    }
     if(builtin_word) {
       node.kind = ABI_TYPE_BUILTIN;
       node.builtin_type = builtin_type;
@@ -656,7 +665,10 @@ public:
       node.uses_case_facts = node.uses_case_facts
         || expressions[node.expression].uses_case_facts;
     }
-    for(const string & tag : source.abi_tags) node.tags.push_back(strings.intern(tag));
+    for(const string & tag : source.abi_tags) {
+      node.tags.push_back(strings.intern(tag));
+      if(stats_) ++stats_->text_type_tags;
+    }
     std::sort(node.tags.begin(), node.tags.end(), [this](size_t a, size_t b) {
       return strings.get(a) < strings.get(b);
     });
@@ -904,7 +916,12 @@ private:
         node.entity_resolved = true;
       } else node.entity = strings.intern(source.entity_ref);
     }
-    if(!source.name.empty()) node.name = strings.intern(source.name);
+    if(!source.name.empty()) {
+      node.name = strings.intern(source.name);
+      if(stats_ && source.kind ==
+         ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY)
+        ++stats_->text_argument_source_names;
+    }
     if(source.kind == ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY &&
        source.resolved_expression != ABI_NO_RESOLVED_REFERENCE) {
       node.substitution = source.resolved_expression;
@@ -932,6 +949,7 @@ private:
         abi_terminal_kind(source.member_function_terminal) : ABI_TERMINAL_NONE;
     if(!source.member_function_literal_suffix.empty()) {
       node.member_literal_suffix = strings.intern(source.member_function_literal_suffix);
+      if(stats_) ++stats_->text_literal_suffixes;
     }
     if(source.member_function_terminal_kind == ABI_MEMBER_FUNCTION_TERMINAL_CONVERSION) {
       node.member_conversion_type = resolve_type(source.member_function_conversion_type);
@@ -2437,6 +2455,8 @@ private:
     if(stats_) {
       if(text_presentation) ++stats_->text_local_presentations;
       else ++stats_->typed_local_presentations;
+      if(facts.local && !local.name.empty())
+        ++stats_->text_local_source_names;
     }
     if(local.resolved_context != ABI_NO_RESOLVED_REFERENCE)
       encode_local_prefix(local.resolved_context);
@@ -2660,6 +2680,7 @@ private:
     const AbiTerminalKind kind = resolved_terminal(
       terminal.terminal_code, terminal.terminal);
     if(kind == ABI_TERMINAL_LITERAL) {
+      if(stats_) ++stats_->text_literal_suffixes;
       output_ += "li" + source_name(terminal.literal_suffix);
       return;
     }

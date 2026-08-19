@@ -100,6 +100,18 @@ int run_abimangle(int argc, char ** argv)
          << " typed_local_presentations="
          << stats.typed_local_presentations
          << " text_local_presentations=" << stats.text_local_presentations
+         << " typed_type_source_names=" << stats.typed_type_source_names
+         << " text_type_source_names=" << stats.text_type_source_names
+         << " typed_type_tags=" << stats.typed_type_tags
+         << " text_type_tags=" << stats.text_type_tags
+         << " typed_argument_source_names="
+         << stats.typed_argument_source_names
+         << " text_argument_source_names="
+         << stats.text_argument_source_names
+         << " typed_local_source_names=" << stats.typed_local_source_names
+         << " text_local_source_names=" << stats.text_local_source_names
+         << " typed_literal_suffixes=" << stats.typed_literal_suffixes
+         << " text_literal_suffixes=" << stats.text_literal_suffixes
          << " canonical_cache_hits=" << stats.canonical_cache_hits
          << " definition_cache_hits=" << stats.definition_cache_hits
          << " path_components=" << stats.path_components

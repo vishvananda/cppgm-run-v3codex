@@ -36,6 +36,16 @@ struct AbiMangleStats
   std::size_t text_array_bounds = 0;
   std::size_t typed_local_presentations = 0;
   std::size_t text_local_presentations = 0;
+  std::size_t typed_type_source_names = 0;
+  std::size_t text_type_source_names = 0;
+  std::size_t typed_type_tags = 0;
+  std::size_t text_type_tags = 0;
+  std::size_t typed_argument_source_names = 0;
+  std::size_t text_argument_source_names = 0;
+  std::size_t typed_local_source_names = 0;
+  std::size_t text_local_source_names = 0;
+  std::size_t typed_literal_suffixes = 0;
+  std::size_t text_literal_suffixes = 0;
   std::size_t canonical_cache_hits = 0;
   std::size_t definition_cache_hits = 0;
   std::size_t path_components = 0;
