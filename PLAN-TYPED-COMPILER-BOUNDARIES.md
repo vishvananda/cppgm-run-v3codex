@@ -1,13 +1,13 @@
 # Typed Compiler Boundary Plan: Remove Production Text Round-Trips
 
 Status: in progress; Phase 2 and the production T2x closeout are complete;
-T2y PA11 counters are complete and typed conversion is next
+T2y PA11 counters are complete and the typed conversion is in progress
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current execution checkpoint: `5fcc10cb` (T2y PA11 measurement anchor)
+Current execution checkpoint: `9fc8af3a` (T2y PA11 measurement ledger)
 
 ## 1. Objective
 
@@ -250,6 +250,80 @@ table.  Existing string-keyed containers are confined to standalone parsers,
 grammar/preprocessor input, native output labels, and serialized-object
 adapters.  Do not replace those merely to reduce the number of source-level
 `std::string` occurrences.
+
+### 5.4 Layer-by-layer residual registry
+
+The following registry is the actionable result of the source-wide audit.  It
+classifies data flow, not syntax: a file is not a target merely because it uses
+`std::string`, `substr`, or `std::to_string`.  Each row names the fact that is
+being recovered or presented, the correct representation, and the slice that
+owns its disposition.
+
+| Layer and representative sites | Current data flow | Classification and required action | Owner / slice |
+| --- | --- | --- | --- |
+| Macro and post-token input: `macro_processor.cpp`, `post_tokenizer.cpp` | Source spelling is interned in the macro processor; numeric and literal tokens are decoded at the language-input boundary.  The integrated handoff then returns strings, reclassifies them, and interns every emitted occurrence again. | Keep first decoding and macro paste/stringization as text-boundary work.  Preserve an emitted `SpellingId` and cached token class into PA10, with a dense lazy remap for only emitted spellings. | PA2/PA4/PA10, T8 |
+| PA10 token sink: `SyntaxTokenSink`, `EmitScalarLiteral`, `EmitLiteralArray`, user-defined literal callbacks, and pragma-pack callbacks | Scalar facts are retained for some literals, while arrays, user-defined literals, and pragma alignment retain only text; pragma alignment is formatted to text immediately. | Extend the literal side arena instead of enlarging every token.  Carry decoded scalar/sequence/suffix/alignment facts and retain `TextId` only for exact syntax output. | PA2/PA10, T7 |
+| PA10 name parser: `ParseName`, `ParseDeclarator`, `FinishSimpleOrFunction`, and `AggregateSyntax::AppendDeclaratorNames` | `ParseName` already knows component and terminal `TextId`s, but some declarator/name-fact paths return joined `std::string`, place names in `vector<string>`, and call the string overload of `SetNameFact`, which interns them again.  Joined payload text is also used for simple qualification/operator tests. | Keep joined payload construction required by the PA10 serialization contract.  In parallel, return/carry terminal IDs and compact flags for parser decisions and name facts; use `vector<TextId>` for structured-binding/declarator fact publication.  Do not add a second spelling field to every syntax node. | PA10, T8b |
+| PA10 semantic-only name children | Qualified/template names publish component IDs in `structured-type-name`; simple names usually publish a semantic payload ID. | This is the correct syntax-to-semantic boundary.  T2x consumes it in production and T2y consumes it in PA11.  Any later syntax-owned fallback must add or reuse the fact here rather than add a semantic string cache. | PA10/PA11/PA12, T2y and closeout counters |
+| Standalone PA11 `TypeAnalyzer` | Namespace, declaration, declarator, type, id-expression, and `decltype` paths parse joined payload spelling.  Literals and operators also use their spellings. | Finish typed name parity as T2y.  Leave operator and literal representation to the shared T6/T7 designs so PA11 does not create a private competing enum or scalar model. | PA10/PA11, T2y/T6/T7 |
+| PA12 name lookup compatibility APIs | `ParseNamePath`, `LookupSpelling`, no-syntax template overloads, qualified-enum/member-pointer fallbacks, and explicit spelling adapters remain in source after the frozen production count reached zero. | Retain only callers whose input is genuinely arbitrary text, give them adapter-specific counters, and delete an overload after its last such caller is gone.  Any exercised syntax-owned fallback is a correctness/architecture bug at its earliest semantic owner. | PA12/feature owner, T4/T6/T9 closeout |
+| Ordinary semantic presentation: `ScopePrefixId`, `DisplayName`, `EmissionName`, declaration `qualified_name`/`display_name`, and scope prefix vectors | Owner/name paths are rendered, interned, and retained even though scope, binding, entity, and terminal IDs already exist. | Store owner plus terminal or a compact path identity.  Render on demand for exact semantic dumps, diagnostics, pretty-function text, or final symbol emission.  Do not retain both old text IDs and new typed identities on common records. | PA12/PA22, T4a/T4c |
+| Template and lambda presentation: `CanonicalTemplateArgumentPresentation`, `ExplicitArgumentPresentation`, class-specialization names, `LambdaContextIdentity`, and `LambdaIdentityComponent` | Canonical template arguments, pattern IDs, owners, token ranges, and ordinals are rendered and sanitized into semantic/storage names.  Some of those names then become retained identity. | Use pattern/argument-list/partition/owner IDs for specialization identity and an owner/token-range/ordinal tuple for lambda identity.  Keep rendering only where an exact dump, source-identity builtin, ABI spelling, or object symbol consumes it. | PA19/PA20/PA22, T4b/T4c |
+| Generated semantic names: default-constructor emission, anonymous/local types, range-for temporaries, initializer backing objects, and template-shape sentinels | Several paths concatenate or slice qualified names (`rfind("::")`) or format ordinals into interned synthetic names. | First distinguish observable serialized names from private identity.  Replace private identity with kind plus owner/ordinal/source identity; render checked-in semantic names lazily.  The default-constructor owner/leaf recovery is a definite T4 typed-path conversion. | PA12/PA19/PA25/PA26, T4d/T9 |
+| Fixed syntax and semantic vocabulary: operators, cv/ref markers, `default`/`delete`, linkage, traits, builtins, attributes, and predefined identifiers | PA11-PA34 repeatedly compare payload/name strings.  Operation strings flow through overload resolution, constant evaluation, and lowering; backend code calls `StripOperationPrefix`. | Carry a packed `SemanticOperatorKind` and small feature-specific enums.  Use preinterned `NameId`s for extensible identifier registries.  Keep source `TextId` for dumps/diagnostics, but make semantic control flow enum/ID based. | PA2/PA10/PA12/PA15 and feature owners, T6 |
+| Literal semantics and constant evaluation: PA11/PA12 literal parsing, `InternNumber`, `InternScalar`, PA20/PA21 constants, and PA15/PA16 lowering | Values decoded by post-tokenization are incompletely retained; semantics redecodes spelling, evaluated scalars are formatted into a `NameId`, and lowering later consumes text. | Publish one compact tagged literal/scalar fact.  Carry integer/floating bits, type, suffix ID, and a byte/code-unit arena slice.  Render only for exact semantic/IR output. | PA2/PA10/PA11/PA12/PA15/PA16/PA20/PA21, T7 |
+| GNU asm and attributes | String-literal payloads are decoded in semantics, templates/constraints are classified, and external asm labels/payload bytes remain textual. | Reuse T7 decoded string facts and classify supported operations once into the existing enum.  Preserve assembly payloads, constraints, section names, and external labels as language/object-boundary text. | PA32/PA34, T7/T9 |
+| PA19 relational-declaration ambiguity recovery | A retained declaration spelling has whitespace removed, is sliced with `find`/`substr`, and a literal is parsed with `istringstream` to reconstruct an alternative parse. | Retain the competing parser alternative or a compact token-range recipe and resolve it after lookup.  This is a specialized correctness path, not a reason to add a generic semantic text parser. | PA10/PA19, T9a |
+| PA34 source-identity rendering and local-static symbol construction | Typed function/type/template facts are deliberately rendered to language-visible builtin strings or final stable object-symbol components. | Keep as final presentation.  Add demand/render counters during T4, but do not replace it unless a consumer reparses the result into semantic facts. | PA21/PA34, boundary; T4 audit only |
+| Production ABI graph and encoder | Production uses numeric graph IDs after T3; strings are exact Itanium source-name bytes, final assembly/C symbols, diagnostics, or PA14 adapter values.  PA14 text definitions still use string indexes and adapter-only numeric parsing. | Keep the completed T3 boundary.  Do not reopen its string table merely because final emitted bytes need deduplication.  Production text-recovery counters must remain zero. | PA14/PA15/PA33, T3 closeout invariant |
+| LowIR and MIR core | The integrated path carries operation enums, symbol/block/slot/value IDs, typed operands, and scalar bits.  Text serializers render those facts.  `resolve_lowir_function_operands` uses string maps only after textual LowIR input. | Keep the completed typed LowIR/MIR representation.  Text parsing, name maps, and floating conversion are legal in standalone adapters; they must remain unreachable from the normal source-to-object path. | PA15/PA28, prior LowIR plans and final audit |
+| CY86, native labels, ELF, and PA30 object join | CY86 emits textual assembly by assignment contract.  Native code/object modules map final symbol or assembler-label spellings, and PA30 consumes its private serialized-object name contract. | Keep as output or serialized-input boundaries.  Numeric internal-label IDs may be evaluated as a separate backend optimization, but are not text-recovery work unless a typed control-flow fact is first rendered and then parsed. | PA28-PA30, outside this plan unless new evidence appears |
+| Grammar, diagnostics, harness, and configuration | Recognizer rule maps, include paths, environment numbers, errors, and test fixtures are intrinsically textual. | Keep.  Cold diagnostic formatting and test-runner parsing are not compiler identity. | PA1-PA10/test infrastructure, no action |
+
+Two conclusions constrain implementation order.  First, the largest remaining
+semantic family is not a string-keyed table: it is fixed operator/token text
+threaded through many APIs.  It requires one packed vocabulary change, not a
+collection of local string caches.  Second, presentation and literal work
+must remove the old owning/rendering path when the typed path lands; retaining
+both would increase memory and violate the success criteria.
+
+### 5.5 Reproducible audit and closeout method
+
+At the beginning and end of each remaining phase, repeat a source audit using
+the following query families (or equivalent syntax-aware tooling):
+
+```sh
+rg -n --glob 'dev/src/*.{cpp,h}' \
+  'std::(strto|sto|istringstream)|strto[a-z]*\(' dev/src
+rg -n --glob 'dev/src/*.{cpp,h}' \
+  'find\("::"|rfind\("::"|StripOperationPrefix|std::to_string\(' dev/src
+rg -n --glob 'dev/src/*.{cpp,h}' \
+  '(unordered_map|unordered_set|map|set)<[^;]*(std::)?string' dev/src
+rg -n --glob 'dev/src/pa*.{cpp,h}' \
+  '(PayloadSource|Payload\(|SemanticPayload|names.Get)[^;]*(==|!=|compare|find)' dev/src
+```
+
+The current audit finds string-to-number conversion only in first-input
+decoders, standalone ABI/LowIR/CY86 adapters, PA11/PA12 literal recovery, and
+the PA19 ambiguity parser.  It finds no general string-keyed semantic lookup
+container.  Static search is only a candidate generator: every hit must be
+traced to its producer and consumer before classification.
+
+Each phase closes with a checked-in registry update that records:
+
+1. which candidate sites were converted, retained as true boundaries, or
+   deferred with a named owner;
+2. before/after dynamic counts for the affected production and assignment
+   paths, including zero-occurrence architecture cleanups;
+3. common record sizes and side-arena bytes;
+4. exact fixture/object effects and the earliest-owned reducer for any
+   behavior correction; and
+5. the commit and validation totals in the results ledger.
+
+The source closeout condition is not zero textual operations.  It is that
+every remaining textual operation has a named input, output, diagnostic, or
+standalone-adapter boundary and that no integrated consumer reconstructs a
+fact already represented by an ID, enum, scalar, or arena slice.
 
 ## 6. Phase 0: durable counters and immutable baseline
 
@@ -776,13 +850,26 @@ must render from the typed facts without fixture churn.
    retain explicitly classified adapters.  Every frozen family is zero.
 6. **T2y:** bring the standalone PA11 `TypeAnalyzer` to typed-name parity,
    with PA11-only counters and no frozen performance claim.
-7. **T4a:** replace ordinary scope-prefix/display/emission retention with
-   owner scope plus terminal `NameId` or a compact path ID.
-8. **T4b:** replace class/function-template specialization presentation
-   identity with pattern, argument-list, owner, and partition IDs.
-9. **T4c:** add lazy renderers for semantic dumps, diagnostics,
-   `__PRETTY_FUNCTION__`, and final external names, then remove the obsolete
-   eager fields and counters.
+7. **T4a:** add per-consumer counters for scope-prefix, display-name,
+   emission-name, specialization-name, lambda-name, and generated-name
+   rendering.  Record reads as well as writes so a retained field is not
+   removed before its output consumer has a replacement.
+8. **T4b:** replace ordinary scope-prefix/display/emission retention with
+   owner scope plus terminal `NameId` or a compact path ID.  Convert the
+   default-constructor owner/leaf `rfind("::")` path in this slice.
+9. **T4c:** replace class/function-template specialization presentation
+   identity with pattern, argument-list, owner, and partition IDs.  Replace
+   lambda identity with owner/context, token range, and ordinal facts rather
+   than sanitized rendered type/function names.
+10. **T4d:** classify generated semantic names by observable presentation
+    versus private identity.  Carry kind plus owner/ordinal/source facts for
+    private local types, range-for objects, backing objects, and shape
+    sentinels; keep exact checked-in names behind the lazy renderer.
+11. **T4e:** add lazy renderers for semantic dumps, diagnostics,
+    `__PRETTY_FUNCTION__`, source-identity builtins, and final external names,
+    then remove obsolete eager fields and counters.  Re-audit PA19/PA20/PA22
+    helpers to prove that no canonical lookup or specialization table is keyed
+    by the rendered result.
 
 Each slice records common semantic record sizes and accounted arena bytes.
 No slice may retain both the old qualified `NameId` and a new path identity on
@@ -838,6 +925,32 @@ PA2 owns token classification, PA10 owns the syntax handoff, PA12 owns semantic
 operators, and PA15 owns lowering.  Tests belong at the earliest operator or
 fixed-vocabulary feature.  Existing textual fixtures should remain exact.
 
+### 11.3 Changeset sequence
+
+1. **T6a:** count operation-spelling comparisons by semantic caller,
+   `StripOperationPrefix` calls by lowering caller, and fixed keyword/builtin
+   comparisons separately.  Measure `SyntaxNode`, `DumpNode`, and
+   `ExpressionInfo` before selecting storage.
+2. **T6b:** define one compact `SemanticOperatorKind` mapping at the PA2/PA10
+   boundary.  Pack it into existing flags or a dense syntax sidecar and retain
+   the source `TextId` for exact serialization.
+3. **T6c:** change PA11/PA12 overload resolution, builtin conversions,
+   member-pointer logic, and constant evaluation to accept the enum.  Convert
+   one operator family at a time so reducers identify the earliest semantic
+   owner.
+4. **T6d:** carry the enum through `DumpNode` or a compact parallel arena and
+   change PA15/PA16/PA21/PA27/PA34 lowering to switch on it.  Delete
+   `StripOperationPrefix` after its last integrated caller; arbitrary textual
+   adapter operations remain separately classified.
+5. **T6e:** convert small fixed vocabularies (`default`/`delete`, linkage,
+   traits, attributes, builtins, predefined identifiers) to existing syntax
+   kinds, byte enums, or preinterned `NameId`s.  Do not force extensible or
+   language-visible strings into a global enum.
+
+The exit condition is zero integrated operator spelling comparisons and zero
+lowering prefix strips, plus a reviewed boundary list for every residual fixed
+spelling comparison.  This phase must not enlarge every syntax or dump node.
+
 ## 12. Phase 6: carry decoded literals end to end
 
 ### 12.1 Current path
@@ -874,7 +987,33 @@ earliest-owned reducers for wide integers, floating encodings, escape/code-unit
 sequences, user-defined suffixes, and pragma alignment.  Exact source-facing
 and IR serialization must render from the typed fact.
 
-## 13. Phase 7: preserve spelling identity across preprocessing
+### 12.3 Changeset sequence
+
+1. **T7a:** count post-token decodes, retained fact hits, semantic fallback
+   decodes, string/code-unit decodes, scalar renders, scalar reparses, and
+   pragma format/parse events by literal family.  Record token/fact/dump record
+   sizes and arena bytes.
+2. **T7b:** complete integral and character facts, including signedness,
+   width, suffix, character kind, and normalized bits.  Reuse the current
+   retained scalar path rather than introduce a second literal table.
+3. **T7c:** add floating bit facts and string/character byte or code-unit arena
+   slices.  User-defined suffixes use `NameId`; exact source spelling remains a
+   presentation handle.  GNU asm may reuse decoded narrow-string slices while
+   its final label/template text remains a boundary.
+4. **T7d:** give evaluated constants a compact `ScalarFactId` or equivalent
+   kind-disjoint slot so `InternNumber`/`InternScalar` no longer formats values
+   for later lowering.  PA15/PA16/PA20/PA21 consume bits directly and exact
+   semantic/IR dumps render from the fact.
+5. **T7e:** carry pragma-pack alignment as an integer fact through PA10 and
+   semantics.  Remove every integrated fallback decoder whose corresponding
+   retained fact is mandatory; leave standalone textual LowIR/CY86 conversion
+   unchanged.
+
+Reject a design that embeds wide integers, `long double`, or owning strings in
+every token or dump node.  Common scalar facts should fit existing storage or
+a compact fixed record; wide values and sequences belong in side arenas.
+
+## 13. Phase 7: preserve spelling and parser identity across the front end
 
 ### 13.1 Current path
 
@@ -882,6 +1021,12 @@ The macro processor already has a private compact `SpellingTable` and
 `SpellingId`.  Its public integrated handoff returns `std::string` through
 `IPostTokenStream`.  `PostTokenAnalyzer` classifies the spelling, and the
 syntax sink interns every emitted spelling into the frontend table.
+
+Once tokens reach PA10, most parser name facts use `TextId`, but several
+declarator paths still return a joined `std::string`, temporarily collect
+declaration names in `vector<string>`, and call the string overload of
+`SetNameFact`.  `ParseName` already computes terminal and component IDs, so
+this is a second, narrower identity loss after the preprocessing handoff.
 
 The audit recorded 527,293 `FindSimple` calls, 1,290,244 macro spelling-table
 interns, and 490,862 frontend token-spelling interns.  By contrast,
@@ -899,26 +1044,45 @@ legitimate source lexing and must not be conflated with identity loss.
 - Retain only emitted spellings.  Do not share the entire macro spelling table
   with the semantic program, because that would retain discarded macro-only
   text and increase RSS.
+- Extend PA10 name/declarator helpers to return the already-known terminal
+  `TextId` beside any joined spelling required for exact syntax serialization.
+  Publish name facts by ID and use compact ID vectors for multi-declarator and
+  structured-binding publication.
+- Replace parser decisions such as qualified/decorated/operator presence with
+  flags accumulated while consuming components where doing so removes a scan;
+  do not stop constructing a checked-in syntax payload that the public PA10
+  format requires.
 
-This is an interface-wide PA4/PA10 change and therefore follows the narrower
-semantic and ABI phases.  Preserve exact PA2, PA4, and PA10 fixtures and add
-counters for distinct remaps, discarded spellings, retained bytes, and
-classification reuse.
+Implement this as two independently measurable slices.  T8a changes only the
+integrated PA4-to-PA10 handoff and its dense remap.  T8b changes PA10 parser
+name-fact publication without changing syntax output.  This interface-wide
+work follows the narrower semantic and ABI phases.  Preserve exact PA2, PA4,
+and PA10 fixtures and add counters for emitted occurrences, distinct remaps,
+discarded spellings, retained bytes, classification reuse, string-overload
+`SetNameFact` calls, and joined-name rescans.  Reject T8b if it requires an
+extra field on every syntax node; the IDs already exist in tokens, parser
+locals, or semantic-only name children.
 
 ## 14. Phase 8: secondary cleanup
 
 Address these only after the preceding measured work:
 
-1. Replace PA32 function-template ABI result tag `NameId` comparisons with
-   syntax-tag/operator enums, or publish the ABI type fact directly.
-2. Replace PA19 ambiguous-relational-declaration substring and stream parsing
-   with a retained parser alternative or typed token range.  The frozen count
-   is small, so correctness and clarity are the reasons.
-3. Classify GNU assembly and attribute literal forms once, while retaining the
-   language-visible assembly payload and final labels as text.
-4. Audit RTTI, lambda, generated-name, and pretty-function paths so structured
-   identity remains internal and rendering occurs only at the ABI or
-   language-visible boundary.
+1. **T9a:** replace PA19 ambiguous-relational-declaration substring and stream
+   parsing with a retained parser alternative or typed token-range recipe.
+   The frozen count is small, so correctness and clarity are the reasons.
+2. **T9b:** replace any PA32 function-template ABI result tag `NameId`
+   comparisons left after T6 with syntax-tag/operator enums, or publish the ABI
+   type fact directly.
+3. **T9c:** close GNU assembly and attribute handling after T7: decode literal
+   sequences once, classify supported templates/constraints once, and retain
+   language-visible assembly payloads, section names, and final labels as
+   text.
+4. **T9d:** close RTTI, generated-name, pretty-function, and hosted-builtin
+   paths after T4/T6.  Structured identity must remain internal; rendering is
+   allowed only at the ABI, object, diagnostic, or language-visible boundary.
+5. **T9e:** repeat the complete layer registry in section 5.4.  Any newly found
+   integrated text recovery gets an independent owner reducer and changeset;
+   true boundary sites are recorded rather than mechanically rewritten.
 
 Do not turn these into a general ban on strings.  Each change needs evidence
 that text is being used to recover an already-known compiler fact.
@@ -1162,12 +1326,12 @@ measurement; do not silently skip an unresolved closeout gate.
 | 4 | T3x Phase 2 closeout (complete) | Source audit, complete retained-text classification, zero production fixed-word/path/numeric/synthetic-identity recovery, and exact frozen object recorded in section 8.8 | Closeout ledger recorded |
 | 5 | T2x residual production semantic name paths (complete) | All 34,823 frozen requests are classified and removed; source-retained adapters and later operator/literal/ambiguity work are recorded in section 5.3 | `870e329a` anchor through `51119165` closeout; ledger recorded |
 | 6 | T2y standalone PA11 typed-name parity (in progress) | PA11-only counters, zero syntax-owned PA11 reparses on representative inputs, exact PA11 output, no common-record growth, full report, audit | `5fcc10cb` measurement anchor; one bounded conversion changeset plus ledger; no frozen claim |
-| 7 | T4 lazy semantic presentation | Render-on-demand counters, semantic record sizes, exact dumps, no dual retained identity | One commit per ordinary/specialization/output family |
+| 7 | T4 lazy semantic presentation | Per-consumer render/read counters; semantic record sizes; typed ordinary, specialization, lambda, and generated identities; exact dumps; no dual retained identity | T4a counter anchor, then one commit per ordinary/specialization/generated/output family |
 | 8 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
-| 9 | T6 operator enums | Packed representation proof, zero lowering prefix strips, exact fixtures | One pipeline family at a time |
-| 10 | T7 literal facts | Decode/redecode counters, scalar/arena sizes, earliest literal reducers | One literal family at a time |
-| 11 | T8 preprocessing spelling handoff | Distinct-remap/retained-byte counters and exact PA2/4/10 interfaces | Integrated handoff commit |
-| 12 | T9 specialized recovery | Separate disposition and owner test for each site | Independent commits only |
+| 9 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
+| 10 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
+| 11 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
+| 12 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
 | 13 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
 
 At every row, the fastest iteration signal is the PA-selected
