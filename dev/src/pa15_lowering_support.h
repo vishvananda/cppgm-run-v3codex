@@ -50,9 +50,14 @@ class PresentationNameMap
 	std::string Apply(pa11::ScopeId owner, pa11::NameId terminal) const;
 
 private:
+	const std::string& ClassTemplatePresentation(
+		std::uint32_t presentation) const;
 	const pa11::Program& program_;
 	SemanticAnalysisStats* stats_;
-	std::vector<pa11::NameId> replacements_;
+	std::vector<std::uint32_t> replacement_presentations_;
+	std::vector<pa11::EntityId> presentation_entities_;
+	mutable std::vector<std::uint32_t> rendered_indices_;
+	mutable std::vector<std::string> rendered_presentations_;
 	mutable std::vector<pa11::NameId> path_;
 };
 

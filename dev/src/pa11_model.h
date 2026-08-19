@@ -447,7 +447,7 @@ enum EntityEmissionNameForm : std::uint8_t
 
 struct EntityRecord
 {
-	NameId emission_name, identity_name, presentation_name;
+	NameId emission_name, identity_name;
 	ScopeId owner, member_scope;
 	EntityId direct_base, enclosing_class;
 	BindingId local_context, lambda_call_operator;
@@ -478,6 +478,7 @@ struct EntityRecord
 	bool deferred_template_completion;
 	bool explicit_instantiation_suppressed;
 	bool explicit_template_specialization;
+	bool class_template_presentation;
 	bool unnamed_class, lambda_closure;
 	std::uint32_t local_name_ordinal, lambda_ordinal, lambda_capture_count;
 	std::uint32_t template_parameter_ordinal;

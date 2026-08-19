@@ -2,9 +2,11 @@
 #include "lowir_model.h"
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
+#include "pa19_template_presentation.h"
 #include "post_tokenizer.h"
 
 #include <algorithm>
+#include <limits>
 
 namespace cppgm
 {
@@ -66,20 +68,67 @@ PresentationNameMap::PresentationNameMap(const pa11::Program& program,
 	for (std::size_t i = 0; i < program.entities.size(); ++i)
 	{
 		const pa11::EntityRecord& entity = program.entities[i];
-		if (entity.presentation_name == 0 || entity.emission_name == 0 ||
-			entity.presentation_name == entity.emission_name) continue;
-		if (stats_)
-			++stats_->presentation_reads[
-				SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
+		if (!entity.class_template_presentation) continue;
+		if (entity.emission_name == 0)
+			throw std::logic_error(
+				"class template presentation has no emission name");
 		const pa11::NameId identity = entity.identity_name != 0 ?
 			entity.identity_name : entity.emission_name;
 		const pa11::NameId largest = std::max(entity.emission_name, identity);
-		if (replacements_.size() <= largest)
-			replacements_.resize(
+		if (replacement_presentations_.size() <= largest)
+			replacement_presentations_.resize(
 				static_cast<std::size_t>(largest) + 1, 0);
-		replacements_[entity.emission_name] = entity.presentation_name;
-		replacements_[identity] = entity.presentation_name;
+		if (presentation_entities_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error(
+				"too many class template presentations");
+		presentation_entities_.push_back(static_cast<pa11::EntityId>(i));
+		rendered_indices_.push_back(0);
+		const std::uint32_t encoded =
+			static_cast<std::uint32_t>(presentation_entities_.size());
+		replacement_presentations_[entity.emission_name] = encoded;
+		replacement_presentations_[identity] = encoded;
 	}
+}
+
+const std::string& PresentationNameMap::ClassTemplatePresentation(
+	std::uint32_t presentation) const
+{
+	if (presentation >= presentation_entities_.size() ||
+		presentation >= rendered_indices_.size())
+		throw std::logic_error(
+			"class template presentation index is invalid");
+	const pa11::EntityId entity = presentation_entities_[presentation];
+	if (entity >= program_.entities.size())
+		throw std::logic_error(
+			"class template presentation entity is invalid");
+	if (stats_)
+		++stats_->presentation_reads[
+			SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
+	std::uint32_t index = rendered_indices_[presentation];
+	if (index == 0)
+	{
+		const pa11::EntityRecord& record = program_.entities[entity];
+		const std::size_t first = record.template_argument_begin;
+		const std::size_t count = record.template_argument_count;
+		if (record.identity_name == 0 || first == pa11::kNoBinding ||
+			first > program_.canonical_template_arguments.size() ||
+			count > program_.canonical_template_arguments.size() - first)
+			throw std::logic_error(
+				"class template presentation facts are invalid");
+		const pa11::TemplateArgument* arguments = count == 0 ? 0 :
+			&program_.canonical_template_arguments[first];
+		if (rendered_presentations_.size() >=
+			std::numeric_limits<std::uint32_t>::max())
+			throw std::runtime_error(
+				"too many rendered class template presentations");
+		rendered_presentations_.push_back(
+			pa19_template_presentation::RenderClassTemplateSpecializationName(
+				program_, record.identity_name, arguments, count, stats_));
+		index = static_cast<std::uint32_t>(rendered_presentations_.size());
+		rendered_indices_[presentation] = index;
+	}
+	return rendered_presentations_[index - 1];
 }
 
 std::string PresentationNameMap::Apply(
@@ -93,9 +142,12 @@ std::string PresentationNameMap::Apply(
 	for (std::size_t i = 0; i < path_.size(); ++i)
 	{
 		if (i != 0) result += "::";
-		const pa11::NameId name = path_[i] < replacements_.size() &&
-			replacements_[path_[i]] != 0 ? replacements_[path_[i]] : path_[i];
-		result += program_.names.Get(name);
+		const std::uint32_t encoded =
+			path_[i] < replacement_presentations_.size() ?
+				replacement_presentations_[path_[i]] : 0;
+		if (encoded != 0)
+			result += ClassTemplatePresentation(encoded - 1);
+		else result += program_.names.Get(path_[i]);
 	}
 	return result;
 }

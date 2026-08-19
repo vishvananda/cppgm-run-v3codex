@@ -62,18 +62,6 @@ void SemanticAnalyzer::PublishPresentationPopulationStats()
 	stats_->function_info_size = sizeof(FunctionInfo);
 	stats_->dump_node_size = sizeof(DumpNode);
 
-	std::size_t& entity_count = stats_->presentation_retained_values[
-		SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
-	std::size_t& entity_bytes = stats_->presentation_retained_bytes[
-		SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
-	for (std::size_t i = 0; i < program_->entities.size(); ++i)
-	{
-		const NameId name = program_->entities[i].presentation_name;
-		if (name == 0) continue;
-		++entity_count;
-		entity_bytes += program_->names.Get(name).size();
-	}
-
 	program_->AccumulateScopeEmissionNames(
 		&stats_->presentation_retained_values[
 			SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION],

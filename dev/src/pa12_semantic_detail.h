@@ -888,11 +888,7 @@ private:
 	void CompleteClassTemplateSpecialization(std::size_t pattern,
 		BindingId specialization,
 		const std::vector<TemplateArgument>& arguments);
-	void PublishClassTemplatePresentationName(EntityId entity,
-		const std::string& presentation);
-	std::string ClassTemplateInstantiationName(std::size_t pattern,
-		const TemplateSpecializationKey& key,
-		const std::string& presentation) const;
+	void MarkClassTemplatePresentation(EntityId entity);
 	HostedTraitTemplateKind ClassifyHostedTraitTemplate(
 		ScopeId owner, NameId name,
 		const std::vector<TemplateParameter>& parameters) const;

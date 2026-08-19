@@ -651,7 +651,7 @@ void TypeTable::Rehash(std::size_t capacity)
 }
 
 EntityRecord::EntityRecord()
-	: emission_name(0), identity_name(0), presentation_name(0),
+	: emission_name(0), identity_name(0),
 	  owner(kNoScope), member_scope(kNoScope),
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
 	  local_context(kNoBinding), lambda_call_operator(kNoBinding),
@@ -682,7 +682,8 @@ EntityRecord::EntityRecord()
 	  has_nonzero_base_subobject_offset(false),
 	  deferred_template_completion(false),
 	  explicit_instantiation_suppressed(false),
-	  explicit_template_specialization(false), unnamed_class(false),
+	  explicit_template_specialization(false),
+	  class_template_presentation(false), unnamed_class(false),
 	  lambda_closure(false),
 	  local_name_ordinal(0), lambda_ordinal(0), lambda_capture_count(0),
 	  template_parameter_ordinal(kNoTemplateParameter)
@@ -1551,6 +1552,7 @@ void Program::ResetClassDefinition(EntityId entity)
 	reset.template_argument_begin = old.template_argument_begin;
 	reset.template_argument_count = old.template_argument_count;
 	reset.template_argument_pack_begin = old.template_argument_pack_begin;
+	reset.class_template_presentation = old.class_template_presentation;
 	reset.abi_tag_begin = old.abi_tag_begin;
 	reset.abi_tag_count = old.abi_tag_count;
 	reset.flavor = old.flavor;
