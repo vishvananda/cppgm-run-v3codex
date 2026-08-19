@@ -621,9 +621,10 @@ public:
 		else
 		{
 			entity.kind = ABI_ENTITY_FACT_VARIABLE;
-			entity.qualified_name = program_.names.Get(
-				binding.qualified_name != 0 ?
-					binding.qualified_name : binding.name);
+			if (binding.name != 0)
+				SetPath(&entity.function, binding.owner, binding.name);
+			else
+				entity.qualified_name = program_.names.Get(binding.qualified_name);
 			entity.internal_linkage =
 				binding.storage_class == STORAGE_CLASS_STATIC &&
 				binding.member_owner == kNoEntity &&
@@ -2681,13 +2682,28 @@ std::string MangleVariable(const pa11::Program& program,
 		binding.storage_class == STORAGE_CLASS_STATIC &&
 		binding.member_owner == kNoEntity &&
 		!binding.unnamed_namespace_linkage;
-	target.target.qualified_name = qualified_name_override.empty() ?
-		program.names.Get(binding.qualified_name != 0 ?
-			binding.qualified_name : node.text) : qualified_name_override;
+	const bool needs_path =
+		target.target.function.kind == ABI_FUNCTION_TARGET_PATH ||
+		(target.target.function.kind == ABI_FUNCTION_TARGET_MEMBER &&
+		 binding.template_argument_count != 0);
+	if (needs_path)
+	{
+		if (qualified_name_override.empty() && binding.name != 0)
+			facts.SetPath(
+				&target.target.function, binding.owner, binding.name);
+		else
+		{
+			target.target.qualified_name = qualified_name_override.empty() ?
+				program.names.Get(binding.qualified_name != 0 ?
+					binding.qualified_name : node.text) :
+				qualified_name_override;
+			target.target.function.qualified_name =
+				target.target.qualified_name;
+		}
+	}
 	if (typed_class_owner)
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];
-		target.target.function.qualified_name = target.target.qualified_name;
 		target.target.function.owner_type = facts.MakeType(owner.type);
 		target.target.function.source_name = program.names.Get(binding.name);
 	}
@@ -2735,14 +2751,25 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 	if (binding_id == kNoBinding || binding_id >= program.bindings.size())
 		throw std::logic_error("invalid thread-local wrapper binding");
 	const BindingRecord& binding = program.bindings[binding_id];
+	std::unique_ptr<AbiMangleContext> local_context;
+	if (!context)
+	{
+		local_context.reset(new AbiMangleContext(stats));
+		context = local_context.get();
+	}
 	AbiTypedCase fact_case;
+	AbiFactBuilder facts(program, fact_case, context);
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_THREAD_LOCAL_WRAPPER;
-	const NameId path_name = binding.qualified_name != 0 ?
-		binding.qualified_name : binding.name != 0 ? binding.name : fallback_name;
-	target.target.qualified_name = program.names.Get(path_name);
-	if (target.target.qualified_name.empty())
+	const NameId terminal = binding.name != 0 ? binding.name : fallback_name;
+	if (terminal != 0 && !program.names.Get(terminal).empty())
+		facts.SetPath(&target.target.function, binding.owner, terminal);
+	else if (binding.qualified_name != 0)
+		target.target.qualified_name =
+			program.names.Get(binding.qualified_name);
+	if (target.target.function.resolved_path == ABI_NO_RESOLVED_REFERENCE &&
+		target.target.qualified_name.empty())
 		throw std::logic_error("thread-local wrapper has no semantic name (binding " +
 			std::to_string(binding_id) + ", qualified " +
 			std::to_string(binding.qualified_name) + ", terminal " +

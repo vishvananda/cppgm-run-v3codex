@@ -1321,6 +1321,9 @@ private:
         encode_structured_object(collect_function_facts(records));
       } else if(target.function.kind == ABI_FUNCTION_TARGET_MEMBER) {
         encode_member_object(target.function, collect_function_facts(records));
+      } else if(target.function.resolved_path != ABI_NO_RESOLVED_REFERENCE) {
+        encode_object_name(graph_.path(target.function.resolved_path),
+                           target.internal_linkage);
       } else {
         encode_object_name(target.qualified_name, target.internal_linkage);
       }
@@ -1344,7 +1347,9 @@ private:
     }
     if(target.kind == ABI_TARGET_FACT_THREAD_LOCAL_WRAPPER) {
       output_ += "_ZTW";
-      encode_object_name(target.qualified_name, false);
+      if(target.function.resolved_path != ABI_NO_RESOLVED_REFERENCE)
+        encode_object_name(graph_.path(target.function.resolved_path), false);
+      else encode_object_name(target.qualified_name, false);
       return output_;
     }
     if(target.kind == ABI_TARGET_FACT_THUNK || target.kind == ABI_TARGET_FACT_VIRTUAL_BASE_THUNK) {
@@ -1922,6 +1927,9 @@ private:
       output_ += "_Z";
       if(entity.kind == ABI_ENTITY_FACT_FUNCTION) {
         encode_function(entity.function, FunctionFacts());
+      } else if(entity.function.resolved_path != ABI_NO_RESOLVED_REFERENCE) {
+        encode_object_name(graph_.path(entity.function.resolved_path),
+                           entity.internal_linkage);
       } else {
         encode_object_name(entity.qualified_name, entity.internal_linkage);
       }
@@ -1932,7 +1940,11 @@ private:
 
   void encode_object_name(const string & qualified_name, bool internal)
   {
-    const size_t path = graph_.paths.intern(qualified_name);
+    encode_object_name(graph_.paths.intern(qualified_name), internal);
+  }
+
+  void encode_object_name(size_t path, bool internal)
+  {
     const vector<size_t> components = graph_.paths.components(path);
     const vector<size_t> prefixes = graph_.paths.prefixes(path);
     const bool std_unscoped = components.size() == 2 && graph_.strings.get(components[0]) == "std";
