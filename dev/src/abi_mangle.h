@@ -178,12 +178,10 @@ public:
   std::size_t store_context(const AbiLocalContext & context);
   std::size_t store_entity(const AbiEntityFact & entity);
   bool resolved_type_uses_case_facts(std::size_t type) const;
-  bool resolved_argument_uses_case_facts(std::size_t argument) const;
-  bool resolved_expression_uses_case_facts(std::size_t expression) const;
   bool find_resolved_type(std::size_t source, std::size_t function,
                           std::size_t recipe, std::size_t * result) const;
   std::size_t cache_resolved_type(std::size_t source, std::size_t function,
-                                  std::size_t recipe, const AbiType & type);
+                                  std::size_t recipe, std::size_t type);
 
 private:
   AbiMangleContext(const AbiMangleContext &);

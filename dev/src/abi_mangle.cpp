@@ -447,10 +447,17 @@ public:
       require(source.index < types.size(),
               "invalid resolved ABI type id");
       result = source.index;
-      if(!source.substitution.empty()) {
-        TypeNode substituted = types[result];
-        substituted.substitution = strings.intern(source.substitution);
-        result = canonicalize_type(substituted);
+      if(!source.substitution.empty() || source.substitutable
+         || source.suppress_template_prefix_substitution) {
+        TypeNode overlaid = types[result];
+        if(!source.substitution.empty())
+          overlaid.substitution = strings.intern(source.substitution);
+        overlaid.substitutable = overlaid.substitutable
+          || source.substitutable;
+        overlaid.suppress_template_prefix_substitution =
+          overlaid.suppress_template_prefix_substitution
+          || source.suppress_template_prefix_substitution;
+        result = canonicalize_type(overlaid);
       }
     }
     else result = resolve_type_core(source);
@@ -697,18 +704,6 @@ public:
   {
     require(id < types.size(), "invalid resolved ABI type id");
     return types[id].uses_case_facts;
-  }
-
-  bool argument_uses_case_facts(size_t id) const
-  {
-    require(id < arguments.size(), "invalid resolved ABI argument id");
-    return arguments[id].uses_case_facts;
-  }
-
-  bool expression_uses_case_facts(size_t id) const
-  {
-    require(id < expressions.size(), "invalid resolved ABI expression id");
-    return expressions[id].uses_case_facts;
   }
 
   void append_argument_refs(const AbiReferenceList & references,
@@ -2695,18 +2690,6 @@ bool AbiMangleContext::resolved_type_uses_case_facts(size_t type) const
   return impl_->graph.type_uses_case_facts(type);
 }
 
-bool AbiMangleContext::resolved_argument_uses_case_facts(
-  size_t argument) const
-{
-  return impl_->graph.argument_uses_case_facts(argument);
-}
-
-bool AbiMangleContext::resolved_expression_uses_case_facts(
-  size_t expression) const
-{
-  return impl_->graph.expression_uses_case_facts(expression);
-}
-
 bool AbiMangleContext::find_resolved_type(size_t source, size_t function,
                                           size_t recipe, size_t * result) const
 {
@@ -2729,7 +2712,7 @@ bool AbiMangleContext::find_resolved_type(size_t source, size_t function,
 
 size_t AbiMangleContext::cache_resolved_type(size_t source, size_t function,
                                              size_t recipe,
-                                             const AbiType & type)
+                                             size_t id)
 {
   const Impl::ResolvedTypeKey key{source, function, recipe};
   size_t found = 0;
@@ -2740,7 +2723,8 @@ size_t AbiMangleContext::cache_resolved_type(size_t source, size_t function,
   if(impl_->resolved_types.size() >=
      std::numeric_limits<std::uint32_t>::max())
     throw std::logic_error("too many resolved ABI types");
-  const size_t id = impl_->graph.resolve_type(type);
+  if(impl_->graph.type_uses_case_facts(id))
+    throw std::logic_error("case-bound ABI type cannot enter the shared cache");
   const size_t mask = impl_->resolved_type_slots.size() - 1;
   size_t slot = Impl::resolved_type_hash(key) & mask;
   while(impl_->resolved_type_slots[slot] != 0) slot = (slot + 1) & mask;

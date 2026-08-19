@@ -1176,10 +1176,13 @@ public:
 		abi_mangle::AbiType result =
 			MakeTypeCore(type, function, recipe);
 		if (!CanResolveType(result)) return result;
+		std::size_t resolved = context_->resolve_type(result);
+		if (!context_->resolved_type_uses_case_facts(resolved))
+			resolved = context_->cache_resolved_type(
+				key.type, key.function, key.recipe, resolved);
 		abi_mangle::AbiType direct;
 		direct.kind = abi_mangle::ABI_TYPE_RESOLVED;
-		direct.index = context_->cache_resolved_type(
-			key.type, key.function, key.recipe, result);
+		direct.index = resolved;
 		return direct;
 	}
 
@@ -1597,34 +1600,17 @@ public:
 	{
 		using namespace abi_mangle;
 		if (!context_) return false;
-		if (type.kind == ABI_TYPE_RESOLVED)
-			return !context_->resolved_type_uses_case_facts(type.index);
+		if (type.kind == ABI_TYPE_RESOLVED) return true;
 		if (type.kind == ABI_TYPE_NAME_OR_REFERENCE ||
 			!type.expression_ref.empty() || !type.context_ref.empty() ||
-			type.resolved_context != ABI_NO_RESOLVED_REFERENCE ||
 			(!type.argument_refs.resolved() &&
 			 !type.argument_refs.empty())) return false;
-		if (type.resolved_expression != ABI_NO_RESOLVED_REFERENCE &&
-			context_->resolved_expression_uses_case_facts(
-				type.resolved_expression)) return false;
-		if (type.argument_refs.resolved())
-			for (std::size_t i = 0; i < type.argument_refs.size(); ++i)
-				if (context_->resolved_argument_uses_case_facts(
-					type.argument_refs.resolved_ids()[i])) return false;
 		if (type.array_bound.kind == ABI_ARRAY_BOUND_EXPRESSION &&
-			(!type.array_bound.value.empty() ||
-			 (type.array_bound.resolved_expression !=
-				ABI_NO_RESOLVED_REFERENCE &&
-			  context_->resolved_expression_uses_case_facts(
-				type.array_bound.resolved_expression)))) return false;
+			!type.array_bound.value.empty()) return false;
 		for (std::size_t i = 0; i < type.modifiers.size(); ++i)
 			if (type.modifiers[i].array_bound.kind ==
 					ABI_ARRAY_BOUND_EXPRESSION &&
-				(!type.modifiers[i].array_bound.value.empty() ||
-				 (type.modifiers[i].array_bound.resolved_expression !=
-					ABI_NO_RESOLVED_REFERENCE &&
-				  context_->resolved_expression_uses_case_facts(
-					type.modifiers[i].array_bound.resolved_expression))))
+				!type.modifiers[i].array_bound.value.empty())
 				return false;
 		for (std::size_t i = 0; i < type.types.size(); ++i)
 			if (!CanResolveType(type.types[i])) return false;
