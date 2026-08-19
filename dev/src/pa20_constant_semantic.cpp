@@ -84,9 +84,7 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 				FirstSemanticChild(specifiers);
 			const LookupResult constant = name != kNoNode &&
 				arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ?
-				FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode ?
-					LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
-				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY) :
+				LookupSyntaxName(name, scope, LOOKUP_ORDINARY) :
 				LookupResult();
 			if (constant.ordinary != kNoBinding)
 			{

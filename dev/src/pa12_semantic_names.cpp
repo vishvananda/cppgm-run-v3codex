@@ -68,5 +68,88 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
 	return result;
 }
 
+NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
+{
+	if (stats_) ++stats_->structured_name_path_requests;
+	NamePath path;
+	const NodeId structure = syntax != kNoNode &&
+		arena_->IsTag(syntax,
+			::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) ? syntax :
+		syntax == kNoNode ? kNoNode :
+		FindChild(syntax,
+			::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	if (structure == kNoNode) return path;
+	path.global = FindChild(structure,
+		::cppgm::pa10_syntax_detail::STAG_GLOBAL_QUALIFIER) != kNoNode;
+	for (std::uint32_t edge = arena_->FirstEdge(structure); edge != kNoEdge;
+		edge = arena_->NextEdge(edge))
+	{
+		const NodeId child = arena_->EdgeChild(edge);
+		if (arena_->IsTag(child,
+			::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+			path.Push(program_->names.UseInterned(
+				arena_->SemanticPayloadId(child)));
+	}
+	return path;
+}
+
+NamePath SemanticAnalyzer::SyntaxNamePath(NodeId syntax)
+{
+	if (stats_) ++stats_->syntax_name_path_requests;
+	NamePath path = StructuredNamePath(syntax);
+	if (!path.Empty()) return path;
+	if (syntax != kNoNode && arena_->HasSemanticPayload(syntax))
+	{
+		if (stats_) ++stats_->syntax_name_path_direct;
+		path.Push(program_->names.UseInterned(
+			arena_->SemanticPayloadId(syntax)));
+		return path;
+	}
+	if (stats_) ++stats_->syntax_name_path_fallbacks;
+	return syntax == kNoNode ? path : ParseNamePath(PayloadSource(syntax));
+}
+
+LookupResult SemanticAnalyzer::LookupSyntaxName(NodeId syntax, ScopeId scope,
+	LookupKind kind)
+{
+	const NodeId structure = syntax == kNoNode ? kNoNode : FindChild(
+		syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	return structure != kNoNode || (syntax != kNoNode && arena_->IsTag(syntax,
+		::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME)) ?
+		LookupStructuredName(syntax, scope, kind) :
+		LookupPath(scope, SyntaxNamePath(syntax), kind);
+}
+
+LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
+	const std::string& spelling, LookupKind kind)
+{
+	if (stats_) ++stats_->lookup_spelling_requests;
+	return LookupPath(scope, ParseNamePath(spelling), kind);
+}
+
+ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
+	const std::string& spelling)
+{
+	const LookupResult result =
+		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER);
+	if (result.type != kNoType) EnsureClassDefinition(result.type);
+	return result.name_space != kNoScope ? result.name_space :
+		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
+}
+
+ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
+{
+	if (!name.global && name.Size() <= 1) return scope;
+	NamePath owner = name;
+	if (!owner.Empty()) owner.Pop();
+	if (owner.Empty()) return owner.global ? program_->GlobalScope() : scope;
+	const ScopeId lookup_scope = owner.global ?
+		program_->GlobalScope() : scope;
+	const LookupResult result =
+		LookupPath(lookup_scope, owner, LOOKUP_SCOPE_CARRIER);
+	return result.name_space != kNoScope ? result.name_space :
+		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
+}
+
 }
 }

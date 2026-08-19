@@ -136,10 +136,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 		if (measured == kNoType && name != kNoNode &&
 			arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME))
 		{
-			const NodeId structure = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-			const LookupResult value = structure != kNoNode ?
-				LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
-				LookupSpelling(scope, PayloadSource(name), LOOKUP_ORDINARY);
+			const LookupResult value =
+				LookupSyntaxName(name, scope, LOOKUP_ORDINARY);
 			if (value.ordinary != kNoBinding)
 			{
 				measured = EffectiveType(
@@ -163,15 +161,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeSizeof(NodeId node, ScopeId scope)
 	else if (arena_->IsTag(operand, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 	{
 		const std::string spelling = arena_->Payload(operand);
-		const NodeId structure = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-		const LookupResult ordinary = structure != kNoNode ?
-			LookupStructuredName(operand, scope, LOOKUP_ORDINARY) :
-			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+		const LookupResult ordinary =
+			LookupSyntaxName(operand, scope, LOOKUP_ORDINARY);
 		if (ordinary.ordinary == kNoBinding)
 		{
-			const LookupResult type = structure != kNoNode ?
-				LookupStructuredName(operand, scope, LOOKUP_TYPE) :
-				LookupSpelling(scope, spelling, LOOKUP_TYPE);
+			const LookupResult type =
+				LookupSyntaxName(operand, scope, LOOKUP_TYPE);
 			if (type.type != kNoType) measured = type.type;
 		}
 		else measured = EffectiveType(

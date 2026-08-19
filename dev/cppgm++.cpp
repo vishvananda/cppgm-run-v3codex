@@ -1237,6 +1237,12 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << semantic.name_path_single_component_parses
 			 << " structured_name_paths="
 			 << semantic.structured_name_path_requests
+			 << " syntax_name_paths="
+			 << semantic.syntax_name_path_requests
+			 << " syntax_name_path_direct="
+			 << semantic.syntax_name_path_direct
+			 << " syntax_name_path_fallbacks="
+			 << semantic.syntax_name_path_fallbacks
 			 << " lookup_spelling_requests="
 			 << semantic.lookup_spelling_requests
 			 << " declarator_name_requests="

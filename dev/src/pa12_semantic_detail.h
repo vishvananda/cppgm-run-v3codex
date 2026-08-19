@@ -234,6 +234,9 @@ private:
 	LookupResult LookupExplicitUnqualifiedTemplateName(
 		ScopeId scope, NameId name, LookupKind kind);
 	NamePath StructuredNamePath(NodeId syntax);
+	NamePath SyntaxNamePath(NodeId syntax);
+	LookupResult LookupSyntaxName(NodeId syntax, ScopeId scope,
+		LookupKind kind);
 	LookupResult LookupSpelling(ScopeId scope, const std::string& spelling,
 		LookupKind kind);
 	ScopeId ResolveScopeSpelling(ScopeId scope, const std::string& spelling);

@@ -172,6 +172,7 @@ public:
 	const std::string& Payload(NodeId node) const;
 	const std::string& SemanticPayload(NodeId node) const;
 	TextId SemanticPayloadId(NodeId node) const;
+	bool HasSemanticPayload(NodeId node) const;
 	void SetSemanticPayload(NodeId node, TextId payload);
 	void SetLiteralFact(NodeId node, std::uint32_t fact);
 	bool ScalarLiteralFact(NodeId node, FundamentalType* type,

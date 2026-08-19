@@ -114,8 +114,7 @@ LookupResult SemanticAnalyzer::ResolveClassDirectBase(
 		const NodeId expression = FirstSemanticChild(base_name);
 		if (expression != kNoNode)
 			result.type = DecltypeType(expression, scope);
-		else result = LookupSpelling(
-			scope, arena_->Payload(base_name), LOOKUP_TYPE);
+		else result = LookupSyntaxName(base_name, scope, LOOKUP_TYPE);
 	}
 	return result;
 }
@@ -251,7 +250,8 @@ void SemanticAnalyzer::ValidateDeferredFunctionTemplateResult(NodeId node,
 						LookupStructuredName(callee, scope, LOOKUP_ORDINARY);
 					const std::vector<std::size_t> templates =
 						structure == kNoNode ?
-							FindFunctionTemplates(scope, PayloadSource(callee)) :
+							FindFunctionTemplates(
+								scope, SyntaxNamePath(callee)) :
 							FindFunctionTemplates(
 								scope, StructuredNamePath(callee));
 					const bool has_functions = found.ordinary != kNoBinding &&

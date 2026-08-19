@@ -849,7 +849,7 @@ bool SemanticAnalyzer::AnalyzeParenthesizedFunctionTemplateCast(
 	const bool explicit_id = ParseExplicitTemplateArguments(
 		name, scope, &structured_base, &explicit_arguments);
 	if ((explicit_id ? FindFunctionTemplates(scope, structured_base) :
-		FindFunctionTemplates(scope, spelling)).empty()) return false;
+		FindFunctionTemplates(scope, SyntaxNamePath(name))).empty()) return false;
 	const NodeId argument_root = FirstSemanticChild(operand);
 	std::vector<NodeId> argument_syntax;
 	if (argument_root != kNoNode)
@@ -883,9 +883,7 @@ bool SemanticAnalyzer::AnalyzeParenthesizedValueBinaryCast(
 	const std::string operation = PayloadSource(operand);
 	if (operation != "+" && operation != "-") return false;
 	const std::string spelling = PayloadSource(name);
-	const LookupResult found = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode ?
-		LookupStructuredName(name, scope, LOOKUP_ORDINARY) :
-		LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+	const LookupResult found = LookupSyntaxName(name, scope, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding) return false;
 	const BindingKind kind = program_->bindings[found.ordinary].kind;
 	if (kind != BIND_VARIABLE && kind != BIND_PARAMETER &&

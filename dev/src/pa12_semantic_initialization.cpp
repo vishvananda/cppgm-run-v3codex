@@ -1134,9 +1134,8 @@ void SemanticAnalyzer::AddConstructorMemberActions(
 				target_type.type = ResolveStructuredTypeName(
 					structured, initializer_scope);
 			}
-			else
-				target_type = LookupSpelling(initializer_scope,
-					arena_->Payload(id), LOOKUP_TYPE);
+			else target_type =
+				LookupSyntaxName(id, initializer_scope, LOOKUP_TYPE);
 			if (target_type.type != kNoType &&
 				EntityOf(target_type.type) == entity)
 			{

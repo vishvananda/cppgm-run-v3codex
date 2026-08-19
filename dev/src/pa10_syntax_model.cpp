@@ -502,6 +502,11 @@ TextId SyntaxArena::SemanticPayloadId(NodeId node) const
 		record.payload : record.semantic_payload;
 }
 
+bool SyntaxArena::HasSemanticPayload(NodeId node) const
+{
+	return nodes_[node].semantic_payload != 0;
+}
+
 void SyntaxArena::SetSemanticPayload(NodeId node, TextId payload)
 {
 	nodes_[node].semantic_payload = payload;

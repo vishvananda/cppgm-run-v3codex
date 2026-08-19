@@ -242,11 +242,8 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 				result_type = BuildTypeId(type_syntax, scope);
 			else if (arena_->IsTag(type_syntax, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 			{
-				const NodeId structure = FindChild(
-					type_syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-				const LookupResult found = structure == kNoNode ?
-					LookupSpelling(scope, PayloadSource(type_syntax), LOOKUP_TYPE) :
-					LookupStructuredName(type_syntax, scope, LOOKUP_TYPE);
+				const LookupResult found =
+					LookupSyntaxName(type_syntax, scope, LOOKUP_TYPE);
 				result_type = found.type;
 			}
 			if (CandidateSubstitutionFailed() || result_type == kNoType)

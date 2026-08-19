@@ -1767,7 +1767,7 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 		{
 			if (deferred_type != kNoType)
 			{ result.type = deferred_type; continue; }
-			const LookupResult found = LookupSpelling(scope, spelling, LOOKUP_TYPE);
+			const LookupResult found = LookupSyntaxName(child, scope, LOOKUP_TYPE);
 			if (found.type == kNoType)
 				throw std::runtime_error("unknown type name: " + spelling);
 			const TypeRecord& named = program_->types.Get(
@@ -2449,7 +2449,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 		program_->AddUsingEdge(scope, target_scope);
 		return;
 	}
-	const NamePath path = ParseNamePath(target);
+	const NamePath path = SyntaxNamePath(target_node);
 	const NameId name = path.Last();
 	const NodeId target_structure = FindChild(
 		target_node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
@@ -2463,7 +2463,7 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	std::vector<std::size_t> template_patterns =
 		target_structure != kNoNode ? FindStructuredFunctionTemplates(
 			target_node, scope) :
-			FindFunctionTemplates(scope, target);
+			FindFunctionTemplates(scope, path);
 	if (ordinary.ordinary == kNoBinding && type.type != kNoType &&
 		template_patterns.empty())
 	{

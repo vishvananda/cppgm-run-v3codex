@@ -22,11 +22,9 @@ bool SemanticAnalyzer::FunctionalCastPrecedesFunctions(
 	for (std::size_t i = 0; i < candidates.size(); ++i)
 		if (GetFunction(candidates[i]).member_owner != kNoType)
 			return false;
-	const NodeId structure = syntax == kNoNode ? kNoNode :
-		FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-	const LookupResult type_lookup = structure != kNoNode ?
-		LookupStructuredName(syntax, scope, LOOKUP_TYPE) :
-		LookupSpelling(scope, spelling, LOOKUP_TYPE);
+	const LookupResult type_lookup = syntax == kNoNode ?
+		LookupSpelling(scope, spelling, LOOKUP_TYPE) :
+		LookupSyntaxName(syntax, scope, LOOKUP_TYPE);
 	ScopeId type_owner = kNoScope;
 	if (type_lookup.type_declaration != kNoBinding)
 		type_owner = program_->bindings[type_lookup.type_declaration].owner;
@@ -137,7 +135,8 @@ bool SemanticAnalyzer::AnalyzeAmbiguousCallStatement(
 		return false;
 	const NamePath structured = StructuredNamePath(specifier_node);
 	if (FunctionCallCandidates(scope, spelling, 0, specifier_node).empty() &&
-		(structured.Empty() ? FindFunctionTemplates(scope, spelling) :
+		(structured.Empty() ? FindFunctionTemplates(
+			scope, SyntaxNamePath(specifier_node)) :
 		 FindFunctionTemplates(scope, structured)).empty())
 		return false;
 	const std::string argument_spelling = PayloadSource(argument_name);
@@ -328,10 +327,8 @@ bool SemanticAnalyzer::AnalyzeAmbiguousMultiDirectInitializer(NodeId,
 		const NodeId argument = argument_specifiers == kNoNode ? kNoNode :
 			FirstSemanticChild(argument_specifiers);
 		if (argument == kNoNode) return false;
-		const NodeId structure = FindChild(argument, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-		const LookupResult value = structure == kNoNode ?
-			LookupSpelling(scope, PayloadSource(argument), LOOKUP_ORDINARY) :
-			LookupStructuredName(argument, scope, LOOKUP_ORDINARY);
+		const LookupResult value =
+			LookupSyntaxName(argument, scope, LOOKUP_ORDINARY);
 		if (value.ordinary != kNoBinding) has_value_argument = true;
 	}
 	if (!has_value_argument) return false;
@@ -448,9 +445,8 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 	const NodeId call_declarator = FindChild(provisional, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR);
 	if (call_declarator == kNoNode)
 	{
-		const LookupResult value = structured.Empty() ?
-			LookupSpelling(scope, call_spelling, LOOKUP_ORDINARY) :
-			LookupStructuredName(call_name, scope, LOOKUP_ORDINARY);
+		const LookupResult value =
+			LookupSyntaxName(call_name, scope, LOOKUP_ORDINARY);
 		if (value.ordinary == kNoBinding) return false;
 		const SpecInfo spec = BuildSpecifiers(specifiers, scope,
 			program_->names.Get(variable_name), true);
@@ -486,7 +482,8 @@ bool SemanticAnalyzer::AnalyzeAmbiguousDirectInitializer(
 		return true;
 	}
 	if (FunctionCallCandidates(scope, call_spelling, 0, call_name).empty() &&
-		(structured.Empty() ? FindFunctionTemplates(scope, call_spelling) :
+		(structured.Empty() ? FindFunctionTemplates(
+			scope, SyntaxNamePath(call_name)) :
 		 FindFunctionTemplates(scope, structured)).empty())
 		return false;
 	const NodeId call_clause = call_declarator == kNoNode ? kNoNode :

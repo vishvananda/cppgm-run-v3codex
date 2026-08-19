@@ -743,7 +743,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 			found.ordinary = variable_template;
 		else found = LookupStructuredName(syntax, scope, LOOKUP_ORDINARY);
 	}
-	else found = LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+	else found = syntax == kNoNode ?
+		LookupSpelling(scope, spelling, LOOKUP_ORDINARY) :
+		LookupSyntaxName(syntax, scope, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 	{
 		if (CandidateSubstitutionActive()) return CandidateSubstitutionFailure();
@@ -770,10 +772,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 				ApplyDemandedClassTemplateMemberDefinitions(specialization);
 			break;
 		}
-		found = syntax != kNoNode &&
-			FindChild(syntax, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) != kNoNode ?
-			LookupStructuredName(syntax, scope, LOOKUP_ORDINARY) :
-			LookupSpelling(scope, spelling, LOOKUP_ORDINARY);
+		found = syntax == kNoNode ?
+			LookupSpelling(scope, spelling, LOOKUP_ORDINARY) :
+			LookupSyntaxName(syntax, scope, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error(
 				"static member definition replay lost its declaration");
@@ -964,8 +965,8 @@ TypeId SemanticAnalyzer::DecltypeType(NodeId node, ScopeId scope)
 		FindChild(node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME) == kNoNode &&
 		arena_->Payload(node).find("::") == std::string::npos)
 	{
-		const LookupResult found = LookupSpelling(scope,
-			arena_->Payload(node), LOOKUP_ORDINARY);
+		const LookupResult found = LookupSyntaxName(
+			node, scope, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error("decltype name not found");
 		const BindingRecord& binding = program_->bindings[found.ordinary];

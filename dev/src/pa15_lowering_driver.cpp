@@ -235,6 +235,9 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 		source.name_path_single_component_parses;
 	target->structured_name_path_requests +=
 		source.structured_name_path_requests;
+	target->syntax_name_path_requests += source.syntax_name_path_requests;
+	target->syntax_name_path_direct += source.syntax_name_path_direct;
+	target->syntax_name_path_fallbacks += source.syntax_name_path_fallbacks;
 	target->lookup_spelling_requests += source.lookup_spelling_requests;
 	target->declarator_name_requests += source.declarator_name_requests;
 	target->declarator_name_path_requests +=

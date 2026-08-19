@@ -1184,7 +1184,7 @@ bool SemanticAnalyzer::DeduceFunctionTemplateOverloadArgument(
 	{
 		const NamePath structured = StructuredNamePath(syntax);
 		const std::vector<std::size_t> templates = structured.Empty() ?
-			FindFunctionTemplates(scope, spelling) :
+			FindFunctionTemplates(scope, SyntaxNamePath(syntax)) :
 			FindStructuredFunctionTemplates(syntax, scope);
 		if (!templates.empty()) return false;
 	}
@@ -1583,12 +1583,11 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
 	const bool structured_name = !structured_base.Empty();
 	const NamePath path = structured_name ? structured_base :
-		ParseNamePath(spelling);
+		syntax == kNoNode ? ParseNamePath(spelling) : SyntaxNamePath(syntax);
 	const NameId name = path.Last();
 	if (name == 0) return;
 	const std::vector<ScopeId> visible_owners =
-		structured_name ? FindFunctionTemplateOwners(scope, structured_base) :
-		FindFunctionTemplateOwners(scope, spelling);
+		FindFunctionTemplateOwners(scope, path);
 	for (std::size_t owner = 0; owner < visible_owners.size(); ++owner)
 	{
 		const ScopeId visible_owner = visible_owners[owner];
@@ -1678,7 +1677,7 @@ std::vector<BindingId> SemanticAnalyzer::FunctionTemplateTargetCandidates(
 	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
 	std::vector<std::size_t> patterns = !structured_base.Empty() ?
 		FindStructuredFunctionTemplates(syntax, scope) :
-		FindFunctionTemplates(scope, spelling);
+		FindFunctionTemplates(scope, SyntaxNamePath(syntax));
 	if (patterns.empty() && !structured_base.Empty())
 		patterns = FindFunctionTemplates(scope, structured_base);
 	std::vector<BindingId> result;
@@ -1879,7 +1878,7 @@ bool SemanticAnalyzer::AnalyzeFunctionId(NodeId node, ScopeId scope,
 	if (!explicit_template_id) structured_base = StructuredNamePath(node);
 	std::vector<std::size_t> template_patterns = !structured_base.Empty() ?
 		FindStructuredFunctionTemplates(node, scope) :
-		FindFunctionTemplates(scope, spelling);
+		FindFunctionTemplates(scope, SyntaxNamePath(node));
 	if (template_patterns.empty() && !structured_base.Empty())
 		template_patterns = FindFunctionTemplates(scope, structured_base);
 	TypeId desired = target;

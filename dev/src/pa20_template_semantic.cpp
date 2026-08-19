@@ -1502,11 +1502,8 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 				type_id, source_scope, source_dependent_names);
 		else if (arena_->IsTag(source, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
 		{
-			const NodeId structure = FindChild(
-				source, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-			const LookupResult found = structure != kNoNode ?
-				LookupStructuredName(source, source_scope, LOOKUP_TYPE) :
-				LookupSpelling(source_scope, PayloadSource(source), LOOKUP_TYPE);
+			const LookupResult found =
+				LookupSyntaxName(source, source_scope, LOOKUP_TYPE);
 			argument.type = found.type;
 		}
 		else return false;
@@ -1562,10 +1559,8 @@ bool SemanticAnalyzer::AppendTemplateArgument(
 			if (name != kNoNode && arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) &&
 				retained_declarator == kNoNode)
 			{
-				const NodeId structure = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-				const LookupResult known_type = structure == kNoNode ?
-					LookupSpelling(source_scope, PayloadSource(name), LOOKUP_TYPE) :
-					LookupStructuredName(name, source_scope, LOOKUP_TYPE);
+				const LookupResult known_type =
+					LookupSyntaxName(name, source_scope, LOOKUP_TYPE);
 				if (known_type.type != kNoType) return false;
 			}
 			if (name != kNoNode && arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) &&

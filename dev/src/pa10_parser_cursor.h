@@ -142,6 +142,9 @@ protected:
 		Derived& parser = static_cast<Derived&>(*this);
 		const NodeId node = parser.arena_.Make(tag, spelling);
 		if (structure != kNoNode) parser.arena_.Add(node, structure);
+		else if (spelling.find("::") == std::string::npos)
+			parser.arena_.SetSemanticPayload(
+				node, parser.arena_.PayloadId(node));
 		return node;
 	}
 

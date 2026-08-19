@@ -1302,14 +1302,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeCall(NodeId node, ScopeId scope, TypeId 
 		!local_callable)
 	{
 		const std::string spelling = arena_->Payload(direct_callee_syntax);
-		NamePath callee_path = StructuredNamePath(direct_callee_syntax);
+		NamePath callee_path = SyntaxNamePath(direct_callee_syntax);
 		NamePath explicit_template_base;
 		std::vector<NodeId> explicit_template_syntax;
 		const bool explicit_template_id = CollectExplicitTemplateArguments(
 			direct_callee_syntax, &explicit_template_base,
 			&explicit_template_syntax);
 		if (explicit_template_id) callee_path = explicit_template_base;
-		if (callee_path.Empty()) callee_path = ParseNamePath(spelling);
 		const bool qualified_callee = callee_path.global || callee_path.Size() > 1;
 		ExpressionInfo builtin;
 		// Closed intrinsic handlers own builtin identity.  Only after all of them

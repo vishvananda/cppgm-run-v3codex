@@ -1386,10 +1386,9 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 	const NodeId name = specifiers == kNoNode ? kNoNode :
 		FirstSemanticChild(specifiers);
 	if (name == kNoNode) return false;
-	const NodeId structured = FindChild(name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-	const LookupResult found = structured == kNoNode ?
-		LookupSpelling(lookup_scope, PayloadSource(name), LOOKUP_TYPE) :
-		LookupStructuredName(name, lookup_scope, LOOKUP_TYPE);
+	const NodeId structured = FindChild(
+		name, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	const LookupResult found = LookupSyntaxName(name, lookup_scope, LOOKUP_TYPE);
 	if (found.type == kNoType && structured != kNoNode)
 	{
 		const NamePath path = StructuredNamePath(structured);

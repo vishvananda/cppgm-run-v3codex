@@ -33,6 +33,9 @@ struct SemanticAnalysisStats
 	std::size_t name_path_parse_components;
 	std::size_t name_path_single_component_parses;
 	std::size_t structured_name_path_requests;
+	std::size_t syntax_name_path_requests;
+	std::size_t syntax_name_path_direct;
+	std::size_t syntax_name_path_fallbacks;
 	std::size_t lookup_spelling_requests;
 	std::size_t declarator_name_requests;
 	std::size_t declarator_name_path_requests;
