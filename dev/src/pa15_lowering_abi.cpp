@@ -558,6 +558,12 @@ class AbiFactBuilder
 	}
 
 public:
+	void SetPath(abi_mangle::AbiFunctionTarget* target,
+		pa11::ScopeId owner, pa11::NameId terminal)
+	{
+		target->resolved_path = ResolvePath(owner, terminal);
+	}
+
 	AbiFactBuilder(const pa11::Program& program,
 		abi_mangle::AbiTypedCase& facts,
 		abi_mangle::AbiMangleContext* context = 0)
@@ -2467,7 +2473,12 @@ std::string MangleFunction(const pa11::Program& program,
 		ABI_FUNCTION_TARGET_ENCODING : typed_class_owner ?
 			ABI_FUNCTION_TARGET_MEMBER : ABI_FUNCTION_TARGET_PATH;
 	if (!structured_owner)
-		target.target.function.qualified_name = qualified;
+	{
+		if (binding.conversion_function)
+			target.target.function.qualified_name = qualified;
+		else facts.SetPath(
+			&target.target.function, binding.owner, binding.name);
+	}
 	if (typed_class_owner)
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];

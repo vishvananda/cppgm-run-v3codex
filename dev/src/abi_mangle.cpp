@@ -684,6 +684,8 @@ public:
     return contexts[id];
   }
 
+  size_t path(size_t id) const { return checked_path(id); }
+
   const AbiEntityFact & entity(size_t id) const
   {
     require(id < entities.size(), "invalid resolved ABI entity id");
@@ -1976,7 +1978,9 @@ private:
   void encode_path_function(const AbiFunctionTarget & target, const FunctionFacts & facts,
                             bool internal)
   {
-    const size_t path = graph_.paths.intern(target.qualified_name);
+    const size_t path = target.resolved_path != ABI_NO_RESOLVED_REFERENCE ?
+      graph_.path(target.resolved_path) :
+      graph_.paths.intern(target.qualified_name);
     vector<size_t> template_arguments;
     vector<size_t> operand_parameters;
     for(const AbiFunctionPathOperand & operand : target.path_operands) {
@@ -2025,7 +2029,9 @@ private:
       emit_tags(facts.tags);
     }
     if(!facts.template_arguments.empty()) {
-      const size_t path = graph_.paths.intern(target.qualified_name);
+      const size_t path = target.resolved_path != ABI_NO_RESOLVED_REFERENCE ?
+        graph_.path(target.resolved_path) :
+        graph_.paths.intern(target.qualified_name);
       encode_function_template_arguments(path, facts, facts.template_arguments);
     }
     output_ += 'E';
@@ -2051,7 +2057,9 @@ private:
     encode_prefix_type(graph_.resolve_type(target.owner_type));
     output_ += source_name(target.source_name);
     if(!facts.template_arguments.empty()) {
-      const size_t path = graph_.paths.intern(target.qualified_name);
+      const size_t path = target.resolved_path != ABI_NO_RESOLVED_REFERENCE ?
+        graph_.path(target.resolved_path) :
+        graph_.paths.intern(target.qualified_name);
       encode_function_template_arguments(path, facts, facts.template_arguments);
     }
     output_ += 'E';

@@ -340,6 +340,7 @@ struct AbiFunctionTarget
   AbiFunctionTargetKind kind = ABI_FUNCTION_TARGET_PATH;
   std::string qualified_name;
   std::string context_ref;
+  std::size_t resolved_path = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context_identity = ABI_NO_RESOLVED_REFERENCE;
   std::string source_name;
