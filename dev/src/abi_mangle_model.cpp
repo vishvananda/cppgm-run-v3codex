@@ -333,4 +333,17 @@ std::size_t abi_fact_storage_bytes(const AbiFactFile & file)
   return result;
 }
 
+std::size_t abi_typed_case_storage_bytes(const AbiTypedCase & fact_case)
+{
+  std::size_t result = sizeof(fact_case)
+    + fact_case.definitions.capacity() * sizeof(AbiDefinitionRecord)
+    + fact_case.functions.capacity() * sizeof(AbiFunctionRecord)
+    + target_dynamic_bytes(fact_case.target);
+  for(const AbiDefinitionRecord & definition : fact_case.definitions)
+    result += definition_dynamic_bytes(definition);
+  for(const AbiFunctionRecord & function : fact_case.functions)
+    result += function_record_dynamic_bytes(function);
+  return result;
+}
+
 }  // namespace abi_mangle

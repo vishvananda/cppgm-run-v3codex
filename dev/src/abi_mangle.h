@@ -113,6 +113,17 @@ struct AbiFactFile
   std::vector<AbiFactCase> cases;
 };
 
+// Compact in-memory case used by integrated compiler clients.  The standalone
+// fact-file adapter retains AbiFactRecord because its input is record ordered;
+// production does not pay the union size for every record family.
+struct AbiTypedCase
+{
+  std::vector<AbiDefinitionRecord> definitions;
+  std::vector<AbiFunctionRecord> functions;
+  AbiTargetRecord target;
+  bool has_target = false;
+};
+
 struct AbiMangleStats
 {
 	std::size_t production_mangles = 0;
@@ -146,6 +157,7 @@ public:
   ~AbiMangleContext();
 
   std::string mangle_case(const AbiFactCase & fact_case);
+  std::string mangle_case(const AbiTypedCase & fact_case);
   std::size_t resolve_type(const AbiType & type);
   bool find_resolved_type(std::size_t source, std::size_t function,
                           std::size_t recipe, std::size_t * result) const;
@@ -163,6 +175,7 @@ AbiFactRecord parse_fact_record_words(const std::vector<std::string> & words);
 AbiFactFile parse_fact_text(const std::string & text);
 std::string serialize_fact_file(const AbiFactFile & file);
 std::size_t abi_fact_storage_bytes(const AbiFactFile & file);
+std::size_t abi_typed_case_storage_bytes(const AbiTypedCase & fact_case);
 std::string mangle_fact_file(const AbiFactFile & file);
 void mangle_fact_file_to_stream(const AbiFactFile & file, std::ostream & output,
                                 AbiMangleStats * stats = nullptr);

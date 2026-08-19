@@ -5,7 +5,6 @@
 #include "pa18_polymorphism_lowering.h"
 
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -209,8 +208,30 @@ bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
 	return true;
 }
 
+void AppendTypedFact(abi_mangle::AbiTypedCase* facts,
+	abi_mangle::AbiFactRecord* record)
+{
+	using namespace abi_mangle;
+	switch (record->kind)
+	{
+	case ABI_FACT_RECORD_DEFINITION:
+		facts->definitions.push_back(std::move(record->definition));
+		return;
+	case ABI_FACT_RECORD_FUNCTION:
+		facts->functions.push_back(std::move(record->function));
+		return;
+	case ABI_FACT_RECORD_TARGET:
+		if (facts->has_target)
+			throw std::logic_error("production ABI case has two targets");
+		facts->target = std::move(record->target);
+		facts->has_target = true;
+		return;
+	}
+	throw std::logic_error("invalid production ABI fact record");
+}
+
 void AppendFunctionAbiTagFacts(const Program& program,
-	const BindingRecord& binding, abi_mangle::AbiFactCase* facts)
+	const BindingRecord& binding, abi_mangle::AbiTypedCase* facts)
 {
 	using namespace abi_mangle;
 	if (binding.abi_tag_count == 0) return;
@@ -224,12 +245,12 @@ void AppendFunctionAbiTagFacts(const Program& program,
 		tag.function.kind = ABI_FUNCTION_RECORD_ABI_TAG;
 		tag.function.name = program.names.Get(
 			program.abi_tags[binding.abi_tag_begin + i]);
-		facts->records.push_back(tag);
+		AppendTypedFact(facts, &tag);
 	}
 }
 
 void AppendComponentAbiTagFacts(const Program& program,
-	const EntityRecord& entity, abi_mangle::AbiFactCase* facts)
+	const EntityRecord& entity, abi_mangle::AbiTypedCase* facts)
 {
 	using namespace abi_mangle;
 	if (entity.abi_tag_begin > program.abi_tags.size() ||
@@ -242,7 +263,7 @@ void AppendComponentAbiTagFacts(const Program& program,
 		tag.function.kind = ABI_FUNCTION_RECORD_COMPONENT_ABI_TAG;
 		tag.function.name = program.names.Get(
 			program.abi_tags[entity.abi_tag_begin + i]);
-		facts->records.push_back(tag);
+		AppendTypedFact(facts, &tag);
 	}
 }
 
@@ -408,7 +429,7 @@ class AbiFactBuilder
 	};
 
 	const pa11::Program& program_;
-	abi_mangle::AbiFactCase& facts_;
+	abi_mangle::AbiTypedCase& facts_;
 	abi_mangle::AbiMangleContext* context_;
 	std::size_t next_argument_;
 	std::vector<TypeArgumentCacheEntry> type_argument_cache_;
@@ -491,7 +512,7 @@ class AbiFactBuilder
 
 public:
 	AbiFactBuilder(const pa11::Program& program,
-		abi_mangle::AbiFactCase& facts,
+		abi_mangle::AbiTypedCase& facts,
 		abi_mangle::AbiMangleContext* context = 0)
 		: program_(program), facts_(facts), context_(context), next_argument_(0),
 		  type_argument_cache_slots_(32, 0) {}
@@ -514,7 +535,7 @@ public:
 		definition.definition.template_argument.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
 		definition.definition.template_argument.type =
 			MakeType(type, function, recipe);
-		facts_.records.push_back(std::move(definition));
+		AppendTypedFact(&facts_, &definition);
 		CacheTypeArgument(key, id);
 		return id;
 	}
@@ -559,7 +580,7 @@ public:
 				binding.member_owner == kNoEntity &&
 				!binding.unnamed_namespace_linkage;
 		}
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		return id;
 	}
 
@@ -609,7 +630,7 @@ public:
 				target.type = MakeType(source.type, function, recipe);
 				target.type.substitution = id;
 			}
-			facts_.records.push_back(definition);
+			AppendTypedFact(&facts_, &definition);
 			return id;
 		}
 		const std::string id = "__cppgm_abi_value_argument_" +
@@ -804,7 +825,7 @@ public:
 			target.has_value_type = true;
 			target.value = source.value;
 		}
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		return id;
 	}
 
@@ -826,7 +847,7 @@ public:
 		for (std::size_t argument = 0; argument < count; ++argument)
 			definition.definition.template_argument.argument_refs.push_back(
 				AddTemplateArgument(first + argument, function, recipe));
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		return id;
 	}
 
@@ -842,7 +863,7 @@ public:
 		definition.definition.expression.kind =
 			ABI_EXPRESSION_TEMPLATE_PARAMETER;
 		definition.definition.expression.index = parameter;
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		return id;
 	}
 
@@ -856,7 +877,7 @@ public:
 		definition.definition.id = id;
 		definition.definition.set_kind(ABI_DEFINITION_TYPE);
 		definition.definition.type = MakeType(type);
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		AbiType reference;
 		reference.kind = ABI_TYPE_NAME_OR_REFERENCE;
 		reference.name = id;
@@ -935,7 +956,7 @@ public:
 					target.signature_parameter_types.push_back(
 						MakeType(parameters[i]));
 				target.variadic = type.variadic;
-				facts_.records.push_back(definition);
+				AppendTypedFact(&facts_, &definition);
 				return id;
 			}
 		}
@@ -966,7 +987,7 @@ public:
 				target.signature_parameter_types.push_back(
 					AddContextType(parameters[i]));
 			target.variadic = type.variadic;
-			facts_.records.push_back(definition);
+			AppendTypedFact(&facts_, &definition);
 			return id;
 		}
 		const std::string qualified_name = program_.names.Get(
@@ -976,7 +997,7 @@ public:
 		{
 			definition.definition.context.kind = ABI_CONTEXT_RAW;
 			definition.definition.context.fragment = "Z4mainE";
-			facts_.records.push_back(definition);
+			AppendTypedFact(&facts_, &definition);
 			return id;
 		}
 		definition.definition.context.kind = ABI_CONTEXT_FUNCTION;
@@ -1086,7 +1107,7 @@ public:
 			target.signature_parameter_types.push_back(encoded);
 		}
 		target.variadic = type.variadic;
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		return id;
 	}
 
@@ -1288,7 +1309,7 @@ public:
 		}
 		else throw std::logic_error(
 			"function template ABI expression node kind is invalid");
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		return id;
 	}
 
@@ -1317,7 +1338,7 @@ public:
 			target.entity_ref = AddFunctionTemplateAbiExpression(
 				source.expression, recipe);
 		}
-		facts_.records.push_back(definition);
+		AppendTypedFact(&facts_, &definition);
 		return id;
 	}
 
@@ -1837,7 +1858,7 @@ public:
 
 bool AppendClassTemplateOwner(const pa11::Program& program,
 	const pa11::BindingRecord& binding, AbiFactBuilder* builder,
-	abi_mangle::AbiFactCase* facts, bool retain_complete_substitution)
+	abi_mangle::AbiTypedCase* facts, bool retain_complete_substitution)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -1890,7 +1911,7 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 		else if (i == 0 && program.IsInStandardNamespace(entity.owner))
 			component.function.kind = ABI_FUNCTION_RECORD_NAME_STD;
 		else component.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
-		facts->records.push_back(component);
+		AppendTypedFact(facts, &component);
 	}
 	return true;
 }
@@ -1956,7 +1977,7 @@ std::string OperatorTerminal(OperatorKind kind, bool member,
 namespace
 {
 
-std::string MangleProductionFile(const abi_mangle::AbiFactFile& file,
+std::string MangleProductionCase(const abi_mangle::AbiTypedCase& fact_case,
 	abi_mangle::AbiMangleStats* stats,
 	abi_mangle::AbiMangleContext* context)
 {
@@ -1964,21 +1985,11 @@ std::string MangleProductionFile(const abi_mangle::AbiFactFile& file,
 	{
 		++stats->production_mangles;
 		stats->production_fact_bytes +=
-			abi_mangle::abi_fact_storage_bytes(file);
+			abi_mangle::abi_typed_case_storage_bytes(fact_case);
 	}
-	if (context)
-	{
-		if (file.cases.size() != 1)
-			throw std::logic_error(
-				"production ABI context requires one fact case");
-		return context->mangle_case(file.cases[0]);
-	}
-	std::ostringstream output;
-	abi_mangle::mangle_fact_file_to_stream(file, output, stats);
-	std::string result = output.str();
-	if (!result.empty() && result[result.size() - 1] == '\n')
-		result.resize(result.size() - 1);
-	return result;
+	if (context) return context->mangle_case(fact_case);
+	abi_mangle::AbiMangleContext local_context(stats);
+	return local_context.mangle_case(fact_case);
 }
 
 }
@@ -1988,15 +1999,14 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type,
 	abi_mangle::AbiMangleContext* context)
 {
 	using namespace abi_mangle;
-	AbiFactFile file;
-	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0], context);
+	AbiTypedCase fact_case;
+	AbiFactBuilder facts(program, fact_case, context);
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_TYPE;
 	target.target.type = facts.MakeType(type);
-	file.cases[0].records.push_back(target);
-	return MangleProductionFile(file, stats, context);
+	AppendTypedFact(&fact_case, &target);
+	return MangleProductionCase(fact_case, stats, context);
 }
 
 bool IsFunctionEmissionDemanded(const pa11::Program& program,
@@ -2181,7 +2191,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 	const pa11::BindingRecord& binding,
 	const pa11::TypeRecord& function_type,
 	const pa11::FunctionTemplateAbiRecipe* recipe,
-	AbiFactBuilder* facts, abi_mangle::AbiFactCase* output)
+	AbiFactBuilder* facts, abi_mangle::AbiTypedCase* output)
 {
 	using namespace abi_mangle;
 	using namespace pa11;
@@ -2204,7 +2214,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 			ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
 		argument.function.argument_refs.push_back(
 			facts->AddTemplateArgument(first + i, &binding, recipe, i));
-		output->records.push_back(argument);
+		AppendTypedFact(output, &argument);
 	}
 	if (recipe && recipe->template_parameter_pack)
 	{
@@ -2214,7 +2224,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 			ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
 		argument.function.argument_refs.push_back(
 			facts->AddTemplateArgumentPack(first + fixed, count - fixed));
-		output->records.push_back(argument);
+		AppendTypedFact(output, &argument);
 	}
 	// Itanium constructor, destructor, and conversion-function encodings do
 	// not carry a result type, including when the callable is a template.
@@ -2240,7 +2250,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 		result.function.type = facts->MakeFunctionTemplateType(result_type,
 			binding, result_type == function_type.child ? 0 : recipe);
 	}
-	output->records.push_back(result);
+	AppendTypedFact(output, &result);
 }
 
 std::string MangleLambdaCallOperator(const pa11::Program& program,
@@ -2252,9 +2262,8 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	using namespace pa11;
 	if (binding.operator_kind != OPERATOR_CALL)
 		throw std::logic_error("invalid lambda call-operator ABI identity");
-	AbiFactFile file;
-	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0], context);
+	AbiTypedCase fact_case;
+	AbiFactBuilder facts(program, fact_case, context);
 	const FunctionTemplateAbiRecipe* recipe = 0;
 	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
 	{
@@ -2307,7 +2316,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 		qualifier.function.qualifiers.push_back(
 			ABI_FUNCTION_QUALIFIER_VOLATILE);
 	if (!qualifier.function.qualifiers.empty())
-		file.cases[0].records.push_back(qualifier);
+		AppendTypedFact(&fact_case, &qualifier);
 	const TypeId signature_type = recipe ? recipe->function_type : binding.type;
 	const TypeRecord& signature = program.types.Get(signature_type);
 	const TypeId* signature_parameters = program.types.Parameters(signature_type);
@@ -2318,7 +2327,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 					signature_parameters[i], binding, recipe) :
 				facts.MakeType(signature_parameters[i]));
 	AppendFunctionTemplateArgumentsAndResult(program, binding, lambda_type,
-		recipe, &facts, &file.cases[0]);
+		recipe, &facts, &fact_case);
 	const TypeId* lambda_parameters = program.types.Parameters(binding.type);
 	for (std::size_t i = 0; i < lambda_type.parameter_count; ++i)
 	{
@@ -2326,10 +2335,10 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 		parameter.set_kind(ABI_FACT_RECORD_FUNCTION);
 		parameter.function.kind = ABI_FUNCTION_RECORD_PARAMETER;
 		parameter.function.type = facts.MakeType(lambda_parameters[i]);
-		file.cases[0].records.push_back(parameter);
+		AppendTypedFact(&fact_case, &parameter);
 	}
-	file.cases[0].records.push_back(lambda_target);
-	return MangleProductionFile(file, stats, context);
+	AppendTypedFact(&fact_case, &lambda_target);
+	return MangleProductionCase(fact_case, stats, context);
 }
 
 std::string MangleFunction(const pa11::Program& program,
@@ -2373,9 +2382,8 @@ std::string MangleFunction(const pa11::Program& program,
 		binding.operator_kind == OPERATOR_CALL)
 		return MangleLambdaCallOperator(
 			program, binding, *lambda, stats, context);
-	AbiFactFile file;
-	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0], context);
+	AbiTypedCase fact_case;
+	AbiFactBuilder facts(program, fact_case, context);
 	const FunctionTemplateAbiRecipe* recipe = 0;
 	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
 	{
@@ -2421,8 +2429,8 @@ std::string MangleFunction(const pa11::Program& program,
 		target.target.function.owner_type = facts.MakeType(owner.type);
 		target.target.function.source_name = program.names.Get(binding.name);
 	}
-	file.cases[0].records.push_back(target);
-	AppendFunctionAbiTagFacts(program, binding, &file.cases[0]);
+	AppendTypedFact(&fact_case, &target);
+	AppendFunctionAbiTagFacts(program, binding, &fact_case);
 	if (structured_local_owner)
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];
@@ -2434,16 +2442,16 @@ std::string MangleFunction(const pa11::Program& program,
 			local.function.name = program.names.Get(owner.identity_name);
 		local.function.discriminator = std::to_string(owner.local_name_ordinal);
 		local.function.discriminator_after_terminal = !owner.unnamed_class;
-		file.cases[0].records.push_back(local);
-		AppendComponentAbiTagFacts(program, owner, &file.cases[0]);
+		AppendTypedFact(&fact_case, &local);
+		AppendComponentAbiTagFacts(program, owner, &fact_case);
 	}
 	if (structured_class_owner &&
-		!AppendClassTemplateOwner(program, binding, &facts, &file.cases[0], true))
+		!AppendClassTemplateOwner(program, binding, &facts, &fact_case, true))
 		throw std::logic_error("class template ABI owner was lost");
 	const TypeRecord& function_type = program.types.Get(node.type);
 	const TypeId* parameters = program.types.Parameters(node.type);
 	AppendFunctionTemplateArgumentsAndResult(program, binding, function_type,
-		recipe, &facts, &file.cases[0]);
+		recipe, &facts, &fact_case);
 	const bool member = binding.member_owner != kNoEntity && !binding.static_member_function;
 	if (member)
 	{
@@ -2464,7 +2472,7 @@ std::string MangleFunction(const pa11::Program& program,
 			qualifier.function.qualifiers.push_back(
 				ABI_FUNCTION_QUALIFIER_RVALUE_REFERENCE);
 		if (!qualifier.function.qualifiers.empty())
-			file.cases[0].records.push_back(qualifier);
+			AppendTypedFact(&fact_case, &qualifier);
 	}
 	const std::string operator_terminal =
 		OperatorTerminal(binding.operator_kind, member,
@@ -2478,7 +2486,7 @@ std::string MangleFunction(const pa11::Program& program,
 			ABI_FUNCTION_RECORD_TERMINAL_SOURCE :
 			ABI_FUNCTION_RECORD_NAME_SOURCE;
 		terminal.function.name = program.names.Get(binding.name);
-		file.cases[0].records.push_back(terminal);
+		AppendTypedFact(&fact_case, &terminal);
 	}
 	if (binding.operator_kind == OPERATOR_LITERAL ||
 		!operator_terminal.empty())
@@ -2493,7 +2501,7 @@ std::string MangleFunction(const pa11::Program& program,
 				program.names.Get(binding.operator_literal_suffix);
 		}
 		else terminal.function.terminal = operator_terminal;
-		file.cases[0].records.push_back(terminal);
+		AppendTypedFact(&fact_case, &terminal);
 	}
 	else if (binding.conversion_function)
 	{
@@ -2501,7 +2509,7 @@ std::string MangleFunction(const pa11::Program& program,
 		terminal.set_kind(ABI_FACT_RECORD_FUNCTION);
 		terminal.function.kind = ABI_FUNCTION_RECORD_CONVERSION_TERMINAL;
 		terminal.function.type = facts.MakeType(binding.conversion_target);
-		file.cases[0].records.push_back(terminal);
+		AppendTypedFact(&fact_case, &terminal);
 	}
 	else if (binding.constructor)
 	{
@@ -2511,7 +2519,7 @@ std::string MangleFunction(const pa11::Program& program,
 		terminal.function.terminal =
 			binding.constructor_base_entry || force_lifecycle_base_entry ?
 			"constructor-base" : "constructor-complete";
-		file.cases[0].records.push_back(terminal);
+		AppendTypedFact(&fact_case, &terminal);
 	}
 	else if (binding.destructor)
 	{
@@ -2521,7 +2529,7 @@ std::string MangleFunction(const pa11::Program& program,
 		terminal.function.terminal = binding.destructor_base_entry ||
 			force_lifecycle_base_entry ?
 			"destructor-base" : "destructor-complete";
-		file.cases[0].records.push_back(terminal);
+		AppendTypedFact(&fact_case, &terminal);
 	}
 	const std::size_t first_parameter = member ? 1 : 0;
 	const TypeRecord* recipe_function = recipe ?
@@ -2548,7 +2556,7 @@ std::string MangleFunction(const pa11::Program& program,
 			parameter.function.type.modifiers.insert(
 				parameter.function.type.modifiers.begin(), expansion);
 		}
-		file.cases[0].records.push_back(parameter);
+		AppendTypedFact(&fact_case, &parameter);
 	};
 	if (recipe_function)
 	{
@@ -2570,9 +2578,9 @@ std::string MangleFunction(const pa11::Program& program,
 		AbiFactRecord variadic;
 		variadic.set_kind(ABI_FACT_RECORD_FUNCTION);
 		variadic.function.kind = ABI_FUNCTION_RECORD_VARIADIC;
-		file.cases[0].records.push_back(variadic);
+		AppendTypedFact(&fact_case, &variadic);
 	}
-	return MangleProductionFile(file, stats, context);
+	return MangleProductionCase(fact_case, stats, context);
 }
 
 std::string MangleVariable(const pa11::Program& program,
@@ -2597,9 +2605,8 @@ std::string MangleVariable(const pa11::Program& program,
 		!binding.variable_template_specialization &&
 		binding.template_argument_count == 0)
 		return program.names.Get(binding.name);
-	AbiFactFile file;
-	file.cases.push_back(AbiFactCase());
-	AbiFactBuilder facts(program, file.cases[0], context);
+	AbiTypedCase fact_case;
+	AbiFactBuilder facts(program, fact_case, context);
 	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
 		ClassOwnerHasAbiTags(program, binding.member_owner);
 	const bool nested_specialized_class_owner =
@@ -2634,17 +2641,17 @@ std::string MangleVariable(const pa11::Program& program,
 		target.target.function.owner_type = facts.MakeType(owner.type);
 		target.target.function.source_name = program.names.Get(binding.name);
 	}
-	file.cases[0].records.push_back(target);
+	AppendTypedFact(&fact_case, &target);
 	if (structured_class_owner)
 	{
 		if (!AppendClassTemplateOwner(
-			program, binding, &facts, &file.cases[0], false))
+			program, binding, &facts, &fact_case, false))
 			throw std::logic_error("class template ABI variable owner was lost");
 		AbiFactRecord member;
 		member.set_kind(ABI_FACT_RECORD_FUNCTION);
 		member.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
 		member.function.name = program.names.Get(binding.name);
-		file.cases[0].records.push_back(member);
+		AppendTypedFact(&fact_case, &member);
 	}
 	if (member_variable_template && binding.template_argument_count != 0)
 	{
@@ -2662,10 +2669,10 @@ std::string MangleVariable(const pa11::Program& program,
 			argument.function.kind =
 				ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
 			argument.function.argument_refs.push_back(argument_id);
-			file.cases[0].records.push_back(argument);
+			AppendTypedFact(&fact_case, &argument);
 		}
 	}
-	return MangleProductionFile(file, stats, context);
+	return MangleProductionCase(fact_case, stats, context);
 }
 
 std::string MangleThreadLocalWrapper(const pa11::Program& program,
@@ -2678,8 +2685,7 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 	if (binding_id == kNoBinding || binding_id >= program.bindings.size())
 		throw std::logic_error("invalid thread-local wrapper binding");
 	const BindingRecord& binding = program.bindings[binding_id];
-	AbiFactFile file;
-	file.cases.push_back(AbiFactCase());
+	AbiTypedCase fact_case;
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_THREAD_LOCAL_WRAPPER;
@@ -2692,8 +2698,8 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 			std::to_string(binding.qualified_name) + ", terminal " +
 			std::to_string(binding.name) + ", fallback " +
 			std::to_string(fallback_name) + ")");
-	file.cases[0].records.push_back(target);
-	return MangleProductionFile(file, stats, context);
+	AppendTypedFact(&fact_case, &target);
+	return MangleProductionCase(fact_case, stats, context);
 }
 
 }

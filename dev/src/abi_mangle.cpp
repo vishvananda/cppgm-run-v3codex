@@ -389,6 +389,15 @@ public:
     }
   }
 
+  void begin_case(const AbiTypedCase & fact_case)
+  {
+    require(definitions.empty(), "ABI graph case is already active");
+    for(const AbiDefinitionRecord & definition : fact_case.definitions) {
+      require(definitions.insert(std::make_pair(definition.id, &definition)).second,
+              "duplicate ABI definition id '" + definition.id + "'");
+    }
+  }
+
   void end_case()
   {
 	definitions.clear();
@@ -860,14 +869,14 @@ string builtin_code(const string & name)
 class Encoder
 {
 public:
-  Encoder(const AbiFactCase & fact_case, FactGraph & graph, AbiMangleStats * stats)
-    : fact_case_(fact_case), graph_(graph), stats_(stats), substitutions_(stats) {}
+  Encoder(FactGraph & graph, AbiMangleStats * stats)
+    : graph_(graph), stats_(stats), substitutions_(stats) {}
 
-  string mangle()
+  string mangle(const AbiFactCase & fact_case)
   {
     const AbiTargetRecord * target = nullptr;
     vector<const AbiFunctionRecord *> records;
-    for(const AbiFactRecord & record : fact_case_.records) {
+    for(const AbiFactRecord & record : fact_case.records) {
       if(record.kind == ABI_FACT_RECORD_TARGET) {
         require(target == nullptr, "ABI case has more than one target");
         target = &record.target;
@@ -877,6 +886,16 @@ public:
     }
     require(target != nullptr, "ABI case has no target");
     return mangle_target(*target, records);
+  }
+
+  string mangle(const AbiTypedCase & fact_case)
+  {
+    require(fact_case.has_target, "ABI case has no target");
+    vector<const AbiFunctionRecord *> records;
+    records.reserve(fact_case.functions.size());
+    for(const AbiFunctionRecord & record : fact_case.functions)
+      records.push_back(&record);
+    return mangle_target(fact_case.target, records);
   }
 
 private:
@@ -2241,7 +2260,6 @@ private:
       SUBSTITUTION_EXPLICIT, graph_.strings.intern(identity)};
   }
 
-  const AbiFactCase & fact_case_;
   FactGraph & graph_;
   AbiMangleStats * stats_;
   string output_;
@@ -2313,7 +2331,26 @@ string AbiMangleContext::mangle_case(const AbiFactCase & fact_case)
   }
   impl_->graph.begin_case(fact_case);
   try {
-    const string name = Encoder(fact_case, impl_->graph, impl_->stats).mangle();
+    const string name = Encoder(impl_->graph, impl_->stats).mangle(fact_case);
+    impl_->graph.end_case();
+    if(impl_->stats) impl_->stats->output_bytes += name.size() + 1;
+    return name;
+  } catch(...) {
+    impl_->graph.end_case();
+    throw;
+  }
+}
+
+string AbiMangleContext::mangle_case(const AbiTypedCase & fact_case)
+{
+  if(impl_->stats) {
+    ++impl_->stats->cases;
+    impl_->stats->records += fact_case.definitions.size()
+      + fact_case.functions.size() + (fact_case.has_target ? 1 : 0);
+  }
+  impl_->graph.begin_case(fact_case);
+  try {
+    const string name = Encoder(impl_->graph, impl_->stats).mangle(fact_case);
     impl_->graph.end_case();
     if(impl_->stats) impl_->stats->output_bytes += name.size() + 1;
     return name;
@@ -2390,7 +2427,7 @@ void mangle_fact_file_to_stream(const AbiFactFile & file, std::ostream & output,
       stats->records += fact_case.records.size();
     }
     FactGraph graph(fact_case, stats);
-    const string name = Encoder(fact_case, graph, stats).mangle();
+    const string name = Encoder(graph, stats).mangle(fact_case);
     output.write(name.data(), static_cast<std::streamsize>(name.size()));
     output.put('\n');
     if(stats) stats->output_bytes += name.size() + 1;
