@@ -572,7 +572,7 @@ public:
 		return id;
 	}
 
-	std::string AddEntity(pa11::BindingId source)
+	std::size_t AddEntity(pa11::BindingId source)
 	{
 		using namespace abi_mangle;
 		using namespace pa11;
@@ -580,13 +580,8 @@ public:
 			throw std::logic_error("ABI template argument entity is invalid");
 		source = program_.bindings[source].canonical;
 		const BindingRecord& binding = program_.bindings[source];
-		const std::string id = "__cppgm_abi_entity_argument_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_ENTITY);
-		AbiEntityFact& entity = definition.definition.entity;
+		++next_argument_;
+		AbiEntityFact entity;
 		if (binding.kind == BIND_FUNCTION)
 		{
 			entity.kind = ABI_ENTITY_FACT_FUNCTION;
@@ -612,8 +607,7 @@ public:
 				binding.member_owner == kNoEntity &&
 				!binding.unnamed_namespace_linkage;
 		}
-		AppendTypedFact(&facts_, &definition);
-		return id;
+		return context_->store_entity(entity);
 	}
 
 	std::size_t AddTemplateArgument(std::size_t argument,
@@ -832,7 +826,7 @@ public:
 			else
 			{
 				target.kind = ABI_TEMPLATE_ARGUMENT_ENTITY;
-				target.entity_ref = AddEntity(source.value_binding);
+				target.resolved_entity = AddEntity(source.value_binding);
 				const TypeRecord& type = program_.types.Get(
 					program_.types.RemoveTopCv(source.type));
 				target.address_of = type.kind == TYPE_POINTER;

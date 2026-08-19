@@ -176,6 +176,7 @@ public:
   std::size_t resolve_argument(const AbiTemplateArgument & argument);
   std::size_t resolve_expression(const AbiDependentExpression & expression);
   std::size_t store_context(const AbiLocalContext & context);
+  std::size_t store_entity(const AbiEntityFact & entity);
   bool resolved_type_uses_case_facts(std::size_t type) const;
   bool resolved_argument_uses_case_facts(std::size_t argument) const;
   bool resolved_expression_uses_case_facts(std::size_t expression) const;

@@ -282,6 +282,7 @@ struct AbiTemplateArgument
   long long value = 0;
   std::size_t index = 0;
   std::size_t resolved_expression = ABI_NO_RESOLVED_REFERENCE;
+  std::size_t resolved_entity = ABI_NO_RESOLVED_REFERENCE;
   bool has_value_type = false;
   bool address_of = false;
   bool pack_expansion = false;
@@ -316,6 +317,7 @@ struct AbiDependentExpression
   std::string entity_ref;
   long long value = 0;
   std::size_t index = 0;
+  std::size_t resolved_entity = ABI_NO_RESOLVED_REFERENCE;
   bool close_member_owner = false;
   bool address_of = false;
   AbiReferenceList expression_refs;

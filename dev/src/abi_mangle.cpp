@@ -253,6 +253,7 @@ struct ArgumentNode
   size_t member_conversion_type = NO_ID;
   size_t member_result_type = NO_ID;
   bool member_has_result_type = false;
+  bool entity_resolved = false;
   bool uses_case_facts = false;
   vector<size_t> parameters;
   vector<size_t> arguments;
@@ -277,6 +278,7 @@ struct ArgumentNode
            && member_conversion_type == other.member_conversion_type
            && member_result_type == other.member_result_type
            && member_has_result_type == other.member_has_result_type
+           && entity_resolved == other.entity_resolved
            && parameters == other.parameters && arguments == other.arguments;
   }
 };
@@ -304,7 +306,8 @@ size_t argument_hash(const ArgumentNode & argument)
                         | (argument.member_volatile << 4) | (argument.member_lvalue_ref << 5)
                         | (argument.member_rvalue_ref << 6) | (argument.member_variadic << 7)
                         | (argument.member_has_result_type << 8)
-						| (argument.pack_expansion << 9));
+						| (argument.pack_expansion << 9)
+                        | (argument.entity_resolved << 10));
   hash = vector_hash(hash, argument.parameters);
   return vector_hash(hash, argument.arguments);
 }
@@ -321,6 +324,7 @@ struct ExpressionNode
   long long value = 0;
   bool close_member_owner = false;
   bool address_of = false;
+  bool entity_resolved = false;
   bool uses_case_facts = false;
   vector<size_t> expressions;
   vector<size_t> arguments;
@@ -332,7 +336,9 @@ struct ExpressionNode
            && value_type == other.value_type && entity == other.entity
            && index == other.index && value == other.value
            && close_member_owner == other.close_member_owner
-           && address_of == other.address_of && expressions == other.expressions
+           && address_of == other.address_of
+           && entity_resolved == other.entity_resolved
+           && expressions == other.expressions
            && arguments == other.arguments && types == other.types;
   }
 };
@@ -347,7 +353,9 @@ size_t expression_hash(const ExpressionNode & expression)
   hash = mix_hash(hash, expression.entity);
   hash = mix_hash(hash, expression.index);
   hash = mix_hash(hash, std::hash<long long>()(expression.value));
-  hash = mix_hash(hash, expression.close_member_owner | (expression.address_of << 1));
+  hash = mix_hash(hash, expression.close_member_owner
+                        | (expression.address_of << 1)
+                        | (expression.entity_resolved << 2));
   hash = vector_hash(hash, expression.expressions);
   hash = vector_hash(hash, expression.arguments);
   return vector_hash(hash, expression.types);
@@ -642,10 +650,23 @@ public:
     return id;
   }
 
+  size_t store_entity(const AbiEntityFact & source)
+  {
+    const size_t id = entities.size();
+    entities.push_back(source);
+    return id;
+  }
+
   const AbiLocalContext & context(size_t id) const
   {
     checked_context(id);
     return contexts[id];
+  }
+
+  const AbiEntityFact & entity(size_t id) const
+  {
+    require(id < entities.size(), "invalid resolved ABI entity id");
+    return entities[id];
   }
 
   size_t context_for_identity(size_t identity) const
@@ -794,7 +815,13 @@ private:
       node.expression = source.resolved_expression != ABI_NO_RESOLVED_REFERENCE ?
         checked_expression(source.resolved_expression) :
         resolve_expression_ref(source.entity_ref);
-    if(source.kind == ABI_TEMPLATE_ARGUMENT_ENTITY) node.entity = strings.intern(source.entity_ref);
+    if(source.kind == ABI_TEMPLATE_ARGUMENT_ENTITY) {
+      if(source.resolved_entity != ABI_NO_RESOLVED_REFERENCE) {
+        entity(source.resolved_entity);
+        node.entity = source.resolved_entity;
+        node.entity_resolved = true;
+      } else node.entity = strings.intern(source.entity_ref);
+    }
     if(!source.name.empty()) node.name = strings.intern(source.name);
     if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
     if(!source.symbol.empty()) node.symbol = strings.intern(source.symbol);
@@ -836,7 +863,8 @@ private:
           || types[linked].uses_case_facts;
       }
     node.uses_case_facts = node.uses_case_facts
-      || node.kind == ABI_TEMPLATE_ARGUMENT_ENTITY;
+      || (node.kind == ABI_TEMPLATE_ARGUMENT_ENTITY
+          && !node.entity_resolved);
     if(node.expression != NO_ID) {
       node.uses_case_facts = node.uses_case_facts
         || expressions[node.expression].uses_case_facts;
@@ -876,7 +904,13 @@ private:
     if(source.kind == ABI_EXPRESSION_CAST || source.kind == ABI_EXPRESSION_SIZEOF_TYPE
        || source.kind == ABI_EXPRESSION_MEMBER) node.type = resolve_type(source.type);
     if(source.kind == ABI_EXPRESSION_INTEGRAL_VALUE) node.value_type = resolve_type(source.value_type);
-    if(!source.entity_ref.empty()) node.entity = strings.intern(source.entity_ref);
+    if(source.resolved_entity != ABI_NO_RESOLVED_REFERENCE) {
+      entity(source.resolved_entity);
+      node.entity = source.resolved_entity;
+      node.entity_resolved = true;
+    } else if(!source.entity_ref.empty()) {
+      node.entity = strings.intern(source.entity_ref);
+    }
     node.index = source.index;
     node.value = source.value;
     node.close_member_owner = source.close_member_owner;
@@ -901,7 +935,7 @@ private:
         || types[node.value_type].uses_case_facts;
     }
     node.uses_case_facts = node.uses_case_facts
-      || node.kind == ABI_EXPRESSION_ENTITY;
+      || (node.kind == ABI_EXPRESSION_ENTITY && !node.entity_resolved);
     for(size_t expression : node.expressions)
     {
       node.uses_case_facts = node.uses_case_facts
@@ -944,6 +978,7 @@ private:
   vector<ArgumentNode> arguments;
   vector<ExpressionNode> expressions;
   vector<AbiLocalContext> contexts;
+  vector<AbiEntityFact> entities;
   vector<size_t> active_contexts;
   std::unordered_map<size_t, vector<size_t> > type_buckets;
   std::unordered_map<size_t, vector<size_t> > argument_buckets;
@@ -1670,8 +1705,12 @@ private:
       case ABI_TEMPLATE_ARGUMENT_ENTITY:
         if(argument.address_of) {
           output_ += "Xad";
-          encode_entity_reference(graph_.strings.get(argument.entity));
+          if(argument.entity_resolved)
+            encode_entity_reference(graph_.entity(argument.entity));
+          else encode_entity_reference(graph_.strings.get(argument.entity));
           output_ += 'E';
+        } else if(argument.entity_resolved) {
+          encode_entity_reference(graph_.entity(argument.entity));
         } else encode_entity_reference(graph_.strings.get(argument.entity));
         return;
       case ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY:
@@ -1839,7 +1878,10 @@ private:
         }
         return;
       case ABI_EXPRESSION_ENTITY:
-        encode_entity_reference(graph_.strings.get(expression.entity)); return;
+        if(expression.entity_resolved)
+          encode_entity_reference(graph_.entity(expression.entity));
+        else encode_entity_reference(graph_.strings.get(expression.entity));
+        return;
       default: break;
     }
     throw std::logic_error("unsupported ABI dependent expression kind");
@@ -1848,18 +1890,23 @@ private:
   void encode_entity_reference(const string & id)
   {
     const AbiDefinitionRecord & definition = graph_.definition(id, ABI_DEFINITION_ENTITY);
+    encode_entity_reference(definition.entity);
+  }
+
+  void encode_entity_reference(const AbiEntityFact & entity)
+  {
     output_ += 'L';
-    if(definition.entity.kind == ABI_ENTITY_FACT_SYMBOL) {
-      output_ += definition.entity.qualified_name;
+    if(entity.kind == ABI_ENTITY_FACT_SYMBOL) {
+      output_ += entity.qualified_name;
     } else {
       SubstitutionTable outer_substitutions;
       substitutions_.swap(outer_substitutions);
       if(stats_) ++stats_->isolated_entity_encodings;
       output_ += "_Z";
-      if(definition.entity.kind == ABI_ENTITY_FACT_FUNCTION) {
-        encode_function(definition.entity.function, FunctionFacts());
+      if(entity.kind == ABI_ENTITY_FACT_FUNCTION) {
+        encode_function(entity.function, FunctionFacts());
       } else {
-        encode_object_name(definition.entity.qualified_name, definition.entity.internal_linkage);
+        encode_object_name(entity.qualified_name, entity.internal_linkage);
       }
       substitutions_.swap(outer_substitutions);
     }
@@ -2636,6 +2683,11 @@ size_t AbiMangleContext::resolve_expression(
 size_t AbiMangleContext::store_context(const AbiLocalContext & context)
 {
   return impl_->graph.store_context(context);
+}
+
+size_t AbiMangleContext::store_entity(const AbiEntityFact & entity)
+{
+  return impl_->graph.store_entity(entity);
 }
 
 bool AbiMangleContext::resolved_type_uses_case_facts(size_t type) const
