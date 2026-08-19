@@ -1971,8 +1971,9 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 					SEMANTIC_GENERATED_ANONYMOUS_UNION_STORAGE,
 					generated_name, 2);
 			const NameId storage_name = program_->names.Intern(generated_name);
-			const BindingId storage = program_->AddBinding(scope, BIND_VARIABLE,
-				storage_name, type);
+			// Private storage identity stays out of name lookup.
+			const BindingId storage = program_->AddUnindexedBinding(scope,
+				BIND_VARIABLE, storage_name, type, kNoBinding);
 			program_->bindings[storage].anonymous_union_storage = true;
 			const std::uint32_t simple = MakeDump(DUMP_SIMPLE_DECLARATION);
 			const std::uint32_t variable = MakeDump(DUMP_VARIABLE, type,

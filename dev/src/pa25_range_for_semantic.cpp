@@ -95,8 +95,9 @@ BindingId SemanticAnalyzer::AddRangeForLocal(ScopeId scope,
 		initializer = FinalizeVariableInitializer(
 			initializer, type, EntityOf(type), true);
 	}
-	const BindingId binding = program_->AddBinding(
-		scope, BIND_VARIABLE, name, type);
+	// Hidden range-for locals are exposition-only and stay out of lookup.
+	const BindingId binding = program_->AddUnindexedBinding(
+		scope, BIND_VARIABLE, name, type, kNoBinding);
 	SpecInfo spec;
 	PublishVariableDeclarationFacts(binding, scope, name, type, spec, true);
 	PublishVariableInitializer(binding, type, spec, initializer, false);

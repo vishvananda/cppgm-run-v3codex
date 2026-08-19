@@ -186,11 +186,10 @@ void SemanticAnalyzer::EmitStructuredBindingStorage(
 			SEMANTIC_GENERATED_STRUCTURED_BINDING_STORAGE,
 			generated_name, 2);
 	parsed.name = program_->names.Intern(generated_name);
-	if (program_->LookupDirect(scope, parsed.name,
-		LOOKUP_ORDINARY).ordinary != kNoBinding)
-		throw std::runtime_error("structured binding storage identity collision");
-	const BindingId storage = program_->AddBinding(
-		scope, BIND_VARIABLE, parsed.name, parsed.type);
+	// Private storage identity stays out of name lookup, so a user name
+	// sharing the generated spelling cannot collide with it.
+	const BindingId storage = program_->AddUnindexedBinding(
+		scope, BIND_VARIABLE, parsed.name, parsed.type, kNoBinding);
 	PublishVariableDeclarationFacts(
 		storage, scope, parsed.name, parsed.type, spec, local);
 	ApplyVariableObjectAttributes(source, storage);
