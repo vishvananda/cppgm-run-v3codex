@@ -4,16 +4,16 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; the T4d producer census, T4d1 lifecycle base entries, and the
-combined T4d2 anonymous/local identity pass are complete, and the combined
-template-shape and hidden-storage pass (T4d3/4) is the next acceptance slice
+complete; T4d is complete through the combined template-shape and
+hidden-storage pass, and the T4e lazy-presentation closeout is the next
+acceptance slice
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `aa0e8fcc` (T4d2 anonymous/local
-identity lookup boundary; measurements and gates are recorded in section
+Current accepted execution checkpoint: `dbdff171` (T4d3/4 typed shape and
+hidden-storage placement; measurements and gates are recorded in section
 9.10)
 
 ## 1. Objective
@@ -1537,13 +1537,15 @@ This keeps object-only compilation from paying for semantic-dump presentation.
    are pinned by PA11/PA12/PA17 reference fixtures) while lookup identity
    became a typed `(node, owner)` table plus unindexed placement.  Results
    are recorded below.
-6. **T4d3:** function/class nondeduced, result, parameter, dependent member,
-   and dependent qualified-type shapes, one owner family at a time.  Prefer
-   typed singleton/cache keys over materialized named entities where the
-   entity exists only to give a canonical type identity.
-7. **T4d4:** range-for hidden objects and structured-binding storage.  Use
-   statement/declaration source identity plus a small role; do not enter
-   compiler-private names into ordinary lookup.
+6. **T4d3 (complete):** function/class nondeduced, result, parameter,
+   dependent member, and dependent qualified-type shapes.  The consumer
+   audit found every shape producer already uses a typed singleton/cache
+   key with no lookup registration, so the family closed as a recorded
+   disposition with no code change; results are below.
+7. **T4d4 (complete):** range-for hidden objects, block-scope
+   anonymous-union storage, and structured-binding storage now use the
+   unindexed declaration path, keeping compiler-private names out of
+   ordinary lookup; results are below.
 8. **T4e:** re-audit all presentation consumers, retain initializer-list and
    local-static final symbol renderers as explicit boundaries, delete obsolete
    generated-name overloads, and require zero unclassified eager semantic
@@ -1717,6 +1719,36 @@ KiB RSS; paired -0.70% user, -0.52% wall, -0.00% RSS.  The full report
 passes 5,217/5,217 including the two new PA12 reducers, and the PA39
 audit has zero fatal findings with 27 warnings.  The accepted
 implementation is `aa0e8fcc`.
+
+#### T4d3/4 results
+
+The combined template-shape and hidden-storage pass closes the remaining
+census families.  The consumer audit found the five shape producers
+(function-template parameter/result/nondeduced, class-template
+nondeduced, and dependent member/qualified-type shapes) already conform:
+each creates its entity through `NewEntity` with a typed
+singleton/cache key, never registers the generated spelling in lookup,
+and no consumer parses the spelling back, so the shape names are retained
+presentation and required no code change.  Three hidden-storage producers
+still used indexed placement and now use the unindexed declaration path:
+range-for hidden locals (`__rangeN`/`__idxN`/`__beginN`/`__endN` through
+`AddRangeForLocal`; the user's loop variable remains indexed), the
+block-scope anonymous-union storage object, and structured-binding
+storage, whose now-unreachable spelling-collision throw is removed.
+Loop-body and desugaring references already flow through typed
+`BindingId` expressions, and behavior probes against the reference and
+the immutable predecessor found no observable divergence, so this is
+placement hygiene with no new reducer; existing range-for,
+anonymous-union, and structured-binding suites cover the machinery.
+
+On the frozen compile the family renders are unchanged and interner and
+storage counters are identical to T4d2.  The frozen object is exact in
+the stats run and all 12 timed runs.  Three interleaved A/B/B/A blocks
+against immutable T4d2 measured baseline/candidate medians of
+4.390/4.360 seconds user, 4.865/4.845 seconds wall, and 360,026/359,288
+KiB RSS; paired -0.34% user, -0.52% wall, -0.24% RSS.  The full report
+passes 5,217/5,217 and the PA39 audit has zero fatal findings with 27
+warnings.  The accepted implementation is `dbdff171`.
 
 ## 10. Phase 4: finish object-only LowIR presentation identity
 
@@ -2185,7 +2217,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T4d1a | Carry constructor base-entry identity as source name plus typed lifecycle role | Constructor base-entry renders fall 508 -> 0 and total generated renders 770 -> 262. The base entry uses the unindexed declaration path with the source name; `SymbolIdentity` gains a lifecycle role in existing padding (asserted 32 bytes). Interner calls fall by 508, misses by 618, hashed bytes by 19,849, and shared string storage by 25,998 bytes; common records remain 136/208/208/152. | Three A/B/B/A blocks against immutable `ca85deb3`: baseline/candidate medians 4.335/4.290 s user, 4.800/4.780 s wall, 360,948/360,008 KiB RSS; paired -0.58% user, -0.31% wall, -0.28% RSS; timing-neutral structural removal | Frozen object exact in stats and all 12 timed runs. Semantic dump and LowIR base-entry presentation now derive from source terminal plus role (`Owner::Source__base_entry`; `@Owner__Source__base_entry` matches the reference convention); no tracked fixture pins the old spellings. `__func__`/`__PRETTY_FUNCTION__` in base-entry bodies now match the complete variant; the reference agrees. | PA16 243+52; PA34 45/281/42/3 with the new predefined-name variant reducer failing on the pre-change compiler; PA12 166+14; through PA16 1,459/1,459; full report 5,214/5,214; zero-fatal audit with 27 warnings | `7df2fe9d`; accepted |
 | T4d1b | Carry destructor base-entry identity as source name plus typed lifecycle role | Destructor base-entry renders fall 17 -> 0 and total generated renders 262 -> 245. The doubled serialized-LowIR suffix disappears; interner calls fall by 17, misses by 14, hashed bytes by 446, and shared string storage by 371 bytes; common records unchanged. | Three A/B/B/A blocks against immutable T4d1a: 4.310/4.335 s user, 4.810/4.825 s wall, 359,050/360,048 KiB RSS; paired +0.58%/+0.52%/+0.27%, inside the screened noise band; accepted as neutral cleanup with 17 frozen occurrences | Frozen object exact in stats and all 12 timed runs; destructor semantic dumps byte-identical; LowIR base-entry symbols converge with the reference convention; `__func__`/`__PRETTY_FUNCTION__` variants now match, reference agrees | Full report 5,215/5,215 including the new PA34 destructor variant reducer (fails on immutable T4d1a); zero-fatal audit with 27 warnings | `8a6cf6fb`; accepted |
 | T4d2 | Keep generated anonymous/local identities out of ordinary lookup | No consumer parses the generated spellings; renders stay pinned declaration-order presentation (147/22/8/6 frozen). Class identities unify across template shell/definition passes through a typed (node, owner) table; enum identities stay fresh per analysis; union storage uses the unindexed path; `SetTypeName` no longer publishes generated spellings. `AnalyzeEnum` moved to a new compiled module for the file audit. | Three A/B/B/A blocks against immutable T4d1b: 4.325/4.300 s user, 4.815/4.800 s wall, 360,020/359,656 KiB RSS; paired -0.70%/-0.52%/-0.00% | Frozen object exact in stats, all 12 timed runs, and post-split verification. Fixes reference-agreeing collision and visibility defects (pre-change compiler wrongly rejected two valid programs and accepted one invalid); reserved-identifier same-scope case documented under proposed/pa12 | Full report 5,217/5,217 with two new PA12 reducers; zero-fatal audit with 27 warnings | `aa0e8fcc`; accepted |
-| T4d3-e | Type remaining generated private identities and close lazy presentation | Planned; combined template shapes and hidden storage (T4d3/4) next, then the T4e closeout | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4d2 |
+| T4d3/4 | Verify shape identities as typed and unindex hidden storage | The five shape families already carry typed singleton/cache keys with lookup-free entities; renders stay presentation. Range-for hidden locals, block-scope anonymous-union storage, and structured-binding storage move to the unindexed declaration path; the structured-binding collision throw becomes unreachable and is removed. | Three A/B/B/A blocks against immutable T4d2: 4.390/4.360 s user, 4.865/4.845 s wall, 360,026/359,288 KiB RSS; paired -0.34%/-0.52%/-0.24% | Frozen object exact in stats and all 12 timed runs; no observable behavior divergence against the reference or predecessor, so no new reducer | Full report 5,217/5,217; zero-fatal audit with 27 warnings | `dbdff171`; accepted |
+| T4e | Close lazy presentation and residual consumers | Planned; next after T4d | Planned | Exact semantic serialization expected; no dual retained identity | Owner reducers plus full report | Next after T4d3/4 |
 | T5a | Remove or type object-only generated local-name reservations | Planned from the residual LowIR presentation audit | Planned | Exact serializable LowIR and frozen object expected; any EH-layout dependency must be explicit | PA15/37 plus full report | Planned after T4e |
 | T5b | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned after T5a |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
@@ -2241,7 +2274,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 14 | T4d0 generated-identity producer census (complete) | Fourteen semantic producer families, exact frozen object, selected/full reports, and audit recorded in section 9.10 | `ca85deb3`; accepted measurement anchor |
 | 15 | T4d1 lifecycle base entries (complete) | Per-family consumer census; typed source/role symbol identity; source-terminal-plus-role lifecycle presentation with the serialized-LowIR spelling change recorded per section 15.2; exact frozen object; no ordinary lookup or common-record growth | Constructor `7df2fe9d` and destructor `8a6cf6fb` accepted |
 | 16 | T4d2 anonymous/local identity (complete) | Anonymous enum, local type, anonymous-union type/storage lookup identity keyed by typed (node, owner) facts with pinned dump presentation retained; PA12 collision/visibility reducers; proposed same-scope case recorded | Combined commit `aa0e8fcc` accepted |
-| 17 | T4d3/4 template shapes and hidden storage | Typed singleton/cache/source keys for each shape; typed range-for and structured-binding roles; zero-occurrence families recorded without timing claims | One owner-family commit at a time |
+| 17 | T4d3/4 template shapes and hidden storage (complete) | Shape producers verified as already typed-cache-keyed with no lookup registration; range-for/anonymous-union/structured-binding hidden storage moved to unindexed placement; zero-occurrence families recorded without timing claims | Combined commit `dbdff171` accepted |
 | 18 | T4e final lazy-presentation closeout | Every residual read classified as dump/diagnostic/source identity/ABI/LowIR/object; initializer-list and local-static final names explicitly retained; zero unclassified eager renders | One presentation closeout commit |
 | 19 | T5a generated local-name reservations | Source-name scan/match/probe/skip counters; exact collision reducers; proof that object-only reservations can be removed or reduced to one compact rank/key | PA15/37 counter, representation, and ledger commits |
 | 20 | T5b block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
