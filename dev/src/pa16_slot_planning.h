@@ -275,7 +275,7 @@ protected:
 					source.binding == derived.current_this_binding_;
 				const bool known_nonnull_address =
 					source.kind == DUMP_UNARY_EXPRESSION &&
-					StripOperationPrefix(derived.program_.names.Get(source.text)) == "&";
+					source.OperationIs(OP_AMP);
 				if (pointer_source && adjusted && !nonnull_this &&
 					!known_nonnull_address)
 					(void)derived.EnsureGeneratedSlot(

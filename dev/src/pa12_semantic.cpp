@@ -41,6 +41,41 @@ const std::string& SemanticAnalyzer::PayloadSource(NodeId node) const
 {
 	return arena_->SemanticPayload(node);
 }
+namespace
+{
+
+// Maps a rendered simple-token name such as "OP_PLUS" back to its kind once;
+// the table is built from the same vocabulary that rendered the text.
+std::uint8_t ClassifyOperationText(const std::string& text)
+{
+	const std::size_t colon = text.find(':');
+	if (colon == std::string::npos)
+	{
+		// Synthesized operations carry the bare fixed spelling.
+		SimpleTokenKind kind = OP_PLUS;
+		return ClassifySimpleSpelling(text, &kind) ?
+			static_cast<std::uint8_t>(kind + 1) : 0;
+	}
+	const std::string prefix = text.substr(0, colon);
+	for (int kind = 0; kind <= OP_ARROW; ++kind)
+		if (prefix == SimpleTokenKindName(static_cast<SimpleTokenKind>(kind)))
+			return static_cast<std::uint8_t>(kind + 1);
+	return 0;
+}
+
+}
+
+std::uint8_t SemanticAnalyzer::OperationKindForName(NameId text)
+{
+	if (text == 0) return 0;
+	if (operation_kind_by_name_.size() <= text)
+		operation_kind_by_name_.resize(
+			static_cast<std::size_t>(text) + 1, 255);
+	std::uint8_t& slot = operation_kind_by_name_[text];
+	if (slot == 255) slot = ClassifyOperationText(program_->names.Get(text));
+	return slot;
+}
+
 std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	ValueCategory category, NameId text, BindingId binding)
 {
@@ -50,6 +85,7 @@ std::uint32_t SemanticAnalyzer::MakeDump(DumpKind kind, TypeId type,
 	record.category = category;
 	record.text = text;
 	record.binding = binding;
+	record.operation_kind = OperationKindForName(text);
 	if (kind == DUMP_VARIABLE && binding != kNoBinding)
 	{
 		if (variable_node_by_binding_.size() <= binding)

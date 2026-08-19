@@ -169,6 +169,9 @@ enum SimpleTokenKind
 
 const char* FundamentalTypeName(FundamentalType type);
 const char* SimpleTokenKindName(SimpleTokenKind kind);
+// Classifies one fixed operator/keyword spelling into its simple-token kind.
+bool ClassifySimpleSpelling(const std::string& spelling,
+	SimpleTokenKind* kind);
 
 struct IPostTokenStream
 {

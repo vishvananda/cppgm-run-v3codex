@@ -231,7 +231,15 @@ struct DumpNode
 	bool dynamic_type_query : 1;
 	bool dynamic_cast_reference : 1;
 	FunctionTryBodyKind function_try_body;
+	// Packed SimpleTokenKind + 1 for operator expression nodes; 0 for none.
+	std::uint8_t operation_kind;
 	std::uint32_t exception_control_exit_count;
+
+	bool OperationIs(int simple_token_kind) const
+	{
+		return operation_kind ==
+			static_cast<std::uint8_t>(simple_token_kind + 1);
+	}
 
 	explicit DumpNode(DumpKind value)
 		: kind(value), type(kNoType), operand_type(kNoType),
@@ -295,6 +303,7 @@ struct DumpNode
 		  reverse_pointer_compound_assignment(false),
 		  dynamic_type_query(false), dynamic_cast_reference(false),
 		  function_try_body(FUNCTION_TRY_BODY_NONE),
+		  operation_kind(0),
 		  exception_control_exit_count(0) {}
 };
 

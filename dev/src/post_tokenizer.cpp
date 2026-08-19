@@ -1673,6 +1673,12 @@ const char* FundamentalTypeName(FundamentalType type)
 	return names[type];
 }
 
+bool ClassifySimpleSpelling(const std::string& spelling,
+	SimpleTokenKind* kind)
+{
+	return FindSimple(spelling, kind);
+}
+
 const char* SimpleTokenKindName(SimpleTokenKind kind)
 {
 	static const char* names[] = {

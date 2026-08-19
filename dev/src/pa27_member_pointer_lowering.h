@@ -32,9 +32,7 @@ protected:
 			!this->IsMemberPointerApplication(application))
 			throw std::runtime_error("invalid member pointer application");
 		Derived& derived = static_cast<Derived&>(*this);
-		const std::string operation = StripOperationPrefix(
-			derived.program_.names.Get(application.text));
-		Operand object = operation == "->*" ?
+		Operand object = application.OperationIs(OP_ARROWSTAR) ?
 			derived.LowerValue(children[0], LowPtr()) :
 			derived.AddressOfStorage(derived.LowerStorage(children[0]));
 		if (!application.has_base_projection_offset ||

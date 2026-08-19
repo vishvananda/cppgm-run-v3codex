@@ -287,15 +287,14 @@ public:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 2)
 			throw std::runtime_error("invalid semantic assignment");
-		const std::string op = StripOperationPrefix(
-			derived.program_.names.Get(record.text));
+		const int op = static_cast<int>(record.operation_kind) - 1;
 		const LowType type = derived.LowerExpressionType(record.type);
 		const BindingId bit_field = BitFieldBinding(children[0]);
 		if (bit_field != kNoBinding)
 		{
 			const Operand storage = derived.LowerStorage(children[0]);
 			Operand value;
-			if (op == "=")
+			if (op == OP_ASS)
 				value = derived.LowerConvertedValue(children[1], type, false);
 			else
 			{
@@ -313,13 +312,13 @@ public:
 				binary.type = operation_type;
 				binary.first = left;
 				binary.second = right;
-				binary.op = op == "+=" ? LOW_OP_ADD : op == "-=" ? LOW_OP_SUB :
-					op == "*=" ? LOW_OP_MUL : op == "/=" ?
+				binary.op = op == OP_PLUSASS ? LOW_OP_ADD : op == OP_MINUSASS ? LOW_OP_SUB :
+					op == OP_STARASS ? LOW_OP_MUL : op == OP_DIVASS ?
 						(operation_type.is_signed || IsFloating(operation_type) ?
 							LOW_OP_DIV : LOW_OP_UDIV) :
-					op == "%=" ? (operation_type.is_signed ? LOW_OP_MOD : LOW_OP_UMOD) :
-					op == "&=" ? LOW_OP_AND : op == "|=" ? LOW_OP_OR :
-					op == "^=" ? LOW_OP_XOR : op == "<<=" ? LOW_OP_SHL : op == ">>=" ?
+					op == OP_MODASS ? (operation_type.is_signed ? LOW_OP_MOD : LOW_OP_UMOD) :
+					op == OP_BANDASS ? LOW_OP_AND : op == OP_BORASS ? LOW_OP_OR :
+					op == OP_XORASS ? LOW_OP_XOR : op == OP_LSHIFTASS ? LOW_OP_SHL : op == OP_RSHIFTASS ?
 						(operation_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) : LOW_OP_NONE;
 				if (binary.op == LOW_OP_NONE)
 					throw std::runtime_error(
@@ -334,7 +333,7 @@ public:
 
 		Operand storage;
 		Operand value;
-		if (op == "=")
+		if (op == OP_ASS)
 		{
 			bool union_member = false;
 			const DumpNode& destination = derived.arena_.nodes[children[0]];
@@ -352,7 +351,7 @@ public:
 				derived.CanonicalizeImmediateConversion(children[1]));
 			storage = derived.LowerStorage(children[0]);
 		}
-		else if ((op == "+=" || op == "-=") &&
+		else if ((op == OP_PLUSASS || op == OP_MINUSASS) &&
 			derived.IsPointerLikeType(derived.arena_.nodes[children[0]].type))
 		{
 			storage = derived.LowerStorage(children[0]);
@@ -360,9 +359,9 @@ public:
 			value = derived.ApplyPointerOffset(left,
 				derived.LowerValue(children[1]),
 				derived.PointeeType(derived.arena_.nodes[children[0]].type),
-				op == "-=");
+				op == OP_MINUSASS);
 		}
-		else if (op == "+=" && record.reverse_pointer_compound_assignment)
+		else if (op == OP_PLUSASS && record.reverse_pointer_compound_assignment)
 		{
 			storage = derived.LowerStorage(children[0]);
 			const Operand offset = derived.LoadStorage(storage, type);
@@ -393,13 +392,13 @@ public:
 			binary.type = operation_type;
 			binary.first = left;
 			binary.second = right;
-			binary.op = op == "+=" ? LOW_OP_ADD : op == "-=" ? LOW_OP_SUB :
-				op == "*=" ? LOW_OP_MUL : op == "/=" ?
+			binary.op = op == OP_PLUSASS ? LOW_OP_ADD : op == OP_MINUSASS ? LOW_OP_SUB :
+				op == OP_STARASS ? LOW_OP_MUL : op == OP_DIVASS ?
 					(operation_type.is_signed || IsFloating(operation_type) ?
 						LOW_OP_DIV : LOW_OP_UDIV) :
-				op == "%=" ? (operation_type.is_signed ? LOW_OP_MOD : LOW_OP_UMOD) :
-				op == "&=" ? LOW_OP_AND : op == "|=" ? LOW_OP_OR :
-				op == "^=" ? LOW_OP_XOR : op == "<<=" ? LOW_OP_SHL : op == ">>=" ?
+				op == OP_MODASS ? (operation_type.is_signed ? LOW_OP_MOD : LOW_OP_UMOD) :
+				op == OP_BANDASS ? LOW_OP_AND : op == OP_BORASS ? LOW_OP_OR :
+				op == OP_XORASS ? LOW_OP_XOR : op == OP_LSHIFTASS ? LOW_OP_SHL : op == OP_RSHIFTASS ?
 					(operation_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) : LOW_OP_NONE;
 			if (binary.op == LOW_OP_NONE)
 				throw std::runtime_error("unsupported PA15 compound assignment");

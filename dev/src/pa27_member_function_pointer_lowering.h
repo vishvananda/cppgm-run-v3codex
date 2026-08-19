@@ -36,10 +36,7 @@ protected:
 	bool IsMemberPointerApplication(const DumpNode& node) const
 	{
 		if (node.kind != DUMP_BINARY_EXPRESSION) return false;
-		const Derived& derived = static_cast<const Derived&>(*this);
-		const std::string operation = StripOperationPrefix(
-			derived.program_.names.Get(node.text));
-		return operation == ".*" || operation == "->*";
+		return node.OperationIs(OP_DOTSTAR) || node.OperationIs(OP_ARROWSTAR);
 	}
 
 	Operand MemberFunctionPointerAdjustment(const Operand& encoded)

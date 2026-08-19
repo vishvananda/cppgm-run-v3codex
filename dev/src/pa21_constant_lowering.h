@@ -22,15 +22,16 @@ class ConstantLowering
 {
 protected:
 	bool CanonicalizeAdditiveImmediates(std::uint32_t left,
-		const std::string& operation, bool comparison,
+		int operation, bool comparison,
 		bool preserves_enum_conversion) const
 	{
 		if (preserves_enum_conversion || comparison ||
-			(operation != "+" && operation != "-")) return false;
+			(operation != OP_PLUS && operation != OP_MINUS)) return false;
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const DumpNode& record = derived.arena_.nodes[left];
-		return operation != "-" || record.kind != DUMP_BINARY_EXPRESSION ||
-			StripOperationPrefix(derived.program_.names.Get(record.text)) != "*";
+		return operation != OP_MINUS ||
+			record.kind != DUMP_BINARY_EXPRESSION ||
+			!record.OperationIs(OP_STAR);
 	}
 
 	bool FoldNamedLogicalConstant(std::uint32_t node) const

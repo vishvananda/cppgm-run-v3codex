@@ -221,9 +221,7 @@ bool StaticInitializerLowering::ResolveConstantAddress(std::uint32_t node,
 	}
 	if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2)
 	{
-		const std::string operation =
-			StripOperationPrefix(program_.names.Get(record.text));
-		if ((operation == "+" || operation == "-") &&
+		if ((record.OperationIs(OP_PLUS) || record.OperationIs(OP_MINUS)) &&
 			arena_.nodes[children[1]].constant &&
 			ResolveConstantAddress(children[0], symbol, offset))
 		{
@@ -231,7 +229,7 @@ bool StaticInitializerLowering::ResolveConstantAddress(std::uint32_t node,
 				program_.SizeOf(types_.Pointee(arena_.nodes[children[0]].type)));
 			const std::int64_t delta =
 				arena_.nodes[children[1]].constant_value * scale;
-			*offset += operation == "+" ? delta : -delta;
+			*offset += record.OperationIs(OP_PLUS) ? delta : -delta;
 			return true;
 		}
 	}
@@ -249,7 +247,7 @@ bool StaticInitializerLowering::RequiresDynamicAddress(std::uint32_t node) const
 	if (record.kind == DUMP_CAST_EXPRESSION && children.size() == 1)
 		return RequiresDynamicAddress(children[0]);
 	return record.kind == DUMP_UNARY_EXPRESSION && children.size() == 1 &&
-		StripOperationPrefix(program_.names.Get(record.text)) == "&" &&
+		record.OperationIs(OP_AMP) &&
 		arena_.nodes[children[0]].kind == DUMP_SUBSCRIPT_EXPRESSION;
 }
 

@@ -29,9 +29,8 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		if (children.size() != 1)
 			throw std::runtime_error("invalid semantic unary");
-		const std::string operation = StripOperationPrefix(
-			derived.program_.names.Get(record.text));
-		if (operation == "&")
+		const int operation = static_cast<int>(record.operation_kind) - 1;
+		if (operation == OP_AMP)
 		{
 			const TypeRecord& result_type = derived.program_.types.Get(
 				derived.program_.types.RemoveTopCv(record.type));
@@ -94,13 +93,13 @@ protected:
 			}
 			return derived.AddressOfStorage(derived.LowerStorage(children[0]));
 		}
-		if (operation == "*")
+		if (operation == OP_STAR)
 			return derived.LoadStorage(
 				derived.LowerValue(children[0], LowPtr()),
 				derived.LowerExpressionType(record.type));
-		if (operation == "++" || operation == "--")
+		if (operation == OP_INC || operation == OP_DEC)
 			return derived.LowerIncrement(record, children[0], false);
-		if (operation == "!")
+		if (operation == OP_LNOT)
 		{
 			const Operand value = derived.LowerValue(children[0]);
 			const Operand result = derived.Temp(LowU8());
@@ -116,12 +115,12 @@ protected:
 		}
 		const LowType type = derived.LowerExpressionType(record.type);
 		const Operand value = derived.LowerValue(children[0], type);
-		if (operation == "+") return value;
+		if (operation == OP_PLUS) return value;
 		const Operand result = derived.Temp(type);
 		Instruction instruction(Instruction::UNARY);
 		instruction.dest = result.id;
-		instruction.op = operation == "-" ? LOW_OP_NEG :
-			operation == "~" ? LOW_OP_BITNOT : LOW_OP_NONE;
+		instruction.op = operation == OP_MINUS ? LOW_OP_NEG :
+			operation == OP_COMPL ? LOW_OP_BITNOT : LOW_OP_NONE;
 		if (instruction.op == LOW_OP_NONE)
 			throw std::runtime_error(
 				"increment/address unary lowering is outside the active checkpoint");

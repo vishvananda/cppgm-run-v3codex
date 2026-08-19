@@ -19,9 +19,7 @@ struct DumpNode;
 namespace pa15_lowering_support
 {
 
-std::string StripOperationPrefix(const std::string& operation);
-// Stats-only call counter for the T6 operator-vocabulary anchor.
-std::size_t StripOperationPrefixCalls();
+
 std::string SanitizeSymbol(const std::string& name);
 std::vector<unsigned char> DecodeStringLiteral(const std::string& spelling);
 std::int64_t CanonicalIntegerImmediate(std::int64_t value,

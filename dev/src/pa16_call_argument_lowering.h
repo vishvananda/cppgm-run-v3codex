@@ -1181,7 +1181,7 @@ protected:
 			source.binding == derived.current_this_binding_;
 		const bool known_nonnull_address =
 			source.kind == DUMP_UNARY_EXPRESSION &&
-			StripOperationPrefix(derived.program_.names.Get(source.text)) == "&";
+			source.OperationIs(OP_AMP);
 		EntityId entity = derived.BaseEntityForType(source.type);
 		bool adjusted = has_projection_offset && projection_offset != 0;
 		for (std::uint32_t i = 0; !has_projection_offset &&

@@ -1099,11 +1099,10 @@ private:
 			return LowerTemporaryObjectStorage(node, children, &path);
 		}
 		if (record.kind == DUMP_UNARY_EXPRESSION && children.size() == 1 &&
-			StripOperationPrefix(program_.names.Get(record.text)) == "*")
+			record.OperationIs(OP_STAR))
 			return LowerValue(children[0], LowPtr());
 		if (record.kind == DUMP_UNARY_EXPRESSION && children.size() == 1 &&
-			(StripOperationPrefix(program_.names.Get(record.text)) == "++" ||
-			 StripOperationPrefix(program_.names.Get(record.text)) == "--"))
+			(record.OperationIs(OP_INC) || record.OperationIs(OP_DEC)))
 			return LowerIncrement(record, children[0], true);
 		if (record.kind == DUMP_SUBSCRIPT_EXPRESSION && children.size() == 2)
 		{
@@ -1132,7 +1131,7 @@ private:
 		if (record.kind == DUMP_MEMBER_EXPRESSION)
 			return MemberAddress(record, children);
 		if (record.kind == DUMP_BINARY_EXPRESSION && children.size() == 2 &&
-			StripOperationPrefix(program_.names.Get(record.text)) == ",")
+			record.OperationIs(OP_COMMA))
 		{
 			LowerDiscardedValue(children[0]);
 			return LowerStorage(children[1]);
@@ -1477,25 +1476,25 @@ private:
 		if (record.logical_operation != LOGICAL_OPERATION_NONE)
 			return LowerLogical(node, children,
 				record.logical_operation == LOGICAL_OPERATION_AND);
-		const std::string op = StripOperationPrefix(program_.names.Get(record.text));
-		if (op == ",")
+		const int op = static_cast<int>(record.operation_kind) - 1;
+		if (op == OP_COMMA)
 		{
 			LowerDiscardedValue(children[0]);
 			if (discarded) { LowerDiscardedValue(children[1]); return Operand(0, LowVoid()); }
 			return LowerValue(children[1]);
 		}
-		const bool comparison = op == "==" || op == "!=" || op == "<" ||
-			op == "<=" || op == ">" || op == ">=";
+		const bool comparison = op == OP_EQ || op == OP_NE || op == OP_LT ||
+			op == OP_LE || op == OP_GT || op == OP_GE;
 		const bool left_pointer = IsPointerLikeType(arena_.nodes[children[0]].type);
 		const bool right_pointer = IsPointerLikeType(arena_.nodes[children[1]].type);
-		if ((op == "+" || op == "-") && left_pointer && !right_pointer)
-			return LowerPointerOffset(children[0], children[1], op == "-");
-		if (op == "+" && !left_pointer && right_pointer)
+		if ((op == OP_PLUS || op == OP_MINUS) && left_pointer && !right_pointer)
+			return LowerPointerOffset(children[0], children[1], op == OP_MINUS);
+		if (op == OP_PLUS && !left_pointer && right_pointer)
 		{
 			const Operand offset = LowerValue(children[0]), base = LowerArrayPointer(children[1]);
 			return ApplyPointerOffset(base, offset, PointeeType(arena_.nodes[children[1]].type), false);
 		}
-		if (op == "-" && left_pointer && right_pointer)
+		if (op == OP_MINUS && left_pointer && right_pointer)
 			return LowerPointerDifference(children[0], children[1]);
 		if (record.operand_type == kNoType &&
 			!(comparison && (left_pointer || right_pointer)))
@@ -1549,22 +1548,26 @@ private:
 		instruction.second = right;
 		if (comparison)
 		{
-			instruction.op = op == "==" ? LOW_OP_EQ : op == "!=" ? LOW_OP_NE :
-				op == "<" ? (operand_type.is_signed ? LOW_OP_LT : LOW_OP_ULT) :
-				op == "<=" ? (operand_type.is_signed ? LOW_OP_LE : LOW_OP_ULE) :
-				op == ">" ? (operand_type.is_signed ? LOW_OP_GT : LOW_OP_UGT) :
+			instruction.op = op == OP_EQ ? LOW_OP_EQ : op == OP_NE ? LOW_OP_NE :
+				op == OP_LT ? (operand_type.is_signed ? LOW_OP_LT : LOW_OP_ULT) :
+				op == OP_LE ? (operand_type.is_signed ? LOW_OP_LE : LOW_OP_ULE) :
+				op == OP_GT ? (operand_type.is_signed ? LOW_OP_GT : LOW_OP_UGT) :
 				(operand_type.is_signed ? LOW_OP_GE : LOW_OP_UGE);
 		}
 		else
 		{
-			instruction.op = op == "+" ? LOW_OP_ADD : op == "-" ? LOW_OP_SUB :
-				op == "*" ? LOW_OP_MUL : op == "/" ?
+			instruction.op = op == OP_PLUS ? LOW_OP_ADD :
+				op == OP_MINUS ? LOW_OP_SUB :
+				op == OP_STAR ? LOW_OP_MUL : op == OP_DIV ?
 					(operand_type.is_signed || IsFloating(operand_type) ?
 						LOW_OP_DIV : LOW_OP_UDIV) :
-				op == "%" ? (operand_type.is_signed ? LOW_OP_MOD : LOW_OP_UMOD) :
-				op == "&" ? LOW_OP_AND : op == "|" ? LOW_OP_OR :
-				op == "^" ? LOW_OP_XOR : op == "<<" ? LOW_OP_SHL : op == ">>" ?
-					(operand_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) : LOW_OP_NONE;
+				op == OP_MOD ? (operand_type.is_signed ?
+					LOW_OP_MOD : LOW_OP_UMOD) :
+				op == OP_AMP ? LOW_OP_AND : op == OP_BOR ? LOW_OP_OR :
+				op == OP_XOR ? LOW_OP_XOR : op == OP_LSHIFT ? LOW_OP_SHL :
+				op == OP_RSHIFT ?
+					(operand_type.is_signed ? LOW_OP_SHR : LOW_OP_USHR) :
+				LOW_OP_NONE;
 			if (instruction.op == LOW_OP_NONE)
 				throw std::runtime_error("unsupported binary operator");
 		}
@@ -1638,7 +1641,7 @@ private:
 	Operand LowerIncrement(const DumpNode& record, std::uint32_t operand_node,
 		bool return_storage)
 	{
-		const std::string op = StripOperationPrefix(program_.names.Get(record.text));
+		const int op = static_cast<int>(record.operation_kind) - 1;
 		const Operand storage = LowerStorage(operand_node);
 		const BindingId bit_field = BitFieldBinding(operand_node);
 		const LowType type = bit_field == kNoBinding ?
@@ -1650,13 +1653,13 @@ private:
 		Operand new_value;
 		if (IsPointerLikeType(arena_.nodes[operand_node].type))
 			new_value = ApplyPointerOffset(old_value, Operand(1, LowI32()),
-				PointeeType(arena_.nodes[operand_node].type), op == "--");
+				PointeeType(arena_.nodes[operand_node].type), op == OP_DEC);
 		else
 		{
 			new_value = Temp(type);
 			Instruction binary(Instruction::BINARY);
 			binary.dest = new_value.id;
-			binary.op = op == "++" ? LOW_OP_ADD : LOW_OP_SUB;
+			binary.op = op == OP_INC ? LOW_OP_ADD : LOW_OP_SUB;
 			binary.type = type;
 			binary.first = old_value;
 			binary.second = Operand(1, type);

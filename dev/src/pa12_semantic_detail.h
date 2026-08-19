@@ -276,6 +276,7 @@ private:
 	NameId ReadFunctionDisplayName(const FunctionInfo& function);
 	NameId ReadFunctionSourceDisplayName(const FunctionInfo& function);
 	NameId DumpFunctionText(const DumpNode& node);
+	std::uint8_t OperationKindForName(NameId text);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
 	ScopeId NewNamedScope(ScopeId parent, ScopeKind kind, NameId lookup_name,
@@ -2022,6 +2023,7 @@ private:
 	struct GeneratedTypeIdentity { NodeId node; ScopeId owner;
 		EntityId entity; };
 	std::vector<GeneratedTypeIdentity> generated_type_identities_;
+	std::vector<std::uint8_t> operation_kind_by_name_;
 	std::vector<BindingId> constructor_base_entry_by_binding_;
 	std::vector<BindingId> destructor_base_entry_by_binding_;
 	// Canonical constructor identity owns this monotonic elision fact.  A
