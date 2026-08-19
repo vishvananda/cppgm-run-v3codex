@@ -107,23 +107,12 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		key_text == "class" ? NAMED_CLASS :
 		key_text == "union" ? NAMED_UNION : NAMED_NONE;
 	if (flavor == NAMED_NONE) throw std::runtime_error("invalid class-key");
-	std::string spelling = specialization_name.empty() ?
-		arena_->Payload(node) : specialization_name;
-	const bool unnamed_class = spelling.empty() && !hint.empty();
-	if (spelling.empty() && !hint.empty())
-	{
-		++local_type_count_;
-		spelling = "__local_type" + std::to_string(local_type_count_);
-	}
-	if (spelling.empty())
-	{
-		std::ostringstream generated;
-		generated << "__anonymous_union_type__" << arena_->TokenFirst(node)
-			<< '_' << arena_->TokenLast(node);
-		spelling = generated.str();
-	}
-	const NamePath path = ParseNamePath(
-		spelling, NAME_PATH_PARSE_DECLARATION_CLASS);
+	const bool unnamed_class = specialization_name.empty() &&
+		arena_->Payload(node).empty() && !hint.empty();
+	std::string spelling;
+	NamePath path;
+	BuildClassDeclarationNamePath(
+		node, hint, specialization_name, &spelling, &path);
 	const NameId name = path.Last();
 	const NameId lookup_name = specialization_lookup_name == 0 ?
 		name : specialization_lookup_name;
@@ -1484,18 +1473,11 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 }
 TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::string& hint, bool elaborated)
 {
-	std::string spelling = arena_->Payload(node);
-	if (spelling.empty()) spelling = hint;
-	if (spelling.empty())
-	{
-		++anonymous_enum_count_;
-		spelling = "__anonymous_enum" +
-			std::to_string(anonymous_enum_count_);
-	}
+	std::string spelling;
+	NamePath path;
+	BuildEnumDeclarationNamePath(node, hint, &spelling, &path);
 	const bool scoped = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_KEY) != kNoNode;
 	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
-	const NamePath path = ParseNamePath(
-		spelling, NAME_PATH_PARSE_DECLARATION_ENUM);
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("enum owner not found");
@@ -1992,18 +1974,20 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 					if (spelling_node != kNoNode &&
 						arena_->NextEdge(spelling_edge) == kNoEdge)
 					{
-						const std::string spelling = PayloadSource(spelling_node);
 						const std::string& syntax_spelling =
 							arena_->Payload(spelling_node);
 						const bool identifier = syntax_spelling.compare(
 							0, 14, "TT_IDENTIFIER:") == 0;
 						const LookupResult type_name = identifier ?
-							LookupSpelling(parameter_scope, spelling, LOOKUP_TYPE,
-								NAME_PATH_PARSE_DECLARATION_PARAMETER) :
+							LookupName(parameter_scope,
+								program_->names.UseInterned(
+									arena_->SemanticPayloadId(spelling_node)),
+								LOOKUP_TYPE) :
 							LookupResult();
 						if (identifier && type_name.type == kNoType)
 						{
-							name = program_->names.Intern(spelling);
+							name = program_->names.UseInterned(
+								arena_->SemanticPayloadId(spelling_node));
 							parenthesized_parameter_name = true;
 						}
 					}
@@ -2439,8 +2423,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	const std::string target = arena_->Payload(target_node);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION))
 	{
-		const ScopeId target_scope = ResolveScopeSpelling(
-			scope, target, NAME_PATH_PARSE_DECLARATION_USING);
+		const ScopeId target_scope =
+			ResolveScopePath(scope, SyntaxNamePath(target_node));
 		if (target_scope == kNoScope)
 			throw std::runtime_error("namespace alias target not found");
 		program_->AddNamespaceAlias(scope,
@@ -2449,8 +2433,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
-		const ScopeId target_scope = ResolveScopeSpelling(
-			scope, target, NAME_PATH_PARSE_DECLARATION_USING);
+		const ScopeId target_scope =
+			ResolveScopePath(scope, SyntaxNamePath(target_node));
 		if (target_scope == kNoScope)
 			throw std::runtime_error("using namespace target not found");
 		program_->AddUsingEdge(scope, target_scope);

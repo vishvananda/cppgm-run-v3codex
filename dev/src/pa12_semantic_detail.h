@@ -241,6 +241,7 @@ private:
 		LookupKind kind);
 	LookupResult LookupSpelling(ScopeId scope, const std::string& spelling,
 		LookupKind kind, NamePathParseFamily family);
+	ScopeId ResolveScopePath(ScopeId scope, const NamePath& path);
 	ScopeId ResolveScopeSpelling(ScopeId scope, const std::string& spelling,
 		NamePathParseFamily family);
 	ScopeId ResolveOwner(ScopeId scope, const NamePath& name);
@@ -518,6 +519,11 @@ private:
 		NameId specialization_lookup_name = 0,
 		NameId specialization_emission_name = 0,
 		NameId typedef_linkage_name = 0);
+	void BuildClassDeclarationNamePath(NodeId node, const std::string& hint,
+		const std::string& specialization_name, std::string* spelling,
+		NamePath* path);
+	void BuildEnumDeclarationNamePath(NodeId node, const std::string& hint,
+		std::string* spelling, NamePath* path);
 	bool CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
 		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
 		NameId lookup_name, ScopeId specialization_owner,

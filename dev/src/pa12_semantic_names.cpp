@@ -134,14 +134,19 @@ LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
 	return LookupPath(scope, ParseNamePath(spelling, family), kind);
 }
 
-ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
-	const std::string& spelling, NamePathParseFamily family)
+ScopeId SemanticAnalyzer::ResolveScopePath(ScopeId scope,
+	const NamePath& path)
 {
-	const LookupResult result =
-		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER, family);
+	const LookupResult result = LookupPath(scope, path, LOOKUP_SCOPE_CARRIER);
 	if (result.type != kNoType) EnsureClassDefinition(result.type);
 	return result.name_space != kNoScope ? result.name_space :
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;
+}
+
+ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
+	const std::string& spelling, NamePathParseFamily family)
+{
+	return ResolveScopePath(scope, ParseNamePath(spelling, family));
 }
 
 ScopeId SemanticAnalyzer::ResolveOwner(ScopeId scope, const NamePath& name)
