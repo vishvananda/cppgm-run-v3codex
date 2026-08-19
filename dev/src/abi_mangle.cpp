@@ -1,4 +1,5 @@
 #include "abi_mangle.h"
+#include "abi_mangle_graph_argument.h"
 #include "abi_mangle_graph_type.h"
 #include "abi_mangle_presentation.h"
 #include "abi_mangle_substitution.h"
@@ -36,7 +37,10 @@ using detail::SUBSTITUTION_TYPE;
 using detail::SubstitutionKind;
 using detail::SubstitutionKey;
 using detail::SubstitutionTable;
+using detail::ArgumentNode;
 using detail::TypeNode;
+using detail::argument_node_hash;
+using detail::has_resolved_type_substitution;
 using detail::type_node_hash;
 
 const size_t NO_ID = std::numeric_limits<size_t>::max();
@@ -184,97 +188,6 @@ private:
   std::unordered_map<PathNode, size_t, PathHash> indexes_;
 };
 
-struct ArgumentNode
-{
-  AbiTemplateArgumentKind kind = ABI_TEMPLATE_ARGUMENT_TYPE;
-  size_t type = NO_ID;
-  size_t value_type = NO_ID;
-  size_t owner_type = NO_ID;
-  size_t expression = NO_ID;
-  size_t entity = NO_ID;
-  size_t name = NO_ID;
-  size_t substitution = NO_ID;
-  size_t symbol = NO_ID;
-  size_t index = 0;
-  long long value = 0;
-  bool has_value_type = false;
-  bool address_of = false;
-  bool pack_expansion = false;
-  bool member_is_function = false;
-  bool member_const = false;
-  bool member_volatile = false;
-  bool member_lvalue_ref = false;
-  bool member_rvalue_ref = false;
-  bool member_variadic = false;
-  AbiMemberFunctionTerminalKind member_terminal_kind =
-    ABI_MEMBER_FUNCTION_TERMINAL_SOURCE;
-  AbiTerminalKind member_terminal_code = ABI_TERMINAL_NONE;
-  size_t member_literal_suffix = NO_ID;
-  size_t member_conversion_type = NO_ID;
-  size_t member_result_type = NO_ID;
-  bool member_has_result_type = false;
-  bool substitution_resolved = false;
-  bool entity_resolved = false;
-  bool uses_case_facts = false;
-  vector<size_t> parameters;
-  vector<size_t> arguments;
-
-  bool operator==(const ArgumentNode & other) const
-  {
-    return kind == other.kind && type == other.type && value_type == other.value_type
-           && owner_type == other.owner_type && expression == other.expression
-           && entity == other.entity && name == other.name
-           && substitution == other.substitution && symbol == other.symbol
-           && index == other.index && value == other.value
-           && has_value_type == other.has_value_type && address_of == other.address_of
-           && pack_expansion == other.pack_expansion
-           && member_is_function == other.member_is_function
-           && member_const == other.member_const && member_volatile == other.member_volatile
-           && member_lvalue_ref == other.member_lvalue_ref
-           && member_rvalue_ref == other.member_rvalue_ref
-           && member_variadic == other.member_variadic
-           && member_terminal_kind == other.member_terminal_kind
-           && member_terminal_code == other.member_terminal_code
-           && member_literal_suffix == other.member_literal_suffix
-           && member_conversion_type == other.member_conversion_type
-           && member_result_type == other.member_result_type
-           && member_has_result_type == other.member_has_result_type
-           && substitution_resolved == other.substitution_resolved
-           && entity_resolved == other.entity_resolved
-           && parameters == other.parameters && arguments == other.arguments;
-  }
-};
-
-size_t argument_hash(const ArgumentNode & argument)
-{
-  size_t hash = static_cast<size_t>(argument.kind);
-  hash = mix_hash(hash, argument.type);
-  hash = mix_hash(hash, argument.value_type);
-  hash = mix_hash(hash, argument.owner_type);
-  hash = mix_hash(hash, argument.expression);
-  hash = mix_hash(hash, argument.entity);
-  hash = mix_hash(hash, argument.name);
-  hash = mix_hash(hash, argument.substitution);
-  hash = mix_hash(hash, argument.symbol);
-  hash = mix_hash(hash, static_cast<size_t>(argument.member_terminal_kind));
-  hash = mix_hash(hash, static_cast<size_t>(argument.member_terminal_code));
-  hash = mix_hash(hash, argument.member_literal_suffix);
-  hash = mix_hash(hash, argument.member_conversion_type);
-  hash = mix_hash(hash, argument.member_result_type);
-  hash = mix_hash(hash, argument.index);
-  hash = mix_hash(hash, std::hash<long long>()(argument.value));
-  hash = mix_hash(hash, argument.has_value_type | (argument.address_of << 1)
-                        | (argument.member_is_function << 2) | (argument.member_const << 3)
-                        | (argument.member_volatile << 4) | (argument.member_lvalue_ref << 5)
-                        | (argument.member_rvalue_ref << 6) | (argument.member_variadic << 7)
-                        | (argument.member_has_result_type << 8)
-						| (argument.pack_expansion << 9)
-                        | (argument.entity_resolved << 10)
-                        | (argument.substitution_resolved << 11));
-  hash = vector_hash(hash, argument.parameters);
-  return vector_hash(hash, argument.arguments);
-}
-
 struct ExpressionNode
 {
   AbiExpressionKind kind = ABI_EXPRESSION_LITERAL;
@@ -325,14 +238,6 @@ size_t expression_hash(const ExpressionNode & expression)
   hash = vector_hash(hash, expression.expressions);
   hash = vector_hash(hash, expression.arguments);
   return vector_hash(hash, expression.types);
-}
-
-bool has_resolved_type_substitution(const AbiType & type)
-{
-  return type.resolved_expression != ABI_NO_RESOLVED_REFERENCE &&
-    (type.kind == ABI_TYPE_RESOLVED ||
-     type.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION ||
-     type.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION);
 }
 
 class FactGraph
@@ -917,7 +822,14 @@ private:
         node.entity_resolved = true;
       } else node.entity = strings.intern(source.entity_ref);
     }
-    if(!source.name.empty()) {
+    const bool resolved_member_name = source.kind ==
+      ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY &&
+      source.name.empty() && source.index != 0;
+    if(resolved_member_name) {
+      node.name = source.index - 1;
+      strings.get(node.name);
+      if(stats_) ++stats_->typed_argument_source_names;
+    } else if(!source.name.empty()) {
       node.name = strings.intern(source.name);
       if(stats_ && source.kind ==
          ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY)
@@ -932,7 +844,7 @@ private:
       node.substitution_resolved = false;
     }
     if(!source.symbol.empty()) node.symbol = strings.intern(source.symbol);
-    node.index = source.index;
+    node.index = resolved_member_name ? 0 : source.index;
     node.value = source.value;
     node.has_value_type = source.has_value_type;
     node.address_of = source.address_of;
@@ -948,7 +860,15 @@ private:
       ABI_TERMINAL_NONE ? source.member_function_terminal_code :
       !source.member_function_terminal.empty() ?
         abi_terminal_kind(source.member_function_terminal) : ABI_TERMINAL_NONE;
-    if(!source.member_function_literal_suffix.empty()) {
+    if(source.kind == ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY &&
+       source.member_function_terminal_kind ==
+         ABI_MEMBER_FUNCTION_TERMINAL_OPERATOR &&
+       source.member_function_terminal_code == ABI_TERMINAL_LITERAL &&
+       source.resolved_entity != ABI_NO_RESOLVED_REFERENCE) {
+      node.member_literal_suffix = source.resolved_entity;
+      strings.get(node.member_literal_suffix);
+      if(stats_) ++stats_->typed_literal_suffixes;
+    } else if(!source.member_function_literal_suffix.empty()) {
       node.member_literal_suffix = strings.intern(source.member_function_literal_suffix);
       if(stats_) ++stats_->text_literal_suffixes;
     }
@@ -988,7 +908,7 @@ private:
       node.uses_case_facts = node.uses_case_facts
         || arguments[argument].uses_case_facts;
     }
-    const size_t hash = argument_hash(node);
+    const size_t hash = argument_node_hash(node);
     vector<size_t> & bucket = argument_buckets[hash];
     for(size_t id : bucket) {
       if(arguments[id] == node) {
@@ -2687,8 +2607,14 @@ private:
     const AbiTerminalKind kind = resolved_terminal(
       terminal.terminal_code, terminal.terminal);
     if(kind == ABI_TERMINAL_LITERAL) {
-      if(stats_) ++stats_->text_literal_suffixes;
-      output_ += "li" + source_name(terminal.literal_suffix);
+      const bool typed_suffix = terminal.has_resolved_source_name();
+      if(stats_) {
+        if(typed_suffix) ++stats_->typed_literal_suffixes;
+        else ++stats_->text_literal_suffixes;
+      }
+      output_ += "li" + source_name(typed_suffix ?
+        graph_.strings.get(terminal.resolved_source_name()) :
+        terminal.literal_suffix);
       return;
     }
     if(kind >= ABI_TERMINAL_CONSTRUCTOR_COMPLETE &&

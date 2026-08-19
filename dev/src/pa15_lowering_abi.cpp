@@ -773,7 +773,7 @@ public:
 				target.kind = ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY;
 				target.type = MakeType(
 					program_.entities[value.member_owner].type);
-				target.name = program_.names.Get(value.name);
+				target.index = ResolveName(value.name) + 1;
 				target.address_of = true;
 				target.member_is_function = value.kind == BIND_FUNCTION;
 				if (target.member_is_function)
@@ -808,8 +808,8 @@ public:
 						OperatorTerminal(value.operator_kind, true,
 							member_type.parameter_count);
 					if (value.operator_kind == OPERATOR_LITERAL)
-						target.member_function_literal_suffix =
-							program_.names.Get(value.operator_literal_suffix);
+						target.resolved_entity =
+							ResolveName(value.operator_literal_suffix);
 				}
 				if (value.template_argument_count != 0)
 				{
@@ -2599,8 +2599,8 @@ std::string MangleFunction(const pa11::Program& program,
 		if (binding.operator_kind == OPERATOR_LITERAL)
 		{
 			terminal.function.terminal_code = ABI_TERMINAL_LITERAL;
-			terminal.function.literal_suffix =
-				program.names.Get(binding.operator_literal_suffix);
+			facts.SetSourceName(
+				&terminal.function, binding.operator_literal_suffix);
 		}
 		else terminal.function.terminal_code = operator_terminal;
 		AppendTypedFact(&fact_case, &terminal);

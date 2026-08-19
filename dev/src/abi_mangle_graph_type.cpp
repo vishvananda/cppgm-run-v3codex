@@ -77,6 +77,14 @@ std::size_t type_node_hash(const TypeNode & type)
   return vector_hash(hash, type.tags);
 }
 
+bool has_resolved_type_substitution(const AbiType & type)
+{
+  return type.resolved_expression != ABI_NO_RESOLVED_REFERENCE &&
+    (type.kind == ABI_TYPE_RESOLVED ||
+     type.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION ||
+     type.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION);
+}
+
 static_assert(sizeof(TypeNode) == 184,
               "typed ABI vocabulary must not widen canonical types");
 

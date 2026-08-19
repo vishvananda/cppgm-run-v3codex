@@ -47,6 +47,7 @@ struct TypeNode
 };
 
 std::size_t type_node_hash(const TypeNode & type);
+bool has_resolved_type_substitution(const AbiType & type);
 
 }  // namespace detail
 }  // namespace abi_mangle
