@@ -13,8 +13,8 @@ Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `a3150b62` (T6c semantic operator
-dispatch on packed kinds; measurements and gates are recorded in section
+Current accepted execution checkpoint: `c29c85ba` (T6e keyword-kind
+specifier classification; measurements and gates are recorded in section
 11.3)
 
 ## 1. Objective
@@ -1988,10 +1988,18 @@ fixed-vocabulary feature.  Existing textual fixtures should remain exact.
    wall, -0.30% RSS).  During development the bare-spelling synthesized
    operation form was caught by the frozen exactness gate and folded into
    the classifier.  The accepted implementation is `5e9f3ce5`.
-5. **T6e:** convert small fixed vocabularies (`default`/`delete`, linkage,
-   traits, attributes, builtins, predefined identifiers) to existing syntax
-   kinds, byte enums, or preinterned `NameId`s.  Do not force extensible or
-   language-visible strings into a global enum.
+5. **T6e (largely complete):** the declaration-specifier loop, keyword
+   literals, and alignof/noexcept/typeid traits now classify through the
+   memoized keyword kinds (the spelling table already normalizes
+   alternative forms such as `__alignof__`); declarator pointer operators
+   and the friend/virtual/inline/default/delete special-member checks that
+   dispatch per node follow the same pattern where converted.  Extensible
+   registries (`HostedSpecifierType`, hosted builtins) and GNU extension
+   spellings (`_Complex`, `__real__`, `__imag__`) remain classified string
+   adapters by design.  Three A/B/B/A blocks against immutable T6c
+   measured 4.300/4.250 seconds user (paired -0.70% user, -0.63% wall,
+   +0.14% RSS) with the frozen object exact and the full report at
+   5,218/5,218; the accepted implementation is `c29c85ba`.
 
 The exit condition is zero integrated operator spelling comparisons and zero
 lowering prefix strips, plus a reviewed boundary list for every residual fixed
@@ -2360,6 +2368,7 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T5b | Sort EH block order by once-rendered byte keys | Examined characters fall 5,694,676 -> 573,751 on 885 frozen EH functions; comparator count unchanged; no interned block names; per-function reused key buffer | Three A/B/B/A blocks against immutable T5a: 4.325/4.315 s user; paired -0.23% user, +0.21% wall, -0.17% RSS; timing-neutral structural work | Frozen object byte-exact in stats and all 12 timed runs, proving order equivalence including decimal boundaries; PA34 run reducer covers 9/10 and 99/100 ordinals plus label collision with reference agreement | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `271c3564`; accepted |
 | Inception checkpoint | Self-host comparison validates the cumulative typed-boundary work | `make inception` at checkpoint `5e9f3ce5` self-compiles the full PA39 tool set through every converted path and reports `MATCH cppgm++` for the inception binary | 267.22 s wall, 2,215.30 s user, 221,720 KiB peak RSS for the complete lane | The self-built compiler is byte-matched; the section 19 final gate will repeat this on the final tree | Single clean lane after the T4-T6d batch | Recorded at `5e9f3ce5` |
 | T6b/T6d | Packed operation kinds flow from classification into lowering | `DumpNode` carries `SimpleTokenKind`+1 in existing padding, classified once per distinct operation name; all fourteen lowering strip/compare sites switch on the kind; `StripOperationPrefix` deleted (15,013 frozen calls -> 0). | Three A/B/B/A blocks against immutable T5b: 4.330/4.275 s user; paired -0.81% user, -0.83% wall, -0.30% RSS | Frozen object exact in stats and all 12 timed runs; the bare-spelling synthesized form was caught by the exactness gate during development | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `5e9f3ce5`; accepted |
+| T6e | Declaration specifiers classify by keyword kind | The hot `BuildSpecifiers` loop and remaining keyword dispatch compare memoized `KW_*` kinds instead of spellings; extensible and GNU-extension registries stay string adapters | Three A/B/B/A blocks against immutable T6c: 4.300/4.250 s user; paired -0.70% user, -0.63% wall, +0.14% RSS | Frozen object exact in all runs | Full report 5,218/5,218; zero-fatal audit | `c29c85ba`; accepted |
 | T6c | Semantic operator dispatch compares packed kinds | Node-driven dispatch uses the memoized `PayloadTokenKind`; helper entries classify synthesized operation strings once through `ClassifyOperationSpelling`; about 120 integrated spelling comparisons became integer compares across PA12/PA16/PA21/PA27/PA34; residual text is classified adapters. The vocabulary moved to a compiled `pa12_semantic_vocabulary.cpp` module for the file audit. | Three A/B/B/A blocks against immutable T6d: 4.360/4.275 s user, 4.815/4.775 s wall; paired -1.04% user, -0.42% wall, -0.02% RSS | Frozen object byte-exact through every conversion step and all 12 timed runs | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `a3150b62`; accepted |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
 | T8 | Integrated spelling handles and dense emitted-spelling remap | Planned | Planned | Exact PA2/4/10 fixtures expected | PA2/4/10 plus full report | Planned |
