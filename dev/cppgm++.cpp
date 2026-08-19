@@ -1373,6 +1373,16 @@ void report_source_compile_stats(
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
+			 << " abi_text_type_path_components="
+			 << stats.abi.text_type_path_components
+			 << " abi_text_function_path_components="
+			 << stats.abi.text_function_path_components
+			 << " abi_text_object_path_components="
+			 << stats.abi.text_object_path_components
+			 << " abi_text_entity_path_components="
+			 << stats.abi.text_entity_path_components
+			 << " abi_text_substitution_path_components="
+			 << stats.abi.text_substitution_path_components
 			 << " abi_substitution_lookups="
 			 << stats.abi.substitution_lookups
 			 << " abi_substitution_hits="
@@ -2424,6 +2434,16 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
+			 << " abi_text_type_path_components="
+			 << stats.abi.text_type_path_components
+			 << " abi_text_function_path_components="
+			 << stats.abi.text_function_path_components
+			 << " abi_text_object_path_components="
+			 << stats.abi.text_object_path_components
+			 << " abi_text_entity_path_components="
+			 << stats.abi.text_entity_path_components
+			 << " abi_text_substitution_path_components="
+			 << stats.abi.text_substitution_path_components
 			 << " abi_substitution_lookups="
 			 << stats.abi.substitution_lookups
 			 << " abi_substitution_hits="

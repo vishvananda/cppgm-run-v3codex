@@ -88,7 +88,8 @@ public:
   PathPool(StringPool & strings, AbiMangleStats * stats)
     : strings_(strings), stats_(stats) {}
 
-  size_t intern(const string & qualified)
+  size_t intern(const string & qualified,
+                size_t * origin_components = nullptr)
   {
     size_t begin = qualified.compare(0, 2, "::") == 0 ? 2 : 0;
     size_t path = NO_ID;
@@ -99,6 +100,7 @@ public:
         throw std::logic_error("empty component in ABI name '" + qualified + "'");
       }
       if(stats_) ++stats_->path_components;
+      if(origin_components) ++*origin_components;
       path = intern(path, strings_.intern(component));
       if(separator == string::npos) break;
       begin = separator + 2;
@@ -520,16 +522,18 @@ public:
       node.symbol = strings.intern(source.name);
     } else if(source.kind == ABI_TYPE_NAME_OR_REFERENCE || source.kind == ABI_TYPE_NAMED) {
       node.kind = ABI_TYPE_NAMED;
-	  node.path = resolved_path ?
-		checked_path(source.index - 1) : paths.intern(source.name);
+	  node.path = resolved_path ? checked_path(source.index - 1) :
+		paths.intern(source.name,
+			stats_ ? &stats_->text_type_path_components : nullptr);
 	  if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
     } else {
       if(!source.name.empty()) node.symbol = strings.intern(source.name);
       if((source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
           || source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION)
 		 && (resolved_path || !source.name.empty())) {
-		node.path = resolved_path ?
-		  checked_path(source.index - 1) : paths.intern(source.name);
+		node.path = resolved_path ? checked_path(source.index - 1) :
+		  paths.intern(source.name,
+			stats_ ? &stats_->text_type_path_components : nullptr);
       }
       if(!source.standard_substitution.empty()) {
         node.symbol = strings.intern(source.standard_substitution);
@@ -1716,7 +1720,9 @@ private:
       case ABI_TEMPLATE_ARGUMENT_EXPRESSION:
         output_ += 'X'; encode_expression(argument.expression); output_ += 'E'; return;
       case ABI_TEMPLATE_ARGUMENT_TEMPLATE_ENTITY:
-        encode_path_name(graph_.paths.intern(graph_.strings.get(argument.name)),
+        encode_path_name(graph_.paths.intern(
+                           graph_.strings.get(argument.name),
+                           stats_ ? &stats_->text_entity_path_components : nullptr),
                          vector<size_t>(), true, vector<AbiFunctionQualifier>());
         return;
       case ABI_TEMPLATE_ARGUMENT_MEMBER_TEMPLATE_ENTITY:
@@ -1940,7 +1946,10 @@ private:
 
   void encode_object_name(const string & qualified_name, bool internal)
   {
-    encode_object_name(graph_.paths.intern(qualified_name), internal);
+    encode_object_name(graph_.paths.intern(
+                         qualified_name,
+                         stats_ ? &stats_->text_object_path_components : nullptr),
+                       internal);
   }
 
   void encode_object_name(size_t path, bool internal)
@@ -1992,7 +2001,9 @@ private:
   {
     const size_t path = target.resolved_path != ABI_NO_RESOLVED_REFERENCE ?
       graph_.path(target.resolved_path) :
-      graph_.paths.intern(target.qualified_name);
+      graph_.paths.intern(
+        target.qualified_name,
+        stats_ ? &stats_->text_function_path_components : nullptr);
     vector<size_t> template_arguments;
     vector<size_t> operand_parameters;
     for(const AbiFunctionPathOperand & operand : target.path_operands) {
@@ -2043,7 +2054,9 @@ private:
     if(!facts.template_arguments.empty()) {
       const size_t path = target.resolved_path != ABI_NO_RESOLVED_REFERENCE ?
         graph_.path(target.resolved_path) :
-        graph_.paths.intern(target.qualified_name);
+        graph_.paths.intern(
+          target.qualified_name,
+          stats_ ? &stats_->text_function_path_components : nullptr);
       encode_function_template_arguments(path, facts, facts.template_arguments);
     }
     output_ += 'E';
@@ -2071,7 +2084,9 @@ private:
     if(!facts.template_arguments.empty()) {
       const size_t path = target.resolved_path != ABI_NO_RESOLVED_REFERENCE ?
         graph_.path(target.resolved_path) :
-        graph_.paths.intern(target.qualified_name);
+        graph_.paths.intern(
+          target.qualified_name,
+          stats_ ? &stats_->text_object_path_components : nullptr);
       encode_function_template_arguments(path, facts, facts.template_arguments);
     }
     output_ += 'E';
@@ -2562,7 +2577,11 @@ private:
   {
     const string spelling = key.empty() || key == "-" ? fallback : key;
     if(spelling.find('<') == string::npos && spelling.compare(0, 14, "operator-name:") != 0) {
-      return SubstitutionKey{SUBSTITUTION_PATH, graph_.paths.intern(spelling)};
+      return SubstitutionKey{
+        SUBSTITUTION_PATH,
+        graph_.paths.intern(
+          spelling,
+          stats_ ? &stats_->text_substitution_path_components : nullptr)};
     }
     return SubstitutionKey{SUBSTITUTION_EXPLICIT, graph_.strings.intern(spelling)};
   }

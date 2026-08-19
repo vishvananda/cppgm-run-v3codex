@@ -154,6 +154,11 @@ struct AbiMangleStats
   std::size_t canonical_cache_hits = 0;
   std::size_t definition_cache_hits = 0;
   std::size_t path_components = 0;
+  std::size_t text_type_path_components = 0;
+  std::size_t text_function_path_components = 0;
+  std::size_t text_object_path_components = 0;
+  std::size_t text_entity_path_components = 0;
+  std::size_t text_substitution_path_components = 0;
   std::size_t substitution_lookups = 0;
   std::size_t substitution_hits = 0;
   std::size_t substitution_entries = 0;
