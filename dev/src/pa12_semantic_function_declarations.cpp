@@ -53,8 +53,7 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaratio
 		return;
 	}
 	const std::uint32_t declaration = MakeDump(DUMP_FUNCTION_DECLARATION,
-		parsed.type, VALUE_NONE,
-		ReadFunctionDisplayName(GetFunction(function)), function);
+		parsed.type, VALUE_NONE, 0, function);
 	dump_.Add(output_parent, declaration);
 }
 

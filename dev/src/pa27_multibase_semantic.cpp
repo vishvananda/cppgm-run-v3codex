@@ -35,8 +35,7 @@ std::uint32_t SemanticAnalyzer::BuildInheritedConstructorBaseAction(
 		program_->DirectBase(entity, *base_ordinal).offset;
 	dump_.nodes[base_action].has_direct_base_offset = true;
 	const std::uint32_t call = MakeDump(DUMP_CONSTRUCTOR_ACTION,
-		AdaptMemberFunctionType(source), VALUE_NONE,
-		ReadFunctionDisplayName(source_info), source);
+		AdaptMemberFunctionType(source), VALUE_NONE, 0, source);
 	if (parameters.size() != source_info.parameters.size())
 		throw std::logic_error(
 			"inherited constructor parameter fact mismatch");

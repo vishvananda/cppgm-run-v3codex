@@ -1173,7 +1173,7 @@ std::uint32_t SemanticAnalyzer::BuildConstructorAction(TypeId type,
 	}
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(selected), VALUE_NONE,
-		ReadFunctionDisplayName(constructor), selected);
+		0, selected);
 	dump_.nodes[action].operand_type =
 		program_->types.RemoveTopCv(EffectiveType(type));
 	dump_.nodes[action].trivial_special_member_action =

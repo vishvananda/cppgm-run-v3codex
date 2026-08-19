@@ -88,8 +88,7 @@ std::uint32_t SemanticAnalyzer::BuildClassValueConstructorAction(TypeId type,
 			recipe.kind == DUMP_CALL_EXPRESSION && recipe.user_conversion_call;
 	}
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
-		AdaptMemberFunctionType(selected), VALUE_NONE,
-		ReadFunctionDisplayName(constructor), selected);
+		AdaptMemberFunctionType(selected), VALUE_NONE, 0, selected);
 	dump_.nodes[action].operand_type =
 		program_->types.RemoveTopCv(EffectiveType(type));
 	dump_.nodes[action].trivial_special_member_action =
@@ -2600,8 +2599,7 @@ std::uint32_t SemanticAnalyzer::MakeDestructorAction(TypeId type,
 	if (info.deleted_destructor)
 		throw std::runtime_error("deleted destructor is required");
 	const std::uint32_t action = MakeDump(DUMP_DESTRUCTOR_ACTION,
-		AdaptMemberFunctionType(destructor), VALUE_NONE,
-		ReadFunctionDisplayName(info), destructor);
+		AdaptMemberFunctionType(destructor), VALUE_NONE, 0, destructor);
 	dump_.nodes[action].operand_type = type;
 	dump_.nodes[action].object_binding = object;
 	dump_.nodes[action].base_projection_count = base_projections;

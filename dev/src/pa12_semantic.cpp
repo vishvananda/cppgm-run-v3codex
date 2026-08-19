@@ -1102,7 +1102,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	dump_.nodes[call].user_conversion_call = function.conversion_function;
 	dump_.nodes[call].explicit_user_conversion_call = function.conversion_function && function.explicit_conversion;
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
-		VALUE_NONE, ReadFunctionDisplayName(function), emission_binding);
+		VALUE_NONE, 0, emission_binding);
 	dump_.Add(call, callee);
 	ExpressionInfo converted_object;
 	const ExpressionInfo* constexpr_receiver = object;
@@ -2383,8 +2383,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const TypeId output_type = member ?
 		AdaptMemberFunctionType(binding) : parsed.type;
 	const std::uint32_t output_node = MakeDump(DUMP_FUNCTION_DEFINITION,
-		output_type, VALUE_NONE,
-		ReadFunctionDisplayName(GetFunction(binding)), binding);
+		output_type, VALUE_NONE, 0, binding);
 	dump_.Add(output_parent, output_node);
 	const ScopeId function_scope = NewScope(owner, SCOPE_FUNCTION, parsed.name,
 		ScopePrefixId(owner));

@@ -150,21 +150,6 @@ NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
 	return program_->names.Intern(qualified);
 }
 
-NameId SemanticAnalyzer::EmissionName(ScopeId owner, NameId name)
-{
-	program_->BuildEmissionPath(owner, name, &scope_prefix_scratch_);
-	std::string rendered;
-	for (std::size_t i = 0; i < scope_prefix_scratch_.size(); ++i)
-	{
-		if (i != 0) rendered += "::";
-		rendered += program_->names.Get(scope_prefix_scratch_[i]);
-	}
-	if (stats_)
-		RecordPresentationRender(SEMANTIC_PRESENTATION_EMISSION_NAME, rendered,
-			scope_prefix_scratch_.size());
-	return program_->names.Intern(rendered);
-}
-
 void SemanticAnalyzer::InitializeInitializerListLifetimeScope(
 	ScopeId scope, ScopeId parent)
 {

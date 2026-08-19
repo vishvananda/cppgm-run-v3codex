@@ -256,7 +256,6 @@ private:
 	const std::string& ScopePrefix(ScopeId scope);
 	NameId ScopePrefixId(ScopeId scope);
 	NameId DisplayName(ScopeId owner, NameId name);
-	NameId EmissionName(ScopeId owner, NameId name);
 	void RecordPresentationRender(SemanticPresentationFamily family,
 		const std::string& rendered, std::size_t components = 0) const
 	{
@@ -276,6 +275,7 @@ private:
 	}
 	NameId ReadFunctionDisplayName(const FunctionInfo& function);
 	NameId ReadFunctionSourceDisplayName(const FunctionInfo& function);
+	NameId DumpFunctionText(const DumpNode& node);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
 	ScopeId NewNamedScope(ScopeId parent, ScopeKind kind, NameId lookup_name,

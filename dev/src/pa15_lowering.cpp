@@ -796,7 +796,10 @@ private:
 		const DumpNode& record = arena_.nodes[node];
 		Function result;
 		result.symbol = function_symbols_[record.binding];
-		result.entry = program_.names.Get(record.text) == "main";
+		const pa11::BindingRecord& entry_binding =
+			program_.bindings[program_.bindings[record.binding].canonical];
+		result.entry = entry_binding.owner == program_.GlobalScope() &&
+			program_.names.Get(entry_binding.name) == "main";
 		FillBoundary(node, &result.parameters, &result.result, &result.variadic);
 		function_ = &result;
 		current_result_ = result.result;

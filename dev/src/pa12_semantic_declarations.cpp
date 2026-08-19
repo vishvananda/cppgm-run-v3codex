@@ -2733,8 +2733,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		AdaptMemberFunctionType(initial.binding) : initial.type;
 	const std::uint32_t function = MakeDump(emit_definition ?
 		DUMP_FUNCTION_DEFINITION : DUMP_FUNCTION_DECLARATION,
-		output_type, VALUE_NONE,
-		ReadFunctionDisplayName(initial), initial.binding);
+		output_type, VALUE_NONE, 0, initial.binding);
 	dump_.Add(root_, function);
 	if (!emit_definition && (retain_lowering_facts_ || member ||
 		program_->bindings[binding].explicit_instantiation_suppressed))

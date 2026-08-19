@@ -7,6 +7,16 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+NameId SemanticAnalyzer::DumpFunctionText(const DumpNode& node)
+{
+	// Function presentation is demanded here, at the dump output boundary,
+	// rather than being rendered when the node is created.
+	if (node.text != 0 || node.binding == kNoBinding ||
+		node.binding >= program_->bindings.size())
+		return node.text;
+	return ReadFunctionDisplayName(GetFunction(node.binding));
+}
+
 void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 {
 	for (std::size_t i = 0; i < depth; ++i) output_ << "  ";
@@ -24,10 +34,12 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 		output_ << "variable " << program_->names.Get(node.text) << ' '
 			<< program_->RenderType(node.type); break;
 	case DUMP_FUNCTION_DECLARATION:
-		output_ << "function-declaration " << program_->names.Get(node.text)
+		output_ << "function-declaration "
+			<< program_->names.Get(DumpFunctionText(node))
 			<< ' ' << program_->RenderType(node.type); break;
 	case DUMP_FUNCTION_DEFINITION:
-		output_ << "function-definition " << program_->names.Get(node.text)
+		output_ << "function-definition "
+			<< program_->names.Get(DumpFunctionText(node))
 			<< ' ' << program_->RenderType(node.type); break;
 	case DUMP_PARAMETER:
 		output_ << "parameter " << program_->names.Get(node.text) << ' '
@@ -66,8 +78,8 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 		output_ << "call-expression " << category << ' '
 			<< program_->RenderType(node.type); break;
 	case DUMP_CALLEE:
-		output_ << "callee " << program_->names.Get(node.text) << ' '
-			<< program_->RenderType(node.type); break;
+		output_ << "callee " << program_->names.Get(DumpFunctionText(node))
+			<< ' ' << program_->RenderType(node.type); break;
 	case DUMP_ID_EXPRESSION:
 		output_ << "id-expression " << category << ' '
 			<< program_->RenderType(node.type) << ' '
@@ -185,12 +197,14 @@ void SemanticAnalyzer::RenderLine(const DumpNode& node, std::size_t depth)
 		output_ << "special-member-subobject "
 			<< program_->RenderType(node.type); break;
 	case DUMP_CONSTRUCTOR_ACTION:
-		output_ << "constructor-action " << program_->names.Get(node.text); break;
+		output_ << "constructor-action "
+			<< program_->names.Get(DumpFunctionText(node)); break;
 	case DUMP_CONSTRUCTOR_ARRAY_ACTION:
 		output_ << "constructor-array-action "
 			<< program_->RenderType(node.operand_type); break;
 	case DUMP_DESTRUCTOR_ACTION:
-		output_ << "destructor-action " << program_->names.Get(node.text)
+		output_ << "destructor-action "
+			<< program_->names.Get(DumpFunctionText(node))
 			<< ' ' << program_->RenderType(node.operand_type); break;
 	case DUMP_COMPLEX_CONSTRUCTION:
 		output_ << "complex-construction " << category << ' '
