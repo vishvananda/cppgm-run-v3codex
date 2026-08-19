@@ -1960,7 +1960,20 @@ fixed-vocabulary feature.  Existing textual fixtures should remain exact.
 3. **T6c:** change PA11/PA12 overload resolution, builtin conversions,
    member-pointer logic, and constant evaluation to accept the enum.  Convert
    one operator family at a time so reducers identify the earliest semantic
-   owner.
+   owner.  The T6d closeout audit enumerated this surface precisely: about
+   130 spelling comparisons across `pa12_semantic_operators.cpp` (50),
+   `pa11_semantic.cpp` (27), `pa16_operator_resolution.cpp` (22),
+   `pa21_constant_evaluator.cpp` (13), `pa12_semantic.cpp` (12), and
+   `pa12_semantic_calls.cpp` (7), threaded through the
+   `const std::string& operation` parameter chains of
+   `AnalyzeUnary`/`AnalyzeBinary`/`BuildBinaryExpression`/
+   `PrepareBuiltinComparison`/`PrepareBuiltinArithmetic`.  The operation
+   string is also used constructively for operator-function lookup names,
+   and GNU extension operations (`__real__`/`__imag__`) are identifier
+   payloads outside the fixed vocabulary that must stay classified
+   adapters.  The conversion is signature re-threading with no remaining
+   hot-path render, hash, or interner work (those were removed by T6d), so
+   it is staged as architecture completion behind the measured phases.
 4. **T6d (complete):** all fourteen lowering consumers in
    PA15/PA16/PA21/PA27 now switch on the packed kind through
    `DumpNode::OperationIs` and integer compares; the frozen
@@ -2022,7 +2035,16 @@ and IR serialization must render from the typed fact.
 1. **T7a:** count post-token decodes, retained fact hits, semantic fallback
    decodes, string/code-unit decodes, scalar renders, scalar reparses, and
    pragma format/parse events by literal family.  Record token/fact/dump record
-   sizes and arena bytes.
+   sizes and arena bytes.  The T6d-era reconnaissance located the floating
+   round trip precisely: semantic evaluation carries `long double` in
+   `ConstexprScalarValue` while the dump transports spelling text, and
+   lowering re-decodes per target type through `DecodeTypedFloating` (three
+   PA16 static-initializer sites) and `FloatingOperand` (three PA15/PA16
+   sites), retaining `floating_spelling` for the serialized-LowIR contract.
+   The typed fact must be the target-typed bit pattern from the first
+   decode: converting the retained `long double` would double-round
+   narrow targets and break object exactness, so the transport change
+   must start at the PA2/PA10 decode, not at the evaluated value.
 2. **T7b:** complete integral and character facts, including signedness,
    width, suffix, character kind, and normalized bits.  Reuse the current
    retained scalar path rather than introduce a second literal table.
@@ -2100,6 +2122,12 @@ Address these only after the preceding measured work:
 1. **T9a:** replace PA19 ambiguous-relational-declaration substring and stream
    parsing with a retained parser alternative or typed token-range recipe.
    The frozen count is small, so correctness and clarity are the reasons.
+   Reconnaissance confirmed the relevant `decl-specifier` is serialized as a
+   joined leaf with no structured children, so the typed recipe is a
+   semantic-only child published by PA10's relational-declaration parse
+   (the same serialization-invisible mechanism T2y used), consumed by
+   `AnalyzeAmbiguousRelationalDeclaration` in place of the whitespace-strip
+   and `istringstream` slicing.
 2. **T9b:** replace any PA32 function-template ABI result tag `NameId`
    comparisons left after T6 with syntax-tag/operator enums, or publish the ABI
    type fact directly.
