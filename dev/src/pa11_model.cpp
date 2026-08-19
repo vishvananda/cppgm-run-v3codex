@@ -2136,6 +2136,13 @@ LookupResult Program::LookupMember(EntityId entity, NameId name,
 	return LookupGraph(entities[entity].member_scope, name, kind);
 }
 
+LookupResult Program::LookupQualifiedName(ScopeId owner, NameId name,
+	LookupKind kind)
+{
+	++lookup_queries;
+	return LookupGraph(owner, name, kind);
+}
+
 LookupResult Program::LookupQualified(ScopeId owner, const NamePath& name,
 	LookupKind kind)
 {

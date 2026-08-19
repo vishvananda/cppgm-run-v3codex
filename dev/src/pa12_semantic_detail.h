@@ -225,6 +225,7 @@ private:
 	const std::string& PayloadSource(NodeId node) const;
 	NamePath ParseNamePath(const std::string& spelling,
 		NamePathParseFamily family);
+	LookupResult LookupName(ScopeId scope, NameId name, LookupKind kind);
 	LookupResult LookupPath(ScopeId scope, const NamePath& path,
 		LookupKind kind);
 	LookupResult LookupStructuredName(NodeId syntax, ScopeId scope,

@@ -809,6 +809,8 @@ public:
 		LookupKind kind);
 	LookupResult LookupMember(EntityId entity, NameId name,
 		LookupKind kind);
+	LookupResult LookupQualifiedName(ScopeId owner, NameId name,
+		LookupKind kind);
 	LookupResult LookupQualified(ScopeId owner, const NamePath& name,
 		LookupKind kind);
 	LookupResult LookupQualifiedCandidate(ScopeId owner, const NamePath& name,

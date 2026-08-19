@@ -295,53 +295,58 @@ void SemanticAnalyzer::RegisterClassMemberFunction(EntityId entity,
 		functions.end())
 		functions.push_back(function);
 }
+LookupResult SemanticAnalyzer::LookupName(ScopeId scope, NameId name,
+	LookupKind kind)
+{
+	if (kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER)
+	{
+		TypeId alias = kNoType;
+		if (FindConstexprTypeAlias(name, &alias))
+		{
+			LookupResult result;
+			result.type = alias;
+			return result;
+		}
+	}
+	LookupResult result = program_->LookupName(scope, name, kind);
+	std::vector<ScopeId> using_scopes;
+	FindConstexprUsingNamespaces(&using_scopes);
+	for (std::size_t i = 0; i < using_scopes.size(); ++i)
+	{
+		const LookupResult candidate = program_->LookupQualifiedName(
+			using_scopes[i], name, kind);
+		if (result.Empty()) result = candidate;
+		else
+		{
+			for (std::size_t ordinary = 0;
+				ordinary < candidate.OrdinaryCount(); ++ordinary)
+				result.AddOrdinary(candidate.OrdinaryAt(ordinary));
+			if (candidate.HasFunctionTemplateLookup())
+			{
+				if (!result.HasFunctionTemplateLookup())
+					result.BeginFunctionTemplateLookup();
+				for (std::size_t owner = 0;
+					owner < candidate.FunctionTemplateOwnerCount(); ++owner)
+					result.AddFunctionTemplateOwner(
+						candidate.FunctionTemplateOwnerAt(owner));
+			}
+			if (result.type == kNoType) result.type = candidate.type;
+			if (result.name_space == kNoScope)
+				result.name_space = candidate.name_space;
+		}
+	}
+	return result;
+}
+
 LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	const NamePath& path, LookupKind kind)
 {
 	if (path.Size() <= 1)
 	{
-		if (!path.global && path.Size() == 1 &&
-			(kind == LOOKUP_TYPE || kind == LOOKUP_SCOPE_CARRIER))
-		{
-			TypeId alias = kNoType;
-			if (FindConstexprTypeAlias(path[0], &alias))
-			{
-				LookupResult result;
-				result.type = alias;
-				return result;
-			}
-		}
-		LookupResult result = program_->Lookup(scope, path, kind);
-		if (path.global || path.Size() == 0) return result;
-		std::vector<ScopeId> using_scopes;
-		FindConstexprUsingNamespaces(&using_scopes);
-		for (std::size_t i = 0; i < using_scopes.size(); ++i)
-		{
-			NamePath terminal;
-			terminal.Push(path[0]);
-			const LookupResult candidate = program_->LookupQualified(
-				using_scopes[i], terminal, kind);
-			if (result.Empty()) result = candidate;
-			else
-			{
-				for (std::size_t ordinary = 0;
-					ordinary < candidate.OrdinaryCount(); ++ordinary)
-					result.AddOrdinary(candidate.OrdinaryAt(ordinary));
-				if (candidate.HasFunctionTemplateLookup())
-				{
-					if (!result.HasFunctionTemplateLookup())
-						result.BeginFunctionTemplateLookup();
-					for (std::size_t owner = 0;
-						owner < candidate.FunctionTemplateOwnerCount(); ++owner)
-						result.AddFunctionTemplateOwner(
-							candidate.FunctionTemplateOwnerAt(owner));
-				}
-				if (result.type == kNoType) result.type = candidate.type;
-				if (result.name_space == kNoScope)
-					result.name_space = candidate.name_space;
-			}
-		}
-		return result;
+		if (path.Size() == 0) return program_->Lookup(scope, path, kind);
+		return path.global ? program_->LookupQualifiedName(
+			program_->GlobalScope(), path[0], kind) :
+			LookupName(scope, path[0], kind);
 	}
 	ScopeId carrier = path.global ? program_->GlobalScope() : kNoScope;
 	std::size_t component = 0;
@@ -366,19 +371,15 @@ LookupResult SemanticAnalyzer::LookupPath(ScopeId scope,
 	}
 	for (; carrier != kNoScope && component + 1 < path.Size(); ++component)
 	{
-		NamePath one;
-		one.Push(path[component]);
-		const LookupResult next = program_->LookupQualified(
-			carrier, one, LOOKUP_SCOPE_CARRIER);
+		const LookupResult next = program_->LookupQualifiedName(
+			carrier, path[component], LOOKUP_SCOPE_CARRIER);
 		if (next.type != kNoType) EnsureClassDefinition(next.type);
 		carrier = next.name_space != kNoScope ? next.name_space :
 			next.type != kNoType ? program_->ScopeForType(next.type) :
 			kNoScope;
 	}
 	if (carrier == kNoScope) return LookupResult();
-	NamePath terminal;
-	terminal.Push(path.Last());
-	return program_->LookupQualified(carrier, terminal, kind);
+	return program_->LookupQualifiedName(carrier, path.Last(), kind);
 }
 
 LookupResult SemanticAnalyzer::LookupStructuredName(NodeId syntax,
