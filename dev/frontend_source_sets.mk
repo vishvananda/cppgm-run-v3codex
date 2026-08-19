@@ -56,6 +56,7 @@ FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_semantic_class_layout
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_semantic_constructor_demand pa12_semantic_demand pa12_semantic_demand_stats
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa10_syntax_tags
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_semantic_declaration_names
+FRONTEND_OBJ_BASENAMES_cppgm++ += pa22_lambda_presentation
 FRONTEND_OBJ_BASENAMES_lowiropt := lowir_identity lowir_parse lowir_prepare lowir_serialize lowir_inline_o1 lowir_opt
 FRONTEND_OBJ_BASENAMES_lowiropt += lowir_cleanup_o1
 FRONTEND_OBJ_BASENAMES_lowir2cy86 := lowir_identity lowir_parse lowir_prepare lowir_cy86

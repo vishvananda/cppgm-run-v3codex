@@ -1,9 +1,8 @@
 #include "pa12_semantic_detail.h"
+#include "pa22_lambda_presentation.h"
 
 #include <algorithm>
-#include <cctype>
 #include <limits>
-#include <sstream>
 #include <stdexcept>
 
 namespace cppgm
@@ -52,77 +51,6 @@ bool EquivalentAliasTemplateParameters(
 			 left[i].kind == TEMPLATE_ARGUMENT_INTEGRAL &&
 			 left[i].value_type != right[i].value_type)) return false;
 	return true;
-}
-
-std::string SanitizeLambdaIdentity(const std::string& source)
-{
-	std::string result;
-	result.reserve(source.size());
-	for (std::size_t i = 0; i < source.size(); ++i)
-	{
-		const unsigned char value = static_cast<unsigned char>(source[i]);
-		result += std::isalnum(value) || value == '_' ?
-			static_cast<char>(value) : '_';
-	}
-	return result;
-}
-
-std::string LambdaTemplateArgumentIdentity(const Program& program,
-	const TemplateArgument& argument, SemanticAnalysisStats* stats)
-{
-	if ((argument.kind == TEMPLATE_ARGUMENT_TYPE ||
-		 argument.kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
-		argument.type != kNoType)
-		return SanitizeLambdaIdentity(program.RenderType(argument.type));
-	if (argument.value_binding != kNoBinding &&
-		argument.value_binding < program.bindings.size())
-	{
-		const BindingRecord& binding =
-			program.bindings[argument.value_binding];
-		return SanitizeLambdaIdentity(
-			RenderBindingPresentation(program, binding, stats));
-	}
-	return std::to_string(argument.value);
-}
-
-std::string LambdaContextIdentity(const Program& program, BindingId context,
-	SemanticAnalysisStats* stats)
-{
-	if (context == kNoBinding || context >= program.bindings.size())
-		throw std::logic_error("lambda context binding is invalid");
-	const BindingRecord& binding = program.bindings[context];
-	// The enclosing closure scope already owns a nested lambda's identity.
-	// Repeating the parent's fully rendered synthetic name in the child leaf
-	// doubles internal-name size at every nesting level.
-	if (binding.member_owner != kNoEntity &&
-		binding.member_owner < program.entities.size() &&
-		program.entities[binding.member_owner].lambda_closure)
-		return "nested";
-	std::string result = SanitizeLambdaIdentity(
-		RenderBindingPresentation(program, binding, stats));
-	const std::size_t first = binding.template_argument_begin;
-	const std::size_t count = binding.template_argument_count;
-	if (count != 0 &&
-		(first > program.canonical_template_arguments.size() ||
-		 count > program.canonical_template_arguments.size() - first))
-		throw std::logic_error("lambda context template arguments are invalid");
-	for (std::size_t i = 0; i < count; ++i)
-	{
-		result += "__";
-		result += LambdaTemplateArgumentIdentity(program,
-			program.canonical_template_arguments[first + i], stats);
-	}
-	return result;
-}
-
-std::string LambdaIdentityComponent(const std::string& context,
-	std::size_t token_first, std::size_t token_last, std::uint32_t ordinal)
-{
-	std::ostringstream result;
-	result << "__lambda_" << context << "_t" << token_first << '_'
-		<< token_last;
-	if (ordinal != 0) result << "_n" << ordinal;
-	return result.str();
 }
 
 }
@@ -389,9 +317,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		NameId identity_leaf = 0;
 		if (enclosing != kNoBinding)
 		{
-			leaf_spelling = LambdaIdentityComponent(
-				LambdaContextIdentity(*program_, enclosing, stats_),
-				arena_->TokenFirst(node), arena_->TokenLast(node), ordinal);
+			leaf_spelling =
+				pa22_lambda_presentation::RenderLambdaIdentityComponent(
+					*program_, enclosing, arena_->TokenFirst(node),
+					arena_->TokenLast(node), ordinal, stats_);
 		}
 		else
 		{
