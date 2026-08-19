@@ -1,13 +1,14 @@
 # Typed Compiler Boundary Plan: Remove Production Text Round-Trips
 
-Status: in progress; Phase 2, the production T2x closeout, and standalone
-PA11 T2y parity are complete; T4 lazy semantic presentation is next
+Status: in progress; Phase 2, the production T2x closeout, standalone PA11
+T2y parity, and the T4a semantic-presentation measurement anchor are complete;
+T4b ordinary semantic presentation identity is next
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current execution checkpoint: `975edc1a` (T2y PA11 implementation)
+Current execution checkpoint: `b9e05991` (T4a presentation measurement)
 
 ## 1. Objective
 
@@ -890,6 +891,56 @@ Each slice records common semantic record sizes and accounted arena bytes.
 No slice may retain both the old qualified `NameId` and a new path identity on
 ordinary records merely to make migration easier.
 
+### 9.4 T4a measurement anchor
+
+T4a adds stats-only counters at the render sites and at the consumers of the
+retained presentation fields.  It also counts the final retained values and
+spelling bytes, so a low read count cannot be mistaken for proof that the
+field is cheap.  Counters are numeric, use no string-keyed registry, and are
+aggregated per translation unit.  Common record sizes are reported beside the
+population counts.
+
+On the frozen `semantic_overload.cpp` compile, T4a records:
+
+| Family | Renders or requests | Components | Rendered bytes |
+| --- | ---: | ---: | ---: |
+| Scope-prefix requests | 340,270 (340,212 cache hits) | - | - |
+| Materialized scope prefixes | 89 | 90 | 4,094 |
+| Function display names | 86,496 | 86,496 | 4,914,684 |
+| Binding emission names | 93,496 | 272,234 | 5,224,902 |
+| Class-specialization presentation | 15,987 | 42,595 | 1,368,114 |
+| Class-specialization storage identity | 15,778 | 47,334 | 648,605 |
+| Class-specialization scope slots | 8,715 | 17,430 | 247,865 |
+| Lambda identity | 31 | 124 | 2,251 |
+| Other generated identity | 770 | 784 | 21,168 |
+
+The retained-field census and observed consumers are:
+
+| Retained field | Values | Retained spelling bytes | Observed reads |
+| --- | ---: | ---: | ---: |
+| `FunctionInfo::display_name` | 78,840 | 4,554,625 | 44,790 |
+| `BindingRecord::qualified_name` | 81,612 | 4,653,620 | 153 |
+| `EntityRecord::presentation_name` | 8,715 | 749,951 | 8,715 |
+| scope emission name | 17,656 | 424,506 | 15,869 |
+
+The binding read count covers presentation consumers, not typed ABI paths;
+the completed T3 ABI encoder already consumes owner/name paths directly and
+reports its own path-component counts.  The entity count shows a different
+shape: each specialization presentation is consumed by the lowering
+replacement map, so T4c must replace that consumer before deleting the field.
+
+The host record sizes at this checkpoint are 136-byte `BindingRecord`,
+208-byte `EntityRecord`, 208-byte `FunctionInfo`, and 152-byte `DumpNode`.
+T4b-T4e must not enlarge these common records or add a parallel retained path
+to them.
+
+The measurement build produces the exact 4,415,448-byte frozen object with
+SHA-256
+`d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`.
+The selected PA12/19/20/22/23/25/34/37/38 report passes 2,009/2,009, the full
+report passes 5,212/5,212, and the PA39 file audit has zero fatal findings and
+27 advisory warnings.  T4a is measurement-only and makes no timing claim.
+
 ## 10. Phase 4: replace object-only block text comparison
 
 `FinalizeBlockPresentation` in `dev/src/pa15_local_presentation.cpp` sorts
@@ -1296,7 +1347,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T2x | Close production semantic name-path recovery by caller family | Complete. The frozen total falls 34,823 -> 0: semantic-ID 5,183 -> 0, declaration 17,866 -> 0, syntax fallback 9,343 -> 0, call 2,272 -> 0, friend 153 -> 0, generated library 4 -> 0, template 2 -> 0, with literal/ambiguity remaining 0. The source closeout in section 5.3 keeps true adapters and later operator/literal/ambiguity work explicitly assigned. | Accepted slices are individually neutral or favorable within the screened host-noise band; the final plan gate will measure the cumulative result against the immutable audit anchor | Exact syntax, semantic, LowIR, MIR, and frozen object output; no fixture churn | Owner/through gates recorded per slice; final full report 5,212/5,212; zero-fatal audit with 26 warnings | Complete at `51119165`; T2y next |
 | T2y0 | Count standalone PA11 semantic name recovery | Across all 52 successful PA11 assignment/course translation units: 323 path parses, 375 components, 276 single-component parses, and 88 spelling lookups. Families are 227 declarator, 24 class, 24 enum, 14 using, 7 type lookup, and 27 expression parses; type/expression lookup contribute 44 spelling requests each. Structured/direct/fallback path counters are all zero. | Measurement-only; no frozen claim because `--emit-types` is not in the PA39 object path | Exact PA11 output; no fixture changes | PA11 68/68 plus course 2/2; through PA11 653/653; full report 5,212/5,212; zero-fatal audit with 26 warnings | `5fcc10cb`; accepted measurement anchor |
 | T2y | Bring standalone PA11 name identity to parity | Across the same 52 successful inputs, 323 path parses, 375 components, and 88 spelling lookups fall to zero.  All six parse families are zero; 372 typed syntax paths comprise 325 direct terminals and structured paths with zero fallbacks.  PA10 retains a semantic-only structured child for the two qualified enum cases; no common record grows. | Four interleaved 500-iteration PA11-suite batches: baseline/candidate medians 2.710/2.675 s user, 4.190/4.175 s wall, and 6,180/6,192 KiB RSS.  No frozen claim because `--emit-types` is outside source-to-object compilation. | Concatenated 52-TU output is byte-identical with SHA-256 `a1fc494ad9e41ea2f93c07245a13608fa8ef2c1f6b803b5b0f59753a0d827b2d`; no fixture changes | PA10 157/157 plus course 7/7; through PA10 583/583; PA11 68/68 plus course 2/2; through PA11 653/653; selected PA10/11/12/19/20/22/34/37/38 1,690/1,690; full report 5,212/5,212; zero-fatal audit with 26 warnings | `975edc1a`; accepted; T4 next |
-| T4 | Lazy semantic emission/display/specialization identity | Planned | Planned | Exact semantic serialization expected | PA12/19/20/22 plus downstream reports | Planned |
+| T4a | Measure semantic presentation production, retention, and demand | Frozen requests reproduce the 340,270 scope-prefix, 86,496 display-name, and 93,496 emission-name profile totals.  Specialized renders are split into presentation/storage/scope-slot/lambda/generated families.  Final retained values and bytes are counted separately from consumers; common record sizes are recorded. | Stats-only anchor; no timing claim | Exact 4,415,448-byte frozen object and baseline SHA; no fixture changes | Selected PA12/19/20/22/23/25/34/37/38 report 2,009/2,009; full report 5,212/5,212; zero-fatal audit with 27 warnings | `b9e05991`; accepted measurement anchor |
+| T4b-e | Typed ordinary, specialization, lambda, and generated identity with lazy boundary rendering | Planned from the T4a field and consumer census | Planned | Exact semantic serialization expected; no dual retained identity | PA12/19/20/22 plus downstream reports | T4b next |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
@@ -1329,7 +1381,7 @@ this plan remain the decision criteria.
 
 ## 22. Ordered execution plan from the current checkpoint
 
-This is the authoritative order after `975edc1a`.  Later rows may be
+This is the authoritative order after `b9e05991`.  Later rows may be
 re-prioritized only by updating this document with the new dependency or
 measurement; do not silently skip an unresolved closeout gate.
 
@@ -1341,13 +1393,14 @@ measurement; do not silently skip an unresolved closeout gate.
 | 4 | T3x Phase 2 closeout (complete) | Source audit, complete retained-text classification, zero production fixed-word/path/numeric/synthetic-identity recovery, and exact frozen object recorded in section 8.8 | Closeout ledger recorded |
 | 5 | T2x residual production semantic name paths (complete) | All 34,823 frozen requests are classified and removed; source-retained adapters and later operator/literal/ambiguity work are recorded in section 5.3 | `870e329a` anchor through `51119165` closeout; ledger recorded |
 | 6 | T2y standalone PA11 typed-name parity (complete) | All 52 successful inputs have zero path reparses, spelling lookups, and fallbacks; exact aggregate output, no common-record growth, owner/through/selected/full reports, audit, and PA11 timing are recorded in section 9.0 and the ledger | `5fcc10cb` measurement anchor; `975edc1a` implementation; no frozen claim |
-| 7 | T4 lazy semantic presentation | Per-consumer render/read counters; semantic record sizes; typed ordinary, specialization, lambda, and generated identities; exact dumps; no dual retained identity | T4a counter anchor, then one commit per ordinary/specialization/generated/output family |
-| 8 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
-| 9 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
-| 10 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
-| 11 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
-| 12 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
-| 13 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
+| 7 | T4a semantic presentation measurement (complete) | Frozen per-family renders, retained values/bytes, consumers, record sizes, exact object, reports, and audit are recorded in section 9.4 | `b9e05991`; accepted counter anchor |
+| 8 | T4b-e lazy semantic presentation | Typed ordinary, specialization, lambda, and generated identities; exact dumps; no common-record growth or dual retained identity | One commit per ordinary/specialization/generated/output family |
+| 9 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
+| 10 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
+| 11 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
+| 12 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
+| 13 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
+| 14 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
 
 At every row, the fastest iteration signal is the PA-selected
 `make test-report ACTIVE_TEST_REPORT_PAS='...'` form.  Root `make test-report`
