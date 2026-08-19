@@ -128,6 +128,11 @@ struct AbiMangleStats
 {
 	std::size_t production_mangles = 0;
 	std::size_t production_fact_bytes = 0;
+	std::size_t production_type_definitions = 0;
+	std::size_t production_argument_definitions = 0;
+	std::size_t production_expression_definitions = 0;
+	std::size_t production_context_definitions = 0;
+	std::size_t production_entity_definitions = 0;
 	std::size_t resolved_type_cache_requests = 0;
 	std::size_t resolved_type_cache_hits = 0;
   std::size_t source_files = 0;

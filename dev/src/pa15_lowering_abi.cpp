@@ -1986,6 +1986,23 @@ std::string MangleProductionCase(const abi_mangle::AbiTypedCase& fact_case,
 		++stats->production_mangles;
 		stats->production_fact_bytes +=
 			abi_mangle::abi_typed_case_storage_bytes(fact_case);
+		for (const abi_mangle::AbiDefinitionRecord& definition :
+			fact_case.definitions)
+		{
+			switch (definition.kind)
+			{
+			case abi_mangle::ABI_DEFINITION_TYPE:
+				++stats->production_type_definitions; break;
+			case abi_mangle::ABI_DEFINITION_TEMPLATE_ARGUMENT:
+				++stats->production_argument_definitions; break;
+			case abi_mangle::ABI_DEFINITION_EXPRESSION:
+				++stats->production_expression_definitions; break;
+			case abi_mangle::ABI_DEFINITION_CONTEXT:
+				++stats->production_context_definitions; break;
+			case abi_mangle::ABI_DEFINITION_ENTITY:
+				++stats->production_entity_definitions; break;
+			}
+		}
 	}
 	if (context) return context->mangle_case(fact_case);
 	abi_mangle::AbiMangleContext local_context(stats);

@@ -1175,6 +1175,11 @@ lowir_model::LowirProgram build_source_lowir(
 	return result;
 }
 
+void report_source_compile_stats(
+	const string & path, const cppgm::LowIRLoweringStats & stats,
+	const lowir_model::LowirPreparationStats & preparation_stats,
+	const SourceCompileTimings & timings);
+
 cppgm::pa30::CompilerObject compile_source_object(
     const string & path,
     const DriverInvocation & invocation,
@@ -1200,7 +1205,16 @@ cppgm::pa30::CompilerObject compile_source_object(
 		chrono::duration_cast<chrono::nanoseconds>(
 			chrono::steady_clock::now() - optimize_started).count());
 	clear_nonsemantic_source_stats(&object.lowir);
-	if(collect_stats) {
+	if(collect_stats)
+		report_source_compile_stats(path, stats, preparation_stats, timings);
+  return object;
+}
+
+void report_source_compile_stats(
+	const string & path, const cppgm::LowIRLoweringStats & stats,
+	const lowir_model::LowirPreparationStats & preparation_stats,
+	const SourceCompileTimings & timings)
+{
 		const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
 		cerr << "pa30_compile_stats"
 				 << " file=" << path
@@ -1336,8 +1350,18 @@ cppgm::pa30::CompilerObject compile_source_object(
 			 << " abi_production_mangles="
 			 << stats.abi.production_mangles
 			 << " abi_fact_records=" << stats.abi.records
-			 << " abi_fact_bytes=" << stats.abi.production_fact_bytes
-			 << " abi_type_cache_requests="
+				<< " abi_fact_bytes=" << stats.abi.production_fact_bytes
+				<< " abi_type_definitions="
+				<< stats.abi.production_type_definitions
+				<< " abi_argument_definitions="
+				<< stats.abi.production_argument_definitions
+				<< " abi_expression_definitions="
+				<< stats.abi.production_expression_definitions
+				<< " abi_context_definitions="
+				<< stats.abi.production_context_definitions
+				<< " abi_entity_definitions="
+				<< stats.abi.production_entity_definitions
+				<< " abi_type_cache_requests="
 			 << stats.abi.resolved_type_cache_requests
 			 << " abi_type_cache_hits="
 			 << stats.abi.resolved_type_cache_hits
@@ -1409,8 +1433,6 @@ cppgm::pa30::CompilerObject compile_source_object(
 			timings.text_parse_nanoseconds, timings.prune_nanoseconds,
 			timings.debug_nanoseconds, timings.lowir_opt_nanoseconds);
 		report_lowir_preparation_stats(path, stats, preparation_stats);
-	}
-  return object;
 }
 string find_library_object(const DriverInvocation & invocation,
                            const string & library)
