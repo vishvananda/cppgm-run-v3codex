@@ -2,14 +2,14 @@
 
 Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, and T4b2 lazy
-binding emission presentation are complete; T4b3 ordinary entity/scope and
-default-constructor presentation is next
+binding emission presentation, and T4b3 typed entity/scope presentation are
+complete; T4c specialization and lambda identity is next
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current execution checkpoint: `2e793e19` (T4b2 lazy binding emission
+Current execution checkpoint: `285ef075` (T4b3 typed entity/scope emission
 presentation)
 
 ## 1. Objective
@@ -868,11 +868,11 @@ must render from the typed facts without fixture churn.
    retain explicitly classified adapters.  Every frozen family is zero.
 6. **T2y (complete):** bring the standalone PA11 `TypeAnalyzer` to typed-name
    parity, with PA11-only counters and no frozen performance claim.
-7. **T4a:** add per-consumer counters for scope-prefix, display-name,
+7. **T4a (complete):** add per-consumer counters for scope-prefix, display-name,
    emission-name, specialization-name, lambda-name, and generated-name
    rendering.  Record reads as well as writes so a retained field is not
    removed before its output consumer has a replacement.
-8. **T4b:** replace ordinary scope-prefix/display/emission retention with
+8. **T4b (complete):** replace ordinary scope-prefix/display/emission retention with
    owner scope plus terminal `NameId` or a compact path ID.  Convert the
    default-constructor owner/leaf `rfind("::")` path in this slice.
 9. **T4c:** replace class/function-template specialization presentation
@@ -1019,6 +1019,58 @@ PA12 passes 166 assignment and 14 course tests, the selected
 PA12/19/20/22/23/30/32/34/37/38 report passes 2,116/2,116, the full report
 passes 5,212/5,212, and the file audit has zero fatal findings with 27
 warnings.  No fixture changes are required.
+
+### 9.7 T4b3 typed entity and scope emission presentation
+
+T4b3 makes the previously overloaded `EntityRecord::name` contract explicit.
+An entity now retains an emission terminal plus a byte-sized form identifying
+whether output uses the terminal directly, qualifies it through the typed owner
+scope, or temporarily retains an already rendered exceptional identity.  The
+ordinary integrated class and template-marker paths use owner plus terminal;
+PA11 and enum terminal presentation remains unchanged.  The rendered form is
+currently confined to lambda identity and is assigned to T4c rather than
+hidden behind a string parse.
+
+`Program::RenderEntityEmissionName` is the single final renderer.  Type dumps,
+diagnostics, aggregate-helper names, polymorphism helpers, template argument
+presentation, and source-identity output now request it only when they consume
+the spelling.  Class and scoped-enum member scopes similarly retain a typed
+presentation owner and segment in the existing side vectors.  Their prefix is
+materialized only on demand.  The default-constructor path now renders from
+the entity owner and terminal and no longer finds its leaf with
+`rfind("::")`.
+
+The lowering presentation replacement map now indexes the entity's terminal
+directly.  It no longer rebuilds an emission path for every specialized entity
+to rediscover the terminal component.  On the frozen compile, relative to
+T4b2:
+
+- emission-name renders: 12,562 -> 185;
+- display-name renders: 52,971 -> 44,790;
+- scope-prefix requests: 306,745 -> 298,564;
+- scope-prefix materializations: 89 -> 3,071, because 2,982 class/enum
+  prefixes are actually demanded instead of all prefixes being constructed
+  eagerly;
+- scope-emission presentation reads: 15,869 -> 8,677;
+- interner calls: 1,344,603 -> 1,318,845;
+- interner misses: 74,537 -> 57,092;
+- interner hashed bytes: 16,901,448 -> 15,650,661; and
+- shared string storage: 10,116,611 -> 9,259,150 bytes.
+
+`EntityRecord` remains 208 bytes, so the form uses existing padding and no
+parallel identity table or string-keyed index is introduced.  The frozen
+object remains exact at 4,415,448 bytes with SHA-256
+`d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`.
+
+Three sequential A/B/B/A blocks against the immutable T4b2 compiler measured
+baseline/candidate medians of 4.355/4.350 seconds user, 4.845/4.820 seconds
+wall, and 359,730/360,440 KiB RSS.  This is accepted as timing-neutral
+structural enabling work, not a standalone speed claim.  PA11 passes 68
+assignment and 2 course tests, PA12 passes 166 assignment and 14 course tests,
+the through-PA12 report passes 833/833, the selected
+PA11/12/16/17/18/19/20/22/23/28/30/34/37/38 report passes 2,652/2,652, the
+full report passes 5,212/5,212, and the file audit has zero fatal findings with
+27 warnings.  No fixture changes are required.
 
 ## 10. Phase 4: replace object-only block text comparison
 
@@ -1429,7 +1481,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T4a | Measure semantic presentation production, retention, and demand | Frozen requests reproduce the 340,270 scope-prefix, 86,496 display-name, and 93,496 emission-name profile totals.  Specialized renders are split into presentation/storage/scope-slot/lambda/generated families.  Final retained values and bytes are counted separately from consumers; common record sizes are recorded. | Stats-only anchor; no timing claim | Exact 4,415,448-byte frozen object and baseline SHA; no fixture changes | Selected PA12/19/20/22/23/25/34/37/38 report 2,009/2,009; full report 5,212/5,212; zero-fatal audit with 27 warnings | `b9e05991`; accepted measurement anchor |
 | T4b1 | Render function display names from owner and terminal on demand | Qualified display retention falls 78,840 -> 0 values and 4,554,625 -> 0 bytes.  Display renders and interner calls each fall by 33,525; hashed spelling falls by 2,218,314 bytes and shared string storage by 128,306 bytes. `FunctionInfo` remains 208 bytes with only a rare terminal override in the former slot. | Three A/B/B/A blocks: baseline/candidate median user 4.375/4.375 s, wall 4.88/4.86 s, RSS 364,106/364,464 KiB; accepted as timing-neutral structural removal | Exact frozen object and baseline SHA; no fixture changes | PA12 166/166 plus course 14/14; selected semantic/downstream report 1,965/1,965; full report 5,212/5,212; zero-fatal audit with 27 warnings | `e02423aa`; accepted |
 | T4b2 | Render binding emission presentation from owner and terminal on demand | Qualified binding retention falls 81,612 -> 0 values and 4,653,620 -> 0 bytes. Emission renders fall 93,496 -> 12,562, interner calls fall by 81,087, hashed spelling falls by 4,621,357 bytes, and shared string storage falls by 2,236,005 bytes. `BindingRecord` remains 136 bytes with only a rare terminal override in the former slot. | Three A/B/B/A blocks: baseline/candidate median user 4.370/4.320 s, wall 4.870/4.805 s, RSS 364,506/360,234 KiB; favorable by 1.14%/1.33%/1.17% | Exact frozen object and baseline SHA; no fixture changes | PA12 166/166 plus course 14/14; selected semantic/downstream report 2,116/2,116; full report 5,212/5,212; zero-fatal audit with 27 warnings | `2e793e19`; accepted |
-| T4b3-e | Typed ordinary entity/scope, specialization, lambda, and generated identity with lazy boundary rendering | Planned from the T4a/T4b1/T4b2 census | Planned | Exact semantic serialization expected; no dual retained identity | PA12/19/20/22 plus downstream reports | T4b3 next |
+| T4b3 | Store ordinary entity and named-scope emission presentation as typed owner plus terminal | Emission renders fall 12,562 -> 185 and display renders fall 52,971 -> 44,790. Interner calls fall by 25,758, misses by 17,445, hashed spelling by 1,250,787 bytes, and shared string storage by 857,461 bytes. `EntityRecord` remains 208 bytes; the constructor path has no qualified-name parse. | Three A/B/B/A blocks: baseline/candidate median user 4.355/4.350 s, wall 4.845/4.820 s, RSS 359,730/360,440 KiB; accepted as timing-neutral structural work | Exact frozen object and baseline SHA; no fixture changes | PA11 and PA12 owner tests; through PA12 833/833; selected report 2,652/2,652; full report 5,212/5,212; zero-fatal audit with 27 warnings | `285ef075`; accepted |
+| T4c-e | Typed specialization, lambda, and generated identity with lazy boundary rendering | Planned from the T4a-T4b3 census | Planned | Exact semantic serialization expected; no dual retained identity | PA19/20/22 plus downstream reports | T4c next |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
@@ -1462,7 +1515,7 @@ this plan remain the decision criteria.
 
 ## 22. Ordered execution plan from the current checkpoint
 
-This is the authoritative order after `2e793e19`.  Later rows may be
+This is the authoritative order after `285ef075`.  Later rows may be
 re-prioritized only by updating this document with the new dependency or
 measurement; do not silently skip an unresolved closeout gate.
 
@@ -1477,13 +1530,14 @@ measurement; do not silently skip an unresolved closeout gate.
 | 7 | T4a semantic presentation measurement (complete) | Frozen per-family renders, retained values/bytes, consumers, record sizes, exact object, reports, and audit are recorded in section 9.4 | `b9e05991`; accepted counter anchor |
 | 8 | T4b1 lazy function display (complete) | Zero retained qualified function display values, exact object/dumps, reports, audit, and screened timing are recorded in section 9.5 | `e02423aa`; accepted structural removal |
 | 9 | T4b2 lazy binding emission presentation (complete) | Zero retained qualified binding values, exact object/dumps, unchanged common records, reports, audit, and screened timing are recorded in section 9.6 | `2e793e19`; accepted structural and measured removal |
-| 10 | T4b3-e remaining lazy semantic presentation | Typed ordinary entity/scope, specialization, lambda, and generated identities; exact dumps; no common-record growth or dual retained identity | One commit per ordinary entity/scope, specialization/lambda, generated, and output family |
-| 11 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
-| 12 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
-| 13 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
-| 14 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
-| 15 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
-| 16 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
+| 10 | T4b3 typed entity/scope emission presentation (complete) | Owner-plus-terminal entity and scope presentation, no constructor text parse, unchanged common records, exact object/dumps, reports, audit, and screened timing are recorded in section 9.7 | `285ef075`; accepted structural removal |
+| 11 | T4c-e remaining lazy semantic presentation | Typed specialization, lambda, generated, and final output identities; exact dumps; no common-record growth or dual retained identity | One commit per specialization/lambda, generated, and output family |
+| 12 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
+| 13 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
+| 14 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
+| 15 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
+| 16 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
+| 17 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
 
 At every row, the fastest iteration signal is the PA-selected
 `make test-report ACTIVE_TEST_REPORT_PAS='...'` form.  Root `make test-report`
