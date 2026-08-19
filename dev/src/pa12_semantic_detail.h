@@ -27,6 +27,13 @@ using namespace pa11;
 struct BracedInitializationContext;
 class RetainedTemplateValidator;
 
+enum GeneratedLibraryName
+{
+	GENERATED_LIBRARY_BAD_ALLOC,
+	GENERATED_LIBRARY_TYPE_INFO,
+	GENERATED_LIBRARY_INITIALIZER_LIST
+};
+
 struct FunctionDemandEdge
 {
 	BindingId caller, callee;
@@ -225,6 +232,7 @@ private:
 	const std::string& PayloadSource(NodeId node) const;
 	NamePath ParseNamePath(const std::string& spelling,
 		NamePathParseFamily family);
+	NamePath GeneratedLibraryPath(GeneratedLibraryName name);
 	LookupResult LookupName(ScopeId scope, NameId name, LookupKind kind);
 	LookupResult LookupPath(ScopeId scope, const NamePath& path,
 		LookupKind kind);
@@ -641,6 +649,12 @@ private:
 		const std::string& spelling, EntityId* naming_class = 0,
 		NodeId syntax = kNoNode,
 		bool exclude_template_specializations = false);
+	std::vector<BindingId> FunctionCandidates(ScopeId scope, NameId name,
+		EntityId* naming_class = 0,
+		bool exclude_template_specializations = false);
+	std::vector<BindingId> CollectFunctionCandidates(
+		const LookupResult& found, EntityId* naming_class,
+		bool exclude_template_specializations);
 	std::vector<BindingId> UsingFunctionCandidates(ScopeId scope,
 		const NamePath& path, const std::string& spelling,
 		ScopeId* target_owner, bool* names_owner_alias,

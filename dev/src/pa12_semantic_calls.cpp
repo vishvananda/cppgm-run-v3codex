@@ -1818,6 +1818,25 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	if (spelling.empty() || spelling[0] != '~') return false;
 	if (!argument_syntax.empty())
 		throw std::runtime_error("explicit destructor call has arguments");
+	const NodeId structure = FindChild(identifier,
+		::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	NamePath destructor_path;
+	if (structure == kNoNode)
+		destructor_path.Push(program_->names.InternRange(
+			spelling, 1, spelling.size() - 1));
+	else
+	{
+		destructor_path = StructuredNamePath(structure);
+		if (!destructor_path.Empty())
+		{
+			const std::string terminal =
+				program_->names.Get(destructor_path.Last());
+			destructor_path.Pop();
+			destructor_path.Push(program_->names.Intern(
+				terminal.empty() || terminal[0] != '~' ? terminal :
+				terminal.substr(1)));
+		}
+	}
 
 	ExpressionInfo object = AnalyzeExpression(arena_->EdgeChild(object_edge), scope);
 	const bool arrow = PayloadSource(callee) == "->";
@@ -1830,8 +1849,8 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	const EntityId entity = DestructedEntity(destroyed_type);
 	if (entity == kNoEntity)
 	{
-		const LookupResult named = LookupSpelling(scope, spelling.substr(1),
-			LOOKUP_TYPE, NAME_PATH_PARSE_CALL);
+		const LookupResult named = LookupPath(
+			scope, destructor_path, LOOKUP_TYPE);
 		if (named.type == kNoType ||
 			program_->types.RemoveTopCv(EffectiveType(named.type)) != destroyed_type)
 			throw std::runtime_error("pseudo-destructor type mismatch");
@@ -1850,17 +1869,6 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	}
 
 	const BindingId destructor = DestructorForType(destroyed_type);
-	const NodeId structure = FindChild(identifier, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-	NamePath destructor_path = structure == kNoNode ?
-		ParseNamePath(spelling.substr(1), NAME_PATH_PARSE_CALL) :
-		StructuredNamePath(structure);
-	if (structure != kNoNode && !destructor_path.Empty())
-	{
-		const std::string terminal = program_->names.Get(destructor_path.Last());
-		destructor_path.Pop();
-		destructor_path.Push(program_->names.Intern(
-			terminal.empty() || terminal[0] != '~' ? terminal : terminal.substr(1)));
-	}
 	LookupResult destructor_type;
 	NamePath ignored_path;
 	std::vector<NodeId> explicit_syntax;
@@ -2059,6 +2067,22 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY,
 			NAME_PATH_PARSE_CALL) :
 		LookupSyntaxName(syntax, scope, LOOKUP_ORDINARY);
+	return CollectFunctionCandidates(
+		found, naming_class, exclude_template_specializations);
+}
+
+std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(
+	ScopeId scope, NameId name, EntityId* naming_class,
+	bool exclude_template_specializations)
+{
+	return CollectFunctionCandidates(LookupName(scope, name, LOOKUP_ORDINARY),
+		naming_class, exclude_template_specializations);
+}
+
+std::vector<BindingId> SemanticAnalyzer::CollectFunctionCandidates(
+	const LookupResult& found, EntityId* naming_class,
+	bool exclude_template_specializations)
+{
 	if (naming_class) *naming_class = found.naming_class;
 	if (found.ordinary == kNoBinding) return std::vector<BindingId>();
 	if (program_->bindings[found.ordinary].kind != BIND_FUNCTION)

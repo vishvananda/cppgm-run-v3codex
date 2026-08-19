@@ -75,7 +75,8 @@ DeclaratorInfo SemanticAnalyzer::BuildVariableDeclarator(
 				throw std::runtime_error(
 					"placeholder initializer-list has inconsistent element types");
 		const std::size_t pattern =
-			FindClassTemplate(scope, "std::initializer_list");
+			FindClassTemplate(scope,
+				GeneratedLibraryPath(GENERATED_LIBRARY_INITIALIZER_LIST));
 		if (pattern >= class_templates_.size())
 			throw std::runtime_error("std::initializer_list is not declared");
 		const BindingId specialization = InstantiateClassTemplate(

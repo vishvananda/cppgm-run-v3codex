@@ -1839,12 +1839,13 @@ BindingId SemanticAnalyzer::SelectUsualDeallocation(ScopeId scope,
 {
 	const bool class_object = IsClassEntity(*program_, entity);
 	const char* spelling = array ? "operatordelete[]" : "operatordelete";
+	const NameId name = program_->names.Intern(spelling);
 	std::vector<BindingId> candidates;
 	EntityId naming_class = kNoEntity;
 	if (!explicit_global && class_object)
 	{
 		const LookupResult member = program_->LookupMember(entity,
-			program_->names.Intern(spelling), LOOKUP_ORDINARY);
+			name, LOOKUP_ORDINARY);
 		if (member.ordinary != kNoBinding &&
 			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
 		{
@@ -1857,7 +1858,7 @@ BindingId SemanticAnalyzer::SelectUsualDeallocation(ScopeId scope,
 		(void)EnsureBuiltinFunction(array ?
 			BUILTIN_FUNCTION_OPERATOR_DELETE_ARRAY :
 			BUILTIN_FUNCTION_OPERATOR_DELETE);
-		candidates = FunctionCandidates(program_->GlobalScope(), spelling);
+		candidates = FunctionCandidates(program_->GlobalScope(), name);
 	}
 	std::vector<BindingId> unsized;
 	std::vector<BindingId> sized;
@@ -2153,12 +2154,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 		}
 	const EntityId entity = EntityOf(object_type);
 	const bool explicit_global = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_GLOBAL_SCOPE) != kNoNode;
+	const NameId operator_new = program_->names.Intern("operatornew");
 	std::vector<BindingId> candidates;
 	EntityId naming_class = kNoEntity;
 	if (!explicit_global && IsClassEntity(*program_, entity))
 	{
 		const LookupResult member = program_->LookupMember(entity,
-			program_->names.Intern("operatornew"), LOOKUP_ORDINARY);
+			operator_new, LOOKUP_ORDINARY);
 		if (member.ordinary != kNoBinding &&
 			program_->bindings[member.ordinary].kind == BIND_FUNCTION)
 		{
@@ -2169,7 +2171,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNewExpression(NodeId node,
 	if (candidates.empty())
 	{
 		(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW);
-		candidates = FunctionCandidates(program_->GlobalScope(), "operatornew");
+		candidates = FunctionCandidates(program_->GlobalScope(), operator_new);
 	}
 	if (candidates.empty())
 		throw std::runtime_error("operator new was not declared");

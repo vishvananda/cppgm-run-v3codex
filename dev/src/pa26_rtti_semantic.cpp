@@ -33,9 +33,8 @@ std::uint8_t TopCv(const Program& program, TypeId type)
 ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 {
 	const bool enclosing_unevaluated = unevaluated_depth_ != 0;
-	const LookupResult type_info = LookupSpelling(
-		scope, "::std::type_info", LOOKUP_TYPE,
-		NAME_PATH_PARSE_GENERATED_LIBRARY);
+	const LookupResult type_info = LookupPath(scope,
+		GeneratedLibraryPath(GENERATED_LIBRARY_TYPE_INFO), LOOKUP_TYPE);
 	if (type_info.type == kNoType)
 		throw std::runtime_error("typeid requires std::type_info");
 	const TypeId result_type = program_->types.Qualify(

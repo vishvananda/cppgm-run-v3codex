@@ -90,8 +90,7 @@ void SemanticAnalyzer::ConfigureFunctionExceptionSpecification(
 		 builtin == BUILTIN_FUNCTION_OPERATOR_NEW_ARRAY))
 	{
 		const LookupResult bad_alloc = LookupPath(program_->GlobalScope(),
-			ParseNamePath("std::bad_alloc",
-				NAME_PATH_PARSE_GENERATED_LIBRARY), LOOKUP_TYPE);
+			GeneratedLibraryPath(GENERATED_LIBRARY_BAD_ALLOC), LOOKUP_TYPE);
 		if (bad_alloc.type != kNoType)
 		{
 			allowed.push_back(bad_alloc.type);

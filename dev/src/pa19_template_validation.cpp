@@ -885,9 +885,9 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 	const std::string target = analyzer_.arena_->Payload(target_node);
 	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
-		const ScopeId target_scope = analyzer_.ResolveScopeSpelling(
-			scopes_[scope].semantic_scope, target,
-			NAME_PATH_PARSE_TEMPLATE);
+		const ScopeId target_scope = analyzer_.ResolveScopePath(
+			scopes_[scope].semantic_scope,
+			analyzer_.SyntaxNamePath(target_node));
 		if (target_scope == kNoScope)
 			throw std::runtime_error("retained using namespace target not found");
 		analyzer_.program_->AddUsingEdge(

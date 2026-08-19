@@ -1873,7 +1873,7 @@ bool SemanticAnalyzer::TryAnalyzeOverloadedOperator(
 		else
 		{
 			const std::vector<BindingId> ordinary =
-				FunctionCandidates(scope, program_->names.Get(name));
+				FunctionCandidates(scope, name);
 			for (std::size_t i = 0; i < ordinary.size(); ++i)
 				if (GetFunction(ordinary[i]).member_owner == kNoType)
 					AddCandidate(ordinary[i], &candidates);

@@ -73,6 +73,17 @@ NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling,
 	return result;
 }
 
+NamePath SemanticAnalyzer::GeneratedLibraryPath(GeneratedLibraryName name)
+{
+	const char* terminal = name == GENERATED_LIBRARY_BAD_ALLOC ? "bad_alloc" :
+		name == GENERATED_LIBRARY_TYPE_INFO ? "type_info" : "initializer_list";
+	NamePath path;
+	path.global = true;
+	path.Push(program_->names.Intern("std"));
+	path.Push(program_->names.Intern(terminal));
+	return path;
+}
+
 NamePath SemanticAnalyzer::StructuredNamePath(NodeId syntax)
 {
 	if (stats_) ++stats_->structured_name_path_requests;

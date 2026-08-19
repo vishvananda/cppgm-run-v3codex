@@ -420,7 +420,7 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionAlias(
 	{
 		const std::string alias = spelling.substr(10);
 		std::vector<BindingId> candidates = FunctionCandidates(
-			program_->GlobalScope(), alias, 0, kNoNode, true);
+			program_->GlobalScope(), program_->names.Intern(alias), 0, true);
 		if (!candidates.empty())
 		{
 			std::vector<ExpressionInfo> arguments;
