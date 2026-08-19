@@ -277,6 +277,7 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 	TypedProgram program;
 	program.host_object_emission = host_object_emission;
 	program.retain_local_names = retain_local_names;
+	program.identities.UseDirectNames(sources.size() == 1);
 	for (std::size_t i = 0; i < sources.size(); ++i)
 	{
 		GraphConsumer consumer(program, stats, i);

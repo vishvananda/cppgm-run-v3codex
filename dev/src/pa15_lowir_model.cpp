@@ -51,8 +51,14 @@ const char* LowOperationText(LowOperation operation)
 }
 
 EmissionIdentityTable::EmissionIdentityTable()
-	: path_slots_(32, kNoLowId), type_slots_(32, kNoLowId)
+	: path_slots_(32, kNoLowId), type_slots_(32, kNoLowId),
+	  direct_names_(false)
 {}
+
+void EmissionIdentityTable::UseDirectNames(bool enabled)
+{
+	direct_names_ = enabled;
+}
 
 IdentityPathId EmissionIdentityTable::InternPath(const Program& program,
 	ScopeId owner, NameId terminal)
@@ -61,7 +67,7 @@ IdentityPathId EmissionIdentityTable::InternPath(const Program& program,
 	IdentityPathId path = kNoLowId;
 	for (std::size_t i = 0; i < path_scratch_.size(); ++i)
 	{
-		const IdentityNameId name = InternName(program.names.Get(path_scratch_[i]));
+		const IdentityNameId name = InternName(program, path_scratch_[i]);
 		const IdentityPathKey key = { path, name };
 		path = InternPathKey(key);
 	}
@@ -75,7 +81,7 @@ IdentityPathId EmissionIdentityTable::InternClassMemberPath(
 	const IdentityPathId parent = InternPath(program, entity.owner,
 		entity.identity_name);
 	const IdentityPathKey key = { parent,
-		InternName(program.names.Get(terminal)) };
+		InternName(program, terminal) };
 	return InternPathKey(key);
 }
 
@@ -195,9 +201,10 @@ std::size_t EmissionIdentityTable::StorageBytes() const
 	return bytes + path_scratch_.capacity() * sizeof(NameId);
 }
 
-IdentityNameId EmissionIdentityTable::InternName(const std::string& name)
+IdentityNameId EmissionIdentityTable::InternName(const Program& program,
+	NameId name)
 {
-	return names_.Intern(name);
+	return direct_names_ ? name : names_.Intern(program.names.Get(name));
 }
 
 bool EmissionIdentityTable::HasChild(TypeKind kind)

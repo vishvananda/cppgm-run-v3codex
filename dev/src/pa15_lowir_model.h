@@ -107,6 +107,7 @@ private:
 
 public:
 	EmissionIdentityTable();
+	void UseDirectNames(bool enabled);
 
 	IdentityPathId InternPath(const Program& program, ScopeId owner,
 		NameId terminal);
@@ -126,7 +127,7 @@ public:
 	std::size_t StorageBytes() const;
 
 private:
-	IdentityNameId InternName(const std::string& name);
+	IdentityNameId InternName(const Program& program, NameId name);
 	static bool HasChild(TypeKind kind);
 	static void PushDependency(TypeId dependency,
 		std::vector<IdentityTypeId>& cache, std::vector<PendingType>& pending);
@@ -149,6 +150,7 @@ private:
 	std::vector<IdentityTypeKey> type_records_;
 	std::vector<IdentityTypeId> type_slots_;
 	std::vector<NameId> path_scratch_;
+	bool direct_names_;
 };
 
 struct SymbolIdentity
