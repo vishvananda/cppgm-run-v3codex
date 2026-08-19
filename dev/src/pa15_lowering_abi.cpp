@@ -5,6 +5,7 @@
 #include "pa18_polymorphism_lowering.h"
 
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -402,6 +403,14 @@ StandardTemplateSubstitution StandardSubstitutionFor(
 
 class AbiFactBuilder
 {
+	public:
+	struct LocalContextHandle
+	{
+		std::size_t storage;
+		std::size_t identity;
+	};
+
+	private:
 	struct TypeArgumentCacheKey
 	{
 		TypeId type;
@@ -422,10 +431,10 @@ class AbiFactBuilder
 	struct TypeArgumentCacheEntry
 	{
 		TypeArgumentCacheKey key;
-		std::string id;
+		std::size_t id;
 
 		TypeArgumentCacheEntry(const TypeArgumentCacheKey& key_value,
-			const std::string& id_value) : key(key_value), id(id_value) {}
+			std::size_t id_value) : key(key_value), id(id_value) {}
 	};
 
 	const pa11::Program& program_;
@@ -463,7 +472,7 @@ class AbiFactBuilder
 		return MixHash(MixHash(key.type, key.function), key.recipe);
 	}
 
-	const std::string* FindTypeArgument(
+	const std::size_t* FindTypeArgument(
 		const TypeArgumentCacheKey& key) const
 	{
 		const std::size_t mask = type_argument_cache_slots_.size() - 1;
@@ -493,7 +502,7 @@ class AbiFactBuilder
 	}
 
 	void CacheTypeArgument(const TypeArgumentCacheKey& key,
-		const std::string& id)
+		std::size_t id)
 	{
 		if ((type_argument_cache_.size() + 1) * 10 >
 			type_argument_cache_slots_.size() * 7)
@@ -510,32 +519,55 @@ class AbiFactBuilder
 			static_cast<std::uint32_t>(type_argument_cache_.size());
 	}
 
+	LocalContextHandle StoreLocalContext(
+		const abi_mangle::AbiLocalContext& context, std::size_t identity)
+	{
+		LocalContextHandle result;
+		result.storage = context_->store_context(context);
+		result.identity = identity;
+		abi_mangle::AbiResolvedContextBinding binding;
+		binding.identity = identity;
+		binding.context = result.storage;
+		facts_.contexts.push_back(binding);
+		return result;
+	}
+
+	public:
+	template<typename Fact>
+	static void AssignLocalContext(Fact* fact,
+		const LocalContextHandle& context)
+	{
+		fact->resolved_context = context.storage;
+		fact->resolved_context_identity = context.identity;
+	}
+
 public:
 	AbiFactBuilder(const pa11::Program& program,
 		abi_mangle::AbiTypedCase& facts,
 		abi_mangle::AbiMangleContext* context = 0)
 		: program_(program), facts_(facts), context_(context), next_argument_(0),
-		  type_argument_cache_slots_(32, 0) {}
+		  type_argument_cache_slots_(32, 0)
+	{
+		if (!context_)
+			throw std::logic_error("typed ABI builder has no graph context");
+	}
 
-	std::string AddTypeArgument(pa11::TypeId type,
+	std::size_t AddTypeArgument(pa11::TypeId type,
 		const pa11::BindingRecord* function = 0,
 		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
 	{
 		using namespace abi_mangle;
 		const TypeArgumentCacheKey key =
 			TypeArgumentKey(type, function, recipe);
-		const std::string* cached = FindTypeArgument(key);
+		const std::size_t* cached = FindTypeArgument(key);
 		if (cached) return *cached;
-		const std::string id = "__cppgm_abi_type_argument_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
-		definition.definition.template_argument.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
-		definition.definition.template_argument.type =
-			MakeType(type, function, recipe);
-		AppendTypedFact(&facts_, &definition);
+		++next_argument_;
+		if (!context_)
+			throw std::logic_error("typed ABI argument has no graph context");
+		AbiTemplateArgument argument;
+		argument.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
+		argument.type = MakeType(type, function, recipe);
+		const std::size_t id = context_->resolve_argument(argument);
 		CacheTypeArgument(key, id);
 		return id;
 	}
@@ -584,7 +616,7 @@ public:
 		return id;
 	}
 
-	std::string AddTemplateArgument(std::size_t argument,
+	std::size_t AddTemplateArgument(std::size_t argument,
 		const pa11::BindingRecord* function = 0,
 		const pa11::FunctionTemplateAbiRecipe* recipe = 0,
 		std::size_t source_parameter = pa11::kNoTemplateParameter)
@@ -604,14 +636,8 @@ public:
 			program_.canonical_template_arguments[argument];
 		if (source.kind == TEMPLATE_ARGUMENT_TEMPLATE)
 		{
-			const std::string id = "__cppgm_abi_template_argument_" +
-				std::to_string(next_argument_++);
-			AbiFactRecord definition;
-			definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-			definition.definition.id = id;
-			definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
-			AbiTemplateArgument& target =
-				definition.definition.template_argument;
+			const std::size_t identity = next_argument_++;
+			AbiTemplateArgument target;
 			if (source.dependent_parameter != kNoTemplateParameter)
 			{
 				target.kind =
@@ -628,19 +654,13 @@ public:
 				// are substitution candidates in the ABI grammar.
 				target.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
 				target.type = MakeType(source.type, function, recipe);
-				target.type.substitution = id;
+				target.type.substitution = "__cppgm_abi_template_argument_" +
+					std::to_string(identity);
 			}
-			AppendTypedFact(&facts_, &definition);
-			return id;
+			return context_->resolve_argument(target);
 		}
-		const std::string id = "__cppgm_abi_value_argument_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
-		AbiTemplateArgument& target =
-			definition.definition.template_argument;
+		++next_argument_;
+		AbiTemplateArgument target;
 		if (recipe && source_parameter < recipe->template_parameter_count &&
 			recipe->template_parameter_type_begin <=
 				program_.function_template_abi_template_parameter_types.size() &&
@@ -753,10 +773,10 @@ public:
 						throw std::logic_error(
 							"ABI member function template pack range is invalid");
 					for (std::size_t i = 0; i < fixed; ++i)
-						target.argument_refs.push_back(AddTemplateArgument(
+						target.argument_refs.push_resolved(AddTemplateArgument(
 							first + i, &value, &member_recipe, i));
 					if (member_recipe.template_parameter_pack)
-						target.argument_refs.push_back(AddTemplateArgumentPack(
+						target.argument_refs.push_resolved(AddTemplateArgumentPack(
 							first + fixed, count - fixed, &value, &member_recipe));
 					target.substitution = "__cppgm_abi_member_template_" +
 						std::to_string(value.canonical);
@@ -825,11 +845,10 @@ public:
 			target.has_value_type = true;
 			target.value = source.value;
 		}
-		AppendTypedFact(&facts_, &definition);
-		return id;
+		return context_->resolve_argument(target);
 	}
 
-	std::string AddTemplateArgumentPack(std::size_t first, std::size_t count,
+	std::size_t AddTemplateArgumentPack(std::size_t first, std::size_t count,
 		const pa11::BindingRecord* function = 0,
 		const pa11::FunctionTemplateAbiRecipe* recipe = 0)
 	{
@@ -837,54 +856,32 @@ public:
 		if (first > program_.template_arguments.size() ||
 			count > program_.template_arguments.size() - first)
 			throw std::logic_error("ABI template argument pack range is invalid");
-		const std::string id = "__cppgm_abi_pack_argument_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
-		definition.definition.template_argument.kind = ABI_TEMPLATE_ARGUMENT_PACK;
+		++next_argument_;
+		AbiTemplateArgument argument_pack;
+		argument_pack.kind = ABI_TEMPLATE_ARGUMENT_PACK;
 		for (std::size_t argument = 0; argument < count; ++argument)
-			definition.definition.template_argument.argument_refs.push_back(
+			argument_pack.argument_refs.push_resolved(
 				AddTemplateArgument(first + argument, function, recipe));
-		AppendTypedFact(&facts_, &definition);
-		return id;
+		return context_->resolve_argument(argument_pack);
 	}
 
-	std::string AddTemplateParameterExpression(std::size_t parameter)
+	std::size_t AddTemplateParameterExpression(std::size_t parameter)
 	{
 		using namespace abi_mangle;
-		const std::string id = "__cppgm_abi_template_expression_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_EXPRESSION);
-		definition.definition.expression.kind =
-			ABI_EXPRESSION_TEMPLATE_PARAMETER;
-		definition.definition.expression.index = parameter;
-		AppendTypedFact(&facts_, &definition);
-		return id;
+		++next_argument_;
+		AbiDependentExpression expression;
+		expression.kind = ABI_EXPRESSION_TEMPLATE_PARAMETER;
+		expression.index = parameter;
+		return context_->resolve_expression(expression);
 	}
 
 	abi_mangle::AbiType AddContextType(pa11::TypeId type)
 	{
-		using namespace abi_mangle;
-		const std::string id = "__cppgm_abi_context_type_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_TYPE);
-		definition.definition.type = MakeType(type);
-		AppendTypedFact(&facts_, &definition);
-		AbiType reference;
-		reference.kind = ABI_TYPE_NAME_OR_REFERENCE;
-		reference.name = id;
-		return reference;
+		++next_argument_;
+		return MakeType(type);
 	}
 
-	std::string AddLocalContext(pa11::BindingId binding)
+	LocalContextHandle AddLocalContext(pa11::BindingId binding)
 	{
 		using namespace abi_mangle;
 		using namespace pa11;
@@ -894,12 +891,8 @@ public:
 		const TypeRecord& type = program_.types.Get(function.type);
 		if (type.kind != TYPE_FUNCTION)
 			throw std::logic_error("local ABI context is not a function");
-		const std::string id = "__cppgm_abi_local_context_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_CONTEXT);
+		const std::size_t identity = next_argument_++;
+		AbiLocalContext context_fact;
 		if (function.member_owner != kNoEntity &&
 			function.member_owner < program_.entities.size())
 		{
@@ -909,7 +902,7 @@ public:
 				call < program_.bindings.size() &&
 				program_.bindings[call].canonical == function.canonical)
 			{
-				AbiLocalContext& context = definition.definition.context;
+				AbiLocalContext& context = context_fact;
 				context.kind = ABI_CONTEXT_FUNCTION;
 				context.target_signature_is_parameter_list = true;
 				AbiFunctionTarget& target = context.function;
@@ -918,14 +911,16 @@ public:
 						program_, function.member_owner))
 				{
 					target.kind = ABI_FUNCTION_TARGET_LOCAL;
-					target.context_ref = AddLocalContext(owner.local_context);
+					AssignLocalContext(&target,
+						AddLocalContext(owner.local_context));
 					target.qualified_name = "$_" +
 						std::to_string(owner.lambda_ordinal);
 				}
 				else if (owner.local_context != kNoBinding)
 				{
 					target.kind = ABI_FUNCTION_TARGET_LAMBDA;
-					target.context_ref = AddLocalContext(owner.local_context);
+					AssignLocalContext(&target,
+						AddLocalContext(owner.local_context));
 					target.discriminator =
 						LambdaDiscriminator(owner.lambda_ordinal);
 				}
@@ -956,8 +951,7 @@ public:
 					target.signature_parameter_types.push_back(
 						MakeType(parameters[i]));
 				target.variadic = type.variadic;
-				AppendTypedFact(&facts_, &definition);
-				return id;
+				return StoreLocalContext(context_fact, identity);
 			}
 		}
 		if (function.member_owner != kNoEntity &&
@@ -966,7 +960,7 @@ public:
 				program_.entities[function.member_owner]))
 		{
 			const EntityRecord& owner = program_.entities[function.member_owner];
-			AbiLocalContext& context = definition.definition.context;
+			AbiLocalContext& context = context_fact;
 			context.kind = ABI_CONTEXT_FUNCTION;
 			context.target_signature_is_parameter_list = true;
 			AbiFunctionTarget& target = context.function;
@@ -987,21 +981,19 @@ public:
 				target.signature_parameter_types.push_back(
 					AddContextType(parameters[i]));
 			target.variadic = type.variadic;
-			AppendTypedFact(&facts_, &definition);
-			return id;
+			return StoreLocalContext(context_fact, identity);
 		}
 		const std::string qualified_name = program_.names.Get(
 			function.qualified_name != 0 ?
 				function.qualified_name : function.name);
 		if (qualified_name == "main")
 		{
-			definition.definition.context.kind = ABI_CONTEXT_RAW;
-			definition.definition.context.fragment = "Z4mainE";
-			AppendTypedFact(&facts_, &definition);
-			return id;
+			context_fact.kind = ABI_CONTEXT_RAW;
+			context_fact.fragment = "Z4mainE";
+			return StoreLocalContext(context_fact, identity);
 		}
-		definition.definition.context.kind = ABI_CONTEXT_FUNCTION;
-		AbiFunctionTarget& target = definition.definition.context.function;
+		context_fact.kind = ABI_CONTEXT_FUNCTION;
+		AbiFunctionTarget& target = context_fact.function;
 		target.kind = ABI_FUNCTION_TARGET_PATH;
 		target.qualified_name = qualified_name;
 		const FunctionTemplateAbiRecipe* recipe = 0;
@@ -1036,7 +1028,7 @@ public:
 			{
 				AbiFunctionPathOperand argument;
 				argument.kind = ABI_FUNCTION_PATH_TEMPLATE_ARGUMENT;
-				argument.argument_ref = AddTemplateArgument(
+				argument.resolved_argument = AddTemplateArgument(
 					first + i, &function, recipe, i);
 				target.path_operands.push_back(argument);
 			}
@@ -1044,7 +1036,7 @@ public:
 			{
 				AbiFunctionPathOperand pack;
 				pack.kind = ABI_FUNCTION_PATH_TEMPLATE_ARGUMENT;
-				pack.argument_ref = AddTemplateArgumentPack(
+				pack.resolved_argument = AddTemplateArgumentPack(
 					first + fixed, count - fixed, &function, recipe);
 				target.path_operands.push_back(pack);
 			}
@@ -1107,8 +1099,7 @@ public:
 			target.signature_parameter_types.push_back(encoded);
 		}
 		target.variadic = type.variadic;
-		AppendTypedFact(&facts_, &definition);
-		return id;
+		return StoreLocalContext(context_fact, identity);
 	}
 
 	bool FunctionTemplateParameter(pa11::TypeId type,
@@ -1215,7 +1206,7 @@ public:
 			recipe.function_parameter_type_begin + parameter];
 	}
 
-	std::string AddFunctionTemplateAbiExpression(
+	std::size_t AddFunctionTemplateAbiExpression(
 		pa11::FunctionTemplateAbiExpressionId expression,
 		const pa11::FunctionTemplateAbiRecipe& recipe)
 	{
@@ -1227,13 +1218,8 @@ public:
 				"function template ABI expression recipe is invalid");
 		const FunctionTemplateAbiExpression& source =
 			program_.function_template_abi_expressions[expression];
-		const std::string id = "__cppgm_abi_dependent_expression_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_EXPRESSION);
-		AbiDependentExpression& target = definition.definition.expression;
+		++next_argument_;
+		AbiDependentExpression target;
 		if (source.kind ==
 			FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_PARAMETER)
 		{
@@ -1260,13 +1246,13 @@ public:
 			target.kind = ABI_EXPRESSION_OBJECT_MEMBER;
 			target.op = source.indirect_member ? "pt" : "dt";
 			target.text = program_.names.Get(source.name);
-			target.expression_refs.push_back(
+			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 		}
 		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL)
 		{
 			target.kind = ABI_EXPRESSION_CALL;
-			target.expression_refs.push_back(
+			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 		}
 		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_UNARY)
@@ -1276,7 +1262,7 @@ public:
 				throw std::logic_error(
 					"unsupported retained dependent unary operation");
 			target.op = "de";
-			target.expression_refs.push_back(
+			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
 		}
 		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_BINARY)
@@ -1286,9 +1272,9 @@ public:
 				throw std::logic_error(
 					"unsupported retained dependent binary operation");
 			target.op = "mi";
-			target.expression_refs.push_back(
+			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.left, recipe));
-			target.expression_refs.push_back(
+			target.expression_refs.push_resolved(
 				AddFunctionTemplateAbiExpression(source.right, recipe));
 		}
 		else if (source.kind == FUNCTION_TEMPLATE_ABI_EXPRESSION_TEMPLATE_ID)
@@ -1303,29 +1289,23 @@ public:
 			target.kind = ABI_EXPRESSION_TEMPLATE_ID;
 			target.text = program_.names.Get(source.name);
 			for (std::size_t i = 0; i < source.argument_count; ++i)
-				target.argument_refs.push_back(AddFunctionTemplateAbiArgument(
+				target.argument_refs.push_resolved(AddFunctionTemplateAbiArgument(
 					program_.function_template_abi_arguments[
 						source.argument_begin + i], recipe));
 		}
 		else throw std::logic_error(
 			"function template ABI expression node kind is invalid");
-		AppendTypedFact(&facts_, &definition);
-		return id;
+		return context_->resolve_expression(target);
 	}
 
-	std::string AddFunctionTemplateAbiArgument(
+	std::size_t AddFunctionTemplateAbiArgument(
 		const pa11::FunctionTemplateAbiArgument& source,
 		const pa11::FunctionTemplateAbiRecipe& recipe)
 	{
 		using namespace abi_mangle;
 		using namespace pa11;
-		const std::string id = "__cppgm_abi_dependent_argument_" +
-			std::to_string(next_argument_++);
-		AbiFactRecord definition;
-		definition.set_kind(ABI_FACT_RECORD_DEFINITION);
-		definition.definition.id = id;
-		definition.definition.set_kind(ABI_DEFINITION_TEMPLATE_ARGUMENT);
-		AbiTemplateArgument& target = definition.definition.template_argument;
+		++next_argument_;
+		AbiTemplateArgument target;
 		if (source.kind == FUNCTION_TEMPLATE_ABI_ARGUMENT_TYPE)
 		{
 			target.kind = ABI_TEMPLATE_ARGUMENT_TYPE;
@@ -1335,11 +1315,10 @@ public:
 		else
 		{
 			target.kind = ABI_TEMPLATE_ARGUMENT_EXPRESSION;
-			target.entity_ref = AddFunctionTemplateAbiExpression(
+			target.resolved_expression = AddFunctionTemplateAbiExpression(
 				source.expression, recipe);
 		}
-		AppendTypedFact(&facts_, &definition);
-		return id;
+		return context_->resolve_argument(target);
 	}
 
 	abi_mangle::AbiType MakeFunctionTemplateAbiType(
@@ -1380,7 +1359,7 @@ public:
 			result.kind = ABI_TYPE_TEMPLATE_PARAMETER_SPECIALIZATION;
 			result.index = source.parameter;
 			for (std::size_t i = 0; i < source.argument_count; ++i)
-				result.argument_refs.push_back(AddFunctionTemplateAbiArgument(
+				result.argument_refs.push_resolved(AddFunctionTemplateAbiArgument(
 					program_.function_template_abi_arguments[
 						source.argument_begin + i], recipe));
 			return result;
@@ -1412,7 +1391,7 @@ public:
 				result.types.push_back(
 					MakeFunctionTemplateAbiType(source.child, recipe));
 			for (std::size_t i = 0; i < source.argument_count; ++i)
-				result.argument_refs.push_back(AddFunctionTemplateAbiArgument(
+				result.argument_refs.push_resolved(AddFunctionTemplateAbiArgument(
 					program_.function_template_abi_arguments[
 						source.argument_begin + i], recipe));
 			return result;
@@ -1420,7 +1399,7 @@ public:
 		if (source.kind == FUNCTION_TEMPLATE_ABI_TYPE_DECLTYPE)
 		{
 			result.kind = ABI_TYPE_DECLTYPE_EXPRESSION;
-			result.expression_ref = AddFunctionTemplateAbiExpression(
+			result.resolved_expression = AddFunctionTemplateAbiExpression(
 				source.expression, recipe);
 			return result;
 		}
@@ -1468,7 +1447,7 @@ public:
 			if (source.parameter != kNoTemplateParameter)
 			{
 				modifier.array_bound.kind = ABI_ARRAY_BOUND_EXPRESSION;
-				modifier.array_bound.value =
+				modifier.array_bound.resolved_expression =
 					AddTemplateParameterExpression(source.parameter);
 			}
 			else if (source.bound != 0)
@@ -1575,10 +1554,10 @@ public:
 			throw std::logic_error(
 				"template-parameter specialization ABI pack is invalid");
 		for (std::size_t i = 0; i < fixed; ++i)
-			result->argument_refs.push_back(AddTemplateArgument(
+			result->argument_refs.push_resolved(AddTemplateArgument(
 				first + i, function, recipe));
 		if (pack != kNoTemplateParameter)
-			result->argument_refs.push_back(AddTemplateArgumentPack(
+			result->argument_refs.push_resolved(AddTemplateArgumentPack(
 				first + fixed, entity.template_argument_count - fixed,
 				function, recipe));
 		return true;
@@ -1602,10 +1581,10 @@ public:
 		if (fixed > entity.template_argument_count)
 			throw std::logic_error("class template ABI pack offset is invalid");
 		for (std::size_t i = 0; i < fixed; ++i)
-			result->argument_refs.push_back(AddTemplateArgument(
+			result->argument_refs.push_resolved(AddTemplateArgument(
 				first + i, function, recipe));
 		if (pack != kNoTemplateParameter)
-			result->argument_refs.push_back(AddTemplateArgumentPack(
+			result->argument_refs.push_resolved(AddTemplateArgumentPack(
 				first + fixed, entity.template_argument_count - fixed,
 				function, recipe));
 	}
@@ -1624,16 +1603,35 @@ public:
 	{
 		using namespace abi_mangle;
 		if (!context_) return false;
-		if (type.kind == ABI_TYPE_RESOLVED) return true;
+		if (type.kind == ABI_TYPE_RESOLVED)
+			return !context_->resolved_type_uses_case_facts(type.index);
 		if (type.kind == ABI_TYPE_NAME_OR_REFERENCE ||
 			!type.expression_ref.empty() || !type.context_ref.empty() ||
-			!type.argument_refs.empty()) return false;
+			type.resolved_context != ABI_NO_RESOLVED_REFERENCE ||
+			(!type.argument_refs.resolved() &&
+			 !type.argument_refs.empty())) return false;
+		if (type.resolved_expression != ABI_NO_RESOLVED_REFERENCE &&
+			context_->resolved_expression_uses_case_facts(
+				type.resolved_expression)) return false;
+		if (type.argument_refs.resolved())
+			for (std::size_t i = 0; i < type.argument_refs.size(); ++i)
+				if (context_->resolved_argument_uses_case_facts(
+					type.argument_refs.resolved_ids()[i])) return false;
 		if (type.array_bound.kind == ABI_ARRAY_BOUND_EXPRESSION &&
-			!type.array_bound.value.empty()) return false;
+			(!type.array_bound.value.empty() ||
+			 (type.array_bound.resolved_expression !=
+				ABI_NO_RESOLVED_REFERENCE &&
+			  context_->resolved_expression_uses_case_facts(
+				type.array_bound.resolved_expression)))) return false;
 		for (std::size_t i = 0; i < type.modifiers.size(); ++i)
 			if (type.modifiers[i].array_bound.kind ==
 					ABI_ARRAY_BOUND_EXPRESSION &&
-				!type.modifiers[i].array_bound.value.empty()) return false;
+				(!type.modifiers[i].array_bound.value.empty() ||
+				 (type.modifiers[i].array_bound.resolved_expression !=
+					ABI_NO_RESOLVED_REFERENCE &&
+				  context_->resolved_expression_uses_case_facts(
+					type.modifiers[i].array_bound.resolved_expression))))
+				return false;
 		for (std::size_t i = 0; i < type.types.size(); ++i)
 			if (!CanResolveType(type.types[i])) return false;
 		return true;
@@ -1677,7 +1675,7 @@ public:
 				{
 					modifier.array_bound.kind =
 						ABI_ARRAY_BOUND_EXPRESSION;
-					modifier.array_bound.value =
+					modifier.array_bound.resolved_expression =
 						AddTemplateParameterExpression(
 							record->dependent_bound_parameter);
 				}
@@ -1746,7 +1744,8 @@ public:
 						program_, record->entity))
 				{
 					result.kind = ABI_TYPE_LOCAL_TYPE;
-					result.context_ref = AddLocalContext(entity.local_context);
+					AssignLocalContext(&result,
+						AddLocalContext(entity.local_context));
 					result.name = "$_" +
 						std::to_string(entity.lambda_ordinal);
 					result.discriminator = "0";
@@ -1754,7 +1753,8 @@ public:
 				else if (entity.local_context != kNoBinding)
 				{
 					result.kind = ABI_TYPE_LAMBDA_CLOSURE;
-					result.context_ref = AddLocalContext(entity.local_context);
+					AssignLocalContext(&result,
+						AddLocalContext(entity.local_context));
 					result.discriminator =
 						LambdaDiscriminator(entity.lambda_ordinal);
 					if (entity.lambda_call_operator == kNoBinding ||
@@ -1789,7 +1789,8 @@ public:
 			else if (entity.local_context != kNoBinding)
 			{
 				result.kind = ABI_TYPE_LOCAL_TYPE;
-				result.context_ref = AddLocalContext(entity.local_context);
+				AssignLocalContext(&result,
+					AddLocalContext(entity.local_context));
 				if (!entity.unnamed_class) result.name = program_.names.Get(entity.identity_name);
 				result.discriminator =
 					std::to_string(entity.local_name_ordinal);
@@ -1901,10 +1902,10 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 			if (fixed > entity.template_argument_count)
 				throw std::logic_error("class template ABI pack offset is invalid");
 			for (std::size_t argument = 0; argument < fixed; ++argument)
-				component.function.argument_refs.push_back(
+				component.function.argument_refs.push_resolved(
 					builder->AddTemplateArgument(first + argument));
 			if (pack != kNoTemplateParameter)
-				component.function.argument_refs.push_back(
+				component.function.argument_refs.push_resolved(
 					builder->AddTemplateArgumentPack(first + fixed,
 						entity.template_argument_count - fixed));
 		}
@@ -2016,6 +2017,12 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type,
 	abi_mangle::AbiMangleContext* context)
 {
 	using namespace abi_mangle;
+	std::unique_ptr<AbiMangleContext> local_context;
+	if (!context)
+	{
+		local_context.reset(new AbiMangleContext(stats));
+		context = local_context.get();
+	}
 	AbiTypedCase fact_case;
 	AbiFactBuilder facts(program, fact_case, context);
 	AbiFactRecord target;
@@ -2229,7 +2236,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 		argument.set_kind(ABI_FACT_RECORD_FUNCTION);
 		argument.function.kind =
 			ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
-		argument.function.argument_refs.push_back(
+		argument.function.argument_refs.push_resolved(
 			facts->AddTemplateArgument(first + i, &binding, recipe, i));
 		AppendTypedFact(output, &argument);
 	}
@@ -2239,7 +2246,7 @@ void AppendFunctionTemplateArgumentsAndResult(const pa11::Program& program,
 		argument.set_kind(ABI_FACT_RECORD_FUNCTION);
 		argument.function.kind =
 			ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
-		argument.function.argument_refs.push_back(
+		argument.function.argument_refs.push_resolved(
 			facts->AddTemplateArgumentPack(first + fixed, count - fixed));
 		AppendTypedFact(output, &argument);
 	}
@@ -2277,6 +2284,8 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 {
 	using namespace abi_mangle;
 	using namespace pa11;
+	if (!context)
+		throw std::logic_error("lambda ABI mangling has no graph context");
 	if (binding.operator_kind != OPERATOR_CALL)
 		throw std::logic_error("invalid lambda call-operator ABI identity");
 	AbiTypedCase fact_case;
@@ -2299,14 +2308,16 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 			program, binding.member_owner))
 	{
 		function.kind = ABI_FUNCTION_TARGET_LOCAL;
-		function.context_ref = facts.AddLocalContext(lambda.local_context);
+		AbiFactBuilder::AssignLocalContext(&function,
+			facts.AddLocalContext(lambda.local_context));
 		function.qualified_name = "$_" +
 			std::to_string(lambda.lambda_ordinal);
 	}
 	else if (lambda.local_context != kNoBinding)
 	{
 		function.kind = ABI_FUNCTION_TARGET_LAMBDA;
-		function.context_ref = facts.AddLocalContext(lambda.local_context);
+		AbiFactBuilder::AssignLocalContext(&function,
+			facts.AddLocalContext(lambda.local_context));
 		function.discriminator = LambdaDiscriminator(lambda.lambda_ordinal);
 	}
 	else
@@ -2358,6 +2369,26 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	return MangleProductionCase(fact_case, stats, context);
 }
 
+void AppendLocalFunctionOwner(const pa11::Program& program,
+	const pa11::BindingRecord& binding, AbiFactBuilder* facts,
+	abi_mangle::AbiTypedCase* fact_case)
+{
+	using namespace abi_mangle;
+	const pa11::EntityRecord& owner =
+		program.entities[binding.member_owner];
+	AbiFactRecord local;
+	local.set_kind(ABI_FACT_RECORD_FUNCTION);
+	local.function.kind = ABI_FUNCTION_RECORD_LOCAL_CONTEXT;
+	AbiFactBuilder::AssignLocalContext(&local.function,
+		facts->AddLocalContext(owner.local_context));
+	if (!owner.unnamed_class)
+		local.function.name = program.names.Get(owner.identity_name);
+	local.function.discriminator = std::to_string(owner.local_name_ordinal);
+	local.function.discriminator_after_terminal = !owner.unnamed_class;
+	AppendTypedFact(fact_case, &local);
+	AppendComponentAbiTagFacts(program, owner, fact_case);
+}
+
 std::string MangleFunction(const pa11::Program& program,
 	const pa12_semantic_detail::DumpNode& node,
 	bool force_lifecycle_base_entry, abi_mangle::AbiMangleStats* stats,
@@ -2393,6 +2424,12 @@ std::string MangleFunction(const pa11::Program& program,
 	}
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C)
 		return program.names.Get(binding.name);
+	std::unique_ptr<AbiMangleContext> local_context;
+	if (!context)
+	{
+		local_context.reset(new AbiMangleContext(stats));
+		context = local_context.get();
+	}
 	const EntityRecord* lambda = binding.member_owner == kNoEntity ? 0 :
 		&program.entities[binding.member_owner];
 	if (lambda && lambda->lambda_closure &&
@@ -2449,19 +2486,7 @@ std::string MangleFunction(const pa11::Program& program,
 	AppendTypedFact(&fact_case, &target);
 	AppendFunctionAbiTagFacts(program, binding, &fact_case);
 	if (structured_local_owner)
-	{
-		const EntityRecord& owner = program.entities[binding.member_owner];
-		AbiFactRecord local;
-		local.set_kind(ABI_FACT_RECORD_FUNCTION);
-		local.function.kind = ABI_FUNCTION_RECORD_LOCAL_CONTEXT;
-		local.function.context_ref = facts.AddLocalContext(owner.local_context);
-		if (!owner.unnamed_class)
-			local.function.name = program.names.Get(owner.identity_name);
-		local.function.discriminator = std::to_string(owner.local_name_ordinal);
-		local.function.discriminator_after_terminal = !owner.unnamed_class;
-		AppendTypedFact(&fact_case, &local);
-		AppendComponentAbiTagFacts(program, owner, &fact_case);
-	}
+		AppendLocalFunctionOwner(program, binding, &facts, &fact_case);
 	if (structured_class_owner &&
 		!AppendClassTemplateOwner(program, binding, &facts, &fact_case, true))
 		throw std::logic_error("class template ABI owner was lost");
@@ -2622,6 +2647,12 @@ std::string MangleVariable(const pa11::Program& program,
 		!binding.variable_template_specialization &&
 		binding.template_argument_count == 0)
 		return program.names.Get(binding.name);
+	std::unique_ptr<AbiMangleContext> local_context;
+	if (!context)
+	{
+		local_context.reset(new AbiMangleContext(stats));
+		context = local_context.get();
+	}
 	AbiTypedCase fact_case;
 	AbiFactBuilder facts(program, fact_case, context);
 	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
@@ -2680,12 +2711,12 @@ std::string MangleVariable(const pa11::Program& program,
 				"variable template argument range is invalid during mangling");
 		for (std::size_t i = 0; i < count; ++i)
 		{
-			const std::string argument_id = facts.AddTemplateArgument(first + i);
+			const std::size_t argument_id = facts.AddTemplateArgument(first + i);
 			AbiFactRecord argument;
 			argument.set_kind(ABI_FACT_RECORD_FUNCTION);
 			argument.function.kind =
 				ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
-			argument.function.argument_refs.push_back(argument_id);
+			argument.function.argument_refs.push_resolved(argument_id);
 			AppendTypedFact(&fact_case, &argument);
 		}
 	}

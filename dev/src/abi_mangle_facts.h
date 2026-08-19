@@ -8,6 +8,45 @@
 
 namespace abi_mangle {
 
+const std::size_t ABI_NO_RESOLVED_REFERENCE = static_cast<std::size_t>(-1);
+
+// A fact-file record carries textual definition names, while the integrated
+// compiler carries translation-unit graph IDs.  Only the active form owns
+// storage, keeping production references dense without enlarging the PA14
+// adapter with a second vector.
+class AbiReferenceList
+{
+public:
+  AbiReferenceList();
+  AbiReferenceList(const AbiReferenceList & other);
+  AbiReferenceList(AbiReferenceList && other) noexcept;
+  AbiReferenceList & operator=(const AbiReferenceList & other);
+  AbiReferenceList & operator=(AbiReferenceList && other) noexcept;
+  ~AbiReferenceList();
+
+  bool resolved() const;
+  bool empty() const;
+  std::size_t size() const;
+  void push_name(const std::string & name);
+  void push_resolved(std::size_t id);
+  const std::vector<std::string> & names() const;
+  const std::vector<std::size_t> & resolved_ids() const;
+
+private:
+  enum Mode { NAMES, RESOLVED } mode_;
+  union Storage
+  {
+    Storage() {}
+    ~Storage() {}
+    std::vector<std::string> names;
+    std::vector<std::size_t> resolved;
+  } storage_;
+
+  void destroy();
+  void copy(const AbiReferenceList & other);
+  void move(AbiReferenceList & other) noexcept;
+};
+
 enum AbiFactRecordKind
 {
   ABI_FACT_RECORD_DEFINITION,
@@ -185,6 +224,7 @@ struct AbiArrayBound
 {
   AbiArrayBoundKind kind = ABI_ARRAY_BOUND_VALUE;
   std::string value;
+  std::size_t resolved_expression = ABI_NO_RESOLVED_REFERENCE;
 };
 
 // Prefix modifiers parsed from compact fact spellings are kept flat. This
@@ -209,6 +249,9 @@ struct AbiType
   std::string discriminator;
   AbiArrayBound array_bound;
   std::size_t index = 0;
+  std::size_t resolved_expression = ABI_NO_RESOLVED_REFERENCE;
+  std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;
+  std::size_t resolved_context_identity = ABI_NO_RESOLVED_REFERENCE;
   bool is_const = false;
   bool is_volatile = false;
   bool variadic = false;
@@ -222,7 +265,7 @@ struct AbiType
   bool standard_substitution_includes_arguments = false;
   std::vector<AbiTypeModifier> modifiers;
   std::vector<AbiType> types;
-  std::vector<std::string> argument_refs;
+  AbiReferenceList argument_refs;
   std::vector<std::string> namespace_qualifiers;
   std::vector<std::string> abi_tags;
 };
@@ -238,6 +281,7 @@ struct AbiTemplateArgument
   std::string symbol;
   long long value = 0;
   std::size_t index = 0;
+  std::size_t resolved_expression = ABI_NO_RESOLVED_REFERENCE;
   bool has_value_type = false;
   bool address_of = false;
   bool pack_expansion = false;
@@ -259,7 +303,7 @@ struct AbiTemplateArgument
   AbiType member_function_result_type;
   bool member_function_has_result_type = false;
   std::vector<AbiType> parameter_types;
-  std::vector<std::string> argument_refs;
+  AbiReferenceList argument_refs;
 };
 
 struct AbiDependentExpression
@@ -274,8 +318,8 @@ struct AbiDependentExpression
   std::size_t index = 0;
   bool close_member_owner = false;
   bool address_of = false;
-  std::vector<std::string> expression_refs;
-  std::vector<std::string> argument_refs;
+  AbiReferenceList expression_refs;
+  AbiReferenceList argument_refs;
   std::vector<AbiType> type_arguments;
 };
 
@@ -284,6 +328,7 @@ struct AbiFunctionPathOperand
   AbiFunctionPathOperandKind kind = ABI_FUNCTION_PATH_TYPE;
   AbiType type;
   std::string argument_ref;
+  std::size_t resolved_argument = ABI_NO_RESOLVED_REFERENCE;
 };
 
 struct AbiFunctionTarget
@@ -291,6 +336,8 @@ struct AbiFunctionTarget
   AbiFunctionTargetKind kind = ABI_FUNCTION_TARGET_PATH;
   std::string qualified_name;
   std::string context_ref;
+  std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;
+  std::size_t resolved_context_identity = ABI_NO_RESOLVED_REFERENCE;
   std::string source_name;
   std::string discriminator;
   std::string terminal;

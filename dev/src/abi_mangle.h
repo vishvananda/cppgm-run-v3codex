@@ -65,13 +65,15 @@ struct AbiFunctionRecord
   bool standard_substitution_includes_arguments = false;
   bool discriminator_after_terminal = false;
   std::string context_ref;
+  std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;
+  std::size_t resolved_context_identity = ABI_NO_RESOLVED_REFERENCE;
   std::string source_name;
   std::string discriminator;
   std::string terminal;
   std::string literal_suffix;
   AbiType type;
   std::vector<AbiType> types;
-  std::vector<std::string> argument_refs;
+  AbiReferenceList argument_refs;
   std::vector<std::string> namespace_qualifiers;
   std::vector<AbiFunctionQualifier> qualifiers;
 };
@@ -113,6 +115,12 @@ struct AbiFactFile
   std::vector<AbiFactCase> cases;
 };
 
+struct AbiResolvedContextBinding
+{
+  std::size_t identity = ABI_NO_RESOLVED_REFERENCE;
+  std::size_t context = ABI_NO_RESOLVED_REFERENCE;
+};
+
 // Compact in-memory case used by integrated compiler clients.  The standalone
 // fact-file adapter retains AbiFactRecord because its input is record ordered;
 // production does not pay the union size for every record family.
@@ -120,6 +128,7 @@ struct AbiTypedCase
 {
   std::vector<AbiDefinitionRecord> definitions;
   std::vector<AbiFunctionRecord> functions;
+  std::vector<AbiResolvedContextBinding> contexts;
   AbiTargetRecord target;
   bool has_target = false;
 };
@@ -164,6 +173,12 @@ public:
   std::string mangle_case(const AbiFactCase & fact_case);
   std::string mangle_case(const AbiTypedCase & fact_case);
   std::size_t resolve_type(const AbiType & type);
+  std::size_t resolve_argument(const AbiTemplateArgument & argument);
+  std::size_t resolve_expression(const AbiDependentExpression & expression);
+  std::size_t store_context(const AbiLocalContext & context);
+  bool resolved_type_uses_case_facts(std::size_t type) const;
+  bool resolved_argument_uses_case_facts(std::size_t argument) const;
+  bool resolved_expression_uses_case_facts(std::size_t expression) const;
   bool find_resolved_type(std::size_t source, std::size_t function,
                           std::size_t recipe, std::size_t * result) const;
   std::size_t cache_resolved_type(std::size_t source, std::size_t function,

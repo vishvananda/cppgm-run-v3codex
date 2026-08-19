@@ -158,6 +158,7 @@ struct TypeNode
   size_t path = NO_ID;
   size_t expression = NO_ID;
   size_t context = NO_ID;
+  size_t context_identity = NO_ID;
   size_t discriminator = NO_ID;
   size_t substitution = NO_ID;
   size_t index = 0;
@@ -170,6 +171,8 @@ struct TypeNode
   bool substitutable = false;
   bool suppress_template_prefix_substitution = false;
   bool standard_includes_arguments = false;
+  bool context_resolved = false;
+  bool uses_case_facts = false;
   vector<size_t> children;
   vector<size_t> arguments;
   vector<size_t> namespaces;
@@ -178,7 +181,9 @@ struct TypeNode
   bool operator==(const TypeNode & other) const
   {
     return kind == other.kind && symbol == other.symbol && path == other.path
-           && expression == other.expression && context == other.context
+           && expression == other.expression
+           && (!context_resolved ? context == other.context : true)
+           && context_identity == other.context_identity
            && discriminator == other.discriminator
            && substitution == other.substitution
            && index == other.index && bound_kind == other.bound_kind
@@ -189,6 +194,7 @@ struct TypeNode
            && suppress_template_prefix_substitution ==
                 other.suppress_template_prefix_substitution
            && standard_includes_arguments == other.standard_includes_arguments
+           && context_resolved == other.context_resolved
            && children == other.children && arguments == other.arguments
            && namespaces == other.namespaces && tags == other.tags;
   }
@@ -200,7 +206,8 @@ size_t type_hash(const TypeNode & type)
   hash = mix_hash(hash, type.symbol);
   hash = mix_hash(hash, type.path);
   hash = mix_hash(hash, type.expression);
-  hash = mix_hash(hash, type.context);
+  hash = mix_hash(hash, type.context_resolved ? NO_ID : type.context);
+  hash = mix_hash(hash, type.context_identity);
   hash = mix_hash(hash, type.discriminator);
   hash = mix_hash(hash, type.substitution);
   hash = mix_hash(hash, type.index);
@@ -209,7 +216,8 @@ size_t type_hash(const TypeNode & type)
                         | (type.standard_includes_arguments << 3)
                         | (type.substitutable << 4)
                         | (type.suppress_template_prefix_substitution << 5)
-                        | (type.lvalue_ref << 6) | (type.rvalue_ref << 7));
+                        | (type.lvalue_ref << 6) | (type.rvalue_ref << 7)
+                        | (type.context_resolved << 8));
   hash = vector_hash(hash, type.children);
   hash = vector_hash(hash, type.arguments);
   hash = vector_hash(hash, type.namespaces);
@@ -245,6 +253,7 @@ struct ArgumentNode
   size_t member_conversion_type = NO_ID;
   size_t member_result_type = NO_ID;
   bool member_has_result_type = false;
+  bool uses_case_facts = false;
   vector<size_t> parameters;
   vector<size_t> arguments;
 
@@ -312,6 +321,7 @@ struct ExpressionNode
   long long value = 0;
   bool close_member_owner = false;
   bool address_of = false;
+  bool uses_case_facts = false;
   vector<size_t> expressions;
   vector<size_t> arguments;
   vector<size_t> types;
@@ -380,7 +390,8 @@ public:
 
   void begin_case(const AbiFactCase & fact_case)
   {
-	require(definitions.empty(), "ABI graph case is already active");
+	require(definitions.empty() && active_contexts.empty(),
+            "ABI graph case is already active");
     for(const AbiFactRecord & record : fact_case.records) {
       if(record.kind != ABI_FACT_RECORD_DEFINITION) continue;
       const AbiDefinitionRecord & definition = record.definition;
@@ -391,10 +402,21 @@ public:
 
   void begin_case(const AbiTypedCase & fact_case)
   {
-    require(definitions.empty(), "ABI graph case is already active");
+    require(definitions.empty() && active_contexts.empty(),
+            "ABI graph case is already active");
     for(const AbiDefinitionRecord & definition : fact_case.definitions) {
       require(definitions.insert(std::make_pair(definition.id, &definition)).second,
               "duplicate ABI definition id '" + definition.id + "'");
+    }
+    for(const AbiResolvedContextBinding & binding : fact_case.contexts) {
+      require(binding.identity != ABI_NO_RESOLVED_REFERENCE,
+              "invalid ABI context identity");
+      checked_context(binding.context);
+      if(binding.identity >= active_contexts.size())
+        active_contexts.resize(binding.identity + 1, NO_ID);
+      require(active_contexts[binding.identity] == NO_ID,
+              "duplicate ABI context identity");
+      active_contexts[binding.identity] = binding.context;
     }
   }
 
@@ -407,6 +429,7 @@ public:
 	resolving_types.clear();
 	resolving_arguments.clear();
 	resolving_expressions.clear();
+    active_contexts.clear();
   }
 
   size_t resolve_type(const AbiType & source)
@@ -416,6 +439,11 @@ public:
       require(source.index < types.size(),
               "invalid resolved ABI type id");
       result = source.index;
+      if(!source.substitution.empty()) {
+        TypeNode substituted = types[result];
+        substituted.substitution = strings.intern(source.substitution);
+        result = canonicalize_type(substituted);
+      }
     }
     else result = resolve_type_core(source);
     for(auto modifier = source.modifiers.rbegin();
@@ -428,8 +456,15 @@ public:
               || node.kind == ABI_TYPE_ARRAY,
               "invalid flat ABI type modifier");
       node.children.push_back(result);
+      node.uses_case_facts = types[result].uses_case_facts;
       node.bound_kind = modifier->array_bound.kind;
-      if(!modifier->array_bound.value.empty()) {
+      if(modifier->array_bound.resolved_expression !=
+         ABI_NO_RESOLVED_REFERENCE) {
+        node.expression = checked_expression(
+          modifier->array_bound.resolved_expression);
+        node.uses_case_facts = node.uses_case_facts
+          || expressions[node.expression].uses_case_facts;
+      } else if(!modifier->array_bound.value.empty()) {
         if(node.bound_kind == ABI_ARRAY_BOUND_EXPRESSION)
           node.expression = resolve_expression_ref(modifier->array_bound.value);
         else
@@ -470,15 +505,30 @@ public:
       if(!source.standard_substitution.empty()) {
         node.symbol = strings.intern(source.standard_substitution);
       }
-      if(!source.expression_ref.empty()) node.expression = resolve_expression_ref(source.expression_ref);
-      if(!source.context_ref.empty()) node.context = strings.intern(source.context_ref);
+      if(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE)
+        node.expression = checked_expression(source.resolved_expression);
+      else if(!source.expression_ref.empty())
+        node.expression = resolve_expression_ref(source.expression_ref);
+      if(source.resolved_context != ABI_NO_RESOLVED_REFERENCE) {
+        checked_context(source.resolved_context);
+        require(source.resolved_context_identity != ABI_NO_RESOLVED_REFERENCE,
+                "resolved ABI context has no case identity");
+        node.context_identity = source.resolved_context_identity;
+        node.context_resolved = true;
+      } else if(!source.context_ref.empty()) {
+        node.context = strings.intern(source.context_ref);
+      }
       if(source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
          !source.discriminator.empty())
         node.discriminator = strings.intern(source.discriminator);
       if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
       node.index = source.index;
       node.bound_kind = source.array_bound.kind;
-      if(!source.array_bound.value.empty()) {
+      if(source.array_bound.resolved_expression !=
+         ABI_NO_RESOLVED_REFERENCE) {
+        node.expression = checked_expression(
+          source.array_bound.resolved_expression);
+      } else if(!source.array_bound.value.empty()) {
         if(node.bound_kind == ABI_ARRAY_BOUND_EXPRESSION)
           node.expression = resolve_expression_ref(source.array_bound.value);
         else
@@ -494,8 +544,23 @@ public:
         source.suppress_template_prefix_substitution;
       node.standard_includes_arguments = source.standard_substitution_includes_arguments;
       for(const AbiType & child : source.types) node.children.push_back(resolve_type(child));
-      for(const string & argument : source.argument_refs) node.arguments.push_back(resolve_argument_ref(argument));
+      append_argument_refs(source.argument_refs, &node.arguments);
       for(const string & name : source.namespace_qualifiers) node.namespaces.push_back(strings.intern(name));
+    }
+    node.uses_case_facts = node.uses_case_facts || node.context_resolved;
+    for(size_t child : node.children)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || types[child].uses_case_facts;
+    }
+    for(size_t argument : node.arguments)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || arguments[argument].uses_case_facts;
+    }
+    if(node.expression != NO_ID) {
+      node.uses_case_facts = node.uses_case_facts
+        || expressions[node.expression].uses_case_facts;
     }
     for(const string & tag : source.abi_tags) node.tags.push_back(strings.intern(tag));
     std::sort(node.tags.begin(), node.tags.end(), [this](size_t a, size_t b) {
@@ -560,10 +625,105 @@ public:
   const ArgumentNode & argument(size_t id) const { return arguments.at(id); }
   const ExpressionNode & expression(size_t id) const { return expressions.at(id); }
 
+  size_t resolve_argument_direct(const AbiTemplateArgument & source)
+  {
+    return resolve_argument(source);
+  }
+
+  size_t resolve_expression_direct(const AbiDependentExpression & source)
+  {
+    return resolve_expression(source);
+  }
+
+  size_t store_context(const AbiLocalContext & source)
+  {
+    const size_t id = contexts.size();
+    contexts.push_back(source);
+    return id;
+  }
+
+  const AbiLocalContext & context(size_t id) const
+  {
+    checked_context(id);
+    return contexts[id];
+  }
+
+  size_t context_for_identity(size_t identity) const
+  {
+    if(identity >= active_contexts.size()
+       || active_contexts[identity] == NO_ID)
+      throw std::logic_error("unbound resolved ABI context identity "
+                             + std::to_string(identity) + " of "
+                             + std::to_string(active_contexts.size()));
+    return active_contexts[identity];
+  }
+
+  size_t argument_ref_at(const AbiReferenceList & references,
+                         size_t index)
+  {
+    require(index < references.size(), "ABI argument reference is missing");
+    return references.resolved() ?
+      checked_argument(references.resolved_ids()[index]) :
+      resolve_argument_ref(references.names()[index]);
+  }
+
+  size_t resolved_argument(size_t id) const
+  {
+    return checked_argument(id);
+  }
+
+  bool type_uses_case_facts(size_t id) const
+  {
+    require(id < types.size(), "invalid resolved ABI type id");
+    return types[id].uses_case_facts;
+  }
+
+  bool argument_uses_case_facts(size_t id) const
+  {
+    require(id < arguments.size(), "invalid resolved ABI argument id");
+    return arguments[id].uses_case_facts;
+  }
+
+  bool expression_uses_case_facts(size_t id) const
+  {
+    require(id < expressions.size(), "invalid resolved ABI expression id");
+    return expressions[id].uses_case_facts;
+  }
+
+  void append_argument_refs(const AbiReferenceList & references,
+                            vector<size_t> * output)
+  {
+    if(references.resolved()) {
+      for(size_t id : references.resolved_ids())
+        output->push_back(checked_argument(id));
+      return;
+    }
+    for(const string & name : references.names())
+      output->push_back(resolve_argument_ref(name));
+  }
+
   StringPool strings;
   PathPool paths;
 
 private:
+  size_t checked_argument(size_t id) const
+  {
+    require(id < arguments.size(), "invalid resolved ABI argument id");
+    return id;
+  }
+
+  size_t checked_expression(size_t id) const
+  {
+    require(id < expressions.size(), "invalid resolved ABI expression id");
+    return id;
+  }
+
+  size_t checked_context(size_t id) const
+  {
+    require(id < contexts.size(), "invalid resolved ABI context id");
+    return id;
+  }
+
   size_t resolve_type_definition(const string & id, const AbiDefinitionRecord & definition)
   {
     const auto cached = type_definitions.find(id);
@@ -630,9 +790,10 @@ private:
        || source.kind == ABI_TEMPLATE_ARGUMENT_MEMBER_EXTERNAL_ENTITY) {
       node.owner_type = resolve_type(source.type);
     }
-    if(source.kind == ABI_TEMPLATE_ARGUMENT_EXPRESSION) {
-      node.expression = resolve_expression_ref(source.entity_ref);
-    }
+    if(source.kind == ABI_TEMPLATE_ARGUMENT_EXPRESSION)
+      node.expression = source.resolved_expression != ABI_NO_RESOLVED_REFERENCE ?
+        checked_expression(source.resolved_expression) :
+        resolve_expression_ref(source.entity_ref);
     if(source.kind == ABI_TEMPLATE_ARGUMENT_ENTITY) node.entity = strings.intern(source.entity_ref);
     if(!source.name.empty()) node.name = strings.intern(source.name);
     if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
@@ -663,7 +824,33 @@ private:
       node.member_result_type = resolve_type(source.member_function_result_type);
     }
     for(const AbiType & type : source.parameter_types) node.parameters.push_back(resolve_type(type));
-    for(const string & argument : source.argument_refs) node.arguments.push_back(resolve_argument_ref(argument));
+    append_argument_refs(source.argument_refs, &node.arguments);
+    const size_t linked_types[] = {
+      node.type, node.value_type, node.owner_type, node.member_conversion_type,
+      node.member_result_type
+    };
+    for(size_t linked : linked_types)
+      if(linked != NO_ID)
+      {
+        node.uses_case_facts = node.uses_case_facts
+          || types[linked].uses_case_facts;
+      }
+    node.uses_case_facts = node.uses_case_facts
+      || node.kind == ABI_TEMPLATE_ARGUMENT_ENTITY;
+    if(node.expression != NO_ID) {
+      node.uses_case_facts = node.uses_case_facts
+        || expressions[node.expression].uses_case_facts;
+    }
+    for(size_t parameter : node.parameters)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || types[parameter].uses_case_facts;
+    }
+    for(size_t argument : node.arguments)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || arguments[argument].uses_case_facts;
+    }
     const size_t hash = argument_hash(node);
     vector<size_t> & bucket = argument_buckets[hash];
     for(size_t id : bucket) {
@@ -694,13 +881,42 @@ private:
     node.value = source.value;
     node.close_member_owner = source.close_member_owner;
     node.address_of = source.address_of;
-    for(const string & expression : source.expression_refs) {
-      node.expressions.push_back(resolve_expression_ref(expression));
+    if(source.expression_refs.resolved()) {
+      for(size_t id : source.expression_refs.resolved_ids())
+        node.expressions.push_back(checked_expression(id));
+    } else {
+      for(const string & name : source.expression_refs.names())
+        node.expressions.push_back(resolve_expression_ref(name));
     }
-    for(const string & argument : source.argument_refs) {
-      node.arguments.push_back(resolve_argument_ref(argument));
-    }
+    append_argument_refs(source.argument_refs, &node.arguments);
     for(const AbiType & type : source.type_arguments) node.types.push_back(resolve_type(type));
+    if(node.type != NO_ID)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || types[node.type].uses_case_facts;
+    }
+    if(node.value_type != NO_ID)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || types[node.value_type].uses_case_facts;
+    }
+    node.uses_case_facts = node.uses_case_facts
+      || node.kind == ABI_EXPRESSION_ENTITY;
+    for(size_t expression : node.expressions)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || expressions[expression].uses_case_facts;
+    }
+    for(size_t argument : node.arguments)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || arguments[argument].uses_case_facts;
+    }
+    for(size_t type : node.types)
+    {
+      node.uses_case_facts = node.uses_case_facts
+        || types[type].uses_case_facts;
+    }
     const size_t hash = expression_hash(node);
     vector<size_t> & bucket = expression_buckets[hash];
     for(size_t id : bucket) {
@@ -727,6 +943,8 @@ private:
   vector<TypeNode> types;
   vector<ArgumentNode> arguments;
   vector<ExpressionNode> expressions;
+  vector<AbiLocalContext> contexts;
+  vector<size_t> active_contexts;
   std::unordered_map<size_t, vector<size_t> > type_buckets;
   std::unordered_map<size_t, vector<size_t> > argument_buckets;
   std::unordered_map<size_t, vector<size_t> > expression_buckets;
@@ -745,14 +963,17 @@ struct SubstitutionKey
 {
   SubstitutionKind kind = SUBSTITUTION_TYPE;
   size_t id = 0;
+  size_t secondary = 0;
 
   SubstitutionKey() {}
-  SubstitutionKey(SubstitutionKind kind_value, size_t id_value)
-    : kind(kind_value), id(id_value) {}
+  SubstitutionKey(SubstitutionKind kind_value, size_t id_value,
+                  size_t secondary_value = 0)
+    : kind(kind_value), id(id_value), secondary(secondary_value) {}
 
   bool operator==(const SubstitutionKey & other) const
   {
-    return kind == other.kind && id == other.id;
+    return kind == other.kind && id == other.id
+      && secondary == other.secondary;
   }
 };
 
@@ -760,7 +981,8 @@ struct SubstitutionHash
 {
   size_t operator()(const SubstitutionKey & key) const
   {
-    return mix_hash(static_cast<size_t>(key.kind), key.id);
+    return mix_hash(mix_hash(static_cast<size_t>(key.kind), key.id),
+                    key.secondary);
   }
 };
 
@@ -919,9 +1141,15 @@ private:
   SubstitutionKey local_lambda_key(const string & context,
                                    const string & discriminator)
   {
-    return SubstitutionKey{
-      SUBSTITUTION_LOCAL_LAMBDA,
-      graph_.strings.intern(context + "\x1f" + discriminator)};
+    return SubstitutionKey{SUBSTITUTION_LOCAL_LAMBDA,
+      graph_.strings.intern(context), graph_.strings.intern(discriminator)};
+  }
+
+  SubstitutionKey local_lambda_key(size_t context,
+                                   const string & discriminator)
+  {
+    return SubstitutionKey{SUBSTITUTION_LOCAL_LAMBDA,
+      context, graph_.strings.intern(discriminator)};
   }
 
   FunctionFacts collect_function_facts(const vector<const AbiFunctionRecord *> & records)
@@ -937,7 +1165,8 @@ private:
           component_tag_target = record;
           break;
         case ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT:
-          facts.template_arguments.push_back(graph_.resolve_argument_ref(record->argument_refs.at(0)));
+          facts.template_arguments.push_back(
+            graph_.argument_ref_at(record->argument_refs, 0));
           break;
         case ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_PREFIX:
           require(facts.template_prefix == NO_ID, "multiple ABI function-template prefixes");
@@ -1107,9 +1336,12 @@ private:
         break;
       }
       const SubstitutionKey key = type.kind == ABI_TYPE_LAMBDA_CLOSURE
-                                    ? local_lambda_key(
+                                    ? (type.context_resolved ?
+                                      local_lambda_key(type.context_identity,
+                                        graph_.strings.get(type.discriminator)) :
+                                      local_lambda_key(
                                         graph_.strings.get(type.context),
-                                        graph_.strings.get(type.discriminator))
+                                        graph_.strings.get(type.discriminator)))
                                     : type.substitution != NO_ID
                                     ? SubstitutionKey{SUBSTITUTION_EXPLICIT, type.substitution}
                                     : type.kind == ABI_TYPE_NAMED && type.tags.empty()
@@ -1687,7 +1919,10 @@ private:
     vector<size_t> operand_parameters;
     for(const AbiFunctionPathOperand & operand : target.path_operands) {
       if(operand.kind == ABI_FUNCTION_PATH_TEMPLATE_ARGUMENT) {
-        if(graph_.is_argument_definition(operand.argument_ref)) {
+        if(operand.resolved_argument != ABI_NO_RESOLVED_REFERENCE) {
+          template_arguments.push_back(
+            graph_.resolved_argument(operand.resolved_argument));
+        } else if(graph_.is_argument_definition(operand.argument_ref)) {
           template_arguments.push_back(graph_.resolve_argument_ref(operand.argument_ref));
         } else {
           AbiType type;
@@ -1910,9 +2145,7 @@ private:
     vector<size_t> arguments = facts.template_arguments;
     if(final && final->kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE) {
       arguments.clear();
-      for(const string & argument : final->argument_refs) {
-        arguments.push_back(graph_.resolve_argument_ref(argument));
-      }
+      graph_.append_argument_refs(final->argument_refs, &arguments);
     }
     if(arguments.empty()) return;
     if(facts.template_prefix != NO_ID) {
@@ -1956,7 +2189,9 @@ private:
     emit_tags(tags);
     substitutions_.add(prefix);
     output_ += 'I';
-    for(const string & argument : component.argument_refs) encode_argument(graph_.resolve_argument_ref(argument));
+    vector<size_t> arguments;
+    graph_.append_argument_refs(component.argument_refs, &arguments);
+    for(size_t argument : arguments) encode_argument(argument);
     output_ += 'E';
     if(!component.complete_substitution.empty() && component.complete_substitution != "-") {
       substitutions_.add(SubstitutionKey{SUBSTITUTION_EXPLICIT,
@@ -1982,7 +2217,9 @@ private:
   void encode_direct_local_function(const AbiFunctionTarget & target,
                                     const FunctionFacts & facts)
   {
-    encode_local_prefix(target.context_ref);
+    if(target.resolved_context != ABI_NO_RESOLVED_REFERENCE)
+      encode_local_prefix(target.resolved_context);
+    else encode_local_prefix(target.context_ref);
     output_ += 'N'; emit_qualifiers(facts.qualifiers);
     if(target.kind == ABI_FUNCTION_TARGET_LAMBDA) {
       output_ += "Ul";
@@ -1990,8 +2227,10 @@ private:
       for(const AbiType & type : target.signature_parameter_types) signature.push_back(graph_.resolve_type(type));
       encode_bare_parameters(signature, false);
       output_ += 'E' + target.discriminator + '_';
-      substitutions_.add(local_lambda_key(
-        target.context_ref, target.discriminator));
+      substitutions_.add(target.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
+        local_lambda_key(target.resolved_context_identity,
+                         target.discriminator) :
+        local_lambda_key(target.context_ref, target.discriminator));
     } else {
       output_ += source_name(target.qualified_name) + discriminator(target.discriminator);
     }
@@ -2008,7 +2247,9 @@ private:
   void encode_structured_local(const FunctionFacts & facts)
   {
     const AbiFunctionRecord & local = facts.local ? *facts.local : *facts.lambda;
-    encode_local_prefix(local.context_ref);
+    if(local.resolved_context != ABI_NO_RESOLVED_REFERENCE)
+      encode_local_prefix(local.resolved_context);
+    else encode_local_prefix(local.context_ref);
     output_ += 'N'; emit_qualifiers(facts.qualifiers);
     if(facts.lambda) {
       output_ += "Ul";
@@ -2016,8 +2257,10 @@ private:
       for(const AbiType & type : local.types) signature.push_back(graph_.resolve_type(type));
       encode_bare_parameters(signature, false);
       output_ += 'E' + local.discriminator + '_';
-      substitutions_.add(local_lambda_key(
-        local.context_ref, local.discriminator));
+      substitutions_.add(local.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
+        local_lambda_key(local.resolved_context_identity,
+                         local.discriminator) :
+        local_lambda_key(local.context_ref, local.discriminator));
     } else if(local.name.empty()) {
       output_ += "Ut";
       const size_t ordinal = static_cast<size_t>(std::stoul(local.discriminator));
@@ -2076,14 +2319,18 @@ private:
     // signature types and grow FactGraph::types.  Preserve this node instead
     // of retaining a reference into that re-entrant vector.
     const TypeNode stable = type;
-    encode_local_prefix(graph_.strings.get(stable.context));
+    if(stable.context_resolved)
+      encode_local_prefix(graph_.context_for_identity(stable.context_identity));
+    else encode_local_prefix(graph_.strings.get(stable.context));
     if(stable.kind == ABI_TYPE_LAMBDA_CLOSURE) {
       output_ += "Ul";
       encode_bare_parameters(stable.children, false);
       output_ += 'E' + graph_.strings.get(stable.discriminator) + '_';
-      substitutions_.add(local_lambda_key(
-        graph_.strings.get(stable.context),
-        graph_.strings.get(stable.discriminator)));
+      substitutions_.add(stable.context_resolved ?
+        local_lambda_key(stable.context_identity,
+          graph_.strings.get(stable.discriminator)) :
+        local_lambda_key(graph_.strings.get(stable.context),
+          graph_.strings.get(stable.discriminator)));
     } else if(stable.symbol == NO_ID) {
       output_ += "Ut";
       const size_t ordinal = static_cast<size_t>(
@@ -2100,20 +2347,30 @@ private:
   void encode_local_prefix(const string & context_id)
   {
     const AbiDefinitionRecord & definition = graph_.definition(context_id, ABI_DEFINITION_CONTEXT);
-    if(definition.context.kind == ABI_CONTEXT_RAW) {
-      output_ += definition.context.fragment;
+    encode_local_prefix(definition.context);
+  }
+
+  void encode_local_prefix(size_t context_id)
+  {
+    encode_local_prefix(graph_.context(context_id));
+  }
+
+  void encode_local_prefix(const AbiLocalContext & context)
+  {
+    if(context.kind == ABI_CONTEXT_RAW) {
+      output_ += context.fragment;
     } else {
       FunctionFacts facts;
-      facts.qualifiers = definition.context.qualifiers;
-      if(definition.context.target_signature_is_parameter_list) {
+      facts.qualifiers = context.qualifiers;
+      if(context.target_signature_is_parameter_list) {
         for(const AbiType & type :
-            definition.context.function.signature_parameter_types) {
+            context.function.signature_parameter_types) {
           facts.parameters.push_back(graph_.resolve_type(type));
         }
-        facts.variadic = definition.context.function.variadic;
+        facts.variadic = context.function.variadic;
       }
       output_ += 'Z';
-      encode_function(definition.context.function, facts);
+      encode_function(context.function, facts);
       output_ += 'E';
     }
   }
@@ -2363,6 +2620,39 @@ string AbiMangleContext::mangle_case(const AbiTypedCase & fact_case)
 size_t AbiMangleContext::resolve_type(const AbiType & type)
 {
   return impl_->graph.resolve_type(type);
+}
+
+size_t AbiMangleContext::resolve_argument(const AbiTemplateArgument & argument)
+{
+  return impl_->graph.resolve_argument_direct(argument);
+}
+
+size_t AbiMangleContext::resolve_expression(
+  const AbiDependentExpression & expression)
+{
+  return impl_->graph.resolve_expression_direct(expression);
+}
+
+size_t AbiMangleContext::store_context(const AbiLocalContext & context)
+{
+  return impl_->graph.store_context(context);
+}
+
+bool AbiMangleContext::resolved_type_uses_case_facts(size_t type) const
+{
+  return impl_->graph.type_uses_case_facts(type);
+}
+
+bool AbiMangleContext::resolved_argument_uses_case_facts(
+  size_t argument) const
+{
+  return impl_->graph.argument_uses_case_facts(argument);
+}
+
+bool AbiMangleContext::resolved_expression_uses_case_facts(
+  size_t expression) const
+{
+  return impl_->graph.expression_uses_case_facts(expression);
 }
 
 bool AbiMangleContext::find_resolved_type(size_t source, size_t function,

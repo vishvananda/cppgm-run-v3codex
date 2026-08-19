@@ -1,9 +1,116 @@
 #include "abi_mangle.h"
 
 #include <new>
+#include <stdexcept>
 #include <utility>
 
 namespace abi_mangle {
+
+AbiReferenceList::AbiReferenceList() : mode_(NAMES)
+{
+  new(&storage_.names) std::vector<std::string>();
+}
+
+AbiReferenceList::AbiReferenceList(const AbiReferenceList & other)
+  : mode_(other.mode_)
+{
+  copy(other);
+}
+
+AbiReferenceList::AbiReferenceList(AbiReferenceList && other) noexcept
+  : mode_(other.mode_)
+{
+  move(other);
+}
+
+AbiReferenceList & AbiReferenceList::operator=(const AbiReferenceList & other)
+{
+  if(this != &other) {
+    destroy();
+    mode_ = other.mode_;
+    copy(other);
+  }
+  return *this;
+}
+
+AbiReferenceList & AbiReferenceList::operator=(AbiReferenceList && other) noexcept
+{
+  if(this != &other) {
+    destroy();
+    mode_ = other.mode_;
+    move(other);
+  }
+  return *this;
+}
+
+AbiReferenceList::~AbiReferenceList()
+{
+  destroy();
+}
+
+bool AbiReferenceList::resolved() const { return mode_ == RESOLVED; }
+
+bool AbiReferenceList::empty() const
+{
+  return mode_ == NAMES ? storage_.names.empty() : storage_.resolved.empty();
+}
+
+std::size_t AbiReferenceList::size() const
+{
+  return mode_ == NAMES ? storage_.names.size() : storage_.resolved.size();
+}
+
+void AbiReferenceList::push_name(const std::string & name)
+{
+  if(mode_ != NAMES) throw std::logic_error("mixed ABI reference list");
+  storage_.names.push_back(name);
+}
+
+void AbiReferenceList::push_resolved(std::size_t id)
+{
+  if(mode_ == NAMES) {
+    if(!storage_.names.empty()) throw std::logic_error("mixed ABI reference list");
+    storage_.names.~vector<std::string>();
+    new(&storage_.resolved) std::vector<std::size_t>();
+    mode_ = RESOLVED;
+  }
+  storage_.resolved.push_back(id);
+}
+
+const std::vector<std::string> & AbiReferenceList::names() const
+{
+  if(mode_ != NAMES) throw std::logic_error("resolved ABI reference has no name");
+  return storage_.names;
+}
+
+const std::vector<std::size_t> & AbiReferenceList::resolved_ids() const
+{
+  if(mode_ != RESOLVED) throw std::logic_error("text ABI reference has no ID");
+  return storage_.resolved;
+}
+
+void AbiReferenceList::destroy()
+{
+  if(mode_ == NAMES) storage_.names.~vector<std::string>();
+  else storage_.resolved.~vector<std::size_t>();
+}
+
+void AbiReferenceList::copy(const AbiReferenceList & other)
+{
+  if(mode_ == NAMES)
+    new(&storage_.names) std::vector<std::string>(other.storage_.names);
+  else new(&storage_.resolved)
+    std::vector<std::size_t>(other.storage_.resolved);
+}
+
+void AbiReferenceList::move(AbiReferenceList & other) noexcept
+{
+  if(mode_ == NAMES)
+    new(&storage_.names) std::vector<std::string>(
+      std::move(other.storage_.names));
+  else new(&storage_.resolved) std::vector<std::size_t>(
+    std::move(other.storage_.resolved));
+}
 
 namespace {
 
@@ -19,6 +126,13 @@ std::size_t string_vector_bytes(const std::vector<std::string> & values)
   return result;
 }
 
+std::size_t reference_list_bytes(const AbiReferenceList & references)
+{
+  if(references.resolved())
+    return references.resolved_ids().capacity() * sizeof(std::size_t);
+  return string_vector_bytes(references.names());
+}
+
 std::size_t type_dynamic_bytes(const AbiType & type)
 {
   std::size_t result = text_bytes(type.name) + text_bytes(type.substitution)
@@ -30,7 +144,7 @@ std::size_t type_dynamic_bytes(const AbiType & type)
   for(const AbiTypeModifier & modifier : type.modifiers)
     result += text_bytes(modifier.array_bound.value);
   for(const AbiType & child : type.types) result += type_dynamic_bytes(child);
-  result += string_vector_bytes(type.argument_refs);
+  result += reference_list_bytes(type.argument_refs);
   result += string_vector_bytes(type.namespace_qualifiers);
   result += string_vector_bytes(type.abi_tags);
   return result;
@@ -48,7 +162,7 @@ std::size_t argument_dynamic_bytes(const AbiTemplateArgument & argument)
     + argument.parameter_types.capacity() * sizeof(AbiType);
   for(const AbiType & type : argument.parameter_types)
     result += type_dynamic_bytes(type);
-  return result + string_vector_bytes(argument.argument_refs);
+  return result + reference_list_bytes(argument.argument_refs);
 }
 
 std::size_t expression_dynamic_bytes(const AbiDependentExpression & expression)
@@ -56,8 +170,8 @@ std::size_t expression_dynamic_bytes(const AbiDependentExpression & expression)
   std::size_t result = type_dynamic_bytes(expression.type)
     + type_dynamic_bytes(expression.value_type) + text_bytes(expression.text)
     + text_bytes(expression.op) + text_bytes(expression.entity_ref)
-    + string_vector_bytes(expression.expression_refs)
-    + string_vector_bytes(expression.argument_refs)
+    + reference_list_bytes(expression.expression_refs)
+    + reference_list_bytes(expression.argument_refs)
     + expression.type_arguments.capacity() * sizeof(AbiType);
   for(const AbiType & type : expression.type_arguments)
     result += type_dynamic_bytes(type);
@@ -117,7 +231,7 @@ std::size_t function_record_dynamic_bytes(const AbiFunctionRecord & function)
     + text_bytes(function.terminal) + text_bytes(function.literal_suffix)
     + type_dynamic_bytes(function.type)
     + function.types.capacity() * sizeof(AbiType)
-    + string_vector_bytes(function.argument_refs)
+    + reference_list_bytes(function.argument_refs)
     + string_vector_bytes(function.namespace_qualifiers)
     + function.qualifiers.capacity() * sizeof(AbiFunctionQualifier);
   for(const AbiType & type : function.types) result += type_dynamic_bytes(type);
@@ -338,6 +452,7 @@ std::size_t abi_typed_case_storage_bytes(const AbiTypedCase & fact_case)
   std::size_t result = sizeof(fact_case)
     + fact_case.definitions.capacity() * sizeof(AbiDefinitionRecord)
     + fact_case.functions.capacity() * sizeof(AbiFunctionRecord)
+    + fact_case.contexts.capacity() * sizeof(AbiResolvedContextBinding)
     + target_dynamic_bytes(fact_case.target);
   for(const AbiDefinitionRecord & definition : fact_case.definitions)
     result += definition_dynamic_bytes(definition);

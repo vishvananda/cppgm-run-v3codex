@@ -42,6 +42,13 @@ vector<string> split_words(const string & line)
   return words;
 }
 
+void append_reference_names(AbiReferenceList * references,
+                            const vector<string> & words, size_t begin)
+{
+  for(size_t i = begin; i < words.size(); ++i)
+    references->push_name(words[i]);
+}
+
 void require(bool condition, const string & message)
 {
   if(!condition) {
@@ -297,7 +304,7 @@ AbiType parse_type(const vector<string> & words, size_t begin)
                                     : ABI_TYPE_TEMPLATE_PARAMETER_SPECIALIZATION;
     if(form == "template") type.name = words[begin + 1];
     else type.index = parse_index(words[begin + 1]);
-    type.argument_refs.assign(words.begin() + begin + 2, words.end());
+    append_reference_names(&type.argument_refs, words, begin + 2);
     return type;
   }
   if(form == "std-template") {
@@ -307,7 +314,7 @@ AbiType parse_type(const vector<string> & words, size_t begin)
     type.standard_substitution = words[begin + 1];
     type.standard_substitution_includes_arguments = parse_yes_no(words[begin + 2]);
     type.name = words[begin + 3];
-    type.argument_refs.assign(words.begin() + begin + 4, words.end());
+    append_reference_names(&type.argument_refs, words, begin + 4);
     return type;
   }
   if(form == "member" || form == "member-template") {
@@ -318,7 +325,7 @@ AbiType parse_type(const vector<string> & words, size_t begin)
     type.types.push_back(compact_type(words[begin + 1]));
     type.name = words[begin + 2];
     if(form == "member-template") {
-      type.argument_refs.assign(words.begin() + begin + 3, words.end());
+      append_reference_names(&type.argument_refs, words, begin + 3);
     } else {
       require(begin + 3 == words.size(), "member type has unexpected operands");
     }
@@ -566,7 +573,7 @@ AbiTemplateArgument parse_argument(const vector<string> & words)
     }
   } else if(form == "pack") {
     argument.kind = ABI_TEMPLATE_ARGUMENT_PACK;
-    argument.argument_refs.assign(words.begin() + 3, words.end());
+    append_reference_names(&argument.argument_refs, words, 3);
   } else {
     throw std::logic_error("unknown template argument form '" + form + "'");
   }
@@ -592,30 +599,30 @@ AbiDependentExpression parse_expression(const vector<string> & words)
     require(words.size() == 4 + operands, form + " expression has invalid operands");
     expression.kind = form == "unary" ? ABI_EXPRESSION_UNARY : ABI_EXPRESSION_BINARY;
     expression.op = words[3];
-    expression.expression_refs.assign(words.begin() + 4, words.end());
+    append_reference_names(&expression.expression_refs, words, 4);
   } else if(form == "conditional") {
     require(words.size() == 6, "conditional expression needs three operands");
     expression.kind = ABI_EXPRESSION_CONDITIONAL;
-    expression.expression_refs.assign(words.begin() + 3, words.end());
+    append_reference_names(&expression.expression_refs, words, 3);
   } else if(form == "pack") {
     require(words.size() == 4, "pack expression takes one operand");
     expression.kind = ABI_EXPRESSION_PACK_EXPANSION;
-    expression.expression_refs.push_back(words[3]);
+    expression.expression_refs.push_name(words[3]);
   } else if(form == "call") {
     require(words.size() >= 4, "call expression needs a callee");
     expression.kind = ABI_EXPRESSION_CALL;
-    expression.expression_refs.assign(words.begin() + 3, words.end());
+    append_reference_names(&expression.expression_refs, words, 3);
   } else if(form == "cast") {
     require(words.size() == 6, "cast expression needs operator, type, and operand");
     expression.kind = ABI_EXPRESSION_CAST;
     expression.op = words[3];
     expression.type = compact_type(words[4]);
-    expression.expression_refs.push_back(words[5]);
+    expression.expression_refs.push_name(words[5]);
   } else if(form == "template-id") {
     require(words.size() >= 4, "template-id expression needs a name");
     expression.kind = ABI_EXPRESSION_TEMPLATE_ID;
     expression.text = words[3];
-    expression.argument_refs.assign(words.begin() + 4, words.end());
+    append_reference_names(&expression.argument_refs, words, 4);
   } else if(form == "type-trait") {
     require(words.size() >= 5, "type trait needs a name and type operands");
     expression.kind = ABI_EXPRESSION_TYPE_TRAIT;
@@ -637,9 +644,9 @@ AbiDependentExpression parse_expression(const vector<string> & words)
     require(words.size() >= 6, "object member expression has invalid operands");
     expression.kind = ABI_EXPRESSION_OBJECT_MEMBER;
     expression.op = words[3];
-    expression.expression_refs.push_back(words[4]);
+    expression.expression_refs.push_name(words[4]);
     expression.text = words[5];
-    expression.argument_refs.assign(words.begin() + 6, words.end());
+    append_reference_names(&expression.argument_refs, words, 6);
   } else if(form == "entity-reference") {
     require(words.size() == 4, "entity reference takes one entity id");
     expression.kind = ABI_EXPRESSION_ENTITY;
@@ -739,11 +746,11 @@ AbiFunctionRecord parse_function_record(const vector<string> & words)
     record.complete_substitution = words[3];
     record.standard_substitution = words[4];
     record.standard_substitution_includes_arguments = parse_yes_no(words[5]);
-    record.argument_refs.assign(words.begin() + 6, words.end());
+    append_reference_names(&record.argument_refs, words, 6);
   } else if(form == "function-template-arg") {
     require(words.size() == 2, "function-template-arg takes one id");
     record.kind = ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT;
-    record.argument_refs.push_back(words[1]);
+    record.argument_refs.push_name(words[1]);
   } else if(form == "function-template-prefix") {
     require(words.size() == 2, "function-template-prefix takes one key");
     record.kind = ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_PREFIX;
@@ -865,26 +872,26 @@ string unmodified_type_text(const AbiType & type)
              + type_text(type.types.at(1));
     case ABI_TYPE_TEMPLATE_SPECIALIZATION: {
       string result = "template " + type.name;
-      for(const string & argument : type.argument_refs) result += " " + argument;
+      for(const string & argument : type.argument_refs.names()) result += " " + argument;
       return result;
     }
     case ABI_TYPE_TEMPLATE_PARAMETER_SPECIALIZATION: {
       string result = "template-param-template " + std::to_string(type.index);
-      for(const string & argument : type.argument_refs) result += " " + argument;
+      for(const string & argument : type.argument_refs.names()) result += " " + argument;
       return result;
     }
     case ABI_TYPE_STD_TEMPLATE_SPECIALIZATION: {
       string result = "std-template " + type.standard_substitution + " "
                       + (type.standard_substitution_includes_arguments ? "yes " : "no ")
                       + type.name;
-      for(const string & argument : type.argument_refs) result += " " + argument;
+      for(const string & argument : type.argument_refs.names()) result += " " + argument;
       return result;
     }
     case ABI_TYPE_MEMBER:
       return "member " + type_text(type.types.at(0)) + " " + type.name;
     case ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION: {
       string result = "member-template " + type_text(type.types.at(0)) + " " + type.name;
-      for(const string & argument : type.argument_refs) result += " " + argument;
+      for(const string & argument : type.argument_refs.names()) result += " " + argument;
       return result;
     }
     case ABI_TYPE_DECLTYPE_EXPRESSION: return "decltype " + type.expression_ref;
@@ -1025,7 +1032,7 @@ string definition_text(const AbiDefinitionRecord & definition)
     }
     if(argument.kind == ABI_TEMPLATE_ARGUMENT_PACK) {
       result += "pack";
-      for(const string & argument_ref : argument.argument_refs) result += " " + argument_ref;
+      for(const string & argument_ref : argument.argument_refs.names()) result += " " + argument_ref;
       return result;
     }
   }
@@ -1041,7 +1048,7 @@ string definition_text(const AbiDefinitionRecord & definition)
     if(expression.kind == ABI_EXPRESSION_UNARY || expression.kind == ABI_EXPRESSION_BINARY) {
       result += expression.kind == ABI_EXPRESSION_UNARY ? "unary " : "binary ";
       result += expression.op;
-      for(const string & child : expression.expression_refs) result += " " + child;
+      for(const string & child : expression.expression_refs.names()) result += " " + child;
       return result;
     }
     if(expression.kind == ABI_EXPRESSION_CONDITIONAL) result += "conditional";
@@ -1062,11 +1069,11 @@ string definition_text(const AbiDefinitionRecord & definition)
       result += "object-member " + expression.op;
     } else if(expression.kind == ABI_EXPRESSION_ENTITY) return result + "entity-reference " + expression.entity_ref;
     else throw std::logic_error("unknown expression form in canonical serializer");
-    for(const string & child : expression.expression_refs) result += " " + child;
+    for(const string & child : expression.expression_refs.names()) result += " " + child;
     if(expression.kind == ABI_EXPRESSION_OBJECT_MEMBER) result += " " + expression.text;
     if(expression.kind == ABI_EXPRESSION_TEMPLATE_ID
        || expression.kind == ABI_EXPRESSION_OBJECT_MEMBER) {
-      for(const string & argument : expression.argument_refs) result += " " + argument;
+      for(const string & argument : expression.argument_refs.names()) result += " " + argument;
     }
     return result;
   }
@@ -1166,11 +1173,11 @@ string function_record_text(const AbiFunctionRecord & function)
     string result = "name-template " + function.name + " " + function.substitution + " "
                     + function.complete_substitution + " " + function.standard_substitution
                     + " " + bool_text(function.standard_substitution_includes_arguments);
-    for(const string & argument : function.argument_refs) result += " " + argument;
+    for(const string & argument : function.argument_refs.names()) result += " " + argument;
     return result;
   }
   if(function.kind == ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_ARGUMENT) {
-    return "function-template-arg " + function.argument_refs.at(0);
+    return "function-template-arg " + function.argument_refs.names().at(0);
   }
   if(function.kind == ABI_FUNCTION_RECORD_FUNCTION_TEMPLATE_PREFIX) {
     return "function-template-prefix " + function.substitution;
