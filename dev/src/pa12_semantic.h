@@ -99,6 +99,7 @@ struct SemanticAnalysisStats
 	std::size_t syntax_name_path_direct;
 	std::size_t syntax_name_path_fallbacks;
 	std::size_t lookup_spelling_requests;
+	std::size_t semantic_integer_parses;
 	std::size_t declarator_name_requests;
 	std::size_t declarator_name_path_requests;
 	std::size_t presentation_renders[SEMANTIC_PRESENTATION_FAMILY_COUNT];

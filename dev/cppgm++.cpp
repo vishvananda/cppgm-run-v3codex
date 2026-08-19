@@ -1383,6 +1383,12 @@ void report_source_compile_stats(
 			 << semantic.syntax_name_path_fallbacks
 			 << " lookup_spelling_requests="
 			 << semantic.lookup_spelling_requests
+			 << " semantic_integer_parses="
+			 << semantic.semantic_integer_parses
+			 << " string_literal_decode_calls="
+			 << cppgm::StringLiteralDecodeCalls()
+			 << " floating_literal_parse_calls="
+			 << lowir_model::floating_literal_parse_calls()
 			 << " declarator_name_requests="
 			 << semantic.declarator_name_requests
 			 << " declarator_name_path_requests="

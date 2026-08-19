@@ -184,6 +184,7 @@ bool StringLiteralTokenEnd(const std::string& spelling, std::size_t* end)
 
 std::int64_t SemanticAnalyzer::ParseInteger(const std::string& spelling) const
 {
+	if (stats_) ++stats_->semantic_integer_parses;
 	const std::size_t quote = spelling.find('\'');
 	if (quote != std::string::npos)
 	{

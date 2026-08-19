@@ -594,6 +594,7 @@ const std::string & lowir_parameter_name(const Program & program,
 bool parse_lowir_integer_literal(const std::string & text,
                                  long long * low, std::uint64_t * high);
 LowType lowir_floating_literal_type(const std::string & text);
+std::size_t floating_literal_parse_calls();
 bool parse_lowir_floating_literal_bits(const std::string & text,
                                        const LowType & type,
                                        std::uint64_t * low,

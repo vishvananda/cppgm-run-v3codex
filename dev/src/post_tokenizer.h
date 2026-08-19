@@ -287,6 +287,7 @@ bool DecodeNarrowStringLiteralSequence(const std::string& source,
 // Decode one ordinary string-literal into typed code units, including its
 // terminating null unit.  This retains the phase-6 encoding decision for
 // semantic consumers that need array element constants.
+std::size_t StringLiteralDecodeCalls();
 bool DecodeStringLiteralCodeUnits(const std::string& source,
 	FundamentalType* type, std::vector<std::uint32_t>* units);
 

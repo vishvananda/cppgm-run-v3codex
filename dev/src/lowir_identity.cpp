@@ -329,11 +329,22 @@ LowType lowir_floating_literal_type(const std::string & text)
   return builtin_lowir_type(LTK_F64);
 }
 
+namespace
+{
+std::size_t floating_bit_parse_calls = 0;
+}
+
+std::size_t floating_literal_parse_calls()
+{
+	return floating_bit_parse_calls;
+}
+
 bool parse_lowir_floating_literal_bits(const std::string & text,
                                        const LowType & type,
                                        std::uint64_t * low,
                                        std::uint64_t * high)
 {
+  ++floating_bit_parse_calls;
   if(!low || !high) return false;
   const std::string number = unsuffixed_floating_literal(text);
   *low = 0;

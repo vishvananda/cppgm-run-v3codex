@@ -1537,9 +1537,20 @@ bool DecodeNarrowStringLiteralSequence(const std::string& source,
 	return true;
 }
 
+namespace
+{
+std::size_t string_decode_calls = 0;
+}
+
+std::size_t StringLiteralDecodeCalls()
+{
+	return string_decode_calls;
+}
+
 bool DecodeStringLiteralCodeUnits(const std::string& source,
 	FundamentalType* type, std::vector<std::uint32_t>* units)
 {
+	++string_decode_calls;
 	if (!type || !units)
 		throw std::logic_error("missing typed string literal destination");
 	std::vector<StringPart> parts;
