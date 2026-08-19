@@ -262,8 +262,7 @@ struct AbiType
   std::vector<AbiTypeModifier> modifiers;
   std::vector<AbiType> types;
   AbiReferenceList argument_refs;
-  std::vector<std::string> namespace_qualifiers;
-  std::vector<std::string> abi_tags;
+  AbiTypePresentationNames presentation_names;
 };
 
 struct AbiTemplateArgument

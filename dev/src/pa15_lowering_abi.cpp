@@ -132,17 +132,6 @@ namespace
 
 using namespace pa11;
 
-void AppendAbiTagStrings(const Program& program,
-	std::uint32_t begin, std::uint32_t count,
-	std::vector<std::string>* destination)
-{
-	if (begin > program.abi_tags.size() ||
-		count > program.abi_tags.size() - begin)
-		throw std::logic_error("invalid ABI tag fact range");
-	for (std::size_t i = 0; i < count; ++i)
-		destination->push_back(program.names.Get(program.abi_tags[begin + i]));
-}
-
 bool MakeBuiltinAbiType(const Program& program, const TypeRecord& source,
 	abi_mangle::AbiType* result)
 {
@@ -549,6 +538,17 @@ class AbiFactBuilder
 	std::size_t ResolveName(pa11::NameId name)
 	{
 		return context_->resolve_external_name(name, program_.names.Get(name));
+	}
+
+	void AppendTypeAbiTags(abi_mangle::AbiType* destination,
+		std::uint32_t begin, std::uint32_t count)
+	{
+		if (begin > program_.abi_tags.size() ||
+			count > program_.abi_tags.size() - begin)
+			throw std::logic_error("invalid ABI tag fact range");
+		for (std::size_t i = 0; i < count; ++i)
+			destination->presentation_names.push_tag_resolved(
+				ResolveName(program_.abi_tags[begin + i]));
 	}
 
 	LocalContextHandle StoreLocalContext(
@@ -1909,8 +1909,8 @@ public:
 					entity.owner, entity.identity_name) + 1;
 				AppendClassTemplateArguments(entity, function, recipe, &result);
 			}
-			AppendAbiTagStrings(program_, entity.abi_tag_begin,
-				entity.abi_tag_count, &result.abi_tags);
+			AppendTypeAbiTags(
+				&result, entity.abi_tag_begin, entity.abi_tag_count);
 			return result;
 		}
 		if (MakeBuiltinAbiType(program_, *record, &result)) return result;

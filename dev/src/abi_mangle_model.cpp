@@ -1,5 +1,6 @@
 #include "abi_mangle.h"
 
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <utility>
@@ -112,17 +113,179 @@ void AbiReferenceList::move(AbiReferenceList & other) noexcept
     std::move(other.storage_.resolved));
 }
 
+AbiTypePresentationNames::AbiTypePresentationNames()
+  : mode_(NAMES), namespace_count_(0)
+{
+  new(&storage_.names) std::vector<std::string>();
+}
+
+AbiTypePresentationNames::AbiTypePresentationNames(
+  const AbiTypePresentationNames & other)
+  : mode_(other.mode_), namespace_count_(other.namespace_count_)
+{
+  copy(other);
+}
+
+AbiTypePresentationNames::AbiTypePresentationNames(
+  AbiTypePresentationNames && other) noexcept
+  : mode_(other.mode_), namespace_count_(other.namespace_count_)
+{
+  move(other);
+}
+
+AbiTypePresentationNames & AbiTypePresentationNames::operator=(
+  const AbiTypePresentationNames & other)
+{
+  if(this != &other) {
+    destroy();
+    mode_ = other.mode_;
+    namespace_count_ = other.namespace_count_;
+    copy(other);
+  }
+  return *this;
+}
+
+AbiTypePresentationNames & AbiTypePresentationNames::operator=(
+  AbiTypePresentationNames && other) noexcept
+{
+  if(this != &other) {
+    destroy();
+    mode_ = other.mode_;
+    namespace_count_ = other.namespace_count_;
+    move(other);
+  }
+  return *this;
+}
+
+AbiTypePresentationNames::~AbiTypePresentationNames()
+{
+  destroy();
+}
+
+bool AbiTypePresentationNames::resolved() const
+{
+  return mode_ == RESOLVED;
+}
+
+bool AbiTypePresentationNames::empty() const { return size() == 0; }
+
+std::size_t AbiTypePresentationNames::size() const
+{
+  return mode_ == NAMES ? storage_.names.size() : storage_.resolved.size();
+}
+
+std::size_t AbiTypePresentationNames::namespace_size() const
+{
+  return namespace_count_;
+}
+
+std::size_t AbiTypePresentationNames::tag_size() const
+{
+  return size() - namespace_count_;
+}
+
+void AbiTypePresentationNames::push_namespace_name(const std::string & name)
+{
+  if(mode_ != NAMES) throw std::logic_error("mixed ABI presentation names");
+  if(namespace_count_ != storage_.names.size())
+    throw std::logic_error("ABI namespace name follows a tag");
+  require_namespace_capacity();
+  storage_.names.push_back(name);
+  ++namespace_count_;
+}
+
+void AbiTypePresentationNames::push_tag_name(const std::string & name)
+{
+  if(mode_ != NAMES) throw std::logic_error("mixed ABI presentation names");
+  storage_.names.push_back(name);
+}
+
+void AbiTypePresentationNames::push_namespace_resolved(std::size_t id)
+{
+  prepare_resolved();
+  if(namespace_count_ != storage_.resolved.size())
+    throw std::logic_error("ABI namespace ID follows a tag");
+  require_namespace_capacity();
+  storage_.resolved.push_back(id);
+  ++namespace_count_;
+}
+
+void AbiTypePresentationNames::push_tag_resolved(std::size_t id)
+{
+  prepare_resolved();
+  storage_.resolved.push_back(id);
+}
+
+const std::vector<std::string> & AbiTypePresentationNames::names() const
+{
+  if(mode_ != NAMES)
+    throw std::logic_error("resolved ABI presentation has no name");
+  return storage_.names;
+}
+
+const std::vector<std::size_t> &
+AbiTypePresentationNames::resolved_ids() const
+{
+  if(mode_ != RESOLVED)
+    throw std::logic_error("text ABI presentation has no ID");
+  return storage_.resolved;
+}
+
+void AbiTypePresentationNames::prepare_resolved()
+{
+  if(mode_ == RESOLVED) return;
+  if(!storage_.names.empty())
+    throw std::logic_error("mixed ABI presentation names");
+  storage_.names.~vector<std::string>();
+  new(&storage_.resolved) std::vector<std::size_t>();
+  mode_ = RESOLVED;
+}
+
+void AbiTypePresentationNames::require_namespace_capacity() const
+{
+  if(namespace_count_ == std::numeric_limits<std::uint32_t>::max())
+    throw std::runtime_error("too many ABI namespace qualifiers");
+}
+
+void AbiTypePresentationNames::destroy()
+{
+  if(mode_ == NAMES) storage_.names.~vector<std::string>();
+  else storage_.resolved.~vector<std::size_t>();
+}
+
+void AbiTypePresentationNames::copy(
+  const AbiTypePresentationNames & other)
+{
+  if(mode_ == NAMES)
+    new(&storage_.names) std::vector<std::string>(other.storage_.names);
+  else new(&storage_.resolved)
+    std::vector<std::size_t>(other.storage_.resolved);
+}
+
+void AbiTypePresentationNames::move(
+  AbiTypePresentationNames & other) noexcept
+{
+  if(mode_ == NAMES)
+    new(&storage_.names) std::vector<std::string>(
+      std::move(other.storage_.names));
+  else new(&storage_.resolved) std::vector<std::size_t>(
+    std::move(other.storage_.resolved));
+  other.namespace_count_ = 0;
+}
+
 namespace {
 
-static_assert(sizeof(AbiType) == 416,
-              "typed ABI vocabulary must not widen types");
-static_assert(sizeof(AbiTemplateArgument) == 1976,
+static_assert(sizeof(AbiTypePresentationNames) == 32,
+              "ABI presentation ranges must occupy one vector");
+static_assert(sizeof(AbiType) == 400,
+              "typed ABI presentation storage must shrink types");
+static_assert(sizeof(AbiTemplateArgument) == 1912,
               "typed ABI terminal must not widen template arguments");
-static_assert(sizeof(AbiDependentExpression) == 1056,
+static_assert(sizeof(AbiDependentExpression) == 1024,
               "typed ABI operation must not widen dependent expressions");
-static_assert(sizeof(AbiFunctionTarget) == 1104,
+static_assert(sizeof(AbiFunctionTarget) == 1072,
               "typed ABI terminal must not widen function targets");
-static_assert(sizeof(AbiFunctionRecord) == 840,
+static_assert(sizeof(AbiFunctionRecord) == 824,
               "typed ABI terminal must not widen function records");
 
 std::size_t text_bytes(const std::string & value)
@@ -144,6 +307,14 @@ std::size_t reference_list_bytes(const AbiReferenceList & references)
   return string_vector_bytes(references.names());
 }
 
+std::size_t presentation_name_bytes(
+  const AbiTypePresentationNames & names)
+{
+  if(names.resolved())
+    return names.resolved_ids().capacity() * sizeof(std::size_t);
+  return string_vector_bytes(names.names());
+}
+
 std::size_t type_dynamic_bytes(const AbiType & type)
 {
   std::size_t result = text_bytes(type.name) + text_bytes(type.substitution)
@@ -156,8 +327,7 @@ std::size_t type_dynamic_bytes(const AbiType & type)
     result += text_bytes(modifier.array_bound.value);
   for(const AbiType & child : type.types) result += type_dynamic_bytes(child);
   result += reference_list_bytes(type.argument_refs);
-  result += string_vector_bytes(type.namespace_qualifiers);
-  result += string_vector_bytes(type.abi_tags);
+  result += presentation_name_bytes(type.presentation_names);
   return result;
 }
 

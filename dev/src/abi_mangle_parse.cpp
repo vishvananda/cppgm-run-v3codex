@@ -260,7 +260,8 @@ AbiType parse_type(const vector<string> & words, size_t begin)
     AbiType type;
     type.kind = ABI_TYPE_CV;
     type.types.push_back(compact_type(words[begin + 1]));
-    type.abi_tags.assign(words.begin() + begin + 2, words.end());
+    for(size_t i = begin + 2; i < words.size(); ++i)
+      type.presentation_names.push_tag_name(words[i]);
     return type;
   }
   if(form == "vendor") {
@@ -371,7 +372,8 @@ AbiType parse_type(const vector<string> & words, size_t begin)
     AbiType type;
     type.kind = ABI_TYPE_NAMESPACE_LAMBDA;
     type.name = words[begin + 1];
-    type.namespace_qualifiers.assign(words.begin() + begin + 2, words.end());
+    for(size_t i = begin + 2; i < words.size(); ++i)
+      type.presentation_names.push_namespace_name(words[i]);
     return type;
   }
   require(begin + 1 == words.size(), "unexpected operands after compact ABI type");
@@ -859,9 +861,12 @@ string unmodified_type_text(const AbiType & type)
     case ABI_TYPE_RVALUE_REFERENCE: return "rref:" + type_text(type.types.at(0));
     case ABI_TYPE_PACK_EXPANSION: return "pack:" + type_text(type.types.at(0));
     case ABI_TYPE_CV: {
-      if(!type.abi_tags.empty() && !type.is_const && !type.is_volatile) {
+      if(type.presentation_names.tag_size() != 0 &&
+         !type.is_const && !type.is_volatile) {
         string result = "tagged " + type_text(type.types.at(0));
-        for(const string & tag : type.abi_tags) result += " " + tag;
+        const vector<string> & names = type.presentation_names.names();
+        for(size_t i = type.presentation_names.namespace_size();
+            i < names.size(); ++i) result += " " + names[i];
         return result;
       }
       string result;
@@ -929,7 +934,9 @@ string unmodified_type_text(const AbiType & type)
       return "local-type " + type.context_ref + " " + type.name + " " + type.discriminator;
     case ABI_TYPE_NAMESPACE_LAMBDA: {
       string result = "namespace-lambda " + type.name;
-      for(const string & qualifier : type.namespace_qualifiers) result += " " + qualifier;
+      const vector<string> & names = type.presentation_names.names();
+      for(size_t i = 0; i < type.presentation_names.namespace_size(); ++i)
+        result += " " + names[i];
       return result;
     }
     case ABI_TYPE_RESOLVED:

@@ -554,7 +554,16 @@ public:
       node.standard_includes_arguments = source.standard_substitution_includes_arguments;
       for(const AbiType & child : source.types) node.children.push_back(resolve_type(child));
       append_argument_refs(source.argument_refs, &node.arguments);
-      for(const string & name : source.namespace_qualifiers) node.namespaces.push_back(strings.intern(name));
+      if(source.presentation_names.resolved()) {
+        const vector<size_t> & names =
+          source.presentation_names.resolved_ids();
+        for(size_t i = 0; i < source.presentation_names.namespace_size(); ++i)
+          node.namespaces.push_back(names[i]);
+      } else {
+        const vector<string> & names = source.presentation_names.names();
+        for(size_t i = 0; i < source.presentation_names.namespace_size(); ++i)
+          node.namespaces.push_back(strings.intern(names[i]));
+      }
     }
     node.uses_case_facts = node.uses_case_facts || node.context_resolved;
     for(size_t child : node.children)
@@ -571,9 +580,19 @@ public:
       node.uses_case_facts = node.uses_case_facts
         || expressions[node.expression].uses_case_facts;
     }
-    for(const string & tag : source.abi_tags) {
-      node.tags.push_back(strings.intern(tag));
-      if(stats_) ++stats_->text_type_tags;
+    const size_t tag_begin = source.presentation_names.namespace_size();
+    if(source.presentation_names.resolved()) {
+      const vector<size_t> & names = source.presentation_names.resolved_ids();
+      for(size_t i = tag_begin; i < names.size(); ++i) {
+        node.tags.push_back(names[i]);
+        if(stats_) ++stats_->typed_type_tags;
+      }
+    } else {
+      const vector<string> & names = source.presentation_names.names();
+      for(size_t i = tag_begin; i < names.size(); ++i) {
+        node.tags.push_back(strings.intern(names[i]));
+        if(stats_) ++stats_->text_type_tags;
+      }
     }
     std::sort(node.tags.begin(), node.tags.end(), [this](size_t a, size_t b) {
       return strings.get(a) < strings.get(b);
