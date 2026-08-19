@@ -1,20 +1,24 @@
 # Typed Compiler Boundary Plan: Remove Production Text Round-Trips
 
-Status: in progress; Phase 2, the production T2x closeout, standalone PA11
-T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
-emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
-class-specialization presentation, and T4c2 typed lambda identity are
-complete; T4 through T8 are complete (T7 closed on its measured anchor
-with every decoder already shared, T8 landed the producer-identity remap
-and typed declarator publication), and only the T9 closeout dispositions
-and the final gate remain
+Status: complete.  Phases 0 through 8 are closed: T0-T3 (typed ABI and
+name paths), T4 (generated identity and lazy presentation), T5 (object-only
+presentation), T6 (operator vocabulary end to end), T7 (literal facts,
+closed on the measured anchor), T8 (spelling handoff and typed declarator
+publication), and T9 (specialized recoveries, with T9a recorded as
+unreachable pending a real trigger).  The section 19 completion gate is
+satisfied at the final tree: the five-block anchor comparison measures
+-9.67% median user (-8.89% wall, -1.63% RSS) against the immutable audit
+anchor with all twenty objects byte-exact, the full report passes
+5,218/5,218, the PA39 audit is zero-fatal, and from-scratch timed
+inception lanes match the self-built compiler at 8-way (268.03 s wall,
+224,116 KiB peak) and 32-way (242.15 s wall, 223,100 KiB peak)
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: T8b typed declarator publication;
-measurements and gates are recorded in sections 12.3 and 13.2
+Final accepted checkpoint: the completion-gate tree (sections 12.3, 13.2,
+14, and the ledger record the closing measurements)
 
 ## 1. Objective
 
@@ -2411,6 +2415,7 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
 | T7 | Literal facts close on the measured anchor | Frozen counters: 160 semantic integer parse fallbacks, 2,669 string-literal decodes through the one shared PA2 decoder, 3 floating bit parses; no dual decoder implementations exist; side-arena publication declined under section 18 at these counts | Not timed; measurement-only closure | Frozen object exact with counters enabled | Full report 5,218/5,218 | Counter anchor accepted; measured disposition recorded |
 | T8a | Remap emitted spellings by producer identity | Token-spelling interns 490,862 -> 275,691; interner calls -215,171; hashed bytes -1,624,017; distinct misses unchanged; per-producer classification cache added in post-tokenization | Three A/B/B/A blocks against immutable T6e: paired -0.58% user, -0.21% wall, -0.10% RSS | Frozen object byte-exact in stats and all timed runs | Full report 5,218/5,218; zero-fatal audit | Accepted |
+| Final gate | Section 19 completion at the final tree | All phase counters and dispositions recorded; the frozen compile beats the immutable anchor by 9.67% median user over five clean blocks with every object byte-exact; RSS improves 1.63% | 8-way inception: 268.03 s wall, 2,230.18 s user, 224,116 KiB peak; 32-way: 242.15 s wall, 1,817.16 s user, 223,100 KiB peak; both report `MATCH cppgm++` from scratch | Deterministic, byte-exact self-host | Full report 5,218/5,218; zero-fatal audit with 27 warnings | Complete |
 | T8b | Publish declarator name facts by text identity | Interner calls fall further to 965,487 and hashed bytes to 8,862,861; declarator, parameter, condition, template-parameter, range-for, and structured-binding publication carry the already-interned payload IDs; serialized payloads and the operator-spacing adjustment stay explicit boundaries | Three A/B/B/A blocks against immutable T8a: paired -0.94% user, -0.84% wall, -0.20% RSS | Frozen object byte-exact in stats and all timed runs | Full report 5,218/5,218; zero-fatal audit | Accepted |
 | T9 | Secondary specialized text parsers use retained typed facts | Planned | Planned | Per-item decision | Earliest owner per item | Planned |
 
@@ -2469,8 +2474,8 @@ measurement; do not silently skip an unresolved closeout gate.
 | 21 | T6 operator and fixed-vocabulary enums (complete on the integrated path) | Packed `SimpleTokenKind` flows classification -> semantics -> `DumpNode` -> lowering; zero integrated prefix strips and spelling dispatch; residual text is classified adapters (declared-operator mapping, `"[]"` pseudo-spelling, GNU extensions, standalone PA11 input parsing) | Anchor `88c2e583`; transport/lowering `5e9f3ce5`; semantic dispatch `a3150b62` |
 | 22 | T7 literal and scalar facts (closed on measured anchor) | Counters: 160 integer fallbacks, 2,669 string decodes, 3 floating parses on the frozen compile; every family already uses one shared decoder at classified consumers; further conversion declined under section 18 at these counts | Counter anchor committed; ledger records the measured disposition |
 | 23 | T8 spelling and parser identity handoff (complete) | Producer-identity remap and classification cache (T8a) plus typed declarator/name-fact publication (T8b): interner calls fall 1,250,480 -> 965,487 and hashed bytes 11,268,863 -> 8,862,861 on the frozen compile, objects byte-exact, both suites green | T8a and T8b commits accepted; ledger recorded |
-| 24 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
-| 25 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
+| 24 | T9 specialized recovery and final source audit (complete) | T9a recorded unreachable with the typed recipe documented; T9b payload compares classified; T9c/T9d closed by T6/T7 and T4/T6; T9e closing audit: 22/237/80/87 candidates, all classified | Dispositions committed; section 14 records the registry closure |
+| 25 | Final gate (complete) | Five-block anchor: -9.67% user, -8.89% wall, -1.63% RSS, 20/20 objects exact; full report 5,218/5,218; zero-fatal audit; from-scratch timed inception matches at 8-way (268.03 s wall, 224,116 KiB) and 32-way (242.15 s wall, 223,100 KiB) | Final ledger commit |
 
 At every row, the fastest iteration signal is the PA-selected
 `make test-report ACTIVE_TEST_REPORT_PAS='...'` form.  Root `make test-report`
