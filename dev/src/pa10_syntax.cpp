@@ -1385,10 +1385,11 @@ NodeId Parser::ParsePrimaryExpression()
 		 IsFundamentalKind(tokens_[position_].Kind())))
 	{
 		std::string name;
+		const std::size_t first = position_;
 		if (position_ < tokens_.size() &&
 			IsFundamentalKind(tokens_[position_].Kind()))
 		{
-			const std::size_t first = position_++;
+			++position_;
 			while (position_ < tokens_.size() &&
 				IsFundamentalKind(tokens_[position_].Kind())) ++position_;
 			for (std::size_t i = first; i < position_; ++i)
@@ -1403,7 +1404,11 @@ NodeId Parser::ParsePrimaryExpression()
 			if (!ParseName(&name, true, true, true, &structure)) return kNoNode;
 			return MakeStructuredNode("id-expression", name, structure);
 		}
-		return arena_.Make("id-expression", name);
+		const NodeId expression = arena_.Make("id-expression", name);
+		const TextId semantic_name = position_ == first + 1 ?
+			tokens_[first].spelling : strings_.Intern(name);
+		arena_.SetSemanticPayload(expression, semantic_name);
+		return expression;
 	}
 	return kNoNode;
 }
