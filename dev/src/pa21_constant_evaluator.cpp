@@ -1578,7 +1578,8 @@ bool SemanticAnalyzer::EvaluateConstexprDeclaration(NodeId node, ScopeId scope)
 		{
 			const NodeId target = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_TARGET);
 			const ScopeId target_scope = target == kNoNode ? kNoScope :
-				ResolveScopeSpelling(scope, arena_->Payload(target));
+				ResolveScopeSpelling(scope, arena_->Payload(target),
+					NAME_PATH_PARSE_LITERAL);
 			if (target_scope == kNoScope)
 				throw std::runtime_error(
 					"constexpr using namespace target not found");

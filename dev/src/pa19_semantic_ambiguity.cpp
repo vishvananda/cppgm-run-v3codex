@@ -23,7 +23,8 @@ bool SemanticAnalyzer::FunctionalCastPrecedesFunctions(
 		if (GetFunction(candidates[i]).member_owner != kNoType)
 			return false;
 	const LookupResult type_lookup = syntax == kNoNode ?
-		LookupSpelling(scope, spelling, LOOKUP_TYPE) :
+		LookupSpelling(scope, spelling, LOOKUP_TYPE,
+			NAME_PATH_PARSE_AMBIGUITY) :
 		LookupSyntaxName(syntax, scope, LOOKUP_TYPE);
 	ScopeId type_owner = kNoScope;
 	if (type_lookup.type_declaration != kNoBinding)
@@ -229,7 +230,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
 		return false;
 
 	const LookupResult sized = LookupSpelling(
-		scope, sized_name, LOOKUP_ORDINARY);
+		scope, sized_name, LOOKUP_ORDINARY, NAME_PATH_PARSE_AMBIGUITY);
 	if (sized.ordinary == kNoBinding) return false;
 	const TypeId sized_type = EffectiveType(
 		program_->bindings[sized.ordinary].type);
@@ -240,7 +241,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
 	const std::size_t no_pattern =
 		std::numeric_limits<std::size_t>::max();
 	const std::size_t carrier_pattern = FindClassTemplate(
-		scope, ParseNamePath(carrier_name));
+		scope, ParseNamePath(carrier_name, NAME_PATH_PARSE_AMBIGUITY));
 	if (carrier_pattern == no_pattern ||
 		class_templates_[carrier_pattern].parameters.size() != 1 ||
 		class_templates_[carrier_pattern].parameters[0].kind !=
@@ -266,7 +267,7 @@ bool SemanticAnalyzer::AnalyzeAmbiguousRelationalDeclaration(
 	const std::int64_t outer_value = value_record.value < relation_value;
 
 	const std::size_t outer_pattern = FindClassTemplate(
-		scope, ParseNamePath(outer_name));
+		scope, ParseNamePath(outer_name, NAME_PATH_PARSE_AMBIGUITY));
 	if (outer_pattern == no_pattern ||
 		class_templates_[outer_pattern].parameters.size() != 1 ||
 		class_templates_[outer_pattern].parameters[0].kind !=

@@ -1267,6 +1267,33 @@ void report_source_compile_stats(
 			 << semantic.name_path_parse_components
 			 << " name_path_single_component="
 			 << semantic.name_path_single_component_parses
+			 << " name_path_parse_syntax_fallbacks="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_SYNTAX_FALLBACK]
+			 << " name_path_parse_declarations="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_DECLARATION]
+			 << " name_path_parse_calls="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_CALL]
+			 << " name_path_parse_literals="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_LITERAL]
+			 << " name_path_parse_templates="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_TEMPLATE]
+			 << " name_path_parse_friends="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_FRIEND]
+			 << " name_path_parse_generated_library="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_GENERATED_LIBRARY]
+			 << " name_path_parse_semantic_id_recovery="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_SEMANTIC_ID_RECOVERY]
+			 << " name_path_parse_ambiguity="
+			 << semantic.name_path_parse_families[
+				cppgm::NAME_PATH_PARSE_AMBIGUITY]
 			 << " structured_name_paths="
 			 << semantic.structured_name_path_requests
 			 << " syntax_name_paths="

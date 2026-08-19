@@ -9,9 +9,14 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
-NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling)
+NamePath SemanticAnalyzer::ParseNamePath(const std::string& spelling,
+	NamePathParseFamily family)
 {
-	if (stats_) ++stats_->name_path_parse_requests;
+	if (stats_)
+	{
+		++stats_->name_path_parse_requests;
+		++stats_->name_path_parse_families[family];
+	}
 	NamePath result;
 	std::size_t first = 0;
 	result.global = spelling.size() >= 2 && spelling[0] == ':' &&
@@ -106,7 +111,8 @@ NamePath SemanticAnalyzer::SyntaxNamePath(NodeId syntax)
 		return path;
 	}
 	if (stats_) ++stats_->syntax_name_path_fallbacks;
-	return syntax == kNoNode ? path : ParseNamePath(PayloadSource(syntax));
+	return syntax == kNoNode ? path : ParseNamePath(
+		PayloadSource(syntax), NAME_PATH_PARSE_SYNTAX_FALLBACK);
 }
 
 LookupResult SemanticAnalyzer::LookupSyntaxName(NodeId syntax, ScopeId scope,
@@ -121,17 +127,18 @@ LookupResult SemanticAnalyzer::LookupSyntaxName(NodeId syntax, ScopeId scope,
 }
 
 LookupResult SemanticAnalyzer::LookupSpelling(ScopeId scope,
-	const std::string& spelling, LookupKind kind)
+	const std::string& spelling, LookupKind kind,
+	NamePathParseFamily family)
 {
 	if (stats_) ++stats_->lookup_spelling_requests;
-	return LookupPath(scope, ParseNamePath(spelling), kind);
+	return LookupPath(scope, ParseNamePath(spelling, family), kind);
 }
 
 ScopeId SemanticAnalyzer::ResolveScopeSpelling(ScopeId scope,
-	const std::string& spelling)
+	const std::string& spelling, NamePathParseFamily family)
 {
 	const LookupResult result =
-		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER);
+		LookupSpelling(scope, spelling, LOOKUP_SCOPE_CARRIER, family);
 	if (result.type != kNoType) EnsureClassDefinition(result.type);
 	return result.name_space != kNoScope ? result.name_space :
 		result.type != kNoType ? program_->ScopeForType(result.type) : kNoScope;

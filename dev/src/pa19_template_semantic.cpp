@@ -1355,7 +1355,7 @@ std::size_t SemanticAnalyzer::FindClassTemplateIndex(
 std::size_t SemanticAnalyzer::FindClassTemplate(ScopeId scope,
 	const std::string& spelling)
 {
-	const NamePath path = ParseNamePath(spelling);
+	const NamePath path = ParseNamePath(spelling, NAME_PATH_PARSE_TEMPLATE);
 	return FindClassTemplate(scope, path);
 }
 

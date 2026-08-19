@@ -170,7 +170,8 @@ bool SemanticAnalyzer::HasDependentQualifiedType(NodeId node,
 		if (!components.empty() && IsUnqualifiedAliasTemplateName(scope, path))
 		{
 			const LookupResult marker = LookupSpelling(
-				scope, program_->names.Get(path.Last()), LOOKUP_TYPE);
+				scope, program_->names.Get(path.Last()), LOOKUP_TYPE,
+				NAME_PATH_PARSE_SEMANTIC_ID_RECOVERY);
 			const std::size_t alias = FindAliasTemplateIndex(marker, path.Last());
 			if (alias < alias_templates_.size())
 			{

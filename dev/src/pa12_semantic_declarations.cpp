@@ -122,7 +122,8 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			<< '_' << arena_->TokenLast(node);
 		spelling = generated.str();
 	}
-	const NamePath path = ParseNamePath(spelling);
+	const NamePath path = ParseNamePath(
+		spelling, NAME_PATH_PARSE_DECLARATION);
 	const NameId name = path.Last();
 	const NameId lookup_name = specialization_lookup_name == 0 ?
 		name : specialization_lookup_name;
@@ -1493,7 +1494,8 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 	}
 	const bool scoped = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_KEY) != kNoNode;
 	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
-	const NamePath path = ParseNamePath(spelling);
+	const NamePath path = ParseNamePath(
+		spelling, NAME_PATH_PARSE_DECLARATION);
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("enum owner not found");
@@ -1996,7 +1998,8 @@ std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,
 						const bool identifier = syntax_spelling.compare(
 							0, 14, "TT_IDENTIFIER:") == 0;
 						const LookupResult type_name = identifier ?
-							LookupSpelling(parameter_scope, spelling, LOOKUP_TYPE) :
+							LookupSpelling(parameter_scope, spelling, LOOKUP_TYPE,
+								NAME_PATH_PARSE_DECLARATION) :
 							LookupResult();
 						if (identifier && type_name.type == kNoType)
 						{
@@ -2098,7 +2101,8 @@ DeclaratorInfo SemanticAnalyzer::BuildDeclarator(NodeId node, TypeId base,
 				const NodeId owner_syntax = FindChild(child, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 				const TypeId owner = owner_syntax == kNoNode ? LookupSpelling(
 					scope, operation.substr(0, operation.size() - 3),
-					LOOKUP_TYPE).type : ResolveStructuredTypeName(owner_syntax, scope);
+					LOOKUP_TYPE, NAME_PATH_PARSE_DECLARATION).type :
+					ResolveStructuredTypeName(owner_syntax, scope);
 				if (owner == kNoType)
 					type = CandidateTypeFormation(
 						kNoType, "member pointer owner not found");
@@ -2434,7 +2438,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	const std::string target = arena_->Payload(target_node);
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_NAMESPACE_ALIAS_DEFINITION))
 	{
-		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
+		const ScopeId target_scope = ResolveScopeSpelling(
+			scope, target, NAME_PATH_PARSE_DECLARATION);
 		if (target_scope == kNoScope)
 			throw std::runtime_error("namespace alias target not found");
 		program_->AddNamespaceAlias(scope,
@@ -2443,7 +2448,8 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	}
 	if (arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
-		const ScopeId target_scope = ResolveScopeSpelling(scope, target);
+		const ScopeId target_scope = ResolveScopeSpelling(
+			scope, target, NAME_PATH_PARSE_DECLARATION);
 		if (target_scope == kNoScope)
 			throw std::runtime_error("using namespace target not found");
 		program_->AddUsingEdge(scope, target_scope);

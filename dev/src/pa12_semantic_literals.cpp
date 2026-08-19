@@ -744,7 +744,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 		else found = LookupStructuredName(syntax, scope, LOOKUP_ORDINARY);
 	}
 	else found = syntax == kNoNode ?
-		LookupSpelling(scope, spelling, LOOKUP_ORDINARY) :
+		LookupSpelling(scope, spelling, LOOKUP_ORDINARY,
+			NAME_PATH_PARSE_LITERAL) :
 		LookupSyntaxName(syntax, scope, LOOKUP_ORDINARY);
 	if (found.ordinary == kNoBinding)
 	{
@@ -773,7 +774,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeNamedValue(
 			break;
 		}
 		found = syntax == kNoNode ?
-			LookupSpelling(scope, spelling, LOOKUP_ORDINARY) :
+			LookupSpelling(scope, spelling, LOOKUP_ORDINARY,
+				NAME_PATH_PARSE_LITERAL) :
 			LookupSyntaxName(syntax, scope, LOOKUP_ORDINARY);
 		if (found.ordinary == kNoBinding)
 			throw std::runtime_error(

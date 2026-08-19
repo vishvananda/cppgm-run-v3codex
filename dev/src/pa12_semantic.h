@@ -11,6 +11,20 @@
 namespace cppgm
 {
 
+enum NamePathParseFamily
+{
+	NAME_PATH_PARSE_SYNTAX_FALLBACK,
+	NAME_PATH_PARSE_DECLARATION,
+	NAME_PATH_PARSE_CALL,
+	NAME_PATH_PARSE_LITERAL,
+	NAME_PATH_PARSE_TEMPLATE,
+	NAME_PATH_PARSE_FRIEND,
+	NAME_PATH_PARSE_GENERATED_LIBRARY,
+	NAME_PATH_PARSE_SEMANTIC_ID_RECOVERY,
+	NAME_PATH_PARSE_AMBIGUITY,
+	NAME_PATH_PARSE_FAMILY_COUNT
+};
+
 namespace pa12_semantic_detail
 {
 class SemanticGraphConsumer;
@@ -29,9 +43,9 @@ struct SemanticAnalysisStats
 	std::size_t scopes;
 	std::size_t declarations;
 	std::size_t expressions;
-	std::size_t name_path_parse_requests;
-	std::size_t name_path_parse_components;
+	std::size_t name_path_parse_requests, name_path_parse_components;
 	std::size_t name_path_single_component_parses;
+	std::size_t name_path_parse_families[NAME_PATH_PARSE_FAMILY_COUNT];
 	std::size_t structured_name_path_requests;
 	std::size_t syntax_name_path_requests;
 	std::size_t syntax_name_path_direct;

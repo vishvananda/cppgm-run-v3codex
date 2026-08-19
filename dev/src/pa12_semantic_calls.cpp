@@ -1520,9 +1520,9 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	if (specialization != kNoType) return specialization;
 	if (structure != kNoNode) return kNoType;
 	const NamePath path = syntax == kNoNode ?
-		ParseNamePath(spelling) : SyntaxNamePath(syntax);
+		ParseNamePath(spelling, NAME_PATH_PARSE_CALL) : SyntaxNamePath(syntax);
 	const LookupResult named = syntax == kNoNode ?
-		LookupSpelling(scope, spelling, LOOKUP_TYPE) :
+		LookupSpelling(scope, spelling, LOOKUP_TYPE, NAME_PATH_PARSE_CALL) :
 		LookupPath(scope, path, LOOKUP_TYPE);
 	if (named.type != kNoType && !path.Empty() && !path.global &&
 		path.Size() == 1)
@@ -1555,7 +1555,8 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 		spelling[spelling.size() - 1] == ')')
 	{
 		const LookupResult operand = LookupSpelling(scope,
-			spelling.substr(9, spelling.size() - 10), LOOKUP_ORDINARY);
+			spelling.substr(9, spelling.size() - 10), LOOKUP_ORDINARY,
+			NAME_PATH_PARSE_CALL);
 		if (operand.ordinary != kNoBinding)
 			return program_->bindings[operand.ordinary].type;
 	}
@@ -1666,7 +1667,8 @@ bool SemanticAnalyzer::AnalyzeDirectMemberCall(NodeId callee, ScopeId scope,
 		while (target_first < member_spelling.size() &&
 			member_spelling[target_first] == ' ') ++target_first;
 		const LookupResult requested = LookupSpelling(scope,
-			member_spelling.substr(target_first), LOOKUP_TYPE);
+			member_spelling.substr(target_first), LOOKUP_TYPE,
+			NAME_PATH_PARSE_CALL);
 		std::vector<BindingId> conversions;
 		AppendConversionFunctions(entity, &conversions);
 		for (std::size_t i = 0; requested.type != kNoType &&
@@ -1831,7 +1833,7 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	if (entity == kNoEntity)
 	{
 		const LookupResult named = LookupSpelling(scope, spelling.substr(1),
-			LOOKUP_TYPE);
+			LOOKUP_TYPE, NAME_PATH_PARSE_CALL);
 		if (named.type == kNoType ||
 			program_->types.RemoveTopCv(EffectiveType(named.type)) != destroyed_type)
 			throw std::runtime_error("pseudo-destructor type mismatch");
@@ -1852,7 +1854,8 @@ bool SemanticAnalyzer::AnalyzeExplicitDestructorCall(NodeId callee,
 	const BindingId destructor = DestructorForType(destroyed_type);
 	const NodeId structure = FindChild(identifier, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
 	NamePath destructor_path = structure == kNoNode ?
-		ParseNamePath(spelling.substr(1)) : StructuredNamePath(structure);
+		ParseNamePath(spelling.substr(1), NAME_PATH_PARSE_CALL) :
+		StructuredNamePath(structure);
 	if (structure != kNoNode && !destructor_path.Empty())
 	{
 		const std::string terminal = program_->names.Get(destructor_path.Last());
@@ -2055,7 +2058,8 @@ std::vector<BindingId> SemanticAnalyzer::FunctionCandidates(ScopeId scope,
 		return explicit_candidates;
 	}
 	const LookupResult found = syntax == kNoNode ?
-		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY) :
+		LookupSpelling(scope, lookup_name, LOOKUP_ORDINARY,
+			NAME_PATH_PARSE_CALL) :
 		LookupSyntaxName(syntax, scope, LOOKUP_ORDINARY);
 	if (naming_class) *naming_class = found.naming_class;
 	if (found.ordinary == kNoBinding) return std::vector<BindingId>();

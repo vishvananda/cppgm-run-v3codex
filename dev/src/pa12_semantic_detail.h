@@ -223,7 +223,8 @@ private:
 	bool HasDeclSpecifier(NodeId specifiers, const char* spelling) const;
 	NodeId FirstSemanticChild(NodeId node) const;
 	const std::string& PayloadSource(NodeId node) const;
-	NamePath ParseNamePath(const std::string& spelling);
+	NamePath ParseNamePath(const std::string& spelling,
+		NamePathParseFamily family);
 	LookupResult LookupPath(ScopeId scope, const NamePath& path,
 		LookupKind kind);
 	LookupResult LookupStructuredName(NodeId syntax, ScopeId scope,
@@ -238,8 +239,9 @@ private:
 	LookupResult LookupSyntaxName(NodeId syntax, ScopeId scope,
 		LookupKind kind);
 	LookupResult LookupSpelling(ScopeId scope, const std::string& spelling,
-		LookupKind kind);
-	ScopeId ResolveScopeSpelling(ScopeId scope, const std::string& spelling);
+		LookupKind kind, NamePathParseFamily family);
+	ScopeId ResolveScopeSpelling(ScopeId scope, const std::string& spelling,
+		NamePathParseFamily family);
 	ScopeId ResolveOwner(ScopeId scope, const NamePath& name);
 	const std::string& ScopePrefix(ScopeId scope);
 	NameId ScopePrefixId(ScopeId scope);

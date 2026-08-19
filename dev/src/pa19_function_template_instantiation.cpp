@@ -1266,7 +1266,7 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 std::vector<std::size_t> SemanticAnalyzer::FindFunctionTemplates(
 	ScopeId scope, const std::string& spelling)
 {
-	NamePath path = ParseNamePath(spelling);
+	NamePath path = ParseNamePath(spelling, NAME_PATH_PARSE_TEMPLATE);
 	if (path.Empty()) return std::vector<std::size_t>();
 	return FindFunctionTemplates(scope, path);
 }
@@ -1319,7 +1319,7 @@ std::vector<std::size_t> SemanticAnalyzer::FindStructuredFunctionTemplates(
 std::vector<ScopeId> SemanticAnalyzer::FindFunctionTemplateOwners(
 	ScopeId scope, const std::string& spelling)
 {
-	NamePath path = ParseNamePath(spelling);
+	NamePath path = ParseNamePath(spelling, NAME_PATH_PARSE_TEMPLATE);
 	if (path.Empty()) return std::vector<ScopeId>();
 	return FindFunctionTemplateOwners(scope, path);
 }

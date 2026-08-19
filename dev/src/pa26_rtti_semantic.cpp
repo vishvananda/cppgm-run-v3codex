@@ -34,7 +34,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeTypeid(NodeId node, ScopeId scope)
 {
 	const bool enclosing_unevaluated = unevaluated_depth_ != 0;
 	const LookupResult type_info = LookupSpelling(
-		scope, "::std::type_info", LOOKUP_TYPE);
+		scope, "::std::type_info", LOOKUP_TYPE,
+		NAME_PATH_PARSE_GENERATED_LIBRARY);
 	if (type_info.type == kNoType)
 		throw std::runtime_error("typeid requires std::type_info");
 	const TypeId result_type = program_->types.Qualify(

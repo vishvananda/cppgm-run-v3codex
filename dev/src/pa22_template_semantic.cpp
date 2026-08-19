@@ -1582,7 +1582,8 @@ bool SemanticAnalyzer::IsUnqualifiedAliasTemplateName(
 {
 	if (path.Empty() || path.global || path.Size() != 1) return false;
 	const LookupResult marker = LookupSpelling(
-		scope, program_->names.Get(path.Last()), LOOKUP_TYPE);
+		scope, program_->names.Get(path.Last()), LOOKUP_TYPE,
+		NAME_PATH_PARSE_SEMANTIC_ID_RECOVERY);
 	return FindAliasTemplateIndex(marker, path.Last()) !=
 		NoAliasTemplatePattern();
 }

@@ -1583,7 +1583,8 @@ void SemanticAnalyzer::DeduceFunctionTemplates(ScopeId scope,
 	if (!structured_explicit) structured_base = StructuredNamePath(syntax);
 	const bool structured_name = !structured_base.Empty();
 	const NamePath path = structured_name ? structured_base :
-		syntax == kNoNode ? ParseNamePath(spelling) : SyntaxNamePath(syntax);
+		syntax == kNoNode ? ParseNamePath(
+			spelling, NAME_PATH_PARSE_TEMPLATE) : SyntaxNamePath(syntax);
 	const NameId name = path.Last();
 	if (name == 0) return;
 	const std::vector<ScopeId> visible_owners =

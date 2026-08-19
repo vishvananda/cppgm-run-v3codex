@@ -189,6 +189,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  parse_nanoseconds(0), analysis_nanoseconds(0), render_nanoseconds(0),
 	  elapsed_nanoseconds(0)
 {
+	for (std::size_t i = 0; i < NAME_PATH_PARSE_FAMILY_COUNT; ++i)
+		name_path_parse_families[i] = 0;
 }
 
 }

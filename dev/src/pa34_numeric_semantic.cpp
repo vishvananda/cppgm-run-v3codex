@@ -103,7 +103,8 @@ TypeId SemanticAnalyzer::ApplyGnuVectorAttributes(
 				throw std::runtime_error(
 					"GNU vector_size requires an integer literal");
 			const LookupResult found = LookupSpelling(
-				scope, arena_->SemanticPayload(argument), LOOKUP_ORDINARY);
+				scope, arena_->SemanticPayload(argument), LOOKUP_ORDINARY,
+				NAME_PATH_PARSE_SEMANTIC_ID_RECOVERY);
 			if (found.ordinary == kNoBinding ||
 				found.ordinary >= program_->bindings.size())
 				throw std::runtime_error(

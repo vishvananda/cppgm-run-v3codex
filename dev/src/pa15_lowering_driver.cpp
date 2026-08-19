@@ -233,6 +233,10 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 	target->name_path_parse_components += source.name_path_parse_components;
 	target->name_path_single_component_parses +=
 		source.name_path_single_component_parses;
+	for (std::size_t family = 0; family < NAME_PATH_PARSE_FAMILY_COUNT;
+		++family)
+		target->name_path_parse_families[family] +=
+			source.name_path_parse_families[family];
 	target->structured_name_path_requests +=
 		source.structured_name_path_requests;
 	target->syntax_name_path_requests += source.syntax_name_path_requests;

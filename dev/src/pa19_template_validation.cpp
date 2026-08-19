@@ -886,7 +886,8 @@ void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
 	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_USING_DIRECTIVE))
 	{
 		const ScopeId target_scope = analyzer_.ResolveScopeSpelling(
-			scopes_[scope].semantic_scope, target);
+			scopes_[scope].semantic_scope, target,
+			NAME_PATH_PARSE_TEMPLATE);
 		if (target_scope == kNoScope)
 			throw std::runtime_error("retained using namespace target not found");
 		analyzer_.program_->AddUsingEdge(
