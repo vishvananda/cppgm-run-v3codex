@@ -663,7 +663,7 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 
 | ID | Hypothesis / representation change | Structural result | Frozen median user / wall / RSS | Output and fixture effect | Tests and audit | Commit / disposition |
 | --- | --- | --- | --- | --- | --- | --- |
-| T0 | Immutable audit baseline and durable counters | Planned | Planned | Reconfirm 4,415,448 bytes and baseline SHA | Counter tests; zero-fatal audit | Planned |
+| T0 | Immutable audit baseline and durable semantic-name counters | 892,548 path parses, 894,041 components, 891,063 single-component parses, 314,951 structured paths, 245,943 spelling lookups, 481,558 declarator-name requests, and 537,588 declarator-path walks | Two A/A ABBA blocks: 4.750 s median user, 5.250-5.255 s wall, and 364,248-364,716 KiB RSS; stats run 4.84 s user / 5.36 s wall | Exact 4,415,448-byte object and SHA-256 `d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f` | Full report 5,210/5,210; zero-fatal audit with 26 warnings | `bfca2d7d`; accepted measurement-only anchor |
 | T1 | Terminal `NameId` avoids full declarator path parsing | Planned | Planned | Exact expected | PA10/PA12 owners plus full report | Planned |
 | T2 | Structured/one-component syntax paths replace ordinary `ParseNamePath` | Planned | Planned | Exact expected | Earliest semantic/template owners | Planned |
 | T3 | Typed translation-unit ABI context replaces production fact files | Planned | Planned | Exact mangles, symbols, binding, and object behavior | PA14/15/23/32 plus full report | Planned |
