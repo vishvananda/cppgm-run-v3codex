@@ -276,6 +276,8 @@ private:
 	}
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
+	ScopeId NewNamedScope(ScopeId parent, ScopeKind kind, NameId lookup_name,
+		ScopeId presentation_owner, NameId presentation_name);
 	void InitializeInitializerListLifetimeScope(ScopeId scope, ScopeId parent);
 	bool HasInternalLinkageScope(ScopeId scope) const;
 	bool IsDeclaration(NodeId node) const;

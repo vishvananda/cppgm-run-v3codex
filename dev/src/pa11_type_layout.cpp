@@ -74,7 +74,7 @@ std::size_t Program::SizeOf(TypeId type) const
 			if (!entity.complete)
 			{
 				std::string message = std::string("incomplete named type: ") +
-					names.Get(entity.name) + " (" +
+					RenderEntityEmissionName(record.entity) + " (" +
 					names.Get(entity.identity_name) + ")";
 				if (entity.template_argument_count != 0)
 				{
@@ -152,7 +152,7 @@ std::size_t Program::AlignOf(TypeId type) const
 		const EntityRecord& entity = entities[record->entity];
 		if (!entity.complete)
 			throw std::runtime_error(std::string("incomplete named type: ") +
-				names.Get(entity.name) + " (" +
+				RenderEntityEmissionName(record->entity) + " (" +
 				names.Get(entity.identity_name) + ")");
 		if (entity.flavor == NAMED_ENUM || entity.flavor == NAMED_ENUM_CLASS)
 			alignment = AlignOf(entity.underlying);

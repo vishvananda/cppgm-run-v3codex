@@ -545,8 +545,8 @@ private:
 
 	std::string ClassStem(EntityId entity) const
 	{
-		std::string spelling = program_.names.Get(
-			program_.entities[entity].name);
+		std::string spelling =
+			program_.RenderEntityEmissionName(entity);
 		const char* dependent_prefixes[] = {
 			"template parameter ", "template_parameter_"
 		};

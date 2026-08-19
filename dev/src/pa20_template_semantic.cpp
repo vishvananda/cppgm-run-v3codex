@@ -208,7 +208,7 @@ std::string ExplicitArgumentPresentation(const Program& program,
 		return argument.value == 0 ? "false" : "true";
 	if (record.kind == TYPE_NAMED && record.entity != kNoEntity &&
 		program.entities[record.entity].flavor == NAMED_ENUM)
-		return "(" + program.names.Get(program.entities[record.entity].name) +
+		return "(" + program.RenderEntityEmissionName(record.entity) +
 			")" + std::to_string(argument.value);
 	return std::to_string(argument.value);
 }

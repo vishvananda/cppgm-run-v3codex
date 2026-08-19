@@ -142,11 +142,11 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	{
 		if ((path.global || path.Size() > 1) && elaborated)
 			throw std::runtime_error("qualified class was not declared");
-		const NameId entity_name = EmissionName(owner, name);
-		entity = program_->NewEntity(entity_name, flavor, false,
+		entity = program_->NewEntity(name, flavor, false,
 			kNoType, owner, specialization_identity == 0 ?
 				(typedef_linkage_name == 0 ? name : typedef_linkage_name) :
-				specialization_identity);
+				specialization_identity,
+			ENTITY_EMISSION_OWNER_QUALIFIED);
 		const BindingId local_context = LocalTypeContext(
 			*program_, owner, current_function_context_);
 		if (program_->entities[entity].enclosing_class == kNoEntity &&
@@ -316,7 +316,7 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		if (program_->entities[entity].complete &&
 			!InitializerListDefinitionReplayInProgress(entity))
 			throw std::runtime_error("duplicate class definition: " +
-				program_->names.Get(program_->entities[entity].name) + " (" +
+				program_->RenderEntityEmissionName(entity) + " (" +
 				program_->names.Get(program_->entities[entity].identity_name) + ")");
 		program_->entities[entity].packing_alignment = current_pack_alignment_;
 		if (hosted_extension::HasGnuAttribute(*arena_, node, "packed") ||
@@ -337,12 +337,10 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 		ScopeId member_scope = program_->entities[entity].member_scope;
 		if (member_scope == kNoScope)
 		{
-			const std::string prefix =
-				program_->names.Get(DisplayName(owner, name)) + "::";
 			const ScopeId lexical_owner = specialization_owner == kNoScope ?
 				owner : scope;
-			member_scope = NewScope(lexical_owner, SCOPE_CLASS, lookup_name,
-				program_->names.Intern(prefix));
+			member_scope = NewNamedScope(lexical_owner, SCOPE_CLASS,
+				lookup_name, owner, name);
 			// Semantic lookup may use an internal specialization slot while
 			// emission follows the caller's separate presentation policy.
 			if (specialization_owner != kNoScope)
@@ -1527,10 +1525,8 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		value_scope = program_->entities[entity].member_scope;
 		if (value_scope == kNoScope)
 		{
-			const std::string prefix =
-				program_->names.Get(DisplayName(owner, name)) + "::";
-			value_scope = NewScope(owner, SCOPE_ENUM, name,
-				program_->names.Intern(prefix));
+			value_scope = NewNamedScope(
+				owner, SCOPE_ENUM, name, owner, name);
 			program_->SetEntityScope(entity, value_scope);
 		}
 	}

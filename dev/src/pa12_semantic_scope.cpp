@@ -142,6 +142,16 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 	return scope;
 }
 
+ScopeId SemanticAnalyzer::NewNamedScope(ScopeId parent, ScopeKind kind,
+	NameId lookup_name, ScopeId presentation_owner, NameId presentation_name)
+{
+	const NameId deferred = std::numeric_limits<NameId>::max();
+	const ScopeId scope = NewScope(parent, kind, lookup_name, deferred);
+	scope_prefix_segments_[scope] = presentation_name;
+	scope_parents_[scope] = presentation_owner;
+	return scope;
+}
+
 bool SemanticAnalyzer::HasInternalLinkageScope(ScopeId scope) const
 {
 	return program_->HasInternalLinkageScope(scope);

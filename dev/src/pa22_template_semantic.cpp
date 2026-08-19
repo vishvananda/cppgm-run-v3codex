@@ -408,7 +408,8 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		const NameId emission = EmissionName(identity_owner, leaf);
 		const EntityId entity = program_->NewEntity(emission, NAMED_CLASS, true,
 			kNoType, namespace_owner,
-			identity_leaf == 0 ? leaf : identity_leaf);
+			identity_leaf == 0 ? leaf : identity_leaf,
+			ENTITY_EMISSION_RENDERED);
 		EntityRecord& closure = program_->entities[entity];
 		closure.local_context = enclosing;
 		closure.lambda_closure = true;
@@ -1476,9 +1477,9 @@ TypeId SemanticAnalyzer::CreateTemplateTemplateParameterProxy(ScopeId scope,
 	pattern.parameters = parameter.template_parameters;
 	pattern.template_parameter_proxy = true;
 	pattern.template_parameter_ordinal = static_cast<std::uint32_t>(ordinal);
-	const NameId marker_name = EmissionName(scope, parameter.name);
-	pattern.marker_entity = program_->NewEntity(marker_name,
-		NAMED_TEMPLATE_PARAMETER, false, kNoType, scope, parameter.name);
+	pattern.marker_entity = program_->NewEntity(parameter.name,
+		NAMED_TEMPLATE_PARAMETER, false, kNoType, scope, parameter.name,
+		ENTITY_EMISSION_OWNER_QUALIFIED);
 	const TypeId marker_type = program_->entities[pattern.marker_entity].type;
 	program_->SetTypeName(scope, parameter.name, marker_type);
 	program_->AddBinding(scope, BIND_TYPE, parameter.name, marker_type,
@@ -1546,9 +1547,9 @@ void SemanticAnalyzer::RegisterAliasTemplate(NodeId declaration,
 	pattern.declaration = declaration;
 	pattern.type_id = type_id;
 	pattern.parameters = parameters;
-	const NameId marker_name = EmissionName(scope, name);
-	pattern.marker_entity = program_->NewEntity(marker_name,
-		NAMED_TEMPLATE_PARAMETER, false, kNoType, scope, name);
+	pattern.marker_entity = program_->NewEntity(name,
+		NAMED_TEMPLATE_PARAMETER, false, kNoType, scope, name,
+		ENTITY_EMISSION_OWNER_QUALIFIED);
 	const TypeId marker_type =
 		program_->entities[pattern.marker_entity].type;
 	program_->SetTypeName(scope, name, marker_type);

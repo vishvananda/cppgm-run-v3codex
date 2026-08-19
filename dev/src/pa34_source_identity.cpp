@@ -85,7 +85,7 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 	else result = ScopePrefix(program, record.owner);
 	if (!result.empty()) result += "::";
 	result += program.names.Get(
-		record.identity_name == 0 ? record.name : record.identity_name);
+		record.identity_name == 0 ? record.emission_name : record.identity_name);
 	if (record.template_argument_begin != kNoBinding)
 	{
 		const std::size_t first = record.template_argument_begin;

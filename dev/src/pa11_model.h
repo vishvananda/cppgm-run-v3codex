@@ -438,9 +438,16 @@ struct VirtualBaseLayout
 		: entity(entity_), offset(offset_) {}
 };
 
+enum EntityEmissionNameForm : std::uint8_t
+{
+	ENTITY_EMISSION_TERMINAL,
+	ENTITY_EMISSION_OWNER_QUALIFIED,
+	ENTITY_EMISSION_RENDERED
+};
+
 struct EntityRecord
 {
-	NameId name, identity_name, presentation_name;
+	NameId emission_name, identity_name, presentation_name;
 	ScopeId owner, member_scope;
 	EntityId direct_base, enclosing_class;
 	BindingId local_context, lambda_call_operator;
@@ -451,6 +458,7 @@ struct EntityRecord
 		virtual_base_begin, virtual_base_count;
 	std::uint32_t abi_tag_begin, abi_tag_count;
 	NamedFlavor flavor;
+	EntityEmissionNameForm emission_name_form;
 	TypeId type, underlying;
 	BindingId declaration, union_default_member;
 	std::uint64_t object_size, nonvirtual_size,
@@ -764,9 +772,11 @@ public:
 	TemplateArgumentListId InternTemplateArgumentList(
 		const std::vector<TemplateArgument>& arguments,
 		std::uint32_t* first = 0, std::uint32_t* count = 0);
-	EntityId NewEntity(NameId name, NamedFlavor flavor, bool complete,
+	EntityId NewEntity(NameId emission_name, NamedFlavor flavor, bool complete,
 		TypeId underlying = kNoType, ScopeId owner = kNoScope,
-		NameId identity_name = 0);
+		NameId identity_name = 0,
+		EntityEmissionNameForm emission_name_form =
+			ENTITY_EMISSION_TERMINAL);
 	BindingId AddBinding(ScopeId owner, BindingKind kind, NameId name,
 		TypeId type, bool constant = false, std::int64_t value = 0,
 		NamedFlavor display = NAMED_NONE, NameId display_type_name = 0,
@@ -831,6 +841,8 @@ public:
 	void BuildEmissionPath(ScopeId owner, NameId terminal,
 		std::vector<NameId>* path) const;
 	std::string RenderEmissionName(ScopeId owner, NameId terminal,
+		std::size_t* components = 0) const;
+	std::string RenderEntityEmissionName(EntityId entity,
 		std::size_t* components = 0) const;
 	void Render(std::ostream& output, std::size_t* max_depth = 0,
 		std::size_t* stack_storage_bytes = 0,

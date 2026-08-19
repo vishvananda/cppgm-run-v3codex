@@ -211,7 +211,7 @@ std::string CanonicalTemplateArgumentPresentation(const Program& program,
 		return argument.value == 0 ? "false" : "true";
 	if (record.kind == TYPE_NAMED && record.entity != kNoEntity &&
 		program.entities[record.entity].flavor == NAMED_ENUM)
-		return "(" + program.names.Get(program.entities[record.entity].name) +
+		return "(" + program.RenderEntityEmissionName(record.entity) +
 			")" + std::to_string(argument.value);
 	return std::to_string(argument.value);
 }
@@ -1331,9 +1331,9 @@ void SemanticAnalyzer::AnalyzeClassTemplate(NodeId declaration, ScopeId scope,
 	pattern.defined = definition;
 	pattern.hosted_trait_template = ClassifyHostedTraitTemplate(owner, name, parameters);
 	pattern.initializer_list_template = IsStandardInitializerListTemplate(name, owner, parameters);
-	const NameId marker_name = EmissionName(owner, name);
-	pattern.marker_entity = program_->NewEntity(marker_name,
-		NAMED_TEMPLATE_PARAMETER, false, kNoType, owner, name);
+	pattern.marker_entity = program_->NewEntity(name,
+		NAMED_TEMPLATE_PARAMETER, false, kNoType, owner, name,
+		ENTITY_EMISSION_OWNER_QUALIFIED);
 	const TypeId marker_type =
 		program_->entities[pattern.marker_entity].type;
 	program_->SetTypeName(owner, name, marker_type);

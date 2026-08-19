@@ -651,7 +651,7 @@ void TypeTable::Rehash(std::size_t capacity)
 }
 
 EntityRecord::EntityRecord()
-	: name(0), identity_name(0), presentation_name(0),
+	: emission_name(0), identity_name(0), presentation_name(0),
 	  owner(kNoScope), member_scope(kNoScope),
 	  direct_base(kNoEntity), enclosing_class(kNoEntity),
 	  local_context(kNoBinding), lambda_call_operator(kNoBinding),
@@ -661,7 +661,8 @@ EntityRecord::EntityRecord()
 	  direct_base_begin(0), direct_base_count(0),
 	  virtual_base_begin(0), virtual_base_count(0),
 	  abi_tag_begin(0), abi_tag_count(0),
-	  flavor(NAMED_NONE), type(kNoType),
+	  flavor(NAMED_NONE), emission_name_form(ENTITY_EMISSION_TERMINAL),
+	  type(kNoType),
 	  underlying(kNoType), declaration(kNoBinding),
 	  union_default_member(kNoBinding), object_size(0), nonvirtual_size(0),
 	  object_alignment(0), nonvirtual_alignment(0), natural_alignment(0),
@@ -1301,8 +1302,9 @@ void Program::PublishUsingName(ScopeId scope, NameId name)
 	if (created) PropagateUsingName(scope, name);
 }
 
-EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
-	TypeId underlying, ScopeId owner, NameId identity_name)
+EntityId Program::NewEntity(NameId emission_name, NamedFlavor flavor,
+	bool complete, TypeId underlying, ScopeId owner, NameId identity_name,
+	EntityEmissionNameForm emission_name_form)
 {
 	if (entities.size() >= kNoEntity)
 		throw std::runtime_error("too many PA11 entities");
@@ -1314,8 +1316,9 @@ EntityId Program::NewEntity(NameId name, NamedFlavor flavor, bool complete,
 	deepest_nonpublic_base_depths_.push_back(0);
 	base_graph_versions_.push_back(1);
 	EntityRecord& record = entities.back();
-	record.name = name;
-	record.identity_name = identity_name == 0 ? name : identity_name;
+	record.emission_name = emission_name;
+	record.identity_name = identity_name == 0 ? emission_name : identity_name;
+	record.emission_name_form = emission_name_form;
 	record.owner = owner;
 	if (owner != kNoScope && owner < scopes_.size() &&
 		scopes_[owner].kind == SCOPE_CLASS)
@@ -1360,6 +1363,19 @@ std::string Program::RenderEmissionName(ScopeId owner, NameId terminal,
 		result += names.Get(path[i]);
 	}
 	return result;
+}
+
+std::string Program::RenderEntityEmissionName(EntityId entity,
+	std::size_t* components) const
+{
+	if (entity >= entities.size())
+		throw std::logic_error("invalid entity emission name");
+	const EntityRecord& record = entities[entity];
+	if (record.emission_name_form == ENTITY_EMISSION_OWNER_QUALIFIED)
+		return RenderEmissionName(
+			record.owner, record.emission_name, components);
+	if (components) *components = record.emission_name == 0 ? 0 : 1;
+	return names.Get(record.emission_name);
 }
 
 BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,
@@ -1522,8 +1538,9 @@ void Program::ResetClassDefinition(EntityId entity)
 		scopes_[old.member_scope].entity = kNoEntity;
 	}
 	EntityRecord reset;
-	reset.name = old.name;
+	reset.emission_name = old.emission_name;
 	reset.identity_name = old.identity_name;
+	reset.emission_name_form = old.emission_name_form;
 	reset.owner = old.owner;
 	reset.enclosing_class = old.enclosing_class;
 	reset.local_context = old.local_context;
@@ -2253,7 +2270,7 @@ void Program::AppendType(std::string& output, TypeId type,
 			const EntityRecord& entity = entities[record.entity];
 			output += FlavorName(entity.flavor);
 			output += ' ';
-			output += names.Get(entity.name);
+			output += RenderEntityEmissionName(record.entity);
 			break;
 		}
 		case TYPE_QUALIFIED:

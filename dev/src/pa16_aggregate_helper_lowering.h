@@ -68,7 +68,8 @@ protected:
 			if (object.kind != TYPE_NAMED || object.entity != helper.entity)
 				throw std::logic_error("aggregate helper has invalid object type");
 			const std::string proposed = SanitizeSymbol(
-				derived.program_.names.Get(entity.name)) + "__" + SanitizeSymbol(
+				derived.program_.RenderEntityEmissionName(helper.entity)) +
+				"__" + SanitizeSymbol(
 				derived.program_.names.Get(entity.identity_name)) + "__aggregate";
 			derived.aggregate_helper_symbols_[i] = derived.AddSyntheticSymbol(
 				Symbol::FUNCTION_SYMBOL, proposed, std::string(), true);
