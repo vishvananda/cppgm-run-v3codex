@@ -353,6 +353,10 @@ struct AbiFunctionTarget
   AbiType result_type;
   bool has_result_type = false;
   bool variadic = false;
+
+  bool has_resolved_source_name() const;
+  void set_resolved_source_name(std::size_t name);
+  std::size_t resolved_source_name() const;
 };
 
 struct AbiLocalContext

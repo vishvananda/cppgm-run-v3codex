@@ -232,7 +232,8 @@ void AppendTypedFact(abi_mangle::AbiTypedCase* facts,
 }
 
 void AppendFunctionAbiTagFacts(const Program& program,
-	const BindingRecord& binding, abi_mangle::AbiTypedCase* facts)
+	const BindingRecord& binding, abi_mangle::AbiMangleContext* context,
+	abi_mangle::AbiTypedCase* facts)
 {
 	using namespace abi_mangle;
 	if (binding.abi_tag_count == 0) return;
@@ -244,14 +245,16 @@ void AppendFunctionAbiTagFacts(const Program& program,
 		AbiFactRecord tag;
 		tag.set_kind(ABI_FACT_RECORD_FUNCTION);
 		tag.function.kind = ABI_FUNCTION_RECORD_ABI_TAG;
-		tag.function.name = program.names.Get(
-			program.abi_tags[binding.abi_tag_begin + i]);
+		const NameId name = program.abi_tags[binding.abi_tag_begin + i];
+		tag.function.set_resolved_source_name(
+			context->resolve_external_name(name, program.names.Get(name)));
 		AppendTypedFact(facts, &tag);
 	}
 }
 
 void AppendComponentAbiTagFacts(const Program& program,
-	const EntityRecord& entity, abi_mangle::AbiTypedCase* facts)
+	const EntityRecord& entity, abi_mangle::AbiMangleContext* context,
+	abi_mangle::AbiTypedCase* facts)
 {
 	using namespace abi_mangle;
 	if (entity.abi_tag_begin > program.abi_tags.size() ||
@@ -262,8 +265,9 @@ void AppendComponentAbiTagFacts(const Program& program,
 		AbiFactRecord tag;
 		tag.set_kind(ABI_FACT_RECORD_FUNCTION);
 		tag.function.kind = ABI_FUNCTION_RECORD_COMPONENT_ABI_TAG;
-		tag.function.name = program.names.Get(
-			program.abi_tags[entity.abi_tag_begin + i]);
+		const NameId name = program.abi_tags[entity.abi_tag_begin + i];
+		tag.function.set_resolved_source_name(
+			context->resolve_external_name(name, program.names.Get(name)));
 		AppendTypedFact(facts, &tag);
 	}
 }
@@ -544,6 +548,11 @@ class AbiFactBuilder
 		return context_->resolve_path(resolved_path_scratch_);
 	}
 
+	std::size_t ResolveName(pa11::NameId name)
+	{
+		return context_->resolve_external_name(name, program_.names.Get(name));
+	}
+
 	LocalContextHandle StoreLocalContext(
 		const abi_mangle::AbiLocalContext& context, std::size_t identity)
 	{
@@ -573,11 +582,28 @@ public:
 		target->resolved_path = ResolvePath(owner, terminal);
 	}
 
+	void SetPath(abi_mangle::AbiFunctionTarget* target,
+		const std::vector<pa11::NameId>& path)
+	{
+		target->resolved_path = ResolvePath(path, 0, path.size());
+	}
+
+	void SetSourceName(abi_mangle::AbiFunctionTarget* target,
+		pa11::NameId name)
+	{
+		target->set_resolved_source_name(ResolveName(name));
+	}
+
+	void SetSourceName(abi_mangle::AbiFunctionRecord* target,
+		pa11::NameId name)
+	{
+		target->set_resolved_source_name(ResolveName(name));
+	}
+
 	void AppendNameComponent(abi_mangle::AbiFunctionRecord* target,
 		pa11::NameId name, std::size_t* path)
 	{
-		const std::size_t resolved_name = context_->resolve_external_name(
-			name, program_.names.Get(name));
+		const std::size_t resolved_name = ResolveName(name);
 		*path = context_->resolve_path_component(*path, resolved_name);
 		target->set_resolved_name_component(*path, resolved_name);
 	}
@@ -970,10 +996,7 @@ public:
 						throw std::logic_error(
 							"namespace lambda ABI context has no identity path");
 					target.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
-					target.source_name = program_.names.Get(path.back());
-					for (std::size_t i = 0; i + 1 < path.size(); ++i)
-						target.namespace_qualifiers.push_back(
-							program_.names.Get(path[i]));
+					SetPath(&target, path);
 				}
 				target.terminal = "operator-call";
 				if ((type.cv & CV_CONST) != 0)
@@ -1003,7 +1026,7 @@ public:
 			AbiFunctionTarget& target = context.function;
 			target.kind = ABI_FUNCTION_TARGET_MEMBER;
 			target.owner_type = AddContextType(owner.type);
-			target.source_name = program_.names.Get(function.name);
+			SetSourceName(&target, function.name);
 			if (!function.static_member_function)
 			{
 				if ((type.cv & CV_CONST) != 0)
@@ -2345,9 +2368,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 			throw std::logic_error(
 				"namespace lambda call operator has no identity path");
 		function.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
-		function.source_name = program.names.Get(path.back());
-		for (std::size_t i = 0; i + 1 < path.size(); ++i)
-			function.namespace_qualifiers.push_back(program.names.Get(path[i]));
+		facts.SetPath(&function, path);
 	}
 	function.terminal = "operator-call";
 	const TypeRecord& lambda_type = program.types.Get(binding.type);
@@ -2388,6 +2409,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 
 void AppendLocalFunctionOwner(const pa11::Program& program,
 	const pa11::BindingRecord& binding, AbiFactBuilder* facts,
+	abi_mangle::AbiMangleContext* context,
 	abi_mangle::AbiTypedCase* fact_case)
 {
 	using namespace abi_mangle;
@@ -2403,7 +2425,7 @@ void AppendLocalFunctionOwner(const pa11::Program& program,
 	local.function.discriminator = std::to_string(owner.local_name_ordinal);
 	local.function.discriminator_after_terminal = !owner.unnamed_class;
 	AppendTypedFact(fact_case, &local);
-	AppendComponentAbiTagFacts(program, owner, fact_case);
+	AppendComponentAbiTagFacts(program, owner, context, fact_case);
 }
 
 std::string MangleFunction(const pa11::Program& program,
@@ -2491,12 +2513,13 @@ std::string MangleFunction(const pa11::Program& program,
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];
 		target.target.function.owner_type = facts.MakeType(owner.type);
-		target.target.function.source_name = program.names.Get(binding.name);
+		facts.SetSourceName(&target.target.function, binding.name);
 	}
 	AppendTypedFact(&fact_case, &target);
-	AppendFunctionAbiTagFacts(program, binding, &fact_case);
+	AppendFunctionAbiTagFacts(program, binding, context, &fact_case);
 	if (structured_local_owner)
-		AppendLocalFunctionOwner(program, binding, &facts, &fact_case);
+		AppendLocalFunctionOwner(
+			program, binding, &facts, context, &fact_case);
 	if (structured_class_owner &&
 		!AppendClassTemplateOwner(program, binding, &facts, &fact_case, true))
 		throw std::logic_error("class template ABI owner was lost");
@@ -2537,7 +2560,7 @@ std::string MangleFunction(const pa11::Program& program,
 		terminal.function.kind = structured_local_owner ?
 			ABI_FUNCTION_RECORD_TERMINAL_SOURCE :
 			ABI_FUNCTION_RECORD_NAME_SOURCE;
-		terminal.function.name = program.names.Get(binding.name);
+		facts.SetSourceName(&terminal.function, binding.name);
 		AppendTypedFact(&fact_case, &terminal);
 	}
 	if (binding.operator_kind == OPERATOR_LITERAL ||
@@ -2712,7 +2735,7 @@ std::string MangleVariable(const pa11::Program& program,
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];
 		target.target.function.owner_type = facts.MakeType(owner.type);
-		target.target.function.source_name = program.names.Get(binding.name);
+		facts.SetSourceName(&target.target.function, binding.name);
 	}
 	AppendTypedFact(&fact_case, &target);
 	if (structured_class_owner)
@@ -2723,7 +2746,7 @@ std::string MangleVariable(const pa11::Program& program,
 		AbiFactRecord member;
 		member.set_kind(ABI_FACT_RECORD_FUNCTION);
 		member.function.kind = ABI_FUNCTION_RECORD_NAME_SOURCE;
-		member.function.name = program.names.Get(binding.name);
+		facts.SetSourceName(&member.function, binding.name);
 		AppendTypedFact(&fact_case, &member);
 	}
 	if (member_variable_template && binding.template_argument_count != 0)

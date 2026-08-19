@@ -1252,12 +1252,16 @@ private:
           require(!facts.variadic, "multiple ABI variadic markers");
           facts.variadic = true;
           break;
-        case ABI_FUNCTION_RECORD_ABI_TAG: facts.tags.push_back(graph_.strings.intern(record->name)); break;
+        case ABI_FUNCTION_RECORD_ABI_TAG:
+          facts.tags.push_back(record->has_resolved_source_name() ?
+            record->resolved_source_name() : graph_.strings.intern(record->name));
+          break;
         case ABI_FUNCTION_RECORD_COMPONENT_ABI_TAG:
           require(component_tag_target != nullptr,
                   "component ABI tag has no preceding name component");
           facts.component_tags[component_tag_target].push_back(
-            graph_.strings.intern(record->name));
+            record->has_resolved_source_name() ?
+              record->resolved_source_name() : graph_.strings.intern(record->name));
           break;
         case ABI_FUNCTION_RECORD_QUALIFIER:
           facts.qualifiers.insert(facts.qualifiers.end(), record->qualifiers.begin(), record->qualifiers.end());
@@ -2048,7 +2052,7 @@ private:
     if(facts.terminal) {
       emit_function_terminal(nullptr, facts, true, facts.parameters.size());
     } else {
-      output_ += source_name(target.source_name);
+      output_ += source_name(target_source_name(target));
       emit_tags(facts.tags);
     }
     if(!facts.template_arguments.empty()) {
@@ -2080,7 +2084,7 @@ private:
             "member ABI variable has function-only name facts");
     output_ += 'N';
     encode_prefix_type(graph_.resolve_type(target.owner_type));
-    output_ += source_name(target.source_name);
+    output_ += source_name(target_source_name(target));
     if(!facts.template_arguments.empty()) {
       const size_t path = target.resolved_path != ABI_NO_RESOLVED_REFERENCE ?
         graph_.path(target.resolved_path) :
@@ -2141,7 +2145,7 @@ private:
     } else {
       const AbiFunctionRecord & terminal = *facts.terminal;
       if(terminal.kind == ABI_FUNCTION_RECORD_TERMINAL_SOURCE) {
-        output_ += source_name(terminal.name);
+        output_ += source_name(component_name(terminal));
       } else if(terminal.kind == ABI_FUNCTION_RECORD_TERMINAL) {
         output_ += semantic_terminal(terminal.terminal);
       } else if(terminal.kind == ABI_FUNCTION_RECORD_OPERATOR_TERMINAL) {
@@ -2188,7 +2192,7 @@ private:
     for(const AbiFunctionRecord * record : facts.components) {
       if(record->kind == ABI_FUNCTION_RECORD_NAME_STD) std_prefix = true;
       else if(record->kind != ABI_FUNCTION_RECORD_NAME_SOURCE
-              || record->has_resolved_name_component()
+              || record->has_resolved_source_name()
               || !record->name.empty()) {
         components.push_back(record);
       }
@@ -2397,9 +2401,15 @@ private:
   void encode_namespace_lambda_function(const AbiFunctionTarget & target,
                                         const FunctionFacts & facts)
   {
-    vector<size_t> components;
-    for(const string & name : target.namespace_qualifiers) components.push_back(graph_.strings.intern(name));
-    components.push_back(graph_.strings.intern(target.source_name));
+    vector<size_t> components = target.resolved_path !=
+      ABI_NO_RESOLVED_REFERENCE ?
+      graph_.paths.components(graph_.path(target.resolved_path)) :
+      vector<size_t>();
+    if(components.empty()) {
+      for(const string & name : target.namespace_qualifiers)
+        components.push_back(graph_.strings.intern(name));
+      components.push_back(graph_.strings.intern(target.source_name));
+    }
     output_ += 'N'; emit_qualifiers(facts.qualifiers);
     for(size_t i = 0; i + 1 < components.size(); ++i) output_ += source_name(graph_.strings.get(components[i]));
     output_ += source_name(graph_.strings.get(components.back()));
@@ -2594,8 +2604,14 @@ private:
 
   const string & component_name(const AbiFunctionRecord & component) const
   {
-    return component.has_resolved_name_component() ?
+    return component.has_resolved_source_name() ?
       graph_.strings.get(component.resolved_source_name()) : component.name;
+  }
+
+  const string & target_source_name(const AbiFunctionTarget & target) const
+  {
+    return target.has_resolved_source_name() ?
+      graph_.strings.get(target.resolved_source_name()) : target.source_name;
   }
 
   SubstitutionKey structured_component_key(const AbiFunctionRecord & component,
@@ -2638,6 +2654,22 @@ private:
 };
 
 }  // namespace
+
+bool AbiFunctionTarget::has_resolved_source_name() const
+{
+  return resolved_context == ABI_NO_RESOLVED_REFERENCE &&
+    resolved_context_identity != ABI_NO_RESOLVED_REFERENCE;
+}
+
+void AbiFunctionTarget::set_resolved_source_name(size_t name)
+{
+  resolved_context_identity = name;
+}
+
+size_t AbiFunctionTarget::resolved_source_name() const
+{
+  return resolved_context_identity;
+}
 
 struct AbiMangleContext::Impl
 {

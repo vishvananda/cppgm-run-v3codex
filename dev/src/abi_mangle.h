@@ -93,6 +93,14 @@ struct AbiFunctionRecord
   }
 
   std::size_t resolved_name_path() const { return resolved_context; }
+  bool has_resolved_source_name() const
+  {
+    return resolved_context_identity != ABI_NO_RESOLVED_REFERENCE;
+  }
+  void set_resolved_source_name(std::size_t name)
+  {
+    resolved_context_identity = name;
+  }
   std::size_t resolved_source_name() const
   {
     return resolved_context_identity;
