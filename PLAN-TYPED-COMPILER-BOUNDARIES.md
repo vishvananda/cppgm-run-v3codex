@@ -1,13 +1,13 @@
 # Typed Compiler Boundary Plan: Remove Production Text Round-Trips
 
-Status: in progress; Phase 2 and the production T2x closeout are complete;
-T2y PA11 counters are complete and the typed conversion is in progress
+Status: in progress; Phase 2, the production T2x closeout, and standalone
+PA11 T2y parity are complete; T4 lazy semantic presentation is next
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current execution checkpoint: `9fc8af3a` (T2y PA11 measurement ledger)
+Current execution checkpoint: `975edc1a` (T2y PA11 implementation)
 
 ## 1. Objective
 
@@ -232,7 +232,7 @@ follows:
 
 | Residual family | Source-audit finding | Durable disposition |
 | --- | --- | --- |
-| PA11 `TypeAnalyzer` name lookup | `ParseNamePath`, `LookupSpelling`, declaration paths, namespace targets, id expressions, and `decltype` all recover syntax-owned names in the standalone `--emit-types` pipeline | T2y: add PA11 counters, reuse PA10 structured/simple name facts, preserve exact PA11 output, and measure only PA11 inputs because this path is not part of PA39 source-to-object compilation |
+| PA11 `TypeAnalyzer` name lookup | At T2y0, `ParseNamePath`, `LookupSpelling`, declaration paths, namespace targets, id expressions, and `decltype` recovered syntax-owned names in the standalone `--emit-types` pipeline | T2y complete: PA11 reuses PA10 structured/simple name facts, qualified enums retain the structure already parsed by PA10, and all 52 successful PA11 inputs have zero path reparses and spelling lookups.  This path is not part of PA39 source-to-object compilation. |
 | PA12 compatibility name fallbacks | Qualified-enum and member-pointer owner fallback, `SyntaxNamePath` fallback, and no-syntax template overloads remain in source but have zero frozen calls | Keep separately counted. Convert an exercised syntax-owned site at its PA12/PA19/PA27 owner; retain a spelling overload only when its caller actually accepts arbitrary text |
 | PA12 call spelling adapters | The common frozen users were 1,922 overloaded operators, 186 allocation/deallocation requests, 162 destructor names, and 2 compiler aliases; T2x now passes their existing IDs/paths. Dormant functional-cast, conversion-target, and explicit spelling overloads remain | Operator/conversion vocabulary belongs to T6. A genuine API spelling adapter may parse once, but it must have an adapter-specific counter rather than appearing as an ordinary syntax lookup |
 | Template spelling overloads | `FindFunctionTemplates`, `FindFunctionTemplateOwners`, `FindClassTemplate`, and retained-template callers still expose string overloads, although the frozen template counter is zero after the retained using-directive conversion | Audit each caller during T4/T6. Pass `SyntaxNamePath` or `NameId` when syntax owns the name; delete an overload after its last adapter caller is gone |
@@ -265,7 +265,7 @@ owns its disposition.
 | PA10 token sink: `SyntaxTokenSink`, `EmitScalarLiteral`, `EmitLiteralArray`, user-defined literal callbacks, and pragma-pack callbacks | Scalar facts are retained for some literals, while arrays, user-defined literals, and pragma alignment retain only text; pragma alignment is formatted to text immediately. | Extend the literal side arena instead of enlarging every token.  Carry decoded scalar/sequence/suffix/alignment facts and retain `TextId` only for exact syntax output. | PA2/PA10, T7 |
 | PA10 name parser: `ParseName`, `ParseDeclarator`, `FinishSimpleOrFunction`, and `AggregateSyntax::AppendDeclaratorNames` | `ParseName` already knows component and terminal `TextId`s, but some declarator/name-fact paths return joined `std::string`, place names in `vector<string>`, and call the string overload of `SetNameFact`, which interns them again.  Joined payload text is also used for simple qualification/operator tests. | Keep joined payload construction required by the PA10 serialization contract.  In parallel, return/carry terminal IDs and compact flags for parser decisions and name facts; use `vector<TextId>` for structured-binding/declarator fact publication.  Do not add a second spelling field to every syntax node. | PA10, T8b |
 | PA10 semantic-only name children | Qualified/template names publish component IDs in `structured-type-name`; simple names usually publish a semantic payload ID. | This is the correct syntax-to-semantic boundary.  T2x consumes it in production and T2y consumes it in PA11.  Any later syntax-owned fallback must add or reuse the fact here rather than add a semantic string cache. | PA10/PA11/PA12, T2y and closeout counters |
-| Standalone PA11 `TypeAnalyzer` | Namespace, declaration, declarator, type, id-expression, and `decltype` paths parse joined payload spelling.  Literals and operators also use their spellings. | Finish typed name parity as T2y.  Leave operator and literal representation to the shared T6/T7 designs so PA11 does not create a private competing enum or scalar model. | PA10/PA11, T2y/T6/T7 |
+| Standalone PA11 `TypeAnalyzer` | T2y removed joined-name parsing from namespace, declaration, declarator, type, id-expression, and `decltype` paths.  Literals and operators still use their spellings. | Preserve typed-name parity and leave operator and literal representation to the shared T6/T7 designs so PA11 does not create a private competing enum or scalar model. | PA10/PA11, T2y complete; T6/T7 remain |
 | PA12 name lookup compatibility APIs | `ParseNamePath`, `LookupSpelling`, no-syntax template overloads, qualified-enum/member-pointer fallbacks, and explicit spelling adapters remain in source after the frozen production count reached zero. | Retain only callers whose input is genuinely arbitrary text, give them adapter-specific counters, and delete an overload after its last such caller is gone.  Any exercised syntax-owned fallback is a correctness/architecture bug at its earliest semantic owner. | PA12/feature owner, T4/T6/T9 closeout |
 | Ordinary semantic presentation: `ScopePrefixId`, `DisplayName`, `EmissionName`, declaration `qualified_name`/`display_name`, and scope prefix vectors | Owner/name paths are rendered, interned, and retained even though scope, binding, entity, and terminal IDs already exist. | Store owner plus terminal or a compact path identity.  Render on demand for exact semantic dumps, diagnostics, pretty-function text, or final symbol emission.  Do not retain both old text IDs and new typed identities on common records. | PA12/PA22, T4a/T4c |
 | Template and lambda presentation: `CanonicalTemplateArgumentPresentation`, `ExplicitArgumentPresentation`, class-specialization names, `LambdaContextIdentity`, and `LambdaIdentityComponent` | Canonical template arguments, pattern IDs, owners, token ranges, and ordinals are rendered and sanitized into semantic/storage names.  Some of those names then become retained identity. | Use pattern/argument-list/partition/owner IDs for specialization identity and an owner/token-range/ordinal tuple for lambda identity.  Keep rendering only where an exact dump, source-identity builtin, ABI spelling, or object symbol consumes it. | PA19/PA20/PA22, T4b/T4c |
@@ -644,8 +644,8 @@ claim.  Each retained slice still requires exact PA14 mangles, exact frozen
 object bytes, selected owner/downstream reports, full `make test-report`, and
 a zero-fatal PA39 audit before its implementation and ledger commits.
 
-T3x and the production T2x name-path closeout are complete.  Finish standalone
-PA11 parity as T2y, then proceed to lazy semantic presentation (T4).  The
+T3x, the production T2x name-path closeout, and standalone PA11 T2y parity are
+complete.  Proceed to lazy semantic presentation (T4).  The
 dependency remains intentional: the ABI bridge now accepts semantic paths, so
 removing eager `DisplayName`/`EmissionName` storage cannot recreate the same
 text through a different ABI helper.
@@ -765,13 +765,13 @@ T2y rather than being hidden in the production result.
 ### 9.0 T2y: PA11 standalone typed-name parity
 
 `dev/src/pa11_semantic.cpp` implements the student-facing PA11
-`--emit-types` mode independently of the PA12 production analyzer.  It still
-parses joined syntax payloads for namespace targets, class/enum declarations,
-declarators, type lookup, id expressions, and `decltype`.  That work does not
-affect the frozen PA39 compile, but it is the same architectural downgrade and
-must not be omitted from the full semantic audit.
+`--emit-types` mode independently of the PA12 production analyzer.  At the
+T2y0 anchor it parsed joined syntax payloads for namespace targets, class/enum
+declarations, declarators, type lookup, id expressions, and `decltype`.  That
+work did not affect the frozen PA39 compile, but it was the same architectural
+downgrade and therefore remained part of the full semantic audit.
 
-Implement T2y as a bounded non-performance slice:
+T2y was implemented as a bounded non-production slice:
 
 1. add PA11-only counters for path parses, components, syntax direct paths,
    fallbacks, and spelling lookups;
@@ -795,9 +795,24 @@ course translation units.  It records 323 path parses, 375 parsed components,
 276 single-component parses, and 88 spelling lookups.  Parse ownership is 227
 declarator, 24 class, 24 enum, 14 using, 7 type lookup, and 27 expression
 requests.  Type and expression lookup contribute 44 spelling requests each.
-Structured, syntax-path, direct-terminal, and fallback counters are all zero,
-confirming that PA11 currently ignores the available PA10 name facts rather
-than mixing typed and text paths.
+Structured, syntax-path, direct-terminal, and fallback counters were all zero,
+confirming that the baseline PA11 implementation ignored the available PA10
+name facts rather than mixing typed and text paths.
+
+T2y1 moves all 323 parses, 375 components, and 88 spelling lookups to zero
+across those same 52 successful translation units.  It records 372 typed
+syntax-path requests, 325 direct terminal paths, and zero fallbacks.  The only
+initial fallbacks were the two qualified scoped-enum fixtures; PA10 already
+parsed their components, so retaining the same semantic-only structured-name
+child removes the final reparses without changing syntax serialization or any
+common record layout.
+
+The concatenated 52-translation-unit output is byte-identical with SHA-256
+`a1fc494ad9e41ea2f93c07245a13608fa8ef2c1f6b803b5b0f59753a0d827b2d`.
+Four interleaved 500-iteration suite batches measured baseline/candidate
+medians of 2.710/2.675 seconds user, 4.190/4.175 seconds wall, and 6,180/6,192
+KiB RSS.  This corroborates the structural removal on PA11 inputs and is not a
+frozen source-to-object performance claim.
 
 ### 9.1 Current path
 
@@ -848,8 +863,8 @@ must render from the typed facts without fixture churn.
 5. **T2x4 (complete):** convert call, friend, template, and generated-library
    paths by reusing their structured paths or preinterned component IDs;
    retain explicitly classified adapters.  Every frozen family is zero.
-6. **T2y:** bring the standalone PA11 `TypeAnalyzer` to typed-name parity,
-   with PA11-only counters and no frozen performance claim.
+6. **T2y (complete):** bring the standalone PA11 `TypeAnalyzer` to typed-name
+   parity, with PA11-only counters and no frozen performance claim.
 7. **T4a:** add per-consumer counters for scope-prefix, display-name,
    emission-name, specialization-name, lambda-name, and generated-name
    rendering.  Record reads as well as writes so a retained field is not
@@ -1280,7 +1295,7 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T2x4b | Eliminate residual call, template, and generated-library path parsing | All 2,278 remaining frozen requests move to typed facts: 1,922 overloaded operators reuse their `NameId`; 186 allocation/deallocation requests reuse the already-interned operator name; 162 destructors form a typed terminal path; 2 compiler aliases intern their guaranteed single terminal; 2 retained using-directives reuse syntax paths; and 4 fixed standard-library requests use a byte-sized vocabulary plus typed components. Total path parses fall 2,278 -> 0, interner calls fall 1,461,195 -> 1,459,215, hashed bytes fall 23,760,406 -> 23,741,119, and misses remain 113,559. | Three screened A/B/B/A blocks against the immutable T2x4a compiler: baseline/candidate medians 4.375/4.390 s user, 4.895/4.880 s wall, and 365,310/365,336 KiB RSS; candidate +0.34% user, -0.31% wall, and +0.01% RSS, accepted as timing-neutral structural work | Every frozen object remains exact at 4,415,448 bytes with the baseline SHA. Existing owner fixtures exercise the converted behavior; no serialized fixture moves and no new layout-only fixture is warranted. | Selected PA12/16/19/21/23/26/34/37/38 report 1,938/1,938; full report 5,212/5,212; zero-fatal `dev/src` audit with 26 warnings | `51119165`; accepted |
 | T2x | Close production semantic name-path recovery by caller family | Complete. The frozen total falls 34,823 -> 0: semantic-ID 5,183 -> 0, declaration 17,866 -> 0, syntax fallback 9,343 -> 0, call 2,272 -> 0, friend 153 -> 0, generated library 4 -> 0, template 2 -> 0, with literal/ambiguity remaining 0. The source closeout in section 5.3 keeps true adapters and later operator/literal/ambiguity work explicitly assigned. | Accepted slices are individually neutral or favorable within the screened host-noise band; the final plan gate will measure the cumulative result against the immutable audit anchor | Exact syntax, semantic, LowIR, MIR, and frozen object output; no fixture churn | Owner/through gates recorded per slice; final full report 5,212/5,212; zero-fatal audit with 26 warnings | Complete at `51119165`; T2y next |
 | T2y0 | Count standalone PA11 semantic name recovery | Across all 52 successful PA11 assignment/course translation units: 323 path parses, 375 components, 276 single-component parses, and 88 spelling lookups. Families are 227 declarator, 24 class, 24 enum, 14 using, 7 type lookup, and 27 expression parses; type/expression lookup contribute 44 spelling requests each. Structured/direct/fallback path counters are all zero. | Measurement-only; no frozen claim because `--emit-types` is not in the PA39 object path | Exact PA11 output; no fixture changes | PA11 68/68 plus course 2/2; through PA11 653/653; full report 5,212/5,212; zero-fatal audit with 26 warnings | `5fcc10cb`; accepted measurement anchor |
-| T2y | Bring standalone PA11 name identity to parity | In progress; convert the measured families without adding syntax-node storage, then leave literal/operator spelling to T7/T6 | No frozen claim; measure PA11 inputs | Exact PA11 output required | PA11, through PA11, selected downstream, full report, audit | T2y1 next; before T4 |
+| T2y | Bring standalone PA11 name identity to parity | Across the same 52 successful inputs, 323 path parses, 375 components, and 88 spelling lookups fall to zero.  All six parse families are zero; 372 typed syntax paths comprise 325 direct terminals and structured paths with zero fallbacks.  PA10 retains a semantic-only structured child for the two qualified enum cases; no common record grows. | Four interleaved 500-iteration PA11-suite batches: baseline/candidate medians 2.710/2.675 s user, 4.190/4.175 s wall, and 6,180/6,192 KiB RSS.  No frozen claim because `--emit-types` is outside source-to-object compilation. | Concatenated 52-TU output is byte-identical with SHA-256 `a1fc494ad9e41ea2f93c07245a13608fa8ef2c1f6b803b5b0f59753a0d827b2d`; no fixture changes | PA10 157/157 plus course 7/7; through PA10 583/583; PA11 68/68 plus course 2/2; through PA11 653/653; selected PA10/11/12/19/20/22/34/37/38 1,690/1,690; full report 5,212/5,212; zero-fatal audit with 26 warnings | `975edc1a`; accepted; T4 next |
 | T4 | Lazy semantic emission/display/specialization identity | Planned | Planned | Exact semantic serialization expected | PA12/19/20/22 plus downstream reports | Planned |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
@@ -1314,7 +1329,7 @@ this plan remain the decision criteria.
 
 ## 22. Ordered execution plan from the current checkpoint
 
-This is the authoritative order after `51119165`.  Later rows may be
+This is the authoritative order after `975edc1a`.  Later rows may be
 re-prioritized only by updating this document with the new dependency or
 measurement; do not silently skip an unresolved closeout gate.
 
@@ -1325,7 +1340,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 3 | T3w5 residual ABI fallbacks (complete) | Per-category counter anchor, final-boundary classification, PA30/PA35 reducers, exact frozen/object outputs, full report, and audit recorded in section 8.7 | `bd4d29a3` counter anchor; `5732e547` implementation; ledger recorded |
 | 4 | T3x Phase 2 closeout (complete) | Source audit, complete retained-text classification, zero production fixed-word/path/numeric/synthetic-identity recovery, and exact frozen object recorded in section 8.8 | Closeout ledger recorded |
 | 5 | T2x residual production semantic name paths (complete) | All 34,823 frozen requests are classified and removed; source-retained adapters and later operator/literal/ambiguity work are recorded in section 5.3 | `870e329a` anchor through `51119165` closeout; ledger recorded |
-| 6 | T2y standalone PA11 typed-name parity (in progress) | PA11-only counters, zero syntax-owned PA11 reparses on representative inputs, exact PA11 output, no common-record growth, full report, audit | `5fcc10cb` measurement anchor; one bounded conversion changeset plus ledger; no frozen claim |
+| 6 | T2y standalone PA11 typed-name parity (complete) | All 52 successful inputs have zero path reparses, spelling lookups, and fallbacks; exact aggregate output, no common-record growth, owner/through/selected/full reports, audit, and PA11 timing are recorded in section 9.0 and the ledger | `5fcc10cb` measurement anchor; `975edc1a` implementation; no frozen claim |
 | 7 | T4 lazy semantic presentation | Per-consumer render/read counters; semantic record sizes; typed ordinary, specialization, lambda, and generated identities; exact dumps; no dual retained identity | T4a counter anchor, then one commit per ordinary/specialization/generated/output family |
 | 8 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
 | 9 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
