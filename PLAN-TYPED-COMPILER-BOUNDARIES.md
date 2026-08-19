@@ -5,16 +5,16 @@ T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
 complete; T4 and T5 are complete, the anchor comparison exceeds success
-criterion 3 at 9.4%, and T6 operation transport into lowering is complete
-with zero integrated prefix strips; the semantic-dispatch and
-fixed-vocabulary T6 slices are next
+criterion 3 at 9.4%, and the T6 vocabulary now flows end to end: transport
+and lowering (T6d) and the semantic dispatch (T6c) compare packed token
+kinds, with residual text confined to classified adapters
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `5e9f3ce5` (T6 packed operation
-transport into lowering; measurements and gates are recorded in section
+Current accepted execution checkpoint: `a3150b62` (T6c semantic operator
+dispatch on packed kinds; measurements and gates are recorded in section
 11.3)
 
 ## 1. Objective
@@ -1957,23 +1957,26 @@ fixed-vocabulary feature.  Existing textual fixtures should remain exact.
    through a dense memo, storing kind + 1 in a one-byte `DumpNode` slot
    that fits existing padding (`DumpNode` remains 152 bytes).  Dump text is
    retained unchanged for exact serialization.
-3. **T6c:** change PA11/PA12 overload resolution, builtin conversions,
-   member-pointer logic, and constant evaluation to accept the enum.  Convert
-   one operator family at a time so reducers identify the earliest semantic
-   owner.  The T6d closeout audit enumerated this surface precisely: about
-   130 spelling comparisons across `pa12_semantic_operators.cpp` (50),
-   `pa11_semantic.cpp` (27), `pa16_operator_resolution.cpp` (22),
-   `pa21_constant_evaluator.cpp` (13), `pa12_semantic.cpp` (12), and
-   `pa12_semantic_calls.cpp` (7), threaded through the
-   `const std::string& operation` parameter chains of
-   `AnalyzeUnary`/`AnalyzeBinary`/`BuildBinaryExpression`/
-   `PrepareBuiltinComparison`/`PrepareBuiltinArithmetic`.  The operation
-   string is also used constructively for operator-function lookup names,
-   and GNU extension operations (`__real__`/`__imag__`) are identifier
-   payloads outside the fixed vocabulary that must stay classified
-   adapters.  The conversion is signature re-threading with no remaining
-   hot-path render, hash, or interner work (those were removed by T6d), so
-   it is staged as architecture completion behind the measured phases.
+3. **T6c (complete):** semantic dispatch now compares packed kinds.
+   `PayloadTokenKind` memoizes one classification per distinct semantic
+   payload for node-driven dispatch (keyword literals, alignof/noexcept/
+   typeid traits, assignment, member access, unary/binary analysis,
+   declarator pointer operators), and `ClassifyOperationSpelling` performs
+   one table classification at the entry of each helper that receives a
+   synthesized operation string (builtin binary/unary/assignment
+   conversions, builtin comparison/arithmetic preparation, constant scalar
+   and wide-constant evaluation, member-pointer application).  The
+   remaining textual sites are classified adapters: the declared
+   operator-function `OperatorKind` mapping, the subscript resolver's
+   synthesized `"[]"` pseudo-spelling checks, the GNU
+   `__real__`/`__imag__` extension identifiers, and the standalone PA11
+   tool's own input-boundary specifier parsing.  The frozen object stayed
+   byte-exact through every conversion, the full report passes
+   5,218/5,218, the audit is zero-fatal after the vocabulary
+   responsibility split into `pa12_semantic_vocabulary.cpp`, and three
+   A/B/B/A blocks against immutable T6d measured 4.360/4.275 seconds user
+   (paired -1.04% user, -0.42% wall, -0.02% RSS).  The accepted
+   implementation is `a3150b62`.
 4. **T6d (complete):** all fourteen lowering consumers in
    PA15/PA16/PA21/PA27 now switch on the packed kind through
    `DumpNode::OperationIs` and integer compares; the frozen
@@ -2356,7 +2359,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T4-T5 anchor milestone | Cumulative typed-boundary work against the original immutable `c349d7f5` audit anchor | The anchor compiler was rebuilt from its commit and compared over five interleaved A/B/B/A blocks (20 runs). Every object, both directions, is byte-exact at 4,415,448 bytes with the audit SHA. | Baseline/candidate medians 4.765/4.290 s user, 5.240/4.770 s wall, 364,464/359,340 KiB RSS; paired candidate -9.37% user, -9.13% wall, -1.50% RSS. Success criterion 3 (at least 5% median user, 5-10% working target) is exceeded at the T5 boundary; criterion 4 holds with RSS improved. | Exact objects in all 20 runs | Five-block protocol per section 17; measured at checkpoint `271c3564` | Milestone recorded; the final completion gate still requires the section 19 self-build and inception lanes |
 | T5b | Sort EH block order by once-rendered byte keys | Examined characters fall 5,694,676 -> 573,751 on 885 frozen EH functions; comparator count unchanged; no interned block names; per-function reused key buffer | Three A/B/B/A blocks against immutable T5a: 4.325/4.315 s user; paired -0.23% user, +0.21% wall, -0.17% RSS; timing-neutral structural work | Frozen object byte-exact in stats and all 12 timed runs, proving order equivalence including decimal boundaries; PA34 run reducer covers 9/10 and 99/100 ordinals plus label collision with reference agreement | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `271c3564`; accepted |
 | Inception checkpoint | Self-host comparison validates the cumulative typed-boundary work | `make inception` at checkpoint `5e9f3ce5` self-compiles the full PA39 tool set through every converted path and reports `MATCH cppgm++` for the inception binary | 267.22 s wall, 2,215.30 s user, 221,720 KiB peak RSS for the complete lane | The self-built compiler is byte-matched; the section 19 final gate will repeat this on the final tree | Single clean lane after the T4-T6d batch | Recorded at `5e9f3ce5` |
-| T6b/T6d | Packed operation kinds flow from classification into lowering | `DumpNode` carries `SimpleTokenKind`+1 in existing padding, classified once per distinct operation name; all fourteen lowering strip/compare sites switch on the kind; `StripOperationPrefix` deleted (15,013 frozen calls -> 0). | Three A/B/B/A blocks against immutable T5b: 4.330/4.275 s user; paired -0.81% user, -0.83% wall, -0.30% RSS | Frozen object exact in stats and all 12 timed runs; the bare-spelling synthesized form was caught by the exactness gate during development | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `5e9f3ce5`; accepted; T6c/T6e remain |
+| T6b/T6d | Packed operation kinds flow from classification into lowering | `DumpNode` carries `SimpleTokenKind`+1 in existing padding, classified once per distinct operation name; all fourteen lowering strip/compare sites switch on the kind; `StripOperationPrefix` deleted (15,013 frozen calls -> 0). | Three A/B/B/A blocks against immutable T5b: 4.330/4.275 s user; paired -0.81% user, -0.83% wall, -0.30% RSS | Frozen object exact in stats and all 12 timed runs; the bare-spelling synthesized form was caught by the exactness gate during development | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `5e9f3ce5`; accepted |
+| T6c | Semantic operator dispatch compares packed kinds | Node-driven dispatch uses the memoized `PayloadTokenKind`; helper entries classify synthesized operation strings once through `ClassifyOperationSpelling`; about 120 integrated spelling comparisons became integer compares across PA12/PA16/PA21/PA27/PA34; residual text is classified adapters. The vocabulary moved to a compiled `pa12_semantic_vocabulary.cpp` module for the file audit. | Three A/B/B/A blocks against immutable T6d: 4.360/4.275 s user, 4.815/4.775 s wall; paired -1.04% user, -0.42% wall, -0.02% RSS | Frozen object byte-exact through every conversion step and all 12 timed runs | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `a3150b62`; accepted |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
 | T8 | Integrated spelling handles and dense emitted-spelling remap | Planned | Planned | Exact PA2/4/10 fixtures expected | PA2/4/10 plus full report | Planned |
 | T9 | Secondary specialized text parsers use retained typed facts | Planned | Planned | Per-item decision | Earliest owner per item | Planned |
@@ -2413,7 +2417,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 18 | T4e final lazy-presentation closeout (complete) | Every residual `DumpNode::text` read classified (operators/literals to T6/T7, labels and parameter names as boundaries, dead TLS fallback); entry detection typed; function presentation rendered only at the dump boundary; dead `EmissionName` helper deleted; cumulative T4 timing -3.38% user against the rebuilt `b9e05991` anchor | Commit `9bfd03fc` accepted; ledger recorded |
 | 19 | T5a generated local-name reservations (complete) | Scan/match/probe counters (`0b03e001`); byte-identical object and serialized LowIR on a reservation-colliding probe; object-only scan removed entirely; serializable boundary retained; reference numbering divergence recorded under proposed/pa15 | Counter `0b03e001`; implementation `9c5c379f`; ledger recorded |
 | 20 | T5b block collation (complete) | Render-once byte keys replace per-compare virtual characters (5,694,676 -> 573,751 examined); frozen object exact; PA34 decimal-boundary EH reducer with reference agreement | Commit `271c3564` accepted; ledger recorded |
-| 21 | T6 operator and fixed-vocabulary enums (transport and lowering complete) | Packed `SimpleTokenKind` transport on `DumpNode` (152 bytes held); zero integrated lowering prefix strips (15,013 -> 0) and helper deleted; semantic-dispatch (T6c) and fixed-vocabulary (T6e) conversions remain | Counter anchor `88c2e583`; transport/lowering `5e9f3ce5`; remaining slices staged |
+| 21 | T6 operator and fixed-vocabulary enums (complete on the integrated path) | Packed `SimpleTokenKind` flows classification -> semantics -> `DumpNode` -> lowering; zero integrated prefix strips and spelling dispatch; residual text is classified adapters (declared-operator mapping, `"[]"` pseudo-spelling, GNU extensions, standalone PA11 input parsing) | Anchor `88c2e583`; transport/lowering `5e9f3ce5`; semantic dispatch `a3150b62` |
 | 22 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
 | 23 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
 | 24 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
