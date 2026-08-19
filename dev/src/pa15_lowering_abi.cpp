@@ -431,6 +431,7 @@ class AbiFactBuilder
 	const pa11::Program& program_;
 	abi_mangle::AbiTypedCase& facts_;
 	abi_mangle::AbiMangleContext* context_;
+	abi_mangle::AbiMangleStats* stats_;
 	std::size_t next_argument_;
 	std::vector<TypeArgumentCacheEntry> type_argument_cache_;
 	std::vector<std::uint32_t> type_argument_cache_slots_;
@@ -614,8 +615,10 @@ public:
 
 	AbiFactBuilder(const pa11::Program& program,
 		abi_mangle::AbiTypedCase& facts,
-		abi_mangle::AbiMangleContext* context = 0)
-		: program_(program), facts_(facts), context_(context), next_argument_(0),
+		abi_mangle::AbiMangleContext* context,
+		abi_mangle::AbiMangleStats* stats)
+		: program_(program), facts_(facts), context_(context), stats_(stats),
+		  next_argument_(0),
 		  type_argument_cache_slots_(32, 0)
 	{
 		if (!context_)
@@ -659,8 +662,11 @@ public:
 			if (binding.name != 0)
 				SetPath(&entity.function, binding.owner, binding.name);
 			else
+			{
+				if (stats_) ++stats_->text_entity_function_fallbacks;
 				entity.function.qualified_name =
 					program_.names.Get(binding.qualified_name);
+			}
 			const TypeRecord& function = program_.types.Get(binding.type);
 			const TypeId* parameters =
 				program_.types.Parameters(binding.type);
@@ -674,7 +680,10 @@ public:
 			if (binding.name != 0)
 				SetPath(&entity.function, binding.owner, binding.name);
 			else
+			{
+				if (stats_) ++stats_->text_entity_variable_fallbacks;
 				entity.qualified_name = program_.names.Get(binding.qualified_name);
+			}
 			entity.internal_linkage =
 				binding.storage_class == STORAGE_CLASS_STATIC &&
 				binding.member_owner == kNoEntity &&
@@ -1054,6 +1063,7 @@ public:
 		if (function.owner == program_.GlobalScope() &&
 			program_.names.Get(function.name) == "main")
 		{
+			if (stats_) ++stats_->raw_main_contexts;
 			context_fact.kind = ABI_CONTEXT_RAW;
 			context_fact.fragment = "Z4mainE";
 			return StoreLocalContext(context_fact, identity);
@@ -1064,7 +1074,10 @@ public:
 		if (function.name != 0)
 			SetPath(&target, function.owner, function.name);
 		else
+		{
+			if (stats_) ++stats_->text_local_context_fallbacks;
 			target.qualified_name = program_.names.Get(function.qualified_name);
+		}
 		const FunctionTemplateAbiRecipe* recipe = 0;
 		if (function.function_template_abi_recipe !=
 			kNoFunctionTemplateAbiRecipe)
@@ -2077,7 +2090,7 @@ std::string MangleType(const pa11::Program& program, pa11::TypeId type,
 		context = local_context.get();
 	}
 	AbiTypedCase fact_case;
-	AbiFactBuilder facts(program, fact_case, context);
+	AbiFactBuilder facts(program, fact_case, context, stats);
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_TYPE;
@@ -2342,7 +2355,7 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	if (binding.operator_kind != OPERATOR_CALL)
 		throw std::logic_error("invalid lambda call-operator ABI identity");
 	AbiTypedCase fact_case;
-	AbiFactBuilder facts(program, fact_case, context);
+	AbiFactBuilder facts(program, fact_case, context, stats);
 	const FunctionTemplateAbiRecipe* recipe = 0;
 	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
 	{
@@ -2455,11 +2468,15 @@ std::string MangleFunction(const pa11::Program& program,
 	using namespace pa11;
 	const BindingRecord& binding = program.bindings[node.binding];
 	if (binding.assembly_name != 0)
+	{
+		if (stats) ++stats->external_assembly_names;
 		return program.names.Get(binding.assembly_name);
+	}
 	if (binding.owner == program.GlobalScope() &&
 		program.names.Get(binding.name) == "main") return std::string();
 	if (binding.builtin_function != BUILTIN_FUNCTION_NONE)
 	{
+		if (stats) ++stats->external_builtin_runtime_names;
 		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_NEW)
 			return "cppgm_builtin_operator_new";
 		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_DELETE)
@@ -2473,7 +2490,10 @@ std::string MangleFunction(const pa11::Program& program,
 		return "cppgm_builtin_" + program.names.Get(binding.name).substr(10);
 	}
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C)
+	{
+		if (stats) ++stats->external_c_function_names;
 		return program.names.Get(binding.name);
+	}
 	std::unique_ptr<AbiMangleContext> local_context;
 	if (!context)
 	{
@@ -2487,7 +2507,7 @@ std::string MangleFunction(const pa11::Program& program,
 		return MangleLambdaCallOperator(
 			program, binding, *lambda, stats, context);
 	AbiTypedCase fact_case;
-	AbiFactBuilder facts(program, fact_case, context);
+	AbiFactBuilder facts(program, fact_case, context, stats);
 	const FunctionTemplateAbiRecipe* recipe = 0;
 	if (binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe)
 	{
@@ -2689,7 +2709,10 @@ std::string MangleVariable(const pa11::Program& program,
 	const BindingRecord& binding = program.bindings[node.binding];
 	if (binding.language_linkage == LANGUAGE_LINKAGE_C &&
 		binding.storage_class != STORAGE_CLASS_STATIC)
+	{
+		if (stats) ++stats->external_c_variable_names;
 		return program.names.Get(binding.name);
+	}
 	// Linux global-namespace TLS objects retain their source spelling; wrapper
 	// functions still use the corresponding Itanium TLS special name.
 	if (binding.owner == program.GlobalScope() &&
@@ -2699,7 +2722,10 @@ std::string MangleVariable(const pa11::Program& program,
 		!binding.unnamed_namespace_linkage &&
 		!binding.variable_template_specialization &&
 		binding.template_argument_count == 0)
+	{
+		if (stats) ++stats->external_global_tls_names;
 		return program.names.Get(binding.name);
+	}
 	std::unique_ptr<AbiMangleContext> local_context;
 	if (!context)
 	{
@@ -2707,7 +2733,7 @@ std::string MangleVariable(const pa11::Program& program,
 		context = local_context.get();
 	}
 	AbiTypedCase fact_case;
-	AbiFactBuilder facts(program, fact_case, context);
+	AbiFactBuilder facts(program, fact_case, context, stats);
 	const bool tagged_class_owner = binding.member_owner != kNoEntity &&
 		ClassOwnerHasAbiTags(program, binding.member_owner);
 	const bool nested_specialized_class_owner =
@@ -2743,10 +2769,22 @@ std::string MangleVariable(const pa11::Program& program,
 				&target.target.function, binding.owner, binding.name);
 		else
 		{
-			target.target.qualified_name = qualified_name_override.empty() ?
-				program.names.Get(binding.qualified_name != 0 ?
-					binding.qualified_name : node.text) :
-				qualified_name_override;
+			if (!qualified_name_override.empty())
+			{
+				if (stats) ++stats->text_variable_explicit_overrides;
+				target.target.qualified_name = qualified_name_override;
+			}
+			else if (binding.qualified_name != 0)
+			{
+				if (stats) ++stats->text_variable_qualified_fallbacks;
+				target.target.qualified_name =
+					program.names.Get(binding.qualified_name);
+			}
+			else
+			{
+				if (stats) ++stats->text_variable_node_fallbacks;
+				target.target.qualified_name = program.names.Get(node.text);
+			}
 			target.target.function.qualified_name =
 				target.target.qualified_name;
 		}
@@ -2808,7 +2846,7 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 		context = local_context.get();
 	}
 	AbiTypedCase fact_case;
-	AbiFactBuilder facts(program, fact_case, context);
+	AbiFactBuilder facts(program, fact_case, context, stats);
 	AbiFactRecord target;
 	target.set_kind(ABI_FACT_RECORD_TARGET);
 	target.target.kind = ABI_TARGET_FACT_THREAD_LOCAL_WRAPPER;
@@ -2816,8 +2854,11 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 	if (terminal != 0 && !program.names.Get(terminal).empty())
 		facts.SetPath(&target.target.function, binding.owner, terminal);
 	else if (binding.qualified_name != 0)
+	{
+		if (stats) ++stats->text_tls_wrapper_fallbacks;
 		target.target.qualified_name =
 			program.names.Get(binding.qualified_name);
+	}
 	if (target.target.function.resolved_path == ABI_NO_RESOLVED_REFERENCE &&
 		target.target.qualified_name.empty())
 		throw std::logic_error("thread-local wrapper has no semantic name (binding " +

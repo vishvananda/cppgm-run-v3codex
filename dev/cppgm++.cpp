@@ -1412,6 +1412,31 @@ void report_source_compile_stats(
 			 << stats.abi.typed_literal_suffixes
 			 << " abi_text_literal_suffixes="
 			 << stats.abi.text_literal_suffixes
+			 << " abi_text_entity_function_fallbacks="
+			 << stats.abi.text_entity_function_fallbacks
+			 << " abi_text_entity_variable_fallbacks="
+			 << stats.abi.text_entity_variable_fallbacks
+			 << " abi_text_local_context_fallbacks="
+			 << stats.abi.text_local_context_fallbacks
+			 << " abi_text_variable_explicit_overrides="
+			 << stats.abi.text_variable_explicit_overrides
+			 << " abi_text_variable_qualified_fallbacks="
+			 << stats.abi.text_variable_qualified_fallbacks
+			 << " abi_text_variable_node_fallbacks="
+			 << stats.abi.text_variable_node_fallbacks
+			 << " abi_text_tls_wrapper_fallbacks="
+			 << stats.abi.text_tls_wrapper_fallbacks
+			 << " abi_raw_main_contexts=" << stats.abi.raw_main_contexts
+			 << " abi_external_assembly_names="
+			 << stats.abi.external_assembly_names
+			 << " abi_external_c_function_names="
+			 << stats.abi.external_c_function_names
+			 << " abi_external_builtin_runtime_names="
+			 << stats.abi.external_builtin_runtime_names
+			 << " abi_external_c_variable_names="
+			 << stats.abi.external_c_variable_names
+			 << " abi_external_global_tls_names="
+			 << stats.abi.external_global_tls_names
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
@@ -2515,6 +2540,31 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.abi.typed_literal_suffixes
 			 << " abi_text_literal_suffixes="
 			 << stats.abi.text_literal_suffixes
+			 << " abi_text_entity_function_fallbacks="
+			 << stats.abi.text_entity_function_fallbacks
+			 << " abi_text_entity_variable_fallbacks="
+			 << stats.abi.text_entity_variable_fallbacks
+			 << " abi_text_local_context_fallbacks="
+			 << stats.abi.text_local_context_fallbacks
+			 << " abi_text_variable_explicit_overrides="
+			 << stats.abi.text_variable_explicit_overrides
+			 << " abi_text_variable_qualified_fallbacks="
+			 << stats.abi.text_variable_qualified_fallbacks
+			 << " abi_text_variable_node_fallbacks="
+			 << stats.abi.text_variable_node_fallbacks
+			 << " abi_text_tls_wrapper_fallbacks="
+			 << stats.abi.text_tls_wrapper_fallbacks
+			 << " abi_raw_main_contexts=" << stats.abi.raw_main_contexts
+			 << " abi_external_assembly_names="
+			 << stats.abi.external_assembly_names
+			 << " abi_external_c_function_names="
+			 << stats.abi.external_c_function_names
+			 << " abi_external_builtin_runtime_names="
+			 << stats.abi.external_builtin_runtime_names
+			 << " abi_external_c_variable_names="
+			 << stats.abi.external_c_variable_names
+			 << " abi_external_global_tls_names="
+			 << stats.abi.external_global_tls_names
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
