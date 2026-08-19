@@ -1,0 +1,64 @@
+namespace N {
+
+template<class Policy>
+struct IterOps;
+
+struct Policy {
+};
+
+template<>
+struct IterOps<Policy> {
+  template<class Value>
+  using value_type = typename Value::value_type;
+};
+
+template<class PolicyType, class Value>
+using policy_value_type =
+  typename IterOps<PolicyType>::template value_type<Value>;
+
+template<class Key, class Value>
+struct value_type {
+};
+
+template<class A, class B>
+struct same {
+  static const bool value = false;
+};
+
+template<class A>
+struct same<A, A> {
+  static const bool value = true;
+};
+
+template<bool, class T>
+struct enable {
+};
+
+template<class T>
+struct enable<true, T> {
+  typedef T type;
+};
+
+template<bool B, class T>
+using enable_t = typename enable<B, T>::type;
+
+template<class T>
+struct Box {
+  typedef T value_type;
+};
+
+struct Ops {
+  template<class PolicyType, class Value,
+    enable_t<same<policy_value_type<PolicyType, Value>, int>::value, int> = 0>
+  static int read(Value)
+  {
+    return 7;
+  }
+};
+
+}
+
+int main()
+{
+  return N::Ops::read<N::Policy>(N::Box<int>()) == 7 ? 0 : 1;
+}

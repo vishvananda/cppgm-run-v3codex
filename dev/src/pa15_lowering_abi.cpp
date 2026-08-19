@@ -1457,16 +1457,7 @@ public:
 				result.index = ResolvePath(
 					entity.owner, entity.identity_name) + 1;
 			else
-			{
-				std::vector<NameId> path;
-				program_.BuildEmissionPath(
-					entity.owner, entity.identity_name, &path);
-				for (std::size_t i = 0; i < path.size(); ++i)
-				{
-					if (i != 0) result.name += "::";
-					result.name += program_.names.Get(path[i]);
-				}
-			}
+				result.index = ResolveName(entity.identity_name) + 1;
 			if (source.child != kNoFunctionTemplateAbiType)
 				result.types.push_back(
 					MakeFunctionTemplateAbiType(source.child, recipe));
