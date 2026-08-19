@@ -6,7 +6,7 @@ Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current execution checkpoint: `5e733931` (T3w3 implementation)
+Current execution checkpoint: `eefb458a` (T3w4 implementation)
 
 ## 1. Objective
 
@@ -455,10 +455,10 @@ and canonical type records did not grow.
 
 ### 8.6 Current execution checkpoint
 
-T3u and T3v are complete.  T3w1 through T3w3 are also complete: retained-recipe
+T3u and T3v are complete.  T3w1 through T3w4 are also complete: retained-recipe
 type terminals, local-owner names, member-NTTP source names, and
 literal-operator suffixes and type ABI tags now cross the production boundary
-by graph ID.  Resume Phase 2 at T3w4 in the independently testable sequence
+by graph ID.  Resume Phase 2 at T3w5 in the independently testable sequence
 below.  Do not combine the remaining changesets merely because they all end
 in the ABI encoder:
 
@@ -498,12 +498,16 @@ in the ABI encoder:
    for `AbiType` and every high-multiplicity enclosing record, and reject a
    representation that grows any of them.  The accepted 32-byte list shrinks
    `AbiType` by 16 bytes and every enclosing record measured below.
-6. **T3w4: member-template specialization identity.**  Remove the remaining
+6. **T3w4: member-template specialization identity (complete).**  Remove the remaining
    full `::`-joined name built by `MakeFunctionTemplateAbiType`.  Carry a
    resolved path plus an explicit terminal/member interpretation, preserving
    the distinction caught by the PA33 dependent-member-alias fixture.  Do not
    reuse a path field by kind until tests prove whether substitution identity
-   is the whole path or only the terminal at that record position.
+   is the whole path or only the terminal at that record position.  The
+   encoder needs the member terminal: its owner child and terminal ID already
+   form the exact member-template-prefix substitution key.  The accepted
+   implementation therefore carries the terminal graph ID without retaining
+   a redundant path.
 7. **T3w5: residual fallbacks and true boundaries.**  Classify the function,
    variable, TLS, and local-context cases where `binding.name == 0` separately
    from explicit `qualified_name_override`, assembly/C-linkage names, builtin
@@ -963,9 +967,9 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T3w1 | Carry retained-recipe type terminals and local-owner names by graph string ID | Type source names move 397/274 -> 671/0 typed/text, and local-owner names move 0/122 -> 122/0. Existing kind-disjoint `AbiType` slots carry both IDs, and the redundant production `"-"` complete-substitution marker is removed. Fact-owned storage falls 53,774,559 -> 53,771,416 (-3,143 bytes); graph counts and common record sizes are unchanged. | The first screened three-block window was mixed (+0.46% paired user), while two clean repeats favored the candidate in every block. The deciding repeat measured 4.425/4.385 s median user, 4.905/4.875 s wall, and 363,946/364,048 KiB RSS; paired candidate -1.24% user, -1.69% wall, and +0.10% RSS. Treated as a structural improvement with timing corroboration, not a 1% standalone claim. | All 36 timed objects across the three windows and the stats object are exact at 4,415,448 bytes with the baseline SHA; no fixture changes | PA14 117/117; through PA14 1,050/1,050; selected PA14/15/17/19/20/22/23/25/26/30/32/33/37/38 report 2,384/2,384; full report 5,210/5,210; zero-fatal audit with 26 warnings | `6638de4b`; accepted |
 | T3w2 | Carry member-NTTP source names and literal-operator suffixes by graph string ID | `AbiTemplateArgument::index` and `resolved_entity`, plus the function record's existing resolved-source slot, carry the emitted IDs by kind. The frozen benchmark has zero occurrences, so counters and fact bytes remain unchanged. Canonical argument records and hashing were also extracted into a compiled graph-argument module, leaving the core mangler at 2,910 lines with no representation or size change. | Not timed independently because every affected frozen counter is zero; no compile-time claim | Frozen and stats objects remain exact at 4,415,448 bytes with the baseline SHA; no fixture changes | Selected PA14/15/23/32/34/37/38 report 1,283/1,283; full report 5,210/5,210 after the ownership split; zero-fatal audit with 26 warnings | `228e489e`; accepted architecture cleanup |
 | T3w3 | Compact mixed adapter-name/graph-ID storage for namespace qualifiers and type ABI tags | One 32-byte discriminated list replaces two 24-byte vectors. `AbiType` shrinks 416 -> 400 bytes; enclosing argument/expression/target/function records shrink 64/32/32/16 bytes. Frozen fact storage falls 53,771,416 -> 52,530,664 bytes despite zero frozen tags. PA33 moves 12/0 text/typed tags to 0/12 and its fact storage falls 77,212 -> 75,196. | Three screened explicit-`-O0` A/B/B/A blocks: baseline/candidate medians 4.390/4.400 s user, 4.870/4.870 s wall, and 366,088/364,396 KiB RSS; paired candidate -0.23% user, -0.62% wall, and -0.16% RSS. Accepted as structural/storage work, not a timing claim. | All 12 frozen objects are exact at 4,415,448 bytes with the baseline SHA. PA33 object is byte-identical; PA14 tagged adapter output remains exact with 2 textual tags; no fixture changes. | PA14 117/117; through PA14 1,050/1,050; selected PA14/15/23/32/33/37/38 1,009/1,009; full report 5,210/5,210; zero-fatal audit with 26 warnings | `5e733931`; accepted |
-| T3w4 | Carry member-template specialization path identity without joining `::` text | Planned; preserve full-path versus terminal semantics explicitly | Planned | PA33 dependent-member-alias fixture is a required guard | PA14/15/23/32/33 plus full report | Planned |
+| T3w4 | Carry dependent member-template specialization terminals without joining `::` text | The PA32 reducer moves the affected source-name count from 1 typed/1 text to 2 typed/0 text. The owner child plus terminal ID is the complete member-template-prefix substitution identity, so no full path or new field is retained. Frozen counters and 52,530,664 fact bytes are unchanged because it has zero occurrences. | Not timed independently because the frozen benchmark has zero affected records | The reducer corrects an invalid `13N::value_type` source-name component to `10value_type`; the pinned reference and Clang both encode the terminal. Frozen output remains exact at 4,415,448 bytes with the baseline SHA. One earliest-owned PA32 inspect regression was added through the documented reference target; no existing fixture changed. | PA32 149/149; through PA32 4,391/4,391; selected PA14/15/23/32/33/37/38 1,010/1,010; full report 5,211/5,211; zero-fatal audit with 26 warnings | `eefb458a`; accepted correctness and architecture cleanup |
 | T3w5/T3x | Classify residual ABI fallbacks and close the production-string audit | Planned; every residual counter must name a true boundary | Planned | Exact mangles, symbols, binding, and frozen object | ABI owners plus full report | Planned |
-| T3 | Typed translation-unit ABI context replaces production fact files | In progress: production definition/reference families, semantic paths, ordinary source names, type ABI tags, all fixed ABI vocabulary, dependent-expression facts, numeric presentation, and substitution-key families use typed graph or per-mangle keys; ABI text-to-path parsing, fixed-word transport, numeric format/reparse, and synthetic substitution strings are zero. One member-template joined path and classified external/fallback text remain. | Accepted T3 slices are cumulatively faster and reduce fact-owned storage by more than two thirds from T3d | Exact mangles, symbols, binding, and object behavior | PA14/15/17/18/19/20/22/23/26/30/32/33/34/37/38 plus full report | Execute T3w4-T3w5, then T3x |
+| T3 | Typed translation-unit ABI context replaces production fact files | In progress: production definition/reference families, semantic paths, ordinary source names, type ABI tags, all fixed ABI vocabulary, dependent-expression facts, numeric presentation, and substitution-key families use typed graph or per-mangle keys; ABI text-to-path parsing, fixed-word transport, numeric format/reparse, joined member-template names, and synthetic substitution strings are zero. Classified external/fallback text remains. | Accepted T3 slices are cumulatively faster and reduce fact-owned storage by more than two thirds from T3d | Exact mangles, symbols, binding, and object behavior | PA14/15/17/18/19/20/22/23/26/30/32/33/34/37/38 plus full report | Execute T3w5, then T3x |
 | T2x | Close residual semantic name-path recovery by caller family | Planned; syntax-owned and fixed-generated reparses must reach zero, while adapter and PA19 counts remain separate | Planned | Exact syntax/semantic serialization | PA11/12 plus feature owners and full report | After T3x, before T4 |
 | T4 | Lazy semantic emission/display/specialization identity | Planned | Planned | Exact semantic serialization expected | PA12/19/20/22 plus downstream reports | Planned |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
@@ -1000,14 +1004,14 @@ this plan remain the decision criteria.
 
 ## 22. Ordered execution plan from the current checkpoint
 
-This is the authoritative order after `5e733931`.  Later rows may be
+This is the authoritative order after `eefb458a`.  Later rows may be
 re-prioritized only by updating this document with the new dependency or
 measurement; do not silently skip an unresolved closeout gate.
 
 | Order | Slice | Required evidence before acceptance | Clean boundary |
 | ---: | --- | --- | --- |
 | 1 | T3w3 compact ABI type presentation names (complete) | PA14/PA33 exact behavior, record sizes, fact bytes, frozen exactness, selected reports, full report, audit, and ABBA recorded in section 8.7 | `5e733931`; ledger recorded |
-| 2 | T3w4 member-template specialization identity | Reduced full-path/terminal tests, PA33 guard, zero joined production path, full report, audit | Implementation commit, then ledger commit |
+| 2 | T3w4 member-template specialization identity (complete) | PA32 reducer, pinned-reference/Clang terminal parity, zero joined production path, full report, and audit recorded in the ledger | `eefb458a`; ledger recorded |
 | 3 | T3w5 residual ABI fallbacks | Per-category counters and written boundary classification; no aggregate “other” bucket | Implementation commit, then ledger commit |
 | 4 | T3x Phase 2 closeout | Source audit plus zero production fixed-word/path/numeric/synthetic-identity recovery; exact frozen object | Closeout ledger commit |
 | 5 | T2x residual semantic name paths | Per-caller baseline, earliest-owned reducers, zero syntax-owned/fixed-generated reparses | One commit per caller family, each followed by ledger |
