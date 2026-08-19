@@ -16,9 +16,11 @@ enum SyntaxTagCode : std::uint16_t
 #define CPPGM_DEFINE_SYNTAX_TAG(code, spelling) code,
 	CPPGM_FOR_EACH_SYNTAX_TAG(CPPGM_DEFINE_SYNTAX_TAG)
 #undef CPPGM_DEFINE_SYNTAX_TAG
+	STAG_COUNT
 };
 
 SyntaxTagCode ClassifySyntaxTag(const char* spelling);
+const char* SyntaxTagSpelling(SyntaxTagCode code);
 
 }
 }

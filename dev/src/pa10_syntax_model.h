@@ -162,6 +162,10 @@ public:
 	std::size_t Edges() const;
 	TextId TagId(NodeId node) const;
 	const std::string& Tag(NodeId node) const;
+	SyntaxTagCode TagCode(NodeId node) const
+	{
+		return nodes_[node].tag_code;
+	}
 	bool IsTag(NodeId node, const char* tag) const;
 	bool IsTag(NodeId node, SyntaxTagCode tag) const
 	{

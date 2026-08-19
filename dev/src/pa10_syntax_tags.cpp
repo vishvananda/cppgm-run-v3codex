@@ -31,5 +31,13 @@ SyntaxTagCode ClassifySyntaxTag(const char* spelling)
 	return STAG_NONE;
 }
 
+const char* SyntaxTagSpelling(SyntaxTagCode code)
+{
+	if (code == STAG_NONE) return "other";
+	const std::size_t index = static_cast<std::size_t>(code) - 1;
+	return index < sizeof(kSyntaxTags) / sizeof(kSyntaxTags[0]) ?
+		kSyntaxTags[index].spelling : "invalid";
+}
+
 }
 }

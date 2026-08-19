@@ -2,6 +2,7 @@
 
 #include "macro_processor.h"
 #include "pa10_syntax.h"
+#include "pa10_syntax_tags.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -50,6 +51,8 @@ struct SemanticAnalysisStats
 	std::size_t name_path_parse_requests, name_path_parse_components;
 	std::size_t name_path_single_component_parses;
 	std::size_t name_path_parse_families[NAME_PATH_PARSE_FAMILY_COUNT];
+	std::size_t syntax_name_path_fallback_tags[
+		pa10_syntax_detail::STAG_COUNT];
 	std::size_t structured_name_path_requests;
 	std::size_t syntax_name_path_requests;
 	std::size_t syntax_name_path_direct;

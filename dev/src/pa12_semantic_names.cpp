@@ -110,7 +110,13 @@ NamePath SemanticAnalyzer::SyntaxNamePath(NodeId syntax)
 			arena_->SemanticPayloadId(syntax)));
 		return path;
 	}
-	if (stats_) ++stats_->syntax_name_path_fallbacks;
+	if (stats_)
+	{
+		++stats_->syntax_name_path_fallbacks;
+		const pa10_syntax_detail::SyntaxTagCode tag = syntax == kNoNode ?
+			pa10_syntax_detail::STAG_NONE : arena_->TagCode(syntax);
+		++stats_->syntax_name_path_fallback_tags[tag];
+	}
 	return syntax == kNoNode ? path : ParseNamePath(
 		PayloadSource(syntax), NAME_PATH_PARSE_SYNTAX_FALLBACK);
 }

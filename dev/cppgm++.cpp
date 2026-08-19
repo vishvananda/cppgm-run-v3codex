@@ -1541,7 +1541,16 @@ void report_source_compile_stats(
 			 << " semantic_shared_string_bytes="
 			 << semantic.semantic_shared_string_bytes
 				 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes;
-		report_compile_phase_stats(stats, preparation_stats,
+		for (std::size_t tag = 0;
+			tag < cppgm::pa10_syntax_detail::STAG_COUNT; ++tag)
+		{
+			if (semantic.syntax_name_path_fallback_tags[tag] != 0)
+				cerr << " syntax_name_path_fallback_tag_"
+					 << cppgm::pa10_syntax_detail::SyntaxTagSpelling(
+						static_cast<cppgm::pa10_syntax_detail::SyntaxTagCode>(tag))
+					 << '=' << semantic.syntax_name_path_fallback_tags[tag];
+		}
+			report_compile_phase_stats(stats, preparation_stats,
 			timings.typed_pipeline_nanoseconds, timings.adapter_nanoseconds,
 			timings.text_parse_nanoseconds, timings.prune_nanoseconds,
 			timings.debug_nanoseconds, timings.lowir_opt_nanoseconds);

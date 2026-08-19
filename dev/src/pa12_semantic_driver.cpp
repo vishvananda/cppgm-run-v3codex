@@ -191,6 +191,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 {
 	for (std::size_t i = 0; i < NAME_PATH_PARSE_FAMILY_COUNT; ++i)
 		name_path_parse_families[i] = 0;
+	for (std::size_t i = 0; i < pa10_syntax_detail::STAG_COUNT; ++i)
+		syntax_name_path_fallback_tags[i] = 0;
 }
 
 }
