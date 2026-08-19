@@ -393,6 +393,55 @@ operation enum and graph string ID; PA14 retains arbitrary operation text only
 as an adapter fallback.  The remaining fixed vocabulary is builtin/standard
 type substitution and the block-pointer marker.
 
+### 8.6 Current execution checkpoint
+
+Resume Phase 2 in the following independently testable changesets.  Do not
+combine them merely because they all end in the ABI encoder:
+
+1. **T3u: fixed type vocabulary.**  Represent fundamental/builtin types,
+   standard-library substitution codes, and the block-pointer vendor qualifier
+   with byte-sized enums.  Carry `_BitInt` signedness as an enum and its width
+   as an integer.  The production PA15 path sets these facts directly; it must
+   not construct words such as `uint`, `bitint37`, `Sa`, or `block_pointer` for
+   the encoder to classify.  PA14 classifies canonical input once and retains
+   arbitrary textual fallback only where its public fact grammar permits it.
+   Render fixed Itanium codes by indexed tables in the encoder.  Use existing
+   alignment or kind-disjoint slots and hold `AbiType`, `TypeNode`, and function
+   record sizes with compile-time assertions.
+2. **T3v: numeric local presentation.**  Inventory every lambda ordinal,
+   local-name ordinal, discriminator, and array-bound `std::to_string` site.
+   Separate true arbitrary constant-expression text from integer facts already
+   owned by semantics.  Carry the latter as integers plus explicit presence and
+   placement flags, and format them once at final ABI output.  Write down and
+   test the exact omitted-zero, one-based, and zero-based rules before changing
+   the representation.
+3. **T3w: remaining language names and tags.**  For each production assignment
+   of an ABI `name`, `text`, tag, or substitution field, identify the owning
+   `NameId` or typed composite key.  Carry an existing graph string ID when the
+   bytes are genuinely emitted, and a numeric composite when the value is only
+   substitution identity.  Keep explicit assembly/C-linkage names and API
+   overrides as text.  Do not introduce a second string-to-ID cache beside the
+   semantic name table.
+4. **T3x: Phase 2 closeout audit.**  Re-run the assignment audit over all ABI
+   fact construction, not just the frozen source.  Every retained production
+   string must be classified as an emitted language name, external override,
+   diagnostic, or PA14 adapter value.  Production counters for fixed-word
+   classification, path parsing, synthetic identity strings, and numeric
+   format/reparse must be zero.  Remove transitional fields only after the
+   PA14 adapter and encoder no longer share production storage by accident.
+
+For T3u-T3w, record typed-versus-text occurrence counters under `--stats`,
+owned fact bytes, canonical graph counts, and relevant `sizeof` values.  A
+frozen-source count of zero makes a slice architectural cleanup, not a timing
+claim.  Each retained slice still requires exact PA14 mangles, exact frozen
+object bytes, selected owner/downstream reports, full `make test-report`, and
+a zero-fatal PA39 audit before its implementation and ledger commits.
+
+After T3x, proceed to lazy semantic presentation (Phase 3).  That dependency is
+intentional: removing eager `DisplayName`/`EmissionName` storage while the ABI
+bridge still accepts only rendered names would recreate the same text through
+a different helper and would not reduce total work.
+
 ## 9. Phase 3: make semantic presentation lazy
 
 ### 9.1 Current path
