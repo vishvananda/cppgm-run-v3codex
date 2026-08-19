@@ -4,9 +4,10 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; T4 and T5 are complete, the cumulative frozen compile now beats
-the immutable audit anchor by 9.4% median user time (success criterion 3
-is exceeded), and the T6 operator vocabulary is the next phase
+complete; T4 and T5 are complete, the cumulative frozen compile beats the
+immutable audit anchor by 9.4% median user time (success criterion 3 is
+exceeded), the T6a anchor is recorded, and the T6 representation slices
+are next
 
 Date: 2026-08-19
 
@@ -1937,10 +1938,17 @@ fixed-vocabulary feature.  Existing textual fixtures should remain exact.
 
 ### 11.3 Changeset sequence
 
-1. **T6a:** count operation-spelling comparisons by semantic caller,
-   `StripOperationPrefix` calls by lowering caller, and fixed keyword/builtin
-   comparisons separately.  Measure `SyntaxNode`, `DumpNode`, and
-   `ExpressionInfo` before selecting storage.
+1. **T6a (anchor recorded):** count operation-spelling comparisons by
+   semantic caller, `StripOperationPrefix` calls by lowering caller, and
+   fixed keyword/builtin comparisons separately.  Measure `SyntaxNode`,
+   `DumpNode`, and `ExpressionInfo` before selecting storage.  The
+   `StripOperationPrefix` choke-point counter records 15,013 frozen calls
+   (matching the audit) across 14 static lowering call sites; expression
+   operations travel as interned `OP_<KIND>:<spelling>` text whose kind
+   half is the already-classified simple-token name.  The measured record
+   sizes are 32-byte `SyntaxNode`, 152-byte `DumpNode`, and 112-byte
+   `ExpressionInfo`.  Anchor commit `88c2e583`; the frozen object remains exact and the
+   full report passes 5,218/5,218.
 2. **T6b:** define one compact `SemanticOperatorKind` mapping at the PA2/PA10
    boundary.  Pack it into existing flags or a dense syntax sidecar and retain
    the source `TextId` for exact serialization.
