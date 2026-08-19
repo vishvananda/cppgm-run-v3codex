@@ -1,12 +1,12 @@
 # Typed Compiler Boundary Plan: Remove Production Text Round-Trips
 
-Status: in progress; Phase 2 T3w is active
+Status: in progress; Phase 2 is complete and T2x is next
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current execution checkpoint: `eefb458a` (T3w4 implementation)
+Current execution checkpoint: `5732e547` (T3w5 implementation)
 
 ## 1. Objective
 
@@ -194,7 +194,7 @@ whose actual data flow differs from this table; it must not infer that every
 | Semantic and lowering operation comparisons, plus `StripOperationPrefix` | Fixed operator vocabulary is repeatedly recovered from semantic text | Carry a packed semantic operator enum through syntax, semantic facts, and lowering | PA10/PA12/PA15 |
 | `pa12_semantic_literals.cpp`, constant rendering, and static-lowering decoders | Source literal text is decoded in more than one phase, or typed scalar data is rendered and recovered | Publish one compact literal/scalar fact and consume its bits or arena slice | PA2/PA10/PA12/PA16/PA21 |
 | `pa19_semantic_ambiguity.cpp` | Recovers a parser alternative by removing whitespace and slicing a retained declaration spelling | Replace with a retained typed token range or parser alternative; do not generalize this specialized parser | PA19 |
-| `pa15_lowering_abi.cpp` and ABI graph construction | A small residual set of emitted names/tags and fallbacks still crosses the production ABI boundary as owned strings | Finish T3w one family at a time, then prove the residual strings are true boundaries in T3x | PA14/PA15/PA33 |
+| `pa15_lowering_abi.cpp` and ABI graph construction | Production carries semantic/graph IDs; only emitted name bytes, final external spellings, diagnostics, and PA14 adapter text remain | Phase 2 complete; preserve the T3x classification and zero text-recovery counters | PA14/PA15/PA33 |
 | `pa30_object.cpp` | Reads/writes the PA30 private serialized-object contract | Keep textual/binary decoding at that serialization boundary | PA30 |
 | native ELF symbol, section, assembly, and runtime-name handling | Produces object-file-visible bytes and consumes externally named symbols | Keep final spelling; remove only an upstream typed-to-text-to-typed recovery if separately demonstrated | PA29/PA30/PA34 |
 | recognizer grammar, macro processor, tokenizer, diagnostics, and test runner | Consumes source/configuration text or emits human-visible text | Keep as boundary text; only the integrated spelling handoff in Phase 7 is a representation target | PA2/PA4/PA6/PA10 |
@@ -524,13 +524,16 @@ in the ABI encoder:
    context enum whose final renderer emits the fixed Itanium fragment.  The
    arbitrary PA14 raw-context adapter, final external spellings, and diagnostic
    formatting remain text boundaries; no production ABI path fallback remains.
-8. **T3x: Phase 2 closeout audit.**  Re-run the assignment audit over all ABI
-   fact construction, not just the frozen source.  Every retained production
-   string must be classified as an emitted language name, external override,
-   diagnostic, or PA14 adapter value.  Production counters for fixed-word
-   classification, path parsing, synthetic identity strings, and numeric
-   format/reparse must be zero.  Remove transitional fields only after the
-   PA14 adapter and encoder no longer share production storage by accident.
+8. **T3x: Phase 2 closeout audit (complete).**  The source audit covers every
+   ABI fact constructor and every production `std::string` use, not only the
+   frozen source.  Production assigns no textual fact identity fields.  Name
+   spellings enter the graph only through a semantic `NameId`-keyed interning
+   call because those exact bytes must be emitted.  The remaining direct
+   strings are final assembly/C/builtin/TLS symbols, a completed mangled alias,
+   read-only recognition of semantic source names into enums/effect metadata,
+   or cold diagnostics.  Arbitrary fact text and raw contexts are PA14 adapter
+   values.  All fixed-vocabulary, presentation, and source-name text counters,
+   all five text-path counters, and synthetic-identity searches are zero.
 
 For T3u-T3w, record typed-versus-text occurrence counters under `--stats`,
 owned fact bytes, canonical graph counts, and relevant `sizeof` values.  A
@@ -539,10 +542,11 @@ claim.  Each retained slice still requires exact PA14 mangles, exact frozen
 object bytes, selected owner/downstream reports, full `make test-report`, and
 a zero-fatal PA39 audit before its implementation and ledger commits.
 
-After T3x, proceed to lazy semantic presentation (Phase 3).  That dependency is
-intentional: removing eager `DisplayName`/`EmissionName` storage while the ABI
-bridge still accepts only rendered names would recreate the same text through
-a different helper and would not reduce total work.
+T3x is complete.  Close the residual Phase 1 name-path inventory as T2x, then
+proceed to lazy semantic presentation (Phase 3).  This dependency remains
+intentional: the ABI bridge now accepts semantic paths, so removing eager
+`DisplayName`/`EmissionName` storage cannot recreate the same text through a
+different ABI helper.
 
 ### 8.7 T3w3 results
 
@@ -588,6 +592,40 @@ standalone compile-time claim.  PA14 passed 117/117, through PA14 passed
 1,050/1,050, selected PA14/15/23/32/33/37/38 passed 1,009/1,009, the full
 report passed 5,210/5,210, and the PA39 audit had zero fatal findings and 26
 warnings.
+
+### 8.8 T3x production-string closeout
+
+The closeout audit found one production ABI constructor,
+`pa15_lowering_abi.cpp`.  Its retained text sites have the following complete
+classification:
+
+| Site | Retained text role | Why it is a boundary rather than identity transport |
+| --- | --- | --- |
+| `resolve_external_name(NameId, spelling)` | Emitted C++ source-name bytes | The semantic ID is the cache key; the graph stores the spelling once because the final Itanium name must contain it. No path is rendered or parsed. |
+| `StandardSubstitutionFor` and builtin/native metadata comparisons | Read-only source/external-name recognition | The comparison immediately selects a byte-sized ABI enum or symbol-effect flag. No string is retained in a fact. |
+| Assembly names, C-linkage functions/variables, builtin runtime symbols, and global TLS names | Final external symbol spelling | These return directly from the mangling API and never enter the ABI fact graph. |
+| Lifecycle object aliases | Completed mangled output | `MangleFunction` has already performed final rendering; the alias is an object-file-visible result. |
+| Thread-local invariant diagnostics | Human-visible error text | Numeric IDs are formatted only on the cold failure path. |
+| `abi_mangle_parse.cpp` text fields and raw contexts | PA14 public adapter | The standalone adapter retains arbitrary checked-in fact grammar; integrated production never assigns these fields. |
+| `abi_mangle_presentation.cpp` and encoder number formatting | Final Itanium output | Integers and enum facts remain typed until the output buffer is written. |
+
+On the frozen compile, all text expression-operation, builtin-type,
+standard-substitution, vendor-qualifier, array-bound, local-presentation,
+type/argument/local source-name, ABI-tag, and literal-suffix counters are zero.
+All type, function, object, entity, and substitution text-path component
+counters are also zero.  The source tree contains no `__cppgm_abi` synthetic
+identity family, and the only production-bridge `std::to_string` calls are in
+the TLS invariant diagnostic.  The same run retains 1,049 typed builtin types,
+700 typed standard substitutions, 4 typed array bounds, 446 typed local
+presentations, 671 typed type source names, and 122 typed local source names.
+
+The final closeout object remains 4,415,448 bytes with SHA-256
+`d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`.
+Fact-owned bytes remain 52,530,664 and graph counts remain 4,260/3,503/3.
+T3x adds no implementation or fixture change and makes no independent timing
+claim; it closes on the already validated T3w5 compiler, whose selected report
+passed 2,038/2,038, full report passed 5,212/5,212, and PA39 audit had zero
+fatal findings with 26 warnings.
 
 ## 9. Phase 3: make semantic presentation lazy
 
@@ -977,8 +1015,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T3w3 | Compact mixed adapter-name/graph-ID storage for namespace qualifiers and type ABI tags | One 32-byte discriminated list replaces two 24-byte vectors. `AbiType` shrinks 416 -> 400 bytes; enclosing argument/expression/target/function records shrink 64/32/32/16 bytes. Frozen fact storage falls 53,771,416 -> 52,530,664 bytes despite zero frozen tags. PA33 moves 12/0 text/typed tags to 0/12 and its fact storage falls 77,212 -> 75,196. | Three screened explicit-`-O0` A/B/B/A blocks: baseline/candidate medians 4.390/4.400 s user, 4.870/4.870 s wall, and 366,088/364,396 KiB RSS; paired candidate -0.23% user, -0.62% wall, and -0.16% RSS. Accepted as structural/storage work, not a timing claim. | All 12 frozen objects are exact at 4,415,448 bytes with the baseline SHA. PA33 object is byte-identical; PA14 tagged adapter output remains exact with 2 textual tags; no fixture changes. | PA14 117/117; through PA14 1,050/1,050; selected PA14/15/23/32/33/37/38 1,009/1,009; full report 5,210/5,210; zero-fatal audit with 26 warnings | `5e733931`; accepted |
 | T3w4 | Carry dependent member-template specialization terminals without joining `::` text | The PA32 reducer moves the affected source-name count from 1 typed/1 text to 2 typed/0 text. The owner child plus terminal ID is the complete member-template-prefix substitution identity, so no full path or new field is retained. Frozen counters and 52,530,664 fact bytes are unchanged because it has zero occurrences. | Not timed independently because the frozen benchmark has zero affected records | The reducer corrects an invalid `13N::value_type` source-name component to `10value_type`; the pinned reference and Clang both encode the terminal. Frozen output remains exact at 4,415,448 bytes with the baseline SHA. One earliest-owned PA32 inspect regression was added through the documented reference target; no existing fixture changed. | PA32 149/149; through PA32 4,391/4,391; selected PA14/15/23/32/33/37/38 1,010/1,010; full report 5,211/5,211; zero-fatal audit with 26 warnings | `eefb458a`; accepted correctness and architecture cleanup |
 | T3w5 | Replace residual ABI fallback names with semantic paths and type the `main` context | The measurement anchor found all seven internal fallback categories at zero on the frozen source and classified the 679 live text occurrences as final external spellings: 50 assembly, 595 C-function, 21 builtin-runtime, and 13 C-variable names. The PA35 addressability fixture exposed one explicit variable override and two text object-path components; both fall to zero when its existing semantic owner/name path is used. A main-local-type reducer records one typed main context and zero text-path components. Fact bytes and graph counts remain 52,530,664 and 4,260/3,503/3. | Not timed independently: every changed frozen category has zero occurrences, so this is architecture cleanup rather than a compile-time claim | The frozen object remains exact at 4,415,448 bytes and the baseline SHA. The PA35 object and the new PA30 main-local-type object are byte-identical before/after; the pinned reference agrees on `_Z8use_typeIZ4mainE5LocalEiv`. One earliest object-emission regression was added. | Selected ABI/semantic/lowering/object report 2,038/2,038; full report 5,212/5,212; zero-fatal audit with 26 warnings | Counter anchor `bd4d29a3`; implementation `5732e547`; accepted |
-| T3x | Close the production ABI-string audit | Planned source audit; every remaining production string must be final presentation, external spelling, diagnostic text, or PA14 adapter input | Not a timing slice unless the audit finds live frozen work | Exact mangles, symbols, binding, and frozen object | ABI owners plus full report | Next |
-| T3 | Typed translation-unit ABI context replaces production fact files | In progress: production definition/reference families, semantic paths, ordinary source names, type ABI tags, all fixed ABI vocabulary, dependent-expression facts, numeric presentation, and substitution-key families use typed graph or per-mangle keys; ABI text-to-path parsing, fixed-word transport, numeric format/reparse, joined member-template names, synthetic substitution strings, and residual path fallbacks are zero. Classified final external spellings remain. | Accepted T3 slices are cumulatively faster and reduce fact-owned storage by more than two thirds from T3d | Exact mangles, symbols, binding, and object behavior | PA14/15/17/18/19/20/22/23/26/30/32/33/34/37/38 plus full report | Execute T3x closeout |
+| T3x | Close the production ABI-string audit | Every production fact constructor is accounted for. Production assigns no text identity field; exact emitted names are interned under semantic IDs, while direct strings are final external spellings, completed aliases, read-only enum/effect recognition, diagnostics, final formatting, or PA14 adapter data. All text fact/path counters and synthetic identity searches are zero. | Audit-only closeout; no independent timing claim | Frozen object, PA35 override object, and PA30 main-context object remain exact; no fixture changes beyond T3w5 | Reuses T3w5 selected 2,038/2,038 and full 5,212/5,212 reports; zero-fatal audit with 26 warnings | Accepted closeout; section 8.8 |
+| T3 | Typed translation-unit ABI context replaces production fact files | Complete: production definitions/references, semantic paths, ordinary source names, type ABI tags, fixed ABI vocabulary, dependent-expression facts, numeric presentation, substitution keys, and residual paths use typed graph/per-mangle identities. Text remains only for exact emitted bytes, final external symbols, diagnostics, and PA14 input/output. | Accepted T3 slices are cumulatively faster and reduce fact-owned storage by more than two thirds from T3d | Exact mangles, symbols, binding, and object behavior | PA14/15/17/18/19/20/22/23/26/30/32/33/34/37/38 plus full report | Complete; proceed to T2x |
 | T2x | Close residual semantic name-path recovery by caller family | Planned; syntax-owned and fixed-generated reparses must reach zero, while adapter and PA19 counts remain separate | Planned | Exact syntax/semantic serialization | PA11/12 plus feature owners and full report | After T3x, before T4 |
 | T4 | Lazy semantic emission/display/specialization identity | Planned | Planned | Exact semantic serialization expected | PA12/19/20/22 plus downstream reports | Planned |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
@@ -1022,7 +1060,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 1 | T3w3 compact ABI type presentation names (complete) | PA14/PA33 exact behavior, record sizes, fact bytes, frozen exactness, selected reports, full report, audit, and ABBA recorded in section 8.7 | `5e733931`; ledger recorded |
 | 2 | T3w4 member-template specialization identity (complete) | PA32 reducer, pinned-reference/Clang terminal parity, zero joined production path, full report, and audit recorded in the ledger | `eefb458a`; ledger recorded |
 | 3 | T3w5 residual ABI fallbacks (complete) | Per-category counter anchor, final-boundary classification, PA30/PA35 reducers, exact frozen/object outputs, full report, and audit recorded in section 8.7 | `bd4d29a3` counter anchor; `5732e547` implementation; ledger recorded |
-| 4 | T3x Phase 2 closeout | Source audit plus zero production fixed-word/path/numeric/synthetic-identity recovery; exact frozen object | Closeout ledger commit |
+| 4 | T3x Phase 2 closeout (complete) | Source audit, complete retained-text classification, zero production fixed-word/path/numeric/synthetic-identity recovery, and exact frozen object recorded in section 8.8 | Closeout ledger recorded |
 | 5 | T2x residual semantic name paths | Per-caller baseline, earliest-owned reducers, zero syntax-owned/fixed-generated reparses | One commit per caller family, each followed by ledger |
 | 6 | T4 lazy semantic presentation | Render-on-demand counters, semantic record sizes, exact dumps, no dual retained identity | One commit per ordinary/specialization/output family |
 | 7 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
