@@ -184,6 +184,14 @@ struct IPostTokenStream
 	virtual void EmitSimple(const std::string& source,
 		SimpleTokenKind kind) = 0;
 	virtual void EmitIdentifier(const std::string& source) = 0;
+	// Integrated-path variants carrying the producer's compact spelling
+	// identity; the defaults preserve the plain textual adapter contract.
+	virtual void EmitSimpleId(std::uint32_t producer_spelling,
+		const std::string& source, SimpleTokenKind kind)
+		{ (void)producer_spelling; EmitSimple(source, kind); }
+	virtual void EmitIdentifierId(std::uint32_t producer_spelling,
+		const std::string& source)
+		{ (void)producer_spelling; EmitIdentifier(source); }
 	virtual void EmitLiteral(const std::string& source,
 		FundamentalType type, const void* data, std::size_t size) = 0;
 	virtual void EmitLiteralArray(const std::string& source,
@@ -248,12 +256,16 @@ public:
 	void emit_new_line();
 	void emit_header_name(const std::string& data);
 	void emit_identifier(const std::string& data);
+	void emit_identifier_id(const std::string& data,
+		std::uint32_t producer_spelling);
 	void emit_pp_number(const std::string& data);
 	void emit_character_literal(const std::string& data);
 	void emit_user_defined_character_literal(const std::string& data);
 	void emit_string_literal(const std::string& data);
 	void emit_user_defined_string_literal(const std::string& data);
 	void emit_preprocessing_op_or_punc(const std::string& data);
+	void emit_preprocessing_op_or_punc_id(const std::string& data,
+		std::uint32_t producer_spelling);
 	void emit_non_whitespace_char(const std::string& data);
 	void emit_eof();
 	void EmitPragmaPackPush(std::size_t alignment);

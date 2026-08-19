@@ -997,18 +997,48 @@ public:
 
 	void emit_identifier(const std::string& data)
 	{
+		emit_identifier_id(data, 0);
+	}
+
+	// Classifies each distinct producer spelling once; -1 marks a plain
+	// identifier and values >= 0 are the simple-token kind.
+	int ClassifyCached(const std::string& data,
+		std::uint32_t producer_spelling)
+	{
+		if (producer_spelling == 0)
+		{
+			SimpleTokenKind kind;
+			return FindSimple(data, &kind) ? static_cast<int>(kind) : -1;
+		}
+		if (classify_cache_.size() <= producer_spelling)
+			classify_cache_.resize(
+				static_cast<std::size_t>(producer_spelling) + 1, -2);
+		std::int16_t& slot = classify_cache_[producer_spelling];
+		if (slot == -2)
+		{
+			SimpleTokenKind kind;
+			slot = FindSimple(data, &kind) ?
+				static_cast<std::int16_t>(kind) : std::int16_t(-1);
+		}
+		return slot;
+	}
+
+	void emit_identifier_id(const std::string& data,
+		std::uint32_t producer_spelling)
+	{
 		FlushStrings();
 		RestoreCurrentLocation();
 		CountPreprocessingToken();
-		SimpleTokenKind kind;
-		if (FindSimple(data, &kind))
+		const int kind = ClassifyCached(data, producer_spelling);
+		if (kind >= 0)
 		{
-			output_.EmitSimple(data, kind);
+			output_.EmitSimpleId(producer_spelling, data,
+				static_cast<SimpleTokenKind>(kind));
 			CountOutputToken();
 		}
 		else
 		{
-			output_.EmitIdentifier(data);
+			output_.EmitIdentifierId(producer_spelling, data);
 			CountOutputToken();
 		}
 	}
@@ -1049,13 +1079,20 @@ public:
 
 	void emit_preprocessing_op_or_punc(const std::string& data)
 	{
+		emit_preprocessing_op_or_punc_id(data, 0);
+	}
+
+	void emit_preprocessing_op_or_punc_id(const std::string& data,
+		std::uint32_t producer_spelling)
+	{
 		FlushStrings();
 		RestoreCurrentLocation();
 		CountPreprocessingToken();
-		SimpleTokenKind kind;
-		if (FindSimple(data, &kind))
+		const int kind = ClassifyCached(data, producer_spelling);
+		if (kind >= 0)
 		{
-			output_.EmitSimple(data, kind);
+			output_.EmitSimpleId(producer_spelling, data,
+				static_cast<SimpleTokenKind>(kind));
 			CountOutputToken();
 		}
 		else
@@ -1354,6 +1391,7 @@ private:
 
 	IPostTokenStream& output_;
 	PostTokenizationStats* stats_;
+	std::vector<std::int16_t> classify_cache_;
 	std::string pending_source_;
 	std::string pending_suffix_;
 	std::vector<PendingStringPart> pending_parts_;
@@ -1422,6 +1460,12 @@ void PostTokenizationSession::emit_identifier(const std::string& data)
 	impl_->analyzer.emit_identifier(data);
 }
 
+void PostTokenizationSession::emit_identifier_id(const std::string& data,
+	std::uint32_t producer_spelling)
+{
+	impl_->analyzer.emit_identifier_id(data, producer_spelling);
+}
+
 void PostTokenizationSession::emit_pp_number(const std::string& data)
 {
 	impl_->analyzer.emit_pp_number(data);
@@ -1453,6 +1497,13 @@ void PostTokenizationSession::emit_preprocessing_op_or_punc(
 	const std::string& data)
 {
 	impl_->analyzer.emit_preprocessing_op_or_punc(data);
+}
+
+void PostTokenizationSession::emit_preprocessing_op_or_punc_id(
+	const std::string& data, std::uint32_t producer_spelling)
+{
+	impl_->analyzer.emit_preprocessing_op_or_punc_id(
+		data, producer_spelling);
 }
 
 void PostTokenizationSession::emit_non_whitespace_char(

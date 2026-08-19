@@ -68,6 +68,10 @@ public:
 	void EmitInvalid(const std::string& source);
 	void EmitSimple(const std::string& source, SimpleTokenKind kind);
 	void EmitIdentifier(const std::string& source);
+	void EmitSimpleId(std::uint32_t producer_spelling,
+		const std::string& source, SimpleTokenKind kind);
+	void EmitIdentifierId(std::uint32_t producer_spelling,
+		const std::string& source);
 	void EmitLiteral(const std::string& source, FundamentalType,
 		const void*, std::size_t);
 	void EmitLiteralArray(const std::string& source, std::size_t,
@@ -90,6 +94,9 @@ public:
 
 private:
 	TextId InternTokenSpelling(const std::string& source);
+	TextId RemappedTokenSpelling(std::uint32_t producer_spelling,
+		const std::string& source);
+	std::vector<TextId> spelling_remap_;
 	SyntaxToken LocatedToken(std::uint16_t kind, TextId spelling,
 		std::uint32_t literal_fact = kNoLiteralFact) const;
 	void EmitLiteralSpelling(const std::string& source);

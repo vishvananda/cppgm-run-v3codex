@@ -149,6 +149,39 @@ void SyntaxTokenSink::EmitIdentifier(const std::string& source)
 		InternTokenSpelling(source)));
 }
 
+TextId SyntaxTokenSink::RemappedTokenSpelling(
+	std::uint32_t producer_spelling, const std::string& source)
+{
+	// One intern per distinct emitted producer spelling; repeats reuse the
+	// remembered frontend TextId without hashing the bytes again.
+	if (producer_spelling == 0) return InternTokenSpelling(source);
+	if (spelling_remap_.size() <= producer_spelling)
+		spelling_remap_.resize(
+			static_cast<std::size_t>(producer_spelling) + 1, 0);
+	TextId& slot = spelling_remap_[producer_spelling];
+	if (slot == 0) slot = InternTokenSpelling(source);
+	return slot;
+}
+
+void SyntaxTokenSink::EmitSimpleId(std::uint32_t producer_spelling,
+	const std::string& source, SimpleTokenKind kind)
+{
+	if (kind == OP_RSHIFT)
+	{
+		EmitSimple(source, kind);
+		return;
+	}
+	tokens_.push_back(LocatedToken(static_cast<std::uint16_t>(kind),
+		RemappedTokenSpelling(producer_spelling, source)));
+}
+
+void SyntaxTokenSink::EmitIdentifierId(std::uint32_t producer_spelling,
+	const std::string& source)
+{
+	tokens_.push_back(LocatedToken(kIdentifierToken,
+		RemappedTokenSpelling(producer_spelling, source)));
+}
+
 void SyntaxTokenSink::EmitLiteral(const std::string& source, FundamentalType type,
 	const void* data, std::size_t size)
 {

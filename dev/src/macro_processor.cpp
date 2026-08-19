@@ -2786,12 +2786,14 @@ private:
 		FeedPreprocessingToken(token, post_tokens_);
 	}
 
-	void FeedPreprocessingToken(const Token& token, IPPTokenStream& output)
+	void FeedPreprocessingToken(const Token& token,
+		PostTokenizationSession& output)
 	{
 		const std::string& spelling = Spell(token);
 		switch (token.kind)
 		{
-		case TK_IDENTIFIER: output.emit_identifier(spelling); break;
+		case TK_IDENTIFIER:
+			output.emit_identifier_id(spelling, token.spelling); break;
 		case TK_PP_NUMBER: output.emit_pp_number(spelling); break;
 		case TK_CHARACTER:
 			output.emit_character_literal(spelling); break;
@@ -2801,7 +2803,8 @@ private:
 		case TK_USER_STRING:
 			output.emit_user_defined_string_literal(spelling); break;
 		case TK_OPERATOR:
-			output.emit_preprocessing_op_or_punc(spelling); break;
+			output.emit_preprocessing_op_or_punc_id(
+				spelling, token.spelling); break;
 		case TK_NON_WHITESPACE:
 			output.emit_non_whitespace_char(spelling); break;
 		case TK_HEADER: output.emit_header_name(spelling); break;
