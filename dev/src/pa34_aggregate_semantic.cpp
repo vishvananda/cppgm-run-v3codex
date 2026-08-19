@@ -182,7 +182,8 @@ void SemanticAnalyzer::EmitStructuredBindingStorage(
 		<< '_' << arena_->TokenLast(source);
 	const std::string generated_name = generated.str();
 	if (stats_)
-		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+		RecordGeneratedIdentityRender(
+			SEMANTIC_GENERATED_STRUCTURED_BINDING_STORAGE,
 			generated_name, 2);
 	parsed.name = program_->names.Intern(generated_name);
 	if (program_->LookupDirect(scope, parsed.name,

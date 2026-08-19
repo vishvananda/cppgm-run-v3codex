@@ -1644,8 +1644,9 @@ void RetainedTemplateValidator::Run()
 			<< analyzer_.function_template_shape_parameters_.size();
 		const std::string spelling = generated.str();
 		if (analyzer_.stats_)
-			analyzer_.RecordPresentationRender(
-				SEMANTIC_PRESENTATION_GENERATED_IDENTITY, spelling, 1);
+			analyzer_.RecordGeneratedIdentityRender(
+				SEMANTIC_GENERATED_FUNCTION_TEMPLATE_PARAMETER_SHAPE,
+				spelling, 1);
 		const NameId name = analyzer_.program_->names.Intern(spelling);
 		const EntityId entity = analyzer_.program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,

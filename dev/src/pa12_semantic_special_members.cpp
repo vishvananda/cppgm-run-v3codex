@@ -221,8 +221,8 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	const std::string generated_spelling =
 		"__cppgm_constructor_base_" + std::to_string(constructor);
 	if (stats_)
-		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
-			generated_spelling, 1);
+		RecordGeneratedIdentityRender(
+			SEMANTIC_GENERATED_CONSTRUCTOR_BASE_ENTRY, generated_spelling, 1);
 	const NameId generated_name = program_->names.Intern(generated_spelling);
 	const BindingId base_entry = program_->AddBinding(source_binding.owner,
 		BIND_FUNCTION, generated_name, source_binding.type, false, 0,

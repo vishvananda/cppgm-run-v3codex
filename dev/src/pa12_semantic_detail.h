@@ -264,6 +264,16 @@ private:
 		stats_->presentation_render_components[family] += components;
 		stats_->presentation_render_bytes[family] += rendered.size();
 	}
+	void RecordGeneratedIdentityRender(
+		SemanticGeneratedIdentityFamily family,
+		const std::string& rendered, std::size_t components = 0) const
+	{
+		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			rendered, components);
+		++stats_->generated_identity_renders[family];
+		stats_->generated_identity_render_components[family] += components;
+		stats_->generated_identity_render_bytes[family] += rendered.size();
+	}
 	NameId ReadFunctionDisplayName(const FunctionInfo& function);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);

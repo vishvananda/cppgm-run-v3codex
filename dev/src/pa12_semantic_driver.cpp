@@ -207,6 +207,12 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 		presentation_retained_values[i] = 0;
 		presentation_retained_bytes[i] = 0;
 	}
+	for (std::size_t i = 0; i < SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT; ++i)
+	{
+		generated_identity_renders[i] = 0;
+		generated_identity_render_components[i] = 0;
+		generated_identity_render_bytes[i] = 0;
+	}
 }
 
 }

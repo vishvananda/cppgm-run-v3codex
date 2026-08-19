@@ -1802,7 +1802,8 @@ bool SemanticAnalyzer::MaterializeTemplatePartialArguments(
 			<< function_template_shape_parameters_.size();
 		const std::string spelling = generated.str();
 		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			RecordGeneratedIdentityRender(
+				SEMANTIC_GENERATED_FUNCTION_TEMPLATE_PARAMETER_SHAPE,
 				spelling, 1);
 		const NameId name = program_->names.Intern(spelling);
 		const EntityId entity = program_->NewEntity(name,

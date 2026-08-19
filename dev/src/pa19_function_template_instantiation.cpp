@@ -870,8 +870,8 @@ TypeId SemanticAnalyzer::DependentFunctionTemplateResultShape()
 		const std::string spelling =
 			"__function_template_dependent_result_shape";
 		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
-				spelling, 1);
+			RecordGeneratedIdentityRender(
+				SEMANTIC_GENERATED_FUNCTION_TEMPLATE_RESULT_SHAPE, spelling, 1);
 		const NameId shape_name = program_->names.Intern(spelling);
 		const EntityId shape = program_->NewEntity(shape_name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,
@@ -890,7 +890,8 @@ void SemanticAnalyzer::EnsureFunctionTemplateShapeParameters(std::size_t count)
 			"__function_template_parameter_shape_" + std::to_string(
 				function_template_shape_parameters_.size());
 		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			RecordGeneratedIdentityRender(
+				SEMANTIC_GENERATED_FUNCTION_TEMPLATE_PARAMETER_SHAPE,
 				spelling, 1);
 		const NameId name = program_->names.Intern(spelling);
 		const EntityId entity = program_->NewEntity(name,

@@ -24,7 +24,7 @@ NameId SemanticAnalyzer::NextRangeForHiddenName(const char* prefix)
 	const std::string generated =
 		std::string(prefix) + std::to_string(++count);
 	if (stats_)
-		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+		RecordGeneratedIdentityRender(SEMANTIC_GENERATED_RANGE_FOR_HIDDEN,
 			generated, 1);
 	return program_->names.Intern(generated);
 }

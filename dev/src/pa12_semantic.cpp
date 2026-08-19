@@ -1967,8 +1967,8 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 				<< '_' << arena_->TokenLast(node);
 			const std::string generated_name = generated.str();
 			if (stats_)
-				RecordPresentationRender(
-					SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+				RecordGeneratedIdentityRender(
+					SEMANTIC_GENERATED_ANONYMOUS_UNION_STORAGE,
 					generated_name, 2);
 			const NameId storage_name = program_->names.Intern(generated_name);
 			const BindingId storage = program_->AddBinding(scope, BIND_VARIABLE,

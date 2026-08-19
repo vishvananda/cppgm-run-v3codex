@@ -1178,6 +1178,40 @@ lowir_model::LowirProgram build_source_lowir(
 	return result;
 }
 
+void report_generated_identity_stats(
+	const cppgm::SemanticAnalysisStats & semantic)
+{
+	static const char * const names[] = {
+		"local_type",
+		"anonymous_union_type",
+		"anonymous_enum",
+		"anonymous_union_storage",
+		"constructor_base_entry",
+		"destructor_base_entry",
+		"function_template_result_shape",
+		"function_template_parameter_shape",
+		"function_template_nondeduced_shape",
+		"class_template_nondeduced_shape",
+		"dependent_member_template_shape",
+		"dependent_qualified_type_shape",
+		"range_for_hidden",
+		"structured_binding_storage"
+	};
+	static_assert(sizeof(names) / sizeof(names[0]) ==
+		cppgm::SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT,
+		"generated identity stats labels are incomplete");
+	for (std::size_t family = 0;
+		family < cppgm::SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT; ++family)
+	{
+		cerr << " generated_identity_" << names[family] << "_renders="
+			 << semantic.generated_identity_renders[family]
+			 << " generated_identity_" << names[family] << "_components="
+			 << semantic.generated_identity_render_components[family]
+			 << " generated_identity_" << names[family] << "_bytes="
+			 << semantic.generated_identity_render_bytes[family];
+	}
+}
+
 void report_source_compile_stats(
 	const string & path, const cppgm::LowIRLoweringStats & stats,
 	const lowir_model::LowirPreparationStats & preparation_stats,
@@ -1663,7 +1697,8 @@ void report_source_compile_stats(
 			 << semantic.semantic_side_storage_bytes
 			 << " semantic_shared_string_bytes="
 			 << semantic.semantic_shared_string_bytes
-				 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes;
+			 << " semantic_peak_bytes=" << semantic.peak_stage_storage_bytes;
+		report_generated_identity_stats(semantic);
 		for (std::size_t tag = 0;
 			tag < cppgm::pa10_syntax_detail::STAG_COUNT; ++tag)
 		{
@@ -2617,6 +2652,7 @@ void report_lowir_semantic_stats(const cppgm::LowIRLoweringStats & stats)
 			 << semantic.template_partial_shape_materializations
 			 << " template_partial_shape_cache_hits="
 			 << semantic.template_partial_shape_cache_hits;
+	report_generated_identity_stats(semantic);
 }
 
 void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)

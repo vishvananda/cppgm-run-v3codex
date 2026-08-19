@@ -1916,7 +1916,8 @@ TypeId SemanticAnalyzer::ClassTemplateNondeducedTypeShape()
 		const std::string spelling =
 			"__class_template_nondeduced_type_shape";
 		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			RecordGeneratedIdentityRender(
+				SEMANTIC_GENERATED_CLASS_TEMPLATE_NONDEDUCED_SHAPE,
 				spelling, 1);
 		const NameId name = program_->names.Intern(spelling);
 		const EntityId entity = program_->NewEntity(name,

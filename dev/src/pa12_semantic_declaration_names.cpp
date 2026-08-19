@@ -19,7 +19,7 @@ void SemanticAnalyzer::BuildClassDeclarationNamePath(NodeId node,
 		++local_type_count_;
 		*spelling = "__local_type" + std::to_string(local_type_count_);
 		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			RecordGeneratedIdentityRender(SEMANTIC_GENERATED_LOCAL_TYPE,
 				*spelling, 1);
 	}
 	if (spelling->empty())
@@ -29,8 +29,8 @@ void SemanticAnalyzer::BuildClassDeclarationNamePath(NodeId node,
 			<< '_' << arena_->TokenLast(node);
 		*spelling = generated.str();
 		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
-				*spelling, 2);
+			RecordGeneratedIdentityRender(
+				SEMANTIC_GENERATED_ANONYMOUS_UNION_TYPE, *spelling, 2);
 	}
 
 	if (specialization_name.empty())
@@ -62,7 +62,7 @@ void SemanticAnalyzer::BuildEnumDeclarationNamePath(NodeId node,
 		*spelling = "__anonymous_enum" +
 			std::to_string(anonymous_enum_count_);
 		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			RecordGeneratedIdentityRender(SEMANTIC_GENERATED_ANONYMOUS_ENUM,
 				*spelling, 1);
 	}
 	if (!arena_->Payload(node).empty() &&

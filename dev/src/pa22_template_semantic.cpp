@@ -1328,8 +1328,8 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 						"__dependent_member_template_shape_" +
 						std::to_string(name);
 					if (stats_)
-						RecordPresentationRender(
-							SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+						RecordGeneratedIdentityRender(
+							SEMANTIC_GENERATED_DEPENDENT_MEMBER_TEMPLATE_SHAPE,
 							spelling, 1);
 					const NameId shape_name =
 						program_->names.Intern(spelling);
@@ -1519,8 +1519,8 @@ TypeId SemanticAnalyzer::DependentQualifiedTypeShape(NodeId syntax)
 	const std::string spelling =
 		"__dependent_qualified_type_shape_" + std::to_string(syntax);
 	if (stats_)
-		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
-			spelling, 1);
+		RecordGeneratedIdentityRender(
+			SEMANTIC_GENERATED_DEPENDENT_QUALIFIED_TYPE_SHAPE, spelling, 1);
 	const NameId name = program_->names.Intern(spelling);
 	const EntityId entity = program_->NewEntity(name,
 		NAMED_TYPENAME_PARAMETER, false, kNoType,

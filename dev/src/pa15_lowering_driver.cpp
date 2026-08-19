@@ -273,6 +273,16 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 		target->presentation_retained_bytes[family] +=
 			source.presentation_retained_bytes[family];
 	}
+	for (std::size_t family = 0;
+		family < SEMANTIC_GENERATED_IDENTITY_FAMILY_COUNT; ++family)
+	{
+		target->generated_identity_renders[family] +=
+			source.generated_identity_renders[family];
+		target->generated_identity_render_components[family] +=
+			source.generated_identity_render_components[family];
+		target->generated_identity_render_bytes[family] +=
+			source.generated_identity_render_bytes[family];
+	}
 	target->scope_prefix_requests += source.scope_prefix_requests;
 	target->scope_prefix_cache_hits += source.scope_prefix_cache_hits;
 }
