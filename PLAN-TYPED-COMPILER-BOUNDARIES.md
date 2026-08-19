@@ -4,14 +4,15 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; T4d generated private identity is the next acceptance slice
+complete; the T4d generated-identity producer census is complete and
+constructor lifecycle base entries are the next acceptance slice
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `62c26eb6` (T4c2 typed lambda identity
-and lazy presentation; measurements and gates are recorded in section 9.9)
+Current accepted execution checkpoint: `ca85deb3` (T4d generated-identity
+producer census; measurements and gates are recorded in section 9.10)
 
 ## 1. Objective
 
@@ -273,14 +274,15 @@ owns its disposition.
 | PA12 name lookup compatibility APIs | `ParseNamePath`, `LookupSpelling`, no-syntax template overloads, qualified-enum/member-pointer fallbacks, and explicit spelling adapters remain in source after the frozen production count reached zero. | Retain only callers whose input is genuinely arbitrary text, give them adapter-specific counters, and delete an overload after its last such caller is gone.  Any exercised syntax-owned fallback is a correctness/architecture bug at its earliest semantic owner. | PA12/feature owner, T4/T6/T9 closeout |
 | Ordinary semantic presentation: `ScopePrefixId`, `DisplayName`, `EmissionName`, declaration `qualified_name`/`display_name`, and scope prefix vectors | Owner/name paths are rendered, interned, and retained even though scope, binding, entity, and terminal IDs already exist. | Store owner plus terminal or a compact path identity.  Render on demand for exact semantic dumps, diagnostics, pretty-function text, or final symbol emission.  Do not retain both old text IDs and new typed identities on common records. | PA12/PA22, T4a/T4c |
 | Template and lambda presentation: `CanonicalTemplateArgumentPresentation`, `ExplicitArgumentPresentation`, class-specialization names, and the lambda renderer | T4c1 and T4c2 removed retained specialization and lambda presentation identity.  Specializations retain canonical argument facts; lambdas retain canonical enclosing context/ordinal identity and a numeric token range used only to reproduce required presentation. | Preserve the accepted typed forms and lazy renderers.  The remaining work is the T4e consumer closeout: prove that exact dump, source-identity, ABI, and object consumers are the only render sites and delete obsolete overloads. | PA19/PA20/PA22, T4c complete; T4e remains |
-| Generated semantic names: default-constructor emission, anonymous/local types, range-for temporaries, initializer backing objects, and template-shape sentinels | Several paths concatenate or slice qualified names (`rfind("::")`) or format ordinals into interned synthetic names. | First distinguish observable serialized names from private identity.  Replace private identity with kind plus owner/ordinal/source identity; render checked-in semantic names lazily.  The default-constructor owner/leaf recovery is a definite T4 typed-path conversion. | PA12/PA19/PA25/PA26, T4d/T9 |
+| Generated semantic names: lifecycle base entries, anonymous/local types and storage, range-for temporaries, structured-binding storage, and template-shape sentinels | Semantic producers format ordinals, source ranges, or binding IDs into interned synthetic names even though the source node, owner, role, or shape slot is already typed. | T4d replaces semantic identity with kind plus owner/source/ordinal facts and renders checked-in spellings lazily.  Initializer-list backing arrays and local statics are already identified internally by dump/binding/action IDs; their remaining constructed names are final LowIR/object presentation and belong to the T4e boundary census, not to the semantic conversion. | PA12/PA16/PA17/PA19/PA20/PA22/PA23/PA25/PA34, T4d/T4e |
 | Fixed syntax and semantic vocabulary: operators, cv/ref markers, `default`/`delete`, linkage, traits, builtins, attributes, and predefined identifiers | PA11-PA34 repeatedly compare payload/name strings.  Operation strings flow through overload resolution, constant evaluation, and lowering; backend code calls `StripOperationPrefix`. | Carry a packed `SemanticOperatorKind` and small feature-specific enums.  Use preinterned `NameId`s for extensible identifier registries.  Keep source `TextId` for dumps/diagnostics, but make semantic control flow enum/ID based. | PA2/PA10/PA12/PA15 and feature owners, T6 |
 | Literal semantics and constant evaluation: PA11/PA12 literal parsing, `InternNumber`, `InternScalar`, PA20/PA21 constants, and PA15/PA16 lowering | Values decoded by post-tokenization are incompletely retained; semantics redecodes spelling, evaluated scalars are formatted into a `NameId`, and lowering later consumes text. | Publish one compact tagged literal/scalar fact.  Carry integer/floating bits, type, suffix ID, and a byte/code-unit arena slice.  Render only for exact semantic/IR output. | PA2/PA10/PA11/PA12/PA15/PA16/PA20/PA21, T7 |
 | GNU asm and attributes | String-literal payloads are decoded in semantics, templates/constraints are classified, and external asm labels/payload bytes remain textual. | Reuse T7 decoded string facts and classify supported operations once into the existing enum.  Preserve assembly payloads, constraints, section names, and external labels as language/object-boundary text. | PA32/PA34, T7/T9 |
 | PA19 relational-declaration ambiguity recovery | A retained declaration spelling has whitespace removed, is sliced with `find`/`substr`, and a literal is parsed with `istringstream` to reconstruct an alternative parse. | Retain the competing parser alternative or a compact token-range recipe and resolve it after lookup.  This is a specialized correctness path, not a reason to add a generic semantic text parser. | PA10/PA19, T9a |
 | PA34 source-identity rendering and local-static symbol construction | Typed function/type/template facts are deliberately rendered to language-visible builtin strings or final stable object-symbol components. | Keep as final presentation.  Add demand/render counters during T4, but do not replace it unless a consumer reparses the result into semantic facts. | PA21/PA34, boundary; T4 audit only |
 | Production ABI graph and encoder | Production uses numeric graph IDs after T3; strings are exact Itanium source-name bytes, final assembly/C symbols, diagnostics, or PA14 adapter values.  PA14 text definitions still use string indexes and adapter-only numeric parsing. | Keep the completed T3 boundary.  Do not reopen its string table merely because final emitted bytes need deduplication.  Production text-recovery counters must remain zero. | PA14/PA15/PA33, T3 closeout invariant |
-| LowIR and MIR core | The integrated path carries operation enums, symbol/block/slot/value IDs, typed operands, and scalar bits.  Text serializers render those facts.  `resolve_lowir_function_operands` uses string maps only after textual LowIR input. | Keep the completed typed LowIR/MIR representation.  Text parsing, name maps, and floating conversion are legal in standalone adapters; they must remain unreachable from the normal source-to-object path. | PA15/PA28, prior LowIR plans and final audit |
+| LowIR and MIR core | The integrated path carries operation enums, symbol/block/slot/value IDs, typed operands, and scalar bits.  Text serializers render those facts.  `resolve_lowir_function_operands` uses string maps only after textual LowIR input. | Keep the completed typed operand representation.  Text parsing, name maps, and floating conversion are legal in standalone adapters; they remain unreachable from the normal source-to-object path.  Generated local-name collision reservations are the separately classified presentation exception in the next row. | PA15/PA28, prior LowIR plans and final audit |
+| Generated local-name reservations: `pa15_local_presentation.cpp`, `pa15_force_inline.cpp`, and `classify_lowir_generated_name_reservations` | Serializable lowering scans arbitrary source/local spellings for compiler-reserved prefixes and O1 inline markers so generated names cannot collide.  Object-only lowering carries the resulting packed `(kind, ordinal)` reservations even though local spellings are discarded.  Force-inline reparses names only in serializable mode; textual LowIR performs the same work at its input adapter. | T5a measures source names/bytes scanned, matches, reservation probes, skipped IDs, and affected block ranks.  Keep arbitrary-source collision recognition at a presentation boundary, but make compiler-generated names carry kind/ordinal and prove whether object-only compilation can discard reservation work.  Do not describe the textual LowIR adapter parse as production identity recovery. | PA15/PA37, T5a |
 | CY86, native labels, ELF, and PA30 object join | CY86 emits textual assembly by assignment contract.  Native code/object modules map final symbol or assembler-label spellings, and PA30 consumes its private serialized-object name contract. | Keep as output or serialized-input boundaries.  Numeric internal-label IDs may be evaluated as a separate backend optimization, but are not text-recovery work unless a typed control-flow fact is first rendered and then parsed. | PA28-PA30, outside this plan unless new evidence appears |
 | Grammar, diagnostics, harness, and configuration | Recognizer rule maps, include paths, environment numbers, errors, and test fixtures are intrinsically textual. | Keep.  Cold diagnostic formatting and test-runner parsing are not compiler identity. | PA1-PA10/test infrastructure, no action |
 
@@ -322,7 +324,7 @@ dominated by final rendering, CY86 emission, diagnostics, and object-label
 construction.  The increase from the earlier snapshot is expected: T4c2
 centralized six lambda-format operations in the final renderer instead of
 retaining their results as semantic identity.  Only the explicitly owned
-T4d/T4e, T5, T7, T8, and T9 packages may convert the remaining candidates.
+T4d/T4e, T5a/T5b, T7, T8, and T9 packages may convert the remaining candidates.
 
 This snapshot is the baseline for the remaining audit.  A later source count
 may rise when a renderer is extracted or a test boundary becomes explicit;
@@ -397,7 +399,8 @@ producer-to-consumer tracing decide whether a candidate is production work.
 | T4c2 lambda presentation | PA22 constructed a sanitized lambda component from rendered enclosing context and source ordinals, then stored the result under the exceptional rendered entity-emission form. | Carry namespace/local context, canonical enclosing signature and template arguments, recursive outer-lambda context, and ordinal as semantic identity.  Retain the token range as typed source-presentation input, not as cross-source canonical equality.  Derive text only for a semantic dump, source-identity builtin, ABI name, or final object consumer.  Do not add a string-keyed lambda cache. | Complete at `62c26eb6`: zero retained rendered lambda entity names on the object path; active overload reducer plus proposed specialization reducer; unchanged common record sizes; exact frozen object; full report and zero-fatal audit. |
 | T4d generated private identities | Default constructors are already typed, but anonymous/local types, range-for temporaries, initializer-list backing objects, local statics, and template-shape sentinels still contain mixtures of observable names and formatted private ordinals. | Classify every family before changing it.  Private identity becomes a packed kind plus owner/source/ordinal tuple.  A checked-in serialized spelling remains a lazy renderer.  A final ELF symbol component remains boundary text. | Per-family render/consumer counts, an earliest-owned reducer, exact existing fixtures, explicit disposition for any retained spelling, and no dual text-plus-typed identity in an ordinary record. |
 | T4e presentation closeout | Dump, diagnostic, pretty-function, source-identity, ABI, and object consumers legitimately need text, but obsolete helper overloads or eager fields can keep hidden production rendering alive. | Route each true consumer through one owner-specific renderer; delete old fields and syntax-owned spelling fallbacks after the last caller.  Keep counters separated by consumer so final output work is not confused with semantic identity work. | Source audit of all scope/display/emission/specialization/lambda helpers; zero unclassified eager renders; retained-text census; exact output; full report, audit, and cumulative T4 timing. |
-| T5 object-only block collation | EH block ordering repeatedly compares virtual presentation characters and decimal ordinals.  The result is typed, but comparison reconstructs presentation on every compare. | Compute one exact compact collation key per participating block, using fixed components and a decimal-order representation that is byte-for-byte equivalent to lexical presentation.  Sort key/`BlockId` pairs; do not intern rendered block names. | PA15/PA26/PA29 reducers for prefix, decimal-width, and tie boundaries; comparison/character counters; exact block order, MIR, LSDA, and object; selected and full reports; screened timing. |
+| T5a generated local presentation reservations | Serializable lowering and textual LowIR must recognize user names that collide with compiler-generated names.  Object-only lowering still scans source spellings and carries packed reservations even though it discards local names; serializable force-inline can also reparse compiler-produced spellings whose kind/ordinal was previously known. | Count scans, matched reservations, probes, skipped IDs, and affected block ranks.  Preserve arbitrary source-name collision behavior in the serializer, carry generated kind/ordinal directly, and remove the object-only reservation path if exact machine behavior does not depend on it.  If EH layout needs the lexical result, carry one compact rank/key rather than names. | PA15/PA37 collision reducers; exact serialized LowIR and frozen object; selected/full reports; screened timing. |
+| T5b object-only block collation | EH block ordering repeatedly compares virtual presentation characters and decimal ordinals.  The result is typed, but comparison reconstructs presentation on every compare. | Compute one exact compact collation key per participating block, using fixed components and a decimal-order representation that is byte-for-byte equivalent to lexical presentation.  Sort key/`BlockId` pairs; do not intern rendered block names. | PA15/PA26/PA29 reducers for prefix, decimal-width, and tie boundaries; comparison/character counters; exact block order, MIR, LSDA, and object; selected and full reports; screened timing. |
 | T6a operator classification boundary | PA10 already classifies simple tokens, but operator spellings are reconstructed or compared across PA11, PA12, PA16, PA21, PA27, PA32, PA34, and lowering. | Define one packed semantic operator vocabulary at the earliest shared owner.  Classify once from `SimpleTokenKind` or the structured operator name.  Preserve `TextId` only where syntax serialization or diagnostics require source spelling. | Measurement-only anchor by operator family and consumer; compile-time size assertions; exact PA10 syntax fixtures; no common-node growth without measured justification. |
 | T6b semantic and lowering operator transport | Expression and call records often retain a `NameId` spelling that lowering strips with `StripOperationPrefix` and compares again. | Carry the T6a enum through semantic selection, constant evaluation, template substitution, and typed lowering.  Extensible identifier registries use preinterned `NameId`s; fixed language vocabulary uses enums. | Zero integrated `StripOperationPrefix` calls and zero operation-spelling comparisons outside the classification/presentation adapters; earliest-owned PA12 regressions plus PA15/16/21/27/32/34 coverage; exact LowIR/MIR; full report and timing. |
 | T7a source literal facts | Post-tokenization decodes integer, floating, character, and string spellings, but PA10 retains only part of the result; PA11/PA12 and static lowering parse or decode again. | Add compact tagged literal facts and side-arena slices for integer bits/type/suffix, floating bits/type/suffix, character value, and string code units.  Keep the original `TextId` for exact syntax output and user-defined suffix bytes. | Decode/redecode counters by literal kind, token/common-record sizes, side-arena bytes, PA2/PA10 interface fixtures, earliest PA11/12 semantic reducers, PA15/16 lowering reducers, full report, audit, and timing. |
@@ -408,11 +411,11 @@ producer-to-consumer tracing decide whether a candidate is production work.
 | T9a PA19 ambiguity recovery | The relational-declaration fallback strips whitespace, slices a declaration spelling, and uses a stream parser to synthesize an alternative after semantic lookup. | Retain the competing PA10 parser alternative or a compact token-range recipe, then resolve that typed alternative in PA19.  Do not route it through general `ParseNamePath` or literal adapters. | A minimized PA19 ambiguity reducer, exact accepted/rejected behavior, zero ambiguity-string parse calls, through-PA19 report, full report, and source audit. |
 | T9b residual compatibility and generated sites | Dormant semantic spelling overloads, ABI discriminators in public text facts, asm/attribute payloads, and final symbol builders appear similar in a static search but have different boundaries. | Trace every remaining candidate.  Delete a compatibility overload after its last real adapter caller; type a production discriminator if it is first rendered internally; retain arbitrary assembly/external/object text and standalone ABI/LowIR input parsing. | Every section-5.5 candidate has a registry disposition, owner, and counter or boundary explanation.  Production ABI and integrated LowIR text-recovery counters remain zero. |
 
-The package order is T4c1, T4c2, T4d, T4e, then the independent T5 slice,
+The package order is T4c1, T4c2, T4d, T4e, then T5a and T5b,
 followed by T6, T7, T8, and T9.  T6 precedes T7 where literal constant folding
 would otherwise create a private operator enum.  T7 precedes the broad T8
 handoff so the new interface carries the complete literal fact rather than
-having to change twice.  T5 may move within T4-T7 only when it is measured and
+having to change twice.  T5a/T5b may move within T4-T7 only when measured and
 committed independently.
 
 ### 5.7 Commit, test, and measurement boundaries
@@ -998,10 +1001,11 @@ must render from the typed facts without fixture churn.
    identity with pattern, argument-list, owner, and partition IDs.  Replace
    lambda identity with owner/context, token range, and ordinal facts rather
    than sanitized rendered type/function names.
-10. **T4d:** classify generated semantic names by observable presentation
-    versus private identity.  Carry kind plus owner/ordinal/source facts for
-    private local types, range-for objects, backing objects, and shape
-    sentinels; keep exact checked-in names behind the lazy renderer.
+10. **T4d:** the accepted T4d0 producer census classifies generated semantic
+    names by family.  Convert one family at a time to kind plus
+    owner/ordinal/source facts, starting with constructor lifecycle base
+    entries.  Keep exact checked-in names behind a lazy renderer and count
+    actual consumers without classifying records by string prefix.
 11. **T4e:** add lazy renderers for semantic dumps, diagnostics,
     `__PRETTY_FUNCTION__`, source-identity builtins, and final external names,
     then remove obsolete eager fields and counters.  Re-audit PA19/PA20/PA22
@@ -1385,7 +1389,211 @@ function-size violations; extracting resolved-type classification and member-
 function qualifier rendering fixed them without weakening the representation
 or tests.
 
-## 10. Phase 4: replace object-only block text comparison
+### 9.10 T4d generated private identity
+
+T4d0 gives every semantic producer a numeric family and preserves the T4a
+aggregate counters.  The counters run only under `--stats`; they do not add a
+string-keyed registry or enlarge a semantic record.  The frozen explicit-`-O0`
+source-to-object run produces the following census:
+
+| Family | Renders | Components | Bytes | Typed fact already available | Earliest owner |
+| --- | ---: | ---: | ---: | --- | --- |
+| Constructor base entry | 508 | 508 | 15,586 | source constructor `BindingId`, lifecycle role, owner and signature | PA16 |
+| Anonymous enum | 147 | 147 | 2,685 | declaration `NodeId`, owner scope and declaration ordinal | PA12 |
+| Dependent qualified-type shape | 24 | 24 | 916 | syntax `NodeId` and per-syntax shape cache | PA22 |
+| Destructor base entry | 17 | 17 | 446 | source destructor `BindingId`, lifecycle role and owner | PA16/PA17 |
+| Function-template parameter shape | 11 | 11 | 408 | parameter-shape slot and owning template operation | PA19 |
+| Local type | 22 | 22 | 299 | owner scope, source declaration and local-type ordinal | PA12 |
+| Range-for hidden object | 24 | 24 | 191 | range statement, hidden role and per-role ordinal | PA25 |
+| Anonymous union type | 8 | 16 | 282 | declaration node/source range and owner scope | PA12 |
+| Anonymous union storage | 6 | 12 | 234 | union declaration node/source range and storage role | PA12 |
+| Function-template result shape | 1 | 1 | 42 | singleton result-shape slot | PA19 |
+| Function-template nondeduced shape | 1 | 1 | 41 | singleton nondeduced-shape slot | PA23 |
+| Class-template nondeduced shape | 1 | 1 | 38 | singleton nondeduced-shape slot | PA20 |
+| Dependent member-template shape | 0 | 0 | 0 | member `NameId` and shape cache | PA22 |
+| Structured-binding storage | 0 | 0 | 0 | source declaration node/range and storage role | PA34 |
+| **Total** | **770** | **784** | **21,168** |  |  |
+
+The concentration determines the order: constructor base entries account for
+66.0% of renders and 73.6% of bytes, so they are the first representation
+change.  Anonymous enums are the second measured family.  A zero-occurrence
+family may still be converted as architecture cleanup, but it receives no
+frozen timing claim.
+
+The census also resolves two items from the earlier broad audit.  Namespace
+initializer-list backing arrays are already carried by dump-node and
+`SymbolId` facts until lowering; `__cppgm_initlist_backing_N` is a final LowIR
+symbol spelling.  Local statics are carried by `BindingId` and
+`LocalStaticObjectAction` indices; their guard, destructor, and object names
+are final ABI/LowIR/object spellings.  Neither is a semantic string identity
+conversion.  T4e must retain and count those output renderers, while proving
+that no consumer reparses their result.
+
+#### Target representation
+
+Use a compact `GeneratedIdentityKind` only where an existing role flag or
+typed cache does not already identify the family.  The payload is selected by
+kind and contains only existing scalar IDs:
+
+- lifecycle entries use the canonical source `BindingId` plus complete/base
+  role;
+- source-owned anonymous and hidden objects use owner `ScopeId`, source
+  `NodeId` or token range, and the smallest required ordinal/role;
+- template sentinels use a shape kind plus the existing semantic name, syntax,
+  or parameter-slot ID; and
+- final presentation uses the typed payload to reproduce the existing bytes.
+
+Do not add an owning string, a string-keyed map, or a second identity index.
+Prefer kind-disjoint fields, existing lifecycle links, and dense side arenas
+indexed by `BindingId` or `EntityId`; record `sizeof(BindingRecord)`,
+`sizeof(EntityRecord)`, `sizeof(FunctionInfo)`, and side-arena bytes before and
+after each slice.  Any temporary stats-only provenance sidecar must be a dense
+byte/ID vector, exist only with `--stats`, and disappear when its family is
+closed.
+
+Lifecycle entries need a symbol-key change before their synthetic terminal
+can disappear.  Complete and base variants can share a source terminal and
+signature, so `SymbolIdentity` must include a compact lifecycle role and its
+canonical source relation.  Ordinary overload/name lookup must not be used to
+distinguish private lifecycle variants.  The current constructor-base flag,
+complete-constructor relation, lifecycle link, and source-to-base table should
+be reused where they form the complete key; add storage only if a traced
+consumer cannot recover the source relation.  Exact semantic and serialized
+LowIR spellings remain renderer output, not symbol equality.
+
+For anonymous/local declarations and template shapes, the implementation must
+first establish whether the generated terminal is used by ordinary lookup,
+type canonicalization, dump presentation, ABI/source identity, or only final
+symbol presentation.  Replace lookup/canonical equality in the same changeset
+as the typed key; leaving the generated `NameId` beside the new key is not an
+accepted migration state.  If a private binding does not participate in
+ordinary source lookup, use the existing unindexed/private declaration path.
+
+#### Consumer census and renderer ownership
+
+Each family starts with a consumer count split into canonical lookup/equality,
+semantic dump, diagnostic or language-visible source identity, ABI, serialized
+LowIR, and object emission.  Classify a read from existing role flags or the
+stats-only dense provenance sidecar; never recover the family with
+`find`, prefix comparison, or generated-name parsing.  A family is closed only
+when canonical consumers are typed and every remaining read is routed through
+one owner-specific renderer.
+
+Renderers may share small formatting primitives, but there is no global
+generated-name service or cache.  A dense, consumer-local cache indexed by the
+owning semantic ID is permitted only after measured repeated boundary demand.
+This keeps object-only compilation from paying for semantic-dump presentation.
+
+#### Ordered changesets
+
+1. **T4d0 (complete):** numeric producer-family anchor.  Preserve aggregate
+   T4 counters and exact output.
+2. **T4d1a:** constructor base entries.  Add typed lifecycle role/source to
+   symbol identity, stop interning the numeric binding-derived terminal for
+   semantic identity, use private/unindexed declaration placement, and render
+   the old spelling only for checked-in semantic/LowIR consumers.
+3. **T4d1b:** destructor base entries using the same lifecycle discriminator.
+   Keep this separate because destructor spelling and complete/base aliasing
+   differ from constructors.
+4. **T4d2a:** anonymous enums, then local types.  Preserve declaration-order
+   presentation while making source node/owner/ordinal the identity.
+5. **T4d2b:** anonymous union type and storage facts.  Share the source-range
+   payload but keep type and storage roles distinct.
+6. **T4d3:** function/class nondeduced, result, parameter, dependent member,
+   and dependent qualified-type shapes, one owner family at a time.  Prefer
+   typed singleton/cache keys over materialized named entities where the
+   entity exists only to give a canonical type identity.
+7. **T4d4:** range-for hidden objects and structured-binding storage.  Use
+   statement/declaration source identity plus a small role; do not enter
+   compiler-private names into ordinary lookup.
+8. **T4e:** re-audit all presentation consumers, retain initializer-list and
+   local-static final symbol renderers as explicit boundaries, delete obsolete
+   generated-name overloads, and require zero unclassified eager semantic
+   renders.
+
+Each implementation changeset owns one family unless two producer sites share
+one inseparable public fact.  Constructor and destructor work does not wait
+for low-frequency shape cleanup.  A family with broad LowIR fixture changes is
+deferred and recorded rather than mixed into this representation phase; a
+small exact semantic/MIR fixture move is listed explicitly in the ledger.
+
+#### Tests, timing, and rejection gates
+
+Use an existing fixture when it already observes source handling and the
+representation change leaves output exact.  Add a reducer only for newly
+exposed behavior, at PA12 for anonymous/local declarations, PA16 for basic
+lifecycle lowering, PA17 for value-lifecycle behavior, PA19/20/22/23 for the
+respective shape, PA25 for range-for, and PA34 for structured bindings.  A
+reference disagreement belongs under `proposed/paN/`; an internal layout-only
+test does not become an active exact fixture.
+
+For every family, run the owner test and through-owner report, one selected
+report containing all downstream consumers, full root `make test-report`, and
+the PA39 fatal audit.  Require exact frozen object bytes for
+representation-only work.  Run screened explicit-`-O0` A/B/B/A timing against
+an immutable predecessor for measured frozen families; compare the cumulative
+T4 candidate with the original audit anchor before T4e closes.  Reject a slice
+that grows a common record, retains dual identity, classifies by text, broadly
+changes LowIR, or regresses user time/RSS outside the host-noise screen.
+
+T4d0 is accepted at `ca85deb3`.  Its frozen object is exact at 4,415,448 bytes
+with SHA-256
+`d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`.
+The selected PA12/19/20/22/23/25/34/38 report passes 1,917/1,917, the full
+report passes 5,213/5,213, and the PA39 file audit has zero fatal findings
+with 27 warnings.  It is measurement-only, so it makes no timing claim.
+
+## 10. Phase 4: finish object-only LowIR presentation identity
+
+### 10.1 T5a generated local-name reservations
+
+The typed LowIR core does not resolve operands by string on the integrated
+path, but local-name collision handling is a deliberate remaining
+presentation exception.  `LocalPresentationState::CollectSourceNames` scans
+arbitrary source variable/parameter names for `tN`, force-inline prefixes,
+return-merge suffixes, and embedded O1 inline markers.  It stores matches as
+packed `GeneratedNameReservations`.  This is necessary for serializable
+LowIR: a user is allowed to choose a spelling that resembles a compiler name,
+and generated presentation must remain unique.
+
+Object-only lowering sets `retain_local_names=false`, discards slot/value/local
+spellings, but currently performs the source scan and uses the reservations to
+skip numeric temporary and force-inline ordinals.  `pa15_force_inline` does not
+reparse names in that mode; it normalizes the already-carried reservations.
+In serializable mode it rescans parameter, slot, and block spellings after
+lowering.  `classify_lowir_generated_name_reservations` is separate again: it
+runs after public textual LowIR input is parsed and is a legitimate adapter.
+
+T5a must answer whether the object-only reservations affect machine behavior
+or only preserve a textual numbering convention:
+
+1. add numeric counters for source names and bytes scanned, matches by
+   reservation kind, normalization entries, `contains` probes, skipped
+   temporaries/slots/blocks, force-inline rescans, and functions whose block
+   presentation rank changes;
+2. add PA15 serializable reducers whose user identifiers deliberately collide
+   with `tN`, force-inline, return-merge, and O1 marker patterns, plus a PA37
+   inlining reducer;
+3. compare an object-only prototype with reservations disabled against the
+   exact frozen object and EH/collision reducers;
+4. if output remains exact, stop collecting and carrying reservations in
+   object-only mode while leaving source collision scans in the serializable
+   renderer and textual parsing in its adapter;
+5. if output changes only because EH/block lexical rank depends on skipped
+   ordinals, carry the exact compact presentation rank/key needed by T5b
+   rather than retaining the general reservation table; and
+6. make compiler-generated serializable names carry their reservation kind and
+   ordinal directly through force-inline transforms.  Continue inspecting
+   arbitrary user strings at the presentation boundary, but never parse a
+   compiler-generated name to recover a fact the compiler just created.
+
+Do not add prefix tries, string sets, or a global generated-name registry to
+the object path.  A fixed small pattern table is appropriate only at the
+serializable/source-name boundary.  The T5a result must keep public LowIR exact
+and record whether any object bytes change; it is rejected if it moves the
+same scans into another hot string index.
+
+### 10.2 T5b compact exact block collation
 
 `FinalizeBlockPresentation` in `dev/src/pa15_local_presentation.cpp` sorts
 generated block presentations for functions requiring EH ordering.
@@ -1798,8 +2006,10 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T4c1 | Render class-specialization presentation lazily from typed entity arguments | Retained presentation falls 8,715 values / 749,951 spelling bytes -> 0; renders fall 15,987 -> 1,007; interner calls fall by 22,833 and shared string storage by 746,856 bytes. `EntityRecord` remains 208 bytes. | Three retained A/B/B/A blocks: baseline/candidate medians 4.315/4.285 s user, 4.800/4.775 s wall, and 359,242/359,786 KiB RSS; favorable by 0.70%/0.52% with RSS +0.15% | Exact frozen object and baseline SHA; no fixture changes | PA19 and through PA19 pass; selected report 2,155/2,155; full report 5,212/5,212; zero-fatal audit with 30 warnings | Split `5616a8e3`; implementation `563000b5`; ledger `8d8023e9`; accepted |
 | T4c2r | Isolate exact lambda presentation behind one owner | Pure responsibility split; no representation or output change | Not timed independently | No fixture changes | PA25 141/141; through PA25 3,642/3,642; selected report 1,269/1,269; full report 5,212/5,212; zero-fatal audit with 27 warnings | `f5e9277b`; accepted base only |
 | T4c2 | Carry canonical lambda context/signature/template/parent/ordinal identity, retain token ranges only as typed presentation facts, and render only at boundaries | Rendered lambda entity identity is gone. Interner misses fall by 92, hashed spelling by 4,701 bytes, shared string storage by 7,919 bytes, retained scope-emission spelling by 3,009 bytes, and typed storage by 16,914 bytes. Common records remain 136/208/208 bytes. | Three A/B/B/A blocks: baseline/candidate medians 4.415/4.330 s user, 4.905/4.825 s wall, and 359,482/359,870 KiB RSS; favorable by 1.93%/1.63% with RSS +0.11% in the screened window | Exact frozen object and SHA; active PA25 overload fixture agrees with the reference; specialization/local-static LowIR-presentation disagreement is documented under `proposed/pa25/` | PA25 142/142; through PA25 3,643/3,643; selected report 1,501/1,501; full report 5,213/5,213; zero-fatal audit with 27 warnings | `62c26eb6`; accepted |
-| T4d-e | Type generated private identities and close lazy presentation | Planned from the residual registry and T4 census | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4c2 |
-| T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
+| T4d0 | Classify every generated semantic identity producer by family | Frozen total is 770 renders, 784 components, and 21,168 bytes. Constructor base entries contribute 508 renders/15,586 bytes; anonymous enums contribute 147/2,685; the remaining 12 families are individually recorded in section 9.10. | Stats-only measurement anchor; no timing claim | Exact frozen 4,415,448-byte object and baseline SHA; no fixture changes | Selected PA12/19/20/22/23/25/34/38 report 1,917/1,917; full report 5,213/5,213; zero-fatal audit with 27 warnings | `ca85deb3`; accepted measurement anchor |
+| T4d1-e | Type generated private identities and close lazy presentation | Planned per-family from the T4d0 census; constructor lifecycle base entries are first | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4d0 |
+| T5a | Remove or type object-only generated local-name reservations | Planned from the residual LowIR presentation audit | Planned | Exact serializable LowIR and frozen object expected; any EH-layout dependency must be explicit | PA15/37 plus full report | Planned after T4e |
+| T5b | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned after T5a |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
 | T8 | Integrated spelling handles and dense emitted-spelling remap | Planned | Planned | Exact PA2/4/10 fixtures expected | PA2/4/10 plus full report | Planned |
@@ -1850,13 +2060,18 @@ measurement; do not silently skip an unresolved closeout gate.
 | 11 | T4c1 lazy class-specialization presentation (complete) | Zero retained entity presentation strings, lazy typed reconstruction, unchanged common record sizes, exact outputs, reports, audit, and screened timing are recorded in section 9.8 | `5616a8e3` responsibility split; `563000b5` implementation; ledger recorded |
 | 12 | T4c2 lambda renderer split (complete) | Exact renderer responsibility, no representation or output change, owner/through/selected/full reports, and audit are recorded in section 9.9 | `f5e9277b`; accepted base only |
 | 13 | T4c2 typed lambda identity (complete) | Canonical context/signature/template/recursive-parent/ordinal identity; typed token-range presentation facts; zero retained rendered identity; active overload and proposed specialization reducers; unchanged common records; exact frozen object; reports, audit, and screened timing recorded in section 9.9 | `62c26eb6`; ledger recorded |
-| 14 | T4d/e generated and final lazy presentation | Per-family typed private identity, explicitly retained output spelling, exact dumps, and no common-record growth or dual identity | One commit per generated family, then one presentation closeout commit |
-| 15 | T5 block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
-| 16 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
-| 17 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
-| 18 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
-| 19 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
-| 20 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
+| 14 | T4d0 generated-identity producer census (complete) | Fourteen semantic producer families, exact frozen object, selected/full reports, and audit recorded in section 9.10 | `ca85deb3`; accepted measurement anchor |
+| 15 | T4d1 lifecycle base entries | Per-family consumer census; typed source/role symbol identity; exact constructor then destructor presentation; no ordinary lookup or common-record growth | Constructor and destructor commits remain separate |
+| 16 | T4d2 anonymous/local identity | Anonymous enum, local type, anonymous-union type/storage facts keyed by owner/source/ordinal; exact dumps and owner reducers | One commit per independently observable family |
+| 17 | T4d3/4 template shapes and hidden storage | Typed singleton/cache/source keys for each shape; typed range-for and structured-binding roles; zero-occurrence families recorded without timing claims | One owner-family commit at a time |
+| 18 | T4e final lazy-presentation closeout | Every residual read classified as dump/diagnostic/source identity/ABI/LowIR/object; initializer-list and local-static final names explicitly retained; zero unclassified eager renders | One presentation closeout commit |
+| 19 | T5a generated local-name reservations | Source-name scan/match/probe/skip counters; exact collision reducers; proof that object-only reservations can be removed or reduced to one compact rank/key | PA15/37 counter, representation, and ledger commits |
+| 20 | T5b block collation | Exact ordering reducers including decimal boundaries; exact MIR/object/LSDA | Independent PA15/26/29 commit |
+| 21 | T6 operator and fixed-vocabulary enums | Packed representation proof, zero integrated operator spelling comparisons and lowering prefix strips, reviewed residual vocabulary list, exact fixtures | Counter anchor; syntax/semantic/lowering/fixed-registry commits by family |
+| 22 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
+| 23 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
+| 24 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
+| 25 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
 
 At every row, the fastest iteration signal is the PA-selected
 `make test-report ACTIVE_TEST_REPORT_PAS='...'` form.  Root `make test-report`
