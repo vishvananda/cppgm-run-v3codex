@@ -4,10 +4,9 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; T4 and T5 are complete, the anchor comparison exceeds success
-criterion 3 at 9.4%, and the T6 vocabulary now flows end to end: transport
-and lowering (T6d) and the semantic dispatch (T6c) compare packed token
-kinds, with residual text confined to classified adapters
+complete; T4, T5, and T6 are complete with two inception matches and a
+10.3% cumulative anchor win; T7 literal facts, the T8 handoff, and the T9
+specialized recoveries remain staged with their reconnaissance recorded
 
 Date: 2026-08-19
 
@@ -2138,7 +2137,11 @@ Address these only after the preceding measured work:
    semantic-only child published by PA10's relational-declaration parse
    (the same serialization-invisible mechanism T2y used), consumed by
    `AnalyzeAmbiguousRelationalDeclaration` in place of the whitespace-strip
-   and `istringstream` slicing.
+   and `istringstream` slicing.  A live trigger requires the boost-derived
+   two-interpretation shape (`value` an integral member at the failing
+   occurrence); the simple member-template form resolves through ordinary
+   analysis without entering the fallback, so the reducer must be built
+   from the two-interpretation case before the rewrite.
 2. **T9b:** replace any PA32 function-template ABI result tag `NameId`
    comparisons left after T6 with syntax-tag/operator enums, or publish the ABI
    type fact directly.
@@ -2368,7 +2371,7 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T5b | Sort EH block order by once-rendered byte keys | Examined characters fall 5,694,676 -> 573,751 on 885 frozen EH functions; comparator count unchanged; no interned block names; per-function reused key buffer | Three A/B/B/A blocks against immutable T5a: 4.325/4.315 s user; paired -0.23% user, +0.21% wall, -0.17% RSS; timing-neutral structural work | Frozen object byte-exact in stats and all 12 timed runs, proving order equivalence including decimal boundaries; PA34 run reducer covers 9/10 and 99/100 ordinals plus label collision with reference agreement | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `271c3564`; accepted |
 | Inception checkpoint | Self-host comparison validates the cumulative typed-boundary work | `make inception` at checkpoint `5e9f3ce5` self-compiles the full PA39 tool set through every converted path and reports `MATCH cppgm++` for the inception binary | 267.22 s wall, 2,215.30 s user, 221,720 KiB peak RSS for the complete lane | The self-built compiler is byte-matched; the section 19 final gate will repeat this on the final tree | Single clean lane after the T4-T6d batch | Recorded at `5e9f3ce5` |
 | T6b/T6d | Packed operation kinds flow from classification into lowering | `DumpNode` carries `SimpleTokenKind`+1 in existing padding, classified once per distinct operation name; all fourteen lowering strip/compare sites switch on the kind; `StripOperationPrefix` deleted (15,013 frozen calls -> 0). | Three A/B/B/A blocks against immutable T5b: 4.330/4.275 s user; paired -0.81% user, -0.83% wall, -0.30% RSS | Frozen object exact in stats and all 12 timed runs; the bare-spelling synthesized form was caught by the exactness gate during development | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `5e9f3ce5`; accepted |
-| T6 anchor milestone | Cumulative work through T6 against the original `c349d7f5` audit anchor | Five interleaved A/B/B/A blocks (20 runs), every object byte-exact | Baseline/candidate medians 4.745/4.250 s user, 5.230/4.740 s wall, 364,598/359,068 KiB RSS; paired candidate -10.35% user, -9.47% wall, -1.69% RSS; the cumulative win now exceeds the top of the 5-10% working target | Exact objects in all 20 runs | Five-block section 17 protocol at checkpoint `c29c85ba` | Milestone recorded |
+| T6 anchor milestone | Cumulative work through T6 against the original `c349d7f5` audit anchor | Five interleaved A/B/B/A blocks (20 runs), every object byte-exact | Baseline/candidate medians 4.745/4.250 s user, 5.230/4.740 s wall, 364,598/359,068 KiB RSS; paired candidate -10.35% user, -9.47% wall, -1.69% RSS; the cumulative win now exceeds the top of the 5-10% working target | Exact objects in all 20 runs | Five-block section 17 protocol at checkpoint `c29c85ba`; a second `make inception` after the T6c/T6e semantic-core batch again reports `MATCH cppgm++` | Milestone recorded |
 | T6e | Declaration specifiers classify by keyword kind | The hot `BuildSpecifiers` loop and remaining keyword dispatch compare memoized `KW_*` kinds instead of spellings; extensible and GNU-extension registries stay string adapters | Three A/B/B/A blocks against immutable T6c: 4.300/4.250 s user; paired -0.70% user, -0.63% wall, +0.14% RSS | Frozen object exact in all runs | Full report 5,218/5,218; zero-fatal audit | `c29c85ba`; accepted |
 | T6c | Semantic operator dispatch compares packed kinds | Node-driven dispatch uses the memoized `PayloadTokenKind`; helper entries classify synthesized operation strings once through `ClassifyOperationSpelling`; about 120 integrated spelling comparisons became integer compares across PA12/PA16/PA21/PA27/PA34; residual text is classified adapters. The vocabulary moved to a compiled `pa12_semantic_vocabulary.cpp` module for the file audit. | Three A/B/B/A blocks against immutable T6d: 4.360/4.275 s user, 4.815/4.775 s wall; paired -1.04% user, -0.42% wall, -0.02% RSS | Frozen object byte-exact through every conversion step and all 12 timed runs | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `a3150b62`; accepted |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
