@@ -503,6 +503,7 @@ public:
         case ABI_TYPE_MEMBER:
         case ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION:
         case ABI_TYPE_LOCAL_TYPE:
+        case ABI_TYPE_BUILTIN_TRANSFORM:
           resolved_source_name = true;
           break;
         case ABI_TYPE_NAMESPACE_LAMBDA:
@@ -2455,8 +2456,11 @@ private:
     if(stats_) {
       if(text_presentation) ++stats_->text_local_presentations;
       else ++stats_->typed_local_presentations;
-      if(facts.local && !local.name.empty())
-        ++stats_->text_local_source_names;
+      if(facts.local &&
+         (local.type.index != 0 || !local.name.empty())) {
+        if(local.type.index != 0) ++stats_->typed_local_source_names;
+        else ++stats_->text_local_source_names;
+      }
     }
     if(local.resolved_context != ABI_NO_RESOLVED_REFERENCE)
       encode_local_prefix(local.resolved_context);
@@ -2482,14 +2486,17 @@ private:
           local.resolved_context != ABI_NO_RESOLVED_REFERENCE ?
             local_lambda_key(local.resolved_context_identity, ordinal) :
             local_lambda_key(local.context_ref, ordinal));
-    } else if(local.name.empty()) {
+    }
+    const string & local_name = local.type.index != 0 ?
+      graph_.strings.get(local.type.index - 1) : local.name;
+    if(!facts.lambda && local_name.empty()) {
       output_ += "Ut";
       const size_t unnamed_ordinal = text_presentation ?
         static_cast<size_t>(std::stoul(local.discriminator)) : ordinal;
       if(unnamed_ordinal != 0) output_ += base36(unnamed_ordinal - 1);
       output_ += '_';
-    } else {
-      output_ += source_name(local.name);
+    } else if(!facts.lambda) {
+      output_ += source_name(local_name);
       emit_tags(component_tags(facts, &local));
       if(!local.discriminator_after_terminal)
         output_ += text_presentation ? discriminator(local.discriminator) :
@@ -2499,7 +2506,7 @@ private:
       emit_function_terminal(nullptr, facts, true, facts.parameters.size());
     }
     else {
-      require(facts.local && local.name.compare(0, 2, "$_") == 0,
+      require(facts.local && local_name.compare(0, 2, "$_") == 0,
               "missing ABI function terminal");
       output_ += "cl";
     }

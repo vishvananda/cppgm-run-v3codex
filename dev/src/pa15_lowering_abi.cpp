@@ -598,6 +598,12 @@ public:
 		target->set_resolved_source_name(ResolveName(name));
 	}
 
+	void SetLocalSourceName(abi_mangle::AbiFunctionRecord* target,
+		pa11::NameId name)
+	{
+		target->type.index = ResolveName(name) + 1;
+	}
+
 	void AppendNameComponent(abi_mangle::AbiFunctionRecord* target,
 		pa11::NameId name, std::size_t* path)
 	{
@@ -1483,7 +1489,7 @@ public:
 				throw std::logic_error(
 					"function template ABI builtin transform is invalid");
 			result.kind = ABI_TYPE_BUILTIN_TRANSFORM;
-			result.name = program_.names.Get(source.name);
+			result.index = ResolveName(source.name) + 1;
 			result.types.push_back(
 				MakeFunctionTemplateAbiType(source.child, recipe));
 			return result;
@@ -1494,7 +1500,7 @@ public:
 				throw std::logic_error(
 					"function template ABI result member is invalid");
 			result.kind = ABI_TYPE_MEMBER;
-			result.name = program_.names.Get(source.name);
+			result.index = ResolveName(source.name) + 1;
 			result.types.push_back(
 				MakeFunctionTemplateAbiType(source.child, recipe));
 			return result;
@@ -1948,7 +1954,6 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 					make_semantic_substitution(
 						ABI_SEMANTIC_SUBSTITUTION_CLASS,
 						binding.member_owner);
-			else component.function.complete_substitution = "-";
 			component.function.standard_substitution_code = standard.code;
 			component.function.standard_substitution_includes_arguments =
 				standard.includes_arguments;
@@ -2441,7 +2446,7 @@ void AppendLocalFunctionOwner(const pa11::Program& program,
 	AbiFactBuilder::AssignLocalContext(&local.function,
 		facts->AddLocalContext(owner.local_context));
 	if (!owner.unnamed_class)
-		local.function.name = program.names.Get(owner.identity_name);
+		facts->SetLocalSourceName(&local.function, owner.identity_name);
 	local.function.local_presentation =
 		ABI_LOCAL_PRESENTATION_NAME_ORDINAL;
 	local.function.type.resolved_expression = owner.local_name_ordinal;
