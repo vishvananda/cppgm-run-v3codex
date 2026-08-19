@@ -1959,6 +1959,42 @@ int run_emit_types_mode(const vector<string> & args)
            << " name_index_probes=" << stats.name_index_probes
            << " type_index_probes=" << stats.type_index_probes
            << " using_index_probes=" << stats.using_index_probes
+           << " name_path_parses=" << stats.name_path_parse_requests
+           << " name_path_components=" << stats.name_path_parse_components
+           << " name_path_single_component="
+           << stats.name_path_single_component_parses
+           << " name_path_parse_using="
+           << stats.name_path_parse_families[
+              cppgm::TYPE_NAME_PATH_PARSE_USING]
+           << " name_path_parse_classes="
+           << stats.name_path_parse_families[
+              cppgm::TYPE_NAME_PATH_PARSE_CLASS]
+           << " name_path_parse_enums="
+           << stats.name_path_parse_families[
+              cppgm::TYPE_NAME_PATH_PARSE_ENUM]
+           << " name_path_parse_declarators="
+           << stats.name_path_parse_families[
+              cppgm::TYPE_NAME_PATH_PARSE_DECLARATOR]
+           << " name_path_parse_type_lookup="
+           << stats.name_path_parse_families[
+              cppgm::TYPE_NAME_PATH_PARSE_TYPE_LOOKUP]
+           << " name_path_parse_expressions="
+           << stats.name_path_parse_families[
+              cppgm::TYPE_NAME_PATH_PARSE_EXPRESSION]
+           << " lookup_spelling_requests="
+           << stats.lookup_spelling_requests
+           << " lookup_spelling_type_lookup="
+           << stats.lookup_spelling_families[
+              cppgm::TYPE_NAME_PATH_PARSE_TYPE_LOOKUP]
+           << " lookup_spelling_expressions="
+           << stats.lookup_spelling_families[
+              cppgm::TYPE_NAME_PATH_PARSE_EXPRESSION]
+           << " structured_name_paths="
+           << stats.structured_name_path_requests
+           << " syntax_name_paths=" << stats.syntax_name_path_requests
+           << " syntax_name_path_direct=" << stats.syntax_name_path_direct
+           << " syntax_name_path_fallbacks="
+           << stats.syntax_name_path_fallbacks
            << " rendered_type_nodes=" << stats.rendered_type_nodes
            << " max_scope_depth=" << stats.max_scope_depth
            << " render_stack_storage_bytes="

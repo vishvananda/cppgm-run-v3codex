@@ -10,6 +10,17 @@
 namespace cppgm
 {
 
+enum TypeNamePathParseFamily
+{
+	TYPE_NAME_PATH_PARSE_USING,
+	TYPE_NAME_PATH_PARSE_CLASS,
+	TYPE_NAME_PATH_PARSE_ENUM,
+	TYPE_NAME_PATH_PARSE_DECLARATOR,
+	TYPE_NAME_PATH_PARSE_TYPE_LOOKUP,
+	TYPE_NAME_PATH_PARSE_EXPRESSION,
+	TYPE_NAME_PATH_PARSE_FAMILY_COUNT
+};
+
 struct TypeAnalysisStats
 {
 	PreprocessingStats preprocessing;
@@ -25,6 +36,18 @@ struct TypeAnalysisStats
 	std::size_t name_index_probes;
 	std::size_t type_index_probes;
 	std::size_t using_index_probes;
+	std::size_t name_path_parse_requests;
+	std::size_t name_path_parse_components;
+	std::size_t name_path_single_component_parses;
+	std::size_t name_path_parse_families[
+		TYPE_NAME_PATH_PARSE_FAMILY_COUNT];
+	std::size_t lookup_spelling_requests;
+	std::size_t lookup_spelling_families[
+		TYPE_NAME_PATH_PARSE_FAMILY_COUNT];
+	std::size_t structured_name_path_requests;
+	std::size_t syntax_name_path_requests;
+	std::size_t syntax_name_path_direct;
+	std::size_t syntax_name_path_fallbacks;
 	std::size_t rendered_type_nodes;
 	std::size_t max_scope_depth;
 	std::size_t render_stack_storage_bytes;
