@@ -1882,7 +1882,18 @@ NodeId SemanticAnalyzer::DeclaratorNameStructure(NodeId node) const
 NameId SemanticAnalyzer::DeclaratorName(NodeId node)
 {
 	if (stats_) ++stats_->declarator_name_requests;
-	return DeclaratorNamePath(node).Last();
+	while (node != kNoNode)
+	{
+		const NodeId identifier = FindChild(
+			node, ::cppgm::pa10_syntax_detail::STAG_IDENTIFIER);
+		if (identifier != kNoNode)
+			return program_->names.UseInterned(
+				arena_->SemanticPayloadId(identifier));
+		const NodeId nested = FindChild(
+			node, ::cppgm::pa10_syntax_detail::STAG_NESTED_DECLARATOR);
+		node = nested == kNoNode ? kNoNode : FirstSemanticChild(nested);
+	}
+	return 0;
 }
 
 std::vector<ParameterInfo> SemanticAnalyzer::BuildParameters(NodeId node,

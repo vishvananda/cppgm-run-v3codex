@@ -325,7 +325,7 @@ private:
 	bool ParseName(std::string* text, bool allow_qualified = true, bool allow_operator = true,
 		bool allow_template_arguments = true,
 		NodeId* structure = 0, TextId* terminal_identifier = 0,
-		NodeId* conversion_type = 0)
+		NodeId* conversion_type = 0, TextId* terminal_name = 0)
 	{
 		const Mark mark = Checkpoint();
 		const std::size_t first = position_;
@@ -336,6 +336,7 @@ private:
 		if (structure) *structure = kNoNode;
 		if (terminal_identifier) *terminal_identifier = 0;
 		if (conversion_type) *conversion_type = kNoNode;
+		if (terminal_name) *terminal_name = 0;
 		bool operator_component = false; NodeId operator_arguments = kNoNode;
 		if (At(KW_OPERATOR) && allow_operator)
 		{
@@ -370,10 +371,12 @@ private:
 			}
 			const TextId identifier = tokens_[position_++].spelling;
 			if (terminal_identifier) *terminal_identifier = identifier;
+			const TextId component = destructor && (structure || terminal_name) ?
+				strings_.Intern("~" + strings_.Get(identifier)) : identifier;
+			if (terminal_name) *terminal_name = component;
 			if (structure)
 			{
-				component_names.push_back(destructor ? strings_.Intern(
-					"~" + strings_.Get(identifier)) : identifier);
+				component_names.push_back(component);
 				component_arguments.push_back(kNoNode);
 			}
 		}
@@ -408,10 +411,13 @@ private:
 				{
 					const TextId identifier = tokens_[position_++].spelling;
 					if (terminal_identifier) *terminal_identifier = identifier;
+					const TextId component = destructor &&
+						(structure || terminal_name) ? strings_.Intern(
+							"~" + strings_.Get(identifier)) : identifier;
+					if (terminal_name) *terminal_name = component;
 					if (structure)
 					{
-						component_names.push_back(destructor ? strings_.Intern(
-							"~" + strings_.Get(identifier)) : identifier);
+						component_names.push_back(component);
 						component_arguments.push_back(kNoNode);
 					}
 				}
@@ -444,14 +450,20 @@ private:
 				 (*text)[after] == '_'))
 				text->insert(after, " ");
 		}
-		if (structure && operator_component)
+		if ((structure || terminal_name) && operator_component)
 		{
 			const std::size_t operation = text->rfind("::operator");
 			const std::string terminal = operation == std::string::npos ? *text : text->substr(operation + 2);
 			std::string canonical;
 			for (std::size_t i = 0; i < terminal.size() && (operator_arguments == kNoNode || terminal[i] != '<'); ++i)
 				if (!std::isspace(static_cast<unsigned char>(terminal[i]))) canonical += terminal[i];
-			component_names.push_back(strings_.Intern(canonical)); component_arguments.push_back(operator_arguments);
+			const TextId component = strings_.Intern(canonical);
+			if (terminal_name) *terminal_name = component;
+			if (structure)
+			{
+				component_names.push_back(component);
+				component_arguments.push_back(operator_arguments);
+			}
 		}
 		if (structure && (retained_arguments || global ||
 			component_names.size() > 1))
@@ -1020,14 +1032,17 @@ NodeId Parser::ParseDeclarator(bool abstract, std::string* name)
 		std::string parsed_name;
 		NodeId name_structure = kNoNode;
 		NodeId conversion_type = kNoNode;
+		TextId terminal_name = 0;
 		if (ParseName(&parsed_name, true, true, true, &name_structure, 0,
-			&conversion_type))
+			&conversion_type, &terminal_name))
 		{
 			if (conversion_type != kNoNode)
 				arena_.Add(result, conversion_type);
 			if (name) *name = parsed_name;
-			arena_.Add(result, MakeStructuredNode(
-				"identifier", parsed_name, name_structure));
+			const NodeId identifier = MakeStructuredNode(
+				"identifier", parsed_name, name_structure);
+			arena_.SetSemanticPayload(identifier, terminal_name);
+			arena_.Add(result, identifier);
 			consumed = true;
 		}
 		else Rollback(name_mark);
