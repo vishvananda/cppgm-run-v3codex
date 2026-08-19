@@ -106,7 +106,7 @@ public:
 		  full_expression_uses_linked_dispatch_(false), full_expression_uses_branch_cleanup_(false),
 		  full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
 		  full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
-		  presentation_names_(program_),
+		  presentation_names_(program_, stats ? &stats->semantic : 0),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
 			function_symbols_, global_symbols_, literal_symbols_,

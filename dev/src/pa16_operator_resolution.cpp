@@ -1255,7 +1255,7 @@ ExpressionInfo SemanticAnalyzer::BuildConvertingArgument(
 			parameter_data + function.parameter_count);
 	const std::uint32_t action = MakeDump(DUMP_CONSTRUCTOR_ACTION,
 		AdaptMemberFunctionType(constructor_binding), VALUE_NONE,
-		constructor.display_name, constructor_binding);
+		ReadFunctionDisplayName(constructor), constructor_binding);
 	dump_.nodes[action].operand_type = object_type;
 	std::vector<ExpressionInfo> constexpr_arguments;
 	constexpr_arguments.reserve(function.parameter_count);

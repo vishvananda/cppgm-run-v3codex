@@ -1642,7 +1642,11 @@ void RetainedTemplateValidator::Run()
 		std::ostringstream generated;
 		generated << "__retained_template_parameter_shape_"
 			<< analyzer_.function_template_shape_parameters_.size();
-		const NameId name = analyzer_.program_->names.Intern(generated.str());
+		const std::string spelling = generated.str();
+		if (analyzer_.stats_)
+			analyzer_.RecordPresentationRender(
+				SEMANTIC_PRESENTATION_GENERATED_IDENTITY, spelling, 1);
+		const NameId name = analyzer_.program_->names.Intern(spelling);
 		const EntityId entity = analyzer_.program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,
 			analyzer_.program_->GlobalScope(), name);

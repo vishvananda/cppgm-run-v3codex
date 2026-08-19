@@ -15,9 +15,14 @@ const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope)
 
 NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
 {
+	if (stats_) ++stats_->scope_prefix_requests;
 	const NameId deferred = std::numeric_limits<NameId>::max();
 	if (scope >= scope_prefixes_.size() || scope_prefixes_[scope] != deferred)
+	{
+		if (stats_ && scope < scope_prefixes_.size())
+			++stats_->scope_prefix_cache_hits;
 		return scope < scope_prefixes_.size() ? scope_prefixes_[scope] : 0;
+	}
 	scope_prefix_scratch_.clear();
 	ScopeId current = scope;
 	while (current != kNoScope && current < scope_prefixes_.size() &&
@@ -35,6 +40,9 @@ NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
 		rendered += program_->names.Get(scope_prefix_scratch_[i - 1]);
 		rendered += "::";
 	}
+	if (stats_)
+		RecordPresentationRender(SEMANTIC_PRESENTATION_SCOPE_PREFIX, rendered,
+			scope_prefix_scratch_.size());
 	scope_prefixes_[scope] = program_->names.Intern(rendered);
 	return scope_prefixes_[scope];
 }
@@ -44,6 +52,9 @@ NameId SemanticAnalyzer::DisplayName(ScopeId owner, NameId name)
 	// ScopePrefix may intern a deferred prefix and invalidate string references.
 	const std::string terminal = program_->names.Get(name);
 	const std::string qualified = ScopePrefix(owner) + terminal;
+	if (stats_)
+		RecordPresentationRender(
+			SEMANTIC_PRESENTATION_DISPLAY_NAME, qualified, 1);
 	return program_->names.Intern(qualified);
 }
 
@@ -56,6 +67,9 @@ NameId SemanticAnalyzer::EmissionName(ScopeId owner, NameId name)
 		if (i != 0) rendered += "::";
 		rendered += program_->names.Get(scope_prefix_scratch_[i]);
 	}
+	if (stats_)
+		RecordPresentationRender(SEMANTIC_PRESENTATION_EMISSION_NAME, rendered,
+			scope_prefix_scratch_.size());
 	return program_->names.Intern(rendered);
 }
 

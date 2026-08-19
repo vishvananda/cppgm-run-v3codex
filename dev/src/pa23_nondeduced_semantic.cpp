@@ -451,8 +451,12 @@ TypeId SemanticAnalyzer::FunctionTemplateNondeducedTypeShape()
 {
 	if (function_template_nondeduced_type_shape_ == kNoType)
 	{
-		const NameId name = program_->names.Intern(
-			"__function_template_nondeduced_type_shape");
+		const std::string spelling =
+			"__function_template_nondeduced_type_shape";
+		if (stats_)
+			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+				spelling, 1);
+		const NameId name = program_->names.Intern(spelling);
 		const EntityId entity = program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,
 			program_->GlobalScope(), name);

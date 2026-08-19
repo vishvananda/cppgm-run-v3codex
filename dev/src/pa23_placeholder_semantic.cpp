@@ -345,7 +345,8 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 	const TypeId provisional_output = member ?
 		AdaptMemberFunctionType(function) : requested.type;
 	const std::uint32_t detached = MakeDump(DUMP_FUNCTION_DEFINITION,
-		provisional_output, VALUE_NONE, requested.display_name, requested.binding);
+		provisional_output, VALUE_NONE,
+		ReadFunctionDisplayName(requested), requested.binding);
 	const ScopeId function_scope = NewScope(requested.lexical_scope,
 		SCOPE_FUNCTION, program_->bindings[requested.binding].name,
 		ScopePrefixId(requested.owner));
@@ -453,7 +454,7 @@ void SemanticAnalyzer::AnalyzeRetainedPlaceholderFunctionBody(
 					const std::uint32_t declaration = MakeDump(
 						DUMP_FUNCTION_DECLARATION,
 						declaration_type, VALUE_NONE,
-						referenced.display_name, dependency);
+						ReadFunctionDisplayName(referenced), dependency);
 					dump_.nodes[declaration].declaration_only = true;
 					dump_.Add(root_, declaration);
 					published.push_back(dependency);

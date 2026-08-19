@@ -67,8 +67,10 @@ ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
 	const FunctionInfo& function = GetFunction(binding);
 	std::string name;
 	if (!pretty)
-		name = function.display_name == 0 ? std::string() :
-			program_->names.Get(function.display_name);
+	{
+		const NameId display = ReadFunctionDisplayName(function);
+		name = display == 0 ? std::string() : program_->names.Get(display);
+	}
 	else
 	{
 		std::vector<pa34_source_identity::TemplateBinding> substitutions;
@@ -358,8 +360,8 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 			{
 				const FunctionInfo& function = GetFunction(
 					program_->bindings[current_function_context_].canonical);
-				if (function.display_name != 0)
-					value = program_->names.Get(function.display_name);
+				const NameId display = ReadFunctionDisplayName(function);
+				if (display != 0) value = program_->names.Get(display);
 			}
 			*result = ApplyTarget(
 				MakeStringLiteral(QuoteNarrowString(value)), target);

@@ -11,6 +11,7 @@
 
 namespace cppgm
 {
+struct SemanticAnalysisStats;
 namespace pa12_semantic_detail
 {
 struct DumpNode;
@@ -44,11 +45,13 @@ bool DecodeFloatingLiteral(const std::string& spelling,
 class PresentationNameMap
 {
 	public:
-	explicit PresentationNameMap(const pa11::Program& program);
+	PresentationNameMap(const pa11::Program& program,
+		SemanticAnalysisStats* stats);
 	std::string Apply(pa11::ScopeId owner, pa11::NameId terminal) const;
 
 private:
 	const pa11::Program& program_;
+	SemanticAnalysisStats* stats_;
 	std::vector<pa11::NameId> replacements_;
 	mutable std::vector<pa11::NameId> path_;
 };

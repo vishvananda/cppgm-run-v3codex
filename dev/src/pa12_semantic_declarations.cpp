@@ -446,8 +446,13 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 					generated << "__anonymous_union_storage__"
 						<< arena_->TokenFirst(member) << '_'
 						<< arena_->TokenLast(member);
+					const std::string generated_name = generated.str();
+					if (stats_)
+						RecordPresentationRender(
+							SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+							generated_name, 2);
 					const NameId storage_name =
-						program_->names.Intern(generated.str());
+						program_->names.Intern(generated_name);
 					const BindingId storage = program_->AddBinding(member_scope,
 						BIND_VARIABLE, storage_name, nested_type);
 					BindingRecord& storage_record = program_->bindings[storage];
@@ -2591,8 +2596,12 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	if (!source_binding_copy.destructor || !source_info.destructor)
 		throw std::logic_error(
 			"destructor base entry requested for non-destructor");
-	const NameId generated_name = program_->names.Intern(
-		program_->names.Get(source_binding_copy.name) + "__base_entry");
+	const std::string generated_spelling =
+		program_->names.Get(source_binding_copy.name) + "__base_entry";
+	if (stats_)
+		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			generated_spelling, 1);
+	const NameId generated_name = program_->names.Intern(generated_spelling);
 	const BindingId base_entry = program_->AddBinding(source_binding_copy.owner,
 		BIND_FUNCTION, generated_name, source_binding_copy.type, false, 0,
 		NAMED_NONE, 0, kNoBinding, false);
@@ -2815,7 +2824,8 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		AdaptMemberFunctionType(initial.binding) : initial.type;
 	const std::uint32_t function = MakeDump(emit_definition ?
 		DUMP_FUNCTION_DEFINITION : DUMP_FUNCTION_DECLARATION,
-		output_type, VALUE_NONE, initial.display_name, initial.binding);
+		output_type, VALUE_NONE,
+		ReadFunctionDisplayName(initial), initial.binding);
 	dump_.Add(root_, function);
 	if (!emit_definition && (retain_lowering_facts_ || member ||
 		program_->bindings[binding].explicit_instantiation_suppressed))

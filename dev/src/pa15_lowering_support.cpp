@@ -1,5 +1,6 @@
 #include "pa15_lowering_support.h"
 #include "lowir_model.h"
+#include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
 #include "post_tokenizer.h"
 
@@ -58,8 +59,9 @@ bool DecodeFloatingLiteral(const std::string& spelling,
 		spelling, decoded_type, low, high);
 }
 
-PresentationNameMap::PresentationNameMap(const pa11::Program& program)
-	: program_(program)
+PresentationNameMap::PresentationNameMap(const pa11::Program& program,
+	SemanticAnalysisStats* stats)
+	: program_(program), stats_(stats)
 {
 	std::vector<pa11::NameId> path;
 	for (std::size_t i = 0; i < program.entities.size(); ++i)
@@ -67,6 +69,9 @@ PresentationNameMap::PresentationNameMap(const pa11::Program& program)
 		const pa11::EntityRecord& entity = program.entities[i];
 		if (entity.presentation_name == 0 || entity.name == 0 ||
 			entity.presentation_name == entity.name) continue;
+		if (stats_)
+			++stats_->presentation_reads[
+				SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
 		const pa11::NameId identity = entity.identity_name != 0 ?
 			entity.identity_name : entity.name;
 		const pa11::NameId largest = std::max(entity.name, identity);
@@ -77,6 +82,9 @@ PresentationNameMap::PresentationNameMap(const pa11::Program& program)
 		replacements_[identity] = entity.presentation_name;
 		if (entity.member_scope != pa11::kNoScope)
 		{
+			if (stats_)
+				++stats_->presentation_reads[
+					SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION];
 			program.BuildEmissionPath(
 				entity.member_scope, entity.name, &path);
 			if (path.size() >= 2)
@@ -94,6 +102,9 @@ PresentationNameMap::PresentationNameMap(const pa11::Program& program)
 std::string PresentationNameMap::Apply(
 	pa11::ScopeId owner, pa11::NameId terminal) const
 {
+	if (stats_)
+		++stats_->presentation_reads[
+			SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION];
 	program_.BuildEmissionPath(owner, terminal, &path_);
 	std::string result;
 	for (std::size_t i = 0; i < path_.size(); ++i)

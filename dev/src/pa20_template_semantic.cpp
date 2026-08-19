@@ -169,7 +169,7 @@ bool TypeIdNamesDependentQualifiedType(const SyntaxArena& arena,
 }
 
 std::string ExplicitArgumentPresentation(const Program& program,
-	const TemplateArgument& argument)
+	const TemplateArgument& argument, SemanticAnalysisStats* stats)
 {
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
@@ -194,8 +194,11 @@ std::string ExplicitArgumentPresentation(const Program& program,
 			throw std::logic_error("template argument binding is invalid");
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
-		std::string result = program.names.Get(binding.qualified_name != 0 ?
-			binding.qualified_name : binding.name);
+		if (stats && binding.qualified_name != 0)
+			++stats->presentation_reads[
+				SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
+		std::string result = program.names.Get(
+			binding.qualified_name != 0 ? binding.qualified_name : binding.name);
 		const TypeRecord& type = program.types.Get(
 			program.types.RemoveTopCv(argument.type));
 		if (type.kind == TYPE_POINTER) result.insert(result.begin(), '&');
@@ -214,13 +217,14 @@ std::string ExplicitArgumentPresentation(const Program& program,
 }
 
 std::string ExplicitClassSpecializationName(const Program& program,
-	NameId primary, const std::vector<TemplateArgument>& arguments)
+	NameId primary, const std::vector<TemplateArgument>& arguments,
+	SemanticAnalysisStats* stats)
 {
 	std::string source = program.names.Get(primary) + "<";
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
 		if (i != 0) source += ", ";
-		source += ExplicitArgumentPresentation(program, arguments[i]);
+		source += ExplicitArgumentPresentation(program, arguments[i], stats);
 	}
 	source += '>';
 	std::string result;
@@ -231,6 +235,15 @@ std::string ExplicitClassSpecializationName(const Program& program,
 			static_cast<unsigned char>(source[i]);
 		result += std::isalnum(character) || character == '_' ?
 			static_cast<char>(character) : '_';
+	}
+	if (stats)
+	{
+		++stats->presentation_renders[
+			SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION];
+		stats->presentation_render_components[
+			SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION] += arguments.size() + 1;
+		stats->presentation_render_bytes[
+			SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION] += result.size();
 	}
 	return result;
 }
@@ -615,12 +628,12 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 					flavor, pattern.owner, declaration.name, declaration.name,
 					pattern.owner, pattern.name, program_->names.Intern(
 						ExplicitClassSpecializationName(
-							*program_, pattern.name, arguments)));
+							*program_, pattern.name, arguments, stats_)));
 		}
 		else
 		{
 			const std::string name = ExplicitClassSpecializationName(
-				*program_, pattern.name, arguments);
+				*program_, pattern.name, arguments, stats_);
 			// Publish the canonical specialization shell before analyzing its
 			// members.  In particular, an injected primary name used by a member
 			// declaration must already route back to this template pattern.
@@ -1090,7 +1103,8 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 	if (record.member_owner != kNoEntity)
 	{
 		const NameId specialization_name = program_->names.Intern(
-			ExplicitClassSpecializationName(*program_, primary.name, arguments));
+			ExplicitClassSpecializationName(
+				*program_, primary.name, arguments, stats_));
 		record.qualified_name = EmissionName(selected.owner, specialization_name);
 	}
 	else record.qualified_name = EmissionName(selected.owner, primary.name);
@@ -1903,8 +1917,12 @@ TypeId SemanticAnalyzer::ClassTemplateNondeducedTypeShape()
 {
 	if (class_template_nondeduced_type_shape_ == kNoType)
 	{
-		const NameId name = program_->names.Intern(
-			"__class_template_nondeduced_type_shape");
+		const std::string spelling =
+			"__class_template_nondeduced_type_shape";
+		if (stats_)
+			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+				spelling, 1);
+		const NameId name = program_->names.Intern(spelling);
 		const EntityId entity = program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,
 			program_->GlobalScope(), name);

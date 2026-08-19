@@ -146,7 +146,7 @@ std::string TemplateArgumentTypeName(const std::string& source)
 }
 
 std::string CanonicalTemplateArgumentPresentation(const Program& program,
-	const TemplateArgument& argument)
+	const TemplateArgument& argument, SemanticAnalysisStats* stats)
 {
 	if (argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		argument.kind == TEMPLATE_ARGUMENT_TEMPLATE)
@@ -197,8 +197,11 @@ std::string CanonicalTemplateArgumentPresentation(const Program& program,
 			throw std::logic_error("template argument binding is invalid");
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
-		std::string result = program.names.Get(binding.qualified_name != 0 ?
-			binding.qualified_name : binding.name);
+		if (stats && binding.qualified_name != 0)
+			++stats->presentation_reads[
+				SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
+		std::string result = program.names.Get(
+			binding.qualified_name != 0 ? binding.qualified_name : binding.name);
 		const TypeRecord& type = program.types.Get(
 			program.types.RemoveTopCv(argument.type));
 		if (type.kind == TYPE_POINTER) result.insert(result.begin(), '&');
@@ -217,13 +220,15 @@ std::string CanonicalTemplateArgumentPresentation(const Program& program,
 }
 
 std::string ClassTemplateSpecializationName(const Program& program,
-	NameId primary, const std::vector<TemplateArgument>& arguments)
+	NameId primary, const std::vector<TemplateArgument>& arguments,
+	SemanticAnalysisStats* stats)
 {
 	std::string source = program.names.Get(primary) + "<";
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 	{
 		if (i != 0) source += ", ";
-		source += CanonicalTemplateArgumentPresentation(program, arguments[i]);
+		source += CanonicalTemplateArgumentPresentation(
+			program, arguments[i], stats);
 	}
 	source += '>';
 	std::string result;
@@ -235,24 +240,52 @@ std::string ClassTemplateSpecializationName(const Program& program,
 		result += std::isalnum(character) || character == '_' ?
 			static_cast<char>(character) : '_';
 	}
+	if (stats)
+	{
+		++stats->presentation_renders[
+			SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION];
+		stats->presentation_render_components[
+			SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION] += arguments.size() + 1;
+		stats->presentation_render_bytes[
+			SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION] += result.size();
+	}
 	return result;
 }
 
 std::string ClassTemplateSpecializationScopeName(std::size_t pattern,
-	std::size_t ordinal)
+	std::size_t ordinal, SemanticAnalysisStats* stats)
 {
 	std::ostringstream result;
 	result << "__cppgm_class_template_" << pattern << '_' << ordinal;
-	return result.str();
+	const std::string rendered = result.str();
+	if (stats)
+	{
+		++stats->presentation_renders[SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT];
+		stats->presentation_render_components[
+			SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT] += 2;
+		stats->presentation_render_bytes[
+			SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT] += rendered.size();
+	}
+	return rendered;
 }
 
 std::string ClassTemplateSpecializationStorageName(std::size_t pattern,
-	TemplateArgumentListId arguments, TemplateArgumentPartitionId partition)
+	TemplateArgumentListId arguments, TemplateArgumentPartitionId partition,
+	SemanticAnalysisStats* stats)
 {
 	std::ostringstream result;
 	result << "__cppgm_class_template_identity_" << pattern << '_'
 		<< arguments << '_' << partition;
-	return result.str();
+	const std::string rendered = result.str();
+	if (stats)
+	{
+		++stats->presentation_renders[SEMANTIC_PRESENTATION_CLASS_STORAGE];
+		stats->presentation_render_components[
+			SEMANTIC_PRESENTATION_CLASS_STORAGE] += 3;
+		stats->presentation_render_bytes[
+			SEMANTIC_PRESENTATION_CLASS_STORAGE] += rendered.size();
+	}
+	return rendered;
 }
 
 }
@@ -1633,7 +1666,7 @@ std::string SemanticAnalyzer::ClassTemplateInstantiationName(
 	const std::string& presentation) const
 {
 	return host_object_emission_ ? ClassTemplateSpecializationStorageName(
-		pattern, key.arguments, key.partition) : presentation;
+		pattern, key.arguments, key.partition, stats_) : presentation;
 }
 
 void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
@@ -1734,12 +1767,14 @@ void SemanticAnalyzer::CompleteClassTemplateSpecialization(std::size_t index,
 	const TemplateArgumentListId specialization_arguments =
 		program_->entities[specialization_entity].template_argument_list;
 	const std::string presentation_name =
-		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
+		ClassTemplateSpecializationName(
+			*program_, pattern.name, arguments, stats_);
 	PublishClassTemplatePresentationName(
 		specialization_entity, presentation_name);
 	const std::string specialization_name = host_object_emission_ ?
 		ClassTemplateSpecializationStorageName(
-			index, specialization_arguments, kEmptyTemplateArgumentPartition) :
+			index, specialization_arguments,
+			kEmptyTemplateArgumentPartition, stats_) :
 		presentation_name;
 	const NameId specialization_emission_name =
 		TemplateArgumentsNeedInternalEmission(*program_, arguments) ?
@@ -1901,7 +1936,11 @@ bool SemanticAnalyzer::MaterializeTemplatePartialArguments(
 		std::ostringstream generated;
 		generated << "__function_template_parameter_shape_"
 			<< function_template_shape_parameters_.size();
-		const NameId name = program_->names.Intern(generated.str());
+		const std::string spelling = generated.str();
+		if (stats_)
+			RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+				spelling, 1);
+		const NameId name = program_->names.Intern(spelling);
 		const EntityId entity = program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType,
 			program_->GlobalScope(), name);
@@ -2641,9 +2680,9 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	{
 		const std::string specialization_name = host_object_emission_ ?
 			ClassTemplateSpecializationStorageName(
-				index, key.arguments, key.partition) :
+				index, key.arguments, key.partition, stats_) :
 			ClassTemplateSpecializationName(
-				*program_, pattern.name, arguments);
+				*program_, pattern.name, arguments, stats_);
 		const NameId name = program_->names.Intern(specialization_name);
 		const EntityId entity = program_->NewEntity(name,
 			NAMED_TYPENAME_PARAMETER, false, kNoType, pattern.owner,
@@ -2681,7 +2720,8 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 		pattern, arguments, &partial_bindings);
 
 	const std::string presentation_name =
-		ClassTemplateSpecializationName(*program_, pattern.name, arguments);
+		ClassTemplateSpecializationName(
+			*program_, pattern.name, arguments, stats_);
 	const std::string specialization_name = ClassTemplateInstantiationName(index, key, presentation_name);
 	ScopeId template_scope = BindClassTemplateArguments(pattern, arguments);
 	NodeId selected_declaration = pattern.declaration;
@@ -2705,7 +2745,7 @@ BindingId SemanticAnalyzer::InstantiateClassTemplate(std::size_t index,
 	}
 	const NameId specialization_lookup_name = program_->names.Intern(
 		ClassTemplateSpecializationScopeName(
-			index, pattern.specialization_bindings.size()));
+			index, pattern.specialization_bindings.size(), stats_));
 	const TypeId shell = AnalyzeClass(selected_declaration, template_scope,
 		std::string(), false, specialization_name, pattern.owner,
 		pattern.name, false,

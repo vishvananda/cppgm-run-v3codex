@@ -2441,6 +2441,18 @@ std::size_t Program::ScopeCount() const
 	return scopes_.size();
 }
 
+void Program::AccumulateScopeEmissionNames(
+	std::size_t* count, std::size_t* bytes) const
+{
+	for (std::size_t i = 0; i < scopes_.size(); ++i)
+	{
+		const NameId name = scopes_[i].emission_name;
+		if (name == 0) continue;
+		++*count;
+		*bytes += names.Get(name).size();
+	}
+}
+
 std::size_t Program::StorageBytes() const
 {
 	std::size_t bytes = names.StorageBytes() + types.StorageBytes() +

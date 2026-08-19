@@ -279,7 +279,7 @@ bool SemanticAnalyzer::TryAnalyzeImmediateBuiltinCall(
 	const std::uint32_t call = MakeDump(
 		DUMP_CALL_EXPRESSION, result_type, VALUE_PRVALUE, 0, binding);
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, function.display_name, binding);
+		VALUE_NONE, ReadFunctionDisplayName(function), binding);
 	dump_.Add(call, callee);
 	result->node = call;
 	result->type = result_type;
@@ -299,7 +299,7 @@ ExpressionInfo SemanticAnalyzer::BuildBuiltinIntrinsicCall(
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
 		VALUE_PRVALUE, 0, binding);
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, function.display_name, binding);
+		VALUE_NONE, ReadFunctionDisplayName(function), binding);
 	dump_.Add(call, callee);
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		dump_.Add(call, arguments[i].node);
@@ -367,7 +367,7 @@ ExpressionInfo SemanticAnalyzer::BuildIntegerIntrinsicCall(
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
 		VALUE_PRVALUE, 0, binding);
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, function.display_name, binding);
+		VALUE_NONE, ReadFunctionDisplayName(function), binding);
 	dump_.Add(call, callee);
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		dump_.Add(call, arguments[i].node);
@@ -564,7 +564,7 @@ ExpressionInfo SemanticAnalyzer::BuildFloatingIntrinsicCall(
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
 		VALUE_PRVALUE, 0, binding);
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, function.display_name, binding);
+		VALUE_NONE, ReadFunctionDisplayName(function), binding);
 	dump_.Add(call, callee);
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		dump_.Add(call, arguments[i].node);
@@ -745,7 +745,7 @@ ExpressionInfo SemanticAnalyzer::BuildMemoryIntrinsicCall(
 	const std::uint32_t call = MakeDump(DUMP_CALL_EXPRESSION, result_type,
 		VALUE_PRVALUE, 0, binding);
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, function.type,
-		VALUE_NONE, function.display_name, binding);
+		VALUE_NONE, ReadFunctionDisplayName(function), binding);
 	dump_.Add(call, callee);
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		dump_.Add(call, arguments[i].node);

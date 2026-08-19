@@ -68,7 +68,7 @@ std::string SanitizeLambdaIdentity(const std::string& source)
 }
 
 std::string LambdaTemplateArgumentIdentity(const Program& program,
-	const TemplateArgument& argument)
+	const TemplateArgument& argument, SemanticAnalysisStats* stats)
 {
 	if ((argument.kind == TEMPLATE_ARGUMENT_TYPE ||
 		 argument.kind == TEMPLATE_ARGUMENT_TEMPLATE) &&
@@ -79,13 +79,17 @@ std::string LambdaTemplateArgumentIdentity(const Program& program,
 	{
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
+		if (stats && binding.qualified_name != 0)
+			++stats->presentation_reads[
+				SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
 		return SanitizeLambdaIdentity(program.names.Get(
 			binding.qualified_name != 0 ? binding.qualified_name : binding.name));
 	}
 	return std::to_string(argument.value);
 }
 
-std::string LambdaContextIdentity(const Program& program, BindingId context)
+std::string LambdaContextIdentity(const Program& program, BindingId context,
+	SemanticAnalysisStats* stats)
 {
 	if (context == kNoBinding || context >= program.bindings.size())
 		throw std::logic_error("lambda context binding is invalid");
@@ -97,6 +101,9 @@ std::string LambdaContextIdentity(const Program& program, BindingId context)
 		binding.member_owner < program.entities.size() &&
 		program.entities[binding.member_owner].lambda_closure)
 		return "nested";
+	if (stats && binding.qualified_name != 0)
+		++stats->presentation_reads[
+			SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
 	std::string result = SanitizeLambdaIdentity(program.names.Get(
 		binding.qualified_name != 0 ? binding.qualified_name : binding.name));
 	const std::size_t first = binding.template_argument_begin;
@@ -108,8 +115,8 @@ std::string LambdaContextIdentity(const Program& program, BindingId context)
 	for (std::size_t i = 0; i < count; ++i)
 	{
 		result += "__";
-		result += LambdaTemplateArgumentIdentity(
-			program, program.canonical_template_arguments[first + i]);
+		result += LambdaTemplateArgumentIdentity(program,
+			program.canonical_template_arguments[first + i], stats);
 	}
 	return result;
 }
@@ -389,7 +396,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		if (enclosing != kNoBinding)
 		{
 			leaf_spelling = LambdaIdentityComponent(
-				LambdaContextIdentity(*program_, enclosing),
+				LambdaContextIdentity(*program_, enclosing, stats_),
 				arena_->TokenFirst(node), arena_->TokenLast(node), ordinal);
 		}
 		else
@@ -398,6 +405,9 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 			identity_leaf = program_->names.Intern(
 				"$_" + std::to_string(ordinal));
 		}
+		if (stats_)
+			RecordPresentationRender(SEMANTIC_PRESENTATION_LAMBDA_IDENTITY,
+				leaf_spelling, enclosing == kNoBinding ? 1 : 4);
 		const NameId leaf = program_->names.Intern(leaf_spelling);
 		const ScopeId identity_owner = enclosing == kNoBinding ?
 			namespace_owner : program_->bindings[enclosing].owner;
@@ -412,8 +422,13 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		closure.destructible = true;
 		closure.trivial_destructor = true;
 		const TypeId closure_type = closure.type;
-		const NameId member_prefix = program_->names.Intern(
-			program_->names.Get(emission) + "::");
+		const std::string member_prefix_spelling =
+			program_->names.Get(emission) + "::";
+		if (stats_)
+			RecordPresentationRender(SEMANTIC_PRESENTATION_SCOPE_PREFIX,
+				member_prefix_spelling, 1);
+		const NameId member_prefix =
+			program_->names.Intern(member_prefix_spelling);
 		const ScopeId member_scope = NewScope(namespace_owner, SCOPE_CLASS,
 			leaf, member_prefix);
 		program_->SetScopeEmissionName(member_scope, emission);
@@ -1407,9 +1422,15 @@ bool SemanticAnalyzer::BuildTemplateTemplateArgument(NodeId syntax,
 				TypeId& shape = dependent_template_argument_shapes_[name];
 				if (shape == kNoType)
 				{
-					const NameId shape_name = program_->names.Intern(
+					const std::string spelling =
 						"__dependent_member_template_shape_" +
-						std::to_string(name));
+						std::to_string(name);
+					if (stats_)
+						RecordPresentationRender(
+							SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+							spelling, 1);
+					const NameId shape_name =
+						program_->names.Intern(spelling);
 					const EntityId entity = program_->NewEntity(shape_name,
 						NAMED_TEMPLATE_PARAMETER, false, kNoType,
 						program_->GlobalScope(), shape_name);
@@ -1593,8 +1614,12 @@ TypeId SemanticAnalyzer::DependentQualifiedTypeShape(NodeId syntax)
 			static_cast<std::size_t>(syntax) + 1, kNoType);
 	TypeId& result = dependent_qualified_type_shapes_[syntax];
 	if (result != kNoType) return result;
-	const NameId name = program_->names.Intern(
-		"__dependent_qualified_type_shape_" + std::to_string(syntax));
+	const std::string spelling =
+		"__dependent_qualified_type_shape_" + std::to_string(syntax);
+	if (stats_)
+		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			spelling, 1);
+	const NameId name = program_->names.Intern(spelling);
 	const EntityId entity = program_->NewEntity(name,
 		NAMED_TYPENAME_PARAMETER, false, kNoType,
 		program_->GlobalScope(), name);

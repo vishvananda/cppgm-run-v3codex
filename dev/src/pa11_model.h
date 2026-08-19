@@ -834,6 +834,8 @@ public:
 		std::size_t* stack_storage_bytes = 0,
 		std::size_t* rendered_type_nodes = 0) const;
 	std::size_t ScopeCount() const;
+	void AccumulateScopeEmissionNames(
+		std::size_t* count, std::size_t* bytes) const;
 	std::size_t StorageBytes() const;
 
 	NameTable names;

@@ -30,6 +30,28 @@ enum NamePathParseFamily
 	NAME_PATH_PARSE_FAMILY_COUNT
 };
 
+enum SemanticPresentationFamily
+{
+	SEMANTIC_PRESENTATION_SCOPE_PREFIX,
+	SEMANTIC_PRESENTATION_DISPLAY_NAME,
+	SEMANTIC_PRESENTATION_EMISSION_NAME,
+	SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION,
+	SEMANTIC_PRESENTATION_CLASS_STORAGE,
+	SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT,
+	SEMANTIC_PRESENTATION_LAMBDA_IDENTITY,
+	SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+	SEMANTIC_PRESENTATION_FAMILY_COUNT
+};
+
+enum SemanticPresentationReadFamily
+{
+	SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY,
+	SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED,
+	SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION,
+	SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION,
+	SEMANTIC_PRESENTATION_READ_FAMILY_COUNT
+};
+
 namespace pa12_semantic_detail
 {
 class SemanticGraphConsumer;
@@ -60,6 +82,19 @@ struct SemanticAnalysisStats
 	std::size_t lookup_spelling_requests;
 	std::size_t declarator_name_requests;
 	std::size_t declarator_name_path_requests;
+	std::size_t presentation_renders[SEMANTIC_PRESENTATION_FAMILY_COUNT];
+	std::size_t presentation_render_components[
+		SEMANTIC_PRESENTATION_FAMILY_COUNT];
+	std::size_t presentation_render_bytes[
+		SEMANTIC_PRESENTATION_FAMILY_COUNT];
+	std::size_t presentation_reads[
+		SEMANTIC_PRESENTATION_READ_FAMILY_COUNT];
+	std::size_t presentation_retained_values[
+		SEMANTIC_PRESENTATION_READ_FAMILY_COUNT];
+	std::size_t presentation_retained_bytes[
+		SEMANTIC_PRESENTATION_READ_FAMILY_COUNT];
+	std::size_t scope_prefix_requests;
+	std::size_t scope_prefix_cache_hits;
 	std::size_t class_layouts;
 	std::size_t class_layout_member_visits;
 	std::size_t virtual_base_layout_edge_visits;
@@ -196,6 +231,10 @@ struct SemanticAnalysisStats
 	std::size_t binding_output_fact_records;
 	std::size_t binding_operator_fact_records;
 	std::size_t binding_value_records;
+	std::size_t binding_record_size;
+	std::size_t entity_record_size;
+	std::size_t function_info_size;
+	std::size_t dump_node_size;
 	std::size_t semantic_program_storage_bytes;
 	std::size_t semantic_dump_storage_bytes;
 	std::size_t semantic_side_storage_bytes;

@@ -257,6 +257,20 @@ private:
 	NameId ScopePrefixId(ScopeId scope);
 	NameId DisplayName(ScopeId owner, NameId name);
 	NameId EmissionName(ScopeId owner, NameId name);
+	void RecordPresentationRender(SemanticPresentationFamily family,
+		const std::string& rendered, std::size_t components = 0) const
+	{
+		++stats_->presentation_renders[family];
+		stats_->presentation_render_components[family] += components;
+		stats_->presentation_render_bytes[family] += rendered.size();
+	}
+	NameId ReadFunctionDisplayName(const FunctionInfo& function) const
+	{
+		if (stats_)
+			++stats_->presentation_reads[
+				SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];
+		return function.display_name;
+	}
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
 	void InitializeInitializerListLifetimeScope(ScopeId scope, ScopeId parent);
@@ -1934,6 +1948,7 @@ private:
 	std::size_t SideStorageBytes() const;
 	void ReserveSemanticCapacity(const SyntaxArena& arena);
 	void PublishBindingPopulationStats();
+	void PublishPresentationPopulationStats();
 
 	std::uint32_t MakeDump(DumpKind kind, TypeId type = kNoType,
 		ValueCategory category = VALUE_NONE, NameId text = 0,

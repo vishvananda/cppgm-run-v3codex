@@ -1331,6 +1331,118 @@ void report_source_compile_stats(
 			 << semantic.declarator_name_requests
 			 << " declarator_name_path_requests="
 			 << semantic.declarator_name_path_requests
+			 << " scope_prefix_requests="
+			 << semantic.scope_prefix_requests
+			 << " scope_prefix_cache_hits="
+			 << semantic.scope_prefix_cache_hits
+			 << " presentation_scope_prefix_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
+			 << " presentation_scope_prefix_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
+			 << " presentation_scope_prefix_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_SCOPE_PREFIX]
+			 << " presentation_display_name_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_DISPLAY_NAME]
+			 << " presentation_display_name_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_DISPLAY_NAME]
+			 << " presentation_display_name_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_DISPLAY_NAME]
+			 << " presentation_emission_name_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_EMISSION_NAME]
+			 << " presentation_emission_name_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_EMISSION_NAME]
+			 << " presentation_emission_name_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_EMISSION_NAME]
+			 << " presentation_class_specialization_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
+			 << " presentation_class_specialization_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
+			 << " presentation_class_specialization_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_SPECIALIZATION]
+			 << " presentation_class_storage_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_STORAGE]
+			 << " presentation_class_storage_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_STORAGE]
+			 << " presentation_class_storage_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_STORAGE]
+			 << " presentation_class_scope_slot_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
+			 << " presentation_class_scope_slot_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
+			 << " presentation_class_scope_slot_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_CLASS_SCOPE_SLOT]
+			 << " presentation_lambda_identity_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
+			 << " presentation_lambda_identity_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
+			 << " presentation_lambda_identity_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_LAMBDA_IDENTITY]
+			 << " presentation_generated_identity_renders="
+			 << semantic.presentation_renders[
+				cppgm::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
+			 << " presentation_generated_identity_components="
+			 << semantic.presentation_render_components[
+				cppgm::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
+			 << " presentation_generated_identity_bytes="
+			 << semantic.presentation_render_bytes[
+				cppgm::SEMANTIC_PRESENTATION_GENERATED_IDENTITY]
+			 << " presentation_function_display_reads="
+			 << semantic.presentation_reads[
+				cppgm::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
+			 << " presentation_function_display_retained="
+			 << semantic.presentation_retained_values[
+				cppgm::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
+			 << " presentation_function_display_retained_bytes="
+			 << semantic.presentation_retained_bytes[
+				cppgm::SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY]
+			 << " presentation_binding_qualified_reads="
+			 << semantic.presentation_reads[
+				cppgm::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
+			 << " presentation_binding_qualified_retained="
+			 << semantic.presentation_retained_values[
+				cppgm::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
+			 << " presentation_binding_qualified_retained_bytes="
+			 << semantic.presentation_retained_bytes[
+				cppgm::SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED]
+			 << " presentation_entity_presentation_reads="
+			 << semantic.presentation_reads[
+				cppgm::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
+			 << " presentation_entity_presentation_retained="
+			 << semantic.presentation_retained_values[
+				cppgm::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
+			 << " presentation_entity_presentation_retained_bytes="
+			 << semantic.presentation_retained_bytes[
+				cppgm::SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION]
+			 << " presentation_scope_emission_reads="
+			 << semantic.presentation_reads[
+				cppgm::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
+			 << " presentation_scope_emission_retained="
+			 << semantic.presentation_retained_values[
+				cppgm::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
+			 << " presentation_scope_emission_retained_bytes="
+			 << semantic.presentation_retained_bytes[
+				cppgm::SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION]
 			 << " lookup_queries=" << semantic.lookup_queries
 			 << " lookup_scope_visits=" << semantic.lookup_scope_visits
 			 << " lookup_edge_visits=" << semantic.lookup_edge_visits
@@ -1522,6 +1634,14 @@ void report_source_compile_stats(
 			 << stats.post_inline_retained_required_weak
 			 << " post_inline_retained_conservative_fallback="
 			 << stats.post_inline_retained_conservative_fallback
+			 << " sizeof_binding_record="
+			 << semantic.binding_record_size
+			 << " sizeof_entity_record="
+			 << semantic.entity_record_size
+			 << " sizeof_function_info="
+			 << semantic.function_info_size
+			 << " sizeof_dump_node="
+			 << semantic.dump_node_size
 			 << " semantic_program_bytes="
 			 << semantic.semantic_program_storage_bytes
 			 << " binding_layout_facts="

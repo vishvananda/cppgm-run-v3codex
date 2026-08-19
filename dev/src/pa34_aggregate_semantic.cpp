@@ -180,7 +180,11 @@ void SemanticAnalyzer::EmitStructuredBindingStorage(
 	std::ostringstream generated;
 	generated << "__structured_binding_storage__" << arena_->TokenFirst(source)
 		<< '_' << arena_->TokenLast(source);
-	parsed.name = program_->names.Intern(generated.str());
+	const std::string generated_name = generated.str();
+	if (stats_)
+		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			generated_name, 2);
+	parsed.name = program_->names.Intern(generated_name);
 	if (program_->LookupDirect(scope, parsed.name,
 		LOOKUP_ORDINARY).ordinary != kNoBinding)
 		throw std::runtime_error("structured binding storage identity collision");

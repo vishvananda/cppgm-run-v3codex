@@ -35,6 +35,10 @@ protected:
 		{
 			const BindingRecord& binding =
 				derived.program_.bindings[record.binding];
+			if (qualified_name.empty() && binding.qualified_name != 0 &&
+				derived.stats_)
+				++derived.stats_->semantic.presentation_reads[
+					SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
 			const std::string source_name = qualified_name.empty() ?
 				derived.program_.names.Get(binding.qualified_name != 0 ?
 					binding.qualified_name : record.text) : qualified_name;
@@ -59,7 +63,12 @@ protected:
 		const Derived& derived = static_cast<const Derived&>(*this);
 		const BindingRecord& member = derived.program_.bindings[binding];
 		if (member.qualified_name != 0)
+		{
+			if (derived.stats_)
+				++derived.stats_->semantic.presentation_reads[
+					SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
 			return derived.program_.names.Get(member.qualified_name);
+		}
 		if (member.member_owner != kNoEntity)
 		{
 			const EntityRecord& owner =

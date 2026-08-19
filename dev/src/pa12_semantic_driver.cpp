@@ -88,6 +88,7 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  syntax_name_path_direct(0), syntax_name_path_fallbacks(0),
 	  lookup_spelling_requests(0),
 	  declarator_name_requests(0), declarator_name_path_requests(0),
+	  scope_prefix_requests(0), scope_prefix_cache_hits(0),
 	  class_layouts(0), class_layout_member_visits(0),
 	  virtual_base_layout_edge_visits(0), virtual_base_layout_facts(0),
 	  virtual_base_layout_lookups(0), virtual_base_layout_probes(0),
@@ -182,7 +183,8 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 	  demand_abi_support_requests(0),
 	  binding_layout_fact_records(0), binding_template_fact_records(0),
 	  binding_output_fact_records(0), binding_operator_fact_records(0),
-	  binding_value_records(0),
+	  binding_value_records(0), binding_record_size(0), entity_record_size(0),
+	  function_info_size(0), dump_node_size(0),
 	  semantic_program_storage_bytes(0), semantic_dump_storage_bytes(0),
 	  semantic_side_storage_bytes(0), semantic_shared_string_bytes(0),
 	  semantic_storage_bytes(0), peak_stage_storage_bytes(0),
@@ -193,6 +195,18 @@ SemanticAnalysisStats::SemanticAnalysisStats()
 		name_path_parse_families[i] = 0;
 	for (std::size_t i = 0; i < pa10_syntax_detail::STAG_COUNT; ++i)
 		syntax_name_path_fallback_tags[i] = 0;
+	for (std::size_t i = 0; i < SEMANTIC_PRESENTATION_FAMILY_COUNT; ++i)
+	{
+		presentation_renders[i] = 0;
+		presentation_render_components[i] = 0;
+		presentation_render_bytes[i] = 0;
+	}
+	for (std::size_t i = 0; i < SEMANTIC_PRESENTATION_READ_FAMILY_COUNT; ++i)
+	{
+		presentation_reads[i] = 0;
+		presentation_retained_values[i] = 0;
+		presentation_retained_bytes[i] = 0;
+	}
 }
 
 }

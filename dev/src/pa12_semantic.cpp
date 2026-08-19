@@ -1102,7 +1102,7 @@ ExpressionInfo SemanticAnalyzer::BuildResolvedCall(BindingId selected,
 	dump_.nodes[call].user_conversion_call = function.conversion_function;
 	dump_.nodes[call].explicit_user_conversion_call = function.conversion_function && function.explicit_conversion;
 	const std::uint32_t callee = MakeDump(DUMP_CALLEE, callable_type,
-		VALUE_NONE, function.display_name, emission_binding);
+		VALUE_NONE, ReadFunctionDisplayName(function), emission_binding);
 	dump_.Add(call, callee);
 	ExpressionInfo converted_object;
 	const ExpressionInfo* constexpr_receiver = object;
@@ -1965,7 +1965,12 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 			std::ostringstream generated;
 			generated << "__anonymous_union_storage__" << arena_->TokenFirst(node)
 				<< '_' << arena_->TokenLast(node);
-			const NameId storage_name = program_->names.Intern(generated.str());
+			const std::string generated_name = generated.str();
+			if (stats_)
+				RecordPresentationRender(
+					SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+					generated_name, 2);
+			const NameId storage_name = program_->names.Intern(generated_name);
 			const BindingId storage = program_->AddBinding(scope, BIND_VARIABLE,
 				storage_name, type);
 			program_->bindings[storage].anonymous_union_storage = true;
@@ -2377,7 +2382,8 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 	const TypeId output_type = member ?
 		AdaptMemberFunctionType(binding) : parsed.type;
 	const std::uint32_t output_node = MakeDump(DUMP_FUNCTION_DEFINITION,
-		output_type, VALUE_NONE, GetFunction(binding).display_name, binding);
+		output_type, VALUE_NONE,
+		ReadFunctionDisplayName(GetFunction(binding)), binding);
 	dump_.Add(output_parent, output_node);
 	const ScopeId function_scope = NewScope(owner, SCOPE_FUNCTION, parsed.name,
 		ScopePrefixId(owner));
@@ -2920,6 +2926,7 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		stats_->default_constructor_emissions = default_constructor_emissions_;
 		PublishFunctionDemandStats();
 		PublishBindingPopulationStats();
+		PublishPresentationPopulationStats();
 		const std::size_t shared_string_storage =
 			arena.SharedStrings().StorageBytes();
 		const std::size_t program_storage = program.StorageBytes();

@@ -21,8 +21,12 @@ NameId SemanticAnalyzer::NextRangeForHiddenName(const char* prefix)
 		range_for_hidden_count_by_function_[current_function_context_];
 	if (count == std::numeric_limits<std::uint32_t>::max())
 		throw std::runtime_error("too many range-for hidden objects");
-	return program_->names.Intern(std::string(prefix) +
-		std::to_string(++count));
+	const std::string generated =
+		std::string(prefix) + std::to_string(++count);
+	if (stats_)
+		RecordPresentationRender(SEMANTIC_PRESENTATION_GENERATED_IDENTITY,
+			generated, 1);
+	return program_->names.Intern(generated);
 }
 
 ExpressionInfo SemanticAnalyzer::MakeRangeForBindingExpression(

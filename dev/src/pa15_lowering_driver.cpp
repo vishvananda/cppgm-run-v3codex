@@ -221,6 +221,10 @@ void AccumulateSemanticStorageStats(SemanticAnalysisStats* target,
 	target->binding_output_fact_records += source.binding_output_fact_records;
 	target->binding_operator_fact_records += source.binding_operator_fact_records;
 	target->binding_value_records += source.binding_value_records;
+	target->binding_record_size = source.binding_record_size;
+	target->entity_record_size = source.entity_record_size;
+	target->function_info_size = source.function_info_size;
+	target->dump_node_size = source.dump_node_size;
 	target->semantic_storage_bytes += source.semantic_storage_bytes;
 	target->peak_stage_storage_bytes = std::max(
 		target->peak_stage_storage_bytes, source.peak_stage_storage_bytes);
@@ -249,6 +253,28 @@ void AccumulateSemanticNameStats(SemanticAnalysisStats* target,
 	target->declarator_name_requests += source.declarator_name_requests;
 	target->declarator_name_path_requests +=
 		source.declarator_name_path_requests;
+	for (std::size_t family = 0;
+		family < SEMANTIC_PRESENTATION_FAMILY_COUNT; ++family)
+	{
+		target->presentation_renders[family] +=
+			source.presentation_renders[family];
+		target->presentation_render_components[family] +=
+			source.presentation_render_components[family];
+		target->presentation_render_bytes[family] +=
+			source.presentation_render_bytes[family];
+	}
+	for (std::size_t family = 0;
+		family < SEMANTIC_PRESENTATION_READ_FAMILY_COUNT; ++family)
+	{
+		target->presentation_reads[family] +=
+			source.presentation_reads[family];
+		target->presentation_retained_values[family] +=
+			source.presentation_retained_values[family];
+		target->presentation_retained_bytes[family] +=
+			source.presentation_retained_bytes[family];
+	}
+	target->scope_prefix_requests += source.scope_prefix_requests;
+	target->scope_prefix_cache_hits += source.scope_prefix_cache_hits;
 }
 
 }
