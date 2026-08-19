@@ -4,16 +4,17 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; the T4d generated-identity producer census and the T4d1 lifecycle
-base entries are complete, and the combined anonymous/local identity pass
-(T4d2) is the next acceptance slice
+complete; the T4d producer census, T4d1 lifecycle base entries, and the
+combined T4d2 anonymous/local identity pass are complete, and the combined
+template-shape and hidden-storage pass (T4d3/4) is the next acceptance slice
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `8a6cf6fb` (T4d1 typed lifecycle
-base-entry identity; measurements and gates are recorded in section 9.10)
+Current accepted execution checkpoint: `aa0e8fcc` (T4d2 anonymous/local
+identity lookup boundary; measurements and gates are recorded in section
+9.10)
 
 ## 1. Objective
 
@@ -1528,13 +1529,14 @@ This keeps object-only compilation from paying for semantic-dump presentation.
    embedded the `__base_entry` suffix that lowering appended again.  The
    destructor variant of the T4d1a predefined-name divergence is fixed and
    reduced here.  Results are recorded below.
-4. **T4d2:** anonymous enums, local types, and anonymous union type and
-   storage facts in one combined pass: the producers share one declaration
-   naming path, and the families are individually small.  Preserve
-   declaration-order presentation (the `__anonymous_enumN`, `__local_typeN`,
-   and `__anonymous_union_type__<first>_<last>` spellings are pinned by
-   PA11/PA12/PA17 reference fixtures) while making source node/owner/ordinal
-   the identity; keep union type and storage roles distinct.
+4. **T4d2 (complete):** anonymous enums, local types, and anonymous union
+   type and storage facts in one combined pass: the producers share one
+   declaration naming path, and the families are individually small.
+   Declaration-order presentation is preserved (the `__anonymous_enumN`,
+   `__local_typeN`, and `__anonymous_union_type__<first>_<last>` spellings
+   are pinned by PA11/PA12/PA17 reference fixtures) while lookup identity
+   became a typed `(node, owner)` table plus unindexed placement.  Results
+   are recorded below.
 6. **T4d3:** function/class nondeduced, result, parameter, dependent member,
    and dependent qualified-type shapes, one owner family at a time.  Prefer
    typed singleton/cache keys over materialized named entities where the
@@ -1661,6 +1663,60 @@ T4d1a occupied, and accepted as timing-neutral architecture cleanup with
 17 frozen occurrences.  The full report passes 5,215/5,215 and the PA39
 audit has zero fatal findings with 27 warnings.  The accepted
 implementation is `8a6cf6fb`.
+
+#### T4d2 results
+
+T4d2 converts the anonymous/local families in one combined pass.  The
+consumer census first proved that no integrated consumer parses,
+compares, or classifies the `__anonymous_enumN`, `__local_typeN`,
+`__anonymous_union_type__<first>_<last>`, or
+`__anonymous_union_storage__<first>_<last>` spellings: they are
+declaration-order presentation rendered once at the producer and pinned
+byte-exactly by PA11/PA12/PA17 reference fixtures, so the renders remain
+and the identity work is the lookup boundary.  Three defects were found
+and fixed:
+
+1. Generated class and enum identities entered ordinary type lookup
+   through `LookupDirect` redeclaration matching and `SetTypeName`.  A
+   user type sharing the generated spelling was falsely merged: the
+   pre-change compiler rejected a typedef-named anonymous struct beside a
+   user `struct __local_type1` ("duplicate class definition") and an
+   anonymous enum beside a user `struct __anonymous_enum1` ("incompatible
+   enum redeclaration"), both accepted by the pinned reference.
+2. The generated spelling was language-visible: `__anonymous_enum1 x;`
+   resolved to the anonymous enum.  The reference rejects it.
+3. The anonymous union storage binding entered member name lookup.
+
+Generated class identities now unify across the class-template shell and
+definition analysis passes through a typed `(node, owner)` table (the
+`GeneratedTypeIdentity` vector, accounted in semantic side storage)
+instead of through name lookup; generated enum identities are fresh per
+analysis exactly as before; and the storage binding uses the unindexed
+declaration path.  The generated spellings never enter `SetTypeName`, so
+they are no longer visible to source lookup.  Two PA12 reducers pin the
+accepted collision and rejected visibility behavior with regenerated
+reference outputs; the same-scope block collision, which the reference
+itself rejects (the spelling is a reserved identifier, so no conforming
+program is affected), is documented under `proposed/pa12/` with the
+typedef-presentation divergence.  A class-template anonymous packed
+bit-field member initially exposed the shell/definition unification
+dependency through the PA34 layout test; the typed table replaced that
+name-lookup channel.
+
+The `AnalyzeEnum` responsibility moved to a new compiled
+`pa12_semantic_enum_declarations.cpp` module to satisfy the file audit,
+and `LocalTypeContext` gained internal linkage across both modules.  On
+the frozen compile the family renders are unchanged
+(147/22/8/6 with 245 total) because the spellings remain pinned
+presentation; interner counts and shared string storage are unchanged
+from T4d1b; and the frozen object is exact in the stats run, all 12 timed
+runs, and the post-split verification.  Three interleaved A/B/B/A blocks
+against immutable T4d1b measured baseline/candidate medians of
+4.325/4.300 seconds user, 4.815/4.800 seconds wall, and 360,020/359,656
+KiB RSS; paired -0.70% user, -0.52% wall, -0.00% RSS.  The full report
+passes 5,217/5,217 including the two new PA12 reducers, and the PA39
+audit has zero fatal findings with 27 warnings.  The accepted
+implementation is `aa0e8fcc`.
 
 ## 10. Phase 4: finish object-only LowIR presentation identity
 
@@ -2128,7 +2184,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T4d0 | Classify every generated semantic identity producer by family | Frozen total is 770 renders, 784 components, and 21,168 bytes. Constructor base entries contribute 508 renders/15,586 bytes; anonymous enums contribute 147/2,685; the remaining 12 families are individually recorded in section 9.10. | Stats-only measurement anchor; no timing claim | Exact frozen 4,415,448-byte object and baseline SHA; no fixture changes | Selected PA12/19/20/22/23/25/34/38 report 1,917/1,917; full report 5,213/5,213; zero-fatal audit with 27 warnings | `ca85deb3`; accepted measurement anchor |
 | T4d1a | Carry constructor base-entry identity as source name plus typed lifecycle role | Constructor base-entry renders fall 508 -> 0 and total generated renders 770 -> 262. The base entry uses the unindexed declaration path with the source name; `SymbolIdentity` gains a lifecycle role in existing padding (asserted 32 bytes). Interner calls fall by 508, misses by 618, hashed bytes by 19,849, and shared string storage by 25,998 bytes; common records remain 136/208/208/152. | Three A/B/B/A blocks against immutable `ca85deb3`: baseline/candidate medians 4.335/4.290 s user, 4.800/4.780 s wall, 360,948/360,008 KiB RSS; paired -0.58% user, -0.31% wall, -0.28% RSS; timing-neutral structural removal | Frozen object exact in stats and all 12 timed runs. Semantic dump and LowIR base-entry presentation now derive from source terminal plus role (`Owner::Source__base_entry`; `@Owner__Source__base_entry` matches the reference convention); no tracked fixture pins the old spellings. `__func__`/`__PRETTY_FUNCTION__` in base-entry bodies now match the complete variant; the reference agrees. | PA16 243+52; PA34 45/281/42/3 with the new predefined-name variant reducer failing on the pre-change compiler; PA12 166+14; through PA16 1,459/1,459; full report 5,214/5,214; zero-fatal audit with 27 warnings | `7df2fe9d`; accepted |
 | T4d1b | Carry destructor base-entry identity as source name plus typed lifecycle role | Destructor base-entry renders fall 17 -> 0 and total generated renders 262 -> 245. The doubled serialized-LowIR suffix disappears; interner calls fall by 17, misses by 14, hashed bytes by 446, and shared string storage by 371 bytes; common records unchanged. | Three A/B/B/A blocks against immutable T4d1a: 4.310/4.335 s user, 4.810/4.825 s wall, 359,050/360,048 KiB RSS; paired +0.58%/+0.52%/+0.27%, inside the screened noise band; accepted as neutral cleanup with 17 frozen occurrences | Frozen object exact in stats and all 12 timed runs; destructor semantic dumps byte-identical; LowIR base-entry symbols converge with the reference convention; `__func__`/`__PRETTY_FUNCTION__` variants now match, reference agrees | Full report 5,215/5,215 including the new PA34 destructor variant reducer (fails on immutable T4d1a); zero-fatal audit with 27 warnings | `8a6cf6fb`; accepted |
-| T4d2-e | Type remaining generated private identities and close lazy presentation | Planned; the combined anonymous/local pass (T4d2) is next, then combined template shapes and hidden storage (T4d3/4) | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4d1 |
+| T4d2 | Keep generated anonymous/local identities out of ordinary lookup | No consumer parses the generated spellings; renders stay pinned declaration-order presentation (147/22/8/6 frozen). Class identities unify across template shell/definition passes through a typed (node, owner) table; enum identities stay fresh per analysis; union storage uses the unindexed path; `SetTypeName` no longer publishes generated spellings. `AnalyzeEnum` moved to a new compiled module for the file audit. | Three A/B/B/A blocks against immutable T4d1b: 4.325/4.300 s user, 4.815/4.800 s wall, 360,020/359,656 KiB RSS; paired -0.70%/-0.52%/-0.00% | Frozen object exact in stats, all 12 timed runs, and post-split verification. Fixes reference-agreeing collision and visibility defects (pre-change compiler wrongly rejected two valid programs and accepted one invalid); reserved-identifier same-scope case documented under proposed/pa12 | Full report 5,217/5,217 with two new PA12 reducers; zero-fatal audit with 27 warnings | `aa0e8fcc`; accepted |
+| T4d3-e | Type remaining generated private identities and close lazy presentation | Planned; combined template shapes and hidden storage (T4d3/4) next, then the T4e closeout | Planned | Exact semantic serialization expected; no dual retained identity | Earliest owner per family plus full report | Next after T4d2 |
 | T5a | Remove or type object-only generated local-name reservations | Planned from the residual LowIR presentation audit | Planned | Exact serializable LowIR and frozen object expected; any EH-layout dependency must be explicit | PA15/37 plus full report | Planned after T4e |
 | T5b | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned after T5a |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
@@ -2183,7 +2240,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 13 | T4c2 typed lambda identity (complete) | Canonical context/signature/template/recursive-parent/ordinal identity; typed token-range presentation facts; zero retained rendered identity; active overload and proposed specialization reducers; unchanged common records; exact frozen object; reports, audit, and screened timing recorded in section 9.9 | `62c26eb6`; ledger recorded |
 | 14 | T4d0 generated-identity producer census (complete) | Fourteen semantic producer families, exact frozen object, selected/full reports, and audit recorded in section 9.10 | `ca85deb3`; accepted measurement anchor |
 | 15 | T4d1 lifecycle base entries (complete) | Per-family consumer census; typed source/role symbol identity; source-terminal-plus-role lifecycle presentation with the serialized-LowIR spelling change recorded per section 15.2; exact frozen object; no ordinary lookup or common-record growth | Constructor `7df2fe9d` and destructor `8a6cf6fb` accepted |
-| 16 | T4d2 anonymous/local identity | Anonymous enum, local type, anonymous-union type/storage facts keyed by owner/source/ordinal; exact dumps and owner reducers | One commit per independently observable family |
+| 16 | T4d2 anonymous/local identity (complete) | Anonymous enum, local type, anonymous-union type/storage lookup identity keyed by typed (node, owner) facts with pinned dump presentation retained; PA12 collision/visibility reducers; proposed same-scope case recorded | Combined commit `aa0e8fcc` accepted |
 | 17 | T4d3/4 template shapes and hidden storage | Typed singleton/cache/source keys for each shape; typed range-for and structured-binding roles; zero-occurrence families recorded without timing claims | One owner-family commit at a time |
 | 18 | T4e final lazy-presentation closeout | Every residual read classified as dump/diagnostic/source identity/ABI/LowIR/object; initializer-list and local-static final names explicitly retained; zero unclassified eager renders | One presentation closeout commit |
 | 19 | T5a generated local-name reservations | Source-name scan/match/probe/skip counters; exact collision reducers; proof that object-only reservations can be removed or reduced to one compact rank/key | PA15/37 counter, representation, and ledger commits |
