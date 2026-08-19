@@ -189,6 +189,15 @@ void LocalPresentationState::CollectSourceNames(const pa11::Program& program,
 	const pa12_semantic_detail::DumpArena& arena, std::uint32_t root,
 	lowir_model::GeneratedNameReservations* generated)
 {
+	// Object-only lowering discards local spellings, generated value and
+	// block names never depend on the reservations, and exact machine
+	// behavior was byte-identical with the scan disabled, so only the
+	// serializable renderer inspects source names for collisions.
+	if (!retain_names_)
+	{
+		FinalizeSourceNames(generated);
+		return;
+	}
 	std::vector<std::uint32_t> pending(1, root);
 	while (!pending.empty())
 	{
