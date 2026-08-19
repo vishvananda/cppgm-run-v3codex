@@ -275,6 +275,7 @@ private:
 		stats_->generated_identity_render_bytes[family] += rendered.size();
 	}
 	NameId ReadFunctionDisplayName(const FunctionInfo& function);
+	NameId ReadFunctionSourceDisplayName(const FunctionInfo& function);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
 	ScopeId NewNamedScope(ScopeId parent, ScopeKind kind, NameId lookup_name,

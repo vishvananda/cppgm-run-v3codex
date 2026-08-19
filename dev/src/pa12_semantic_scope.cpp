@@ -33,6 +33,32 @@ std::string RenderBindingPresentation(const Program& program,
 NameId SemanticAnalyzer::ReadFunctionDisplayName(
 	const FunctionInfo& function)
 {
+	// Semantic dump and action presentation: a lifecycle base entry shares
+	// its source terminal, so its typed role renders a distinguishing
+	// suffix here rather than being interned as a synthetic name.
+	if (function.binding >= program_->bindings.size() ||
+		!program_->bindings[function.binding].constructor_base_entry)
+		return ReadFunctionSourceDisplayName(function);
+	if (stats_)
+		++stats_->presentation_reads[
+			SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];
+	NameId terminal = function.presentation_name_override;
+	if (terminal == 0)
+		terminal = program_->bindings[function.binding].name;
+	if (terminal == 0) return 0;
+	// ScopePrefix may intern a deferred prefix and invalidate string references.
+	const std::string text = program_->names.Get(terminal);
+	std::string qualified = ScopePrefix(function.owner) + text;
+	qualified += "__base_entry";
+	if (stats_)
+		RecordPresentationRender(
+			SEMANTIC_PRESENTATION_DISPLAY_NAME, qualified, 1);
+	return program_->names.Intern(qualified);
+}
+
+NameId SemanticAnalyzer::ReadFunctionSourceDisplayName(
+	const FunctionInfo& function)
+{
 	if (stats_)
 		++stats_->presentation_reads[
 			SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];

@@ -545,6 +545,9 @@ void EmissionIdentityTable::RehashTypes(std::size_t capacity)
 	type_slots_.swap(replacement);
 }
 
+static_assert(sizeof(SymbolIdentity) == 32,
+              "the lifecycle role must reuse SymbolIdentity padding");
+
 SymbolIdentityTable::SymbolIdentityTable() : slots_(32, kNoLowId) {}
 
 bool SymbolIdentityTable::Find(const SymbolIdentity& key, SymbolId* symbol) const

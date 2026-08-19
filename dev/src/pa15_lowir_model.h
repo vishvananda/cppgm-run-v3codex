@@ -175,6 +175,10 @@ struct SymbolIdentity
 	IdentityTypeId signature;
 	IdentityTypeId template_arguments;
 	IdentityTypeId owner_template_arguments;
+	// Complete and lifecycle base entries share a source path and signature,
+	// so the lifecycle role participates in symbol equality directly instead
+	// of being encoded into a synthetic terminal spelling.
+	std::uint32_t lifecycle_role;
 	std::size_t internal_owner;
 
 	bool operator==(const SymbolIdentity& other) const
@@ -183,6 +187,7 @@ struct SymbolIdentity
 			signature == other.signature &&
 			template_arguments == other.template_arguments &&
 			owner_template_arguments == other.owner_template_arguments &&
+			lifecycle_role == other.lifecycle_role &&
 			internal_owner == other.internal_owner;
 	}
 };
@@ -194,7 +199,8 @@ struct SymbolIdentityHash
 		return static_cast<std::size_t>(key.kind) * 16777619U ^
 			key.path * 257U ^ key.signature * 17U ^
 			key.template_arguments * 65537U ^
-			key.owner_template_arguments * 4099U ^ key.internal_owner;
+			key.owner_template_arguments * 4099U ^
+			key.lifecycle_role * 40503U ^ key.internal_owner;
 	}
 };
 

@@ -400,6 +400,8 @@ private:
 			program_.entities[lambda_identity_owner].local_context != kNoBinding ?
 				output_.identities.InternLambdaContextIdentity(program_,
 					lambda_identity_owner, identity_type_cache_) : kNoLowId;
+		identity.lifecycle_role = binding.constructor_base_entry ||
+			binding.destructor_base_entry ? 1 : 0;
 		identity.internal_owner = local_member ?
 			((source_ordinal_ + 1) << 32) |
 				(static_cast<std::size_t>(binding.member_owner) + 1) :

@@ -218,15 +218,11 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	if (!source_binding.constructor || !source_info.constructor)
 		throw std::logic_error(
 			"constructor base entry requested for non-constructor");
-	const std::string generated_spelling =
-		"__cppgm_constructor_base_" + std::to_string(constructor);
-	if (stats_)
-		RecordGeneratedIdentityRender(
-			SEMANTIC_GENERATED_CONSTRUCTOR_BASE_ENTRY, generated_spelling, 1);
-	const NameId generated_name = program_->names.Intern(generated_spelling);
-	const BindingId base_entry = program_->AddBinding(source_binding.owner,
-		BIND_FUNCTION, generated_name, source_binding.type, false, 0,
-		NAMED_NONE, 0, kNoBinding, false);
+	// The base entry shares the source constructor's name; the lifecycle
+	// flag is its identity, so it must stay out of ordinary name lookup.
+	const BindingId base_entry = program_->AddUnindexedBinding(
+		source_binding.owner, BIND_FUNCTION, source_binding.name,
+		source_binding.type, kNoBinding);
 	BindingRecord& binding = program_->bindings[base_entry];
 	binding.member_owner = source_binding.member_owner;
 	binding.access_owner = source_binding.access_owner;

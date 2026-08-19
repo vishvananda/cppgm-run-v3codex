@@ -68,7 +68,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzePredefinedFunctionName(
 	std::string name;
 	if (!pretty)
 	{
-		const NameId display = ReadFunctionDisplayName(function);
+		const NameId display = ReadFunctionSourceDisplayName(function);
 		name = display == 0 ? std::string() : program_->names.Get(display);
 	}
 	else
@@ -360,7 +360,7 @@ bool SemanticAnalyzer::TryAnalyzeCompilerFunctionBuiltin(
 			{
 				const FunctionInfo& function = GetFunction(
 					program_->bindings[current_function_context_].canonical);
-				const NameId display = ReadFunctionDisplayName(function);
+				const NameId display = ReadFunctionSourceDisplayName(function);
 				if (display != 0) value = program_->names.Get(display);
 			}
 			*result = ApplyTarget(
