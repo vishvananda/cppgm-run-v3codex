@@ -1860,9 +1860,11 @@ NamePath SemanticAnalyzer::DeclaratorNamePath(NodeId node)
 	{
 		const NodeId structure = FindChild(
 			identifier, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
-		return structure == kNoNode ?
-			ParseNamePath(arena_->Payload(identifier)) :
-			StructuredNamePath(structure);
+		if (structure != kNoNode) return StructuredNamePath(structure);
+		NamePath path;
+		path.Push(program_->names.UseInterned(
+			arena_->SemanticPayloadId(identifier)));
+		return path;
 	}
 	const NodeId nested = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_NESTED_DECLARATOR);
 	return nested == kNoNode ? NamePath() :

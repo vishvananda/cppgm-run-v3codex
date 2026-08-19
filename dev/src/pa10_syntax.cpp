@@ -465,6 +465,18 @@ private:
 				component_arguments.push_back(operator_arguments);
 			}
 		}
+		// Preserve the established semantic component for an unqualified
+		// conversion operator whose target type is qualified.  The source
+		// spelling remains the syntax payload; semantic consumers receive the
+		// component once instead of splitting that payload repeatedly.
+		if (terminal_name && text->compare(0, 8, "operator") == 0 &&
+			text->compare(0, 9, "operator ") != 0)
+		{
+			const std::size_t separator = text->rfind("::");
+			if (separator != std::string::npos)
+				*terminal_name = strings_.InternRange(*text, separator + 2,
+					text->size() - separator - 2);
+		}
 		if (structure && (retained_arguments || global ||
 			component_names.size() > 1))
 		{
