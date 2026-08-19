@@ -891,7 +891,9 @@ struct FunctionInfo
 	ScopeId owner;
 	TypeId type, signature;
 	TypeId conversion_target;
-	NameId display_name;
+	// Most functions present the terminal already stored on their binding.
+	// A nonzero value is a terminal-name override, not a qualified spelling.
+	NameId presentation_name_override;
 	NameId parameter_pack_name;
 	TypeId member_owner;
 	EntityId friend_of;
@@ -958,7 +960,8 @@ struct FunctionInfo
 		: binding(kNoBinding), inherited_constructor_source(kNoBinding),
 		  complete_constructor(kNoBinding), delegated_constructor(kNoBinding),
 		  owner(kNoScope), type(kNoType), signature(kNoType),
-		  conversion_target(kNoType), display_name(0), parameter_pack_name(0),
+		  conversion_target(kNoType), presentation_name_override(0),
+		  parameter_pack_name(0),
 		  member_owner(kNoType),
 		  friend_of(kNoEntity), lambda_invocation_function(kNoBinding),
 		  lexical_access_function(kNoBinding),

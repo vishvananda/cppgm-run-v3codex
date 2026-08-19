@@ -73,18 +73,6 @@ void SemanticAnalyzer::PublishPresentationPopulationStats()
 		binding_bytes += program_->names.Get(name).size();
 	}
 
-	std::size_t& function_count = stats_->presentation_retained_values[
-		SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];
-	std::size_t& function_bytes = stats_->presentation_retained_bytes[
-		SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];
-	for (std::size_t i = 0; i < functions_.size(); ++i)
-	{
-		const NameId name = functions_[i].display_name;
-		if (name == 0) continue;
-		++function_count;
-		function_bytes += program_->names.Get(name).size();
-	}
-
 	std::size_t& entity_count = stats_->presentation_retained_values[
 		SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];
 	std::size_t& entity_bytes = stats_->presentation_retained_bytes[

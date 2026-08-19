@@ -2339,7 +2339,6 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		info.owner = owner;
 		info.type = type;
 		info.signature = signature;
-		info.display_name = DisplayName(owner, name);
 		info.lexical_scope = owner;
 		info.parameters = parameters;
 		info.defined = definition;

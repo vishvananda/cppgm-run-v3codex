@@ -264,12 +264,15 @@ private:
 		stats_->presentation_render_components[family] += components;
 		stats_->presentation_render_bytes[family] += rendered.size();
 	}
-	NameId ReadFunctionDisplayName(const FunctionInfo& function) const
+	NameId ReadFunctionDisplayName(const FunctionInfo& function)
 	{
 		if (stats_)
 			++stats_->presentation_reads[
 				SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];
-		return function.display_name;
+		NameId terminal = function.presentation_name_override;
+		if (terminal == 0 && function.binding < program_->bindings.size())
+			terminal = program_->bindings[function.binding].name;
+		return terminal == 0 ? 0 : DisplayName(function.owner, terminal);
 	}
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
