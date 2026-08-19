@@ -95,6 +95,11 @@ int run_abimangle(int argc, char ** argv)
          << stats.text_standard_substitutions
          << " typed_vendor_qualifiers=" << stats.typed_vendor_qualifiers
          << " text_vendor_qualifiers=" << stats.text_vendor_qualifiers
+         << " typed_array_bounds=" << stats.typed_array_bounds
+         << " text_array_bounds=" << stats.text_array_bounds
+         << " typed_local_presentations="
+         << stats.typed_local_presentations
+         << " text_local_presentations=" << stats.text_local_presentations
          << " canonical_cache_hits=" << stats.canonical_cache_hits
          << " definition_cache_hits=" << stats.definition_cache_hits
          << " path_components=" << stats.path_components

@@ -32,6 +32,10 @@ struct AbiMangleStats
   std::size_t text_standard_substitutions = 0;
   std::size_t typed_vendor_qualifiers = 0;
   std::size_t text_vendor_qualifiers = 0;
+  std::size_t typed_array_bounds = 0;
+  std::size_t text_array_bounds = 0;
+  std::size_t typed_local_presentations = 0;
+  std::size_t text_local_presentations = 0;
   std::size_t canonical_cache_hits = 0;
   std::size_t definition_cache_hits = 0;
   std::size_t path_components = 0;

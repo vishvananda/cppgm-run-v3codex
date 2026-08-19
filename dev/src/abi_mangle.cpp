@@ -411,6 +411,9 @@ public:
       node.children.push_back(result);
       node.uses_case_facts = types[result].uses_case_facts;
       node.bound_kind = modifier->array_bound.kind;
+      if(stats_ && !modifier->array_bound.value.empty() &&
+         node.bound_kind != ABI_ARRAY_BOUND_EXPRESSION)
+        ++stats_->text_array_bounds;
       if(modifier->array_bound.resolved_expression !=
          ABI_NO_RESOLVED_REFERENCE) {
         node.expression = checked_expression(
@@ -556,6 +559,9 @@ public:
       if(source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
          !source.discriminator.empty())
         node.discriminator = strings.intern(source.discriminator);
+      if(stats_ && (source.kind == ABI_TYPE_LAMBDA_CLOSURE ||
+                    source.kind == ABI_TYPE_LOCAL_TYPE))
+        ++stats_->text_local_presentations;
       if(!source.substitution.empty()) {
         node.substitution = strings.intern(source.substitution);
         node.substitution_resolved = false;
@@ -563,6 +569,11 @@ public:
       if(!resolved_path && !resolved_source_name && !resolved_namespace_path)
         node.index = source.index;
       node.bound_kind = source.array_bound.kind;
+      if(stats_ && (source.kind == ABI_TYPE_ARRAY ||
+                    source.kind == ABI_TYPE_VECTOR) &&
+         !source.array_bound.value.empty() &&
+         node.bound_kind != ABI_ARRAY_BOUND_EXPRESSION)
+        ++stats_->text_array_bounds;
       if(source.array_bound.resolved_expression !=
          ABI_NO_RESOLVED_REFERENCE) {
         node.expression = checked_expression(
@@ -2443,6 +2454,7 @@ private:
   void encode_direct_local_function(const AbiFunctionTarget & target,
                                     const FunctionFacts & facts)
   {
+    if(stats_) ++stats_->text_local_presentations;
     if(target.resolved_context != ABI_NO_RESOLVED_REFERENCE)
       encode_local_prefix(target.resolved_context);
     else encode_local_prefix(target.context_ref);
@@ -2474,6 +2486,7 @@ private:
 
   void encode_structured_local(const FunctionFacts & facts)
   {
+    if(stats_) ++stats_->text_local_presentations;
     const AbiFunctionRecord & local = facts.local ? *facts.local : *facts.lambda;
     if(local.resolved_context != ABI_NO_RESOLVED_REFERENCE)
       encode_local_prefix(local.resolved_context);

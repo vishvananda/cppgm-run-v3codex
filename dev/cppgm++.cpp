@@ -1386,6 +1386,14 @@ void report_source_compile_stats(
 			 << stats.abi.typed_vendor_qualifiers
 			 << " abi_text_vendor_qualifiers="
 			 << stats.abi.text_vendor_qualifiers
+			 << " abi_typed_array_bounds="
+			 << stats.abi.typed_array_bounds
+			 << " abi_text_array_bounds="
+			 << stats.abi.text_array_bounds
+			 << " abi_typed_local_presentations="
+			 << stats.abi.typed_local_presentations
+			 << " abi_text_local_presentations="
+			 << stats.abi.text_local_presentations
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
@@ -2463,6 +2471,14 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.abi.typed_vendor_qualifiers
 			 << " abi_text_vendor_qualifiers="
 			 << stats.abi.text_vendor_qualifiers
+			 << " abi_typed_array_bounds="
+			 << stats.abi.typed_array_bounds
+			 << " abi_text_array_bounds="
+			 << stats.abi.text_array_bounds
+			 << " abi_typed_local_presentations="
+			 << stats.abi.typed_local_presentations
+			 << " abi_text_local_presentations="
+			 << stats.abi.text_local_presentations
 			 << " abi_definition_cache_hits="
 			 << stats.abi.definition_cache_hits
 			 << " abi_path_components=" << stats.abi.path_components
