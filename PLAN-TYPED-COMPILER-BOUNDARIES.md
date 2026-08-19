@@ -345,6 +345,42 @@ selected PA23/PA32 reports, and the full cumulative report before accepting
 the batch.  Mangled bytes, binding, COMDAT/weak ownership, aliases, exported
 symbols, and runtime behavior must remain exact.
 
+### 8.5 Residual Phase 2 inventory after T3r
+
+The accepted T3 slices remove all production text-to-path parsing, all
+textual definition/reference records, all synthetic substitution strings,
+and ordinary function, object, entity, and type name copies.  The remaining
+assignments in `pa15_lowering_abi.cpp` fall into four distinct groups and
+must not be handled with one generic string table:
+
+1. **Fixed ABI vocabulary:** builtin and standard-substitution spellings,
+   operator terminals, constructor/destructor variants, dependent-expression
+   operators, and the block-pointer spelling.  Carry the existing semantic
+   enum or introduce a small ABI enum, then render the Itanium code in the
+   encoder.  These are not source names.
+2. **Numeric local presentation:** lambda ordinals, local-name ordinals, and
+   discriminators currently formatted with `std::to_string`.  Carry the
+   ordinal plus its presence/placement flags and format it once in the
+   encoder.  Preserve the ABI's one-based/zero-based and omitted-first-value
+   rules exactly.
+3. **Language names already represented by IDs:** dependent member names,
+   template-id names, literal-operator suffixes, member external-entity names,
+   and ABI tags.  Carry graph string IDs resolved directly from `NameId`; do
+   not copy the spelling into each transient fact.  The graph still owns the
+   final bytes because mangling must emit them.
+4. **True output or adapter text:** explicit assembly/C-linkage names,
+   qualified-name overrides supplied to the mangling API, the raw `main`
+   context fragment, builtin runtime symbol names, and PA14 textual fact keys.
+   These remain strings unless a counter proves that an internal typed fact
+   was unnecessarily rendered to create them.
+
+Convert one family at a time in that order.  Reuse kind-disjoint numeric slots
+or compact side arenas and prove with `sizeof`/owned-byte counters that a
+common fact record does not grow.  Keep PA14's textual adapter exact.  Phase 2
+ends only after a fresh assignment audit accounts for every remaining
+production string as a final spelling or external override; merely reducing
+the frozen count to zero is insufficient.
+
 ## 9. Phase 3: make semantic presentation lazy
 
 ### 9.1 Current path
@@ -684,7 +720,8 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T3o | Carry function terminals, member names, ABI tags, and namespace-lambda paths as graph IDs | Cumulative fact-owned storage falls 53,960,140 -> 53,924,738 (-35,402 bytes) without widening `AbiFunctionRecord` or `AbiFunctionTarget`; namespace-lambda qualifier vectors are replaced by one resolved path. | Three explicit-`-O0` A/B/B/A blocks against T3n: 4.425/4.420 s median user, 4.915/4.900 s wall, and 365,272/364,676 KiB RSS; paired candidate 0.00% user, +0.31% wall, and -0.29% RSS. Retained as timing-neutral structural work. | All 12 timed objects and the stats object are exact at 4,415,448 bytes with the baseline SHA; no fixture changes. During development the existing PA22 per-specialization local-static reducer caught a terminal-only name record being mistaken for an absent record; using source-name presence rather than path presence restored distinct symbols. | Selected PA14/15/17/22/23/26/30/32/33 report 1,647/1,647; full report 5,210/5,210; zero-fatal audit with 26 warnings | `1eb62650`; accepted |
 | T3p | Replace rendered class, template-name-argument, and member-template substitution identities with compact typed keys | The three `__cppgm_abi_*` production families become one packed `(domain, semantic ID)` integer. Cumulative fact-owned storage falls 53,924,738 -> 53,827,481 (-97,257 bytes), while canonical type and argument counts remain exactly 4,260 and 3,503. Canonical nodes reuse their substitution slot plus a boolean discriminator; no string map or parallel node family is added. | Three explicit-`-O0` A/B/B/A blocks against T3o: 4.390/4.340 s median user, 4.870/4.810 s wall, and 365,162/364,010 KiB RSS; paired candidate -1.03% user, -1.23% wall, and -0.23% RSS. | All 12 timed objects and the stats object are exact at 4,415,448 bytes with the baseline SHA; no fixture changes | Selected PA14/15/17/22/23/26/30/32/33 report 1,647/1,647; full report 5,210/5,210; zero-fatal audit with 26 warnings | `38bffeb8`; accepted |
 | T3q | Replace encoder-rendered tagged-path and member-template-prefix identities with exact typed composite keys | The remaining `__cppgm_abi_*` strings disappear. A composite pool is allocated only for a mangle that actually has a tagged key; it compares the complete base key and tag-ID vector, so equality is exact rather than hash-only. Untagged mangles retain only one null pointer. Fact and canonical-node counts are unchanged. | Three low-load explicit-`-O0` A/B/B/A blocks against T3p: 4.370/4.370 s median user, 4.840/4.835 s wall, and 364,770/364,376 KiB RSS; paired candidate -0.23% user, -0.41% wall, and +0.11% RSS. Retained as neutral structural work. | All 12 timed objects and the stats object are exact at 4,415,448 bytes with the baseline SHA; no fixture changes | Selected PA14/15/17/22/23/26/30/32/33 report 1,647/1,647; full report 5,210/5,210; zero-fatal audit with 26 warnings | `c19f8cd3`; accepted |
-| T3 | Typed translation-unit ABI context replaces production fact files | In progress: production definition/reference families, semantic paths, ordinary source names, ABI tags, namespace-lambda paths, and all substitution families use typed graph or per-mangle keys; ABI text-to-path parsing and synthetic substitution strings are zero. Fixed terminal spellings, local-name presentation, type terminal strings, and explicit external-name overrides remain to classify or replace. | Accepted T3 slices are cumulatively faster and reduce fact-owned storage by more than two thirds from T3d | Exact mangles, symbols, binding, and object behavior | PA14/15/17/22/23/26/30/32/33 plus full report | Replace fixed-terminal and type-presentation text while retaining true output spellings and PA14 text keys |
+| T3r | Carry namespace-lambda type paths and ordinary member/local type terminals by graph ID | Namespace-lambda qualifier vectors and member/local type string copies disappear. `AbiType::index` is reused by kind and resolves into existing `TypeNode::path` or `TypeNode::symbol`, so neither common record grows. Frozen fact-owned storage and canonical counts remain 53,827,481 bytes, 4,260 types, and 3,503 arguments because the spellings were already graph-interned. | Three screened explicit-`-O0` A/B/B/A blocks against T3q: 4.400/4.390 s median user, 4.900/4.875 s wall, and 364,358/363,868 KiB RSS; paired candidate -0.00% user, -0.31% wall, and -0.05% RSS. An early contaminated window was discarded; consolidating type-kind classification into one switch made the accepted form neutral. | All 12 timed objects, the stats object, and the final post-split check are exact at 4,415,448 bytes with the baseline SHA; no fixture changes | Selected PA14/15/17/18/22/23/26/30/32/33 report 1,683/1,683; full report 5,210/5,210; zero-fatal audit with 26 warnings after extracting typed ABI identity helpers from the oversized mangler | `c5a9f79d`; accepted neutral enabling work |
+| T3 | Typed translation-unit ABI context replaces production fact files | In progress: production definition/reference families, semantic paths, ordinary source names, ABI tags, namespace-lambda paths, member/local type terminals, and all substitution families use typed graph or per-mangle keys; ABI text-to-path parsing and synthetic substitution strings are zero. Fixed ABI vocabulary, generated local ordinals/discriminators, dependent-expression names/operators, type ABI tags, and explicit external-name overrides remain to classify or replace. | Accepted T3 slices are cumulatively faster and reduce fact-owned storage by more than two thirds from T3d | Exact mangles, symbols, binding, and object behavior | PA14/15/17/18/22/23/26/30/32/33 plus full report | Execute the four-family residual inventory in section 8.5, then re-audit every production string assignment |
 | T4 | Lazy semantic emission/display/specialization identity | Planned | Planned | Exact semantic serialization expected | PA12/19/20/22 plus downstream reports | Planned |
 | T5 | Compact exact block collation removes repeated lexical comparison | Planned | Planned | Exact MIR/object/LSDA expected | PA15/26/29 plus full report | Planned |
 | T6 | Token/operator enums replace fixed-vocabulary spelling recovery | Planned | Planned | Exact textual fixtures expected | PA2/10/12/15 plus full report | Planned |
