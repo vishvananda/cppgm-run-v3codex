@@ -37,7 +37,8 @@ NameId SemanticAnalyzer::ReadFunctionDisplayName(
 	// its source terminal, so its typed role renders a distinguishing
 	// suffix here rather than being interned as a synthetic name.
 	if (function.binding >= program_->bindings.size() ||
-		!program_->bindings[function.binding].constructor_base_entry)
+		(!program_->bindings[function.binding].constructor_base_entry &&
+		 !program_->bindings[function.binding].destructor_base_entry))
 		return ReadFunctionSourceDisplayName(function);
 	if (stats_)
 		++stats_->presentation_reads[

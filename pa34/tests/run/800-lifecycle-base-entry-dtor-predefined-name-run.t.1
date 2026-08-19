@@ -1,0 +1,57 @@
+static const char * dtor_func_complete = 0;
+static const char * dtor_func_base = 0;
+static const char * dtor_pretty_complete = 0;
+static const char * dtor_pretty_base = 0;
+static bool base_variant_active = false;
+
+static bool same(const char * left, const char * right)
+{
+  if(!left || !right) {
+    return false;
+  }
+  while(*left && *left == *right) {
+    ++left;
+    ++right;
+  }
+  return *left == *right;
+}
+
+struct Base
+{
+  Base() {}
+  ~Base()
+  {
+    if(base_variant_active) {
+      dtor_func_base = __func__;
+      dtor_pretty_base = __PRETTY_FUNCTION__;
+    } else {
+      dtor_func_complete = __func__;
+      dtor_pretty_complete = __PRETTY_FUNCTION__;
+    }
+  }
+  int value = 0;
+};
+
+struct Derived : virtual Base
+{
+  Derived() {}
+  ~Derived() {}
+};
+
+int main()
+{
+  {
+    Base complete;
+  }
+  base_variant_active = true;
+  {
+    Derived derived;
+  }
+  if(!same(dtor_func_complete, dtor_func_base)) {
+    return 1;
+  }
+  if(!same(dtor_pretty_complete, dtor_pretty_base)) {
+    return 2;
+  }
+  return 0;
+}

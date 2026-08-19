@@ -2597,15 +2597,11 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	if (!source_binding_copy.destructor || !source_info.destructor)
 		throw std::logic_error(
 			"destructor base entry requested for non-destructor");
-	const std::string generated_spelling =
-		program_->names.Get(source_binding_copy.name) + "__base_entry";
-	if (stats_)
-		RecordGeneratedIdentityRender(
-			SEMANTIC_GENERATED_DESTRUCTOR_BASE_ENTRY, generated_spelling, 1);
-	const NameId generated_name = program_->names.Intern(generated_spelling);
-	const BindingId base_entry = program_->AddBinding(source_binding_copy.owner,
-		BIND_FUNCTION, generated_name, source_binding_copy.type, false, 0,
-		NAMED_NONE, 0, kNoBinding, false);
+	// The base entry shares the source destructor's name; the lifecycle
+	// flag is its identity, so it must stay out of ordinary name lookup.
+	const BindingId base_entry = program_->AddUnindexedBinding(
+		source_binding_copy.owner, BIND_FUNCTION, source_binding_copy.name,
+		source_binding_copy.type, kNoBinding);
 	BindingRecord& binding = program_->bindings[base_entry];
 	binding.member_owner = source_binding_copy.member_owner;
 	binding.access_owner = source_binding_copy.access_owner;
