@@ -186,19 +186,11 @@ lowir_model::Operand AdaptOperand(const Operand& operand,
 		break;
 	case Operand::FLOATING:
 		result.kind = lowir_model::Operand::OP_FLOAT;
-		{
-			const std::string& spelling = program.strings.get(
-				lowir_model::StringId(operand.id));
-		if (result.literal_type.kind == lowir_model::LTK_INVALID)
-			result.literal_type = lowir_model::lowir_floating_literal_type(
-				spelling);
-		result.literal = telemetry->Literal(
-			lowir_model::StringId(operand.id));
+		result.literal = telemetry->Literal(lowir_model::StringId(operand.id));
 		result.has_spelling = result.literal.valid();
-		result.has_float_bits = lowir_model::parse_lowir_floating_literal_bits(
-			spelling, result.literal_type,
-			&result.literal_low, &result.literal_high);
-		}
+		result.has_float_bits = true;
+		result.literal_low = operand.floating_low;
+		result.literal_high = operand.integer_high;
 		break;
 	case Operand::NULL_POINTER:
 		result.kind = lowir_model::Operand::OP_INTEGER;
@@ -271,6 +263,11 @@ AdaptedValues PrepareValues(const Function& source,
 {
 	AdaptedValues result;
 	result.parameters.resize(target->params.size());
+	result.temporaries.resize(source.temporary_limit);
+	target->value_names.reserve(
+		target->params.size() + source.temporary_limit);
+	target->value_types.reserve(
+		target->params.size() + source.temporary_limit);
 	for (std::size_t i = 0; i < target->params.size(); ++i)
 	{
 		result.parameters[i] =
@@ -290,9 +287,9 @@ AdaptedValues PrepareValues(const Function& source,
 		{
 			const Instruction& instruction = source.blocks[block].instructions[i];
 			if (instruction.dest == kNoLowId) continue;
-			if (result.temporaries.size() <= instruction.dest)
-				result.temporaries.resize(
-					static_cast<std::size_t>(instruction.dest) + 1);
+			if (instruction.dest >= result.temporaries.size())
+				throw std::logic_error(
+					"typed LowIR result exceeds its dense temporary limit");
 			if (result.temporaries[instruction.dest].valid())
 				throw std::logic_error("duplicate typed LowIR result identity");
 			result.temporaries[instruction.dest] =
@@ -447,6 +444,27 @@ lowir_model::Instruction AdaptInstruction(const Instruction& source,
 	AdapterTelemetry* telemetry)
 {
 	lowir_model::Instruction target;
+	switch (source.kind)
+	{
+	case Instruction::ATOMIC_LOAD:
+	case Instruction::ATOMIC_STORE:
+	case Instruction::ATOMIC_EXCHANGE:
+	case Instruction::ATOMIC_ADD_FETCH:
+		target.args.reserve(1);
+		break;
+	case Instruction::ATOMIC_COMPARE_EXCHANGE:
+		target.args.reserve(2);
+		break;
+	case Instruction::CALL:
+	case Instruction::EH_FILTER:
+		target.args.reserve(source.extra_count);
+		break;
+	case Instruction::SWITCH:
+		target.args.reserve(static_cast<std::size_t>(source.extra_count) * 2);
+		break;
+	default:
+		break;
+	}
 	if (source.dest != kNoLowId)
 	{
 		if (source.dest >= values.temporaries.size() ||
@@ -786,17 +804,13 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					if (value.kind == Global::DataItem::FLOATING_ITEM)
 					{
 						data.literal_operand.kind = lowir_model::Operand::OP_FLOAT;
-						const std::string& spelling = source.strings.get(
-							value.floating_spelling);
 						data.literal_operand.literal = telemetry.Literal(
 							value.floating_spelling);
 						data.literal_operand.has_spelling =
 							data.literal_operand.literal.valid();
-						data.literal_operand.has_float_bits =
-							lowir_model::parse_lowir_floating_literal_bits(
-								spelling, data.type,
-								&data.literal_operand.literal_low,
-								&data.literal_operand.literal_high);
+						data.literal_operand.has_float_bits = true;
+						data.literal_operand.literal_low = value.floating_low;
+						data.literal_operand.literal_high = value.integer_high;
 					}
 					else
 					{
@@ -827,16 +841,13 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			{
 				result.init_operand.kind = lowir_model::Operand::OP_FLOAT;
 				result.init_operand.literal_type = result.type;
-				const std::string& spelling = source.strings.get(
-					item.floating_initializer);
 				result.init_operand.literal = telemetry.Literal(
 					item.floating_initializer);
 				result.init_operand.has_spelling =
 					result.init_operand.literal.valid();
-				result.init_operand.has_float_bits =
-					lowir_model::parse_lowir_floating_literal_bits(
-						spelling, result.type, &result.init_operand.literal_low,
-						&result.init_operand.literal_high);
+				result.init_operand.has_float_bits = true;
+				result.init_operand.literal_low = item.floating_initializer_low;
+				result.init_operand.literal_high = item.initializer_high;
 			}
 			else
 			{

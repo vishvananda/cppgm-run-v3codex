@@ -16,6 +16,21 @@ using namespace pa12_semantic_detail;
 using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
 
+namespace
+{
+
+lowir_model::StringId DecodeTypedFloating(TypedProgram& program,
+	const std::string& spelling, const LowType& type,
+	std::uint64_t* low, std::uint64_t* high)
+{
+	if (!DecodeFloatingLiteral(spelling, type, low, high))
+		throw std::logic_error("invalid typed floating initializer");
+	return program.retain_local_names ? program.strings.intern(spelling) :
+		lowir_model::StringId();
+}
+
+}
+
 StaticInitializerLowering::StaticInitializerLowering(
 	const Program& program, const DumpArena& arena, TypedProgram& output,
 	LowIRLoweringStats* stats, const std::vector<SymbolId>& function_symbols,
@@ -346,9 +361,12 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 					Global::DataItem zero;
 					zero.kind = Global::DataItem::FLOATING_ITEM;
 					zero.type = member_type;
-					zero.floating_spelling = output_.strings.intern(
+					const std::string spelling =
 						member_type.kind == LOW_F32 ? "0.0F" :
-						member_type.kind == LOW_F80 ? "0.0L" : "0.0");
+						member_type.kind == LOW_F80 ? "0.0L" : "0.0";
+					zero.floating_spelling = DecodeTypedFloating(output_,
+						spelling, member_type, &zero.floating_low,
+						&zero.integer_high);
 					items->push_back(zero);
 				}
 				else AppendZero(program_.SizeOf(action.type), items);
@@ -411,8 +429,9 @@ bool StaticInitializerLowering::AppendValue(TypeId type, std::uint32_t node,
 	if (IsFloating(low_type) && value.kind == DUMP_LITERAL)
 	{
 		item.kind = Global::DataItem::FLOATING_ITEM;
-		item.floating_spelling = output_.strings.intern(
-			program_.names.Get(value.text));
+		const std::string& spelling = program_.names.Get(value.text);
+		item.floating_spelling = DecodeTypedFloating(output_, spelling,
+			low_type, &item.floating_low, &item.integer_high);
 		items->push_back(item);
 		return true;
 	}
@@ -669,8 +688,10 @@ bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	if (IsFloating(global->type) && initializer.kind == DUMP_LITERAL)
 	{
 		global->initializer_kind = Global::FLOATING_VALUE;
-		global->floating_initializer = output_.strings.intern(
-			program_.names.Get(initializer.text));
+		const std::string& spelling = program_.names.Get(initializer.text);
+		global->floating_initializer = DecodeTypedFloating(output_, spelling,
+			global->type, &global->floating_initializer_low,
+			&global->initializer_high);
 		return true;
 	}
 	SymbolId symbol = kNoLowId;

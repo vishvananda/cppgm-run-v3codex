@@ -2008,7 +2008,9 @@ private:
 
 	Operand Temp(const LowType& type)
 	{
-		return Operand(static_cast<TempId>(++temp_counter_), type);
+		const TempId result = static_cast<TempId>(++temp_counter_);
+		function_->temporary_limit = static_cast<std::uint32_t>(result) + 1;
+		return Operand(result, type);
 	}
 
 	void Emit(const Instruction& instruction)

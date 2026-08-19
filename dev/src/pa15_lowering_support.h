@@ -38,6 +38,9 @@ std::string MissingStorageBindingDetail(
 	const pa11::Program& program, pa11::BindingId binding);
 std::string NormalizeFloatingLiteral(const std::string& spelling,
 	const pa15_lowir_detail::LowType& type);
+bool DecodeFloatingLiteral(const std::string& spelling,
+	const pa15_lowir_detail::LowType& type, std::uint64_t* low,
+	std::uint64_t* high);
 
 class PresentationNameMap
 {

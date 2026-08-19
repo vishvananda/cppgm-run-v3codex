@@ -50,8 +50,7 @@
 namespace cppgm { namespace {
 using namespace pa11; using namespace pa12_semantic_detail;
 using namespace pa15_lowir_detail; using namespace pa15_lowering_support;
-const std::size_t kAggregateProjectionReplayLimit = 8;
-typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
+using pa16_lowering_detail::AggregatePath;
 class GraphLowerer :
 	private pa28_lowering_detail::VirtualBaseLowering<GraphLowerer>,
 	private pa15_lowering_detail::ControlFlowLowering<GraphLowerer>,
@@ -678,8 +677,13 @@ private:
 	}
 	Operand FloatingOperand(const std::string& spelling, const LowType& type)
 	{
-		return Operand::Floating(output_.strings.intern(
-			NormalizeFloatingLiteral(spelling, type)), type);
+		const std::string normalized = NormalizeFloatingLiteral(spelling, type);
+		std::uint64_t low = 0, high = 0;
+		if (!DecodeFloatingLiteral(normalized, type, &low, &high))
+			throw std::logic_error("invalid typed floating literal");
+		return Operand::Floating(output_.retain_local_names ?
+			output_.strings.intern(normalized) : lowir_model::StringId(),
+			type, low, high);
 	}
 	void BeginSyntheticFunction(Function* function)
 	{
@@ -868,7 +872,11 @@ private:
 				throw std::runtime_error("too many PA15 LowIR temporaries");
 			const TempId candidate = static_cast<TempId>(++temp_counter_);
 			if (!local_presentation_.ReservesTemporary(candidate))
+			{
+				function_->temporary_limit =
+					static_cast<std::uint32_t>(candidate) + 1;
 				return candidate;
+			}
 		}
 	}
 
@@ -1974,84 +1982,6 @@ private:
 		continue_targets_.pop_back();
 		break_targets_.pop_back();
 	}
-	void LowerVariableInitializationCore(const DumpNode& record,
-		const NodeChildren& children,
-		const Operand& retained_destination = Operand())
-	{
-		if (retained_destination.kind != Operand::NONE &&
-			!IsReferenceType(record.type) &&
-			IsClassObjectType(record.type) && children.size() == 1 &&
-			arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
-		{
-			const DumpNode& call = arena_.nodes[children[0]];
-			(void)LowerCall(children[0], call, Children(children[0]),
-				retained_destination);
-			return;
-		}
-		if (LowerScalarCallReferenceInitialization(record, children,
-			retained_destination)) return;
-		if (TryLowerComplexVariableInitialization(
-			record, children, retained_destination)) return;
-		if (!IsReferenceType(record.type) &&
-			IsClassObjectType(record.type) && children.size() == 1 &&
-			arena_.nodes[children[0]].kind == DUMP_CONDITIONAL_EXPRESSION)
-		{
-			const LowType type = LowerStorageType(record.type);
-			const Operand destination = retained_destination.kind == Operand::NONE ?
-				AddressOfStorage(StorageFor(record.binding, type)) :
-				retained_destination;
-			LowerClassConditionalResult(children[0], destination);
-			return;
-		}
-		if (IsClassObjectType(record.type) && children.size() == 1 &&
-			arena_.nodes[children[0]].kind == DUMP_CLASS_VALUE_TRANSFER)
-		{
-			const LowType type = LowerStorageType(record.type);
-			const Operand destination = retained_destination.kind == Operand::NONE ?
-				AddressOfStorage(StorageFor(record.binding, type)) :
-				retained_destination;
-			LowerClassValueTransfer(children[0], destination, true);
-			return;
-		}
-		if (LowerInitializerListVariable(record, children)) return;
-		if (children.size() == 1 && arena_.nodes[children[0]].kind ==
-			DUMP_CONSTRUCTOR_ARRAY_ACTION)
-		{
-			LowerBoundConstructorArray(children[0], record.binding);
-			return;
-		}
-		if (IsClassObjectType(record.type) && children.size() == 1 &&
-			arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
-		{
-			LowerClassInitializer(record, children[0]);
-			return;
-		}
-		if (LowerVariableConstructor(record, children)) return;
-		if (!children.empty())
-		{
-			if (!IsReferenceType(record.type) && IsArrayType(record.type))
-			{
-				LowerArrayInitializer(record, children);
-				return;
-			}
-			const LowType type = LowerStorageType(record.type);
-			Instruction store(Instruction::STORE);
-			store.type = type;
-			const Operand value = IsReferenceType(record.type) ?
-				AddressOfStorage(LowerStorage(children[0])) :
-				LowerInitializerConvertedValue(children[0], type);
-			if (CurrentBlock().terminated) return;
-			store.first = value;
-			store.second = retained_destination.kind == Operand::NONE ?
-				StorageFor(record.binding, type) : retained_destination;
-			Emit(store);
-		}
-		else if (IsClassObjectType(record.type))
-		{
-			const LowType type = LowerStorageType(record.type);
-			(void)AddressOfStorage(StorageFor(record.binding, type));
-		}
-	}
 
 	void LowerStatementNode(std::uint32_t node)
 	{
@@ -2181,352 +2111,6 @@ private:
 			return;
 		}
 		throw std::runtime_error("statement is outside the active PA15 checkpoint");
-	}
-	void LowerArrayInitializer(const DumpNode& record,
-		const NodeChildren& variable_children)
-	{
-		if (variable_children.size() != 1)
-			throw std::runtime_error("invalid PA15 array initializer");
-		const NodeChildren values = Children(variable_children[0]);
-		const TypeRecord& array = program_.types.Get(
-			ExpressionObjectType(record.type));
-		if (array.kind != TYPE_ARRAY ||
-			(array.IsIncompleteArray() &&
-			 (record.storage_size == 0 || !values.empty())) ||
-			values.size() > array.bound)
-			throw std::runtime_error("invalid PA15 bounded array initializer");
-		if (array.IsIncompleteArray())
-		{
-			(void)AddressOfStorage(StorageFor(
-				record.binding, LowerVariableStorage(record)));
-			return;
-		}
-		if (!lowering_namespace_object_ &&
-			!IsClassObjectType(array.child) && !IsArrayType(array.child))
-		{
-			const Operand base = AddressOfStorage(
-				StorageFor(record.binding, LowerVariableStorage(record)));
-			const LowType element = LowerExpressionType(array.child);
-			const std::size_t element_size = program_.SizeOf(array.child);
-			for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
-			{
-				Operand destination = base;
-				if (i != 0)
-					destination = IndexAddress(LowI8(), base,
-						Operand(i * element_size, LowI64()), false);
-				Instruction store(Instruction::STORE);
-				store.type = element;
-				store.first = i < values.size() ?
-					LowerConvertedValue(values[i], element) : Operand(0, element);
-				store.second = destination;
-				Emit(store);
-			}
-			return;
-		}
-		if (IsClassObjectType(array.child))
-		{
-			if (!lowering_namespace_object_)
-			{
-				LowerLocalClassArrayInitializer(record, values);
-				return;
-			}
-			AggregatePath path;
-			LowerNamespaceClassArrayInitializer(record, array, values, &path);
-			return;
-		}
-		const Operand storage = StorageFor(
-			record.binding, LowerStorageType(record.type));
-		LowerRuntimeArrayValues(record.type, variable_children[0],
-			AddressOfStorage(storage), true);
-	}
-	void LowerBoundAggregateArrayActions(BindingId object, TypeId array_type,
-		std::size_t element_index, std::uint32_t list_node,
-		AggregatePath* path)
-	{
-		const NodeChildren actions = Children(list_node);
-		for (std::size_t i = 0; i < actions.size(); ++i)
-		{
-			const DumpNode& action = arena_.nodes[actions[i]];
-			if (action.kind != DUMP_INITIALIZER_ACTION ||
-				action.binding == kNoBinding)
-				throw std::logic_error("invalid bound aggregate array action");
-			const NodeChildren values = Children(actions[i]);
-			const bool nested = values.size() == 1 &&
-				arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
-				IsClassObjectType(action.type);
-			path->Push(action.binding);
-			if (nested)
-				LowerBoundAggregateArrayActions(object, array_type, element_index,
-					values[0], path);
-			else
-			{
-				if (values.size() > 1 || IsArrayType(action.type))
-					throw std::runtime_error(
-						"complex bound aggregate leaf is outside the checkpoint");
-				Instruction store(Instruction::STORE);
-				if (IsReferenceType(action.type))
-				{
-					if (values.empty())
-						throw std::logic_error(
-							"aggregate reference action has no value");
-					store.type = LowPtr();
-					store.first = AddressOfStorage(LowerStorage(values[0]));
-				}
-				else
-				{
-					store.type = LowerExpressionType(action.type);
-					store.first = values.empty() ?
-						(store.type.kind == LOW_PTR ?
-							Operand::NullPointer(store.type) :
-						 IsFloating(store.type) ?
-							FloatingOperand("0.0", store.type) :
-							Operand(0, store.type)) :
-						LowerConvertedValue(values[0], store.type, false);
-				}
-				Operand destination = AddressOfStorage(StorageFor(object,
-					LowerStorageType(array_type)));
-				destination = DecayAddress(destination);
-				const TypeRecord& array = program_.types.Get(
-					ExpressionObjectType(array_type));
-				Operand displacement(static_cast<std::int64_t>(element_index),
-					LowI64());
-				const std::size_t element_size = program_.SizeOf(array.child);
-				if (element_size != 1)
-				{
-					const Operand scaled = Temp(LowI64());
-					Instruction multiply(Instruction::BINARY);
-					multiply.dest = scaled.id;
-					multiply.op = LOW_OP_MUL;
-					multiply.type = LowI64();
-					multiply.first = displacement;
-					multiply.second = Operand(
-						static_cast<std::int64_t>(element_size), LowI64());
-					Emit(multiply);
-					displacement = scaled;
-				}
-				destination = IndexAddress(LowI8(), destination,
-					displacement, true);
-				for (std::size_t member = 0; member < path->size(); ++member)
-					destination = ProjectAggregateMember(destination,
-						(*path)[member]);
-				store.second = destination;
-				Emit(store);
-			}
-			path->Pop();
-		}
-	}
-	void LowerRuntimeArrayValues(TypeId type, std::uint32_t list_node,
-		const Operand& array_address, bool compact_addressing = false)
-	{
-		const TypeRecord& array = program_.types.Get(
-			ExpressionObjectType(type));
-		const NodeChildren values = Children(list_node);
-		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
-			values.size() > array.bound)
-			throw std::runtime_error("invalid runtime array initializer");
-		const Operand base = compact_addressing ?
-			array_address : DecayAddress(array_address);
-		const std::size_t element_size = program_.SizeOf(array.child);
-		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
-		{
-			const Operand displacement(static_cast<std::int64_t>(
-				i * element_size), LowI64());
-			const Operand destination = compact_addressing && i == 0 ? base :
-				IndexAddress(LowI8(), base, displacement, true);
-			if (i < values.size())
-				LowerRuntimeObjectValue(array.child, values[i], destination);
-			else LowerRuntimeZeroValue(array.child, destination);
-		}
-	}
-	void LowerRuntimeObjectValue(TypeId type, std::uint32_t node,
-		const Operand& destination)
-	{
-		if (LowerInitializerListRuntimeValue(node, destination)) return;
-		const TypeRecord& record = program_.types.Get(ExpressionObjectType(type));
-		if (record.kind == TYPE_ARRAY)
-		{
-			if (arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
-				throw std::runtime_error("nested runtime array requires braces");
-			LowerRuntimeArrayValues(type, node, destination, true);
-			return;
-		}
-		if (IsClassObjectType(type))
-		{
-			if (LowerRuntimeConstructorValue(type, node, destination)) return;
-			if (arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
-				throw std::runtime_error("runtime aggregate element requires braces");
-			AggregatePath path;
-			LowerAggregateActions(node, destination, &path, destination);
-			return;
-		}
-		Instruction store(Instruction::STORE);
-		store.type = LowerExpressionType(type);
-		store.first = LowerConvertedValue(node, store.type, false);
-		store.second = destination;
-		Emit(store);
-	}
-	void LowerClassInitializer(const DumpNode& variable,
-		std::uint32_t initializer)
-	{
-		ResetInitializedBitFieldUnit();
-		const Operand storage = StorageFor(variable.binding,
-			LowerStorageType(variable.type));
-		if (LowerClassValueInitialization(variable, initializer, storage)) return;
-		Operand retained_address; if (NeedsClassInitializerStorageAddress(variable, initializer)) retained_address = AddressOfStorage(storage);
-		AggregatePath path; LowerAggregateActions(initializer, storage, &path,
-			LambdaClosureEntity(program_, variable.type) == kNoEntity ? Operand() : retained_address);
-	}
-	bool AggregateHasLeaf(std::uint32_t list_node) const
-	{
-		const NodeChildren actions = Children(list_node);
-		for (std::size_t i = 0; i < actions.size(); ++i)
-		{
-			const NodeChildren values = Children(actions[i]);
-			if (values.size() == 1 &&
-				arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
-				IsClassObjectType(arena_.nodes[actions[i]].type))
-			{
-				if (AggregateHasLeaf(values[0])) return true;
-			}
-			else return true;
-		}
-		return false;
-	}
-	void LowerAggregateActions(std::uint32_t list_node,
-		const Operand& root, AggregatePath* path,
-		const Operand& retained_address)
-	{
-		ResetInitializedBitFieldUnit();
-		if (stats_) ++stats_->lowered_nodes;
-		const DumpNode& list = arena_.nodes[list_node];
-		if (list.kind != DUMP_BRACED_INIT_LIST)
-			throw std::logic_error("class initializer is not an action list");
-		const NodeChildren actions = Children(list_node);
-		for (std::size_t i = 0; i < actions.size(); ++i)
-		{
-			const DumpNode& action = arena_.nodes[actions[i]];
-			if (action.kind != DUMP_INITIALIZER_ACTION ||
-				action.binding == kNoBinding ||
-				action.binding >= program_.bindings.size())
-				throw std::logic_error("invalid aggregate initializer action");
-			if (stats_) ++stats_->lowered_nodes;
-			const NodeChildren values = Children(actions[i]);
-			const bool nested = values.size() == 1 &&
-				arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
-				IsClassObjectType(action.type);
-			if (retained_address.kind != Operand::NONE)
-			{
-				const Operand destination = ProjectAggregateMember(
-					retained_address, action.binding);
-				if (nested)
-					LowerAggregateActions(values[0], root, path, destination);
-				else
-					LowerAggregateLeaf(action, values, root, *path, destination);
-				continue;
-			}
-			path->Push(action.binding);
-			if (nested && path->size() == kAggregateProjectionReplayLimit)
-			{
-				const Operand destination = ProjectAggregatePath(root, *path);
-				LowerAggregateActions(values[0], root, path, destination);
-			}
-			else if (nested)
-				LowerAggregateActions(values[0], root, path, Operand());
-			else
-				LowerAggregateLeaf(action, values, root, *path, Operand());
-			path->Pop();
-		}
-	}
-	Operand ProjectAggregateMember(const Operand& base, BindingId binding)
-	{
-		const BindingRecord& member = program_.bindings[binding];
-		if (IsLambdaCaptureMember(program_, binding)) return base;
-		const Operand projected = Temp(LowPtr());
-		Instruction index(Instruction::INDEX);
-		index.dest = projected.id;
-		index.type = LowI8();
-		index.first = base;
-		index.second = Operand(
-			static_cast<std::int64_t>(
-				program_.BindingLayout(member).member_offset), LowI64());
-		index.projection = INDEX_PROJECTION_FIELD;
-		Emit(index);
-		return projected;
-	}
-	Operand ProjectConstructorMemberPath(
-		const pa16_lowering_detail::ConstructorMemberPath& path)
-	{
-		Operand destination = LoadStorage(
-			StorageFor(current_this_binding_, LowPtr()), LowPtr());
-		for (std::size_t i = 0; i < path.size(); ++i)
-			destination = ProjectAggregateMember(destination, path[i]);
-		return destination;
-	}
-	Operand ProjectAggregatePath(const Operand& root,
-		const AggregatePath& path)
-	{
-		Operand destination = AddressOfStorage(root);
-		for (std::size_t i = 0; i < path.size(); ++i)
-			destination = ProjectAggregateMember(destination, path[i]);
-		return destination;
-	}
-
-	void LowerAggregateLeaf(const DumpNode& action,
-		const NodeChildren& values, const Operand& root,
-		const AggregatePath& path, const Operand& retained_destination)
-	{
-		if (values.size() > 1)
-			throw std::logic_error("aggregate leaf has multiple values");
-		if (IsArrayType(action.type))
-		{
-			LowerAggregateArrayLeaf(
-				action, values, root, path, retained_destination);
-			return;
-		}
-		if (LowerAggregateConstructorLeaf(
-			action, values, root, path, retained_destination)) return;
-		Instruction store(Instruction::STORE);
-		if (IsReferenceType(action.type))
-		{
-			if (values.empty())
-				throw std::logic_error("aggregate reference action has no value");
-			store.type = LowPtr();
-			store.first = AddressOfStorage(LowerStorage(values[0]));
-		}
-		else
-		{
-			store.type = LowerExpressionType(action.type);
-			if (!values.empty())
-			{
-				const LowType source = LowerExpressionType(arena_.nodes[values[0]].type);
-				store.first = LowerConvertedValue(values[0], store.type, IsInteger(source) &&
-					IsInteger(store.type) && source.is_signed == store.type.is_signed);
-			}
-			else if (store.type.kind == LOW_PTR)
-				store.first = Operand::NullPointer(store.type);
-			else if (IsFloating(store.type))
-				store.first = FloatingOperand("0.0", store.type);
-			else if (IsInteger(store.type))
-				store.first = Operand(0, store.type);
-			else throw std::runtime_error(
-				"aggregate leaf requires unsupported construction");
-		}
-		const Operand destination =
-			retained_destination.kind == Operand::NONE ?
-				ProjectAggregatePath(root, path) : retained_destination;
-		if (action.binding != kNoBinding &&
-			program_.bindings[action.binding].bit_field)
-		{
-			const LowType field_type = LowerExpressionType(action.type);
-			store.second = destination;
-			InitializeBitField(
-				action.binding, store.first, store.second, field_type);
-		}
-		else
-		{
-			store.second = destination;
-			Emit(store);
-		}
 	}
 
 	__attribute__((noinline)) Operand LowerControlCondition(

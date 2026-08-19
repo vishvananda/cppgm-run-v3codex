@@ -108,6 +108,7 @@ private:
 		}
 		const bool adjust_return = thunk.return_adjustment_virtual ||
 			thunk.return_adjustment != 0;
+		std::uint32_t next_temp = function.result.kind == LOW_VOID ? 2 : 3;
 		if (adjust_return)
 		{
 			if (function.result.kind != LOW_PTR)
@@ -147,7 +148,7 @@ private:
 					output_, "adjust_return")));
 			function.blocks[2].selected = true;
 			function.block_order.push_back(BlockId(2));
-			std::uint32_t next_temp = 4;
+			next_temp = 4;
 			Operand adjusted_result = returned;
 			if (thunk.return_adjustment != 0)
 			{
@@ -209,6 +210,7 @@ private:
 			function.blocks[0].instructions.push_back(result);
 			function.blocks[0].terminated = true;
 		}
+		function.temporary_limit = next_temp;
 		output_.symbols[thunk.target].referenced = true;
 		output_.functions.push_back(function);
 		if (stats_)

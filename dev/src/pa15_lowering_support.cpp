@@ -1,4 +1,5 @@
 #include "pa15_lowering_support.h"
+#include "lowir_model.h"
 #include "pa12_semantic_model.h"
 #include "post_tokenizer.h"
 
@@ -32,6 +33,29 @@ std::string NormalizeFloatingLiteral(const std::string& spelling,
 		break;
 	}
 	return numeric;
+}
+
+bool DecodeFloatingLiteral(const std::string& spelling,
+	const pa15_lowir_detail::LowType& type, std::uint64_t* low,
+	std::uint64_t* high)
+{
+	lowir_model::LowType decoded_type;
+	switch (type.kind)
+	{
+	case pa15_lowir_detail::LOW_F32:
+		decoded_type = lowir_model::builtin_lowir_type(lowir_model::LTK_F32);
+		break;
+	case pa15_lowir_detail::LOW_F64:
+		decoded_type = lowir_model::builtin_lowir_type(lowir_model::LTK_F64);
+		break;
+	case pa15_lowir_detail::LOW_F80:
+		decoded_type = lowir_model::builtin_lowir_type(lowir_model::LTK_F80);
+		break;
+	default:
+		return false;
+	}
+	return lowir_model::parse_lowir_floating_literal_bits(
+		spelling, decoded_type, low, high);
 }
 
 PresentationNameMap::PresentationNameMap(const pa11::Program& program)

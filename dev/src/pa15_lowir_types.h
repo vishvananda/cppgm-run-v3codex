@@ -126,7 +126,11 @@ struct Operand
 		NULL_POINTER
 	} kind;
 	std::uint32_t id;
-	std::int64_t integer_value;
+	union
+	{
+		std::int64_t integer_value;
+		std::uint64_t floating_low;
+	};
 	std::uint64_t integer_high;
 	LowType type;
 
@@ -150,11 +154,13 @@ struct Operand
 		: kind(INTEGER), id(kNoLowId), integer_value(low),
 		  integer_high(high), type(type_value) {}
 	static Operand Floating(lowir_model::StringId spelling,
-		const LowType& type_value)
+		const LowType& type_value, std::uint64_t low, std::uint64_t high)
 	{
 		Operand result;
 		result.kind = FLOATING;
 		result.id = spelling;
+		result.floating_low = low;
+		result.integer_high = high;
 		result.type = type_value;
 		return result;
 	}
@@ -364,13 +370,14 @@ struct Function
 	std::vector<BlockPresentationName> block_presentations;
 	std::vector<std::uint32_t> block_presentation_order;
 	lowir_model::GeneratedNameReservations generated_name_reservations;
+	std::uint32_t temporary_limit;
 	bool entry;
 	bool initializer;
 	bool finalizer;
 	bool variadic;
 
-	Function() : symbol(kNoLowId), entry(false), initializer(false),
-		finalizer(false), variadic(false) {}
+	Function() : symbol(kNoLowId), temporary_limit(0), entry(false),
+		initializer(false), finalizer(false), variadic(false) {}
 };
 
 struct FunctionDeclaration
@@ -400,7 +407,11 @@ struct Global
 	{
 		enum Kind { INTEGER_ITEM, FLOATING_ITEM, ADDRESS_ITEM, ZERO_ITEM } kind;
 		LowType type;
-		std::int64_t integer_value;
+		union
+		{
+			std::int64_t integer_value;
+			std::uint64_t floating_low;
+		};
 		std::uint64_t integer_high;
 		lowir_model::StringId floating_spelling;
 		SymbolId symbol;
@@ -414,7 +425,11 @@ struct Global
 	};
 	SymbolId symbol;
 	LowType type;
-	std::int64_t initializer;
+	union
+	{
+		std::int64_t initializer;
+		std::uint64_t floating_initializer_low;
+	};
 	std::uint64_t initializer_high;
 	lowir_model::StringId floating_initializer;
 	SymbolId address_symbol;

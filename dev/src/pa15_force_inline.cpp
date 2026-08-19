@@ -279,38 +279,6 @@ private:
 		expansion_state_[function_index] = 2;
 	}
 
-	void ObserveTemp(const Operand& operand, std::uint32_t* next) const
-	{
-		if (operand.kind != Operand::TEMP) return;
-		if (operand.id >= kNoLowId)
-			throw std::logic_error("force-inline temporary is invalid");
-		if (operand.id >= *next) *next = operand.id + 1;
-	}
-
-	std::uint32_t NextTemp(const Function& function) const
-	{
-		std::uint32_t next = 0;
-		for (std::size_t i = 0; i < function.blocks.size(); ++i)
-			for (std::size_t j = 0;
-				j < function.blocks[i].instructions.size(); ++j)
-			{
-				const Instruction& instruction =
-					function.blocks[i].instructions[j];
-				if (instruction.dest != kNoLowId && instruction.dest >= next)
-					next = static_cast<std::uint32_t>(instruction.dest) + 1;
-				ObserveTemp(instruction.first, &next);
-				ObserveTemp(instruction.second, &next);
-				ObserveTemp(instruction.third, &next);
-				if (instruction.kind == Instruction::CALL &&
-					instruction.extra_count != 0)
-					for (std::size_t argument = 0;
-						argument < instruction.extra_count; ++argument)
-						ObserveTemp(program_.call_arguments[
-							instruction.extra_first + argument], &next);
-			}
-		return next;
-	}
-
 	static TempId AllocateTemp(std::uint32_t* next)
 	{
 		if (*next >= kNoLowId)
@@ -324,25 +292,15 @@ private:
 		parameters->resize(callee.parameters.size());
 		for (std::size_t i = 0; i < parameters->size(); ++i)
 			(*parameters)[i] = AllocateTemp(next);
-		std::uint32_t maximum = 0;
-		bool has_temporary = false;
+		temporaries->assign(callee.temporary_limit, TempId(kNoLowId));
 		for (std::size_t i = 0; i < callee.blocks.size(); ++i)
 			for (std::size_t j = 0;
 				j < callee.blocks[i].instructions.size(); ++j)
 			{
 				const TempId dest = callee.blocks[i].instructions[j].dest;
-				if (dest == kNoLowId) continue;
-				has_temporary = true;
-				maximum = std::max(maximum, static_cast<std::uint32_t>(dest));
-			}
-		if (!has_temporary) return;
-		temporaries->assign(static_cast<std::size_t>(maximum) + 1,
-			TempId(kNoLowId));
-		for (std::size_t i = 0; i < callee.blocks.size(); ++i)
-			for (std::size_t j = 0;
-				j < callee.blocks[i].instructions.size(); ++j)
-			{
-				const TempId dest = callee.blocks[i].instructions[j].dest;
+				if (dest != kNoLowId && dest >= temporaries->size())
+					throw std::logic_error(
+						"force-inline temporary exceeds its dense limit");
 				if (dest != kNoLowId && (*temporaries)[dest] == kNoLowId)
 					(*temporaries)[dest] = AllocateTemp(next);
 			}
@@ -670,7 +628,7 @@ private:
 	{
 		Function& caller = program_.functions[function_index];
 		PresentationNames names(&program_, &caller);
-		std::uint32_t next_temp = NextTemp(caller);
+		std::uint32_t next_temp = caller.temporary_limit;
 		for (std::size_t block = 0; block < caller.blocks.size(); ++block)
 			for (std::size_t instruction = 0;
 				instruction < caller.blocks[block].instructions.size(); ++instruction)
@@ -687,6 +645,7 @@ private:
 					&names, &next_temp);
 				break;
 			}
+		caller.temporary_limit = next_temp;
 	}
 
 	void RecountOutput()

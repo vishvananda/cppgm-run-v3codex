@@ -18,6 +18,9 @@ using namespace pa12_semantic_detail;
 using namespace pa15_lowir_detail;
 using namespace pa15_lowering_support;
 
+const std::size_t kAggregateProjectionReplayLimit = 8;
+typedef SmallSequence<BindingId, kAggregateProjectionReplayLimit> AggregatePath;
+
 template <class Derived>
 class InitializationLowering
 {
@@ -785,6 +788,443 @@ protected:
 		if (cleanup_segment)
 			derived.PauseFullExpressionCleanupSegment();
 		return true;
+	}
+	void LowerVariableInitializationCore(const DumpNode& record,
+		const NodeChildren& children,
+		const Operand& retained_destination = Operand())
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (retained_destination.kind != Operand::NONE &&
+			!derived.IsReferenceType(record.type) &&
+			derived.IsClassObjectType(record.type) && children.size() == 1 &&
+			derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
+		{
+			const DumpNode& call = derived.arena_.nodes[children[0]];
+			(void)derived.LowerCall(children[0], call, derived.Children(children[0]),
+				retained_destination);
+			return;
+		}
+		if (derived.LowerScalarCallReferenceInitialization(record, children,
+			retained_destination)) return;
+		if (derived.TryLowerComplexVariableInitialization(
+			record, children, retained_destination)) return;
+		if (!derived.IsReferenceType(record.type) &&
+			derived.IsClassObjectType(record.type) && children.size() == 1 &&
+			derived.arena_.nodes[children[0]].kind == DUMP_CONDITIONAL_EXPRESSION)
+		{
+			const LowType type = derived.LowerStorageType(record.type);
+			const Operand destination = retained_destination.kind == Operand::NONE ?
+				derived.AddressOfStorage(derived.StorageFor(record.binding, type)) :
+				retained_destination;
+			derived.LowerClassConditionalResult(children[0], destination);
+			return;
+		}
+		if (derived.IsClassObjectType(record.type) && children.size() == 1 &&
+			derived.arena_.nodes[children[0]].kind == DUMP_CLASS_VALUE_TRANSFER)
+		{
+			const LowType type = derived.LowerStorageType(record.type);
+			const Operand destination = retained_destination.kind == Operand::NONE ?
+				derived.AddressOfStorage(derived.StorageFor(record.binding, type)) :
+				retained_destination;
+			derived.LowerClassValueTransfer(children[0], destination, true);
+			return;
+		}
+		if (derived.LowerInitializerListVariable(record, children)) return;
+		if (children.size() == 1 && derived.arena_.nodes[children[0]].kind ==
+			DUMP_CONSTRUCTOR_ARRAY_ACTION)
+		{
+			derived.LowerBoundConstructorArray(children[0], record.binding);
+			return;
+		}
+		if (derived.IsClassObjectType(record.type) && children.size() == 1 &&
+			derived.arena_.nodes[children[0]].kind == DUMP_BRACED_INIT_LIST)
+		{
+			derived.LowerClassInitializer(record, children[0]);
+			return;
+		}
+		if (derived.LowerVariableConstructor(record, children)) return;
+		if (!children.empty())
+		{
+			if (!derived.IsReferenceType(record.type) && derived.IsArrayType(record.type))
+			{
+				derived.LowerArrayInitializer(record, children);
+				return;
+			}
+			const LowType type = derived.LowerStorageType(record.type);
+			Instruction store(Instruction::STORE);
+			store.type = type;
+			const Operand value = derived.IsReferenceType(record.type) ?
+				derived.AddressOfStorage(derived.LowerStorage(children[0])) :
+				derived.LowerInitializerConvertedValue(children[0], type);
+			if (derived.CurrentBlock().terminated) return;
+			store.first = value;
+			store.second = retained_destination.kind == Operand::NONE ?
+				derived.StorageFor(record.binding, type) : retained_destination;
+			derived.Emit(store);
+		}
+		else if (derived.IsClassObjectType(record.type))
+		{
+			const LowType type = derived.LowerStorageType(record.type);
+			(void)derived.AddressOfStorage(derived.StorageFor(record.binding, type));
+		}
+	}
+
+	void LowerArrayInitializer(const DumpNode& record,
+		const NodeChildren& variable_children)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (variable_children.size() != 1)
+			throw std::runtime_error("invalid PA15 array initializer");
+		const NodeChildren values = derived.Children(variable_children[0]);
+		const TypeRecord& array = derived.program_.types.Get(
+			derived.ExpressionObjectType(record.type));
+		if (array.kind != TYPE_ARRAY ||
+			(array.IsIncompleteArray() &&
+			 (record.storage_size == 0 || !values.empty())) ||
+			values.size() > array.bound)
+			throw std::runtime_error("invalid PA15 bounded array initializer");
+		if (array.IsIncompleteArray())
+		{
+			(void)derived.AddressOfStorage(derived.StorageFor(
+				record.binding, derived.LowerVariableStorage(record)));
+			return;
+		}
+		if (!derived.lowering_namespace_object_ &&
+			!derived.IsClassObjectType(array.child) && !derived.IsArrayType(array.child))
+		{
+			const Operand base = derived.AddressOfStorage(
+				derived.StorageFor(record.binding, derived.LowerVariableStorage(record)));
+			const LowType element = derived.LowerExpressionType(array.child);
+			const std::size_t element_size = derived.program_.SizeOf(array.child);
+			for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
+			{
+				Operand destination = base;
+				if (i != 0)
+					destination = derived.IndexAddress(LowI8(), base,
+						Operand(i * element_size, LowI64()), false);
+				Instruction store(Instruction::STORE);
+				store.type = element;
+				store.first = i < values.size() ?
+					derived.LowerConvertedValue(values[i], element) : Operand(0, element);
+				store.second = destination;
+				derived.Emit(store);
+			}
+			return;
+		}
+		if (derived.IsClassObjectType(array.child))
+		{
+			if (!derived.lowering_namespace_object_)
+			{
+				derived.LowerLocalClassArrayInitializer(record, values);
+				return;
+			}
+			AggregatePath path;
+			derived.LowerNamespaceClassArrayInitializer(record, array, values, &path);
+			return;
+		}
+		const Operand storage = derived.StorageFor(
+			record.binding, derived.LowerStorageType(record.type));
+		derived.LowerRuntimeArrayValues(record.type, variable_children[0],
+			derived.AddressOfStorage(storage), true);
+	}
+	void LowerBoundAggregateArrayActions(BindingId object, TypeId array_type,
+		std::size_t element_index, std::uint32_t list_node,
+		AggregatePath* path)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const NodeChildren actions = derived.Children(list_node);
+		for (std::size_t i = 0; i < actions.size(); ++i)
+		{
+			const DumpNode& action = derived.arena_.nodes[actions[i]];
+			if (action.kind != DUMP_INITIALIZER_ACTION ||
+				action.binding == kNoBinding)
+				throw std::logic_error("invalid bound aggregate array action");
+			const NodeChildren values = derived.Children(actions[i]);
+			const bool nested = values.size() == 1 &&
+				derived.arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
+				derived.IsClassObjectType(action.type);
+			path->Push(action.binding);
+			if (nested)
+				derived.LowerBoundAggregateArrayActions(object, array_type, element_index,
+					values[0], path);
+			else
+			{
+				if (values.size() > 1 || derived.IsArrayType(action.type))
+					throw std::runtime_error(
+						"complex bound aggregate leaf is outside the checkpoint");
+				Instruction store(Instruction::STORE);
+				if (derived.IsReferenceType(action.type))
+				{
+					if (values.empty())
+						throw std::logic_error(
+							"aggregate reference action has no value");
+					store.type = LowPtr();
+					store.first = derived.AddressOfStorage(derived.LowerStorage(values[0]));
+				}
+				else
+				{
+					store.type = derived.LowerExpressionType(action.type);
+					store.first = values.empty() ?
+						(store.type.kind == LOW_PTR ?
+							Operand::NullPointer(store.type) :
+						 IsFloating(store.type) ?
+							derived.FloatingOperand("0.0", store.type) :
+							Operand(0, store.type)) :
+						derived.LowerConvertedValue(values[0], store.type, false);
+				}
+				Operand destination = derived.AddressOfStorage(derived.StorageFor(object,
+					derived.LowerStorageType(array_type)));
+				destination = derived.DecayAddress(destination);
+				const TypeRecord& array = derived.program_.types.Get(
+					derived.ExpressionObjectType(array_type));
+				Operand displacement(static_cast<std::int64_t>(element_index),
+					LowI64());
+				const std::size_t element_size = derived.program_.SizeOf(array.child);
+				if (element_size != 1)
+				{
+					const Operand scaled = derived.Temp(LowI64());
+					Instruction multiply(Instruction::BINARY);
+					multiply.dest = scaled.id;
+					multiply.op = LOW_OP_MUL;
+					multiply.type = LowI64();
+					multiply.first = displacement;
+					multiply.second = Operand(
+						static_cast<std::int64_t>(element_size), LowI64());
+					derived.Emit(multiply);
+					displacement = scaled;
+				}
+				destination = derived.IndexAddress(LowI8(), destination,
+					displacement, true);
+				for (std::size_t member = 0; member < path->size(); ++member)
+					destination = derived.ProjectAggregateMember(destination,
+						(*path)[member]);
+				store.second = destination;
+				derived.Emit(store);
+			}
+			path->Pop();
+		}
+	}
+	void LowerRuntimeArrayValues(TypeId type, std::uint32_t list_node,
+		const Operand& array_address, bool compact_addressing = false)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const TypeRecord& array = derived.program_.types.Get(
+			derived.ExpressionObjectType(type));
+		const NodeChildren values = derived.Children(list_node);
+		if (array.kind != TYPE_ARRAY || array.IsIncompleteArray() ||
+			values.size() > array.bound)
+			throw std::runtime_error("invalid runtime array initializer");
+		const Operand base = compact_addressing ?
+			array_address : derived.DecayAddress(array_address);
+		const std::size_t element_size = derived.program_.SizeOf(array.child);
+		for (std::size_t i = 0; i < static_cast<std::size_t>(array.bound); ++i)
+		{
+			const Operand displacement(static_cast<std::int64_t>(
+				i * element_size), LowI64());
+			const Operand destination = compact_addressing && i == 0 ? base :
+				derived.IndexAddress(LowI8(), base, displacement, true);
+			if (i < values.size())
+				derived.LowerRuntimeObjectValue(array.child, values[i], destination);
+			else derived.LowerRuntimeZeroValue(array.child, destination);
+		}
+	}
+	void LowerRuntimeObjectValue(TypeId type, std::uint32_t node,
+		const Operand& destination)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.LowerInitializerListRuntimeValue(node, destination)) return;
+		const TypeRecord& record = derived.program_.types.Get(derived.ExpressionObjectType(type));
+		if (record.kind == TYPE_ARRAY)
+		{
+			if (derived.arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
+				throw std::runtime_error("nested runtime array requires braces");
+			derived.LowerRuntimeArrayValues(type, node, destination, true);
+			return;
+		}
+		if (derived.IsClassObjectType(type))
+		{
+			if (derived.LowerRuntimeConstructorValue(type, node, destination)) return;
+			if (derived.arena_.nodes[node].kind != DUMP_BRACED_INIT_LIST)
+				throw std::runtime_error("runtime aggregate element requires braces");
+			AggregatePath path;
+			derived.LowerAggregateActions(node, destination, &path, destination);
+			return;
+		}
+		Instruction store(Instruction::STORE);
+		store.type = derived.LowerExpressionType(type);
+		store.first = derived.LowerConvertedValue(node, store.type, false);
+		store.second = destination;
+		derived.Emit(store);
+	}
+	void LowerClassInitializer(const DumpNode& variable,
+		std::uint32_t initializer)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.ResetInitializedBitFieldUnit();
+		const Operand storage = derived.StorageFor(variable.binding,
+			derived.LowerStorageType(variable.type));
+		if (derived.LowerClassValueInitialization(variable, initializer, storage)) return;
+		Operand retained_address; if (derived.NeedsClassInitializerStorageAddress(variable, initializer)) retained_address = derived.AddressOfStorage(storage);
+		AggregatePath path; derived.LowerAggregateActions(initializer, storage, &path,
+			LambdaClosureEntity(derived.program_, variable.type) == kNoEntity ? Operand() : retained_address);
+	}
+	bool AggregateHasLeaf(std::uint32_t list_node) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const NodeChildren actions = derived.Children(list_node);
+		for (std::size_t i = 0; i < actions.size(); ++i)
+		{
+			const NodeChildren values = derived.Children(actions[i]);
+			if (values.size() == 1 &&
+				derived.arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
+				derived.IsClassObjectType(derived.arena_.nodes[actions[i]].type))
+			{
+				if (AggregateHasLeaf(values[0])) return true;
+			}
+			else return true;
+		}
+		return false;
+	}
+	void LowerAggregateActions(std::uint32_t list_node,
+		const Operand& root, AggregatePath* path,
+		const Operand& retained_address)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		derived.ResetInitializedBitFieldUnit();
+		if (derived.stats_) ++derived.stats_->lowered_nodes;
+		const DumpNode& list = derived.arena_.nodes[list_node];
+		if (list.kind != DUMP_BRACED_INIT_LIST)
+			throw std::logic_error("class initializer is not an action list");
+		const NodeChildren actions = derived.Children(list_node);
+		for (std::size_t i = 0; i < actions.size(); ++i)
+		{
+			const DumpNode& action = derived.arena_.nodes[actions[i]];
+			if (action.kind != DUMP_INITIALIZER_ACTION ||
+				action.binding == kNoBinding ||
+				action.binding >= derived.program_.bindings.size())
+				throw std::logic_error("invalid aggregate initializer action");
+			if (derived.stats_) ++derived.stats_->lowered_nodes;
+			const NodeChildren values = derived.Children(actions[i]);
+			const bool nested = values.size() == 1 &&
+				derived.arena_.nodes[values[0]].kind == DUMP_BRACED_INIT_LIST &&
+				derived.IsClassObjectType(action.type);
+			if (retained_address.kind != Operand::NONE)
+			{
+				const Operand destination = derived.ProjectAggregateMember(
+					retained_address, action.binding);
+				if (nested)
+					derived.LowerAggregateActions(values[0], root, path, destination);
+				else
+					derived.LowerAggregateLeaf(action, values, root, *path, destination);
+				continue;
+			}
+			path->Push(action.binding);
+			if (nested && path->size() == kAggregateProjectionReplayLimit)
+			{
+				const Operand destination = derived.ProjectAggregatePath(root, *path);
+				derived.LowerAggregateActions(values[0], root, path, destination);
+			}
+			else if (nested)
+				derived.LowerAggregateActions(values[0], root, path, Operand());
+			else
+				derived.LowerAggregateLeaf(action, values, root, *path, Operand());
+			path->Pop();
+		}
+	}
+	Operand ProjectAggregateMember(const Operand& base, BindingId binding)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const BindingRecord& member = derived.program_.bindings[binding];
+		if (IsLambdaCaptureMember(derived.program_, binding)) return base;
+		const Operand projected = derived.Temp(LowPtr());
+		Instruction index(Instruction::INDEX);
+		index.dest = projected.id;
+		index.type = LowI8();
+		index.first = base;
+		index.second = Operand(
+			static_cast<std::int64_t>(
+				derived.program_.BindingLayout(member).member_offset), LowI64());
+		index.projection = INDEX_PROJECTION_FIELD;
+		derived.Emit(index);
+		return projected;
+	}
+	Operand ProjectConstructorMemberPath(
+		const pa16_lowering_detail::ConstructorMemberPath& path)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Operand destination = derived.LoadStorage(
+			derived.StorageFor(derived.current_this_binding_, LowPtr()), LowPtr());
+		for (std::size_t i = 0; i < path.size(); ++i)
+			destination = derived.ProjectAggregateMember(destination, path[i]);
+		return destination;
+	}
+	Operand ProjectAggregatePath(const Operand& root,
+		const AggregatePath& path)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		Operand destination = derived.AddressOfStorage(root);
+		for (std::size_t i = 0; i < path.size(); ++i)
+			destination = derived.ProjectAggregateMember(destination, path[i]);
+		return destination;
+	}
+
+	void LowerAggregateLeaf(const DumpNode& action,
+		const NodeChildren& values, const Operand& root,
+		const AggregatePath& path, const Operand& retained_destination)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (values.size() > 1)
+			throw std::logic_error("aggregate leaf has multiple values");
+		if (derived.IsArrayType(action.type))
+		{
+			derived.LowerAggregateArrayLeaf(
+				action, values, root, path, retained_destination);
+			return;
+		}
+		if (derived.LowerAggregateConstructorLeaf(
+			action, values, root, path, retained_destination)) return;
+		Instruction store(Instruction::STORE);
+		if (derived.IsReferenceType(action.type))
+		{
+			if (values.empty())
+				throw std::logic_error("aggregate reference action has no value");
+			store.type = LowPtr();
+			store.first = derived.AddressOfStorage(derived.LowerStorage(values[0]));
+		}
+		else
+		{
+			store.type = derived.LowerExpressionType(action.type);
+			if (!values.empty())
+			{
+				const LowType source = derived.LowerExpressionType(derived.arena_.nodes[values[0]].type);
+				store.first = derived.LowerConvertedValue(values[0], store.type, IsInteger(source) &&
+					IsInteger(store.type) && source.is_signed == store.type.is_signed);
+			}
+			else if (store.type.kind == LOW_PTR)
+				store.first = Operand::NullPointer(store.type);
+			else if (IsFloating(store.type))
+				store.first = derived.FloatingOperand("0.0", store.type);
+			else if (IsInteger(store.type))
+				store.first = Operand(0, store.type);
+			else throw std::runtime_error(
+				"aggregate leaf requires unsupported construction");
+		}
+		const Operand destination =
+			retained_destination.kind == Operand::NONE ?
+				derived.ProjectAggregatePath(root, path) : retained_destination;
+		if (action.binding != kNoBinding &&
+			derived.program_.bindings[action.binding].bit_field)
+		{
+			const LowType field_type = derived.LowerExpressionType(action.type);
+			store.second = destination;
+			derived.InitializeBitField(
+				action.binding, store.first, store.second, field_type);
+		}
+		else
+		{
+			store.second = destination;
+			derived.Emit(store);
+		}
 	}
 };
 
