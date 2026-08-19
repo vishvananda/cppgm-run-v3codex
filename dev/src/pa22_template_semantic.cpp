@@ -1,5 +1,4 @@
 #include "pa12_semantic_detail.h"
-#include "pa22_lambda_presentation.h"
 
 #include <algorithm>
 #include <limits>
@@ -313,49 +312,23 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 					static_cast<std::size_t>(namespace_owner) + 1, 0);
 			ordinal = lambda_count_by_namespace_[namespace_owner]++;
 		}
-		std::string leaf_spelling;
-		NameId identity_leaf = 0;
-		if (enclosing != kNoBinding)
-		{
-			leaf_spelling =
-				pa22_lambda_presentation::RenderLambdaIdentityComponent(
-					*program_, enclosing, arena_->TokenFirst(node),
-					arena_->TokenLast(node), ordinal, stats_);
-		}
-		else
-		{
-			leaf_spelling = "__" + std::to_string(ordinal);
-			identity_leaf = program_->names.Intern(
-				"$_" + std::to_string(ordinal));
-		}
-		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_LAMBDA_IDENTITY,
-				leaf_spelling, enclosing == kNoBinding ? 1 : 4);
-		const NameId leaf = program_->names.Intern(leaf_spelling);
-		const ScopeId identity_owner = enclosing == kNoBinding ?
-			namespace_owner : program_->bindings[enclosing].owner;
-		const NameId emission = EmissionName(identity_owner, leaf);
-		const EntityId entity = program_->NewEntity(emission, NAMED_CLASS, true,
-			kNoType, namespace_owner,
-			identity_leaf == 0 ? leaf : identity_leaf,
-			ENTITY_EMISSION_RENDERED);
+		const NameId leaf =
+			program_->names.Intern("__cppgm_lambda_closure");
+		const EntityId entity = program_->NewEntity(0, NAMED_CLASS, true,
+			kNoType, namespace_owner, leaf, ENTITY_EMISSION_LAMBDA);
 		EntityRecord& closure = program_->entities[entity];
 		closure.local_context = enclosing;
 		closure.lambda_closure = true;
+		closure.lambda_token_first = arena_->TokenFirst(node);
+		closure.lambda_token_last = arena_->TokenLast(node);
 		closure.lambda_ordinal = ordinal;
 		closure.destructible = true;
 		closure.trivial_destructor = true;
 		const TypeId closure_type = closure.type;
-		const std::string member_prefix_spelling =
-			program_->names.Get(emission) + "::";
-		if (stats_)
-			RecordPresentationRender(SEMANTIC_PRESENTATION_SCOPE_PREFIX,
-				member_prefix_spelling, 1);
-		const NameId member_prefix =
-			program_->names.Intern(member_prefix_spelling);
+		const NameId member_prefix = std::numeric_limits<NameId>::max();
 		const ScopeId member_scope = NewScope(namespace_owner, SCOPE_CLASS,
 			leaf, member_prefix);
-		program_->SetScopeEmissionName(member_scope, emission);
+		program_->SetScopeEmissionName(member_scope, 0);
 		program_->SetEntityScope(entity, member_scope);
 		program_->SetTypeName(member_scope, leaf, closure_type);
 		const BindingId injected = program_->AddBinding(member_scope,
@@ -514,7 +487,12 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 				completed_call_type.variadic);
 			invocation_function = DeclareFunction(namespace_owner,
 				leaf, invocation_type, call_parameters, true, false,
-				STORAGE_CLASS_STATIC, LANGUAGE_LINKAGE_CPP, nonthrowing, false);
+				STORAGE_CLASS_STATIC, LANGUAGE_LINKAGE_CPP, nonthrowing, false,
+				true);
+			BindingRecord& invocation_binding =
+				program_->bindings[invocation_function];
+			invocation_binding.lambda_invocation = true;
+			invocation_binding.lambda_invocation_owner = entity;
 			FunctionInfo& invocation = GetMutableFunction(invocation_function);
 			invocation.lexical_access_function = enclosing;
 			invocation.lexical_scope = scope;

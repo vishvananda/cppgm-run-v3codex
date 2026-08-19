@@ -352,6 +352,20 @@ private:
 		const BindingRecord& canonical_binding = program_.bindings[binding.canonical];
 		const bool class_template_member = binding.member_owner != kNoEntity &&
 			program_.entities[binding.member_owner].template_argument_begin != kNoBinding;
+		const bool lambda_member = binding.member_owner != kNoEntity &&
+			program_.entities[binding.member_owner].lambda_closure;
+		EntityId lambda_identity_owner = lambda_member ?
+			binding.member_owner : binding.lambda_invocation ?
+				binding.lambda_invocation_owner : kNoEntity;
+		for (ScopeId scope = binding.owner;
+			lambda_identity_owner == kNoEntity && scope != kNoScope;
+			scope = program_.ParentScope(scope))
+		{
+			const EntityId entity = program_.EntityForScope(scope);
+			if (entity != kNoEntity && entity < program_.entities.size() &&
+				program_.entities[entity].lambda_closure)
+				lambda_identity_owner = entity;
+		}
 		const bool weak_linkage = pa15_lowering_abi::HasWeakLinkage(
 			program_, node.binding, kind == Symbol::FUNCTION_SYMBOL);
 		const bool local_member = pa18_lowering_detail::IsFunctionLocalEntity(
@@ -366,8 +380,11 @@ private:
 		const bool c_linkage = binding.language_linkage == LANGUAGE_LINKAGE_C;
 		SymbolIdentity identity;
 		identity.kind = kind;
-		identity.path = class_template_member ? output_.identities.InternClassMemberPath(
-			program_, binding.member_owner, binding.name) :
+		identity.path = class_template_member || lambda_member ?
+			output_.identities.InternClassMemberPath(
+				program_, binding.member_owner, binding.name) :
+			binding.lambda_invocation ? output_.identities.InternEntityPath(
+				program_, binding.lambda_invocation_owner) :
 			output_.identities.InternPath(program_, c_linkage && !internal ?
 				program_.GlobalScope() : binding.owner, binding.name);
 		identity.signature = kind == Symbol::FUNCTION_SYMBOL && !c_linkage ?
@@ -378,7 +395,11 @@ private:
 				identity_type_cache_) : kNoLowId;
 		identity.owner_template_arguments = class_template_member ?
 			output_.identities.InternEntityTemplateArguments(program_, program_.entities[
-				binding.member_owner], identity_type_cache_) : kNoLowId;
+				binding.member_owner], identity_type_cache_) :
+			lambda_identity_owner != kNoEntity &&
+			program_.entities[lambda_identity_owner].local_context != kNoBinding ?
+				output_.identities.InternLambdaContextIdentity(program_,
+					lambda_identity_owner, identity_type_cache_) : kNoLowId;
 		identity.internal_owner = local_member ?
 			((source_ordinal_ + 1) << 32) |
 				(static_cast<std::size_t>(binding.member_owner) + 1) :
@@ -392,10 +413,17 @@ private:
 		{
 			Symbol& symbol = output_.symbols[found];
 			if (symbol.source_type != source_type)
-				throw std::runtime_error("conflicting cross-source PA15 symbol type");
+				throw std::runtime_error(
+					"conflicting cross-source PA15 symbol type for " +
+					proposed_name + " (existing symbol " +
+					output_.strings.get(symbol.name) + ")");
 			if (symbol.object_name.valid() && object_name_id.valid() &&
 				symbol.object_name != object_name_id)
-				throw std::logic_error("conflicting PA15 ABI object identity");
+				throw std::logic_error(
+					"conflicting PA15 ABI object identity for " +
+					proposed_name + ": " +
+					output_.strings.get(symbol.object_name) + " versus " +
+					object_name);
 			symbol.nonthrowing = symbol.nonthrowing || binding.nonthrowing;
 			symbol.noreturn = symbol.noreturn || binding.noreturn_function ||
 				canonical_binding.noreturn_function;
@@ -450,7 +478,7 @@ private:
 		{
 			const BindingRecord& binding = program_.bindings[record.binding];
 			const std::string base = SanitizeSymbol(
-				presentation_names_.Apply(binding.owner, binding.name));
+				presentation_names_.Apply(binding));
 			const std::uint32_t ordinal =
 				program_.bindings[record.binding].overload_ordinal;
 			const std::string name = ordinal <= 1 ? base :

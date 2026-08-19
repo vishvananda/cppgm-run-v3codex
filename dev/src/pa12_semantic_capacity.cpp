@@ -30,7 +30,8 @@ void SemanticAnalyzer::PublishBindingPopulationStats()
 	for (std::size_t i = 1; i < program_->bindings.size(); ++i)
 	{
 		const BindingRecord& binding = program_->bindings[i];
-		if (binding.layout_fact != kNoBindingLayoutFact)
+		if (!binding.lambda_invocation &&
+			binding.layout_fact != kNoBindingLayoutFact)
 			++stats_->binding_layout_fact_records;
 		if (binding.template_argument_list != kNoTemplateArgumentList ||
 			binding.template_argument_count != 0 || binding.exception_type_count != 0 ||

@@ -1,4 +1,5 @@
 #include "pa11_model.h"
+#include "pa22_lambda_presentation.h"
 
 #include <algorithm>
 #include <ostream>
@@ -733,7 +734,7 @@ BindingRecord::BindingRecord()
 	  template_parameter_constant(false),
 	  variable_template_specialization(false),
 	  force_indirect_class_result_abi(false),
-	  closure_template_specialization(false)
+	  closure_template_specialization(false), lambda_invocation(false)
 {
 }
 
@@ -1350,6 +1351,20 @@ void Program::BuildEmissionPath(ScopeId owner, NameId terminal,
 std::string Program::RenderEmissionName(ScopeId owner, NameId terminal,
 	std::size_t* components) const
 {
+	const EntityId owner_entity = owner < scopes_.size() ?
+		scopes_[owner].entity : kNoEntity;
+	if (owner_entity != kNoEntity && owner_entity < entities.size() &&
+		entities[owner_entity].lambda_closure)
+	{
+		std::size_t owner_components = 0;
+		std::string result = RenderEntityEmissionName(
+			owner_entity, &owner_components);
+		result += "::";
+		result += pa22_lambda_presentation::RenderLambdaMemberTerminal(
+			*this, owner_entity, terminal);
+		if (components) *components = owner_components + 1;
+		return result;
+	}
 	std::vector<NameId> path;
 	BuildEmissionPath(owner, terminal, &path);
 	if (components) *components = path.size();
@@ -1372,6 +1387,9 @@ std::string Program::RenderEntityEmissionName(EntityId entity,
 	if (entity >= entities.size())
 		throw std::logic_error("invalid entity emission name");
 	const EntityRecord& record = entities[entity];
+	if (record.emission_name_form == ENTITY_EMISSION_LAMBDA)
+		return pa22_lambda_presentation::RenderLambdaEntityEmissionName(
+			*this, entity, components);
 	if (record.emission_name_form == ENTITY_EMISSION_OWNER_QUALIFIED)
 		return RenderEmissionName(
 			record.owner, record.emission_name, components);
@@ -1594,6 +1612,13 @@ NameId Program::NameOfScope(ScopeId scope) const
 {
 	if (scope >= scopes_.size()) return 0;
 	return scopes_[scope].name;
+}
+
+NameId Program::EmissionNameOfScope(ScopeId scope) const
+{
+	if (scope >= scopes_.size())
+		throw std::logic_error("invalid scope emission-name query");
+	return scopes_[scope].emission_name;
 }
 
 EntityId Program::EntityForScope(ScopeId scope) const

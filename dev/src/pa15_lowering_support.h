@@ -47,7 +47,7 @@ class PresentationNameMap
 	public:
 	PresentationNameMap(const pa11::Program& program,
 		SemanticAnalysisStats* stats);
-	std::string Apply(pa11::ScopeId owner, pa11::NameId terminal) const;
+	std::string Apply(const pa11::BindingRecord& binding) const;
 
 private:
 	const std::string& ClassTemplatePresentation(

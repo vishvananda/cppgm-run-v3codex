@@ -1,0 +1,58 @@
+function @select(%__param0 : i32) -> i32 [binding=strong, object=_Z6selecti] {
+  slot $__param0 : i32
+  slot $value : obj<1x1>
+
+  block ^entry:
+    store i32 %__param0, $__param0
+    %t1 = addr $value
+    %t2 = addr $value
+    %t3 = call i32 @__lambda_select_t11_13__operator__(%t2)
+    return i32 %t3
+}
+function @select__ov2(%__param0 : i8) -> i32 [binding=strong, object=_Z6selectc] {
+  slot $__param0 : i8
+  slot $value : obj<1x1>
+
+  block ^entry:
+    store i8 %__param0, $__param0
+    %t1 = addr $value
+    %t2 = addr $value
+    %t3 = call i32 @__lambda_select_t36_38__operator__(%t2)
+    return i32 %t3
+}
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = call i32 @select(0)
+    %t2 = call i32 @select__ov2(120)
+    %t3 = binary add i32 %t1, %t2
+    %t4 = cmp eq i32 %t3, 3
+    branch %t4, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t5 = load i32 $cond__1
+    return i32 %t5
+}
+function @__lambda_select_t11_13__operator__(%this : ptr) -> i32 [binding=strong, object=_ZZ6selectiENK3$_0clEv, prefer_local=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 1
+}
+function @__lambda_select_t36_38__operator__(%this : ptr) -> i32 [binding=strong, object=_ZZ6selectcENK3$_0clEv, prefer_local=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 2
+}

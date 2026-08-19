@@ -187,6 +187,7 @@ public:
   std::size_t store_entity(const AbiEntityFact & entity);
   std::size_t resolve_external_name(std::size_t source,
                                     const std::string & spelling);
+  std::size_t resolve_generated_name(const std::string & spelling);
   std::size_t resolve_path(const std::vector<std::size_t> & components);
   std::size_t resolve_path_component(std::size_t parent, std::size_t name);
   bool resolved_type_uses_case_facts(std::size_t type) const;

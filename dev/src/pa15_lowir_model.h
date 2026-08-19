@@ -15,14 +15,22 @@ typedef std::uint32_t IdentityNameId;
 typedef std::uint32_t IdentityPathId;
 typedef std::uint32_t IdentityTypeId;
 
+enum IdentityPathComponentKind : std::uint8_t
+{
+	IDENTITY_PATH_NAME,
+	IDENTITY_PATH_LAMBDA
+};
+
 struct IdentityPathKey
 {
 	IdentityPathId parent;
-	IdentityNameId name;
+	std::uint32_t value;
+	IdentityPathComponentKind kind;
 
 	bool operator==(const IdentityPathKey& other) const
 	{
-		return parent == other.parent && name == other.name;
+		return parent == other.parent && value == other.value &&
+			kind == other.kind;
 	}
 };
 
@@ -30,7 +38,8 @@ struct IdentityPathHash
 {
 	std::size_t operator()(const IdentityPathKey& key) const
 	{
-		return static_cast<std::size_t>(key.parent) * 16777619U ^ key.name;
+		return (static_cast<std::size_t>(key.parent) * 16777619U ^
+			key.value) * 257U ^ key.kind;
 	}
 };
 
@@ -111,6 +120,7 @@ public:
 
 	IdentityPathId InternPath(const Program& program, ScopeId owner,
 		NameId terminal);
+	IdentityPathId InternEntityPath(const Program& program, EntityId entity);
 	IdentityPathId InternClassMemberPath(const Program& program,
 		EntityId owner, NameId terminal);
 	IdentityTypeId InternType(const Program& program, TypeId type,
@@ -122,12 +132,17 @@ public:
 		std::vector<IdentityTypeId>& cache);
 	IdentityTypeId InternBindingTemplateArguments(const Program& program,
 		const BindingRecord& binding, std::vector<IdentityTypeId>& cache);
+	IdentityTypeId InternLambdaContextIdentity(const Program& program,
+		EntityId entity, std::vector<IdentityTypeId>& cache);
 	IdentityTypeId InternEntityTemplateArguments(const Program& program,
 		const EntityRecord& entity, std::vector<IdentityTypeId>& cache);
 	std::size_t StorageBytes() const;
+	std::size_t PathCount() const;
+	std::size_t TypeCount() const;
 
 private:
 	IdentityNameId InternName(const Program& program, NameId name);
+	IdentityPathId InternScopePath(const Program& program, ScopeId owner);
 	static bool HasChild(TypeKind kind);
 	static void PushDependency(TypeId dependency,
 		std::vector<IdentityTypeId>& cache, std::vector<PendingType>& pending);
@@ -149,7 +164,7 @@ private:
 	std::vector<IdentityPathId> path_slots_;
 	std::vector<IdentityTypeKey> type_records_;
 	std::vector<IdentityTypeId> type_slots_;
-	std::vector<NameId> path_scratch_;
+	std::vector<ScopeId> scope_scratch_;
 	bool direct_names_;
 };
 

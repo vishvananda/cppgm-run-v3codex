@@ -3,6 +3,7 @@
 #include "pa12_semantic.h"
 #include "pa12_semantic_model.h"
 #include "pa19_template_presentation.h"
+#include "pa22_lambda_presentation.h"
 #include "post_tokenizer.h"
 
 #include <algorithm>
@@ -132,12 +133,30 @@ const std::string& PresentationNameMap::ClassTemplatePresentation(
 }
 
 std::string PresentationNameMap::Apply(
-	pa11::ScopeId owner, pa11::NameId terminal) const
+	const pa11::BindingRecord& binding) const
 {
+	if (binding.lambda_invocation)
+		return pa22_lambda_presentation::
+			RenderLambdaInvocationEmissionName(program_,
+				binding.lambda_invocation_owner, binding.owner, 0, stats_);
+	const pa11::EntityId owner_entity =
+		program_.EntityForScope(binding.owner);
+	if (owner_entity != pa11::kNoEntity &&
+		owner_entity < program_.entities.size() &&
+		program_.entities[owner_entity].lambda_closure)
+	{
+		std::string result =
+			pa22_lambda_presentation::RenderLambdaEntityEmissionName(
+				program_, owner_entity, 0, stats_);
+		result += "::";
+		result += pa22_lambda_presentation::RenderLambdaMemberTerminal(
+			program_, owner_entity, binding.name, stats_);
+		return result;
+	}
 	if (stats_)
 		++stats_->presentation_reads[
 			SEMANTIC_PRESENTATION_READ_SCOPE_EMISSION];
-	program_.BuildEmissionPath(owner, terminal, &path_);
+	program_.BuildEmissionPath(binding.owner, binding.name, &path_);
 	std::string result;
 	for (std::size_t i = 0; i < path_.size(); ++i)
 	{

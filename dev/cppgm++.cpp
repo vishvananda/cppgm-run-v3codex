@@ -1052,7 +1052,10 @@ void report_compile_phase_stats(
 	const uint64_t adapter_build_nanoseconds = adapter_nanoseconds >
 		preparation_nanoseconds ?
 		adapter_nanoseconds - preparation_nanoseconds : 0;
-	cerr << " typed_bytes=" << stats.typed_storage_bytes
+	cerr << " typed_identity_paths=" << stats.typed_identity_paths
+		 << " typed_identity_types=" << stats.typed_identity_types
+		 << " typed_identity_bytes=" << stats.typed_identity_bytes
+		 << " typed_bytes=" << stats.typed_storage_bytes
 		 << " preprocess_ns=" << semantic.preprocessing.elapsed_nanoseconds
 		 << " parse_ns=" << semantic.parse_nanoseconds
 		 << " semantic_ns=" << semantic.analysis_nanoseconds
@@ -2835,9 +2838,12 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << " force_inline_call_probes=" << stats.force_inline_call_probes
 			 << " force_inline_calls=" << stats.force_inline_calls
 			 << " force_inline_blocks=" << stats.force_inline_blocks
-			 << " force_inline_cloned_instructions="
-			 << stats.force_inline_cloned_instructions
-			 << " typed_storage_bytes=" << stats.typed_storage_bytes
+				 << " force_inline_cloned_instructions="
+				 << stats.force_inline_cloned_instructions
+				 << " typed_identity_paths=" << stats.typed_identity_paths
+				 << " typed_identity_types=" << stats.typed_identity_types
+				 << " typed_identity_bytes=" << stats.typed_identity_bytes
+				 << " typed_storage_bytes=" << stats.typed_storage_bytes
 			 << " semantic_peak_stage_bytes="
 			 << semantic.peak_stage_storage_bytes
 			 << " output_bytes=" << stats.output_bytes

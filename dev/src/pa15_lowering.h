@@ -85,6 +85,9 @@ struct LowIRLoweringStats
 	std::size_t post_inline_retained_conservative_fallback;
 	std::vector<std::string> post_inline_retained_conservative_fallback_names;
 	std::vector<std::string> post_inline_unreachable_internal_names;
+	std::size_t typed_identity_paths;
+	std::size_t typed_identity_types;
+	std::size_t typed_identity_bytes;
 	std::size_t typed_storage_bytes;
 	std::size_t output_bytes;
 	std::uint64_t lowering_nanoseconds;

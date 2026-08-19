@@ -313,6 +313,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  post_inline_retained_eh_or_runtime(0),
 	  post_inline_retained_required_weak(0),
 	  post_inline_retained_conservative_fallback(0),
+	  typed_identity_paths(0), typed_identity_types(0),
+	  typed_identity_bytes(0),
 	  typed_storage_bytes(0), output_bytes(0), lowering_nanoseconds(0),
 	  render_nanoseconds(0)
 {
@@ -548,7 +550,12 @@ TypedProgram BuildTypedLowIRProgram(const std::vector<LowIRSource>& sources,
 			std::chrono::duration_cast<std::chrono::nanoseconds>(
 				std::chrono::steady_clock::now() - coalesce_started).count());
 	if (stats)
+	{
+		stats->typed_identity_paths = program.identities.PathCount();
+		stats->typed_identity_types = program.identities.TypeCount();
+		stats->typed_identity_bytes = program.identities.StorageBytes();
 		stats->typed_storage_bytes = TypedStorageBytes(program);
+	}
 	return program;
 }
 

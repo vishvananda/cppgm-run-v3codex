@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa22_lambda_presentation.h"
 
 #include <limits>
 #include <string>
@@ -29,6 +30,36 @@ std::string RenderBindingPresentation(const Program& program,
 	return rendered;
 }
 
+NameId SemanticAnalyzer::ReadFunctionDisplayName(
+	const FunctionInfo& function)
+{
+	if (stats_)
+		++stats_->presentation_reads[
+			SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];
+	if (function.binding < program_->bindings.size())
+	{
+		const BindingRecord& binding = program_->bindings[function.binding];
+		if (binding.lambda_invocation)
+		{
+			std::size_t components = 0;
+			const std::string rendered =
+				pa22_lambda_presentation::
+					RenderLambdaInvocationEmissionName(*program_,
+						binding.lambda_invocation_owner, binding.owner,
+						&components, stats_);
+			if (stats_)
+				RecordPresentationRender(
+					SEMANTIC_PRESENTATION_DISPLAY_NAME,
+					rendered, components);
+			return program_->names.Intern(rendered);
+		}
+	}
+	NameId terminal = function.presentation_name_override;
+	if (terminal == 0 && function.binding < program_->bindings.size())
+		terminal = program_->bindings[function.binding].name;
+	return terminal == 0 ? 0 : DisplayName(function.owner, terminal);
+}
+
 const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope)
 {
 	return program_->names.Get(ScopePrefixId(scope));
@@ -49,6 +80,19 @@ NameId SemanticAnalyzer::ScopePrefixId(ScopeId scope)
 	while (current != kNoScope && current < scope_prefixes_.size() &&
 		scope_prefixes_[current] == deferred)
 	{
+		const EntityId entity = program_->EntityForScope(current);
+		if (entity != kNoEntity && entity < program_->entities.size() &&
+			program_->entities[entity].lambda_closure)
+		{
+			std::size_t components = 0;
+			const std::string base = program_->RenderEntityEmissionName(
+				entity, &components) + "::";
+			if (stats_)
+				RecordPresentationRender(
+					SEMANTIC_PRESENTATION_SCOPE_PREFIX, base, components);
+			scope_prefixes_[current] = program_->names.Intern(base);
+			break;
+		}
 		if (scope_prefix_segments_[current] != 0)
 			scope_prefix_scratch_.push_back(scope_prefix_segments_[current]);
 		current = scope_parents_[current];

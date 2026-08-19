@@ -63,25 +63,80 @@ void EmissionIdentityTable::UseDirectNames(bool enabled)
 IdentityPathId EmissionIdentityTable::InternPath(const Program& program,
 	ScopeId owner, NameId terminal)
 {
-	program.BuildEmissionPath(owner, terminal, &path_scratch_);
-	IdentityPathId path = kNoLowId;
-	for (std::size_t i = 0; i < path_scratch_.size(); ++i)
+	IdentityPathId path = InternScopePath(program, owner);
+	const IdentityPathKey key = {
+		path, InternName(program, terminal), IDENTITY_PATH_NAME };
+	return InternPathKey(key);
+}
+
+IdentityPathId EmissionIdentityTable::InternScopePath(
+	const Program& program, ScopeId owner)
+{
+	const std::size_t begin = scope_scratch_.size();
+	for (ScopeId scope = owner;
+		scope != kNoScope && scope != program.GlobalScope();
+		scope = program.ParentScope(scope))
 	{
-		const IdentityNameId name = InternName(program, path_scratch_[i]);
-		const IdentityPathKey key = { path, name };
-		path = InternPathKey(key);
+		const ScopeKind kind = program.KindOfScope(scope);
+		const EntityId entity = program.EntityForScope(scope);
+		if (kind == SCOPE_NAMESPACE || kind == SCOPE_CLASS ||
+			kind == SCOPE_ENUM ||
+			(entity != kNoEntity && entity < program.entities.size() &&
+			 program.entities[entity].lambda_closure))
+			scope_scratch_.push_back(scope);
 	}
+	const std::size_t end = scope_scratch_.size();
+	IdentityPathId path = kNoLowId;
+	for (std::size_t i = end; i != begin; --i)
+	{
+		const ScopeId scope = scope_scratch_[i - 1];
+		const EntityId entity = program.EntityForScope(scope);
+		if (entity != kNoEntity && entity < program.entities.size() &&
+			program.entities[entity].lambda_closure)
+		{
+			path = InternEntityPath(program, entity);
+			continue;
+		}
+		const NameId name = program.EmissionNameOfScope(scope);
+		if (name == 0) continue;
+		const IdentityPathKey key = {
+			path, InternName(program, name), IDENTITY_PATH_NAME };
+			path = InternPathKey(key);
+	}
+	scope_scratch_.resize(begin);
 	return path;
+}
+
+IdentityPathId EmissionIdentityTable::InternEntityPath(
+	const Program& program, EntityId entity)
+{
+	const EntityRecord& record = program.entities[entity];
+	if (!record.lambda_closure)
+		return InternPath(program, record.owner, record.identity_name);
+	IdentityPathId parent = kNoLowId;
+	if (record.local_context != kNoBinding)
+	{
+		const BindingRecord& context =
+			program.bindings[record.local_context];
+		parent = context.member_owner != kNoEntity &&
+			context.member_owner < program.entities.size() &&
+			program.entities[context.member_owner].lambda_closure ?
+			InternClassMemberPath(
+				program, context.member_owner, context.name) :
+			InternPath(program, context.owner, context.name);
+	}
+	else parent = InternScopePath(program, record.owner);
+	const IdentityPathKey key = { parent,
+		record.lambda_ordinal, IDENTITY_PATH_LAMBDA };
+	return InternPathKey(key);
 }
 
 IdentityPathId EmissionIdentityTable::InternClassMemberPath(
 	const Program& program, EntityId owner, NameId terminal)
 {
-	const EntityRecord& entity = program.entities[owner];
-	const IdentityPathId parent = InternPath(program, entity.owner,
-		entity.identity_name);
+	const IdentityPathId parent = InternEntityPath(program, owner);
 	const IdentityPathKey key = { parent,
-		InternName(program, terminal) };
+		InternName(program, terminal), IDENTITY_PATH_NAME };
 	return InternPathKey(key);
 }
 
@@ -189,6 +244,40 @@ IdentityTypeId EmissionIdentityTable::InternEntityTemplateArguments(
 	return InternTypeKey(key);
 }
 
+IdentityTypeId EmissionIdentityTable::InternLambdaContextIdentity(
+	const Program& program, EntityId entity,
+	std::vector<IdentityTypeId>& cache)
+{
+	if (entity >= program.entities.size() ||
+		!program.entities[entity].lambda_closure)
+		throw std::logic_error("lambda context identity entity is invalid");
+	const EntityRecord& lambda = program.entities[entity];
+	if (lambda.local_context == kNoBinding)
+		return kNoLowId;
+	const BindingRecord& context = program.bindings[lambda.local_context];
+	IdentityTypeKey key;
+	key.kind = TYPE_INVALID;
+	key.named = context.member_owner != kNoEntity &&
+		context.member_owner < program.entities.size() &&
+		program.entities[context.member_owner].lambda_closure ?
+		InternClassMemberPath(
+			program, context.member_owner, context.name) :
+		InternPath(program, context.owner, context.name);
+	key.child = InternFunctionSignature(program, context.type, cache);
+	const IdentityTypeId arguments =
+		InternBindingTemplateArguments(program, context, cache);
+	if (arguments != kNoLowId) key.parameters.push_back(arguments);
+	if (context.member_owner != kNoEntity &&
+		context.member_owner < program.entities.size() &&
+		program.entities[context.member_owner].lambda_closure)
+	{
+		const IdentityTypeId outer = InternLambdaContextIdentity(
+			program, context.member_owner, cache);
+		if (outer != kNoLowId) key.parameters.push_back(outer);
+	}
+	return InternTypeKey(key);
+}
+
 std::size_t EmissionIdentityTable::StorageBytes() const
 {
 	std::size_t bytes = names_.StorageBytes() +
@@ -198,7 +287,17 @@ std::size_t EmissionIdentityTable::StorageBytes() const
 		type_slots_.capacity() * sizeof(IdentityTypeId);
 	for (std::size_t i = 0; i < type_records_.size(); ++i)
 		bytes += type_records_[i].parameters.capacity() * sizeof(IdentityTypeId);
-	return bytes + path_scratch_.capacity() * sizeof(NameId);
+	return bytes + scope_scratch_.capacity() * sizeof(ScopeId);
+}
+
+std::size_t EmissionIdentityTable::PathCount() const
+{
+	return path_records_.size();
+}
+
+std::size_t EmissionIdentityTable::TypeCount() const
+{
+	return type_records_.size();
 }
 
 IdentityNameId EmissionIdentityTable::InternName(const Program& program,
@@ -235,8 +334,9 @@ void EmissionIdentityTable::PushTypeDependencies(const Program& program,
 		const EntityRecord& entity = program.entities[source.entity];
 		if (entity.local_context != kNoBinding)
 		{
-			const TypeId context_type =
-				program.bindings[entity.local_context].type;
+			const BindingRecord& context_binding =
+				program.bindings[entity.local_context];
+			const TypeId context_type = context_binding.type;
 			const TypeRecord& context = program.types.Get(context_type);
 			if (context.kind != TYPE_FUNCTION)
 				throw std::logic_error(
@@ -244,6 +344,51 @@ void EmissionIdentityTable::PushTypeDependencies(const Program& program,
 			const TypeId* parameters = program.types.Parameters(context_type);
 			for (std::size_t i = 0; i < context.parameter_count; ++i)
 				PushDependency(parameters[i], cache, pending);
+			if (entity.lambda_closure)
+			{
+				const std::size_t first =
+					context_binding.template_argument_begin;
+				const std::size_t count =
+					context_binding.template_argument_count;
+				if (first > program.template_arguments.size() ||
+					count > program.template_arguments.size() - first)
+					throw std::logic_error(
+						"lambda context argument range is invalid");
+				for (std::size_t i = 0; i < count; ++i)
+					PushDependency(
+						program.template_arguments[first + i], cache, pending);
+				EntityId outer = context_binding.member_owner;
+				while (outer != kNoEntity &&
+					outer < program.entities.size() &&
+					program.entities[outer].lambda_closure)
+				{
+					const EntityRecord& outer_lambda = program.entities[outer];
+					if (outer_lambda.local_context == kNoBinding) break;
+					const BindingRecord& outer_context =
+						program.bindings[outer_lambda.local_context];
+					const TypeRecord& outer_type =
+						program.types.Get(outer_context.type);
+					const TypeId* outer_parameters =
+						program.types.Parameters(outer_context.type);
+					for (std::size_t i = 0;
+						i < outer_type.parameter_count; ++i)
+						PushDependency(
+							outer_parameters[i], cache, pending);
+					const std::size_t outer_first =
+						outer_context.template_argument_begin;
+					const std::size_t outer_count =
+						outer_context.template_argument_count;
+					if (outer_first > program.template_arguments.size() ||
+						outer_count >
+							program.template_arguments.size() - outer_first)
+						throw std::logic_error(
+							"outer lambda context argument range is invalid");
+					for (std::size_t i = 0; i < outer_count; ++i)
+						PushDependency(program.template_arguments[
+							outer_first + i], cache, pending);
+					outer = outer_context.member_owner;
+				}
+			}
 		}
 		const std::size_t first = entity.template_argument_begin;
 		const std::size_t count = entity.template_argument_count;
@@ -277,15 +422,24 @@ IdentityTypeKey EmissionIdentityTable::MakeTypeKey(const Program& program,
 	if (source.kind == TYPE_NAMED || source.kind == TYPE_MEMBER_POINTER)
 	{
 		const EntityRecord& entity = program.entities[source.entity];
-		key.named = InternPath(program, entity.owner, entity.identity_name);
+		key.named = InternEntityPath(program, source.entity);
 		if (entity.local_context != kNoBinding)
 		{
 			const BindingRecord& context =
 				program.bindings[entity.local_context];
-			key.local_context = InternPath(program, context.owner, context.name);
+			key.local_context = context.member_owner != kNoEntity &&
+				context.member_owner < program.entities.size() &&
+				program.entities[context.member_owner].lambda_closure ?
+				InternClassMemberPath(
+					program, context.member_owner, context.name) :
+				InternPath(program, context.owner, context.name);
 			key.local_context_signature =
 				InternFunctionSignature(program, context.type, cache);
-			key.local_ordinal = entity.local_name_ordinal;
+			key.local_ordinal = entity.lambda_closure ?
+				entity.lambda_ordinal : entity.local_name_ordinal;
+			if (entity.lambda_closure)
+				key.parameters.push_back(InternLambdaContextIdentity(
+					program, source.entity, cache));
 		}
 		const std::size_t first = entity.template_argument_begin;
 		for (std::size_t i = 0; i < entity.template_argument_count; ++i)

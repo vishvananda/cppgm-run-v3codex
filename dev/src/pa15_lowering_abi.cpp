@@ -3,6 +3,7 @@
 #include "abi_mangle.h"
 #include "pa15_lowir_model.h"
 #include "pa18_polymorphism_lowering.h"
+#include "pa22_lambda_presentation.h"
 
 #include <limits>
 #include <memory>
@@ -541,6 +542,37 @@ class AbiFactBuilder
 		return context_->resolve_external_name(name, program_.names.Get(name));
 	}
 
+	std::size_t ResolveScopePath(pa11::ScopeId owner)
+	{
+		program_.BuildEmissionPath(owner, 0, &semantic_path_scratch_);
+		if (!semantic_path_scratch_.empty())
+			semantic_path_scratch_.pop_back();
+		if (semantic_path_scratch_.empty())
+			return abi_mangle::ABI_NO_RESOLVED_REFERENCE;
+		return ResolvePath(semantic_path_scratch_, 0,
+			semantic_path_scratch_.size());
+	}
+
+	std::size_t ResolveGeneratedPath(pa11::ScopeId owner,
+		const std::string& terminal)
+	{
+		program_.BuildEmissionPath(owner, 0, &semantic_path_scratch_);
+		if (!semantic_path_scratch_.empty())
+			semantic_path_scratch_.pop_back();
+		resolved_path_scratch_.clear();
+		resolved_path_scratch_.reserve(semantic_path_scratch_.size() + 1);
+		for (std::size_t i = 0; i < semantic_path_scratch_.size(); ++i)
+		{
+			const pa11::NameId name = semantic_path_scratch_[i];
+			resolved_path_scratch_.push_back(
+				context_->resolve_external_name(
+					name, program_.names.Get(name)));
+		}
+		resolved_path_scratch_.push_back(
+			context_->resolve_generated_name(terminal));
+		return context_->resolve_path(resolved_path_scratch_);
+	}
+
 	void AppendTypeAbiTags(abi_mangle::AbiType* destination,
 		std::uint32_t begin, std::uint32_t count)
 	{
@@ -581,6 +613,28 @@ public:
 		target->resolved_path = ResolvePath(owner, terminal);
 	}
 
+	void SetGeneratedPath(abi_mangle::AbiFunctionTarget* target,
+		pa11::ScopeId owner, const std::string& terminal)
+	{
+		target->resolved_path = ResolveGeneratedPath(owner, terminal);
+	}
+
+	void SetNamespaceLambda(abi_mangle::AbiFunctionTarget* target,
+		pa11::ScopeId owner, std::uint32_t ordinal)
+	{
+		target->resolved_path = ResolveScopePath(owner);
+		target->resolved_context_identity = ordinal;
+	}
+
+	void SetNamespaceLambda(abi_mangle::AbiType* type,
+		pa11::ScopeId owner, std::uint32_t ordinal)
+	{
+		const std::size_t path = ResolveScopePath(owner);
+		type->index = path == abi_mangle::ABI_NO_RESOLVED_REFERENCE ?
+			0 : path + 1;
+		type->resolved_expression = ordinal;
+	}
+
 	void SetPath(abi_mangle::AbiFunctionTarget* target,
 		const std::vector<pa11::NameId>& path)
 	{
@@ -603,6 +657,12 @@ public:
 		pa11::NameId name)
 	{
 		target->type.index = ResolveName(name) + 1;
+	}
+
+	void SetGeneratedLocalSourceName(abi_mangle::AbiFunctionRecord* target,
+		const std::string& name)
+	{
+		target->type.index = context_->resolve_generated_name(name) + 1;
 	}
 
 	void AppendNameComponent(abi_mangle::AbiFunctionRecord* target,
@@ -999,14 +1059,9 @@ public:
 				}
 				else
 				{
-					std::vector<NameId> path;
-					program_.BuildEmissionPath(
-						owner.owner, owner.identity_name, &path);
-					if (path.empty())
-						throw std::logic_error(
-							"namespace lambda ABI context has no identity path");
 					target.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
-					SetPath(&target, path);
+					SetNamespaceLambda(
+						&target, owner.owner, owner.lambda_ordinal);
 				}
 				target.terminal_code = ABI_TERMINAL_CALL;
 				if ((type.cv & CV_CONST) != 0)
@@ -1838,14 +1893,9 @@ public:
 				}
 				else
 				{
-					std::vector<NameId> path;
-					program_.BuildEmissionPath(
-						entity.owner, entity.identity_name, &path);
-					if (path.empty())
-						throw std::logic_error(
-							"namespace lambda ABI type has no identity path");
 					result.kind = ABI_TYPE_NAMESPACE_LAMBDA;
-					result.index = ResolvePath(path, 0, path.size()) + 1;
+					SetNamespaceLambda(
+						&result, entity.owner, entity.lambda_ordinal);
 				}
 			}
 			else if (entity.local_context != kNoBinding)
@@ -2380,13 +2430,9 @@ std::string MangleLambdaCallOperator(const pa11::Program& program,
 	}
 	else
 	{
-		std::vector<NameId> path;
-		program.BuildEmissionPath(lambda.owner, lambda.identity_name, &path);
-		if (path.empty())
-			throw std::logic_error(
-				"namespace lambda call operator has no identity path");
 		function.kind = ABI_FUNCTION_TARGET_NAMESPACE_LAMBDA;
-		facts.SetPath(&function, path);
+		facts.SetNamespaceLambda(
+			&function, lambda.owner, lambda.lambda_ordinal);
 	}
 	function.terminal_code = ABI_TERMINAL_CALL;
 	const TypeRecord& lambda_type = program.types.Get(binding.type);
@@ -2438,14 +2484,46 @@ void AppendLocalFunctionOwner(const pa11::Program& program,
 	local.function.kind = ABI_FUNCTION_RECORD_LOCAL_CONTEXT;
 	AbiFactBuilder::AssignLocalContext(&local.function,
 		facts->AddLocalContext(owner.local_context));
-	if (!owner.unnamed_class)
+	if (owner.lambda_closure)
+		facts->SetGeneratedLocalSourceName(&local.function,
+			pa22_lambda_presentation::RenderLambdaEntityTerminal(
+				program, binding.member_owner));
+	else if (!owner.unnamed_class)
 		facts->SetLocalSourceName(&local.function, owner.identity_name);
 	local.function.local_presentation =
 		ABI_LOCAL_PRESENTATION_NAME_ORDINAL;
-	local.function.type.resolved_expression = owner.local_name_ordinal;
+	local.function.type.resolved_expression = owner.lambda_closure ? 0 :
+		owner.local_name_ordinal;
 	local.function.discriminator_after_terminal = !owner.unnamed_class;
 	AppendTypedFact(fact_case, &local);
 	AppendComponentAbiTagFacts(program, owner, context, fact_case);
+}
+
+void AppendMemberFunctionQualifiers(const pa11::Program& program,
+	const pa11::BindingRecord& binding, bool member,
+	abi_mangle::AbiTypedCase* fact_case)
+{
+	using namespace abi_mangle;
+	using namespace pa11;
+	if (!member) return;
+	const TypeRecord& declared_type = program.types.Get(binding.type);
+	AbiFactRecord qualifier;
+	qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
+	qualifier.function.kind = ABI_FUNCTION_RECORD_QUALIFIER;
+	if ((declared_type.cv & CV_CONST) != 0)
+		qualifier.function.qualifiers.push_back(
+			ABI_FUNCTION_QUALIFIER_CONST);
+	if ((declared_type.cv & CV_VOLATILE) != 0)
+		qualifier.function.qualifiers.push_back(
+			ABI_FUNCTION_QUALIFIER_VOLATILE);
+	if (declared_type.ref_qualifier == FUNCTION_REF_LVALUE)
+		qualifier.function.qualifiers.push_back(
+			ABI_FUNCTION_QUALIFIER_LVALUE_REFERENCE);
+	else if (declared_type.ref_qualifier == FUNCTION_REF_RVALUE)
+		qualifier.function.qualifiers.push_back(
+			ABI_FUNCTION_QUALIFIER_RVALUE_REFERENCE);
+	if (!qualifier.function.qualifiers.empty())
+		AppendTypedFact(fact_case, &qualifier);
 }
 
 std::string MangleFunction(const pa11::Program& program,
@@ -2535,7 +2613,14 @@ std::string MangleFunction(const pa11::Program& program,
 		ABI_FUNCTION_TARGET_ENCODING : typed_class_owner ?
 			ABI_FUNCTION_TARGET_MEMBER : ABI_FUNCTION_TARGET_PATH;
 	if (!structured_owner)
-		facts.SetPath(&target.target.function, binding.owner, binding.name);
+	{
+		if (binding.lambda_invocation)
+			facts.SetGeneratedPath(&target.target.function, binding.owner,
+				pa22_lambda_presentation::RenderLambdaEntityTerminal(
+					program, binding.lambda_invocation_owner));
+		else facts.SetPath(
+			&target.target.function, binding.owner, binding.name);
+	}
 	if (typed_class_owner)
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];
@@ -2555,27 +2640,7 @@ std::string MangleFunction(const pa11::Program& program,
 	AppendFunctionTemplateArgumentsAndResult(program, binding, function_type,
 		recipe, &facts, &fact_case);
 	const bool member = binding.member_owner != kNoEntity && !binding.static_member_function;
-	if (member)
-	{
-		const TypeRecord& declared_type = program.types.Get(binding.type);
-		AbiFactRecord qualifier;
-		qualifier.set_kind(ABI_FACT_RECORD_FUNCTION);
-		qualifier.function.kind = ABI_FUNCTION_RECORD_QUALIFIER;
-		if ((declared_type.cv & CV_CONST) != 0)
-			qualifier.function.qualifiers.push_back(
-				ABI_FUNCTION_QUALIFIER_CONST);
-		if ((declared_type.cv & CV_VOLATILE) != 0)
-			qualifier.function.qualifiers.push_back(
-				ABI_FUNCTION_QUALIFIER_VOLATILE);
-		if (declared_type.ref_qualifier == FUNCTION_REF_LVALUE)
-			qualifier.function.qualifiers.push_back(
-				ABI_FUNCTION_QUALIFIER_LVALUE_REFERENCE);
-		else if (declared_type.ref_qualifier == FUNCTION_REF_RVALUE)
-			qualifier.function.qualifiers.push_back(
-				ABI_FUNCTION_QUALIFIER_RVALUE_REFERENCE);
-		if (!qualifier.function.qualifiers.empty())
-			AppendTypedFact(&fact_case, &qualifier);
-	}
+	AppendMemberFunctionQualifiers(program, binding, member, &fact_case);
 	const AbiTerminalKind operator_terminal =
 		OperatorTerminal(binding.operator_kind, member,
 			program.types.Get(binding.type).parameter_count);

@@ -362,6 +362,36 @@ public:
     return result;
   }
 
+  static void classify_resolved_type_name(const AbiType & source,
+                                           bool * path,
+                                           bool * source_name,
+                                           bool * namespace_path)
+  {
+    *path = false;
+    *source_name = false;
+    *namespace_path = false;
+    if(!source.name.empty() || (source.index == 0 &&
+       (source.kind != ABI_TYPE_NAMESPACE_LAMBDA ||
+        source.resolved_expression == ABI_NO_RESOLVED_REFERENCE))) return;
+    switch(source.kind) {
+      case ABI_TYPE_NAMED:
+      case ABI_TYPE_TEMPLATE_SPECIALIZATION:
+      case ABI_TYPE_STD_TEMPLATE_SPECIALIZATION:
+        *path = true;
+        break;
+      case ABI_TYPE_MEMBER:
+      case ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION:
+      case ABI_TYPE_LOCAL_TYPE:
+      case ABI_TYPE_BUILTIN_TRANSFORM:
+        *source_name = true;
+        break;
+      case ABI_TYPE_NAMESPACE_LAMBDA:
+        *namespace_path = true;
+        break;
+      default: break;
+    }
+  }
+
   size_t resolve_type_core(const AbiType & source)
   {
     if(source.kind == ABI_TYPE_NAME_OR_REFERENCE) {
@@ -398,25 +428,9 @@ public:
     bool resolved_path = false;
     bool resolved_source_name = false;
     bool resolved_namespace_path = false;
-    if(source.name.empty() && source.index != 0) {
-      switch(source.kind) {
-        case ABI_TYPE_NAMED:
-        case ABI_TYPE_TEMPLATE_SPECIALIZATION:
-        case ABI_TYPE_STD_TEMPLATE_SPECIALIZATION:
-          resolved_path = true;
-          break;
-        case ABI_TYPE_MEMBER:
-        case ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION:
-        case ABI_TYPE_LOCAL_TYPE:
-        case ABI_TYPE_BUILTIN_TRANSFORM:
-          resolved_source_name = true;
-          break;
-        case ABI_TYPE_NAMESPACE_LAMBDA:
-          resolved_namespace_path = true;
-          break;
-        default: break;
-      }
-    }
+    classify_resolved_type_name(source, &resolved_path,
+                                &resolved_source_name,
+                                &resolved_namespace_path);
     const bool source_name_type = source.kind == ABI_TYPE_BUILTIN_TRANSFORM ||
       source.kind == ABI_TYPE_MEMBER ||
       source.kind == ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION ||
@@ -457,7 +471,7 @@ public:
               !(source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION &&
                 standard_substitution != ABI_STANDARD_SUBSTITUTION_TEXT))
         node.symbol = strings.intern(source.name);
-      if(resolved_namespace_path)
+      if(resolved_namespace_path && source.index != 0)
         node.path = checked_path(source.index - 1);
       if((source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
           || source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION)
@@ -490,7 +504,10 @@ public:
         require(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE,
                 "typed local ABI presentation has no ordinal");
         node.discriminator = source.resolved_expression;
-      } else if(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE)
+      } else if(source.kind == ABI_TYPE_NAMESPACE_LAMBDA &&
+                source.resolved_expression != ABI_NO_RESOLVED_REFERENCE)
+        node.index = source.resolved_expression;
+      else if(source.resolved_expression != ABI_NO_RESOLVED_REFERENCE)
         node.expression = checked_expression(source.resolved_expression);
       else if(!source.expression_ref.empty())
         node.expression = resolve_expression_ref(source.expression_ref);
@@ -1496,13 +1513,12 @@ private:
         encode_local_type(type);
         return;
       case ABI_TYPE_NAMESPACE_LAMBDA: {
-        if(type.path != NO_ID) {
-          encode_component_name(
-            graph_.paths.components(type.path), vector<size_t>());
-          return;
-        }
-        vector<size_t> components = type.namespaces;
-        components.push_back(type.symbol);
+        vector<size_t> components = type.path != NO_ID ?
+          graph_.paths.components(type.path) : type.namespaces;
+        if(type.path != NO_ID || type.symbol == NO_ID)
+          components.push_back(
+            graph_.strings.intern("$_" + std::to_string(type.index)));
+        else components.push_back(type.symbol);
         encode_component_name(components, vector<size_t>());
         return;
       }
@@ -2468,6 +2484,9 @@ private:
       ABI_NO_RESOLVED_REFERENCE ?
       graph_.paths.components(graph_.path(target.resolved_path)) :
       vector<size_t>();
+    if(target.resolved_context_identity != ABI_NO_RESOLVED_REFERENCE)
+      components.push_back(graph_.strings.intern(
+        "$_" + std::to_string(target.resolved_context_identity)));
     if(components.empty()) {
       for(const string & name : target.namespace_qualifiers)
         components.push_back(graph_.strings.intern(name));
@@ -2842,6 +2861,11 @@ size_t AbiMangleContext::resolve_external_name(size_t source,
   size_t & resolved = impl_->external_names[source];
   if(resolved == NO_ID) resolved = impl_->graph.strings.intern(spelling);
   return resolved;
+}
+
+size_t AbiMangleContext::resolve_generated_name(const string & spelling)
+{
+  return impl_->graph.strings.intern(spelling);
 }
 
 size_t AbiMangleContext::resolve_path(const vector<size_t> & components)

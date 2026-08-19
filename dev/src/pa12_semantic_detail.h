@@ -264,16 +264,7 @@ private:
 		stats_->presentation_render_components[family] += components;
 		stats_->presentation_render_bytes[family] += rendered.size();
 	}
-	NameId ReadFunctionDisplayName(const FunctionInfo& function)
-	{
-		if (stats_)
-			++stats_->presentation_reads[
-				SEMANTIC_PRESENTATION_READ_FUNCTION_DISPLAY];
-		NameId terminal = function.presentation_name_override;
-		if (terminal == 0 && function.binding < program_->bindings.size())
-			terminal = program_->bindings[function.binding].name;
-		return terminal == 0 ? 0 : DisplayName(function.owner, terminal);
-	}
+	NameId ReadFunctionDisplayName(const FunctionInfo& function);
 	ScopeId NewScope(ScopeId parent, ScopeKind kind, NameId name,
 		NameId prefix);
 	ScopeId NewNamedScope(ScopeId parent, ScopeKind kind, NameId lookup_name,
@@ -646,7 +637,8 @@ private:
 		bool template_specialization = false,
 		StorageClass storage_class = STORAGE_CLASS_NONE,
 		LanguageLinkage language_linkage = LANGUAGE_LINKAGE_CPP,
-		bool nonthrowing = false, bool ordinary_visible = true);
+		bool nonthrowing = false, bool ordinary_visible = true,
+		bool private_unique = false);
 	void MergeFunctionRedeclarationParameters(FunctionInfo* function,
 		const std::vector<ParameterInfo>& parameters, bool definition);
 	void AnalyzeFriendFunction(NodeId node, ScopeId class_scope,

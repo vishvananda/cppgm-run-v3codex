@@ -2566,24 +2566,20 @@ void SemanticAnalyzer::EmitDefaultConstructor(EntityId entity)
 		default_constructor_demand_states_[entity] != 1) return;
 	default_constructor_demand_states_[entity] = 2;
 	const EntityRecord& record = program_->entities[entity];
-	if (record.emission_name_form == ENTITY_EMISSION_RENDERED)
-		throw std::logic_error(
-			"default constructor requires typed entity emission identity");
 	const TypeId type = record.type;
 	std::size_t components = 0;
-	const std::string owner =
-		program_->RenderEntityEmissionName(entity, &components);
+	const std::string name = program_->RenderEmissionName(
+		record.member_scope, record.identity_name, &components);
 	if (stats_)
 		RecordPresentationRender(
-			SEMANTIC_PRESENTATION_EMISSION_NAME, owner, components);
-	const NameId name = program_->names.Intern(
-		owner + "::" + program_->names.Get(record.emission_name));
+			SEMANTIC_PRESENTATION_EMISSION_NAME, name, components);
+	const NameId name_id = program_->names.Intern(name);
 	const TypeId this_type = program_->types.Pointer(type);
 	std::vector<TypeId> parameters(1, this_type);
 	const TypeId function_type = program_->types.Function(
 		program_->types.Fundamental(FUND_VOID), parameters, false);
 	const std::uint32_t function = MakeDump(DUMP_FUNCTION_DEFINITION,
-		function_type, VALUE_NONE, name);
+		function_type, VALUE_NONE, name_id);
 	const std::uint32_t parameter = MakeDump(DUMP_PARAMETER, this_type,
 		VALUE_NONE, program_->names.Intern("this"));
 	const std::uint32_t body = MakeDump(DUMP_COMPOUND_STATEMENT);

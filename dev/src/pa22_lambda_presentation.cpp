@@ -1,9 +1,9 @@
 #include "pa22_lambda_presentation.h"
 
 #include "pa12_semantic_model.h"
+#include "pa12_semantic.h"
 
 #include <cctype>
-#include <sstream>
 #include <stdexcept>
 
 namespace cppgm
@@ -86,11 +86,144 @@ std::string RenderLambdaIdentityComponent(const pa11::Program& program,
 	std::size_t token_last, std::uint32_t ordinal,
 	SemanticAnalysisStats* stats)
 {
-	std::ostringstream result;
-	result << "__lambda_" << LambdaContextIdentity(program, context, stats)
-		<< "_t" << token_first << '_' << token_last;
-	if (ordinal != 0) result << "_n" << ordinal;
-	return result.str();
+	const std::string context_name =
+		LambdaContextIdentity(program, context, stats);
+	std::string result;
+	result.reserve(context_name.size() + 48);
+	result = "__lambda_";
+	result += context_name;
+	result += "_t";
+	result += std::to_string(token_first);
+	result += '_';
+	result += std::to_string(token_last);
+	if (ordinal != 0)
+	{
+		result += "_n";
+		result += std::to_string(ordinal);
+	}
+	return result;
+}
+
+namespace
+{
+
+const pa11::EntityRecord& LambdaEntity(const pa11::Program& program,
+	pa11::EntityId entity)
+{
+	if (entity >= program.entities.size() ||
+		!program.entities[entity].lambda_closure)
+		throw std::logic_error("lambda presentation entity is invalid");
+	const pa11::EntityRecord& record = program.entities[entity];
+	if (record.emission_name_form != pa11::ENTITY_EMISSION_LAMBDA)
+		throw std::logic_error("lambda presentation form is invalid");
+	return record;
+}
+
+std::string RenderWithOwner(const pa11::Program& program,
+	pa11::ScopeId owner, const std::string& terminal,
+	std::size_t* components)
+{
+	using namespace pa11;
+	const EntityId owner_entity = owner == kNoScope ? kNoEntity :
+		program.EntityForScope(owner);
+	std::string result;
+	std::size_t count = 0;
+	if (owner_entity != kNoEntity && owner_entity < program.entities.size() &&
+		program.entities[owner_entity].lambda_closure)
+	{
+		result = RenderLambdaEntityEmissionName(
+			program, owner_entity, &count);
+	}
+	else
+	{
+		std::vector<NameId> path;
+		program.BuildEmissionPath(owner, 0, &path);
+		if (!path.empty()) path.pop_back();
+		count = path.size();
+		for (std::size_t i = 0; i < path.size(); ++i)
+		{
+			if (i != 0) result += "::";
+			result += program.names.Get(path[i]);
+		}
+	}
+	if (!result.empty()) result += "::";
+	result += terminal;
+	if (components) *components = count + 1;
+	return result;
+}
+
+}
+
+std::string RenderLambdaEntityTerminal(const pa11::Program& program,
+	pa11::EntityId entity, SemanticAnalysisStats* stats)
+{
+	using namespace pa11;
+	const EntityRecord& record = LambdaEntity(program, entity);
+	std::string result;
+	if (record.local_context == kNoBinding)
+		result = "__" + std::to_string(record.lambda_ordinal);
+	else result = RenderLambdaIdentityComponent(program, record.local_context,
+		record.lambda_token_first, record.lambda_token_last,
+		record.lambda_ordinal, stats);
+	if (stats)
+	{
+		++stats->presentation_renders[
+			SEMANTIC_PRESENTATION_LAMBDA_IDENTITY];
+		stats->presentation_render_components[
+			SEMANTIC_PRESENTATION_LAMBDA_IDENTITY] +=
+			record.local_context == kNoBinding ? 1 : 4;
+		stats->presentation_render_bytes[
+			SEMANTIC_PRESENTATION_LAMBDA_IDENTITY] += result.size();
+	}
+	return result;
+}
+
+std::string RenderLambdaEntityEmissionName(const pa11::Program& program,
+	pa11::EntityId entity, std::size_t* components,
+	SemanticAnalysisStats* stats)
+{
+	using namespace pa11;
+	const EntityRecord& record = LambdaEntity(program, entity);
+	const ScopeId owner = record.local_context == kNoBinding ? record.owner :
+		program.bindings.at(record.local_context).owner;
+	return RenderWithOwner(program, owner,
+		RenderLambdaEntityTerminal(program, entity, stats), components);
+}
+
+std::string RenderLambdaMemberTerminal(const pa11::Program& program,
+	pa11::EntityId entity, pa11::NameId terminal,
+	SemanticAnalysisStats* stats)
+{
+	const pa11::EntityRecord& record = LambdaEntity(program, entity);
+	const std::string& spelling = program.names.Get(terminal);
+	if (terminal == record.identity_name)
+		return RenderLambdaEntityTerminal(program, entity, stats);
+	const std::string& identity = program.names.Get(record.identity_name);
+	if (spelling.size() == identity.size() + 1 && spelling[0] == '~' &&
+		spelling.compare(1, identity.size(), identity) == 0)
+		return "~" + RenderLambdaEntityTerminal(program, entity, stats);
+	return spelling;
+}
+
+std::string RenderLambdaInvocationEmissionName(const pa11::Program& program,
+	pa11::EntityId entity, pa11::ScopeId owner, std::size_t* components,
+	SemanticAnalysisStats* stats)
+{
+	(void)LambdaEntity(program, entity);
+	return RenderWithOwner(program, owner,
+		RenderLambdaEntityTerminal(program, entity, stats), components);
+}
+
+std::string RenderLambdaSourceIdentityName(const pa11::Program& program,
+	pa11::EntityId entity, std::size_t* components,
+	SemanticAnalysisStats* stats)
+{
+	using namespace pa11;
+	const EntityRecord& record = LambdaEntity(program, entity);
+	const std::string terminal = record.local_context == kNoBinding ?
+		"$_" + std::to_string(record.lambda_ordinal) :
+		RenderLambdaEntityTerminal(program, entity, stats);
+	return RenderWithOwner(program, record.owner, terminal, components);
 }
 
 }

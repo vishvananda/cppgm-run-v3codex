@@ -442,7 +442,7 @@ enum EntityEmissionNameForm : std::uint8_t
 {
 	ENTITY_EMISSION_TERMINAL,
 	ENTITY_EMISSION_OWNER_QUALIFIED,
-	ENTITY_EMISSION_RENDERED
+	ENTITY_EMISSION_LAMBDA
 };
 
 struct EntityRecord
@@ -480,8 +480,17 @@ struct EntityRecord
 	bool explicit_template_specialization;
 	bool class_template_presentation;
 	bool unnamed_class, lambda_closure;
-	std::uint32_t local_name_ordinal, lambda_ordinal, lambda_capture_count;
-	std::uint32_t template_parameter_ordinal;
+	union
+	{
+		std::uint32_t local_name_ordinal;
+		std::uint32_t lambda_token_first;
+	};
+	std::uint32_t lambda_ordinal, lambda_capture_count;
+	union
+	{
+		std::uint32_t template_parameter_ordinal;
+		std::uint32_t lambda_token_last;
+	};
 
 	EntityRecord();
 };
@@ -649,7 +658,12 @@ struct BindingRecord
 	TypeId type, conversion_target;
 	BindingId next;
 	EntityId member_owner, access_owner;
-	std::uint32_t overload_ordinal, layout_fact;
+	std::uint32_t overload_ordinal;
+	union
+	{
+		std::uint32_t layout_fact;
+		EntityId lambda_invocation_owner;
+	};
 	TemplateArgumentListId template_argument_list;
 	std::uint32_t template_argument_begin, template_argument_count;
 	std::uint32_t abi_tag_begin, abi_tag_count;
@@ -692,6 +706,7 @@ struct BindingRecord
 	// the same class entity.
 	bool force_indirect_class_result_abi : 1;
 	bool closure_template_specialization : 1;
+	bool lambda_invocation : 1;
 
 	BindingRecord();
 };
@@ -835,6 +850,7 @@ public:
 	bool IsStandardNamespace(ScopeId scope) const;
 	bool IsInStandardNamespace(ScopeId scope) const;
 	NameId NameOfScope(ScopeId scope) const;
+	NameId EmissionNameOfScope(ScopeId scope) const;
 	EntityId EntityForScope(ScopeId scope) const;
 	std::size_t SizeOf(TypeId type) const;
 	std::size_t AlignOf(TypeId type) const;

@@ -1,5 +1,7 @@
 #include "pa34_source_identity.h"
 
+#include "pa22_lambda_presentation.h"
+
 #include <algorithm>
 #include <stdexcept>
 #include <string>
@@ -79,6 +81,9 @@ std::string RenderEntityAt(const Program& program, EntityId entity,
 	if (depth > program.entities.size() + program.types.Size())
 		throw std::logic_error("source identity entity graph is cyclic");
 	const EntityRecord& record = program.entities[entity];
+	if (record.lambda_closure)
+		return pa22_lambda_presentation::RenderLambdaSourceIdentityName(
+			program, entity);
 	std::string result;
 	if (record.enclosing_class != kNoEntity)
 		result = RenderEntityAt(program, record.enclosing_class, depth + 1);

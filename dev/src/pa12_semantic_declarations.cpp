@@ -2242,11 +2242,15 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	TypeId type, const std::vector<ParameterInfo>& parameters, bool definition,
 	bool template_specialization, StorageClass storage_class,
 	LanguageLinkage language_linkage, bool nonthrowing,
-	bool ordinary_visible)
+	bool ordinary_visible, bool private_unique)
 {
+	if (private_unique && ordinary_visible)
+		throw std::logic_error(
+			"private unique function cannot be ordinary-visible");
 	if (HasInternalLinkageScope(owner)) storage_class = STORAGE_CLASS_STATIC;
-	const LookupResult occupied =
-		program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
+	LookupResult occupied;
+	if (!private_unique)
+		occupied = program_->LookupDirect(owner, name, LOOKUP_ORDINARY);
 	const EntityId owner_entity = program_->EntityForScope(owner);
 	const bool synthesized_constructor_name = !ordinary_visible &&
 		owner_entity != kNoEntity &&
@@ -2279,7 +2283,7 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	const FunctionSignatureKey signature_key(owner, name, signature);
 	BindingId previous = kNoBinding;
 	BindingId imported = kNoBinding;
-	if (!template_specialization)
+	if (!template_specialization && !private_unique)
 	{
 		++function_signature_lookups_;
 		previous = function_declarations_.Find(signature_key);
@@ -2293,7 +2297,8 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	const bool was_ordinary_visible = previous != kNoBinding &&
 		GetFunction(previous).ordinary_visible;
 	const std::uint64_t key = (static_cast<std::uint64_t>(owner) << 32) | name;
-	CompactIndexSequence& overloads = function_sets_.Ensure(key);
+	CompactIndexSequence* overloads = private_unique ? 0 :
+		&function_sets_.Ensure(key);
 	BindingId canonical = kNoBinding;
 	if (previous != kNoBinding)
 	{
@@ -2344,10 +2349,14 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 		function_fact_by_binding_[declaration] =
 			static_cast<std::uint32_t>(functions_.size());
 		functions_.push_back(info);
-		overloads.Push(declaration);
-		program_->bindings[declaration].overload_ordinal =
-			static_cast<std::uint32_t>(overloads.Size());
-		if (!template_specialization)
+		if (overloads)
+		{
+			overloads->Push(declaration);
+			program_->bindings[declaration].overload_ordinal =
+				static_cast<std::uint32_t>(overloads->Size());
+		}
+		else program_->bindings[declaration].overload_ordinal = 1;
+		if (!template_specialization && !private_unique)
 			function_declarations_.Insert(signature_key, declaration);
 		canonical = declaration;
 	}
