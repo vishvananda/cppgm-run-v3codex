@@ -395,7 +395,7 @@ producer-to-consumer tracing decide whether a candidate is production work.
 
 | Package | Fact currently transported or recovered as text | Replacement and ownership | Required closeout evidence |
 | --- | --- | --- | --- |
-| T4c1 class-specialization presentation | PA19 renders and interns a sanitized specialization name even though the entity already owns its primary `NameId` and canonical template-argument slice.  PA15 then builds an eager terminal replacement map from `EntityRecord::presentation_name`. | Make the PA19 renderer a presentation responsibility.  Mark entities whose exact external presentation differs, retain only primary/entity/argument IDs, and have PA15 render lazily for a consumer that needs the replacement.  Any memoization is indexed by `EntityId`, allocated only in the presentation consumer, and does not become semantic identity. | Frozen specialization renders, retained values/bytes, map construction, lazy reads, interner work, `EntityRecord` size, exact semantic/LowIR/MIR/object output, PA19 owner and through report, selected template/lowering reports, full report, audit, and screened A/B timing. |
+| T4c1 class-specialization presentation | PA19 rendered and interned a sanitized specialization name even though the entity already owned its primary `NameId` and canonical template-argument slice.  PA15 then built an eager terminal replacement map from `EntityRecord::presentation_name`. | Make the PA19 renderer a presentation responsibility.  Mark entities whose exact external presentation differs, retain only primary/entity/argument IDs, and have PA15 render lazily for a consumer that needs the replacement.  Any memoization is indexed by `EntityId`, allocated only in the presentation consumer, and does not become semantic identity. | Complete at `563000b5` after the `5616a8e3` renderer split: zero retained entity presentation values/bytes, lazy typed reconstruction, unchanged `EntityRecord` size, exact semantic/LowIR/MIR/object output, PA19 owner and through reports, full report, zero-fatal audit, and screened A/B timing recorded in section 9.8. |
 | T4c2 lambda presentation | PA22 constructed a sanitized lambda component from rendered enclosing context and source ordinals, then stored the result under the exceptional rendered entity-emission form. | Carry namespace/local context, canonical enclosing signature and template arguments, recursive outer-lambda context, and ordinal as semantic identity.  Retain the token range as typed source-presentation input, not as cross-source canonical equality.  Derive text only for a semantic dump, source-identity builtin, ABI name, or final object consumer.  Do not add a string-keyed lambda cache. | Complete at `62c26eb6`: zero retained rendered lambda entity names on the object path; active overload reducer plus proposed specialization reducer; unchanged common record sizes; exact frozen object; full report and zero-fatal audit. |
 | T4d generated private identities | Default constructors are already typed, but anonymous/local types, range-for temporaries, initializer-list backing objects, local statics, and template-shape sentinels still contain mixtures of observable names and formatted private ordinals. | Classify every family before changing it.  Private identity becomes a packed kind plus owner/source/ordinal tuple.  A checked-in serialized spelling remains a lazy renderer.  A final ELF symbol component remains boundary text. | Per-family render/consumer counts, an earliest-owned reducer, exact existing fixtures, explicit disposition for any retained spelling, and no dual text-plus-typed identity in an ordinary record. |
 | T4e presentation closeout | Dump, diagnostic, pretty-function, source-identity, ABI, and object consumers legitimately need text, but obsolete helper overloads or eager fields can keep hidden production rendering alive. | Route each true consumer through one owner-specific renderer; delete old fields and syntax-owned spelling fallbacks after the last caller.  Keep counters separated by consumer so final output work is not confused with semantic identity work. | Source audit of all scope/display/emission/specialization/lambda helpers; zero unclassified eager renders; retained-text census; exact output; full report, audit, and cumulative T4 timing. |
@@ -997,10 +997,12 @@ must render from the typed facts without fixture churn.
 8. **T4b (complete):** replace ordinary scope-prefix/display/emission retention with
    owner scope plus terminal `NameId` or a compact path ID.  Convert the
    default-constructor owner/leaf `rfind("::")` path in this slice.
-9. **T4c:** replace class/function-template specialization presentation
-   identity with pattern, argument-list, owner, and partition IDs.  Replace
-   lambda identity with owner/context, token range, and ordinal facts rather
-   than sanitized rendered type/function names.
+9. **T4c (complete):** replace class/function-template specialization
+   presentation identity with pattern, argument-list, owner, and partition
+   IDs.  Replace lambda identity with owner/context, token range, and ordinal
+   facts rather than sanitized rendered type/function names.  T4c1 is accepted
+   at `563000b5` and T4c2 at `62c26eb6`; sections 9.8 and 9.9 record the
+   measurements and gates.
 10. **T4d:** the accepted T4d0 producer census classifies generated semantic
     names by family.  Convert one family at a time to kind plus
     owner/ordinal/source facts, starting with constructor lifecycle base
@@ -1429,6 +1431,28 @@ are final ABI/LowIR/object spellings.  Neither is a semantic string identity
 conversion.  T4e must retain and count those output renderers, while proving
 that no consumer reparses their result.
 
+A tracked-spelling census splits the renderer obligation by family.  The
+lifecycle terminals are pinned by nothing: the constructor terminal
+`__cppgm_constructor_base_<binding>` appears in no tracked file except its
+producer, and the serialized destructor symbol is doubly suffixed
+(`...__base_entry__base_entry`) because `RegisterFunction` appends its
+typed-flag suffix to a semantic terminal that already contains it; that
+doubled form appears in no tracked file at all.  The 118 tracked `.ref`
+fixtures containing `__base_entry` are pinned reference output whose
+single-suffix source-named spellings already differ from the current
+implementation (those lanes compare structurally), and `.my*` outputs are
+ignored regenerated artifacts.  The lifecycle slices therefore owe nothing to
+the current leaked spellings: presentation derives from the source terminal
+plus lifecycle role at the existing lowering suffix site, the serialized-LowIR
+presentation difference is recorded under section 15.2 with zero
+tracked-fixture churn, and the frozen object stays exact because the Itanium
+C1/C2/D1/D2 names already come from the typed lifecycle facts.  By contrast,
+the anonymous and local families are pinned byte-exactly: PA11/PA12/PA17
+reference fixtures contain `__anonymous_enum1`, `__local_type1`, and
+`__anonymous_union_type__<first>_<last>`, and the implementation currently
+matches them, so those lazy renderers must reproduce the exact bytes from the
+typed declaration-order ordinal and token-range facts.
+
 #### Target representation
 
 Use a compact `GeneratedIdentityKind` only where an existing role flag or
@@ -1458,8 +1482,9 @@ canonical source relation.  Ordinary overload/name lookup must not be used to
 distinguish private lifecycle variants.  The current constructor-base flag,
 complete-constructor relation, lifecycle link, and source-to-base table should
 be reused where they form the complete key; add storage only if a traced
-consumer cannot recover the source relation.  Exact semantic and serialized
-LowIR spellings remain renderer output, not symbol equality.
+consumer cannot recover the source relation.  Serialized spellings remain
+renderer output, not symbol equality; the tracked-spelling census above fixes
+what each family's renderer must reproduce.
 
 For anonymous/local declarations and template shapes, the implementation must
 first establish whether the generated terminal is used by ordinary lookup,
@@ -1490,11 +1515,15 @@ This keeps object-only compilation from paying for semantic-dump presentation.
    T4 counters and exact output.
 2. **T4d1a:** constructor base entries.  Add typed lifecycle role/source to
    symbol identity, stop interning the numeric binding-derived terminal for
-   semantic identity, use private/unindexed declaration placement, and render
-   the old spelling only for checked-in semantic/LowIR consumers.
+   semantic identity, use private/unindexed declaration placement, and derive
+   lifecycle presentation from the source terminal plus role at the existing
+   lowering suffix site.  No tracked consumer pins the current
+   binding-numbered spelling, so the slice must not contort to reproduce it;
+   the serialized-presentation change is recorded per section 15.2.
 3. **T4d1b:** destructor base entries using the same lifecycle discriminator.
    Keep this separate because destructor spelling and complete/base aliasing
-   differ from constructors.
+   differ from constructors, and because the current semantic terminal already
+   embeds the `__base_entry` suffix that lowering appends again.
 4. **T4d2a:** anonymous enums, then local types.  Preserve declaration-order
    presentation while making source node/owner/ordinal the identity.
 5. **T4d2b:** anonymous union type and storage facts.  Share the source-range
@@ -2041,7 +2070,7 @@ this plan remain the decision criteria.
 
 ## 22. Ordered execution plan from the current checkpoint
 
-This is the authoritative order after `62c26eb6`.  Later rows may be
+This is the authoritative order after `ca85deb3`.  Later rows may be
 re-prioritized only by updating this document with the new dependency or
 measurement; do not silently skip an unresolved closeout gate.
 
@@ -2061,7 +2090,7 @@ measurement; do not silently skip an unresolved closeout gate.
 | 12 | T4c2 lambda renderer split (complete) | Exact renderer responsibility, no representation or output change, owner/through/selected/full reports, and audit are recorded in section 9.9 | `f5e9277b`; accepted base only |
 | 13 | T4c2 typed lambda identity (complete) | Canonical context/signature/template/recursive-parent/ordinal identity; typed token-range presentation facts; zero retained rendered identity; active overload and proposed specialization reducers; unchanged common records; exact frozen object; reports, audit, and screened timing recorded in section 9.9 | `62c26eb6`; ledger recorded |
 | 14 | T4d0 generated-identity producer census (complete) | Fourteen semantic producer families, exact frozen object, selected/full reports, and audit recorded in section 9.10 | `ca85deb3`; accepted measurement anchor |
-| 15 | T4d1 lifecycle base entries | Per-family consumer census; typed source/role symbol identity; exact constructor then destructor presentation; no ordinary lookup or common-record growth | Constructor and destructor commits remain separate |
+| 15 | T4d1 lifecycle base entries | Per-family consumer census; typed source/role symbol identity; source-terminal-plus-role lifecycle presentation with the serialized-LowIR spelling change recorded per section 15.2; exact frozen object; no ordinary lookup or common-record growth | Constructor and destructor commits remain separate |
 | 16 | T4d2 anonymous/local identity | Anonymous enum, local type, anonymous-union type/storage facts keyed by owner/source/ordinal; exact dumps and owner reducers | One commit per independently observable family |
 | 17 | T4d3/4 template shapes and hidden storage | Typed singleton/cache/source keys for each shape; typed range-for and structured-binding roles; zero-occurrence families recorded without timing claims | One owner-family commit at a time |
 | 18 | T4e final lazy-presentation closeout | Every residual read classified as dump/diagnostic/source identity/ABI/LowIR/object; initializer-list and local-static final names explicitly retained; zero unclassified eager renders | One presentation closeout commit |
