@@ -645,7 +645,8 @@ FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
 			kNoFunctionTemplateAbiExpression, kNoFunctionTemplateAbiType,
 			arena.SemanticPayloadId(arena.EdgeChild(second)),
 			kNoTemplateParameter, OPERATOR_NONE,
-			arena.SemanticPayload(syntax) == "->"));
+			ClassifyOperationSpelling(
+				arena.SemanticPayload(syntax)) == OP_ARROW));
 	}
 	if (arena.IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_CALL_EXPRESSION))
 	{
@@ -661,7 +662,7 @@ FunctionTemplateAbiExpressionId PublishSyntaxExpression(Program* program,
 			FUNCTION_TEMPLATE_ABI_EXPRESSION_CALL, callee));
 	}
 	if (arena.IsTag(syntax, ::cppgm::pa10_syntax_detail::STAG_BINARY_EXPRESSION) &&
-		arena.SemanticPayload(syntax) == "-")
+		ClassifyOperationSpelling(arena.SemanticPayload(syntax)) == OP_MINUS)
 	{
 		const std::uint32_t second = arena.NextEdge(first);
 		if (second == kNoEdge) return kNoFunctionTemplateAbiExpression;
