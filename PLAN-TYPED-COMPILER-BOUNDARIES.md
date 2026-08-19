@@ -4,17 +4,17 @@ Status: in progress; Phase 2, the production T2x closeout, standalone PA11
 T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
 emission presentation, T4b3 typed entity/scope presentation, T4c1 lazy
 class-specialization presentation, and T4c2 typed lambda identity are
-complete; T4, T5, and T6 are complete with two inception matches and a
-10.3% cumulative anchor win; T7 literal facts, the T8 handoff, and the T9
-specialized recoveries remain staged with their reconnaissance recorded
+complete; T4 through T8 are complete (T7 closed on its measured anchor
+with every decoder already shared, T8 landed the producer-identity remap
+and typed declarator publication), and only the T9 closeout dispositions
+and the final gate remain
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current accepted execution checkpoint: `c29c85ba` (T6e keyword-kind
-specifier classification; measurements and gates are recorded in section
-11.3)
+Current accepted execution checkpoint: T8b typed declarator publication;
+measurements and gates are recorded in sections 12.3 and 13.2
 
 ## 1. Objective
 
@@ -2042,10 +2042,23 @@ and IR serialization must render from the typed fact.
 
 ### 12.3 Changeset sequence
 
-1. **T7a:** count post-token decodes, retained fact hits, semantic fallback
-   decodes, string/code-unit decodes, scalar renders, scalar reparses, and
-   pragma format/parse events by literal family.  Record token/fact/dump record
-   sizes and arena bytes.  The T6d-era reconnaissance located the floating
+1. **T7a (complete, measured closure):** stats counters record, on the
+   frozen compile, 160 semantic integer parse fallbacks (the retained
+   PA10 scalar facts serve the rest), 2,669 string-literal decode calls,
+   and 3 floating-literal bit parses.  The audit found each literal family
+   already flows through exactly one shared decoder
+   (`DecodeStringLiteralCodeUnits`, `parse_lowir_floating_literal_bits`,
+   and the retained-fact-guarded `ParseInteger`), invoked at classified
+   consumers with lowering memoizing per distinct string literal; there is
+   no dual decoder implementation to unify and no measurable frozen work
+   to remove.  Publishing an additional shared unit arena was evaluated
+   and declined under the section 18 rules: it would add structure to
+   avoid roughly 2,800 tiny decodes.  The remaining representation
+   conversions (integral/floating side-arena facts, evaluated-scalar IDs,
+   pragma integers) are recorded as measured-and-declined at these counts;
+   the pragma round trip is one format at the PA10 serialization contract
+   plus one parse at the semantic input boundary.  Counter anchor committed
+   with the T7 census.  The T6d-era reconnaissance located the floating
    round trip precisely: semantic evaluation carries `long double` in
    `ConstexprScalarValue` while the dump transports spelling text, and
    lowering re-decodes per target type through `DecodeTypedFloating` (three
@@ -2117,7 +2130,26 @@ legitimate source lexing and must not be conflated with identity loss.
 
 Implement this as two independently measurable slices.  T8a changes only the
 integrated PA4-to-PA10 handoff and its dense remap.  T8b changes PA10 parser
-name-fact publication without changing syntax output.  This interface-wide
+name-fact publication without changing syntax output.
+
+Both slices are complete.  T8a extends `IPostTokenStream` with
+default-forwarded `EmitSimpleId`/`EmitIdentifierId` variants, threads the
+producer `SpellingId` from the macro processor's feed through
+`PostTokenizationSession` identifier and operator entries with a dense
+per-producer classification cache, and gives `SyntaxTokenSink` a dense
+producer-to-`TextId` remap: frozen token-spelling interns fall
+490,862 -> 275,691, interner calls fall 1,250,480 -> 1,035,309, and hashed
+bytes fall 11,268,863 -> 9,644,846, with distinct-spelling misses
+unchanged at 42,238 and the object byte-exact (paired -0.58% user against
+immutable T6e).  T8b converts `ParseDeclarator` and every name-fact
+publication path (simple declarations, parameters, conditions, template
+parameters, range-for, structured bindings via `AppendDeclaratorNames`)
+to carry the already-interned joined-payload `TextId` instead of copied
+strings, keeping the serialized payload construction and the
+special-member operator-spacing adjustment as explicit spelling
+boundaries: interner calls fall further to 965,487 and hashed bytes to
+8,862,861, again byte-exact (paired -0.94% user against immutable T8a).
+Both slices pass the full 5,218-test report with zero-fatal audits.  This interface-wide
 work follows the narrower semantic and ABI phases.  Preserve exact PA2, PA4,
 and PA10 fixtures and add counters for emitted occurrences, distinct remaps,
 discarded spellings, retained bytes, classification reuse, string-overload
@@ -2375,7 +2407,9 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T6e | Declaration specifiers classify by keyword kind | The hot `BuildSpecifiers` loop and remaining keyword dispatch compare memoized `KW_*` kinds instead of spellings; extensible and GNU-extension registries stay string adapters | Three A/B/B/A blocks against immutable T6c: 4.300/4.250 s user; paired -0.70% user, -0.63% wall, +0.14% RSS | Frozen object exact in all runs | Full report 5,218/5,218; zero-fatal audit | `c29c85ba`; accepted |
 | T6c | Semantic operator dispatch compares packed kinds | Node-driven dispatch uses the memoized `PayloadTokenKind`; helper entries classify synthesized operation strings once through `ClassifyOperationSpelling`; about 120 integrated spelling comparisons became integer compares across PA12/PA16/PA21/PA27/PA34; residual text is classified adapters. The vocabulary moved to a compiled `pa12_semantic_vocabulary.cpp` module for the file audit. | Three A/B/B/A blocks against immutable T6d: 4.360/4.275 s user, 4.815/4.775 s wall; paired -1.04% user, -0.42% wall, -0.02% RSS | Frozen object byte-exact through every conversion step and all 12 timed runs | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `a3150b62`; accepted |
 | T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
-| T8 | Integrated spelling handles and dense emitted-spelling remap | Planned | Planned | Exact PA2/4/10 fixtures expected | PA2/4/10 plus full report | Planned |
+| T7 | Literal facts close on the measured anchor | Frozen counters: 160 semantic integer parse fallbacks, 2,669 string-literal decodes through the one shared PA2 decoder, 3 floating bit parses; no dual decoder implementations exist; side-arena publication declined under section 18 at these counts | Not timed; measurement-only closure | Frozen object exact with counters enabled | Full report 5,218/5,218 | Counter anchor accepted; measured disposition recorded |
+| T8a | Remap emitted spellings by producer identity | Token-spelling interns 490,862 -> 275,691; interner calls -215,171; hashed bytes -1,624,017; distinct misses unchanged; per-producer classification cache added in post-tokenization | Three A/B/B/A blocks against immutable T6e: paired -0.58% user, -0.21% wall, -0.10% RSS | Frozen object byte-exact in stats and all timed runs | Full report 5,218/5,218; zero-fatal audit | Accepted |
+| T8b | Publish declarator name facts by text identity | Interner calls fall further to 965,487 and hashed bytes to 8,862,861; declarator, parameter, condition, template-parameter, range-for, and structured-binding publication carry the already-interned payload IDs; serialized payloads and the operator-spacing adjustment stay explicit boundaries | Three A/B/B/A blocks against immutable T8a: paired -0.94% user, -0.84% wall, -0.20% RSS | Frozen object byte-exact in stats and all timed runs | Full report 5,218/5,218; zero-fatal audit | Accepted |
 | T9 | Secondary specialized text parsers use retained typed facts | Planned | Planned | Per-item decision | Earliest owner per item | Planned |
 
 ## 21. Code map
@@ -2431,8 +2465,8 @@ measurement; do not silently skip an unresolved closeout gate.
 | 19 | T5a generated local-name reservations (complete) | Scan/match/probe counters (`0b03e001`); byte-identical object and serialized LowIR on a reservation-colliding probe; object-only scan removed entirely; serializable boundary retained; reference numbering divergence recorded under proposed/pa15 | Counter `0b03e001`; implementation `9c5c379f`; ledger recorded |
 | 20 | T5b block collation (complete) | Render-once byte keys replace per-compare virtual characters (5,694,676 -> 573,751 examined); frozen object exact; PA34 decimal-boundary EH reducer with reference agreement | Commit `271c3564` accepted; ledger recorded |
 | 21 | T6 operator and fixed-vocabulary enums (complete on the integrated path) | Packed `SimpleTokenKind` flows classification -> semantics -> `DumpNode` -> lowering; zero integrated prefix strips and spelling dispatch; residual text is classified adapters (declared-operator mapping, `"[]"` pseudo-spelling, GNU extensions, standalone PA11 input parsing) | Anchor `88c2e583`; transport/lowering `5e9f3ce5`; semantic dispatch `a3150b62` |
-| 22 | T7 literal and scalar facts | Decode/redecode/render/reparse counters, scalar/arena sizes, direct lowering consumption, earliest literal reducers | Counter anchor; integral, floating/sequence, evaluated-scalar, and pragma commits |
-| 23 | T8 spelling and parser identity handoff | Distinct-remap/retained-byte/classification counters; zero avoidable parser string-overload name-fact calls; exact PA2/4/10 interfaces | T8a integrated spelling handoff, then T8b PA10 terminal-ID/name-fact publication |
+| 22 | T7 literal and scalar facts (closed on measured anchor) | Counters: 160 integer fallbacks, 2,669 string decodes, 3 floating parses on the frozen compile; every family already uses one shared decoder at classified consumers; further conversion declined under section 18 at these counts | Counter anchor committed; ledger records the measured disposition |
+| 23 | T8 spelling and parser identity handoff (complete) | Producer-identity remap and classification cache (T8a) plus typed declarator/name-fact publication (T8b): interner calls fall 1,250,480 -> 965,487 and hashed bytes 11,268,863 -> 8,862,861 on the frozen compile, objects byte-exact, both suites green | T8a and T8b commits accepted; ledger recorded |
 | 24 | T9 specialized recovery and final source audit | Separate disposition and owner test for ambiguity, ABI tags, asm/attributes, and generated/presentation sites; section 5.4 registry fully closed | Independent commits only, followed by a registry closeout commit |
 | 25 | Final gate | Five-run anchor comparison, full report, zero-fatal audit, timed clean self-build, clean timed 8-way and 32-way inception with peak RSS and exact compares | Final ledger commit |
 
