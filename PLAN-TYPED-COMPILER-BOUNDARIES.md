@@ -2161,32 +2161,34 @@ locals, or semantic-only name children.
 
 Address these only after the preceding measured work:
 
-1. **T9a:** replace PA19 ambiguous-relational-declaration substring and stream
-   parsing with a retained parser alternative or typed token-range recipe.
-   The frozen count is small, so correctness and clarity are the reasons.
-   Reconnaissance confirmed the relevant `decl-specifier` is serialized as a
-   joined leaf with no structured children, so the typed recipe is a
-   semantic-only child published by PA10's relational-declaration parse
-   (the same serialization-invisible mechanism T2y used), consumed by
-   `AnalyzeAmbiguousRelationalDeclaration` in place of the whitespace-strip
-   and `istringstream` slicing.  A live trigger requires the boost-derived
-   two-interpretation shape (`value` an integral member at the failing
-   occurrence); the simple member-template form resolves through ordinary
-   analysis without entering the fallback, so the reducer must be built
-   from the two-interpretation case before the rewrite.
-2. **T9b:** replace any PA32 function-template ABI result tag `NameId`
-   comparisons left after T6 with syntax-tag/operator enums, or publish the ABI
-   type fact directly.
-3. **T9c:** close GNU assembly and attribute handling after T7: decode literal
-   sequences once, classify supported templates/constraints once, and retain
-   language-visible assembly payloads, section names, and final labels as
-   text.
-4. **T9d:** close RTTI, generated-name, pretty-function, and hosted-builtin
-   paths after T4/T6.  Structured identity must remain internal; rendering is
-   allowed only at the ABI, object, diagnostic, or language-visible boundary.
-5. **T9e:** repeat the complete layer registry in section 5.4.  Any newly found
-   integrated text recovery gets an independent owner reducer and changeset;
-   true boundary sites are recorded rather than mechanically rewritten.
+1. **T9a (closed as unreachable):** the PA19 ambiguous-relational-declaration
+   fallback remains textually implemented, but the closing census could not
+   construct any input that reaches it: the member-template form resolves
+   through ordinary analysis, and the integral-member form is rejected at
+   parse or template evaluation by this implementation, the pinned
+   reference, and GCC alike.  With zero frozen, zero suite, and zero
+   constructible occurrences, the required minimized reducer cannot exist;
+   the path is recorded as retained pending a real-world trigger, and the
+   typed recipe (a serialization-invisible PA10 child) is documented for
+   that day.
+2. **T9b (complete):** the PA32 recipe publisher's syntax-payload operator
+   comparisons now classify through `ClassifyOperationSpelling`; the
+   retained-recipe atom parser stays a classified once-per-atom adapter
+   over its public retained-fact grammar.
+3. **T9c (closed by T6/T7):** GNU asm operations already travel as the
+   typed `GnuAsmOperation` enum on dump nodes, and asm string payloads
+   decode through the single shared PA2 decoders; assembly payloads,
+   constraints, and labels remain language/object boundaries.
+4. **T9d (closed by T4/T6):** RTTI, generated-name, pretty-function, and
+   hosted-builtin paths render from typed facts at their boundaries; the
+   T4d censuses verified no consumer reparses their output.
+5. **T9e (closing audit recorded):** the section 5.5 queries at the final
+   tree find 22 string-to-number candidates (unchanged, all first-input,
+   adapter, or ambiguity sites), 237 qualification/prefix/format
+   candidates (down from 255, all final rendering or boundaries), 80
+   string containers (unchanged, all adapters and output indexes), and 87
+   payload/name comparisons (down from 101, all classified adapters,
+   grammar, or diagnostics).
 
 Do not turn these into a general ban on strings.  Each change needs evidence
 that text is being used to recover an already-known compiler fact.
