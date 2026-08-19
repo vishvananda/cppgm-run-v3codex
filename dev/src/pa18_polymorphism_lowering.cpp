@@ -1975,9 +1975,17 @@ public:
 private:
 	BlockId AddBlock(const std::string& label)
 	{
+		return AddBlock(pa15_local_presentation::ExactBlockPresentation(
+			output_, label));
+	}
+
+	BlockId AddBlock(const BlockPresentationName& presentation)
+	{
 		const BlockId block =
 			static_cast<BlockId>(function_->blocks.size());
-		function_->blocks.push_back(Block(output_.strings.intern(label)));
+		function_->blocks.push_back(
+			pa15_local_presentation::MakePresentedBlock(
+				output_, function_, presentation));
 		return block;
 	}
 
@@ -1992,9 +2000,10 @@ private:
 		}
 	}
 
-	std::string NewLabel(const std::string& prefix)
+	BlockPresentationName NewLabel(const std::string& prefix)
 	{
-		return prefix + "_" + std::to_string(++block_counter_);
+		return pa15_local_presentation::GeneratedBlockPresentation(
+			output_, prefix, static_cast<std::uint32_t>(++block_counter_));
 	}
 
 	Operand Temp(const LowType& type)

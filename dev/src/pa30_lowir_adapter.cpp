@@ -904,7 +904,9 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			const Block& block = item.blocks[block_id];
 			lowir_model::Block lowered;
 			lowered.id = lowir_model::BlockId(block_id);
-			result.block_labels[block_id] = block.label;
+			if (presentation_policy ==
+				lowir_model::PRESENTATION_SERIALIZABLE)
+				result.block_labels[block_id] = block.label;
 			lowered.instructions.reserve(block.instructions.size());
 			for (std::size_t j = 0; j < block.instructions.size(); ++j)
 				lowered.instructions.push_back(AdaptInstruction(
@@ -912,11 +914,16 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 					&telemetry));
 			result.blocks.push_back(std::move(lowered));
 		}
-		lowir_model::compute_lowir_block_presentation_order(
-			result, source.strings);
-		if (presentation_policy == lowir_model::PRESENTATION_OBJECT_ONLY)
-			std::fill(result.block_labels.begin(), result.block_labels.end(),
-				lowir_model::StringId());
+		if (presentation_policy == lowir_model::PRESENTATION_SERIALIZABLE)
+			lowir_model::compute_lowir_block_presentation_order(
+				result, source.strings);
+		else
+		{
+			if (item.block_presentation_order.size() != item.blocks.size())
+				throw std::logic_error(
+					"typed LowIR has no compact block presentation order");
+			result.block_presentation_order = item.block_presentation_order;
+		}
 		target.functions.push_back(std::move(result));
 	}
 	target.object_aliases.reserve(source.object_aliases.size());

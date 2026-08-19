@@ -312,6 +312,23 @@ struct Block
 		: label(label_value), terminated(false), selected(false) {}
 };
 
+// Object-only lowering keeps a generated block spelling as its pooled prefix
+// and numeric suffix until its lexical rank has been recorded.  Exact names
+// use an invalid ordinal and retain only their pooled spelling.
+struct BlockPresentationName
+{
+	lowir_model::StringId text;
+	std::uint32_t ordinal;
+
+	BlockPresentationName() : ordinal(kNoLowId) {}
+	explicit BlockPresentationName(lowir_model::StringId text_value)
+		: text(text_value), ordinal(kNoLowId) {}
+	BlockPresentationName(lowir_model::StringId prefix_value,
+		std::uint32_t ordinal_value)
+		: text(prefix_value), ordinal(ordinal_value) {}
+	bool generated() const { return ordinal != kNoLowId; }
+};
+
 struct Parameter
 {
 	enum Capture : std::uint8_t { CAPTURE_DEFAULT, CAPTURE_NOCAPTURE } capture;
@@ -344,6 +361,8 @@ struct Function
 	std::vector<Slot> slots;
 	std::vector<Block> blocks;
 	std::vector<BlockId> block_order;
+	std::vector<BlockPresentationName> block_presentations;
+	std::vector<std::uint32_t> block_presentation_order;
 	lowir_model::GeneratedNameReservations generated_name_reservations;
 	bool entry;
 	bool initializer;

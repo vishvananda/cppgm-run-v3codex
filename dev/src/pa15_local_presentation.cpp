@@ -4,11 +4,14 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <stdexcept>
 
 namespace cppgm
 {
 namespace pa15_local_presentation
 {
+
+using namespace pa15_lowir_detail;
 
 lowir_model::StringId InternOrdinalName(pa15_lowir_detail::TypedProgram& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal)
@@ -16,6 +19,123 @@ lowir_model::StringId InternOrdinalName(pa15_lowir_detail::TypedProgram& program
 	if (!program.retain_local_names) return lowir_model::StringId();
 	return program.strings.intern(
 		detail::PrefixedUnsignedDecimal(prefix, prefix_size, ordinal));
+}
+
+BlockPresentationName ExactBlockPresentation(TypedProgram& program,
+	const std::string& name)
+{
+	return BlockPresentationName(program.strings.intern(name));
+}
+
+BlockPresentationName GeneratedBlockPresentation(TypedProgram& program,
+	const std::string& prefix, std::uint32_t ordinal)
+{
+	if (!program.retain_local_names)
+		return BlockPresentationName(program.strings.intern(prefix), ordinal);
+	std::string name = prefix;
+	name += "_";
+	name += std::to_string(ordinal);
+	return BlockPresentationName(program.strings.intern(name));
+}
+
+Block MakePresentedBlock(TypedProgram& program, Function* function,
+	const BlockPresentationName& presentation)
+{
+	if (!function)
+		throw std::logic_error("block presentation has no function");
+	if (program.retain_local_names)
+	{
+		if (presentation.generated() || !presentation.text.valid())
+			throw std::logic_error("serializable block has no exact label");
+		return Block(presentation.text);
+	}
+	if (!presentation.text.valid() ||
+		function->block_presentations.size() != function->blocks.size())
+		throw std::logic_error("invalid object-only block presentation");
+	function->block_presentations.push_back(presentation);
+	return Block(lowir_model::StringId());
+}
+
+namespace
+{
+
+struct BlockNameView
+{
+	const std::string& text;
+	char digits[10];
+	std::size_t digit_begin;
+	bool generated;
+
+	BlockNameView(const BlockPresentationName& name,
+		const lowir_model::StringPool& strings)
+		: text(strings.get(name.text)), digit_begin(sizeof(digits)),
+		  generated(name.generated())
+	{
+		if (!generated) return;
+		std::uint32_t value = name.ordinal;
+		do
+		{
+			digits[--digit_begin] = static_cast<char>('0' + value % 10);
+			value /= 10;
+		}
+		while (value != 0);
+	}
+
+	std::size_t size() const
+	{
+		return text.size() + (generated ? 1 + sizeof(digits) - digit_begin : 0);
+	}
+
+	char at(std::size_t index) const
+	{
+		if (index < text.size()) return text[index];
+		if (index == text.size()) return '_';
+		return digits[digit_begin + index - text.size() - 1];
+	}
+};
+
+bool PresentationLess(const BlockPresentationName& left,
+	const BlockPresentationName& right,
+	const lowir_model::StringPool& strings)
+{
+	const BlockNameView lhs(left, strings);
+	const BlockNameView rhs(right, strings);
+	const std::size_t common = std::min(lhs.size(), rhs.size());
+	for (std::size_t i = 0; i < common; ++i)
+	{
+		if (lhs.at(i) != rhs.at(i)) return lhs.at(i) < rhs.at(i);
+	}
+	return lhs.size() < rhs.size();
+}
+
+}
+
+void FinalizeBlockPresentation(TypedProgram* program)
+{
+	if (!program || program->retain_local_names) return;
+	for (std::size_t f = 0; f < program->functions.size(); ++f)
+	{
+		Function& function = program->functions[f];
+		if (function.block_presentations.size() != function.blocks.size())
+			throw std::logic_error(
+				"object-only function has incomplete block presentation");
+		std::vector<BlockId> order = function.block_order;
+		for (std::size_t b = 0; b < order.size(); ++b)
+			if (order[b] >= function.blocks.size())
+				throw std::logic_error(
+					"object-only function has invalid block order");
+		std::sort(order.begin(), order.end(),
+			[&function, program](BlockId left, BlockId right) {
+				return PresentationLess(function.block_presentations[left],
+					function.block_presentations[right], program->strings);
+			});
+		function.block_presentation_order.assign(function.blocks.size(), 0);
+		for (std::size_t rank = 0; rank < order.size(); ++rank)
+			function.block_presentation_order[order[rank]] =
+				static_cast<std::uint32_t>(rank);
+		std::vector<BlockPresentationName>().swap(
+			function.block_presentations);
+	}
 }
 
 LocalPresentationState::LocalPresentationState()
@@ -139,10 +259,11 @@ std::string LocalPresentationState::GeneratedSlotName(
 	}
 }
 
-std::string LocalPresentationState::GeneratedBlockName(
-	const std::string& prefix)
+BlockPresentationName LocalPresentationState::GeneratedBlockName(
+	TypedProgram& program, const std::string& prefix)
 {
-	return prefix + "_" + std::to_string(++generated_block_ordinal_);
+	return GeneratedBlockPresentation(
+		program, prefix, static_cast<std::uint32_t>(++generated_block_ordinal_));
 }
 
 bool LocalPresentationState::ReservesTemporary(std::uint32_t ordinal)

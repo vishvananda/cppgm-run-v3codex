@@ -488,6 +488,10 @@ std::size_t TypedStorageBytes(const TypedProgram& program)
 			function.slots.capacity() * sizeof(Slot) +
 			function.blocks.capacity() * sizeof(Block) +
 			function.block_order.capacity() * sizeof(BlockId) +
+			function.block_presentations.capacity() *
+				sizeof(BlockPresentationName) +
+			function.block_presentation_order.capacity() *
+				sizeof(std::uint32_t) +
 			function.generated_name_reservations.storage_bytes();
 		for (std::size_t b = 0; b < function.blocks.size(); ++b)
 		{

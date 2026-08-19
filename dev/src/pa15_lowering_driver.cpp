@@ -3,6 +3,7 @@
 #include "pa12_semantic.h"
 #include "pa15_force_inline.h"
 #include "pa15_graph_lowering.h"
+#include "pa15_local_presentation.h"
 #include "pa15_lowir_model.h"
 #include "pa15_lowir_render.h"
 #include "pa15_lowering_support.h"
@@ -97,7 +98,9 @@ void CoalesceLifecycleRole(TypedProgram* program, LowIRLoweringStats* stats,
 	aggregate.result = LowVoid();
 	aggregate.initializer = initializer;
 	aggregate.finalizer = !initializer;
-	Block entry(program->strings.intern("entry"));
+	Block entry = pa15_local_presentation::MakePresentedBlock(*program,
+		&aggregate, pa15_local_presentation::ExactBlockPresentation(
+			*program, "entry"));
 	entry.selected = true;
 	for (std::size_t i = 0; i < helpers.size(); ++i)
 	{

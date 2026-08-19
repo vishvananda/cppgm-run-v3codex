@@ -1,5 +1,6 @@
 #pragma once
 
+#include "pa15_local_presentation.h"
 #include "pa15_lowir_model.h"
 
 #include <limits>
@@ -25,12 +26,20 @@ protected:
 	BlockId AddBlock(const std::string& label)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
+		return AddBlock(pa15_local_presentation::ExactBlockPresentation(
+			derived.output_, label));
+	}
+
+	BlockId AddBlock(const BlockPresentationName& presentation)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
 		if (derived.function_->blocks.size() >= kNoLowId)
 			throw std::runtime_error("too many PA15 LowIR blocks");
 		const BlockId block = static_cast<BlockId>(
 			derived.function_->blocks.size());
 		derived.function_->blocks.push_back(
-			Block(derived.output_.strings.intern(label)));
+			pa15_local_presentation::MakePresentedBlock(
+				derived.output_, derived.function_, presentation));
 		derived.block_incoming_.push_back(0);
 		return block;
 	}

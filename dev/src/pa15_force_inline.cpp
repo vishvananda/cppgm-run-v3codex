@@ -1,6 +1,7 @@
 #include "pa15_force_inline.h"
 
 #include "pa15_function_reachability.h"
+#include "pa15_local_presentation.h"
 #include "pa15_lowering.h"
 
 #include <algorithm>
@@ -97,22 +98,29 @@ public:
 	{
 		return Fresh(lowir_model::GNR_TYPED_FORCE_SLOT, "slot");
 	}
-	lowir_model::StringId BlockName()
+	BlockPresentationName BlockName()
 	{
-		return Fresh(lowir_model::GNR_TYPED_FORCE_BLOCK, "block");
+		const std::uint32_t ordinal = Reserve(
+			lowir_model::GNR_TYPED_FORCE_BLOCK);
+		return pa15_local_presentation::GeneratedBlockPresentation(
+			program_, "__force_inline_block", ordinal);
 	}
 
 private:
-	lowir_model::StringId Fresh(lowir_model::GeneratedNameReservationKind kind,
-		const char* role)
+	std::uint32_t Reserve(lowir_model::GeneratedNameReservationKind kind)
 	{
 		while (function_.generated_name_reservations.contains(kind, next_))
 			++next_;
 		const std::uint32_t ordinal = next_++;
 		function_.generated_name_reservations.reserve(kind, ordinal);
-		if (!program_.retain_local_names && kind ==
-			lowir_model::GNR_TYPED_FORCE_SLOT)
-			return lowir_model::StringId();
+		return ordinal;
+	}
+
+	lowir_model::StringId Fresh(lowir_model::GeneratedNameReservationKind kind,
+		const char* role)
+	{
+		const std::uint32_t ordinal = Reserve(kind);
+		if (!program_.retain_local_names) return lowir_model::StringId();
 		return program_.strings.intern("__force_inline_" +
 			std::string(role) + "_" + std::to_string(ordinal));
 	}
@@ -475,9 +483,11 @@ private:
 		const std::vector<TempId>& parameters,
 		const std::vector<TempId>& temporaries, std::size_t slot_base,
 		const std::vector<BlockId>& blocks, BlockId continuation,
-		SlotId result_slot, lowir_model::StringId name)
+		SlotId result_slot, Function* caller,
+		const BlockPresentationName& name)
 	{
-		Block result(name);
+		Block result = pa15_local_presentation::MakePresentedBlock(
+			program_, caller, name);
 		result.selected = source.selected;
 		for (std::size_t i = 0; i < source.instructions.size(); ++i)
 		{
@@ -600,7 +610,8 @@ private:
 		call_block.instructions.push_back(JumpTo(prologue));
 		call_block.terminated = true;
 
-		Block prologue_block(names->BlockName());
+		Block prologue_block = pa15_local_presentation::MakePresentedBlock(
+			program_, caller, names->BlockName());
 		for (std::size_t i = 0; i < parameters.size(); ++i)
 		{
 			Instruction copy(Instruction::COPY);
@@ -619,10 +630,11 @@ private:
 			const BlockId source_block = callee.block_order[i];
 			caller->blocks.push_back(CloneBlock(callee.blocks[source_block], callee,
 				parameters, temporaries, callee_slot_base, cloned,
-				continuation, result_slot, names->BlockName()));
+				continuation, result_slot, caller, names->BlockName()));
 		}
 
-		Block continuation_block(names->BlockName());
+		Block continuation_block = pa15_local_presentation::MakePresentedBlock(
+			program_, caller, names->BlockName());
 		if (callee.result.kind != LOW_VOID)
 		{
 			if (call.dest == kNoLowId)
@@ -706,6 +718,7 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 		prune_unreachable_weak_functions ?
 		pa15_function_reachability::PruneUnreachableWeakFunctions(program) :
 		pa15_function_reachability::Analyze(*program);
+	pa15_local_presentation::FinalizeBlockPresentation(program);
 	if (stats)
 	{
 		const pa15_function_reachability::Summary internal_audit =

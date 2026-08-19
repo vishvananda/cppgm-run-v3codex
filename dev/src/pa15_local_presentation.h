@@ -17,6 +17,16 @@ namespace pa15_local_presentation
 
 lowir_model::StringId InternOrdinalName(pa15_lowir_detail::TypedProgram& program,
 	const char* prefix, std::size_t prefix_size, std::uint32_t ordinal);
+pa15_lowir_detail::BlockPresentationName ExactBlockPresentation(
+	pa15_lowir_detail::TypedProgram& program, const std::string& name);
+pa15_lowir_detail::BlockPresentationName GeneratedBlockPresentation(
+	pa15_lowir_detail::TypedProgram& program, const std::string& prefix,
+	std::uint32_t ordinal);
+pa15_lowir_detail::Block MakePresentedBlock(
+	pa15_lowir_detail::TypedProgram& program,
+	pa15_lowir_detail::Function* function,
+	const pa15_lowir_detail::BlockPresentationName& presentation);
+void FinalizeBlockPresentation(pa15_lowir_detail::TypedProgram* program);
 
 class LocalPresentationState
 {
@@ -29,7 +39,8 @@ public:
 		lowir_model::GeneratedNameReservations* generated);
 	std::string UniqueSlotName(const std::string& requested);
 	std::string GeneratedSlotName(const std::string& prefix);
-	std::string GeneratedBlockName(const std::string& prefix);
+	pa15_lowir_detail::BlockPresentationName GeneratedBlockName(
+		pa15_lowir_detail::TypedProgram& program, const std::string& prefix);
 	bool ReservesTemporary(std::uint32_t ordinal);
 
 private:

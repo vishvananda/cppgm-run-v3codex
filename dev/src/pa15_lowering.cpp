@@ -855,9 +855,9 @@ private:
 		return result;
 	}
 	Block& CurrentBlock() { return function_->blocks[current_block_]; }
-	std::string NewLabel(const std::string& prefix)
+	BlockPresentationName NewLabel(const std::string& prefix)
 	{
-		return local_presentation_.GeneratedBlockName(prefix);
+		return local_presentation_.GeneratedBlockName(output_, prefix);
 	}
 
 	TempId NewTemp()
