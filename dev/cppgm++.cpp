@@ -5,6 +5,7 @@
 #include "pa11_semantic.h"
 #include "pa12_semantic.h"
 #include "pa15_lowering.h"
+#include "pa15_lowering_support.h"
 #include "pa30_lowir_adapter.h"
 #include "pa30_object.h"
 #include "pa30_elf_object.h"
@@ -1054,6 +1055,8 @@ void report_compile_phase_stats(
 		adapter_nanoseconds - preparation_nanoseconds : 0;
 	cerr << " typed_identity_paths=" << stats.typed_identity_paths
 		 << " typed_identity_types=" << stats.typed_identity_types
+		 << " strip_operation_prefix_calls="
+		 << cppgm::pa15_lowering_support::StripOperationPrefixCalls()
 		 << " local_source_names_scanned="
 		 << stats.local_presentation.source_names_scanned
 		 << " local_source_name_bytes="

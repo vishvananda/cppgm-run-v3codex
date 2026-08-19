@@ -407,10 +407,21 @@ std::size_t FlatIdPairMap::StorageBytes() const
 		occupied_slots_.capacity() * sizeof(std::size_t);
 }
 
+namespace
+{
+std::size_t strip_operation_prefix_calls = 0;
+}
+
 std::string StripOperationPrefix(const std::string& operation)
 {
+	++strip_operation_prefix_calls;
 	const std::size_t colon = operation.rfind(':');
 	return colon == std::string::npos ? operation : operation.substr(colon + 1);
+}
+
+std::size_t StripOperationPrefixCalls()
+{
+	return strip_operation_prefix_calls;
 }
 
 std::string SanitizeSymbol(const std::string& name)
