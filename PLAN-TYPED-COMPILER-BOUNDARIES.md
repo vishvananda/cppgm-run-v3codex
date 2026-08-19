@@ -1,16 +1,16 @@
 # Typed Compiler Boundary Plan: Remove Production Text Round-Trips
 
 Status: in progress; Phase 2, the production T2x closeout, standalone PA11
-T2y parity, T4a measurement, T4b1 lazy function display, and T4b2 lazy
-binding emission presentation, and T4b3 typed entity/scope presentation are
-complete; T4c specialization and lambda identity is next
+T2y parity, T4a measurement, T4b1 lazy function display, T4b2 lazy binding
+emission presentation, and T4b3 typed entity/scope presentation are complete;
+T4c specialization and lambda identity is active
 
 Date: 2026-08-19
 
 Audit anchor: `c349d7f5`
 
-Current execution checkpoint: `285ef075` (T4b3 typed entity/scope emission
-presentation)
+Current accepted execution checkpoint: `0924d01c` (T4b3 implementation and
+results recorded)
 
 ## 1. Objective
 
@@ -327,6 +327,78 @@ The source closeout condition is not zero textual operations.  It is that
 every remaining textual operation has a named input, output, diagnostic, or
 standalone-adapter boundary and that no integrated consumer reconstructs a
 fact already represented by an ID, enum, scalar, or arena slice.
+
+### 5.6 Remaining text-identity work packages
+
+This is the durable implementation backlog produced by the layer audit.  It
+is more specific than the phase headings below: each package identifies the
+fact currently downgraded to text, the representation that replaces it, and
+the evidence required to close it.  A package may be split further to satisfy
+the file audit or to isolate a measured change, but its proof obligations may
+not be silently weakened.
+
+At the T4b3 checkpoint, the broad static queries in section 5.5 produce 22
+string-to-number candidates, 250 qualification/prefix/format candidates, 80
+string-container candidates, and 101 payload/name comparison candidates.
+These are candidate counts, not defect counts.  Most are boundary rendering,
+diagnostics, standalone adapters, or output indexes.  Dynamic counters and
+producer-to-consumer tracing decide whether a candidate is production work.
+
+| Package | Fact currently transported or recovered as text | Replacement and ownership | Required closeout evidence |
+| --- | --- | --- | --- |
+| T4c1 class-specialization presentation | PA19 renders and interns a sanitized specialization name even though the entity already owns its primary `NameId` and canonical template-argument slice.  PA15 then builds an eager terminal replacement map from `EntityRecord::presentation_name`. | Make the PA19 renderer a presentation responsibility.  Mark entities whose exact external presentation differs, retain only primary/entity/argument IDs, and have PA15 render lazily for a consumer that needs the replacement.  Any memoization is indexed by `EntityId`, allocated only in the presentation consumer, and does not become semantic identity. | Frozen specialization renders, retained values/bytes, map construction, lazy reads, interner work, `EntityRecord` size, exact semantic/LowIR/MIR/object output, PA19 owner and through report, selected template/lowering reports, full report, audit, and screened A/B timing. |
+| T4c2 lambda presentation | PA22 constructs a sanitized lambda component from rendered enclosing context and source ordinals, then stores the result under the exceptional rendered entity-emission form.  The canonical lambda key is already typed. | Carry owner/context binding or entity, token range, and ordinal as the lambda identity.  Derive emission presentation only for a semantic dump, source-identity builtin, ABI name, or final object consumer.  Do not add a string-keyed lambda cache. | Zero retained rendered lambda entity names on the object path; exact PA22/PA25 semantic and ABI fixtures; nested, templated, local-static, and namespace lambda reducers; unchanged common record sizes; full report and audit. |
+| T4d generated private identities | Default constructors are already typed, but anonymous/local types, range-for temporaries, initializer-list backing objects, local statics, and template-shape sentinels still contain mixtures of observable names and formatted private ordinals. | Classify every family before changing it.  Private identity becomes a packed kind plus owner/source/ordinal tuple.  A checked-in serialized spelling remains a lazy renderer.  A final ELF symbol component remains boundary text. | Per-family render/consumer counts, an earliest-owned reducer, exact existing fixtures, explicit disposition for any retained spelling, and no dual text-plus-typed identity in an ordinary record. |
+| T4e presentation closeout | Dump, diagnostic, pretty-function, source-identity, ABI, and object consumers legitimately need text, but obsolete helper overloads or eager fields can keep hidden production rendering alive. | Route each true consumer through one owner-specific renderer; delete old fields and syntax-owned spelling fallbacks after the last caller.  Keep counters separated by consumer so final output work is not confused with semantic identity work. | Source audit of all scope/display/emission/specialization/lambda helpers; zero unclassified eager renders; retained-text census; exact output; full report, audit, and cumulative T4 timing. |
+| T5 object-only block collation | EH block ordering repeatedly compares virtual presentation characters and decimal ordinals.  The result is typed, but comparison reconstructs presentation on every compare. | Compute one exact compact collation key per participating block, using fixed components and a decimal-order representation that is byte-for-byte equivalent to lexical presentation.  Sort key/`BlockId` pairs; do not intern rendered block names. | PA15/PA26/PA29 reducers for prefix, decimal-width, and tie boundaries; comparison/character counters; exact block order, MIR, LSDA, and object; selected and full reports; screened timing. |
+| T6a operator classification boundary | PA10 already classifies simple tokens, but operator spellings are reconstructed or compared across PA11, PA12, PA16, PA21, PA27, PA32, PA34, and lowering. | Define one packed semantic operator vocabulary at the earliest shared owner.  Classify once from `SimpleTokenKind` or the structured operator name.  Preserve `TextId` only where syntax serialization or diagnostics require source spelling. | Measurement-only anchor by operator family and consumer; compile-time size assertions; exact PA10 syntax fixtures; no common-node growth without measured justification. |
+| T6b semantic and lowering operator transport | Expression and call records often retain a `NameId` spelling that lowering strips with `StripOperationPrefix` and compares again. | Carry the T6a enum through semantic selection, constant evaluation, template substitution, and typed lowering.  Extensible identifier registries use preinterned `NameId`s; fixed language vocabulary uses enums. | Zero integrated `StripOperationPrefix` calls and zero operation-spelling comparisons outside the classification/presentation adapters; earliest-owned PA12 regressions plus PA15/16/21/27/32/34 coverage; exact LowIR/MIR; full report and timing. |
+| T7a source literal facts | Post-tokenization decodes integer, floating, character, and string spellings, but PA10 retains only part of the result; PA11/PA12 and static lowering parse or decode again. | Add compact tagged literal facts and side-arena slices for integer bits/type/suffix, floating bits/type/suffix, character value, and string code units.  Keep the original `TextId` for exact syntax output and user-defined suffix bytes. | Decode/redecode counters by literal kind, token/common-record sizes, side-arena bytes, PA2/PA10 interface fixtures, earliest PA11/12 semantic reducers, PA15/16 lowering reducers, full report, audit, and timing. |
+| T7b evaluated scalar transport | Constant evaluation formats scalar results into interned decimal names which later consumers may parse or compare. | Carry a tagged scalar value with type and exact bits in a compact scalar pool.  Dump and LowIR serializers render at their output boundary; lowering consumes the scalar ID directly. | Zero evaluated-value render/reparse cycles, stable canonical scalar counts, exact semantic and LowIR fixtures, PA20/PA21 and lowering reports, record/arena accounting, full report, and timing. |
+| T7c small textual scalar side channels | Pragma-pack alignment and a few generated numeric facts are formatted immediately even though the producer has the integer. | Carry the integer in an existing kind-disjoint field or a compact side fact.  Render only in the PA10/public serialization view. | PA10 pragma and owning-feature reducers, exact serialized output, no token-size growth, and source-audit disposition for every converted `to_string`/parse pair. |
+| T8a integrated spelling handoff | Macro/post-token processing interns and classifies source spellings, but the integrated PA10 sink receives strings and interns emitted occurrences again. | Give the integrated stream a compact emitted-spelling identity and cached token class.  Use a dense lazy remap from producer spelling IDs to PA10 `TextId`s only for spellings actually emitted.  Keep the public string callback adapter for earlier assignment tools. | Distinct versus emitted spelling counts, remap hits/misses, classifications, hashed bytes, retained bytes, token sizes, exact PA2/PA4/PA10 output, through-PA10 report, full report, RSS, and timing. |
+| T8b parser name-fact publication | PA10 knows terminal component IDs while parsing, but some declarator paths join strings, store `vector<string>`, and call the string `SetNameFact` overload. | Return or retain terminal `TextId` plus compact qualification/operator flags from the parser operation already in progress.  Publish declarator/structured-binding facts as IDs.  Continue constructing joined payload text only when required by the PA10 serialization contract. | String-overload call counts by parser site, joined-name render counts, syntax-node and side-vector sizes, exact PA10 fixtures, through-PA10 report, selected semantic reports, full report, and timing. |
+| T9a PA19 ambiguity recovery | The relational-declaration fallback strips whitespace, slices a declaration spelling, and uses a stream parser to synthesize an alternative after semantic lookup. | Retain the competing PA10 parser alternative or a compact token-range recipe, then resolve that typed alternative in PA19.  Do not route it through general `ParseNamePath` or literal adapters. | A minimized PA19 ambiguity reducer, exact accepted/rejected behavior, zero ambiguity-string parse calls, through-PA19 report, full report, and source audit. |
+| T9b residual compatibility and generated sites | Dormant semantic spelling overloads, ABI discriminators in public text facts, asm/attribute payloads, and final symbol builders appear similar in a static search but have different boundaries. | Trace every remaining candidate.  Delete a compatibility overload after its last real adapter caller; type a production discriminator if it is first rendered internally; retain arbitrary assembly/external/object text and standalone ABI/LowIR input parsing. | Every section-5.5 candidate has a registry disposition, owner, and counter or boundary explanation.  Production ABI and integrated LowIR text-recovery counters remain zero. |
+
+The package order is T4c1, T4c2, T4d, T4e, then the independent T5 slice,
+followed by T6, T7, T8, and T9.  T6 precedes T7 where literal constant folding
+would otherwise create a private operator enum.  T7 precedes the broad T8
+handoff so the new interface carries the complete literal fact rather than
+having to change twice.  T5 may move within T4-T7 only when it is measured and
+committed independently.
+
+### 5.7 Commit, test, and measurement boundaries
+
+Each work package uses the following commit sequence.  Adjacent steps may be
+combined only when the first cannot compile independently; measurement and
+behavior changes remain separate.
+
+1. Commit numeric counters and record-size assertions.  Record the frozen or
+   owner-PA baseline without changing representation.
+2. Commit any responsibility split needed to give the typed fact or renderer a
+   single owner.  Prove exact output before changing storage.
+3. Commit one representation replacement and remove the old hot text path in
+   the same changeset.  Do not leave a permanent dual path for migration.
+4. Add a reducer at the earliest PA that owns newly exposed behavior.  Use
+   `cppgm.tests/course/paN/` when the reference agrees.  If the reference does
+   not agree but the standard and Clang/GCC evidence support the behavior,
+   place it under `proposed/paN/` and record why.  A representation-only change
+   normally relies on existing exact fixtures and adds no synthetic fixture.
+5. Run `make test-paN` and `make test-report-through-paN` for the owner, then
+   one PA-selected report covering every touched later consumer.  Run root
+   `make test-report` and the fatal file audit before accepting the changeset.
+6. Compare immutable baseline and candidate compilers with screened,
+   interleaved explicit-`-O0` runs.  Reject contaminated windows, require exact
+   object identity for representation-only work, and record user/wall/RSS plus
+   structural counters.  Never run another build concurrently with timing.
+7. Commit the results-ledger update separately.  Use inception only at the
+   final gate or after a change that crosses the self-host language boundary.
+
+No package is complete merely because a new enum or ID exists.  Completion
+requires the old production render, parse, hash, or comparison to be removed,
+all residual text users to be classified as boundaries, and the relevant
+dynamic counter to reach its declared endpoint.
 
 ## 6. Phase 0: durable counters and immutable baseline
 
@@ -1515,7 +1587,7 @@ this plan remain the decision criteria.
 
 ## 22. Ordered execution plan from the current checkpoint
 
-This is the authoritative order after `285ef075`.  Later rows may be
+This is the authoritative order after `0924d01c`.  Later rows may be
 re-prioritized only by updating this document with the new dependency or
 measurement; do not silently skip an unresolved closeout gate.
 
