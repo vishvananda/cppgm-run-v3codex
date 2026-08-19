@@ -1629,36 +1629,37 @@ SpecInfo SemanticAnalyzer::BuildSpecifiers(NodeId node, ScopeId scope,
 			!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER) &&
 			!arena_->IsTag(child, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME)) continue;
 		const std::string spelling = PayloadSource(child);
+		const int keyword = PayloadTokenKind(child);
 		const TypeId hosted_type = HostedSpecifierType(spelling);
-		if (spelling == "typedef") result.is_typedef = true;
-		else if (spelling == "constexpr") result.is_constexpr = true;
-		else if (spelling == "friend") result.is_friend = true;
-		else if (spelling == "inline") result.inline_specifier = true;
-		else if (spelling == "extern") result.storage_class = STORAGE_CLASS_EXTERN;
-		else if (spelling == "static") result.storage_class = STORAGE_CLASS_STATIC;
-		else if (spelling == "thread_local")
+		if (keyword == KW_TYPEDEF) result.is_typedef = true;
+		else if (keyword == KW_CONSTEXPR) result.is_constexpr = true;
+		else if (keyword == KW_FRIEND) result.is_friend = true;
+		else if (keyword == KW_INLINE) result.inline_specifier = true;
+		else if (keyword == KW_EXTERN) result.storage_class = STORAGE_CLASS_EXTERN;
+		else if (keyword == KW_STATIC) result.storage_class = STORAGE_CLASS_STATIC;
+		else if (keyword == KW_THREAD_LOCAL)
 			result.thread_local_storage = true;
-		else if (spelling == "auto") result.placeholder_auto = true;
-		else if (spelling == "mutable") result.mutable_member = true;
-		else if (spelling == "virtual") result.virtual_specifier = true;
-		else if (spelling == "const") cv |= CV_CONST;
-		else if (spelling == "volatile") cv |= CV_VOLATILE;
+		else if (keyword == KW_AUTO) result.placeholder_auto = true;
+		else if (keyword == KW_MUTABLE) result.mutable_member = true;
+		else if (keyword == KW_VIRTUAL) result.virtual_specifier = true;
+		else if (keyword == KW_CONST) cv |= CV_CONST;
+		else if (keyword == KW_VOLATILE) cv |= CV_VOLATILE;
 		else if (spelling == "_Complex") is_complex = true;
-		else if (spelling == "unsigned") is_unsigned = true;
-		else if (spelling == "signed") is_signed = true;
-		else if (spelling == "short") is_short = true;
-		else if (spelling == "long") ++longs;
-		else if (spelling == "int") saw_int = true;
-		else if (spelling == "char") is_char = true;
-		else if (spelling == "void") is_void = true;
-		else if (spelling == "bool") is_bool = true;
-		else if (spelling == "float") is_float = true;
-		else if (spelling == "double") is_double = true;
-		else if (spelling == "wchar_t") is_wchar = true;
-		else if (spelling == "char16_t") is_char16 = true;
-		else if (spelling == "char32_t") is_char32 = true;
+		else if (keyword == KW_UNSIGNED) is_unsigned = true;
+		else if (keyword == KW_SIGNED) is_signed = true;
+		else if (keyword == KW_SHORT) is_short = true;
+		else if (keyword == KW_LONG) ++longs;
+		else if (keyword == KW_INT) saw_int = true;
+		else if (keyword == KW_CHAR) is_char = true;
+		else if (keyword == KW_VOID) is_void = true;
+		else if (keyword == KW_BOOL) is_bool = true;
+		else if (keyword == KW_FLOAT) is_float = true;
+		else if (keyword == KW_DOUBLE) is_double = true;
+		else if (keyword == KW_WCHAR_T) is_wchar = true;
+		else if (keyword == KW_CHAR16_T) is_char16 = true;
+		else if (keyword == KW_CHAR32_T) is_char32 = true;
 		else if (hosted_type != kNoType) result.type = hosted_type;
-		else if (spelling != "explicit")
+		else if (keyword != KW_EXPLICIT)
 		{
 			if (deferred_type != kNoType)
 			{ result.type = deferred_type; continue; }
