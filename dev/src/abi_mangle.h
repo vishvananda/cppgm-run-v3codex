@@ -65,6 +65,9 @@ struct AbiFunctionRecord
   bool standard_substitution_includes_arguments = false;
   bool discriminator_after_terminal = false;
   std::string context_ref;
+  // Local/lambda context records use these as context storage and case
+  // identity. Name-component records use the same kind-disjoint slots as a
+  // resolved prefix path and terminal string ID.
   std::size_t resolved_context = ABI_NO_RESOLVED_REFERENCE;
   std::size_t resolved_context_identity = ABI_NO_RESOLVED_REFERENCE;
   std::string source_name;
@@ -76,6 +79,24 @@ struct AbiFunctionRecord
   AbiReferenceList argument_refs;
   std::vector<std::string> namespace_qualifiers;
   std::vector<AbiFunctionQualifier> qualifiers;
+
+  bool has_resolved_name_component() const
+  {
+    return resolved_context != ABI_NO_RESOLVED_REFERENCE &&
+      resolved_context_identity != ABI_NO_RESOLVED_REFERENCE;
+  }
+
+  void set_resolved_name_component(std::size_t path, std::size_t name)
+  {
+    resolved_context = path;
+    resolved_context_identity = name;
+  }
+
+  std::size_t resolved_name_path() const { return resolved_context; }
+  std::size_t resolved_source_name() const
+  {
+    return resolved_context_identity;
+  }
 };
 
 struct AbiFactRecord
@@ -185,6 +206,7 @@ public:
   std::size_t resolve_external_name(std::size_t source,
                                     const std::string & spelling);
   std::size_t resolve_path(const std::vector<std::size_t> & components);
+  std::size_t resolve_path_component(std::size_t parent, std::size_t name);
   bool resolved_type_uses_case_facts(std::size_t type) const;
   bool find_resolved_type(std::size_t source, std::size_t function,
                           std::size_t recipe, std::size_t * result) const;

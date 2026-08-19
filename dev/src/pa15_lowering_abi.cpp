@@ -524,11 +524,20 @@ class AbiFactBuilder
 	std::size_t ResolvePath(pa11::ScopeId owner, pa11::NameId terminal)
 	{
 		program_.BuildEmissionPath(owner, terminal, &semantic_path_scratch_);
+		return ResolvePath(semantic_path_scratch_, 0,
+			semantic_path_scratch_.size());
+	}
+
+	std::size_t ResolvePath(const std::vector<pa11::NameId>& path,
+		std::size_t begin, std::size_t end)
+	{
+		if (begin >= end || end > path.size())
+			throw std::logic_error("invalid semantic ABI path range");
 		resolved_path_scratch_.clear();
-		resolved_path_scratch_.reserve(semantic_path_scratch_.size());
-		for (std::size_t i = 0; i < semantic_path_scratch_.size(); ++i)
+		resolved_path_scratch_.reserve(end - begin);
+		for (std::size_t i = begin; i < end; ++i)
 		{
-			const pa11::NameId name = semantic_path_scratch_[i];
+			const pa11::NameId name = path[i];
 			resolved_path_scratch_.push_back(context_->resolve_external_name(
 				name, program_.names.Get(name)));
 		}
@@ -562,6 +571,15 @@ public:
 		pa11::ScopeId owner, pa11::NameId terminal)
 	{
 		target->resolved_path = ResolvePath(owner, terminal);
+	}
+
+	void AppendNameComponent(abi_mangle::AbiFunctionRecord* target,
+		pa11::NameId name, std::size_t* path)
+	{
+		const std::size_t resolved_name = context_->resolve_external_name(
+			name, program_.names.Get(name));
+		*path = context_->resolve_path_component(*path, resolved_name);
+		target->set_resolved_name_component(*path, resolved_name);
 	}
 
 	AbiFactBuilder(const pa11::Program& program,
@@ -1875,18 +1893,16 @@ bool AppendClassTemplateOwner(const pa11::Program& program,
 	program.BuildEmissionPath(entity.owner, entity.identity_name, &path);
 	const StandardTemplateSubstitution standard =
 		StandardSubstitutionFor(program, entity);
-	std::string prefix;
 	// Standard template substitutions include their `std::` owner. Do not emit
 	// that namespace again when the substitution is a nested-name prefix.
 	const std::size_t path_begin = standard.code && path.size() == 2 ? 1 : 0;
+	std::size_t resolved_prefix = ABI_NO_RESOLVED_REFERENCE;
 	for (std::size_t i = path_begin; i < path.size(); ++i)
 	{
 		AbiFactRecord component;
 		component.set_kind(ABI_FACT_RECORD_FUNCTION);
-		component.function.name = program.names.Get(path[i]);
-		if (!prefix.empty()) prefix += "::";
-		prefix += component.function.name;
-		component.function.substitution = prefix;
+		builder->AppendNameComponent(
+			&component.function, path[i], &resolved_prefix);
 		if (i + 1 == path.size())
 		{
 			component.function.kind = ABI_FUNCTION_RECORD_NAME_TEMPLATE;

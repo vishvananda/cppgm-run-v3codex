@@ -2187,13 +2187,15 @@ private:
     vector<const AbiFunctionRecord *> components;
     for(const AbiFunctionRecord * record : facts.components) {
       if(record->kind == ABI_FUNCTION_RECORD_NAME_STD) std_prefix = true;
-      else if(record->kind != ABI_FUNCTION_RECORD_NAME_SOURCE || !record->name.empty()) {
+      else if(record->kind != ABI_FUNCTION_RECORD_NAME_SOURCE
+              || record->has_resolved_name_component()
+              || !record->name.empty()) {
         components.push_back(record);
       }
     }
     if(facts.terminal && !components.empty()
        && components.back()->kind == ABI_FUNCTION_RECORD_NAME_SOURCE
-       && components.back()->name == "operator") {
+       && component_name(*components.back()) == "operator") {
       components.pop_back();
     }
     const bool separate_terminal = facts.terminal != nullptr;
@@ -2247,6 +2249,9 @@ private:
     if(arguments.empty()) return;
     if(facts.template_prefix != NO_ID) {
       substitutions_.add(SubstitutionKey{SUBSTITUTION_EXPLICIT, facts.template_prefix});
+    } else if(final && final->has_resolved_name_component()) {
+      substitutions_.add(SubstitutionKey{
+        SUBSTITUTION_PATH, final->resolved_name_path()});
     } else if(final && !final->substitution.empty()) {
       substitutions_.add(explicit_or_path_key(final->substitution, final->name));
     }
@@ -2267,7 +2272,7 @@ private:
     if(component.kind == ABI_FUNCTION_RECORD_NAME_SOURCE) {
       const SubstitutionKey key = structured_component_key(component, tags);
       if(substitutions_.emit_if_known(key, output_)) return;
-      output_ += source_name(component.name);
+      output_ += source_name(component_name(component));
       emit_tags(tags);
       substitutions_.add(key);
       return;
@@ -2282,7 +2287,7 @@ private:
     const SubstitutionKey prefix = structured_component_key(component, tags);
     if(substitutions_.emit_if_known(prefix, output_)) return;
     if(component.standard_substitution != "-") output_ += component.standard_substitution;
-    else output_ += source_name(component.name);
+    else output_ += source_name(component_name(component));
     emit_tags(tags);
     substitutions_.add(prefix);
     output_ += 'I';
@@ -2300,9 +2305,10 @@ private:
                                 const FunctionFacts & facts, bool member)
   {
     if(final != nullptr) {
-      if(final->kind == ABI_FUNCTION_RECORD_NAME_SOURCE) output_ += source_name(final->name);
+      if(final->kind == ABI_FUNCTION_RECORD_NAME_SOURCE)
+        output_ += source_name(component_name(*final));
       else if(final->kind == ABI_FUNCTION_RECORD_NAME_TEMPLATE) {
-        output_ += source_name(final->name);
+        output_ += source_name(component_name(*final));
       } else throw std::logic_error("invalid final structured ABI name component");
       emit_tags(component_tags(facts, final));
       emit_tags(facts.tags);
@@ -2586,10 +2592,17 @@ private:
     return SubstitutionKey{SUBSTITUTION_EXPLICIT, graph_.strings.intern(spelling)};
   }
 
+  const string & component_name(const AbiFunctionRecord & component) const
+  {
+    return component.has_resolved_name_component() ?
+      graph_.strings.get(component.resolved_source_name()) : component.name;
+  }
+
   SubstitutionKey structured_component_key(const AbiFunctionRecord & component,
                                            const vector<size_t> & tags)
   {
-    const SubstitutionKey base =
+    const SubstitutionKey base = component.has_resolved_name_component() ?
+      SubstitutionKey{SUBSTITUTION_PATH, component.resolved_name_path()} :
       explicit_or_path_key(component.substitution, component.name);
     if(tags.empty()) return base;
     string identity = "__cppgm_abi_tagged_component_";
@@ -2758,6 +2771,11 @@ size_t AbiMangleContext::resolve_external_name(size_t source,
 size_t AbiMangleContext::resolve_path(const vector<size_t> & components)
 {
   return impl_->graph.paths.intern(components);
+}
+
+size_t AbiMangleContext::resolve_path_component(size_t parent, size_t name)
+{
+  return impl_->graph.paths.intern(parent, name);
 }
 
 bool AbiMangleContext::resolved_type_uses_case_facts(size_t type) const
