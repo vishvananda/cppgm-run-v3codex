@@ -156,8 +156,10 @@ void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
 	if (declaration == kNoNode)
 		throw std::runtime_error("friend class declaration has no class");
 	const std::string spelling = arena_->Payload(declaration);
-	const NamePath path = ParseNamePath(spelling, NAME_PATH_PARSE_FRIEND);
 	const NodeId structure = FindChild(declaration, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	NamePath path;
+	if (structure != kNoNode) path = StructuredNamePath(structure);
+	else path.Push(program_->names.UseInterned(arena_->PayloadId(declaration)));
 	LookupResult found;
 	if (structure != kNoNode)
 	{
@@ -177,8 +179,7 @@ void SemanticAnalyzer::AnalyzeFriendClass(NodeId node,
 		}
 		--class_template_completion_suppressed_depth_;
 	}
-	else found = LookupSpelling(
-		class_scope, spelling, LOOKUP_TYPE, NAME_PATH_PARSE_FRIEND);
+	else found = LookupPath(class_scope, path, LOOKUP_TYPE);
 	TypeId friend_type = found.type;
 	if (friend_type != kNoType && found.type_declaration != kNoBinding &&
 		!CanAccessMember(found.type_declaration, found.naming_class))

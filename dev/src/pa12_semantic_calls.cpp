@@ -1521,9 +1521,7 @@ TypeId SemanticAnalyzer::ResolveFunctionalCastType(ScopeId scope,
 	if (structure != kNoNode) return kNoType;
 	const NamePath path = syntax == kNoNode ?
 		ParseNamePath(spelling, NAME_PATH_PARSE_CALL) : SyntaxNamePath(syntax);
-	const LookupResult named = syntax == kNoNode ?
-		LookupSpelling(scope, spelling, LOOKUP_TYPE, NAME_PATH_PARSE_CALL) :
-		LookupPath(scope, path, LOOKUP_TYPE);
+	const LookupResult named = LookupPath(scope, path, LOOKUP_TYPE);
 	if (named.type != kNoType && !path.Empty() && !path.global &&
 		path.Size() == 1)
 	{
