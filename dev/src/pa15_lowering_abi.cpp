@@ -608,9 +608,11 @@ public:
 		{
 			entity.kind = ABI_ENTITY_FACT_FUNCTION;
 			entity.function.kind = ABI_FUNCTION_TARGET_PATH;
-			entity.function.qualified_name = program_.names.Get(
-				binding.qualified_name != 0 ?
-					binding.qualified_name : binding.name);
+			if (binding.name != 0)
+				SetPath(&entity.function, binding.owner, binding.name);
+			else
+				entity.function.qualified_name =
+					program_.names.Get(binding.qualified_name);
 			const TypeRecord& function = program_.types.Get(binding.type);
 			const TypeId* parameters =
 				program_.types.Parameters(binding.type);
@@ -1000,10 +1002,8 @@ public:
 			target.variadic = type.variadic;
 			return StoreLocalContext(context_fact, identity);
 		}
-		const std::string qualified_name = program_.names.Get(
-			function.qualified_name != 0 ?
-				function.qualified_name : function.name);
-		if (qualified_name == "main")
+		if (function.owner == program_.GlobalScope() &&
+			program_.names.Get(function.name) == "main")
 		{
 			context_fact.kind = ABI_CONTEXT_RAW;
 			context_fact.fragment = "Z4mainE";
@@ -1012,7 +1012,10 @@ public:
 		context_fact.kind = ABI_CONTEXT_FUNCTION;
 		AbiFunctionTarget& target = context_fact.function;
 		target.kind = ABI_FUNCTION_TARGET_PATH;
-		target.qualified_name = qualified_name;
+		if (function.name != 0)
+			SetPath(&target, function.owner, function.name);
+		else
+			target.qualified_name = program_.names.Get(function.qualified_name);
 		const FunctionTemplateAbiRecipe* recipe = 0;
 		if (function.function_template_abi_recipe !=
 			kNoFunctionTemplateAbiRecipe)
@@ -2397,15 +2400,8 @@ std::string MangleFunction(const pa11::Program& program,
 	const BindingRecord& binding = program.bindings[node.binding];
 	if (binding.assembly_name != 0)
 		return program.names.Get(binding.assembly_name);
-	std::string qualified = program.names.Get(
-		binding.qualified_name != 0 ? binding.qualified_name : node.text);
-	if (binding.conversion_function)
-	{
-		const std::size_t terminal = qualified.find("::operator");
-		if (terminal != std::string::npos)
-			qualified.erase(terminal + std::string("::operator").size());
-	}
-	if (qualified == "main") return std::string();
+	if (binding.owner == program.GlobalScope() &&
+		program.names.Get(binding.name) == "main") return std::string();
 	if (binding.builtin_function != BUILTIN_FUNCTION_NONE)
 	{
 		if (binding.builtin_function == BUILTIN_FUNCTION_OPERATOR_NEW)
@@ -2474,12 +2470,7 @@ std::string MangleFunction(const pa11::Program& program,
 		ABI_FUNCTION_TARGET_ENCODING : typed_class_owner ?
 			ABI_FUNCTION_TARGET_MEMBER : ABI_FUNCTION_TARGET_PATH;
 	if (!structured_owner)
-	{
-		if (binding.conversion_function)
-			target.target.function.qualified_name = qualified;
-		else facts.SetPath(
-			&target.target.function, binding.owner, binding.name);
-	}
+		facts.SetPath(&target.target.function, binding.owner, binding.name);
 	if (typed_class_owner)
 	{
 		const EntityRecord& owner = program.entities[binding.member_owner];
