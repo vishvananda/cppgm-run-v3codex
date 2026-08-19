@@ -1834,10 +1834,7 @@ public:
 						throw std::logic_error(
 							"namespace lambda ABI type has no identity path");
 					result.kind = ABI_TYPE_NAMESPACE_LAMBDA;
-					result.name = program_.names.Get(path.back());
-					for (std::size_t i = 0; i + 1 < path.size(); ++i)
-						result.namespace_qualifiers.push_back(
-							program_.names.Get(path[i]));
+					result.index = ResolvePath(path, 0, path.size()) + 1;
 				}
 			}
 			else if (entity.local_context != kNoBinding)
@@ -1845,7 +1842,8 @@ public:
 				result.kind = ABI_TYPE_LOCAL_TYPE;
 				AssignLocalContext(&result,
 					AddLocalContext(entity.local_context));
-				if (!entity.unnamed_class) result.name = program_.names.Get(entity.identity_name);
+				if (!entity.unnamed_class)
+					result.index = ResolveName(entity.identity_name) + 1;
 				result.discriminator =
 					std::to_string(entity.local_name_ordinal);
 			}
@@ -1858,7 +1856,7 @@ public:
 					IsClassTemplateSpecialization(entity);
 				result.kind = specialization ?
 					ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION : ABI_TYPE_MEMBER;
-				result.name = program_.names.Get(entity.identity_name);
+				result.index = ResolveName(entity.identity_name) + 1;
 				result.types.push_back(MakeType(
 					program_.entities[entity.enclosing_class].type,
 					function, recipe));

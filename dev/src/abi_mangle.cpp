@@ -534,10 +534,27 @@ public:
     }
     TypeNode node;
     node.kind = source.kind;
-    const bool resolved_path = source.name.empty() && source.index != 0
-      && (source.kind == ABI_TYPE_NAMED
-          || source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
-          || source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION);
+    bool resolved_path = false;
+    bool resolved_source_name = false;
+    bool resolved_namespace_path = false;
+    if(source.name.empty() && source.index != 0) {
+      switch(source.kind) {
+        case ABI_TYPE_NAMED:
+        case ABI_TYPE_TEMPLATE_SPECIALIZATION:
+        case ABI_TYPE_STD_TEMPLATE_SPECIALIZATION:
+          resolved_path = true;
+          break;
+        case ABI_TYPE_MEMBER:
+        case ABI_TYPE_MEMBER_TEMPLATE_SPECIALIZATION:
+        case ABI_TYPE_LOCAL_TYPE:
+          resolved_source_name = true;
+          break;
+        case ABI_TYPE_NAMESPACE_LAMBDA:
+          resolved_namespace_path = true;
+          break;
+        default: break;
+      }
+    }
     if(source.kind == ABI_TYPE_NAME_OR_REFERENCE && is_builtin_name(source.name)) {
       node.kind = ABI_TYPE_BUILTIN;
       node.symbol = strings.intern(source.name);
@@ -548,7 +565,11 @@ public:
 			stats_ ? &stats_->text_type_path_components : nullptr);
 	  if(!source.substitution.empty()) node.substitution = strings.intern(source.substitution);
     } else {
-      if(!source.name.empty()) node.symbol = strings.intern(source.name);
+      if(resolved_source_name)
+        node.symbol = source.index - 1;
+      else if(!source.name.empty()) node.symbol = strings.intern(source.name);
+      if(resolved_namespace_path)
+        node.path = checked_path(source.index - 1);
       if((source.kind == ABI_TYPE_TEMPLATE_SPECIALIZATION
           || source.kind == ABI_TYPE_STD_TEMPLATE_SPECIALIZATION)
 		 && (resolved_path || !source.name.empty())) {
@@ -582,7 +603,8 @@ public:
         node.substitution = strings.intern(source.substitution);
         node.substitution_resolved = false;
       }
-      if(!resolved_path) node.index = source.index;
+      if(!resolved_path && !resolved_source_name && !resolved_namespace_path)
+        node.index = source.index;
       node.bound_kind = source.array_bound.kind;
       if(source.array_bound.resolved_expression !=
          ABI_NO_RESOLVED_REFERENCE) {
@@ -1636,6 +1658,11 @@ private:
         encode_local_type(type);
         return;
       case ABI_TYPE_NAMESPACE_LAMBDA: {
+        if(type.path != NO_ID) {
+          encode_component_name(
+            graph_.paths.components(type.path), vector<size_t>());
+          return;
+        }
         vector<size_t> components = type.namespaces;
         components.push_back(type.symbol);
         encode_component_name(components, vector<size_t>());
@@ -2738,34 +2765,6 @@ private:
 };
 
 }  // namespace
-
-size_t make_semantic_substitution(AbiSemanticSubstitutionKind kind,
-                                  size_t identity)
-{
-  const size_t kind_count = 3;
-  const size_t kind_value = static_cast<size_t>(kind);
-  if(kind_value >= kind_count ||
-     identity > (std::numeric_limits<size_t>::max() - kind_value - 1) /
-       kind_count)
-    throw std::logic_error("semantic ABI substitution identity is invalid");
-  return identity * kind_count + kind_value;
-}
-
-bool AbiFunctionTarget::has_resolved_source_name() const
-{
-  return resolved_context == ABI_NO_RESOLVED_REFERENCE &&
-    resolved_context_identity != ABI_NO_RESOLVED_REFERENCE;
-}
-
-void AbiFunctionTarget::set_resolved_source_name(size_t name)
-{
-  resolved_context_identity = name;
-}
-
-size_t AbiFunctionTarget::resolved_source_name() const
-{
-  return resolved_context_identity;
-}
 
 struct AbiMangleContext::Impl
 {
