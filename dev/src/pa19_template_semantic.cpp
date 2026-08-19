@@ -197,11 +197,8 @@ std::string CanonicalTemplateArgumentPresentation(const Program& program,
 			throw std::logic_error("template argument binding is invalid");
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
-		if (stats && binding.qualified_name != 0)
-			++stats->presentation_reads[
-				SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
-		std::string result = program.names.Get(
-			binding.qualified_name != 0 ? binding.qualified_name : binding.name);
+		std::string result =
+			RenderBindingPresentation(program, binding, stats);
 		const TypeRecord& type = program.types.Get(
 			program.types.RemoveTopCv(argument.type));
 		if (type.kind == TYPE_POINTER) result.insert(result.begin(), '&');

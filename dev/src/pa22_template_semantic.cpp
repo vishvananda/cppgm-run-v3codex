@@ -79,11 +79,8 @@ std::string LambdaTemplateArgumentIdentity(const Program& program,
 	{
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
-		if (stats && binding.qualified_name != 0)
-			++stats->presentation_reads[
-				SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
-		return SanitizeLambdaIdentity(program.names.Get(
-			binding.qualified_name != 0 ? binding.qualified_name : binding.name));
+		return SanitizeLambdaIdentity(
+			RenderBindingPresentation(program, binding, stats));
 	}
 	return std::to_string(argument.value);
 }
@@ -101,11 +98,8 @@ std::string LambdaContextIdentity(const Program& program, BindingId context,
 		binding.member_owner < program.entities.size() &&
 		program.entities[binding.member_owner].lambda_closure)
 		return "nested";
-	if (stats && binding.qualified_name != 0)
-		++stats->presentation_reads[
-			SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
-	std::string result = SanitizeLambdaIdentity(program.names.Get(
-		binding.qualified_name != 0 ? binding.qualified_name : binding.name));
+	std::string result = SanitizeLambdaIdentity(
+		RenderBindingPresentation(program, binding, stats));
 	const std::size_t first = binding.template_argument_begin;
 	const std::size_t count = binding.template_argument_count;
 	if (count != 0 &&

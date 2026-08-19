@@ -230,7 +230,8 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 	BindingRecord& binding = program_->bindings[base_entry];
 	binding.member_owner = source_binding.member_owner;
 	binding.access_owner = source_binding.access_owner;
-	binding.qualified_name = source_binding.qualified_name;
+	binding.presentation_name_override =
+		source_binding.presentation_name_override;
 	binding.overload_ordinal = source_binding.overload_ordinal;
 	binding.template_argument_list = source_binding.template_argument_list;
 	binding.template_argument_begin = source_binding.template_argument_begin;

@@ -2822,8 +2822,8 @@ std::string MangleThreadLocalWrapper(const pa11::Program& program,
 		facts.SetPath(&target.target.function, binding.owner, terminal);
 	if (target.target.function.resolved_path == ABI_NO_RESOLVED_REFERENCE)
 		throw std::logic_error("thread-local wrapper has no semantic name (binding " +
-			std::to_string(binding_id) + ", qualified " +
-			std::to_string(binding.qualified_name) + ", terminal " +
+			std::to_string(binding_id) + ", owner " +
+			std::to_string(binding.owner) + ", terminal " +
 			std::to_string(binding.name) + ", fallback " +
 			std::to_string(fallback_name) + ")");
 	AppendTypedFact(&fact_case, &target);

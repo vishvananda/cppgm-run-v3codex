@@ -37,7 +37,8 @@ void SemanticAnalyzer::PublishBindingPopulationStats()
 			binding.function_template_abi_recipe != kNoFunctionTemplateAbiRecipe ||
 			binding.exception_boundary != FUNCTION_EXCEPTION_BOUNDARY_NONE)
 			++stats_->binding_template_fact_records;
-		if (binding.qualified_name != 0 || binding.object_section_name != 0 ||
+		if (binding.presentation_name_override != 0 ||
+			binding.object_section_name != 0 ||
 			binding.assembly_name != 0 || binding.abi_tag_count != 0 ||
 			binding.display_flavor != NAMED_NONE || binding.display_type_name != 0 ||
 			binding.lifecycle_base_entry != kNoBinding)
@@ -60,18 +61,6 @@ void SemanticAnalyzer::PublishPresentationPopulationStats()
 	stats_->entity_record_size = sizeof(EntityRecord);
 	stats_->function_info_size = sizeof(FunctionInfo);
 	stats_->dump_node_size = sizeof(DumpNode);
-
-	std::size_t& binding_count = stats_->presentation_retained_values[
-		SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
-	std::size_t& binding_bytes = stats_->presentation_retained_bytes[
-		SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
-	for (std::size_t i = 1; i < program_->bindings.size(); ++i)
-	{
-		const NameId name = program_->bindings[i].qualified_name;
-		if (name == 0) continue;
-		++binding_count;
-		binding_bytes += program_->names.Get(name).size();
-	}
 
 	std::size_t& entity_count = stats_->presentation_retained_values[
 		SEMANTIC_PRESENTATION_READ_ENTITY_PRESENTATION];

@@ -689,7 +689,8 @@ EntityRecord::EntityRecord()
 }
 
 BindingRecord::BindingRecord()
-	: owner(kNoScope), name(0), qualified_name(0), object_section_name(0),
+	: owner(kNoScope), name(0), presentation_name_override(0),
+	  object_section_name(0),
 	  assembly_name(0),
 	  kind(BIND_VARIABLE), type(kNoType),
 	  conversion_target(kNoType),
@@ -1340,6 +1341,25 @@ void Program::BuildEmissionPath(ScopeId owner, NameId terminal,
 	}
 	std::reverse(path->begin(), path->end());
 	path->push_back(terminal);
+}
+
+std::string Program::RenderEmissionName(ScopeId owner, NameId terminal,
+	std::size_t* components) const
+{
+	std::vector<NameId> path;
+	BuildEmissionPath(owner, terminal, &path);
+	if (components) *components = path.size();
+	std::size_t bytes = path.empty() ? 0 : (path.size() - 1) * 2;
+	for (std::size_t i = 0; i < path.size(); ++i)
+		bytes += names.Get(path[i]).size();
+	std::string result;
+	result.reserve(bytes);
+	for (std::size_t i = 0; i < path.size(); ++i)
+	{
+		if (i != 0) result += "::";
+		result += names.Get(path[i]);
+	}
+	return result;
 }
 
 BindingId Program::AddBinding(ScopeId owner, BindingKind kind, NameId name,

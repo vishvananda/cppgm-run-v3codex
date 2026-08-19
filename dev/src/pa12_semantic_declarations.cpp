@@ -1274,7 +1274,6 @@ void SemanticAnalyzer::PublishVariableDeclarationFacts(BindingId binding,
 		record.thread_local_storage)
 		throw std::runtime_error("thread_local redeclaration mismatch");
 	canonical.thread_local_storage = record.thread_local_storage;
-	if (!local) record.qualified_name = EmissionName(declaration_scope, name);
 }
 
 void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
@@ -2331,7 +2330,6 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	declaration_record.nonthrowing = nonthrowing;
 	declaration_record.unnamed_namespace_linkage =
 		HasInternalLinkageScope(owner);
-	declaration_record.qualified_name = EmissionName(owner, name);
 	if (canonical == kNoBinding)
 	{
 		FunctionInfo info;
@@ -2378,7 +2376,6 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 	canonical_record.unnamed_namespace_linkage =
 		canonical_record.unnamed_namespace_linkage ||
 		declaration_record.unnamed_namespace_linkage;
-	canonical_record.qualified_name = declaration_record.qualified_name;
 	if (previous != kNoBinding &&
 		canonical_record.language_linkage == LANGUAGE_LINKAGE_C)
 		language_linkage = LANGUAGE_LINKAGE_C;
@@ -2607,7 +2604,8 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	BindingRecord& binding = program_->bindings[base_entry];
 	binding.member_owner = source_binding_copy.member_owner;
 	binding.access_owner = source_binding_copy.access_owner;
-	binding.qualified_name = source_binding_copy.qualified_name;
+	binding.presentation_name_override =
+		source_binding_copy.presentation_name_override;
 	binding.overload_ordinal = source_binding_copy.overload_ordinal;
 	binding.template_argument_list = source_binding_copy.template_argument_list;
 	binding.template_argument_begin = source_binding_copy.template_argument_begin;

@@ -205,8 +205,6 @@ void SemanticAnalyzer::EnsureStaticMemberStorage(
 		}
 		if (!retained_definition || !value_use_requires_storage) return;
 	}
-	if (binding.qualified_name == 0)
-		binding.qualified_name = EmissionName(binding.owner, binding.name);
 	DemandClassTemplateMemberDefinitions(binding.member_owner);
 	const BindingRecord& completed_binding = program_->bindings[member];
 	if (static_member_storage_by_binding_.size() <= member)

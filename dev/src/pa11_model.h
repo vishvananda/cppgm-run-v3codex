@@ -635,7 +635,7 @@ struct FunctionTemplateAbiRecipe
 struct BindingRecord
 {
 	ScopeId owner;
-	NameId name, qualified_name, object_section_name, assembly_name;
+	NameId name, presentation_name_override, object_section_name, assembly_name;
 	BindingKind kind;
 	TypeId type, conversion_target;
 	BindingId next;
@@ -830,6 +830,8 @@ public:
 	std::string RenderType(TypeId type) const;
 	void BuildEmissionPath(ScopeId owner, NameId terminal,
 		std::vector<NameId>* path) const;
+	std::string RenderEmissionName(ScopeId owner, NameId terminal,
+		std::size_t* components = 0) const;
 	void Render(std::ostream& output, std::size_t* max_depth = 0,
 		std::size_t* stack_storage_bytes = 0,
 		std::size_t* rendered_type_nodes = 0) const;

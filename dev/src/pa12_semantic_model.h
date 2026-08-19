@@ -8,15 +8,20 @@
 #include <functional>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cppgm
 {
+struct SemanticAnalysisStats;
 namespace pa12_semantic_detail
 {
 
 using namespace pa10_syntax_detail;
 using namespace pa11;
+
+std::string RenderBindingPresentation(const Program& program,
+	const BindingRecord& binding, SemanticAnalysisStats* stats = 0);
 
 enum ValueCategory : std::uint8_t
 {

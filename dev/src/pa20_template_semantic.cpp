@@ -194,11 +194,8 @@ std::string ExplicitArgumentPresentation(const Program& program,
 			throw std::logic_error("template argument binding is invalid");
 		const BindingRecord& binding =
 			program.bindings[argument.value_binding];
-		if (stats && binding.qualified_name != 0)
-			++stats->presentation_reads[
-				SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
-		std::string result = program.names.Get(
-			binding.qualified_name != 0 ? binding.qualified_name : binding.name);
+		std::string result =
+			RenderBindingPresentation(program, binding, stats);
 		const TypeRecord& type = program.types.Get(
 			program.types.RemoveTopCv(argument.type));
 		if (type.kind == TYPE_POINTER) result.insert(result.begin(), '&');
@@ -1105,9 +1102,8 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 		const NameId specialization_name = program_->names.Intern(
 			ExplicitClassSpecializationName(
 				*program_, primary.name, arguments, stats_));
-		record.qualified_name = EmissionName(selected.owner, specialization_name);
+		record.presentation_name_override = specialization_name;
 	}
-	else record.qualified_name = EmissionName(selected.owner, primary.name);
 	bool dependent = false;
 	for (std::size_t i = 0; i < arguments.size(); ++i)
 		if (arguments[i].IsDependent() ||

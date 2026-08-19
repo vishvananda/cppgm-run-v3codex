@@ -8,6 +8,27 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+std::string RenderBindingPresentation(const Program& program,
+	const BindingRecord& binding, SemanticAnalysisStats* stats)
+{
+	const NameId terminal = binding.presentation_name_override != 0 ?
+		binding.presentation_name_override : binding.name;
+	std::size_t components = 0;
+	const std::string rendered =
+		program.RenderEmissionName(binding.owner, terminal, &components);
+	if (stats)
+	{
+		++stats->presentation_reads[
+			SEMANTIC_PRESENTATION_READ_BINDING_QUALIFIED];
+		++stats->presentation_renders[SEMANTIC_PRESENTATION_EMISSION_NAME];
+		stats->presentation_render_components[
+			SEMANTIC_PRESENTATION_EMISSION_NAME] += components;
+		stats->presentation_render_bytes[
+			SEMANTIC_PRESENTATION_EMISSION_NAME] += rendered.size();
+	}
+	return rendered;
+}
+
 const std::string& SemanticAnalyzer::ScopePrefix(ScopeId scope)
 {
 	return program_->names.Get(ScopePrefixId(scope));
