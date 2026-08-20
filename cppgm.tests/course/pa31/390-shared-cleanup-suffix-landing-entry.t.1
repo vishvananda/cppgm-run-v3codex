@@ -1,0 +1,38 @@
+int destroyed;
+
+int zero()
+{
+  return 0;
+}
+
+struct Guard
+{
+  Guard()
+  {
+    if(destroyed < 0) throw 3;
+  }
+  ~Guard() { destroyed = zero() + 1; }
+};
+
+void fail(Guard const &)
+{
+  throw 7;
+}
+
+void exercise()
+{
+  fail(Guard());
+}
+
+int main()
+{
+  try
+  {
+    exercise();
+  }
+  catch(int value)
+  {
+    return value == 7 && destroyed == 1 ? 0 : 1;
+  }
+  return 2;
+}

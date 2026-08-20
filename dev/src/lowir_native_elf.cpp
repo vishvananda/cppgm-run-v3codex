@@ -53,9 +53,47 @@ const std::size_t kContentOffset = kElfHeaderSize + kProgramHeaderSize;
 struct HostEhStackCleanup
 {
   lowir_model::LocalLabelId label;
-  lowir_model::BlockId landing_block;
+  lowir_model::LocalLabelId continuation;
   std::size_t stack_bytes = 0;
 };
+
+bool ends_host_block_control_flow(
+    const mir_model::MirInstruction & instruction)
+{
+  return instruction.opcode == mir_model::MirInstruction::MI_JMP ||
+    instruction.opcode == mir_model::MirInstruction::MI_JMP_INDIRECT ||
+    instruction.opcode == mir_model::MirInstruction::MI_RET ||
+    instruction.opcode == mir_model::MirInstruction::MI_FRET ||
+    instruction.opcode == mir_model::MirInstruction::MI_RESUME ||
+    instruction.opcode == mir_model::MirInstruction::MI_THROW ||
+    instruction.opcode == mir_model::MirInstruction::MI_EXIT;
+}
+
+std::vector<unsigned char> ordinary_host_block_entries(
+    const mir_model::MirFunction & function)
+{
+  std::vector<unsigned char> result(function.block_labels.size(), 0);
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    const mir_model::MirBlock & block = function.blocks[i];
+    for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const mir_model::MirInstruction & instruction = block.instructions[j];
+      if(instruction.opcode == mir_model::MirInstruction::MI_EH_PUSH) continue;
+      for(std::size_t operand = 0;
+          operand < instruction.operands.size(); ++operand) {
+        if(instruction.operands[operand].kind !=
+             mir_model::MirOperand::OP_LABEL) continue;
+        const std::uint32_t target = instruction.operands[operand].block;
+        if(target < result.size()) result[target] = 1;
+      }
+    }
+    if(i + 1 >= function.blocks.size() ||
+       (!block.instructions.empty() &&
+        ends_host_block_control_flow(block.instructions.back()))) continue;
+    const std::uint32_t target = function.blocks[i + 1].id;
+    if(target < result.size()) result[target] = 1;
+  }
+  return result;
+}
 
 void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & function)
 {
@@ -2292,6 +2330,7 @@ void emit_host_instruction(
     const mir_model::MirInstruction & instruction,
     const mir_model::MirFunction & function,
     lowir_model::BlockId landing_block,
+    lowir_model::LocalLabelId landing_entry,
     HostFunctionLayout & layout,
     std::vector<HostEhStackCleanup> & stack_cleanups)
 {
@@ -2343,13 +2382,11 @@ void emit_host_instruction(
     if(instruction.call_stack_bytes) {
       HostEhStackCleanup cleanup;
       cleanup.label = out.internal_label("host_eh_stack_cleanup");
-      cleanup.landing_block = landing_block;
+      cleanup.continuation = landing_entry;
       cleanup.stack_bytes = instruction.call_stack_bytes;
       site.landing_label = cleanup.label;
       stack_cleanups.push_back(cleanup);
-    } else {
-      site.landing_label = out.block_label(landing_block);
-    }
+    } else site.landing_label = landing_entry;
     layout.call_sites.push_back(site);
   }
 }
@@ -2386,6 +2423,14 @@ HostFunctionLayout emit_prepared_host_function(
   out.label(function.symbol);
   if(function.object_symbol.valid()) out.label_object(function.object_symbol);
   out.begin_function_blocks(function.block_labels.size());
+  const std::vector<unsigned char> ordinary_entries =
+    ordinary_host_block_entries(function);
+  std::vector<lowir_model::LocalLabelId> landing_entries(
+    function.block_labels.size());
+  for(std::size_t block = 0; block < function.host_eh_clauses.size(); ++block)
+    if(!function.host_eh_clauses[block].empty() &&
+       block < ordinary_entries.size() && ordinary_entries[block])
+      landing_entries[block] = out.internal_label("host_eh_landing_entry");
   emit_function_prologue(out, function);
   const epilogue_detail::Plan epilogue_plan =
     epilogue_detail::make_plan(function);
@@ -2407,7 +2452,9 @@ HostFunctionLayout emit_prepared_host_function(
     const std::vector<bool> flags_live =
       condition_flags_live_before(block.instructions);
     if(block_id < function.host_eh_clauses.size() &&
-       !function.host_eh_clauses[block_id].empty()) {
+       !function.host_eh_clauses[block_id].empty() &&
+       (block_id >= landing_entries.size() ||
+        !landing_entries[block_id].valid())) {
       emit_store(out, XR_RBP,
         actual_frame_offset(function, function.host_eh_exception_offset),
         XR_RAX, 64);
@@ -2467,9 +2514,17 @@ HostFunctionLayout emit_prepared_host_function(
         continue;
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
+      const lowir_model::BlockId landing = landing_block ?
+        function.blocks[landing_block - 1].id : lowir_model::BlockId();
+      const std::uint32_t landing_id = landing.valid() ?
+        static_cast<std::uint32_t>(landing) : 0;
+      const lowir_model::LocalLabelId landing_entry = landing.valid() &&
+        landing_id < landing_entries.size() &&
+        landing_entries[landing_id].valid() ? landing_entries[landing_id] :
+        (landing.valid() ? out.block_label(landing) :
+                           lowir_model::LocalLabelId());
       emit_host_instruction(out, block.instructions[j], function,
-        landing_block ? function.blocks[landing_block - 1].id :
-                        lowir_model::BlockId(),
+        landing, landing_entry,
         layout, stack_cleanups);
     }
   }
@@ -2477,12 +2532,24 @@ HostFunctionLayout emit_prepared_host_function(
     out.label(epilogue);
     emit_function_return(out, function);
   }
+  for(std::size_t block = 0; block < landing_entries.size(); ++block) {
+    if(!landing_entries[block].valid()) continue;
+    out.label(landing_entries[block]);
+    emit_store(out, XR_RBP,
+      actual_frame_offset(function, function.host_eh_exception_offset),
+      XR_RAX, 64);
+    emit_store(out, XR_RBP,
+      actual_frame_offset(function, function.host_eh_selector_offset),
+      XR_RDX, 64);
+    emit_unconditional_jump(out,
+      out.block_label(lowir_model::BlockId(
+        static_cast<std::uint32_t>(block))));
+  }
   for(std::size_t i = 0; i < stack_cleanups.size(); ++i) {
     out.label(stack_cleanups[i].label);
     emit_stack_adjust(out, false,
       static_cast<unsigned>(stack_cleanups[i].stack_bytes));
-    emit_unconditional_jump(out,
-      out.block_label(stack_cleanups[i].landing_block));
+    emit_unconditional_jump(out, stack_cleanups[i].continuation);
   }
   const CodeOffsetAdjustment adjustment =
     out.relax_forward_branches(layout.offset);

@@ -1,6 +1,6 @@
 # Plan: O0 Clang Code-Shape Parity
 
-Status: ready after `PLAN-PROPOSED-TEST-NORMALIZATION.md`
+Status: implemented; final PA39 validation in progress
 
 Date: 2026-08-20
 
@@ -656,8 +656,7 @@ The migration changes seven PA17, two PA22, one PA25, twenty-six PA26, and two
 PA28 existing LowIR fixtures.  New course reducers live at PA16, PA17, and
 PA26; a PA18 reducer pins base/deleting/complete destructor-entry order after
 cleanup demand changes.  All references were generated through `ref-test`
-with clean detached compilers at `232f0fc8` and `d6716a4c`.  No PA31 runtime
-or object fixture changes were required.
+with clean detached compilers at `232f0fc8` and `d6716a4c`.
 
 On the frozen compile, cleanup state telemetry records 18,362 probes, 15,656
 hits, 2,706 unique states, 2,654 blocks emitted, 11,631 destructor actions
@@ -673,6 +672,28 @@ for baseline/candidate.  Median paired candidate ratios are 0.9700 wall,
 0.9696 user, and 1.0008 RSS.  PA16 passes 297/297, through PA16 passes
 1,468/1,468, the full report passes 5,272/5,272, and the PA39 audit has zero
 fatal findings.
+
+The final self-host lane found one host-ABI legality condition that the LowIR
+DAG intentionally does not encode: a machine block that is both an unwind
+landing and an ordinary cleanup-suffix target cannot contain the landing-entry
+stores.  An ordinary predecessor would re-execute those stores after a
+destructor call and replace the active exception with the call result before
+`_Unwind_Resume`.  PA31 object emission now detects these dual-entry blocks in
+one linear MIR scan, moves only their exception/selector stores to out-of-line
+landing trampolines, and keeps the shared suffix unchanged.  The trampolines
+are placed after any shared function epilogue so they cannot intercept an
+intentional return fallthrough.  This is an object-encoding legalization: no
+LowIR or serialized MIR fixture changes.
+
+The PA31 `390-shared-cleanup-suffix-landing-entry` course reducer returns zero
+after deliberately clobbering `rax` in the shared destructor; the pre-fix
+compiler exits 139.  On the frozen object the legalization adds 4,600 object
+bytes, 4,300 `.text*` bytes, and 238 `.gcc_except_table` bytes while leaving
+`.eh_frame`, relocation count, function count, LowIR, and MIR unchanged.
+Three load-screened ABBA blocks against P9 measured 4.575/4.565 seconds median
+wall, 4.130/4.125 seconds median user, and 360,112/360,850 KiB median peak RSS.
+Paired movement is -0.33% wall, -0.49% user, and +0.45% RSS.  The full report
+passes 5,276/5,276 and the PA39 audit has zero fatal findings.
 
 ### P7: canonicalize source-owned zero initialization in LowIR
 
@@ -913,8 +934,9 @@ Fill one row after each independently retained phase.
 | P5 shared epilogue | none | behavior fixture's informational MIR expands with its source, but every semantic return remains; native bytes change only for existing inputs | 4,382,992 bytes; `.text*` 897,349; 5,858 native returns and 4,575 physical epilogues; functions/relocations unchanged | ABBA -0.42% wall, -0.24% user, -0.24% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P6 cleanup DAG | one new PA16 reducer; 7 PA17, 2 PA22, 1 PA25, 26 PA26, and 2 PA28 existing fixtures migrate; new PA17/PA26 reducers | new PA18 lifecycle-order reducer; PA31 behavior stays exact | 3,927,648 bytes; `.text*` 734,392; 184,790 instructions; 26,936 relocations; functions unchanged | ABBA -3.00% wall, -3.04% user, +0.08% RSS | PA16 297/297; through PA16 1,468/1,468; full report 5,272/5,272; zero-fatal audit | complete; `232f0fc8`, `d6716a4c` |
 | P7 zero initialization | 14 existing fixtures migrate across PA16, PA17, PA19, PA20, PA22, PA23, PA24, PA26, PA27; two new PA16 reducers | PA29 encoding changes below MIR; one PA37 O2 driver fixture migrates | 3,927,584 bytes; `.text*` 734,354; 184,780 instructions; functions/relocations unchanged | ABBA +0.11% wall, 0.00% user, +0.06% RSS | PA16 299/299; through PA16 1,470/1,470; full report 5,275/5,275; zero-fatal audit | complete; `77be9a49`, `313b7426` |
-| P8 weak demand | none | telemetry names now distinguish required weak from object-output roots; no demand edge removed | byte-identical to P7; 4,575 typed definitions classify completely; cppgm++-only weak set is 1,834 names/1,745 bodies, of which 1,732 are direct call targets | ABBA -0.11% wall, -0.12% user, -0.15% RSS | PA15 116/116; through PA15 1,171/1,171; full report 5,275/5,275; zero-fatal audit | complete; pending commit |
-| P9 shared ELF strings | none | PA32 ELF layout only; no fixture/handout change | 3,242,296 bytes (-685,288); one 702,284-byte table; code/symbols/relocations unchanged | ABBA +0.22% wall, +0.12% user, -0.05% RSS | PA32 150/150; through PA32 4,451/4,451; full report 5,275/5,275; readelf lint clean; zero-fatal audit | complete; pending commit |
+| P8 weak demand | none | telemetry names now distinguish required weak from object-output roots; no demand edge removed | byte-identical to P7; 4,575 typed definitions classify completely; cppgm++-only weak set is 1,834 names/1,745 bodies, of which 1,732 are direct call targets | ABBA -0.11% wall, -0.12% user, -0.15% RSS | PA15 116/116; through PA15 1,171/1,171; full report 5,275/5,275; zero-fatal audit | complete; `b6b97850` |
+| P9 shared ELF strings | none | PA32 ELF layout only; no fixture/handout change | 3,242,296 bytes (-685,288); one 702,284-byte table; code/symbols/relocations unchanged | ABBA +0.22% wall, +0.12% user, -0.05% RSS | PA32 150/150; through PA32 4,451/4,451; full report 5,275/5,275; readelf lint clean; zero-fatal audit | complete; `aacb80a9` |
+| P6 PA31 landing legalization | none | one new PA31 behavior reducer; serialized MIR unchanged | 3,246,896 bytes; `.text*` +4,300; LSDA +238; functions/relocations unchanged | ABBA -0.33% wall, -0.49% user, +0.45% RSS | reducer fails pre-fix with 139; full report 5,276/5,276; zero-fatal audit; self-host reproducer passes | complete; pending commit |
 
 ## Completion criteria
 
