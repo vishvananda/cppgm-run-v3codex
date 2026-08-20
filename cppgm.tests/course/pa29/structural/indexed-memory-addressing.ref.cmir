@@ -60,5 +60,4 @@ function @main
     cmp.i64 rax, rdx
     setne rax
     movzx rax, rax
-    sext.i32 rax
     ret rax

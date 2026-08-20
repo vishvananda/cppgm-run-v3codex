@@ -972,6 +972,24 @@ outlier; paired block medians remain +0.21% wall, +0.83% user, and -0.23% RSS,
 inside the neutral gate.  PA29 plus PA38 pass 290/290, the full report passes
 5,283/5,283, and the file audit has zero fatal findings.
 
+S7c records three adjacent typed producer facts directly in the MIR builder.
+A canonical in-range integer immediate, a `movzx` Boolean result, or an
+identical preceding integer extension already defines the complete value and
+does not receive a duplicate normalization.  Explicit source-language
+extensions and truncations remain visible: the new PA29 reducer pairs an
+in-range typed shift count with an explicit truncation that must survive.
+Three existing PA29 course fixtures migrate only by removing a redundant
+normalization after a materialized Boolean.  The check examines only the last
+MIR instruction and fixed typed fields.
+
+The frozen object loses 86 MIR and 86 decoded instructions, all residual
+`movzx`, along with 306 `.text*` bytes, one LSDA byte, and 288 file bytes;
+`.eh_frame` is unchanged.  Three A/B/B/A blocks against exact S7b measured
+baseline/candidate medians of 4.625/4.620 seconds wall, identical 4.165-second
+user medians, and 362,100/360,260 KiB RSS.  Paired block medians are +0.11%
+wall, -0.24% user, and -0.54% RSS.  PA29 plus PA38 pass 291/291, the full
+report passes 5,284/5,284, and the file audit has zero fatal findings.
+
 ### S8: make baseline register cost explicit
 
 Recount `push`, `pop`, physical epilogues, and preserve-list entries after the
@@ -1063,7 +1081,7 @@ Fill one row after each retained phase.
 | S4 cleanup equivalence | none; all typed key fields remain semantically required | audit-only: frozen object remains byte-identical to S3; O1 finds only 16 exact tail groups/22 instructions and three resume blocks | none; no production change | S3 full 5,280/5,280 and zero-fatal audit remain the boundary; exact O0/O1 cleanup/call census recorded | complete; audit-only |
 | S5 destination placement | PA17 direct xvalue-to-base binding and direct-register class-call destination fixtures; no PA29 migration needed | cumulative through S5b: -3,431 text, -540 LSDA, -97 relocations, -33 terminate calls; all 62 generated object call slots removed | S5b paired 0.000% wall, +0.605% user, +0.451% RSS | PA17 245/245; through-PA17 1,715/1,715; full 5,281/5,281; zero-fatal audit | complete through S5b |
 | S6 bounded scalar retention | PA29 exact-forward-edge MIR/behavior; existing PA29 loop/call/escape and PA38 EH negatives | -185 text, -19 decoded instructions, -34 temporary homes; +108 `.eh_frame` pending S8 cost audit | reverse-order medians both 4.270s user; <0.5% RSS movement | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | complete |
-| S7 width normalization | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures to normalized typed loads; S7b adds one PA29 call-consumer fixture | cumulative through S7b: -6,500 text, -2,194 decoded instructions, -2,584 MIR | S7a paired -0.82% user; S7b +0.83%; RSS neutral | PA29+PA38 290/290; full 5,283/5,283; zero-fatal audit | in progress; loads and terminal call consumers complete |
+| S7 width normalization | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures | cumulative through S7c: -6,806 text, -2,280 decoded instructions, -2,670 MIR | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%; RSS neutral | PA29+PA38 291/291; full 5,284/5,284; zero-fatal audit | in progress; loads, terminal call consumers, and adjacent normalized producers complete |
 | S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S9 demand/optimization remeasure | explicit force-inline owner only at O0; ordinary work deferred to PA37/PA38 | pending | pending | pending | planned |
 

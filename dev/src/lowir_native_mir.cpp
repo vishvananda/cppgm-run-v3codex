@@ -3,6 +3,36 @@
 namespace lowir_native {
 namespace build {
 
+namespace {
+
+bool immediate_is_normalized(long long value,
+                             const lowir_model::LowType & type)
+{
+  const std::size_t width = lowir_model::lowir_type_bit_width(type);
+  if(width >= 64 || type.kind == lowir_model::LTK_PTR) return true;
+  if(type.kind == lowir_model::LTK_U8 ||
+     type.kind == lowir_model::LTK_U16 ||
+     type.kind == lowir_model::LTK_U32 ||
+     type.kind == lowir_model::LTK_I1) {
+    const unsigned long long limit = (1ULL << width) - 1;
+    return value >= 0 && static_cast<unsigned long long>(value) <= limit;
+  }
+  const long long limit = 1LL << (width - 1);
+  return value >= -limit && value < limit;
+}
+
+bool same_register_destination(
+    const mir_model::MirInstruction & instruction,
+    const mir_model::MirOperand & destination)
+{
+  return !instruction.operands.empty() &&
+    instruction.operands[0].kind == mir_model::MirOperand::OP_REG &&
+    destination.kind == mir_model::MirOperand::OP_REG &&
+    instruction.operands[0].reg == destination.reg;
+}
+
+}  // namespace
+
 const lowir_model::LowType & integer_machine_type(std::size_t width)
 {
   if(width <= 1) return machine_type(lowir_model::LTK_I1);
@@ -189,10 +219,28 @@ void append_integer_normalization(
     const mir_model::MirInstruction & producer = out.back();
     if(producer.opcode == mir_model::MirInstruction::MI_LOAD &&
        producer.type == type && producer.operands.size() == 2 &&
-       producer.operands[0].kind == mir_model::MirOperand::OP_REG &&
-       destination.kind == mir_model::MirOperand::OP_REG &&
-       producer.operands[0].reg == destination.reg)
+       same_register_destination(producer, destination))
       return;
+    if(producer.opcode == mir_model::MirInstruction::MI_MOVZX &&
+       same_register_destination(producer, destination))
+      return;
+    if(producer.opcode == mir_model::MirInstruction::MI_MOV &&
+       producer.operands.size() == 2 &&
+       producer.operands[1].kind == mir_model::MirOperand::OP_IMM &&
+       same_register_destination(producer, destination) &&
+       immediate_is_normalized(producer.operands[1].imm, type))
+      return;
+    const mir_model::MirInstruction::Opcode normalization =
+      type.kind == lowir_model::LTK_I1 ||
+      type.kind == lowir_model::LTK_I8 ||
+      type.kind == lowir_model::LTK_I16 ||
+      type.kind == lowir_model::LTK_I32 ||
+      type.kind == lowir_model::LTK_I64 ?
+      mir_model::MirInstruction::MI_SEXT :
+      mir_model::MirInstruction::MI_ZEXT;
+    if(producer.opcode == normalization && producer.type ==
+         integer_machine_type(width) &&
+       same_register_destination(producer, destination)) return;
   }
   const bool sign_extend = type.kind == lowir_model::LTK_I1 ||
     type.kind == lowir_model::LTK_I8 || type.kind == lowir_model::LTK_I16 ||

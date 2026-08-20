@@ -262,6 +262,8 @@ struct Instruction
     // the ABI return carrier while its compare operands retain their selected
     // source locations.
     MI_SETCC,
+    // MI_MOVZX defines a complete zero-valued or one-valued GPR result. A
+    // following narrow integer consumer needs no second normalization.
     MI_MOVZX,
     // A sole-use integer conversion immediately returned should select the
     // ABI return carrier instead of an intermediate general-purpose register.

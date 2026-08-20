@@ -573,6 +573,10 @@ To complete PA29, implement these goals:
    boundary.  An immediately following explicit integer extension or
    truncation also performs the required normalization itself.
 
+   A canonical typed integer immediate, a materialized Boolean, or an
+   identical preceding integer extension already establishes the complete
+   narrow value and should not be followed by a duplicate normalization.
+
 12. Keep the conservative `f80` path explicit rather than implicit.
    PA29 does not need to treat `f80` like ordinary XMM-resident `f32`/`f64`, but its
    conversions and truncation/extension path should still stay visible and testable in
@@ -688,6 +692,8 @@ strategies include:
 - use the sole-use next instruction to recognize a narrow call result consumed
   by a same-width store, return, or explicit integer conversion, while
   retaining explicit normalization for wider consumers
+- carry a typed immediate's signed range and the result fact of Boolean or
+  integer-extension instructions into the adjacent normalization decision
 - retain integer constants as typed MIR immediates, letting native emission
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required

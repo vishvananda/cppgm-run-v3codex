@@ -1,0 +1,60 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @shift_with_typed_count
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, 3
+    mov rcx, 2
+    shl r8, cl
+    sext.i32 r8
+    ret r8
+
+function @explicit_truncation
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 4294967297
+    sext.i32 rax
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve <gpr0>
+
+  block ^entry
+    call @shift_with_typed_count [args=()]
+    mov <gpr0>, rax
+    sext.i32 <gpr0>
+    call @explicit_truncation [args=()]
+    mov r8, rax
+    sext.i32 r8
+    mov rdx, 12
+    cmp.i32 <gpr0>, rdx
+    setne <gpr0>
+    movzx <gpr0>, <gpr0>
+    mov rdx, 1
+    cmp.i32 r8, rdx
+    setne r8
+    movzx r8, r8
+    or <gpr0>, r8
+    mov rax, <gpr0>
+    sext.i32 rax
+    ret rax
