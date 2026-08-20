@@ -14,8 +14,7 @@ function @make_value
     slot $tmp -> [rbp-<off0>] : obj<8x8>
 
   block ^entry
-    mov rax, 7
-    store.i64 [rbp-<off0>], rax
+    store.i64 [rbp-<off0>], 7
     load.i64 rax, [rbp-<off0>]
     ret
 

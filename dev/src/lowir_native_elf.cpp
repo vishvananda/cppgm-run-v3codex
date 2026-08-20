@@ -12,6 +12,7 @@
 #include "lowir_native_frame_forwarding.h"
 #include "lowir_native_global_encoding.h"
 #include "lowir_native_object_elf.h"
+#include "lowir_native_scalar_memory.h"
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -59,13 +60,6 @@ std::size_t function_stack_adjustment(const mir_model::MirFunction & function)
   if(function.stack_size < preserved)
     throw std::logic_error("MIR stack reservation is smaller than its saves");
   return function.stack_size - preserved;
-}
-
-long long actual_frame_offset(const mir_model::MirFunction & function,
-                              long long abstract_offset)
-{
-  if(abstract_offset >= 0) return abstract_offset;
-  return abstract_offset - static_cast<long long>(function.callee_saved_regs.size() * 8);
 }
 
 void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & function)
@@ -595,44 +589,6 @@ void emit_move(CodeBuffer & out, const mir_model::MirInstruction & instruction)
     emit_symbol_move(out, destination, source.symbol,
                      source.address_binding);
   else throw std::logic_error("unsupported native move operand");
-}
-
-void emit_address_load(CodeBuffer & out, X64Register destination,
-                       const mir_model::MirOperand & address, unsigned width,
-                       const mir_model::MirFunction & function)
-{
-  if(address.kind == mir_model::MirOperand::OP_DEREF) {
-    if(address.has_index)
-      emit_indexed_load(out, destination, address.reg, address.index,
-                        address.scale, address.offset, width);
-    else emit_load(out, destination, address.reg, address.offset, width);
-  } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.symbol,
-                     address.address_binding);
-    emit_load(out, destination, XR_R11, 0, width);
-  } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
-    emit_load(out, destination, XR_RBP,
-              actual_frame_offset(function, address.offset), width);
-  } else throw std::logic_error("unsupported native load address");
-}
-
-void emit_address_store(CodeBuffer & out, const mir_model::MirOperand & address,
-                        X64Register source, unsigned width,
-                        const mir_model::MirFunction & function)
-{
-  if(address.kind == mir_model::MirOperand::OP_DEREF) {
-    if(address.has_index)
-      emit_indexed_store(out, address.reg, address.index, address.scale,
-                         address.offset, source, width);
-    else emit_store(out, address.reg, address.offset, source, width);
-  } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.symbol,
-                     address.address_binding);
-    emit_store(out, XR_R11, 0, source, width);
-  } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
-    emit_store(out, XR_RBP, actual_frame_offset(function, address.offset),
-               source, width);
-  } else throw std::logic_error("unsupported native store address");
 }
 
 void emit_atomic_memory(CodeBuffer & out,
@@ -1473,8 +1429,13 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
   case mir_model::MirInstruction::MI_STORE:
     if(!function) throw std::logic_error("store outside function");
     require_operands(instruction, 2);
-    emit_address_store(out, instruction.operands[0], require_register(instruction.operands[1]),
-                       type_width(instruction.type), *function);
+    if(instruction.operands[1].kind == mir_model::MirOperand::OP_IMM)
+      emit_address_immediate_store(out, instruction.operands[0],
+        static_cast<std::uint64_t>(instruction.operands[1].imm),
+        type_width(instruction.type), *function);
+    else emit_address_store(out, instruction.operands[0],
+      require_register(instruction.operands[1]),
+      type_width(instruction.type), *function);
     return;
   case mir_model::MirInstruction::MI_LEA:
     if(!function) throw std::logic_error("lea outside function");

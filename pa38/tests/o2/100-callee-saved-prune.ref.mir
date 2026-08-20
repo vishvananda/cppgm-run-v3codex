@@ -17,8 +17,7 @@ function @main
   block ^entry
     lea rdi, [rbp-8]
     call @Box_int___Box [args=(rdi)]
-    mov rax, 7
-    store.i32 [rbp-8], rax
+    store.i32 [rbp-8], 7
     load.i32 r8, [rbp-8]
     sext.i32 r8
     mov rbx, r8

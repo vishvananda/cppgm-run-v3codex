@@ -1,0 +1,113 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @byte_value
+  storage scalar u8
+  init u8 0
+
+global @short_value
+  storage scalar u16
+  init u16 0
+
+global @wide_value
+  storage scalar i64
+  init i64 0
+
+global @words
+  storage data
+  item u32 0
+  item u32 0
+  item u32 0
+  item u32 0
+
+function @store_dereference
+  abi
+    param %address -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    store.u16 [rdi], 4660
+    ret
+
+function @store_indexed
+  abi
+    param %base -> rdi : ptr
+    param %index -> rsi : i64
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    store.u32 [rdi+rsi*4], 305419896
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx r12
+    slot $inside_i32 -> [rbp-8] : i64
+    slot $outside_i32 -> [rbp-16] : i64
+
+  block ^entry
+    store.u8 @byte_value, 171
+    mov rdi, @short_value
+    call @store_dereference [args=(rdi)]
+    mov rbx, @words
+    mov rdi, rbx
+    mov rsi, 2
+    call @store_indexed [args=(rsi,rdi)]
+    store.i64 [rbp-8], 2147483647
+    store.i64 [rbp-16], 4294967296
+    store.i64 @wide_value, -2147483648
+    load.u8 r8, @byte_value
+    zext.i8 r8
+    load.u16 r9, @short_value
+    zext.i16 r9
+    load.u32 rdi, [rbx+8]
+    zext.i32 rdi
+    load.i64 rsi, [rbp-8]
+    load.i64 rbx, [rbp-16]
+    load.i64 r12, @wide_value
+    mov rdx, 171
+    cmp.u8 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov rdx, 4660
+    cmp.u16 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov rdx, 305419896
+    cmp.u32 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    mov rdx, 2147483647
+    cmp.i64 rsi, rdx
+    setne rsi
+    movzx rsi, rsi
+    mov rdx, 4294967296
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, -2147483648
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    or r8, r9
+    or rdi, rsi
+    or rbx, r12
+    or r8, rdi
+    or r8, rbx
+    mov rax, r8
+    sext.i32 rax
+    ret rax

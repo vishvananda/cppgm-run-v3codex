@@ -16,8 +16,7 @@ function @f
   block ^entry
     lea rdi, [rbp-4]
     zero_bytes 3x1, rdi
-    mov rax, 1
-    store.u8 [rbp-3], rax
+    store.u8 [rbp-3], 1
     load.i32 rax, [rbp-4]
     ret
 

@@ -14,8 +14,7 @@ function @YP__YP
     scratch_bytes 0
 
   block ^entry
-    mov rax, 3
-    store.i32 [rdi], rax
+    store.i32 [rdi], 3
     ret
 
 function @YP___YP

@@ -444,6 +444,29 @@ comments; put opcode-selection suggestions in `Design Notes`.
 
 Complexity: O(1) selection and encoding per store.
 
+P3 retains 1,668 integer immediate store sources in typed MIR for the frozen
+compile.  The native encoder emits C6/C7 directly for legal values and uses an
+encoder-owned scratch only for an unencodable `i64`; scalar memory encoding
+now lives in its own responsibility-named module rather than expanding the ELF
+driver.  The pinned reference used the prior register materialization, so the
+approved branch-local compiler at commit `a7b1253c` regenerated the public
+contract through the documented `ref-test` targets.  The migration comprises
+10 PA29 strict raw-MIR fixtures, 11 assignment structural raw/canonical
+fixtures, two existing course structural raw/canonical fixtures, the new
+behavioral structural reducer, and five PA38 O1/O2 raw/canonical fixtures.  One
+unrelated relaxed-only raw-MIR difference discovered by the directory census
+was left unchanged.
+
+Against P2, the frozen object falls from 4,395,256 to 4,394,672 bytes, all
+`.text*` falls from 909,341 to 908,836 bytes, base `.text` falls by 1,046
+bytes, decoded instructions fall from 225,174 to 223,486, and `mov` falls by
+1,667.  Functions, `.eh_frame`, relocations, and relocation bytes are
+unchanged; `.gcc_except_table` changes by five bytes solely from shifted code
+offset encodings.  Three sequential ABBA blocks measured 4.755/4.750 seconds
+median wall, 4.265/4.260 seconds median user, and 360,442/360,874 KiB median
+peak RSS for P2/P3.  Paired candidate ratios were -0.42% wall, -0.23% user,
+and +0.02% RSS.
+
 ### P4: retain legal memory right operands for integer operations
 
 The integer selector currently materializes a frame/global/dereference right
@@ -708,7 +731,7 @@ Fill one row after each independently retained phase.
 | P0 baseline | none | none | cppgm++ 4,406,272 bytes; `.text*` 921,044; 5,530 functions; 38,948 relocations | ABBA candidate +0.32% wall, +0.48% user, -0.17% RSS; byte-identical output | same-STL Clang object and active reducers verified | complete |
 | P1 bit-field units | one new PA17 reducer; PA18-PA28 unchanged | 5,673 fewer `.text*` bytes; 1,303 fewer instructions | 4,400,592 bytes; `.text*` 915,371; functions/relocations unchanged | ABBA 0.00% wall, +0.12% user, -0.05% RSS | PA17 242/242; through PA17 1,709/1,709; full report 5,266/5,266; zero-fatal audit | complete |
 | P2 constexpr arrays | one incidental PA20 fixture, one existing PA21 fixture, and one new PA21 reducer migrate to a readonly global plus `copyobj`; PA22-PA28 unchanged | 6,030 fewer `.text*` bytes; 1,197 fewer instructions; 3 added relocations | 4,395,256 bytes; `.text*` 909,341; functions/EH unchanged | ABBA -0.11% wall, 0.00% user, +0.18% RSS | PA21 148/148; through PA21 2,369/2,369; full report 5,266/5,266; zero-fatal audit | complete |
-| P3 immediate stores | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
+| P3 immediate stores | none | 10 PA29 strict raw, 13 existing structural raw/canonical, one new behavioral structural reducer, and 5 PA38 raw/canonical fixtures migrate | 4,394,672 bytes; `.text*` 908,836; 1,688 fewer instructions; functions/relocations unchanged | ABBA -0.42% wall, -0.23% user, +0.02% RSS | PA29 257/257; through PA29 4,167/4,167; full report 5,267/5,267; zero-fatal audit | complete |
 | P4 memory RHS | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
 | P5 shared epilogue | none | MIR unchanged; native bytes change | pending | pending | pending | planned |
 | P6 cleanup DAG | expected PA16/17/26 migration | PA31 EH/object change | pending | pending | pending | planned |

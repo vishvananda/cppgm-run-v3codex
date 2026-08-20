@@ -282,6 +282,44 @@ void emit_indexed_store(CodeBuffer & out, X64Register base,
   emit_indexed_memory_modrm(out, source, base, index, scale, displacement);
 }
 
+bool immediate_store_encoding_available(unsigned width, std::uint64_t value)
+{
+  if(width == 8 || width == 16 || width == 32) return true;
+  if(width != 64) return false;
+  const std::uint64_t low = value & 0xffffffffULL;
+  const std::uint64_t sign_extended = low & 0x80000000ULL
+    ? low | 0xffffffff00000000ULL : low;
+  return value == sign_extended;
+}
+
+void emit_immediate_store(CodeBuffer & out, X64Register base,
+                          long long displacement, std::uint64_t value,
+                          unsigned width)
+{
+  if(!immediate_store_encoding_available(width, value))
+    throw std::logic_error("integer immediate is not encodable by memory store");
+  emit_size_prefix(out, width);
+  emit_rex(out, width == 64, XR_RAX, base);
+  out.byte(width == 8 ? 0xc6 : 0xc7);
+  emit_memory_modrm(out, 0, base, displacement);
+  out.little(value, width == 8 ? 1 : width == 16 ? 2 : 4);
+}
+
+void emit_indexed_immediate_store(CodeBuffer & out, X64Register base,
+                                  X64Register index, unsigned scale,
+                                  long long displacement,
+                                  std::uint64_t value, unsigned width)
+{
+  if(!immediate_store_encoding_available(width, value))
+    throw std::logic_error(
+      "integer immediate is not encodable by indexed memory store");
+  emit_size_prefix(out, width);
+  emit_indexed_rex(out, width == 64, XR_RAX, base, index);
+  out.byte(width == 8 ? 0xc6 : 0xc7);
+  emit_indexed_memory_modrm(out, 0, base, index, scale, displacement);
+  out.little(value, width == 8 ? 1 : width == 16 ? 2 : 4);
+}
+
 void emit_lea(CodeBuffer & out, X64Register destination, X64Register base,
               long long displacement)
 {

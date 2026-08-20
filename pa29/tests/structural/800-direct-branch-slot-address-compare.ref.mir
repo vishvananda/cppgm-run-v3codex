@@ -14,8 +14,7 @@ function @main
     slot $x -> [rbp-8] : i64
 
   block ^entry
-    mov rax, 0
-    store.i64 [rbp-8], rax
+    store.i64 [rbp-8], 0
     lea rax, [rbp-8]
     lea rdx, [rbp-8]
     cmp.ptr rax, rdx

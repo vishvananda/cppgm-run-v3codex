@@ -29,10 +29,8 @@ function @main
     slot $dst -> [rbp-16] : i64
 
   block ^entry
-    mov rax, 7
-    store.i64 [rbp-8], rax
-    mov rax, 0
-    store.i64 [rbp-16], rax
+    store.i64 [rbp-8], 7
+    store.i64 [rbp-16], 0
     lea rdi, [rbp-16]
     lea rsi, [rbp-8]
     call @copy_ref [args=(rsi,rdi)]

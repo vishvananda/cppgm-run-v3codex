@@ -14,8 +14,7 @@ function @main
     slot $op -> [rbp-<off0>] : i32
 
   block ^entry
-    mov rax, 6
-    store.i32 [rbp-<off0>], rax
+    store.i32 [rbp-<off0>], 6
     cmp.i32 [rbp-<off0>], 6
     je ^ok
     jmp ^bad

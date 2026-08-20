@@ -15,10 +15,8 @@ function @main
     slot $b -> [rbp-8] : i32
 
   block ^entry
-    mov rax, 0
-    store.i32 [rbp-4], rax
-    mov rax, 2
-    store.i32 [rbp-8], rax
+    store.i32 [rbp-4], 0
+    store.i32 [rbp-8], 2
     jmp ^cond
 
   block ^cond

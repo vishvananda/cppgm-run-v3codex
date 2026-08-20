@@ -14,8 +14,7 @@ function @main
     slot $x -> [rbp-2] : u16
 
   block ^entry
-    mov rax, 65535
-    store.u16 [rbp-2], rax
+    store.u16 [rbp-2], 65535
     load.u16 r8, [rbp-2]
     zext.i16 r8
     cmp.i64 r8, 65535

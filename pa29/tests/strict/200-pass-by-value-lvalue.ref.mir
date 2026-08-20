@@ -55,8 +55,7 @@ function @main
   block ^entry
     lea rdi, [rbp-8]
     call @Y__Y [args=(rdi)]
-    mov rax, 8
-    store.i32 [rbp-8], rax
+    store.i32 [rbp-8], 8
     lea rdi, [rbp-8]
     call @id [args=(rdi)]
     mov rbx, rax

@@ -194,6 +194,9 @@ struct Instruction
   {
     MI_MOV,
     MI_LOAD,
+    // MI_STORE names a memory destination followed by a scalar value.  An
+    // integer value remains OP_IMM even when x86-64 must materialize a large
+    // i64 immediate in an encoder-owned scratch register.
     MI_STORE,
     MI_MFENCE,
     MI_LOCK_XADD,

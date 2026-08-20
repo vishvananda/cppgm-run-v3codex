@@ -20,10 +20,8 @@ function @make_pair
 
   block ^entry
     lea r8, [rbp-<off0>]
-    mov rax, 17
-    store.i64 [r8], rax
-    mov rax, 23
-    store.i64 [r8+<off0>], rax
+    store.i64 [r8], 17
+    store.i64 [r8+<off0>], 23
     load.i64 rax, [rbp-<off0>]
     load.i64 rdx, [rbp-<off1>]
     ret

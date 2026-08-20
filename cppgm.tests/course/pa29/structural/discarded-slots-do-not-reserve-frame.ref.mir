@@ -14,8 +14,7 @@ function @main
     slot $retained -> [rbp-8] : i64
 
   block ^entry
-    mov rax, 42
-    store.i64 [rbp-8], rax
+    store.i64 [rbp-8], 42
     load.i64 r8, [rbp-8]
     mov rdx, 42
     cmp.i64 r8, rdx

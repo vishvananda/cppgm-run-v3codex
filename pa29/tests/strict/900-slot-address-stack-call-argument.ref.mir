@@ -23,9 +23,8 @@ function @write_seventh
   block ^entry
     load.ptr rax, [rbp+16]
     store.ptr [rbp-8], rax
-    mov rax, 1
     load.ptr rcx, [rbp-8]
-    store.u8 [rcx], rax
+    store.u8 [rcx], 1
     ret
 
 function @main
@@ -37,8 +36,7 @@ function @main
     slot $created -> [rbp-1] : u8
 
   block ^entry
-    mov rax, 0
-    store.u8 [rbp-1], rax
+    store.u8 [rbp-1], 0
     sub rsp, 16
     mov rdi, 1
     mov rsi, 2

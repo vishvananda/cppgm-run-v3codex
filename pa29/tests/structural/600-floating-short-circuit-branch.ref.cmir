@@ -37,8 +37,7 @@ function @check
     jmp ^end
 
   block ^then
-    mov rax, 1
-    store.i32 @seen, rax
+    store.i32 @seen, 1
     jmp ^end
 
   block ^end

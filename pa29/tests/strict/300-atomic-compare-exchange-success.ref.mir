@@ -19,8 +19,7 @@ function @main
 
   block ^entry
     mov r8, @g
-    mov rax, 7
-    store.i64 [rbp-8], rax
+    store.i64 [rbp-8], 7
     mov rcx, r8
     lea rdx, [rbp-8]
     load.i64 rax, [rdx]

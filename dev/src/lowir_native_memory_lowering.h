@@ -211,7 +211,8 @@ protected:
 		mir_model::MirInstruction store = machine_instruction(
 			mir_model::MirInstruction::MI_STORE, instruction.type);
 		mir_model::MirOperand value = lowerer.resolve(instruction.first);
-		if (value.kind != mir_model::MirOperand::OP_REG)
+		if (value.kind != mir_model::MirOperand::OP_REG &&
+			value.kind != mir_model::MirOperand::OP_IMM)
 		{
 			X64Register scratch = XR_RAX;
 			if (instruction.second.kind == lowir_model::Operand::OP_TEMP &&
@@ -230,6 +231,8 @@ protected:
 			lowerer.materialized_storage(instruction.second, out));
 		append_operand(store, value);
 		out.push_back(store);
+		if (value.kind == mir_model::MirOperand::OP_IMM && lowerer.stats_)
+			++lowerer.stats_->immediate_stores_selected;
 		lowerer.consume(instruction.first);
 		lowerer.consume(instruction.second);
 	}

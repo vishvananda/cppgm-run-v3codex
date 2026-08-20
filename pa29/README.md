@@ -488,6 +488,11 @@ To complete PA29, implement these goals:
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.
 
+   An integer LowIR immediate stored to a frame, global, dereference, or indexed
+   destination remains an immediate value operand in MIR.  This includes an
+   `i64` value outside the sign-extended 32-bit encoding range; native emission
+   may materialize that value in a scratch register when encoding the store.
+
    A scalar copy may keep a stable source location, including an intact
    incoming parameter register, when the copied result's complete interval
    crosses no clobber and its source and result have the same machine
@@ -654,6 +659,9 @@ strategies include:
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required
   registers
+- encode immediate memory stores directly at 8, 16, and 32 bits and for
+  sign-extended 32-bit values at 64 bits; choose an encoder scratch that does
+  not overlap a dereference base or index for other 64-bit values
 - keep an immediately returned quotient in `rax` and an immediately returned
   remainder in `rdx`; the return instruction may name that selected result
   carrier directly

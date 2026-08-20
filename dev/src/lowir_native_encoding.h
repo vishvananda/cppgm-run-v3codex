@@ -73,6 +73,14 @@ void emit_indexed_store(elf_detail::CodeBuffer & out, X64Register base,
                         X64Register index, unsigned scale,
                         long long displacement, X64Register source,
                         unsigned width);
+bool immediate_store_encoding_available(unsigned width, std::uint64_t value);
+void emit_immediate_store(elf_detail::CodeBuffer & out, X64Register base,
+                          long long displacement, std::uint64_t value,
+                          unsigned width);
+void emit_indexed_immediate_store(elf_detail::CodeBuffer & out,
+                                  X64Register base, X64Register index,
+                                  unsigned scale, long long displacement,
+                                  std::uint64_t value, unsigned width);
 void emit_lea(elf_detail::CodeBuffer & out, X64Register destination,
               X64Register base, long long displacement);
 void emit_indexed_lea(elf_detail::CodeBuffer & out, X64Register destination,

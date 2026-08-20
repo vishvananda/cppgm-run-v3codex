@@ -27,8 +27,7 @@ function @main
     slot $x -> [rbp-8] : i64
 
   block ^entry
-    mov rax, 7
-    store.i32 [rbp-8], rax
+    store.i32 [rbp-8], 7
     lea rdi, [rbp-8]
     call @id [args=(rdi)]
     ret rax
