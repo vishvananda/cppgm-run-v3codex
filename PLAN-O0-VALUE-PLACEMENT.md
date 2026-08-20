@@ -1305,11 +1305,12 @@ whose first use is a GPR call argument and whose later use still requires a
 stable selected home. Existing function analysis marks only results with more
 than one use, proves the first use remains in the defining block, and reuses
 the RAX lower-bound query already made while computing the complete interval's
-fixed-register clobbers. Ordinary call setup reads that carrier directly.
-Extended call setup does the same only after a rare candidate's already-emitted
-setup prefix proves it has not defined RAX. The additional prefix walk is
-therefore limited to calls that can use the fact; all other lowering paths add
-no work, state, string identity, or scan.
+fixed-register clobbers. Lowering keeps one active `ValueId` and one bit only
+for such a candidate. Until its first use, it checks the small MIR suffix
+emitted for each intervening LowIR instruction with the existing register
+definition mask and retires the carrier on an actual RAX definition. Extended
+call setup also checks its already-emitted setup prefix. No unrelated function
+or value scan, string identity, hash table, or allocation is added.
 
 No checked fixture changes. The expanded
 `proposed/pa29/direct-call-result-consumers.t` witness returns a pointer in
@@ -1335,16 +1336,16 @@ The unread selected-parameter-home slice distinguishes a stable home that is
 needed after a clobber from one whose selected consumers all read the intact
 incoming ABI carrier. Each optional register transfer carries its compact
 `ValueId` owner, and representation-preserving aliases copy that identity.
-Lowering marks a transfer only when it emits a hard selected-home read. A read
-blocked solely by another parameter transfer records a soft fixed-register
-dependency; the at-most-six SysV GPR transfers form a bounded dependency graph
-that is traversed once from hard and mandatory-clobber roots. Wide parameter
-intervals that cross no clobber remain in their incoming registers before MIR
-is constructed, so removing an optional transfer never leaves a stale physical
-operand. No MIR scan, string identity, hash table, or value-sized demand vector
-is added. A reservation generation count also prevents an omitted parameter
-home from dropping a callee-save requirement when its register is later reused
-for emitted code.
+When selection resolves an operand through the stable home, it sets the
+transfer's single `required` bit; when it resolves the intact incoming carrier,
+the transfer remains unread and can be removed. Wide parameter intervals that
+cross no clobber remain in their incoming registers before MIR is constructed,
+so removing an optional transfer never leaves a stale physical operand. The
+bounded final compaction visits only the setup moves. No MIR scan, string
+identity, hash table, dependency graph, or value-sized demand vector is added.
+A reservation generation count also prevents an omitted parameter home from
+dropping a callee-save requirement when its register is later reused for
+emitted code.
 
 The strict `200-indirect-call-six-register-args` fixture and the raw/canonical
 structural pair for `200-stack-arguments-beyond-six` now consume all six intact
@@ -1402,3 +1403,29 @@ pre-fix and corrected objects are 4,406,784 bytes with SHA-256
 Sequential A/B/B/A medians for the pre-fix/corrected compilers are 4.215/4.185
 seconds user, 4.720/4.650 seconds wall, and 362,262/362,434 KiB peak RSS. The
 affected report passes 374/374 and the full report passes 5,226/5,226.
+
+The clean self-host gate then exposed two further PA29 carrier failures. First,
+the early RAX fact used only LowIR-level clobber information, but an intervening
+address materialization selected RAX under register pressure. The
+`rax-call-result-intervening-address` behavior reducer fails before the fix and
+now forces the later call to reload the stable pointer home. The active-carrier
+check described above uses definitions in the MIR actually emitted, so it also
+covers future instruction-selection choices without pessimizing unrelated
+values.
+
+Second, a seven-argument EH wrapper selected R14 as the stable home of the
+incoming R9 parameter, then retired the transfer even though its call setup had
+already serialized a read from R14. The
+`wide-forwarded-call-argument-home` behavior reducer supplies the private EH
+runtime symbols needed by the older course reference and fails with a bad
+pointer before the correction. Optional homes now have one unambiguous rule:
+any selected read marks its transfer required. This removes the former soft
+dependency state as well as the correctness hole.
+
+Both corrections leave frozen `semantic_overload.cpp` byte-identical at
+4,406,784 bytes with SHA-256
+`520af5ad2cc527d93df30616ee074ad5cfd906c301d9988b0ac0dc450b2f6af1`.
+Three sequential observations per arm give baseline/candidate medians of
+4.280/4.250 seconds user, 4.750/4.710 seconds wall, and 360,672/360,364 KiB
+peak RSS. The affected report passes 376/376, the full report passes
+5,228/5,228, and the PA39 audit has zero fatal findings.

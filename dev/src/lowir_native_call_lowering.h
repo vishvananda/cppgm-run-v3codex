@@ -2,6 +2,7 @@
 
 #include "lowir_native_abi.h"
 #include "lowir_native_mir.h"
+#include "lowir_native_opt.h"
 #include "lowir_native_selection.h"
 #include "lowir_native_value.h"
 #include "lowir_native_wide.h"
@@ -21,10 +22,37 @@ protected:
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
     return operand.kind == lowir_model::Operand::OP_TEMP &&
+      rax_first_use_active_ && rax_first_use_value_ == operand.value &&
       lowerer.facts_.first_use[operand.value] == lowerer.position_ &&
       lowerer.facts_.uses[operand.value] > 1 &&
       lowerer.facts_.has(operand.value,
         analysis::FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE);
+  }
+
+  void record_rax_first_use_carrier(
+      const lowir_model::Instruction & instruction,
+      const std::vector<mir_model::MirInstruction> & emitted,
+      std::size_t first)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    if(rax_first_use_active_) {
+      for(std::size_t i = first; i < emitted.size(); ++i)
+        if(machine_opt::instruction_definition_mask(emitted[i]) &
+           analysis::register_mask(XR_RAX)) {
+          rax_first_use_active_ = false;
+          break;
+        }
+      if(rax_first_use_active_ &&
+         lowerer.position_ >= lowerer.facts_.first_use[rax_first_use_value_])
+        rax_first_use_active_ = false;
+    }
+    if(instruction.kind == lowir_model::Instruction::IK_CALL &&
+       instruction.dest.valid() &&
+       lowerer.facts_.has(instruction.dest,
+         analysis::FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE)) {
+      rax_first_use_value_ = instruction.dest;
+      rax_first_use_active_ = true;
+    }
   }
 
   mir_model::MirOperand resolve_gpr_call_argument(
@@ -50,6 +78,9 @@ protected:
     }
     return true;
   }
+
+  lowir_model::ValueId rax_first_use_value_;
+  bool rax_first_use_active_ = false;
 
   bool indirect_target_can_keep_register(
       X64Register target, const abi::Plan & plan) const

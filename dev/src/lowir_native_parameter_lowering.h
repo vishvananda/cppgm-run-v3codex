@@ -24,9 +24,6 @@ protected:
     X64Register destination;
     lowir_model::ValueId parameter;
     bool required;
-    bool hard_read;
-    bool soft_read;
-    X64Register soft_incoming;
   };
 
   ParameterRegisterState()
@@ -52,8 +49,7 @@ protected:
          move.operands[0].kind != mir_model::MirOperand::OP_REG)
         throw std::logic_error("optional parameter setup is not a GPR move");
       OptionalParameterMove optional = {
-        i, move.operands[0].reg, parameters[i - first], false, false, false,
-        XR_RSP
+        i, move.operands[0].reg, parameters[i - first], false
       };
       optional_parameter_moves_.push_back(optional);
     }
@@ -85,8 +81,7 @@ protected:
          mir_model::MirOperand::OP_REG)
       throw std::logic_error("optional parameter setup is not one GPR move");
     OptionalParameterMove optional = {
-      first, lowerer.parameter_moves_.back().operands[0].reg, parameter,
-      false, false, false, XR_RSP
+      first, lowerer.parameter_moves_.back().operands[0].reg, parameter, false
     };
     optional_parameter_moves_.push_back(optional);
   }
@@ -100,44 +95,11 @@ protected:
     return 0;
   }
 
-  void require_optional_parameter_move(std::size_t index)
-  {
-    OptionalParameterMove & move = optional_parameter_moves_[index];
-    if(move.required) return;
-    move.required = true;
-    for(std::size_t i = 0; i < optional_parameter_moves_.size(); ++i) {
-      const OptionalParameterMove & dependent = optional_parameter_moves_[i];
-      if(dependent.soft_read && dependent.soft_incoming == move.destination)
-        require_optional_parameter_move(i);
-    }
-  }
-
   void discard_unread_parameter_homes()
   {
     if(optional_parameter_moves_.empty()) return;
     Derived & lowerer = static_cast<Derived &>(*this);
-    unsigned mandatory_clobbers = 0;
     std::size_t optional = 0;
-    for(std::size_t i = 0; i < lowerer.parameter_moves_.size(); ++i) {
-      if(optional < optional_parameter_moves_.size() &&
-         optional_parameter_moves_[optional].index == i) {
-        ++optional;
-        continue;
-      }
-      const mir_model::MirInstruction & instruction =
-        lowerer.parameter_moves_[i];
-      if(!instruction.operands.empty() &&
-         instruction.operands[0].kind == mir_model::MirOperand::OP_REG)
-        mandatory_clobbers |= analysis::register_mask(
-          instruction.operands[0].reg);
-    }
-    for(std::size_t i = 0; i < optional_parameter_moves_.size(); ++i) {
-      const OptionalParameterMove & move = optional_parameter_moves_[i];
-      if(move.hard_read || (move.soft_read &&
-         (mandatory_clobbers & analysis::register_mask(move.soft_incoming))))
-        require_optional_parameter_move(i);
-    }
-    optional = 0;
     std::size_t output = 0;
     for(std::size_t input = 0; input < lowerer.parameter_moves_.size(); ++input) {
       bool discard = false;

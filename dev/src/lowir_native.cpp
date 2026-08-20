@@ -131,6 +131,8 @@ public:
                                    block.instructions);
         record_emitted_register_definitions(
           block.instructions, first_machine_instruction);
+        record_rax_first_use_carrier(source_.blocks[i].instructions[j],
+          block.instructions, first_machine_instruction);
         const lowir_model::Instruction * debug_source =
           &source_.blocks[i].instructions[j];
         if(j + 1 < source_.blocks[i].instructions.size() &&
@@ -650,8 +652,7 @@ private:
           OptionalParameterMove * home = optional_parameter_home(parameter);
           if(!home)
             throw std::logic_error("selected parameter home has no transfer");
-          home->soft_read = true;
-          home->soft_incoming = incoming;
+          home->required = true;
           return values_[operand.value].location;
         }
       }
@@ -685,7 +686,7 @@ private:
       OptionalParameterMove * home = optional_parameter_home(parameter);
       if(!home)
         throw std::logic_error("selected parameter home has no transfer");
-      home->hard_read = true;
+      home->required = true;
     }
     return location;
   }
