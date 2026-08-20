@@ -194,7 +194,7 @@ but leaves ordinary small-call inlining in PA37 `-O1` and later.
 | Explicit function/member `noexcept` and truthful `unwind=no` | semantic fact and LowIR metadata | PA16 course LowIR | PA16 already requires truthful direct-`noexcept` metadata; strengthen the current requirement only if the reducer exposes a missing case |
 | Derived special-member nonthrowing facts | semantic fact and LowIR metadata | PA17 course LowIR | PA17 requirement/Design Notes only for a real derived-special-member gap |
 | Template specialization/member-template nonthrowing propagation | semantic fact and LowIR metadata | PA19, PA22, or the first later template owner demonstrated by the reducer | edit only that owning README; do not describe frozen-header history |
-| Shared terminate action | source-generated LowIR CFG | PA26 course LowIR plus PA31 host-EH behavior/inspect | PA26 states the current observable helper/CFG requirement; compact implementation advice belongs in `Design Notes` |
+| Shared terminate action | host-object exception-policy LowIR CFG | PA31 host-EH behavior/inspect | PA31 states the current helper/ABI requirement; compact implementation advice belongs in `Design Notes` |
 | One physical resume terminal per compatible function | host object layout below MIR | PA31 course behavior/inspect | no LowIR/MIR contract change; at most a PA31 `Design Notes` suggestion |
 | Additional context-safe cleanup-tail sharing | source-generated LowIR CFG | PA16 lexical, PA17 temporary/value, PA26 handler/unwind, plus PA31 behavior | existing sharing requirements move only when their owning fixture moves |
 | Source-owned direct object construction | LowIR, only if the frontend currently creates a redundant semantic temporary | PA16 or PA17, or the later feature owner proven by the reducer | normative current LowIR behavior plus a compact destination-planning suggestion in `Design Notes` |
@@ -452,9 +452,8 @@ Three A/B/B/A blocks against immutable commit `e3e86302` measured
 baseline/candidate median wall time 4.635/4.625 seconds, user time
 4.170/4.165 seconds, and peak RSS 359,930/360,502 KiB.  Paired movement is
 +0.22% wall, -0.24% user, and +0.13% RSS.  The phase passes its focused test,
-all 374 PA34 tests, all 4,923 report tests through PA34, the complete root
-report (590/590 batched result groups), `git diff --check`, and the PA39 audit
-with zero fatal findings.
+all 374 PA34 tests, all 4,923 report tests through PA34, the complete 5,278-test
+root report, `git diff --check`, and the PA39 audit with zero fatal findings.
 
 ### S2: centralize the legitimate terminate action
 
@@ -463,12 +462,14 @@ with the exception object.  The helper performs `__cxa_begin_catch` once and
 then calls `std::terminate`, matching the compact ABI shape used by Clang.
 Ordinary typed catch handlers continue to call `__cxa_begin_catch` themselves.
 
-This is expected to change source-generated LowIR and therefore belongs to
-PA26, not an ELF peephole.  Add a PA26 LowIR reducer containing multiple
-legitimate noexcept violations and a PA31 host-linked behavior/inspection
-reducer.  Verify that the helper has internal binding, is emitted only on
-demand, receives the current exception object, never returns, and does not
-interfere with handler ownership or `__cxa_end_catch`.
+This changes the source-generated LowIR used by host-object compilation, not an
+ELF peephole.  PA26's public `--emit-lowir -O0` path deliberately does not add
+host exception-boundary policy, so the earliest observable owner is PA31 rather
+than an invented PA26 test mode.  Add a PA31 host-linked behavior/inspection
+reducer containing multiple legitimate `noexcept` violations.  Verify that the
+helper has internal binding, is emitted only on demand, receives the current
+exception object, never returns, and does not interfere with handler ownership
+or `__cxa_end_catch`.
 
 Measure begin-catch calls, helper calls, relocations, `.text*`, and LSDA.  A
 candidate that merely moves repeated work into another per-function helper is
@@ -476,6 +477,42 @@ not complete.
 
 Complexity: one helper per translation unit and O(1) work per legitimate
 terminate landing.
+
+#### S2 completion record
+
+The translation-unit-local `cppgm_call_terminate` helper now accepts the active
+exception pointer, calls the typed `eh_begin_catch` runtime once, and then calls
+`std::terminate`.  Each legitimate function boundary loads its existing
+exception slot and calls that helper directly.  The helper is explicitly
+`no_inline`: expanding it at `-O1`/`-O2` would recreate the duplication that the
+shared ABI action exists to avoid.  Ordinary source catch handlers retain their
+own begin/end-catch ownership.
+
+The PA31 course reducer contains two distinct throwing paths in explicit
+`noexcept` functions, executes only their nonthrowing paths, and inspects the
+object for one local helper plus exactly one call relocation each to
+`__cxa_begin_catch` and `std::terminate`.  The object-expectation harness gained
+an exact-count form of its existing typed relocation-class check so the old
+per-landing shape cannot pass by satisfying a minimum.  PA31's current required
+surface and non-normative design note describe only the student-visible rule
+and an efficient typed implementation shape.
+
+Relative to S1, the frozen object falls from 3,241,512 to 3,229,456 bytes
+(-12,056).  `.text*` falls by 1,998 bytes, base text by 150 bytes,
+`.gcc_except_table` by 285 bytes, relocation storage by 9,600 bytes, and
+decoded instructions by 398.  Relocations fall by exactly 400.  Begin-catch
+calls fall from 448 to 48 while the 401 shared-helper calls and 821 resume calls
+remain; function and `.eh_frame` counts are unchanged.  The deterministic
+object SHA-256 is
+`757c01b035233344c725542712d2a71bce5fe850a6eda96cb8c6aa640c9f1623`.
+
+Three A/B/B/A blocks against immutable S1 commit `6e012c47` measured
+baseline/candidate median wall time 4.520/4.505 seconds, user time
+4.080/4.080 seconds, and peak RSS 360,826/360,332 KiB.  Paired movement is
+-0.22% wall, -0.24% user, and -0.37% RSS.  The exact phase passes its focused
+test, PA31's 29 result groups, all 4,304 report tests through PA31, the full
+5,279-test report, `git diff --check`, and the PA39 audit with zero fatal
+findings.
 
 ### S3: share the physical resume terminal safely
 
@@ -731,8 +768,8 @@ Fill one row after each retained phase.
 | Phase | Public fixture effect | Frozen code/EH effect | Compile time/RSS | Validation | Status/commit |
 | --- | --- | --- | --- | --- | --- |
 | S0 baseline/instrumentation | none | byte-identical 3,246,896-byte baseline; typed movement/home/EH census above | +0.49% paired median user, -0.01% RSS | 5,276/5,276 full report; four script tests; zero-fatal audit | complete; `1048f6c5` |
-| S1 nonthrowing propagation | PA34 atomic `noexcept` behavior/inspect; course run bucket enabled | -49 text, -2 relocations, -1 terminate and begin-catch call | -0.24% paired median user, +0.13% RSS | PA34 374/374; through-PA34 4,923/4,923; full 590/590 batched groups; zero-fatal audit | complete |
-| S2 shared terminate action | PA26 LowIR; PA31 behavior/inspect | pending | pending | pending | planned |
+| S1 nonthrowing propagation | PA34 atomic `noexcept` behavior/inspect; course run bucket enabled | -49 text, -2 relocations, -1 terminate and begin-catch call | -0.24% paired median user, +0.13% RSS | PA34 374/374; through-PA34 4,923/4,923; full 5,278/5,278; zero-fatal audit | complete |
+| S2 shared terminate action | PA31 behavior plus exact relocation inspection; PA26 has no host-policy output | -1,998 text, -285 LSDA, -400 relocations/begin-catch calls | -0.24% paired median user, -0.37% RSS | PA31 29/29 groups; through-PA31 4,304/4,304; full 5,279/5,279; zero-fatal audit | complete |
 | S3 physical resume terminal | PA31 behavior/inspect only; no LowIR/MIR migration | pending | pending | pending | planned |
 | S4 cleanup equivalence | PA16/PA17/PA26 only as proven | pending | pending | pending | planned |
 | S5 destination placement | PA17 direct xvalue-to-base reference binding added; later PA29 work pending | S5a: -2,126 text, -528 LSDA, -97 relocations, -33 terminate calls | -0.12% paired median user, +0.21% RSS | PA17 244/244; through-PA17 1,714/1,714; full 5,277/5,277; zero-fatal audit | S5a complete; remaining S5 planned |

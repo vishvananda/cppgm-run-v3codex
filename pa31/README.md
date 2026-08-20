@@ -204,6 +204,10 @@ runtime-helper object surface for `cppgm++ -c` within the supported subset:
 9. If adjacent LSDA call-site ranges are coalesced, keep an unprotected
    potentially-throwing range as a barrier and never combine ranges with
    different landing pads or action continuations.
+10. Share one translation-unit-local terminate action across function exception
+    boundaries. It receives the active exception object, calls
+    `__cxa_begin_catch`, and then calls `std::terminate`; individual landings
+    shall not repeat the begin-catch call.
 
 If object inspection shows missing or malformed host EH metadata for a basic
 throw/catch/cleanup case, fix the host-EH lowering or object-emission path.
@@ -238,3 +242,7 @@ host ABI symbols and platform EH metadata:
 
 Do not construct host EH facts from source text. The object backend should work
 from typed semantic/runtime-role information and final machine layout.
+
+A compact terminate boundary can pass the typed exception value to a single
+internal helper. This keeps the handler-entry ABI sequence in one place while
+leaving ordinary source catch handlers independent.

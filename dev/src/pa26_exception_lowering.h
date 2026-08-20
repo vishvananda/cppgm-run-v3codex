@@ -309,10 +309,7 @@ protected:
 			FUNCTION_EXCEPTION_BOUNDARY_TERMINATE)
 		{
 			(void)EmitExceptionRuntimeCall(
-				derived.polymorphism_.eh_begin_catch_symbol, LowPtr(), arguments);
-			CallArguments none;
-			(void)EmitExceptionRuntimeCall(
-				derived.output_.terminate_helper_symbol, LowVoid(), none);
+				derived.output_.terminate_helper_symbol, LowVoid(), arguments);
 		}
 		else
 			(void)EmitExceptionRuntimeCall(
@@ -431,12 +428,23 @@ protected:
 		Symbol& helper_record = derived.output_.symbols[helper];
 		helper_record.nonthrowing = true;
 		helper_record.noreturn = true;
+		helper_record.no_inline = true;
 		helper_record.definition_emitted = true;
 		derived.output_.terminate_helper_symbol = helper;
 		Function function;
 		function.symbol = helper;
 		function.result = LowVoid();
+		Parameter exception;
+		exception.name = InternLocalName(
+			derived.output_, "exception_object");
+		exception.type = LowPtr();
+		function.parameters.push_back(exception);
 		derived.BeginSyntheticFunction(&function);
+		CallArguments begin_arguments;
+		begin_arguments.Push(Operand(ParameterId(0), LowPtr()));
+		(void)EmitExceptionRuntimeCall(
+			derived.polymorphism_.eh_begin_catch_symbol,
+			LowPtr(), begin_arguments);
 		CallArguments none;
 		(void)EmitExceptionRuntimeCall(
 			derived.output_.terminate_runtime_symbol, LowVoid(), none);

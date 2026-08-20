@@ -873,6 +873,24 @@ while (my $line = <$spec>)
 		next;
 	}
 
+	if ($kind eq 'relocation_class_canonical_exact')
+	{
+		my ($class, $needle, $expected_count) = @fields;
+		die "Invalid relocation_class_canonical_exact expectation in $spec_file: $line\n"
+			if !defined($class) || !defined($needle) ||
+				!defined($expected_count) || $expected_count !~ /^\d+$/;
+		my $count = count_relocation_class_canonical($os, $obj, $class, $needle);
+		if ($record_mode)
+		{
+			print "relocation_class_canonical_exact $obj_index $class $needle $count\n";
+			next;
+		}
+		die "Expected exactly $expected_count canonical relocation-class matches for '$class' '$needle' in object $obj_index; got $count\n"
+			if $count != $expected_count;
+		print "relocation_class_canonical_exact $obj_index $class $needle $expected_count\n";
+		next;
+	}
+
 	if ($kind eq 'absent_relocation_class_canonical')
 	{
 		my ($class, $needle) = @fields;

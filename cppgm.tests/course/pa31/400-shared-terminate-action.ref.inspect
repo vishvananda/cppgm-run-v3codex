@@ -1,0 +1,3 @@
+local_defined_symbol_canonical 1 @cppgm_call_terminate 1
+relocation_class_canonical_exact 1 branch_call _cxa_begin_catch 1
+relocation_class_canonical_exact 1 branch_call _ZSt9terminatev 1

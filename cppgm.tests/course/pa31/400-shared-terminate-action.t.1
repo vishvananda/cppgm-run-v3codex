@@ -1,0 +1,16 @@
+int first(bool trigger) noexcept
+{
+  if (trigger) throw 1;
+  return 0;
+}
+
+int second(bool trigger) noexcept
+{
+  if (trigger) throw 2;
+  return 0;
+}
+
+int main()
+{
+  return first(false) + second(false);
+}
