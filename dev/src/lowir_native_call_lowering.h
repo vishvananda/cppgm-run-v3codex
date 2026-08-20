@@ -15,6 +15,41 @@ template <class Derived>
 class CallLowering
 {
 protected:
+  bool move_destination_is_safe(const std::vector<GprMove> & moves,
+                                std::size_t candidate) const
+  {
+    for(std::size_t i = 0; i < moves.size(); ++i) {
+      if(i == candidate || !moves[i].pending ||
+         moves[i].source.kind != mir_model::MirOperand::OP_REG) continue;
+      if(moves[i].source.reg == moves[candidate].destination) return false;
+    }
+    return true;
+  }
+
+  bool direct_object_chunk_storage(const lowir_model::Operand & operand,
+                                   std::size_t chunk_offset,
+                                   mir_model::MirOperand * result) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    mir_model::MirOperand location;
+    if(operand.kind == lowir_model::Operand::OP_SLOT)
+      location = lowerer.storage(operand);
+    else if(operand.kind == lowir_model::Operand::OP_TEMP &&
+            lowerer.value_known_[operand.value]) {
+      const ValueFact & value = lowerer.values_[operand.value];
+      if(value.type.kind != lowir_model::LTK_OBJECT &&
+         !wide::is_integer(value.type) && !value.frame_address)
+        return false;
+      location = value.location;
+    } else return false;
+    if(location.kind != mir_model::MirOperand::OP_FRAME &&
+       location.kind != mir_model::MirOperand::OP_DEREF)
+      return false;
+    location.offset += static_cast<long long>(chunk_offset);
+    *result = location;
+    return true;
+  }
+
   bool scalar_result_can_remain_in_return_register(
       lowir_model::ValueId result) const
   {

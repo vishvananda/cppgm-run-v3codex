@@ -196,7 +196,9 @@ struct Instruction
     // register copy solely to preserve pointer identity. A pure unused index
     // emits no MIR. An immediately preceding frame address used only by an
     // index remains a logical frame location; constant indexing incorporates
-    // its displacement into that location without an initial MI_LEA.
+    // its displacement into that location without an initial MI_LEA. A
+    // frame-resident object chunk loaded into an ABI register likewise uses
+    // its final frame operand directly.
     MI_FMOV,
     MI_FNEG,
     MI_FADD,

@@ -1941,24 +1941,21 @@ private:
     consume(instruction.first);
     skipped_position_ = position_ + 1;
   }
-  bool move_destination_is_safe(const std::vector<GprMove> & moves,
-                                std::size_t candidate) const
-  {
-    for(std::size_t i = 0; i < moves.size(); ++i) {
-      if(i == candidate || !moves[i].pending ||
-         moves[i].source.kind != MirOperand::OP_REG) continue;
-      if(moves[i].source.reg == moves[candidate].destination) return false;
-    }
-    return true;
-  }
   void emit_gpr_move(const GprMove & move,
                      std::vector<MirInstruction> & out)
   {
     if(move.object_chunk) {
-      emit_operand_address(out, XR_R11, move.object_source);
-      append_load(out, reg_operand(move.destination),
-                  dereference(XR_R11, static_cast<long long>(move.chunk_offset)),
-                  move.type);
+      MirOperand storage;
+      if(direct_object_chunk_storage(
+           move.object_source, move.chunk_offset, &storage))
+        append_load(out, reg_operand(move.destination), storage, move.type);
+      else {
+        emit_operand_address(out, XR_R11, move.object_source);
+        append_load(out, reg_operand(move.destination),
+                    dereference(
+                      XR_R11, static_cast<long long>(move.chunk_offset)),
+                    move.type);
+      }
     } else if(move.source_is_address) {
       if(move.source.kind == MirOperand::OP_FRAME ||
          move.source.kind == MirOperand::OP_DEREF)

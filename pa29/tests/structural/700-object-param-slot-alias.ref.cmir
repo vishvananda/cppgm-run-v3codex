@@ -46,7 +46,6 @@ function @main
     call @make_value [args=()]
     lea <gpr0>, [rbp-<off0>]
     store.i64 [<gpr0>], rax
-    lea <gpr0>, [rbp-<off0>]
-    load.i64 rdi, [<gpr0>]
+    load.i64 rdi, [rbp-<off0>]
     call @unwrap [args=(rdi)]
     ret rax
