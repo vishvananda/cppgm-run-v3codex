@@ -951,11 +951,12 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		AnalyzeFriendClass(node, scope, owner_type);
 		return;
 	}
+	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 	const bool identity_only = IsCallableDeclaration(node) ||
 		HasDeclSpecifier(specifiers, "typedef");
 	const SpecInfo spec = identity_only ? BuildIdentityOnlySpecifiers(
-		specifiers, scope, std::string(), true) :
-		BuildSpecifiers(specifiers, scope, std::string(), true);
+		specifiers, scope, std::string(), list != kNoNode) :
+		BuildSpecifiers(specifiers, scope, std::string(), list != kNoNode);
 	if (spec.is_friend)
 	{
 		const NodeId declarators = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
@@ -1023,7 +1024,6 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 		PublishInlineFunctionFacts(function, true);
 		return;
 	}
-	const NodeId list = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_INIT_DECLARATOR_LIST);
 	if (list == kNoNode) return;
 	for (std::uint32_t edge = arena_->FirstEdge(list); edge != kNoEdge;
 		edge = arena_->NextEdge(edge))

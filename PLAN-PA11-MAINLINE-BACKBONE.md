@@ -1,8 +1,10 @@
 # PA11 Mainline Backbone Plan: Replace the Parallel Type Analyzer
 
-Status: proposed; not started.  The feasibility census below was measured
-against the working tree at the T6 operation-transport checkpoint; re-run it
-at the anchor commit before beginning Phase 0.
+Status: in progress.  Phase 0's hidden mainline renderer and Phase 1's two
+standard-valid mainline corrections are complete in the working tree based on
+anchor `ae5481d5`.  The current census accepts 50 of 52 successful PA11
+inputs; the two remaining inputs are standard-invalid oracle conflicts owned
+by Phase 4.
 
 Date: 2026-08-19
 
@@ -36,8 +38,9 @@ real mainline gaps.
 
 ## 2. Feasibility census (measured)
 
-The census ran every reference-passing PA11 assignment and course input
-through the mainline analyzer (`--emit-semantics` acceptance as the proxy):
+The initial census ran every reference-passing PA11 assignment and course
+input through the mainline analyzer (`--emit-semantics` acceptance as the
+proxy):
 
 - The mainline analyzer accepts 48 of 52 inputs.
 - It rejects 4 inputs in 3 root-cause classes:
@@ -45,7 +48,7 @@ through the mainline analyzer (`--emit-semantics` acceptance as the proxy):
 | Class | Inputs | Error | Diagnosis |
 | --- | --- | --- | --- |
 | Qualified out-of-class scoped-enum member definition | `cppgm.tests/course/pa11/200-qualified-scoped-enum-definition-lookup.t`, `pa11/tests/general/200-qualified-member-scoped-enum-definition.t` | `unknown enum type` | Mainline gap: `enum class writer::state : int { ... }` defining a member enum at namespace scope is not resolved.  These are the same two fixtures whose PA10 semantic-only structured-name child T2y retained. |
-| Namespace-scope anonymous union member injection | `pa11/tests/spec/200-namespace-anonymous-union-injected-members.t` | `unknown expression name: t` | Mainline gap: member injection for anonymous unions is implemented for block scope (`local` gated) but not namespace scope. |
+| Namespace-scope anonymous union member injection | `pa11/tests/spec/200-namespace-anonymous-union-injected-members.t` | `unknown expression name: t` | Mixed diagnosis corrected in Phase 1: this fixture is ill-formed because a namespace-scope anonymous union must be `static`, but a new standard-valid `static union { ... };` probe also exposed a real mainline storage/member-injection gap. |
 | Scoped-enum comparison strictness | `pa11/tests/spec/200-enum-scoped.t` | `invalid comparison operands` | Contract conflict: `FY::Y == 3` on a scoped enum is ill-formed by the standard; the mainline analyzer correctly rejects it while the pinned PA11 reference accepts it. |
 
 Structural facts confirmed by the census:
@@ -59,6 +62,17 @@ Structural facts confirmed by the census:
 - The two analyzers already agree on delicate generated-name conventions in
   at least one pinned case (`__anonymous_union_type__0_10` in the PA11
   namespace-anonymous-union reference).
+
+The hidden `--emit-mainline-types` prototype then rendered the actual
+mainline `Program`.  Before projection, none of the 50 accepted inputs is
+byte-identical.  The dominant measured additions are deterministic rather
+than unexplained semantic drift: every input contains one builtin
+`nullptr_t` alias and four allocation/deallocation functions (250 lines),
+and class inputs contain injected self bindings and roughly 108 implicit
+constructor, assignment, and destructor entries.  The remaining families
+are blank/deferred function-scope presentation, source-scope nesting,
+qualified member-enum presentation, and anonymous-type typedef presentation.
+These are the Phase 2/3 worklist; they are not reasons to fork analysis.
 
 ## 3. Success criteria
 
@@ -93,11 +107,15 @@ only and lands behind an unadvertised flag or in a scratch harness.
 ### Phase 1: close the mainline gaps (independent value)
 
 1. Qualified out-of-class scoped-enum member definitions, owned by the
-   mainline enum declaration path (`AnalyzeEnum`), with the two existing
-   PA11 fixtures plus a new earliest-owned mainline reducer.
+   mainline declaration/specifier handoff, with the two existing PA11
+   fixtures plus a new earliest-owned PA12 reducer.  A declaratorless member
+   declaration now declares its enum instead of requesting elaborated lookup.
 2. Namespace-scope anonymous union member injection, owned by the mainline
-   anonymous-union path, generalizing the block-scope injection; reuse the
-   existing PA11 spec fixture as the oracle and add a mainline reducer.
+   anonymous-union path.  A standard-valid `static union` PA12 reducer covers
+   generated internal storage, injected member lookup, semantic lowering, and
+   source-to-object compilation.  The shared helper also retains the existing
+   block-scope behavior.  The old non-`static` PA11 fixture is a Phase 4
+   contract conflict, not an implementation target.
 
 These are real language gaps in the production analyzer and should land
 regardless of the wrapper decision.  Each follows the standard commit
@@ -125,12 +143,14 @@ forking the convention.
 
 ### Phase 4: contract conflicts
 
-`200-enum-scoped.t` is the template: the standard supports the mainline
-rejection, the pinned reference accepts.  Per the repository fixture policy,
-the standard-correct behavior wins; move the fixture's conflicting assertion
-to a `proposed/pa11/` entry documenting the reference disagreement, or amend
-the fixture through the reference-regeneration targets if the maintainers
-prefer.  Do not weaken the mainline analyzer to match a lax oracle.
+`200-enum-scoped.t` and the non-`static`
+`200-namespace-anonymous-union-injected-members.t` are the two current
+conflicts: both GCC and Clang reject the latter under C++11, and the standard
+supports the mainline scoped-enum comparison rejection.  Rewrite each active
+fixture to preserve its standard-valid coverage, retain the conflicting form
+under `proposed/pa11/`, and use the documented reference-regeneration path if
+any oracle changes.  Do not weaken the mainline analyzer to match a lax
+oracle.
 
 ### Phase 5: switchover and deletion
 
@@ -157,4 +177,5 @@ timing check on the production path.
 
 | ID | Change | Result | Output effect | Tests | Commit / disposition |
 | --- | --- | --- | --- | --- | --- |
-| B0 | Feasibility census | Mainline accepts 48/52 reference-passing PA11 inputs; 4 rejects in 3 classes (2 qualified scoped-enum member definitions, 1 namespace anonymous-union injection, 1 standard-versus-oracle strictness conflict); shared `Program::Render` writer confirmed PA11-only | None; measurement only | Census script over the PA11 suites | Recorded in section 2; plan proposed |
+| B0 | Hidden mainline renderer and presentation census | Initial mainline acceptance was 48/52; after B1 it is 50/52.  All 50 accepted cases differ before projection.  Builtins contribute exactly 250 extra lines; implicit/self class facts, deferred scope names, qualified member-enum placement, and anonymous typedef naming account for the remaining families. | Hidden `--emit-mainline-types` only; public `--emit-types` and object compilation unchanged | Full PA11 successful-input census; full report 5,220/5,220; audit zero fatal | Working tree; Phase 0 complete |
+| B1 | Standard-valid mainline semantic gaps | Declaratorless class-member enum declarations now reach `AnalyzeEnum` as declarations; a responsibility-named anonymous-union component creates typed private storage, registers static/local lifetime facts, and injects member bindings.  The pre-existing non-`static` PA11 namespace fixture is reclassified as invalid. | Two new PA12 semantic fixtures generated by the pinned reference; existing block anonymous-union output unchanged; frozen `-O0` object exact at 4,415,448 bytes and baseline SHA | PA12 184/184; selected report 864/864; full report 5,220/5,220; audit zero fatal | Working tree; Phase 1 complete |

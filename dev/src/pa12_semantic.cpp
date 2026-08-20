@@ -1960,47 +1960,14 @@ void SemanticAnalyzer::AnalyzeDeclaration(NodeId node, ScopeId scope,
 	{
 		const TypeId type = AnalyzeClass(node, scope, std::string(), false);
 		const EntityId entity = EntityOf(type);
-		if (local && arena_->Payload(node).empty() && entity != kNoEntity &&
+		if (arena_->Payload(node).empty() && entity != kNoEntity &&
 			program_->entities[entity].flavor == NAMED_UNION)
 		{
-			std::ostringstream generated;
-			generated << "__anonymous_union_storage__" << arena_->TokenFirst(node)
-				<< '_' << arena_->TokenLast(node);
-			const std::string generated_name = generated.str();
-			if (stats_)
-				RecordGeneratedIdentityRender(
-					SEMANTIC_GENERATED_ANONYMOUS_UNION_STORAGE,
-					generated_name, 2);
-			const NameId storage_name = program_->names.Intern(generated_name);
-			// Private storage identity stays out of name lookup.
-			const BindingId storage = program_->AddUnindexedBinding(scope,
-				BIND_VARIABLE, storage_name, type, kNoBinding);
-			program_->bindings[storage].anonymous_union_storage = true;
-			const std::uint32_t simple = MakeDump(DUMP_SIMPLE_DECLARATION);
-			const std::uint32_t variable = MakeDump(DUMP_VARIABLE, type,
-				VALUE_NONE, storage_name, storage);
-			AddDefaultConstructor(variable, storage, type);
-			dump_.Add(simple, variable);
-			dump_.Add(output_parent, simple);
-			const std::vector<BindingId>& members = entity_data_members_[entity];
-			for (std::size_t i = 0; i < members.size(); ++i)
-			{
-				const BindingRecord source = program_->bindings[members[i]];
-				if (program_->LookupDirect(scope, source.name,
-					LOOKUP_ORDINARY).ordinary != kNoBinding)
-					throw std::runtime_error(
-						"anonymous union member conflicts in block scope");
-				const BindingId injected = program_->AddBinding(scope, BIND_VARIABLE,
-					source.name, source.type, source.constant, source.value,
-					source.display_flavor, source.display_type_name);
-				if (injected_fact_by_binding_.size() <= injected)
-					injected_fact_by_binding_.resize(
-						static_cast<std::size_t>(injected) + 1, kNoDumpEdge);
-				injected_fact_by_binding_[injected] =
-					static_cast<std::uint32_t>(injected_members_.size());
-				injected_members_.push_back(
-					InjectedMemberInfo(storage, members[i]));
-			}
+			if (!local)
+				throw std::runtime_error(
+					"namespace anonymous union must be static");
+			DeclareAnonymousUnionObject(node, scope, output_parent, type,
+				true, STORAGE_CLASS_NONE);
 		}
 		return;
 	}
@@ -2089,11 +2056,8 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			"virtual specifier is only allowed in a class definition");
 	if (list == kNoNode)
 	{
-		if (local)
-		{
-			const std::uint32_t empty = MakeDump(DUMP_SIMPLE_DECLARATION);
-			dump_.Add(output_parent, empty);
-		}
+		AnalyzeDeclaratorlessSimpleDeclaration(specifiers, scope,
+			output_parent, local, spec);
 		current_class_context_ = previous_class_context;
 		return;
 	}

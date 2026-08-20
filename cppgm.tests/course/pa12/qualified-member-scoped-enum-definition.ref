@@ -1,0 +1,9 @@
+1 translation units
+start translation unit 1
+translation-unit
+  function-definition value function of () returning int
+    compound-statement
+      return-statement
+        cast-expression prvalue int KW_STATIC_CAST:static_cast
+          literal prvalue enum class state 1
+end translation unit

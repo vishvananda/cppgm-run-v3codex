@@ -1,0 +1,25 @@
+1 translation units
+start translation unit 1
+translation-unit
+  variable __anonymous_union_storage__1_10 union __anonymous_union_type__1_10
+    constructor-action __anonymous_union_type__1_10::__anonymous_union_type__1_10
+      call-expression prvalue void
+        callee __anonymous_union_type__1_10::__anonymous_union_type__1_10 function of (pointer to union __anonymous_union_type__1_10) returning void
+        unary-expression prvalue pointer to union __anonymous_union_type__1_10 OP_AMP:&
+          id-expression lvalue union __anonymous_union_type__1_10 __anonymous_union_storage__1_10
+  function-definition f function of (int) returning int
+    parameter x int
+    compound-statement
+      expression-statement
+        assignment-expression lvalue int OP_ASS:=
+          member-expression lvalue int t
+            id-expression lvalue union __anonymous_union_type__1_10 __anonymous_union_storage__1_10
+          id-expression lvalue int x
+      return-statement
+        cast-expression prvalue int KW_STATIC_CAST:static_cast
+          member-expression lvalue long int a
+            id-expression lvalue union __anonymous_union_type__1_10 __anonymous_union_storage__1_10
+  function-definition __anonymous_union_type__1_10::__anonymous_union_type__1_10 function of (pointer to union __anonymous_union_type__1_10) returning void
+    parameter this pointer to union __anonymous_union_type__1_10
+    compound-statement
+end translation unit

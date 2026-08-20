@@ -2,6 +2,7 @@
 
 #include "pa10_syntax.h"
 #include "pa10_syntax_model.h"
+#include "function_demand_edge.h"
 #include "function_demand_reason.h"
 #include "pa11_model.h"
 #include "pa12_semantic.h"
@@ -32,29 +33,6 @@ enum GeneratedLibraryName
 	GENERATED_LIBRARY_BAD_ALLOC,
 	GENERATED_LIBRARY_TYPE_INFO,
 	GENERATED_LIBRARY_INITIALIZER_LIST
-};
-
-struct FunctionDemandEdge
-{
-	BindingId caller, callee;
-	FunctionDemandReason reason;
-	std::uint32_t next;
-
-	FunctionDemandEdge(BindingId caller_value, BindingId callee_value,
-		FunctionDemandReason reason_value, std::uint32_t next_value)
-		: caller(caller_value), callee(callee_value), reason(reason_value),
-		  next(next_value) {}
-	bool operator<(const FunctionDemandEdge& other) const
-	{
-		if (caller != other.caller) return caller < other.caller;
-		if (callee != other.callee) return callee < other.callee;
-		return reason < other.reason;
-	}
-	bool operator==(const FunctionDemandEdge& other) const
-	{
-		return caller == other.caller && callee == other.callee &&
-			reason == other.reason;
-	}
 };
 
 bool StringLiteralTokenEnd(const std::string& spelling, std::size_t* end);
@@ -289,6 +267,12 @@ private:
 
 	void AnalyzeDeclaration(NodeId node, ScopeId scope,
 		std::uint32_t output_parent, bool local);
+	void DeclareAnonymousUnionObject(NodeId source, ScopeId scope,
+		std::uint32_t output_parent, TypeId type, bool local,
+		StorageClass storage_class);
+	void AnalyzeDeclaratorlessSimpleDeclaration(NodeId specifiers,
+		ScopeId scope, std::uint32_t output_parent, bool local,
+		const SpecInfo& spec);
 	void AnalyzeStaticAssert(NodeId node, ScopeId scope);
 	void AnalyzeNamespace(NodeId node, ScopeId scope,
 		std::uint32_t output_parent);
