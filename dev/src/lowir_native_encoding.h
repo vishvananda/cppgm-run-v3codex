@@ -77,6 +77,8 @@ void emit_indexed_store(elf_detail::CodeBuffer & out, X64Register base,
                         long long displacement, X64Register source,
                         unsigned width);
 bool immediate_store_encoding_available(unsigned width, std::uint64_t value);
+std::size_t immediate_store_encoding_size(X64Register base,
+	long long displacement, unsigned width);
 void emit_immediate_store(elf_detail::CodeBuffer & out, X64Register base,
                           long long displacement, std::uint64_t value,
                           unsigned width);

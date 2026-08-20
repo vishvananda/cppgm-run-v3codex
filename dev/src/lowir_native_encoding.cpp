@@ -112,19 +112,26 @@ void emit_tls_address(CodeBuffer & out, X64Register destination,
   out.tls_offset32(symbol);
 }
 
+namespace {
+
+unsigned memory_displacement_bytes(X64Register base, long long displacement)
+{
+	const unsigned base_code = static_cast<unsigned>(base) & 7;
+	if (displacement == 0 && base_code != 5) return 0;
+	if (displacement >= -128 && displacement <= 127) return 1;
+	return 4;
+}
+
+}
+
 void emit_memory_modrm(CodeBuffer & out, unsigned reg, X64Register base,
                        long long displacement)
 {
   const unsigned base_code = static_cast<unsigned>(base) & 7;
-  unsigned mode = 2;
-  unsigned displacement_bytes = 4;
-  if(displacement == 0 && base_code != 5) {
-    mode = 0;
-    displacement_bytes = 0;
-  } else if(displacement >= -128 && displacement <= 127) {
-    mode = 1;
-    displacement_bytes = 1;
-  }
+  const unsigned displacement_bytes =
+    memory_displacement_bytes(base, displacement);
+  const unsigned mode = displacement_bytes == 0 ? 0 :
+    displacement_bytes == 1 ? 1 : 2;
   emit_modrm(out, mode, reg, base);
   if(base_code == 4)
     out.byte((0 << 6) | (4 << 3) | base_code);
@@ -290,6 +297,20 @@ bool immediate_store_encoding_available(unsigned width, std::uint64_t value)
   const std::uint64_t sign_extended = low & 0x80000000ULL
     ? low | 0xffffffff00000000ULL : low;
   return value == sign_extended;
+}
+
+std::size_t immediate_store_encoding_size(X64Register base,
+	long long displacement, unsigned width)
+{
+	if (width != 8 && width != 16 && width != 32 && width != 64)
+		throw std::logic_error("invalid integer immediate-store width");
+	const bool prefix = width == 16;
+	const bool rex = width == 64 || base >= XR_R8;
+	const bool sib = (static_cast<unsigned>(base) & 7) == 4;
+	const unsigned immediate_bytes = width == 8 ? 1 : width == 16 ? 2 : 4;
+	return static_cast<std::size_t>(prefix) + static_cast<std::size_t>(rex) +
+		1 + 1 + static_cast<std::size_t>(sib) +
+		memory_displacement_bytes(base, displacement) + immediate_bytes;
 }
 
 void emit_immediate_store(CodeBuffer & out, X64Register base,

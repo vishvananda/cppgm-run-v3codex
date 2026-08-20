@@ -229,6 +229,11 @@ int run_lowir2native_mode(const vector<string> & args)
          << " immediate_stores_selected=" << stats.immediate_stores_selected
          << " memory_rhs_operations_selected="
          << stats.memory_rhs_operations_selected
+         << " direct_zero_operations_selected="
+         << stats.direct_zero_operations_selected
+         << " direct_zero_stores_emitted="
+         << stats.direct_zero_stores_emitted
+         << " direct_zero_bytes=" << stats.direct_zero_bytes
          << " native_returns=" << stats.native_returns
          << " physical_epilogues=" << stats.physical_epilogues
          << " fixups=" << stats.fixups

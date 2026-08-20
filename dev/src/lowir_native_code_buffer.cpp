@@ -342,6 +342,15 @@ void CodeBuffer::note_literal_text_parse(std::uint64_t nanoseconds)
 	stats_->native_literal_parse_nanoseconds += nanoseconds;
 }
 
+void CodeBuffer::note_direct_zero_encoding(std::size_t bytes,
+	std::size_t stores)
+{
+	if (!stats_) return;
+	++stats_->direct_zero_operations_selected;
+	stats_->direct_zero_stores_emitted += stores;
+	stats_->direct_zero_bytes += bytes;
+}
+
 const lowir_model::SealedStringPool& CodeBuffer::strings() const
 {
 	if (!strings_) throw std::logic_error("native string pool is not bound");

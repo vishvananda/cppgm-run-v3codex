@@ -671,6 +671,8 @@ strategies include:
 - encode immediate memory stores directly at 8, 16, and 32 bits and for
   sign-extended 32-bit values at 64 bits; choose an encoder scratch that does
   not overlap a dereference base or index for other 64-bit values
+- compare the exact target-byte cost of a fixed small `zero_bytes` with its
+  `rep stosb` setup and use direct zero stores only when they are smaller
 - carry a sole-use load's typed frame, global, dereference, or indexed address
   into an immediately following legal integer right operand, keeping its
   address inputs live until the consuming instruction

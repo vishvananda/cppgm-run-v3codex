@@ -1887,6 +1887,11 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.immediate_stores_selected
          << " memory_rhs_operations_selected="
          << native_stats.memory_rhs_operations_selected
+         << " direct_zero_operations_selected="
+         << native_stats.direct_zero_operations_selected
+         << " direct_zero_stores_emitted="
+         << native_stats.direct_zero_stores_emitted
+         << " direct_zero_bytes=" << native_stats.direct_zero_bytes
          << " native_returns=" << native_stats.native_returns
          << " physical_epilogues=" << native_stats.physical_epilogues
          << " fixups=" << native_stats.fixups

@@ -15,6 +15,7 @@
 #include "lowir_native_global_encoding.h"
 #include "lowir_native_object_elf.h"
 #include "lowir_native_scalar_memory.h"
+#include "lowir_native_zero_encoding.h"
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
@@ -999,8 +1000,9 @@ bool prepare_explicit_operands(CodeBuffer & out,
     }
   } else if(instruction.opcode == mir_model::MirInstruction::MI_ZERO_BYTES) {
     require_operands(instruction, 1);
-    const X64Register destination = require_register(instruction.operands[0]);
-    if(destination != XR_RDI) emit_register_move(out, XR_RDI, destination);
+    emit_zero_bytes(out, require_register(instruction.operands[0]),
+                    instruction.byte_count);
+    return true;
   } else if(instruction.opcode == mir_model::MirInstruction::MI_RET) {
     if(instruction.operands.size() > 1)
       throw std::logic_error("native return has too many operands");
@@ -1542,13 +1544,6 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     emit_immediate_move(out, XR_RCX, instruction.byte_count);
     out.byte(0xf3);
     out.byte(0xa4);
-    return;
-  case mir_model::MirInstruction::MI_ZERO_BYTES:
-    emit_immediate_move(out, XR_RCX, instruction.byte_count);
-    out.byte(0x31);
-    out.byte(0xc0);
-    out.byte(0xf3);
-    out.byte(0xaa);
     return;
   case mir_model::MirInstruction::MI_RET:
     if(!function) throw std::logic_error("return outside function");

@@ -94,6 +94,7 @@ public:
 	void bind_stats(Stats* stats);
 	bool collects_stats() const;
 	void note_literal_text_parse(std::uint64_t nanoseconds = 0);
+	void note_direct_zero_encoding(std::size_t bytes, std::size_t stores);
 	const lowir_model::SealedStringPool& strings() const;
 	const std::string& literal_spelling(lowir_model::StringId literal) const;
 	void append(const std::vector<unsigned char>& bytes);

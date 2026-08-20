@@ -1,0 +1,75 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @one
+  storage data
+  item i8 17
+
+global @four
+  storage data
+  item i32 572662306
+
+global @eight
+  storage data
+  item i64 3689348814741910323
+
+global @sixteen
+  storage data
+  item i64 4919131752989213764
+  item i64 6148914691236517205
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov r8, @one
+    mov rdi, r8
+    zero_bytes 1x1, rdi
+    cmp.i8 @one, 0
+    jne ^bad
+    jmp ^four
+
+  block ^four
+    mov r8, @four
+    mov rdi, r8
+    zero_bytes 4x4, rdi
+    cmp.i32 @four, 0
+    jne ^bad
+    jmp ^eight
+
+  block ^eight
+    mov r8, @eight
+    mov rdi, r8
+    zero_bytes 8x8, rdi
+    cmp.i64 @eight, 0
+    jne ^bad
+    jmp ^sixteen
+
+  block ^sixteen
+    mov r8, @sixteen
+    mov rdi, r8
+    zero_bytes 16x8, rdi
+    load.i64 r9, @sixteen
+    lea r8, [r8+8]
+    load.i64 rbx, [r8]
+    or r9, rbx
+    cmp.i64 r9, 0
+    jne ^bad
+    jmp ^ok
+
+  block ^bad
+    mov rax, 1
+    ret rax
+
+  block ^ok
+    mov rax, 0
+    ret rax

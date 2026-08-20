@@ -76,6 +76,9 @@ struct Stats
   std::size_t eh_coalesced_call_sites = 0;
   std::size_t immediate_stores_selected = 0;
   std::size_t memory_rhs_operations_selected = 0;
+  std::size_t direct_zero_operations_selected = 0;
+  std::size_t direct_zero_stores_emitted = 0;
+  std::size_t direct_zero_bytes = 0;
   std::size_t native_returns = 0;
   std::size_t physical_epilogues = 0;
   std::size_t fixups = 0;
