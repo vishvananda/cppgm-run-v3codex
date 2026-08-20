@@ -333,6 +333,8 @@ HostEhRegionPlan analyze_host_eh_regions(
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       const mir_model::MirInstruction & instruction =
         function.blocks[i].instructions[j];
+      if(instruction.opcode == mir_model::MirInstruction::MI_RESUME)
+        ++result.resume_instruction_count;
       if(instruction.opcode != mir_model::MirInstruction::MI_EH_PUSH ||
          instruction.operands.size() != 2 ||
          instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL)

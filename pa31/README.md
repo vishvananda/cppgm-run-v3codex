@@ -208,6 +208,10 @@ runtime-helper object surface for `cppgm++ -c` within the supported subset:
     boundaries. It receives the active exception object, calls
     `__cxa_begin_catch`, and then calls `std::terminate`; individual landings
     shall not repeat the begin-catch call.
+11. Within one function, route semantic resume operations through one physical
+    `_Unwind_Resume` terminal that reloads the active exception from the
+    function's host-EH slot. Keep the source cleanup paths distinct in LowIR
+    and MIR.
 
 If object inspection shows missing or malformed host EH metadata for a basic
 throw/catch/cleanup case, fix the host-EH lowering or object-emission path.
@@ -246,3 +250,8 @@ from typed semantic/runtime-role information and final machine layout.
 A compact terminate boundary can pass the typed exception value to a single
 internal helper. This keeps the handler-entry ABI sequence in one place while
 leaving ordinary source catch handlers independent.
+
+The host-object layout walk can count MIR resume operations once, allocate a
+terminal only for a function that needs one, and branch each resume to it. A
+single typed frame-slot identity is sufficient; rendered slot or label names
+are not needed.

@@ -115,6 +115,9 @@ struct Stats
   std::size_t eh_call_sites = 0;
   std::size_t eh_lsda_call_sites = 0;
   std::size_t eh_coalesced_call_sites = 0;
+  std::size_t semantic_resume_instructions = 0;
+  std::size_t physical_resume_terminals = 0;
+  std::size_t shared_resume_branches = 0;
   std::size_t immediate_stores_selected = 0;
   std::size_t memory_rhs_operations_selected = 0;
   std::size_t direct_zero_operations_selected = 0;

@@ -16,6 +16,7 @@ struct HostEhRegionPlan
   std::size_t state_count = 0;
   std::size_t edge_count = 0;
   std::size_t protected_call_count = 0;
+  std::size_t resume_instruction_count = 0;
 };
 
 bool requires_host_eh_storage(const lowir_model::LowirFunction & function);

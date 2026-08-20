@@ -1914,6 +1914,12 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " eh_lsda_call_sites=" << native_stats.eh_lsda_call_sites
          << " eh_coalesced_call_sites="
          << native_stats.eh_coalesced_call_sites
+         << " semantic_resume_instructions="
+         << native_stats.semantic_resume_instructions
+         << " physical_resume_terminals="
+         << native_stats.physical_resume_terminals
+         << " shared_resume_branches="
+         << native_stats.shared_resume_branches
          << " immediate_stores_selected="
          << native_stats.immediate_stores_selected
          << " memory_rhs_operations_selected="

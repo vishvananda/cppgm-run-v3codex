@@ -543,6 +543,50 @@ relocation/LSDA movement.
 Complexity: one O(MIR instructions) census during the existing native layout
 walk and O(1) terminal selection per resume.
 
+#### S3 completion record
+
+Host-object emission now retains every semantic MIR `resume` but gives a
+function with more than one such operation one physical terminal.  Each
+semantic site branches to the terminal; the terminal reloads the active
+exception from the function's existing typed host-EH frame slot and calls
+`_Unwind_Resume`.  A function with one resume keeps its direct sequence, so the
+change cannot add a branch where no sharing is possible.
+
+The safety argument follows the existing host-EH contract.  MIR `resume` has no
+operand, every landing entry stores the current exception in the one typed
+per-function slot, a stack-argument landing shim restores its outgoing stack
+area before entering cleanup, and the terminal reloads only after all cleanup
+calls that may clobber registers.  A nested landing replaces the slot with its
+own current exception before using the same terminal; no semantic cleanup
+block, handler state, or exception identity is merged.  The resume count is
+collected in the host-EH analysis's existing all-instruction walk, so normal
+emission adds no extra scan, map, or text identity.
+
+The existing PA31 distinct-cleanup test now requires its two functions to have
+two total resume relocations rather than five.  A new PA31 behavior/inspection
+fixture combines two cleanup arms, an eight-argument throwing call, stack
+cleanup, and a destructor that makes a clobbering eight-argument call before
+resuming; it likewise falls from five resume relocations to two and executes
+both unwind arms.  Existing PA31 cases continue to cover ordinary cleanup,
+nested handlers, landing-entry separation, and LSDA barriers.  The focused
+reducer's serialized LowIR and MIR are byte-identical between S2 and S3.
+
+On the frozen compile, 821 semantic resume operations become 568 physical
+terminals.  The 101 functions with multiple resumes contain 354 branch sites,
+removing 253 `_Unwind_Resume` calls and relocations.  Relative to S2, the object
+falls from 3,229,456 to 3,221,784 bytes (-7,672), `.text*` by 1,416 bytes, base
+text by 934 bytes, `.gcc_except_table` by 212 bytes, relocation storage by
+6,072 bytes, and decoded instructions by 163.  `.eh_frame` and function counts
+are unchanged.  The deterministic object SHA-256 is
+`05d07eadb7398e0b91a12c258ec7287db1c0c2bad9264255d491e99ee659f54b`.
+
+Three A/B/B/A blocks against immutable S2 commit `ee5f6234` measured
+baseline/candidate median wall time 4.555/4.550 seconds, user time
+4.095/4.095 seconds, and peak RSS 359,768/360,438 KiB.  Paired movement is
+-0.11% wall, +0.24% user, and +0.25% RSS.  The exact phase passes PA31's 30
+result groups, all 4,305 report tests through PA31, the full 5,280-test report,
+`git diff --check`, and the PA39 audit with zero fatal findings.
+
 ### S4: re-audit cleanup-tail equivalence
 
 Use S0 telemetry to identify the largest remaining destructor families and the
@@ -770,7 +814,7 @@ Fill one row after each retained phase.
 | S0 baseline/instrumentation | none | byte-identical 3,246,896-byte baseline; typed movement/home/EH census above | +0.49% paired median user, -0.01% RSS | 5,276/5,276 full report; four script tests; zero-fatal audit | complete; `1048f6c5` |
 | S1 nonthrowing propagation | PA34 atomic `noexcept` behavior/inspect; course run bucket enabled | -49 text, -2 relocations, -1 terminate and begin-catch call | -0.24% paired median user, +0.13% RSS | PA34 374/374; through-PA34 4,923/4,923; full 5,278/5,278; zero-fatal audit | complete |
 | S2 shared terminate action | PA31 behavior plus exact relocation inspection; PA26 has no host-policy output | -1,998 text, -285 LSDA, -400 relocations/begin-catch calls | -0.24% paired median user, -0.37% RSS | PA31 29/29 groups; through-PA31 4,304/4,304; full 5,279/5,279; zero-fatal audit | complete |
-| S3 physical resume terminal | PA31 behavior/inspect only; no LowIR/MIR migration | pending | pending | pending | planned |
+| S3 physical resume terminal | PA31 stack/clobber behavior and exact resume-relocation inspection; no LowIR/MIR migration | -1,416 text, -212 LSDA, -253 resume calls/relocations | +0.24% paired median user, +0.25% RSS | PA31 30/30 groups; through-PA31 4,305/4,305; full 5,280/5,280; zero-fatal audit | complete |
 | S4 cleanup equivalence | PA16/PA17/PA26 only as proven | pending | pending | pending | planned |
 | S5 destination placement | PA17 direct xvalue-to-base reference binding added; later PA29 work pending | S5a: -2,126 text, -528 LSDA, -97 relocations, -33 terminate calls | -0.12% paired median user, +0.21% RSS | PA17 244/244; through-PA17 1,714/1,714; full 5,277/5,277; zero-fatal audit | S5a complete; remaining S5 planned |
 | S6 bounded scalar retention | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |

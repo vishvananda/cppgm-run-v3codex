@@ -1,0 +1,63 @@
+int selected;
+long destroyed;
+
+long clobber(long a, long b, long c, long d,
+             long e, long f, long g, long h) noexcept
+{
+  return a + b + c + d + e + f + g + h;
+}
+
+struct Guard
+{
+  long tag;
+
+  Guard(long value) noexcept : tag(value) {}
+
+  ~Guard() noexcept
+  {
+    destroyed += tag + clobber(1, 2, 3, 4, 5, 6, 7, 8);
+  }
+};
+
+long stack_call(long a, long b, long c, long d,
+                long e, long f, long g, long h)
+{
+  if (selected) throw 9;
+  return a + b + c + d + e + f + g + h;
+}
+
+long probe(bool first)
+{
+  if (first)
+  {
+    Guard guard(1);
+    return stack_call(1, 2, 3, 4, 5, 6, 7, 8);
+  }
+
+  Guard guard(2);
+  return stack_call(8, 7, 6, 5, 4, 3, 2, 1);
+}
+
+int main()
+{
+  selected = 1;
+  try
+  {
+    probe(true);
+    return 1;
+  }
+  catch (int value)
+  {
+    if (value != 9 || destroyed != 37) return 2;
+  }
+
+  try
+  {
+    probe(false);
+    return 3;
+  }
+  catch (int value)
+  {
+    return value == 9 && destroyed == 75 ? 0 : 4;
+  }
+}

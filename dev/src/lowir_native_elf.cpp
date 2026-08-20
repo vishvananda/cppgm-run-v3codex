@@ -2331,6 +2331,7 @@ void emit_host_instruction(
     const mir_model::MirFunction & function,
     lowir_model::BlockId landing_block,
     lowir_model::LocalLabelId landing_entry,
+    lowir_model::LocalLabelId shared_resume,
     HostFunctionLayout & layout,
     std::vector<HostEhStackCleanup> & stack_cleanups)
 {
@@ -2358,6 +2359,10 @@ void emit_host_instruction(
   }
   if(instruction.opcode == mir_model::MirInstruction::MI_RESUME) {
     require_operands(instruction, 0);
+    if(shared_resume.valid()) {
+      emit_unconditional_jump(out, shared_resume);
+      return;
+    }
     emit_load(out, XR_RDI, XR_RBP,
       actual_frame_offset(function, function.host_eh_exception_offset), 64);
     const std::size_t start = out.size();
@@ -2389,6 +2394,19 @@ void emit_host_instruction(
     } else site.landing_label = landing_entry;
     layout.call_sites.push_back(site);
   }
+}
+
+void emit_host_resume_terminal(CodeBuffer & out,
+                               const mir_model::MirFunction & function,
+                               HostFunctionLayout & layout)
+{
+  emit_load(out, XR_RDI, XR_RBP,
+    actual_frame_offset(function, function.host_eh_exception_offset), 64);
+  const std::size_t start = out.size();
+  out.byte(0xe8);
+  out.relative32("_Unwind_Resume");
+  lsda_detail::record_unprotected_unwind_range(
+    layout, start - layout.offset, out.size() - start);
 }
 
 HostFunctionLayout emit_prepared_host_function(
@@ -2423,6 +2441,15 @@ HostFunctionLayout emit_prepared_host_function(
   out.label(function.symbol);
   if(function.object_symbol.valid()) out.label_object(function.object_symbol);
   out.begin_function_blocks(function.block_labels.size());
+  const std::size_t resume_count = region_plan.resume_instruction_count;
+  const lowir_model::LocalLabelId shared_resume = resume_count > 1 ?
+    out.internal_label("shared_host_eh_resume") :
+    lowir_model::LocalLabelId();
+  if(stats) {
+    stats->semantic_resume_instructions += resume_count;
+    stats->physical_resume_terminals += resume_count == 0 ? 0 : 1;
+    stats->shared_resume_branches += resume_count > 1 ? resume_count : 0;
+  }
   const std::vector<unsigned char> ordinary_entries =
     ordinary_host_block_entries(function);
   std::vector<lowir_model::LocalLabelId> landing_entries(
@@ -2524,13 +2551,17 @@ HostFunctionLayout emit_prepared_host_function(
         (landing.valid() ? out.block_label(landing) :
                            lowir_model::LocalLabelId());
       emit_host_instruction(out, block.instructions[j], function,
-        landing, landing_entry,
+        landing, landing_entry, shared_resume,
         layout, stack_cleanups);
     }
   }
   if(epilogue_plan.shared) {
     out.label(epilogue);
     emit_function_return(out, function);
+  }
+  if(shared_resume.valid()) {
+    out.label(shared_resume);
+    emit_host_resume_terminal(out, function, layout);
   }
   for(std::size_t block = 0; block < landing_entries.size(); ++block) {
     if(!landing_entries[block].valid()) continue;
