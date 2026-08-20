@@ -3,23 +3,30 @@
 ## Stage Design and Spec Alignment
 
 `--emit-types` reads each source into one immutable buffer, preprocesses into
-the compact PA10 token/syntax arena once, traverses that read-only arena into a
-single PA11 semantic graph, renders the required dump, and releases all
-translation-unit state before advancing to the next input. Syntax and semantics
-share `frontend_intern.*`; tokens, semantic names, scope indexes, type nodes,
-entities, and bindings use compact IDs. Display token descriptions remain a
-PA10 view while separate interned semantic payloads prevent a text round trip.
+the compact PA10 token/syntax arena once, traverses that read-only arena with
+the shared semantic analyzer into one semantic graph, renders the PA11
+source-facing view, and releases all translation-unit state before advancing
+to the next input. Syntax and semantics share `frontend_intern.*`; tokens,
+semantic names, scope indexes, type nodes, entities, and bindings use compact
+IDs. Display token descriptions remain a PA10 view while separate interned
+semantic payloads prevent a text round trip.
 
 `pa11_model.*` owns canonical types, declaration identities, scopes, flat
 `(scope,name)` and `(scope,using-target)` indexes, explicit using edges, lookup
-work storage, and iterative rendering. `pa11_semantic.*` owns the one-pass AST
-consumer, declarator construction, required constants, and phase telemetry.
-`cppgm++.cpp` owns source/TU framing. This aligns the available PA11 surface
-with spec §§1–3 and 8–10. Templates stop at parameter scopes as required by the
-assignment; specialization, lowering, machine IR, and ELF are later-stage
-surfaces and are not fabricated here.
+work storage, and iterative rendering. The shared semantic components own AST
+consumption, declarator construction, required constants, and phase telemetry;
+`pa11_mainline_view.cpp` and `pa11_mainline_projection.cpp` expose only the
+source facts in the PA11 contract. `cppgm++.cpp` owns source/TU framing. This
+aligns the available PA11 surface with spec §§1–3 and 8–10. The PA11 view stops
+at template parameter scopes; specialization, lowering, machine IR, and ELF
+remain later-stage output surfaces.
 
 ## Performance Evidence
+
+The detailed scaling measurements below establish the behavior of the reused
+PA11 model, indexes, and iterative renderer. They predate the public
+mainline-analysis switchover and are component evidence, not current
+end-to-end `--emit-types` timings:
 
 - Deep pointer type, 16k/32k/64k/128k layers: 0.02/0.04/0.08/0.17 s wall,
   7,140/10,452/16,656/28,980 KiB RSS, and 16,001/32,001/64,001/128,001
@@ -43,6 +50,12 @@ surfaces and are not fabricated here.
   instructions (1.9%) to iterative type rendering; tokenizer lookahead was the
   largest named self-cost (19.1%), so no unexplained PA11 render hot path
   remained.
+- The switchover did not grow the common semantic records: `BindingRecord`
+  remains 136 bytes and `EntityRecord` remains 208 bytes. View-only type
+  overrides allocate only when `--emit-types` is active.
+- The production frozen `semantic_overload.cpp` `-O0` object remains exactly
+  4,415,448 bytes with the baseline SHA-256. The screened compile took 4.66 s
+  wall / 4.20 s user and 361,176 KiB peak RSS, matching the prior band.
 
 ## Architecture Review
 
@@ -55,10 +68,10 @@ surfaces and are not fabricated here.
   Direct flat indexes and explicit using edges bound lookup to lexical parents
   and relevant imported scopes; canonical declaration IDs distinguish real
   ambiguity from the same declaration arriving by multiple paths.
-- Templates/repeated work: PA11 only creates parameter entities/scopes; template
-  bodies, substitution, and specialization demand are explicitly out of scope.
-  The parser still parses each source region once and semantic traversal does
-  not replay grammar or walk irrelevant expression subtrees.
+- Templates/repeated work: the shared analyzer retains later-stage template
+  facts, while the PA11 projection exposes only parameter entities/scopes and
+  the source class body required by the assignment. Dense typed suppression
+  flags hide production proxy facts without text matching or a second parse.
 - Lowering/backend: unavailable before their assignments. PA11 emits only its
   deterministic semantic view and introduces no textual IR or hosted fallback.
 - Allocation/scaling: long-lived records are contiguous vectors/flat tables;
@@ -99,7 +112,8 @@ architecture, or performance blocker is known.
   the required deterministic dump placement.
 - Replaced recursive renderers with bounded inline-first iterative stacks and
   added phase, work, index-probe, depth, storage, and render-node telemetry.
-- Limited statement traversal to nodes that can own blocks/declarations.
+- Replaced the standalone PA11 analyzer with a typed source view over the
+  shared semantic graph and deleted 1,384 lines of duplicate analysis.
 - Added PA11 regressions for qualified enum-member lookup and same-type
   using-directive ambiguity.
 
@@ -107,9 +121,13 @@ architecture, or performance blocker is known.
 
 - `make test-pa10`: pass, 157/157.
 - `make test-pa11`: pass, 68/68 local plus 2/2 course regressions.
-- Final ASan/UBSan PA11 suite: pass, 68/68 plus 2/2 course regressions.
-- `perl scripts/cppgm_file_audit.pl --stage pa11 --paths dev/src`: pass.
-- `make test-report-through-pa11`: pass, 646/646 tests and 11/11 stages.
+- `perl scripts/cppgm_file_audit.pl --stage pa39 --paths dev/src`: pass with
+  zero fatal findings.
+- `make test-report-through-pa11`: pass, 653/653 tests and 11/11 stages.
+- `make test-report`: pass, 5,220/5,220 tests.
+- Frozen `semantic_overload.cpp` `-O0` object: byte-identical at 4,415,448
+  bytes with SHA-256
+  `d52599359535b175519d1ce1249f2a7eafa443fa1765d1c39d7d38f93716c37f`.
 - `git diff --check`: pass; the cohesive audit commit and post-commit clean
   status are verified at handoff.
 
@@ -122,5 +140,5 @@ architecture, or performance blocker is known.
 | Correctness/identity/lookup findings and regressions | complete |
 | Scaling measurements and targeted profile | complete |
 | File audit and focused PA10/PA11 validation | pass |
-| Sanitizer and required through-PA11 exit gate | pass |
+| Required through-PA11 exit gate | pass |
 | Cohesive audit commit and clean status | pass |
