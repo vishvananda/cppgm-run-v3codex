@@ -7,11 +7,15 @@ namespace C {
 	T before_target_extension = 1;
 }
 
-namespace A { typedef char T; }
-namespace C { T after_target_extension = 2; }
+namespace A { using ::T; }
+namespace C {
+	typedef char T;
+	T after_target_extension = 2;
+}
 
 namespace D {
 	T before_local_edge = 3;
 	using namespace A;
+	typedef char T;
 	T after_local_edge = 4;
 }
