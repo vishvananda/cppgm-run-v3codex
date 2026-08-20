@@ -12,6 +12,7 @@
 #include "lowir_function_reachability.h"
 #include "lowir_prepare.h"
 #include "lowir_native.h"
+#include "lowir_native_stats_report.h"
 #include "lowir_opt.h"
 #include "preprocessor.h"
 #include "tool_help_text.h"
@@ -1836,8 +1837,9 @@ int run_compile_driver(const DriverInvocation & invocation,
 		 << " final_strtab_bytes=" << native_stats.final_strtab_bytes
 		 << " final_shstrtab_entries="
 		 << native_stats.final_shstrtab_entries
-		 << " final_shstrtab_bytes=" << native_stats.final_shstrtab_bytes
-		 << " encoded_section_bytes=" << native_stats.encoded_section_bytes
+		 << " final_shstrtab_bytes=" << native_stats.final_shstrtab_bytes;
+	lowir_native::report_elf_string_table_stats(cerr, native_stats);
+	cerr << " encoded_section_bytes=" << native_stats.encoded_section_bytes
 		 << " final_elf_live_bytes=" << native_stats.final_elf_live_bytes
 		 << " presentation_bridge_ns="
 		 << native_stats.presentation_bridge_nanoseconds

@@ -37,6 +37,10 @@ struct Stats
 	std::size_t final_strtab_bytes = 0;
 	std::size_t final_shstrtab_entries = 0;
 	std::size_t final_shstrtab_bytes = 0;
+	std::size_t final_shared_string_entries = 0;
+	std::size_t final_section_string_reuses = 0;
+	std::size_t final_symbol_string_reuses = 0;
+	std::size_t final_string_suffix_aliases = 0;
 	std::size_t encoded_section_bytes = 0;
 	std::size_t final_elf_live_bytes = 0;
 	std::uint64_t presentation_bridge_nanoseconds = 0;

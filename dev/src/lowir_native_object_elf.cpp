@@ -1,4 +1,5 @@
 #include "lowir_native_object_elf.h"
+#include "lowir_native_elf_string_table.h"
 #include "lowir_native_object_fixups.h"
 
 #include <algorithm>
@@ -1389,83 +1390,11 @@ std::vector<unsigned char> host_external_global_definitions(
   return suppressed;
 }
 
-std::size_t add_string(std::vector<unsigned char> & strings,
-                       const std::string & value)
-{
-  const std::size_t offset = strings.size();
-  strings.insert(strings.end(), value.begin(), value.end());
-  strings.push_back(0);
-  return offset;
-}
-
-void append_c_string(std::vector<unsigned char> & out, const char * text)
-{
-  while(*text) out.push_back(static_cast<unsigned char>(*text++));
-}
-
-const char * fixed_section_name(SectionKind kind)
-{
-  switch(kind) {
-  case SK_TEXT: return ".text";
-  case SK_DATA: return ".data";
-  case SK_TDATA: return ".tdata";
-  case SK_INIT_ARRAY: return ".init_array";
-  case SK_FINI_ARRAY: return ".fini_array";
-  case SK_GCC_EXCEPT_TABLE: return ".gcc_except_table";
-  case SK_EH_FRAME: return ".eh_frame";
-  case SK_NOTE_GNU_STACK: return ".note.GNU-stack";
-  case SK_SYMTAB: return ".symtab";
-  case SK_STRTAB: return ".strtab";
-  case SK_SHSTRTAB: return ".shstrtab";
-  case SK_GROUP: return ".group";
-  default: return 0;
-  }
-}
-
-std::size_t add_section_string(
-    std::vector<unsigned char> & strings,
-    const SectionIdentity & identity,
-    const lowir_model::StringPool & spellings)
-{
-  if(identity.kind == SK_NONE)
-    throw std::logic_error("ELF section has no identity");
-  const std::size_t offset = strings.size();
-  if(identity.relocation) append_c_string(strings, ".rela");
-  if(identity.kind == SK_TEXT_COMDAT) {
-    if(!identity.spelling.valid())
-      throw std::logic_error("COMDAT text section has no spelling identity");
-    append_c_string(strings, ".text.");
-    const std::string & suffix = spellings.get(identity.spelling);
-    strings.insert(strings.end(), suffix.begin(), suffix.end());
-  } else if(identity.kind == SK_CUSTOM) {
-    if(!identity.spelling.valid())
-      throw std::logic_error("custom section has no spelling identity");
-    const std::string & name = spellings.get(identity.spelling);
-    strings.insert(strings.end(), name.begin(), name.end());
-  } else {
-    const char * name = fixed_section_name(identity.kind);
-    if(!name) throw std::logic_error("invalid fixed ELF section identity");
-    append_c_string(strings, name);
-  }
-  strings.push_back(0);
-  return offset;
-}
-
-std::size_t add_symbol_string(std::vector<unsigned char> & strings,
-                              const HostSymbol & symbol)
-{
-  const std::size_t offset = strings.size();
-  if(symbol.internal_program_symbol) strings.push_back('@');
-  strings.insert(strings.end(), symbol.name.begin(), symbol.name.end());
-  strings.push_back(0);
-  return offset;
-}
-
 std::vector<unsigned char> make_symbol_table(
     const std::vector<HostSymbol> & locals,
     const std::vector<HostSymbol> & globals,
     const std::vector<std::uint16_t> & section_symbols,
-    std::vector<unsigned char> & strings,
+    ElfStringTableBuilder & strings,
     std::unordered_map<std::string, std::size_t> & indexes,
     std::vector<std::size_t> & section_indexes,
     std::vector<std::size_t> & program_indexes,
@@ -1515,7 +1444,10 @@ std::vector<unsigned char> make_symbol_table(
           symbol.eh_type_ref_symbol, index));
       }
       if(symbol.eh_personality_ref) eh_personality_ref_index = index;
-      append_little(table, add_symbol_string(strings, symbol), 4);
+      append_little(table, strings.InternSymbol(symbol.name,
+        symbol.internal_program_symbol, symbol.program_symbol,
+        symbol.object_symbol, symbol.eh_type_ref_symbol,
+        symbol.eh_personality_ref), 4);
       table.push_back(static_cast<unsigned char>((symbol.binding << 4) |
                                                  symbol.type));
       table.push_back(0);
@@ -1657,27 +1589,21 @@ void record_encoded_storage(Stats * stats, const EncodedSection & text,
 
 void record_string_table(Stats * stats,
     const std::unordered_map<std::string, std::size_t> & indexes,
-    const std::vector<unsigned char> & strings,
-    std::size_t name_entries,
+    const ElfStringTableBuilder & strings,
+    std::size_t symbol_name_entries, std::size_t section_name_entries,
     const std::chrono::steady_clock::time_point & started)
 {
   if(!stats) return;
   stats->elf_internal_string_entries = 0;
   stats->elf_imported_string_entries = indexes.size();
-  stats->final_strtab_entries = name_entries;
-  stats->final_strtab_bytes = strings.size();
-  stats->elf_string_table_nanoseconds += static_cast<std::uint64_t>(
-    std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::steady_clock::now() - started).count());
-}
-
-void record_section_string_table(Stats * stats,
-    const std::vector<HostSection> & sections, std::uint16_t table,
-    const std::chrono::steady_clock::time_point & started)
-{
-  if(!stats) return;
-  stats->final_shstrtab_entries = sections.size() - 1;
-  stats->final_shstrtab_bytes = sections[table].bytes.size();
+  stats->final_strtab_entries = symbol_name_entries;
+  stats->final_strtab_bytes = strings.bytes().size();
+  stats->final_shstrtab_entries = section_name_entries;
+  stats->final_shstrtab_bytes = 0;
+  stats->final_shared_string_entries = strings.entries();
+  stats->final_section_string_reuses = strings.section_reuses();
+  stats->final_symbol_string_reuses = strings.symbol_reuses();
+  stats->final_string_suffix_aliases = strings.suffix_aliases();
   stats->elf_string_table_nanoseconds += static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - started).count());
@@ -1848,7 +1774,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
     section_symbols.push_back(lsda_index);
   section_symbols.push_back(eh_index);
 
-  std::vector<unsigned char> strings(1, 0);
   std::unordered_map<std::string, std::size_t> symbol_indexes;
   std::vector<std::size_t> section_symbol_indexes(
     sections.size(), lowir_model::kInvalidCompactId);
@@ -1861,14 +1786,6 @@ std::vector<unsigned char> make_linux_relocatable_image(
   eh_type_ref_symbol_indexes.reserve(encoded_labels.eh_type_refs.size());
   std::size_t eh_personality_ref_symbol_index =
     lowir_model::kInvalidCompactId;
-	const std::chrono::steady_clock::time_point string_table_started = stats ?
-		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
-  std::vector<unsigned char> symbol_table = make_symbol_table(
-    locals, globals, section_symbols, strings, symbol_indexes,
-    section_symbol_indexes, program_symbol_indexes, object_symbol_indexes,
-    eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
-	record_string_table(stats, symbol_indexes, strings,
-	  locals.size() + globals.size(), string_table_started);
 
   HostSection note;
   note.name = SectionIdentity(SK_NOTE_GNU_STACK);
@@ -1880,19 +1797,30 @@ std::vector<unsigned char> make_linux_relocatable_image(
   symtab.entry_size = 24;
   symtab.info = static_cast<std::uint32_t>(
     1 + section_symbols.size() + locals.size());
-  symtab.bytes.swap(symbol_table);
   const std::uint16_t symtab_index = append_section(std::move(symtab));
   HostSection strtab;
   strtab.name = SectionIdentity(SK_STRTAB);
   strtab.type = 3;
-  strtab.bytes.swap(strings);
   const std::uint16_t strtab_index = append_section(std::move(strtab));
   sections[symtab_index].link = strtab_index;
-  HostSection shstrtab;
-  shstrtab.name = SectionIdentity(SK_SHSTRTAB);
-  shstrtab.type = 3;
-  shstrtab.bytes.push_back(0);
-  const std::uint16_t shstrtab_index = append_section(std::move(shstrtab));
+
+	const std::chrono::steady_clock::time_point string_table_started = stats ?
+		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+  ElfStringTableBuilder strings(program.strings, program.symbol_names.size());
+  for(std::size_t i = 1; i < sections.size(); ++i)
+    if(sections[i].name.relocation)
+      strings.InternSection(sections[i].name);
+  for(std::size_t i = 1; i < sections.size(); ++i)
+    if(!sections[i].name.relocation)
+      strings.InternSection(sections[i].name);
+  sections[symtab_index].bytes = make_symbol_table(
+    locals, globals, section_symbols, strings, symbol_indexes,
+    section_symbol_indexes, program_symbol_indexes, object_symbol_indexes,
+    eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
+
+  append_function_comdat_groups(
+    sections, text_sections, text_indexes, text_relocation_indexes,
+    symtab_index, object_symbol_indexes);
 
   for(std::size_t i = 0; i < pending_relocations.size(); ++i) {
     HostSection & section = sections[pending_relocations[i].section];
@@ -1903,16 +1831,12 @@ std::vector<unsigned char> make_linux_relocatable_image(
       eh_type_ref_symbol_indexes, eh_personality_ref_symbol_index);
   }
 
-  append_function_comdat_groups(
-    sections, text_sections, text_indexes, text_relocation_indexes,
-    symtab_index, object_symbol_indexes);
-	const std::chrono::steady_clock::time_point section_strings_started = stats ?
-		std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
   for(std::size_t i = 1; i < sections.size(); ++i)
-    sections[i].name_offset = add_section_string(
-      sections[shstrtab_index].bytes, sections[i].name, program.strings);
-	record_section_string_table(
-		stats, sections, shstrtab_index, section_strings_started);
+    sections[i].name_offset = strings.InternSection(sections[i].name);
+	record_string_table(stats, symbol_indexes, strings,
+	  locals.size() + globals.size(), sections.size() - 1,
+	  string_table_started);
+  sections[strtab_index].bytes = strings.ReleaseBytes();
 
   std::vector<unsigned char> image;
   image.reserve(relocatable_image_size(sections));
@@ -1926,7 +1850,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
   put_little(image, 52, 64, 2);
   put_little(image, 58, 64, 2);
   put_little(image, 60, sections.size(), 2);
-  put_little(image, 62, shstrtab_index, 2);
+  put_little(image, 62, strtab_index, 2);
   for(std::size_t i = 1; i < sections.size(); ++i) {
     align_bytes(image, sections[i].alignment);
     sections[i].file_offset = image.size();

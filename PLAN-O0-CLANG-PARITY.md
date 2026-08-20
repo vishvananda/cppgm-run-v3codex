@@ -822,6 +822,36 @@ test.
 Complexity: expected O(total unique name bytes) and one lookup per emitted
 name.
 
+P9 emits one `SHT_STRTAB` section and points both `e_shstrndx` and
+`.symtab.sh_link` at it.  The builder owns one byte vector and compact offset
+tables keyed by `SectionKind`, relocation state, and existing `StringId`
+spelling identity.  Relocation section names are interned first so their base
+section name and object-symbol suffix can be registered at known offsets;
+there is no byte scan or suffix search.  Fixed names such as `.group` reuse
+their enum-keyed offset.  Only symbols without a typed object identity use an
+exact spelling map.
+
+The frozen object's two old tables occupied 666,635 plus 720,870 bytes.  The
+shared table is 702,284 bytes, a 685,221-byte string-storage reduction.  The
+whole object falls from 3,927,584 to 3,242,296 bytes (-685,288), including the
+removed section header and alignment effect.  It appends 6,618 strings while
+serving 6,607 symbol-name and 10,101 section-name requests, with 3,729 symbol
+reuses, 12,733 section reuses across the preparation and final-offset passes,
+and 6,362 typed suffix aliases.  `readelf --lint` succeeds; the symbol set,
+relocations, `.text*`, `.gcc_except_table`, `.eh_frame`, and decoded
+instructions are unchanged from P8.  Two generated objects are byte-identical
+with SHA-256
+`dabb6f9b8378e3043a8ac89394099fe7ba5c9580ff8050d34482197f12a2c15c`.
+
+The final typed-offset implementation's three load-screened ABBA blocks
+measured P8/P9 medians of 4.630/4.605 seconds wall, 4.170/4.145 seconds user,
+and 361,638/361,382 KiB peak RSS.  Paired movement is +0.22% wall, +0.12%
+user, and -0.05% RSS, within the noise
+guardrail.  PA32 passes 150/150, through PA32 passes 4,451/4,451, the full
+report passes 5,275/5,275, and the file audit has zero fatal findings.  No
+course fixture or student-facing contract changes: the authoritative fixtures
+do not make physical string-table sharing an observable PA32 requirement.
+
 ## Validation and performance gates
 
 For every phase:
@@ -884,7 +914,7 @@ Fill one row after each independently retained phase.
 | P6 cleanup DAG | one new PA16 reducer; 7 PA17, 2 PA22, 1 PA25, 26 PA26, and 2 PA28 existing fixtures migrate; new PA17/PA26 reducers | new PA18 lifecycle-order reducer; PA31 behavior stays exact | 3,927,648 bytes; `.text*` 734,392; 184,790 instructions; 26,936 relocations; functions unchanged | ABBA -3.00% wall, -3.04% user, +0.08% RSS | PA16 297/297; through PA16 1,468/1,468; full report 5,272/5,272; zero-fatal audit | complete; `232f0fc8`, `d6716a4c` |
 | P7 zero initialization | 14 existing fixtures migrate across PA16, PA17, PA19, PA20, PA22, PA23, PA24, PA26, PA27; two new PA16 reducers | PA29 encoding changes below MIR; one PA37 O2 driver fixture migrates | 3,927,584 bytes; `.text*` 734,354; 184,780 instructions; functions/relocations unchanged | ABBA +0.11% wall, 0.00% user, +0.06% RSS | PA16 299/299; through PA16 1,470/1,470; full report 5,275/5,275; zero-fatal audit | complete; `77be9a49`, `313b7426` |
 | P8 weak demand | none | telemetry names now distinguish required weak from object-output roots; no demand edge removed | byte-identical to P7; 4,575 typed definitions classify completely; cppgm++-only weak set is 1,834 names/1,745 bodies, of which 1,732 are direct call targets | ABBA -0.11% wall, -0.12% user, -0.15% RSS | PA15 116/116; through PA15 1,171/1,171; full report 5,275/5,275; zero-fatal audit | complete; pending commit |
-| P9 shared ELF strings | none | PA32 object layout only | expected nonloaded file-size reduction | pending | pending | planned |
+| P9 shared ELF strings | none | PA32 ELF layout only; no fixture/handout change | 3,242,296 bytes (-685,288); one 702,284-byte table; code/symbols/relocations unchanged | ABBA +0.22% wall, +0.12% user, -0.05% RSS | PA32 150/150; through PA32 4,451/4,451; full report 5,275/5,275; readelf lint clean; zero-fatal audit | complete; pending commit |
 
 ## Completion criteria
 
