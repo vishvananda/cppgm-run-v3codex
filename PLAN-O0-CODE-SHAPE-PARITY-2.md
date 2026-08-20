@@ -648,6 +648,50 @@ LSDA, relocations, text, compile time, and cleanup interner probes/hits.
 Complexity: expected O(actions + cleanup edges), O(1) expected typed-state
 interning, and O(unique states) storage.
 
+#### S4 completion record: no safe baseline key weakening
+
+The frozen S3 compile makes 18,326 cleanup-state probes, finds 15,644 exact
+hits (85.4%), interns 2,682 unique states, and materializes 2,630 blocks.  The
+existing typed DAG avoids 11,631 destructor actions and 1,010 semantic resume
+operations before LowIR optimization.  This is already the dominant exact
+sharing mechanism rather than a low-hit cache hiding an obvious missed
+equivalence class.
+
+Every remaining key dimension changes emitted semantics:
+
+- `lifetime_object`, `object_binding`, base projection, and operand type select
+  the object address and subobject passed to the destructor;
+- destructor binding and the action flags select the called operation and
+  handler/cleanup-region transition;
+- `tail` preserves destruction order;
+- `terminal` preserves return staging or the external continuation;
+- exception context preserves the active try/handler destination; and
+- mode distinguishes a destructor action from a landing prefix, terminal,
+  conditional tail, or lexical-return transition.
+
+As an independent upper-bound check, PA37's existing exact LowIR cleanup-tail
+pass at `-O1` visits every retained function but finds only 16 shareable groups,
+rewrites 18 blocks, and removes 22 instructions; its resume cleanup removes
+three blocks.  The high-count destructor relocations do not materially fall:
+string destruction changes from 1,585 to 1,594, `shared_ptr<Type>` from 747 to
+744, and `ExprInfo` from 646 to 647.  The small increases come from ordinary
+O1 inlining.  The larger O1 call-count changes coincide with 7,106 generic
+inline expansions and other optimizer passes, so they are not evidence for
+weakening baseline cleanup identity.
+
+The per-caller census confirms that the remaining high counts are concentrated
+in large source functions but name different object lifetimes within those
+functions.  Sharing merely by destructor binding would call the right
+destructor on the wrong storage.  Cross-function factoring would require a
+new helper ABI carrying object and continuation state and is code-size
+optimization, not PA16/PA17 semantic lowering.
+
+S4 therefore retains no code, fixture, reference, scaffold, or student README
+change.  The deterministic frozen object remains the S3 object above, and the
+S3 full-report and zero-fatal audit are the validation boundary.  Remaining
+temporary-object reductions continue under S5; generic suffix factoring stays
+in PA37.
+
 ### S5: classify and remove destination-placement misses
 
 Use S0 provenance to split movement before implementing a broad allocator:
@@ -869,7 +913,7 @@ Fill one row after each retained phase.
 | S1 nonthrowing propagation | PA34 atomic `noexcept` behavior/inspect; course run bucket enabled | -49 text, -2 relocations, -1 terminate and begin-catch call | -0.24% paired median user, +0.13% RSS | PA34 374/374; through-PA34 4,923/4,923; full 5,278/5,278; zero-fatal audit | complete |
 | S2 shared terminate action | PA31 behavior plus exact relocation inspection; PA26 has no host-policy output | -1,998 text, -285 LSDA, -400 relocations/begin-catch calls | -0.24% paired median user, -0.37% RSS | PA31 29/29 groups; through-PA31 4,304/4,304; full 5,279/5,279; zero-fatal audit | complete |
 | S3 physical resume terminal | PA31 stack/clobber behavior and exact resume-relocation inspection; no LowIR/MIR migration | -1,416 text, -212 LSDA, -253 resume calls/relocations | +0.24% paired median user, +0.25% RSS | PA31 30/30 groups; through-PA31 4,305/4,305; full 5,280/5,280; zero-fatal audit | complete |
-| S4 cleanup equivalence | PA16/PA17/PA26 only as proven | pending | pending | pending | planned |
+| S4 cleanup equivalence | none; all typed key fields remain semantically required | audit-only: frozen object remains byte-identical to S3; O1 finds only 16 exact tail groups/22 instructions and three resume blocks | none; no production change | S3 full 5,280/5,280 and zero-fatal audit remain the boundary; exact O0/O1 cleanup/call census recorded | complete; audit-only |
 | S5 destination placement | PA17 direct xvalue-to-base reference binding added; later PA29 work pending | S5a: -2,126 text, -528 LSDA, -97 relocations, -33 terminate calls | -0.12% paired median user, +0.21% RSS | PA17 244/244; through-PA17 1,714/1,714; full 5,277/5,277; zero-fatal audit | S5a complete; remaining S5 planned |
 | S6 bounded scalar retention | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S7 width normalization | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
