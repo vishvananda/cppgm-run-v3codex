@@ -219,6 +219,9 @@ PA18 supports the following in addition to the PA17 subset:
 - constructor/destructor vpointer writes for supported polymorphic classes
 - deterministic vtable slot order, including declaration order for ordinary virtual
   functions and the destructor slot order used by the checked references
+- deterministic emitted destructor-entry order for each class: base entry,
+  deleting entry, then complete entry, even when later cleanup sharing changes
+  which entry is demanded first
 
 Within this milestone, PA18 should produce valid LowIR for ordinary single-inheritance
 polymorphic code over the supported PA17 subset. That LowIR is intended to be
@@ -278,5 +281,7 @@ Useful intermediate representations include:
 - vtable layout derived deterministically from semantic class metadata rather
   than source-text scans
 - explicit constructor/destructor/vpointer actions attached to the lowered function bodies
+- lifecycle-entry grouping by semantic class and entry kind so final function
+  order does not depend on the order in which call sites demand those entries
 - a direct-call vs. virtual-call distinction in the semantic IR so codegen does not have to
   rediscover polymorphism from source syntax

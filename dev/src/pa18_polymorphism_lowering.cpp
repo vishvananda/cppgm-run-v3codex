@@ -2297,6 +2297,11 @@ private:
 		if (complete != kNoBinding && complete < function_symbols_.size())
 			complete_symbol = function_symbols_[complete];
 		deleting_complete_symbols_.push_back(complete_symbol);
+		const BindingId base = state_.base_destructor_bindings[entity];
+		SymbolId base_symbol = kNoLowId;
+		if (base != kNoBinding && base < function_symbols_.size())
+			base_symbol = function_symbols_[base];
+		deleting_base_symbols_.push_back(base_symbol);
 	}
 
 	void MergeDeletingDestructors()
@@ -2316,16 +2321,34 @@ private:
 				pending_by_symbol[symbol] = i;
 		}
 		std::vector<std::uint8_t> emitted(deleting_functions_.size(), 0);
+		std::vector<std::size_t> source_by_symbol(
+			output_.symbols.size(), missing);
+		for (std::size_t i = first; i < output_.functions.size(); ++i)
+		{
+			const SymbolId symbol = output_.functions[i].symbol;
+			if (symbol < source_by_symbol.size()) source_by_symbol[symbol] = i;
+		}
+		std::vector<std::uint8_t> moved(output_.functions.size(), 0);
 		std::vector<Function> ordered;
 		ordered.reserve(output_.functions.size() - first +
 			deleting_functions_.size());
 		for (std::size_t i = first; i < output_.functions.size(); ++i)
 		{
+			if (moved[i]) continue;
 			const SymbolId symbol = output_.functions[i].symbol;
 			const std::size_t pending = symbol < pending_by_symbol.size() ?
 				pending_by_symbol[symbol] : missing;
 			if (pending != missing)
 			{
+				const SymbolId base = deleting_base_symbols_[pending];
+				const std::size_t base_source =
+					base < source_by_symbol.size() ? source_by_symbol[base] : missing;
+				if (base_source != missing && base_source > i &&
+					!moved[base_source])
+				{
+					ordered.push_back(std::move(output_.functions[base_source]));
+					moved[base_source] = 1;
+				}
 				ordered.push_back(std::move(deleting_functions_[pending]));
 				emitted[pending] = 1;
 			}
@@ -2352,6 +2375,7 @@ private:
 	pa15_lowering_detail::SourceTypeLowering source_types_;
 	std::vector<Function> deleting_functions_;
 	std::vector<SymbolId> deleting_complete_symbols_;
+	std::vector<SymbolId> deleting_base_symbols_;
 };
 
 }
