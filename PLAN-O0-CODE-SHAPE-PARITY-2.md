@@ -1172,9 +1172,10 @@ completed in 19.02 seconds wall, 429.75 seconds aggregate user, and 44.27
 seconds aggregate system time, with 229,956 KiB peak RSS.  Starting with no
 inception objects, the separate 8-worker comparison completed in 3:57.66 wall,
 1,820.43 seconds user, and 44.78 seconds system, with 231,000 KiB peak RSS.
-After moving that generated object tree out of `obj/pa39`, the separate
-32-worker comparison completed in 1:49.44 wall, 2,938.20 seconds user, and
-73.72 seconds system, with 228,976 KiB peak RSS.  Both lanes compare all 191
+After moving both generated inception object and binary trees out of
+`obj/pa39`, the separate 32-worker comparison completed in 1:46.94 wall,
+2,916.76 seconds user, and 72.19 seconds system, with 225,868 KiB peak RSS.
+Both lanes compare all 191
 objects successfully and produce the exact 16,700,152-byte self compiler at
 SHA-256
 `e66422284087c862466bcdeb6aa751405bc9cacf28ee03d2c0f703ff791277a9`.
@@ -1244,7 +1245,7 @@ Fill one row after each retained phase.
 | S7 width/fixed arithmetic | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds MIR-stable behavior; S7e adds fixed shift operands and migrates two MIR fixtures | cumulative through S7e: -10,929 text, -3,612 decoded instructions, -2,712 MIR; no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%, S7e -0.83%; RSS neutral | PA29+PA38 293/293; full 5,286/5,286; zero-fatal audit | complete |
 | S8 register cost | existing PA29 profitable-retention and no-preserve short-value fixtures already cover both decisions | audit-only: register retention is 80 bytes smaller than frame traffic including unwind; reuse-first prototype rejected at +16 text/object | no production change; S7e timing remains authoritative | S7e full 5,286/5,286 and zero-fatal audit; two diagnostic frozen objects compared | complete; audit-only |
 | S9 demand/optimization remeasure | existing PA35 forced-inline object reducer; no missing PA33 fact and no fixture change | weak count unchanged; only two S5 allocator-destructor aliases lost their last typed demand; every remaining body has an enumerated root | no production change; S7e timing remains authoritative | PA33+PA35 248/248; zero conservative fallbacks; final GCC/Clang code-shape census recorded | complete; audit-only |
-| Final PA39 gate | no fixture change | final frozen object 3,209,448 bytes / 720,646 text / 180,534 decoded instructions | frozen median 4.66s wall; clean self 19.02s; inception j8 3:57.66 and j32 1:49.44 | full 5,286/5,286; zero-fatal audit; 191/191 objects and final compiler match in both inception lanes | complete |
+| Final PA39 gate | no fixture change | final frozen object 3,209,448 bytes / 720,646 text / 180,534 decoded instructions | frozen median 4.66s wall; clean self 19.02s; inception j8 3:57.66 and fully clean j32 1:46.94 | full 5,286/5,286; zero-fatal audit; 191/191 objects and final compiler match in both inception lanes | complete |
 
 ## Completion criteria
 
