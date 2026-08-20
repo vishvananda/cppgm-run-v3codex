@@ -123,10 +123,10 @@ std::vector<bool> condition_flags_live_before(
 bool emit_flag_safe_zero_move(
     elf_detail::CodeBuffer & out,
     const mir_model::MirInstruction & instruction, bool flags_live);
-bool is_redundant_u32_normalization(
+bool is_redundant_integer_normalization(
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, bool frame_load_zero_extends = false);
-std::size_t emit_fused_u32_register_move(
+    std::size_t start);
+std::size_t emit_fused_integer_normalization_move(
     elf_detail::CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start);

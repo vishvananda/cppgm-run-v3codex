@@ -236,25 +236,5 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
   return result;
 }
 
-bool load_zero_extends(
-    const std::vector<MirInstruction> & instructions,
-    std::size_t block, std::size_t start, const FrameReloadPlan & plan)
-{
-  if(start == 0) return false;
-  const MirInstruction & load = instructions[start - 1];
-  if(load.opcode != MirInstruction::MI_LOAD || load.operands.size() != 2 ||
-     load.operands[0].kind != MirOperand::OP_REG ||
-     load.operands[1].kind != MirOperand::OP_FRAME) return false;
-  const FrameReloadPlan::InstructionAction action =
-    plan.action(block, start - 1);
-  if(action.kind ==
-       FrameReloadPlan::InstructionAction::IA_FORWARD_DELAYED_LOAD)
-    return action.source_register() != load.operands[0].reg;
-  X64Register source = XR_RAX, destination = XR_RAX;
-  if(start >= 2 && parse_reload(instructions, start - 2,
-       &source, &destination)) return source != destination;
-  return true;
-}
-
 }  // namespace frame_forwarding
 }  // namespace lowir_native

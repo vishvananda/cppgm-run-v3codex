@@ -44,10 +44,6 @@ bool parse_reload(
 FrameReloadPlan find_single_use_reloads(
     const mir_model::MirFunction & function);
 
-bool load_zero_extends(
-    const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t block, std::size_t start, const FrameReloadPlan & plan);
-
 }  // namespace frame_forwarding
 }  // namespace lowir_native
 

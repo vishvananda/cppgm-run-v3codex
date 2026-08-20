@@ -100,6 +100,8 @@ struct Stats
   std::size_t exact_forward_edge_values = 0;
   std::size_t exact_forward_edge_register_retains = 0;
   std::size_t narrow_call_result_normalizations_omitted = 0;
+  std::size_t redundant_integer_normalizations_omitted = 0;
+  std::size_t fused_integer_normalization_moves = 0;
   std::array<std::size_t, NMR_COUNT> movement_instructions_by_reason = {{0}};
   std::array<std::size_t, NMR_COUNT> movement_loads_by_reason = {{0}};
   std::array<std::size_t, NMR_COUNT> movement_stores_by_reason = {{0}};

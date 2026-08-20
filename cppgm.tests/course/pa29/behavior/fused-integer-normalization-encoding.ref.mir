@@ -1,0 +1,71 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @signed_source
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, -17
+    ret rax
+
+function @unsigned_source
+  abi
+    return u8 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 250
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx r12
+
+  block ^entry
+    call @signed_source
+    mov r8, rax
+    sext.i32 r8
+    mov rbx, r8
+    sext.i32 rbx
+    call @unsigned_source
+    mov r8, rax
+    zext.i8 r8
+    mov r9, r8
+    zext.i8 r9
+    mov r8, 17
+    mov r12, r8
+    sext.i32 r12
+    mov rdx, -17
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 250
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov rdx, 17
+    cmp.i32 r12, rdx
+    setne r12
+    movzx r12, r12
+    or rbx, r9
+    mov r8, r12
+    zext.i8 r8
+    or rbx, r8
+    mov r8, rbx
+    sext.i32 r8
+    mov rax, r8
+    ret rax

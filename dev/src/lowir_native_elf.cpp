@@ -1797,9 +1797,10 @@ void emit_prepared_function(
         j += divided - 1;
         continue;
       }
-      const std::size_t normalized = emit_fused_u32_register_move(
+      const std::size_t normalized = emit_fused_integer_normalization_move(
         out, block.instructions, j);
       if(normalized) {
+        if(stats) ++stats->fused_integer_normalization_moves;
         j += normalized - 1;
         continue;
       }
@@ -1821,10 +1822,10 @@ void emit_prepared_function(
       if(emit_flag_safe_zero_move(
            out, block.instructions[j], flags_live[j]))
         continue;
-      if(is_redundant_u32_normalization(block.instructions, j,
-           frame_forwarding::load_zero_extends(
-             block.instructions, i, j, frame_reload_plan)))
+      if(is_redundant_integer_normalization(block.instructions, j)) {
+        if(stats) ++stats->redundant_integer_normalizations_omitted;
         continue;
+      }
       if(emit_shared_return(out, block.instructions[j], function,
            epilogue_plan, i, j, epilogue))
         continue;
@@ -2507,9 +2508,10 @@ HostFunctionLayout emit_prepared_host_function(
         j += divided - 1;
         continue;
       }
-      const std::size_t normalized = emit_fused_u32_register_move(
+      const std::size_t normalized = emit_fused_integer_normalization_move(
         out, block.instructions, j);
       if(normalized) {
+        if(stats) ++stats->fused_integer_normalization_moves;
         j += normalized - 1;
         continue;
       }
@@ -2531,10 +2533,10 @@ HostFunctionLayout emit_prepared_host_function(
       if(emit_flag_safe_zero_move(
            out, block.instructions[j], flags_live[j]))
         continue;
-      if(is_redundant_u32_normalization(block.instructions, j,
-           frame_forwarding::load_zero_extends(
-             block.instructions, i, j, frame_reload_plan)))
+      if(is_redundant_integer_normalization(block.instructions, j)) {
+        if(stats) ++stats->redundant_integer_normalizations_omitted;
         continue;
+      }
       if(emit_shared_return(out, block.instructions[j], function,
            epilogue_plan, i, j, epilogue))
         continue;

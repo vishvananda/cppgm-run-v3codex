@@ -792,19 +792,20 @@ bool emit_flag_safe_zero_move(
   return true;
 }
 
-bool is_redundant_u32_normalization(
+bool is_redundant_integer_normalization(
     const std::vector<mir_model::MirInstruction> & instructions,
-    std::size_t start, bool frame_load_zero_extends)
+    std::size_t start)
 {
   using mir_model::MirInstruction;
   using mir_model::MirOperand;
   if(start == 0 || start >= instructions.size()) return false;
   const MirInstruction & normalization = instructions[start];
-  if(normalization.opcode != MirInstruction::MI_ZEXT ||
+  const bool sign_extend = normalization.opcode == MirInstruction::MI_SEXT;
+  if((!sign_extend && normalization.opcode != MirInstruction::MI_ZEXT) ||
      normalization.operands.size() != 1 ||
-     normalization.operands[0].kind != MirOperand::OP_REG ||
-     data_layout::type_width(normalization.type) != 32)
+     normalization.operands[0].kind != MirOperand::OP_REG)
     return false;
+  const unsigned width = data_layout::type_width(normalization.type);
 
   const X64Register reg = normalization.operands[0].reg;
   const MirInstruction & producer = instructions[start - 1];
@@ -814,25 +815,39 @@ bool is_redundant_u32_normalization(
     return false;
 
   if(producer.opcode == MirInstruction::MI_LOAD &&
+     producer.operands.size() == 2 && producer.type == normalization.type) {
+    const bool load_sign_extends =
+      producer.type.kind == lowir_model::LTK_I1 ||
+      producer.type.kind == lowir_model::LTK_I8 ||
+      producer.type.kind == lowir_model::LTK_I16 ||
+      producer.type.kind == lowir_model::LTK_I32 ||
+      producer.type.kind == lowir_model::LTK_I64;
+    return load_sign_extends == sign_extend;
+  }
+  if(producer.opcode == MirInstruction::MI_MOVZX &&
      producer.operands.size() == 2)
-    return data_layout::type_width(producer.type) == 32 &&
-      (producer.operands[1].kind != MirOperand::OP_FRAME ||
-       frame_load_zero_extends);
-  if(producer.opcode == MirInstruction::MI_MOVZX)
-    return producer.operands.size() == 2;
-  if((producer.opcode == MirInstruction::MI_ZEXT ||
-      producer.opcode == MirInstruction::MI_BSWAP) &&
-     data_layout::type_width(producer.type) == 32)
+    return !sign_extend || width > 8;
+  if(producer.opcode == normalization.opcode &&
+     producer.type == normalization.type)
+    return true;
+  if(producer.opcode == MirInstruction::MI_BSWAP && !sign_extend &&
+     data_layout::type_width(producer.type) == 32 && width == 32)
     return true;
   if(producer.opcode != MirInstruction::MI_MOV ||
      producer.operands.size() != 2 ||
      producer.operands[1].kind != MirOperand::OP_IMM)
     return false;
-  return static_cast<std::uint64_t>(producer.operands[1].imm) <=
-    UINT64_C(0xffffffff);
+  const long long value = producer.operands[1].imm;
+  if(width >= 64) return true;
+  if(sign_extend) {
+    const long long limit = 1LL << (width - 1);
+    return value >= -limit && value < limit;
+  }
+  const std::uint64_t limit = (UINT64_C(1) << width) - 1;
+  return value >= 0 && static_cast<std::uint64_t>(value) <= limit;
 }
 
-std::size_t emit_fused_u32_register_move(
+std::size_t emit_fused_integer_normalization_move(
     CodeBuffer & out, const std::vector<mir_model::MirInstruction> & instructions,
     std::size_t start)
 {
@@ -845,13 +860,14 @@ std::size_t emit_fused_u32_register_move(
   if(move.opcode != MirInstruction::MI_MOV || move.operands.size() != 2 ||
      move.operands[0].kind != MirOperand::OP_REG ||
      move.operands[1].kind != MirOperand::OP_REG ||
-     normalization.opcode != MirInstruction::MI_ZEXT ||
+     (normalization.opcode != MirInstruction::MI_SEXT &&
+      normalization.opcode != MirInstruction::MI_ZEXT) ||
      normalization.operands.size() != 1 ||
      normalization.operands[0].kind != MirOperand::OP_REG ||
-     normalization.operands[0].reg != move.operands[0].reg ||
-     data_layout::type_width(normalization.type) != 32) return 0;
-  emit_sized_register_move(out, move.operands[0].reg,
-    move.operands[1].reg, 32);
+     normalization.operands[0].reg != move.operands[0].reg) return 0;
+  emit_normalized_register_move(out, move.operands[0].reg,
+    move.operands[1].reg, data_layout::type_width(normalization.type),
+    normalization.opcode == MirInstruction::MI_SEXT);
   return 2;
 }
 

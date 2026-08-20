@@ -1909,7 +1909,11 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " exact_forward_edge_register_retains="
          << native_stats.exact_forward_edge_register_retains
          << " narrow_call_result_normalizations_omitted="
-         << native_stats.narrow_call_result_normalizations_omitted;
+         << native_stats.narrow_call_result_normalizations_omitted
+         << " redundant_integer_normalizations_omitted="
+         << native_stats.redundant_integer_normalizations_omitted
+         << " fused_integer_normalization_moves="
+         << native_stats.fused_integer_normalization_moves;
     lowir_native::report_code_shape_stats(cerr, native_stats);
     cerr
          << " shared_storage_lifetime_extensions="
@@ -2052,7 +2056,11 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << " exact_forward_edge_register_retains="
 			 << native_stats.exact_forward_edge_register_retains
 			 << " narrow_call_result_normalizations_omitted="
-			 << native_stats.narrow_call_result_normalizations_omitted;
+			 << native_stats.narrow_call_result_normalizations_omitted
+			 << " redundant_integer_normalizations_omitted="
+			 << native_stats.redundant_integer_normalizations_omitted
+			 << " fused_integer_normalization_moves="
+			 << native_stats.fused_integer_normalization_moves;
 		lowir_native::report_code_shape_stats(cerr, native_stats);
 		cerr
 			 << " shared_storage_lifetime_extensions="
