@@ -1,6 +1,6 @@
 # Plan: O0 Code-Shape Parity, Second Pass
 
-Status: active
+Status: complete
 
 Date: 2026-08-20
 
@@ -1151,6 +1151,39 @@ and its different template/code-generation policy.  Ordinary inlining,
 source-slot promotion, trace layout, and post-hoc preserve cleanup remain in
 PA37/PA38 rather than being hidden at baseline.
 
+## Final closeout
+
+The completed second pass reduces the deterministic frozen object from
+3,246,896 to 3,209,448 bytes (-37,448), `.text*` from 738,654 to 720,646
+(-18,008), base text from 428,192 to 418,542 (-9,650), COMDAT text from
+310,462 to 302,104 (-8,358), LSDA from 42,376 to 41,302 (-1,074), relocations
+from 26,936 to 26,184 (-752), and decoded instructions from 185,500 to 180,534
+(-4,966, using the final report script for both objects).  `.eh_frame` moves
+from 137,264 to 137,300 (+36); S8 accounts for the profitable retained-register
+portion of that increase.  The final object is deterministic at SHA-256
+`ca3a24a69fa27eb00383d200b848353ebd70dc8fcedde853dfe2e5026faf62c3`.
+
+Three final consecutive frozen compiles take 4.66, 4.66, and 4.70 seconds
+wall, with a 4.17-second median user time and 360,140 KiB median peak RSS.
+The final baseline compile is therefore comfortably below the 15-second gate.
+
+Starting with no PA39 object tree, the clean 32-worker `cppgm++-self` build
+completed in 19.02 seconds wall, 429.75 seconds aggregate user, and 44.27
+seconds aggregate system time, with 229,956 KiB peak RSS.  Starting with no
+inception objects, the separate 8-worker comparison completed in 3:57.66 wall,
+1,820.43 seconds user, and 44.78 seconds system, with 231,000 KiB peak RSS.
+After moving that generated object tree out of `obj/pa39`, the separate
+32-worker comparison completed in 1:49.44 wall, 2,938.20 seconds user, and
+73.72 seconds system, with 228,976 KiB peak RSS.  Both lanes compare all 191
+objects successfully and produce the exact 16,700,152-byte self compiler at
+SHA-256
+`e66422284087c862466bcdeb6aa751405bc9cacf28ee03d2c0f703ff791277a9`.
+
+The exact closeout tree passes the full 5,286/5,286 report and the PA39 file
+audit with zero fatal findings (28 pre-existing warnings).  Every retained
+phase has an owning fixture or a documented audit-only conclusion, and the
+plan is complete.
+
 ## Performance and correctness gates
 
 For every retained output-changing phase, record:
@@ -1211,6 +1244,7 @@ Fill one row after each retained phase.
 | S7 width/fixed arithmetic | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds MIR-stable behavior; S7e adds fixed shift operands and migrates two MIR fixtures | cumulative through S7e: -10,929 text, -3,612 decoded instructions, -2,712 MIR; no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%, S7e -0.83%; RSS neutral | PA29+PA38 293/293; full 5,286/5,286; zero-fatal audit | complete |
 | S8 register cost | existing PA29 profitable-retention and no-preserve short-value fixtures already cover both decisions | audit-only: register retention is 80 bytes smaller than frame traffic including unwind; reuse-first prototype rejected at +16 text/object | no production change; S7e timing remains authoritative | S7e full 5,286/5,286 and zero-fatal audit; two diagnostic frozen objects compared | complete; audit-only |
 | S9 demand/optimization remeasure | existing PA35 forced-inline object reducer; no missing PA33 fact and no fixture change | weak count unchanged; only two S5 allocator-destructor aliases lost their last typed demand; every remaining body has an enumerated root | no production change; S7e timing remains authoritative | PA33+PA35 248/248; zero conservative fallbacks; final GCC/Clang code-shape census recorded | complete; audit-only |
+| Final PA39 gate | no fixture change | final frozen object 3,209,448 bytes / 720,646 text / 180,534 decoded instructions | frozen median 4.66s wall; clean self 19.02s; inception j8 3:57.66 and j32 1:49.44 | full 5,286/5,286; zero-fatal audit; 191/191 objects and final compiler match in both inception lanes | complete |
 
 ## Completion criteria
 
