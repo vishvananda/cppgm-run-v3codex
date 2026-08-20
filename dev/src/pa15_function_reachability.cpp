@@ -27,7 +27,8 @@ enum RetentionReason
 	RETENTION_LIFECYCLE = 1U << 3,
 	RETENTION_EH_OR_RUNTIME = 1U << 4,
 	RETENTION_REQUIRED_WEAK = 1U << 5,
-	RETENTION_CONSERVATIVE_FALLBACK = 1U << 6
+	RETENTION_CONSERVATIVE_FALLBACK = 1U << 6,
+	RETENTION_OBJECT_OUTPUT_ROOT = 1U << 7
 };
 
 std::uint16_t semantic_retention_reasons(const Symbol& symbol)
@@ -166,7 +167,7 @@ private:
 				semantic_retention_reasons(symbol);
 			if (symbol.object_output_root)
 				MarkSymbol(function.symbol,
-					RETENTION_REQUIRED_WEAK | semantic_reasons);
+					RETENTION_OBJECT_OUTPUT_ROOT | semantic_reasons);
 			if (symbol.internal_linkage && semantic_reasons != 0)
 				MarkSymbol(function.symbol, semantic_reasons);
 			if (function.entry || function.initializer || function.finalizer ||
@@ -226,6 +227,16 @@ private:
 				++result->retained_eh_or_runtime;
 			else if (reasons & RETENTION_REQUIRED_WEAK)
 				++result->retained_required_weak;
+			else if (reasons & RETENTION_OBJECT_OUTPUT_ROOT)
+			{
+				++result->retained_object_output_root;
+				const Symbol& symbol = program_.symbols[
+					program_.functions[i].symbol];
+				if (symbol.weak_linkage)
+					++result->retained_object_output_root_weak;
+				if (symbol.internal_linkage)
+					++result->retained_object_output_root_internal;
+			}
 			else if (reasons & RETENTION_ADDRESS_OR_RELOCATION)
 				++result->retained_address_or_relocation;
 			else if (reasons & RETENTION_DIRECT_CALL)

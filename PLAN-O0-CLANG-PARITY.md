@@ -768,6 +768,42 @@ Do not target Clang's exact weak count and do not add cross-object metadata to
 LowIR merely to prune a local object.  Any cross-object change requires a
 separate native-linking design review.
 
+P8 found no unjustified semantic demand edge to remove.  The net count gap is
+the difference between 1,834 cppgm++-only weak function symbols and 240
+Clang-only weak function symbols.  Of the cppgm++-only set, 1,732 are direct
+targets of `R_X86_64_PLT32` relocations in retained code and another nine are
+targets of other relocations.  Of the remaining 93 symbols, 92 are alternate
+ABI names for another body at the same section, value, and size.  The sole
+unreferenced distinct body is the `basic_ostringstream` D2 destructor entry;
+it is the object-rooted base entry paired with the referenced D1 lifecycle
+entry and is retained by the existing PA32-tested ABI policy.
+
+The set is dominated by header implementation bodies rather than project
+roots: 1,630 names are in `std`, 57 in `__gnu_cxx`, 24 in other libstdc++
+implementation forms, and 123 in the source project.  By ABI shape, it has
+466 constructor entries, 326 destructor entries, 894 ordinary functions, and
+148 operators or operator helpers.  The 1,745 distinct body identities total
+122,327 symbol bytes.  This is evidence that most of the weak-count difference
+comes from calls that remain at cppgm++ `-O0` while Clang folds mandatory or
+header implementation calls and consequently need not contribute the same
+COMDAT bodies.  Deleting those bodies locally would leave live relocations;
+it is not demand pruning.
+
+The re-audit also corrected an observational misclassification.  The old
+`post_inline_retained_required_weak=225` counter actually described every
+`object_output_root`, regardless of binding.  The typed closure now reports
+225 object-output roots as four weak and 221 internal, while genuine required
+weak/explicit-instantiation roots are a separate zero-valued bucket on the
+frozen input.  The complete primary retention census is 13 external strong,
+39 address/relocation, 4,295 direct-call, two lifecycle, one EH/runtime, zero
+explicit required-weak, 225 object-output-root, and zero conservative
+fallback bodies: exactly 4,575 typed definitions.  The telemetry-only change
+is byte-identical to P7 in normal output.  Three load-screened ABBA blocks
+measured P7/P8 medians of 4.600/4.585 seconds wall, 4.130/4.135 seconds user,
+and 360,556/360,200 KiB peak RSS.  Paired movement is -0.11% wall, -0.12%
+user, and -0.15% RSS.  PA15 passes 116/116, through PA15 passes 1,171/1,171,
+the full report passes 5,275/5,275, and the file audit has zero fatal findings.
+
 ### P9: share the ELF symbol and section-name string table
 
 After executable-code work, let PA32's host object writer intern symbol names
@@ -847,7 +883,7 @@ Fill one row after each independently retained phase.
 | P5 shared epilogue | none | behavior fixture's informational MIR expands with its source, but every semantic return remains; native bytes change only for existing inputs | 4,382,992 bytes; `.text*` 897,349; 5,858 native returns and 4,575 physical epilogues; functions/relocations unchanged | ABBA -0.42% wall, -0.24% user, -0.24% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P6 cleanup DAG | one new PA16 reducer; 7 PA17, 2 PA22, 1 PA25, 26 PA26, and 2 PA28 existing fixtures migrate; new PA17/PA26 reducers | new PA18 lifecycle-order reducer; PA31 behavior stays exact | 3,927,648 bytes; `.text*` 734,392; 184,790 instructions; 26,936 relocations; functions unchanged | ABBA -3.00% wall, -3.04% user, +0.08% RSS | PA16 297/297; through PA16 1,468/1,468; full report 5,272/5,272; zero-fatal audit | complete; `232f0fc8`, `d6716a4c` |
 | P7 zero initialization | 14 existing fixtures migrate across PA16, PA17, PA19, PA20, PA22, PA23, PA24, PA26, PA27; two new PA16 reducers | PA29 encoding changes below MIR; one PA37 O2 driver fixture migrates | 3,927,584 bytes; `.text*` 734,354; 184,780 instructions; functions/relocations unchanged | ABBA +0.11% wall, 0.00% user, +0.06% RSS | PA16 299/299; through PA16 1,470/1,470; full report 5,275/5,275; zero-fatal audit | complete; `77be9a49`, `313b7426` |
-| P8 weak demand | avoid LowIR change unless semantic owner requires it | PA32 link/inspect change per edge | pending | pending | pending | discovery |
+| P8 weak demand | none | telemetry names now distinguish required weak from object-output roots; no demand edge removed | byte-identical to P7; 4,575 typed definitions classify completely; cppgm++-only weak set is 1,834 names/1,745 bodies, of which 1,732 are direct call targets | ABBA -0.11% wall, -0.12% user, -0.15% RSS | PA15 116/116; through PA15 1,171/1,171; full report 5,275/5,275; zero-fatal audit | complete; pending commit |
 | P9 shared ELF strings | none | PA32 object layout only | expected nonloaded file-size reduction | pending | pending | planned |
 
 ## Completion criteria

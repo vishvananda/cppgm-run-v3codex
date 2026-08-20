@@ -1707,6 +1707,12 @@ void report_source_compile_stats(
 			 << stats.post_inline_retained_eh_or_runtime
 			 << " post_inline_retained_required_weak="
 			 << stats.post_inline_retained_required_weak
+			 << " post_inline_retained_object_output_root="
+			 << stats.post_inline_retained_object_output_root
+			 << " post_inline_retained_object_output_root_weak="
+			 << stats.post_inline_retained_object_output_root_weak
+			 << " post_inline_retained_object_output_root_internal="
+			 << stats.post_inline_retained_object_output_root_internal
 			 << " post_inline_retained_conservative_fallback="
 			 << stats.post_inline_retained_conservative_fallback
 			 << " sizeof_binding_record="

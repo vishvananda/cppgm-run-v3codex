@@ -23,6 +23,9 @@ struct Summary
 	std::size_t retained_lifecycle;
 	std::size_t retained_eh_or_runtime;
 	std::size_t retained_required_weak;
+	std::size_t retained_object_output_root;
+	std::size_t retained_object_output_root_weak;
+	std::size_t retained_object_output_root_internal;
 	std::size_t retained_conservative_fallback;
 	std::vector<std::string> retained_conservative_fallback_names;
 	std::vector<std::string> unreachable_internal_names;
@@ -32,7 +35,11 @@ struct Summary
 		pruned_functions(0), retained_external_strong(0),
 		retained_address_or_relocation(0), retained_direct_call(0),
 		retained_lifecycle(0), retained_eh_or_runtime(0),
-		retained_required_weak(0), retained_conservative_fallback(0) {}
+		retained_required_weak(0),
+		retained_object_output_root(0),
+		retained_object_output_root_weak(0),
+		retained_object_output_root_internal(0),
+		retained_conservative_fallback(0) {}
 };
 
 Summary Analyze(const pa15_lowir_detail::TypedProgram& program);

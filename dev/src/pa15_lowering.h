@@ -94,6 +94,9 @@ struct LowIRLoweringStats
 	std::size_t post_inline_retained_lifecycle;
 	std::size_t post_inline_retained_eh_or_runtime;
 	std::size_t post_inline_retained_required_weak;
+	std::size_t post_inline_retained_object_output_root;
+	std::size_t post_inline_retained_object_output_root_weak;
+	std::size_t post_inline_retained_object_output_root_internal;
 	std::size_t post_inline_retained_conservative_fallback;
 	std::vector<std::string> post_inline_retained_conservative_fallback_names;
 	std::vector<std::string> post_inline_unreachable_internal_names;

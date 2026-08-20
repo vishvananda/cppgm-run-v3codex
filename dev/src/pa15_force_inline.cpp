@@ -702,6 +702,12 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 			reachability.retained_eh_or_runtime;
 		stats->post_inline_retained_required_weak =
 			reachability.retained_required_weak;
+		stats->post_inline_retained_object_output_root =
+			reachability.retained_object_output_root;
+		stats->post_inline_retained_object_output_root_weak =
+			reachability.retained_object_output_root_weak;
+		stats->post_inline_retained_object_output_root_internal =
+			reachability.retained_object_output_root_internal;
 		stats->post_inline_retained_conservative_fallback =
 			reachability.retained_conservative_fallback;
 		stats->post_inline_retained_conservative_fallback_names =
