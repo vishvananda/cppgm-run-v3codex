@@ -555,6 +555,27 @@ and telemetry assertion, not a MIR or object-byte fixture.
 Complexity: one linear census plus O(1) work per return; branch relaxation
 retains its current linear/binary-search offset translation.
 
+P5 places the linear census and exact pre-relaxation byte gate in a typed
+native-epilogue module.  A shared return performs the same integer, SSE, or
+x87 result transfer as before and targets one internal label; a final return
+falls through when block order permits.  Tiny frameless functions retain
+their separate two-byte `pop rbp; ret` sequences.  The PA29 behavioral reducer
+now covers integer, `f64`, `f80`, and void returns while keeping a parameter
+live across a call, and its informational MIR reference still exposes every
+semantic return.
+
+The frozen compile has 5,858 semantic native returns and 4,575 physical
+epilogues, down from 5,858 separate epilogues.  Against P4, the object falls
+from 4,392,256 to 4,382,992 bytes, all `.text*` falls from 906,658 to 897,349
+bytes, base `.text` falls by 5,490 bytes, and decoded instructions fall from
+222,745 to 217,349.  `pop` falls by 4,117 and `ret` by 1,283 while `jmp` rises
+by 1,287.  Functions, relocations, relocation bytes, and `.eh_frame` are
+unchanged; `.gcc_except_table` falls by 76 bytes from compacted code-offset
+encodings.  Three sequential ABBA blocks measured 4.710/4.695 seconds median
+wall, 4.215/4.195 seconds median user, and 359,600/359,362 KiB median peak RSS
+for P4/P5.  Paired candidate ratios were -0.42% wall, -0.24% user, and -0.24%
+RSS.
+
 ### P6: build cleanup continuations as a compact typed DAG
 
 The current source lowering has several partial sharing mechanisms.  PA17's
@@ -759,7 +780,7 @@ Fill one row after each independently retained phase.
 | P2 constexpr arrays | one incidental PA20 fixture, one existing PA21 fixture, and one new PA21 reducer migrate to a readonly global plus `copyobj`; PA22-PA28 unchanged | 6,030 fewer `.text*` bytes; 1,197 fewer instructions; 3 added relocations | 4,395,256 bytes; `.text*` 909,341; functions/EH unchanged | ABBA -0.11% wall, 0.00% user, +0.18% RSS | PA21 148/148; through PA21 2,369/2,369; full report 5,266/5,266; zero-fatal audit | complete |
 | P3 immediate stores | none | 10 PA29 strict raw, 13 existing structural raw/canonical, one new behavioral structural reducer, and 5 PA38 raw/canonical fixtures migrate | 4,394,672 bytes; `.text*` 908,836; 1,688 fewer instructions; functions/relocations unchanged | ABBA -0.42% wall, -0.23% user, +0.02% RSS | PA29 257/257; through PA29 4,167/4,167; full report 5,267/5,267; zero-fatal audit | complete |
 | P4 memory RHS | none | 3 PA29 strict raw, 2 structural raw/canonical, and one new behavioral structural reducer migrate; PA38 unchanged | 4,392,256 bytes; `.text*` 906,658; 741 fewer instructions; functions/relocations unchanged | ABBA +0.64% wall, +0.71% user, +0.52% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
-| P5 shared epilogue | none | MIR unchanged; native bytes change | pending | pending | pending | planned |
+| P5 shared epilogue | none | behavior fixture's informational MIR expands with its source, but every semantic return remains; native bytes change only for existing inputs | 4,382,992 bytes; `.text*` 897,349; 5,858 native returns and 4,575 physical epilogues; functions/relocations unchanged | ABBA -0.42% wall, -0.24% user, -0.24% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P6 cleanup DAG | expected PA16/17/26 migration | PA31 EH/object change | pending | pending | pending | planned |
 | P7 zero initialization | expected PA16 migration for source-known contiguous spans | PA29 encoding change; downstream native change | pending | pending | pending | planned after fixture census |
 | P8 weak demand | avoid LowIR change unless semantic owner requires it | PA32 link/inspect change per edge | pending | pending | pending | discovery |

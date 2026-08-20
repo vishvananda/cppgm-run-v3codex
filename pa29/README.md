@@ -696,6 +696,9 @@ strategies include:
 - use the address result's recorded final consumer to keep a nonadjacent
   direct-object call-result destination frame-shaped without rescanning the
   intervening instructions
+- count returns once during final native layout and share a restore/teardown
+  sequence only when its encoded bytes exceed the added branch bytes; keep
+  every semantic return and its result carrier in MIR
 
 These are suggestions, not required internal data structures or algorithms.
 Any implementation is acceptable if it preserves program behavior and produces

@@ -1,30 +1,47 @@
 machine_ir x86_64 linux
 
 startup
-    call @main [args=()]
+    call @main
     mov rdi, rax
     exit
+
+global @void_result
+  storage scalar i64
+  init i64 0
+
+function @clobber
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
 
 function @choose
   abi
     param %value -> rdi : i64
     return i64 -> rax
   frame
-    stack_size 0
+    stack_size 16
     scratch_bytes 0
+    preserve rbx
 
   block ^entry
-    cmp.i64 rdi, 0
+    mov rbx, rdi
+    call @clobber
+    cmp.i64 rbx, 0
     je ^return_11
     jmp ^second_test
 
   block ^second_test
-    cmp.i64 rdi, 1
+    cmp.i64 rbx, 1
     je ^return_22
     jmp ^third_test
 
   block ^third_test
-    cmp.i64 rdi, 2
+    cmp.i64 rbx, 2
     je ^return_33
     jmp ^return_44
 
@@ -44,27 +61,139 @@ function @choose
     mov rax, 44
     ret rax
 
+function @choose_float
+  abi
+    param %value -> rdi : i64
+    return f64 -> xmm0
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+
+  block ^entry
+    mov rbx, rdi
+    call @clobber
+    cmp.i64 rbx, 0
+    je ^return_first
+    jmp ^second_test
+
+  block ^second_test
+    cmp.i64 rbx, 1
+    je ^return_second
+    jmp ^return_third
+
+  block ^return_first
+    fmov.f64 xmm0, 1.25
+    ret
+
+  block ^return_second
+    fmov.f64 xmm0, 2.5
+    ret
+
+  block ^return_third
+    fmov.f64 xmm0, 3.75
+    ret
+
+function @choose_extended
+  abi
+    param %value -> rdi : i64
+    return f80 -> st0
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+
+  block ^entry
+    mov rbx, rdi
+    call @clobber
+    cmp.i64 rbx, 0
+    je ^return_first
+    jmp ^return_second
+
+  block ^return_first
+    fret.f80 4.5L
+
+  block ^return_second
+    fret.f80 5.5L
+
+function @choose_void
+  abi
+    param %value -> rdi : i64
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov rbx, rdi
+    call @clobber
+    cmp.i64 rbx, 0
+    je ^return_first
+    jmp ^second_test
+
+  block ^second_test
+    cmp.i64 rbx, 1
+    je ^return_second
+    jmp ^return_third
+
+  block ^return_first
+    mov rax, 51
+    store.i64 @void_result, rax
+    ret
+
+  block ^return_second
+    mov rax, 52
+    store.i64 @void_result, rax
+    ret
+
+  block ^return_third
+    mov rax, 53
+    store.i64 @void_result, rax
+    ret
+
 function @main
   abi
     return i32 -> rax
   frame
-    stack_size 80
+    stack_size 160
     scratch_bytes 48
-    preserve rbx r12 r13
+    preserve rbx r12 r13 r14 r15
+    temp %f0 -> [rbp-8] : f64
+    temp %f1 -> [rbp-16] : f64
+    temp %f2 -> [rbp-24] : f64
+    temp %extended -> [rbp-48] : f80
+    temp %bad_f2 -> [rbp-56] : i64
+    temp %bad_extended -> [rbp-64] : i64
 
   block ^entry
     mov rdi, 0
-    call @choose [args=(rdi)]
+    call @choose
     mov rbx, rax
     mov rdi, 1
-    call @choose [args=(rdi)]
+    call @choose
     mov r12, rax
     mov rdi, 2
-    call @choose [args=(rdi)]
+    call @choose
     mov r13, rax
     mov rdi, 3
-    call @choose [args=(rdi)]
-    mov r8, rax
+    call @choose
+    mov r14, rax
+    mov rdi, 0
+    call @choose_float
+    fmov.f64 [rbp-8], xmm0
+    mov rdi, 1
+    call @choose_float
+    fmov.f64 [rbp-16], xmm0
+    mov rdi, 2
+    call @choose_float
+    fmov.f64 [rbp-24], xmm0
+    mov rdi, 1
+    call @choose_extended
+    fstp.f80 [rbp-48]
+    mov rdi, 2
+    call @choose_void
+    load.i64 r8, @void_result
     mov rdx, 11
     cmp.i64 rbx, rdx
     setne rbx
@@ -78,12 +207,32 @@ function @main
     setne r13
     movzx r13, r13
     mov rdx, 44
+    cmp.i64 r14, rdx
+    setne r14
+    movzx r14, r14
+    fne.f64 rax, [rbp-8], 1.25
+    mov r9, rax
+    fne.f64 rax, [rbp-16], 2.5
+    mov r15, rax
+    fne.f64 rax, [rbp-24], 3.75
+    store.i64 [rbp-56], rax
+    fne.f80 rax, [rbp-48], 5.5L
+    store.i64 [rbp-64], rax
+    mov rdx, 53
     cmp.i64 r8, rdx
     setne r8
     movzx r8, r8
     or rbx, r12
-    or r13, r8
+    or r13, r14
+    or r9, r15
+    load.i64 r12, [rbp-56]
+    load.i64 rdx, [rbp-64]
+    or r12, rdx
+    or r12, r8
     or rbx, r13
-    mov rax, rbx
-    sext.i32 rax
+    or r9, r12
+    or rbx, r9
+    mov r8, rbx
+    sext.i32 r8
+    mov rax, r8
     ret rax

@@ -5,6 +5,7 @@
 #include "lowir_native_data_layout.h"
 #include "lowir_native_eh_references.h"
 #include "lowir_native_eh.h"
+#include "lowir_native_epilogue.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_integer_encoding.h"
 #include "lowir_native_lsda.h"
@@ -55,14 +56,6 @@ struct HostEhStackCleanup
   std::size_t stack_bytes = 0;
 };
 
-std::size_t function_stack_adjustment(const mir_model::MirFunction & function)
-{
-  const std::size_t preserved = function.callee_saved_regs.size() * 8;
-  if(function.stack_size < preserved)
-    throw std::logic_error("MIR stack reservation is smaller than its saves");
-  return function.stack_size - preserved;
-}
-
 void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & function)
 {
   emit_push(out, XR_RBP);
@@ -70,7 +63,8 @@ void emit_function_prologue(CodeBuffer & out, const mir_model::MirFunction & fun
   for(std::size_t i = 0; i < function.callee_saved_regs.size(); ++i)
     emit_push(out, function.callee_saved_regs[i]);
   emit_stack_adjust(out, true,
-                    static_cast<unsigned>(function_stack_adjustment(function)));
+                    static_cast<unsigned>(
+                      epilogue_detail::function_stack_adjustment(function)));
 }
 
 void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & function)
@@ -81,7 +75,8 @@ void emit_function_return(CodeBuffer & out, const mir_model::MirFunction & funct
       static_cast<unsigned>(function.callee_saved_regs.size() * 8));
   } else
     emit_stack_adjust(out, false,
-                      static_cast<unsigned>(function_stack_adjustment(function)));
+                      static_cast<unsigned>(
+                        epilogue_detail::function_stack_adjustment(function)));
   for(std::size_t i = function.callee_saved_regs.size(); i != 0; --i)
     emit_pop(out, function.callee_saved_regs[i - 1]);
   emit_pop(out, XR_RBP);
@@ -1029,6 +1024,34 @@ bool prepare_explicit_operands(CodeBuffer & out,
   return false;
 }
 
+void emit_return_value_transfer(
+    CodeBuffer & out, const mir_model::MirInstruction & instruction,
+    const mir_model::MirFunction & function)
+{
+  if(instruction.opcode == mir_model::MirInstruction::MI_RET) {
+    prepare_explicit_operands(out, instruction, &function);
+    return;
+  }
+  if(instruction.opcode != mir_model::MirInstruction::MI_FRET)
+    throw std::logic_error("native epilogue received a non-return");
+  require_operands(instruction, 1);
+  emit_x87_load(out, instruction.operands[0], instruction.type, function);
+}
+
+bool emit_shared_return(
+    CodeBuffer & out, const mir_model::MirInstruction & instruction,
+    const mir_model::MirFunction & function,
+    const epilogue_detail::Plan & plan, std::size_t block,
+    std::size_t instruction_index, lowir_model::LocalLabelId epilogue)
+{
+  if(!plan.shared || !epilogue_detail::is_return(instruction)) return false;
+  emit_return_value_transfer(out, instruction, function);
+  if(!plan.final_return_falls_through || block != plan.final_block ||
+     instruction_index != plan.final_instruction)
+    emit_unconditional_jump(out, epilogue);
+  return true;
+}
+
 void emit_compare_immediate(CodeBuffer & out, X64Register reg, unsigned value)
 {
   emit_rex(out, true, XR_RAX, reg);
@@ -1695,7 +1718,7 @@ std::size_t emit_forwarded_frame_reload(
 }
 
 void emit_prepared_function(
-    CodeBuffer & out, const mir_model::MirFunction & function)
+    CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
   // The x86-64 member-function-pointer representation reserves bit zero of
   // the target word as the virtual-slot tag.  Keep every native function
@@ -1706,6 +1729,14 @@ void emit_prepared_function(
   if(function.object_symbol.valid()) out.label_object(function.object_symbol);
   out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
+  const epilogue_detail::Plan epilogue_plan =
+    epilogue_detail::make_plan(function);
+  if(stats) {
+    stats->native_returns += epilogue_plan.return_count;
+    stats->physical_epilogues += epilogue_plan.physical_epilogue_count;
+  }
+  const lowir_model::LocalLabelId epilogue = epilogue_plan.shared ?
+    out.internal_label("shared_epilogue") : lowir_model::LocalLabelId();
   const frame_forwarding::FrameReloadPlan frame_reload_plan =
     frame_forwarding::find_single_use_reloads(function);
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
@@ -1762,15 +1793,23 @@ void emit_prepared_function(
            frame_forwarding::load_zero_extends(
              block.instructions, i, j, frame_reload_plan)))
         continue;
+      if(emit_shared_return(out, block.instructions[j], function,
+           epilogue_plan, i, j, epilogue))
+        continue;
       emit_instruction(out, block.instructions[j], &function);
     }
+  }
+  if(epilogue_plan.shared) {
+    out.label(epilogue);
+    emit_function_return(out, function);
   }
   out.relax_forward_branches(function_start);
 }
 
-void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
+void emit_function(CodeBuffer & out, const mir_model::MirFunction & function,
+                   Stats * stats)
 {
-  emit_prepared_function(out, function);
+  emit_prepared_function(out, function, stats);
 }
 
 void emit_runtime_labels(CodeBuffer & out,
@@ -2353,6 +2392,14 @@ HostFunctionLayout emit_prepared_host_function(
   if(function.object_symbol.valid()) out.label_object(function.object_symbol);
   out.begin_function_blocks(function.block_labels.size());
   emit_function_prologue(out, function);
+  const epilogue_detail::Plan epilogue_plan =
+    epilogue_detail::make_plan(function);
+  if(stats) {
+    stats->native_returns += epilogue_plan.return_count;
+    stats->physical_epilogues += epilogue_plan.physical_epilogue_count;
+  }
+  const lowir_model::LocalLabelId epilogue = epilogue_plan.shared ?
+    out.internal_label("shared_epilogue") : lowir_model::LocalLabelId();
   const frame_forwarding::FrameReloadPlan frame_reload_plan =
     frame_forwarding::find_single_use_reloads(function);
   std::vector<HostEhStackCleanup> stack_cleanups;
@@ -2420,6 +2467,9 @@ HostFunctionLayout emit_prepared_host_function(
            frame_forwarding::load_zero_extends(
              block.instructions, i, j, frame_reload_plan)))
         continue;
+      if(emit_shared_return(out, block.instructions[j], function,
+           epilogue_plan, i, j, epilogue))
+        continue;
       const std::size_t landing_block = function.host_eh_enabled ?
         region_plan.call_landing_blocks[i][j] : 0;
       emit_host_instruction(out, block.instructions[j], function,
@@ -2427,6 +2477,10 @@ HostFunctionLayout emit_prepared_host_function(
                         lowir_model::BlockId(),
         layout, stack_cleanups);
     }
+  }
+  if(epilogue_plan.shared) {
+    out.label(epilogue);
+    emit_function_return(out, function);
   }
   for(std::size_t i = 0; i < stack_cleanups.size(); ++i) {
     out.label(stack_cleanups[i].label);
@@ -2622,7 +2676,7 @@ void write_linux_executable(const std::string & path,
   for(std::size_t i = 0; i < program.startup.size(); ++i)
     emit_instruction(content, program.startup[i], 0);
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    emit_function(content, program.functions[i]);
+    emit_function(content, program.functions[i], stats);
   emit_program_tail(content, program, objects);
   finish_native_executable(path, content, stats, 0, encode_start);
 }
@@ -2654,7 +2708,7 @@ void write_linux_executable(const std::string & path,
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     mir_model::MirFunction function = lowering.lower_function(i);
     if(stats) encode_started = std::chrono::steady_clock::now();
-    emit_prepared_function(content, function);
+    emit_prepared_function(content, function, stats);
     if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - encode_started).count());
