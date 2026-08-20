@@ -449,9 +449,9 @@ tests.
 | PA25 | 1 | course LowIR | adopt typed lambda/local-static identity | complete; updated-reference snapshot `25208d8d` |
 | PA26 | 1 | course LowIR | cleanup-sharing contract | complete; updated-reference snapshot `25208d8d` |
 | PA29 | 25 | 11 structural plus 14 behavior course tests | three course lanes; informational MIR in behavior | complete; updated-reference snapshot `bc9a2062` |
-| PA31 | 1 | course runtime family | delete private-header unit | pending |
-| PA32 | 2 | one course inspect; one design-plan-only deletion | weak pruning remains deferred | pending |
-| PA37 | 1 | course O1 | documented whole-caller budget | pending |
+| PA31 | 1 | course runtime family | delete private-header unit; existing `340` plus new `360`-`380` cover every safety boundary | complete; updated-reference snapshot `a810c60e` |
+| PA32 | 2 | one course inspect; one design-plan-only deletion | weak pruning remains deferred | complete; updated-reference snapshot `a810c60e` |
+| PA37 | 1 | course O1 | documented whole-caller budget | complete; updated-reference snapshot `a810c60e` |
 
 ## Completion criteria
 

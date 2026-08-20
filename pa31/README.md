@@ -150,6 +150,8 @@ surface:
   facts used by typed catches
 - reuse of host EH runtime declarations emitted by the frontend
 - source-driven host-EH object smoke tests used to guard the backend path
+- call-site coalescing safety across unprotected unwind barriers and distinct
+  cleanup or catch continuations
 
 For each test anchor `x.t`, companion C++ sources are named:
 
@@ -199,6 +201,9 @@ runtime-helper object surface for `cppgm++ -c` within the supported subset:
 8. Preserve translation-unit-local object binding for generated functions in a
    non-ODR-mergeable local context; do not export a local lambda call operator
    as a weak or global host symbol.
+9. If adjacent LSDA call-site ranges are coalesced, keep an unprotected
+   potentially-throwing range as a barrier and never combine ranges with
+   different landing pads or action continuations.
 
 If object inspection shows missing or malformed host EH metadata for a basic
 throw/catch/cleanup case, fix the host-EH lowering or object-emission path.

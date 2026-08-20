@@ -1,0 +1,19 @@
+void throw_selected(int value)
+{
+  if(value == 1) throw 11;
+  throw 13L;
+}
+
+int main()
+{
+  int caught_int = 0;
+  int caught_long = 0;
+
+  try { throw_selected(1); }
+  catch(int value) { caught_int = value; }
+
+  try { throw_selected(2); }
+  catch(long value) { caught_long = (int)value; }
+
+  return caught_int == 11 && caught_long == 13 ? 0 : 1;
+}

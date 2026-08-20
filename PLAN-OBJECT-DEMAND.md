@@ -557,3 +557,19 @@ of the following:
 10. The final frozen benchmark is measured in a predeclared interleaved window,
     and all implementation changes, regressions, counters, and measurements
     are committed before the result is declared complete.
+
+## 12. Deferred post-inline weak-definition pruning
+
+Do not remove an inline weak definition merely because all of its calls in the
+current object disappeared after optional O1/O2 inlining. The source-level
+reducer was an inline `weak_leaf(int)` called only by `main`; an experimental
+inspection expected `_Z9weak_leafi` to be absent after inlining. That local
+criterion is insufficient because the weak definition may still be the
+translation unit's required COMDAT contribution for another object.
+
+The prototype disturbed approximately 50 PA32/PA33 object and symbol fixtures.
+Before reconsidering it, define a cross-object ownership rule that preserves
+address observability, explicit instantiation, virtual/lifecycle/EH roots, and
+the obligation to contribute an ODR definition. Add a fresh active PA32 or
+optimization-owner course reducer only when that rule is implemented; there is
+no dormant proposed test for this experiment.

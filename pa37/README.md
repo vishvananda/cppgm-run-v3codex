@@ -171,6 +171,9 @@ running optimizing transforms.
 - conservative inlining of small direct calls, including `unwind=no` callees
   inside EH regions only when the caller EH shape can be preserved; a callee
   containing its own EH instructions must remain a call even at caller EH depth zero
+- a deterministic 128-instruction whole-caller inlining budget, charged by
+  the greater of a callee's original and simplified instruction counts, so
+  repeated individually eligible calls cannot cause unbounded growth
 - preservation of object-parameter copies and isolated return-merge slots and
   continuations when direct calls with object or nested multi-block callees are
   inlined

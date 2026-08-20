@@ -212,6 +212,9 @@ object files within the supported subset:
 6. Preserve the earlier class-value semantics in host-object mode. Compiler-object
    metadata must not append a whole-object representation copy after a nontrivial
    memberwise copy or move body.
+7. Omit an unreferenced translation-unit-local function definition from the
+   native object while retaining local functions whose addresses or bodies are
+   required by emitted runtime code.
 
 If the host linker rejects generated objects as ordinary objects, fix the
 host-compatible object-emission path.

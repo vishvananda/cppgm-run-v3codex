@@ -1,0 +1,27 @@
+function @add_nine(%x : i64) -> i64 {
+  block ^entry:
+    %a9 = binary add i64 %x, 45
+    return i64 %a9
+}
+function @many_calls(%x : i64) -> i64 {
+  block ^entry:
+    %__o1inl0__a9 = binary add i64 %x, 45
+    %r13 = call i64 @add_nine(%x)
+    %r14 = call i64 @add_nine(%x)
+    %r15 = call i64 @add_nine(%x)
+    %s02 = binary add i64 %__o1inl0__a9, %__o1inl0__a9
+    %s03 = binary add i64 %s02, %__o1inl0__a9
+    %s04 = binary add i64 %s03, %__o1inl0__a9
+    %s05 = binary add i64 %s04, %__o1inl0__a9
+    %s06 = binary add i64 %s05, %__o1inl0__a9
+    %s07 = binary add i64 %s06, %__o1inl0__a9
+    %s08 = binary add i64 %s07, %__o1inl0__a9
+    %s09 = binary add i64 %s08, %__o1inl0__a9
+    %s10 = binary add i64 %s09, %__o1inl0__a9
+    %s11 = binary add i64 %s10, %__o1inl0__a9
+    %s12 = binary add i64 %s11, %__o1inl0__a9
+    %s13 = binary add i64 %s12, %r13
+    %s14 = binary add i64 %s13, %r14
+    %s15 = binary add i64 %s14, %r15
+    return i64 %s15
+}

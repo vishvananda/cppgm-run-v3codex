@@ -1,0 +1,50 @@
+int selected;
+int first_destroyed;
+int second_destroyed;
+
+struct FirstGuard
+{
+  ~FirstGuard() { ++first_destroyed; }
+};
+
+struct SecondGuard
+{
+  ~SecondGuard() { ++second_destroyed; }
+};
+
+void may_throw(int value)
+{
+  if(selected == value) throw value;
+}
+
+void probe(int value)
+{
+  if(value == 1)
+  {
+    FirstGuard guard;
+    may_throw(1);
+  }
+  else
+  {
+    SecondGuard guard;
+    may_throw(2);
+  }
+}
+
+int main()
+{
+  selected = 1;
+  try { probe(1); }
+  catch(int value)
+  {
+    if(value != 1 || first_destroyed != 1 || second_destroyed != 0) return 1;
+  }
+
+  selected = 2;
+  try { probe(2); }
+  catch(int value)
+  {
+    if(value != 2 || first_destroyed != 1 || second_destroyed != 1) return 2;
+  }
+  return 0;
+}
