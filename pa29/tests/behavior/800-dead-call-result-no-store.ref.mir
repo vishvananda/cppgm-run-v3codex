@@ -1,0 +1,49 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @one
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 7
+    ret rax
+
+function @id
+  abi
+    param %a -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, rdi
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    call @one
+    mov rbx, rax
+    mov rdi, 99
+    call @id
+    mov rdx, 7
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rax, rbx
+    ret rax

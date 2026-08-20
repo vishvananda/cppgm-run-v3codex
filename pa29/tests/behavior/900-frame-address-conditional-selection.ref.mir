@@ -1,0 +1,82 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @dynamic_four
+  abi
+    param %seed -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov r9, rdi
+    add r9, 3
+    mov rax, r9
+    ret rax
+
+function @select_smaller
+  abi
+    param %seed -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve rbx
+    slot $left_value -> [rbp-8] : i64
+    slot $right_value -> [rbp-16] : i64
+    slot $selected_address -> [rbp-24] : ptr
+
+  block ^entry
+    mov r8, rdi
+    mov rax, 8
+    store.i64 [rbp-8], rax
+    mov rdi, r8
+    call @dynamic_four
+    store.i64 [rbp-16], rax
+    lea rcx, [rbp-16]
+    load.i64 r9, [rcx]
+    lea rcx, [rbp-8]
+    load.i64 rbx, [rcx]
+    cmp.i64 r9, rbx
+    jb ^select_right
+    jmp ^select_left
+
+  block ^select_right
+    lea rax, [rbp-16]
+    store.ptr [rbp-24], rax
+    jmp ^selected
+
+  block ^select_left
+    lea rax, [rbp-8]
+    store.ptr [rbp-24], rax
+    jmp ^selected
+
+  block ^selected
+    load.ptr r8, [rbp-24]
+    load.i64 rax, [r8]
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 1
+    call @select_smaller
+    mov r8, rax
+    mov rdx, 4
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

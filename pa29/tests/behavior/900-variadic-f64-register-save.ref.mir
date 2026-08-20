@@ -1,0 +1,82 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @read_f64
+  abi
+    param %tag -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 272
+    scratch_bytes 48
+    preserve rbx
+    param-slot %tag -> [rbp-8] : i64
+    slot $arguments -> [rbp-32] : obj<24x8>
+
+  block ^entry
+    store.i64 [rbp-208], rdi
+    store.i64 [rbp-200], rsi
+    store.i64 [rbp-192], rdx
+    store.i64 [rbp-184], rcx
+    store.i64 [rbp-176], r8
+    store.i64 [rbp-168], r9
+    fmov.f64 [rbp-160], xmm0
+    fmov.f64 [rbp-144], xmm1
+    fmov.f64 [rbp-128], xmm2
+    fmov.f64 [rbp-112], xmm3
+    fmov.f64 [rbp-96], xmm4
+    fmov.f64 [rbp-80], xmm5
+    fmov.f64 [rbp-64], xmm6
+    fmov.f64 [rbp-48], xmm7
+    store.i64 [rbp-8], rdi
+    lea r11, [rbp-32]
+    mov rax, 8
+    store.i32 [r11], rax
+    mov rax, 48
+    store.i32 [r11+4], rax
+    lea rax, [rbp+16]
+    store.i64 [r11+8], rax
+    lea rax, [rbp-208]
+    store.i64 [r11+16], rax
+    lea r8, [rbp-32]
+    lea r8, [r8+4]
+    load.i32 r9, [r8]
+    sext.i32 r9
+    mov r8, r9
+    zext.i32 r8
+    lea r9, [rbp-32]
+    lea r9, [r9+16]
+    load.ptr rbx, [r9]
+    mov rdx, r8
+    add rbx, rdx
+    fmov.f64 xmm0, [rbx]
+    fptosi.f64.i64 r8, xmm0
+    mov rax, r8
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 0
+    fmov.f64 xmm0, 42.0
+    mov rax, 1
+    call @read_f64
+    mov r8, rax
+    mov rdx, 42
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rax, r8
+    ret rax

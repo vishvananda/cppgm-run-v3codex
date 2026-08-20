@@ -1,0 +1,118 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @receiver
+  storage scalar i8
+  init i8 0
+
+global @source
+  storage scalar i8
+  init i8 0
+
+global @payload
+  storage scalar i8
+  init i8 0
+
+global @observed
+  storage scalar i64
+  init i64 0
+
+global @dispatch readonly
+  storage data
+  item ptr addr @sink
+
+function @sink
+  abi
+    param %this -> rdi : ptr
+    param %source -> rsi : ptr
+    param %type -> rdx : i32
+    param %data -> rcx : ptr
+    param %size -> r8 : i64
+    return void -> void
+  frame
+    stack_size 48
+    scratch_bytes 0
+    param-slot %this -> [rbp-8] : ptr
+    param-slot %source -> [rbp-16] : ptr
+    param-slot %type -> [rbp-20] : i32
+    param-slot %data -> [rbp-32] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.ptr [rbp-16], rsi
+    store.i32 [rbp-20], rdx
+    store.ptr [rbp-32], rcx
+    store.i64 @observed, r8
+    ret
+
+function @forward
+  abi
+    param %this -> rdi : ptr
+    param %source -> rsi : ptr
+    param %type -> rdx : i32
+    param %data -> rcx : ptr
+    param %size -> r8 : i64
+    return void -> void
+  frame
+    stack_size 64
+    scratch_bytes 0
+    preserve rbx r14
+    temp %loaded_type -> [rbp-4] : i32
+    temp %loaded_data -> [rbp-16] : ptr
+    temp %loaded_size -> [rbp-24] : i64
+    temp %table -> [rbp-32] : ptr
+    temp %target -> [rbp-40] : ptr
+
+  block ^entry
+    mov rbx, rsi
+    mov r9, r8
+    mov r8, rcx
+    mov r14, rdi
+    store.i32 [rbp-4], rdx
+    store.ptr [rbp-16], r8
+    store.i64 [rbp-24], r9
+    mov rax, @dispatch
+    store.ptr [rbp-32], rax
+    load.ptr rcx, [rbp-32]
+    load.ptr rax, [rcx]
+    store.ptr [rbp-40], rax
+    load.ptr r10, [rbp-40]
+    mov rdi, r14
+    mov rsi, rbx
+    load.i32 rdx, [rbp-4]
+    load.ptr rcx, [rbp-16]
+    load.i64 r8, [rbp-24]
+    call *r10
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+
+  block ^entry
+    mov r8, @receiver
+    mov r9, @source
+    mov rbx, @payload
+    mov rdi, r8
+    mov rsi, r9
+    mov rdx, 13
+    mov rcx, rbx
+    mov r8, 77
+    call @forward
+    load.i64 r8, @observed
+    mov rdx, 77
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

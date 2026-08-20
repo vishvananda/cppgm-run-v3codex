@@ -2715,6 +2715,7 @@ my %patterns = (
 	text_t1 => qr/\.t\.1$/,
 	program_t1 => qr/\.t\.1$/,
 	mir_t => qr/\.t$/,
+	mir_behavior_t => qr/\.t$/,
 	mir_canonical_t => qr/\.t$/,
 	mir_structural_t => qr/\.t$/,
 	map_struct_t => qr/\.t$/,
@@ -2876,6 +2877,40 @@ for my $test (@tests)
 					($ok, $message) = (0, "ERROR: machine IR dumps do not match (.mir)");
 					$hint = "To compare machine IR dumps:\n\n    \$ diff " .
 						rooted_path("$ref.mir") . " " . rooted_path("$my.mir") . "\n\n";
+				}
+				else
+				{
+					my ($prog_ok, $prog_message) = compare_program_outputs($ref, $my, 'generated');
+					($ok, $message) = ($prog_ok, $prog_message);
+					$hint = program_output_hint($ref, $my);
+				}
+			}
+		}
+		elsif ($mode eq 'mir_behavior_t')
+		{
+			my $ref = "$testbase.$ref_suffix";
+			my $my = "$testbase.$my_suffix";
+			my $ref_impl_raw = getdata("$ref.impl.exit_status");
+			my $my_impl_raw = getdata("$my.impl.exit_status");
+			my $ref_impl = canonical_exit_status($ref_impl_raw);
+			my $my_impl = canonical_exit_status($my_impl_raw);
+			($ok, $message) = (0, status_mismatch_message("implementation", $ref_impl_raw, $my_impl_raw))
+				if !defined($ref_impl) || !defined($my_impl) || $ref_impl ne $my_impl;
+			if (!defined($ok))
+			{
+				if ($ref_impl ne 'EXIT_SUCCESS')
+				{
+					($ok, $message) = (1, undef);
+				}
+				elsif (!-f "$ref.mir")
+				{
+					($ok, $message) = (0,
+						"ERROR: missing informational reference machine IR dump (.ref.mir)");
+				}
+				elsif (!-f "$my.mir")
+				{
+					($ok, $message) = (0,
+						"ERROR: missing generated machine IR dump (.my.mir)");
 				}
 				else
 				{

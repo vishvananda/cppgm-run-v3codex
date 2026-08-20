@@ -1,0 +1,79 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @check
+  abi
+    param %a0 -> xmm0 : f32
+    param %a1 -> xmm1 : f32
+    param %a2 -> xmm2 : f32
+    param %a3 -> xmm3 : f32
+    param %a4 -> xmm4 : f32
+    param %a5 -> xmm5 : f32
+    param %a6 -> xmm6 : f32
+    param %a7 -> xmm7 : f32
+    return i64 -> rax
+  frame
+    stack_size 80
+    scratch_bytes 48
+    param-slot %a0 -> [rbp-4] : f32
+    param-slot %a1 -> [rbp-8] : f32
+    param-slot %a2 -> [rbp-12] : f32
+    param-slot %a3 -> [rbp-16] : f32
+    param-slot %a4 -> [rbp-20] : f32
+    param-slot %a5 -> [rbp-24] : f32
+    param-slot %a6 -> [rbp-28] : f32
+    param-slot %a7 -> [rbp-32] : f32
+
+  block ^entry
+    fmov.f32 [rbp-4], xmm0
+    fmov.f32 [rbp-8], xmm1
+    fmov.f32 [rbp-12], xmm2
+    fmov.f32 [rbp-16], xmm3
+    fmov.f32 [rbp-20], xmm4
+    fmov.f32 [rbp-24], xmm5
+    fmov.f32 [rbp-28], xmm6
+    fmov.f32 [rbp-32], xmm7
+    fcmp.f32 [rbp-8], 2.0f
+    jp ^fail
+    je ^pass
+    jmp ^fail
+
+  block ^fail
+    mov rax, 1
+    ret rax
+
+  block ^pass
+    mov rax, 0
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    fmov.f32 xmm0, 1.0f
+    fmov.f32 xmm1, 2.0f
+    fmov.f32 xmm2, 3.0f
+    fmov.f32 xmm3, 4.0f
+    fmov.f32 xmm4, 5.0f
+    fmov.f32 xmm5, 6.0f
+    fmov.f32 xmm6, 7.0f
+    fmov.f32 xmm7, 8.0f
+    sub rsp, 16
+    fmov.f32 [rsp], xmm2
+    fmov.f32 xmm2, xmm4
+    fmov.f32 xmm4, xmm6
+    fmov.f32 xmm6, xmm5
+    fmov.f32 xmm5, xmm3
+    fmov.f32 xmm3, xmm0
+    fmov.f32 xmm0, [rsp]
+    call @check
+    add rsp, 16
+    ret rax

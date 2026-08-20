@@ -1,0 +1,52 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @check
+  abi
+    param %unused0 -> rdi : i64
+    param %unused1 -> rsi : i64
+    param %value -> rdx : u8
+    return i32 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    param-slot %unused0 -> [rbp-8] : i64
+    param-slot %unused1 -> [rbp-16] : i64
+
+  block ^entry
+    store.i64 [rbp-8], rdi
+    store.i64 [rbp-16], rsi
+    mov rax, rdx
+    mov rdx, 0
+    cmp.u8 rax, rdx
+    je ^zero
+    jmp ^nonzero
+
+  block ^zero
+    mov rax, 1
+    ret rax
+
+  block ^nonzero
+    mov rax, 0
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rdi, 0
+    mov rsi, 0
+    mov rdx, 1
+    call @check
+    mov r8, rax
+    sext.i32 r8
+    mov rax, r8
+    ret rax

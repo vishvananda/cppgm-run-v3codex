@@ -1,0 +1,111 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @good
+  storage scalar i64
+  init i64 0
+
+global @bad
+  storage scalar i64
+  init i64 0
+
+function @clobber
+  abi
+    param %temp -> rdi : ptr
+    param %a -> rsi : i64
+    param %b -> rdx : i64
+    param %c -> rcx : i64
+    param %wrong -> r8 : ptr
+    return void -> void
+  frame
+    stack_size 48
+    scratch_bytes 0
+    param-slot %temp -> [rbp-8] : ptr
+    param-slot %a -> [rbp-16] : i64
+    param-slot %b -> [rbp-24] : i64
+    param-slot %c -> [rbp-32] : i64
+    param-slot %wrong -> [rbp-40] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.i64 [rbp-16], rsi
+    store.i64 [rbp-24], rdx
+    store.i64 [rbp-32], rcx
+    store.ptr [rbp-40], r8
+    ret
+
+function @assign
+  abi
+    param %lhs -> rdi : ptr
+    param %rhs -> rsi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    param-slot %rhs -> [rbp-8] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rsi
+    mov r8, rdi
+    mov rax, 99
+    store.i64 [r8], rax
+    ret
+
+function @reset
+  abi
+    param %target -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 64
+    scratch_bytes 0
+    preserve rbx
+    slot $temp -> [rbp-40] : obj<40x8>
+
+  block ^entry
+    mov rbx, rdi
+    mov r9, @bad
+    lea rdi, [rbp-40]
+    mov rsi, 1
+    mov rdx, 2
+    mov rcx, 3
+    mov r8, r9
+    call @clobber
+    mov rdi, rbx
+    lea rsi, [rbp-40]
+    call @assign
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov r8, @good
+    mov rdi, r8
+    call @reset
+    load.i64 r8, @good
+    load.i64 r9, @bad
+    mov rdx, 99
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 0
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    and r8, r9
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

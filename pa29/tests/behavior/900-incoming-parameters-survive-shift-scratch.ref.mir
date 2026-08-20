@@ -1,0 +1,73 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @encode
+  abi
+    param %this -> rdi : ptr
+    param %mode -> rsi : u32
+    param %reg -> rdx : u32
+    param %rm -> rcx : u32
+    return u32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve rbx r12 r13
+    param-slot %this -> [rbp-8] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    mov rbx, rdx
+    mov r12, rcx
+    mov r9, rsi
+    zext.i32 r9
+    mov rdx, 6
+    mov rcx, rdx
+    shl r9, cl
+    zext.i32 r9
+    mov r13, rbx
+    mov rdx, 7
+    and r13, rdx
+    zext.i32 r13
+    zext.i32 r13
+    mov rdx, 3
+    mov rcx, rdx
+    shl r13, cl
+    zext.i32 r13
+    or r9, r13
+    zext.i32 r9
+    mov r13, r12
+    mov rdx, 7
+    and r13, rdx
+    zext.i32 r13
+    or r9, r13
+    zext.i32 r9
+    mov rax, r9
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 0
+    mov rsi, 3
+    mov rdx, 2
+    mov rcx, 5
+    call @encode
+    mov r8, rax
+    zext.i32 r8
+    mov rdx, 213
+    cmp.u32 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

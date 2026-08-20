@@ -1,0 +1,104 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @make_value
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, rdi
+    ret rax
+
+function @probe
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve rbx r12
+    slot $outer -> [rbp-8] : i64
+    slot $inner -> [rbp-16] : i64
+    slot $total -> [rbp-24] : i64
+
+  block ^entry
+    mov rdi, 91
+    call @make_value
+    mov rbx, rax
+    mov rax, 2
+    store.i64 [rbp-8], rax
+    mov rax, 0
+    store.i64 [rbp-24], rax
+    jmp ^outer_cond
+
+  block ^outer_cond
+    load.i64 r8, [rbp-8]
+    mov r9, r8
+    sub r9, 1
+    store.i64 [rbp-8], r9
+    mov rax, r8
+    cmp.i64 rax, 0
+    jne ^outer_body
+    jmp ^exit
+
+  block ^outer_body
+    load.i64 r8, [rbp-24]
+    add r8, rbx
+    store.i64 [rbp-24], r8
+    mov rax, 1
+    store.i64 [rbp-16], rax
+    jmp ^inner_cond
+
+  block ^inner_cond
+    load.i64 r8, [rbp-16]
+    mov r9, r8
+    sub r9, 1
+    store.i64 [rbp-16], r9
+    mov rax, r8
+    cmp.i64 rax, 0
+    jne ^inner_body
+    jmp ^outer_cond
+
+  block ^inner_body
+    mov rdi, 7
+    call @make_value
+    mov r12, rax
+    jmp ^after_replacement
+
+  block ^after_replacement
+    mov rdi, 3
+    call @make_value
+    mov r8, rax
+    mov r9, r12
+    add r9, r8
+    jmp ^inner_cond
+
+  block ^exit
+    load.i64 rax, [rbp-24]
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    call @probe
+    mov r8, rax
+    mov rdx, 182
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

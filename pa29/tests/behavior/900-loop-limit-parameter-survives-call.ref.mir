@@ -1,0 +1,79 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @overwrite_argument_registers
+  abi
+    param %first -> rdi : i64
+    param %second -> rsi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov r9, rsi
+    mov rbx, rdi
+    add rbx, r9
+    mov rax, rbx
+    ret rax
+
+function @count_to
+  abi
+    param %initial -> rdi : i64
+    param %limit -> rsi : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    slot $current -> [rbp-8] : i64
+
+  block ^entry
+    mov r8, rdi
+    mov rbx, rsi
+    store.i64 [rbp-8], rdi
+    jmp ^loop_condition
+
+  block ^loop_condition
+    cmp.i64 [rbp-8], rbx
+    jl ^loop_body
+    jmp ^loop_end
+
+  block ^loop_body
+    mov rdi, 111
+    mov rsi, 222
+    call @overwrite_argument_registers
+    load.i64 r8, [rbp-8]
+    add r8, 1
+    store.i64 [rbp-8], r8
+    jmp ^loop_condition
+
+  block ^loop_end
+    load.i64 rax, [rbp-8]
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 0
+    mov rsi, 3
+    call @count_to
+    mov r8, rax
+    mov rdx, 3
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

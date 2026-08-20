@@ -1,0 +1,69 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @single
+  storage scalar f32
+  init f32 0x1.000002p0
+
+global @double
+  storage scalar f64
+  init f64 0x1.0000000000001p0
+
+global @extended
+  storage scalar f80
+  init f80 0x1.0000000000000002p0L
+
+global @wide
+  storage scalar i128
+  init i128 -1
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 96
+    scratch_bytes 48
+    preserve rbx r12
+    temp %extended -> [rbp-16] : f80
+    temp %wide -> [rbp-32] : i128
+
+  block ^entry
+    fmov.f32 xmm0, @single
+    fne.f32 rax, xmm0, 0x1.000002p0
+    mov r8, rax
+    fmov.f64 xmm0, @double
+    fne.f64 rax, xmm0, 0x1.0000000000001p0
+    mov r9, rax
+    fmov.f80 [rbp-16], @extended
+    fne.f80 rax, [rbp-16], 0x1.0000000000000002p0L
+    mov rbx, rax
+    mov r11, @wide
+    load.i64 rax, [r11]
+    load.i64 rdx, [r11+8]
+    lea r11, [rbp-32]
+    store.i64 [r11], rax
+    store.i64 [r11+8], rdx
+    lea r11, [rbp-32]
+    load.i64 rax, [r11]
+    load.i64 rdx, [r11+8]
+    mov rcx, -1
+    mov rsi, -1
+    cmp.i64 rdx, rsi
+    setne r10
+    movzx r10, r10
+    cmp.i64 rax, rcx
+    setne r11
+    movzx r11, r11
+    or r10, r11
+    mov r12, r10
+    or r8, r9
+    or rbx, r12
+    or r8, rbx
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

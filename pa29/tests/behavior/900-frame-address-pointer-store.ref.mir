@@ -1,0 +1,46 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @touch
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 80
+    scratch_bytes 48
+    slot $backing -> [rbp-16] : obj<16x8>
+    slot $saved -> [rbp-24] : ptr
+
+  block ^entry
+    mov rax, 1
+    lea rcx, [rbp-16]
+    store.i64 [rcx], rax
+    call @touch
+    lea rax, [rbp-16]
+    store.ptr [rbp-24], rax
+    mov r8, rax
+    lea rdx, [rbp-16]
+    cmp.ptr r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

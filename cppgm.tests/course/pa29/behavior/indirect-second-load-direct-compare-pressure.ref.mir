@@ -1,0 +1,120 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @values
+  storage data
+  item i64 1
+  item i64 0
+
+function @probe
+  abi
+    param %base -> rdi : ptr
+    param %a -> rsi : i64
+    param %b -> rdx : i64
+    param %c -> rcx : i64
+    param %d -> r8 : i64
+    param %e -> r9 : i64
+    return i64 -> rax
+  frame
+    stack_size 128
+    scratch_bytes 0
+    preserve r12 r13 r14 r15
+    slot $iteration -> [rbp-8] : i64
+    temp %sink_address -> [rbp-16] : ptr
+    temp %pressure -> [rbp-24] : i64
+    temp %iteration -> [rbp-32] : i64
+    temp %limit -> [rbp-40] : i64
+    temp %cd -> [rbp-48] : i64
+    temp %abcd -> [rbp-56] : i64
+    temp %sum_a -> [rbp-64] : i64
+    temp %sum_b -> [rbp-72] : i64
+    temp %sum -> [rbp-80] : i64
+    temp %next -> [rbp-88] : i64
+
+  block ^entry
+    mov r12, rcx
+    mov r13, r8
+    mov r8, rsi
+    mov r14, r9
+    mov r9, rdx
+    mov rax, 0
+    store.i64 [rbp-8], rax
+    mov r15, rdi
+    mov rax, rdi
+    lea rax, [rax+8]
+    store.ptr [rbp-16], rax
+    jmp ^condition
+
+  block ^condition
+    mov rax, r8
+    add rax, r9
+    store.i64 [rbp-24], rax
+    load.i64 rax, [rbp-8]
+    store.i64 [rbp-32], rax
+    load.i64 rax, [r15]
+    store.i64 [rbp-40], rax
+    load.i64 rax, [rbp-32]
+    cmp.i64 rax, [rbp-40]
+    jb ^body
+    jmp ^done
+
+  block ^body
+    mov rax, r12
+    add rax, r13
+    store.i64 [rbp-48], rax
+    load.i64 rax, [rbp-24]
+    load.i64 rdx, [rbp-48]
+    add rax, rdx
+    store.i64 [rbp-56], rax
+    load.i64 rax, [rbp-56]
+    add rax, r8
+    store.i64 [rbp-64], rax
+    load.i64 rax, [rbp-64]
+    add rax, r9
+    store.i64 [rbp-72], rax
+    load.i64 rax, [rbp-72]
+    add rax, r14
+    store.i64 [rbp-80], rax
+    load.i64 rax, [rbp-80]
+    load.ptr rcx, [rbp-16]
+    store.i64 [rcx], rax
+    load.i64 rax, [rbp-32]
+    add rax, 1
+    store.i64 [rbp-88], rax
+    load.i64 rax, [rbp-88]
+    store.i64 [rbp-8], rax
+    jmp ^condition
+
+  block ^done
+    load.i64 rax, [rbp-32]
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov r8, @values
+    mov rdi, r8
+    mov rsi, 1
+    mov rdx, 2
+    mov rcx, 3
+    mov r8, 4
+    mov r9, 5
+    call @probe
+    mov r9, rax
+    mov rdx, 1
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov r8, r9
+    sext.i32 r8
+    mov rax, r8
+    ret rax

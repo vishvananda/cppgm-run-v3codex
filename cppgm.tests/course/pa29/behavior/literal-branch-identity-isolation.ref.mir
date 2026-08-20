@@ -1,0 +1,62 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @zero
+  storage scalar i64
+  init i64 0
+
+function @false_condition
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 0
+    ret rax
+
+function @one
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 1
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, 7
+    call @false_condition
+    mov r8, rax
+    cmp.i64 rax, 0
+    jne ^wrong
+    jmp ^continue
+
+  block ^continue
+    call @one
+    mov rax, 0
+    cmp.i64 rax, 0
+    jne ^wrong
+    jmp ^correct
+
+  block ^wrong
+    mov rax, 1
+    ret rax
+
+  block ^correct
+    mov rax, 0
+    ret rax

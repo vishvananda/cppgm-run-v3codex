@@ -1,0 +1,83 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @pair
+  storage data
+  item i64 0
+  item i64 0
+
+function @store_dec
+  abi
+    param %p -> rdi : ptr
+    param %dec -> rsi : i64
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    param-slot %dec -> [rbp-8] : i64
+
+  block ^entry
+    store.i64 [rbp-8], rsi
+    mov r8, rdi
+    mov rax, 99
+    store.i64 [r8], rax
+    ret
+
+function @call_field_with_later_arg
+  abi
+    param %this -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    slot $this -> [rbp-8] : ptr
+
+  block ^entry
+    mov r8, rdi
+    store.ptr [rbp-8], rdi
+    store.ptr [rbp-8], r8
+    mov r9, r8
+    mov rbx, -1
+    mov rdi, r8
+    lea rdi, [rdi+8]
+    mov rsi, rbx
+    call @store_dec
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+
+  block ^entry
+    mov rbx, @pair
+    mov rdi, rbx
+    call @call_field_with_later_arg
+    load.i64 r8, @pair
+    lea rbx, [rbx+8]
+    load.i64 r9, [rbx]
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 99
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    and r8, r9
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

@@ -1,0 +1,115 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @pressure
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    param %gate -> [rbp+16] : i64
+    return i64 -> rax
+  frame
+    stack_size 128
+    scratch_bytes 0
+    preserve rbx r12 r13 r14 r15
+    param-slot %gate -> [rbp-8] : i64
+    slot $selected -> [rbp-16] : i64
+    temp %shifted -> [rbp-24] : i64
+    temp %ab -> [rbp-32] : i64
+    temp %cd -> [rbp-40] : i64
+    temp %ef -> [rbp-48] : i64
+    temp %abcd -> [rbp-56] : i64
+    temp %all -> [rbp-64] : i64
+    temp %result -> [rbp-72] : i64
+
+  block ^entry
+    load.i64 rax, [rbp+16]
+    store.i64 [rbp-8], rax
+    mov rbx, rdx
+    mov r12, rcx
+    mov r13, r8
+    mov r8, rdi
+    mov r14, r9
+    mov r9, rsi
+    load.i64 rax, [rbp-8]
+    cmp.i64 rax, 0
+    jne ^shift
+    jmp ^short
+
+  block ^shift
+    mov r15, r8
+    mov rdx, 7
+    and r15, rdx
+    mov rax, 1
+    mov rcx, r15
+    shl rax, cl
+    store.i64 [rbp-24], rax
+    load.i64 rax, [rbp-24]
+    store.i64 [rbp-16], rax
+    jmp ^merge
+
+  block ^short
+    mov rax, 0
+    store.i64 [rbp-16], rax
+    jmp ^merge
+
+  block ^merge
+    load.i64 r15, [rbp-16]
+    mov rax, r8
+    add rax, r9
+    store.i64 [rbp-32], rax
+    mov rax, rbx
+    add rax, r12
+    store.i64 [rbp-40], rax
+    mov rax, r13
+    add rax, r14
+    store.i64 [rbp-48], rax
+    load.i64 rax, [rbp-32]
+    load.i64 rdx, [rbp-40]
+    add rax, rdx
+    store.i64 [rbp-56], rax
+    load.i64 rax, [rbp-56]
+    load.i64 rdx, [rbp-48]
+    add rax, rdx
+    store.i64 [rbp-64], rax
+    load.i64 rax, [rbp-64]
+    add rax, r15
+    store.i64 [rbp-72], rax
+    load.i64 rax, [rbp-72]
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    sub rsp, 16
+    mov rdi, 6
+    mov rsi, 2
+    mov rdx, 3
+    mov rcx, 4
+    mov r8, 5
+    mov r9, 6
+    mov r11, 1
+    store.i64 [rsp], r11
+    call @pressure
+    add rsp, 16
+    mov r8, rax
+    mov rdx, 90
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

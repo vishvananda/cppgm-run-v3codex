@@ -1,0 +1,87 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @a
+  storage scalar i64
+  init i64 0
+
+global @b
+  storage scalar i64
+  init i64 0
+
+function @target
+  abi
+    param %x -> rdi : ptr
+    param %y -> rsi : ptr
+    return void -> void
+  frame
+    stack_size 32
+    scratch_bytes 0
+    param-slot %x -> [rbp-8] : ptr
+    param-slot %y -> [rbp-16] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.ptr [rbp-16], rsi
+    ret
+
+function @run
+  abi
+    param %p -> rdi : ptr
+    param %q -> rsi : ptr
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    slot $tiny -> [rbp-1] : i8
+
+  block ^entry
+    mov r8, rdi
+    mov r9, rsi
+    mov rbx, 7
+    mov rdi, rsi
+    mov rsi, r8
+    call @target
+    mov rax, 1
+    store.i8 [rbp-1], rax
+    mov rax, rbx
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx r12
+
+  block ^entry
+    mov r8, @a
+    mov r9, @b
+    mov rbx, 1234605616436508552
+    mov rdi, r8
+    mov rsi, r9
+    call @run
+    mov r12, rax
+    mov rdx, 1234605616436508552
+    cmp.i64 rbx, rdx
+    sete rbx
+    movzx rbx, rbx
+    mov rdx, 7
+    cmp.i64 r12, rdx
+    sete r12
+    movzx r12, r12
+    and rbx, r12
+    mov rdx, 0
+    cmp.i64 rbx, rdx
+    sete rbx
+    movzx rbx, rbx
+    mov r8, rbx
+    sext.i32 r8
+    mov rax, r8
+    ret rax

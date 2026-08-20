@@ -1,0 +1,41 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @narrow_false
+  abi
+    return u8 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, 256
+    mov rax, r8
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @narrow_false
+    mov r8, rax
+    zext.i8 r8
+    cmp.i64 r8, 0
+    je ^success
+    jmp ^failure
+
+  block ^success
+    mov rax, 0
+    ret rax
+
+  block ^failure
+    mov rax, 1
+    ret rax

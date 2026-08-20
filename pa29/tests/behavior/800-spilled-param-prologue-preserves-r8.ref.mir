@@ -1,0 +1,104 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @good
+  storage scalar i64
+  init i64 42
+
+global @bad
+  storage scalar i64
+  init i64 13
+
+function @sink
+  abi
+    param %p -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, rdi
+    load.i64 rax, [r8]
+    ret rax
+
+function @target
+  abi
+    param %a -> rdi : ptr
+    param %b -> rsi : ptr
+    param %c -> rdx : ptr
+    param %d -> rcx : ptr
+    param %z -> r8 : ptr
+    param %f -> r9 : ptr
+    param %g -> [rbp+16] : ptr
+    return i64 -> rax
+  frame
+    stack_size 96
+    scratch_bytes 0
+    param-slot %a -> [rbp-8] : ptr
+    param-slot %c -> [rbp-16] : ptr
+    param-slot %d -> [rbp-24] : ptr
+    param-slot %f -> [rbp-32] : ptr
+    param-slot %g -> [rbp-40] : ptr
+    slot $z -> [rbp-48] : ptr
+    slot $force_spill -> [rbp-88] : obj<40x8>
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.ptr [rbp-16], rdx
+    store.ptr [rbp-24], rcx
+    store.ptr [rbp-32], r9
+    load.ptr rax, [rbp+16]
+    store.ptr [rbp-40], rax
+    mov r9, r8
+    store.ptr [rbp-48], r8
+    mov rax, rsi
+    lea rcx, [rbp-88]
+    store.ptr [rcx], rax
+    jmp ^after
+
+  block ^after
+    load.ptr r8, [rbp-48]
+    mov rdi, r8
+    call @sink
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+
+  block ^entry
+    mov r8, @good
+    mov r9, @bad
+    store.i64 [rbp-8], r9
+    sub rsp, 16
+    mov rdi, r9
+    load.i64 rsi, [rbp-8]
+    mov rdx, 0
+    mov rcx, 0
+    mov r9, 0
+    mov r11, 0
+    store.ptr [rsp], r11
+    call @target
+    add rsp, 16
+    mov rbx, rax
+    mov rdx, 42
+    cmp.i64 rbx, rdx
+    sete rbx
+    movzx rbx, rbx
+    mov rdx, 0
+    cmp.i64 rbx, rdx
+    sete rbx
+    movzx rbx, rbx
+    mov r8, rbx
+    sext.i32 r8
+    mov rax, r8
+    ret rax

@@ -1,0 +1,131 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @single_observed
+  storage scalar i64
+  init i64 0
+
+global @shared_observed
+  storage scalar i64
+  init i64 0
+
+function @pressure
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    return i64 -> rax
+  frame
+    stack_size 160
+    scratch_bytes 0
+    preserve rbx r12 r13 r14 r15
+    temp %single -> [rbp-8] : i64
+    temp %shared -> [rbp-16] : i64
+    temp %ab -> [rbp-24] : i64
+    temp %cd -> [rbp-32] : i64
+    temp %ea -> [rbp-40] : i64
+    temp %bc -> [rbp-48] : i64
+    temp %de -> [rbp-56] : i64
+    temp %abcd -> [rbp-64] : i64
+    temp %eabc -> [rbp-72] : i64
+    temp %first_parameters -> [rbp-80] : i64
+    temp %parameters -> [rbp-88] : i64
+    temp %shared_second -> [rbp-96] : i64
+    temp %single_value -> [rbp-104] : i64
+    temp %shared_value -> [rbp-112] : i64
+
+  block ^entry
+    mov r9, rsi
+    mov rbx, rdx
+    mov r12, rcx
+    mov r13, r8
+    mov r8, rdi
+    mov r14, 100
+    mov r15, 200
+    mov rax, 11
+    store.i64 [rbp-8], rax
+    load.i64 rax, [rbp-8]
+    store.i64 @single_observed, rax
+    mov rax, 13
+    store.i64 [rbp-16], rax
+    load.i64 rax, [rbp-16]
+    store.i64 @shared_observed, rax
+    mov rax, rdi
+    add rax, r9
+    store.i64 [rbp-24], rax
+    mov rax, rdx
+    add rax, r12
+    store.i64 [rbp-32], rax
+    mov rax, r13
+    add rax, r8
+    store.i64 [rbp-40], rax
+    mov rax, r9
+    add rax, rbx
+    store.i64 [rbp-48], rax
+    mov rax, r12
+    add rax, r13
+    store.i64 [rbp-56], rax
+    load.i64 rax, [rbp-24]
+    load.i64 rdx, [rbp-32]
+    add rax, rdx
+    store.i64 [rbp-64], rax
+    load.i64 rax, [rbp-40]
+    load.i64 rdx, [rbp-48]
+    add rax, rdx
+    store.i64 [rbp-72], rax
+    load.i64 rax, [rbp-64]
+    load.i64 rdx, [rbp-72]
+    add rax, rdx
+    store.i64 [rbp-80], rax
+    load.i64 rax, [rbp-80]
+    load.i64 rdx, [rbp-56]
+    add rax, rdx
+    store.i64 [rbp-88], rax
+    load.i64 rax, [rbp-16]
+    add rax, 2
+    store.i64 [rbp-96], rax
+    load.i64 rax, @single_observed
+    store.i64 [rbp-104], rax
+    load.i64 rax, @shared_observed
+    store.i64 [rbp-112], rax
+    add r14, r15
+    load.i64 r15, [rbp-104]
+    load.i64 rdx, [rbp-112]
+    add r15, rdx
+    load.i64 rdx, [rbp-96]
+    add r15, rdx
+    add r14, r15
+    load.i64 rdx, [rbp-88]
+    add r14, rdx
+    mov rax, r14
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 1
+    mov rsi, 2
+    mov rdx, 3
+    mov rcx, 4
+    mov r8, 5
+    call @pressure
+    mov r8, rax
+    mov rdx, 369
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

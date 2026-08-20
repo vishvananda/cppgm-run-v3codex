@@ -1,0 +1,149 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @sum_variadic
+  abi
+    param %tag -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 400
+    scratch_bytes 48
+    preserve rbx r12 r13 r14 r15
+    slot $ap -> [rbp-24] : obj<24x8>
+    temp %t7 -> [rbp-32] : i64
+    temp %t8 -> [rbp-40] : i64
+    temp %t9 -> [rbp-48] : i64
+    temp %t10 -> [rbp-56] : i64
+    temp %t11 -> [rbp-64] : i64
+    temp %t12 -> [rbp-72] : i64
+    temp %gp -> [rbp-76] : i32
+    temp %gp64 -> [rbp-88] : i64
+    temp %rsa_ptr_ptr -> [rbp-96] : ptr
+    temp %rsa -> [rbp-104] : ptr
+    temp %arg_ptr -> [rbp-112] : ptr
+    temp %v -> [rbp-120] : i64
+
+  block ^entry
+    store.i64 [rbp-304], rdi
+    store.i64 [rbp-296], rsi
+    store.i64 [rbp-288], rdx
+    store.i64 [rbp-280], rcx
+    store.i64 [rbp-272], r8
+    store.i64 [rbp-264], r9
+    fmov.f64 [rbp-256], xmm0
+    fmov.f64 [rbp-240], xmm1
+    fmov.f64 [rbp-224], xmm2
+    fmov.f64 [rbp-208], xmm3
+    fmov.f64 [rbp-192], xmm4
+    fmov.f64 [rbp-176], xmm5
+    fmov.f64 [rbp-160], xmm6
+    fmov.f64 [rbp-144], xmm7
+    mov r8, rdi
+    add r8, 1
+    mov rbx, rdi
+    add rbx, 2
+    mov r12, rdi
+    add r12, 3
+    mov r13, rdi
+    add r13, 4
+    mov r14, rdi
+    add r14, 5
+    mov r15, rdi
+    add r15, 6
+    mov rax, rdi
+    add rax, 7
+    store.i64 [rbp-32], rax
+    mov rax, rdi
+    add rax, 8
+    store.i64 [rbp-40], rax
+    mov rax, rdi
+    add rax, 9
+    store.i64 [rbp-48], rax
+    mov rax, rdi
+    add rax, 10
+    store.i64 [rbp-56], rax
+    mov rax, rdi
+    add rax, 11
+    store.i64 [rbp-64], rax
+    mov rax, rdi
+    add rax, 12
+    store.i64 [rbp-72], rax
+    lea r11, [rbp-24]
+    mov rax, 8
+    store.i32 [r11], rax
+    mov rax, 48
+    store.i32 [r11+4], rax
+    lea rax, [rbp+16]
+    store.i64 [r11+8], rax
+    lea rax, [rbp-304]
+    store.i64 [r11+16], rax
+    lea rcx, [rbp-24]
+    load.i32 rax, [rcx]
+    store.i32 [rbp-76], rax
+    load.i32 rax, [rbp-76]
+    zext.i32 rax
+    store.i64 [rbp-88], rax
+    lea rax, [rbp-24]
+    lea rax, [rax+16]
+    store.ptr [rbp-96], rax
+    load.ptr rcx, [rbp-96]
+    load.ptr rax, [rcx]
+    store.ptr [rbp-104], rax
+    load.ptr rax, [rbp-104]
+    load.i64 rdx, [rbp-88]
+    add rax, rdx
+    store.ptr [rbp-112], rax
+    load.ptr rcx, [rbp-112]
+    load.i64 rax, [rcx]
+    store.i64 [rbp-120], rax
+    add r8, rbx
+    add r8, r12
+    add r8, r13
+    add r8, r14
+    add r8, r15
+    load.i64 rdx, [rbp-32]
+    add r8, rdx
+    load.i64 rdx, [rbp-40]
+    add r8, rdx
+    load.i64 rdx, [rbp-48]
+    add r8, rdx
+    load.i64 rdx, [rbp-56]
+    add r8, rdx
+    load.i64 rdx, [rbp-64]
+    add r8, rdx
+    load.i64 rdx, [rbp-72]
+    add r8, rdx
+    load.i64 rdx, [rbp-120]
+    add r8, rdx
+    mov rax, r8
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 0
+    mov rsi, 100
+    mov rax, 0
+    call @sum_variadic
+    mov r8, rax
+    mov rdx, 178
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

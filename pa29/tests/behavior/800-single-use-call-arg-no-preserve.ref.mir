@@ -1,0 +1,70 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @one
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 1
+    ret rax
+
+function @foo
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve rbx
+    param-slot %b -> [rbp-8] : i64
+    param-slot %c -> [rbp-16] : i64
+    param-slot %d -> [rbp-24] : i64
+    param-slot %f -> [rbp-32] : i64
+
+  block ^entry
+    store.i64 [rbp-8], rsi
+    store.i64 [rbp-16], rdx
+    store.i64 [rbp-24], rcx
+    store.i64 [rbp-32], r9
+    mov r9, r8
+    mov rbx, rdi
+    add rbx, r9
+    mov rax, rbx
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @one
+    mov rdi, rax
+    mov rsi, 20
+    mov rdx, 30
+    mov rcx, 40
+    mov r8, 50
+    mov r9, 60
+    call @foo
+    mov r9, rax
+    mov rdx, 51
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov rax, r9
+    ret rax

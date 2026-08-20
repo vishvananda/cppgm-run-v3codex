@@ -1,0 +1,187 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @first
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    param-slot %b -> [rbp-8] : i64
+    param-slot %c -> [rbp-16] : i64
+    param-slot %d -> [rbp-24] : i64
+    param-slot %e -> [rbp-32] : i64
+    param-slot %f -> [rbp-40] : i64
+
+  block ^entry
+    store.i64 [rbp-8], rsi
+    store.i64 [rbp-16], rdx
+    store.i64 [rbp-24], rcx
+    store.i64 [rbp-32], r8
+    store.i64 [rbp-40], r9
+    mov rax, rdi
+    ret rax
+
+function @pressure
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    param %g -> [rbp+16] : i64
+    param %h -> [rbp+24] : i64
+    param %i -> [rbp+32] : i64
+    param %j -> [rbp+40] : i64
+    return i64 -> rax
+  frame
+    stack_size 144
+    scratch_bytes 0
+    preserve r15
+    param-slot %g -> [rbp-8] : i64
+    param-slot %h -> [rbp-16] : i64
+    param-slot %i -> [rbp-24] : i64
+    param-slot %j -> [rbp-32] : i64
+    temp %t2 -> [rbp-40] : i64
+    temp %t3 -> [rbp-48] : i64
+    temp %t4 -> [rbp-56] : i64
+    temp %t5 -> [rbp-64] : i64
+    temp %t6 -> [rbp-72] : i64
+    temp %t7 -> [rbp-80] : i64
+    temp %t8 -> [rbp-88] : i64
+    temp %t9 -> [rbp-96] : i64
+    temp %t10 -> [rbp-104] : i64
+    temp %original -> [rbp-112] : i64
+    temp %saved -> [rbp-120] : i64
+    temp %replacement -> [rbp-128] : i64
+
+  block ^entry
+    load.i64 rax, [rbp+16]
+    store.i64 [rbp-8], rax
+    load.i64 rax, [rbp+24]
+    store.i64 [rbp-16], rax
+    load.i64 rax, [rbp+32]
+    store.i64 [rbp-24], rax
+    load.i64 rax, [rbp+40]
+    store.i64 [rbp-32], rax
+    mov r15, rdi
+    add r15, 1
+    mov rax, rsi
+    add rax, 2
+    store.i64 [rbp-40], rax
+    mov rax, rdx
+    add rax, 3
+    store.i64 [rbp-48], rax
+    mov rax, rcx
+    add rax, 4
+    store.i64 [rbp-56], rax
+    mov rax, r8
+    add rax, 5
+    store.i64 [rbp-64], rax
+    mov rax, r9
+    add rax, 6
+    store.i64 [rbp-72], rax
+    load.i64 rax, [rbp-8]
+    add rax, 7
+    store.i64 [rbp-80], rax
+    load.i64 rax, [rbp-16]
+    add rax, 8
+    store.i64 [rbp-88], rax
+    load.i64 rax, [rbp-24]
+    add rax, 9
+    store.i64 [rbp-96], rax
+    load.i64 rax, [rbp-32]
+    add rax, 10
+    store.i64 [rbp-104], rax
+    mov rdi, 21
+    mov rsi, 22
+    mov rdx, 23
+    mov rcx, 24
+    mov r8, 25
+    mov r9, 26
+    call @first
+    store.i64 [rbp-112], rax
+    load.i64 rax, [rbp-112]
+    store.i64 [rbp-120], rax
+    mov rdi, 31
+    mov rsi, 32
+    mov rdx, 33
+    mov rcx, 34
+    mov r8, 35
+    mov r9, 36
+    call @first
+    store.i64 [rbp-128], rax
+    load.i64 rdx, [rbp-40]
+    add r15, rdx
+    load.i64 rdx, [rbp-48]
+    add r15, rdx
+    load.i64 rdx, [rbp-56]
+    add r15, rdx
+    load.i64 rdx, [rbp-64]
+    add r15, rdx
+    load.i64 rdx, [rbp-72]
+    add r15, rdx
+    load.i64 rdx, [rbp-80]
+    add r15, rdx
+    load.i64 rdx, [rbp-88]
+    add r15, rdx
+    load.i64 rdx, [rbp-96]
+    add r15, rdx
+    load.i64 rdx, [rbp-104]
+    add r15, rdx
+    load.i64 rdx, [rbp-120]
+    add r15, rdx
+    load.i64 rdx, [rbp-128]
+    add r15, rdx
+    mov rax, r15
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    sub rsp, 32
+    mov rdi, 1
+    mov rsi, 2
+    mov rdx, 3
+    mov rcx, 4
+    mov r8, 5
+    mov r9, 6
+    mov r11, 7
+    store.i64 [rsp], r11
+    mov r11, 8
+    store.i64 [rsp+8], r11
+    mov r11, 9
+    store.i64 [rsp+16], r11
+    mov r11, 10
+    store.i64 [rsp+24], r11
+    call @pressure
+    add rsp, 32
+    mov r8, rax
+    mov rdx, 162
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

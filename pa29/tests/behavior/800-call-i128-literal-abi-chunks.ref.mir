@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main [args=()]
+    call @main
     mov rdi, rax
     exit
 
@@ -31,9 +31,11 @@ function @accept
     movzx r11, r11
     and r10, r11
     mov r8, r10
-    cmp.i64 r8, 0
-    sete rax
-    movzx rax, rax
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rax, r8
     ret rax
 
 function @main
@@ -46,5 +48,5 @@ function @main
   block ^entry
     mov rdi, 0
     mov rsi, 0
-    call @accept [args=(rsi,rdi)]
+    call @accept
     ret rax

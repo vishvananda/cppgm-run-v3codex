@@ -242,8 +242,9 @@ For testing, PA29 uses three explicit comparison modes, split by directory:
    after only normalizing the host-target tag in the `machine_ir x86_64 <target>` header.
 2. `tests/structural/` compares the checked-in `.ref.cmir` against a canonicalized form of
    the generated `.my.mir`.
-3. `tests/behavior/` checks compilation and generated-program behavior only. It intentionally
-   has no machine-IR oracle.
+3. `tests/behavior/` checks compilation and generated-program behavior only.
+   It retains the reference machine-IR dump as an informational example for
+   students, but does not compare generated MIR with it.
 
 The structural canonicalization pass is intentionally conservative. It hides:
 
@@ -272,7 +273,8 @@ That means a successful `PA29` test anchor now validates exactly these output fi
   - `x.ref.mir` with strict raw-MIR comparison and header normalization only
   - `x.ref.mir` plus `x.ref.cmir`, with structural canonical-MIR comparison using
     checked-in `x.ref.cmir`
-  - no MIR reference files for `tests/behavior/`
+  - an informational `x.ref.mir` that is present but not compared for
+    `tests/behavior/`
 
 In other words, `PA29` is not just "program behavior matches." The tests also validate the
 shape of the lowered backend output through one of those two explicit MIR oracles.
@@ -287,7 +289,13 @@ only need to implement `--dump-machine-ir` and produce raw `.mir`.
 The `tests/behavior/` directory is for correctness cases where several reasonable
 register-allocation or spill strategies are acceptable. Those tests still require
 successful compilation and matching generated-program behavior, but they intentionally do
-not compare a machine-IR oracle.
+not compare machine IR. The checked-in reference MIR remains useful for inspection
+and manual comparison.
+
+The course extension suite uses the same three directories under
+`course/pa29/`: `strict/`, `structural/`, and `behavior/`. Successful cases in
+all three lanes retain raw reference MIR. Only strict and structural tests use
+it as a grading oracle.
 
 `make test` recursively runs the checked-in local suites:
 

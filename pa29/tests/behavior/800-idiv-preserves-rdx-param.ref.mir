@@ -1,0 +1,55 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @calc
+  abi
+    param %x -> rdi : i64
+    param %y -> rsi : i64
+    param %scale -> rdx : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve r13
+
+  block ^entry
+    mov r9, rdx
+    mov rcx, rsi
+    mov rax, rdi
+    cqo
+    idiv rcx
+    mov r8, rax
+    mov r13, r9
+    imul r13, r8
+    mov rax, r13
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 20
+    mov rsi, 4
+    mov rdx, 7
+    call @calc
+    mov r8, rax
+    mov rdx, 35
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

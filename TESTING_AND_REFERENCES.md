@@ -67,10 +67,26 @@ Add focused regression tests for new bugs. Put shared student tests under
 `cppgm.tests/course/paN/` when they should travel with the course-wide harness;
 put PA-local tests under `paN/tests/` when they are specific to one assignment.
 
+Do not create a dormant proposed or candidate test tree. When a new course
+requirement intentionally changes a checked-in semantic, LowIR, MIR, or object
+contract, update the authoritative reference and put the reducer directly in
+the earliest owning course suite. Correct an existing assignment fixture and
+regenerate its reference in place when that fixture already owns the behavior.
+
+Deliberately ill-formed inputs belong in the active owning suite when rejection
+is required; name them as negative tests and compare failure status. Source
+that relies on implementation-reserved identifiers is not a portable course
+requirement and should be rewritten or removed.
+
 ## References
 
 Reference outputs, stdout refs, exit-status refs, and inspect refs are the test
 oracle. Do not edit them to hide an incomplete implementation.
+
+Some assignment handouts retain informational output that is not a grading
+oracle. In particular, PA29 behavior tests include the reference MIR so
+students can inspect it, but grade only compiler and generated-program
+outcomes. The owning README identifies which sidecars are informational.
 
 Reference binaries such as `pptoken-ref` or `cppgm++-ref` are provided for
 observing expected behavior and regenerating reference fixtures. They must not

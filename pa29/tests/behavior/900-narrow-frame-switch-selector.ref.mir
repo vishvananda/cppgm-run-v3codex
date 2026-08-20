@@ -1,0 +1,108 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @dispatch
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    return i64 -> rax
+  frame
+    stack_size 112
+    scratch_bytes 0
+    preserve rbx r12 r13 r14 r15
+    slot $selector_word -> [rbp-8] : i64
+    slot $poison_word -> [rbp-16] : i64
+    temp %selector -> [rbp-20] : u32
+    temp %ab -> [rbp-32] : i64
+    temp %cd -> [rbp-40] : i64
+    temp %ef -> [rbp-48] : i64
+    temp %abcd -> [rbp-56] : i64
+    temp %all -> [rbp-64] : i64
+
+  block ^entry
+    mov rbx, rdx
+    mov r12, rcx
+    mov r13, r8
+    mov r8, rdi
+    mov r14, r9
+    mov r9, rsi
+    mov rax, 4294967335
+    store.i64 [rbp-8], rax
+    mov rax, 1
+    store.i64 [rbp-16], rax
+    load.u32 r15, [rbp-16]
+    zext.i32 r15
+    load.u32 rax, [rbp-8]
+    store.u32 [rbp-20], rax
+    jmp ^dispatch
+
+  block ^dispatch
+    mov rax, r8
+    add rax, r9
+    store.i64 [rbp-32], rax
+    mov rax, rbx
+    add rax, r12
+    store.i64 [rbp-40], rax
+    mov rax, r13
+    add rax, r14
+    store.i64 [rbp-48], rax
+    load.i64 rax, [rbp-32]
+    load.i64 rdx, [rbp-40]
+    add rax, rdx
+    store.i64 [rbp-56], rax
+    load.i64 rax, [rbp-56]
+    load.i64 rdx, [rbp-48]
+    add rax, rdx
+    store.i64 [rbp-64], rax
+    load.u32 rax, [rbp-20]
+    mov rcx, 39
+    cmp.u32 rax, rcx
+    je ^success
+    mov rcx, r15
+    cmp.u32 rax, rcx
+    je ^failure
+    jmp ^retry
+
+  block ^retry
+    jmp ^dispatch
+
+  block ^success
+    load.i64 rax, [rbp-64]
+    ret rax
+
+  block ^failure
+    mov rax, -1
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 1
+    mov rsi, 2
+    mov rdx, 3
+    mov rcx, 4
+    mov r8, 5
+    mov r9, 6
+    call @dispatch
+    mov r8, rax
+    mov rdx, 21
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

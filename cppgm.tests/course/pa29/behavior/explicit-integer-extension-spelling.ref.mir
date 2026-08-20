@@ -1,0 +1,49 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx r12
+
+  block ^entry
+    mov r8, -1
+    zext.i8 r8
+    mov rdx, 255
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, 255
+    sext.i8 r9
+    mov rdx, -1
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov rbx, -1
+    zext.i16 rbx
+    sext.i32 rbx
+    mov rdx, 65535
+    cmp.i32 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov r12, 65535
+    sext.i16 r12
+    sext.i32 r12
+    mov rdx, -1
+    cmp.i32 r12, rdx
+    setne r12
+    movzx r12, r12
+    or r8, r9
+    or rbx, r12
+    or r8, rbx
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

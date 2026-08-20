@@ -1,0 +1,62 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @reload_to_return_register
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $home -> [rbp-8] : i64
+
+  block ^entry
+    mov r8, 13
+    store.i64 [rbp-8], r8
+    mov rax, r8
+    ret rax
+
+function @reload_to_same_register
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $home -> [rbp-8] : i64
+
+  block ^entry
+    mov r8, 29
+    store.i64 [rbp-8], r8
+    add r8, 1
+    mov rax, r8
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+
+  block ^entry
+    call @reload_to_return_register
+    mov rbx, rax
+    call @reload_to_same_register
+    mov r8, rax
+    mov rdx, 13
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 30
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r8
+    mov r8, rbx
+    sext.i32 r8
+    mov rax, r8
+    ret rax

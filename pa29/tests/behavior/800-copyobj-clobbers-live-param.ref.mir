@@ -1,0 +1,114 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @source
+  storage data
+  item i64 11
+  item i64 22
+  item i64 33
+  item i64 44
+
+global @dest
+  storage data
+  item i64 0
+  item i64 0
+  item i64 0
+  item i64 0
+
+global @good
+  storage scalar i64
+  init i64 0
+
+function @mark
+  abi
+    param %target -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, rdi
+    mov rax, 99
+    store.i64 [r8], rax
+    ret
+
+function @copy_then_mark
+  abi
+    param %target -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov r9, rdi
+    mov r8, @source
+    mov rbx, @dest
+    mov rdi, rbx
+    mov rsi, r8
+    copy_bytes 24x8, rdi, rsi
+    mov rdi, r9
+    call @mark
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 80
+    scratch_bytes 48
+    preserve rbx r12 r13 r14
+
+  block ^entry
+    mov r8, @good
+    mov rdi, r8
+    call @copy_then_mark
+    load.i64 r8, @good
+    load.i64 r9, @dest
+    mov rbx, @dest
+    mov r12, rbx
+    lea r12, [r12+8]
+    load.i64 r13, [r12]
+    mov r12, rbx
+    lea r12, [r12+16]
+    load.i64 r14, [r12]
+    lea rbx, [rbx+24]
+    load.i64 r12, [rbx]
+    mov rdx, 99
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 11
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rdx, 22
+    cmp.i64 r13, rdx
+    sete r13
+    movzx r13, r13
+    mov rdx, 33
+    cmp.i64 r14, rdx
+    sete r14
+    movzx r14, r14
+    mov rdx, 0
+    cmp.i64 r12, rdx
+    sete r12
+    movzx r12, r12
+    and r8, r9
+    and r13, r14
+    and r8, r13
+    and r8, r12
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

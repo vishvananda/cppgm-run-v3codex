@@ -15,7 +15,8 @@ my ($ref_suffix, $my_suffix, $tests_root) = @ARGV;
 
 if (-f $tests_root)
 {
-	my $mode = $tests_root =~ m{(?:^|/)structural/} ? "mir_structural_t" : "mir_t";
+	my $mode = $tests_root =~ m{(?:^|/)structural/} ? "mir_structural_t" :
+		$tests_root =~ m{(?:^|/)behavior/} ? "mir_behavior_t" : "mir_t";
 	my $status = system("perl",
 	                    "$repo_root/scripts/compare_results_common.pl",
 	                    $mode,
@@ -29,7 +30,7 @@ if (-f $tests_root)
 my @suites = (
 	["mir_t", "$tests_root/strict"],
 	["mir_structural_t", "$tests_root/structural"],
-	["mir_t", "$tests_root/behavior"],
+	["mir_behavior_t", "$tests_root/behavior"],
 );
 my $ran_suite = 0;
 

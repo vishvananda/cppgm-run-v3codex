@@ -1,0 +1,86 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @smod7
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rcx, 7
+    mov rax, rdi
+    cqo
+    idiv rcx
+    ret rdx
+
+function @udiv7
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rcx, 7
+    mov rax, rdi
+    mov rdx, 0
+    div rcx
+    ret rax
+
+function @umod31
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rcx, 31
+    mov rax, rdi
+    mov rdx, 0
+    div rcx
+    ret rdx
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx r12
+
+  block ^entry
+    mov rdi, -9223372036854775808
+    call @smod7
+    mov r8, rax
+    mov rdx, -1
+    cmp.i64 rax, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdi, -1
+    call @udiv7
+    mov r8, rax
+    mov rdx, 2635249153387078802
+    cmp.i64 rax, rdx
+    setne r12
+    movzx r12, r12
+    mov rdi, -1
+    call @umod31
+    mov rdx, 15
+    cmp.i64 rax, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r12
+    or rbx, r8
+    mov r8, rbx
+    sext.i32 r8
+    ret r8

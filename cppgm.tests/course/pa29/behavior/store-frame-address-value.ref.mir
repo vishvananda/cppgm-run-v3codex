@@ -1,0 +1,50 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @read_local_address
+  abi
+    return i32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $value -> [rbp-4] : i32
+    slot $pointer -> [rbp-16] : ptr
+
+  block ^entry
+    mov rax, 77
+    lea rcx, [rbp-4]
+    store.i32 [rcx], rax
+    lea rax, [rbp-4]
+    lea rcx, [rbp-16]
+    store.ptr [rcx], rax
+    lea rcx, [rbp-16]
+    load.ptr r8, [rcx]
+    load.i32 r9, [r8]
+    sext.i32 r9
+    mov rax, r9
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    call @read_local_address
+    mov r8, rax
+    sext.i32 r8
+    mov rdx, 77
+    cmp.i32 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    zext.i8 r9
+    sext.i32 r9
+    mov rax, r9
+    ret rax

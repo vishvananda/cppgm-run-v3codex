@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main [args=()]
+    call @main
     mov rdi, rax
     exit
 
@@ -16,8 +16,10 @@ function @consume
   frame
     stack_size 16
     scratch_bytes 0
+    param-slot %p -> [rbp-8] : ptr
 
   block ^entry
+    store.ptr [rbp-8], rdi
     mov rax, 0
     ret rax
 
@@ -30,7 +32,8 @@ function @load_value
     scratch_bytes 0
 
   block ^entry
-    load.i64 rax, [rdi]
+    mov r8, rdi
+    load.i64 rax, [r8]
     ret rax
 
 function @target
@@ -42,18 +45,27 @@ function @target
     param %e -> r8 : ptr
     return i64 -> rax
   frame
-    stack_size 16
+    stack_size 48
     scratch_bytes 0
     preserve rbx r12
+    param-slot %a -> [rbp-8] : ptr
+    param-slot %c -> [rbp-16] : ptr
+    param-slot %d -> [rbp-24] : ptr
 
   block ^entry
+    store.ptr [rbp-8], rdi
+    store.ptr [rbp-16], rdx
+    store.ptr [rbp-24], rcx
     mov rbx, rsi
+    mov r9, r8
     mov rdi, r8
-    call @load_value [args=(rdi)]
+    call @load_value
     mov r12, rax
+    mov r9, rbx
     mov rdi, rbx
-    call @consume [args=(rdi)]
-    ret r12
+    call @consume
+    mov rax, r12
+    ret rax
 
 function @main
   abi
@@ -63,19 +75,22 @@ function @main
     scratch_bytes 48
 
   block ^entry
+    mov r8, @value
     mov rdi, 0
     mov rsi, 0
     mov rdx, 0
     mov rcx, 0
-    mov r8, @value
-    call @target [args=(rcx,rdx,rsi,rdi,r8)]
+    call @target
+    mov r9, rax
     mov rdx, 77
-    cmp.i64 rax, rdx
-    sete rax
-    movzx rax, rax
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
     mov rdx, 0
-    cmp.i64 rax, rdx
-    sete rax
-    movzx rax, rax
-    sext.i32 rax
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov r8, r9
+    sext.i32 r8
+    mov rax, r8
     ret rax

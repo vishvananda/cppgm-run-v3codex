@@ -1,0 +1,70 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @observed
+  storage scalar i64
+  init i64 0
+
+function @observe
+  abi
+    param %ignored -> rdi : ptr
+    param %value -> rsi : i64
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    param-slot %ignored -> [rbp-8] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.i64 @observed, rsi
+    ret
+
+function @copy_then_use
+  abi
+    param %source -> rdi : ptr
+    param %value -> rsi : i64
+    return void -> void
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    slot $copy -> [rbp-16] : obj<16x8>
+
+  block ^entry
+    mov r8, rdi
+    mov r9, rsi
+    mov rbx, rdi
+    lea rdi, [rbp-16]
+    mov rsi, rbx
+    copy_bytes 16x8, rdi, rsi
+    lea rdi, [rbp-16]
+    mov rsi, r9
+    call @observe
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    slot $source -> [rbp-16] : obj<16x8>
+
+  block ^entry
+    lea rdi, [rbp-16]
+    mov rsi, 42
+    call @copy_then_use
+    load.i64 r8, @observed
+    mov rdx, 42
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

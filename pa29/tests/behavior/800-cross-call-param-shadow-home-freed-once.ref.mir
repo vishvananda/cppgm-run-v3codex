@@ -1,0 +1,82 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @cell
+  storage scalar i64
+  init i64 0
+
+function @touch
+  abi
+    param %p -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    param-slot %p -> [rbp-8] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    ret
+
+function @cell_ptr
+  abi
+    return ptr -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, @cell
+    mov rax, r8
+    ret rax
+
+function @victim
+  abi
+    param %p -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov rbx, rdi
+    mov r8, rdi
+    call @touch
+    call @cell_ptr
+    mov r8, rax
+    mov r9, 1
+    mov rax, 77
+    store.i64 [r8], rax
+    mov rdi, rbx
+    call @touch
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov r8, @cell
+    mov rdi, r8
+    call @victim
+    load.i64 r8, @cell
+    mov rdx, 77
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

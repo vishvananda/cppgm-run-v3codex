@@ -1,0 +1,144 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @left
+  storage scalar f80
+  init f80 1.0L
+
+global @right
+  storage scalar f80
+  init f80 1.0L
+
+global @observed
+  storage scalar u8
+  init u8 0
+
+global @g1
+  storage scalar i64
+  init i64 1
+
+global @g2
+  storage scalar i64
+  init i64 2
+
+global @g3
+  storage scalar i64
+  init i64 3
+
+global @g4
+  storage scalar i64
+  init i64 4
+
+global @g5
+  storage scalar i64
+  init i64 5
+
+global @g6
+  storage scalar i64
+  init i64 6
+
+global @g7
+  storage scalar i64
+  init i64 7
+
+function @reduced
+  abi
+    param %first -> rdi : ptr
+    param %second -> rsi : ptr
+    return void -> void
+  frame
+    stack_size 208
+    scratch_bytes 48
+    preserve rbx r12 r13 r14 r15
+    temp %v6 -> [rbp-8] : i64
+    temp %v7 -> [rbp-16] : i64
+    temp %left -> [rbp-32] : f80
+    temp %right -> [rbp-48] : f80
+    temp %equal -> [rbp-56] : i64
+    temp %s1 -> [rbp-64] : i64
+    temp %s2 -> [rbp-72] : i64
+    temp %s3 -> [rbp-80] : i64
+    temp %s4 -> [rbp-88] : i64
+    temp %s5 -> [rbp-96] : i64
+    temp %sum -> [rbp-104] : i64
+
+  block ^entry
+    mov r8, rdi
+    mov r9, rsi
+    load.i64 rbx, @g1
+    load.i64 r12, @g2
+    load.i64 r13, @g3
+    load.i64 r14, @g4
+    load.i64 r15, @g5
+    load.i64 rax, @g6
+    store.i64 [rbp-8], rax
+    load.i64 rax, @g7
+    store.i64 [rbp-16], rax
+    mov rax, 1
+    cmp.i64 rax, 0
+    jne ^compare
+    jmp ^use_live_values
+
+  block ^compare
+    fmov.f80 [rbp-32], @left
+    fmov.f80 [rbp-48], @right
+    feq.f80 rax, [rbp-32], [rbp-48]
+    store.i64 [rbp-56], rax
+    load.u8 rax, [rbp-56]
+    store.u8 @observed, rax
+    ret
+
+  block ^use_live_values
+    mov rax, rbx
+    add rax, r12
+    store.i64 [rbp-64], rax
+    load.i64 rax, [rbp-64]
+    add rax, r13
+    store.i64 [rbp-72], rax
+    load.i64 rax, [rbp-72]
+    add rax, r14
+    store.i64 [rbp-80], rax
+    load.i64 rax, [rbp-80]
+    add rax, r15
+    store.i64 [rbp-88], rax
+    load.i64 rax, [rbp-88]
+    load.i64 rdx, [rbp-8]
+    add rax, rdx
+    store.i64 [rbp-96], rax
+    load.i64 rax, [rbp-96]
+    load.i64 rdx, [rbp-16]
+    add rax, rdx
+    store.i64 [rbp-104], rax
+    load.i64 rax, [rbp-104]
+    store.i64 [r8], rax
+    load.i64 rax, [rbp-104]
+    store.i64 [r9], rax
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov r8, @g1
+    mov rdi, r8
+    mov rsi, r8
+    call @reduced
+    load.u8 r8, @observed
+    zext.i8 r8
+    mov rdx, 1
+    cmp.u8 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    zext.i8 r9
+    sext.i32 r9
+    mov rax, r9
+    ret rax

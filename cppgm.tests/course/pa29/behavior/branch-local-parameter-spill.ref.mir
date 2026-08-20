@@ -1,0 +1,299 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @condition
+  storage scalar i64
+  init i64 0
+
+global @expected
+  storage scalar i64
+  init i64 7
+
+global @fields
+  storage data
+  item i64 0
+  item i64 0
+  item i64 0
+
+global @late_result
+  storage scalar i64
+  init i64 0
+
+global @late_source
+  storage scalar i64
+  init i64 13
+
+function @noop
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 0
+    ret rax
+
+function @probe
+  abi
+    param %condition -> rdi : ptr
+    param %value -> rsi : ptr
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    preserve rbx r12 r13 r14 r15
+    temp %e -> [rbp-8] : i64
+
+  block ^entry
+    mov r8, rdi
+    mov rbx, rsi
+    load.i64 r9, [r8]
+    mov rax, r9
+    cmp.i64 rax, 0
+    jne ^pressure
+    jmp ^merge
+
+  block ^pressure
+    mov r12, 1
+    mov r13, 2
+    mov r14, 3
+    mov r15, 4
+    mov rax, 5
+    store.i64 [rbp-8], rax
+    call @noop
+    add r12, r13
+    add r14, r15
+    add r12, r14
+    load.i64 rdx, [rbp-8]
+    add r12, rdx
+    jmp ^merge
+
+  block ^merge
+    load.i64 rax, [rbx]
+    ret rax
+
+function @probe_temporary
+  abi
+    param %condition -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    preserve rbx r12 r13 r14 r15
+    temp %e -> [rbp-8] : i64
+
+  block ^entry
+    mov r8, rdi
+    mov rbx, 7
+    load.i64 r9, [r8]
+    mov rax, r9
+    cmp.i64 rax, 0
+    jne ^pressure
+    jmp ^merge
+
+  block ^pressure
+    mov r12, 1
+    mov r13, 2
+    mov r14, 3
+    mov r15, 4
+    mov rax, 5
+    store.i64 [rbp-8], rax
+    call @noop
+    add r12, r13
+    add r14, r15
+    add r12, r14
+    load.i64 rdx, [rbp-8]
+    add r12, rdx
+    jmp ^merge
+
+  block ^merge
+    mov rax, rbx
+    ret rax
+
+function @probe_forwarded_alias
+  abi
+    param %base -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve r12 r13 r14 r15
+
+  block ^entry
+    mov r14, rdi
+    mov rax, 11
+    store.i64 [r14], rax
+    mov r12, rdi
+    lea r12, [r12+8]
+    mov rax, 22
+    store.i64 [r12], rax
+    mov r13, rdi
+    lea r13, [r13+16]
+    mov rax, 33
+    store.i64 [r13], rax
+    call @noop
+    jmp ^check
+
+  block ^check
+    load.i64 r8, [r14]
+    load.i64 r9, [r12]
+    load.i64 r15, [r13]
+    mov rdx, 11
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 22
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rdx, 33
+    cmp.i64 r15, rdx
+    sete r15
+    movzx r15, r15
+    and r8, r9
+    and r8, r15
+    mov rax, r8
+    ret rax
+
+function @clobber_first_argument
+  abi
+    param %value -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov r9, rdi
+    load.i64 rax, [r9]
+    ret rax
+
+function @write_after_call
+  abi
+    param %result -> rdi : ptr
+    param %source -> rsi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov rbx, rdi
+    mov r8, rsi
+    mov rdi, rsi
+    call @clobber_first_argument
+    jmp ^write
+
+  block ^write
+    mov r8, rbx
+    mov rax, 77
+    store.i64 [r8], rax
+    ret
+
+function @dead_parameter_pressure
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve rbx r13 r14 r15
+
+  block ^entry
+    mov rbx, rsi
+    mov r13, rcx
+    mov r14, r8
+    mov r8, rdi
+    mov r9, rdi
+    add r9, rbx
+    mov r15, rdx
+    add r15, r13
+    add r9, r15
+    mov r15, r9
+    add r15, r14
+    call @noop
+    mov rax, r15
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 96
+    scratch_bytes 48
+    preserve rbx r12 r13 r14 r15
+    temp %late_value -> [rbp-8] : i64
+
+  block ^entry
+    mov rbx, @condition
+    mov r8, @expected
+    mov rdi, rbx
+    mov rsi, r8
+    call @probe
+    mov r12, rax
+    mov rdi, rbx
+    call @probe_temporary
+    mov r13, rax
+    mov r8, @fields
+    mov rdi, r8
+    call @probe_forwarded_alias
+    mov rbx, rax
+    mov r14, @late_result
+    mov r15, @late_source
+    mov rdi, r14
+    mov rsi, r15
+    call @write_after_call
+    load.i64 rax, [r14]
+    store.i64 [rbp-8], rax
+    load.i64 r14, [r15]
+    mov rdi, 1
+    mov rsi, 2
+    mov rdx, 3
+    mov rcx, 4
+    mov r8, 5
+    call @dead_parameter_pressure
+    mov r8, rax
+    mov rdx, 7
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 7
+    cmp.i64 r13, rdx
+    setne r13
+    movzx r13, r13
+    mov rdx, 0
+    cmp.i64 rbx, rdx
+    sete rbx
+    movzx rbx, rbx
+    load.i64 r9, [rbp-8]
+    mov rdx, 77
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov rdx, 13
+    cmp.i64 r14, rdx
+    setne r14
+    movzx r14, r14
+    mov rdx, 15
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or r12, r13
+    or r12, rbx
+    or r9, r14
+    or r12, r9
+    or r12, r8
+    mov r8, r12
+    sext.i32 r8
+    mov rax, r8
+    ret rax

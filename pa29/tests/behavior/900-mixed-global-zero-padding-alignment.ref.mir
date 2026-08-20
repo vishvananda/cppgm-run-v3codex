@@ -1,0 +1,39 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @prefix
+  storage scalar u8
+  init u8 0
+
+global @data
+  storage data
+  item i8 1
+  item zero 15
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov r8, @prefix
+    mov r9, @data
+    sub r9, r8
+    mov rdx, 1
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rdx, 0
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov r8, r9
+    sext.i32 r8
+    mov rax, r8
+    ret rax

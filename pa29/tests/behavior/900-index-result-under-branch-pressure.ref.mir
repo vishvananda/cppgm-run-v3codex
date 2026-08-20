@@ -1,0 +1,169 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @byte
+  storage scalar u8
+  init u8 42
+
+function @touch
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @source
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, rdi
+    ret rax
+
+function @pressure
+  abi
+    param %high -> rdi : i64
+    param %enter -> rsi : i64
+    param %offset -> rdx : i64
+    param %a -> rcx : i64
+    param %b -> r8 : i64
+    param %c -> r9 : i64
+    return i64 -> rax
+  frame
+    stack_size 144
+    scratch_bytes 48
+    preserve rbx r12 r13 r14 r15
+    temp %sib_bc -> [rbp-8] : i64
+    temp %address -> [rbp-16] : ptr
+    temp %q6 -> [rbp-24] : i64
+    temp %q7 -> [rbp-32] : i64
+    temp %q8 -> [rbp-40] : i64
+
+  block ^entry
+    mov r14, rdx
+    mov rbx, rcx
+    mov r12, r8
+    mov r8, rsi
+    mov r13, r9
+    mov r9, rdi
+    cmp.i64 r9, 0
+    jne ^high_pressure
+    jmp ^select
+
+  block ^select
+    cmp.i64 r8, 0
+    jne ^compute
+    jmp ^sibling_setup
+
+  block ^sibling_setup
+    mov r15, rbx
+    add r15, r12
+    mov rax, r12
+    add rax, r13
+    store.i64 [rbp-8], rax
+    jmp ^sibling_use
+
+  block ^compute
+    mov r8, @byte
+    mov r9, r14
+    add r9, 0
+    mov rax, r8
+    mov rdx, r9
+    add rax, rdx
+    store.ptr [rbp-16], rax
+    call @touch
+    load.ptr rcx, [rbp-16]
+    load.i8 r8, [rcx]
+    sext.i8 r8
+    mov r9, r8
+    zext.i8 r9
+    mov r8, rbx
+    add r8, r12
+    add r8, r13
+    add r9, r8
+    mov rax, r9
+    ret rax
+
+  block ^sibling_use
+    mov r8, r15
+    add r8, rbx
+    load.i64 r9, [rbp-8]
+    add r9, r13
+    add r8, r9
+    mov rax, r8
+    ret rax
+
+  block ^high_pressure
+    mov rdi, 1
+    call @source
+    mov rbx, rax
+    mov rdi, 2
+    call @source
+    mov r12, rax
+    mov rdi, 3
+    call @source
+    mov r13, rax
+    mov rdi, 4
+    call @source
+    mov r14, rax
+    mov rdi, 5
+    call @source
+    mov r15, rax
+    mov rdi, 6
+    call @source
+    store.i64 [rbp-24], rax
+    mov rdi, 7
+    call @source
+    store.i64 [rbp-32], rax
+    mov rdi, 8
+    call @source
+    store.i64 [rbp-40], rax
+    call @touch
+    add rbx, r12
+    add r13, r14
+    load.i64 rdx, [rbp-24]
+    add r15, rdx
+    load.i64 r8, [rbp-32]
+    load.i64 rdx, [rbp-40]
+    add r8, rdx
+    add rbx, r13
+    add r15, r8
+    add rbx, r15
+    mov rax, rbx
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 0
+    mov rsi, 1
+    mov rdx, 0
+    mov rcx, 1
+    mov r8, 2
+    mov r9, 3
+    call @pressure
+    mov r8, rax
+    mov rdx, 48
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax

@@ -1,0 +1,117 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @target
+  abi
+    param %pair -> rdi : i64
+    param %pair -> rsi : i64
+    param %io -> rdx : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve rbx r12
+    param-slot %pair -> [rbp-16] : obj<16x8>
+
+  block ^entry
+    store.i64 [rbp-16], rdi
+    store.i64 [rbp-8], rsi
+    mov r8, rdx
+    lea rcx, [rbp-16]
+    load.i64 r9, [rcx]
+    lea rbx, [rbp-16]
+    lea rbx, [rbx+8]
+    load.i64 r12, [rbx]
+    add r9, r12
+    add r9, r8
+    mov rax, r9
+    ret rax
+
+function @mid
+  abi
+    param %fp -> rdi : ptr
+    param %a -> rsi : i64
+    param %b -> rdx : i64
+    param %c -> rcx : i64
+    param %d -> r8 : i64
+    param %e -> r9 : i64
+    param %f -> [rbp+16] : i64
+    param %g -> [rbp+24] : i64
+    return i64 -> rax
+  frame
+    stack_size 128
+    scratch_bytes 0
+    param-slot %a -> [rbp-8] : i64
+    param-slot %b -> [rbp-16] : i64
+    param-slot %c -> [rbp-24] : i64
+    param-slot %d -> [rbp-32] : i64
+    param-slot %e -> [rbp-40] : i64
+    param-slot %f -> [rbp-48] : i64
+    param-slot %g -> [rbp-56] : i64
+    slot $pair -> [rbp-72] : obj<16x8>
+    slot $force_spill -> [rbp-112] : obj<40x8>
+
+  block ^entry
+    store.i64 [rbp-8], rsi
+    store.i64 [rbp-16], rdx
+    store.i64 [rbp-24], rcx
+    store.i64 [rbp-32], r8
+    store.i64 [rbp-40], r9
+    load.i64 rax, [rbp+16]
+    store.i64 [rbp-48], rax
+    load.i64 rax, [rbp+24]
+    store.i64 [rbp-56], rax
+    mov r8, rdi
+    mov rax, 1000
+    lea rcx, [rbp-72]
+    store.i64 [rcx], rax
+    lea r9, [rbp-72]
+    lea r9, [r9+8]
+    mov rax, 2000
+    store.i64 [r9], rax
+    mov r10, rdi
+    lea r11, [rbp-72]
+    load.i64 rdi, [r11]
+    lea r11, [rbp-72]
+    load.i64 rsi, [r11+8]
+    mov rdx, 111
+    call *r10
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, @target
+    sub rsp, 16
+    mov rdi, r8
+    mov rsi, 1
+    mov rdx, 2
+    mov rcx, 3
+    mov r8, 4
+    mov r9, 5
+    mov r11, 6
+    store.i64 [rsp], r11
+    mov r11, 7
+    store.i64 [rsp+8], r11
+    call @mid
+    add rsp, 16
+    mov r9, rax
+    mov rdx, 3111
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rdx, 0
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rax, r9
+    ret rax

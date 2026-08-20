@@ -1,0 +1,56 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @values
+  storage data
+  item i64 11
+  item i64 22
+  item i64 33
+
+global @holder
+  storage data
+  item ptr addr @values
+
+function @g
+  abi
+    param %this -> rdi : ptr
+    param %__i -> rsi : i64
+    return ptr -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx r12
+
+  block ^entry
+    mov rbx, rdi
+    load.ptr r12, [rbx]
+    mov rdx, rsi
+    imul rdx, 8
+    add r12, rdx
+    mov rax, r12
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, @holder
+    mov rdi, r8
+    mov rsi, 2
+    call @g
+    mov r9, rax
+    load.i64 r8, [r9]
+    mov rdx, 33
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov rax, r8
+    ret rax

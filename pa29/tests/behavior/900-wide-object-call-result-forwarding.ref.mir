@@ -1,0 +1,82 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+function @make_pair
+  abi
+    return obj<16x8> -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $value -> [rbp-16] : obj<16x8>
+
+  block ^entry
+    mov rax, 11
+    lea rcx, [rbp-16]
+    store.i64 [rcx], rax
+    lea r8, [rbp-16]
+    lea r8, [r8+8]
+    mov rax, 22
+    store.i64 [r8], rax
+    lea r11, [rbp-16]
+    load.i64 rax, [r11]
+    lea r11, [rbp-16]
+    load.i64 rdx, [r11+8]
+    ret
+
+function @forward_pair
+  abi
+    return obj<16x8> -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    temp %value -> [rbp-16] : obj<16x8>
+
+  block ^entry
+    call @make_pair
+    lea r11, [rbp-16]
+    store.i64 [r11], rax
+    store.i64 [r11+8], rdx
+    lea r11, [rbp-16]
+    load.i64 rax, [r11]
+    lea r11, [rbp-16]
+    load.i64 rdx, [r11+8]
+    ret
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    slot $result -> [rbp-16] : obj<16x8>
+
+  block ^entry
+    call @forward_pair
+    lea r11, [rbp-16]
+    store.i64 [r11], rax
+    store.i64 [r11+8], rdx
+    lea rcx, [rbp-16]
+    load.i64 r8, [rcx]
+    lea r9, [rbp-16]
+    lea r9, [r9+8]
+    load.i64 rbx, [r9]
+    mov rdx, 11
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 22
+    cmp.i64 rbx, rdx
+    sete rbx
+    movzx rbx, rbx
+    and r8, rbx
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rax, r8
+    ret rax

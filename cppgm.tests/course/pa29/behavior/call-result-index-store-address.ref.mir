@@ -1,0 +1,40 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @record
+  storage data
+  item zero 41
+
+function @identity
+  abi
+    param %record -> rdi : ptr
+    return ptr -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, rdi
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, @record
+    mov rdi, r8
+    call @identity
+    mov r9, rax
+    lea r9, [r9+40]
+    mov rax, 1
+    store.u8 [r9], rax
+    mov rax, 0
+    ret rax

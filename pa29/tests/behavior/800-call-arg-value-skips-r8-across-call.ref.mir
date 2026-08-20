@@ -1,0 +1,157 @@
+machine_ir x86_64 linux
+
+startup
+    call @main
+    mov rdi, rax
+    exit
+
+global @good
+  storage scalar i64
+  init i64 0
+
+global @finish
+  storage scalar i64
+  init i64 0
+
+global @tmp
+  storage scalar i64
+  init i64 0
+
+global @bad
+  storage scalar i64
+  init i64 0
+
+function @intervene
+  abi
+    param %scratch -> rdi : ptr
+    param %a -> rsi : i64
+    param %b -> rdx : i64
+    param %c -> rcx : i64
+    param %wrong -> r8 : ptr
+    return void -> void
+  frame
+    stack_size 48
+    scratch_bytes 0
+    param-slot %scratch -> [rbp-8] : ptr
+    param-slot %a -> [rbp-16] : i64
+    param-slot %b -> [rbp-24] : i64
+    param-slot %c -> [rbp-32] : i64
+    param-slot %wrong -> [rbp-40] : ptr
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.i64 [rbp-16], rsi
+    store.i64 [rbp-24], rdx
+    store.i64 [rbp-32], rcx
+    store.ptr [rbp-40], r8
+    ret
+
+function @relocate
+  abi
+    param %start -> rdi : ptr
+    param %finish -> rsi : ptr
+    param %tmp -> rdx : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov r9, rdi
+    mov r8, rsi
+    mov rbx, rdx
+    mov rax, 77
+    store.i64 [r9], rax
+    mov rax, 88
+    store.i64 [r8], rax
+    mov rax, 99
+    store.i64 [rbx], rax
+    ret
+
+function @run
+  abi
+    param %a -> rdi : ptr
+    param %b -> rsi : ptr
+    param %c -> rdx : ptr
+    return void -> void
+  frame
+    stack_size 96
+    scratch_bytes 0
+    preserve rbx r12 r13
+    slot $a -> [rbp-8] : ptr
+    slot $b -> [rbp-16] : ptr
+    slot $c -> [rbp-24] : ptr
+    slot $scratch -> [rbp-64] : obj<40x8>
+
+  block ^entry
+    mov r9, rsi
+    mov rbx, rdx
+    store.ptr [rbp-8], rdi
+    store.ptr [rbp-16], r9
+    store.ptr [rbp-24], rbx
+    jmp ^loaded
+
+  block ^loaded
+    load.ptr rbx, [rbp-8]
+    load.ptr r12, [rbp-16]
+    load.ptr r13, [rbp-24]
+    mov r8, @bad
+    lea rdi, [rbp-64]
+    mov rsi, 1
+    mov rdx, 2
+    mov rcx, 3
+    call @intervene
+    mov rdi, rbx
+    mov rsi, r12
+    mov rdx, r13
+    call @relocate
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx r12
+
+  block ^entry
+    mov r8, @good
+    mov r9, @finish
+    mov rbx, @tmp
+    mov rdi, r8
+    mov rsi, r9
+    mov rdx, rbx
+    call @run
+    load.i64 r8, @good
+    load.i64 r9, @finish
+    load.i64 rbx, @tmp
+    load.i64 r12, @bad
+    mov rdx, 77
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov rdx, 88
+    cmp.i64 r9, rdx
+    sete r9
+    movzx r9, r9
+    mov rdx, 99
+    cmp.i64 rbx, rdx
+    sete rbx
+    movzx rbx, rbx
+    mov rdx, 0
+    cmp.i64 r12, rdx
+    sete r12
+    movzx r12, r12
+    and r8, r9
+    and rbx, r12
+    and r8, rbx
+    mov rdx, 0
+    cmp.i64 r8, rdx
+    sete r8
+    movzx r8, r8
+    mov r9, r8
+    sext.i32 r9
+    mov rax, r9
+    ret rax
