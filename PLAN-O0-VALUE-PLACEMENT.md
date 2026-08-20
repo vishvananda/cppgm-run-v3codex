@@ -1,6 +1,6 @@
 # Plan: O0 Native Value Placement and Address Selection
 
-Status: in progress
+Status: complete (2026-08-20)
 
 Date: 2026-08-17
 
@@ -208,7 +208,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
-| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases; direct unary returns change no existing fixture; direct integer-conversion returns change 4 exact and 1 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied. Direct unary returns: object/text -16 bytes and 4 instructions/moves; paired user -0.35%, wall -0.48%, RSS +0.63%. Direct integer-conversion returns: object -32 bytes, text -20 bytes, and 6 instructions/moves; paired user -1.05%, wall -0.40%, and RSS -0.21% | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, promoted-slot interval extension, dense slot-analysis state, and integer comparison/unary/conversion return placement complete; broader producer placement pending |
+| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases; direct unary returns change no existing fixture; direct integer-conversion returns change 4 exact and 1 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied. Direct unary returns: object/text -16 bytes and 4 instructions/moves; paired user -0.35%, wall -0.48%, RSS +0.63%. Direct integer-conversion returns: object -32 bytes, text -20 bytes, and 6 instructions/moves; paired user -1.05%, wall -0.40%, and RSS -0.21% | complete; VP4/VP5 cover the retained broader placement cases, while the measured broad integer-binary reshaping candidate remains deferred because it increased text size |
 | VP4 | 5 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap; wide spill reuse changes 2 strict and 1 structural PA29 cases (4 MIR/CMIR files); scalar spill reuse changes 1 behavior-exact PA29 fixture and adds PA29 O0 and PA38 O2 course behavior reducers; frame-address placement changes 4 strict and 4 structural PA29 fixtures plus 3 PA38 O1/O2 fixtures | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%. Wide spill reuse is frozen-object-identical; paired user +0.18%, wall +0.08%, RSS -0.03%. Lifetime-keyed frame forwarding is also frozen-object-identical; paired user -0.70%, wall -0.24%, RSS -0.22%. Scalar reuse removes 80 object bytes and 74 text bytes with unchanged instruction counts; final paired user +0.45%, wall +0.53%, RSS +0.18%. Frame-address placement removes 2,472 object bytes, 2,507 text bytes, 1,341 MIR instructions, and 589 x86 instructions with neutral paired timing | complete: caller-saved pool, clobber-safe reuse, typed-immediate/address rematerialization, safe copy sharing, direct constraints, intact ABI-parameter retention, all scalar spill-home reuse, and frame-forwarding lifetime identity |
 | VP5 | 4 proposed PA29 placement witnesses plus existing course reducers | Existing migrations are enumerated in the phase narrative below; selected parameter demand changes 9 PA29 and 2 PA38 fixture cases; stable promoted homes, direct remainder returns, and the early call-result carrier change no checked fixture; logical large ALU immediates change 1 structural PA29 pair; unread selected homes change 1 strict PA29 fixture and 1 structural raw/canonical pair; compatibility retirement changes no fixtures | Compatibility telemetry falls from 959 operand rewrites / 874 dead definitions / 3 frame corrections to 0 / 0 / 0 before the pass and is then retired; the unread-home slice removes 2,288 object bytes, 2,428 text bytes, and 1,001 x86 instructions, while removing the pass is object-identical and improves paired user/wall time 1.54%/2.01% | complete |
 
@@ -1429,3 +1429,29 @@ Three sequential observations per arm give baseline/candidate medians of
 4.280/4.250 seconds user, 4.750/4.710 seconds wall, and 360,672/360,364 KiB
 peak RSS. The affected report passes 376/376, the full report passes
 5,228/5,228, and the PA39 audit has zero fatal findings.
+
+## Final completion gate
+
+All VP0 through VP5 implementation phases are complete at `9f676b9c`. The
+nonretained prototypes and the separate compact-identity migration remain
+documented above, but neither is unfinished work in this plan.
+
+Starting with no PA39 object tree, the final 32-way self build completed in
+17.90 seconds wall, 402.89 seconds aggregate user time, and 40.94 seconds
+system time, with 221,968 KiB peak RSS. It produced 180 objects and a
+17,269,936-byte `cppgm++-self` binary with SHA-256
+`8e8d7e8178b08607181f857635d7c0a08af822f3a1000e455f22cb9d3f370910`.
+
+Each inception lane started with no inception object tree while retaining that
+exact self compiler and its comparison objects. The clean 8-way comparison
+completed in 4:01.85 wall, 1,817.94 seconds aggregate user time, and 42.56
+seconds system time, with 227,212 KiB peak RSS. The separately cleaned 32-way
+comparison completed in 1:53.04 wall, 2,918.99 seconds aggregate user time,
+and 67.86 seconds system time, with 224,160 KiB peak RSS. Both lanes rebuilt
+and matched all 180 objects, then reproduced the self binary byte for byte.
+
+The final root report passes 5,228/5,228. The PA39 file audit has zero fatal
+findings and 28 advisory warnings. At `-O0`, the development compiler and the
+clean self compiler independently produce byte-identical 4,406,784-byte
+objects for frozen `semantic_overload.cpp`, both with SHA-256
+`520af5ad2cc527d93df30616ee074ad5cfd906c301d9988b0ac0dc450b2f6af1`.
