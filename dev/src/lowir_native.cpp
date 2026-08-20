@@ -1641,13 +1641,6 @@ private:
       right = reg_operand(XR_RDX);
       append_integer_normalization(out, operand_type(instruction.second), right);
     }
-    const bool bitwise = instruction.op.kind == LowOperation::LOP_AND || instruction.op.kind == LowOperation::LOP_OR ||
-                         instruction.op.kind == LowOperation::LOP_XOR;
-    if(right.kind == MirOperand::OP_IMM && !bitwise &&
-       (right.imm < INT32_MIN || right.imm > INT32_MAX)) {
-      append_move(out, reg_operand(XR_RDX), right);
-      right = reg_operand(XR_RDX);
-    }
     MirInstruction::Opcode opcode = MirInstruction::MI_ADD;
     if(instruction.op.kind == LowOperation::LOP_SUB) opcode = MirInstruction::MI_SUB;
     else if(instruction.op.kind == LowOperation::LOP_MUL) opcode = MirInstruction::MI_IMUL;

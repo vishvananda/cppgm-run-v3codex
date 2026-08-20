@@ -638,8 +638,10 @@ strategies include:
   register constraint directly
 - let a representation-preserving scalar copy share an intact parameter
   location when the copied result's interval crosses no clobber
-- retain encodable integer constants as immediates and place division or
-  variable-shift operands directly in their required registers
+- retain integer constants as typed MIR immediates, letting native emission
+  materialize a scratch only when the concrete x86 encoding requires it, and
+  place division or variable-shift operands directly in their required
+  registers
 - prefer an available caller-saved register to adding a callee-saved register
   to the frame's `preserve` list
 - reuse compatible compiler-created temporary frame locations when their value
