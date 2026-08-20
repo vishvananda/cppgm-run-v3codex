@@ -1,6 +1,6 @@
 # Plan: O0 Clang Code-Shape Parity
 
-Status: implemented; final PA39 validation in progress
+Status: complete
 
 Date: 2026-08-20
 
@@ -655,8 +655,10 @@ cleanup pass at O0.
 The migration changes seven PA17, two PA22, one PA25, twenty-six PA26, and two
 PA28 existing LowIR fixtures.  New course reducers live at PA16, PA17, and
 PA26; a PA18 reducer pins base/deleting/complete destructor-entry order after
-cleanup demand changes.  All references were generated through `ref-test`
-with clean detached compilers at `232f0fc8` and `d6716a4c`.
+cleanup demand changes.  Existing PA31 references remain exact, and the later
+native landing-entry reducer adds behavioral coverage without changing
+serialized MIR.  All references were generated through `ref-test` with clean
+detached compilers at `232f0fc8` and `d6716a4c`.
 
 On the frozen compile, cleanup state telemetry records 18,362 probes, 15,656
 hits, 2,706 unique states, 2,654 blocks emitted, 11,631 destructor actions
@@ -873,6 +875,28 @@ report passes 5,275/5,275, and the file audit has zero fatal findings.  No
 course fixture or student-facing contract changes: the authoritative fixtures
 do not make physical string-table sharing an observable PA32 requirement.
 
+## Final validation
+
+The retained implementation, including the PA31 landing-entry legalization at
+`51ac844a`, produces a deterministic 3,246,896-byte frozen object with SHA-256
+`7e5c4439998ec30af49f047f80a702f266df9ed9abcd0ff242176dd9be910a98`.
+Relative to P0, the complete batch removes 1,159,376 object bytes (26.3%) and
+188,178 `.text*` bytes (20.4%).  Its final load-screened frozen median is 4.565
+seconds wall and 4.125 seconds user with 360,850 KiB peak RSS, comfortably
+below the 15-second goal and without a measured compile-time regression.
+
+The final clean PA39 self build completes in 18.48 seconds wall, 422.58 seconds
+user, and 41.58 seconds system with 224,924 KiB peak RSS.  Starting from clean
+inception objects, the 8-worker comparison completes in 4:08.99 wall with
+230,944 KiB peak RSS; after cleaning those objects, the 32-worker comparison
+completes in 1:52.93 wall with 226,368 KiB peak RSS.  Both compare all 189
+objects and the final executable successfully.  The self and inception
+executables are byte-identical with SHA-256
+`2b15bfe75f5f6402b7c444c46f157c539f999d3a141f1d820febfc0227cb5ba1`.
+
+The exact final tree passes all 5,276 root report tests and the PA39 file audit
+with zero fatal findings.
+
 ## Validation and performance gates
 
 For every phase:
@@ -932,11 +956,11 @@ Fill one row after each independently retained phase.
 | P3 immediate stores | none | 10 PA29 strict raw, 13 existing structural raw/canonical, one new behavioral structural reducer, and 5 PA38 raw/canonical fixtures migrate | 4,394,672 bytes; `.text*` 908,836; 1,688 fewer instructions; functions/relocations unchanged | ABBA -0.42% wall, -0.23% user, +0.02% RSS | PA29 257/257; through PA29 4,167/4,167; full report 5,267/5,267; zero-fatal audit | complete |
 | P4 memory RHS | none | 3 PA29 strict raw, 2 structural raw/canonical, and one new behavioral structural reducer migrate; PA38 unchanged | 4,392,256 bytes; `.text*` 906,658; 741 fewer instructions; functions/relocations unchanged | ABBA +0.64% wall, +0.71% user, +0.52% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P5 shared epilogue | none | behavior fixture's informational MIR expands with its source, but every semantic return remains; native bytes change only for existing inputs | 4,382,992 bytes; `.text*` 897,349; 5,858 native returns and 4,575 physical epilogues; functions/relocations unchanged | ABBA -0.42% wall, -0.24% user, -0.24% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
-| P6 cleanup DAG | one new PA16 reducer; 7 PA17, 2 PA22, 1 PA25, 26 PA26, and 2 PA28 existing fixtures migrate; new PA17/PA26 reducers | new PA18 lifecycle-order reducer; PA31 behavior stays exact | 3,927,648 bytes; `.text*` 734,392; 184,790 instructions; 26,936 relocations; functions unchanged | ABBA -3.00% wall, -3.04% user, +0.08% RSS | PA16 297/297; through PA16 1,468/1,468; full report 5,272/5,272; zero-fatal audit | complete; `232f0fc8`, `d6716a4c` |
+| P6 cleanup DAG | one new PA16 reducer; 7 PA17, 2 PA22, 1 PA25, 26 PA26, and 2 PA28 existing fixtures migrate; new PA17/PA26 reducers | new PA18 lifecycle-order reducer; existing PA31 refs stay exact | 3,927,648 bytes; `.text*` 734,392; 184,790 instructions; 26,936 relocations; functions unchanged | ABBA -3.00% wall, -3.04% user, +0.08% RSS | PA16 297/297; through PA16 1,468/1,468; full report 5,272/5,272; zero-fatal audit | complete; `232f0fc8`, `d6716a4c` |
 | P7 zero initialization | 14 existing fixtures migrate across PA16, PA17, PA19, PA20, PA22, PA23, PA24, PA26, PA27; two new PA16 reducers | PA29 encoding changes below MIR; one PA37 O2 driver fixture migrates | 3,927,584 bytes; `.text*` 734,354; 184,780 instructions; functions/relocations unchanged | ABBA +0.11% wall, 0.00% user, +0.06% RSS | PA16 299/299; through PA16 1,470/1,470; full report 5,275/5,275; zero-fatal audit | complete; `77be9a49`, `313b7426` |
 | P8 weak demand | none | telemetry names now distinguish required weak from object-output roots; no demand edge removed | byte-identical to P7; 4,575 typed definitions classify completely; cppgm++-only weak set is 1,834 names/1,745 bodies, of which 1,732 are direct call targets | ABBA -0.11% wall, -0.12% user, -0.15% RSS | PA15 116/116; through PA15 1,171/1,171; full report 5,275/5,275; zero-fatal audit | complete; `b6b97850` |
 | P9 shared ELF strings | none | PA32 ELF layout only; no fixture/handout change | 3,242,296 bytes (-685,288); one 702,284-byte table; code/symbols/relocations unchanged | ABBA +0.22% wall, +0.12% user, -0.05% RSS | PA32 150/150; through PA32 4,451/4,451; full report 5,275/5,275; readelf lint clean; zero-fatal audit | complete; `aacb80a9` |
-| P6 PA31 landing legalization | none | one new PA31 behavior reducer; serialized MIR unchanged | 3,246,896 bytes; `.text*` +4,300; LSDA +238; functions/relocations unchanged | ABBA -0.33% wall, -0.49% user, +0.45% RSS | reducer fails pre-fix with 139; full report 5,276/5,276; zero-fatal audit; self-host reproducer passes | complete; pending commit |
+| P6 PA31 landing legalization | none | one new PA31 behavior reducer; serialized MIR unchanged | 3,246,896 bytes; `.text*` +4,300; LSDA +238; functions/relocations unchanged | ABBA -0.33% wall, -0.49% user, +0.45% RSS | reducer fails pre-fix with 139; full report 5,276/5,276; zero-fatal audit; self-host reproducer passes | complete; `51ac844a` |
 
 ## Completion criteria
 
