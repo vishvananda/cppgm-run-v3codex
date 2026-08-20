@@ -15,8 +15,7 @@ function @make_value
 
   block ^entry
     mov rax, 7
-    lea rcx, [rbp-<off0>]
-    store.i64 [rcx], rax
+    store.i64 [rbp-<off0>], rax
     lea <gpr0>, [rbp-<off0>]
     load.i64 rax, [<gpr0>]
     ret
@@ -32,8 +31,7 @@ function @unwrap
 
   block ^entry
     store.i64 [rbp-<off0>], rdi
-    lea rcx, [rbp-<off0>]
-    load.i64 rax, [rcx]
+    load.i64 rax, [rbp-<off0>]
     ret rax
 
 function @main

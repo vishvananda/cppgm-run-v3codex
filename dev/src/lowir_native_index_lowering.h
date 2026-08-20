@@ -65,10 +65,16 @@ protected:
         static_cast<long long>(instruction.type.storage_size) : 0;
     mir_model::MirOperand base = lowerer.resolve(instruction.first);
     if(index_has_direct_memory_use(block, instruction_index, instruction) &&
-       base.kind == mir_model::MirOperand::OP_REG) {
+       (base.kind == mir_model::MirOperand::OP_REG ||
+        (constant_index &&
+         base.kind == mir_model::MirOperand::OP_FRAME &&
+         lowerer.is_frame_address(instruction.first)))) {
       mir_model::MirOperand address;
       if(constant_index) {
-        address = dereference(base.reg, offset);
+        if(base.kind == mir_model::MirOperand::OP_FRAME) {
+          address = base;
+          address.offset += offset;
+        } else address = dereference(base.reg, offset);
       } else {
         const mir_model::MirOperand index =
           lowerer.resolve(instruction.second);
@@ -156,7 +162,16 @@ materialize_index:
     }
     bool address_emitted = false;
     if(constant_index) {
-      if(base.kind == mir_model::MirOperand::OP_REG && offset != 0) {
+      if(base.kind == mir_model::MirOperand::OP_FRAME &&
+         lowerer.is_frame_address(instruction.first)) {
+        base.offset += offset;
+        mir_model::MirInstruction lea =
+          machine_instruction(mir_model::MirInstruction::MI_LEA);
+        append_operand(lea, destination);
+        append_operand(lea, base);
+        out.push_back(lea);
+        address_emitted = true;
+      } else if(base.kind == mir_model::MirOperand::OP_REG && offset != 0) {
         mir_model::MirInstruction lea =
           machine_instruction(mir_model::MirInstruction::MI_LEA);
         append_operand(lea, destination);

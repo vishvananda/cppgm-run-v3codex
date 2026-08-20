@@ -797,7 +797,11 @@ private:
         return values_[operand.value].location;
     }
     if(is_frame_address(operand)) {
-      append_address(out, XR_RCX, resolve(operand));
+      const MirOperand address = resolve(operand);
+      if(address.kind == MirOperand::OP_FRAME ||
+         address.kind == MirOperand::OP_DEREF)
+        return address;
+      append_address(out, XR_RCX, address);
       return dereference(XR_RCX);
     }
     const MirOperand address = resolve(operand);

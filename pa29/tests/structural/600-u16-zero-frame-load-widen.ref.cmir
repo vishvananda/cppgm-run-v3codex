@@ -16,8 +16,7 @@ function @main
   block ^entry
     mov rax, 65535
     store.u16 [rbp-<off0>], rax
-    lea rcx, [rbp-<off0>]
-    load.u16 r8, [rcx]
+    load.u16 r8, [rbp-<off0>]
     zext.i16 r8
     cmp.i64 r8, 65535
     sete rax

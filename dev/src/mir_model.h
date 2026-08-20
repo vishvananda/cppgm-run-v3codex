@@ -194,8 +194,9 @@ struct Instruction
     // A zero-offset LowIR index may retain its base register when the complete
     // result interval can safely share that location; it needs no MI_LEA or
     // register copy solely to preserve pointer identity. A pure unused index
-    // emits no MIR, and an immediately preceding frame address used only by
-    // that index remains a logical frame location instead of emitting MI_LEA.
+    // emits no MIR. An immediately preceding frame address used only by an
+    // index remains a logical frame location; constant indexing incorporates
+    // its displacement into that location without an initial MI_LEA.
     MI_FMOV,
     MI_FNEG,
     MI_FADD,

@@ -19,7 +19,6 @@ function @main
     call @Box_int___Box [args=(rdi)]
     mov rax, 7
     store.i32 [rbp-8], rax
-    lea rcx, [rbp-8]
     load.i32 r8, [rbp-8]
     sext.i32 r8
     mov rbx, r8

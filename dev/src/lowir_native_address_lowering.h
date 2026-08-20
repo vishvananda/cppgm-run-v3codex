@@ -42,6 +42,19 @@ protected:
 			derived.facts_.uses[destination] == 1;
 	}
 
+	bool address_is_immediately_indexed(const lowir_model::LowirBlock& block,
+		std::size_t instruction_index, lowir_model::ValueId destination) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (instruction_index + 1 >= block.instructions.size()) return false;
+		const lowir_model::Instruction& next =
+			block.instructions[instruction_index + 1];
+		return next.kind == lowir_model::Instruction::IK_INDEX &&
+			next.first.kind == lowir_model::Operand::OP_TEMP &&
+			next.first.value == destination &&
+			derived.facts_.uses[destination] == 1;
+	}
+
 	bool address_is_next_bulk_operand(const lowir_model::LowirBlock& block,
 		std::size_t instruction_index, lowir_model::ValueId destination) const
 	{
@@ -198,7 +211,11 @@ protected:
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_next_bulk_operand(
 					block, instruction_index, instruction.dest) ||
+				derived.address_is_immediately_loaded(
+					block, instruction_index, instruction.dest) ||
 				derived.address_is_immediately_stored(
+					block, instruction_index, instruction.dest) ||
+				derived.address_is_immediately_indexed(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_object_result_destination(
 					block, instruction_index, instruction.dest) ||

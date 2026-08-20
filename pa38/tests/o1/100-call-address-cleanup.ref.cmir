@@ -28,7 +28,6 @@ function @main
 
   block ^entry
     mov rax, 7
-    lea rcx, [rbp-<off0>]
     store.i32 [rbp-<off0>], rax
     lea rdi, [rbp-<off0>]
     call @id [args=(rdi)]

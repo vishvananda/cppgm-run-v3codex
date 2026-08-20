@@ -541,7 +541,10 @@ To complete PA29, implement these goals:
    should not introduce a register copy or `lea`, and an unused `index` should
    not emit an instruction. When an indexed address must remain as a value, the
    MIR should use one `lea` rather than separate copy, multiply, and add
-   instructions.
+   instructions. An address of frame storage used only by the following scalar
+   load, store, or constant index should remain frame-shaped: the memory
+   operation should use `[rbp+displacement]` directly, and the constant index
+   should incorporate its displacement without first materializing the base.
 
 16. Preserve mixed integer/floating call ABI classification.
    Calls that mix GPR and XMM arguments should keep that classification visible in MIR so
@@ -620,6 +623,8 @@ strategies include:
 - fold a one-use `index` into the following memory operand, omit work for an
   unused or zero-displacement index, and use one `lea` when an indexed address
   must remain as a value
+- retain a one-use frame address through a scalar memory consumer so the
+  selected memory operand names the frame location directly
 
 These are suggestions, not required internal data structures or algorithms.
 Any implementation is acceptable if it preserves program behavior and produces
