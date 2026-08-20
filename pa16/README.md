@@ -260,6 +260,8 @@ PA16 supports the following in addition to the PA15 procedural subset:
 - non-static default member initializers for the supported scalar and supported
   class/aggregate subobject construction forms, with explicit constructor member-initializers
   taking precedence
+- local-class default member initializers that use an enclosing integral
+  constant expression without odr-using the enclosing automatic object
 - aggregate initialization for the supported PA16 object subset, including namespace-scope
   aggregate arrays whose elements contain string-literal pointer members
 - local and namespace-scope class object lifetime:

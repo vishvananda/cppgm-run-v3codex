@@ -216,6 +216,8 @@ To complete PA26, implement these goals:
    When a potentially throwing call is reached through a branch in an active
    handler, its unwind path must finish the handler and destroy objects that
    remain live from scopes outside the corresponding `try` statement.
+   If construction of a class subobject throws, destroy exactly the already
+   constructed bases and members in reverse construction order.
 
 ### Out Of Scope
 

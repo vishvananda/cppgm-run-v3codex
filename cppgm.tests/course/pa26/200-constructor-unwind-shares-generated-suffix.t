@@ -1,5 +1,3 @@
-// Proposed PA26 regression: constructor unwind cleanup shares destructor suffixes.
-
 int constructed;
 int destroyed;
 

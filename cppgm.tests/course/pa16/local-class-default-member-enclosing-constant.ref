@@ -1,0 +1,38 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $sentinel : u32
+  slot $record : obj<4x4>
+  slot $cond__1 : i32
+
+  block ^entry:
+    store u32 37, $sentinel
+    %t1 = addr $record
+    call void @Record__Record(%t1)
+    %t2 = addr $record
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = load u32 %t3
+    %t5 = cmp eq u32 %t4, 37
+    branch %t5, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t6 = load i32 $cond__1
+    return i32 %t6
+}
+
+function @Record__Record(%this : ptr) -> void [unwind=no, binding=internal, object=_ZZ4mainEN6RecordC1Ev, prefer_local=yes, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    store u32 37, %t2
+    return void
+}

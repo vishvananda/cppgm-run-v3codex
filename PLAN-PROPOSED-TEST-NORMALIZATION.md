@@ -442,12 +442,12 @@ tests.
 
 | Owner | Proposed anchors | Destination | Special handling | Status/commit |
 | --- | ---: | --- | --- | --- |
-| PA11 | 2 | course negative tests | retain corrected positive local fixtures | pending |
-| PA12 | 1 | no direct promotion; replacement course reducer | remove three reserved-spelling inputs including two active local cases | pending |
-| PA15 | 1 | course LowIR | rewrite double-underscore source names | pending |
-| PA16 | 1 | course LowIR | authoritative ref update | pending |
-| PA25 | 1 | course LowIR | adopt typed lambda/local-static identity | pending |
-| PA26 | 1 | course LowIR | cleanup-sharing contract | pending |
+| PA11 | 2 | course negative tests | retain corrected positive local fixtures | complete; updated-reference snapshot `25208d8d` |
+| PA12 | 1 | no direct promotion; replacement course reducer | remove three reserved-spelling inputs including two active local cases | complete; updated-reference snapshot `25208d8d` |
+| PA15 | 1 | course LowIR | rewrite double-underscore source names | complete; updated-reference snapshot `25208d8d` |
+| PA16 | 1 | course LowIR | authoritative ref update | complete; updated-reference snapshot `25208d8d` |
+| PA25 | 1 | course LowIR | adopt typed lambda/local-static identity | complete; updated-reference snapshot `25208d8d` |
+| PA26 | 1 | course LowIR | cleanup-sharing contract | complete; updated-reference snapshot `25208d8d` |
 | PA29 | 25 | 11 structural plus 14 behavior course tests | three course lanes; informational MIR in behavior | pending |
 | PA31 | 1 | course runtime family | delete private-header unit | pending |
 | PA32 | 2 | one course inspect; one design-plan-only deletion | weak pruning remains deferred | pending |

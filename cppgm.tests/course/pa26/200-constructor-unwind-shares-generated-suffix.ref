@@ -1,0 +1,451 @@
+declare global @__external_rtti_vtable____fundamental_type_info [binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
+
+declare global @__external_rtti__int [binding=strong, object=_ZTIi]
+
+declare function @__external_runtime___Unwind_Resume() -> void [return=noreturn, role=eh_resume, linkage=c, binding=strong, object=_Unwind_Resume]
+
+declare function @__external_runtime____cxa_allocate_exception(%arg0 : i64) -> ptr [role=eh_allocate_exception, linkage=c, binding=strong, object=__cxa_allocate_exception]
+
+declare function @__external_runtime____cxa_begin_catch(%arg0 : ptr) -> ptr [role=eh_begin_catch, linkage=c, binding=strong, object=__cxa_begin_catch]
+
+declare function @__external_runtime____cxa_end_catch() -> void [role=eh_end_catch, linkage=c, binding=strong, object=__cxa_end_catch]
+
+declare function @__external_runtime____cxa_throw(%arg0 : ptr, %arg1 : ptr, %arg2 : ptr) -> void [return=noreturn, role=eh_throw, linkage=c, binding=strong, object=__cxa_throw]
+
+declare function @__external_runtime____gxx_personality_v0() -> void [role=eh_personality, linkage=c, binding=strong, object=__gxx_personality_v0]
+
+global @__typeinfo_name__int [binding=weak, object=_ZTSi] = {
+  i8 105
+  i8 0
+}
+
+global @__rtti_int [binding=weak, object=_ZTIi] = {
+  ptr addr @__external_rtti_vtable____fundamental_type_info + 16
+  ptr addr @__typeinfo_name__int
+}
+
+global @__ehobj_int [binding=internal, object=@__ehobj_int] = {
+  zero 4
+}
+
+global @constructed : i32 [binding=strong, object=_Z11constructed] = zero
+
+global @destroyed : i32 [binding=strong, object=_Z9destroyed] = zero
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $owner : obj<8x1>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+
+  block ^entry:
+    eh_try ^catch_dispatch_1
+    %t1 = addr $owner
+    call void @YB__YB(%t1)
+    %t2 = addr $owner
+    call void @YB___YB(%t2)
+    eh_end
+    jump ^try_end_3
+
+  block ^catch_dispatch_1:
+    eh_catch @__external_rtti__int, 1
+    jump ^catch_entry_2
+
+  block ^catch_entry_2:
+    %t3 = exception ptr
+    %t4 = exception_selector i32
+    %t5 = cmp eq i32 %t4, 1
+    branch %t5, ^catch_body_4, ^catch_next_5
+
+  block ^catch_body_4:
+    %t6 = call ptr @__external_runtime____cxa_begin_catch(%t3)
+    eh_cleanup ^catch_cleanup_6
+    %t7 = load i32 @constructed
+    %t8 = cmp eq i32 %t7, 8
+    branch %t8, ^land_rhs_10, ^land_short_11
+
+  block ^land_rhs_10:
+    %t9 = load i32 @destroyed
+    %t10 = cmp eq i32 %t9, 7
+    %t11 = cmp ne i64 %t10, 0
+    store i64 %t11, $land__2
+    jump ^land_end_12
+
+  block ^land_short_11:
+    store i64 0, $land__2
+    jump ^land_end_12
+
+  block ^land_end_12:
+    %t12 = load i64 $land__2
+    branch %t12, ^cond_then_7, ^cond_else_8
+
+  block ^cond_then_7:
+    store i32 0, $cond__1
+    jump ^cond_end_9
+
+  block ^cond_else_8:
+    store i32 1, $cond__1
+    jump ^cond_end_9
+
+  block ^cond_end_9:
+    %t13 = load i32 $cond__1
+    eh_end
+    call void @__external_runtime____cxa_end_catch()
+    return i32 %t13
+
+  block ^catch_cleanup_6:
+    call void @__external_runtime____cxa_end_catch()
+    eh_end
+    resume
+
+  block ^catch_next_5:
+    resume
+
+  block ^try_end_3:
+    return i32 2
+}
+
+function @YB__YB(%this : ptr) -> void [binding=weak, object=_ZN2YBC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    call void @YA__YA(%t2)
+    eh_cleanup ^constructor_cleanup_1
+    %t5 = load ptr $this
+    %t6 = index i8 [projection=field] %t5, 1
+    call void @YA__YA(%t6)
+    eh_end
+    eh_cleanup ^constructor_cleanup_2
+    %t9 = load ptr $this
+    %t10 = index i8 [projection=field] %t9, 2
+    call void @YA__YA(%t10)
+    eh_end
+    eh_cleanup ^constructor_cleanup_3
+    %t13 = load ptr $this
+    %t14 = index i8 [projection=field] %t13, 3
+    call void @YA__YA(%t14)
+    eh_end
+    eh_cleanup ^constructor_cleanup_4
+    %t17 = load ptr $this
+    %t18 = index i8 [projection=field] %t17, 4
+    call void @YA__YA(%t18)
+    eh_end
+    eh_cleanup ^constructor_cleanup_5
+    %t21 = load ptr $this
+    %t22 = index i8 [projection=field] %t21, 5
+    call void @YA__YA(%t22)
+    eh_end
+    eh_cleanup ^constructor_cleanup_6
+    %t25 = load ptr $this
+    %t26 = index i8 [projection=field] %t25, 6
+    call void @YA__YA(%t26)
+    eh_end
+    eh_cleanup ^constructor_cleanup_7
+    %t29 = load ptr $this
+    %t30 = index i8 [projection=field] %t29, 7
+    call void @YA__YA(%t30)
+    eh_end
+    eh_cleanup ^constructor_cleanup_8
+    eh_end
+    return void
+
+  block ^constructor_cleanup_1:
+    %t3 = load ptr $this
+    %t4 = index i8 [projection=field] %t3, 0
+    call void @YA___YA(%t4)
+    eh_end
+    resume
+
+  block ^constructor_cleanup_2:
+    %t7 = load ptr $this
+    %t8 = index i8 [projection=field] %t7, 1
+    call void @YA___YA(%t8)
+    jump ^constructor_cleanup_1
+
+  block ^constructor_cleanup_3:
+    %t11 = load ptr $this
+    %t12 = index i8 [projection=field] %t11, 2
+    call void @YA___YA(%t12)
+    jump ^constructor_cleanup_2
+
+  block ^constructor_cleanup_4:
+    %t15 = load ptr $this
+    %t16 = index i8 [projection=field] %t15, 3
+    call void @YA___YA(%t16)
+    jump ^constructor_cleanup_3
+
+  block ^constructor_cleanup_5:
+    %t19 = load ptr $this
+    %t20 = index i8 [projection=field] %t19, 4
+    call void @YA___YA(%t20)
+    jump ^constructor_cleanup_4
+
+  block ^constructor_cleanup_6:
+    %t23 = load ptr $this
+    %t24 = index i8 [projection=field] %t23, 5
+    call void @YA___YA(%t24)
+    jump ^constructor_cleanup_5
+
+  block ^constructor_cleanup_7:
+    %t27 = load ptr $this
+    %t28 = index i8 [projection=field] %t27, 6
+    call void @YA___YA(%t28)
+    jump ^constructor_cleanup_6
+
+  block ^constructor_cleanup_8:
+    %t31 = load ptr $this
+    %t32 = index i8 [projection=field] %t31, 7
+    call void @YA___YA(%t32)
+    jump ^constructor_cleanup_7
+}
+
+function @YB___YB(%this : ptr) -> void [binding=weak, object=_ZN2YBD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    eh_cleanup ^destructor_cleanup_1
+    eh_end
+    eh_cleanup ^destructor_suffix_cleanup_3
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 7
+    call void @YA___YA(%t2)
+    eh_end
+    jump ^destructor_suffix_next_4
+
+  block ^destructor_suffix_cleanup_3:
+    %t3 = load ptr $this
+    %t4 = index i8 [projection=field] %t3, 6
+    call void @YA___YA(%t4)
+    %t5 = load ptr $this
+    %t6 = index i8 [projection=field] %t5, 5
+    call void @YA___YA(%t6)
+    %t7 = load ptr $this
+    %t8 = index i8 [projection=field] %t7, 4
+    call void @YA___YA(%t8)
+    %t9 = load ptr $this
+    %t10 = index i8 [projection=field] %t9, 3
+    call void @YA___YA(%t10)
+    %t11 = load ptr $this
+    %t12 = index i8 [projection=field] %t11, 2
+    call void @YA___YA(%t12)
+    %t13 = load ptr $this
+    %t14 = index i8 [projection=field] %t13, 1
+    call void @YA___YA(%t14)
+    %t15 = load ptr $this
+    %t16 = index i8 [projection=field] %t15, 0
+    call void @YA___YA(%t16)
+    eh_end
+    resume
+
+  block ^destructor_suffix_next_4:
+    eh_cleanup ^destructor_suffix_cleanup_5
+    %t17 = load ptr $this
+    %t18 = index i8 [projection=field] %t17, 6
+    call void @YA___YA(%t18)
+    eh_end
+    jump ^destructor_suffix_next_6
+
+  block ^destructor_suffix_cleanup_5:
+    %t19 = load ptr $this
+    %t20 = index i8 [projection=field] %t19, 5
+    call void @YA___YA(%t20)
+    %t21 = load ptr $this
+    %t22 = index i8 [projection=field] %t21, 4
+    call void @YA___YA(%t22)
+    %t23 = load ptr $this
+    %t24 = index i8 [projection=field] %t23, 3
+    call void @YA___YA(%t24)
+    %t25 = load ptr $this
+    %t26 = index i8 [projection=field] %t25, 2
+    call void @YA___YA(%t26)
+    %t27 = load ptr $this
+    %t28 = index i8 [projection=field] %t27, 1
+    call void @YA___YA(%t28)
+    %t29 = load ptr $this
+    %t30 = index i8 [projection=field] %t29, 0
+    call void @YA___YA(%t30)
+    eh_end
+    resume
+
+  block ^destructor_suffix_next_6:
+    eh_cleanup ^destructor_suffix_cleanup_7
+    %t31 = load ptr $this
+    %t32 = index i8 [projection=field] %t31, 5
+    call void @YA___YA(%t32)
+    eh_end
+    jump ^destructor_suffix_next_8
+
+  block ^destructor_suffix_cleanup_7:
+    %t33 = load ptr $this
+    %t34 = index i8 [projection=field] %t33, 4
+    call void @YA___YA(%t34)
+    %t35 = load ptr $this
+    %t36 = index i8 [projection=field] %t35, 3
+    call void @YA___YA(%t36)
+    %t37 = load ptr $this
+    %t38 = index i8 [projection=field] %t37, 2
+    call void @YA___YA(%t38)
+    %t39 = load ptr $this
+    %t40 = index i8 [projection=field] %t39, 1
+    call void @YA___YA(%t40)
+    %t41 = load ptr $this
+    %t42 = index i8 [projection=field] %t41, 0
+    call void @YA___YA(%t42)
+    eh_end
+    resume
+
+  block ^destructor_suffix_next_8:
+    eh_cleanup ^destructor_suffix_cleanup_9
+    %t43 = load ptr $this
+    %t44 = index i8 [projection=field] %t43, 4
+    call void @YA___YA(%t44)
+    eh_end
+    jump ^destructor_suffix_next_10
+
+  block ^destructor_suffix_cleanup_9:
+    %t45 = load ptr $this
+    %t46 = index i8 [projection=field] %t45, 3
+    call void @YA___YA(%t46)
+    %t47 = load ptr $this
+    %t48 = index i8 [projection=field] %t47, 2
+    call void @YA___YA(%t48)
+    %t49 = load ptr $this
+    %t50 = index i8 [projection=field] %t49, 1
+    call void @YA___YA(%t50)
+    %t51 = load ptr $this
+    %t52 = index i8 [projection=field] %t51, 0
+    call void @YA___YA(%t52)
+    eh_end
+    resume
+
+  block ^destructor_suffix_next_10:
+    eh_cleanup ^destructor_suffix_cleanup_11
+    %t53 = load ptr $this
+    %t54 = index i8 [projection=field] %t53, 3
+    call void @YA___YA(%t54)
+    eh_end
+    jump ^destructor_suffix_next_12
+
+  block ^destructor_suffix_cleanup_11:
+    %t55 = load ptr $this
+    %t56 = index i8 [projection=field] %t55, 2
+    call void @YA___YA(%t56)
+    %t57 = load ptr $this
+    %t58 = index i8 [projection=field] %t57, 1
+    call void @YA___YA(%t58)
+    %t59 = load ptr $this
+    %t60 = index i8 [projection=field] %t59, 0
+    call void @YA___YA(%t60)
+    eh_end
+    resume
+
+  block ^destructor_suffix_next_12:
+    eh_cleanup ^destructor_suffix_cleanup_13
+    %t61 = load ptr $this
+    %t62 = index i8 [projection=field] %t61, 2
+    call void @YA___YA(%t62)
+    eh_end
+    jump ^destructor_suffix_next_14
+
+  block ^destructor_suffix_cleanup_13:
+    %t63 = load ptr $this
+    %t64 = index i8 [projection=field] %t63, 1
+    call void @YA___YA(%t64)
+    %t65 = load ptr $this
+    %t66 = index i8 [projection=field] %t65, 0
+    call void @YA___YA(%t66)
+    eh_end
+    resume
+
+  block ^destructor_suffix_next_14:
+    eh_cleanup ^destructor_suffix_cleanup_15
+    %t67 = load ptr $this
+    %t68 = index i8 [projection=field] %t67, 1
+    call void @YA___YA(%t68)
+    eh_end
+    jump ^destructor_suffix_next_16
+
+  block ^destructor_suffix_cleanup_15:
+    %t69 = load ptr $this
+    %t70 = index i8 [projection=field] %t69, 0
+    call void @YA___YA(%t70)
+    eh_end
+    resume
+
+  block ^destructor_suffix_next_16:
+    %t71 = load ptr $this
+    %t72 = index i8 [projection=field] %t71, 0
+    call void @YA___YA(%t72)
+    jump ^destructor_end_2
+
+  block ^destructor_cleanup_1:
+    %t73 = load ptr $this
+    %t74 = index i8 [projection=field] %t73, 7
+    call void @YA___YA(%t74)
+    %t75 = load ptr $this
+    %t76 = index i8 [projection=field] %t75, 6
+    call void @YA___YA(%t76)
+    %t77 = load ptr $this
+    %t78 = index i8 [projection=field] %t77, 5
+    call void @YA___YA(%t78)
+    %t79 = load ptr $this
+    %t80 = index i8 [projection=field] %t79, 4
+    call void @YA___YA(%t80)
+    %t81 = load ptr $this
+    %t82 = index i8 [projection=field] %t81, 3
+    call void @YA___YA(%t82)
+    %t83 = load ptr $this
+    %t84 = index i8 [projection=field] %t83, 2
+    call void @YA___YA(%t84)
+    %t85 = load ptr $this
+    %t86 = index i8 [projection=field] %t85, 1
+    call void @YA___YA(%t86)
+    %t87 = load ptr $this
+    %t88 = index i8 [projection=field] %t87, 0
+    call void @YA___YA(%t88)
+    eh_end
+    resume
+
+  block ^destructor_end_2:
+    return void
+}
+
+function @YA__YA(%this : ptr) -> void [binding=weak, object=_ZN2YAC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @constructed
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @constructed
+    %t3 = load i32 @constructed
+    %t4 = cmp eq i32 %t3, 8
+    branch %t4, ^if_then_1, ^if_else_2
+
+  block ^if_then_1:
+    %t5 = call ptr @__external_runtime____cxa_allocate_exception(4)
+    store i32 1, %t5
+    %t6 = addr @__external_rtti__int
+    call void @__external_runtime____cxa_throw(%t5, %t6, 0)
+    return void
+
+  block ^if_else_2:
+    jump ^if_end_3
+
+  block ^if_end_3:
+    return void
+}
+
+function @YA___YA(%this : ptr) -> void [binding=weak, object=_ZN2YAD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @destroyed
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @destroyed
+    return void
+}

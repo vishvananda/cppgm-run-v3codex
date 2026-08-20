@@ -1,0 +1,42 @@
+1 translation units
+start translation unit 1
+translation-unit
+  variable first struct __local_type1
+    constructor-action __local_type1::__local_type1
+      call-expression prvalue void
+        callee __local_type1::__local_type1 function of (pointer to struct __local_type1) returning void
+        unary-expression prvalue pointer to struct __local_type1 OP_AMP:&
+          id-expression lvalue struct __local_type1 first
+  variable second struct __local_type2
+    constructor-action __local_type2::__local_type2
+      call-expression prvalue void
+        callee __local_type2::__local_type2 function of (pointer to struct __local_type2) returning void
+        unary-expression prvalue pointer to struct __local_type2 OP_AMP:&
+          id-expression lvalue struct __local_type2 second
+  function-definition main function of () returning int
+    compound-statement
+      expression-statement
+        assignment-expression lvalue int OP_ASS:=
+          member-expression lvalue int OP_DOT:value
+            id-expression lvalue struct __local_type1 first
+          literal prvalue enum __anonymous_enum1 3
+      expression-statement
+        assignment-expression lvalue int OP_ASS:=
+          member-expression lvalue int OP_DOT:value
+            id-expression lvalue struct __local_type2 second
+          literal prvalue enum __anonymous_enum1 5
+      return-statement
+        binary-expression prvalue int OP_MINUS:-
+          binary-expression prvalue int OP_PLUS:+
+            member-expression lvalue int OP_DOT:value
+              id-expression lvalue struct __local_type1 first
+            member-expression lvalue int OP_DOT:value
+              id-expression lvalue struct __local_type2 second
+          literal prvalue int 8
+  function-definition __local_type1::__local_type1 function of (pointer to struct __local_type1) returning void
+    parameter this pointer to struct __local_type1
+    compound-statement
+  function-definition __local_type2::__local_type2 function of (pointer to struct __local_type2) returning void
+    parameter this pointer to struct __local_type2
+    compound-statement
+end translation unit

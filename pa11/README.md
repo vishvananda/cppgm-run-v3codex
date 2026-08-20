@@ -196,6 +196,8 @@ PA11 must support:
   while an elaborated enum specifier must name an existing enumeration
 - namespace-scope anonymous class, union, and enum specifiers when the same
   declaration immediately introduces a usable type name
+- namespace-scope anonymous-union declarations only when they include the
+  required `static` specifier
 - template declarations with type and template-template parameter scopes
 - simple declarations and function definitions
 - `typedef` and alias declarations
@@ -219,6 +221,8 @@ PA11 must support:
   subset, including short-circuit `&&` and `||` evaluation that does not
   evaluate an unselected operand
 - `static_assert` over the supported integral constant-expression subset
+- rejection of implicit conversion or comparison between a scoped-enum value
+  and an integer
 - `constexpr` object declarations treated as `const` objects for PA11 type and
   constant-value purposes
 - the supported `decltype(...)` forms listed in the tests and reference output

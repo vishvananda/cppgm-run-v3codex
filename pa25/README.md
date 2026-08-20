@@ -209,6 +209,8 @@ To complete PA25, implement these goals:
 
 3. Captureless lambda lowering.
    Captureless lambdas should become callable lowered entities with deterministic LowIR.
+   A function-local static declared in a lambda has distinct storage for each
+   lambda expression and each enclosing function-template specialization.
 
 4. Range-for lowering.
    Range-for over arrays, braced-init lists, and supported user-defined `begin` / `end`

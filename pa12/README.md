@@ -335,3 +335,7 @@ A good PA12 design keeps these pieces separate:
 Treat the PA12 call layer as a base that later class and template assignments
 will extend. Avoid hard-coding assumptions that only work before member
 functions, constructors, user-defined conversions, or templates are introduced.
+
+Keep compiler-generated identities separate from ordinary source lookup.
+Anonymous entities should receive stable typed identities rather than names
+that are re-parsed or inserted into the source identifier namespace.
