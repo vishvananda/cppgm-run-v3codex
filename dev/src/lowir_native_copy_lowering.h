@@ -50,7 +50,7 @@ protected:
            original.spill_home.frame_binding == source.frame_binding))) ||
         (source.kind == mir_model::MirOperand::OP_REG &&
          !lowerer.crosses_register_clobber(instruction.dest, source.reg));
-      if(!original.parameter && stable &&
+      if(stable &&
          lowir_model::same_lowir_type(original.type, instruction.type)) {
         ValueFact alias = original;
         alias.parameter = false;

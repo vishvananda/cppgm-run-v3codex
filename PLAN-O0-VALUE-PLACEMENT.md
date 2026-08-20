@@ -1042,6 +1042,26 @@ each arm are deterministic.
 The affected PA29/PA31/PA37/PA38 report passes 373/373, the full report passes
 5,225/5,225, and the PA39 file audit has zero fatal findings.
 
+The parameter-copy sharing slice applies the existing same-type scalar-copy
+rule to an intact incoming parameter location.  It uses the copied result's
+precomputed fixed-register clobber mask and the existing live-location alias
+tracking; it adds no state or scan.  A copy whose result crosses a clobber
+continues to receive a distinct location.
+
+The public MIR migration changes only the structural
+`800-conditional-edge-liveness` PA29 fixture: its edge-live copy now returns
+the intact RSI parameter directly instead of moving it to R8.  The existing
+fixture covers both the copy and control-flow lifetime, and the PA29 contract
+and typed MIR scaffold state the rule, so no duplicate reducer is needed.
+
+Against `c5971a5f`, the frozen MIR and object are byte-identical at 210,621 MIR
+instructions and 4,412,976 object bytes.  Two load-screened sequential
+A/B/B/A blocks give baseline/candidate medians of 4.180/4.190 seconds user,
+4.650/4.675 seconds wall, and 360,360/360,818 KiB peak RSS.  Median
+within-block candidate ratios are +0.54% user, +0.65% wall, and +0.04% RSS,
+all neutral.  The affected report passes 373/373, the full report passes
+5,225/5,225, and the PA39 file audit has zero fatal findings.
+
 The direct object-chunk slice lets extended call setup load a frame-resident
 object or wide-integer chunk from its final frame operand into the assigned ABI
 register.  It retains the materialized-address fallback for non-frame sources.

@@ -480,6 +480,10 @@ To complete PA29, implement these goals:
    type in a floating store or return. It must be materialized as the requested floating
    value rather than routed through an integer-only move path.
 
+   A same-type scalar copy may keep a stable source location, including an
+   intact incoming parameter register, when the copied result's complete
+   interval crosses no clobber. Such a copy should not add a machine move.
+
 9. Implement call-boundary correctness without requiring a clever allocator.
    PA29 must respect the native calling convention for direct calls, indirect calls,
    mixed GPR/XMM arguments, variadic register-save state, stack arguments, scalar and
@@ -617,6 +621,8 @@ strategies include:
 
 - keep incoming parameters and call results in their ABI registers until an
   emitted instruction invalidates that location
+- let a same-type scalar copy share an intact parameter location when the
+  copied result's interval crosses no clobber
 - retain encodable integer constants as immediates and place division or
   variable-shift operands directly in their required registers
 - prefer an available caller-saved register to adding a callee-saved register

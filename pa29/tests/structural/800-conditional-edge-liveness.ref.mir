@@ -15,13 +15,12 @@ function @f
     scratch_bytes 0
 
   block ^entry
-    mov r8, rsi
     cmp.i64 rdi, 0
     jne ^then
     jmp ^else
 
   block ^then
-    ret r8
+    ret rsi
 
   block ^else
     mov rax, 0
