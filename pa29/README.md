@@ -631,6 +631,8 @@ strategies include:
 
 - keep incoming parameters and call results in their ABI registers until an
   emitted instruction invalidates that location
+- omit parameter homes and setup transfers when slot selection removes every
+  use that would have consumed them
 - let a representation-preserving scalar copy share an intact parameter
   location when the copied result's interval crosses no clobber
 - retain encodable integer constants as immediates and place division or

@@ -26,22 +26,10 @@ function @clobber
     param %f -> r9 : i64
     return i64 -> rax
   frame
-    stack_size 64
+    stack_size 48
     scratch_bytes 0
-    param-slot %a -> [rbp-<off0>] : i64
-    param-slot %b -> [rbp-<off1>] : i64
-    param-slot %c -> [rbp-<off2>] : i64
-    param-slot %d -> [rbp-<off3>] : i64
-    param-slot %e -> [rbp-<off4>] : i64
-    param-slot %f -> [rbp-<off5>] : i64
 
   block ^entry
-    store.i64 [rbp-<off0>], rdi
-    store.i64 [rbp-<off1>], rsi
-    store.i64 [rbp-<off2>], rdx
-    store.i64 [rbp-<off3>], rcx
-    store.i64 [rbp-<off4>], r8
-    store.i64 [rbp-<off5>], r9
     mov rax, 0
     ret rax
 

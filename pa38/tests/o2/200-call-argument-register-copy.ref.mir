@@ -12,10 +12,8 @@ function @sink
   frame
     stack_size 16
     scratch_bytes 0
-    param-slot %x -> [rbp-8] : i64
 
   block ^entry
-    store.i64 [rbp-8], rdi
     ret
 
 function @main

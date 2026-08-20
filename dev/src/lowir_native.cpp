@@ -493,7 +493,7 @@ private:
     bool incoming_pool_reserved[6] = {false, false, false, false, false, false};
     if(!wide_gpr_boundary || constrained_wide_pressure()) {
       for(std::size_t i = 4; i < source_.params.size() && i < 6; ++i) {
-        if(facts_.uses[source_.params[i].value] == 0) continue;
+        if(storage_facts_.parameter_selected_uses[i] == 0) continue;
         registers_.reserve(abi::argument_register(i));
         incoming_pool_reserved[i] = true;
       }
@@ -506,7 +506,8 @@ private:
     if(!wide_gpr_boundary)
       for(std::size_t i = std::min<std::size_t>(source_.params.size(), 6); i != 0; --i) {
         const lowir_model::ValueId value = source_.params[i - 1].value;
-        if(facts_.uses[value] && (crosses_call(value) ||
+        if(storage_facts_.parameter_selected_uses[i - 1] &&
+           (crosses_call(value) ||
            storage_facts_.has(value, StorageFacts::VF_PROMOTED_ACROSS_CALL))) {
           cross_call_homes[value] = registers_.allocate(true);
           cross_call_home_known[value] = 1;
@@ -514,7 +515,7 @@ private:
       }
     bool home_unused_register_parameters = wide_gpr_boundary;
     for(std::size_t i = 0; i < source_.params.size() && i < 6; ++i)
-      if(facts_.uses[source_.params[i].value] != 0)
+      if(storage_facts_.parameter_selected_uses[i] != 0)
         home_unused_register_parameters = false;
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
@@ -546,7 +547,7 @@ private:
       incoming_parameter_register_known_[parameter.value] = 1;
       target_.params.push_back(binding);
       value.location = reg_operand(binding.reg);
-      const std::size_t uses = facts_.uses[parameter.value];
+      const std::size_t uses = storage_facts_.parameter_selected_uses[i];
       const bool incoming_clobbered = !wide_gpr_boundary && uses &&
         crosses_register_clobber(parameter.value, binding.reg);
       const bool promoted_incoming_clobbered =
@@ -554,11 +555,8 @@ private:
         (storage_facts_.promoted_parameter_clobbers[i] &
          analysis::register_mask(binding.reg));
       if(uses == 0) {
-        const long long home = allocate_frame_binding(
-          mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
-        append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
-                     parameter.type);
-        value.location = frame_operand(home);
+        // Slot analysis proved that every apparent use is removed during
+        // selection. Keep the ABI binding for MIR, but create no value home.
       } else if(facts_.has_va_start) {
         // va_start/va_arg use the full SysV argument-register scratch set.
         // Keep named variadic parameters in stable frame homes so later uses
@@ -629,7 +627,7 @@ private:
       const std::size_t index = order[step];
       if(index >= source_.params.size()) continue;
       const lowir_model::ValueId value = source_.params[index].value;
-      if(facts_.uses[value] == 0 ||
+      if(storage_facts_.parameter_selected_uses[index] == 0 ||
          values_[value].location.kind == MirOperand::OP_FRAME)
         continue;
       const X64Register destination = destinations[index];

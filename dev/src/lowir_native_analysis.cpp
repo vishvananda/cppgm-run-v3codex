@@ -614,22 +614,36 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   return facts;
 }
 
+static void initialize_storage_facts(
+    const lowir_model::LowirFunction & function,
+    const FunctionFacts & function_facts, StorageFacts * facts,
+    std::vector<std::size_t> * value_parameters, std::size_t no_index)
+{
+  facts->promoted_parameter_clobbers.assign(function.params.size(), 0);
+  facts->parameter_selected_uses.resize(function.params.size());
+  facts->parameter_slot_aliases.resize(function.slot_names.size());
+  facts->promoted_parameter_slots.resize(function.slot_names.size());
+  facts->forwarded_parameter_slots.resize(function.slot_names.size());
+  facts->value_flags.assign(function.value_names.size(), 0);
+  facts->dead_store_slots.assign(function.slot_names.size(), 0);
+  value_parameters->assign(function.value_names.size(), no_index);
+  for(std::size_t parameter = 0; parameter < function.params.size(); ++parameter) {
+    (*value_parameters)[function.params[parameter].value] = parameter;
+    facts->parameter_selected_uses[parameter] =
+      function_facts.uses[function.params[parameter].value];
+  }
+}
+
 StorageFacts analyze_storage(
     const lowir_model::LowirFunction & function,
     const FunctionFacts & function_facts,
     const std::vector<lowir_model::SymbolId> & tls_wrappers)
 {
   StorageFacts facts;
-  facts.promoted_parameter_clobbers.assign(function.params.size(), 0);
-  facts.parameter_slot_aliases.resize(function.slot_names.size());
-  facts.promoted_parameter_slots.resize(function.slot_names.size());
-  facts.forwarded_parameter_slots.resize(function.slot_names.size());
-  facts.value_flags.assign(function.value_names.size(), 0);
-  facts.dead_store_slots.assign(function.slot_names.size(), 0);
   const std::size_t no_index = std::numeric_limits<std::size_t>::max();
-  std::vector<std::size_t> value_parameters(function.value_names.size(), no_index);
-  for(std::size_t parameter = 0; parameter < function.params.size(); ++parameter)
-    value_parameters[function.params[parameter].value] = parameter;
+  std::vector<std::size_t> value_parameters;
+  initialize_storage_facts(
+    function, function_facts, &facts, &value_parameters, no_index);
   enum SlotFlag {
     SF_WRITTEN = 1,
     SF_OBSERVED = 2,
@@ -655,6 +669,7 @@ StorageFacts analyze_storage(
     bool initialized = false;
     bool loaded = false;
     std::size_t load_count = 0;
+    std::size_t loaded_uses = 0;
     std::size_t store_position = 0;
     std::size_t load_position = 0;
     bool valid = true;
@@ -774,6 +789,7 @@ StorageFacts analyze_storage(
         } else if(state.initialized && instruction.kind == Instruction::IK_LOAD && first) {
           state.loaded = true;
           ++state.load_count;
+          state.loaded_uses += function_facts.uses[instruction.dest];
           state.load_position = i;
           state.loaded_value = instruction.dest;
           state.intervening_clobbers |=
@@ -827,12 +843,19 @@ StorageFacts analyze_storage(
     const lowir_model::SlotId slot = function.slots[s];
     if(scalar_state_indexes[slot] == no_index) continue;
     const ScalarSlotState & state = scalar_states[scalar_state_indexes[slot]];
+    if(facts.dead_store_slots[slot] && state.initialized) {
+      std::size_t & selected = facts.parameter_selected_uses[state.parameter];
+      if(selected) --selected;
+    }
     if(!state.valid || !state.initialized || !state.loaded ||
        (!function_facts.calls.empty() && state.load_count != 1))
       continue;
     const lowir_model::ValueId parameter = function.params[state.parameter].value;
     if(!function_facts.calls.empty() && function_facts.uses[parameter] != 1)
       continue;
+    std::size_t & selected = facts.parameter_selected_uses[state.parameter];
+    if(selected) --selected;
+    selected += state.loaded_uses;
     if(state.read_through) {
       facts.promoted_parameter_slots[slot] = parameter;
       facts.has_promoted_parameter_slots = true;

@@ -18,25 +18,13 @@ function @write_seventh
   frame
     stack_size 64
     scratch_bytes 0
-    param-slot %a -> [rbp-8] : i64
-    param-slot %b -> [rbp-16] : i64
-    param-slot %c -> [rbp-24] : i64
-    param-slot %d -> [rbp-32] : i64
-    param-slot %e -> [rbp-40] : i64
-    param-slot %f -> [rbp-48] : i64
-    param-slot %created -> [rbp-56] : ptr
+    param-slot %created -> [rbp-8] : ptr
 
   block ^entry
-    store.i64 [rbp-8], rdi
-    store.i64 [rbp-16], rsi
-    store.i64 [rbp-24], rdx
-    store.i64 [rbp-32], rcx
-    store.i64 [rbp-40], r8
-    store.i64 [rbp-48], r9
     load.ptr rax, [rbp+16]
-    store.ptr [rbp-56], rax
+    store.ptr [rbp-8], rax
     mov rax, 1
-    load.ptr rcx, [rbp-56]
+    load.ptr rcx, [rbp-8]
     store.u8 [rcx], rax
     ret
 

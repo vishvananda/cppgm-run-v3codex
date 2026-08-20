@@ -16,10 +16,8 @@ function @consume
   frame
     stack_size 16
     scratch_bytes 0
-    param-slot %p -> [rbp-8] : ptr
 
   block ^entry
-    store.ptr [rbp-8], rdi
     mov rax, 0
     ret rax
 
@@ -44,17 +42,11 @@ function @target
     param %e -> r8 : ptr
     return i64 -> rax
   frame
-    stack_size 48
+    stack_size 16
     scratch_bytes 0
     preserve rbx r12
-    param-slot %a -> [rbp-8] : ptr
-    param-slot %c -> [rbp-16] : ptr
-    param-slot %d -> [rbp-24] : ptr
 
   block ^entry
-    store.ptr [rbp-8], rdi
-    store.ptr [rbp-16], rdx
-    store.ptr [rbp-24], rcx
     mov rbx, rsi
     mov rdi, r8
     call @load_value [args=(rdi)]

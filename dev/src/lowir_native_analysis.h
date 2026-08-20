@@ -83,6 +83,9 @@ struct StorageFacts
   std::vector<unsigned char> value_flags;
   // Indexed by LowIR parameter ordinal; each mask uses the fixed x86 GPR IDs.
   std::vector<unsigned> promoted_parameter_clobbers;
+  // Uses that survive promoted or discarded scalar-slot lowering, indexed by
+  // LowIR parameter ordinal.
+  std::vector<std::size_t> parameter_selected_uses;
   std::vector<unsigned char> dead_store_slots;
   bool has_promoted_parameter_slots = false;
 

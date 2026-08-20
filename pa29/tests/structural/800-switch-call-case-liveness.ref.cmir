@@ -17,10 +17,8 @@ function @touch
   frame
     stack_size 16
     scratch_bytes 0
-    param-slot %p -> [rbp-<off0>] : ptr
 
   block ^entry
-    store.ptr [rbp-<off0>], rdi
     ret rsi
 
 function @dispatch
