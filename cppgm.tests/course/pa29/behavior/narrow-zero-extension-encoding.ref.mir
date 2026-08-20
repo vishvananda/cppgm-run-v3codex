@@ -1,0 +1,31 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, 255
+    zext.i8 r8
+    mov rdx, 255
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov r9, 65535
+    zext.i16 r9
+    mov rdx, 65535
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    or r8, r9
+    mov rax, r8
+    sext.i32 rax
+    ret rax

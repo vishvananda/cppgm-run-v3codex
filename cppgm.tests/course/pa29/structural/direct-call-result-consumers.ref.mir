@@ -1,0 +1,115 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @saved
+  storage scalar i64
+  init i64 0
+
+function @produce
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    ret rdi
+
+function @consume
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    ret rdi
+
+function @saved_address
+  abi
+    return ptr -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, @saved
+    ret rax
+
+function @observe_reference
+  abi
+    param %value -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @load_saved
+  abi
+    param %value -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    load.i64 rax, [rdi]
+    ret rax
+
+function @store_result
+  abi
+    param %value -> rdi : i64
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    call @produce [args=(rdi)]
+    store.i64 @saved, rax
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx r12
+
+  block ^entry
+    mov rdi, 41
+    call @produce [args=(rdi)]
+    mov rdi, rax
+    call @consume [args=(rdi)]
+    mov rdi, rax
+    call @store_result [args=(rdi)]
+    load.i64 rbx, @saved
+    call @saved_address [args=()]
+    mov r12, rax
+    mov rdi, rax
+    call @observe_reference [args=(rdi)]
+    mov rdi, r12
+    call @load_saved [args=(rdi)]
+    mov r8, rax
+    mov rdx, 41
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 41
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r8
+    mov rax, rbx
+    sext.i32 rax
+    ret rax

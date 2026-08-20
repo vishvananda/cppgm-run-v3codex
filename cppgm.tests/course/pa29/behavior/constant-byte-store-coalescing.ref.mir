@@ -1,0 +1,86 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @bytes
+  storage data
+  item zero 16
+
+function @initialize
+  abi
+    param %base -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 1
+    store.i8 [rdi], rax
+    mov rax, 35
+    store.i8 [rdi+1], rax
+    mov rax, 69
+    store.i8 [rdi+2], rax
+    mov rax, 103
+    store.i8 [rdi+3], rax
+    mov rax, 137
+    store.i8 [rdi+4], rax
+    mov rax, 171
+    store.i8 [rdi+5], rax
+    mov rax, 205
+    store.i8 [rdi+6], rax
+    mov rax, 239
+    store.i8 [rdi+7], rax
+    mov rax, 254
+    store.i8 [rdi+8], rax
+    mov rax, 220
+    store.i8 [rdi+9], rax
+    mov rax, 186
+    store.i8 [rdi+10], rax
+    mov rax, 152
+    store.i8 [rdi+11], rax
+    mov rax, 118
+    store.i8 [rdi+12], rax
+    mov rax, 84
+    store.i8 [rdi+13], rax
+    mov rax, 50
+    store.i8 [rdi+14], rax
+    mov rax, 16
+    store.i8 [rdi+15], rax
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, @bytes
+    call @initialize [args=(rdi)]
+    load.i64 rax, @bytes
+    mov rdx, -1167088121787636991
+    cmp.i64 rax, rdx
+    jne ^bad
+    jmp ^second
+
+  block ^second
+    mov r8, @bytes
+    load.i64 r9, [r8+8]
+    mov rax, r9
+    mov rdx, 1167088121787636990
+    cmp.i64 rax, rdx
+    jne ^bad
+    jmp ^ok
+
+  block ^bad
+    mov rax, 1
+    ret rax
+
+  block ^ok
+    mov rax, 0
+    ret rax

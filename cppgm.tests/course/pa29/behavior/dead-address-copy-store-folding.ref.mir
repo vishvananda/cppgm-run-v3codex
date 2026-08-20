@@ -1,0 +1,69 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @result
+  storage data
+  item i64 0
+
+global @other
+  storage data
+  item i64 25
+
+function @produce
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 17
+    ret rax
+
+function @write
+  abi
+    param %base -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve rbx
+
+  block ^entry
+    mov rbx, rdi
+    call @produce [args=()]
+    mov r8, rax
+    store.i64 [rbx], r8
+    mov r9, @other
+    load.i64 rdi, [r9]
+    add r8, rdi
+    ret r8
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, @result
+    call @write [args=(rdi)]
+    mov r8, rax
+    load.i64 r9, @result
+    mov rdx, 17
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov rdx, 42
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or r9, r8
+    mov rax, r9
+    sext.i32 rax
+    ret rax

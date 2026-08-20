@@ -1,0 +1,26 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $retained -> [rbp-<off0>] : i64
+
+  block ^entry
+    mov rax, 42
+    store.i64 [rbp-<off0>], rax
+    load.i64 r8, [rbp-<off0>]
+    mov rdx, 42
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov rax, r8
+    sext.i32 rax
+    ret rax
