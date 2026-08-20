@@ -33,6 +33,8 @@ public:
 		bool thread_local_object, pa15_lowir_detail::Global* global,
 		bool* needs_global_class_initializer,
 		bool* keep_global_class_address = 0);
+	bool LowerConstantObject(pa11::TypeId type, std::uint32_t initializer,
+		pa15_lowir_detail::Global* global);
 	void SetZero(pa11::TypeId type, pa15_lowir_detail::Global* global);
 	bool HasConstantAddress(std::uint32_t node);
 	pa15_lowir_detail::SymbolId EnsureStringLiteral(std::uint32_t node);

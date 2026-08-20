@@ -843,6 +843,7 @@ protected:
 			return;
 		}
 		if (derived.LowerVariableConstructor(record, children)) return;
+		if (derived.TryLowerConstantArrayTemplate(record, children)) return;
 		if (!children.empty())
 		{
 			if (!derived.IsReferenceType(record.type) && derived.IsArrayType(record.type))

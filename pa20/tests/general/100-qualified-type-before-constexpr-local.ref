@@ -1,20 +1,21 @@
+global @__constexpr_template__1 [storage=readonly, binding=internal] = {
+  u32 1
+  u32 2
+  u32 3
+  u32 4
+}
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $constants : obj<16x4>
 
   block ^entry:
     %t1 = addr $constants
-    store u32 1, %t1
-    %t2 = index i8 %t1, 4
-    store u32 2, %t2
-    %t3 = index i8 %t1, 8
-    store u32 3, %t3
-    %t4 = index i8 %t1, 12
-    store u32 4, %t4
-    %t5 = addr $constants
-    %t6 = unary decay ptr %t5
-    %t7 = index u32 [projection=array_element] %t6, 2
-    %t8 = load u32 %t7
-    %t9 = cmp ne u32 %t8, 3
-    %t10 = convert zext i32 u8 %t9
-    return i32 %t10
+    copyobj 16x4 @__constexpr_template__1, %t1
+    %t2 = addr $constants
+    %t3 = unary decay ptr %t2
+    %t4 = index u32 [projection=array_element] %t3, 2
+    %t5 = load u32 %t4
+    %t6 = cmp ne u32 %t5, 3
+    %t7 = convert zext i32 u8 %t6
+    return i32 %t7
 }

@@ -592,6 +592,21 @@ void StaticInitializerLowering::SetZero(TypeId type, Global* global)
 	AppendZero(program_.SizeOf(type), &global->items);
 }
 
+bool StaticInitializerLowering::LowerConstantObject(TypeId type,
+	std::uint32_t initializer, Global* global)
+{
+	if (!global || initializer == kNoDumpEdge ||
+		initializer >= arena_.nodes.size() || types_.IsReference(type))
+		return false;
+	const Global::InitializerKind old_kind = global->initializer_kind;
+	const std::size_t old_size = global->items.size();
+	global->initializer_kind = Global::STRUCTURED_VALUE;
+	if (AppendValue(type, initializer, &global->items)) return true;
+	global->items.resize(old_size);
+	global->initializer_kind = old_kind;
+	return false;
+}
+
 bool StaticInitializerLowering::Lower(const NamespaceObjectAction& action,
 	bool thread_local_object, Global* global,
 	bool* needs_global_class_initializer, bool* keep_global_class_address)

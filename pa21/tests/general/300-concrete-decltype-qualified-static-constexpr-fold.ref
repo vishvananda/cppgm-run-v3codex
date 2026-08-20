@@ -1,3 +1,9 @@
+global @__constexpr_template__1 [storage=readonly, binding=internal] = {
+  u32 3
+  u32 7
+  u32 11
+}
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $argobj__1 : obj<1x1>
   slot $cond__2 : i32
@@ -26,13 +32,15 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t7 = binary add i32 %t2, %t6
     return i32 %t7
 }
-function @unsigned_constant_1___unsigned_constant(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN17unsigned_constantILj1EEC1Ev, trivial_lifecycle=yes] {
+
+function @policy__policy(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN6policyC1Ev, trivial_lifecycle=yes] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return void
 }
+
 function @classify(%input : obj<1x1>) -> i32 [binding=weak, object=_Z8classifyI6policyEiT_] {
   slot $input : obj<1x1>
   slot $tag : i32
@@ -56,29 +64,25 @@ function @classify(%input : obj<1x1>) -> i32 [binding=weak, object=_Z8classifyI6
     %t3 = load i32 $cond__1
     return i32 %t3
 }
-function @read_constant(%input : obj<1x1>) -> u32 [binding=weak, object=_Z13read_constantI17unsigned_constantILj1EEEjT_] {
-  slot $input : obj<1x1>
-  slot $values : obj<12x4>
 
-  block ^entry:
-    %t1 = addr $values
-    store u32 3, %t1
-    %t2 = index i8 %t1, 4
-    store u32 7, %t2
-    %t3 = index i8 %t1, 8
-    store u32 11, %t3
-    %t4 = addr $values
-    %t5 = unary decay ptr %t4
-    %t6 = index u32 [projection=array_element] %t5, 1
-    %t7 = load u32 %t6
-    return u32 %t7
-}
-function @policy__policy(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN6policyC1Ev, trivial_lifecycle=yes] {
+function @unsigned_constant_1___unsigned_constant(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN17unsigned_constantILj1EEC1Ev, trivial_lifecycle=yes] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return void
 }
-alias object _ZN17unsigned_constantILj1EEC2Ev = @unsigned_constant_1___unsigned_constant
-alias object _ZN6policyC2Ev = @policy__policy
+
+function @read_constant(%input : obj<1x1>) -> u32 [binding=weak, object=_Z13read_constantI17unsigned_constantILj1EEEjT_] {
+  slot $input : obj<1x1>
+  slot $values : obj<12x4>
+
+  block ^entry:
+    %t1 = addr $values
+    copyobj 12x4 @__constexpr_template__1, %t1
+    %t2 = addr $values
+    %t3 = unary decay ptr %t2
+    %t4 = index u32 [projection=array_element] %t3, 1
+    %t5 = load u32 %t4
+    return u32 %t5
+}

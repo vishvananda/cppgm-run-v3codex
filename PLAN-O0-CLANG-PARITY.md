@@ -392,6 +392,29 @@ Complexity: O(constant data items) to construct and hash a candidate, expected
 O(1) table lookup, one structural comparison on a hash collision, and O(1)
 LowIR instructions per accepted automatic object.
 
+P2 publishes each accepted automatic object as one typed readonly structured
+global and interns candidates with a compact open-addressed table over typed
+data items.  The incidental PA20
+`100-qualified-type-before-constexpr-local` fixture, the existing PA21
+`300-concrete-decltype-qualified-static-constexpr-fold` fixture, and the new
+PA21 `400-automatic-constexpr-array-template` reducer intentionally migrate
+from scalar stores to `copyobj`; no other through-PA21 fixture and no PA22--PA28
+fixture changes (1,541/1,541 tests).  PA21 remains the owning contract because
+PA20's fixture exercises qualified-name handling with a constexpr declaration,
+while full constexpr variable/object semantics first belong to PA21.  The
+reducer has one seven-byte global and four copies while preserving four
+distinct automatic objects.  The frozen compile has one 201-byte global and
+three copies.
+
+Against P1, the frozen object falls from 4,400,592 to 4,395,256 bytes, all
+`.text*` falls from 915,371 to 909,341 bytes, and decoded instructions fall
+from 226,371 to 225,174.  This removes 1,200 `mov` instructions while adding
+three `rep` copies, three `lea` instructions, and three relocations.  Base
+`.text`, EH/LSDA, and defined-function counts are unchanged.  Three sequential
+ABBA blocks measured 4.775/4.780 seconds median wall, 4.275/4.300 seconds
+median user, and 359,848/360,514 KiB median peak RSS for P1/P2.  Paired
+candidate ratios were -0.11% wall, 0.00% user, and +0.18% RSS.
+
 ### P3: select immediate-to-memory stores directly
 
 `emit_store_instruction` currently resolves every nonfloating scalar value to
@@ -684,7 +707,7 @@ Fill one row after each independently retained phase.
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 baseline | none | none | cppgm++ 4,406,272 bytes; `.text*` 921,044; 5,530 functions; 38,948 relocations | ABBA candidate +0.32% wall, +0.48% user, -0.17% RSS; byte-identical output | same-STL Clang object and active reducers verified | complete |
 | P1 bit-field units | one new PA17 reducer; PA18-PA28 unchanged | 5,673 fewer `.text*` bytes; 1,303 fewer instructions | 4,400,592 bytes; `.text*` 915,371; functions/relocations unchanged | ABBA 0.00% wall, +0.12% user, -0.05% RSS | PA17 242/242; through PA17 1,709/1,709; full report 5,266/5,266; zero-fatal audit | complete |
-| P2 constexpr arrays | expected PA21 migration | PA29 runtime only if added | pending | pending | pending | planned |
+| P2 constexpr arrays | one incidental PA20 fixture, one existing PA21 fixture, and one new PA21 reducer migrate to a readonly global plus `copyobj`; PA22-PA28 unchanged | 6,030 fewer `.text*` bytes; 1,197 fewer instructions; 3 added relocations | 4,395,256 bytes; `.text*` 909,341; functions/EH unchanged | ABBA -0.11% wall, 0.00% user, +0.18% RSS | PA21 148/148; through PA21 2,369/2,369; full report 5,266/5,266; zero-fatal audit | complete |
 | P3 immediate stores | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
 | P4 memory RHS | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
 | P5 shared epilogue | none | MIR unchanged; native bytes change | pending | pending | pending | planned |

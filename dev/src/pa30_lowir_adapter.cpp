@@ -883,6 +883,8 @@ lowir_model::LowirProgram AdaptTypedLowIRForNative(
 			result.type = AdaptType(item.type);
 		if (symbol.thread_local_storage)
 			result.storage = lowir_model::GSM_THREAD_LOCAL;
+		else if (item.storage == Global::STORAGE_READONLY)
+			result.storage = lowir_model::GSM_READONLY;
 		AdaptSymbolFacts(symbol, &result.metadata, 0);
 		if (item.initializer_kind == Global::STRUCTURED_VALUE)
 		{

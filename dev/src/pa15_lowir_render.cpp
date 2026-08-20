@@ -491,7 +491,7 @@ void WriteInstruction(std::ostream& output, const Instruction& instruction,
 void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	const TypedProgram& program,
 	bool entry, bool function, bool initializer = false,
-	bool finalizer = false)
+	bool finalizer = false, bool readonly = false)
 {
 	output << " [";
 	bool separator = false;
@@ -563,6 +563,12 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 		output << "storage=thread_local";
 		separator = true;
 	}
+	else if (!function && readonly)
+	{
+		if (separator) output << ", ";
+		output << "storage=readonly";
+		separator = true;
+	}
 	if (separator) output << ", ";
 	output << "binding=" << (symbol.internal_linkage ? "internal" :
 		symbol.weak_linkage ? "weak" : "strong");
@@ -621,7 +627,8 @@ void RenderProgram(const TypedProgram& program, std::ostream& output)
 			output << " : ";
 			WriteType(output, global.type);
 		}
-		WriteSymbolMetadata(output, symbol, program, false, false);
+		WriteSymbolMetadata(output, symbol, program, false, false, false, false,
+			global.storage == Global::STORAGE_READONLY);
 		output << " = ";
 		if (global.initializer_kind == Global::ZERO) output << "zero\n";
 		else if (global.initializer_kind == Global::INTEGER_VALUE)
