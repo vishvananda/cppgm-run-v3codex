@@ -1110,6 +1110,47 @@ not PA29.
 
 This phase records, rather than hides, the residual Clang-only difference.
 
+Completed as an audit-only phase.  The final object defines 5,528 functions:
+13 global, 1,024 local, and 4,491 weak.  The weak count is unchanged from S0.
+The only two definitions removed since S0 are the local complete/base aliases
+of `std::allocator<SourceTokenRef>::~allocator()`.  S5's direct class-result
+placement removed the allocator-like temporary and therefore its last typed
+destructor demand.  The relocation reduction from 26,936 to 26,184 is fully
+accounted for by S1 (-2), S2 (-400), S3 (-253), and S5 (-97); no unexplained
+demand edge disappeared in S6-S8.
+
+Post-inline reachability prunes 685 functions, including 682 unreachable weak
+bodies.  The retained roots are 13 external strong definitions, 39
+address/relocation demands, 4,295 direct-call demands, two lifecycle demands,
+one EH/runtime demand, and 224 native object-output roots (four weak and 220
+internal).  There are zero required-weak exceptions, zero unreachable
+internal leftovers, and zero conservative fallback roots.  Removing another
+body would therefore discard a live typed root rather than clean up stale
+demand.
+
+The explicit inline fact is also intact end to end.  PA33 records
+`always_inline` on both the declaration binding and its canonical binding;
+redeclaration and special-member propagation copy that fact; PA15 lowers the
+binding/canonical OR to typed LowIR; the PA30 adapter/object representation
+preserves it; and the native session performs the mandatory rewrite before
+reachability.  The frozen compile has 623 candidates and expands 1,426 calls,
+5,666 blocks, and 9,446 instructions, with zero recursive candidates.  The
+existing PA35 native-object value-transport reducer emits `use_one`,
+`use_sixteen`, and `use`, but no `pass_one` or `pass_sixteen` body.  PA33 plus
+PA35 pass 248/248.  No missing PA33 fact or new reducer is needed.
+
+The final host-toolchain comparison uses the same GCC 15 libstdc++ headers.
+cppgm++ is 3,209,448 bytes versus GCC's 3,196,024 (+0.42%), but still has
+720,646 `.text*` bytes versus GCC's 599,783 (+120,863) and Clang's 523,269
+(+197,377).  The base-text gaps are 108,797 bytes to GCC and 109,799 to Clang;
+the COMDAT-text gaps are only 12,066 to GCC but 87,578 to Clang.  cppgm++ has
+180,534 decoded instructions versus GCC's 154,849 and Clang's 124,116.  The
+remaining GCC gap is concentrated in base-function stack traffic and EH
+shape, while the much larger Clang gap also reflects 1,594 fewer weak bodies
+and its different template/code-generation policy.  Ordinary inlining,
+source-slot promotion, trace layout, and post-hoc preserve cleanup remain in
+PA37/PA38 rather than being hidden at baseline.
+
 ## Performance and correctness gates
 
 For every retained output-changing phase, record:
@@ -1169,7 +1210,7 @@ Fill one row after each retained phase.
 | S6 bounded scalar retention | PA29 exact-forward-edge MIR/behavior; existing PA29 loop/call/escape and PA38 EH negatives | -185 text, -19 decoded instructions, -34 temporary homes; +108 `.eh_frame` pending S8 cost audit | reverse-order medians both 4.270s user; <0.5% RSS movement | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | complete |
 | S7 width/fixed arithmetic | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds MIR-stable behavior; S7e adds fixed shift operands and migrates two MIR fixtures | cumulative through S7e: -10,929 text, -3,612 decoded instructions, -2,712 MIR; no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%, S7e -0.83%; RSS neutral | PA29+PA38 293/293; full 5,286/5,286; zero-fatal audit | complete |
 | S8 register cost | existing PA29 profitable-retention and no-preserve short-value fixtures already cover both decisions | audit-only: register retention is 80 bytes smaller than frame traffic including unwind; reuse-first prototype rejected at +16 text/object | no production change; S7e timing remains authoritative | S7e full 5,286/5,286 and zero-fatal audit; two diagnostic frozen objects compared | complete; audit-only |
-| S9 demand/optimization remeasure | explicit force-inline owner only at O0; ordinary work deferred to PA37/PA38 | pending | pending | pending | planned |
+| S9 demand/optimization remeasure | existing PA35 forced-inline object reducer; no missing PA33 fact and no fixture change | weak count unchanged; only two S5 allocator-destructor aliases lost their last typed demand; every remaining body has an enumerated root | no production change; S7e timing remains authoritative | PA33+PA35 248/248; zero conservative fallbacks; final GCC/Clang code-shape census recorded | complete; audit-only |
 
 ## Completion criteria
 
