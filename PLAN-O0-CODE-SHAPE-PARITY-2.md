@@ -187,6 +187,40 @@ replication of that policy would be an optimization-level change, not a native
 encoding fix.  This plan audits missed explicit `always_inline` facts at `-O0`
 but leaves ordinary small-call inlining in PA37 `-O1` and later.
 
+### Post-S3 residual opportunity register
+
+The initial baseline above remains the stable comparison point for the plan,
+but the instruction-family priorities must be based on the object after the
+accepted S1-S3 and S5a changes.  That object is 3,221,784 bytes with 733,065
+`.text*` bytes and SHA-256
+`05d07eadb7398e0b91a12c258ec7287db1c0c2bad9264255d491e99ee659f54b`.
+Against the same GCC build with CET disabled and the same-libstdc++ Clang
+build, its gross positive byte differences are:
+
+| Residual family | Versus GCC | Versus Clang | Disposition |
+| --- | ---: | ---: | --- |
+| `mov*` plus `lea` | 93,583 | 136,077 | S5 direct destination placement, then S6 bounded scalar retention |
+| unconditional `jmp` | 25,501 | 12,615 | S4 semantic cleanup/continuation audit first; ordinary block layout remains PA38 |
+| `movzbl` plus `movslq` | 12,649 | 16,287 | S7 typed width-state retention |
+| `push` plus `pop` | 11,951 | 12,495 | S8 bounded register-cost selection |
+| `call` | 10,549 | 21,133 | S4 cleanup calls and S9 truthful demand/force-inline audit; ordinary inlining remains PA37 |
+| integer compare/test/set-result family | 2,139 | 8,735 | S7 direct typed predicate consumption after width work |
+| multiply/divide/shift family | 3,676 | 4,627 | S7 target-selection audit, one constant/operator class at a time |
+
+These are attribution bounds, not additive savings targets.  The compared
+objects retain different function sets and make different source-level
+inlining decisions.  S3 also intentionally traded repeated resume calls for
+local branches, so the branch and call rows must be remeasured together after
+S4.  A phase is justified by a reduced same-function cause, not by matching a
+host compiler's aggregate mnemonic count.
+
+No separate third O0 plan is needed for these families.  The first five map to
+existing S4-S9 work.  S7 explicitly owns the two smaller target-selection
+families so they receive a decision and earliest-owner test instead of being
+silently left behind.  If a reducer requires cross-block value propagation,
+general dead-code elimination, ordinary inlining, or trace layout, record it
+as PA37/PA38 work rather than extending baseline compilation.
+
 ## Assignment and public-boundary ownership
 
 | Work | Public boundary | Earliest tests | Student-facing effect |
@@ -200,6 +234,7 @@ but leaves ordinary small-call inlining in PA37 `-O1` and later.
 | Source-owned direct object construction | LowIR, only if the frontend currently creates a redundant semantic temporary | PA16 or PA17, or the later feature owner proven by the reducer | normative current LowIR behavior plus a compact destination-planning suggestion in `Design Notes` |
 | Backend-created temporary/home elimination | MIR placement | PA29 strict/structural/behavior | PA29 MIR rules and scaffold comments only when the serialized operand/location contract changes |
 | Known-width normalization placement | MIR placement and x86 selection | PA29 strict/structural/behavior | PA29 narrow-value rule; no hidden encoder-only value graph |
+| Direct predicate consumption and fixed-constant arithmetic selection | MIR selection when the instruction/dataflow shape changes; native encoding only for a one-instruction equivalent already permitted by MIR | PA29 structural/behavior; PA38 only for cross-instruction optimized rewrites | document only the current accepted PA29 opcode/operand rule; optimization-only rewrites remain PA38 |
 | Cost-aware callee-save selection | MIR register/preserve list | PA29 structural/behavior | PA29 already exposes physical registers and the final preserve list |
 | Ordinary tiny-function inlining | optimized LowIR | PA37 `o1` and driver `o1`; PA38 only for downstream MIR effects | deferred from `-O0` |
 | Trace block layout and post-optimization preserve cleanup | optimized MIR | PA38 `o2` and behavior/debuginfo | already a PA38 `-O2` requirement; deferred from `-O0` |
@@ -724,8 +759,27 @@ Add positive and negative PA29 cases for signed and unsigned i8/i16/i32 values,
 call returns, switch/compare consumers, fixed-register clobbers, and loops.
 Reuse existing narrow-width tests where they already own the behavior.
 
-Complexity: one fixed-size per-register normalization state updated and queried
-at instructions already visited.
+After the width-state change is independently accepted, audit the smaller
+predicate and fixed-arithmetic families with reducers from the largest
+same-function deltas.  A comparison used only by a branch should feed the
+branch condition directly; materialize `setcc` only when the C++ value is also
+consumed as data.  For multiplication, division, and shifts by a fixed
+constant, select a cheaper legal target form at `-O0` only when this is local
+mandatory instruction selection with no duplicated computation, altered
+overflow semantics, or new control flow.  Do not infer algebraic identities
+from rendered operands or run a general strength-reduction pass.
+
+If the accepted choice changes the MIR instruction or dataflow sequence, make
+it visible in serialized MIR and add PA29 structural plus behavior coverage.
+If the existing MIR contract already denotes one operation for which x86 has
+multiple equivalent single-instruction encodings, keep MIR stable and add a
+PA29 behavior/inspect assertion for the selected encoding.  A rewrite needing
+multiple-instruction analysis or profitability across blocks belongs in PA38,
+not in this baseline phase.
+
+Complexity: one fixed-size per-register normalization state updated and
+queried at instructions already visited, plus O(1) typed operator/constant
+selection per instruction.  No extra whole-function scan is permitted.
 
 ### S8: make baseline register cost explicit
 
