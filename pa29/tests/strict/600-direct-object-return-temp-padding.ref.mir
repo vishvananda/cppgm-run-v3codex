@@ -18,8 +18,7 @@ function @f
     zero_bytes 3x1, rdi
     mov rax, 1
     store.u8 [rbp-3], rax
-    lea r11, [rbp-4]
-    load.i32 rax, [r11]
+    load.i32 rax, [rbp-4]
     ret
 
 function @__cppgm_406d61696e
@@ -32,7 +31,6 @@ function @__cppgm_406d61696e
 
   block ^entry
     call @f [args=()]
-    lea r11, [rbp-4]
-    store.i32 [r11], rax
+    store.i32 [rbp-4], rax
     mov rax, 0
     ret rax

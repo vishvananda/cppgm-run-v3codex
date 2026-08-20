@@ -48,15 +48,21 @@ protected:
 			}
 			else
 			{
-				lowerer.emit_operand_address(out, XR_R11, instruction.first);
+				mir_model::MirOperand direct_storage;
+				const bool direct = lowerer.direct_object_chunk_storage(
+					instruction.first, 0, &direct_storage);
+				if (!direct)
+					lowerer.emit_operand_address(out, XR_R11, instruction.first);
 				for (std::size_t chunk = 0; chunk < chunks; ++chunk)
 				{
 					const lowir_model::LowType& chunk_type =
 						abi::object_chunk_type(
 							instruction.type.storage_size - chunk * 8);
+					mir_model::MirOperand storage = direct ? direct_storage :
+						dereference(XR_R11);
+					storage.offset += static_cast<long long>(chunk * 8);
 					append_load(out, reg_operand(chunk ? XR_RDX : XR_RAX),
-						dereference(XR_R11,
-							static_cast<long long>(chunk * 8)), chunk_type);
+						storage, chunk_type);
 				}
 			}
 		}

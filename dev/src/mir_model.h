@@ -199,8 +199,8 @@ struct Instruction
     // emits no MIR. An immediately preceding frame address used only by an
     // index remains a logical frame location; constant indexing incorporates
     // its displacement into that location without an initial MI_LEA. A
-    // frame-resident object chunk loaded into an ABI register likewise uses
-    // its final frame operand directly.
+    // frame-resident object chunk transferred to or from an ABI argument or
+    // result register likewise uses its final frame operand directly.
     MI_FMOV,
     MI_FNEG,
     MI_FADD,

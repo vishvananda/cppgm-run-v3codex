@@ -2412,12 +2412,17 @@ private:
   {
     if(type.storage_size > 16)
       throw std::runtime_error("direct object return exceeds two SysV eightbytes");
-    if(destination) emit_operand_address(out, XR_R11, *destination);
-    else append_address(out, XR_R11, *home);
+    MirOperand direct_storage;
+    const bool direct = destination ?
+      direct_object_chunk_storage(*destination, 0, &direct_storage) : true;
+    if(!destination) direct_storage = *home;
+    if(!direct) emit_operand_address(out, XR_R11, *destination);
     const std::size_t chunks = (type.storage_size + 7) / 8;
     for(std::size_t chunk = 0; chunk < chunks; ++chunk) {
       const LowType & chunk_type = abi::object_chunk_type(type.storage_size - chunk * 8);
-      append_store(out, dereference(XR_R11, static_cast<long long>(chunk * 8)),
+      MirOperand storage = direct ? direct_storage : dereference(XR_R11);
+      storage.offset += static_cast<long long>(chunk * 8);
+      append_store(out, storage,
                    reg_operand(chunk ? XR_RDX : XR_RAX), chunk_type);
     }
   }

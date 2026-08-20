@@ -503,6 +503,11 @@ To complete PA29, implement these goals:
    argument, MIR should load that chunk directly from its frame location. It
    should not materialize the object's base address solely for the load.
 
+   Direct object returns follow the same rule in both directions: returning a
+   frame-resident object loads its chunks directly into the ABI result
+   registers, and storing a direct object call result writes those registers
+   directly to its frame destination.
+
    Atomic operations are subject to the same pressure correctness requirement. Producing
    an atomic operation's returned old value in a loop must remain executable when its
    address and source values occupy the available general-purpose registers.
@@ -637,6 +642,8 @@ strategies include:
   selected memory operand names the frame location directly
 - load frame-resident object chunks directly into their ABI argument registers
   instead of materializing a temporary object address
+- transfer direct-object return chunks between their frame locations and ABI
+  result registers without materializing a temporary object address
 
 These are suggestions, not required internal data structures or algorithms.
 Any implementation is acceptable if it preserves program behavior and produces
