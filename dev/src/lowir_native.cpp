@@ -1972,7 +1972,7 @@ private:
       if(is_scalar_float(operand_type(instruction.args[i]))) continue;
       GprMove move;
       move.destination = abi::argument_register(gpr_index++);
-      move.source = resolve(instruction.args[i]);
+      move.source = resolve_gpr_call_argument(instruction.args[i]);
       if(instruction.args[i].kind == Operand::OP_TEMP) {
         const ValueFact & value = values_[instruction.args[i].value];
         if(value.forwarded_parameter.valid())
@@ -2251,6 +2251,7 @@ private:
       const abi::Plan & plan,
       const std::vector<MirOperand> & addressable,
       const std::vector<bool> & needs_address,
+      bool rax_result_intact,
       std::vector<MirInstruction> & out)
   {
     std::vector<GprMove> gpr_moves;
@@ -2278,7 +2279,9 @@ private:
           move.chunk_offset = piece.chunk_offset;
         } else {
           move.source = needs_address[piece.parameter_index] ?
-            addressable[piece.parameter_index] : resolve(argument);
+            addressable[piece.parameter_index] :
+            (rax_result_intact ? resolve_gpr_call_argument(argument) :
+             resolve(argument));
           move.source_is_address = needs_address[piece.parameter_index] ||
             is_frame_address(argument);
         }
@@ -2432,6 +2435,7 @@ private:
       const std::vector<lowir_model::LowirParameter> & parameters,
       std::vector<MirInstruction> & out)
   {
+    const std::size_t setup_start = out.size();
     const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
     const abi::Plan plan = abi::classify(parameters);
     MirOperand indirect_target = reg_operand(XR_R10);
@@ -2449,17 +2453,26 @@ private:
          instruction, parameters, plan, out))
       active_setup_register_clobbers_ |=
         register_mask(XR_RDI) | register_mask(XR_RSI);
+    bool has_rax_first_use_argument = false;
     std::vector<bool> needs_address(parameters.size(), false);
     std::vector<MirOperand> addressable(parameters.size());
     for(std::size_t i = 0; i < parameters.size(); ++i) {
       needs_address[i] = argument_needs_address(parameters[i], instruction.args[i]);
       if(needs_address[i]) addressable[i] = make_addressable(instruction.args[i], out);
       if(is_floating(parameters[i].type)) uses_scalar_float_ = true;
+      if(gpr_call_argument_can_read_rax(instruction.args[i]))
+        has_rax_first_use_argument = true;
     }
     emit_extended_stack_arguments(instruction, parameters, plan,
                                   addressable, needs_address, out);
+    bool rax_result_intact = has_rax_first_use_argument;
+    for(std::size_t i = setup_start; rax_result_intact && i < out.size(); ++i)
+      if(machine_opt::instruction_definition_mask(out[i]) &
+         register_mask(XR_RAX))
+        rax_result_intact = false;
     emit_extended_register_arguments(instruction, parameters, plan,
-                                     addressable, needs_address, out);
+                                     addressable, needs_address,
+                                     rax_result_intact, out);
     active_setup_register_clobbers_ = saved_setup_clobbers;
     const bool variadic = call_is_variadic(instruction);
     if(variadic)

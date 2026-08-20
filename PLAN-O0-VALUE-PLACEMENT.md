@@ -210,7 +210,7 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
 | VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases; direct unary returns change no existing fixture; direct integer-conversion returns change 4 exact and 1 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied. Direct unary returns: object/text -16 bytes and 4 instructions/moves; paired user -0.35%, wall -0.48%, RSS +0.63%. Direct integer-conversion returns: object -32 bytes, text -20 bytes, and 6 instructions/moves; paired user -1.05%, wall -0.40%, and RSS -0.21% | input lifetime, scalar address/return placement, safe scalar-copy sharing, immediate call-result argument/store placement, fixed-home call forwarding, promoted-slot interval extension, dense slot-analysis state, and integer comparison/unary/conversion return placement complete; broader producer placement pending |
 | VP4 | 5 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap; wide spill reuse changes 2 strict and 1 structural PA29 cases (4 MIR/CMIR files); scalar spill reuse changes 1 behavior-exact PA29 fixture and adds PA29 O0 and PA38 O2 course behavior reducers; frame-address placement changes 4 strict and 4 structural PA29 fixtures plus 3 PA38 O1/O2 fixtures | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%. Wide spill reuse is frozen-object-identical; paired user +0.18%, wall +0.08%, RSS -0.03%. Lifetime-keyed frame forwarding is also frozen-object-identical; paired user -0.70%, wall -0.24%, RSS -0.22%. Scalar reuse removes 80 object bytes and 74 text bytes with unchanged instruction counts; final paired user +0.45%, wall +0.53%, RSS +0.18%. Frame-address placement removes 2,472 object bytes, 2,507 text bytes, 1,341 MIR instructions, and 589 x86 instructions with neutral paired timing | complete: caller-saved pool, clobber-safe reuse, typed-immediate/address rematerialization, safe copy sharing, direct constraints, intact ABI-parameter retention, all scalar spill-home reuse, and frame-forwarding lifetime identity |
-| VP5 | 4 proposed PA29 placement witnesses plus existing course reducers | Existing migrations are enumerated in the phase narrative below; selected parameter demand changes 9 PA29 and 2 PA38 fixture cases; stable promoted homes and direct remainder returns change no checked fixture; logical large ALU immediates change 1 structural PA29 pair | Compatibility telemetry falls from 959 operand rewrites / 874 dead definitions to 1 / 23; the latest slices remove another 224 object bytes, 147 text bytes, and 52 x86 instructions with neutral timing | direct placement, discarded parameter setup, stable promoted homes, logical large ALU immediates, and direct remainder returns complete; one scalar rewrite, selected-but-unreferenced parameter homes, frame finalization, and compatibility-pass retirement pending |
+| VP5 | 4 proposed PA29 placement witnesses plus existing course reducers | Existing migrations are enumerated in the phase narrative below; selected parameter demand changes 9 PA29 and 2 PA38 fixture cases; stable promoted homes, direct remainder returns, and the early call-result carrier change no checked fixture; logical large ALU immediates change 1 structural PA29 pair | Compatibility telemetry falls from 959 operand rewrites / 874 dead definitions to 0 / 23; the latest slices remove another 224 object bytes, 147 text bytes, and 52 x86 instructions with neutral-to-improved timing | all operand placement complete; selected-but-unreferenced parameter homes, frame finalization, and compatibility-pass retirement pending |
 
 The VP1 proposed call-argument input predates the public MIR placement rule and
 is now supplemental to the active `900-symbolic-global-call-argument` fixture.
@@ -1299,3 +1299,34 @@ Median within-block candidate ratios are +1.20% user, +0.97% wall, and -0.42%
 RSS, all inside the neutral gate. Every object is byte-identical across both
 arms. The affected PA29/PA31/PA37/PA38 report passes 373/373 and the PA39 audit
 has zero fatal findings. The full report passes 5,225/5,225.
+
+The early call-result-carrier slice recognizes a full-width scalar call result
+whose first use is a GPR call argument and whose later use still requires a
+stable selected home. Existing function analysis marks only results with more
+than one use, proves the first use remains in the defining block, and reuses
+the RAX lower-bound query already made while computing the complete interval's
+fixed-register clobbers. Ordinary call setup reads that carrier directly.
+Extended call setup does the same only after a rare candidate's already-emitted
+setup prefix proves it has not defined RAX. The additional prefix walk is
+therefore limited to calls that can use the fact; all other lowering paths add
+no work, state, string identity, or scan.
+
+No checked fixture changes. The expanded
+`proposed/pa29/direct-call-result-consumers.t` witness returns a pointer in
+RAX, passes it first to an extended reference call, and uses it again after
+that call. Current MIR copies RAX once to the stable R12 home, passes the first
+argument directly from RAX, and reads R12 for the later call. Both the current
+and course-reference compilers execute the input successfully, but their MIR
+placement differs, so it remains proposed.
+
+Against `c2dd56bd`, single-block preparation reaches zero operand rewrites;
+its 23 dead definitions, three frame corrections, and 17,681 output
+instructions are unchanged. The frozen object retains the same total size,
+aggregate text, and instruction counts at 4,409,072 bytes, 923,572 bytes, and
+229,040 instructions, respectively; its internal code layout changes because
+the first call setup now reads RAX directly. Two sequential A/B/B/A blocks give
+baseline/candidate medians of 4.260/4.245 seconds user, 4.750/4.690 seconds
+wall, and 360,226/360,364 KiB peak RSS. Median within-block candidate ratios
+improve user by 0.53% and wall by 1.42%, with RSS +0.20%. The affected report
+passes 373/373, the full report passes 5,225/5,225, and the PA39 audit has zero
+fatal findings.

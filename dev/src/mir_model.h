@@ -279,6 +279,8 @@ struct Instruction
     // Scalar call results initially occupy their ABI return carrier. Keep a
     // single-block result there while its complete interval crosses no rax
     // clobber and its final consumer does not overwrite rax before reading it.
+    // If a separate home preserves later uses, an earlier full-width GPR call
+    // argument may still read the intact rax result directly.
     // Call setup may likewise read a promoted parameter's fixed home without a
     // dead temporary copy.
     MI_CALL,

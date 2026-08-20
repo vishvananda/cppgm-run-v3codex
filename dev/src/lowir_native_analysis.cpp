@@ -334,6 +334,17 @@ void extend_loop_liveness(FunctionFacts & facts,
   }
   for(std::size_t raw_value = 0; raw_value < facts.last_use.size(); ++raw_value) {
     const lowir_model::ValueId value(static_cast<std::uint32_t>(raw_value));
+    if(facts.has(value, FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE)) {
+      const std::size_t block = definition_blocks[value];
+      const std::size_t first_use = facts.first_use[value];
+      const bool intact = facts.uses[value] > 1 && block != no_block &&
+        first_use != FunctionFacts::missing_position() &&
+        first_use > facts.definition[value] &&
+        first_use <= block_last_position[block];
+      if(!intact)
+        facts.value_flags[value] &=
+          ~FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE;
+    }
     if(facts.last_use[value] == FunctionFacts::missing_position() ||
        facts.definition[value] == FunctionFacts::missing_position()) continue;
     const std::size_t start = facts.has(value, FunctionFacts::VF_PARAMETER) ? 0 :
@@ -344,6 +355,12 @@ void extend_loop_liveness(FunctionFacts & facts,
     for(std::size_t reg = 0; reg < clobber_positions.size(); ++reg) {
       const std::vector<std::size_t>::const_iterator clobber = std::lower_bound(
         clobber_positions[reg].begin(), clobber_positions[reg].end(), start);
+      if(reg == static_cast<std::size_t>(XR_RAX) &&
+         facts.has(value, FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE) &&
+         clobber != clobber_positions[reg].end() &&
+         *clobber < facts.first_use[value])
+        facts.value_flags[value] &=
+          ~FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE;
       if(clobber != clobber_positions[reg].end() && *clobber < end)
         mask |= 1u << reg;
     }
@@ -468,6 +485,12 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         facts.mark(instruction.first.value,
                    FunctionFacts::VF_DESTRUCTIVE_PARAMETER);
       if(instruction.kind == Instruction::IK_CALL) facts.calls.push_back(position);
+      if(instruction.kind == Instruction::IK_CALL &&
+         instruction.dest.valid() && !instruction.call_returns_void &&
+         (instruction.type.kind == lowir_model::LTK_I64 ||
+          instruction.type.kind == lowir_model::LTK_PTR))
+        facts.mark(instruction.dest,
+                   FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE);
       if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
       if(instruction.kind == Instruction::IK_STACK_ALLOC)
         facts.has_dynamic_stack = true;

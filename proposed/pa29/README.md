@@ -18,12 +18,12 @@ successfully, while the reference compiler leaves an unresolved `__multi3`
 symbol and cannot produce a runnable program.  The reference-agreeing active
 addition case covers the same wide-binary clobber contract for RSI.
 
-`direct-call-result-consumers.t` checks that a sole-use scalar call result
-stays in the ABI return register when the next instruction passes it as a
-direct-value call argument or stores it. Both compilers execute the input
-successfully, and the reference forwards RAX to each consumer, but its MIR
-also retains dead intermediate result-register copies. The candidate is useful
-only as a placement-shape witness, so it remains proposed.
+`direct-call-result-consumers.t` checks both immediate sole-use consumers and
+a pointer result whose first extended-call argument reads intact RAX while a
+stable home preserves a later use. Both compilers execute the input
+successfully, but the reference retains intermediate result-register copies
+or eagerly reads the stable home. The candidate is useful only as a
+placement-shape witness, so it remains proposed.
 
 `discarded-slots-do-not-reserve-frame.t` checks that scalar slots proven to
 contain only dead stores do not consume frame space.  The current compiler
@@ -144,10 +144,11 @@ multiply, or add instructions.
 `direct-return-placement.t` exercises immediately returned integer constants,
 integer loads, global addresses, frame addresses, and integer comparisons.
 It also covers immediately returned integer negation, conversion, division,
-and remainder results. Each producer must write the ABI return register
+and remainder results. Each producer must select its inherent result carrier
 directly when the machine result is available there. Division materializes its
-divisor directly in RCX; remainder transfers directly from RDX to RAX. Neither
-form assigns a general-purpose temporary that is used only by the return.
+divisor directly in RCX; an immediately returned remainder stays in RDX and
+lets return encoding perform the RAX transfer. Neither form assigns a
+general-purpose temporary that is used only by the return.
 
 `incoming-parameter-emitted-clobbers.t` keeps a reference parameter in RCX
 while promoted parameter-slot loads and directly addressed stores lower ahead

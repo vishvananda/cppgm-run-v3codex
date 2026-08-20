@@ -16,6 +16,25 @@ template <class Derived>
 class CallLowering
 {
 protected:
+  bool gpr_call_argument_can_read_rax(
+      const lowir_model::Operand & operand) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    return operand.kind == lowir_model::Operand::OP_TEMP &&
+      lowerer.facts_.first_use[operand.value] == lowerer.position_ &&
+      lowerer.facts_.uses[operand.value] > 1 &&
+      lowerer.facts_.has(operand.value,
+        analysis::FunctionFacts::VF_CALL_RESULT_RAX_FIRST_USE);
+  }
+
+  mir_model::MirOperand resolve_gpr_call_argument(
+      const lowir_model::Operand & operand) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    return gpr_call_argument_can_read_rax(operand) ?
+      build::reg_operand(XR_RAX) : lowerer.resolve(operand);
+  }
+
   bool indirect_target_can_keep_register(
       X64Register target,
       const std::vector<lowir_model::LowirParameter> & parameters) const

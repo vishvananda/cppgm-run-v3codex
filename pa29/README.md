@@ -631,6 +631,8 @@ strategies include:
 
 - keep incoming parameters and call results in their ABI registers until an
   emitted instruction invalidates that location
+- when a full-width scalar call result also needs a stable later home, let an
+  earlier GPR call-argument use read its intact `rax` carrier directly
 - omit parameter homes and setup transfers when slot selection removes every
   use that would have consumed them
 - let a promoted or forwarded parameter-slot load continue to name the
