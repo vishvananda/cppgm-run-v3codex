@@ -1884,6 +1884,15 @@ private:
 		const Operand result = Temp(call.type);
 		call.dest = result.id;
 		Emit(call);
+		if (supplied_result.kind != Operand::NONE)
+		{
+			if (call.type.kind != LOW_OBJECT)
+				throw std::logic_error(
+					"direct class call destination has a scalar result");
+			EmitClassObjectCopy(record.type, result, supplied_result);
+			if (stats_) ++stats_->direct_class_call_destination_placements;
+			return supplied_result;
+		}
 		return RetainFullExpressionCallResult(node, record, result);
 	}
 	Operand LowerConditional(std::uint32_t node, const DumpNode& record,

@@ -758,6 +758,52 @@ phase passes PA17's 244 tests, all 1,714 report tests through PA17, the full
 5,277-test report, `git diff --check`, and the PA39 audit with zero fatal
 findings.
 
+#### S5b completion record: direct-register class-call destinations
+
+PA17 now passes an already-planned class temporary address through the same
+typed call-lowering interface for both indirect-result and direct-register
+class ABIs.  An indirect-result call continues to receive the address as its
+hidden result argument.  A direct-register call copies its returned object
+once into that address and does not retain a second full-expression call
+object.  Slot planning recognizes this immediate typed parent/child relation
+with one additional bit in its existing byte context; it adds no string key,
+map, or second traversal.
+
+The PA17 course reducer puts direct-register class returns in both arms of a
+conditional call argument with another class temporary whose destructor must
+run on normal and exceptional exits.  The checked-in LowIR contains the final
+argument object and one `copyobj` per selected arm, but no intermediate object
+`$call` slot.  The upstream reference independently agrees on direct
+placement.  The local reference records the current cleanup CFG as required by
+the reference policy, and both GCC and Clang accept and run the C++11 source.
+PA17's current requirements and `Design Notes` describe the public placement
+contract without implementation history.
+
+The frozen LowIR census removes all 62 generated object `$call__N` slots
+(62 to zero), 62 total object slots, and 61 `copyobj` instructions.  The
+lowering reports 518 direct class-call destination placements because calls
+that did not need a retained slot already had a final destination too; the 62
+slot avoids count is the narrower full-expression saving.  The residual eight
+object slots whose names begin with `call` are source variables such as
+`$callable` and `$callee`, not generated call results, so this placement family
+is exhausted.
+
+Against the byte-identical S3 baseline, the frozen object is 3,220,432 bytes
+(-1,352), with 731,760 `.text*` bytes (-1,305), 426,048 base text bytes
+(-854), 41,339 LSDA bytes (-12), and 184,165 decoded instructions (-247).
+Relocations and `.eh_frame` are unchanged.  The movement census loses 104
+address-materialization LEAs, 61 memory-to-memory moves, and 61
+immediate-to-register moves.  LowIR falls by 122 instructions and MIR by 142;
+object-temporary movement falls by 88 and address movement by 28.
+
+Three deterministic A/B/B/A blocks measured baseline/candidate median wall
+time 4.610/4.590 seconds, user time 4.125/4.130 seconds, and peak RSS
+360,382/362,408 KiB.  Paired block medians are 0.000% wall, +0.605% user, and
++0.451% RSS, all within host noise and with no compile-speed regression.
+The phase passes PA17's 245 tests, all 1,715 report tests through PA17, the full
+5,281-test report, `git diff --check`, and the PA39 audit with zero fatal
+findings.
+
 ### S6: retain scalar values through bounded baseline regions
 
 After direct-construction misses are removed, extend PA29's existing
@@ -914,7 +960,7 @@ Fill one row after each retained phase.
 | S2 shared terminate action | PA31 behavior plus exact relocation inspection; PA26 has no host-policy output | -1,998 text, -285 LSDA, -400 relocations/begin-catch calls | -0.24% paired median user, -0.37% RSS | PA31 29/29 groups; through-PA31 4,304/4,304; full 5,279/5,279; zero-fatal audit | complete |
 | S3 physical resume terminal | PA31 stack/clobber behavior and exact resume-relocation inspection; no LowIR/MIR migration | -1,416 text, -212 LSDA, -253 resume calls/relocations | +0.24% paired median user, +0.25% RSS | PA31 30/30 groups; through-PA31 4,305/4,305; full 5,280/5,280; zero-fatal audit | complete |
 | S4 cleanup equivalence | none; all typed key fields remain semantically required | audit-only: frozen object remains byte-identical to S3; O1 finds only 16 exact tail groups/22 instructions and three resume blocks | none; no production change | S3 full 5,280/5,280 and zero-fatal audit remain the boundary; exact O0/O1 cleanup/call census recorded | complete; audit-only |
-| S5 destination placement | PA17 direct xvalue-to-base reference binding added; later PA29 work pending | S5a: -2,126 text, -528 LSDA, -97 relocations, -33 terminate calls | -0.12% paired median user, +0.21% RSS | PA17 244/244; through-PA17 1,714/1,714; full 5,277/5,277; zero-fatal audit | S5a complete; remaining S5 planned |
+| S5 destination placement | PA17 direct xvalue-to-base binding and direct-register class-call destination fixtures; no PA29 migration needed | cumulative through S5b: -3,431 text, -540 LSDA, -97 relocations, -33 terminate calls; all 62 generated object call slots removed | S5b paired 0.000% wall, +0.605% user, +0.451% RSS | PA17 245/245; through-PA17 1,715/1,715; full 5,281/5,281; zero-fatal audit | complete through S5b |
 | S6 bounded scalar retention | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S7 width normalization | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |

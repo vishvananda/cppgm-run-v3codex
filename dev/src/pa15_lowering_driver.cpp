@@ -309,6 +309,8 @@ LowIRLoweringStats::LowIRLoweringStats()
 	  cleanup_state_hits(0), cleanup_unique_states(0),
 	  cleanup_blocks_emitted(0), cleanup_destructor_actions_avoided(0),
 	  cleanup_resume_operations_avoided(0),
+	  direct_class_call_destination_placements(0),
+	  direct_class_call_staging_slots_avoided(0),
 	  bit_field_storage_unit_transfers(0), constant_template_bytes(0),
 	  constant_template_globals(0), constant_template_copies(0),
 	  conditional_lifetime_slots(0),

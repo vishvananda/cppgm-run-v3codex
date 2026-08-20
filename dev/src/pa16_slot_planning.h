@@ -130,7 +130,7 @@ protected:
 		std::vector<std::uint32_t> pending(1, node);
 		std::vector<std::uint8_t> under_variable(1, 0);
 		std::vector<std::uint8_t> plan_expression_arguments(1, 0);
-		std::vector<std::uint8_t> under_conditional(1, 0);
+		std::vector<std::uint8_t> child_context(1, 0);
 		std::vector<std::uint32_t> cleanup_context(1, 0);
 		while (!pending.empty())
 		{
@@ -141,8 +141,11 @@ protected:
 			const bool expression_arguments =
 				plan_expression_arguments.back() != 0;
 			plan_expression_arguments.pop_back();
-			const bool conditional_child = under_conditional.back() != 0;
-			under_conditional.pop_back();
+			const std::uint8_t current_context = child_context.back();
+			child_context.pop_back();
+			const bool conditional_child = (current_context & 1) != 0;
+			const bool direct_class_call_destination =
+				(current_context & 2) != 0;
 			const std::uint32_t return_cleanup_context =
 				cleanup_context.back();
 			cleanup_context.pop_back();
@@ -234,7 +237,12 @@ protected:
 				!derived.UsesIndirectClassResult(record.type, record.binding))
 			{
 				const LowType result = derived.LowerType(record.type);
-				if (result.kind != LOW_VOID)
+				if (result.kind != LOW_VOID && direct_class_call_destination)
+				{
+					if (derived.stats_)
+						++derived.stats_->direct_class_call_staging_slots_avoided;
+				}
+				else if (result.kind != LOW_VOID)
 					(void)derived.EnsureGeneratedSlot(current, "call", result);
 			}
 			if (record.kind == DUMP_CALL_EXPRESSION &&
@@ -415,8 +423,17 @@ protected:
 					(expression_call && !child.temporary_implicit_object);
 				plan_expression_arguments.push_back(
 					plan_child_arguments ? 1 : 0);
-				under_conditional.push_back(conditional_child ||
-					record.kind == DUMP_CONDITIONAL_EXPRESSION ? 1 : 0);
+				const bool child_has_direct_class_call_destination =
+					child.kind == DUMP_CALL_EXPRESSION &&
+					derived.IsClassObjectType(child.type) &&
+					(record.kind == DUMP_TEMPORARY_OBJECT ||
+					 record.kind == DUMP_CLASS_VALUE_TRANSFER ||
+					 (record.kind == DUMP_CONDITIONAL_ARM &&
+					  children.size() == 1));
+				child_context.push_back(static_cast<std::uint8_t>(
+					(conditional_child ||
+					 record.kind == DUMP_CONDITIONAL_EXPRESSION ? 1 : 0) |
+					(child_has_direct_class_call_destination ? 2 : 0)));
 				const bool new_exception_region =
 					record.kind == DUMP_TRY_STATEMENT ||
 					record.kind == DUMP_HANDLER;

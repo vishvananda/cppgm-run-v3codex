@@ -64,6 +64,8 @@ struct LowIRLoweringStats
 	std::size_t cleanup_blocks_emitted;
 	std::size_t cleanup_destructor_actions_avoided;
 	std::size_t cleanup_resume_operations_avoided;
+	std::size_t direct_class_call_destination_placements;
+	std::size_t direct_class_call_staging_slots_avoided;
 	std::size_t bit_field_storage_unit_transfers;
 	std::size_t constant_template_bytes;
 	std::size_t constant_template_globals;

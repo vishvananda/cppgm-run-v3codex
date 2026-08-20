@@ -260,6 +260,10 @@ PA17 supports the following in addition to the PA16 subset:
   - copy initialization from function results
   - pass-by-value call arguments
   - return forwarding through the supported value paths
+- when a direct-register class call initializes a temporary whose destination
+  is already known, its result is copied directly into that temporary; a
+  conditional or full-expression cleanup boundary must not introduce a second
+  call-result object
 - direct reuse of the indirect return destination for supported `return local;` cases when
   the named local is the returned complete object
 - ref-qualified member functions and out-of-class definitions of ref-qualified
@@ -372,6 +376,10 @@ Useful intermediate representations include:
 - a value-category check that distinguishes prvalues needing storage from
   xvalue glvalues that already designate storage before applying a base
   projection for reference binding
+- a destination-aware class-call lowering path that accepts the already
+  planned temporary address for both direct-register and indirect-result ABI
+  classes, then marks the temporary live only after the call and required
+  direct-result copy complete
 - extension of PA16 cleanup-state identities with temporary object and
   conditional-lifetime facts, built from the terminal backward so equal
   suffixes can be reused in expected constant time per action

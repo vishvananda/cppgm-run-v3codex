@@ -1,0 +1,166 @@
+global @trace : i32 [binding=strong, object=_Z5trace] = zero
+
+function @make_pair(%value : i64) -> obj<16x8> [binding=strong, object=_Z9make_pairl] {
+  slot $value : i64
+  slot $retobj__1 : obj<16x8>
+
+  block ^entry:
+    store i64 %value, $value
+    %t1 = addr $retobj__1
+    %t2 = load i64 $value
+    %t3 = load i64 $value
+    %t4 = binary add i64 %t3, 1
+    call void @Pair__Pair(%t1, %t2, %t4)
+    return obj<16x8> $retobj__1
+}
+
+function @read(%value : ptr [pass=reference], %__param1 : ptr [pass=reference]) -> i64 [binding=strong, object=_Z4readRK4PairRK5Guard] {
+  slot $value : ptr
+  slot $__param1 : ptr
+
+  block ^entry:
+    store ptr %value, $value
+    store ptr %__param1, $__param1
+    %t1 = load i32 @trace
+    %t2 = binary mul i32 %t1, 10
+    %t3 = binary add i32 %t2, 2
+    store i32 %t3, @trace
+    %t4 = load ptr $value
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load i64 %t5
+    %t7 = load ptr $value
+    %t8 = index i8 [projection=field] %t7, 8
+    %t9 = load i64 %t8
+    %t10 = binary add i64 %t6, %t9
+    return i64 %t10
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $first : u8
+  slot $result : i64
+  slot $cond__1 : i64
+  slot $call__2 : i64
+  slot $arg__3 : obj<16x8>
+  slot $arg__4 : obj<1x1>
+  slot $call__5 : i64
+  slot $arg__6 : obj<16x8>
+  slot $arg__7 : obj<1x1>
+  slot $lor__8 : i64
+
+  block ^entry:
+    store i32 0, @trace
+    store u8 1, $first
+    %t1 = load u8 $first
+    branch %t1, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    %t2 = addr $arg__3
+    %t3 = call obj<16x8> @make_pair(4)
+    copyobj 16x8 %t3, %t2
+    eh_try ^cleanup_resume_4
+    %t4 = addr $arg__4
+    call void @Guard__Guard(%t4)
+    eh_end
+    jump ^call_unwind_end_5
+
+  block ^cleanup_resume_4:
+    resume
+
+  block ^call_unwind_end_5:
+    eh_try ^cleanup_action_6
+    %t5 = call i64 @read(%t2, %t4)
+    store i64 %t5, $call__2
+    %t6 = load i64 $call__2
+    store i64 %t6, $cond__1
+    call void @Guard___Guard(%t4)
+    eh_end
+    jump ^call_unwind_end_7
+
+  block ^cleanup_action_6:
+    call void @Guard___Guard(%t4)
+    jump ^cleanup_resume_4
+
+  block ^call_unwind_end_7:
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    eh_try ^cleanup_resume_4
+    %t7 = addr $arg__6
+    %t8 = call obj<16x8> @make_pair(7)
+    copyobj 16x8 %t8, %t7
+    %t9 = addr $arg__7
+    call void @Guard__Guard(%t9)
+    eh_end
+    %t10 = call i64 @read(%t7, %t9)
+    store i64 %t10, $call__5
+    %t11 = load i64 $call__5
+    store i64 %t11, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t12 = load i64 $cond__1
+    store i64 %t12, $result
+    %t13 = load i64 $result
+    %t14 = cmp ne i64 %t13, 9
+    branch %t14, ^lor_short_9, ^lor_rhs_8
+
+  block ^lor_rhs_8:
+    %t15 = load i32 @trace
+    %t16 = cmp ne i32 %t15, 123
+    %t17 = cmp ne i64 %t16, 0
+    store i64 %t17, $lor__8
+    jump ^lor_end_10
+
+  block ^lor_short_9:
+    store i64 1, $lor__8
+    jump ^lor_end_10
+
+  block ^lor_end_10:
+    %t18 = load i64 $lor__8
+    %t19 = convert zext i32 u8 %t18
+    return i32 %t19
+}
+
+function @Pair__Pair(%this : ptr, %a : i64, %b : i64) -> void [binding=weak, object=_ZN4PairC1Ell] {
+  slot $this : ptr
+  slot $a : i64
+  slot $b : i64
+
+  block ^entry:
+    store ptr %this, $this
+    store i64 %a, $a
+    store i64 %b, $b
+    %t1 = load i64 $a
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i64 %t1, %t3
+    %t4 = load i64 $b
+    %t5 = load ptr $this
+    %t6 = index i8 [projection=field] %t5, 8
+    store i64 %t4, %t6
+    return void
+}
+
+function @Guard__Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @trace
+    %t2 = binary mul i32 %t1, 10
+    %t3 = binary add i32 %t2, 1
+    store i32 %t3, @trace
+    return void
+}
+
+function @Guard___Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @trace
+    %t2 = binary mul i32 %t1, 10
+    %t3 = binary add i32 %t2, 3
+    store i32 %t3, @trace
+    return void
+}

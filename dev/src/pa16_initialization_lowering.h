@@ -59,12 +59,11 @@ protected:
 		Derived& derived = static_cast<Derived&>(*this);
 		const bool retained = derived.full_expression_cleanup_active_ &&
 			call.full_expression_staging;
-		const Operand value = derived.LowerCall(node, call, children);
 		const LowType type = derived.LowerStorageType(call.type);
 		const Operand slot(derived.EnsureGeneratedSlot(
 			node, retained ? "call" : "callobj", type), type);
-		if (!retained) derived.EmitClassObjectCopy(
-			call.type, value, derived.AddressOfStorage(slot));
+		(void)derived.LowerCall(
+			node, call, children, derived.AddressOfStorage(slot));
 		return slot;
 	}
 
@@ -172,12 +171,8 @@ protected:
 		}
 		if (source.kind == DUMP_CALL_EXPRESSION)
 		{
-			if (derived.UsesIndirectClassResult(source.type, source.binding))
-				(void)derived.LowerCall(children[0], source,
-					derived.Children(children[0]), destination);
-			else EmitClassObjectCopy(action.type,
-				derived.LowerCall(children[0], source,
-					derived.Children(children[0])), destination);
+			(void)derived.LowerCall(children[0], source,
+				derived.Children(children[0]), destination);
 			return;
 		}
 		if (source.kind == DUMP_CONSTRUCTOR_ACTION)
@@ -370,12 +365,8 @@ protected:
 			else if (derived.arena_.nodes[children[0]].kind == DUMP_CALL_EXPRESSION)
 			{
 				const DumpNode& call = derived.arena_.nodes[children[0]];
-				if (derived.UsesIndirectClassResult(call.type, call.binding))
-					(void)derived.LowerCall(children[0], call,
-						derived.Children(children[0]), destination);
-				else EmitClassObjectCopy(call.type,
-					derived.LowerValue(children[0],
-						derived.LowerExpressionType(call.type)), destination);
+				(void)derived.LowerCall(children[0], call,
+					derived.Children(children[0]), destination);
 			}
 			else if (derived.arena_.nodes[children[0]].kind ==
 				DUMP_CONDITIONAL_EXPRESSION)

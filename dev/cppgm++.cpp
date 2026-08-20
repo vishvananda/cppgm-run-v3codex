@@ -1580,6 +1580,10 @@ void report_source_compile_stats(
 				stats.cleanup_destructor_actions_avoided
 			 << " cleanup_resume_operations_avoided=" <<
 				stats.cleanup_resume_operations_avoided
+			 << " direct_class_call_destination_placements=" <<
+				stats.direct_class_call_destination_placements
+			 << " direct_class_call_staging_slots_avoided=" <<
+				stats.direct_class_call_staging_slots_avoided
 			 << " terminate_boundaries_explicit="
 			 << stats.terminate_boundaries_explicit
 			 << " terminate_boundaries_derived_special_member="
@@ -2912,6 +2916,10 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.cleanup_destructor_actions_avoided
 			 << " cleanup_resume_operations_avoided="
 			 << stats.cleanup_resume_operations_avoided
+			 << " direct_class_call_destination_placements="
+			 << stats.direct_class_call_destination_placements
+			 << " direct_class_call_staging_slots_avoided="
+			 << stats.direct_class_call_staging_slots_avoided
 			 << " bit_field_storage_unit_transfers="
 			 << stats.bit_field_storage_unit_transfers
 			 << " constant_template_bytes=" << stats.constant_template_bytes
