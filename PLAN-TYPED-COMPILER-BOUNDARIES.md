@@ -2072,21 +2072,23 @@ and IR serialization must render from the typed fact.
    decode: converting the retained `long double` would double-round
    narrow targets and break object exactness, so the transport change
    must start at the PA2/PA10 decode, not at the evaluated value.
-2. **T7b:** complete integral and character facts, including signedness,
-   width, suffix, character kind, and normalized bits.  Reuse the current
-   retained scalar path rather than introduce a second literal table.
-3. **T7c:** add floating bit facts and string/character byte or code-unit arena
-   slices.  User-defined suffixes use `NameId`; exact source spelling remains a
-   presentation handle.  GNU asm may reuse decoded narrow-string slices while
-   its final label/template text remains a boundary.
-4. **T7d:** give evaluated constants a compact `ScalarFactId` or equivalent
-   kind-disjoint slot so `InternNumber`/`InternScalar` no longer formats values
-   for later lowering.  PA15/PA16/PA20/PA21 consume bits directly and exact
-   semantic/IR dumps render from the fact.
-5. **T7e:** carry pragma-pack alignment as an integer fact through PA10 and
-   semantics.  Remove every integrated fallback decoder whose corresponding
-   retained fact is mandatory; leave standalone textual LowIR/CY86 conversion
-   unchanged.
+2. **T7b (measured and declined):** integral and character facts already use
+   the retained scalar fast path when PA10 has the fact.  The 160 remaining
+   integer parses have no retained typed input, so adding a second side table
+   would add storage without removing a typed-to-text round trip.
+3. **T7c (measured and declined):** string and character consumers share the
+   one PA2 decoder, with lowering memoizing distinct literals.  The three
+   floating parses must produce target-typed bits from source spelling to
+   avoid double rounding; no already-decoded target fact is being discarded.
+4. **T7d (measured and declined):** evaluated constants retain typed scalar
+   values where consumers can use them.  The remaining exact spellings are
+   serialization facts or inputs to the target-typed first decode, so a new
+   `ScalarFactId` would be parallel storage rather than a removed recovery.
+5. **T7e (measured and declined):** pragma-pack alignment is formatted for
+   PA10's public serialization and parsed once at the semantic input boundary.
+   It is not a production typed-to-text-to-typed cycle under the current
+   staged interface.  Standalone textual LowIR/CY86 conversion remains an
+   explicit adapter.
 
 Reject a design that embeds wide integers, `long double`, or owning strings in
 every token or dump node.  Common scalar facts should fit existing storage or
@@ -2412,12 +2414,11 @@ ones.  Do not replace a result with a narrative that loses the measured data.
 | T6 anchor milestone | Cumulative work through T6 against the original `c349d7f5` audit anchor | Five interleaved A/B/B/A blocks (20 runs), every object byte-exact | Baseline/candidate medians 4.745/4.250 s user, 5.230/4.740 s wall, 364,598/359,068 KiB RSS; paired candidate -10.35% user, -9.47% wall, -1.69% RSS; the cumulative win now exceeds the top of the 5-10% working target | Exact objects in all 20 runs | Five-block section 17 protocol at checkpoint `c29c85ba`; a second `make inception` after the T6c/T6e semantic-core batch again reports `MATCH cppgm++` | Milestone recorded |
 | T6e | Declaration specifiers classify by keyword kind | The hot `BuildSpecifiers` loop and remaining keyword dispatch compare memoized `KW_*` kinds instead of spellings; extensible and GNU-extension registries stay string adapters | Three A/B/B/A blocks against immutable T6c: 4.300/4.250 s user; paired -0.70% user, -0.63% wall, +0.14% RSS | Frozen object exact in all runs | Full report 5,218/5,218; zero-fatal audit | `c29c85ba`; accepted |
 | T6c | Semantic operator dispatch compares packed kinds | Node-driven dispatch uses the memoized `PayloadTokenKind`; helper entries classify synthesized operation strings once through `ClassifyOperationSpelling`; about 120 integrated spelling comparisons became integer compares across PA12/PA16/PA21/PA27/PA34; residual text is classified adapters. The vocabulary moved to a compiled `pa12_semantic_vocabulary.cpp` module for the file audit. | Three A/B/B/A blocks against immutable T6d: 4.360/4.275 s user, 4.815/4.775 s wall; paired -1.04% user, -0.42% wall, -0.02% RSS | Frozen object byte-exact through every conversion step and all 12 timed runs | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `a3150b62`; accepted |
-| T7 | Unified literal facts remove render/reparse and repeated decode | Planned | Planned | Exact serialization; typed behavior reducers | PA2/10/12/15/16/21 | Planned |
 | T7 | Literal facts close on the measured anchor | Frozen counters: 160 semantic integer parse fallbacks, 2,669 string-literal decodes through the one shared PA2 decoder, 3 floating bit parses; no dual decoder implementations exist; side-arena publication declined under section 18 at these counts | Not timed; measurement-only closure | Frozen object exact with counters enabled | Full report 5,218/5,218 | Counter anchor accepted; measured disposition recorded |
 | T8a | Remap emitted spellings by producer identity | Token-spelling interns 490,862 -> 275,691; interner calls -215,171; hashed bytes -1,624,017; distinct misses unchanged; per-producer classification cache added in post-tokenization | Three A/B/B/A blocks against immutable T6e: paired -0.58% user, -0.21% wall, -0.10% RSS | Frozen object byte-exact in stats and all timed runs | Full report 5,218/5,218; zero-fatal audit | Accepted |
 | Final gate | Section 19 completion at the final tree | All phase counters and dispositions recorded; the frozen compile beats the immutable anchor by 9.67% median user over five clean blocks with every object byte-exact; RSS improves 1.63% | 8-way inception: 268.03 s wall, 2,230.18 s user, 224,116 KiB peak; 32-way: 242.15 s wall, 1,817.16 s user, 223,100 KiB peak; both report `MATCH cppgm++` from scratch | Deterministic, byte-exact self-host | Full report 5,218/5,218; zero-fatal audit with 27 warnings | Complete |
 | T8b | Publish declarator name facts by text identity | Interner calls fall further to 965,487 and hashed bytes to 8,862,861; declarator, parameter, condition, template-parameter, range-for, and structured-binding publication carry the already-interned payload IDs; serialized payloads and the operator-spacing adjustment stay explicit boundaries | Three A/B/B/A blocks against immutable T8a: paired -0.94% user, -0.84% wall, -0.20% RSS | Frozen object byte-exact in stats and all timed runs | Full report 5,218/5,218; zero-fatal audit | Accepted |
-| T9 | Secondary specialized text parsers use retained typed facts | Planned | Planned | Per-item decision | Earliest owner per item | Planned |
+| T9 | Close specialized recovery and the residual source registry | T9a has no constructible trigger and retains a documented typed recipe; T9b dispatches recipe expressions by token kind; T9c/T9d are boundary renderers; the final broad audit finds 22/237/80/87 candidates, all classified | No timing claim for zero-occurrence recovery; T6/T8 timings cover the converted work | No fixture changes; all retained strings are input/output, grammar, diagnostic, or documented unreachable-adapter boundaries | Full report 5,218/5,218; zero-fatal audit with 27 warnings | `328678dc` implementation and `83a8d5d9` closeout; complete |
 
 ## 21. Code map
 
