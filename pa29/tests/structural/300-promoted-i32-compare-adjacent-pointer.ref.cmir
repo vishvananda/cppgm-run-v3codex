@@ -21,16 +21,13 @@ function @main
 
   block ^cond
     load.i32 r8, [rbp-<off0>]
-    sext.i32 r8
     load.i32 r9, [rbp-<off1>]
-    sext.i32 r9
     cmp.i64 r8, r9
     jne ^body
     jmp ^end
 
   block ^body
     load.i32 r8, [rbp-<off0>]
-    sext.i32 r8
     add r8, 1
     sext.i32 r8
     store.i32 [rbp-<off0>], r8

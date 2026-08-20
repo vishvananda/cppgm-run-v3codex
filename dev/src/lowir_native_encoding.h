@@ -70,6 +70,17 @@ void emit_load(elf_detail::CodeBuffer & out, X64Register destination,
 void emit_indexed_load(elf_detail::CodeBuffer & out, X64Register destination,
                        X64Register base, X64Register index, unsigned scale,
                        long long displacement, unsigned width);
+void emit_normalized_load(elf_detail::CodeBuffer & out,
+                          X64Register destination, X64Register base,
+                          long long displacement, unsigned width,
+                          bool sign_extend);
+void emit_indexed_normalized_load(
+    elf_detail::CodeBuffer & out, X64Register destination, X64Register base,
+    X64Register index, unsigned scale, long long displacement,
+    unsigned width, bool sign_extend);
+void emit_normalized_register_move(
+    elf_detail::CodeBuffer & out, X64Register destination,
+    X64Register source, unsigned width, bool sign_extend);
 void emit_store(elf_detail::CodeBuffer & out, X64Register base,
                 long long displacement, X64Register source, unsigned width);
 void emit_indexed_store(elf_detail::CodeBuffer & out, X64Register base,

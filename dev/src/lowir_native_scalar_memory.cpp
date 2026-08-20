@@ -1,5 +1,6 @@
 #include "lowir_native_scalar_memory.h"
 
+#include "lowir_native_data_layout.h"
 #include "lowir_native_encoding.h"
 
 #include <stdexcept>
@@ -32,6 +33,50 @@ void emit_address_load(elf_detail::CodeBuffer & out,
     emit_load(out, destination, XR_RBP,
               actual_frame_offset(function, address.offset), width);
   } else throw std::logic_error("unsupported native load address");
+}
+
+namespace {
+
+bool integer_load_sign_extends(const lowir_model::LowType & type)
+{
+  return type.kind == lowir_model::LTK_I1 ||
+    type.kind == lowir_model::LTK_I8 ||
+    type.kind == lowir_model::LTK_I16 ||
+    type.kind == lowir_model::LTK_I32 ||
+    type.kind == lowir_model::LTK_I64;
+}
+
+}  // namespace
+
+void emit_address_normalized_load(
+    elf_detail::CodeBuffer & out, X64Register destination,
+    const mir_model::MirOperand & address, const lowir_model::LowType & type,
+    const mir_model::MirFunction & function)
+{
+  const unsigned width = data_layout::type_width(type);
+  const bool sign_extend = integer_load_sign_extends(type);
+  if(address.kind == mir_model::MirOperand::OP_DEREF) {
+    if(address.has_index)
+      emit_indexed_normalized_load(out, destination, address.reg,
+        address.index, address.scale, address.offset, width, sign_extend);
+    else emit_normalized_load(out, destination, address.reg, address.offset,
+                              width, sign_extend);
+  } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
+    emit_symbol_move(out, XR_R11, address.symbol, address.address_binding);
+    emit_normalized_load(
+      out, destination, XR_R11, 0, width, sign_extend);
+  } else if(address.kind == mir_model::MirOperand::OP_FRAME) {
+    emit_normalized_load(out, destination, XR_RBP,
+      actual_frame_offset(function, address.offset), width, sign_extend);
+  } else throw std::logic_error("unsupported normalized native load address");
+}
+
+void emit_normalized_register_move(
+    elf_detail::CodeBuffer & out, X64Register destination,
+    X64Register source, const lowir_model::LowType & type)
+{
+  lowir_native::emit_normalized_register_move(out, destination, source,
+    data_layout::type_width(type), integer_load_sign_extends(type));
 }
 
 void emit_address_store(elf_detail::CodeBuffer & out,

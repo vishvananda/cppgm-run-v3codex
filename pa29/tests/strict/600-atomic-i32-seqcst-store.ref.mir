@@ -21,7 +21,6 @@ function @main
     mov rax, 11
     xchg.i32 [r8], rax
     load.i32 r9, [r8]
-    sext.i32 r9
     cmp.i32 r9, 11
     sete rax
     movzx rax, rax

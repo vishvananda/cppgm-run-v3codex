@@ -29,7 +29,6 @@ function @return_load
 
   block ^entry
     load.i32 rax, @value
-    sext.i32 rax
     ret rax
 
 function @return_global_address
@@ -186,8 +185,6 @@ function @main
     setne r9
     movzx r9, r9
     load.i32 rdi, [rbp-<off2>]
-    sext.i32 rdi
-    sext.i32 rdi
     mov rdx, 1
     cmp.i32 rdi, rdx
     setne rdi

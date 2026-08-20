@@ -31,7 +31,6 @@ function @check
 
   block ^rhs
     load.i32 r8, [rdi+<off0>]
-    sext.i32 r8
     cmp.i32 r8, 0
     jne ^then
     jmp ^end

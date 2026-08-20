@@ -49,7 +49,6 @@ function @main
     call @write_seventh [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
     add rsp, 16
     load.u8 r8, [rbp-1]
-    zext.i8 r8
     cmp.i64 r8, 1
     setne rax
     movzx rax, rax

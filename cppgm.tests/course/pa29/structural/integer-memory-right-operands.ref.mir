@@ -184,7 +184,6 @@ function @multiply_byte
 
   block ^entry
     load.i8 r8, [rdi]
-    sext.i8 r8
     imul rsi, r8
     sext.i8 rsi
     ret rsi
@@ -324,8 +323,6 @@ function @main
     movzx r12, r12
     store.i64 [rbp-8], r12
     load.i32 r12, [rbp-28]
-    sext.i32 r12
-    sext.i32 r12
     mov rdx, 42
     cmp.i32 r12, rdx
     setne r12

@@ -911,6 +911,42 @@ Complexity: one fixed-size per-register normalization state updated and
 queried at instructions already visited, plus O(1) typed operator/constant
 selection per instruction.  No extra whole-function scan is permitted.
 
+S7a completes the load-owned portion of the width work.  Integer `MI_LOAD`
+now defines the complete logical register value: x86 selection emits a signed
+or unsigned extending memory form directly for i8/u8/i16/u16/i32/u32 and an
+ordinary full-width load for i64/u64/pointers.  The MIR builder consequently
+does not append a second normalization after a same-destination typed load.
+Adjacent and delayed frame-reload forwarding use the same typed normalized
+register transfer, including when source and destination are identical, so
+forwarding cannot expose stale upper bits.  This is a constant-time decision
+at operations already emitted and adds no map, value scan, or hidden encoder
+dataflow graph.
+
+The existing PA29 fixtures already provide the required reducers: signed and
+unsigned frame/global loads, promoted comparisons, atomics, floating branch
+inputs, direct returns, memory operands, and stack-call arguments all migrate
+to the one-operation load contract.  Existing call-return fixtures retain
+their explicit normalization and remain the negative boundary.  Seventeen
+PA29 fixtures and five inherited PA38 fixtures changed, each only by deleting
+the redundant post-load instruction; no LowIR fixture changed.
+
+Against S6, frozen MIR falls from 171,577 to 169,530 instructions (-2,047).
+Source-slot normalizations fall from 1,026 to zero, scalar-temporary
+normalizations from 2,206 to 1,218, and call-boundary normalizations from 1,247
+to 1,214.  The object falls from 3,220,336 to 3,215,320 bytes (-5,016),
+`.text*` from 731,575 to 726,695 (-4,880), LSDA by seven bytes, and decoded
+instructions from 184,146 to 182,489 (-1,657); `.eh_frame` is unchanged.
+The remaining `movzx`/`movslq` counts move only from 3,659/1,431 to
+3,616/1,419 because one extending load remains, correctly, in place of each
+old partial-load/register-extension pair.
+
+Three A/B/B/A timing blocks against the exact S6 compiler measured
+baseline/candidate medians of 4.715/4.720 seconds wall, 4.220/4.215 seconds
+user, and 360,036/360,238 KiB RSS.  Paired block medians are -0.53% wall,
+-0.82% user, and -0.05% RSS, so the phase is compile-cost neutral.  PA29 plus
+PA38 pass 289/289, the full report passes 5,282/5,282, and the file audit has
+zero fatal findings.
+
 ### S8: make baseline register cost explicit
 
 Recount `push`, `pop`, physical epilogues, and preserve-list entries after the
@@ -1002,7 +1038,7 @@ Fill one row after each retained phase.
 | S4 cleanup equivalence | none; all typed key fields remain semantically required | audit-only: frozen object remains byte-identical to S3; O1 finds only 16 exact tail groups/22 instructions and three resume blocks | none; no production change | S3 full 5,280/5,280 and zero-fatal audit remain the boundary; exact O0/O1 cleanup/call census recorded | complete; audit-only |
 | S5 destination placement | PA17 direct xvalue-to-base binding and direct-register class-call destination fixtures; no PA29 migration needed | cumulative through S5b: -3,431 text, -540 LSDA, -97 relocations, -33 terminate calls; all 62 generated object call slots removed | S5b paired 0.000% wall, +0.605% user, +0.451% RSS | PA17 245/245; through-PA17 1,715/1,715; full 5,281/5,281; zero-fatal audit | complete through S5b |
 | S6 bounded scalar retention | PA29 exact-forward-edge MIR/behavior; existing PA29 loop/call/escape and PA38 EH negatives | -185 text, -19 decoded instructions, -34 temporary homes; +108 `.eh_frame` pending S8 cost audit | reverse-order medians both 4.270s user; <0.5% RSS movement | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | complete |
-| S7 width normalization | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
+| S7 width normalization | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures to normalized typed loads; call returns remain explicit | S7a: -4,880 text, -1,657 decoded instructions, -2,047 MIR | S7a paired -0.82% user, -0.05% RSS | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | in progress; load-owned normalization complete |
 | S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S9 demand/optimization remeasure | explicit force-inline owner only at O0; ordinary work deferred to PA37/PA38 | pending | pending | pending | planned |
 

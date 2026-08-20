@@ -41,7 +41,6 @@ function @main
     lea rdi, [rbp-8]
     call @YP__YP [args=(rdi)]
     load.i32 rbx, [rbp-8]
-    sext.i32 rbx
     lea rdi, [rbp-8]
     call @YP___YP [args=(rdi)]
     ret rbx

@@ -40,7 +40,6 @@ function @id
     lea r11, [rbp-8]
     copy_bytes 4x1, r11, rdi
     load.i32 rax, [rbp-8]
-    sext.i32 rax
     ret rax
 
 function @main

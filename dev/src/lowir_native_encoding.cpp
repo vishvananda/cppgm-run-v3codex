@@ -269,6 +269,72 @@ void emit_indexed_load(CodeBuffer & out, X64Register destination,
     out, destination, base, index, scale, displacement);
 }
 
+void emit_normalized_load(CodeBuffer & out, X64Register destination,
+                          X64Register base, long long displacement,
+                          unsigned width, bool sign_extend)
+{
+  if(width >= 64 || (!sign_extend && width == 32)) {
+    emit_load(out, destination, base, displacement, width);
+    return;
+  }
+  emit_rex(out, sign_extend, destination, base);
+  if(sign_extend && width == 32) {
+    out.byte(0x63);
+  } else {
+    out.byte(0x0f);
+    out.byte(sign_extend ? (width == 8 ? 0xbe : 0xbf) :
+                           (width == 8 ? 0xb6 : 0xb7));
+  }
+  emit_memory_modrm(out, destination, base, displacement);
+}
+
+void emit_indexed_normalized_load(
+    CodeBuffer & out, X64Register destination, X64Register base,
+    X64Register index, unsigned scale, long long displacement,
+    unsigned width, bool sign_extend)
+{
+  if(width >= 64 || (!sign_extend && width == 32)) {
+    emit_indexed_load(out, destination, base, index, scale, displacement,
+                      width);
+    return;
+  }
+  emit_indexed_rex(out, sign_extend, destination, base, index);
+  if(sign_extend && width == 32) {
+    out.byte(0x63);
+  } else {
+    out.byte(0x0f);
+    out.byte(sign_extend ? (width == 8 ? 0xbe : 0xbf) :
+                           (width == 8 ? 0xb6 : 0xb7));
+  }
+  emit_indexed_memory_modrm(
+    out, destination, base, index, scale, displacement);
+}
+
+void emit_normalized_register_move(CodeBuffer & out,
+                                   X64Register destination,
+                                   X64Register source, unsigned width,
+                                   bool sign_extend)
+{
+  if(width >= 64) {
+    if(destination != source) emit_register_move(out, destination, source);
+    return;
+  }
+  if(!sign_extend && width == 32) {
+    emit_sized_register_move(out, destination, source, 32);
+    return;
+  }
+  emit_rex(out, sign_extend, destination, source,
+           !sign_extend && width == 8 && source >= XR_RSP && source < XR_R8);
+  if(sign_extend && width == 32) {
+    out.byte(0x63);
+  } else {
+    out.byte(0x0f);
+    out.byte(sign_extend ? (width == 8 ? 0xbe : 0xbf) :
+                           (width == 8 ? 0xb6 : 0xb7));
+  }
+  emit_modrm(out, 3, destination, source);
+}
+
 void emit_store(CodeBuffer & out, X64Register base, long long displacement,
                 X64Register source, unsigned width)
 {

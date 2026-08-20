@@ -185,6 +185,15 @@ void append_integer_normalization(
 {
   const std::size_t width = lowir_model::lowir_type_bit_width(type);
   if(type.kind == lowir_model::LTK_PTR || width >= 64) return;
+  if(!out.empty()) {
+    const mir_model::MirInstruction & producer = out.back();
+    if(producer.opcode == mir_model::MirInstruction::MI_LOAD &&
+       producer.type == type && producer.operands.size() == 2 &&
+       producer.operands[0].kind == mir_model::MirOperand::OP_REG &&
+       destination.kind == mir_model::MirOperand::OP_REG &&
+       producer.operands[0].reg == destination.reg)
+      return;
+  }
   const bool sign_extend = type.kind == lowir_model::LTK_I1 ||
     type.kind == lowir_model::LTK_I8 || type.kind == lowir_model::LTK_I16 ||
     type.kind == lowir_model::LTK_I32 || type.kind == lowir_model::LTK_I64;

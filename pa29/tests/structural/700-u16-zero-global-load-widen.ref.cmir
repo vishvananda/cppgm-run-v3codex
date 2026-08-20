@@ -18,7 +18,6 @@ function @main
 
   block ^entry
     load.u16 r8, @g
-    zext.i16 r8
     cmp.i64 r8, 65535
     sete rax
     movzx rax, rax

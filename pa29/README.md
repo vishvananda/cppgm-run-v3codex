@@ -562,9 +562,12 @@ To complete PA29, implement these goals:
    or unsigned integer arithmetic should show the expected post-operation normalization
    instead of silently widening into an untyped 64-bit path.
 
-   Narrow values returned across a call boundary or loaded from frame storage must also
-   be normalized before a wider comparison or `switch`; stale upper bits must not affect
-   branch or case selection.
+   A typed integer load defines the complete logical register value: narrow
+   signed loads sign-extend and narrow unsigned loads zero-extend as part of
+   the load itself.  Do not add a separate normalization instruction after
+   such a load.  Narrow values returned across a call boundary still require
+   explicit normalization before a wider comparison or `switch`; stale upper
+   bits must not affect branch or case selection.
 
 12. Keep the conservative `f80` path explicit rather than implicit.
    PA29 does not need to treat `f80` like ordinary XMM-resident `f32`/`f64`, but its
@@ -675,6 +678,9 @@ strategies include:
 - record each block's sole predecessor and successor in dense CFG facts so a
   compiler-created scalar can retain its selected register across one exact
   adjacent edge without constructing per-block live-value sets
+- select the signed or unsigned extending memory form directly for a typed
+  narrow integer load instead of emitting a partial load followed by a
+  register-only normalization
 - retain integer constants as typed MIR immediates, letting native emission
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required

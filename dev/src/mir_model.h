@@ -193,6 +193,9 @@ struct Instruction
   enum Opcode
   {
     MI_MOV,
+    // An integer MI_LOAD defines the complete logical register value. Narrow
+    // signed loads sign-extend and narrow unsigned loads zero-extend as part
+    // of this one typed operation; they need no following normalization.
     MI_LOAD,
     // MI_STORE names a memory destination followed by a scalar value.  An
     // integer value remains OP_IMM even when x86-64 must materialize a large

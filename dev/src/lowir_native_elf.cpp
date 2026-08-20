@@ -1364,8 +1364,9 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
   case mir_model::MirInstruction::MI_LOAD:
     if(!function) throw std::logic_error("load outside function");
     require_operands(instruction, 2);
-    emit_address_load(out, require_register(instruction.operands[0]), instruction.operands[1],
-                      type_width(instruction.type), *function);
+    emit_address_normalized_load(out,
+      require_register(instruction.operands[0]), instruction.operands[1],
+      instruction.type, *function);
     return;
   case mir_model::MirInstruction::MI_STORE:
     if(!function) throw std::logic_error("store outside function");
@@ -1725,9 +1726,8 @@ bool emit_delayed_frame_forwarding(
     return false;
   const X64Register source = action.source_register();
   const X64Register destination = instruction.operands[0].reg;
-  if(source != destination)
-    emit_sized_register_move(out, destination, source,
-      type_width(instruction.type));
+  emit_normalized_register_move(
+    out, destination, source, instruction.type);
   return true;
 }
 
@@ -1744,9 +1744,8 @@ std::size_t emit_forwarded_frame_reload(
   if(action.kind != frame_forwarding::FrameReloadPlan::InstructionAction::
        IA_DROP_ADJACENT_STORE)
     emit_instruction(out, instructions[start], &function);
-  if(source != destination)
-    emit_sized_register_move(out, destination, source,
-      type_width(instructions[start].type));
+  emit_normalized_register_move(
+    out, destination, source, instructions[start].type);
   return 2;
 }
 

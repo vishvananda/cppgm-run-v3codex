@@ -23,7 +23,6 @@ function @main
     mov r9, rax
     sext.i32 r9
     load.i32 rdi, [r8]
-    sext.i32 rdi
     mov rdx, 7
     cmp.i32 r9, rdx
     sete r9

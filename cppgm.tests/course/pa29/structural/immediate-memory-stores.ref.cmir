@@ -71,11 +71,8 @@ function @main
     store.i64 [rbp-<off1>], 4294967296
     store.i64 @wide_value, -2147483648
     load.u8 r8, @byte_value
-    zext.i8 r8
     load.u16 r9, @short_value
-    zext.i16 r9
     load.u32 rdi, [<gpr0>+<off0>]
-    zext.i32 rdi
     load.i64 rsi, [rbp-<off0>]
     load.i64 <gpr0>, [rbp-<off1>]
     load.i64 <gpr1>, @wide_value
