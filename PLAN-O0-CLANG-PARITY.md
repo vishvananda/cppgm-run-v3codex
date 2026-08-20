@@ -498,6 +498,32 @@ input MIR begins with PA29 selection.
 
 Complexity: O(1) per selected operation.
 
+P4 carries an immediately consumed load's existing typed address fact into the
+integer selector and transfers, rather than nests, its deferred base/index
+dependencies.  Existing frame homes are selected directly.  The encoder now
+owns scalar integer memory/ALU forms in a separate module and accepts indexed
+addresses for arithmetic and comparisons.  The frozen compile selects 635
+memory right operands.  Division, variable shifts, byte multiply, and an
+address carrier that conflicts with a fixed destination retain the
+materialized path.
+
+The pinned reference materializes all new forms.  The approved branch-local
+compiler at commit `ce188155` regenerated the contract through the documented
+PA29 target.  Three strict raw-MIR fixtures and two structural raw/canonical
+fixtures migrate, plus the new behavioral structural reducer; PA38 O1/O2 has
+no fixture movement.  The directory census again found one unrelated
+relaxed-only raw-MIR difference and left it unchanged.
+
+Against P3, the frozen object falls from 4,394,672 to 4,392,256 bytes, all
+`.text*` falls from 908,836 to 906,658 bytes, and decoded instructions fall
+from 223,486 to 222,745.  It removes 482 `mov`, 79 `push`, and 139 `pop`
+instructions because several functions no longer need a callee-saved scratch.
+Functions, relocations, and relocation bytes are unchanged; `.eh_frame` falls
+by 292 bytes as those frame shapes shrink.  Three sequential ABBA blocks
+measured 4.720/4.740 seconds median wall, 4.225/4.245 seconds median user, and
+360,056/361,400 KiB median peak RSS for P3/P4.  Paired candidate ratios were
++0.64% wall, +0.71% user, and +0.52% RSS, within the declared guardrail.
+
 Before adding P3/P4 code, keep `lowir_native.cpp` and
 `lowir_native_elf.cpp` below the fatal file-audit limits.  Extract integer
 selection and scalar memory/ALU encoding into responsibility-named modules
@@ -732,7 +758,7 @@ Fill one row after each independently retained phase.
 | P1 bit-field units | one new PA17 reducer; PA18-PA28 unchanged | 5,673 fewer `.text*` bytes; 1,303 fewer instructions | 4,400,592 bytes; `.text*` 915,371; functions/relocations unchanged | ABBA 0.00% wall, +0.12% user, -0.05% RSS | PA17 242/242; through PA17 1,709/1,709; full report 5,266/5,266; zero-fatal audit | complete |
 | P2 constexpr arrays | one incidental PA20 fixture, one existing PA21 fixture, and one new PA21 reducer migrate to a readonly global plus `copyobj`; PA22-PA28 unchanged | 6,030 fewer `.text*` bytes; 1,197 fewer instructions; 3 added relocations | 4,395,256 bytes; `.text*` 909,341; functions/EH unchanged | ABBA -0.11% wall, 0.00% user, +0.18% RSS | PA21 148/148; through PA21 2,369/2,369; full report 5,266/5,266; zero-fatal audit | complete |
 | P3 immediate stores | none | 10 PA29 strict raw, 13 existing structural raw/canonical, one new behavioral structural reducer, and 5 PA38 raw/canonical fixtures migrate | 4,394,672 bytes; `.text*` 908,836; 1,688 fewer instructions; functions/relocations unchanged | ABBA -0.42% wall, -0.23% user, +0.02% RSS | PA29 257/257; through PA29 4,167/4,167; full report 5,267/5,267; zero-fatal audit | complete |
-| P4 memory RHS | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
+| P4 memory RHS | none | 3 PA29 strict raw, 2 structural raw/canonical, and one new behavioral structural reducer migrate; PA38 unchanged | 4,392,256 bytes; `.text*` 906,658; 741 fewer instructions; functions/relocations unchanged | ABBA +0.64% wall, +0.71% user, +0.52% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P5 shared epilogue | none | MIR unchanged; native bytes change | pending | pending | pending | planned |
 | P6 cleanup DAG | expected PA16/17/26 migration | PA31 EH/object change | pending | pending | pending | planned |
 | P7 zero initialization | expected PA16 migration for source-known contiguous spans | PA29 encoding change; downstream native change | pending | pending | pending | planned after fixture census |

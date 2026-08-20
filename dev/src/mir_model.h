@@ -235,8 +235,10 @@ struct Instruction
     MI_FPTOUI,
     MI_FPEXT,
     MI_FPTRUNC,
-    // Integer ALU instructions may retain an OP_IMM source. Native emission
-    // materializes a scratch only when the concrete x86 encoding requires it.
+    // Integer ALU instructions may retain an OP_IMM source. MI_ADD, MI_SUB,
+    // MI_AND, MI_OR, and MI_XOR may also retain a frame, global, dereference,
+    // or indexed right operand; MI_IMUL permits those memory forms at 16, 32,
+    // and 64 bits.  The destination remains a register.
     MI_ADD,
     MI_SUB,
     MI_IMUL,
@@ -249,6 +251,7 @@ struct Instruction
     MI_NEG,
     MI_NOT,
     MI_BSWAP,
+    // MI_CMP may name one memory operand when the other operand is encodable.
     MI_CMP,
     MI_TEST,
     MI_JCC,

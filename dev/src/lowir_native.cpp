@@ -15,6 +15,7 @@
 #include "lowir_native_frame_planning.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_index_lowering.h"
+#include "lowir_native_integer_lowering.h"
 #include "lowir_native_intrinsic_lowering.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_memory_lowering.h"
@@ -55,6 +56,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private copy_detail::CopyLowering<FunctionLowerer>,
                         private frame_planning_detail::FramePlanning<FunctionLowerer>,
                         private index_detail::IndexLowering<FunctionLowerer>,
+                        private integer_detail::IntegerLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>,
                         private parameter_detail::ParameterRegisterState<FunctionLowerer>,
                         private return_detail::ReturnLowering<FunctionLowerer>
@@ -68,6 +70,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class copy_detail::CopyLowering<FunctionLowerer>;
   friend class frame_planning_detail::FramePlanning<FunctionLowerer>;
   friend class index_detail::IndexLowering<FunctionLowerer>;
+  friend class integer_detail::IntegerLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
   friend class parameter_detail::ParameterRegisterState<FunctionLowerer>;
   friend class return_detail::ReturnLowering<FunctionLowerer>;
@@ -1560,109 +1563,6 @@ private:
     }
     throw std::runtime_error("conversion categories are not implemented");
   }
-  void emit_shift(const Instruction & instruction, const MirOperand & destination,
-                  const MirOperand & right, std::vector<MirInstruction> & out)
-  {
-    move_value_to_register(out, XR_RCX, right,
-                           operand_type(instruction.second));
-    MirInstruction::Opcode opcode = MirInstruction::MI_SHL_CL;
-    if(instruction.op.kind == LowOperation::LOP_SHR) opcode = MirInstruction::MI_SAR_CL;
-    else if(instruction.op.kind == LowOperation::LOP_USHR) opcode = MirInstruction::MI_SHR_CL;
-    MirInstruction shift = machine_instruction(opcode);
-    append_operand(shift, destination);
-    out.push_back(shift);
-  }
-  void emit_binary(const Instruction & instruction,
-                   const lowir_model::LowirBlock & block,
-                   std::size_t instruction_index,
-                   std::vector<MirInstruction> & out)
-  {
-    if(wide::is_integer(instruction.type)) { const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type); wide::append_binary(destination, wide_value(instruction.first), wide_value(instruction.second), instruction.op, out); consume(instruction.first); consume(instruction.second); define(instruction.dest, instruction.type, destination); return; }
-    if(is_floating(instruction.type)) {
-      emit_float_binary(instruction, out);
-      return;
-    }
-    if(!is_integer_or_pointer(instruction.type))
-      throw std::runtime_error("integer selector received non-integer binary operation");
-    const MirOperand left = resolve(instruction.first);
-    MirOperand right = resolve(instruction.second);
-    const division_detail::Classification division =
-      division_detail::classify(instruction.op);
-    bool direct_division_return = false;
-    if(division.valid &&
-       result_is_immediate_return(block, instruction_index, instruction.dest))
-      direct_division_return = division_detail::direct_return_setup_is_safe(left, right);
-    const bool pressure_leaf = constrained_wide_pressure() &&
-      instruction.first.kind == Operand::OP_TEMP &&
-      facts_.has(instruction.first.value, FunctionFacts::VF_PARAMETER);
-    MirOperand pressure_home;
-    MirOperand destination;
-    if(direct_division_return)
-      destination = reg_operand(division.remainder ? XR_RDX : XR_RAX);
-    else if(!pressure_leaf)
-      destination = binary_destination(instruction, left, out, true, &pressure_home);
-    else if(instruction.first.value == source_.params.front().value) {
-      destination = reg_operand(XR_R15);
-      if(!registers_.is_used(XR_R15)) registers_.reserve(XR_R15);
-      move_value_to_register(out, XR_R15, left, operand_type(instruction.first));
-    } else {
-      pressure_home = allocate_temp_home(instruction.dest, instruction.type);
-      destination = reg_operand(XR_RAX);
-      move_value_to_register(out, XR_RAX, left, operand_type(instruction.first));
-    }
-    const bool shift = instruction.op.kind == LowOperation::LOP_SHL || instruction.op.kind == LowOperation::LOP_SHR ||
-                       instruction.op.kind == LowOperation::LOP_USHR;
-    if(!shift && (right.kind == MirOperand::OP_FRAME ||
-       right.kind == MirOperand::OP_GLOBAL ||
-       right.kind == MirOperand::OP_DEREF)) {
-      move_value_to_register(out, XR_RDX, right, operand_type(instruction.second));
-      right = reg_operand(XR_RDX);
-      append_integer_normalization(out, operand_type(instruction.second), right);
-    }
-    MirInstruction::Opcode opcode = MirInstruction::MI_ADD;
-    if(instruction.op.kind == LowOperation::LOP_SUB) opcode = MirInstruction::MI_SUB;
-    else if(instruction.op.kind == LowOperation::LOP_MUL) opcode = MirInstruction::MI_IMUL;
-    else if(instruction.op.kind == LowOperation::LOP_AND) opcode = MirInstruction::MI_AND;
-    else if(instruction.op.kind == LowOperation::LOP_OR) opcode = MirInstruction::MI_OR;
-    else if(instruction.op.kind == LowOperation::LOP_XOR) opcode = MirInstruction::MI_XOR;
-    else if(division.valid) {
-      division_detail::emit_division(division, destination,
-        direct_division_return ? left : destination, right, out);
-      append_integer_normalization(out, instruction.type, destination);
-      consume(instruction.first, destination.reg);
-      consume(instruction.second, destination.reg);
-      if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, instruction.type);
-      define(instruction.dest, instruction.type,
-             pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
-      return;
-    } else if(instruction.op.kind == LowOperation::LOP_SHL || instruction.op.kind == LowOperation::LOP_SHR ||
-              instruction.op.kind == LowOperation::LOP_USHR) {
-      emit_shift(instruction, destination, right, out);
-      append_integer_normalization(out, instruction.type, destination);
-      consume(instruction.first, destination.reg);
-      consume(instruction.second, destination.reg);
-      if(pressure_home.kind == MirOperand::OP_FRAME)
-        append_store(out, pressure_home, destination, instruction.type);
-      define(instruction.dest, instruction.type,
-             pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
-      return;
-    } else if(instruction.op.kind != LowOperation::LOP_ADD) {
-      throw std::runtime_error(std::string("integer binary operation is not implemented: ") +
-                               lowir_model::lowir_operation_text(instruction.op));
-    }
-    MirInstruction operation = machine_instruction(opcode, instruction.type);
-    append_operand(operation, destination);
-    append_operand(operation, right);
-    out.push_back(operation);
-    append_integer_normalization(out, instruction.type, destination);
-    consume(instruction.first, destination.reg);
-    consume(instruction.second, destination.reg);
-    if(pressure_home.kind == MirOperand::OP_FRAME)
-      append_store(out, pressure_home, destination, instruction.type);
-    define(instruction.dest, instruction.type,
-           pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
-  }
   bool comparison_feeds_branch(const lowir_model::LowirBlock & block,
                                std::size_t instruction_index,
                                const Instruction & comparison) const
@@ -1713,6 +1613,8 @@ private:
     append_operand(compare, left);
     append_operand(compare, right);
     out.push_back(compare);
+    if(integer_detail::memory_operand(right) && stats_)
+      ++stats_->memory_rhs_operations_selected;
     MirInstruction jump_true = machine_instruction(MirInstruction::MI_JCC);
     jump_true.condition = predicate_condition(comparison.op);
     append_operand(jump_true, native_block_operand(source_, branch.second));
@@ -1758,10 +1660,19 @@ private:
     } else {
       const MirOperand left = resolve(instruction.first);
       right = resolve(instruction.second);
+      if(integer_detail::memory_operand(right) &&
+         operand_uses_register(right, XR_RAX)) {
+        move_value_to_register(
+          out, XR_RDX, right, operand_type(instruction.second));
+        right = reg_operand(XR_RDX);
+        append_integer_normalization(
+          out, operand_type(instruction.second), right);
+      }
       destination = binary_destination(
         instruction, left, out, false, &pressure_home, &result_type);
       comparison_left = destination;
-      if(right.kind != MirOperand::OP_REG) {
+      if(right.kind != MirOperand::OP_REG &&
+         !integer_detail::memory_operand(right)) {
         const bool encodable_immediate = right.kind == MirOperand::OP_IMM &&
           (lowir_model::lowir_type_bit_width(instruction.type) < 64 ||
            (right.imm >= INT32_MIN && right.imm <= INT32_MAX));
@@ -1780,6 +1691,8 @@ private:
     append_operand(compare, comparison_left);
     append_operand(compare, right);
     out.push_back(compare);
+    if(integer_detail::memory_operand(right) && stats_)
+      ++stats_->memory_rhs_operations_selected;
     MirInstruction set = machine_instruction(MirInstruction::MI_SETCC);
     set.condition = predicate_condition(instruction.op);
     append_operand(set, destination);

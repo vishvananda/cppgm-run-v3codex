@@ -40,6 +40,5 @@ function @main
     mov rdx, 5
     call @make_pair [args=(rdx,rsi,rdi)]
     load.i64 r8, @out
-    load.i64 r9, [rbx+8]
-    add r8, r9
+    add r8, [rbx+8]
     ret r8

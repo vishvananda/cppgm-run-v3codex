@@ -14,6 +14,9 @@ void emit_immediate_move(elf_detail::CodeBuffer & out,
                          std::uint64_t value);
 void emit_rex(elf_detail::CodeBuffer & out, bool wide, X64Register reg,
               X64Register rm, bool force = false);
+void emit_indexed_rex(elf_detail::CodeBuffer & out, bool wide,
+                      X64Register reg, X64Register base,
+                      X64Register index, bool force = false);
 void emit_modrm(elf_detail::CodeBuffer & out, unsigned mod, unsigned reg,
                 unsigned rm);
 void emit_register_move(elf_detail::CodeBuffer & out,

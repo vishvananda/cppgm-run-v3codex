@@ -6,6 +6,7 @@
 #include "lowir_native_eh_references.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_host_eh.h"
+#include "lowir_native_integer_encoding.h"
 #include "lowir_native_lsda.h"
 #include "lowir_native_opt.h"
 #include "lowir_native_encoding.h"
@@ -913,129 +914,6 @@ void emit_float_width_conversion(CodeBuffer & out,
     emit_xmm_store(out, destination, target, destination_type, function);
 }
 
-void emit_alu(CodeBuffer & out, const mir_model::MirInstruction & instruction,
-              unsigned register_opcode, unsigned immediate_extension,
-              unsigned width = 64)
-{
-  require_operands(instruction, 2);
-  const X64Register destination = require_register(instruction.operands[0]);
-  const mir_model::MirOperand & source = instruction.operands[1];
-  if(source.kind == mir_model::MirOperand::OP_REG) {
-    emit_size_prefix(out, width);
-    emit_rex(out, width == 64, source.reg, destination, width == 8);
-    out.byte(width == 8 ? register_opcode - 1 : register_opcode);
-    emit_modrm(out, 3, source.reg, destination);
-  } else if(source.kind == mir_model::MirOperand::OP_IMM && width <= 32) {
-    emit_size_prefix(out, width);
-    emit_rex(out, false, XR_RAX, destination, width == 8);
-    out.byte(width == 8 ? 0x80 : 0x81);
-    emit_modrm(out, 3, immediate_extension, destination);
-    out.little(static_cast<std::uint32_t>(source.imm), width == 8 ? 1 : width / 8);
-  } else if(source.kind == mir_model::MirOperand::OP_IMM &&
-            source.imm >= INT32_MIN && source.imm <= INT32_MAX) {
-    emit_rex(out, true, XR_RAX, destination);
-    out.byte(0x81);
-    emit_modrm(out, 3, immediate_extension, destination);
-    out.little(static_cast<std::uint32_t>(source.imm), 4);
-  } else if(source.kind == mir_model::MirOperand::OP_IMM) {
-    emit_immediate_move(out, XR_R11, static_cast<std::uint64_t>(source.imm));
-    mir_model::MirInstruction register_form = instruction;
-    register_form.operands[1].kind = mir_model::MirOperand::OP_REG;
-    register_form.operands[1].reg = XR_R11;
-    emit_alu(out, register_form, register_opcode, immediate_extension, width);
-  } else throw std::logic_error("unsupported native ALU operand");
-}
-
-void emit_memory_compare(CodeBuffer & out,
-                         const mir_model::MirInstruction & instruction,
-                         const mir_model::MirFunction & function)
-{
-  require_operands(instruction, 2);
-  const mir_model::MirOperand & address = instruction.operands[0];
-  X64Register base = XR_RBP;
-  long long displacement = 0;
-  if(address.kind == mir_model::MirOperand::OP_FRAME) {
-    displacement = actual_frame_offset(function, address.offset);
-  } else if(address.kind == mir_model::MirOperand::OP_DEREF) {
-    base = address.reg;
-    displacement = address.offset;
-  } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.symbol,
-                     address.address_binding);
-    base = XR_R11;
-  } else {
-    throw std::logic_error("unsupported memory compare address");
-  }
-  const unsigned width = type_width(instruction.type);
-  const mir_model::MirOperand & source = instruction.operands[1];
-  emit_size_prefix(out, width);
-  if(source.kind == mir_model::MirOperand::OP_REG) {
-    emit_rex(out, width == 64, source.reg, base, width == 8);
-    out.byte(width == 8 ? 0x38 : 0x39);
-    emit_memory_modrm(out, source.reg, base, displacement);
-  } else if(source.kind == mir_model::MirOperand::OP_IMM) {
-    emit_rex(out, width == 64, XR_RAX, base, width == 8);
-    out.byte(width == 8 ? 0x80 : 0x81);
-    emit_memory_modrm(out, 7, base, displacement);
-    const unsigned immediate_bytes = width == 8 ? 1 : (width == 16 ? 2 : 4);
-    out.little(static_cast<std::uint64_t>(source.imm), immediate_bytes);
-  } else {
-    throw std::logic_error("unsupported memory compare source");
-  }
-}
-
-void emit_register_memory_compare(CodeBuffer & out,
-                                  const mir_model::MirInstruction & instruction,
-                                  const mir_model::MirFunction & function)
-{
-  require_operands(instruction, 2);
-  const X64Register destination = require_register(instruction.operands[0]);
-  const mir_model::MirOperand & address = instruction.operands[1];
-  X64Register base = XR_RBP;
-  long long displacement = 0;
-  if(address.kind == mir_model::MirOperand::OP_FRAME) {
-    displacement = actual_frame_offset(function, address.offset);
-  } else if(address.kind == mir_model::MirOperand::OP_DEREF) {
-    base = address.reg;
-    displacement = address.offset;
-  } else if(address.kind == mir_model::MirOperand::OP_GLOBAL) {
-    emit_symbol_move(out, XR_R11, address.symbol,
-                     address.address_binding);
-    base = XR_R11;
-  } else {
-    throw std::logic_error("unsupported register-memory compare address");
-  }
-  const unsigned width = type_width(instruction.type);
-  emit_size_prefix(out, width);
-  emit_rex(out, width == 64, destination, base, width == 8);
-  out.byte(width == 8 ? 0x3a : 0x3b);
-  emit_memory_modrm(out, destination, base, displacement);
-}
-
-void emit_imultiply(CodeBuffer & out, const mir_model::MirInstruction & instruction)
-{
-  require_operands(instruction, 2);
-  const X64Register destination = require_register(instruction.operands[0]);
-  mir_model::MirOperand source = instruction.operands[1];
-  if(source.kind == mir_model::MirOperand::OP_IMM &&
-     (source.imm < INT32_MIN || source.imm > INT32_MAX)) {
-    emit_immediate_move(out, XR_R11, static_cast<std::uint64_t>(source.imm));
-    source.kind = mir_model::MirOperand::OP_REG;
-    source.reg = XR_R11;
-  }
-  if(source.kind == mir_model::MirOperand::OP_REG) {
-    emit_rex(out, true, destination, source.reg);
-    out.byte(0x0f);
-    out.byte(0xaf);
-    emit_modrm(out, 3, destination, source.reg);
-  } else if(source.kind == mir_model::MirOperand::OP_IMM) {
-    emit_rex(out, true, destination, destination);
-    out.byte(0x69);
-    emit_modrm(out, 3, destination, destination);
-    out.little(static_cast<std::uint32_t>(source.imm), 4);
-  } else throw std::logic_error("unsupported native multiply operand");
-}
-
 void emit_integer_unary(CodeBuffer & out,
                         const mir_model::MirInstruction & instruction,
                         unsigned extension)
@@ -1521,22 +1399,22 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     emit_x87_pop(out);
     return;
   case mir_model::MirInstruction::MI_ADD:
-    emit_alu(out, instruction, 0x01, 0);
+    emit_integer_alu(out, instruction, 0x01, 0, function);
     return;
   case mir_model::MirInstruction::MI_SUB:
-    emit_alu(out, instruction, 0x29, 5);
+    emit_integer_alu(out, instruction, 0x29, 5, function);
     return;
   case mir_model::MirInstruction::MI_AND:
-    emit_alu(out, instruction, 0x21, 4);
+    emit_integer_alu(out, instruction, 0x21, 4, function);
     return;
   case mir_model::MirInstruction::MI_OR:
-    emit_alu(out, instruction, 0x09, 1);
+    emit_integer_alu(out, instruction, 0x09, 1, function);
     return;
   case mir_model::MirInstruction::MI_XOR:
-    emit_alu(out, instruction, 0x31, 6);
+    emit_integer_alu(out, instruction, 0x31, 6, function);
     return;
   case mir_model::MirInstruction::MI_IMUL:
-    emit_imultiply(out, instruction);
+    emit_integer_multiply(out, instruction, function);
     return;
   case mir_model::MirInstruction::MI_MUL:
     emit_divide(out, instruction, 4);
@@ -1553,15 +1431,16 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
         instruction.operands[0].kind == mir_model::MirOperand::OP_DEREF ||
         instruction.operands[0].kind == mir_model::MirOperand::OP_GLOBAL)) {
       if(!function) throw std::logic_error("memory compare outside function");
-      emit_memory_compare(out, instruction, *function);
+      emit_integer_memory_compare(out, instruction, *function);
     } else if(instruction.operands.size() == 2 &&
               (instruction.operands[1].kind == mir_model::MirOperand::OP_FRAME ||
                instruction.operands[1].kind == mir_model::MirOperand::OP_DEREF ||
                instruction.operands[1].kind == mir_model::MirOperand::OP_GLOBAL)) {
       if(!function) throw std::logic_error("memory compare outside function");
-      emit_register_memory_compare(out, instruction, *function);
+      emit_integer_register_memory_compare(out, instruction, *function);
     } else {
-      emit_alu(out, instruction, 0x39, 7, type_width(instruction.type));
+      emit_integer_alu(out, instruction, 0x39, 7, function,
+                       type_width(instruction.type));
     }
     return;
   case mir_model::MirInstruction::MI_SETCC:

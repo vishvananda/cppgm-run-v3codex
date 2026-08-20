@@ -132,6 +132,16 @@ void emit_memory_modrm(CodeBuffer & out, unsigned reg, X64Register base,
     out.little(static_cast<std::uint32_t>(displacement), displacement_bytes);
 }
 
+void emit_indexed_rex(CodeBuffer & out, bool wide, X64Register reg,
+                      X64Register base, X64Register index, bool force)
+{
+  const unsigned value = 0x40 | (wide ? 8 : 0) |
+    ((static_cast<unsigned>(reg) >> 3) << 2) |
+    ((static_cast<unsigned>(index) >> 3) << 1) |
+    (static_cast<unsigned>(base) >> 3);
+  if(value != 0x40 || force) out.byte(value);
+}
+
 namespace {
 
 unsigned scale_code(unsigned scale)
@@ -141,16 +151,6 @@ unsigned scale_code(unsigned scale)
   if(scale == 4) return 2;
   if(scale == 8) return 3;
   throw std::logic_error("invalid x86 indexed-address scale");
-}
-
-void emit_indexed_rex(CodeBuffer & out, bool wide, X64Register reg,
-                      X64Register base, X64Register index, bool force = false)
-{
-  const unsigned value = 0x40 | (wide ? 8 : 0) |
-    ((static_cast<unsigned>(reg) >> 3) << 2) |
-    ((static_cast<unsigned>(index) >> 3) << 1) |
-    (static_cast<unsigned>(base) >> 3);
-  if(value != 0x40 || force) out.byte(value);
 }
 
 }  // namespace

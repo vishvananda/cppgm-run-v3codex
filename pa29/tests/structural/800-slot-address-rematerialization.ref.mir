@@ -44,8 +44,7 @@ function @f
     lea rsi, [rbp-16]
     call @sink [args=(rsi,rdi)]
     load.i64 r8, [rbp-8]
-    load.i64 r9, [rbp-16]
-    add r8, r9
+    add r8, [rbp-16]
     ret r8
 
 function @main

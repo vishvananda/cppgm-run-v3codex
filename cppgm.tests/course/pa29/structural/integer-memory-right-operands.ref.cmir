@@ -1,0 +1,368 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @global_rhs
+  storage scalar i64
+  init i64 9
+
+global @xor_rhs
+  storage scalar i64
+  init i64 240
+
+global @byte_rhs
+  storage scalar i8
+  init i8 3
+
+global @words
+  storage data
+  item i64 2
+  item i64 4
+  item i64 77
+
+function @add_global
+  abi
+    param %left -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    add rdi, @global_rhs
+    ret rdi
+
+function @sub_frame
+  abi
+    param %left -> rdi : i64
+    param %unused1 -> rsi : i64
+    param %unused2 -> rdx : i64
+    param %unused3 -> rcx : i64
+    param %unused4 -> r8 : i64
+    param %unused5 -> r9 : i64
+    param %right -> [rbp+<off0>] : i64
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    param-slot %right -> [rbp-<off0>] : i64
+
+  block ^entry
+    load.i64 rax, [rbp+<off0>]
+    store.i64 [rbp-<off0>], rax
+    sub rdi, [rbp-<off0>]
+    ret rdi
+
+function @and_dereference
+  abi
+    param %address -> rdi : ptr
+    param %left -> rsi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    and rsi, [rdi]
+    ret rsi
+
+function @or_indexed
+  abi
+    param %base -> rdi : ptr
+    param %index_value -> rsi : i64
+    param %left -> rdx : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+
+  block ^entry
+    or rdx, [rdi+rsi*8]
+    ret rdx
+
+function @xor_global
+  abi
+    param %left -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    xor rdi, @xor_rhs
+    ret rdi
+
+function @multiply_frame
+  abi
+    param %left -> rdi : i32
+    param %unused1 -> rsi : i32
+    param %unused2 -> rdx : i32
+    param %unused3 -> rcx : i32
+    param %unused4 -> r8 : i32
+    param %unused5 -> r9 : i32
+    param %right -> [rbp+<off0>] : i32
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    param-slot %right -> [rbp-<off1>] : i32
+
+  block ^entry
+    load.i32 rax, [rbp+<off0>]
+    store.i32 [rbp-<off1>], rax
+    imul rdi, [rbp-<off1>]
+    sext.i32 rdi
+    ret rdi
+
+function @compare_indexed
+  abi
+    param %base -> rdi : ptr
+    param %index_value -> rsi : i64
+    param %left -> rdx : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+
+  block ^entry
+    cmp.i64 rdx, [rdi+rsi*8]
+    sete rax
+    movzx rax, rax
+    ret rax
+
+function @divide_dereference
+  abi
+    param %address -> rdi : ptr
+    param %left -> rsi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    load.i64 r8, [rdi]
+    mov rcx, r8
+    mov rax, rsi
+    cqo
+    idiv rcx
+    ret rax
+
+function @shift_frame
+  abi
+    param %left -> rdi : i64
+    param %unused1 -> rsi : i64
+    param %unused2 -> rdx : i64
+    param %unused3 -> rcx : i64
+    param %unused4 -> r8 : i64
+    param %unused5 -> r9 : i64
+    param %count -> [rbp+<off0>] : i64
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    param-slot %count -> [rbp-<off0>] : i64
+
+  block ^entry
+    load.i64 rax, [rbp+<off0>]
+    store.i64 [rbp-<off0>], rax
+    load.i64 rdx, [rbp-<off0>]
+    mov rcx, rdx
+    shl rdi, cl
+    ret rdi
+
+function @multiply_byte
+  abi
+    param %address -> rdi : ptr
+    param %left -> rsi : i8
+    return i8 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    load.i8 r8, [rdi]
+    sext.i8 r8
+    imul rsi, r8
+    sext.i8 rsi
+    ret rsi
+
+function @add_byte_indexed
+  abi
+    param %base -> rdi : ptr
+    param %index_value -> rsi : i64
+    param %left -> rdx : i8
+    return i8 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+
+  block ^entry
+    add rdx, [rdi+rsi]
+    sext.i8 rdx
+    ret rdx
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 96
+    scratch_bytes 0
+    preserve <gpr0> <gpr1> <gpr2> <gpr3> <gpr4>
+    temp %sub -> [rbp-<off0>] : i64
+    temp %and -> [rbp-<off2>] : i64
+    temp %or -> [rbp-<off3>] : i64
+    temp %multiply -> [rbp-<off4>] : i32
+    temp %xor -> [rbp-<off5>] : i64
+    temp %shift -> [rbp-<off6>] : i64
+    temp %bad_xor -> [rbp-<off0>] : i64
+    temp %bad_divide -> [rbp-<off2>] : i64
+
+  block ^entry
+    mov <gpr0>, @global_rhs
+    mov <gpr1>, @byte_rhs
+    mov <gpr2>, @words
+    mov rdi, 5
+    call @add_global [args=(rdi)]
+    mov <gpr3>, rax
+    sub rsp, 16
+    mov rdi, 20
+    mov rsi, 0
+    mov rdx, 0
+    mov rcx, 0
+    mov r8, 0
+    mov r9, 0
+    mov <gpr5>, 3
+    store.i64 [rsp], <gpr5>
+    call @sub_frame [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
+    add rsp, 16
+    store.i64 [rbp-<off0>], rax
+    mov rdi, <gpr0>
+    mov rsi, 15
+    call @and_dereference [args=(rsi,rdi)]
+    mov <gpr4>, rax
+    mov rdi, <gpr2>
+    mov rsi, 1
+    mov rdx, 1
+    call @or_indexed [args=(rdx,rsi,rdi)]
+    store.i64 [rbp-<off2>], <gpr4>
+    mov <gpr4>, rax
+    mov rdi, 15
+    call @xor_global [args=(rdi)]
+    store.i64 [rbp-<off3>], <gpr4>
+    mov <gpr4>, rax
+    sub rsp, 16
+    mov rdi, 6
+    mov rsi, 0
+    mov rdx, 0
+    mov rcx, 0
+    mov r8, 0
+    mov r9, 0
+    mov <gpr5>, 7
+    store.i64 [rsp], <gpr5>
+    call @multiply_frame [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
+    add rsp, 16
+    store.i32 [rbp-<off4>], rax
+    mov rdi, <gpr2>
+    mov rsi, 2
+    mov rdx, 77
+    call @compare_indexed [args=(rdx,rsi,rdi)]
+    store.i64 [rbp-<off5>], <gpr4>
+    mov <gpr4>, rax
+    mov rdi, <gpr0>
+    mov rsi, 81
+    call @divide_dereference [args=(rsi,rdi)]
+    mov <gpr2>, rax
+    sub rsp, 16
+    mov rdi, 3
+    mov rsi, 0
+    mov rdx, 0
+    mov rcx, 0
+    mov r8, 0
+    mov r9, 0
+    mov <gpr5>, 2
+    store.i64 [rsp], <gpr5>
+    call @shift_frame [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
+    add rsp, 16
+    store.i64 [rbp-<off6>], rax
+    mov rdi, <gpr1>
+    mov rsi, 5
+    call @multiply_byte [args=(rsi,rdi)]
+    mov <gpr0>, rax
+    sext.i8 <gpr0>
+    mov rdi, <gpr1>
+    mov rsi, 0
+    mov rdx, 4
+    call @add_byte_indexed [args=(rdx,rsi,rdi)]
+    mov r8, rax
+    sext.i8 r8
+    mov rdx, 14
+    cmp.i64 <gpr3>, rdx
+    setne <gpr3>
+    movzx <gpr3>, <gpr3>
+    load.i64 r9, [rbp-<off0>]
+    mov rdx, 17
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    load.i64 rdi, [rbp-<off2>]
+    mov rdx, 9
+    cmp.i64 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    load.i64 rsi, [rbp-<off3>]
+    mov rdx, 5
+    cmp.i64 rsi, rdx
+    setne rsi
+    movzx rsi, rsi
+    load.i64 <gpr1>, [rbp-<off5>]
+    mov rdx, 255
+    cmp.i64 <gpr1>, rdx
+    setne <gpr1>
+    movzx <gpr1>, <gpr1>
+    store.i64 [rbp-<off0>], <gpr1>
+    load.i32 <gpr1>, [rbp-<off4>]
+    sext.i32 <gpr1>
+    sext.i32 <gpr1>
+    mov rdx, 42
+    cmp.i32 <gpr1>, rdx
+    setne <gpr1>
+    movzx <gpr1>, <gpr1>
+    mov rdx, 1
+    cmp.i64 <gpr4>, rdx
+    setne <gpr4>
+    movzx <gpr4>, <gpr4>
+    mov rdx, 9
+    cmp.i64 <gpr2>, rdx
+    setne <gpr2>
+    movzx <gpr2>, <gpr2>
+    store.i64 [rbp-<off2>], <gpr2>
+    load.i64 <gpr2>, [rbp-<off6>]
+    mov rdx, 12
+    cmp.i64 <gpr2>, rdx
+    setne <gpr2>
+    movzx <gpr2>, <gpr2>
+    mov rdx, 15
+    cmp.i8 <gpr0>, rdx
+    setne <gpr0>
+    movzx <gpr0>, <gpr0>
+    mov rdx, 7
+    cmp.i8 r8, rdx
+    setne r8
+    movzx r8, r8
+    or <gpr3>, r9
+    or rdi, rsi
+    load.i64 r9, [rbp-<off0>]
+    or r9, <gpr1>
+    or <gpr4>, [rbp-<off2>]
+    or <gpr0>, r8
+    or <gpr2>, <gpr0>
+    or <gpr3>, rdi
+    or r9, <gpr4>
+    or <gpr3>, r9
+    or <gpr3>, <gpr2>
+    mov rax, <gpr3>
+    sext.i32 rax
+    ret rax

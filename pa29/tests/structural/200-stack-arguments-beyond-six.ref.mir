@@ -32,10 +32,8 @@ function @sum8
     add rdi, rcx
     add rdi, r8
     add rdi, r9
-    load.i64 rdx, [rbp-8]
-    add rdi, rdx
-    load.i64 rdx, [rbp-16]
-    add rdi, rdx
+    add rdi, [rbp-8]
+    add rdi, [rbp-16]
     ret rdi
 
 function @main

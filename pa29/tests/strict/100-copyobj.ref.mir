@@ -27,6 +27,5 @@ function @main
     mov r9, @src
     copy_bytes 16x8, r8, r9
     load.i64 r9, @dst
-    load.i64 rdi, [r8+8]
-    add r9, rdi
+    add r9, [r8+8]
     ret r9

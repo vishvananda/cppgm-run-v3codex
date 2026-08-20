@@ -493,6 +493,15 @@ To complete PA29, implement these goals:
    `i64` value outside the sign-extended 32-bit encoding range; native emission
    may materialize that value in a scratch register when encoding the store.
 
+   The right operand of integer `add`, `sub`, `and`, `or`, and `xor` remains a
+   frame, global, dereference, or indexed memory operand when that location is
+   already selected.  Two-operand `imul` follows the same rule at 16, 32, and
+   64 bits, and an integer comparison may retain one memory operand.  The
+   result of a binary operation remains register-resident.  Division,
+   variable shifts, byte multiplication, floating operations, and a form that
+   would overwrite an address register before reading it still materialize the
+   required value.
+
    A scalar copy may keep a stable source location, including an intact
    incoming parameter register, when the copied result's complete interval
    crosses no clobber and its source and result have the same machine
@@ -662,6 +671,9 @@ strategies include:
 - encode immediate memory stores directly at 8, 16, and 32 bits and for
   sign-extended 32-bit values at 64 bits; choose an encoder scratch that does
   not overlap a dereference base or index for other 64-bit values
+- carry a sole-use load's typed frame, global, dereference, or indexed address
+  into an immediately following legal integer right operand, keeping its
+  address inputs live until the consuming instruction
 - keep an immediately returned quotient in `rax` and an immediately returned
   remainder in `rdx`; the return instruction may name that selected result
   carrier directly

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lowir_native_selection.h"
+#include "lowir_native_integer_lowering.h"
 #include "lowir_native_value.h"
 #include "lowir_native_wide.h"
 
@@ -17,6 +18,36 @@ template <class Derived>
 class MemoryLowering
 {
 protected:
+	bool load_has_direct_memory_rhs(
+		const lowir_model::Instruction& instruction,
+		const lowir_model::LowirBlock& block,
+		std::size_t instruction_index) const
+	{
+		const Derived& lowerer = static_cast<const Derived&>(*this);
+		if (lowerer.facts_.uses[instruction.dest] != 1 ||
+			lowerer.facts_.has(instruction.dest,
+				analysis::FunctionFacts::VF_EDGE_LIVE) ||
+			instruction_index + 1 >= block.instructions.size())
+			return false;
+		const lowir_model::Instruction& consumer =
+			block.instructions[instruction_index + 1];
+		if (consumer.second.kind != lowir_model::Operand::OP_TEMP ||
+			consumer.second.value != instruction.dest ||
+			!lowir_model::same_lowir_type(consumer.type, instruction.type))
+			return false;
+		if (instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+			lowerer.value_known_[instruction.first.value] &&
+			lowerer.values_[instruction.first.value].deferred_address &&
+			(lowerer.facts_.uses[instruction.first.value] != 1 ||
+			 lowerer.facts_.has(instruction.first.value,
+				 analysis::FunctionFacts::VF_EDGE_LIVE)))
+			return false;
+		if (consumer.kind == lowir_model::Instruction::IK_CMP)
+			return selection::is_integer_or_pointer(instruction.type);
+		return consumer.kind == lowir_model::Instruction::IK_BINARY &&
+			integer_detail::memory_rhs_operation(consumer.op, consumer.type);
+	}
+
 	void emit_load_instruction(const lowir_model::Instruction& instruction,
 		const lowir_model::LowirBlock& block, std::size_t instruction_index,
 		std::vector<mir_model::MirInstruction>& out)
@@ -65,7 +96,36 @@ protected:
 					value.location = reg_operand(incoming);
 				}
 			}
-				lowerer.set_value(instruction.dest, value);
+			lowerer.set_value(instruction.dest, value);
+			return;
+		}
+		if (load_has_direct_memory_rhs(instruction, block, instruction_index) &&
+			!(instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
+			  lowerer.tls_wrappers_[instruction.first.symbol].valid()))
+		{
+			ValueFact value;
+			value.location =
+				lowerer.materialized_storage(instruction.first, out);
+			value.type = instruction.type;
+			if (instruction.first.kind == lowir_model::Operand::OP_TEMP)
+			{
+				value.deferred_address = true;
+				const ValueFact& address =
+					lowerer.values_[instruction.first.value];
+				if (address.deferred_address)
+				{
+					// Transfer the address inputs to the loaded value instead
+					// of nesting dependency records.  The immediate consumer
+					// then keeps each carrier live with one O(1) fact lookup.
+					value.deferred_address_base =
+						address.deferred_address_base;
+					value.deferred_address_index =
+						address.deferred_address_index;
+					--lowerer.facts_.uses[instruction.first.value];
+				}
+				else value.deferred_address_base = instruction.first;
+			}
+			lowerer.set_value(instruction.dest, value);
 			return;
 		}
 		if (wide::is_integer(instruction.type))
