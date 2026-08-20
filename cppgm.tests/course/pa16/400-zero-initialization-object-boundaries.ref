@@ -1,0 +1,93 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $volatile_value : obj<16x8>
+  slot $union_value : obj<16x8>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+  slot $land__3 : i64
+
+  block ^entry:
+    %t1 = addr $volatile_value
+    call void @YVolatileValue__YVolatileValue(%t1)
+    %t2 = addr $union_value
+    call void @YChoiceOwner__YChoiceOwner(%t2)
+    %t3 = addr $volatile_value
+    %t4 = index i8 [projection=base_subobject] %t3, 0
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load i64 %t5
+    %t7 = cmp eq i64 %t6, 0
+    branch %t7, ^land_rhs_7, ^land_short_8
+
+  block ^land_rhs_7:
+    %t8 = addr $volatile_value
+    %t9 = index i8 [projection=base_subobject] %t8, 0
+    %t10 = index i8 [projection=field] %t9, 8
+    %t11 = load i64 %t10
+    %t12 = cmp eq i64 %t11, 0
+    %t13 = cmp ne i64 %t12, 0
+    store i64 %t13, $land__3
+    jump ^land_end_9
+
+  block ^land_short_8:
+    store i64 0, $land__3
+    jump ^land_end_9
+
+  block ^land_end_9:
+    %t14 = load i64 $land__3
+    branch %t14, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t15 = addr $union_value
+    %t16 = index i8 [projection=field] %t15, 0
+    %t17 = index i8 [projection=field] %t16, 0
+    %t18 = load i64 %t17
+    %t19 = cmp eq i64 %t18, 0
+    %t20 = cmp ne i64 %t19, 0
+    store i64 %t20, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t21 = load i64 $land__2
+    branch %t21, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t22 = load i32 $cond__1
+    return i32 %t22
+}
+function @YVolatileValue__YVolatileValue(%this : ptr) -> void [binding=weak, object=_ZN14YVolatileValueC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=base_subobject] %t1, 0
+    store i64 0, %t2
+    %t3 = index i8 %t2, 8
+    store i64 0, %t3
+    return void
+}
+function @YChoiceOwner__YChoiceOwner(%this : ptr) -> void [binding=weak, object=_ZN12YChoiceOwnerC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    store i64 0, %t2
+    %t3 = index i8 %t2, 8
+    store i64 0, %t3
+    return void
+}
+alias object _ZN14YVolatileValueC2Ev = @YVolatileValue__YVolatileValue
+alias object _ZN12YChoiceOwnerC2Ev = @YChoiceOwner__YChoiceOwner

@@ -10,25 +10,27 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = addr $discard__1
     %t3 = addr $h
     %t4 = addr $argobj__2
-    store i64 0, %t4
-    call void @iter_int__int____long_int__1024___iter(%t4)
+    zeroinit 8x8 %t4
+    call void @iter_int__pointer_to_int__long_int__1024___iter(%t4)
     %t5 = addr $argobj__3
-    store i64 0, %t5
-    call void @iter_int__int____long_int__1024___iter(%t5)
+    zeroinit 8x8 %t5
+    call void @iter_int__pointer_to_int__long_int__1024___iter(%t5)
     %t6 = addr $argobj__4
-    store i64 0, %t6
-    call void @iter_int__int____long_int__1024___iter(%t6)
+    zeroinit 8x8 %t6
+    call void @iter_int__pointer_to_int__long_int__1024___iter(%t6)
     %t7 = call obj<8x8> @holder_int__int___move_and_check(%t3, $argobj__2, $argobj__3, $argobj__4)
     copyobj 8x8 %t7, %t2
     return i32 0
 }
-function @iter_int__int____long_int__1024___iter(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN4iterIiPilLl1024EEC1Ev, trivial_lifecycle=yes] {
+
+function @iter_int__pointer_to_int__long_int__1024___iter(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN4iterIiPilLl1024EEC1Ev, trivial_lifecycle=yes] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return void
 }
+
 function @holder_int__int___move_and_check(%this : ptr, %f : obj<8x8>, %l : obj<8x8>, %r : obj<8x8>) -> obj<8x8> [binding=weak, object=_ZN6holderIiiE14move_and_checkE4iterIiPilLl1024EES3_S3_] {
   slot $this : ptr
   slot $f : obj<8x8>
@@ -49,4 +51,3 @@ function @holder_int__int___move_and_check(%this : ptr, %f : obj<8x8>, %l : obj<
     copyobj 8x8 %t5, %t4
     return obj<8x8> $retobj__1
 }
-alias object _ZN4iterIiPilLl1024EEC2Ev = @iter_int__int____long_int__1024___iter

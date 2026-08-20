@@ -3,12 +3,24 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = addr $tmpobj__1
-    store i32 0, %t1
+    zeroinit 4x4 %t1
     call void @Function_void_____Function(%t1)
     %t2 = call i32 @Function_void_____get(%t1)
     %t3 = binary sub i32 %t2, 7
     return i32 %t3
 }
+
+function @Function_void_____Function(%this : ptr) -> void [binding=weak, object=_ZN8FunctionIFvvEEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    call void @Value_void_____Value(%t2)
+    return void
+}
+
 function @Function_void_____get(%this : ptr) -> i32 [binding=weak, object=_ZNK8FunctionIFvvEE3getEv] {
   slot $this : ptr
 
@@ -20,16 +32,7 @@ function @Function_void_____get(%this : ptr) -> i32 [binding=weak, object=_ZNK8F
     %t4 = load i32 %t3
     return i32 %t4
 }
-function @Function_void_____Function(%this : ptr) -> void [binding=weak, object=_ZN8FunctionIFvvEEC1Ev] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    call void @Value_void_____Value(%t2)
-    return void
-}
 function @Value_void_____Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueIFvvEEC1Ev] {
   slot $this : ptr
 
@@ -40,5 +43,3 @@ function @Value_void_____Value(%this : ptr) -> void [binding=weak, object=_ZN5Va
     store i32 7, %t2
     return void
 }
-alias object _ZN8FunctionIFvvEEC2Ev = @Function_void_____Function
-alias object _ZN5ValueIFvvEEC2Ev = @Value_void_____Value

@@ -1,4 +1,4 @@
-function @operatornew(%__param0 : i64, %pointer : ptr) -> ptr [binding=strong, object=_ZnwmPv] {
+function @operatornew__ov2(%__param0 : i64, %pointer : ptr) -> ptr [binding=strong, object=_ZnwmPv] {
   slot $__param0 : i64
   slot $pointer : ptr
 
@@ -8,6 +8,7 @@ function @operatornew(%__param0 : i64, %pointer : ptr) -> ptr [binding=strong, o
     %t1 = load ptr $pointer
     return ptr %t1
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $storage : obj<8x1>
   slot $i : i64
@@ -43,7 +44,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t11 = convert sext i64 i32 8
     %t12 = addr $storage
     %t13 = unary decay ptr %t12
-    %t14 = call ptr @operatornew(%t11, %t13)
+    %t14 = call ptr @operatornew__ov2(%t11, %t13)
     call void @holder__holder(%t14)
     store ptr %t14, $object
     %t15 = load ptr $object
@@ -66,6 +67,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t21 = load i32 $cond__1
     return i32 %t21
 }
+
 function @holder__holder(%this : ptr) -> void [binding=weak, object=_ZN6holderC1Ev] {
   slot $this : ptr
 
@@ -73,7 +75,6 @@ function @holder__holder(%this : ptr) -> void [binding=weak, object=_ZN6holderC1
     store ptr %this, $this
     %t1 = load ptr $this
     %t2 = index i8 [projection=field] %t1, 0
-    store i64 0, %t2
+    zeroinit 8x8 %t2
     return void
 }
-alias object _ZN6holderC2Ev = @holder__holder

@@ -5,19 +5,15 @@ function @f() -> i32 [binding=strong, object=_Z1fv] {
   block ^entry:
     %t1 = addr $s
     %t3 = addr $arg__1
-    store i64 0, %t3
-    %t4 = index i8 %t3, 8
-    store i64 0, %t4
-    %t5 = index i8 %t3, 16
-    store i64 0, %t5
+    zeroinit 24x8 %t3
     copyobj 16x8 %t3, %t1
-    %t8 = index i8 [projection=field] %t1, 0
-    %t9 = load i32 %t8
-    %t11 = index i8 [projection=field] %t1, 8
-    %t12 = load i64 %t11
-    %t13 = convert trunc i32 i64 %t12
-    %t14 = binary add i32 %t9, %t13
-    return i32 %t14
+    %t6 = index i8 [projection=field] %t1, 0
+    %t7 = load i32 %t6
+    %t9 = index i8 [projection=field] %t1, 8
+    %t10 = load i64 %t9
+    %t11 = convert trunc i32 i64 %t10
+    %t12 = binary add i32 %t7, %t11
+    return i32 %t12
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $__o1inl0__s : obj<24x8>
@@ -26,19 +22,15 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %__o1inl0__t1 = addr $__o1inl0__s
     %__o1inl0__t3 = addr $__o1inl0__arg__1
-    store i64 0, %__o1inl0__t3
-    %__o1inl0__t4 = index i8 %__o1inl0__t3, 8
-    store i64 0, %__o1inl0__t4
-    %__o1inl0__t5 = index i8 %__o1inl0__t3, 16
-    store i64 0, %__o1inl0__t5
+    zeroinit 24x8 %__o1inl0__t3
     copyobj 16x8 %__o1inl0__t3, %__o1inl0__t1
-    %__o1inl0__t8 = index i8 [projection=field] %__o1inl0__t1, 0
-    %__o1inl0__t9 = load i32 %__o1inl0__t8
-    %__o1inl0__t11 = index i8 [projection=field] %__o1inl0__t1, 8
-    %__o1inl0__t12 = load i64 %__o1inl0__t11
-    %__o1inl0__t13 = convert trunc i32 i64 %__o1inl0__t12
-    %__o1inl0__t14 = binary add i32 %__o1inl0__t9, %__o1inl0__t13
-    return i32 %__o1inl0__t14
+    %__o1inl0__t6 = index i8 [projection=field] %__o1inl0__t1, 0
+    %__o1inl0__t7 = load i32 %__o1inl0__t6
+    %__o1inl0__t9 = index i8 [projection=field] %__o1inl0__t1, 8
+    %__o1inl0__t10 = load i64 %__o1inl0__t9
+    %__o1inl0__t11 = convert trunc i32 i64 %__o1inl0__t10
+    %__o1inl0__t12 = binary add i32 %__o1inl0__t7, %__o1inl0__t11
+    return i32 %__o1inl0__t12
 }
 function @S__S(%this : ptr) -> void [binding=weak, object=_ZN1SC1Ev, trivial_lifecycle=yes] {
   block ^entry:

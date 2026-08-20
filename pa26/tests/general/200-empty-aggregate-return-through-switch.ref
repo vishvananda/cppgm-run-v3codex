@@ -12,9 +12,7 @@ function @make(%n : i32) -> obj<16x8> [binding=strong, object=_Z4makei] {
 
   block ^switch_default_3:
     %t2 = addr $retobj__1
-    store i64 0, %t2
-    %t3 = index i8 %t2, 8
-    store i64 0, %t3
+    zeroinit 16x8 %t2
     call void @value__value(%t2)
     return obj<16x8> $retobj__1
 
@@ -22,6 +20,7 @@ function @make(%n : i32) -> obj<16x8> [binding=strong, object=_Z4makei] {
     zeroinit 16x8 $retobj__1
     return obj<16x8> $retobj__1
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $v : obj<16x8>
   slot $cond__1 : i32
@@ -49,6 +48,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t8 = load i32 $cond__1
     return i32 %t8
 }
+
 function @value__value(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5valueC1Ev, trivial_lifecycle=yes] {
   slot $this : ptr
 
@@ -56,4 +56,3 @@ function @value__value(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN
     store ptr %this, $this
     return void
 }
-alias object _ZN5valueC2Ev = @value__value

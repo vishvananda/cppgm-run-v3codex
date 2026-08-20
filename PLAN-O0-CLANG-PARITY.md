@@ -714,6 +714,38 @@ Complexity: O(initializer elements) in the existing layout walk and O(1)
 emission for each accepted contiguous span; no additional whole-function
 pass.
 
+P7 first gives `MI_ZERO_BYTES` an exact x86 byte-cost decision.  A fixed span
+of at most sixteen bytes is decomposed into 8/4/2/1-byte immediate stores only
+when their actual prefixes, REX byte, ModRM/SIB, displacement, and immediate
+bytes are strictly smaller than address/count setup plus `rep stosb`.
+Otherwise the existing REP path remains.  The decision is bounded O(1), is
+below MIR, and records six selected operations covering 41 bytes in the
+frozen compile.
+
+Source lowering now emits one typed `zeroinit` for an exact LowIR object span
+when the initialization action already owns that entire span.  Two compact
+class-layout facts propagate volatile and union containment through members
+and bases once during the existing layout walk; lowering reads those facts in
+O(1) after unwrapping array/qualification layers.  Explicit initializer,
+union, volatile, lifetime, and side-effect boundaries retain their prior
+lowering.  Three existing PA16 fixtures, one PA17, one PA19, two PA20, one
+PA22, two PA23, one PA24, one PA26, and one PA27 fixture migrate, together
+with the PA37 O2 source-driver fixture.  One new PA16 reducer pins the accepted
+base-subobject span and a second pins unchanged volatile/union boundaries.
+References were generated through the documented targets with the clean
+detached compiler at `313b7426`.
+
+Against P6, the frozen object falls from 3,927,648 to 3,927,584 bytes,
+`.text*` falls from 734,392 to 734,354 bytes, decoded instructions fall from
+184,790 to 184,780, LowIR instructions fall from 145,468 to 145,460, and MIR
+instructions fall by four.  Functions, relocations, relocation bytes, and
+`.eh_frame` are unchanged.  Three load-screened ABBA blocks measured
+4.535/4.555 seconds median wall, 4.080/4.095 seconds median user, and
+360,232/360,676 KiB median peak RSS for P6/P7.  Paired movement is +0.11%
+wall, 0.00% user, and +0.06% RSS.  PA16 passes 299/299, through PA16 passes
+1,470/1,470, the full report passes 5,275/5,275, and the file audit has zero
+fatal findings.
+
 ### P8: re-audit weak definition demand after structural code reductions
 
 The same-STL comparison leaves 1,594 more weak definitions in cppgm++.
@@ -814,7 +846,7 @@ Fill one row after each independently retained phase.
 | P4 memory RHS | none | 3 PA29 strict raw, 2 structural raw/canonical, and one new behavioral structural reducer migrate; PA38 unchanged | 4,392,256 bytes; `.text*` 906,658; 741 fewer instructions; functions/relocations unchanged | ABBA +0.64% wall, +0.71% user, +0.52% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P5 shared epilogue | none | behavior fixture's informational MIR expands with its source, but every semantic return remains; native bytes change only for existing inputs | 4,382,992 bytes; `.text*` 897,349; 5,858 native returns and 4,575 physical epilogues; functions/relocations unchanged | ABBA -0.42% wall, -0.24% user, -0.24% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P6 cleanup DAG | one new PA16 reducer; 7 PA17, 2 PA22, 1 PA25, 26 PA26, and 2 PA28 existing fixtures migrate; new PA17/PA26 reducers | new PA18 lifecycle-order reducer; PA31 behavior stays exact | 3,927,648 bytes; `.text*` 734,392; 184,790 instructions; 26,936 relocations; functions unchanged | ABBA -3.00% wall, -3.04% user, +0.08% RSS | PA16 297/297; through PA16 1,468/1,468; full report 5,272/5,272; zero-fatal audit | complete; `232f0fc8`, `d6716a4c` |
-| P7 zero initialization | expected PA16 migration for source-known contiguous spans | PA29 encoding change; downstream native change | pending | pending | pending | planned after fixture census |
+| P7 zero initialization | 14 existing fixtures migrate across PA16, PA17, PA19, PA20, PA22, PA23, PA24, PA26, PA27; two new PA16 reducers | PA29 encoding changes below MIR; one PA37 O2 driver fixture migrates | 3,927,584 bytes; `.text*` 734,354; 184,780 instructions; functions/relocations unchanged | ABBA +0.11% wall, 0.00% user, +0.06% RSS | PA16 299/299; through PA16 1,470/1,470; full report 5,275/5,275; zero-fatal audit | complete; `77be9a49`, `313b7426` |
 | P8 weak demand | avoid LowIR change unless semantic owner requires it | PA32 link/inspect change per edge | pending | pending | pending | discovery |
 | P9 shared ELF strings | none | PA32 object layout only | expected nonloaded file-size reduction | pending | pending | planned |
 

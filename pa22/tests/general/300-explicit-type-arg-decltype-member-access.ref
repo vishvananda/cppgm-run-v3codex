@@ -3,6 +3,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = call i32 @impl_handler___create(0)
     return i32 %t1
 }
+
 function @impl_handler___create(%__param0 : i32) -> i32 [binding=weak, object=_ZN4implI7handlerE6createIiEEiT_] {
   slot $__param0 : i32
   slot $d : obj<4x4>
@@ -13,7 +14,7 @@ function @impl_handler___create(%__param0 : i32) -> i32 [binding=weak, object=_Z
     %t1 = addr $d
     %t2 = addr $d
     %t3 = index i8 [projection=field] %t2, 0
-    store i32 0, %t3
+    zeroinit 4x4 %t3
     %t4 = addr $d
     %t5 = index i8 [projection=field] %t4, 0
     store ptr %t5, $p
@@ -21,6 +22,7 @@ function @impl_handler___create(%__param0 : i32) -> i32 [binding=weak, object=_Z
     %t7 = call i32 @traits_allocator___check(%t6)
     return i32 %t7
 }
+
 function @traits_allocator___check(%__param0 : ptr [pass=reference]) -> i32 [binding=weak, object=_ZN6traitsI9allocatorE5checkERS0_] {
   slot $__param0 : ptr
 

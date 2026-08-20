@@ -1,3 +1,12 @@
+function @addr(%b : ptr [pass=reference]) -> ptr [binding=weak, object=_Z4addrR1B] {
+  slot $b : ptr
+
+  block ^entry:
+    store ptr %b, $b
+    %t1 = load ptr $b
+    return ptr %t1
+}
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $o : obj<4x4>
 
@@ -5,7 +14,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = addr $o
     %t2 = addr $o
     %t3 = index i8 [projection=field] %t2, 0
-    store i32 0, %t3
+    zeroinit 4x4 %t3
     %t4 = addr $o
     %t5 = call ptr @get(%t4)
     %t6 = addr $o
@@ -15,6 +24,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t10 = convert zext i32 u8 %t9
     return i32 %t10
 }
+
 function @get(%o : ptr [pass=reference]) -> ptr [binding=weak, object=_Z3getIXadL_ZN1O1mEEEEP1BRS0_] {
   slot $o : ptr
 
@@ -26,12 +36,4 @@ function @get(%o : ptr [pass=reference]) -> ptr [binding=weak, object=_Z3getIXad
     %t4 = index i8 [projection=base_subobject] %t3, 0
     %t5 = call ptr @addr(%t4)
     return ptr %t5
-}
-function @addr(%b : ptr [pass=reference]) -> ptr [binding=weak, object=_Z4addrR1B] {
-  slot $b : ptr
-
-  block ^entry:
-    store ptr %b, $b
-    %t1 = load ptr $b
-    return ptr %t1
 }

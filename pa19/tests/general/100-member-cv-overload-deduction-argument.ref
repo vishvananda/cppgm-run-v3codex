@@ -31,6 +31,18 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t11 = load i32 $cond__1
     return i32 %t11
 }
+
+function @store_int___store(%this : ptr) -> void [binding=weak, object=_ZN5storeIiEC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=base_subobject] %t1, 0
+    call void @allocator_base_int___allocator_base__base_entry(%t2)
+    return void
+}
+
 function @store_int___move_from(%this : ptr, %other : ptr [pass=reference]) -> i32 [binding=weak, object=_ZN5storeIiE9move_fromERS0_] {
   slot $this : ptr
   slot $other : ptr
@@ -47,16 +59,7 @@ function @store_int___move_from(%this : ptr, %other : ptr [pass=reference]) -> i
     %t7 = call i32 @join_alloc(%t3, %t6)
     return i32 %t7
 }
-function @store_int___store(%this : ptr) -> void [binding=weak, object=_ZN5storeIiEC1Ev] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=base_subobject] %t1, 0
-    call void @allocator_base_int___allocator_base__base_entry(%t2)
-    return void
-}
 function @allocator_base_int___allocator_base__base_entry(%this : ptr) -> void [binding=weak, object=_ZN14allocator_baseIiEC2Ev] {
   slot $this : ptr
 
@@ -64,13 +67,14 @@ function @allocator_base_int___allocator_base__base_entry(%this : ptr) -> void [
     store ptr %this, $this
     %t1 = load ptr $this
     %t2 = index i8 [projection=field] %t1, 0
-    store i32 0, %t2
+    zeroinit 4x4 %t2
     %t3 = load ptr $this
     %t4 = index i8 [projection=field] %t3, 0
     %t5 = index i8 [projection=field] %t4, 0
     store i32 7, %t5
     return void
 }
+
 function @allocator_base_int___get_alloc(%this : ptr) -> ptr [binding=weak, object=_ZN14allocator_baseIiE9get_allocEv] {
   slot $this : ptr
 
@@ -80,6 +84,7 @@ function @allocator_base_int___get_alloc(%this : ptr) -> ptr [binding=weak, obje
     %t2 = index i8 [projection=field] %t1, 0
     return ptr %t2
 }
+
 function @join_alloc(%left : ptr [pass=reference], %right : ptr [pass=reference]) -> i32 [binding=weak, object=_Z10join_allocI13allocator_tagEiRT_S2_] {
   slot $left : ptr
   slot $right : ptr
@@ -98,4 +103,3 @@ function @join_alloc(%left : ptr [pass=reference], %right : ptr [pass=reference]
     %t8 = load i32 %t7
     return i32 %t8
 }
-alias object _ZN5storeIiEC2Ev = @store_int___store

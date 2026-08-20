@@ -1,0 +1,57 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $value : obj<16x8>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+
+  block ^entry:
+    %t1 = addr $value
+    call void @YValue__YValue(%t1)
+    %t2 = addr $value
+    %t3 = index i8 [projection=base_subobject] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = load i8 %t4
+    %t6 = convert sext i32 i8 %t5
+    %t7 = cmp eq i32 %t6, 0
+    branch %t7, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t8 = addr $value
+    %t9 = index i8 [projection=base_subobject] %t8, 0
+    %t10 = index i8 [projection=field] %t9, 8
+    %t11 = load i64 %t10
+    %t12 = cmp eq i64 %t11, 0
+    %t13 = cmp ne i64 %t12, 0
+    store i64 %t13, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t14 = load i64 $land__2
+    branch %t14, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t15 = load i32 $cond__1
+    return i32 %t15
+}
+
+function @YValue__YValue(%this : ptr) -> void [binding=weak, object=_ZN6YValueC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=base_subobject] %t1, 0
+    zeroinit 16x8 %t2
+    return void
+}

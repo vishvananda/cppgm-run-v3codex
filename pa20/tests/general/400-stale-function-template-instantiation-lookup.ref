@@ -4,20 +4,18 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = addr $n
-    store i64 0, %t1
-    %t2 = index i8 %t1, 8
-    store i64 0, %t2
-    %t3 = addr $n
-    %t4 = index i8 [projection=base_subobject] %t3, 0
-    %t5 = index i8 [projection=field] %t4, 0
-    store ptr 0, %t5
-    %t6 = addr $n
-    %t7 = call ptr @descend(%t6)
-    %t8 = addr $n
-    %t9 = index i8 [projection=base_subobject] %t8, 0
-    %t10 = index i8 [projection=field] %t9, 0
-    %t11 = cmp eq ptr %t7, %t10
-    branch %t11, ^cond_then_1, ^cond_else_2
+    zeroinit 16x8 %t1
+    %t2 = addr $n
+    %t3 = index i8 [projection=base_subobject] %t2, 0
+    %t4 = index i8 [projection=field] %t3, 0
+    store ptr 0, %t4
+    %t5 = addr $n
+    %t6 = call ptr @descend(%t5)
+    %t7 = addr $n
+    %t8 = index i8 [projection=base_subobject] %t7, 0
+    %t9 = index i8 [projection=field] %t8, 0
+    %t10 = cmp eq ptr %t6, %t9
+    branch %t10, ^cond_then_1, ^cond_else_2
 
   block ^cond_then_1:
     store i32 0, $cond__1
@@ -28,9 +26,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     jump ^cond_end_3
 
   block ^cond_end_3:
-    %t12 = load i32 $cond__1
-    return i32 %t12
+    %t11 = load i32 $cond__1
+    return i32 %t11
 }
+
 function @descend(%nd : ptr) -> ptr [binding=weak, object=_Z7descendIiEPP4baseP4nodeIT_E] {
   slot $nd : ptr
 
@@ -44,6 +43,7 @@ function @descend(%nd : ptr) -> ptr [binding=weak, object=_Z7descendIiEPP4baseP4
     %t6 = call ptr @addrof__ov2(%t5)
     return ptr %t6
 }
+
 function @addrof(%x : ptr [pass=reference]) -> ptr [binding=weak, object=_Z6addrofI4nodeIiEEPT_RS2_] {
   slot $x : ptr
 
@@ -52,6 +52,7 @@ function @addrof(%x : ptr [pass=reference]) -> ptr [binding=weak, object=_Z6addr
     %t1 = load ptr $x
     return ptr %t1
 }
+
 function @addrof__ov2(%x : ptr [pass=reference]) -> ptr [binding=weak, object=_Z6addrofIP4baseEPT_RS2_] {
   slot $x : ptr
 
