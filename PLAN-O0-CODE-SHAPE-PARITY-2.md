@@ -1070,6 +1070,31 @@ Do not perform post-hoc preserve deletion at `-O0`; PA38 already owns that
 Complexity: O(values * fixed target-register count), using existing clobber
 and use facts.
 
+Completed as an audit-only phase.  All 35 S6 exact-edge retentions in the
+frozen translation unit cross a call.  A diagnostic build that sends those
+values back to frame homes removes 27 push/pop pairs (108 text bytes) and 108
+`.eh_frame` bytes, but adds 39 memory-to-register instructions/163 bytes and
+34 register-to-memory instructions/133 bytes.  It therefore grows `.text*`
+by 185 bytes, decoded instructions by 19, MIR by 67, and the complete object
+by 128 bytes.  The retained-register form spends 216 bytes on added physical
+preservation plus unwind description and avoids 296 bytes of required home
+traffic, a net 80-byte code/EH saving before section alignment.
+
+A second bounded prototype preferred any previously used, currently free
+callee-saved register before opening a new preserve.  It removed no preserve,
+push/pop, or unwind entry on this workload and grew text/object by 16 bytes
+through less compact extended-register encodings, so it was rejected.  The
+fixed register-order policy already reuses the compact `rbx` opportunity when
+available and opens a later preserve only under simultaneous live pressure.
+
+The existing PA29 `single-edge-callee-saved-retention` structural/behavior
+fixture is the positive cost case.  `800-single-use-call-arg-no-preserve` and
+`700-call-setup-forwarding-no-preserve` are the required short-value negative
+cases: the call argument remains in a caller-saved carrier and the containing
+function gains no preserve list.  Because the production tree and every
+fixture remain unchanged, S7e's 5,286-test full report, zero-fatal audit,
+deterministic object, and timing are the S8 validation boundary.
+
 ### S9: remeasure live bodies and optimization-only opportunities
 
 After S1-S8, repeat the weak-body and relocation census.  Remove a definition
@@ -1143,7 +1168,7 @@ Fill one row after each retained phase.
 | S5 destination placement | PA17 direct xvalue-to-base binding and direct-register class-call destination fixtures; no PA29 migration needed | cumulative through S5b: -3,431 text, -540 LSDA, -97 relocations, -33 terminate calls; all 62 generated object call slots removed | S5b paired 0.000% wall, +0.605% user, +0.451% RSS | PA17 245/245; through-PA17 1,715/1,715; full 5,281/5,281; zero-fatal audit | complete through S5b |
 | S6 bounded scalar retention | PA29 exact-forward-edge MIR/behavior; existing PA29 loop/call/escape and PA38 EH negatives | -185 text, -19 decoded instructions, -34 temporary homes; +108 `.eh_frame` pending S8 cost audit | reverse-order medians both 4.270s user; <0.5% RSS movement | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | complete |
 | S7 width/fixed arithmetic | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds MIR-stable behavior; S7e adds fixed shift operands and migrates two MIR fixtures | cumulative through S7e: -10,929 text, -3,612 decoded instructions, -2,712 MIR; no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%, S7e -0.83%; RSS neutral | PA29+PA38 293/293; full 5,286/5,286; zero-fatal audit | complete |
-| S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
+| S8 register cost | existing PA29 profitable-retention and no-preserve short-value fixtures already cover both decisions | audit-only: register retention is 80 bytes smaller than frame traffic including unwind; reuse-first prototype rejected at +16 text/object | no production change; S7e timing remains authoritative | S7e full 5,286/5,286 and zero-fatal audit; two diagnostic frozen objects compared | complete; audit-only |
 | S9 demand/optimization remeasure | explicit force-inline owner only at O0; ordinary work deferred to PA37/PA38 | pending | pending | pending | planned |
 
 ## Completion criteria
