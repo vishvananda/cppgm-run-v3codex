@@ -1384,3 +1384,21 @@ Baseline/candidate medians are 4.225/4.160 seconds user, 4.720/4.625 seconds
 wall, and 360,370/360,302 KiB peak RSS, improving 1.54%, 2.01%, and 0.02%,
 respectively. The affected report passes 373/373, the full report passes
 5,225/5,225, and the PA39 audit has zero fatal findings.
+
+The first clean self build after compatibility retirement exposed a PA29
+wide-parameter placement dependency that the ordinary report corpus did not
+previously cover. A mandatory stable home for the second SysV parameter uses
+R9 and therefore clobbers the intact incoming carrier of the sixth parameter.
+The bounded six-parameter planner now includes mandatory setup destinations in
+its fixed-register clobber mask before retaining an incoming carrier. The
+behavioral `wide-parameter-home-clobbers-incoming` reducer executes under both
+the course reference and current compiler without imposing the reference's
+different MIR layout. Parameter-home planning was kept in the dedicated
+parameter-lowering component, leaving the PA39 audit with zero fatal findings.
+
+The correction is byte-identical on frozen `semantic_overload.cpp`: both the
+pre-fix and corrected objects are 4,406,784 bytes with SHA-256
+`520af5ad2cc527d93df30616ee074ad5cfd906c301d9988b0ac0dc450b2f6af1`.
+Sequential A/B/B/A medians for the pre-fix/corrected compilers are 4.215/4.185
+seconds user, 4.720/4.650 seconds wall, and 362,262/362,434 KiB peak RSS. The
+affected report passes 374/374 and the full report passes 5,226/5,226.

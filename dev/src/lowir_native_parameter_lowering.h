@@ -243,6 +243,66 @@ protected:
     lowerer.registers_.reserve(binding.reg);
   }
 
+  unsigned required_wide_parameter_setup_clobbers(
+      const X64Register * destinations, std::size_t count) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    unsigned clobbers = 0;
+    count = std::min(count, lowerer.source_.params.size());
+    for(std::size_t index = 0; index < count; ++index) {
+      const lowir_model::ValueId value = lowerer.source_.params[index].value;
+      if(lowerer.storage_facts_.parameter_selected_uses[index] == 0 ||
+         lowerer.values_[value].location.kind == mir_model::MirOperand::OP_FRAME)
+        continue;
+      const X64Register incoming = abi::argument_register(index);
+      if(lowerer.facts_.has(value,
+           analysis::FunctionFacts::VF_LOOP_INVARIANT) ||
+         lowerer.crosses_register_clobber(value, incoming))
+        clobbers |= analysis::register_mask(destinations[index]);
+    }
+    return clobbers;
+  }
+
+  void bind_wide_scalar_parameter_homes()
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    static const std::size_t order[] = {2, 3, 4, 5, 1, 0};
+    static const X64Register destinations[] = {
+      XR_R15, XR_R9, XR_RBX, XR_R12, XR_R13, XR_R14
+    };
+    const unsigned setup_clobbers =
+      required_wide_parameter_setup_clobbers(destinations, 6);
+    for(std::size_t step = 0; step < sizeof(order) / sizeof(order[0]); ++step) {
+      const std::size_t index = order[step];
+      if(index >= lowerer.source_.params.size()) continue;
+      const lowir_model::ValueId value = lowerer.source_.params[index].value;
+      if(lowerer.storage_facts_.parameter_selected_uses[index] == 0 ||
+         lowerer.values_[value].location.kind == mir_model::MirOperand::OP_FRAME)
+        continue;
+      const X64Register incoming = abi::argument_register(index);
+      if(!lowerer.facts_.has(value,
+           analysis::FunctionFacts::VF_LOOP_INVARIANT) &&
+         !lowerer.crosses_register_clobber(value, incoming) &&
+         !(setup_clobbers & analysis::register_mask(incoming))) {
+        if(lowerer.managed_register(incoming) &&
+           !lowerer.registers_.is_used(incoming))
+          lowerer.registers_.reserve(incoming);
+        continue;
+      }
+      const X64Register destination = destinations[index];
+      lowerer.registers_.reserve(destination);
+      const std::size_t first = lowerer.parameter_moves_.size();
+      build::append_move(lowerer.parameter_moves_, build::reg_operand(destination),
+                         build::reg_operand(incoming));
+      remember_optional_parameter_move(first, value);
+      lowerer.set_value_location(value, build::reg_operand(destination));
+      lowerer.values_[value].parameter = false;
+      lowerer.values_[value].fixed_register_home = lowerer.storage_facts_.has(
+        value, analysis::StorageFacts::VF_PROMOTED_PARAMETER);
+      lowerer.values_[value].selected_parameter_home = value;
+    }
+  }
+
   unsigned active_setup_register_clobbers_ = 0;
   mutable std::vector<OptionalParameterMove> optional_parameter_moves_;
 

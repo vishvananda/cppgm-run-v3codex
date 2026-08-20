@@ -587,36 +587,7 @@ private:
       return;
     }
     if(!wide_gpr_boundary || constrained_wide_pressure()) return;
-    static const std::size_t order[] = {2, 3, 4, 5, 1, 0};
-    static const X64Register destinations[] = {
-      XR_R15, XR_R9, XR_RBX, XR_R12, XR_R13, XR_R14
-    };
-    for(std::size_t step = 0; step < sizeof(order) / sizeof(order[0]); ++step) {
-      const std::size_t index = order[step];
-      if(index >= source_.params.size()) continue;
-      const lowir_model::ValueId value = source_.params[index].value;
-      if(storage_facts_.parameter_selected_uses[index] == 0 ||
-         values_[value].location.kind == MirOperand::OP_FRAME)
-        continue;
-      const X64Register incoming = abi::argument_register(index);
-      if(!facts_.has(value, FunctionFacts::VF_LOOP_INVARIANT) &&
-         !crosses_register_clobber(value, incoming)) {
-        if(managed_register(incoming) && !registers_.is_used(incoming))
-          registers_.reserve(incoming);
-        continue;
-      }
-      const X64Register destination = destinations[index];
-      registers_.reserve(destination);
-      const std::size_t first = parameter_moves_.size();
-      append_move(parameter_moves_, reg_operand(destination),
-                  reg_operand(incoming));
-      remember_optional_parameter_move(first, value);
-      set_value_location(value, reg_operand(destination));
-      values_[value].parameter = false;
-      values_[value].fixed_register_home = storage_facts_.has(
-        value, StorageFacts::VF_PROMOTED_PARAMETER);
-      values_[value].selected_parameter_home = value;
-    }
+    bind_wide_scalar_parameter_homes();
   }
   bool result_is_immediate_return(const lowir_model::LowirBlock & block,
     std::size_t instruction_index, lowir_model::ValueId destination) const
