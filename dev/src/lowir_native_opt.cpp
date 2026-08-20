@@ -1,5 +1,4 @@
 #include "lowir_native_opt.h"
-#include "lowir_native_address_folding.h"
 
 #include <algorithm>
 #include <array>
@@ -375,17 +374,14 @@ bool operand_is_read_only(const MirInstruction & instruction, std::size_t index)
 }
 
 bool has_call_before_redefinition(const MirBlock & block, std::size_t start,
-                                  X64Register reg,
-                                  bool exact_call_arguments = false)
+                                  X64Register reg)
 {
   const RegisterMask bit = gpr_bit(reg);
   for(std::size_t i = start; i < block.instructions.size(); ++i) {
     const MirInstruction & instruction = block.instructions[i];
     if(instruction.opcode == MirInstruction::MI_CALL ||
        instruction.opcode == MirInstruction::MI_CALL_INDIRECT) {
-      if(!exact_call_arguments || !instruction.call_argument_registers_known ||
-         (instruction.call_argument_register_mask & bit)) return true;
-      return false;
+      return true;
     }
     if(instruction_defs(instruction) & bit) return false;
     if(is_control_barrier(instruction.opcode)) return false;
@@ -415,18 +411,14 @@ bool same_operand(const MirOperand & left, const MirOperand & right)
 }
 
 void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
-                            Stats * stats,
-                            const std::vector<bool> * keep_original = 0,
-                            bool keep_call_argument_aliases = false)
+                            Stats * stats)
 {
   LocalFacts facts;
   preserve.assign(block.instructions.size(), false);
   for(std::size_t i = 0; i < block.instructions.size(); ++i) {
     MirInstruction & instruction = block.instructions[i];
     if(stats) ++stats->instruction_visits;
-    const bool keep = keep_original && i < keep_original->size() &&
-      (*keep_original)[i];
-    for(std::size_t operand_index = 0; !keep &&
+    for(std::size_t operand_index = 0;
         operand_index < instruction.operands.size(); ++operand_index) {
       MirOperand & operand = instruction.operands[operand_index];
       if(!operand_is_read_only(instruction, operand_index)) {
@@ -477,12 +469,6 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
             replacement.kind == MirOperand::OP_GLOBAL))
           allowed = instruction.opcode == MirInstruction::MI_MOV &&
             operand_index == 1;
-        if(allowed && keep_call_argument_aliases &&
-           instruction.opcode == MirInstruction::MI_MOV &&
-           operand_index == 1 && original.kind == MirOperand::OP_REG &&
-           has_call_before_redefinition(
-             block, i + 1, original.reg, true))
-          allowed = false;
         if(allowed) operand = replacement;
       }
       if(!same_operand(original, operand)) {
@@ -499,7 +485,6 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
 
     const RegisterMask defs = instruction_defs(instruction);
     facts.invalidate(defs);
-    if(keep) preserve[i] = true;
     if(instruction.opcode == MirInstruction::MI_MOV &&
        instruction.operands.size() == 2 &&
        instruction.operands[0].kind == MirOperand::OP_REG) {
@@ -536,35 +521,6 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
       fact.definition = i;
     }
   }
-}
-
-std::vector<bool> baseline_encoding_preserve(const MirBlock & block)
-{
-  std::vector<bool> preserve(block.instructions.size(), false);
-  for(std::size_t i = 0; i < block.instructions.size(); ++i) {
-    const address_folding::MemoryFoldKind fold =
-      address_folding::classify_memory_fold(block.instructions, i);
-    std::size_t count = 0;
-    if(fold == address_folding::MFK_SETUP_LOAD)
-      count = i + 2 < block.instructions.size() &&
-        block.instructions[i].opcode == MirInstruction::MI_MOV &&
-        block.instructions[i + 1].opcode == MirInstruction::MI_LEA ? 3 : 2;
-    else if(fold == address_folding::MFK_COPY_STORE ||
-            fold == address_folding::MFK_ADDRESS_STORE)
-      count = 2;
-    else if(fold == address_folding::MFK_COPY_ADDRESS_STORE)
-      count = 3;
-    for(std::size_t j = 0; j < count; ++j) preserve[i + j] = true;
-
-    if(i + 3 < block.instructions.size() &&
-       block.instructions[i].opcode == MirInstruction::MI_MOV &&
-       block.instructions[i + 1].opcode == MirInstruction::MI_LEA &&
-       block.instructions[i + 2].opcode == MirInstruction::MI_MOV &&
-       block.instructions[i + 3].opcode == MirInstruction::MI_STORE &&
-       block.instructions[i + 3].type.kind == lowir_model::LTK_I8)
-      for(std::size_t j = 0; j != 4; ++j) preserve[i + j] = true;
-  }
-  return preserve;
 }
 
 bool is_label_operand(const MirInstruction & instruction,
@@ -774,28 +730,6 @@ void remove_dead_definitions(MirFunction & function,
     std::reverse(reverse.begin(), reverse.end());
     block.instructions.swap(reverse);
   }
-}
-
-void remove_locally_dead_definitions(
-    MirBlock & block, const std::vector<bool> & preserve)
-{
-  RegisterMask live = 0;
-  std::vector<MirInstruction> reverse;
-  reverse.reserve(block.instructions.size());
-  for(std::size_t i = block.instructions.size(); i != 0; --i) {
-    const std::size_t index = i - 1;
-    const MirInstruction & instruction = block.instructions[index];
-    if(index < preserve.size() && !preserve[index] &&
-       is_removable_definition(instruction, live)) {
-      retain_debug(instruction, reverse.empty() ? 0 : &reverse.back());
-      continue;
-    }
-    live &= ~instruction_defs(instruction);
-    live |= instruction_uses(instruction, true);
-    reverse.push_back(instruction);
-  }
-  std::reverse(reverse.begin(), reverse.end());
-  block.instructions.swap(reverse);
 }
 
 X86Condition inverse_condition(X86Condition condition)
@@ -1018,44 +952,6 @@ void optimize_function(MirFunction & function, int level, Stats * stats)
   clean_branches(function, stats);
   if(level >= 2) finalize_frame(function, stats);
   if(stats) {
-    stats->output_instructions += instruction_count(function);
-    stats->elapsed_nanoseconds += static_cast<std::uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - started).count());
-  }
-}
-
-void prepare_for_encoding(MirFunction & function, Stats * stats)
-{
-  if(function.blocks.size() != 1) return;
-  const std::chrono::steady_clock::time_point started =
-    std::chrono::steady_clock::now();
-  if(stats) {
-    ++stats->functions;
-    stats->input_instructions += instruction_count(function);
-  }
-  const std::size_t before_returns = stats ? stats->rewrites : 0;
-  make_scalar_float_returns_explicit(function, stats);
-  if(stats)
-    stats->implicit_return_rewrites += stats->rewrites - before_returns;
-  const std::vector<bool> keep_original =
-    baseline_encoding_preserve(function.blocks[0]);
-  std::vector<bool> preserve;
-  const std::size_t before_operands = stats ? stats->rewrites : 0;
-  rewrite_local_operands(
-    function.blocks[0], preserve, stats, &keep_original, true);
-  if(stats) stats->operand_rewrites += stats->rewrites - before_operands;
-  const std::size_t before_dead = function.blocks[0].instructions.size();
-  remove_locally_dead_definitions(function.blocks[0], preserve);
-  if(stats) {
-    stats->dead_definitions +=
-      before_dead - function.blocks[0].instructions.size();
-    stats->rewrites += before_dead - function.blocks[0].instructions.size();
-  }
-  const std::size_t before_frame = stats ? stats->rewrites : 0;
-  finalize_frame(function, stats);
-  if(stats) {
-    stats->frame_rewrites += stats->rewrites - before_frame;
     stats->output_instructions += instruction_count(function);
     stats->elapsed_nanoseconds += static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(

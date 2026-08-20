@@ -208,19 +208,6 @@ int run_lowir2native_mode(const vector<string> & args)
          << " machine_opt_rewrites=" << stats.machine_opt_rewrites
          << " machine_opt_peak_bytes="
          << stats.machine_opt_peak_analysis_bytes
-         << " encoding_prepare_functions=" << stats.encoding_prepare_functions
-         << " encoding_prepare_input="
-         << stats.encoding_prepare_input_instructions
-         << " encoding_prepare_output="
-         << stats.encoding_prepare_output_instructions
-         << " encoding_prepare_operand_rewrites="
-         << stats.encoding_prepare_operand_rewrites
-         << " encoding_prepare_dead_definitions="
-         << stats.encoding_prepare_dead_definitions
-         << " encoding_prepare_frame_rewrites="
-         << stats.encoding_prepare_frame_rewrites
-         << " encoding_prepare_implicit_return_rewrites="
-         << stats.encoding_prepare_implicit_return_rewrites
          << " live_location_scans=" << stats.live_location_scans
          << " live_location_value_visits=" << stats.live_location_value_visits
          << " live_location_alias_queries=" << stats.live_location_alias_queries
@@ -245,7 +232,6 @@ int run_lowir2native_mode(const vector<string> & args)
               lower_start - parse_start).count()
          << " lower_ns=" << stats.lower_nanoseconds
          << " machine_opt_ns=" << stats.machine_opt_nanoseconds
-         << " encoding_prepare_ns=" << stats.encoding_prepare_nanoseconds
          << " encode_ns=" << stats.encode_nanoseconds
          << " write_ns=" << stats.write_nanoseconds << '\n';
   }

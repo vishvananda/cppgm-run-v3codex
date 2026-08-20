@@ -1928,43 +1928,9 @@ void emit_prepared_function(
   out.relax_forward_branches(function_start);
 }
 
-void record_encoding_preparation(const machine_opt::Stats & prepared,
-                                 Stats * stats)
+void emit_function(CodeBuffer & out, const mir_model::MirFunction & function)
 {
-  if(!stats) return;
-  stats->encoding_prepare_functions += prepared.functions;
-  stats->encoding_prepare_input_instructions += prepared.input_instructions;
-  stats->encoding_prepare_output_instructions += prepared.output_instructions;
-  stats->encoding_prepare_operand_rewrites += prepared.operand_rewrites;
-  stats->encoding_prepare_dead_definitions += prepared.dead_definitions;
-  stats->encoding_prepare_frame_rewrites += prepared.frame_rewrites;
-  stats->encoding_prepare_implicit_return_rewrites +=
-    prepared.implicit_return_rewrites;
-  stats->encoding_prepare_nanoseconds += prepared.elapsed_nanoseconds;
-}
-
-void prepare_function_for_encoding(mir_model::MirFunction & function,
-                                   Stats * stats)
-{
-  if(!stats) {
-    machine_opt::prepare_for_encoding(function);
-    return;
-  }
-  machine_opt::Stats prepared;
-  machine_opt::prepare_for_encoding(function, &prepared);
-  record_encoding_preparation(prepared, stats);
-}
-
-void emit_function(CodeBuffer & out, const mir_model::MirFunction & function,
-                   Stats * stats)
-{
-  if(function.blocks.size() != 1) {
-    emit_prepared_function(out, function);
-    return;
-  }
-  mir_model::MirFunction prepared = function;
-  prepare_function_for_encoding(prepared, stats);
-  emit_prepared_function(out, prepared);
+  emit_prepared_function(out, function);
 }
 
 void emit_runtime_labels(CodeBuffer & out,
@@ -2816,7 +2782,7 @@ void write_linux_executable(const std::string & path,
   for(std::size_t i = 0; i < program.startup.size(); ++i)
     emit_instruction(content, program.startup[i], 0);
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    emit_function(content, program.functions[i], stats);
+    emit_function(content, program.functions[i]);
   emit_program_tail(content, program, objects);
   finish_native_executable(path, content, stats, 0, encode_start);
 }
@@ -2847,7 +2813,6 @@ void write_linux_executable(const std::string & path,
       std::chrono::steady_clock::now() - encode_started).count());
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     mir_model::MirFunction function = lowering.lower_function(i);
-    prepare_function_for_encoding(function, stats);
     if(stats) encode_started = std::chrono::steady_clock::now();
     emit_prepared_function(content, function);
     if(stats) encode_nanoseconds += static_cast<std::uint64_t>(
@@ -2894,7 +2859,6 @@ void write_linux_relocatable(
   }
   for(std::size_t i = 0; i < lowering.function_count(); ++i) {
     mir_model::MirFunction function = lowering.lower_function(i);
-    prepare_function_for_encoding(function, stats);
     const std::chrono::steady_clock::time_point started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();

@@ -54,13 +54,6 @@ struct Stats
   std::size_t machine_opt_worklist_pushes = 0;
   std::size_t machine_opt_rewrites = 0;
   std::size_t machine_opt_peak_analysis_bytes = 0;
-  std::size_t encoding_prepare_functions = 0;
-  std::size_t encoding_prepare_input_instructions = 0;
-  std::size_t encoding_prepare_output_instructions = 0;
-  std::size_t encoding_prepare_operand_rewrites = 0;
-  std::size_t encoding_prepare_dead_definitions = 0;
-  std::size_t encoding_prepare_frame_rewrites = 0;
-  std::size_t encoding_prepare_implicit_return_rewrites = 0;
   std::size_t live_location_scans = 0;
   std::size_t live_location_value_visits = 0;
   std::size_t live_location_alias_queries = 0;
@@ -85,7 +78,6 @@ struct Stats
   std::size_t output_bytes = 0;
   std::uint64_t lower_nanoseconds = 0;
   std::uint64_t machine_opt_nanoseconds = 0;
-  std::uint64_t encoding_prepare_nanoseconds = 0;
   std::uint64_t encode_nanoseconds = 0;
   std::uint64_t write_nanoseconds = 0;
 };
