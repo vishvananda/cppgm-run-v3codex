@@ -284,6 +284,9 @@ PA17 supports the following in addition to the PA16 subset:
   cv-combined glvalue operands, lvalue/prvalue conversion, and destruction of a
   containing branch temporary only after its selected member result has been
   materialized
+- equal temporary-destruction suffixes in the same full-expression and unwind
+  context use shared LowIR cleanup continuations, including conditional
+  lifetime guards where the guarded object identity is the same
 - class temporaries created earlier in an enclosing full expression remain
   alive across nested conditional and short-circuit branch edges, and are
   destroyed at the end of that full expression
@@ -363,6 +366,9 @@ Useful intermediate representations include:
   source-level semantic types
 - a stable way to identify the supported temporary-materialization points without requiring
   a fully general temporary lifetime model yet
+- extension of PA16 cleanup-state identities with temporary object and
+  conditional-lifetime facts, built from the terminal backward so equal
+  suffixes can be reused in expected constant time per action
 - allocation expressions lowered as ordinary construction/destruction actions
   over explicit storage, rather than as a separate object model
 - conversion operators represented through the same typed overload-resolution

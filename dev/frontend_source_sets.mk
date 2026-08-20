@@ -54,6 +54,7 @@ FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_compiler_builtin_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_control_flow_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_wide_constant_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa34_source_identity
+FRONTEND_OBJ_BASENAMES_cppgm++ += pa16_cleanup_continuation
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa19_template_shape_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_condition_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa11_name_identity pa11_mainline_view pa11_mainline_projection

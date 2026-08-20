@@ -218,6 +218,9 @@ To complete PA26, implement these goals:
    remain live from scopes outside the corresponding `try` statement.
    If construction of a class subobject throws, destroy exactly the already
    constructed bases and members in reverse construction order.
+   Equal unwind cleanup suffixes may share LowIR blocks only when their complete
+   active try/handler context, handler-exit operations, cleanup-region exits,
+   and terminal continuation are identical.
 
 ### Out Of Scope
 
@@ -254,6 +257,10 @@ PA27.
 ### Design Notes (Non-Normative)
 
 PA26 should extend the existing semantic and lowering path, not replace it.
+
+Cleanup continuation keys can use dense identities for the complete active
+exception-region stack. This permits expected constant-time state interning
+without comparing rendered LowIR or rescanning the region stack at each call.
 
 The same monotonic-extension rule applies here:
 

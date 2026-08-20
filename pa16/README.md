@@ -269,6 +269,10 @@ PA16 supports the following in addition to the PA15 procedural subset:
   - destructor execution at block exit, `return`, loop exit, and program shutdown
   - per-thread initialization for namespace-scope `thread_local` class objects,
     with collision-free internal wrapper, guard, and initializer symbols
+- shared LowIR cleanup continuations for equal lexical destructor suffixes;
+  return paths may converge on a continuation only after preserving the return
+  value and only when the destructor sequence and enclosing control context are
+  identical
 - recursive member/base construction and destruction for supported class-type subobjects
 - anonymous struct/union members, including injected member lookup and layout in
   the supported class subset
@@ -352,5 +356,8 @@ Useful intermediate representations include:
   PA12/PA15
 - explicit constructor/destructor actions attached to declarations or generated function bodies
   so lifetime can be lowered incrementally instead of requiring a separate runtime model
+- compact cleanup-state identities formed from an action, its tail, its terminal
+  continuation, and its control context; interning those identities while
+  lowering avoids copying or repeatedly comparing complete destructor sequences
 - demand-driven helper emission keyed by semantic entities rather than source
   spelling, so unused constructors/destructors do not perturb earlier outputs

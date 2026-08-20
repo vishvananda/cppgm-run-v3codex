@@ -4,6 +4,7 @@
 #include "pa15_lowering_support.h"
 #include "pa15_lowir_model.h"
 #include "pa12_semantic_model.h"
+#include "pa16_cleanup_continuation.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -24,11 +25,98 @@ template <class Derived>
 class LifetimeActionLowering
 {
 protected:
-	LifetimeActionLowering() : direct_return_slot_(kNoLowId) {}
+	LifetimeActionLowering()
+		: direct_return_slot_(kNoLowId), shared_return_slot_(kNoLowId) {}
 
 	void ResetLifetimeFunctionState()
 	{
 		direct_return_slot_ = kNoLowId;
+		shared_return_slot_ = kNoLowId;
+		return_cleanup_roots_.Clear();
+		return_cleanup_counts_.clear();
+	}
+
+	std::size_t ReturnLexicalCleanupStart(const NodeChildren& children,
+		bool has_value) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		std::size_t first = has_value ? 1 : 0;
+		while (first < children.size())
+		{
+			const DumpNode& action = derived.arena_.nodes[children[first]];
+			if (action.kind != DUMP_DESTRUCTOR_ACTION ||
+				!action.full_expression_staging) break;
+			++first;
+		}
+		return first;
+	}
+
+	bool ReturnCleanupActionApplies(const NodeChildren& children,
+		bool has_value, std::size_t index) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (!has_value || !derived.arena_.nodes[children[0]].direct_return_slot)
+			return true;
+		return derived.arena_.nodes[children[index]].object_binding !=
+			derived.arena_.nodes[children[0]].binding;
+	}
+
+	void PlanLexicalReturnCleanup(std::uint32_t node,
+		const NodeChildren& children, std::uint32_t syntax_context)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		using namespace pa16_cleanup_continuation;
+		const bool has_value = !children.empty() &&
+			derived.arena_.nodes[children[0]].kind != DUMP_DESTRUCTOR_ACTION;
+		const std::size_t first = ReturnLexicalCleanupStart(children, has_value);
+		bool inserted = false;
+		std::uint32_t tail = derived.cleanup_continuations_.Intern(Key(
+			kNoCleanupState, kNoCleanupState, has_value ? 1 : 0,
+			syntax_context, LEXICAL_RETURN_CENSUS), &inserted);
+		std::size_t actions = 0;
+		for (std::size_t i = children.size(); i != first; --i)
+		{
+			const std::size_t index = i - 1;
+			if (derived.arena_.nodes[children[index]].kind !=
+				DUMP_DESTRUCTOR_ACTION)
+				throw std::logic_error("invalid planned return cleanup action");
+			if (!ReturnCleanupActionApplies(children, has_value, index)) continue;
+			const ActionKey key = MakeActionKey(
+				derived.arena_.nodes[children[index]]);
+			const std::uint32_t action = derived.cleanup_continuations_.InternAction(
+				key, children[index], &inserted);
+			tail = derived.cleanup_continuations_.Intern(Key(action, tail, 0,
+				syntax_context, LEXICAL_RETURN_CENSUS), &inserted);
+			++actions;
+		}
+		if (actions == 0) return;
+		return_cleanup_roots_.Insert(node, tail);
+		if (tail >= return_cleanup_counts_.size())
+			return_cleanup_counts_.resize(static_cast<std::size_t>(tail) + 1, 0);
+		++return_cleanup_counts_[tail];
+	}
+
+	void FinalizeLexicalReturnCleanupPlan()
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.current_indirect_result_ ||
+			derived.current_result_.kind == LOW_VOID ||
+			derived.current_result_.kind == LOW_OBJECT) return;
+		for (std::size_t i = 0; i < return_cleanup_counts_.size(); ++i)
+			if (return_cleanup_counts_[i] > 1)
+			{
+				shared_return_slot_ = derived.CreateGeneratedSlot(
+					"cleanup_return", derived.current_result_);
+				return;
+			}
+	}
+
+	bool ShouldShareLexicalReturn(std::uint32_t node) const
+	{
+		std::uint32_t root = kNoLowId;
+		return return_cleanup_roots_.Find(node, &root) &&
+			root < return_cleanup_counts_.size() &&
+			return_cleanup_counts_[root] > 1;
 	}
 
 	SlotId EnsureDirectReturnSlot(std::uint32_t node)
@@ -79,7 +167,111 @@ protected:
 		*result_value = slot;
 	}
 
-	void LowerReturn(const NodeChildren& children)
+	std::uint32_t InternLexicalCleanupState(
+		const pa16_cleanup_continuation::Key& key, const char* label,
+		std::vector<std::uint32_t>* pending, bool* inserted)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		if (derived.stats_) ++derived.stats_->cleanup_state_probes;
+		const std::uint32_t state =
+			derived.cleanup_continuations_.Intern(key, inserted);
+		if (!*inserted)
+		{
+			if (derived.stats_) ++derived.stats_->cleanup_state_hits;
+			return state;
+		}
+		const BlockId block = derived.AddBlock(derived.NewLabel(label));
+		derived.cleanup_continuations_.BindBlock(state, block);
+		pending->push_back(state);
+		if (derived.stats_)
+		{
+			++derived.stats_->cleanup_unique_states;
+			++derived.stats_->cleanup_blocks_emitted;
+		}
+		return state;
+	}
+
+	BlockId LexicalCleanupBlock(std::uint32_t state) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		const pa16_cleanup_continuation::State& record =
+			derived.cleanup_continuations_.Get(state);
+		if (!record.block_bound)
+			throw std::logic_error("lexical cleanup continuation has no block");
+		return record.block;
+	}
+
+	std::uint32_t BuildLexicalReturnCleanup(const NodeChildren& children,
+		bool has_value, bool returns_value, std::size_t first_cleanup,
+		std::vector<std::uint32_t>* pending)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		using namespace pa16_cleanup_continuation;
+		const std::uint32_t context = derived.ExceptionCleanupContext();
+		const std::uint32_t terminal = returns_value ?
+			static_cast<std::uint32_t>(shared_return_slot_) + 1 : 0;
+		bool inserted = false;
+		std::uint32_t tail = InternLexicalCleanupState(Key(kNoCleanupState,
+			kNoCleanupState, terminal, context, LEXICAL_RETURN_TERMINAL),
+			"return_cleanup_terminal", pending, &inserted);
+		for (std::size_t i = children.size(); i != first_cleanup; --i)
+		{
+			const std::size_t index = i - 1;
+			if (!ReturnCleanupActionApplies(children, has_value, index)) continue;
+			const ActionKey action_key = MakeActionKey(
+				derived.arena_.nodes[children[index]]);
+			const std::uint32_t action = derived.cleanup_continuations_.InternAction(
+				action_key, children[index], &inserted);
+			tail = InternLexicalCleanupState(Key(action, tail, terminal, context,
+				LEXICAL_RETURN_ACTION), "return_cleanup_action", pending, &inserted);
+			if (!inserted && derived.stats_)
+				++derived.stats_->cleanup_destructor_actions_avoided;
+		}
+		return tail;
+	}
+
+	void MaterializeLexicalReturnCleanup(
+		const std::vector<std::uint32_t>& pending,
+		std::size_t closed_exception_handlers,
+		std::size_t exception_regions, bool returns_value)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		using namespace pa16_cleanup_continuation;
+		const BlockId original = derived.current_block_;
+		for (std::size_t i = 0; i < pending.size(); ++i)
+		{
+			const State state = derived.cleanup_continuations_.Get(pending[i]);
+			derived.SelectBlock(state.block);
+			if (state.key.mode == LEXICAL_RETURN_ACTION)
+			{
+				derived.LowerDestructorAction(
+					derived.arena_.nodes[derived.cleanup_continuations_.GetAction(
+						state.key.action).representative_node]);
+				derived.EmitJump(LexicalCleanupBlock(state.key.tail));
+			}
+			else if (state.key.mode == LEXICAL_RETURN_TERMINAL)
+			{
+				derived.FinishExceptionControlExit(closed_exception_handlers,
+					exception_regions);
+				derived.FinishFunctionExceptionBoundaryNormalExit();
+				if (!returns_value)
+					derived.Emit(Instruction(Instruction::RETURN_VOID));
+				else
+				{
+					Instruction instruction(Instruction::RETURN_VALUE);
+					instruction.type = derived.current_result_;
+					instruction.first = Operand(shared_return_slot_,
+						derived.current_result_);
+					derived.Emit(instruction);
+				}
+			}
+			else throw std::logic_error(
+				"invalid lexical return cleanup continuation mode");
+		}
+		derived.SelectBlock(original);
+	}
+
+	void LowerReturn(std::uint32_t return_node, const NodeChildren& children)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		const bool has_value = !children.empty() &&
@@ -275,6 +467,22 @@ protected:
 			}
 		}
 		if (derived.CurrentBlock().terminated) return;
+		const bool returns_value =
+			derived.current_result_.kind != LOW_VOID;
+		const bool share_lexical_cleanup =
+			!derived.destructor_return_routes_to_epilogue_ &&
+			!derived.current_indirect_result_ &&
+			derived.current_result_.kind != LOW_OBJECT &&
+			(!returns_value || shared_return_slot_ != kNoLowId) &&
+			ShouldShareLexicalReturn(return_node);
+		if (share_lexical_cleanup && returns_value)
+		{
+			Instruction store(Instruction::STORE);
+			store.type = derived.current_result_;
+			store.first = result_value;
+			store.second = Operand(shared_return_slot_, derived.current_result_);
+			derived.Emit(store);
+		}
 		if (managed_full_expression)
 			derived.CompleteFullExpressionCleanup();
 		const std::size_t exception_regions =
@@ -283,6 +491,16 @@ protected:
 			derived.BeginExceptionControlExit(exception_regions);
 		const std::size_t remaining_cleanup = managed_full_expression ?
 			full_expression_cleanup_end : first_cleanup;
+		if (share_lexical_cleanup)
+		{
+			std::vector<std::uint32_t> pending;
+			const std::uint32_t root = BuildLexicalReturnCleanup(children,
+				has_value, returns_value, remaining_cleanup, &pending);
+			derived.EmitJump(LexicalCleanupBlock(root));
+			MaterializeLexicalReturnCleanup(pending,
+				closed_exception_handlers, exception_regions, returns_value);
+			return;
+		}
 		for (std::size_t i = remaining_cleanup; i < children.size(); ++i)
 		{
 			if (derived.arena_.nodes[children[i]].kind != DUMP_DESTRUCTOR_ACTION)
@@ -494,7 +712,9 @@ protected:
 		derived.SelectBlock(end);
 	}
 
-	SlotId direct_return_slot_;
+	SlotId direct_return_slot_, shared_return_slot_;
+	FlatIdMap return_cleanup_roots_;
+	std::vector<std::uint32_t> return_cleanup_counts_;
 };
 
 }

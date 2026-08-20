@@ -106,7 +106,10 @@ public:
 		  full_expression_cleanup_dispatch_reused_(false), full_expression_tracks_lifetime_state_(false),
 		  full_expression_uses_linked_dispatch_(false), full_expression_uses_branch_cleanup_(false),
 		  full_expression_cleanup_ready_(false), full_expression_deferred_cleanup_(false),
-		  full_expression_linked_action_cursor_(0), runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
+		  full_expression_linked_action_cursor_(0),
+		  runtime_lifetime_cleanup_dispatch_(kNoLowId), conditional_cleanup_resume_(kNoLowId),
+		  full_expression_cleanup_state_(
+			  pa16_cleanup_continuation::kNoCleanupState),
 		  presentation_names_(program_, stats ? &stats->semantic : 0),
 		  source_types_(program_),
 		  static_initializers_(program_, arena_, output_, stats_,
@@ -2127,7 +2130,7 @@ private:
 		}
 		if (record.kind == DUMP_RETURN_STATEMENT)
 		{
-			LowerReturn(children);
+			LowerReturn(node, children);
 			return;
 		}
 		if (record.kind == DUMP_EXPRESSION_STATEMENT) {
@@ -2575,8 +2578,10 @@ private:
 	std::size_t full_expression_linked_action_cursor_;
 	BlockId runtime_lifetime_cleanup_dispatch_, conditional_cleanup_resume_;
 	std::vector<std::uint32_t> full_expression_cleanup_actions_, full_expression_segment_actions_;
-	pa17_lowering_detail::CleanupDispatchCache full_expression_cleanup_dispatches_;
-	FlatIdMap conditional_cleanup_dispatches_, conditional_cleanup_tails_, runtime_lifetime_temporaries_;
+	pa16_cleanup_continuation::Interner cleanup_continuations_;
+	std::uint32_t full_expression_cleanup_state_;
+	std::vector<std::uint32_t> pending_cleanup_states_;
+	FlatIdMap runtime_lifetime_temporaries_;
 	FlatIdPairMap full_expression_branch_cleanup_heads_,
 		full_expression_branch_cleanup_tails_;
 	std::vector<std::uint32_t> full_expression_branch_cleanup_next_;

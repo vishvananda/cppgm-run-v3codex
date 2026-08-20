@@ -24,6 +24,7 @@ class ExceptionLowering
 protected:
 	ExceptionLowering()
 		: handler_selector_epoch_(0), next_handler_selector_(1),
+		  next_exception_cleanup_context_(1),
 		  function_exception_boundary_(FUNCTION_EXCEPTION_BOUNDARY_NONE),
 		  function_exception_landing_(kNoLowId),
 		  function_exception_action_(kNoLowId),
@@ -61,6 +62,8 @@ protected:
 	{
 		Derived& derived = static_cast<Derived&>(*this);
 		active_exception_regions_.clear();
+		active_exception_contexts_.clear();
+		next_exception_cleanup_context_ = 1;
 		function_exception_boundary_ = FUNCTION_EXCEPTION_BOUNDARY_NONE;
 		function_exception_landing_ = kNoLowId;
 		function_exception_action_ = kNoLowId;
@@ -395,13 +398,37 @@ protected:
 
 	std::uint32_t ExceptionCleanupContext() const
 	{
-		if (active_exception_regions_.empty()) return 0;
-		const ExceptionRegionState& region = active_exception_regions_.back();
-		if (region.handler >= (kNoDumpEdge - 2) / 2)
-			throw std::logic_error(
-				"exception cleanup context identity is out of range");
-		return (region.handler + 1) * 2 +
-			(region.kind == EXCEPTION_HANDLER_REGION ? 1 : 0);
+		if (active_exception_regions_.size() != active_exception_contexts_.size())
+			throw std::logic_error("exception cleanup context stack mismatch");
+		return active_exception_contexts_.empty() ? 0 :
+			active_exception_contexts_.back();
+	}
+
+	bool ExceptionCleanupRoutesToTry(std::uint32_t context) const
+	{
+		if (context == 0) return false;
+		if (active_exception_regions_.empty() ||
+			active_exception_contexts_.empty() ||
+			active_exception_contexts_.back() != context)
+			throw std::logic_error("exception cleanup context changed");
+		return active_exception_regions_.back().kind == EXCEPTION_TRY_REGION;
+	}
+
+	void PushExceptionRegion(const ExceptionRegionState& region)
+	{
+		if (next_exception_cleanup_context_ == 0)
+			throw std::logic_error("exception cleanup context identity overflow");
+		active_exception_regions_.push_back(region);
+		active_exception_contexts_.push_back(next_exception_cleanup_context_++);
+	}
+
+	void PopExceptionRegion()
+	{
+		if (active_exception_regions_.empty() ||
+			active_exception_contexts_.empty())
+			throw std::logic_error("exception cleanup context stack underflow");
+		active_exception_regions_.pop_back();
+		active_exception_contexts_.pop_back();
 	}
 
 	bool BeginExceptionTryCleanupDispatch()
@@ -806,7 +833,7 @@ protected:
 		const BlockId entry = derived.AddBlock(derived.NewLabel("catch_entry"));
 		const BlockId end = derived.AddBlock(derived.NewLabel("try_end"));
 		derived.EmitEhTarget(Instruction::EH_TRY, dispatch);
-		active_exception_regions_.push_back(ExceptionRegionState(
+		PushExceptionRegion(ExceptionRegionState(
 			EXCEPTION_TRY_REGION, node, first_handler, entry));
 		typename Derived::StatementTask after(Derived::STATEMENT_TRY_AFTER_BODY);
 		after.node = node;
@@ -837,7 +864,7 @@ protected:
 		if (active_exception_regions_.empty() ||
 			active_exception_regions_.back().kind != EXCEPTION_TRY_REGION)
 			throw std::logic_error("source try region stack mismatch");
-		active_exception_regions_.pop_back();
+		PopExceptionRegion();
 		derived.SelectBlock(dispatch);
 		EmitTryHandlerClauses(try_node);
 		const ExceptionRegionState* dispatch_parent = EnclosingTryRegion();
@@ -897,7 +924,7 @@ protected:
 			derived.NewLabel("catch_cleanup"));
 		derived.EmitEhTarget(Instruction::EH_CLEANUP, cleanup);
 		InitializeCatchVariable(handler_node, handler, caught);
-		active_exception_regions_.push_back(ExceptionRegionState(
+		PushExceptionRegion(ExceptionRegionState(
 			EXCEPTION_HANDLER_REGION, handler_node, handler_node));
 		typename Derived::StatementTask after(Derived::STATEMENT_HANDLER_AFTER_BODY);
 		after.node = try_node;
@@ -998,7 +1025,7 @@ protected:
 		if (active_exception_regions_.empty() ||
 			active_exception_regions_.back().kind != EXCEPTION_HANDLER_REGION)
 			throw std::logic_error("source handler region stack mismatch");
-		active_exception_regions_.pop_back();
+		PopExceptionRegion();
 		CallArguments none;
 		if (!derived.CurrentBlock().terminated)
 		{
@@ -1105,10 +1132,12 @@ protected:
 
 private:
 	std::vector<ExceptionRegionState> active_exception_regions_;
+	std::vector<std::uint32_t> active_exception_contexts_;
 	std::vector<std::uint32_t> handler_selectors_;
 	std::vector<std::uint32_t> handler_selector_epochs_;
 	std::vector<std::uint32_t> handler_next_;
 	std::uint32_t handler_selector_epoch_, next_handler_selector_;
+	std::uint32_t next_exception_cleanup_context_;
 	FunctionExceptionBoundaryKind function_exception_boundary_;
 	BlockId function_exception_landing_, function_exception_action_;
 	SlotId function_exception_object_slot_;

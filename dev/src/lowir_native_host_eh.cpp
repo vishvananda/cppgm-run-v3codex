@@ -166,6 +166,26 @@ public:
     return states_[state].active;
   }
 
+  bool Consumed(std::size_t state) const
+  {
+    if(state >= states_.size())
+      throw std::logic_error("invalid host EH protected-region state");
+    return state != 0 && states_[state].consumed;
+  }
+
+  bool EquivalentAfterLanding(std::size_t left, std::size_t right) const
+  {
+    if(left == right) return true;
+    return Consumed(left) && Consumed(right) &&
+      Active(left) == Active(right);
+  }
+
+  bool PreferIncoming(std::size_t current, std::size_t incoming) const
+  {
+    return Active(current) == Active(incoming) &&
+      !Consumed(current) && Consumed(incoming);
+  }
+
   std::size_t ActiveLandingBlock(std::size_t state) const
   {
     const std::size_t active = Active(state);
@@ -269,10 +289,12 @@ HostEhRegionPlan analyze_host_eh_regions(
     return id.valid() && index < block_index.size() ? block_index[index] : unknown;
   };
   const auto block_name = [&](lowir_model::BlockId id)
-      -> const std::string & {
+      -> std::string {
     const std::uint32_t index = id;
     if(!id.valid() || index >= function.block_labels.size())
       throw std::logic_error("invalid MIR block identity");
+    if(!function.block_labels[index].valid())
+      return std::string("block #") + std::to_string(index);
     return strings.get(function.block_labels[index]);
   };
 
@@ -311,8 +333,16 @@ HostEhRegionPlan analyze_host_eh_regions(
       const mir_model::MirBlock & target = function.blocks[block];
       const std::size_t existing_active = states.Active(entries[block]);
       const std::size_t incoming_active = states.Active(state);
+      const bool prefer_consumed =
+        states.PreferIncoming(entries[block], state);
+      if(prefer_consumed) {
+        entries[block] = state;
+        pending->push_back(block);
+        return;
+      }
       if((cleanup_landing_blocks[block] &&
           existing_active == incoming_active) ||
+         states.EquivalentAfterLanding(entries[block], state) ||
          (target.instructions.size() == 1 &&
           target.instructions[0].opcode ==
             mir_model::MirInstruction::MI_RESUME &&
@@ -320,7 +350,8 @@ HostEhRegionPlan analyze_host_eh_regions(
         return;
       throw std::logic_error(
         "host EH protected-region state mismatch in " + function_name +
-        " at MIR block " + block_name(function.blocks[block].id) +
+        " at MIR block " + std::to_string(
+          static_cast<std::uint32_t>(function.blocks[block].id)) +
         " (existing state " + std::to_string(entries[block]) +
         ", incoming state " + std::to_string(state) +
         ", existing active " + std::to_string(existing_active) +
@@ -366,7 +397,10 @@ HostEhRegionPlan analyze_host_eh_regions(
     if(catch_dispatch_blocks[source]) {
       if(catch_entry_states[target] == unknown)
         catch_entry_states[target] = state;
-      else if(catch_entry_states[target] != state)
+      else if(states.PreferIncoming(catch_entry_states[target], state))
+        catch_entry_states[target] = state;
+      else if(!states.EquivalentAfterLanding(
+                catch_entry_states[target], state))
         throw std::logic_error(
           "host EH catch-entry state mismatch at MIR block: " +
           block_name(function.blocks[target].id));

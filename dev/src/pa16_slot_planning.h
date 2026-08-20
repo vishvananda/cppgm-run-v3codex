@@ -131,6 +131,7 @@ protected:
 		std::vector<std::uint8_t> under_variable(1, 0);
 		std::vector<std::uint8_t> plan_expression_arguments(1, 0);
 		std::vector<std::uint8_t> under_conditional(1, 0);
+		std::vector<std::uint32_t> cleanup_context(1, 0);
 		while (!pending.empty())
 		{
 			const std::uint32_t current = pending.back();
@@ -142,6 +143,9 @@ protected:
 			plan_expression_arguments.pop_back();
 			const bool conditional_child = under_conditional.back() != 0;
 			under_conditional.pop_back();
+			const std::uint32_t return_cleanup_context =
+				cleanup_context.back();
+			cleanup_context.pop_back();
 			const DumpNode& record = derived.arena_.nodes[current];
 			const bool persistent_variable = record.kind == DUMP_VARIABLE &&
 				record.binding != kNoBinding &&
@@ -252,6 +256,9 @@ protected:
 						 record.category == VALUE_XVALUE) ? LowPtr() : result);
 			}
 			const NodeChildren children = derived.Children(current);
+			if (record.kind == DUMP_RETURN_STATEMENT)
+				derived.PlanLexicalReturnCleanup(current, children,
+					return_cleanup_context);
 			if (!conditional_child && record.kind == DUMP_CAST_EXPRESSION &&
 				record.base_projection_count != 0 && children.size() == 1)
 			{
@@ -410,8 +417,14 @@ protected:
 					plan_child_arguments ? 1 : 0);
 				under_conditional.push_back(conditional_child ||
 					record.kind == DUMP_CONDITIONAL_EXPRESSION ? 1 : 0);
+				const bool new_exception_region =
+					record.kind == DUMP_TRY_STATEMENT ||
+					record.kind == DUMP_HANDLER;
+				cleanup_context.push_back(new_exception_region ?
+					children[i - 1] + 1 : return_cleanup_context);
 			}
 		}
+		derived.FinalizeLexicalReturnCleanupPlan();
 	}
 };
 
