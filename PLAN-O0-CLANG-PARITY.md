@@ -4,6 +4,10 @@ Status: complete
 
 Date: 2026-08-20
 
+Follow-on work is tracked in
+[`PLAN-O0-CODE-SHAPE-PARITY-2.md`](PLAN-O0-CODE-SHAPE-PARITY-2.md).  This
+completed plan remains the audit record for the first pass.
+
 ## Objective
 
 Reduce the remaining `semantic_overload.cpp -O0` object and machine-code gap
@@ -881,7 +885,8 @@ The retained implementation, including the PA31 landing-entry legalization at
 `51ac844a`, produces a deterministic 3,246,896-byte frozen object with SHA-256
 `7e5c4439998ec30af49f047f80a702f266df9ed9abcd0ff242176dd9be910a98`.
 Relative to P0, the complete batch removes 1,159,376 object bytes (26.3%) and
-188,178 `.text*` bytes (20.4%).  Its final load-screened frozen median is 4.565
+182,390 `.text*` bytes (19.8%), leaving 738,654 `.text*` bytes.  Its final
+load-screened frozen median is 4.565
 seconds wall and 4.125 seconds user with 360,850 KiB peak RSS, comfortably
 below the 15-second goal and without a measured compile-time regression.
 
