@@ -20,9 +20,10 @@ SYMBOL_RE = re.compile(
     r"\S+\s+(\S+)\s*(.*)$"
 )
 INSTRUCTION_RE = re.compile(
-    r"^\s*[0-9A-Fa-f]+:\s+(?:[0-9A-Fa-f]{2}\s+)+"
+    r"^\s*([0-9A-Fa-f]+):\s+((?:[0-9A-Fa-f]{2}\s+)+)"
     r"([A-Za-z][A-Za-z0-9_.]*)\s*(.*)$"
 )
+FUNCTION_HEADER_RE = re.compile(r"^\s*[0-9A-Fa-f]+\s+<(.+)>:\s*$")
 RELOCATION_RE = re.compile(
     r"^\s*[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+R_[A-Za-z0-9_]+"
 )
@@ -30,6 +31,7 @@ CALL_TARGET_RE = re.compile(r"<([^>]+)>")
 CALL_RELOCATION_RE = re.compile(
     r"^\s*[0-9A-Fa-f]+:\s+R_[A-Za-z0-9_]+\s+(\S+)"
 )
+INLINE_RELOCATION_RE = re.compile(r"\bR_[A-Za-z0-9_]+\s+(\S+)")
 
 
 def file_sha256(path):
@@ -83,34 +85,179 @@ def parse_symbols(text):
     return functions
 
 
-def parse_disassembly(text):
+def split_operands(operands):
+    result = []
+    start = 0
+    depth = 0
+    for index, character in enumerate(operands):
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth = max(0, depth - 1)
+        elif character == "," and depth == 0:
+            result.append(operands[start:index].strip())
+            start = index + 1
+    tail = operands[start:].strip()
+    if tail:
+        result.append(tail)
+    return result
+
+
+def operand_class(operand):
+    operand = operand.strip()
+    if operand.startswith("$"):
+        return "immediate"
+    if operand.startswith("%") and "(" not in operand:
+        return "register"
+    if "(" in operand or operand.startswith("*"):
+        return "memory"
+    if operand:
+        return "symbol"
+    return "none"
+
+
+def movement_operand_class(mnemonic, operands):
+    parts = split_operands(operands)
+    if mnemonic.startswith("lea") and len(parts) == 2:
+        return "address_to_%s" % operand_class(parts[1])
+    if mnemonic.startswith("mov") and len(parts) == 2:
+        return "%s_to_%s" % (
+            operand_class(parts[0]), operand_class(parts[1])
+        )
+    if mnemonic.startswith("push") and len(parts) == 1:
+        return "%s_to_stack" % operand_class(parts[0])
+    if mnemonic.startswith("pop") and len(parts) == 1:
+        return "stack_to_%s" % operand_class(parts[0])
+    return ""
+
+
+def normalize_prefixed_instruction(mnemonic, operands):
+    # GNU objdump sometimes renders a REX or repeat/lock prefix as the
+    # mnemonic and places the semantic opcode at the front of the operand
+    # column. Keep one decoded instruction while attributing it to the
+    # operation the processor executes.
+    if (mnemonic.startswith("rex") or
+            mnemonic in ("rep", "repe", "repz", "repne", "repnz", "lock")):
+        parts = operands.split(None, 1)
+        if parts:
+            mnemonic = parts[0]
+            operands = parts[1] if len(parts) == 2 else ""
+    return mnemonic, operands
+
+
+def parse_disassembly_details(text):
     instructions = collections.Counter()
+    instruction_bytes = collections.Counter()
+    operand_classes = collections.Counter()
+    operand_class_bytes = collections.Counter()
     call_targets = collections.Counter()
+    functions = collections.defaultdict(lambda: {
+        "instructions": 0,
+        "bytes": 0,
+        "instruction_bytes": collections.Counter(),
+        "call_targets": collections.Counter(),
+    })
     pending_call_target = None
+    pending_call_function = ""
+    current_function = ""
     for line in text.splitlines():
+        header = FUNCTION_HEADER_RE.match(line)
+        if header:
+            current_function = header.group(1)
+            continue
         match = INSTRUCTION_RE.match(line)
         if match:
             if pending_call_target:
                 call_targets[pending_call_target] += 1
-            mnemonic, operands = match.groups()
+                if pending_call_function:
+                    functions[pending_call_function]["call_targets"][
+                        pending_call_target
+                    ] += 1
+            _address, encoded, mnemonic, operands = match.groups()
+            mnemonic, operands = normalize_prefixed_instruction(
+                mnemonic, operands
+            )
+            byte_count = len(encoded.split())
             instructions[mnemonic] += 1
+            instruction_bytes[mnemonic] += byte_count
+            movement = movement_operand_class(mnemonic, operands)
+            if movement:
+                key = "%s:%s" % (
+                    "lea" if mnemonic.startswith("lea") else
+                    "mov" if mnemonic.startswith("mov") else
+                    "push" if mnemonic.startswith("push") else "pop",
+                    movement,
+                )
+                operand_classes[key] += 1
+                operand_class_bytes[key] += byte_count
+            if current_function:
+                function = functions[current_function]
+                function["instructions"] += 1
+                function["bytes"] += byte_count
+                function["instruction_bytes"][mnemonic] += byte_count
             pending_call_target = None
+            pending_call_function = ""
             if mnemonic in ("call", "callq"):
+                relocation = INLINE_RELOCATION_RE.search(line)
+                if relocation:
+                    call_targets[relocation.group(1)] += 1
+                    if current_function:
+                        functions[current_function]["call_targets"][
+                            relocation.group(1)
+                        ] += 1
+                    continue
                 target = CALL_TARGET_RE.search(operands)
                 if target and not target.group(1).startswith("0x"):
                     pending_call_target = target.group(1)
+                    pending_call_function = current_function
             continue
         relocation = CALL_RELOCATION_RE.match(line)
         if pending_call_target is not None and relocation:
             call_targets[relocation.group(1)] += 1
+            if pending_call_function:
+                functions[pending_call_function]["call_targets"][
+                    relocation.group(1)
+                ] += 1
             pending_call_target = None
+            pending_call_function = ""
         elif line.strip():
             if pending_call_target:
                 call_targets[pending_call_target] += 1
+                if pending_call_function:
+                    functions[pending_call_function]["call_targets"][
+                        pending_call_target
+                    ] += 1
             pending_call_target = None
+            pending_call_function = ""
     if pending_call_target:
         call_targets[pending_call_target] += 1
-    return instructions, call_targets
+        if pending_call_function:
+            functions[pending_call_function]["call_targets"][
+                pending_call_target
+            ] += 1
+    function_metrics = {}
+    for name, function in functions.items():
+        function_metrics[name] = {
+            "instructions": function["instructions"],
+            "bytes": function["bytes"],
+            "instruction_bytes": dict(
+                function["instruction_bytes"].most_common()
+            ),
+            "call_targets": dict(function["call_targets"].most_common()),
+        }
+    return {
+        "instructions": instructions,
+        "instruction_bytes": instruction_bytes,
+        "operand_classes": operand_classes,
+        "operand_class_bytes": operand_class_bytes,
+        "call_targets": call_targets,
+        "functions": function_metrics,
+    }
+
+
+def parse_disassembly(text):
+    details = parse_disassembly_details(text)
+    return details["instructions"], details["call_targets"]
 
 
 def parse_relocation_count(text):
@@ -121,7 +268,7 @@ def sum_sections(sections, predicate):
     return sum(section["size"] for section in sections if predicate(section))
 
 
-def report_object(path, selected_functions, selected_calls, tools):
+def report_object(path, selected_functions, selected_calls, top_functions, tools):
     sections = parse_sections(run_tool(tools["readelf"], "-SW", str(path)))
     functions = parse_symbols(
         run_tool(tools["readelf"], "-Ws", "--demangle", str(path))
@@ -129,9 +276,14 @@ def report_object(path, selected_functions, selected_calls, tools):
     relocations = parse_relocation_count(
         run_tool(tools["readelf"], "-Wr", str(path))
     )
-    instructions, call_targets = parse_disassembly(
-        run_tool(tools["objdump"], "-dr", "--demangle", str(path))
+    disassembly = parse_disassembly_details(
+        # Wide output keeps every encoded instruction on one line. Without
+        # -w, objdump may wrap trailing bytes onto a line that resembles an
+        # instruction and corrupt both counts and byte attribution.
+        run_tool(tools["objdump"], "-drw", "--demangle", str(path))
     )
+    instructions = disassembly["instructions"]
+    call_targets = disassembly["call_targets"]
     bindings = collections.Counter(function["binding"] for function in functions)
     function_sizes = collections.defaultdict(int)
     for function in functions:
@@ -171,7 +323,27 @@ def report_object(path, selected_functions, selected_calls, tools):
             "by_binding": dict(sorted(bindings.items())),
         },
         "decoded_instructions": sum(instructions.values()),
+        "decoded_instruction_bytes": sum(
+            disassembly["instruction_bytes"].values()
+        ),
         "instruction_families": dict(instructions.most_common()),
+        "instruction_family_bytes": dict(
+            disassembly["instruction_bytes"].most_common()
+        ),
+        "movement_operand_classes": {
+            key: {
+                "instructions": disassembly["operand_classes"][key],
+                "bytes": disassembly["operand_class_bytes"][key],
+            }
+            for key in sorted(disassembly["operand_classes"])
+        },
+        "largest_function_bodies": [
+            {"name": name, **metrics}
+            for name, metrics in sorted(
+                disassembly["functions"].items(),
+                key=lambda item: (-item[1]["bytes"], item[0]),
+            )[:top_functions]
+        ],
         "selected_function_sizes": {
             pattern: max(
                 (size for name, size in function_sizes.items() if pattern in name),
@@ -179,10 +351,53 @@ def report_object(path, selected_functions, selected_calls, tools):
             )
             for pattern in selected_functions
         },
+        "selected_function_bodies": {
+            pattern: {
+                "instructions": sum(
+                    metrics["instructions"]
+                    for name, metrics in disassembly["functions"].items()
+                    if pattern in name
+                ),
+                "bytes": sum(
+                    metrics["bytes"]
+                    for name, metrics in disassembly["functions"].items()
+                    if pattern in name
+                ),
+                "instruction_bytes": dict(collections.Counter({
+                    mnemonic: total
+                    for mnemonic in disassembly["instruction_bytes"]
+                    for total in [sum(
+                        metrics["instruction_bytes"].get(mnemonic, 0)
+                        for name, metrics in disassembly["functions"].items()
+                        if pattern in name
+                    )]
+                    if total
+                }).most_common()),
+            }
+            for pattern in selected_functions
+        },
         "selected_call_targets": {
             pattern: sum(
                 count for name, count in call_targets.items() if pattern in name
             )
+            for pattern in selected_calls
+        },
+        "selected_callers": {
+            pattern: [
+                {"name": name, "calls": count}
+                for name, count in sorted(
+                    (
+                        (name, sum(
+                            count
+                            for target, count in metrics["call_targets"].items()
+                            if pattern in target
+                        ))
+                        for name, metrics in disassembly["functions"].items()
+                    ),
+                    key=lambda item: (-item[1], item[0]),
+                )
+                if count
+            ]
             for pattern in selected_calls
         },
     }
@@ -207,9 +422,22 @@ def print_summary(report):
             report["defined_functions"]["by_binding"],
         )
     )
-    print("  decoded_instructions=%d" % report["decoded_instructions"])
+    print(
+        "  decoded_instructions=%d decoded_instruction_bytes=%d"
+        % (report["decoded_instructions"], report["decoded_instruction_bytes"])
+    )
+    movement = report["movement_operand_classes"]
+    if movement:
+        print(
+            "  movement_operand_classes=%s"
+            % {
+                key: "%d/%dB" % (value["instructions"], value["bytes"])
+                for key, value in movement.items()
+            }
+        )
     if report["selected_function_sizes"]:
         print("  selected_function_sizes=%s" % report["selected_function_sizes"])
+        print("  selected_function_bodies=%s" % report["selected_function_bodies"])
     if report["selected_call_targets"]:
         print("  selected_call_targets=%s" % report["selected_call_targets"])
 
@@ -219,6 +447,7 @@ def parse_args():
     parser.add_argument("object", nargs="+")
     parser.add_argument("--function", action="append", default=[])
     parser.add_argument("--call-target", action="append", default=[])
+    parser.add_argument("--top-functions", type=int, default=20)
     parser.add_argument("--json")
     parser.add_argument("--readelf", default="readelf")
     parser.add_argument("--objdump", default="objdump")
@@ -229,7 +458,10 @@ def main():
     args = parse_args()
     tools = {"readelf": args.readelf, "objdump": args.objdump}
     reports = [
-        report_object(Path(value), args.function, args.call_target, tools)
+        report_object(
+            Path(value), args.function, args.call_target,
+            max(0, args.top_functions), tools,
+        )
         for value in args.object
     ]
     for report in reports:

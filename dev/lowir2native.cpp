@@ -3,6 +3,7 @@
 #include "exceptions.h"
 #include "lowir_model.h"
 #include "lowir_native.h"
+#include "lowir_native_stats_report.h"
 #include "mir_model.h"
 #include "tool_help_text.h"
 
@@ -220,7 +221,9 @@ int run_lowir2native_mode(const vector<string> & args)
          << " temporary_frame_homes_created="
          << stats.temporary_frame_homes_created
          << " temporary_frame_homes_reused="
-         << stats.temporary_frame_homes_reused
+         << stats.temporary_frame_homes_reused;
+    lowir_native::report_code_shape_stats(cerr, stats);
+    cerr
          << " shared_storage_lifetime_extensions="
          << stats.shared_storage_lifetime_extensions
          << " reclaim_attempts=" << stats.reclaim_attempts

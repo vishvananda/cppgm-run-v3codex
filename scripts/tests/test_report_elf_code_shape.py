@@ -48,6 +48,33 @@ class ElfCodeShapeParserTest(unittest.TestCase):
         self.assertEqual({"mov": 1, "call": 2}, dict(instructions))
         self.assertEqual({"external-0x4": 1, "direct": 1}, dict(calls))
 
+    def test_instruction_bytes_operand_classes_and_functions(self):
+        details = MODULE.parse_disassembly_details(
+            "0000000000000000 <sample()>:\n"
+            "   0: 48 89 e5              mov    %rsp,%rbp\n"
+            "   3: 8b 45 fc              mov    -0x4(%rbp),%eax\n"
+            "   6: c7 45 f8 01 00 00 00  movl   $0x1,-0x8(%rbp)\n"
+            "   d: 48 8d 45 f0           lea    -0x10(%rbp),%rax\n"
+        )
+        self.assertEqual(4, sum(details["instructions"].values()))
+        self.assertEqual(17, sum(details["instruction_bytes"].values()))
+        self.assertEqual(1, details["operand_classes"]["mov:register_to_register"])
+        self.assertEqual(1, details["operand_classes"]["mov:memory_to_register"])
+        self.assertEqual(1, details["operand_classes"]["mov:immediate_to_memory"])
+        self.assertEqual(1, details["operand_classes"]["lea:address_to_register"])
+        self.assertEqual(17, details["functions"]["sample()"]["bytes"])
+
+    def test_inline_call_relocation_is_attributed_to_function(self):
+        details = MODULE.parse_disassembly_details(
+            "0000000000000000 <caller()>:\n"
+            "   0: e8 00 00 00 00 call 5 <caller()+0x5> "
+            "1: R_X86_64_PLT32 target-0x4\n"
+        )
+        self.assertEqual(1, details["call_targets"]["target-0x4"])
+        self.assertEqual(
+            1, details["functions"]["caller()"]["call_targets"]["target-0x4"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -78,6 +78,17 @@ struct LowIRLoweringStats
 	std::size_t exception_selector_resets;
 	std::size_t exception_selector_table_growth;
 	std::size_t exception_selector_assignments;
+	std::size_t terminate_boundaries_explicit;
+	std::size_t terminate_boundaries_derived_special_member;
+	std::size_t terminate_boundaries_template_specialization;
+	std::size_t terminate_boundaries_builtin_runtime;
+	std::size_t unexpected_boundaries;
+	std::size_t potentially_throwing_explicit_operations;
+	std::size_t potentially_throwing_indirect_calls;
+	std::size_t potentially_throwing_ordinary_calls;
+	std::size_t potentially_throwing_special_member_calls;
+	std::size_t potentially_throwing_template_calls;
+	std::size_t potentially_throwing_builtin_runtime_calls;
 	std::size_t force_inline_candidates;
 	std::size_t force_inline_recursive_candidates;
 	std::size_t force_inline_call_probes;

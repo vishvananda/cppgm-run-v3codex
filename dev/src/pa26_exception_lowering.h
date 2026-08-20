@@ -134,6 +134,23 @@ protected:
 			!function_exception_boundary_needed_[binding]) return;
 		const BindingRecord& record = derived.program_.bindings[binding];
 		if (record.exception_boundary == FUNCTION_EXCEPTION_BOUNDARY_NONE) return;
+		if (derived.stats_)
+		{
+			if (record.exception_boundary ==
+				FUNCTION_EXCEPTION_BOUNDARY_UNEXPECTED)
+				++derived.stats_->unexpected_boundaries;
+			else if (record.builtin_function != BUILTIN_FUNCTION_NONE)
+				++derived.stats_->terminate_boundaries_builtin_runtime;
+			else if (record.template_argument_count != 0 ||
+				record.explicit_function_specialization ||
+				record.closure_template_specialization)
+				++derived.stats_->terminate_boundaries_template_specialization;
+			else if (record.compiler_generated &&
+				(record.constructor || record.destructor))
+				++derived.stats_->terminate_boundaries_derived_special_member;
+			else
+				++derived.stats_->terminate_boundaries_explicit;
+		}
 		if (record.exception_type_begin >
 			derived.program_.function_exception_types.size() ||
 			record.exception_type_count >
@@ -161,11 +178,36 @@ protected:
 		(void)node;
 	}
 
+	void RecordPotentiallyThrowingBinding(BindingId binding) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (!derived.stats_) return;
+		if (binding == kNoBinding ||
+			binding >= derived.program_.bindings.size())
+		{
+			++derived.stats_->potentially_throwing_indirect_calls;
+			return;
+		}
+		const BindingRecord& record = derived.program_.bindings[binding];
+		if (record.builtin_function != BUILTIN_FUNCTION_NONE)
+			++derived.stats_->potentially_throwing_builtin_runtime_calls;
+		else if (record.template_argument_count != 0 ||
+			record.explicit_function_specialization ||
+			record.closure_template_specialization)
+			++derived.stats_->potentially_throwing_template_calls;
+		else if (record.compiler_generated &&
+			(record.constructor || record.destructor))
+			++derived.stats_->potentially_throwing_special_member_calls;
+		else
+			++derived.stats_->potentially_throwing_ordinary_calls;
+	}
+
 	bool FunctionDefinitionMayEscape(std::uint32_t root) const
 	{
 		const Derived& derived = static_cast<const Derived&>(*this);
 		if (root == kNoDumpEdge || root >= derived.arena_.nodes.size())
 			return false;
+		bool may_escape = false;
 		std::vector<std::uint32_t> pending(1, root);
 		while (!pending.empty())
 		{
@@ -179,17 +221,35 @@ protected:
 				(record.kind == DUMP_TYPEID_EXPRESSION &&
 				 record.dynamic_type_query) ||
 				(record.kind == DUMP_DYNAMIC_CAST_EXPRESSION &&
-				 record.dynamic_cast_reference)) return true;
+				 record.dynamic_cast_reference))
+			{
+				may_escape = true;
+				if (!derived.stats_) return true;
+				++derived.stats_->potentially_throwing_explicit_operations;
+			}
 			if (record.kind == DUMP_CALL_EXPRESSION)
 			{
 				const NodeChildren children = derived.Children(node);
-				if (children.empty()) return true;
+				if (children.empty())
+				{
+					may_escape = true;
+					if (!derived.stats_) return true;
+					RecordPotentiallyThrowingBinding(kNoBinding);
+				}
+				else
+				{
 				const DumpNode& callee = derived.arena_.nodes[children[0]];
 				if (callee.kind != DUMP_CALLEE ||
 					callee.binding == kNoBinding ||
 					callee.binding >= derived.program_.bindings.size() ||
 					!derived.program_.bindings[callee.binding].nonthrowing)
-					return true;
+				{
+					may_escape = true;
+					if (!derived.stats_) return true;
+					RecordPotentiallyThrowingBinding(
+						callee.kind == DUMP_CALLEE ? callee.binding : kNoBinding);
+				}
+				}
 			}
 			if (record.kind == DUMP_CONSTRUCTOR_ACTION ||
 				record.kind == DUMP_SPECIAL_MEMBER_CONSTRUCTION_ACTION ||
@@ -199,13 +259,18 @@ protected:
 					record.binding : record.object_binding;
 				if (action != kNoBinding &&
 					(action >= derived.program_.bindings.size() ||
-					 !derived.program_.bindings[action].nonthrowing)) return true;
+					 !derived.program_.bindings[action].nonthrowing))
+				{
+					may_escape = true;
+					if (!derived.stats_) return true;
+					RecordPotentiallyThrowingBinding(action);
+				}
 			}
 			for (std::uint32_t edge = record.first_edge; edge != kNoDumpEdge;
 				edge = derived.arena_.edges[edge].next)
 				pending.push_back(derived.arena_.edges[edge].child);
 		}
-		return false;
+		return may_escape;
 	}
 
 	void FinishFunctionExceptionBoundaryNormalExit()

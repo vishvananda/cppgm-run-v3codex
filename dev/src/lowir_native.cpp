@@ -19,6 +19,7 @@
 #include "lowir_native_intrinsic_lowering.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_memory_lowering.h"
+#include "lowir_native_movement_stats.h"
 #include "lowir_native_parameter_lowering.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
@@ -130,8 +131,16 @@ public:
       for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_) {
         const std::size_t first_machine_instruction = block.instructions.size();
         lower_instruction(source_.blocks[i], j, block.instructions);
+        const std::size_t after_instruction = block.instructions.size();
+        if(stats_)
+          movement_stats::record(stats_,
+            movement_stats::classify(source_.blocks[i].instructions[j]),
+            block.instructions, first_machine_instruction, after_instruction);
         stabilize_edge_live_result(source_.blocks[i].instructions[j],
                                    block.instructions);
+        if(stats_)
+          movement_stats::record(stats_, NMR_SCALAR_TEMPORARY,
+            block.instructions, after_instruction, block.instructions.size());
         record_emitted_register_definitions(
           block.instructions, first_machine_instruction);
         record_rax_first_use_carrier(source_.blocks[i].instructions[j],
@@ -161,6 +170,9 @@ public:
       target_.blocks.push_back(std::move(block));
     }
     discard_unread_parameter_homes();
+    if(stats_)
+      movement_stats::record(stats_, NMR_PARAMETER_HOME, parameter_moves_, 0,
+                             parameter_moves_.size());
     if(!target_.blocks.empty())
       target_.blocks[0].instructions.insert(
         target_.blocks[0].instructions.begin(), parameter_moves_.begin(),
@@ -204,6 +216,18 @@ private:
   long long xmm_call_scratch_ = 0;
   long long variadic_register_save_offset_ = 0;
   abi::VariadicState variadic_state_;
+
+  TemporaryHomeReason inferred_home_reason(
+      lowir_model::ValueId value, const LowType & type) const
+  {
+    if(type.kind == lowir_model::LTK_OBJECT) return THR_OBJECT_VALUE;
+    if(type.kind == lowir_model::LTK_I128 || is_extended_float(type))
+      return THR_EXTENDED_REPRESENTATION;
+    if(facts_.has(value, FunctionFacts::VF_EDGE_LIVE)) return THR_EDGE_LIVE;
+    if(result_crosses_call(value)) return THR_LIVE_ACROSS_CALL;
+    return THR_SCALAR_VALUE;
+  }
+
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    lowir_model::FixedPresentationName name,
                                    const LowType & type)
@@ -246,8 +270,13 @@ private:
     return static_cast<std::uint32_t>(target_.frame_bindings.size());
   }
   MirOperand allocate_temp_frame_binding(lowir_model::ValueId value,
-                                         const LowType & type)
+                                         const LowType & type,
+                                         TemporaryHomeReason reason = THR_COUNT)
   {
+    if(stats_) {
+      if(reason == THR_COUNT) reason = inferred_home_reason(value, type);
+      ++stats_->temporary_home_requests_by_reason[reason];
+    }
     const std::size_t size = abi::frame_storage_size(type);
     std::size_t available_after = facts_.last_use[value] ==
       FunctionFacts::missing_position() ? position_ : facts_.last_use[value];
@@ -261,12 +290,18 @@ private:
     long long offset = 0;
     if(reusable && spill_slots_.acquire(size, type.alignment, position_,
                                         available_after, &offset)) {
-      if(stats_) ++stats_->temporary_frame_homes_reused;
+      if(stats_) {
+        ++stats_->temporary_frame_homes_reused;
+        ++stats_->temporary_home_reuses_by_reason[reason];
+      }
       const std::uint32_t binding = append_frame_binding(
         mir_model::MirFrameBinding::FB_TEMP, name, type, offset);
       return frame_operand(offset, binding);
     }
-    if(stats_) ++stats_->temporary_frame_homes_created;
+    if(stats_) {
+      ++stats_->temporary_frame_homes_created;
+      ++stats_->temporary_home_creations_by_reason[reason];
+    }
     offset = allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP, name, type);
     if(reusable)
@@ -927,7 +962,7 @@ private:
     if(location.kind != MirOperand::OP_REG &&
        location.kind != MirOperand::OP_XMM) return;
     const MirOperand home =
-      allocate_temp_frame_binding(instruction.dest, value.type);
+      allocate_temp_frame_binding(instruction.dest, value.type, THR_EDGE_LIVE);
     if(location.kind == MirOperand::OP_XMM) {
       append_float_move(out, home, location,
                         value.type);
@@ -1012,7 +1047,8 @@ private:
     MirOperand home;
     if(values_[victim].has_spill_home) home = values_[victim].spill_home;
     else
-      home = allocate_temp_frame_binding(victim, values_[victim].type);
+      home = allocate_temp_frame_binding(
+        victim, values_[victim].type, THR_REGISTER_PRESSURE);
     append_store(out, home, values_[victim].location, values_[victim].type);
     const X64Register released = values_[victim].location.reg;
     set_value_location(victim, home);
@@ -1089,9 +1125,10 @@ private:
 	  std::to_string(position_));
   }
   MirOperand allocate_temp_home(lowir_model::ValueId value,
-                                const LowType & type)
+                                const LowType & type,
+                                TemporaryHomeReason reason = THR_COUNT)
   {
-    return allocate_temp_frame_binding(value, type);
+    return allocate_temp_frame_binding(value, type, reason);
   }
   MirOperand allocate_named_temp_home(lowir_model::FixedPresentationName name,
                                       const LowType & type)
@@ -1204,7 +1241,8 @@ private:
     if(found.frame_address || found.location.kind == MirOperand::OP_FRAME)
       return found.location;
     const MirOperand selected = selected_value_location(operand.value);
-    const MirOperand home = allocate_temp_home(operand.value, found.type);
+    const MirOperand home = allocate_temp_home(
+      operand.value, found.type, THR_ADDRESS_ESCAPE);
     if(selected.kind == MirOperand::OP_XMM)
       append_float_move(out, home, selected, found.type);
     else
@@ -2404,7 +2442,8 @@ private:
                                              alias_destination, skip_delta);
       MirOperand home;
       if(alias) skipped_position_ = position_ + skip_delta;
-      else home = allocate_temp_home(instruction.dest, instruction.type);
+      else home = allocate_temp_home(
+        instruction.dest, instruction.type, THR_CALL_RESULT);
       store_object_return_registers(instruction.type,
                                     alias ? &alias_destination : 0,
                                     alias ? 0 : &home, out);
@@ -2416,7 +2455,7 @@ private:
         elided_use.value = instruction.dest;
         consume(elided_use);
       }
-    } else if(materialize_result && wide::is_integer(instruction.type)) { const MirOperand home = allocate_temp_home(instruction.dest, instruction.type); append_store(out, home, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64)); MirOperand high = home; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), machine_type(lowir_model::LTK_I64)); define(instruction.dest, instruction.type, home); } else if(materialize_result && is_extended_float(instruction.type)) {
+    } else if(materialize_result && wide::is_integer(instruction.type)) { const MirOperand home = allocate_temp_home(instruction.dest, instruction.type, THR_CALL_RESULT); append_store(out, home, reg_operand(XR_RAX), machine_type(lowir_model::LTK_I64)); MirOperand high = home; high.offset += 8; append_store(out, high, reg_operand(XR_RDX), machine_type(lowir_model::LTK_I64)); define(instruction.dest, instruction.type, home); } else if(materialize_result && is_extended_float(instruction.type)) {
       const MirOperand location = allocate_float_result(instruction.dest, instruction.type);
       MirInstruction store = machine_instruction(MirInstruction::MI_FSTP,
                                                  instruction.type);
@@ -2443,7 +2482,8 @@ private:
           location = reg_operand(result);
           append_move(out, location, reg_operand(XR_RAX));
         } else {
-          pressure_home = allocate_temp_home(instruction.dest, instruction.type);
+          pressure_home = allocate_temp_home(
+            instruction.dest, instruction.type, THR_CALL_RESULT);
         }
       }
       if(is_integer_or_pointer(instruction.type))
@@ -2470,7 +2510,8 @@ private:
       facts_.uses[instruction.dest] && !is_scalar_float(instruction.type) &&
       !result_is_immediate_return(block, instruction_index, instruction.dest);
     const MirOperand pressure_home = pressure_result ?
-      allocate_temp_home(instruction.dest, instruction.type) : MirOperand();
+      allocate_temp_home(
+        instruction.dest, instruction.type, THR_CALL_RESULT) : MirOperand();
     for(std::size_t i = 0; pressure_result && i < instruction.args.size() && i < 6; ++i) {
       if(instruction.args[i].kind != Operand::OP_TEMP) continue;
       ValueFact & argument = values_[instruction.args[i].value];
@@ -2583,12 +2624,13 @@ private:
       } else if(selection::result_is_immediate_store_address_with_later_use(
                   block, instruction_index, instruction.dest, facts_)) {
         const MirOperand home = allocate_temp_home(
-          instruction.dest, instruction.type);
+          instruction.dest, instruction.type, THR_CALL_RESULT);
         append_store(out, home, reg_operand(XR_RAX), instruction.type);
         define(instruction.dest, instruction.type, home);
       } else {
         if(result_is_next_call_address_argument(block, instruction_index, instruction)) {
-          const MirOperand home = allocate_temp_home(instruction.dest, instruction.type);
+          const MirOperand home = allocate_temp_home(
+            instruction.dest, instruction.type, THR_CALL_RESULT);
           append_store(out, home, reg_operand(XR_RAX), instruction.type);
           define(instruction.dest, instruction.type, home);
           for(std::size_t i = 0; i < instruction.args.size(); ++i)
@@ -2620,7 +2662,8 @@ private:
             arguments_consumed = true;
             active_instruction_ = 0;
             if(!try_allocate_result(instruction.dest, out, &result))
-              fallback_home = allocate_temp_home(instruction.dest, instruction.type);
+              fallback_home = allocate_temp_home(
+                instruction.dest, instruction.type, THR_CALL_RESULT);
           }
           if(fallback_home.kind != MirOperand::OP_FRAME) {
             location = reg_operand(result);

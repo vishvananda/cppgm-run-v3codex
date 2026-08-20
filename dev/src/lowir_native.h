@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -9,6 +10,33 @@
 #include "mir_model.h"
 
 namespace lowir_native {
+
+enum NativeMovementReason
+{
+  NMR_PARAMETER_HOME,
+  NMR_SOURCE_SLOT,
+  NMR_SCALAR_TEMPORARY,
+  NMR_OBJECT_TEMPORARY,
+  NMR_CALL_BOUNDARY,
+  NMR_CLEANUP_EH,
+  NMR_WIDTH_NORMALIZATION,
+  NMR_ADDRESS_MATERIALIZATION,
+  NMR_ENCODER_FALLBACK,
+  NMR_COUNT
+};
+
+enum TemporaryHomeReason
+{
+  THR_SCALAR_VALUE,
+  THR_OBJECT_VALUE,
+  THR_LIVE_ACROSS_CALL,
+  THR_EDGE_LIVE,
+  THR_REGISTER_PRESSURE,
+  THR_ADDRESS_ESCAPE,
+  THR_CALL_RESULT,
+  THR_EXTENDED_REPRESENTATION,
+  THR_COUNT
+};
 
 struct Stats
 {
@@ -69,6 +97,15 @@ struct Stats
   std::size_t spills = 0;
   std::size_t temporary_frame_homes_created = 0;
   std::size_t temporary_frame_homes_reused = 0;
+  std::array<std::size_t, NMR_COUNT> movement_instructions_by_reason = {{0}};
+  std::array<std::size_t, NMR_COUNT> movement_loads_by_reason = {{0}};
+  std::array<std::size_t, NMR_COUNT> movement_stores_by_reason = {{0}};
+  std::array<std::size_t, NMR_COUNT> movement_register_copies_by_reason = {{0}};
+  std::array<std::size_t, NMR_COUNT> movement_addresses_by_reason = {{0}};
+  std::array<std::size_t, NMR_COUNT> movement_normalizations_by_reason = {{0}};
+  std::array<std::size_t, THR_COUNT> temporary_home_requests_by_reason = {{0}};
+  std::array<std::size_t, THR_COUNT> temporary_home_creations_by_reason = {{0}};
+  std::array<std::size_t, THR_COUNT> temporary_home_reuses_by_reason = {{0}};
   std::size_t shared_storage_lifetime_extensions = 0;
   std::size_t reclaim_attempts = 0;
   std::size_t reclaim_parameter_visits = 0;

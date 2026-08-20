@@ -1580,6 +1580,27 @@ void report_source_compile_stats(
 				stats.cleanup_destructor_actions_avoided
 			 << " cleanup_resume_operations_avoided=" <<
 				stats.cleanup_resume_operations_avoided
+			 << " terminate_boundaries_explicit="
+			 << stats.terminate_boundaries_explicit
+			 << " terminate_boundaries_derived_special_member="
+			 << stats.terminate_boundaries_derived_special_member
+			 << " terminate_boundaries_template_specialization="
+			 << stats.terminate_boundaries_template_specialization
+			 << " terminate_boundaries_builtin_runtime="
+			 << stats.terminate_boundaries_builtin_runtime
+			 << " unexpected_boundaries=" << stats.unexpected_boundaries
+			 << " potentially_throwing_explicit_operations="
+			 << stats.potentially_throwing_explicit_operations
+			 << " potentially_throwing_indirect_calls="
+			 << stats.potentially_throwing_indirect_calls
+			 << " potentially_throwing_ordinary_calls="
+			 << stats.potentially_throwing_ordinary_calls
+			 << " potentially_throwing_special_member_calls="
+			 << stats.potentially_throwing_special_member_calls
+			 << " potentially_throwing_template_calls="
+			 << stats.potentially_throwing_template_calls
+			 << " potentially_throwing_builtin_runtime_calls="
+			 << stats.potentially_throwing_builtin_runtime_calls
 			 << " bit_field_storage_unit_transfers=" <<
 				stats.bit_field_storage_unit_transfers
 			 << " constant_template_bytes=" << stats.constant_template_bytes
@@ -1878,7 +1899,9 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " temporary_frame_homes_created="
          << native_stats.temporary_frame_homes_created
          << " temporary_frame_homes_reused="
-         << native_stats.temporary_frame_homes_reused
+         << native_stats.temporary_frame_homes_reused;
+    lowir_native::report_code_shape_stats(cerr, native_stats);
+    cerr
          << " shared_storage_lifetime_extensions="
          << native_stats.shared_storage_lifetime_extensions
          << " reclaim_attempts=" << native_stats.reclaim_attempts
@@ -2007,7 +2030,9 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << " temporary_frame_homes_created="
 			 << native_stats.temporary_frame_homes_created
 			 << " temporary_frame_homes_reused="
-			 << native_stats.temporary_frame_homes_reused
+			 << native_stats.temporary_frame_homes_reused;
+		lowir_native::report_code_shape_stats(cerr, native_stats);
+		cerr
 			 << " shared_storage_lifetime_extensions="
 			 << native_stats.shared_storage_lifetime_extensions
 			 << " reclaim_attempts=" << native_stats.reclaim_attempts
@@ -2907,6 +2932,27 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.exception_selector_table_growth
 			 << " exception_selector_assignments="
 			 << stats.exception_selector_assignments
+			 << " terminate_boundaries_explicit="
+			 << stats.terminate_boundaries_explicit
+			 << " terminate_boundaries_derived_special_member="
+			 << stats.terminate_boundaries_derived_special_member
+			 << " terminate_boundaries_template_specialization="
+			 << stats.terminate_boundaries_template_specialization
+			 << " terminate_boundaries_builtin_runtime="
+			 << stats.terminate_boundaries_builtin_runtime
+			 << " unexpected_boundaries=" << stats.unexpected_boundaries
+			 << " potentially_throwing_explicit_operations="
+			 << stats.potentially_throwing_explicit_operations
+			 << " potentially_throwing_indirect_calls="
+			 << stats.potentially_throwing_indirect_calls
+			 << " potentially_throwing_ordinary_calls="
+			 << stats.potentially_throwing_ordinary_calls
+			 << " potentially_throwing_special_member_calls="
+			 << stats.potentially_throwing_special_member_calls
+			 << " potentially_throwing_template_calls="
+			 << stats.potentially_throwing_template_calls
+			 << " potentially_throwing_builtin_runtime_calls="
+			 << stats.potentially_throwing_builtin_runtime_calls
 			 << " force_inline_candidates=" << stats.force_inline_candidates
 			 << " force_inline_recursive_candidates="
 			 << stats.force_inline_recursive_candidates

@@ -1,6 +1,6 @@
 # Plan: O0 Code-Shape Parity, Second Pass
 
-Status: planned
+Status: active
 
 Date: 2026-08-20
 
@@ -317,6 +317,73 @@ not the frozen file name, determines assignment ownership.
 Complexity: no output-path cost without `--stats`; one constant-time counter
 update at an event already visited when stats are active.
 
+#### S0 completion record
+
+The production counters are typed dense enums.  Native movement is attributed
+to parameter homes, source slots, scalar temporaries, object temporaries, call
+boundaries, cleanup/EH, width normalization, address materialization, or an
+encoder fallback.  Temporary-home requests separately record scalar/object
+values, call crossing, CFG-edge liveness, register pressure, address escape,
+call result, and extended representation.  The normal path only tests the
+existing stats pointer; all classification and counter updates remain behind
+that test.
+
+On the frozen compile, S0 records 104,605 movement instructions:
+
+| Cause | Instructions |
+| --- | ---: |
+| parameter home | 1,537 |
+| source slot | 36,836 |
+| scalar temporary | 18,759 |
+| object temporary | 1,206 |
+| call boundary | 32,976 |
+| cleanup/EH | 17 |
+| width normalization | 1,918 |
+| address materialization | 11,356 |
+| encoder fallback | 0 |
+
+There are 6,540 typed temporary-home requests: 1,338 create a home and 5,202
+reuse one.  The largest reasons are scalar values (3,990 requests), CFG-edge
+liveness (1,765), call crossing (352), call results (194), and register
+pressure (172).  This confirms that emergency spilling is not the dominant
+cause and gives S5-S8 a stable cause census.
+
+The source boundary census finds 327 terminate boundaries: 291 explicit and
+36 template-specialization boundaries, with no derived, builtin, or
+`unexpected` boundary in this translation unit.  The stats-only whole-root
+scan also attributes potentially throwing operations to 9,151 ordinary calls,
+7,191 special-member calls, 1,935 template calls, 62 builtin/runtime calls,
+seven indirect calls, and 227 explicit throw/typeid/dynamic-cast operations.
+
+The durable ELF report now records encoded bytes and operand classes, largest
+and selected function bodies, call targets and callers, binding, relocations,
+and EH sections.  It uses `objdump -drw` so wrapped instruction bytes cannot be
+mistaken for instructions; this script is deliberately out-of-band and may use
+text identity.
+
+The first high-movement reducer is an empty allocator-like base initialized
+from a reference-returning move helper.  In the reduced case, PA17 currently
+creates an `obj<24x8>` `refcall` temporary for the complete derived object while
+binding a `const` reference to its empty base.  The attempted raw copy can even
+fail with `invalid PA17 copyobj span`.  The frozen `std::vector<Item>` form
+survives only because the empty-base path elides enough work; it still emits a
+24-byte temporary, cleanup, and terminate machinery which Clang does not emit.
+This is a source/value-boundary defect, not a native peephole.  Its LowIR fix
+is therefore promoted to the start of S5 and receives a PA17 reducer before
+the later PA29 movement work.  S1 retains a separate audit of genuinely lost
+nonthrowing facts so the downstream false EH from this materialization is not
+misclassified as a `noexcept` propagation failure.
+
+The no-stats frozen object remains byte-identical to the immutable baseline:
+3,246,896 bytes with SHA-256
+`7e5c4439998ec30af49f047f80a702f266df9ed9abcd0ff242176dd9be910a98`.
+Three interleaved A/B/B/A blocks measured baseline/candidate median wall time
+4.525/4.540 seconds, user time 4.070/4.095 seconds, and peak RSS
+360,346/360,690 KiB.  The paired movement is +0.33% wall, +0.49% user, and
+-0.01% RSS, below the noise guardrail.  The exact S0 tree passes all 5,276
+report tests, four reporting-script unit tests, `git diff --check`, and the
+PA39 file audit with zero fatal findings.
+
 ### S1: repair nonthrowing fact propagation
 
 Start with the simplest terminate-bearing functions that host compilers treat
@@ -450,6 +517,14 @@ operand, or source name.
 Complexity: O(1) placement decisions after facts already computed during the
 existing O(operands + CFG edges) census.
 
+The first S5 changeset is the S0 allocator-like empty-base reducer above.  It
+must preserve the reference-returning call as an address, apply the typed base
+projection directly, and bind the constructor reference parameter without
+creating a complete-object `refcall` slot.  Test this at PA17 before measuring
+the larger `std::vector` family.  Do not special-case empty classes, allocator
+names, `std::move`, or object byte width; the rule follows the existing typed
+reference category and base-projection facts.
+
 ### S6: retain scalar values through bounded baseline regions
 
 After direct-construction misses are removed, extend PA29's existing
@@ -582,7 +657,7 @@ Fill one row after each retained phase.
 
 | Phase | Public fixture effect | Frozen code/EH effect | Compile time/RSS | Validation | Status/commit |
 | --- | --- | --- | --- | --- | --- |
-| S0 baseline/instrumentation | none expected | baseline above; output must remain byte-identical | pending | pending | planned |
+| S0 baseline/instrumentation | none | byte-identical 3,246,896-byte baseline; typed movement/home/EH census above | +0.49% paired median user, -0.01% RSS | 5,276/5,276 full report; four script tests; zero-fatal audit | complete; instrumentation changeset |
 | S1 nonthrowing propagation | route by earliest semantic owner | pending | pending | pending | planned |
 | S2 shared terminate action | PA26 LowIR; PA31 behavior/inspect | pending | pending | pending | planned |
 | S3 physical resume terminal | PA31 behavior/inspect only; no LowIR/MIR migration | pending | pending | pending | planned |
