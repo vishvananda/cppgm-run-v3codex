@@ -292,6 +292,10 @@ struct Instruction
     // clobber and its final consumer does not overwrite rax before reading it.
     // If a separate home preserves later uses, an earlier full-width GPR call
     // argument may still read the intact rax result directly.
+    // A narrow result used only by an immediate same-width store or return may
+    // remain in the ABI carrier without a separate normalization; only its
+    // low result bits cross that boundary. An immediately following explicit
+    // integer extension or truncation owns the normalization itself.
     // Call setup may likewise read a promoted parameter's fixed home without a
     // dead temporary copy.
     MI_CALL,

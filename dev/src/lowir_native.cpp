@@ -637,6 +637,36 @@ private:
     std::size_t instruction_index, lowir_model::ValueId destination) const
   { return selection::result_is_immediate_unary_not_branch(
       block, instruction_index, destination, facts_); }
+  bool call_result_needs_normalization(
+      const lowir_model::LowirBlock & block, std::size_t instruction_index,
+      const Instruction & call) const
+  {
+    if(result_is_immediate_return(block, instruction_index, call.dest))
+      return false;
+    if(facts_.uses[call.dest] == 1 &&
+       instruction_index + 1 < block.instructions.size()) {
+      const Instruction & consumer =
+        block.instructions[instruction_index + 1];
+      if(consumer.kind == Instruction::IK_CONVERT &&
+         consumer.first.kind == Operand::OP_TEMP &&
+         consumer.first.value == call.dest &&
+         is_integer_or_pointer(consumer.source_type) &&
+         is_integer_or_pointer(consumer.type) &&
+         (consumer.op.kind == LowOperation::LOP_SEXT ||
+          consumer.op.kind == LowOperation::LOP_ZEXT ||
+          consumer.op.kind == LowOperation::LOP_TRUNC))
+        return false;
+    }
+    if(!selection::result_is_immediately_stored(
+         block, instruction_index, call.dest, facts_)) return true;
+    return block.instructions[instruction_index + 1].type != call.type;
+  }
+  bool is_narrow_integer(const LowType & type) const
+  {
+    return is_integer_or_pointer(type) &&
+      type.kind != lowir_model::LTK_PTR &&
+      lowir_model::lowir_type_bit_width(type) < 64;
+  }
   bool result_is_next_direct_call_argument(
       const lowir_model::LowirBlock & block, std::size_t instruction_index,
       const Instruction & producer) const
@@ -2491,8 +2521,12 @@ private:
             instruction.dest, instruction.type, THR_CALL_RESULT);
         }
       }
-      if(is_integer_or_pointer(instruction.type))
+      if(is_narrow_integer(instruction.type) &&
+         call_result_needs_normalization(
+           block, instruction_index, instruction))
         append_integer_normalization(out, instruction.type, location);
+      else if(is_narrow_integer(instruction.type) && stats_)
+        ++stats_->narrow_call_result_normalizations_omitted;
       if(pressure_home.kind == MirOperand::OP_FRAME)
         append_store(out, pressure_home, location, instruction.type);
       define(instruction.dest, instruction.type,
@@ -2675,8 +2709,12 @@ private:
             append_move(out, location, reg_operand(XR_RAX));
           }
         }
-        if(is_integer_or_pointer(instruction.type))
+        if(is_narrow_integer(instruction.type) &&
+           call_result_needs_normalization(
+             block, instruction_index, instruction))
           append_integer_normalization(out, instruction.type, location);
+        else if(is_narrow_integer(instruction.type) && stats_)
+          ++stats_->narrow_call_result_normalizations_omitted;
         if(fallback_home.kind == MirOperand::OP_FRAME)
           append_store(out, fallback_home, location, instruction.type);
         define(instruction.dest, instruction.type,

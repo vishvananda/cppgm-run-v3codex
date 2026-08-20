@@ -947,6 +947,31 @@ user, and 360,036/360,238 KiB RSS.  Paired block medians are -0.53% wall,
 PA38 pass 289/289, the full report passes 5,282/5,282, and the file audit has
 zero fatal findings.
 
+S7b completes a second bounded consumer class.  A sole-use narrow call result
+does not normalize in its ABI carrier when the next LowIR operation is a
+same-width store, a same-width return, or an explicit integer
+extension/truncation.  The store and return consume only the ABI-defined low
+bits; the explicit conversion performs its own typed normalization.  Any
+wider comparison, switch, unrelated instruction, multiple use, or noninteger
+conversion retains the call-boundary normalization.  The decision is one
+constant-time next-instruction check against the existing dense use count.
+
+The new PA29 structural/behavior reducer covers the store, return, and explicit
+conversion cases together and keeps the wider conversion visible in MIR.
+No existing fixture changes.  On the frozen source, 537 call-result
+normalizations disappear: MIR falls from 169,530 to 168,993 instructions,
+the object from 3,215,320 to 3,213,728 bytes (-1,592), `.text*` from 726,695
+to 725,075 (-1,620), LSDA by six bytes, and decoded instructions from 182,489
+to 181,952 (-537).  `movzx` falls by 488 and `movslq` by 46; `.eh_frame` is
+unchanged.
+
+Three A/B/B/A timing blocks against exact S7a measured baseline/candidate
+medians of 4.690/4.725 seconds wall, 4.215/4.250 seconds user, and
+360,636/360,284 KiB RSS.  One candidate run was a 4.84-second user-time host
+outlier; paired block medians remain +0.21% wall, +0.83% user, and -0.23% RSS,
+inside the neutral gate.  PA29 plus PA38 pass 290/290, the full report passes
+5,283/5,283, and the file audit has zero fatal findings.
+
 ### S8: make baseline register cost explicit
 
 Recount `push`, `pop`, physical epilogues, and preserve-list entries after the
@@ -1038,7 +1063,7 @@ Fill one row after each retained phase.
 | S4 cleanup equivalence | none; all typed key fields remain semantically required | audit-only: frozen object remains byte-identical to S3; O1 finds only 16 exact tail groups/22 instructions and three resume blocks | none; no production change | S3 full 5,280/5,280 and zero-fatal audit remain the boundary; exact O0/O1 cleanup/call census recorded | complete; audit-only |
 | S5 destination placement | PA17 direct xvalue-to-base binding and direct-register class-call destination fixtures; no PA29 migration needed | cumulative through S5b: -3,431 text, -540 LSDA, -97 relocations, -33 terminate calls; all 62 generated object call slots removed | S5b paired 0.000% wall, +0.605% user, +0.451% RSS | PA17 245/245; through-PA17 1,715/1,715; full 5,281/5,281; zero-fatal audit | complete through S5b |
 | S6 bounded scalar retention | PA29 exact-forward-edge MIR/behavior; existing PA29 loop/call/escape and PA38 EH negatives | -185 text, -19 decoded instructions, -34 temporary homes; +108 `.eh_frame` pending S8 cost audit | reverse-order medians both 4.270s user; <0.5% RSS movement | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | complete |
-| S7 width normalization | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures to normalized typed loads; call returns remain explicit | S7a: -4,880 text, -1,657 decoded instructions, -2,047 MIR | S7a paired -0.82% user, -0.05% RSS | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | in progress; load-owned normalization complete |
+| S7 width normalization | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures to normalized typed loads; S7b adds one PA29 call-consumer fixture | cumulative through S7b: -6,500 text, -2,194 decoded instructions, -2,584 MIR | S7a paired -0.82% user; S7b +0.83%; RSS neutral | PA29+PA38 290/290; full 5,283/5,283; zero-fatal audit | in progress; loads and terminal call consumers complete |
 | S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S9 demand/optimization remeasure | explicit force-inline owner only at O0; ordinary work deferred to PA37/PA38 | pending | pending | pending | planned |
 

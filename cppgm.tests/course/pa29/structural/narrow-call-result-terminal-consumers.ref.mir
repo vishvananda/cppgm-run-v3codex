@@ -1,0 +1,98 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @saved
+  storage scalar u8
+  init u8 0
+
+function @byte_value
+  abi
+    return u8 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 173
+    ret rax
+
+function @store_result
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @byte_value [args=()]
+    store.u8 @saved, rax
+    load.u8 r8, @saved
+    mov rax, r8
+    zext.i8 rax
+    sext.i32 rax
+    ret rax
+
+function @return_result
+  abi
+    return u8 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @byte_value [args=()]
+    ret rax
+
+function @widen_result
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @byte_value [args=()]
+    zext.i8 rax
+    sext.i32 rax
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx r12
+
+  block ^entry
+    call @store_result [args=()]
+    mov rbx, rax
+    sext.i32 rbx
+    call @return_result [args=()]
+    mov r12, rax
+    zext.i8 r12
+    sext.i32 r12
+    call @widen_result [args=()]
+    mov r8, rax
+    sext.i32 r8
+    mov rdx, 173
+    cmp.i32 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 173
+    cmp.i32 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 173
+    cmp.i32 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r12
+    or rbx, r8
+    mov rax, rbx
+    sext.i32 rax
+    ret rax

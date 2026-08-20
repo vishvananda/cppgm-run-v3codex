@@ -567,7 +567,11 @@ To complete PA29, implement these goals:
    the load itself.  Do not add a separate normalization instruction after
    such a load.  Narrow values returned across a call boundary still require
    explicit normalization before a wider comparison or `switch`; stale upper
-   bits must not affect branch or case selection.
+   bits must not affect branch or case selection.  A call result used only by
+   an immediate same-width store or return may remain in its ABI result carrier
+   without that normalization because only its low result bits cross the
+   boundary.  An immediately following explicit integer extension or
+   truncation also performs the required normalization itself.
 
 12. Keep the conservative `f80` path explicit rather than implicit.
    PA29 does not need to treat `f80` like ordinary XMM-resident `f32`/`f64`, but its
@@ -681,6 +685,9 @@ strategies include:
 - select the signed or unsigned extending memory form directly for a typed
   narrow integer load instead of emitting a partial load followed by a
   register-only normalization
+- use the sole-use next instruction to recognize a narrow call result consumed
+  by a same-width store, return, or explicit integer conversion, while
+  retaining explicit normalization for wider consumers
 - retain integer constants as typed MIR immediates, letting native emission
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required

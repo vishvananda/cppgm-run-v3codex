@@ -1,0 +1,98 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @saved
+  storage scalar u8
+  init u8 0
+
+function @byte_value
+  abi
+    return u8 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 173
+    ret rax
+
+function @store_result
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @byte_value [args=()]
+    store.u8 @saved, rax
+    load.u8 r8, @saved
+    mov rax, r8
+    zext.i8 rax
+    sext.i32 rax
+    ret rax
+
+function @return_result
+  abi
+    return u8 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @byte_value [args=()]
+    ret rax
+
+function @widen_result
+  abi
+    return i32 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @byte_value [args=()]
+    zext.i8 rax
+    sext.i32 rax
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve <gpr0> <gpr1>
+
+  block ^entry
+    call @store_result [args=()]
+    mov <gpr0>, rax
+    sext.i32 <gpr0>
+    call @return_result [args=()]
+    mov <gpr1>, rax
+    zext.i8 <gpr1>
+    sext.i32 <gpr1>
+    call @widen_result [args=()]
+    mov r8, rax
+    sext.i32 r8
+    mov rdx, 173
+    cmp.i32 <gpr0>, rdx
+    setne <gpr0>
+    movzx <gpr0>, <gpr0>
+    mov rdx, 173
+    cmp.i32 <gpr1>, rdx
+    setne <gpr1>
+    movzx <gpr1>, <gpr1>
+    mov rdx, 173
+    cmp.i32 r8, rdx
+    setne r8
+    movzx r8, r8
+    or <gpr0>, <gpr1>
+    or <gpr0>, r8
+    mov rax, <gpr0>
+    sext.i32 rax
+    ret rax
