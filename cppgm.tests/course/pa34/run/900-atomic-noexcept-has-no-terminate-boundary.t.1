@@ -1,0 +1,10 @@
+int read_relaxed(const int * value) noexcept
+{
+  return __atomic_load_n(value, __ATOMIC_RELAXED);
+}
+
+int main()
+{
+  int value = 9;
+  return read_relaxed(&value) != 9;
+}

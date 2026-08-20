@@ -414,6 +414,48 @@ policy.
 Complexity: O(1) fact copying/merging at existing declaration and
 specialization events; no body scan beyond the current boundary census.
 
+#### S1 completion record
+
+The audit found one lost typed fact rather than a general declaration or
+specialization propagation failure.  Calls represented as compiler, hosted
+vector, or hosted atomic intrinsics lower directly to typed LowIR operations;
+they are not indirect calls and cannot unwind.  The exception-boundary census
+now consumes those existing dense intrinsic kinds directly.  It performs
+three enum comparisons at the call node and introduces no text identity,
+body-based inference, or additional pass.
+
+The PA34 course run/inspect reducer wraps `__atomic_load_n` in an explicit
+`noexcept` function and requires the resulting native object not to define the
+terminate helper.  PA34's existing run harness now includes a course run
+bucket, using the same behavior and object-inspection test type as its main run
+suite.  The current student requirement identifies the observable intrinsic
+exception contract; the compact typed-fact suggestion is confined to `Design
+Notes (Non-Normative)`.
+
+The two residual calls reported as indirect by the frozen census were audited
+to `std::_Function_base::~_Function_base` and `std::function::operator()`.
+Their call operands are genuine erased-function-pointer dispatches rather than
+lost callee bindings, so their conservative unwind behavior remains.  Several
+other terminate-bearing libstdc++ helpers call functions whose declarations do
+not carry `noexcept`; removing those boundaries would require the forbidden
+O0 body analysis or force-inline inference.  Explicit, virtual, templated, and
+explicit-specialization `noexcept` reducers already preserve their typed facts.
+
+Relative to S5a, the frozen object loses 168 bytes, 49 `.text*` bytes, 48
+relocation bytes, two relocations, and 15 decoded instructions.  It removes one
+terminate-helper call and one `__cxa_begin_catch` call; `_Unwind_Resume` and the
+EH section sizes are unchanged.  The deterministic object is 3,241,512 bytes
+with SHA-256
+`8b0618198bb070b045d330b9653a61fcb242138a7ad3da30f2b8c86dd412f4e5`.
+
+Three A/B/B/A blocks against immutable commit `e3e86302` measured
+baseline/candidate median wall time 4.635/4.625 seconds, user time
+4.170/4.165 seconds, and peak RSS 359,930/360,502 KiB.  Paired movement is
++0.22% wall, -0.24% user, and +0.13% RSS.  The phase passes its focused test,
+all 374 PA34 tests, all 4,923 report tests through PA34, the complete root
+report (590/590 batched result groups), `git diff --check`, and the PA39 audit
+with zero fatal findings.
+
 ### S2: centralize the legitimate terminate action
 
 For a function that truly needs a terminate boundary, call one shared helper
@@ -689,7 +731,7 @@ Fill one row after each retained phase.
 | Phase | Public fixture effect | Frozen code/EH effect | Compile time/RSS | Validation | Status/commit |
 | --- | --- | --- | --- | --- | --- |
 | S0 baseline/instrumentation | none | byte-identical 3,246,896-byte baseline; typed movement/home/EH census above | +0.49% paired median user, -0.01% RSS | 5,276/5,276 full report; four script tests; zero-fatal audit | complete; `1048f6c5` |
-| S1 nonthrowing propagation | route by earliest semantic owner | pending | pending | pending | planned |
+| S1 nonthrowing propagation | PA34 atomic `noexcept` behavior/inspect; course run bucket enabled | -49 text, -2 relocations, -1 terminate and begin-catch call | -0.24% paired median user, +0.13% RSS | PA34 374/374; through-PA34 4,923/4,923; full 590/590 batched groups; zero-fatal audit | complete |
 | S2 shared terminate action | PA26 LowIR; PA31 behavior/inspect | pending | pending | pending | planned |
 | S3 physical resume terminal | PA31 behavior/inspect only; no LowIR/MIR migration | pending | pending | pending | planned |
 | S4 cleanup equivalence | PA16/PA17/PA26 only as proven | pending | pending | pending | planned |

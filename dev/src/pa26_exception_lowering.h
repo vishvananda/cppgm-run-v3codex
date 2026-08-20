@@ -227,7 +227,12 @@ protected:
 				if (!derived.stats_) return true;
 				++derived.stats_->potentially_throwing_explicit_operations;
 			}
-			if (record.kind == DUMP_CALL_EXPRESSION)
+			if (record.kind == DUMP_CALL_EXPRESSION &&
+				record.compiler_intrinsic == COMPILER_INTRINSIC_NONE &&
+				record.hosted_vector_intrinsic ==
+					hosted_builtin::VECTOR_INTRINSIC_NONE &&
+				record.hosted_atomic_intrinsic ==
+					hosted_builtin::ATOMIC_INTRINSIC_NONE)
 			{
 				const NodeChildren children = derived.Children(node);
 				if (children.empty())

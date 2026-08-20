@@ -28,6 +28,7 @@ COMPILE_TEST_ROOT ?= tests/compile
 RUN_TEST_ROOT ?= tests/run
 COURSE_PREPROC_TEST_ROOT ?= course/pa34/preproc
 COURSE_COMPILE_TEST_ROOT ?= course/pa34/compile
+COURSE_RUN_TEST_ROOT ?= course/pa34/run
 ifneq ($(CPPGM_BATCH_TESTS),)
 export WRAPPED_BATCH_STDIN ?= 1
 endif
@@ -152,6 +153,15 @@ define run_compile_course_bucket_batch
 	fi
 endef
 
+define run_course_bucket
+	@if [ -d "$(1)" ] && find "$(1)" -type f -name '*.t' | grep -q .; then \
+		perl ../scripts/run_cpphostinterop_tests_worker.pl $(CPPGM_TEST_APP) my "$(1)"; \
+		scripts/compare_results_link.pl ref my "$(1)"; \
+	else \
+		if [ "$(REPORT_EMPTY_OPTIONAL_TEST_ROOTS)" = "1" ]; then echo "$(TARGET) $(1): no tests"; fi; \
+	fi
+endef
+
 test: $(TEST_DEPS)
 	@bash scripts/check_preproc_refs_portable.sh $(PREPROC_TEST_ROOT)
 ifneq ($(CPPGM_BATCH_TESTS),)
@@ -170,6 +180,7 @@ endif
 	@scripts/compare_results_link.pl ref my $(RUN_TEST_ROOT)
 	$(call run_preproc_course_bucket,$(COURSE_PREPROC_TEST_ROOT))
 	$(call run_compile_course_bucket,$(COURSE_COMPILE_TEST_ROOT))
+	$(call run_course_bucket,$(COURSE_RUN_TEST_ROOT))
 
 test-batch: $(TEST_DEPS)
 	@bash scripts/check_preproc_refs_portable.sh $(PREPROC_TEST_ROOT)
@@ -180,6 +191,7 @@ test-batch: $(TEST_DEPS)
 	@scripts/compare_results_link.pl ref my $(RUN_TEST_ROOT)
 	$(call run_preproc_course_bucket_batch,$(COURSE_PREPROC_TEST_ROOT))
 	$(call run_compile_course_bucket_batch,$(COURSE_COMPILE_TEST_ROOT))
+	$(call run_course_bucket,$(COURSE_RUN_TEST_ROOT))
 
 ref-test:
 ifneq ($(strip $(TEST)),)
@@ -200,17 +212,17 @@ ref-test-batch:
 REF_TEST_RUN = case "$(TEST)" in \
 	$(PREPROC_TEST_ROOT)/*|$(COURSE_PREPROC_TEST_ROOT)/*) perl ../scripts/run_cpphostcompat_preproc_worker.pl $(REF_TEST_APP) ref "$(TEST)" ;; \
 	$(COMPILE_TEST_ROOT)/*|$(COURSE_COMPILE_TEST_ROOT)/*) perl scripts/run_compile_tests.pl $(REF_TEST_APP) ref "$(TEST)" ;; \
-	$(RUN_TEST_ROOT)/*) CPPGM_CMAKE_COMPILER=$(REF_TEST_APP) perl ../scripts/run_cpphostinterop_tests_worker.pl $(REF_TEST_APP) ref "$(TEST)" ;; \
+	$(RUN_TEST_ROOT)/*|$(COURSE_RUN_TEST_ROOT)/*) CPPGM_CMAKE_COMPILER=$(REF_TEST_APP) perl ../scripts/run_cpphostinterop_tests_worker.pl $(REF_TEST_APP) ref "$(TEST)" ;; \
 	*) echo "Usage: make ref-test TEST=$(PREPROC_TEST_ROOT)/<file>.t, $(COMPILE_TEST_ROOT)/<file>.t, or $(RUN_TEST_ROOT)/<file>.t"; exit 1 ;; \
 esac
 
 CHECK_RUN = perl ../scripts/run_routed_test_spec.pl "$(TEST)" \
 	'$(PREPROC_TEST_ROOT)/*|$(COURSE_PREPROC_TEST_ROOT)/*::perl ../scripts/run_cpphostcompat_preproc_worker.pl $(CPPGM_TEST_APP) check {tests}' \
 	'$(COMPILE_TEST_ROOT)/*|$(COURSE_COMPILE_TEST_ROOT)/*::perl ../scripts/run_cpphostcompat_compile_worker.pl $(CPPGM_TEST_APP) check {tests}' \
-	'tests/run/*::perl ../scripts/run_cpphostinterop_tests_worker.pl $(CPPGM_TEST_APP) check {tests}'
+	'tests/run/*|$(COURSE_RUN_TEST_ROOT)/*::perl ../scripts/run_cpphostinterop_tests_worker.pl $(CPPGM_TEST_APP) check {tests}'
 CHECK_COMPARE = perl ../scripts/run_routed_test_spec.pl "$(TEST)" \
 	'$(PREPROC_TEST_ROOT)/*|$(COURSE_PREPROC_TEST_ROOT)/*|$(COMPILE_TEST_ROOT)/*|$(COURSE_COMPILE_TEST_ROOT)/*::scripts/compare_results.pl ref check {tests}' \
-	'tests/run/*::scripts/compare_results_link.pl ref check {tests}'
+	'tests/run/*|$(COURSE_RUN_TEST_ROOT)/*::scripts/compare_results_link.pl ref check {tests}'
 include ../scripts/pa_run_check_targets.mk
 
 .PHONY: dev-shared-target ref-test ref-test-batch test-batch

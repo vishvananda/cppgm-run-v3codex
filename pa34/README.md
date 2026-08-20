@@ -233,6 +233,9 @@ To complete PA34, implement hosted compatibility for:
 - builtin traits, transforms, intrinsics, and builtin families used during
   hosted compile acceptance, including lowering `__builtin_abort` as a
   non-returning call to the host C runtime
+- hosted compiler intrinsics lowered directly to typed LowIR operations do not
+  unwind; an explicit `noexcept` wrapper containing only such operations shall
+  not acquire a terminate landing
 - semantic and lowering compatibility for hosted source patterns used by those
   headers, including post-declarator parameter
   attributes, explicit specializations of primary-template member functions,
@@ -277,6 +280,10 @@ surfaces: preprocessor probes, parser concessions, builtin traits/types, and
 then semantic/lowering cases. Keep fixes tied to the source pattern being
 exercised. Avoid making broad source-text special cases when an earlier
 semantic or template representation can carry the information directly.
+
+The typed intrinsic kind can also serve exception-boundary analysis directly.
+Keeping that fact on the semantic call avoids treating a lowered atomic,
+vector, or compiler operation as an unknown indirect call.
 
 That same preference applies to hosted ABI names: keep type structure, template
 arguments, ABI tags, and local context available until the ABI naming layer can
