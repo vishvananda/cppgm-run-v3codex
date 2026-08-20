@@ -5,6 +5,7 @@ function @make(%ret : ptr [pass=indirect_result]) -> void [binding=strong, objec
     call void @object__object(%ret)
     return void
 }
+
 function @operator__(%__param0 : ptr [pass=reference], %__param1 : ptr [pass=reference]) -> u8 [binding=strong, object=_ZeqRK6objectS1_] {
   slot $__param0 : ptr
   slot $__param1 : ptr
@@ -14,12 +15,14 @@ function @operator__(%__param0 : ptr [pass=reference], %__param1 : ptr [pass=ref
     store ptr %__param1, $__param1
     return u8 1
 }
+
 function @use_after() -> u8 [binding=strong, object=_Z9use_afterv] {
   block ^entry:
     %t1 = load i32 @destroyed
     %t2 = cmp eq i32 %t1, 0
     return u8 %t2
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $value : obj<1x1>
   slot $lor__1 : i64
@@ -29,42 +32,44 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $call__5 : u8
   slot $arg__6 : obj<1x1>
   slot $call__7 : u8
-  slot $cond__8 : i32
+  slot $cleanup_return__8 : i32
+  slot $cond__9 : i32
 
   block ^entry:
     %t1 = addr $value
-    eh_try ^call_unwind_dispatch_7
+    eh_try ^cleanup_action_8
     %t2 = addr $value
     %t3 = addr $arg__3
     call void @make(%t3)
     eh_end
-    jump ^call_unwind_end_8
+    jump ^call_unwind_end_9
 
-  block ^call_unwind_dispatch_7:
-    %t4 = addr $value
-    call void @object___object(%t4)
+  block ^cleanup_resume_7:
     resume
 
-  block ^call_unwind_end_8:
-    eh_try ^call_unwind_dispatch_9
+  block ^cleanup_action_8:
+    %t4 = addr $value
+    call void @object___object(%t4)
+    jump ^cleanup_resume_7
+
+  block ^call_unwind_end_9:
+    eh_try ^cleanup_action_10
     %t5 = call u8 @operator__(%t2, %t3)
     store u8 %t5, $call__2
     %t6 = load u8 $call__2
     eh_end
-    jump ^call_unwind_end_10
+    jump ^call_unwind_end_11
 
-  block ^call_unwind_dispatch_9:
+  block ^cleanup_action_10:
     call void @object___object(%t3)
-    %t7 = addr $value
-    call void @object___object(%t7)
-    resume
+    jump ^cleanup_action_8
 
-  block ^call_unwind_end_10:
+  block ^call_unwind_end_11:
     branch %t6, ^lor_short_5, ^lor_rhs_4
 
   block ^lor_rhs_4:
-    %t8 = cmp ne i64 0, 0
-    store i64 %t8, $lor__1
+    %t7 = cmp ne i64 0, 0
+    store i64 %t7, $lor__1
     jump ^lor_end_6
 
   block ^lor_short_5:
@@ -72,14 +77,14 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     jump ^lor_end_6
 
   block ^lor_end_6:
-    %t9 = load i64 $lor__1
-    branch %t9, ^cond_true_cleanup_11, ^cond_false_cleanup_12
+    %t8 = load i64 $lor__1
+    branch %t8, ^cond_true_cleanup_12, ^cond_false_cleanup_13
 
-  block ^cond_true_cleanup_11:
+  block ^cond_true_cleanup_12:
     call void @object___object(%t3)
     jump ^if_then_1
 
-  block ^cond_false_cleanup_12:
+  block ^cond_false_cleanup_13:
     call void @object___object(%t3)
     jump ^if_else_2
 
@@ -90,92 +95,97 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     jump ^if_end_3
 
   block ^if_end_3:
-    %t10 = load i32 @destroyed
-    %t11 = cmp ne i32 %t10, 1
-    branch %t11, ^if_then_13, ^if_else_14
+    %t9 = load i32 @destroyed
+    %t10 = cmp ne i32 %t9, 1
+    branch %t10, ^if_then_14, ^if_else_15
 
-  block ^if_then_13:
-    %t12 = addr $value
-    call void @object___object(%t12)
-    return i32 1
+  block ^if_then_14:
+    store i32 1, $cleanup_return__8
+    jump ^return_cleanup_action_18
 
-  block ^if_else_14:
-    jump ^if_end_15
+  block ^return_cleanup_terminal_17:
+    return i32 $cleanup_return__8
 
-  block ^if_end_15:
+  block ^return_cleanup_action_18:
+    %t11 = addr $value
+    call void @object___object(%t11)
+    jump ^return_cleanup_terminal_17
+
+  block ^if_else_15:
+    jump ^if_end_16
+
+  block ^if_end_16:
     store i32 0, @destroyed
-    eh_try ^call_unwind_dispatch_7
-    %t13 = addr $value
-    %t14 = addr $arg__6
-    call void @make(%t14)
+    eh_try ^cleanup_action_8
+    %t12 = addr $value
+    %t13 = addr $arg__6
+    call void @make(%t13)
     eh_end
-    eh_try ^call_unwind_dispatch_22
-    %t15 = call u8 @operator__(%t13, %t14)
-    store u8 %t15, $call__5
-    %t16 = load u8 $call__5
+    eh_try ^cleanup_action_25
+    %t14 = call u8 @operator__(%t12, %t13)
+    store u8 %t14, $call__5
+    %t15 = load u8 $call__5
     eh_end
-    jump ^call_unwind_end_23
+    jump ^call_unwind_end_26
 
-  block ^call_unwind_dispatch_22:
-    call void @object___object(%t14)
-    %t17 = addr $value
-    call void @object___object(%t17)
-    resume
+  block ^cleanup_action_25:
+    call void @object___object(%t13)
+    jump ^cleanup_action_8
 
-  block ^call_unwind_end_23:
-    branch %t16, ^land_rhs_19, ^land_short_20
+  block ^call_unwind_end_26:
+    branch %t15, ^land_rhs_22, ^land_short_23
 
-  block ^land_rhs_19:
-    eh_try ^call_unwind_dispatch_22
-    %t18 = call u8 @use_after()
-    store u8 %t18, $call__7
-    %t19 = load u8 $call__7
-    %t20 = cmp ne i64 %t19, 0
-    store i64 %t20, $land__4
+  block ^land_rhs_22:
+    eh_try ^cleanup_action_25
+    %t16 = call u8 @use_after()
+    store u8 %t16, $call__7
+    %t17 = load u8 $call__7
+    %t18 = cmp ne i64 %t17, 0
+    store i64 %t18, $land__4
     eh_end
-    jump ^land_end_21
+    jump ^land_end_24
 
-  block ^land_short_20:
+  block ^land_short_23:
     store i64 0, $land__4
-    jump ^land_end_21
+    jump ^land_end_24
 
-  block ^land_end_21:
-    %t21 = load i64 $land__4
-    branch %t21, ^cond_true_cleanup_24, ^cond_false_cleanup_25
+  block ^land_end_24:
+    %t19 = load i64 $land__4
+    branch %t19, ^cond_true_cleanup_27, ^cond_false_cleanup_28
 
-  block ^cond_true_cleanup_24:
-    call void @object___object(%t14)
-    jump ^if_then_16
+  block ^cond_true_cleanup_27:
+    call void @object___object(%t13)
+    jump ^if_then_19
 
-  block ^cond_false_cleanup_25:
-    call void @object___object(%t14)
-    jump ^if_else_17
+  block ^cond_false_cleanup_28:
+    call void @object___object(%t13)
+    jump ^if_else_20
 
-  block ^if_then_16:
-    jump ^if_end_18
+  block ^if_then_19:
+    jump ^if_end_21
 
-  block ^if_else_17:
-    jump ^if_end_18
+  block ^if_else_20:
+    jump ^if_end_21
 
-  block ^if_end_18:
-    %t22 = load i32 @destroyed
-    %t23 = cmp eq i32 %t22, 1
-    branch %t23, ^cond_then_26, ^cond_else_27
+  block ^if_end_21:
+    %t20 = load i32 @destroyed
+    %t21 = cmp eq i32 %t20, 1
+    branch %t21, ^cond_then_29, ^cond_else_30
 
-  block ^cond_then_26:
-    store i32 0, $cond__8
-    jump ^cond_end_28
+  block ^cond_then_29:
+    store i32 0, $cond__9
+    jump ^cond_end_31
 
-  block ^cond_else_27:
-    store i32 2, $cond__8
-    jump ^cond_end_28
+  block ^cond_else_30:
+    store i32 2, $cond__9
+    jump ^cond_end_31
 
-  block ^cond_end_28:
-    %t24 = load i32 $cond__8
-    %t25 = addr $value
-    call void @object___object(%t25)
-    return i32 %t24
+  block ^cond_end_31:
+    %t22 = load i32 $cond__9
+    store i32 %t22, $cleanup_return__8
+    jump ^return_cleanup_action_18
 }
+
 function @object__object(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN6objectC1Ev, trivial_lifecycle=yes] {
   slot $this : ptr
 
@@ -183,6 +193,7 @@ function @object__object(%this : ptr) -> void [unwind=no, binding=weak, object=_
     store ptr %this, $this
     return void
 }
+
 function @object___object(%this : ptr) -> void [binding=weak, object=_ZN6objectD1Ev] {
   slot $this : ptr
 
@@ -193,5 +204,3 @@ function @object___object(%this : ptr) -> void [binding=weak, object=_ZN6objectD
     store i32 %t2, @destroyed
     return void
 }
-alias object _ZN6objectC2Ev = @object__object
-alias object _ZN6objectD2Ev = @object___object

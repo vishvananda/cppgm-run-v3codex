@@ -1,16 +1,10 @@
 declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-declare global @__external_rtti_vtable____vmi_class_type_info [binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
-declare function @operator_delete(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
 
-global @__typeinfo_name__struct_leaf [storage=readonly, binding=weak, object=_ZTS4leaf] = {
-  i8 52
-  i8 108
-  i8 101
-  i8 97
-  i8 102
-  i8 0
-}
-global @__typeinfo_name__struct_base [storage=readonly, binding=weak, object=_ZTS4base] = {
+declare global @__external_rtti_vtable____vmi_class_type_info [binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
+
+declare function @operatordelete(%arg0 : ptr) -> void [effects=readwrite, unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
+
+global @__typeinfo_name__struct_base [binding=weak, object=_ZTS4base] = {
   i8 52
   i8 98
   i8 97
@@ -18,11 +12,22 @@ global @__typeinfo_name__struct_base [storage=readonly, binding=weak, object=_ZT
   i8 101
   i8 0
 }
-global @__rtti_struct_base [storage=readonly, binding=weak, object=_ZTI4base] = {
+
+global @__rtti_struct_base [binding=weak, object=_ZTI4base] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_base
 }
-global @__rtti_struct_leaf [storage=readonly, binding=weak, object=_ZTI4leaf] = {
+
+global @__typeinfo_name__struct_leaf [binding=weak, object=_ZTS4leaf] = {
+  i8 52
+  i8 108
+  i8 101
+  i8 97
+  i8 102
+  i8 0
+}
+
+global @__rtti_struct_leaf [binding=weak, object=_ZTI4leaf] = {
   ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
   ptr addr @__typeinfo_name__struct_leaf
   i32 0
@@ -30,7 +35,8 @@ global @__rtti_struct_leaf [storage=readonly, binding=weak, object=_ZTI4leaf] = 
   ptr addr @__rtti_struct_base
   i64 2050
 }
-global @leaf__vtable [storage=readonly, binding=weak, object=_ZTV4leaf] = {
+
+global @leaf__vtable [binding=weak, object=_ZTV4leaf] = {
   i64 0
   ptr addr @__rtti_struct_leaf
   ptr addr @leaf___leaf
@@ -65,6 +71,7 @@ function @read(%root : ptr) -> i32 [binding=strong, object=_Z4readP4base] {
     %t7 = load i32 %t6
     return i32 %t7
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $object : obj<16x8>
   slot $root : ptr
@@ -77,21 +84,24 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = addr $object
     %t3 = index i8 [projection=base_subobject] %t2, 8
     store ptr %t3, $root
-    eh_try ^call_unwind_dispatch_4
+    eh_try ^cleanup_action_5
     %t4 = load ptr $root
     %t5 = call i32 @read(%t4)
     store i32 %t5, $call__2
     %t6 = load i32 $call__2
     %t7 = cmp eq i32 %t6, 11
     eh_end
-    jump ^call_unwind_end_5
+    jump ^call_unwind_end_6
 
-  block ^call_unwind_dispatch_4:
-    %t8 = addr $object
-    call void @leaf___leaf(%t8)
+  block ^cleanup_resume_4:
     resume
 
-  block ^call_unwind_end_5:
+  block ^cleanup_action_5:
+    %t8 = addr $object
+    call void @leaf___leaf(%t8)
+    jump ^cleanup_resume_4
+
+  block ^call_unwind_end_6:
     branch %t7, ^cond_then_1, ^cond_else_2
 
   block ^cond_then_1:
@@ -108,6 +118,44 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @leaf___leaf(%t10)
     return i32 %t9
 }
+
+function @leaf___leaf__deleting_entry(%this : ptr) -> void [binding=weak, object=_ZN4leafD0Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    eh_cleanup ^destructor_cleanup_1
+    %t1 = load ptr $this
+    %t2 = addr @leaf__vtable
+    %t3 = index i8 %t2, 16
+    store ptr %t3, %t1
+    eh_end
+    %t4 = load ptr $this
+    call void @operatordelete(%t4)
+    jump ^destructor_end_2
+
+  block ^destructor_cleanup_1:
+    %t5 = load ptr $this
+    call void @operatordelete(%t5)
+    eh_end
+    resume
+
+  block ^destructor_end_2:
+    return void
+}
+
+function @leaf___leaf(%this : ptr) -> void [binding=weak, object=_ZN4leafD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = addr @leaf__vtable
+    %t3 = index i8 %t2, 16
+    store ptr %t3, %t1
+    return void
+}
+
 function @leaf__leaf(%this : ptr) -> void [binding=weak, object=_ZN4leafC1Ev] {
   slot $this : ptr
 
@@ -125,41 +173,7 @@ function @leaf__leaf(%this : ptr) -> void [binding=weak, object=_ZN4leafC1Ev] {
     store i32 11, %t7
     return void
 }
-function @leaf___leaf__deleting_entry(%this : ptr) -> void [binding=weak, object=_ZN4leafD0Ev] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    eh_cleanup ^destructor_cleanup_1
-    %t1 = load ptr $this
-    %t2 = addr @leaf__vtable
-    %t3 = index i8 %t2, 16
-    store ptr %t3, %t1
-    eh_end
-    %t4 = load ptr $this
-    call void @operator_delete(%t4)
-    jump ^destructor_end_2
-
-  block ^destructor_cleanup_1:
-    %t5 = load ptr $this
-    call void @operator_delete(%t5)
-    eh_end
-    resume
-
-  block ^destructor_end_2:
-    return void
-}
-function @leaf___leaf(%this : ptr) -> void [binding=weak, object=_ZN4leafD1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = addr @leaf__vtable
-    %t3 = index i8 %t2, 16
-    store ptr %t3, %t1
-    return void
-}
 function @base__base__base_entry(%this : ptr, %v : i32) -> void [binding=weak, object=_ZN4baseC2Ei] {
   slot $this : ptr
   slot $v : i32
@@ -173,6 +187,7 @@ function @base__base__base_entry(%this : ptr, %v : i32) -> void [binding=weak, o
     store i32 %t1, %t3
     return void
 }
+
 function @base__base(%this : ptr, %v : i32) -> void [binding=weak, object=_ZN4baseC1Ei] {
   slot $this : ptr
   slot $v : i32
@@ -186,6 +201,3 @@ function @base__base(%this : ptr, %v : i32) -> void [binding=weak, object=_ZN4ba
     store i32 %t1, %t3
     return void
 }
-alias object _ZN4leafC2Ev = @leaf__leaf
-alias object _ZN4leafD2Ev = @leaf___leaf
-alias object _ZN4baseC2Ei = @base__base

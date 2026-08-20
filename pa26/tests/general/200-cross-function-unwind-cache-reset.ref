@@ -1,4 +1,5 @@
 declare function @cleanup() -> void [binding=strong, object=_Z7cleanupv]
+
 declare function @may_throw() -> void [binding=strong, object=_Z9may_throwv]
 
 function @first() -> i32 [binding=strong, object=_Z5firstv] {
@@ -6,41 +7,49 @@ function @first() -> i32 [binding=strong, object=_Z5firstv] {
 
   block ^entry:
     %t1 = addr $guard
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_action_2
     call void @may_throw()
     eh_end
-    jump ^call_unwind_end_2
+    jump ^call_unwind_end_3
 
-  block ^call_unwind_dispatch_1:
-    %t2 = addr $guard
-    call void @Guard___Guard(%t2)
+  block ^cleanup_resume_1:
     resume
 
-  block ^call_unwind_end_2:
+  block ^cleanup_action_2:
+    %t2 = addr $guard
+    call void @Guard___Guard(%t2)
+    jump ^cleanup_resume_1
+
+  block ^call_unwind_end_3:
     %t3 = addr $guard
     call void @Guard___Guard(%t3)
     return i32 1
 }
+
 function @second() -> i32 [binding=strong, object=_Z6secondv] {
   slot $guard : obj<1x1>
 
   block ^entry:
     %t1 = addr $guard
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_action_2
     call void @may_throw()
     eh_end
-    jump ^call_unwind_end_2
+    jump ^call_unwind_end_3
 
-  block ^call_unwind_dispatch_1:
-    %t2 = addr $guard
-    call void @Guard___Guard(%t2)
+  block ^cleanup_resume_1:
     resume
 
-  block ^call_unwind_end_2:
+  block ^cleanup_action_2:
+    %t2 = addr $guard
+    call void @Guard___Guard(%t2)
+    jump ^cleanup_resume_1
+
+  block ^call_unwind_end_3:
     %t3 = addr $guard
     call void @Guard___Guard(%t3)
     return i32 2
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $cond__1 : i32
 
@@ -62,6 +71,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t4 = load i32 $cond__1
     return i32 %t4
 }
+
 function @Guard___Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardD1Ev] {
   slot $this : ptr
 
@@ -70,4 +80,3 @@ function @Guard___Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardD1Ev
     call void @cleanup()
     return void
 }
-alias object _ZN5GuardD2Ev = @Guard___Guard

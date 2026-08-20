@@ -5,11 +5,13 @@ function @at(%ret : ptr [pass=indirect_result]) -> void [binding=strong, object=
     call void @iterator__iterator(%ret)
     return void
 }
+
 function @end(%ret : ptr [pass=indirect_result]) -> void [binding=strong, object=_Z3endv] {
   block ^entry:
     call void @iterator__iterator(%ret)
     return void
 }
+
 function @begin(%ret : ptr [pass=indirect_result], %empty : u8) -> void [binding=strong, object=_Z5beginb] {
   slot $empty : u8
   slot $call__1 : ptr
@@ -25,28 +27,28 @@ function @begin(%ret : ptr [pass=indirect_result], %empty : u8) -> void [binding
     jump ^condobj_end_3
 
   block ^condobj_else_2:
-    eh_try ^call_unwind_dispatch_4
+    eh_try ^cleanup_resume_4
     %t2 = addr $tmpobj__2
     call void @at(%t2)
     eh_end
     jump ^call_unwind_end_5
 
-  block ^call_unwind_dispatch_4:
+  block ^cleanup_resume_4:
     resume
 
   block ^call_unwind_end_5:
-    eh_try ^call_unwind_dispatch_6
+    eh_try ^cleanup_action_6
     %t3 = call ptr @iterator__operator__(%t2)
     store ptr %t3, $call__1
     %t4 = load ptr $call__1
-    call void @iterator__iterator__ov3(%ret, %t4)
+    call void @iterator__iterator__sym2(%ret, %t4)
     call void @iterator___iterator(%t2)
     eh_end
     jump ^call_unwind_end_7
 
-  block ^call_unwind_dispatch_6:
+  block ^cleanup_action_6:
     call void @iterator___iterator(%t2)
-    resume
+    jump ^cleanup_resume_4
 
   block ^call_unwind_end_7:
     jump ^condobj_end_3
@@ -54,6 +56,7 @@ function @begin(%ret : ptr [pass=indirect_result], %empty : u8) -> void [binding
   block ^condobj_end_3:
     return void
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $discard__1 : obj<1x1>
 
@@ -64,24 +67,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = load i32 @count
     return i32 %t2
 }
-function @iterator__iterator(%this : ptr) -> void [binding=weak, object=_ZN8iteratorC1Ev] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    call void @member__member(%t2)
-    return void
-}
-function @iterator__operator__(%this : ptr) -> ptr [binding=weak, object=_ZN8iteratorppEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    return ptr %t1
-}
 function @member__member(%this : ptr) -> void [binding=weak, object=_ZN6memberC1Ev] {
   slot $this : ptr
 
@@ -92,29 +78,28 @@ function @member__member(%this : ptr) -> void [binding=weak, object=_ZN6memberC1
     store i32 %t2, @count
     return void
 }
-function @member__member__ov2(%this : ptr, %__param1 : ptr [pass=reference]) -> void [binding=weak, object=_ZN6memberC1ERKS_] {
-  slot $this : ptr
-  slot $__param1 : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    store ptr %__param1, $__param1
-    %t1 = load i32 @count
-    %t2 = binary add i32 %t1, 1
-    store i32 %t2, @count
-    return void
-}
-function @member___member(%this : ptr) -> void [binding=weak, object=_ZN6memberD1Ev] {
+function @iterator__iterator(%this : ptr) -> void [binding=weak, object=_ZN8iteratorC1Ev, trivial_lifecycle=yes] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
-    %t1 = load i32 @count
-    %t2 = binary sub i32 %t1, 1
-    store i32 %t2, @count
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    call void @member__member(%t2)
     return void
 }
-function @iterator__iterator__ov3(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN8iteratorC1ERKS_] {
+
+function @iterator__operator__(%this : ptr) -> ptr [binding=weak, object=_ZN8iteratorppEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    return ptr %t1
+}
+
+function @iterator__iterator__sym2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN8iteratorC1ERKS_] {
   slot $this : ptr
   slot $other : ptr
 
@@ -128,6 +113,7 @@ function @iterator__iterator__ov3(%this : ptr, %other : ptr [pass=reference]) ->
     call void @member__member__ov2(%t2, %t4)
     return void
 }
+
 function @iterator___iterator(%this : ptr) -> void [binding=weak, object=_ZN8iteratorD1Ev] {
   slot $this : ptr
 
@@ -150,9 +136,27 @@ function @iterator___iterator(%this : ptr) -> void [binding=weak, object=_ZN8ite
   block ^destructor_end_2:
     return void
 }
-alias object _ZN8iteratorC2Ev = @iterator__iterator
-alias object _ZN6memberC2Ev = @member__member
-alias object _ZN6memberC2ERKS_ = @member__member__ov2
-alias object _ZN6memberD2Ev = @member___member
-alias object _ZN8iteratorC2ERKS_ = @iterator__iterator__ov3
-alias object _ZN8iteratorD2Ev = @iterator___iterator
+
+function @member__member__ov2(%this : ptr, %__param1 : ptr [pass=reference]) -> void [binding=weak, object=_ZN6memberC1ERKS_] {
+  slot $this : ptr
+  slot $__param1 : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %__param1, $__param1
+    %t1 = load i32 @count
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @count
+    return void
+}
+
+function @member___member(%this : ptr) -> void [binding=weak, object=_ZN6memberD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @count
+    %t2 = binary sub i32 %t1, 1
+    store i32 %t2, @count
+    return void
+}

@@ -1,5 +1,6 @@
-declare function @operator_delete(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
-declare function @operator_new(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new]
+declare function @operatordelete(%arg0 : ptr) -> void [effects=readwrite, unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
+
+declare function @operatornew(%arg0 : i64) -> ptr [effects=readwrite, binding=strong, object=cppgm_builtin_operator_new]
 
 global @Value__live : i32 [binding=strong, object=_ZN5Value4liveE] = 0
 
@@ -13,6 +14,7 @@ function @consume(%value : ptr [pass=by_address]) -> i32 [binding=strong, object
     call void @Value___Value(%value)
     return i32 %t3
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $source : obj<8x8>
   slot $result : i32
@@ -25,7 +27,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = addr $source
     call void @Value__Value(%t1)
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_action_2
     %t2 = addr $arg__2
     %t3 = addr $source
     call void @Value__Value__ov2(%t2, %t3)
@@ -34,19 +36,22 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t5 = load i32 $call__1
     store i32 %t5, $result
     eh_end
-    jump ^call_unwind_end_2
+    jump ^call_unwind_end_3
 
-  block ^call_unwind_dispatch_1:
-    %t6 = addr $source
-    call void @Value___Value(%t6)
+  block ^cleanup_resume_1:
     resume
 
-  block ^call_unwind_end_2:
+  block ^cleanup_action_2:
+    %t6 = addr $source
+    call void @Value___Value(%t6)
+    jump ^cleanup_resume_1
+
+  block ^call_unwind_end_3:
     %t7 = load i32 $result
     %t8 = cmp eq i32 %t7, 7
-    branch %t8, ^land_rhs_9, ^land_short_10
+    branch %t8, ^land_rhs_10, ^land_short_11
 
-  block ^land_rhs_9:
+  block ^land_rhs_10:
     %t9 = addr $source
     %t10 = index i8 [projection=field] %t9, 0
     %t11 = load ptr %t10
@@ -54,52 +59,68 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t13 = cmp eq i32 %t12, 7
     %t14 = cmp ne i64 %t13, 0
     store i64 %t14, $land__5
-    jump ^land_end_11
+    jump ^land_end_12
 
-  block ^land_short_10:
+  block ^land_short_11:
     store i64 0, $land__5
-    jump ^land_end_11
+    jump ^land_end_12
 
-  block ^land_end_11:
+  block ^land_end_12:
     %t15 = load i64 $land__5
-    branch %t15, ^land_rhs_6, ^land_short_7
+    branch %t15, ^land_rhs_7, ^land_short_8
 
-  block ^land_rhs_6:
+  block ^land_rhs_7:
     %t16 = load i32 @Value__live
     %t17 = cmp eq i32 %t16, 1
     %t18 = cmp ne i64 %t17, 0
     store i64 %t18, $land__4
-    jump ^land_end_8
+    jump ^land_end_9
 
-  block ^land_short_7:
+  block ^land_short_8:
     store i64 0, $land__4
-    jump ^land_end_8
+    jump ^land_end_9
 
-  block ^land_end_8:
+  block ^land_end_9:
     %t19 = load i64 $land__4
-    branch %t19, ^cond_then_3, ^cond_else_4
+    branch %t19, ^cond_then_4, ^cond_else_5
 
-  block ^cond_then_3:
+  block ^cond_then_4:
     store i32 0, $cond__3
-    jump ^cond_end_5
+    jump ^cond_end_6
 
-  block ^cond_else_4:
+  block ^cond_else_5:
     store i32 1, $cond__3
-    jump ^cond_end_5
+    jump ^cond_end_6
 
-  block ^cond_end_5:
+  block ^cond_end_6:
     %t20 = load i32 $cond__3
     %t21 = addr $source
     call void @Value___Value(%t21)
     return i32 %t20
 }
+
+function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    call void @operatordelete(%t3)
+    %t4 = load i32 @Value__live
+    %t5 = binary sub i32 %t4, 1
+    store i32 %t5, @Value__live
+    return void
+}
+
 function @Value__Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueC1Ev] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     %t1 = convert sext i64 i32 4
-    %t2 = call ptr @operator_new(%t1)
+    %t2 = call ptr @operatornew(%t1)
     store i32 7, %t2
     %t3 = load ptr $this
     %t4 = index i8 [projection=field] %t3, 0
@@ -109,6 +130,7 @@ function @Value__Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueC1Ev]
     store i32 %t6, @Value__live
     return void
 }
+
 function @Value__Value__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN5ValueC1ERKS_] {
   slot $this : ptr
   slot $other : ptr
@@ -117,7 +139,7 @@ function @Value__Value__ov2(%this : ptr, %other : ptr [pass=reference]) -> void 
     store ptr %this, $this
     store ptr %other, $other
     %t1 = convert sext i64 i32 4
-    %t2 = call ptr @operator_new(%t1)
+    %t2 = call ptr @operatornew(%t1)
     %t3 = load ptr $other
     %t4 = index i8 [projection=field] %t3, 0
     %t5 = load ptr %t4
@@ -131,20 +153,3 @@ function @Value__Value__ov2(%this : ptr, %other : ptr [pass=reference]) -> void 
     store i32 %t10, @Value__live
     return void
 }
-function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load ptr %t2
-    call void @operator_delete(%t3)
-    %t4 = load i32 @Value__live
-    %t5 = binary sub i32 %t4, 1
-    store i32 %t5, @Value__live
-    return void
-}
-alias object _ZN5ValueC2Ev = @Value__Value
-alias object _ZN5ValueC2ERKS_ = @Value__Value__ov2
-alias object _ZN5ValueD2Ev = @Value___Value

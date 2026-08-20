@@ -1,0 +1,151 @@
+function @choose(%first : u8, %trace : ptr) -> i32 [binding=strong, object=_Z6choosebPi] {
+  slot $first : u8
+  slot $trace : ptr
+  slot $outer : obj<8x8>
+  slot $inner : obj<8x8>
+  slot $cleanup_return__1 : i32
+
+  block ^entry:
+    store u8 %first, $first
+    store ptr %trace, $trace
+    %t1 = addr $outer
+    %t2 = load ptr $trace
+    call void @Trace__Trace(%t1, %t2)
+    %t3 = addr $inner
+    %t4 = load ptr $trace
+    eh_try ^cleanup_action_2
+    call void @Trace__Trace(%t3, %t4)
+    eh_end
+    jump ^call_unwind_end_3
+
+  block ^cleanup_resume_1:
+    resume
+
+  block ^cleanup_action_2:
+    %t5 = addr $outer
+    call void @Trace___Trace(%t5)
+    jump ^cleanup_resume_1
+
+  block ^call_unwind_end_3:
+    %t6 = load u8 $first
+    branch %t6, ^if_then_4, ^if_else_5
+
+  block ^if_then_4:
+    store i32 7, $cleanup_return__1
+    jump ^return_cleanup_action_9
+
+  block ^return_cleanup_terminal_7:
+    return i32 $cleanup_return__1
+
+  block ^return_cleanup_action_8:
+    %t7 = addr $outer
+    call void @Trace___Trace(%t7)
+    jump ^return_cleanup_terminal_7
+
+  block ^return_cleanup_action_9:
+    %t8 = addr $inner
+    call void @Trace___Trace(%t8)
+    jump ^return_cleanup_action_8
+
+  block ^if_else_5:
+    jump ^if_end_6
+
+  block ^if_end_6:
+    store i32 9, $cleanup_return__1
+    jump ^return_cleanup_action_9
+}
+
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $first_trace : i32
+  slot $second_trace : i32
+  slot $lor__1 : i64
+  slot $lor__2 : i64
+  slot $lor__3 : i64
+
+  block ^entry:
+    store i32 0, $first_trace
+    store i32 0, $second_trace
+    %t1 = addr $first_trace
+    %t2 = call i32 @choose(1, %t1)
+    %t3 = cmp ne i32 %t2, 7
+    branch %t3, ^lor_short_8, ^lor_rhs_7
+
+  block ^lor_rhs_7:
+    %t4 = load i32 $first_trace
+    %t5 = cmp ne i32 %t4, 11
+    %t6 = cmp ne i64 %t5, 0
+    store i64 %t6, $lor__3
+    jump ^lor_end_9
+
+  block ^lor_short_8:
+    store i64 1, $lor__3
+    jump ^lor_end_9
+
+  block ^lor_end_9:
+    %t7 = load i64 $lor__3
+    branch %t7, ^lor_short_5, ^lor_rhs_4
+
+  block ^lor_rhs_4:
+    %t8 = addr $second_trace
+    %t9 = call i32 @choose(0, %t8)
+    %t10 = cmp ne i32 %t9, 9
+    %t11 = cmp ne i64 %t10, 0
+    store i64 %t11, $lor__2
+    jump ^lor_end_6
+
+  block ^lor_short_5:
+    store i64 1, $lor__2
+    jump ^lor_end_6
+
+  block ^lor_end_6:
+    %t12 = load i64 $lor__2
+    branch %t12, ^lor_short_2, ^lor_rhs_1
+
+  block ^lor_rhs_1:
+    %t13 = load i32 $second_trace
+    %t14 = cmp ne i32 %t13, 11
+    %t15 = cmp ne i64 %t14, 0
+    store i64 %t15, $lor__1
+    jump ^lor_end_3
+
+  block ^lor_short_2:
+    store i64 1, $lor__1
+    jump ^lor_end_3
+
+  block ^lor_end_3:
+    %t16 = load i64 $lor__1
+    %t17 = convert zext i32 u8 %t16
+    return i32 %t17
+}
+
+function @Trace__Trace(%this : ptr, %p : ptr) -> void [binding=weak, object=_ZN5TraceC1EPi] {
+  slot $this : ptr
+  slot $p : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %p, $p
+    %t1 = load ptr $p
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store ptr %t1, %t3
+    return void
+}
+
+function @Trace___Trace(%this : ptr) -> void [binding=weak, object=_ZN5TraceD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    %t4 = load i32 %t3
+    %t5 = binary mul i32 %t4, 10
+    %t6 = binary add i32 %t5, 1
+    %t7 = load ptr $this
+    %t8 = index i8 [projection=field] %t7, 0
+    %t9 = load ptr %t8
+    store i32 %t6, %t9
+    return void
+}

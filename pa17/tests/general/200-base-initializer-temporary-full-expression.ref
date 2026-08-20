@@ -9,13 +9,14 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = load i32 @live
     return i32 %t2
 }
+
 function @Derived__Derived(%this : ptr) -> void [binding=weak, object=_ZN7DerivedC1Ev] {
   slot $this : ptr
   slot $arg__1 : obj<1x1>
 
   block ^entry:
     store ptr %this, $this
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_resume_1
     %t1 = load ptr $this
     %t2 = index i8 [projection=base_subobject] %t1, 0
     %t3 = addr $arg__1
@@ -23,32 +24,24 @@ function @Derived__Derived(%this : ptr) -> void [binding=weak, object=_ZN7Derive
     eh_end
     jump ^call_unwind_end_2
 
-  block ^call_unwind_dispatch_1:
+  block ^cleanup_resume_1:
     resume
 
   block ^call_unwind_end_2:
-    eh_try ^call_unwind_dispatch_3
+    eh_try ^cleanup_action_3
     call void @Base__Base__base_entry(%t2, %t3)
     call void @Value___Value(%t3)
     eh_end
     jump ^call_unwind_end_4
 
-  block ^call_unwind_dispatch_3:
+  block ^cleanup_action_3:
     call void @Value___Value(%t3)
-    resume
+    jump ^cleanup_resume_1
 
   block ^call_unwind_end_4:
     return void
 }
-function @Base__Base__base_entry(%this : ptr, %__param1 : ptr [pass=reference]) -> void [binding=weak, object=_ZN4BaseC2ERK5Value] {
-  slot $this : ptr
-  slot $__param1 : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    store ptr %__param1, $__param1
-    return void
-}
 function @Value__Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueC1Ev] {
   slot $this : ptr
 
@@ -59,6 +52,17 @@ function @Value__Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueC1Ev]
     store i32 %t2, @live
     return void
 }
+
+function @Base__Base__base_entry(%this : ptr, %__param1 : ptr [pass=reference]) -> void [binding=weak, object=_ZN4BaseC2ERK5Value] {
+  slot $this : ptr
+  slot $__param1 : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %__param1, $__param1
+    return void
+}
+
 function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev] {
   slot $this : ptr
 
@@ -69,6 +73,3 @@ function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev
     store i32 %t2, @live
     return void
 }
-alias object _ZN7DerivedC2Ev = @Derived__Derived
-alias object _ZN5ValueC2Ev = @Value__Value
-alias object _ZN5ValueD2Ev = @Value___Value

@@ -3,6 +3,7 @@ global @local_control [binding=strong, object=_Z13local_control] = {
   i32 0
   i32 5
 }
+
 global @result_control [binding=strong, object=_Z14result_control] = {
   i32 0
   i32 0
@@ -29,39 +30,41 @@ function @choose(%ret : ptr [pass=indirect_result], %local : u8) -> void [bindin
 
   block ^condobj_else_2:
     %t5 = addr $tmpobj__1
-    eh_try ^call_unwind_dispatch_4
+    eh_try ^cleanup_action_5
     %t6 = addr @result_control
     call void @Result__Result(%t5, %t6)
     eh_end
-    jump ^call_unwind_end_5
+    jump ^call_unwind_end_6
 
-  block ^call_unwind_dispatch_4:
-    %t7 = addr $base
-    call void @Owner___Owner(%t7)
+  block ^cleanup_resume_4:
     resume
 
-  block ^call_unwind_end_5:
-    eh_try ^call_unwind_dispatch_6
+  block ^cleanup_action_5:
+    %t7 = addr $base
+    call void @Owner___Owner(%t7)
+    jump ^cleanup_resume_4
+
+  block ^call_unwind_end_6:
+    eh_try ^cleanup_action_7
     %t8 = index i8 [projection=field] %t5, 0
     call void @Owner__Owner__ov2(%ret, %t8)
     call void @Result___Result(%t5)
     eh_end
-    jump ^call_unwind_end_7
+    jump ^call_unwind_end_8
 
-  block ^call_unwind_dispatch_6:
+  block ^cleanup_action_7:
     call void @Result___Result(%t5)
-    %t9 = addr $base
-    call void @Owner___Owner(%t9)
-    resume
+    jump ^cleanup_action_5
 
-  block ^call_unwind_end_7:
+  block ^call_unwind_end_8:
     jump ^condobj_end_3
 
   block ^condobj_end_3:
-    %t10 = addr $base
-    call void @Owner___Owner(%t10)
+    %t9 = addr $base
+    call void @Owner___Owner(%t9)
     return void
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $result : obj<8x8>
   slot $result__shadow2 : obj<8x8>
@@ -141,6 +144,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @Owner___Owner(%t31)
     return i32 %t30
 }
+
 function @Owner__Owner(%this : ptr, %input : ptr) -> void [binding=weak, object=_ZN5OwnerC1EP7Control] {
   slot $this : ptr
   slot $input : ptr
@@ -181,41 +185,7 @@ function @Owner__Owner(%this : ptr, %input : ptr) -> void [binding=weak, object=
     store i32 %t19, %t17
     return void
 }
-function @Owner___Owner(%this : ptr) -> void [binding=weak, object=_ZN5OwnerD1Ev] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load ptr %t2
-    branch %t3, ^land_rhs_4, ^if_else_2
-
-  block ^land_rhs_4:
-    %t4 = load ptr $this
-    %t5 = index i8 [projection=field] %t4, 0
-    %t6 = load ptr %t5
-    %t7 = index i8 [projection=field] %t6, 0
-    %t8 = load i32 %t7
-    %t9 = binary sub i32 %t8, 1
-    store i32 %t9, %t7
-    %t10 = cmp eq i32 %t9, 0
-    branch %t10, ^if_then_1, ^if_else_2
-
-  block ^if_then_1:
-    %t11 = load ptr $this
-    %t12 = index i8 [projection=field] %t11, 0
-    %t13 = load ptr %t12
-    %t14 = index i8 [projection=field] %t13, 4
-    store i32 0, %t14
-    jump ^if_end_3
-
-  block ^if_else_2:
-    jump ^if_end_3
-
-  block ^if_end_3:
-    return void
-}
 function @Result__Result(%this : ptr, %control : ptr) -> void [binding=weak, object=_ZN6ResultC1EP7Control] {
   slot $this : ptr
   slot $control : ptr
@@ -229,6 +199,7 @@ function @Result__Result(%this : ptr, %control : ptr) -> void [binding=weak, obj
     call void @Owner__Owner(%t2, %t3)
     return void
 }
+
 function @Owner__Owner__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN5OwnerC1ERKS_] {
   slot $this : ptr
   slot $other : ptr
@@ -265,6 +236,7 @@ function @Owner__Owner__ov2(%this : ptr, %other : ptr [pass=reference]) -> void 
   block ^if_end_3:
     return void
 }
+
 function @Result___Result(%this : ptr) -> void [binding=weak, object=_ZN6ResultD1Ev] {
   slot $this : ptr
 
@@ -287,8 +259,39 @@ function @Result___Result(%this : ptr) -> void [binding=weak, object=_ZN6ResultD
   block ^destructor_end_2:
     return void
 }
-alias object _ZN5OwnerC2EP7Control = @Owner__Owner
-alias object _ZN5OwnerD2Ev = @Owner___Owner
-alias object _ZN6ResultC2EP7Control = @Result__Result
-alias object _ZN5OwnerC2ERKS_ = @Owner__Owner__ov2
-alias object _ZN6ResultD2Ev = @Result___Result
+
+function @Owner___Owner(%this : ptr) -> void [binding=weak, object=_ZN5OwnerD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    branch %t3, ^land_rhs_4, ^if_else_2
+
+  block ^land_rhs_4:
+    %t4 = load ptr $this
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load ptr %t5
+    %t7 = index i8 [projection=field] %t6, 0
+    %t8 = load i32 %t7
+    %t9 = binary sub i32 %t8, 1
+    store i32 %t9, %t7
+    %t10 = cmp eq i32 %t9, 0
+    branch %t10, ^if_then_1, ^if_else_2
+
+  block ^if_then_1:
+    %t11 = load ptr $this
+    %t12 = index i8 [projection=field] %t11, 0
+    %t13 = load ptr %t12
+    %t14 = index i8 [projection=field] %t13, 4
+    store i32 0, %t14
+    jump ^if_end_3
+
+  block ^if_else_2:
+    jump ^if_end_3
+
+  block ^if_end_3:
+    return void
+}

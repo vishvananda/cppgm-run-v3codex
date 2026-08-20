@@ -642,6 +642,38 @@ interning per state, and O(unique cleanup states) storage.  The implementation
 must expose probes, hits, unique states, blocks emitted, and destructor/resume
 operations avoided.
 
+P6 interns cleanup actions and continuation states in open-addressed typed
+tables and builds full-expression, conditional, unwind, and repeated lexical
+return suffixes from their terminal backward.  Scalar return staging is
+enabled only after a linear pre-lowering census finds the same action sequence
+and lexical exception context more than once.  A complete dense exception
+stack identity prevents sharing across try and handler contexts.  Host-EH
+analysis treats already-consumed landing frames with the same active unwind
+state as equivalent; optimized LowIR remains accepted without running the O1
+cleanup pass at O0.
+
+The migration changes seven PA17, two PA22, one PA25, twenty-six PA26, and two
+PA28 existing LowIR fixtures.  New course reducers live at PA16, PA17, and
+PA26; a PA18 reducer pins base/deleting/complete destructor-entry order after
+cleanup demand changes.  All references were generated through `ref-test`
+with clean detached compilers at `232f0fc8` and `d6716a4c`.  No PA31 runtime
+or object fixture changes were required.
+
+On the frozen compile, cleanup state telemetry records 18,362 probes, 15,656
+hits, 2,706 unique states, 2,654 blocks emitted, 11,631 destructor actions
+avoided, and 1,010 resume operations avoided.  The object falls from
+4,382,992 to 3,927,648 bytes.  `.text*` falls from 897,349 to 734,392 bytes,
+decoded instructions from 217,349 to 184,790, relocations from 38,951 to
+26,936, and relocation bytes from 934,824 to 646,464; the 5,530-function
+definition set is unchanged.
+
+Three load-screened ABBA blocks against P5 measured 4.705/4.595 seconds median
+wall, 4.23/4.12 seconds median user, and 360,406/361,596 KiB median peak RSS
+for baseline/candidate.  Median paired candidate ratios are 0.9700 wall,
+0.9696 user, and 1.0008 RSS.  PA16 passes 297/297, through PA16 passes
+1,468/1,468, the full report passes 5,272/5,272, and the PA39 audit has zero
+fatal findings.
+
 ### P7: canonicalize source-owned zero initialization in LowIR
 
 The preferred public representation for a source-known, contiguous
@@ -781,7 +813,7 @@ Fill one row after each independently retained phase.
 | P3 immediate stores | none | 10 PA29 strict raw, 13 existing structural raw/canonical, one new behavioral structural reducer, and 5 PA38 raw/canonical fixtures migrate | 4,394,672 bytes; `.text*` 908,836; 1,688 fewer instructions; functions/relocations unchanged | ABBA -0.42% wall, -0.23% user, +0.02% RSS | PA29 257/257; through PA29 4,167/4,167; full report 5,267/5,267; zero-fatal audit | complete |
 | P4 memory RHS | none | 3 PA29 strict raw, 2 structural raw/canonical, and one new behavioral structural reducer migrate; PA38 unchanged | 4,392,256 bytes; `.text*` 906,658; 741 fewer instructions; functions/relocations unchanged | ABBA +0.64% wall, +0.71% user, +0.52% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
 | P5 shared epilogue | none | behavior fixture's informational MIR expands with its source, but every semantic return remains; native bytes change only for existing inputs | 4,382,992 bytes; `.text*` 897,349; 5,858 native returns and 4,575 physical epilogues; functions/relocations unchanged | ABBA -0.42% wall, -0.24% user, -0.24% RSS | PA29 258/258; through PA29 4,168/4,168; full report 5,268/5,268; zero-fatal audit | complete |
-| P6 cleanup DAG | expected PA16/17/26 migration | PA31 EH/object change | pending | pending | pending | planned |
+| P6 cleanup DAG | one new PA16 reducer; 7 PA17, 2 PA22, 1 PA25, 26 PA26, and 2 PA28 existing fixtures migrate; new PA17/PA26 reducers | new PA18 lifecycle-order reducer; PA31 behavior stays exact | 3,927,648 bytes; `.text*` 734,392; 184,790 instructions; 26,936 relocations; functions unchanged | ABBA -3.00% wall, -3.04% user, +0.08% RSS | PA16 297/297; through PA16 1,468/1,468; full report 5,272/5,272; zero-fatal audit | complete; `232f0fc8`, `d6716a4c` |
 | P7 zero initialization | expected PA16 migration for source-known contiguous spans | PA29 encoding change; downstream native change | pending | pending | pending | planned after fixture census |
 | P8 weak demand | avoid LowIR change unless semantic owner requires it | PA32 link/inspect change per edge | pending | pending | pending | discovery |
 | P9 shared ELF strings | none | PA32 object layout only | expected nonloaded file-size reduction | pending | pending | planned |

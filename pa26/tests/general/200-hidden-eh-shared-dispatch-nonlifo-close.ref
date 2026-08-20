@@ -1,10 +1,16 @@
-declare function @Box__Box(%arg0 : ptr) -> void [binding=strong, object=_ZN3BoxC1Ev]
-declare function @Box___Box(%arg0 : ptr) -> void [binding=strong, object=_ZN3BoxD1Ev]
-declare function @Box__get(%ret : ptr [pass=indirect_result], %arg0 : ptr) -> void [binding=strong, object=_ZNK3Box3getEv]
-declare function @Text__Text__ov2(%arg0 : ptr, %arg1 : ptr) -> void [binding=strong, object=_ZN4TextC1EPKc]
-declare function @Text___Text(%arg0 : ptr) -> void [binding=strong, object=_ZN4TextD1Ev]
-declare function @Text__operator_(%arg0 : ptr, %arg1 : ptr [pass=reference]) -> ptr [binding=strong, object=_ZN4TextaSERKS_]
 declare function @operator__(%arg0 : ptr [pass=reference], %arg1 : ptr) -> u8 [binding=strong, object=_ZeqRK4TextPKc]
+
+declare function @Box__Box(%arg0 : ptr) -> void [binding=strong, object=_ZN3BoxC1Ev]
+
+declare function @Text__Text__ov2(%arg0 : ptr, %arg1 : ptr) -> void [binding=strong, object=_ZN4TextC1EPKc]
+
+declare function @Text__operator_(%arg0 : ptr, %arg1 : ptr [pass=reference]) -> ptr [binding=strong, object=_ZN4TextaSERKS_]
+
+declare function @Text___Text(%arg0 : ptr) -> void [binding=strong, object=_ZN4TextD1Ev]
+
+declare function @Box___Box(%arg0 : ptr) -> void [binding=strong, object=_ZN3BoxD1Ev]
+
+declare function @Box__get(%ret : ptr [pass=indirect_result], %arg0 : ptr) -> void [binding=strong, object=_ZNK3Box3getEv]
 
 global @__strlit__1 [binding=internal] = {
   i8 111
@@ -23,70 +29,69 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = addr $box
     call void @Box__Box(%t1)
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_action_2
     %t2 = addr $box
     %t3 = index i8 [projection=field] %t2, 0
     %t4 = addr $arg__2
     %t5 = addr @__strlit__1
     call void @Text__Text__ov2(%t4, %t5)
     eh_end
-    jump ^call_unwind_end_2
+    jump ^call_unwind_end_3
 
-  block ^call_unwind_dispatch_1:
-    %t6 = addr $box
-    call void @Box___Box(%t6)
+  block ^cleanup_resume_1:
     resume
 
-  block ^call_unwind_end_2:
-    eh_try ^call_unwind_dispatch_3
+  block ^cleanup_action_2:
+    %t6 = addr $box
+    call void @Box___Box(%t6)
+    jump ^cleanup_resume_1
+
+  block ^call_unwind_end_3:
+    eh_try ^cleanup_action_4
     %t7 = call ptr @Text__operator_(%t3, %t4)
     store ptr %t7, $call__1
     %t8 = load ptr $call__1
     call void @Text___Text(%t4)
     eh_end
-    jump ^call_unwind_end_4
+    jump ^call_unwind_end_5
 
-  block ^call_unwind_dispatch_3:
+  block ^cleanup_action_4:
     call void @Text___Text(%t4)
-    %t9 = addr $box
-    call void @Box___Box(%t9)
-    resume
+    jump ^cleanup_action_2
 
-  block ^call_unwind_end_4:
-    eh_try ^call_unwind_dispatch_1
-    %t10 = addr $arg__5
-    %t11 = addr $box
-    call void @Box__get(%t10, %t11)
+  block ^call_unwind_end_5:
+    eh_try ^cleanup_action_2
+    %t9 = addr $arg__5
+    %t10 = addr $box
+    call void @Box__get(%t9, %t10)
     eh_end
-    eh_try ^call_unwind_dispatch_8
-    %t12 = addr @__strlit__1
-    %t13 = call u8 @operator__(%t10, %t12)
-    store u8 %t13, $call__4
-    %t14 = load u8 $call__4
+    eh_try ^cleanup_action_9
+    %t11 = addr @__strlit__1
+    %t12 = call u8 @operator__(%t9, %t11)
+    store u8 %t12, $call__4
+    %t13 = load u8 $call__4
     eh_end
-    jump ^call_unwind_end_9
+    jump ^call_unwind_end_10
 
-  block ^call_unwind_dispatch_8:
-    call void @Text___Text(%t10)
+  block ^cleanup_action_9:
+    call void @Text___Text(%t9)
+    jump ^cleanup_action_2
+
+  block ^call_unwind_end_10:
+    branch %t13, ^cond_then_6, ^cond_else_7
+
+  block ^cond_then_6:
+    store i32 0, $cond__3
+    jump ^cond_end_8
+
+  block ^cond_else_7:
+    store i32 1, $cond__3
+    jump ^cond_end_8
+
+  block ^cond_end_8:
+    %t14 = load i32 $cond__3
+    call void @Text___Text(%t9)
     %t15 = addr $box
     call void @Box___Box(%t15)
-    resume
-
-  block ^call_unwind_end_9:
-    branch %t14, ^cond_then_5, ^cond_else_6
-
-  block ^cond_then_5:
-    store i32 0, $cond__3
-    jump ^cond_end_7
-
-  block ^cond_else_6:
-    store i32 1, $cond__3
-    jump ^cond_end_7
-
-  block ^cond_end_7:
-    %t16 = load i32 $cond__3
-    call void @Text___Text(%t10)
-    %t17 = addr $box
-    call void @Box___Box(%t17)
-    return i32 %t16
+    return i32 %t14
 }

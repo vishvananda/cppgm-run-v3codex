@@ -263,6 +263,28 @@ bool is_catch_dispatch_block(const mir_model::MirBlock & block)
   return has_catch;
 }
 
+void validate_protected_region_markers(
+    const mir_model::MirFunction & function,
+    const std::vector<std::size_t> & block_index)
+{
+  const std::size_t unknown = static_cast<std::size_t>(-1);
+  for(std::size_t i = 0; i < function.blocks.size(); ++i)
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+      const mir_model::MirInstruction & instruction =
+        function.blocks[i].instructions[j];
+      if(instruction.opcode != mir_model::MirInstruction::MI_EH_PUSH) continue;
+      if(instruction.operands.size() != 2 ||
+         instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL ||
+         !instruction.operands[0].block.valid())
+        throw std::logic_error("invalid MIR host EH protected-region marker");
+      const std::uint32_t target = instruction.operands[0].block;
+      if(target >= block_index.size() || block_index[target] == unknown)
+        throw std::logic_error(
+          "host EH landing pad has no MIR block: block #" +
+          std::to_string(target));
+    }
+}
+
 }  // namespace
 
 HostEhRegionPlan analyze_host_eh_regions(
@@ -418,20 +440,7 @@ HostEhRegionPlan analyze_host_eh_regions(
   };
 
   merge_entry(0, 0, &worklist);
-  for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-      const mir_model::MirInstruction & instruction =
-        function.blocks[i].instructions[j];
-      if(instruction.opcode != mir_model::MirInstruction::MI_EH_PUSH) continue;
-      if(instruction.operands.size() != 2 ||
-         instruction.operands[0].kind != mir_model::MirOperand::OP_LABEL ||
-         !instruction.operands[0].block.valid())
-        throw std::logic_error("invalid MIR host EH protected-region marker");
-      if(block_position(instruction.operands[0].block) == unknown)
-        throw std::logic_error(
-          "host EH landing pad has no MIR block: " +
-          block_name(instruction.operands[0].block));
-    }
+  validate_protected_region_markers(function, block_index);
 
   std::size_t next = 0;
   while(next < worklist.size()) {

@@ -15,13 +15,13 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     branch %t1, ^cond_then_1, ^cond_else_2
 
   block ^cond_then_1:
-    eh_try ^call_unwind_dispatch_4
+    eh_try ^cleanup_resume_4
     %t2 = addr $tmpobj__3
     call void @Box__Box(%t2)
     eh_end
     jump ^call_unwind_end_5
 
-  block ^call_unwind_dispatch_4:
+  block ^cleanup_resume_4:
     resume
 
   block ^call_unwind_end_5:
@@ -69,13 +69,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t12 = load i32 $cond__4
     return i32 %t12
 }
-function @Box__Box(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN3BoxC1Ev, trivial_lifecycle=yes] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    return void
-}
 function @Box__get(%this : ptr) -> ptr [unwind=no, binding=weak, object=_ZNK3Box3getEv] {
   slot $this : ptr
 
@@ -83,4 +77,11 @@ function @Box__get(%this : ptr) -> ptr [unwind=no, binding=weak, object=_ZNK3Box
     store ptr %this, $this
     return ptr 0
 }
-alias object _ZN3BoxC2Ev = @Box__Box
+
+function @Box__Box(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN3BoxC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}

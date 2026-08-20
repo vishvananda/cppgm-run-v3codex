@@ -1,10 +1,12 @@
-declare function @guard___guard(%arg0 : ptr) -> void [binding=strong, object=_ZN5guardD1Ev]
 declare function @guard__guard(%arg0 : ptr) -> void [binding=strong, object=_ZN5guardC1Ev]
+
 declare function @item__item(%arg0 : ptr) -> void [binding=strong, object=_ZN4itemC1Ev]
+
+declare function @guard___guard(%arg0 : ptr) -> void [binding=strong, object=_ZN5guardD1Ev]
 
 global @storage : i64 [binding=strong, object=_Z7storage] = zero
 
-function @operatornew(%__param0 : i64, %p : ptr) -> ptr [unwind=no, binding=strong, object=_ZnwmPv] {
+function @operatornew__ov2(%__param0 : i64, %p : ptr) -> ptr [unwind=no, binding=strong, object=_ZnwmPv] {
   slot $__param0 : i64
   slot $p : ptr
 
@@ -14,6 +16,7 @@ function @operatornew(%__param0 : i64, %p : ptr) -> ptr [unwind=no, binding=stro
     %t1 = load ptr $p
     return ptr %t1
 }
+
 function @build() -> void [binding=strong, object=_Z5buildv] {
   slot $cleanup : obj<1x1>
 
@@ -22,18 +25,21 @@ function @build() -> void [binding=strong, object=_Z5buildv] {
     call void @guard__guard(%t1)
     %t2 = convert sext i64 i32 1
     %t3 = addr @storage
-    %t4 = call ptr @operatornew(%t2, %t3)
-    eh_try ^call_unwind_dispatch_1
+    %t4 = call ptr @operatornew__ov2(%t2, %t3)
+    eh_try ^cleanup_action_2
     call void @item__item(%t4)
     eh_end
-    jump ^call_unwind_end_2
+    jump ^call_unwind_end_3
 
-  block ^call_unwind_dispatch_1:
-    %t5 = addr $cleanup
-    call void @guard___guard(%t5)
+  block ^cleanup_resume_1:
     resume
 
-  block ^call_unwind_end_2:
+  block ^cleanup_action_2:
+    %t5 = addr $cleanup
+    call void @guard___guard(%t5)
+    jump ^cleanup_resume_1
+
+  block ^call_unwind_end_3:
     %t6 = addr $cleanup
     call void @guard___guard(%t6)
     return void

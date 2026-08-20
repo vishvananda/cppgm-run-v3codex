@@ -1,24 +1,34 @@
-declare global @__external_rtti__int [binding=strong, object=_ZTIi]
 declare global @__external_rtti_vtable____fundamental_type_info [binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
+
+declare global @__external_rtti__int [binding=strong, object=_ZTIi]
+
 declare function @__external_runtime___Unwind_Resume() -> void [return=noreturn, role=eh_resume, linkage=c, binding=strong, object=_Unwind_Resume]
+
 declare function @__external_runtime____cxa_allocate_exception(%arg0 : i64) -> ptr [role=eh_allocate_exception, linkage=c, binding=strong, object=__cxa_allocate_exception]
+
 declare function @__external_runtime____cxa_begin_catch(%arg0 : ptr) -> ptr [role=eh_begin_catch, linkage=c, binding=strong, object=__cxa_begin_catch]
+
 declare function @__external_runtime____cxa_end_catch() -> void [role=eh_end_catch, linkage=c, binding=strong, object=__cxa_end_catch]
+
 declare function @__external_runtime____cxa_throw(%arg0 : ptr, %arg1 : ptr, %arg2 : ptr) -> void [return=noreturn, role=eh_throw, linkage=c, binding=strong, object=__cxa_throw]
+
 declare function @__external_runtime____gxx_personality_v0() -> void [role=eh_personality, linkage=c, binding=strong, object=__gxx_personality_v0]
 
-global @depth : i32 [binding=strong, object=_Z5depth] = zero
-global @__typeinfo_name__int [storage=readonly, binding=weak, object=_ZTSi] = {
+global @__typeinfo_name__int [binding=weak, object=_ZTSi] = {
   i8 105
   i8 0
 }
-global @__rtti_int [storage=readonly, binding=weak, object=_ZTIi] = {
+
+global @__rtti_int [binding=weak, object=_ZTIi] = {
   ptr addr @__external_rtti_vtable____fundamental_type_info + 16
   ptr addr @__typeinfo_name__int
 }
-global @__ehobj_int [binding=weak, object=@__ehobj_int] = {
+
+global @__ehobj_int [binding=internal, object=@__ehobj_int] = {
   zero 4
 }
+
+global @depth : i32 [binding=strong, object=_Z5depth] = zero
 
 function @raise(%value : i32) -> void [binding=strong, object=_Z5raisei] {
   slot $value : i32
@@ -32,6 +42,7 @@ function @raise(%value : i32) -> void [binding=strong, object=_Z5raisei] {
     call void @__external_runtime____cxa_throw(%t1, %t3, 0)
     return void
 }
+
 function @exercise() -> void [binding=strong, object=_Z8exercisev] {
   slot $guard : obj<1x1>
 
@@ -61,20 +72,29 @@ function @exercise() -> void [binding=strong, object=_Z8exercisev] {
     branch %t7, ^if_then_7, ^if_else_8
 
   block ^if_then_7:
-    eh_try ^call_unwind_dispatch_10
+    eh_try ^call_unwind_dispatch_13
     call void @raise(2)
     eh_end
-    jump ^call_unwind_end_11
+    jump ^call_unwind_end_14
 
-  block ^call_unwind_dispatch_10:
+  block ^cleanup_resume_10:
+    resume
+
+  block ^cleanup_action_11:
+    %t8 = addr $guard
+    call void @Guard___Guard(%t8)
+    jump ^cleanup_resume_10
+
+  block ^cleanup_action_12:
     eh_end
     call void @__external_runtime____cxa_end_catch()
     eh_end
-    %t8 = addr $guard
-    call void @Guard___Guard(%t8)
-    resume
+    jump ^cleanup_action_11
 
-  block ^call_unwind_end_11:
+  block ^call_unwind_dispatch_13:
+    jump ^cleanup_action_12
+
+  block ^call_unwind_end_14:
     jump ^if_end_9
 
   block ^if_else_8:
@@ -100,6 +120,7 @@ function @exercise() -> void [binding=strong, object=_Z8exercisev] {
     call void @Guard___Guard(%t10)
     return void
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $catch__1 : ptr
   slot $value : i32
@@ -160,6 +181,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^try_end_3:
     return i32 1
 }
+
 function @Guard__Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardC1Ev] {
   slot $this : ptr
 
@@ -170,6 +192,7 @@ function @Guard__Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardC1Ev]
     store i32 %t2, @depth
     return void
 }
+
 function @Guard___Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardD1Ev] {
   slot $this : ptr
 
@@ -180,5 +203,3 @@ function @Guard___Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardD1Ev
     store i32 %t2, @depth
     return void
 }
-alias object _ZN5GuardC2Ev = @Guard__Guard
-alias object _ZN5GuardD2Ev = @Guard___Guard

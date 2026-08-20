@@ -9,6 +9,7 @@ function @observe(%__param0 : obj<16x8>) -> i32 [binding=strong, object=_Z7obser
     %t2 = load i32 @Item__live
     return i32 %t2
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $call__1 : i32
   slot $argobj__2 : obj<16x8>
@@ -19,19 +20,19 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $cond__6 : i32
 
   block ^entry:
-    eh_try ^call_unwind_dispatch_4
+    eh_try ^cleanup_resume_4
     %t1 = addr $argobj__2
     %t2 = addr $initlist__3
     call void @Item__Item(%t2, 1)
     eh_end
     jump ^call_unwind_end_5
 
-  block ^call_unwind_dispatch_4:
+  block ^cleanup_resume_4:
     resume
 
   block ^call_unwind_end_5:
     eh_try ^call_unwind_dispatch_6
-    %t3 = index i8 %t2, 1
+    %t3 = index i8 [projection=array_element] %t2, 1
     call void @Item__Item(%t3, 2)
     eh_end
     jump ^call_unwind_end_7
@@ -42,7 +43,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^call_unwind_end_7:
     eh_try ^call_unwind_dispatch_8
-    %t4 = index i8 %t2, 2
+    %t4 = index i8 [projection=array_element] %t2, 2
     call void @Item__Item(%t4, 3)
     eh_end
     jump ^call_unwind_end_9
@@ -53,7 +54,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     resume
 
   block ^call_unwind_end_9:
-    eh_try ^call_unwind_dispatch_10
+    eh_try ^cleanup_action_10
     store ptr %t2, %t1
     %t5 = index i8 %t1, 8
     store i64 3, %t5
@@ -64,11 +65,11 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     eh_end
     jump ^call_unwind_end_11
 
-  block ^call_unwind_dispatch_10:
+  block ^cleanup_action_10:
     call void @Item___Item(%t4)
     call void @Item___Item(%t3)
     call void @Item___Item(%t2)
-    resume
+    jump ^cleanup_resume_4
 
   block ^call_unwind_end_11:
     branch %t8, ^cond_true_cleanup_12, ^cond_false_cleanup_13
@@ -106,7 +107,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t11 = addr $held
     %t12 = addr $initlist__4
     call void @Item__Item(%t12, 4)
-    %t13 = index i8 %t12, 1
+    %t13 = index i8 [projection=array_element] %t12, 1
     eh_try ^call_unwind_dispatch_17
     call void @Item__Item(%t13, 5)
     eh_end
@@ -170,16 +171,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t24 = load i32 $cond__6
     return i32 %t24
 }
-function @std__initializer_list_Item___size(%this : ptr) -> i64 [binding=weak, object=_ZNKSt16initializer_listI4ItemE4sizeEv] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 8
-    %t3 = load i64 %t2
-    return i64 %t3
-}
 function @Item__Item(%this : ptr, %__param1 : i32) -> void [binding=weak, object=_ZN4ItemC1Ei] {
   slot $this : ptr
   slot $__param1 : i32
@@ -192,6 +184,7 @@ function @Item__Item(%this : ptr, %__param1 : i32) -> void [binding=weak, object
     store i32 %t2, @Item__live
     return void
 }
+
 function @Item___Item(%this : ptr) -> void [binding=weak, object=_ZN4ItemD1Ev] {
   slot $this : ptr
 
@@ -202,5 +195,14 @@ function @Item___Item(%this : ptr) -> void [binding=weak, object=_ZN4ItemD1Ev] {
     store i32 %t2, @Item__live
     return void
 }
-alias object _ZN4ItemC2Ei = @Item__Item
-alias object _ZN4ItemD2Ev = @Item___Item
+
+function @std__initializer_list_Item___size(%this : ptr) -> i64 [binding=weak, object=_ZNKSt16initializer_listI4ItemE4sizeEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 8
+    %t3 = load i64 %t2
+    return i64 %t3
+}

@@ -4,12 +4,14 @@ global @__strlit__1 [binding=internal] = {
   i8 109
   i8 0
 }
+
 global @__strlit__2 [binding=internal] = {
   i8 98
   i8 97
   i8 100
   i8 0
 }
+
 global @__strlit__3 [binding=internal] = {
   i8 99
   i8 104
@@ -17,9 +19,11 @@ global @__strlit__3 [binding=internal] = {
   i8 114
   i8 0
 }
+
 global @__strlit__4 [binding=internal] = {
   i8 0
 }
+
 global @__strlit__5 [binding=internal] = {
   i8 41
   i8 0
@@ -34,7 +38,7 @@ function @operator_(%ret : ptr [pass=indirect_result], %lhs : ptr [pass=referenc
   block ^entry:
     store ptr %lhs, $lhs
     store ptr %__param1, $__param1
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_resume_1
     %t1 = load ptr $lhs
     %t2 = index i8 [projection=field] %t1, 0
     %t3 = load i32 %t2
@@ -42,7 +46,7 @@ function @operator_(%ret : ptr [pass=indirect_result], %lhs : ptr [pass=referenc
     eh_end
     jump ^call_unwind_end_5
 
-  block ^call_unwind_dispatch_1:
+  block ^cleanup_resume_1:
     resume
 
   block ^call_unwind_end_5:
@@ -62,19 +66,20 @@ function @operator_(%ret : ptr [pass=indirect_result], %lhs : ptr [pass=referenc
     %t7 = load ptr $condaddr__1
     %t8 = addr $arg__2
     call void @Alloc__Alloc(%t8)
-    eh_try ^call_unwind_dispatch_6
+    eh_try ^cleanup_action_6
     call void @Text__Text(%ret, %t7, %t8)
     call void @Alloc___Alloc(%t8)
     eh_end
     jump ^call_unwind_end_7
 
-  block ^call_unwind_dispatch_6:
+  block ^cleanup_action_6:
     call void @Alloc___Alloc(%t8)
-    resume
+    jump ^cleanup_resume_1
 
   block ^call_unwind_end_7:
     return void
 }
+
 function @operator___ov2(%ret : ptr [pass=indirect_result], %lhs : ptr [pass=reference], %__param1 : i8) -> void [binding=strong, object=_ZplRK4Textc] {
   slot $lhs : ptr
   slot $__param1 : i8
@@ -84,7 +89,7 @@ function @operator___ov2(%ret : ptr [pass=indirect_result], %lhs : ptr [pass=ref
   block ^entry:
     store ptr %lhs, $lhs
     store i8 %__param1, $__param1
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_resume_1
     %t1 = load ptr $lhs
     %t2 = index i8 [projection=field] %t1, 0
     %t3 = load i32 %t2
@@ -92,7 +97,7 @@ function @operator___ov2(%ret : ptr [pass=indirect_result], %lhs : ptr [pass=ref
     eh_end
     jump ^call_unwind_end_5
 
-  block ^call_unwind_dispatch_1:
+  block ^cleanup_resume_1:
     resume
 
   block ^call_unwind_end_5:
@@ -112,19 +117,20 @@ function @operator___ov2(%ret : ptr [pass=indirect_result], %lhs : ptr [pass=ref
     %t7 = load ptr $cond__1
     %t8 = addr $arg__2
     call void @Alloc__Alloc(%t8)
-    eh_try ^call_unwind_dispatch_6
+    eh_try ^cleanup_action_6
     call void @Text__Text(%ret, %t7, %t8)
     call void @Alloc___Alloc(%t8)
     eh_end
     jump ^call_unwind_end_7
 
-  block ^call_unwind_dispatch_6:
+  block ^cleanup_action_6:
     call void @Alloc___Alloc(%t8)
-    resume
+    jump ^cleanup_resume_1
 
   block ^call_unwind_end_7:
     return void
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $delimiter : obj<4x4>
   slot $arg__1 : obj<4x4>
@@ -140,88 +146,83 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = addr @__strlit__4
     %t3 = addr $arg__1
     call void @Alloc__Alloc(%t3)
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_action_2
     call void @Text__Text(%t1, %t2, %t3)
     call void @Alloc___Alloc(%t3)
     eh_end
-    jump ^call_unwind_end_2
+    jump ^call_unwind_end_3
 
-  block ^call_unwind_dispatch_1:
-    call void @Alloc___Alloc(%t3)
+  block ^cleanup_resume_1:
     resume
 
-  block ^call_unwind_end_2:
+  block ^cleanup_action_2:
+    call void @Alloc___Alloc(%t3)
+    jump ^cleanup_resume_1
+
+  block ^call_unwind_end_3:
     store i8 34, $quote
     %t4 = addr $terminator
-    eh_try ^call_unwind_dispatch_3
+    eh_try ^cleanup_resume_1
     %t5 = addr $arg__2
     %t6 = addr $arg__3
     %t7 = addr @__strlit__5
     %t8 = addr $arg__4
     call void @Alloc__Alloc(%t8)
     eh_end
-    jump ^call_unwind_end_4
-
-  block ^call_unwind_dispatch_3:
-    resume
-
-  block ^call_unwind_end_4:
-    eh_try ^call_unwind_dispatch_5
+    eh_try ^cleanup_action_4
     call void @Text__Text(%t6, %t7, %t8)
     eh_end
-    jump ^call_unwind_end_6
+    jump ^call_unwind_end_5
 
-  block ^call_unwind_dispatch_5:
+  block ^cleanup_action_4:
     call void @Alloc___Alloc(%t8)
-    resume
+    jump ^cleanup_resume_1
 
-  block ^call_unwind_end_6:
-    eh_try ^call_unwind_dispatch_7
+  block ^call_unwind_end_5:
+    eh_try ^cleanup_action_6
     %t9 = addr $delimiter
     call void @operator_(%t5, %t6, %t9)
     eh_end
-    jump ^call_unwind_end_8
+    jump ^call_unwind_end_7
 
-  block ^call_unwind_dispatch_7:
+  block ^cleanup_action_6:
     call void @Text___Text(%t6)
-    call void @Alloc___Alloc(%t8)
-    resume
+    jump ^cleanup_action_4
 
-  block ^call_unwind_end_8:
-    eh_try ^call_unwind_dispatch_9
+  block ^call_unwind_end_7:
+    eh_try ^cleanup_action_8
     %t10 = load i8 $quote
     call void @operator___ov2(%t4, %t5, %t10)
     call void @Text___Text(%t5)
     call void @Text___Text(%t6)
     call void @Alloc___Alloc(%t8)
     eh_end
-    jump ^call_unwind_end_10
+    jump ^call_unwind_end_9
 
-  block ^call_unwind_dispatch_9:
+  block ^cleanup_action_8:
     call void @Text___Text(%t5)
-    call void @Text___Text(%t6)
-    call void @Alloc___Alloc(%t8)
-    resume
+    jump ^cleanup_action_6
 
-  block ^call_unwind_end_10:
+  block ^call_unwind_end_9:
     %t11 = addr $terminator
     %t12 = index i8 [projection=field] %t11, 0
     %t13 = load i32 %t12
     %t14 = cmp eq i32 %t13, 3
-    branch %t14, ^cond_then_11, ^cond_else_12
+    branch %t14, ^cond_then_10, ^cond_else_11
 
-  block ^cond_then_11:
+  block ^cond_then_10:
     store i32 0, $cond__5
-    jump ^cond_end_13
+    jump ^cond_end_12
 
-  block ^cond_else_12:
+  block ^cond_else_11:
     store i32 1, $cond__5
-    jump ^cond_end_13
+    jump ^cond_end_12
 
-  block ^cond_end_13:
+  block ^cond_end_12:
     %t15 = load i32 $cond__5
     return i32 %t15
 }
+
 function @Alloc__Alloc(%this : ptr) -> void [binding=weak, object=_ZN5AllocC1Ev] {
   slot $this : ptr
 
@@ -232,6 +233,7 @@ function @Alloc__Alloc(%this : ptr) -> void [binding=weak, object=_ZN5AllocC1Ev]
     store i32 3, %t2
     return void
 }
+
 function @Text__Text(%this : ptr, %__param1 : ptr, %alloc : ptr [pass=reference]) -> void [binding=weak, object=_ZN4TextC1EPKcRK5Alloc] {
   slot $this : ptr
   slot $__param1 : ptr
@@ -249,6 +251,7 @@ function @Text__Text(%this : ptr, %__param1 : ptr, %alloc : ptr [pass=reference]
     store i32 %t3, %t5
     return void
 }
+
 function @Alloc___Alloc(%this : ptr) -> void [binding=weak, object=_ZN5AllocD1Ev] {
   slot $this : ptr
 
@@ -256,6 +259,7 @@ function @Alloc___Alloc(%this : ptr) -> void [binding=weak, object=_ZN5AllocD1Ev
     store ptr %this, $this
     return void
 }
+
 function @Text___Text(%this : ptr) -> void [binding=weak, object=_ZN4TextD1Ev] {
   slot $this : ptr
 
@@ -263,7 +267,3 @@ function @Text___Text(%this : ptr) -> void [binding=weak, object=_ZN4TextD1Ev] {
     store ptr %this, $this
     return void
 }
-alias object _ZN5AllocC2Ev = @Alloc__Alloc
-alias object _ZN4TextC2EPKcRK5Alloc = @Text__Text
-alias object _ZN5AllocD2Ev = @Alloc___Alloc
-alias object _ZN4TextD2Ev = @Text___Text

@@ -1,4 +1,5 @@
 global @alive : i32 [binding=strong, object=_Z5alive] = zero
+
 global @choose_second : u8 [binding=strong, object=_Z13choose_second] = 1
 
 function @operator_(%__param0 : ptr [pass=reference], %__param1 : ptr [pass=reference]) -> i32 [binding=strong, object=_ZplRK5valueS1_] {
@@ -25,6 +26,7 @@ function @operator_(%__param0 : ptr [pass=reference], %__param1 : ptr [pass=refe
     %t3 = load i32 $cond__1
     return i32 %t3
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $result : i32
   slot $call__1 : i32
@@ -33,43 +35,43 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $lor__4 : i64
 
   block ^entry:
-    eh_try ^call_unwind_dispatch_1
+    eh_try ^cleanup_resume_1
     %t1 = addr $arg__2
     call void @value__value(%t1)
     eh_end
     jump ^call_unwind_end_2
 
-  block ^call_unwind_dispatch_1:
+  block ^cleanup_resume_1:
     resume
 
   block ^call_unwind_end_2:
-    eh_try ^call_unwind_dispatch_3
+    eh_try ^cleanup_action_3
     %t2 = addr $arg__3
     %t3 = load u8 @choose_second
     eh_end
     jump ^call_unwind_end_7
 
-  block ^call_unwind_dispatch_3:
+  block ^cleanup_action_3:
     call void @value___value(%t1)
-    resume
+    jump ^cleanup_resume_1
 
   block ^call_unwind_end_7:
     branch %t3, ^condobj_then_4, ^condobj_else_5
 
   block ^condobj_then_4:
-    eh_try ^call_unwind_dispatch_3
+    eh_try ^cleanup_action_3
     call void @value__value(%t2)
     eh_end
     jump ^condobj_end_6
 
   block ^condobj_else_5:
-    eh_try ^call_unwind_dispatch_3
+    eh_try ^cleanup_action_3
     call void @value__value(%t2)
     eh_end
     jump ^condobj_end_6
 
   block ^condobj_end_6:
-    eh_try ^call_unwind_dispatch_8
+    eh_try ^cleanup_action_8
     %t4 = call i32 @operator_(%t1, %t2)
     store i32 %t4, $call__1
     %t5 = load i32 $call__1
@@ -79,10 +81,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     eh_end
     jump ^call_unwind_end_9
 
-  block ^call_unwind_dispatch_8:
+  block ^cleanup_action_8:
     call void @value___value(%t2)
-    call void @value___value(%t1)
-    resume
+    jump ^cleanup_action_3
 
   block ^call_unwind_end_9:
     %t6 = load i32 $result
@@ -105,6 +106,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t12 = convert zext i32 u8 %t11
     return i32 %t12
 }
+
 function @value__value(%this : ptr) -> void [binding=weak, object=_ZN5valueC1Ev] {
   slot $this : ptr
 
@@ -115,6 +117,7 @@ function @value__value(%this : ptr) -> void [binding=weak, object=_ZN5valueC1Ev]
     store i32 %t2, @alive
     return void
 }
+
 function @value___value(%this : ptr) -> void [binding=weak, object=_ZN5valueD1Ev] {
   slot $this : ptr
 
@@ -125,5 +128,3 @@ function @value___value(%this : ptr) -> void [binding=weak, object=_ZN5valueD1Ev
     store i32 %t2, @alive
     return void
 }
-alias object _ZN5valueC2Ev = @value__value
-alias object _ZN5valueD2Ev = @value___value

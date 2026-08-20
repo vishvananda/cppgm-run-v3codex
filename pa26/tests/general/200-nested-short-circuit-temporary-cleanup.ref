@@ -10,6 +10,7 @@ function @use(%__param0 : ptr [pass=reference], %value : u8) -> u8 [unwind=no, b
     %t1 = load u8 $value
     return u8 %t1
 }
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $lor__1 : i64
   slot $call__2 : u8
@@ -26,46 +27,45 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $cond__13 : i32
 
   block ^entry:
-    eh_try ^call_unwind_dispatch_7
+    eh_try ^cleanup_resume_7
     %t1 = addr $arg__3
     call void @Probe__Probe(%t1)
     eh_end
     jump ^call_unwind_end_8
 
-  block ^call_unwind_dispatch_7:
+  block ^cleanup_resume_7:
     resume
 
   block ^call_unwind_end_8:
-    eh_try ^call_unwind_dispatch_9
+    eh_try ^cleanup_action_9
     %t2 = call u8 @use(%t1, 1)
     store u8 %t2, $call__2
     %t3 = load u8 $call__2
     eh_end
     jump ^call_unwind_end_10
 
-  block ^call_unwind_dispatch_9:
+  block ^cleanup_action_9:
     call void @Probe___Probe(%t1)
-    resume
+    jump ^cleanup_resume_7
 
   block ^call_unwind_end_10:
     branch %t3, ^lor_short_5, ^lor_rhs_4
 
   block ^lor_rhs_4:
-    eh_try ^call_unwind_dispatch_9
+    eh_try ^cleanup_action_9
     %t4 = addr $arg__6
     call void @Probe__Probe(%t4)
     eh_end
-    eh_try ^call_unwind_dispatch_14
+    eh_try ^cleanup_action_14
     %t5 = call u8 @use(%t4, 1)
     store u8 %t5, $call__5
     %t6 = load u8 $call__5
     eh_end
     jump ^call_unwind_end_15
 
-  block ^call_unwind_dispatch_14:
+  block ^cleanup_action_14:
     call void @Probe___Probe(%t4)
-    call void @Probe___Probe(%t1)
-    resume
+    jump ^cleanup_action_9
 
   block ^call_unwind_end_15:
     branch %t6, ^land_rhs_11, ^land_short_12
@@ -121,40 +121,39 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^if_end_3:
     store i32 0, @destroyed
-    eh_try ^call_unwind_dispatch_7
+    eh_try ^cleanup_resume_7
     %t13 = addr $arg__9
     call void @Probe__Probe(%t13)
     eh_end
-    eh_try ^call_unwind_dispatch_27
+    eh_try ^cleanup_action_27
     %t14 = call u8 @use(%t13, 0)
     store u8 %t14, $call__8
     %t15 = load u8 $call__8
     eh_end
     jump ^call_unwind_end_28
 
-  block ^call_unwind_dispatch_27:
+  block ^cleanup_action_27:
     call void @Probe___Probe(%t13)
-    resume
+    jump ^cleanup_resume_7
 
   block ^call_unwind_end_28:
     branch %t15, ^lor_short_25, ^lor_rhs_24
 
   block ^lor_rhs_24:
-    eh_try ^call_unwind_dispatch_27
+    eh_try ^cleanup_action_27
     %t16 = addr $arg__12
     call void @Probe__Probe(%t16)
     eh_end
-    eh_try ^call_unwind_dispatch_32
+    eh_try ^cleanup_action_32
     %t17 = call u8 @use(%t16, 1)
     store u8 %t17, $call__11
     %t18 = load u8 $call__11
     eh_end
     jump ^call_unwind_end_33
 
-  block ^call_unwind_dispatch_32:
+  block ^cleanup_action_32:
     call void @Probe___Probe(%t16)
-    call void @Probe___Probe(%t13)
-    resume
+    jump ^cleanup_action_27
 
   block ^call_unwind_end_33:
     branch %t18, ^land_rhs_29, ^land_short_30
@@ -214,13 +213,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^if_end_23:
     return i32 3
 }
-function @Probe__Probe(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5ProbeC1Ev, trivial_lifecycle=yes] {
-  slot $this : ptr
 
-  block ^entry:
-    store ptr %this, $this
-    return void
-}
 function @Probe___Probe(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5ProbeD1Ev] {
   slot $this : ptr
 
@@ -231,5 +224,11 @@ function @Probe___Probe(%this : ptr) -> void [unwind=no, binding=weak, object=_Z
     store i32 %t2, @destroyed
     return void
 }
-alias object _ZN5ProbeC2Ev = @Probe__Probe
-alias object _ZN5ProbeD2Ev = @Probe___Probe
+
+function @Probe__Probe(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5ProbeC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
