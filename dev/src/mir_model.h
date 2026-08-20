@@ -311,7 +311,9 @@ struct Instruction
   bool call_unwind_no = false;
   bool call_returns_noreturn = false;
   bool call_variadic = false;
-  // Calls name their target in operands.  The fixed-size mask records the
+  // Calls name their selected target location in operands; an indirect target
+  // need not be copied to a dedicated scratch register when it remains intact
+  // through argument setup.  The fixed-size mask records the
   // physical SysV argument registers that are also read by the call: GPR bit
   // N names X64Register N and bit 16+N names XmmRegister N.  Keeping this fact
   // in MIR lets allocation, optimization, serialization, and encoding share

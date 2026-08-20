@@ -650,27 +650,6 @@ private:
     std::size_t instruction_index, lowir_model::ValueId destination) const
   { return selection::result_is_immediate_unary_not_branch(
       block, instruction_index, destination, facts_); }
-  bool result_is_next_call_address_argument(const lowir_model::LowirBlock & block,
-                                            std::size_t instruction_index,
-                                            const Instruction & producer) const
-  {
-    if(instruction_index + 1 >= block.instructions.size() ||
-       producer.type.kind == lowir_model::LTK_PTR) return false;
-    const Instruction & call = block.instructions[instruction_index + 1];
-    if(call.kind != Instruction::IK_CALL) return false;
-    std::vector<lowir_model::LowirParameter> parameters;
-    if(call.has_call_signature) parameters = call.call_params;
-    else if(call.first.kind == Operand::OP_GLOBAL) {
-      const FunctionSignature & found = signatures_[call.first.symbol];
-      if(found.params) parameters = *found.params;
-    }
-    for(std::size_t i = 0; i < call.args.size() && i < parameters.size(); ++i)
-      if(call.args[i].kind == Operand::OP_TEMP &&
-         call.args[i].value == producer.dest &&
-         parameters[i].metadata.passing != lowir_model::PPM_DIRECT)
-        return true;
-    return false;
-  }
   bool result_is_next_direct_call_argument(
       const lowir_model::LowirBlock & block, std::size_t instruction_index,
       const Instruction & producer) const
@@ -2463,10 +2442,17 @@ private:
       std::vector<MirInstruction> & out)
   {
     const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
-    if(!direct)
-      move_value_to_register(out, XR_R10, resolve(instruction.first),
-                             operand_type(instruction.first));
     const abi::Plan plan = abi::classify(parameters);
+    MirOperand indirect_target = reg_operand(XR_R10);
+    if(!direct) {
+      const MirOperand selected = resolve(instruction.first);
+      if(selected.kind == MirOperand::OP_REG &&
+         indirect_target_can_keep_register(selected.reg, plan))
+        indirect_target = selected;
+      else
+        move_value_to_register(out, XR_R10, selected,
+                               operand_type(instruction.first));
+    }
     const unsigned saved_setup_clobbers = active_setup_register_clobbers_;
     if(stabilize_extended_register_sources(
          instruction, parameters, plan, out))
@@ -2498,7 +2484,7 @@ private:
     abi::record_argument_registers(call, plan);
     append_operand(call, direct ?
       global_operand(MirOperand::OP_SYMBOL, instruction.first) :
-      reg_operand(XR_R10));
+      indirect_target);
     out.push_back(call);
     emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
     // The call and its stack teardown have consumed every input.  Retire them
@@ -2604,6 +2590,7 @@ private:
       set_value_location(instruction.args[i].value, home);
     }
     const bool direct = instruction.first.kind == Operand::OP_GLOBAL;
+    MirOperand indirect_target = reg_operand(XR_R10);
     if(!direct) {
       MirOperand pointer_cell;
       if(instruction.first.kind == Operand::OP_TEMP) {
@@ -2617,8 +2604,13 @@ private:
         append_operand(load, pointer_cell);
         out.push_back(load);
       } else {
-        move_value_to_register(out, XR_R10, resolve(instruction.first),
-                               operand_type(instruction.first));
+        const MirOperand selected = resolve(instruction.first);
+        if(selected.kind == MirOperand::OP_REG &&
+           indirect_target_can_keep_register(selected.reg, parameters))
+          indirect_target = selected;
+        else
+          move_value_to_register(out, XR_R10, selected,
+                                 operand_type(instruction.first));
       }
     }
     const bool mixed_float = call_has_scalar_float(instruction);
@@ -2672,7 +2664,7 @@ private:
         instruction.call_boundary.returns == lowir_model::CRM_NORETURN;
       call.call_stack_bytes = stack_bytes;
       abi::record_argument_registers(call, parameters);
-      append_operand(call, reg_operand(XR_R10));
+      append_operand(call, indirect_target);
       out.push_back(call);
     }
     if(stack_bytes) {

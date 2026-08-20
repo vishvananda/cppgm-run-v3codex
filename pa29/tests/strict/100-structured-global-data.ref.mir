@@ -29,6 +29,5 @@ function @main
 
   block ^entry
     load.ptr r8, @table
-    mov r10, r8
-    call *r10 [args=()]
+    call *r8 [args=()]
     ret rax

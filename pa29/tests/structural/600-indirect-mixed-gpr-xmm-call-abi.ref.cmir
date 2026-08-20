@@ -43,12 +43,11 @@ function @main
 
   block ^entry
     load.ptr r8, @table
-    mov <gpr2>, r8
     mov rdi, 10
     mov rsi, 20
     fmov.f64 xmm0, 1.5
     fmov.f64 xmm1, 2.5
-    call *<gpr2> [args=(rsi,rdi,xmm0,xmm1)]
+    call *r8 [args=(rsi,rdi,xmm0,xmm1)]
     cmp.i64 rax, 33
     sete rax
     movzx rax, rax

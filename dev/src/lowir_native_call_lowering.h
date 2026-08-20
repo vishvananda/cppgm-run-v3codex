@@ -2,6 +2,7 @@
 
 #include "lowir_native_abi.h"
 #include "lowir_native_mir.h"
+#include "lowir_native_selection.h"
 #include "lowir_native_value.h"
 #include "lowir_native_wide.h"
 
@@ -15,6 +16,62 @@ template <class Derived>
 class CallLowering
 {
 protected:
+  bool indirect_target_can_keep_register(
+      X64Register target,
+      const std::vector<lowir_model::LowirParameter> & parameters) const
+  {
+    if(target != XR_RBX && target != XR_R12 && target != XR_R13 &&
+       target != XR_R14 && target != XR_R15 &&
+       target != XR_R8 && target != XR_R9)
+      return false;
+    std::size_t gpr = 0;
+    for(std::size_t i = 0; i < parameters.size() && gpr < 6; ++i) {
+      if(selection::is_scalar_float(parameters[i].type)) continue;
+      if(abi::argument_register(gpr++) == target) return false;
+    }
+    return true;
+  }
+
+  bool indirect_target_can_keep_register(
+      X64Register target, const abi::Plan & plan) const
+  {
+    if(target != XR_RBX && target != XR_R12 && target != XR_R13 &&
+       target != XR_R14 && target != XR_R15 &&
+       target != XR_R8 && target != XR_R9)
+      return false;
+    for(std::size_t i = 0; i < plan.pieces.size(); ++i)
+      if(plan.pieces[i].location == abi::PL_GPR &&
+         plan.pieces[i].reg == target)
+        return false;
+    return true;
+  }
+
+  bool result_is_next_call_address_argument(
+      const lowir_model::LowirBlock & block,
+      std::size_t instruction_index,
+      const lowir_model::Instruction & producer) const
+  {
+    if(instruction_index + 1 >= block.instructions.size() ||
+       producer.type.kind == lowir_model::LTK_PTR) return false;
+    const lowir_model::Instruction & call =
+      block.instructions[instruction_index + 1];
+    if(call.kind != lowir_model::Instruction::IK_CALL) return false;
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    std::vector<lowir_model::LowirParameter> parameters;
+    if(call.has_call_signature) parameters = call.call_params;
+    else if(call.first.kind == lowir_model::Operand::OP_GLOBAL) {
+      const abi::FunctionSignature & found =
+        lowerer.signatures_[call.first.symbol];
+      if(found.params) parameters = *found.params;
+    }
+    for(std::size_t i = 0; i < call.args.size() && i < parameters.size(); ++i)
+      if(call.args[i].kind == lowir_model::Operand::OP_TEMP &&
+         call.args[i].value == producer.dest &&
+         parameters[i].metadata.passing != lowir_model::PPM_DIRECT)
+        return true;
+    return false;
+  }
+
   bool move_destination_is_safe(const std::vector<GprMove> & moves,
                                 std::size_t candidate) const
   {

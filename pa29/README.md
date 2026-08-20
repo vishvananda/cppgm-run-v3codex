@@ -649,6 +649,8 @@ strategies include:
   instead of materializing a temporary object address
 - transfer direct-object return chunks between their frame locations and ABI
   result registers without materializing a temporary object address
+- keep an indirect-call target in its selected register when argument setup
+  does not overwrite that register
 - use the address result's recorded final consumer to keep a nonadjacent
   direct-object call-result destination frame-shaped without rescanning the
   intervening instructions
