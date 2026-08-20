@@ -85,15 +85,30 @@ reference:
 
 1. approve the new public contract;
 2. update the owning student README and scaffold when applicable;
-3. rebuild or select the authoritative reference implementation/bundle;
+3. select and build a clean detached local reference implementation at the
+   approved contract commit;
 4. regenerate the course reducer and affected existing fixtures through the
-   documented `ref-test` target; and
+   documented `ref-test` target, passing that binary with `REF_TEST_APP`; and
 5. review the complete fixture census before committing.
 
 Never copy `.my` output from the implementation under test into `.ref`, and
-never keep the same regression under `proposed/` merely because the old bundle
-has not yet been rebuilt.  Keep the migration on its implementation branch
-until the authoritative oracle is available.
+never keep the same regression under `proposed/` merely because the pinned
+bundle still represents an earlier official export.  A typical regeneration
+command is:
+
+```sh
+make -C paN ref-test \
+  REF_TEST_APP=/absolute/path/to/clean-snapshot/dev/<tool> \
+  TEST=course/paN/<test>.t
+```
+
+The local reference binary must come from a clean, named commit that contains
+the approved contract, and regeneration must still go through the owning
+assignment's `ref-test` runner.  Do not change `reference-binaries/manifest.tsv`
+or publish a replacement downloadable bundle for an implementation-branch
+fixture migration.  The pinned bundle changes only when `cppgm-extended` is
+officially updated and its export workflow publishes the corresponding
+reference binaries.
 
 ### Invalid and undefined source
 
@@ -356,8 +371,9 @@ migration history in the student README.
 4. Backfill informational MIR for local and course behavior tests and verify
    that changing only an informational MIR file does not fail the behavior
    lane.
-5. Prepare the authoritative reference bundle/update before adding active
-   reference-disagreeing anchors.
+5. Build a clean detached local reference binary at the approved contract
+   commit and pass it to `ref-test`; leave the pinned bundle unchanged until
+   the same contract is officially exported from `cppgm-extended`.
 
 Commit this harness/policy change separately.
 
@@ -380,7 +396,8 @@ authoritative reference updates are independent.
 1. Add the eleven structural MIR reducers with `.ref.mir` and `.ref.cmir`.
 2. Add the fourteen behavior reducers with informational `.ref.mir` and no
    MIR comparison.
-3. Regenerate all references through `ref-test-pa29`.
+3. Regenerate all references through `ref-test-pa29`, passing the clean local
+   `lowir2native` reference binary with `REF_TEST_APP`.
 4. Run PA29 alone, the PA29 through-report, PA38's O1/O2 fixture census, and
    the full report.
 
@@ -406,14 +423,17 @@ Validate and commit each owning PA independently.
 3. Search all plans and handouts for instructions to put tests under
    `proposed/` and replace them with the active-course policy.
 4. Add a completion entry to this plan recording every promoted, rewritten,
-   and deleted anchor and the reference commit/bundle used.
+   and deleted anchor and the clean local reference commit used.  Record a
+   bundle version only when this work coincides with an official
+   `cppgm-extended` export.
 
 ## Reference and validation gates
 
 For each owning PA:
 
-1. Generate references only through the documented authoritative `ref-test`
-   workflow.
+1. Generate references only through the documented `ref-test` workflow, using
+   `REF_TEST_APP` to select a clean detached local binary at the approved
+   contract commit.  Do not update the pinned bundle for branch-local work.
 2. Inspect every changed input, `.ref`, exit-status, MIR, canonical MIR, and
    object-inspection sidecar.
 3. Run `make test-paN`.
@@ -444,16 +464,16 @@ tests.
 
 | Owner | Proposed anchors | Destination | Special handling | Status/commit |
 | --- | ---: | --- | --- | --- |
-| PA11 | 2 | course negative tests | retain corrected positive local fixtures | complete; updated-reference snapshot `25208d8d` |
-| PA12 | 1 | no direct promotion; replacement course reducer | remove three reserved-spelling inputs including two active local cases | complete; updated-reference snapshot `25208d8d` |
-| PA15 | 1 | course LowIR | rewrite double-underscore source names | complete; updated-reference snapshot `25208d8d` |
-| PA16 | 1 | course LowIR | authoritative ref update | complete; updated-reference snapshot `25208d8d` |
-| PA25 | 1 | course LowIR | adopt typed lambda/local-static identity | complete; updated-reference snapshot `25208d8d` |
-| PA26 | 1 | course LowIR | cleanup-sharing contract | complete; updated-reference snapshot `25208d8d` |
-| PA29 | 25 | 11 structural plus 14 behavior course tests | three course lanes; informational MIR in behavior | complete; updated-reference snapshot `bc9a2062` |
-| PA31 | 1 | course runtime family | delete private-header unit; existing `340` plus new `360`-`380` cover every safety boundary | complete; updated-reference snapshot `a810c60e` |
-| PA32 | 2 | one course inspect; one design-plan-only deletion | weak pruning remains deferred | complete; updated-reference snapshot `a810c60e` |
-| PA37 | 1 | course O1 | documented whole-caller budget | complete; updated-reference snapshot `a810c60e` |
+| PA11 | 2 | course negative tests | retain corrected positive local fixtures | complete; local reference snapshot `25208d8d` |
+| PA12 | 1 | no direct promotion; replacement course reducer | remove three reserved-spelling inputs including two active local cases | complete; local reference snapshot `25208d8d` |
+| PA15 | 1 | course LowIR | rewrite double-underscore source names | complete; local reference snapshot `25208d8d` |
+| PA16 | 1 | course LowIR | authoritative ref update | complete; local reference snapshot `25208d8d` |
+| PA25 | 1 | course LowIR | adopt typed lambda/local-static identity | complete; local reference snapshot `25208d8d` |
+| PA26 | 1 | course LowIR | cleanup-sharing contract | complete; local reference snapshot `25208d8d` |
+| PA29 | 25 | 11 structural plus 14 behavior course tests | three course lanes; informational MIR in behavior | complete; local reference snapshot `bc9a2062` |
+| PA31 | 1 | course runtime family | delete private-header unit; existing `340` plus new `360`-`380` cover every safety boundary | complete; local reference snapshot `a810c60e` |
+| PA32 | 2 | one course inspect; one design-plan-only deletion | weak pruning remains deferred | complete; local reference snapshot `a810c60e` |
+| PA37 | 1 | course O1 | documented whole-caller budget | complete; local reference snapshot `a810c60e` |
 
 ### Completed anchor inventory
 
@@ -505,11 +525,13 @@ Normalization landed in six independently validated changesets:
   `390-inline-growth-budget`.
 
 References were generated only through the owning PA `ref-test` workflows,
-using clean detached authoritative snapshots `25208d8d`, `bc9a2062`, and
-`a810c60e` as the implementation advanced.  No `.my` output was promoted to a
-reference.  The former directory now has no tracked files and has been removed
-from the working tree; active plans and handouts contain no instruction to
-recreate it.
+with `REF_TEST_APP` selecting clean detached local binaries at snapshots
+`25208d8d`, `bc9a2062`, and `a810c60e` as the implementation advanced.  No
+`.my` output was promoted to a reference.  The pinned downloadable reference
+bundle was deliberately left unchanged; it will move only with an official
+`cppgm-extended` update and export.  The former directory now has no tracked
+files and has been removed from the working tree; active plans and handouts
+contain no instruction to recreate it.
 
 Final validation on 2026-08-20 passed the full report at 5,263/5,263 and the
 PA39 file audit with zero fatal findings and 31 warnings.  Because two compiler
