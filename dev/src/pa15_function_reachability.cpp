@@ -162,9 +162,13 @@ private:
 				MarkSymbol(function.symbol, symbol.internal_linkage ?
 					RETENTION_CONSERVATIVE_FALLBACK :
 					RETENTION_EXTERNAL_STRONG);
+			const std::uint16_t semantic_reasons =
+				semantic_retention_reasons(symbol);
 			if (symbol.object_output_root)
-				MarkSymbol(function.symbol, RETENTION_REQUIRED_WEAK |
-					semantic_retention_reasons(symbol));
+				MarkSymbol(function.symbol,
+					RETENTION_REQUIRED_WEAK | semantic_reasons);
+			if (symbol.internal_linkage && semantic_reasons != 0)
+				MarkSymbol(function.symbol, semantic_reasons);
 			if (function.entry || function.initializer || function.finalizer ||
 				symbol.tls_for_symbol != kNoLowId)
 				MarkSymbol(function.symbol, RETENTION_LIFECYCLE);
@@ -255,7 +259,7 @@ Summary PruneUnreachableWeakFunctions(TypedProgram* program)
 {
 	if (!program) throw std::logic_error(
 		"cannot prune a null typed LowIR program");
-	Analyzer analyzer(*program, true);
+	Analyzer analyzer(*program, false);
 	Summary result = analyzer.Run();
 	std::vector<unsigned char> removed_symbols(program->symbols.size(), 0);
 	std::vector<Function> retained;
@@ -264,7 +268,9 @@ Summary PruneUnreachableWeakFunctions(TypedProgram* program)
 	{
 		Function& function = program->functions[i];
 		const std::uint32_t symbol = function.symbol;
-		if (!analyzer.Reachable(i) && program->symbols[symbol].weak_linkage)
+		if (!analyzer.Reachable(i) &&
+			(program->symbols[symbol].weak_linkage ||
+			 program->symbols[symbol].internal_linkage))
 		{
 			removed_symbols[symbol] = 1;
 			program->symbols[symbol].definition_emitted = false;

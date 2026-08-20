@@ -68,7 +68,8 @@ private:
 		for (std::size_t i = 0; i < program_.functions.size(); ++i)
 		{
 			const Function& function = program_.functions[i];
-			if (function.metadata.binding != SBM_WEAK ||
+			if ((function.metadata.binding != SBM_WEAK &&
+				 function.metadata.binding != SBM_INTERNAL) ||
 				function.metadata.object_output_root ||
 				function.metadata.role == SR_ENTRY ||
 				function.metadata.role == SR_INIT ||
@@ -119,7 +120,8 @@ FunctionPruningSummary prune_unreachable_weak_functions(Program& program)
 	for (std::size_t i = 0; i < program.functions.size(); ++i)
 	{
 		if (!reachability.Reachable(i) &&
-			program.functions[i].metadata.binding == SBM_WEAK)
+			(program.functions[i].metadata.binding == SBM_WEAK ||
+			 program.functions[i].metadata.binding == SBM_INTERNAL))
 		{
 			removed[program.functions[i].symbol] = 1;
 			++result.pruned_functions;

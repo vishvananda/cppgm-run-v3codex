@@ -385,7 +385,8 @@ void AdaptSymbolFacts(const Symbol& source,
 	symbol->section_name = source.section_name;
 	symbol->keep_internal_alias = false;
 	symbol->prefer_local_object_binding = source.prefer_local_object_binding;
-	symbol->object_output_root = source.object_output_root;
+	symbol->object_output_root = source.object_output_root ||
+		(source.internal_linkage && source.demand_reason_mask != 0);
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	symbol->force_inline = source.force_inline;
 	symbol->no_inline = source.no_inline;
