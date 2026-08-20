@@ -633,6 +633,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 	for (std::size_t i = 0; i < entity_layout_members_[entity].size(); ++i)
 		EnsureClassDefinition(entity_layout_members_[entity][i].type);
 	EntityRecord& owner = program_->entities[entity];
+	InitializeClassZeroSpanFacts(entity);
 	std::size_t size = 0;
 	std::size_t alignment = 1;
 	std::size_t natural_alignment = 1;
@@ -677,6 +678,7 @@ void SemanticAnalyzer::CompleteClassLayout(EntityId entity)
 		++class_layout_member_visits_;
 		const ClassLayoutMember layout = entity_layout_members_[entity][i];
 		EntityRecord& current_owner = program_->entities[entity];
+		AccumulateClassZeroSpanFacts(entity, layout.type);
 		BindingRecord* member = layout.binding == kNoBinding ? 0 :
 			&program_->bindings[layout.binding];
 		BindingLayoutFact* member_layout = member ?

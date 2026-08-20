@@ -4,6 +4,7 @@
 #include "pa15_lowering_support.h"
 #include "pa15_lowir_model.h"
 #include "pa12_semantic_model.h"
+#include "pa16_zero_initialization.h"
 
 #include <cstdint>
 #include <stdexcept>
@@ -227,6 +228,17 @@ protected:
 			const TypeRecord& object = derived.program_.types.Get(
 				derived.ExpressionObjectType(type));
 			if (derived.program_.entities[object.entity].empty_class) return;
+		}
+		const LowType storage_type = derived.LowerStorageType(type);
+		if (storage_type.kind == LOW_OBJECT &&
+			pa16_zero_initialization::ContiguousSpanEligible(
+				derived.program_, type))
+		{
+			Instruction zero(Instruction::ZERO_OBJECT);
+			zero.type = storage_type;
+			zero.first = destination;
+			derived.Emit(zero);
+			return;
 		}
 		const std::size_t size = derived.program_.SizeOf(type);
 		if (size > 64)

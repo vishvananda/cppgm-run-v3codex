@@ -1258,6 +1258,9 @@ private:
 	bool IsConstexprDefaultConstructibleType(TypeId type) const;
 	bool IsConstexprImplicitDefaultConstructor(EntityId entity) const;
 	bool IsVolatileSubobjectType(TypeId type) const;
+	bool TypeContainsUnionSubobject(TypeId type) const;
+	void InitializeClassZeroSpanFacts(EntityId entity);
+	void AccumulateClassZeroSpanFacts(EntityId entity, TypeId type);
 	bool IsConstexprCallableType(TypeId type, bool constructor) const;
 	TypeId ApplyConstexprMemberFunctionType(TypeId type, EntityId owner,
 		bool static_member);

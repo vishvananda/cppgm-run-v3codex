@@ -282,17 +282,6 @@ bool SemanticAnalyzer::IsConstexprImplicitDefaultConstructor(
 	return true;
 }
 
-bool SemanticAnalyzer::IsVolatileSubobjectType(TypeId type) const
-{
-	const TypeRecord& record = program_->types.Get(type);
-	if (record.kind == TYPE_QUALIFIED)
-		return (record.cv & CV_VOLATILE) != 0 ||
-			IsVolatileSubobjectType(record.child);
-	if (record.kind == TYPE_ARRAY)
-		return IsVolatileSubobjectType(record.child);
-	return false;
-}
-
 bool SemanticAnalyzer::IsConstexprCallableType(TypeId type,
 	bool constructor) const
 {

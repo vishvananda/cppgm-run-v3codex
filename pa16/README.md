@@ -273,6 +273,10 @@ PA16 supports the following in addition to the PA15 procedural subset:
   return paths may converge on a continuation only after preserving the return
   value and only when the destructor sequence and enclosing control context are
   identical
+- one `zeroinit` operation for value-initialization that already identifies an
+  exact contiguous nonvolatile, non-union object or subobject span; explicit
+  initializer actions and union, volatile, lifetime, or side-effect boundaries
+  remain separate
 - recursive member/base construction and destruction for supported class-type subobjects
 - anonymous struct/union members, including injected member lookup and layout in
   the supported class subset
@@ -359,5 +363,8 @@ Useful intermediate representations include:
 - compact cleanup-state identities formed from an action, its tail, its terminal
   continuation, and its control context; interning those identities while
   lowering avoids copying or repeatedly comparing complete destructor sequences
+- exact typed size/alignment and volatile/union-containment layout facts can
+  select a contiguous `zeroinit` at the initialization site without rescanning
+  emitted instructions
 - demand-driven helper emission keyed by semantic entities rather than source
   spelling, so unused constructors/destructors do not perturb earlier outputs

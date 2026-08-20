@@ -475,6 +475,7 @@ struct EntityRecord
 		polymorphic_class, abstract_class, final_class;
 	bool nonlinear_base_graph;
 	bool has_nonzero_base_subobject_offset;
+	bool has_volatile_subobject, has_union_subobject;
 	bool deferred_template_completion;
 	bool explicit_instantiation_suppressed;
 	bool explicit_template_specialization;
