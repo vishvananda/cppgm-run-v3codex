@@ -90,8 +90,9 @@ struct ParamBinding
   // emitted have left it intact, even if a fixed home carries the value across
   // a later clobber. A logical instruction that emits no MIR does not clobber
   // the incoming location; lowering can maintain this fact in a fixed mask.
-  // A same-type scalar copy may share this location when the copied result's
-  // complete interval also crosses no clobber.
+  // A representation-preserving scalar copy, including ptr/i64, may share
+  // this location when the copied result's complete interval also crosses no
+  // clobber. Width- and sign-changing conversions remain explicit.
   lowir_model::PresentationName name;
   X64Register reg = XR_RDI;
   XmmRegister xmm = XMM_0;

@@ -164,3 +164,10 @@ operations from the function MIR and execute the input successfully.  Their
 unrelated startup-call syntax differs, while program behavior observes only
 the constant return, so the input remains a supplemental shape witness rather
 than an active exact-MIR fixture.
+
+`representation-preserving-copy-placement.t` round-trips a pointer through
+the target's same-width `i64` representation. Both compilers execute the
+input successfully, but the course reference assigns new registers to the two
+bit-preserving copies. Program behavior duplicates active pointer-copy
+coverage, so the input remains a placement-shape witness rather than forcing
+the older MIR layout into the active suite.

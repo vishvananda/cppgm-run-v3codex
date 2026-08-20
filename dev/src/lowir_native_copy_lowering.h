@@ -50,9 +50,15 @@ protected:
            original.spill_home.frame_binding == source.frame_binding))) ||
         (source.kind == mir_model::MirOperand::OP_REG &&
          !lowerer.crosses_register_clobber(instruction.dest, source.reg));
-      if(stable &&
-         lowir_model::same_lowir_type(original.type, instruction.type)) {
+      const bool same_representation =
+        lowir_model::same_lowir_type(original.type, instruction.type) ||
+        ((original.type.kind == lowir_model::LTK_PTR &&
+          instruction.type.kind == lowir_model::LTK_I64) ||
+         (original.type.kind == lowir_model::LTK_I64 &&
+          instruction.type.kind == lowir_model::LTK_PTR));
+      if(stable && same_representation) {
         ValueFact alias = original;
+        alias.type = instruction.type;
         alias.parameter = false;
         alias.fixed_register_home = false;
         lowerer.set_value(instruction.dest, alias);
