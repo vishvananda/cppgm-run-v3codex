@@ -525,7 +525,7 @@ ExpressionInfo SemanticAnalyzer::ApplyTarget(ExpressionInfo value,
 		const std::uint32_t complete_object = ExpressionCompleteObject(value);
 		const bool binds_temporary =
 			target_record.kind == TYPE_LVALUE_REFERENCE &&
-			value.category != VALUE_LVALUE;
+			value.category == VALUE_PRVALUE;
 		if (binds_temporary && EntityOf(value.type) != kNoEntity &&
 			dump_.nodes[value.node].kind != DUMP_TEMPORARY_OBJECT)
 			value = MaterializeTemporary(value);

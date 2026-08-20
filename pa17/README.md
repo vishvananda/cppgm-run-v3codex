@@ -253,6 +253,9 @@ PA17 supports the following in addition to the PA16 subset:
   site instead of forcing a separate synthesized trivial constructor call
 - empty class objects and subobjects use the same address-based class copy paths as
   other class objects; lowering must not invent a scalar payload for an empty class
+- an xvalue class glvalue bound to a reference through a derived-to-base
+  conversion designates the existing base subobject; it is not materialized as
+  a new complete object
 - temporary class-object materialization in the common cases required by:
   - copy initialization from function results
   - pass-by-value call arguments
@@ -366,6 +369,9 @@ Useful intermediate representations include:
   source-level semantic types
 - a stable way to identify the supported temporary-materialization points without requiring
   a fully general temporary lifetime model yet
+- a value-category check that distinguishes prvalues needing storage from
+  xvalue glvalues that already designate storage before applying a base
+  projection for reference binding
 - extension of PA16 cleanup-state identities with temporary object and
   conditional-lifetime facts, built from the terminal backward so equal
   suffixes can be reused in expected constant time per action

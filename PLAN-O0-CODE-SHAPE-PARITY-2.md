@@ -525,6 +525,37 @@ the larger `std::vector` family.  Do not special-case empty classes, allocator
 names, `std::move`, or object byte width; the rule follows the existing typed
 reference category and base-projection facts.
 
+#### S5a completion record: derived xvalue reference binding
+
+The reduced semantic defect was the derived-to-base reference-binding
+predicate: it treated every non-lvalue as requiring temporary materialization.
+An xvalue is already a glvalue designating storage, so only a prvalue needs a
+new materialization before the base projection.  The corrected typed
+value-category check removes the complete-object `refcall` slot and projects
+the existing object directly.  Clang's AST independently shows the same
+`DerivedToBase` binding without a materialization node.
+
+The new PA17 course fixture covers an empty base with a `const` reference copy
+constructor and a nonempty sibling base.  The old compiler rejects it while
+trying to lower the mismatched complete-object temporary; the corrected LowIR
+has two direct base projections.  PA17's current requirement and its
+non-normative design note now distinguish prvalue materialization from xvalue
+glvalue binding without describing implementation history.
+
+For the frozen compile this removes 5,216 object bytes, 2,126 `.text*` bytes,
+528 `.gcc_except_table` bytes, 2,328 relocation bytes, 97 relocations, two
+defined functions, and 512 decoded instructions.  It removes 33
+`cppgm_call_terminate` and 33 `__cxa_begin_catch` calls; `_Unwind_Resume` stays
+at 821.  The reduced `std::vector<Item>` object loses 456 object bytes, 192
+text bytes, 48 LSDA bytes, nine relocations, and 46 decoded instructions.
+
+Three A/B/B/A blocks measured baseline/candidate median wall time
+4.555/4.540 seconds, user time 4.105/4.100 seconds, and peak RSS
+360,226/361,000 KiB.  That is -0.33% wall, -0.12% user, and +0.21% RSS.  The
+phase passes PA17's 244 tests, all 1,714 report tests through PA17, the full
+5,277-test report, `git diff --check`, and the PA39 audit with zero fatal
+findings.
+
 ### S6: retain scalar values through bounded baseline regions
 
 After direct-construction misses are removed, extend PA29's existing
@@ -657,12 +688,12 @@ Fill one row after each retained phase.
 
 | Phase | Public fixture effect | Frozen code/EH effect | Compile time/RSS | Validation | Status/commit |
 | --- | --- | --- | --- | --- | --- |
-| S0 baseline/instrumentation | none | byte-identical 3,246,896-byte baseline; typed movement/home/EH census above | +0.49% paired median user, -0.01% RSS | 5,276/5,276 full report; four script tests; zero-fatal audit | complete; instrumentation changeset |
+| S0 baseline/instrumentation | none | byte-identical 3,246,896-byte baseline; typed movement/home/EH census above | +0.49% paired median user, -0.01% RSS | 5,276/5,276 full report; four script tests; zero-fatal audit | complete; `1048f6c5` |
 | S1 nonthrowing propagation | route by earliest semantic owner | pending | pending | pending | planned |
 | S2 shared terminate action | PA26 LowIR; PA31 behavior/inspect | pending | pending | pending | planned |
 | S3 physical resume terminal | PA31 behavior/inspect only; no LowIR/MIR migration | pending | pending | pending | planned |
 | S4 cleanup equivalence | PA16/PA17/PA26 only as proven | pending | pending | pending | planned |
-| S5 destination placement | earliest LowIR owner or PA29 MIR as classified | pending | pending | pending | planned |
+| S5 destination placement | PA17 direct xvalue-to-base reference binding added; later PA29 work pending | S5a: -2,126 text, -528 LSDA, -97 relocations, -33 terminate calls | -0.12% paired median user, +0.21% RSS | PA17 244/244; through-PA17 1,714/1,714; full 5,277/5,277; zero-fatal audit | S5a complete; remaining S5 planned |
 | S6 bounded scalar retention | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S7 width normalization | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
