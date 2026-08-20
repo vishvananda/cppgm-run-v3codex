@@ -226,6 +226,11 @@ int run_lowir2native_mode(const vector<string> & args)
          << " reclaim_attempts=" << stats.reclaim_attempts
          << " reclaim_parameter_visits=" << stats.reclaim_parameter_visits
          << " reclaims=" << stats.reclaims
+         << " immediate_stores_selected=" << stats.immediate_stores_selected
+         << " memory_rhs_operations_selected="
+         << stats.memory_rhs_operations_selected
+         << " native_returns=" << stats.native_returns
+         << " physical_epilogues=" << stats.physical_epilogues
          << " fixups=" << stats.fixups
          << " output_bytes=" << stats.output_bytes
          << " parse_ns=" << chrono::duration_cast<chrono::nanoseconds>(

@@ -74,6 +74,10 @@ struct Stats
   std::size_t eh_call_sites = 0;
   std::size_t eh_lsda_call_sites = 0;
   std::size_t eh_coalesced_call_sites = 0;
+  std::size_t immediate_stores_selected = 0;
+  std::size_t memory_rhs_operations_selected = 0;
+  std::size_t native_returns = 0;
+  std::size_t physical_epilogues = 0;
   std::size_t fixups = 0;
   std::size_t output_bytes = 0;
   std::uint64_t lower_nanoseconds = 0;

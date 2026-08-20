@@ -1870,6 +1870,12 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " eh_lsda_call_sites=" << native_stats.eh_lsda_call_sites
          << " eh_coalesced_call_sites="
          << native_stats.eh_coalesced_call_sites
+         << " immediate_stores_selected="
+         << native_stats.immediate_stores_selected
+         << " memory_rhs_operations_selected="
+         << native_stats.memory_rhs_operations_selected
+         << " native_returns=" << native_stats.native_returns
+         << " physical_epilogues=" << native_stats.physical_epilogues
          << " fixups=" << native_stats.fixups
          << " output_bytes=" << native_stats.output_bytes
          << " lower_ns=" << native_stats.lower_nanoseconds
@@ -2841,6 +2847,20 @@ void report_lowir_lowering_stats(const cppgm::LowIRLoweringStats & stats)
 			 << stats.cleanup_dispatch_cache_hits
 			 << " cleanup_dispatch_entries="
 			 << stats.cleanup_dispatch_entries
+			 << " cleanup_state_probes=" << stats.cleanup_state_probes
+			 << " cleanup_state_hits=" << stats.cleanup_state_hits
+			 << " cleanup_unique_states=" << stats.cleanup_unique_states
+			 << " cleanup_blocks_emitted=" << stats.cleanup_blocks_emitted
+			 << " cleanup_destructor_actions_avoided="
+			 << stats.cleanup_destructor_actions_avoided
+			 << " cleanup_resume_operations_avoided="
+			 << stats.cleanup_resume_operations_avoided
+			 << " bit_field_storage_unit_transfers="
+			 << stats.bit_field_storage_unit_transfers
+			 << " constant_template_bytes=" << stats.constant_template_bytes
+			 << " constant_template_globals="
+			 << stats.constant_template_globals
+			 << " constant_template_copies=" << stats.constant_template_copies
 			 << " conditional_lifetime_slots="
 			 << stats.conditional_lifetime_slots
 			 << " conditional_lifetime_marks="

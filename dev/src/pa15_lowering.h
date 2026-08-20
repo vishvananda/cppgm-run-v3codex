@@ -58,6 +58,16 @@ struct LowIRLoweringStats
 	std::size_t cleanup_dispatch_probes;
 	std::size_t cleanup_dispatch_cache_hits;
 	std::size_t cleanup_dispatch_entries;
+	std::size_t cleanup_state_probes;
+	std::size_t cleanup_state_hits;
+	std::size_t cleanup_unique_states;
+	std::size_t cleanup_blocks_emitted;
+	std::size_t cleanup_destructor_actions_avoided;
+	std::size_t cleanup_resume_operations_avoided;
+	std::size_t bit_field_storage_unit_transfers;
+	std::size_t constant_template_bytes;
+	std::size_t constant_template_globals;
+	std::size_t constant_template_copies;
 	std::size_t conditional_lifetime_slots;
 	std::size_t conditional_lifetime_marks;
 	std::size_t branch_cleanup_actions;

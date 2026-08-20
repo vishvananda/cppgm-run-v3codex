@@ -1,0 +1,192 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $lor__1 : i64
+
+  block ^entry:
+    %t1 = call i32 @read_digits()
+    %t2 = cmp ne i32 %t1, 50
+    branch %t2, ^lor_short_2, ^lor_rhs_1
+
+  block ^lor_rhs_1:
+    %t3 = call i32 @read_digits__ov2()
+    %t4 = cmp ne i32 %t3, 53
+    %t5 = cmp ne i64 %t4, 0
+    store i64 %t5, $lor__1
+    jump ^lor_end_3
+
+  block ^lor_short_2:
+    store i64 1, $lor__1
+    jump ^lor_end_3
+
+  block ^lor_end_3:
+    %t6 = load i64 $lor__1
+    %t7 = convert zext i32 u8 %t6
+    return i32 %t7
+}
+
+function @read_digits() -> i32 [binding=weak, object=_Z11read_digitsILi2EEiv] {
+  slot $first : obj<7x1>
+  slot $second : obj<7x1>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+
+  block ^entry:
+    %t1 = addr $first
+    store i8 48, %t1
+    %t2 = index i8 %t1, 1
+    store i8 49, %t2
+    %t3 = index i8 %t1, 2
+    store i8 50, %t3
+    %t4 = index i8 %t1, 3
+    store i8 51, %t4
+    %t5 = index i8 %t1, 4
+    store i8 52, %t5
+    %t6 = index i8 %t1, 5
+    store i8 53, %t6
+    %t7 = index i8 %t1, 6
+    store i8 0, %t7
+    %t8 = addr $second
+    store i8 48, %t8
+    %t9 = index i8 %t8, 1
+    store i8 49, %t9
+    %t10 = index i8 %t8, 2
+    store i8 50, %t10
+    %t11 = index i8 %t8, 3
+    store i8 51, %t11
+    %t12 = index i8 %t8, 4
+    store i8 52, %t12
+    %t13 = index i8 %t8, 5
+    store i8 53, %t13
+    %t14 = index i8 %t8, 6
+    store i8 0, %t14
+    %t15 = addr $first
+    %t16 = unary decay ptr %t15
+    %t17 = addr $second
+    %t18 = unary decay ptr %t17
+    %t19 = cmp ne ptr %t16, %t18
+    branch %t19, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t20 = addr $first
+    %t21 = unary decay ptr %t20
+    %t22 = index i8 [projection=array_element] %t21, 2
+    %t23 = load i8 %t22
+    %t24 = addr $second
+    %t25 = unary decay ptr %t24
+    %t26 = index i8 [projection=array_element] %t25, 2
+    %t27 = load i8 %t26
+    %t28 = convert sext i32 i8 %t23
+    %t29 = convert sext i32 i8 %t27
+    %t30 = cmp eq i32 %t28, %t29
+    %t31 = cmp ne i64 %t30, 0
+    store i64 %t31, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t32 = load i64 $land__2
+    branch %t32, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    %t33 = addr $first
+    %t34 = unary decay ptr %t33
+    %t35 = index i8 [projection=array_element] %t34, 2
+    %t36 = load i8 %t35
+    %t37 = convert sext i32 i8 %t36
+    store i32 %t37, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t38 = load i32 $cond__1
+    return i32 %t38
+}
+
+function @read_digits__ov2() -> i32 [binding=weak, object=_Z11read_digitsILi5EEiv] {
+  slot $first : obj<7x1>
+  slot $second : obj<7x1>
+  slot $cond__1 : i32
+  slot $land__2 : i64
+
+  block ^entry:
+    %t1 = addr $first
+    store i8 48, %t1
+    %t2 = index i8 %t1, 1
+    store i8 49, %t2
+    %t3 = index i8 %t1, 2
+    store i8 50, %t3
+    %t4 = index i8 %t1, 3
+    store i8 51, %t4
+    %t5 = index i8 %t1, 4
+    store i8 52, %t5
+    %t6 = index i8 %t1, 5
+    store i8 53, %t6
+    %t7 = index i8 %t1, 6
+    store i8 0, %t7
+    %t8 = addr $second
+    store i8 48, %t8
+    %t9 = index i8 %t8, 1
+    store i8 49, %t9
+    %t10 = index i8 %t8, 2
+    store i8 50, %t10
+    %t11 = index i8 %t8, 3
+    store i8 51, %t11
+    %t12 = index i8 %t8, 4
+    store i8 52, %t12
+    %t13 = index i8 %t8, 5
+    store i8 53, %t13
+    %t14 = index i8 %t8, 6
+    store i8 0, %t14
+    %t15 = addr $first
+    %t16 = unary decay ptr %t15
+    %t17 = addr $second
+    %t18 = unary decay ptr %t17
+    %t19 = cmp ne ptr %t16, %t18
+    branch %t19, ^land_rhs_4, ^land_short_5
+
+  block ^land_rhs_4:
+    %t20 = addr $first
+    %t21 = unary decay ptr %t20
+    %t22 = index i8 [projection=array_element] %t21, 5
+    %t23 = load i8 %t22
+    %t24 = addr $second
+    %t25 = unary decay ptr %t24
+    %t26 = index i8 [projection=array_element] %t25, 5
+    %t27 = load i8 %t26
+    %t28 = convert sext i32 i8 %t23
+    %t29 = convert sext i32 i8 %t27
+    %t30 = cmp eq i32 %t28, %t29
+    %t31 = cmp ne i64 %t30, 0
+    store i64 %t31, $land__2
+    jump ^land_end_6
+
+  block ^land_short_5:
+    store i64 0, $land__2
+    jump ^land_end_6
+
+  block ^land_end_6:
+    %t32 = load i64 $land__2
+    branch %t32, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    %t33 = addr $first
+    %t34 = unary decay ptr %t33
+    %t35 = index i8 [projection=array_element] %t34, 5
+    %t36 = load i8 %t35
+    %t37 = convert sext i32 i8 %t36
+    store i32 %t37, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t38 = load i32 $cond__1
+    return i32 %t38
+}

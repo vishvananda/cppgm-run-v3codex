@@ -1,0 +1,235 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $source : obj<12x4>
+  slot $copied : obj<12x4>
+  slot $lor__1 : i64
+  slot $lor__2 : i64
+  slot $lor__3 : i64
+  slot $lor__4 : i64
+
+  block ^entry:
+    %t1 = addr $source
+    call void @YBits__YBits(%t1)
+    %t2 = addr $source
+    %t3 = index i8 [projection=field] %t2, 4
+    %t4 = binary and i32 5, 7
+    %t5 = load i32 %t3
+    %t6 = binary and i32 %t5, 4294967288
+    %t7 = binary or i32 %t6, %t4
+    store i32 %t7, %t3
+    %t8 = addr $source
+    %t9 = index i8 [projection=field] %t8, 4
+    %t10 = binary and i32 17, 31
+    %t11 = binary shl i32 %t10, 3
+    %t12 = load i32 %t9
+    %t13 = binary and i32 %t12, 4294967047
+    %t14 = binary or i32 %t13, %t11
+    store i32 %t14, %t9
+    %t15 = addr $source
+    %t16 = index i8 [projection=field] %t15, 8
+    %t17 = binary and i32 9, 15
+    %t18 = load i32 %t16
+    %t19 = binary and i32 %t18, 4294967280
+    %t20 = binary or i32 %t19, %t17
+    store i32 %t20, %t16
+    %t21 = addr $source
+    %t22 = index i8 [projection=field] %t21, 8
+    %t23 = binary and i32 12, 15
+    %t24 = binary shl i32 %t23, 4
+    %t25 = load i32 %t22
+    %t26 = binary and i32 %t25, 4294967055
+    %t27 = binary or i32 %t26, %t24
+    store i32 %t27, %t22
+    %t28 = addr $source
+    %t29 = index i8 [projection=field] %t28, 0
+    %t30 = index i8 [projection=field] %t29, 0
+    store i32 23, %t30
+    %t31 = addr $copied
+    %t32 = addr $source
+    call void @YBits__YBits__sym2(%t31, %t32)
+    %t33 = addr $copied
+    %t34 = index i8 [projection=field] %t33, 4
+    %t35 = load i32 %t34
+    %t36 = binary and i32 %t35, 7
+    %t37 = cmp ne u32 %t36, 5
+    branch %t37, ^lor_short_11, ^lor_rhs_10
+
+  block ^lor_rhs_10:
+    %t38 = addr $copied
+    %t39 = index i8 [projection=field] %t38, 4
+    %t40 = load i32 %t39
+    %t41 = binary shr i32 %t40, 3
+    %t42 = binary and i32 %t41, 31
+    %t43 = cmp ne u32 %t42, 17
+    %t44 = cmp ne i64 %t43, 0
+    store i64 %t44, $lor__4
+    jump ^lor_end_12
+
+  block ^lor_short_11:
+    store i64 1, $lor__4
+    jump ^lor_end_12
+
+  block ^lor_end_12:
+    %t45 = load i64 $lor__4
+    branch %t45, ^lor_short_8, ^lor_rhs_7
+
+  block ^lor_rhs_7:
+    %t46 = addr $copied
+    %t47 = index i8 [projection=field] %t46, 8
+    %t48 = load i32 %t47
+    %t49 = binary and i32 %t48, 15
+    %t50 = cmp ne u32 %t49, 9
+    %t51 = cmp ne i64 %t50, 0
+    store i64 %t51, $lor__3
+    jump ^lor_end_9
+
+  block ^lor_short_8:
+    store i64 1, $lor__3
+    jump ^lor_end_9
+
+  block ^lor_end_9:
+    %t52 = load i64 $lor__3
+    branch %t52, ^lor_short_5, ^lor_rhs_4
+
+  block ^lor_rhs_4:
+    %t53 = addr $copied
+    %t54 = index i8 [projection=field] %t53, 8
+    %t55 = load i32 %t54
+    %t56 = binary shr i32 %t55, 4
+    %t57 = binary and i32 %t56, 15
+    %t58 = cmp ne u32 %t57, 12
+    %t59 = cmp ne i64 %t58, 0
+    store i64 %t59, $lor__2
+    jump ^lor_end_6
+
+  block ^lor_short_5:
+    store i64 1, $lor__2
+    jump ^lor_end_6
+
+  block ^lor_end_6:
+    %t60 = load i64 $lor__2
+    branch %t60, ^lor_short_2, ^lor_rhs_1
+
+  block ^lor_rhs_1:
+    %t61 = addr $copied
+    %t62 = index i8 [projection=field] %t61, 0
+    %t63 = index i8 [projection=field] %t62, 0
+    %t64 = load i32 %t63
+    %t65 = cmp ne i32 %t64, 23
+    %t66 = cmp ne i64 %t65, 0
+    store i64 %t66, $lor__1
+    jump ^lor_end_3
+
+  block ^lor_short_2:
+    store i64 1, $lor__1
+    jump ^lor_end_3
+
+  block ^lor_end_3:
+    %t67 = load i64 $lor__1
+    %t68 = convert zext i32 u8 %t67
+    return i32 %t68
+}
+
+function @YBits__YBits(%this : ptr) -> void [binding=weak, object=_ZN5YBitsC1Ev, trivial_lifecycle=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    call void @YMember__YMember(%t2)
+    return void
+}
+
+function @YBits__YBits__sym2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN5YBitsC1ERKS_] {
+  slot $this : ptr
+  slot $other : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %other, $other
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr $other
+    %t4 = index i8 [projection=field] %t3, 0
+    call void @YMember__YMember__ov2(%t2, %t4)
+    %t5 = load ptr $this
+    %t6 = index i8 [projection=field] %t5, 4
+    %t7 = load ptr $other
+    %t8 = index i8 [projection=field] %t7, 4
+    %t9 = load i32 %t8
+    %t10 = binary and i32 %t9, 7
+    %t11 = copy i32 %t10
+    %t12 = binary and i32 %t11, 7
+    %t13 = load i32 %t6
+    %t14 = binary and i32 %t13, 4294967288
+    %t15 = binary or i32 %t14, %t12
+    store i32 %t15, %t6
+    %t16 = load ptr $this
+    %t17 = index i8 [projection=field] %t16, 4
+    %t18 = load ptr $other
+    %t19 = index i8 [projection=field] %t18, 4
+    %t20 = load i32 %t19
+    %t21 = binary shr i32 %t20, 3
+    %t22 = binary and i32 %t21, 31
+    %t23 = copy i32 %t22
+    %t24 = binary and i32 %t23, 31
+    %t25 = binary shl i32 %t24, 3
+    %t26 = load i32 %t17
+    %t27 = binary and i32 %t26, 4294967047
+    %t28 = binary or i32 %t27, %t25
+    store i32 %t28, %t17
+    %t29 = load ptr $this
+    %t30 = index i8 [projection=field] %t29, 8
+    %t31 = load ptr $other
+    %t32 = index i8 [projection=field] %t31, 8
+    %t33 = load i32 %t32
+    %t34 = binary and i32 %t33, 15
+    %t35 = copy i32 %t34
+    %t36 = binary and i32 %t35, 15
+    %t37 = load i32 %t30
+    %t38 = binary and i32 %t37, 4294967280
+    %t39 = binary or i32 %t38, %t36
+    store i32 %t39, %t30
+    %t40 = load ptr $this
+    %t41 = index i8 [projection=field] %t40, 8
+    %t42 = load ptr $other
+    %t43 = index i8 [projection=field] %t42, 8
+    %t44 = load i32 %t43
+    %t45 = binary shr i32 %t44, 4
+    %t46 = binary and i32 %t45, 15
+    %t47 = copy i32 %t46
+    %t48 = binary and i32 %t47, 15
+    %t49 = binary shl i32 %t48, 4
+    %t50 = load i32 %t41
+    %t51 = binary and i32 %t50, 4294967055
+    %t52 = binary or i32 %t51, %t49
+    store i32 %t52, %t41
+    return void
+}
+
+function @YMember__YMember(%this : ptr) -> void [binding=weak, object=_ZN7YMemberC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    store i32 0, %t2
+    return void
+}
+
+function @YMember__YMember__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN7YMemberC1ERKS_] {
+  slot $this : ptr
+  slot $other : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %other, $other
+    %t1 = load ptr $other
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i32 %t2
+    %t4 = load ptr $this
+    %t5 = index i8 [projection=field] %t4, 0
+    store i32 %t3, %t5
+    return void
+}

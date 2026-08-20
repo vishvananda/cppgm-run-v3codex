@@ -1,0 +1,89 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @choose
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    cmp.i64 rdi, 0
+    je ^return_11
+    jmp ^second_test
+
+  block ^second_test
+    cmp.i64 rdi, 1
+    je ^return_22
+    jmp ^third_test
+
+  block ^third_test
+    cmp.i64 rdi, 2
+    je ^return_33
+    jmp ^return_44
+
+  block ^return_11
+    mov rax, 11
+    ret rax
+
+  block ^return_22
+    mov rax, 22
+    ret rax
+
+  block ^return_33
+    mov rax, 33
+    ret rax
+
+  block ^return_44
+    mov rax, 44
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 80
+    scratch_bytes 48
+    preserve rbx r12 r13
+
+  block ^entry
+    mov rdi, 0
+    call @choose [args=(rdi)]
+    mov rbx, rax
+    mov rdi, 1
+    call @choose [args=(rdi)]
+    mov r12, rax
+    mov rdi, 2
+    call @choose [args=(rdi)]
+    mov r13, rax
+    mov rdi, 3
+    call @choose [args=(rdi)]
+    mov r8, rax
+    mov rdx, 11
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 22
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 33
+    cmp.i64 r13, rdx
+    setne r13
+    movzx r13, r13
+    mov rdx, 44
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r12
+    or r13, r8
+    or rbx, r13
+    mov rax, rbx
+    sext.i32 rax
+    ret rax

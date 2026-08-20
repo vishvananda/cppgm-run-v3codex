@@ -52,20 +52,20 @@ Both paths resolve GCC 15 libstdc++ headers under `/usr/include/c++/15` and
 and the explicit `-stdlib=libstdc++` build were byte-identical, with SHA-256
 `ce641b7f4071208928869b95b7a251080c9dfe0845cbdcd5b00a2c5dcf68a212`.
 The retained cppgm++ comparison object has SHA-256
-`520af5ad2cc527d93df30616ee074ad5cfd906c301d9988b0ac0dc450b2f6af1`.
+`22d0eae97f74e257bc3daa3b967e630101830c2220064b9f3488c3cf8310d0a8`.
 
 | Metric | cppgm++ `-O0` | Clang `-O0` | Gap |
 | --- | ---: | ---: | ---: |
-| ELF object bytes | 4,406,784 | 2,477,128 | 1,929,656 |
-| all `.text*` bytes | 921,144 | 523,269 | 397,875 |
-| base `.text` bytes | 593,488 | 308,743 | 284,745 |
+| ELF object bytes | 4,406,272 | 2,477,128 | 1,929,144 |
+| all `.text*` bytes | 921,044 | 523,269 | 397,775 |
+| base `.text` bytes | 593,388 | 308,743 | 284,645 |
 | COMDAT `.text*` bytes | 327,656 | 214,526 | 113,130 |
 | `.gcc_except_table` bytes | 46,307 | 19,992 | 26,315 |
-| `.eh_frame` bytes | 137,648 | 115,024 | 22,624 |
-| relocation bytes | 934,872 | 470,328 | 464,544 |
-| relocations | 38,953 | 19,597 | 19,356 |
-| decoded instructions | 227,464 | 124,116 | 103,348 |
-| defined functions | 5,533 | 3,476 | 2,057 |
+| `.eh_frame` bytes | 137,564 | 115,024 | 22,540 |
+| relocation bytes | 934,752 | 470,328 | 464,424 |
+| relocations | 38,948 | 19,597 | 19,351 |
+| decoded instructions | 227,674 | 124,218 | 103,456 |
+| defined functions | 5,530 | 3,476 | 2,054 |
 | weak defined functions | 4,491 | 2,897 | 1,594 |
 
 The largest whole-file instruction differences are still movement and frame
@@ -73,11 +73,11 @@ traffic:
 
 | Family | cppgm++ | Clang |
 | --- | ---: | ---: |
-| `mov` | 98,317 | 61,196 |
-| `lea` | 25,942 | 10,191 |
-| `push` | 8,061 | 3,477 |
-| `pop` | 12,238 | 3,472 |
-| `call` | 31,970 | 15,251 |
+| `mov` | 92,797 | 58,977 |
+| `lea` | 25,941 | 10,191 |
+| `push` | 8,057 | 3,477 |
+| `pop` | 12,234 | 3,472 |
+| `call` | 31,968 | 15,251 |
 | `jmp` | 17,327 | 8,718 |
 
 The gap is not uniform.  `analyze_call_expression` alone is 167,743 bytes and
@@ -231,11 +231,13 @@ For each LowIR or MIR phase:
 2. Record whether the current reference already expresses the desired shape.
 3. If it agrees, add the reducer directly to the owning course suite and
    regenerate only through the documented target.
-4. If it disagrees and the new shape is an approved contract change, rebuild
-   the authoritative reference compiler and reference-binary bundle, update
-   the pinned bundle manifest, and then add the reducer directly to the active
-   course suite through the same `ref-test` target.  Do not commit a dormant
-   test in another directory while waiting for the new oracle.
+4. If it disagrees and the new shape is an approved contract change, build a
+   clean detached local reference compiler at the approved contract commit and
+   pass it to the same `ref-test` target with `REF_TEST_APP`.  Add the reducer
+   directly to the active course suite; do not create a dormant test directory.
+   Leave `reference-binaries/manifest.tsv` unchanged for branch-local work.
+   The downloadable bundle moves only when `cppgm-extended` is officially
+   updated and its export workflow publishes the corresponding binaries.
 5. Use a before/after fixture census.  Migrate only files explained by the
    public change; any unrelated semantic, LowIR, MIR, inspect, or exit-status
    movement stops the phase.
@@ -268,6 +270,21 @@ Before modifying output:
 - make every counter optional and O(1) at its existing decision point.
 
 The benchmark source remains read-only in the extended checkout.
+
+P0 retained the cppgm++ and same-libstdc++ Clang objects under the local
+measurement directory with the hashes recorded above.  The object-shape
+report records sections, relocations, bindings, decoded instruction families,
+selected function sizes, and relocation-aware call counts in deterministic
+JSON.  Active reducers now cover the PA17 synthesized bit-field constructor,
+the PA21 automatic constant array, PA29 multiple returns, and the existing
+PA29 immediate-store, memory-RHS, and PA26 repeated-cleanup cases.
+
+The immutable compiler at commit `300094f8` and the P0 telemetry candidate
+produced byte-identical 4,406,272-byte frozen objects in three sequential ABBA
+blocks.  Baseline/candidate medians were respectively 4.675/4.700 seconds
+wall, 4.195/4.220 seconds user, and 361,304/360,846 KiB peak RSS.  The paired
+candidate ratios were +0.32% wall, +0.48% user, and -0.17% RSS, all within the
+declared noise guardrail.
 
 ### P1: transfer bit-field allocation units once during construction
 
@@ -650,7 +667,7 @@ Fill one row after each independently retained phase.
 
 | Phase | LowIR fixture effect | MIR/object fixture effect | Frozen size/structure | Compile time/RSS | Validation | Status/commit |
 | --- | --- | --- | --- | --- | --- | --- |
-| P0 baseline | none | none | cppgm++ 4,406,784 bytes; `.text*` 921,144; 5,533 functions; 38,953 relocations | pending immutable ABBA refresh | same-STL Clang object verified | ready |
+| P0 baseline | none | none | cppgm++ 4,406,272 bytes; `.text*` 921,044; 5,530 functions; 38,948 relocations | ABBA candidate +0.32% wall, +0.48% user, -0.17% RSS; byte-identical output | same-STL Clang object and active reducers verified | complete |
 | P1 bit-field units | expected PA17 migration | downstream native change | pending | pending | pending | planned |
 | P2 constexpr arrays | expected PA21 migration | PA29 runtime only if added | pending | pending | pending | planned |
 | P3 immediate stores | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
@@ -674,9 +691,10 @@ This plan is complete only when:
   operand shape consumed by native emission;
 - student handouts contain only current requirements and non-normative design
   suggestions, with no migration or benchmark history;
-- all active fixtures come from the documented authoritative reference
-  workflow, with an approved disagreement landing only after the reference
-  bundle is deliberately updated;
+- all active fixtures come from the documented `ref-test` workflow, with an
+  approved disagreement regenerated through `REF_TEST_APP` from a clean named
+  local reference commit; the pinned bundle changes only with an official
+  `cppgm-extended` export;
 - the full root report and PA39 audit are clean after every committed phase;
 - frozen compile time and RSS do not regress beyond the predeclared noise
   guardrail;
