@@ -707,6 +707,10 @@ struct BindingRecord
 	bool force_indirect_class_result_abi : 1;
 	bool closure_template_specialization : 1;
 	bool lambda_invocation : 1;
+	bool compiler_generated : 1;
+	bool source_view_suppressed : 1;
+	bool source_view_qualified_name : 1;
+	bool source_view_qualified_type : 1;
 
 	BindingRecord();
 };
@@ -769,6 +773,12 @@ enum LookupKind
 	LOOKUP_VARIABLE_TEMPLATE
 };
 
+enum ProgramRenderMode
+{
+	PROGRAM_RENDER_ALL,
+	PROGRAM_RENDER_SOURCE_TYPES
+};
+
 class Program
 {
 public:
@@ -781,6 +791,9 @@ public:
 	ScopeId OpenNamespace(ScopeId parent, NameId name, bool is_inline,
 		bool internal_linkage = false);
 	void SetScopeEmissionName(ScopeId scope, NameId name);
+	void SetSourceViewQualifiedScope(ScopeId scope);
+	void SuppressSourceViewSince(
+		std::size_t binding_begin, std::size_t scope_begin);
 	void AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target);
 	void AddUsingEdge(ScopeId owner, ScopeId target);
 	void PublishFunctionTemplateName(ScopeId owner, NameId name);
@@ -863,8 +876,10 @@ public:
 		std::size_t* components = 0) const;
 	void Render(std::ostream& output, std::size_t* max_depth = 0,
 		std::size_t* stack_storage_bytes = 0,
-		std::size_t* rendered_type_nodes = 0) const;
+		std::size_t* rendered_type_nodes = 0,
+		ProgramRenderMode mode = PROGRAM_RENDER_ALL) const;
 	std::size_t ScopeCount() const;
+	std::size_t BindingCount() const;
 	void AccumulateScopeEmissionNames(
 		std::size_t* count, std::size_t* bytes) const;
 	std::size_t StorageBytes() const;
@@ -978,13 +993,15 @@ private:
 	ScopeId CarrierScope(const LookupResult& result) const;
 	void AppendType(std::string& output, TypeId type,
 		std::size_t* rendered_type_nodes,
-		std::size_t* stack_storage_bytes) const;
+		std::size_t* stack_storage_bytes, ProgramRenderMode mode,
+		bool qualified_named_type = false) const;
 	void WriteType(std::ostream& output, TypeId type,
 		std::size_t* rendered_type_nodes,
-		std::size_t* stack_storage_bytes) const;
+		std::size_t* stack_storage_bytes, ProgramRenderMode mode,
+		bool qualified_named_type = false) const;
 	void WriteScope(std::ostream& output, ScopeId scope, std::size_t depth,
 		std::size_t* max_depth, std::size_t* stack_storage_bytes,
-		std::size_t* rendered_type_nodes) const;
+		std::size_t* rendered_type_nodes, ProgramRenderMode mode) const;
 	std::size_t FundamentalSize(FundamentalKind kind) const;
 	void RehashTemplateArgumentLists(std::size_t capacity);
 	void RehashBasePathCache(std::size_t capacity) const;

@@ -19,6 +19,9 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		&generated_identity);
 	const bool scoped = FindChild(node, ::cppgm::pa10_syntax_detail::STAG_ENUM_KEY) != kNoNode;
 	const NamedFlavor flavor = scoped ? NAMED_ENUM_CLASS : NAMED_ENUM;
+	const bool qualified = path.global || path.Size() > 1;
+	const bool definition =
+		(arena_->Flags(node) & SYNTAX_FLAG_DEFINITION) != 0;
 	const NameId name = path.Last();
 	const ScopeId owner = ResolveOwner(scope, path);
 	if (owner == kNoScope) throw std::runtime_error("enum owner not found");
@@ -39,7 +42,11 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		if (old.type == kNoType) throw std::runtime_error("unknown enum type");
 		return old.type;
 	}
+	if (!definition && !scoped && underlying_node == kNoNode)
+		throw std::runtime_error(
+			"opaque unscoped enum requires an underlying type");
 	EntityId entity = kNoEntity;
+	bool created_entity = false;
 	if (old.type != kNoType)
 	{
 		const TypeRecord named = program_->types.Get(
@@ -49,10 +56,14 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		entity = named.entity;
 		if (program_->entities[entity].flavor != flavor)
 			throw std::runtime_error("incompatible enum redeclaration");
+		if (underlying_node != kNoNode &&
+			program_->entities[entity].underlying != underlying)
+			throw std::runtime_error("enum underlying type changed");
 	}
 	else
 	{
 		entity = program_->NewEntity(name, flavor, true, underlying, owner);
+		created_entity = true;
 		program_->entities[entity].local_context = LocalTypeContext(
 			*program_, owner, current_function_context_);
 		RegisterLocalTypeAbiIdentity(entity);
@@ -64,6 +75,14 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 				program_->entities[entity].type, false, 0, flavor);
 	}
 	const TypeId type = program_->entities[entity].type;
+	if (source_type_view_ && created_entity &&
+		arena_->Payload(node).empty() && !hint.empty())
+	{
+		const NameId presentation_name = program_->names.Intern(hint);
+		program_->entities[entity].emission_name = presentation_name;
+		program_->AddOutputTypeBinding(
+			owner, presentation_name, type, flavor);
+	}
 	ScopeId value_scope = owner;
 	if (scoped)
 	{
@@ -74,6 +93,17 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 				owner, SCOPE_ENUM, name, owner, name);
 			program_->SetEntityScope(entity, value_scope);
 		}
+	}
+	ScopeId source_output_scope = kNoScope;
+	if (source_type_view_ && qualified && scoped && definition)
+	{
+		const BindingId output_type = program_->AddOutputTypeBinding(
+			scope, name, type, flavor);
+		program_->bindings[output_type].source_view_qualified_name = true;
+		program_->bindings[output_type].source_view_qualified_type = true;
+		source_output_scope = program_->NewScope(
+			owner, SCOPE_ENUM, name, entity, scope);
+		program_->SetSourceViewQualifiedScope(source_output_scope);
 	}
 	std::int64_t next = 0;
 	std::int64_t minimum = 0;
@@ -113,6 +143,16 @@ TypeId SemanticAnalyzer::AnalyzeEnum(NodeId node, ScopeId scope, const std::stri
 		const BindingId binding = program_->AddBinding(value_scope,
 			BIND_ENUMERATOR, enumerator_name, underlying, true, value);
 		enumerators.push_back(binding);
+		if (source_output_scope != kNoScope)
+		{
+			program_->bindings[binding].source_view_suppressed = true;
+			const BindingId output = program_->AddUnindexedBinding(
+				source_output_scope, BIND_ENUMERATOR,
+				enumerator_name, type, binding);
+			program_->bindings[output].constant = true;
+			program_->bindings[output].value = value;
+			program_->bindings[output].source_view_qualified_type = true;
+		}
 		if (value < minimum) minimum = value;
 		if (value > maximum) maximum = value;
 		if (value == INT64_MAX) throw std::runtime_error("enumerator overflow");

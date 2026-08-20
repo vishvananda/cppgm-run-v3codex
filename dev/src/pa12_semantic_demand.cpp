@@ -5,6 +5,44 @@ namespace cppgm
 namespace pa12_semantic_detail
 {
 
+void SemanticAnalyzer::CompleteTranslationUnitDemand()
+{
+	if (source_type_view_)
+		for (std::size_t i = 0; i < functions_.size(); ++i)
+		{
+			const FunctionInfo& function = functions_[i];
+			if (function.definition_body != kNoNode &&
+				!program_->bindings[function.binding].compiler_generated)
+				DemandRuntimeDefinition(function.binding);
+		}
+	DemandMaterializedConstructorActions(root_);
+	if (function_templates_.empty() && class_templates_.empty())
+		for (std::size_t i = 0; i < hidden_friend_anchor_by_entity_.size(); ++i)
+			if (hidden_friend_anchor_by_entity_[i] != kNoBinding &&
+				!GetFunction(hidden_friend_anchor_by_entity_[i]).constexpr_function)
+				DemandFunction(hidden_friend_anchor_by_entity_[i]);
+	ReplayRequiredFunctionDemandEdges();
+	std::size_t default_demand = 0;
+	std::size_t function_demand = 0;
+	std::size_t member_definition_demand = 0;
+	while (member_definition_demand <
+			demanded_class_template_member_definitions_.size() ||
+		default_demand < demanded_default_constructor_entities_.size() ||
+		function_demand < demanded_functions_.size())
+	{
+		while (member_definition_demand <
+			demanded_class_template_member_definitions_.size())
+			ApplyDemandedClassTemplateMemberDefinitions(
+				demanded_class_template_member_definitions_[
+					member_definition_demand++]);
+		while (default_demand < demanded_default_constructor_entities_.size())
+			EmitDefaultConstructor(
+				demanded_default_constructor_entities_[default_demand++]);
+		while (function_demand < demanded_functions_.size())
+			EmitDemandedFunction(demanded_functions_[function_demand++]);
+	}
+}
+
 void SemanticAnalyzer::MarkFunctionObjectOutputRoot(BindingId binding)
 {
 	if (binding == kNoBinding) return;

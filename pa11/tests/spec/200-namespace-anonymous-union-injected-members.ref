@@ -5,7 +5,7 @@ translation-unit
     variable t int
     variable a long int
     function f function of (int) returning int
-    scope class __anonymous_union_type__0_10
+    scope class __anonymous_union_type__1_10
       variable t int
       variable a long int
     scope function f

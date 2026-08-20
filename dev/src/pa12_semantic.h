@@ -291,6 +291,7 @@ void ConsumeSemanticTranslationUnit(const std::string& path,
 	pa12_semantic_detail::SemanticGraphConsumer& consumer,
 	SemanticAnalysisStats* stats = 0,
 	bool complete_constructor_unwind = false,
-	bool host_object_emission = false);
+	bool host_object_emission = false,
+	bool source_type_view = false);
 
 }

@@ -1449,6 +1449,7 @@ BindingId SemanticAnalyzer::EnsureBuiltinFunction(BuiltinFunctionKind kind)
 		program_->names.Intern(spelling), type, parameters, false, false,
 		STORAGE_CLASS_NONE, LANGUAGE_LINKAGE_CPP, nonthrowing, ordinary_visible);
 	program_->bindings[binding].builtin_function = kind;
+	program_->bindings[binding].compiler_generated = true;
 	if (display)
 		GetMutableFunction(binding).presentation_name_override =
 			program_->names.Intern(display);

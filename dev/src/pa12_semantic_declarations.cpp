@@ -131,6 +131,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 		 program_->LookupName(scope, lookup_name, LOOKUP_TYPE) :
 		 program_->LookupDirect(owner, lookup_name, LOOKUP_TYPE));
 	EntityId entity = kNoEntity;
+	bool created_entity = false;
 	// Repeated analysis of one generated-identity node (the class-template
 	// shell and definition passes) unifies through the typed table.
 	if (generated_identity)
@@ -163,6 +164,7 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 				(typedef_linkage_name == 0 ? name : typedef_linkage_name) :
 				specialization_identity,
 			ENTITY_EMISSION_OWNER_QUALIFIED);
+		created_entity = true;
 		const BindingId local_context = LocalTypeContext(
 			*program_, owner, current_function_context_);
 		if (program_->entities[entity].enclosing_class == kNoEntity &&
@@ -191,6 +193,14 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 			program_->entities[entity].type);
 	}
 	const TypeId type = program_->entities[entity].type;
+	if (source_type_view_ && created_entity && generated_identity &&
+		!hint.empty())
+	{
+		const NameId presentation_name = program_->names.Intern(hint);
+		program_->entities[entity].emission_name = presentation_name;
+		program_->AddOutputTypeBinding(
+			owner, presentation_name, type, flavor);
+	}
 	program_->entities[entity].final_class = program_->entities[entity].final_class || FindChild(node, ::cppgm::pa10_syntax_detail::STAG_CLASS_VIRT_SPECIFIER) != kNoNode;
 	ApplyClassAbiTagAttributes(node, entity);
 	if (entity_data_members_.size() <= entity)
@@ -216,6 +226,9 @@ TypeId SemanticAnalyzer::AnalyzeClass(NodeId node, ScopeId scope,
 	if (old.type == kNoType && arena_->Payload(node).size() != 0)
 		program_->AddBinding(owner, BIND_TYPE, lookup_name, type,
 			false, 0, flavor);
+	else if (source_type_view_ && old.type != kNoType && !elaborated &&
+		arena_->Payload(node).size() != 0)
+		program_->AddOutputTypeBinding(owner, lookup_name, type, flavor);
 	const std::size_t requested_alignment = RequestedAlignment(node, scope);
 	if (requested_alignment != 0)
 		program_->entities[entity].requested_alignment = std::max(
@@ -360,35 +373,9 @@ bool SemanticAnalyzer::CompleteClassDefinition(NodeId node, ScopeId scope,
 			}
 			program_->SetDirectBases(entity, direct_bases);
 		}
-		ScopeId member_scope = program_->entities[entity].member_scope;
-		if (member_scope == kNoScope)
-		{
-			const ScopeId lexical_owner = specialization_owner == kNoScope ?
-				owner : scope;
-			member_scope = NewNamedScope(lexical_owner, SCOPE_CLASS,
-				lookup_name, owner, name);
-			// Semantic lookup may use an internal specialization slot while
-			// emission follows the caller's separate presentation policy.
-			if (specialization_owner != kNoScope)
-				program_->SetScopeEmissionName(member_scope, emission_name);
-			program_->SetEntityScope(entity, member_scope);
-			program_->SetTypeName(member_scope, name, type);
-			const BindingId injected = program_->AddBinding(member_scope,
-				BIND_TYPE, name, type, false, 0, flavor);
-			program_->bindings[injected].member_owner = entity;
-			program_->bindings[injected].access = ACCESS_PUBLIC;
-			if (specialization_identity != 0 &&
-				specialization_identity != name)
-			{
-				program_->SetTypeName(member_scope,
-					specialization_identity, type);
-				const BindingId primary_injected = program_->AddBinding(
-					member_scope, BIND_TYPE, specialization_identity, type,
-					false, 0, flavor);
-				program_->bindings[primary_injected].member_owner = entity;
-				program_->bindings[primary_injected].access = ACCESS_PUBLIC;
-			}
-		}
+		const ScopeId member_scope = OpenClassDefinitionScope(
+			type, entity, flavor, owner, scope, name, lookup_name,
+			specialization_owner, specialization_identity, emission_name);
 		// The stable class scope owns indexed field/function identities even
 		// though class declarations are not part of the PA12 output view.
 		const EntityId previous_class_context = current_class_context_;
@@ -890,6 +877,7 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 	BindingRecord& binding = program_->bindings[destructor];
 	binding.member_owner = entity;
 	binding.destructor = true;
+	binding.compiler_generated = true;
 	binding.inline_function = true;
 	binding.weak_odr = true;
 	FunctionInfo& info = GetMutableFunction(destructor);
@@ -2238,6 +2226,16 @@ BindingId SemanticAnalyzer::DeclareFunction(ScopeId owner, NameId name,
 			NAMED_NONE, 0, canonical, false) :
 		program_->AddUnindexedBinding(
 			owner, BIND_FUNCTION, name, type, canonical);
+	if (source_type_view_ && parameters.size() == declared_type.parameter_count)
+	{
+		std::vector<TypeId> source_parameters;
+		source_parameters.reserve(parameters.size());
+		for (std::size_t i = 0; i < parameters.size(); ++i)
+			source_parameters.push_back(parameters[i].declared_type);
+		RecordSourceTypeOverride(declaration, program_->types.Function(
+			declared_type.child, source_parameters, declared_type.variadic,
+			declared_type.cv, declared_type.ref_qualifier));
+	}
 	BindingRecord& declaration_record = program_->bindings[declaration];
 	declaration_record.storage_class = storage_class;
 	declaration_record.language_linkage = language_linkage;
@@ -2363,6 +2361,23 @@ void SemanticAnalyzer::AnalyzeUsing(NodeId node, ScopeId scope,
 	const NameId name = path.Last();
 	const NodeId target_structure = FindChild(
 		target_node, ::cppgm::pa10_syntax_detail::STAG_STRUCTURED_TYPE_NAME);
+	if (target_structure != kNoNode)
+	{
+		NodeId terminal_component = kNoNode;
+		for (std::uint32_t edge = arena_->FirstEdge(target_structure);
+			edge != kNoEdge; edge = arena_->NextEdge(edge))
+		{
+			const NodeId component = arena_->EdgeChild(edge);
+			if (arena_->IsTag(component,
+				::cppgm::pa10_syntax_detail::STAG_NAME_COMPONENT))
+				terminal_component = component;
+		}
+		if (terminal_component != kNoNode && FindChild(terminal_component,
+			::cppgm::pa10_syntax_detail::STAG_TEMPLATE_TYPE_ARGUMENT_LIST) !=
+			kNoNode)
+			throw std::runtime_error(
+				"using-declaration cannot name a template-id");
+	}
 	const LookupResult ordinary = target_structure != kNoNode ?
 		LookupStructuredName(target_node, scope, LOOKUP_ORDINARY) :
 		LookupPath(scope, path, LOOKUP_ORDINARY);
@@ -2766,6 +2781,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		const NameId this_name = program_->names.Intern("this");
 		this_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, this_name, this_type);
+		program_->bindings[this_binding].compiler_generated = true;
 		dump_.Add(function, MakeDump(DUMP_PARAMETER, this_type,
 			VALUE_NONE, this_name, this_binding));
 	}
@@ -2774,6 +2790,7 @@ void SemanticAnalyzer::EmitDemandedFunction(BindingId binding)
 		const ParameterInfo& parameter = info.parameters[i];
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
+		RecordSourceTypeOverride(parameter_binding, parameter.declared_type);
 		parameter_bindings.push_back(parameter_binding);
 		BindFunctionParameterPackElement(
 			function_scope, parameter.pack_name, parameter_binding);

@@ -82,13 +82,14 @@ public:
 	SemanticAnalyzer(SemanticGraphStorage& graph, std::ostream& output,
 		SemanticAnalysisStats* stats, bool retain_lowering_facts = false,
 		bool render_output = true, bool complete_constructor_unwind = false,
-		bool host_object_emission = false)
+		bool host_object_emission = false, bool source_type_view = false)
 		: arena_(0), output_(output), stats_(stats), strings_(graph.strings),
 		  program_(&graph.program),
 		  retain_lowering_facts_(retain_lowering_facts),
 		  render_output_(render_output),
 		  complete_constructor_unwind_(complete_constructor_unwind),
 		  host_object_emission_(host_object_emission),
+		  source_type_view_(source_type_view),
 		  dump_(graph.dump), root_(graph.root),
 		  class_polymorphism_(graph.class_polymorphism),
 		  function_template_dependent_result_shape_(kNoType),
@@ -281,6 +282,10 @@ private:
 		AccessKind access = ACCESS_PUBLIC);
 	void AnalyzeTemplate(NodeId node, ScopeId scope,
 		AccessKind member_access = ACCESS_PUBLIC);
+	void ProjectSourceClassTemplate(NodeId declaration, ScopeId scope,
+		const std::vector<TemplateParameter>& parameters);
+	void RecordSourceTypeOverride(BindingId binding, TypeId type);
+	void ApplySourceTypeOverrides();
 	void RegisterFunctionTemplatePattern(NodeId target, ScopeId scope,
 		AccessKind member_access,
 		const std::vector<TemplateParameter>& parameters, NodeId specifiers,
@@ -542,6 +547,10 @@ private:
 		std::string* spelling, NamePath* path, bool* generated_identity);
 	bool CompleteClassDefinition(NodeId node, ScopeId scope, TypeId type,
 		EntityId entity, NamedFlavor flavor, ScopeId owner, NameId name,
+		NameId lookup_name, ScopeId specialization_owner,
+		NameId specialization_identity, NameId emission_name);
+	ScopeId OpenClassDefinitionScope(TypeId type, EntityId entity,
+		NamedFlavor flavor, ScopeId owner, ScopeId scope, NameId name,
 		NameId lookup_name, ScopeId specialization_owner,
 		NameId specialization_identity, NameId emission_name);
 	bool CollectClassDirectBases(NodeId clause, ScopeId scope,
@@ -1006,6 +1015,7 @@ private:
 	bool FunctionObjectDefinitionRequired(BindingId binding) const;
 	void ReplayFunctionDemandEdges(BindingId binding);
 	void ReplayRequiredFunctionDemandEdges();
+	void CompleteTranslationUnitDemand();
 	void CompleteFunctionDefinition(BindingId binding);
 	void PublishFunctionDemandStats();
 	void QueueFunctionDefinitionValidation(BindingId binding);
@@ -1957,6 +1967,9 @@ private:
 	bool render_output_;
 	bool complete_constructor_unwind_;
 	bool host_object_emission_;
+	bool source_type_view_;
+	std::vector<BindingId> source_type_override_bindings_;
+	std::vector<TypeId> source_type_override_types_;
 	DumpArena& dump_;
 	std::vector<std::uint32_t> string_literal_units_;
 	std::uint32_t& root_;

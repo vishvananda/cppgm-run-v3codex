@@ -60,8 +60,9 @@ struct TypeAnalysisStats
 	TypeAnalysisStats();
 };
 
-// Parse through the PA10 boundary, construct the PA11 canonical scope/type
-// graph, and write its deterministic view. Syntax storage is phase-local.
+// Parse through the PA10 boundary, run the shared semantic analysis, and write
+// the deterministic PA11 scope/type view. Translation-unit storage is local to
+// this call.
 void WriteTypeTranslationUnit(const std::string& path,
 	const std::string& source, const PreprocessingOptions& options,
 	std::ostream& output, TypeAnalysisStats* stats = 0);

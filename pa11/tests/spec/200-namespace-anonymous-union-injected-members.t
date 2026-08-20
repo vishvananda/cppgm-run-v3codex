@@ -1,5 +1,5 @@
 // N3485 focus: 9.5 [class.union] anonymous union members
-union {
+static union {
   int t;
   long a;
 };

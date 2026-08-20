@@ -59,8 +59,9 @@ void SemanticAnalyzer::BindDeclaratorImplicitObject(
 	TypeId object = program_->entities[current_class_context_].type;
 	if (function_cv != CV_NONE)
 		object = program_->types.Qualify(object, function_cv);
-	program_->AddBinding(scope, BIND_PARAMETER,
+	const BindingId binding = program_->AddBinding(scope, BIND_PARAMETER,
 		program_->names.Intern("this"), program_->types.Pointer(object));
+	program_->bindings[binding].compiler_generated = true;
 }
 
 TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
@@ -96,9 +97,13 @@ TypeId SemanticAnalyzer::BuildArrayDeclaratorType(NodeId suffix,
 		if (expression.value < 0)
 			return CandidateTypeFormation(kNoType, "invalid array bound");
 		if (expression.value == 0)
+		{
+			if (source_type_view_)
+				throw std::runtime_error("zero-length array is outside PA11");
 			return CandidateTypeFormation(
 				program_->types.TryZeroLengthArray(element),
 				"invalid zero-length array element type");
+		}
 		return CandidateTypeFormation(program_->types.TryArray(element,
 			static_cast<std::uint64_t>(expression.value)),
 			"invalid array element type");

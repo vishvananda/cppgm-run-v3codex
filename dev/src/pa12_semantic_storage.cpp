@@ -9,6 +9,8 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 {
 	std::size_t bytes =
 		string_literal_units_.capacity() * sizeof(std::uint32_t) +
+		source_type_override_bindings_.capacity() * sizeof(BindingId) +
+		source_type_override_types_.capacity() * sizeof(TypeId) +
 		scope_prefixes_.capacity() * sizeof(NameId) +
 		scope_prefix_segments_.capacity() * sizeof(NameId) +
 		scope_parents_.capacity() * sizeof(ScopeId) +

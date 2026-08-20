@@ -734,7 +734,9 @@ BindingRecord::BindingRecord()
 	  template_parameter_constant(false),
 	  variable_template_specialization(false),
 	  force_indirect_class_result_abi(false),
-	  closure_template_specialization(false), lambda_invocation(false)
+	  closure_template_specialization(false), lambda_invocation(false),
+	  compiler_generated(false), source_view_suppressed(false),
+	  source_view_qualified_name(false), source_view_qualified_type(false)
 {
 }
 
@@ -759,7 +761,8 @@ struct Program::ScopeRecord
 	std::uint32_t first_visible_name;
 	std::uint32_t first_name_entry;
 	std::uint32_t name_entry_count;
-	bool inline_namespace, internal_linkage, has_using_name_relations;
+	bool inline_namespace, internal_linkage, has_using_name_relations,
+		source_view_suppressed, source_view_qualified;
 
 	ScopeRecord()
 		: parent(kNoScope), kind(SCOPE_NAMESPACE), name(0), emission_name(0),
@@ -772,7 +775,8 @@ struct Program::ScopeRecord
 		  first_name_entry(std::numeric_limits<std::uint32_t>::max()),
 		  name_entry_count(0),
 		  inline_namespace(false), internal_linkage(false),
-		  has_using_name_relations(false) {}
+		  has_using_name_relations(false), source_view_suppressed(false),
+		  source_view_qualified(false) {}
 };
 
 struct Program::NameEntry
@@ -1041,6 +1045,24 @@ void Program::SetScopeEmissionName(ScopeId scope, NameId name)
 	if (scope >= scopes_.size())
 		throw std::logic_error("invalid emission scope identity");
 	scopes_[scope].emission_name = name;
+}
+
+void Program::SetSourceViewQualifiedScope(ScopeId scope)
+{
+	if (scope >= scopes_.size())
+		throw std::logic_error("invalid source-view scope");
+	scopes_[scope].source_view_qualified = true;
+}
+
+void Program::SuppressSourceViewSince(
+	std::size_t binding_begin, std::size_t scope_begin)
+{
+	if (binding_begin > bindings.size() || scope_begin > scopes_.size())
+		throw std::logic_error("invalid source-view suppression boundary");
+	for (std::size_t i = binding_begin; i < bindings.size(); ++i)
+		bindings[i].source_view_suppressed = true;
+	for (std::size_t i = scope_begin; i < scopes_.size(); ++i)
+		scopes_[i].source_view_suppressed = true;
 }
 
 void Program::AddNamespaceAlias(ScopeId owner, NameId name, ScopeId target)
@@ -2250,7 +2272,8 @@ std::size_t Program::FundamentalSize(FundamentalKind kind) const
 
 void Program::AppendType(std::string& output, TypeId type,
 	std::size_t* rendered_type_nodes,
-	std::size_t* stack_storage_bytes) const
+	std::size_t* stack_storage_bytes, ProgramRenderMode mode,
+	bool qualified_named_type) const
 {
 	struct Task
 	{
@@ -2297,7 +2320,11 @@ void Program::AppendType(std::string& output, TypeId type,
 			const EntityRecord& entity = entities[record.entity];
 			output += FlavorName(entity.flavor);
 			output += ' ';
-			output += RenderEntityEmissionName(record.entity);
+			if (mode != PROGRAM_RENDER_SOURCE_TYPES)
+				output += RenderEntityEmissionName(record.entity);
+			else if (qualified_named_type)
+				output += RenderEmissionName(entity.owner, entity.emission_name);
+			else output += names.Get(entity.emission_name);
 			break;
 		}
 		case TYPE_QUALIFIED:
@@ -2374,24 +2401,26 @@ std::string Program::RenderType(TypeId type) const
 {
 	std::string result;
 	result.reserve(64);
-	AppendType(result, type, 0, 0);
+	AppendType(result, type, 0, 0, PROGRAM_RENDER_ALL);
 	return result;
 }
 
 void Program::WriteType(std::ostream& output, TypeId type,
 	std::size_t* rendered_type_nodes,
-	std::size_t* stack_storage_bytes) const
+	std::size_t* stack_storage_bytes, ProgramRenderMode mode,
+	bool qualified_named_type) const
 {
 	std::string rendered;
 	rendered.reserve(64);
-	AppendType(rendered, type, rendered_type_nodes, stack_storage_bytes);
+	AppendType(rendered, type, rendered_type_nodes, stack_storage_bytes,
+		mode, qualified_named_type);
 	output << rendered;
 }
 
 void Program::WriteScope(std::ostream& output, ScopeId scope,
 	std::size_t depth, std::size_t* max_depth,
 	std::size_t* stack_storage_bytes,
-	std::size_t* rendered_type_nodes) const
+	std::size_t* rendered_type_nodes, ProgramRenderMode mode) const
 
 {
 	struct Frame
@@ -2415,6 +2444,18 @@ void Program::WriteScope(std::ostream& output, ScopeId scope,
 	{
 		Frame& frame = stack.Back();
 		const ScopeRecord& record = scopes_[frame.scope];
+		if (mode == PROGRAM_RENDER_SOURCE_TYPES && !frame.entered &&
+			record.source_view_suppressed)
+		{
+			stack.Pop();
+			continue;
+		}
+		if (mode == PROGRAM_RENDER_SOURCE_TYPES && !frame.entered &&
+			record.kind == SCOPE_FUNCTION && record.name == 0)
+		{
+			stack.Pop();
+			continue;
+		}
 		if (!frame.entered)
 		{
 			if (max_depth) *max_depth = std::max(*max_depth, frame.depth);
@@ -2427,9 +2468,27 @@ void Program::WriteScope(std::ostream& output, ScopeId scope,
 			case SCOPE_TEMPLATE_PARAMETERS:
 				output << "template-parameters"; break;
 			case SCOPE_CLASS:
-				output << "class " << names.Get(record.name); break;
+				output << "class ";
+				if (mode == PROGRAM_RENDER_SOURCE_TYPES &&
+					record.entity != kNoEntity)
+					output << names.Get(entities[record.entity].emission_name);
+				else output << names.Get(record.name);
+				break;
 			case SCOPE_ENUM:
-				output << "enum " << names.Get(record.name); break;
+				output << "enum ";
+				if (mode == PROGRAM_RENDER_SOURCE_TYPES &&
+					record.source_view_qualified &&
+					record.entity != kNoEntity)
+				{
+					const EntityRecord& entity = entities[record.entity];
+					output << RenderEmissionName(
+						entity.owner, entity.emission_name);
+				}
+				else if (mode == PROGRAM_RENDER_SOURCE_TYPES &&
+					record.entity != kNoEntity)
+					output << names.Get(entities[record.entity].emission_name);
+				else output << names.Get(record.name);
+				break;
 			case SCOPE_FUNCTION:
 				output << "function " << names.Get(record.name); break;
 			case SCOPE_BLOCK: output << "block"; break;
@@ -2439,6 +2498,15 @@ void Program::WriteScope(std::ostream& output, ScopeId scope,
 				binding != kNoBinding; binding = bindings[binding].next)
 			{
 				const BindingRecord& item = bindings[binding];
+				if (mode == PROGRAM_RENDER_SOURCE_TYPES &&
+					(item.compiler_generated || item.anonymous_union_storage ||
+					 item.source_view_suppressed))
+					continue;
+				if (mode == PROGRAM_RENDER_SOURCE_TYPES &&
+					item.kind == BIND_TYPE && record.entity != kNoEntity &&
+					item.type == entities[record.entity].type &&
+					item.name == entities[record.entity].identity_name)
+					continue;
 				for (std::size_t i = 0; i < frame.depth + 1; ++i)
 					output << "  ";
 				switch (item.kind)
@@ -2450,11 +2518,35 @@ void Program::WriteScope(std::ostream& output, ScopeId scope,
 				case BIND_VARIABLE: output << "variable "; break;
 				case BIND_PARAMETER: output << "parameter "; break;
 				}
-				output << names.Get(item.name) << ' ';
+				if (mode == PROGRAM_RENDER_SOURCE_TYPES &&
+					item.source_view_qualified_name)
+				{
+					const TypeRecord& named = types.Get(
+						types.RemoveTopCv(item.type));
+					if (named.kind != TYPE_NAMED)
+						throw std::logic_error(
+							"qualified source-view name has non-named type");
+					const EntityRecord& entity = entities[named.entity];
+					output << RenderEmissionName(
+						entity.owner, entity.emission_name);
+				}
+				else output << names.Get(item.name);
+				output << ' ';
 				if (item.kind == BIND_TYPE &&
 					item.display_flavor != NAMED_NONE)
-					output << FlavorName(item.display_flavor) << ' ' <<
-						names.Get(item.name);
+				{
+					output << FlavorName(item.display_flavor) << ' ';
+					if (mode == PROGRAM_RENDER_SOURCE_TYPES &&
+						item.source_view_qualified_type)
+					{
+						const TypeRecord& named = types.Get(
+							types.RemoveTopCv(item.type));
+						const EntityRecord& entity = entities[named.entity];
+						output << RenderEmissionName(
+							entity.owner, entity.emission_name);
+					}
+					else output << names.Get(item.name);
+				}
 				else if (item.display_type_name != 0)
 					output << FlavorName(item.display_flavor) << ' ' <<
 						names.Get(item.display_type_name);
@@ -2462,7 +2554,8 @@ void Program::WriteScope(std::ostream& output, ScopeId scope,
 				{
 					std::size_t type_stack_storage = 0;
 					WriteType(output, item.type, rendered_type_nodes,
-						&type_stack_storage);
+						&type_stack_storage, mode,
+						item.source_view_qualified_type);
 					if (stack_storage_bytes)
 						*stack_storage_bytes = std::max(*stack_storage_bytes,
 							stack.StorageBytes() + type_stack_storage);
@@ -2490,19 +2583,24 @@ void Program::WriteScope(std::ostream& output, ScopeId scope,
 
 void Program::Render(std::ostream& output, std::size_t* max_depth,
 	std::size_t* stack_storage_bytes,
-	std::size_t* rendered_type_nodes) const
+	std::size_t* rendered_type_nodes, ProgramRenderMode mode) const
 {
 	if (max_depth) *max_depth = 0;
 	if (stack_storage_bytes) *stack_storage_bytes = 0;
 	if (rendered_type_nodes) *rendered_type_nodes = 0;
 	output << "translation-unit\n";
 	WriteScope(output, GlobalScope(), 1, max_depth, stack_storage_bytes,
-		rendered_type_nodes);
+		rendered_type_nodes, mode);
 }
 
 std::size_t Program::ScopeCount() const
 {
 	return scopes_.size();
+}
+
+std::size_t Program::BindingCount() const
+{
+	return bindings.size();
 }
 
 void Program::AccumulateScopeEmissionNames(

@@ -3,7 +3,6 @@
 #include "exceptions.h"
 #include "pa10_syntax.h"
 #include "pa11_semantic.h"
-#include "pa11_mainline_view.h"
 #include "pa12_semantic.h"
 #include "pa15_lowering.h"
 #include "pa15_lowering_support.h"
@@ -43,7 +42,6 @@ enum class EmitMode
   None,
   Ast,
   Types,
-  MainlineTypes,
   Semantics,
   LowIR,
 };
@@ -239,8 +237,6 @@ EmitMode parse_emit_mode(vector<string> & args)
   EmitMode mode = EmitMode::None;
   consume_emit_flag(args, "--emit-ast", EmitMode::Ast, mode);
   consume_emit_flag(args, "--emit-types", EmitMode::Types, mode);
-  consume_emit_flag(args, "--emit-mainline-types", EmitMode::MainlineTypes,
-	  mode);
   consume_emit_flag(args, "--emit-semantics", EmitMode::Semantics, mode);
   consume_emit_flag(args, "--emit-lowir", EmitMode::LowIR, mode);
   return mode;
@@ -2110,7 +2106,7 @@ int run_emit_ast_mode(const vector<string> & args)
   return EXIT_SUCCESS;
 }
 
-int run_emit_types_mode(const vector<string> & args, bool mainline = false)
+int run_emit_types_mode(const vector<string> & args)
 {
   const SourceOutputInvocation invocation =
       parse_source_output_invocation(args, false);
@@ -2130,12 +2126,8 @@ int run_emit_types_mode(const vector<string> & args, bool mainline = false)
                         istreambuf_iterator<char>());
     output << "start translation unit " << i + 1 << '\n';
     cppgm::TypeAnalysisStats stats;
-    if(mainline)
-      cppgm::WriteMainlineTypeTranslationUnit(path, source, options, output,
-          invocation.collect_stats ? &stats : 0);
-    else
-      cppgm::WriteTypeTranslationUnit(path, source, options, output,
-          invocation.collect_stats ? &stats : 0);
+    cppgm::WriteTypeTranslationUnit(path, source, options, output,
+        invocation.collect_stats ? &stats : 0);
     if(invocation.collect_stats) {
       cerr << "pa11_stats file=" << path
            << " tokens=" << stats.tokens
@@ -2961,8 +2953,6 @@ int run_cppgm(const vector<string> & raw_args)
     return run_emit_ast_mode(args);
   case EmitMode::Types:
     return run_emit_types_mode(args);
-  case EmitMode::MainlineTypes:
-    return run_emit_types_mode(args, true);
   case EmitMode::Semantics:
     return run_emit_semantics_mode(args);
   case EmitMode::LowIR:

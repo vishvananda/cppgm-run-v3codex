@@ -1753,12 +1753,30 @@ void SemanticAnalyzer::AnalyzeTemplate(NodeId node, ScopeId scope,
 		AnalyzeFriendClassTemplate(target, scope, parameters)) return;
 	if (target != kNoNode && class_template_member_replay_depth_ == 0 &&
 		AnalyzeClassTemplateMember(target, scope, parameters)) return;
+	const bool source_class_template = source_type_view_ &&
+		target != kNoNode &&
+		(arena_->IsTag(target,
+			::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
+		 arena_->IsTag(target,
+			::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION));
+	const std::size_t source_binding_begin = source_class_template ?
+		program_->BindingCount() : 0;
+	const std::size_t source_scope_begin = source_class_template ?
+		program_->ScopeCount() : 0;
 	if (target != kNoNode && !arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_TEMPLATE_DECLARATION))
 		ValidateRetainedTemplateDefinition(target, scope, parameters);
 	if (target != kNoNode &&
 		(arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_SPECIFIER) ||
 		 arena_->IsTag(target, ::cppgm::pa10_syntax_detail::STAG_CLASS_FORWARD_DECLARATION)))
 	{
+		if (source_class_template)
+		{
+			AnalyzeClassTemplate(target, scope, parameters, member_access);
+			program_->SuppressSourceViewSince(
+				source_binding_begin, source_scope_begin);
+			ProjectSourceClassTemplate(target, scope, parameters);
+			return;
+		}
 		AnalyzeClassTemplate(target, scope, parameters, member_access);
 		return;
 	}
@@ -2358,6 +2376,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		const NameId this_name = program_->names.Intern("this");
 		const BindingId this_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, this_name, this_type);
+		program_->bindings[this_binding].compiler_generated = true;
 		dump_.Add(output_node, MakeDump(DUMP_PARAMETER, this_type,
 			VALUE_NONE, this_name, this_binding));
 	}
@@ -2372,6 +2391,7 @@ void SemanticAnalyzer::AnalyzeFunction(NodeId node, ScopeId scope,
 		}
 		const BindingId parameter_binding = program_->AddBinding(function_scope,
 			BIND_PARAMETER, parameter.name, ParameterBindingType(parameter));
+		RecordSourceTypeOverride(parameter_binding, parameter.declared_type);
 		BindFunctionParameterPackElement(function_scope, parameter.pack_name, parameter_binding);
 		const std::uint32_t parameter_node = MakeDump(DUMP_PARAMETER,
 			parameter.function_type, VALUE_NONE, parameter.name, parameter_binding);
@@ -2689,9 +2709,11 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
 	scope_lifetime_domains_.resize(
 		static_cast<std::size_t>(program.GlobalScope()) + 1, kNoScope);
-	program.AddBinding(program.GlobalScope(), BIND_TYPE_ALIAS,
+	const BindingId nullptr_alias = program.AddBinding(
+		program.GlobalScope(), BIND_TYPE_ALIAS,
 		program.names.Intern("nullptr_t"),
 		program.types.Fundamental(FUND_NULLPTR_T));
+	program.bindings[nullptr_alias].compiler_generated = true;
 	root_ = MakeDump(DUMP_TRANSLATION_UNIT);
 	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_NEW);
 	(void)EnsureBuiltinFunction(BUILTIN_FUNCTION_OPERATOR_DELETE);
@@ -2702,36 +2724,12 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	for (std::uint32_t edge = arena.FirstEdge(root); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 		AnalyzeDeclaration(arena.EdgeChild(edge), program.GlobalScope(), root_, false);
-	DemandMaterializedConstructorActions(root_);
-	if (function_templates_.empty() && class_templates_.empty())
-		for (std::size_t i = 0; i < hidden_friend_anchor_by_entity_.size(); ++i)
-			if (hidden_friend_anchor_by_entity_[i] != kNoBinding &&
-				!GetFunction(hidden_friend_anchor_by_entity_[i]).constexpr_function)
-				DemandFunction(hidden_friend_anchor_by_entity_[i]);
-	ReplayRequiredFunctionDemandEdges();
-	std::size_t default_demand = 0;
-	std::size_t function_demand = 0;
-	std::size_t member_definition_demand = 0;
-	while (member_definition_demand <
-			demanded_class_template_member_definitions_.size() ||
-		default_demand < demanded_default_constructor_entities_.size() ||
-		function_demand < demanded_functions_.size())
-	{
-		while (member_definition_demand <
-			demanded_class_template_member_definitions_.size())
-			ApplyDemandedClassTemplateMemberDefinitions(
-				demanded_class_template_member_definitions_[
-					member_definition_demand++]);
-		while (default_demand < demanded_default_constructor_entities_.size())
-			EmitDefaultConstructor(
-				demanded_default_constructor_entities_[default_demand++]);
-		while (function_demand < demanded_functions_.size())
-			EmitDemandedFunction(demanded_functions_[function_demand++]);
-	}
+	CompleteTranslationUnitDemand();
 	// The typed production path publishes linkage identity once, after all
 	// template-demand work has completed. Textual semantic output preserves
 	// the assignment's historical rendering contract and has no graph consumer.
 	if (!render_output_) PublishInternalIdentityFacts(&program);
+	if (source_type_view_) ApplySourceTypeOverrides();
 	const std::chrono::steady_clock::time_point render_started =
 		std::chrono::steady_clock::now();
 	if (render_output_) Render();

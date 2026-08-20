@@ -66,6 +66,7 @@ BindingId SemanticAnalyzer::EnsureImplicitConstructor(EntityId entity)
 	BindingRecord& binding = program_->bindings[constructor];
 	binding.member_owner = entity;
 	binding.constructor = true;
+	binding.compiler_generated = true;
 	binding.overload_ordinal = 1;
 	PublishInlineFunctionFacts(constructor, true);
 	FunctionInfo& info = GetMutableFunction(constructor);
@@ -738,6 +739,7 @@ BindingId SemanticAnalyzer::DeclareImplicitCopyMoveConstructor(
 	declaration.member_owner = entity;
 	declaration.access = ACCESS_PUBLIC;
 	declaration.constructor = true;
+	declaration.compiler_generated = true;
 	declaration.inline_function = true;
 	declaration.weak_odr = true;
 	FunctionInfo& function = GetMutableFunction(constructor);
@@ -802,6 +804,7 @@ BindingId SemanticAnalyzer::DeclareImplicitAssignment(EntityId entity,
 	declaration.access = ACCESS_PUBLIC;
 	declaration.inline_function = true;
 	declaration.weak_odr = true;
+	declaration.compiler_generated = true;
 	FunctionInfo& function = GetMutableFunction(assignment);
 	function.member_owner = owner.type;
 	function.special_member = kind;

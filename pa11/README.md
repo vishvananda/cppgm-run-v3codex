@@ -284,6 +284,12 @@ A good PA11 design keeps these pieces separate:
 - declarator-derived type construction
 - deterministic printing
 
+Keep the semantic graph and analyzer reusable by later modes. The PA11 dump
+can be a source-facing view over that shared graph: distinguish source
+declarations from implicit implementation facts with typed metadata, and keep
+lookup/type identity separate from presentation. Avoid rebuilding semantic
+names by parsing rendered strings.
+
 Avoid baking PA8 image-construction or initialization behavior into the PA11
 core. Those ideas become useful again later, but this assignment should leave
 behind a reusable scope/type model.
