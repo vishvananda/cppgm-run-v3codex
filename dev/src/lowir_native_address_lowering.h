@@ -146,18 +146,31 @@ protected:
 		const lowir_model::LowirBlock& block, std::size_t instruction_index,
 		lowir_model::ValueId destination) const
 	{
-		if (instruction_index + 2 >= block.instructions.size()) return false;
-		const lowir_model::Instruction& call =
-			block.instructions[instruction_index + 1];
-		const lowir_model::Instruction& copy =
-			block.instructions[instruction_index + 2];
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (derived.facts_.uses[destination] != 1) return false;
+		const std::size_t copy_position = derived.facts_.last_use[destination];
+		if (copy_position == analysis::FunctionFacts::missing_position() ||
+			copy_position < derived.position_) return false;
+		const std::size_t copy_index = instruction_index +
+			(copy_position - derived.position_);
+		if (copy_index >= block.instructions.size()) return false;
+		const lowir_model::Instruction& copy = block.instructions[copy_index];
+		if (copy.kind != lowir_model::Instruction::IK_COPYOBJ ||
+			copy.first.kind != lowir_model::Operand::OP_TEMP ||
+			copy.second.kind != lowir_model::Operand::OP_TEMP ||
+			copy.second.value != destination) return false;
+		const std::size_t call_position =
+			derived.facts_.definition[copy.first.value];
+		if (call_position == analysis::FunctionFacts::missing_position() ||
+			call_position < derived.position_) return false;
+		const std::size_t call_index = instruction_index +
+			(call_position - derived.position_);
+		if (call_index >= copy_index) return false;
+		const lowir_model::Instruction& call = block.instructions[call_index];
 		return call.kind == lowir_model::Instruction::IK_CALL &&
 			!call.call_returns_void && call.type.kind == lowir_model::LTK_OBJECT &&
-			copy.kind == lowir_model::Instruction::IK_COPYOBJ &&
-			copy.first.kind == lowir_model::Operand::OP_TEMP &&
 			copy.first.value == call.dest &&
-			copy.second.kind == lowir_model::Operand::OP_TEMP &&
-			copy.second.value == destination;
+			call.dest.valid();
 	}
 
 	X64Register direct_slot_address_register(const lowir_model::LowirBlock& block,

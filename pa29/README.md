@@ -509,7 +509,9 @@ To complete PA29, implement these goals:
    Direct object returns follow the same rule in both directions: returning a
    frame-resident object loads its chunks directly into the ABI result
    registers, and storing a direct object call result writes those registers
-   directly to its frame destination.
+   directly to its frame destination. A destination address created before
+   the call should remain frame-shaped through the later result copy rather
+   than occupying a register across the call.
 
    Atomic operations are subject to the same pressure correctness requirement. Producing
    an atomic operation's returned old value in a loop must remain executable when its
@@ -647,6 +649,9 @@ strategies include:
   instead of materializing a temporary object address
 - transfer direct-object return chunks between their frame locations and ABI
   result registers without materializing a temporary object address
+- use the address result's recorded final consumer to keep a nonadjacent
+  direct-object call-result destination frame-shaped without rescanning the
+  intervening instructions
 
 These are suggestions, not required internal data structures or algorithms.
 Any implementation is acceptable if it preserves program behavior and produces

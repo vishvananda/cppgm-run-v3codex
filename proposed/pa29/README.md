@@ -171,3 +171,11 @@ input successfully, but the course reference assigns new registers to the two
 bit-preserving copies. Program behavior duplicates active pointer-copy
 coverage, so the input remains a placement-shape witness rather than forcing
 the older MIR layout into the active suite.
+
+`nonadjacent-object-result-frame-placement.t` creates a frame destination
+before a direct-object call and copies the call result there afterward. Both
+compilers execute it successfully, but the course reference materializes the
+destination address in a register across the call. The current MIR retains
+the frame location and transfers the result chunks directly. Active object
+return cases already cover the behavior, so this remains a placement-shape
+witness.

@@ -201,7 +201,9 @@ struct Instruction
     // index remains a logical frame location; constant indexing incorporates
     // its displacement into that location without an initial MI_LEA. A
     // frame-resident object chunk transferred to or from an ABI argument or
-    // result register likewise uses its final frame operand directly.
+    // result register likewise uses its final frame operand directly. A frame
+    // destination created before a direct-object call remains frame-shaped
+    // through the later call-result copy.
     MI_FMOV,
     MI_FNEG,
     MI_FADD,
