@@ -407,6 +407,10 @@ struct Function
   long long host_eh_selector_offset = 0;
   InstructionDebugLocation debug_location;
   std::vector<X64Register> callee_saved_regs;
+  // A compiler-created scalar may remain in its selected register across one
+  // adjacent block edge when the source has only that successor and the
+  // destination has only that predecessor. Such a value has no frame binding
+  // unless a clobber, spill, address use, join, or backedge requires one.
   // Compiler-created scalar temporaries whose complete storage lifetimes do
   // not overlap may name the same frame offset when their size and alignment
   // agree. A copied value that shares a home extends that storage lifetime.

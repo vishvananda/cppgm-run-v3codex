@@ -832,6 +832,46 @@ deferred to the cost phase.
 Complexity: O(values + instructions + CFG edges), with active-register work
 bounded by the fixed target register count.
 
+Completed in S6.  The PA29 analysis now records a dense block index, sole
+successor, sole predecessor, and sole cross-block-use destination.  It marks a
+compiler-created scalar only when its definition block and unique use block
+form one presentation-adjacent, acyclic, exact CFG edge.  Parameters, loop
+invariants, joins, branch fanout, EH fanout, nonadjacent edges, address-backed
+values, and registers clobbered before the use remain on the conservative
+path.  This costs O(blocks + CFG edges + uses + values), uses `ValueId` and
+dense vectors throughout, and constructs neither string keys nor per-block
+live-value sets.  The lowering may retain an eligible selected GPR/XMM and may
+reuse it destructively at its final use; all existing fixed-register and
+clobber handling remains authoritative.
+
+The new PA29 structural/behavior fixture keeps one scalar in `rbx` across an
+exact edge and a call, with no temporary frame binding, store, or reload.  The
+independent upstream PA29 reference also selects a callee-saved register for
+this case.  Existing PA29 loop, pressure, indirect-call, mixed GPR/XMM, and
+address-escape coverage, plus PA38 EH-edge coverage, remain negative guards.
+One pre-existing PA29 raw MIR sidecar was regenerated to agree with its
+already-canonicalized CMIR: its immediate `or` is now represented directly
+instead of through a stale temporary register.
+
+On the frozen source, 3,452 values meet the exact-edge relation and 35 avoid
+edge stabilization.  Temporary homes and edge-home creations each fall by 34
+or 35, MIR falls by 67 instructions, decoded native instructions by 19,
+memory-to-register movement by 39 instructions/163 bytes, and
+register-to-memory movement by 34 instructions/133 bytes.  The object is
+3,220,336 bytes (-96), `.text*` is 731,575 bytes (-185), and base `.text` is
+426,036 bytes (-12).  LSDA and relocations are unchanged; `.eh_frame` grows by
+108 bytes because 27 additional push/pop pairs preserve profitable retained
+registers.  The net size gate passes, while S8 retains responsibility for the
+preserve-cost audit.
+
+Two three-block A/B/B/A measurements were run in opposite orders.  In the
+baseline-first run, baseline/candidate medians were 4.775/4.750 seconds wall
+and 4.275/4.270 seconds user.  In the candidate-first run, candidate/baseline
+medians were 4.765/4.755 seconds wall and both were 4.270 seconds user.  Peak
+RSS moved by less than 0.5% in both directions.  The reversed order therefore
+confirms compile time and memory are neutral under intermittent host load.
+PA29 plus PA38 pass all 289 report tests and the full report passes all 5,282.
+
 ### S7: preserve known-width normalization
 
 Classify the residual 3,639 `movzbl`, 1,430 `movslq`, and repeated `setcc`
@@ -961,7 +1001,7 @@ Fill one row after each retained phase.
 | S3 physical resume terminal | PA31 stack/clobber behavior and exact resume-relocation inspection; no LowIR/MIR migration | -1,416 text, -212 LSDA, -253 resume calls/relocations | +0.24% paired median user, +0.25% RSS | PA31 30/30 groups; through-PA31 4,305/4,305; full 5,280/5,280; zero-fatal audit | complete |
 | S4 cleanup equivalence | none; all typed key fields remain semantically required | audit-only: frozen object remains byte-identical to S3; O1 finds only 16 exact tail groups/22 instructions and three resume blocks | none; no production change | S3 full 5,280/5,280 and zero-fatal audit remain the boundary; exact O0/O1 cleanup/call census recorded | complete; audit-only |
 | S5 destination placement | PA17 direct xvalue-to-base binding and direct-register class-call destination fixtures; no PA29 migration needed | cumulative through S5b: -3,431 text, -540 LSDA, -97 relocations, -33 terminate calls; all 62 generated object call slots removed | S5b paired 0.000% wall, +0.605% user, +0.451% RSS | PA17 245/245; through-PA17 1,715/1,715; full 5,281/5,281; zero-fatal audit | complete through S5b |
-| S6 bounded scalar retention | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
+| S6 bounded scalar retention | PA29 exact-forward-edge MIR/behavior; existing PA29 loop/call/escape and PA38 EH negatives | -185 text, -19 decoded instructions, -34 temporary homes; +108 `.eh_frame` pending S8 cost audit | reverse-order medians both 4.270s user; <0.5% RSS movement | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | complete |
 | S7 width normalization | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S9 demand/optimization remeasure | explicit force-inline owner only at O0; ordinary work deferred to PA37/PA38 | pending | pending | pending | planned |

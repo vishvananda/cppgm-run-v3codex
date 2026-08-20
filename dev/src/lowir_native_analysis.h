@@ -35,7 +35,11 @@ struct FunctionFacts
     // A full-width scalar call result remains in rax until its first use in
     // the defining block. This permits an early GPR call argument to read the
     // ABI carrier even when a separate selected home preserves later uses.
-    VF_CALL_RESULT_RAX_FIRST_USE = 1u << 15
+    VF_CALL_RESULT_RAX_FIRST_USE = 1u << 15,
+    // A compiler-created value may remain in its selected register across one
+    // presentation-adjacent CFG edge when the source has exactly that
+    // successor and the destination has exactly that predecessor.
+    VF_EXACT_FORWARD_EDGE = 1u << 16
   };
 
   std::vector<std::size_t> uses;

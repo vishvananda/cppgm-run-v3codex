@@ -1,0 +1,56 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @bump
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    add rdi, 1
+    ret rdi
+
+function @keep_across_edge
+  abi
+    param %seed -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve <gpr0>
+
+  block ^entry
+    mov <gpr0>, rdi
+    add <gpr0>, 7
+    jmp ^continuation
+
+  block ^continuation
+    mov rdi, 30
+    call @bump [args=(rdi)]
+    mov r8, rax
+    add <gpr0>, r8
+    ret <gpr0>
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 5
+    call @keep_across_edge [args=(rdi)]
+    mov rdx, 43
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
+    sext.i32 rax
+    ret rax

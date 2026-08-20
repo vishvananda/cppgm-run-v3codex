@@ -97,6 +97,8 @@ struct Stats
   std::size_t spills = 0;
   std::size_t temporary_frame_homes_created = 0;
   std::size_t temporary_frame_homes_reused = 0;
+  std::size_t exact_forward_edge_values = 0;
+  std::size_t exact_forward_edge_register_retains = 0;
   std::array<std::size_t, NMR_COUNT> movement_instructions_by_reason = {{0}};
   std::array<std::size_t, NMR_COUNT> movement_loads_by_reason = {{0}};
   std::array<std::size_t, NMR_COUNT> movement_stores_by_reason = {{0}};

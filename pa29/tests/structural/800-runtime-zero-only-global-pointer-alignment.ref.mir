@@ -23,8 +23,7 @@ function @main
   block ^entry
     mov r8, @table
     mov r9, r8
-    mov rdx, 15
-    or r9, rdx
+    or r9, 15
     mov rdi, 15
     not rdi
     and r9, rdi

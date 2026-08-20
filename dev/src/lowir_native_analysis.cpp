@@ -1,6 +1,7 @@
 #include "lowir_native_analysis.h"
 
 #include "lowir_native.h"
+#include "lowir_native_forward_edge_analysis.h"
 
 #include <algorithm>
 #include <array>
@@ -631,6 +632,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   extend_loop_liveness(facts, function, definition_blocks,
     block_uses, block_first_position, block_last_position, clobber_positions);
   extend_shared_storage_liveness(facts, function);
+  mark_exact_forward_edge_values(
+    facts, function, definition_blocks, block_uses, stats);
   for(std::size_t value = 0; value < value_count; ++value)
     if(facts.uses[value] != 1)
       facts.value_flags[value] &= ~FunctionFacts::VF_DESTRUCTIVE_PARAMETER;

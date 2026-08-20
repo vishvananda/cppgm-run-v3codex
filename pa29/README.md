@@ -509,6 +509,14 @@ To complete PA29, implement these goals:
    sign-changing conversions remain explicit. Such a copy should not add a
    machine move.
 
+   A compiler-created scalar that is live across one adjacent block edge
+   should remain in its selected register when the source has only that
+   successor, the destination has only that predecessor, and the register
+   survives every intervening operation.  A value crossing a call may use a
+   callee-saved register for this purpose.  Joins, backedges, exception edges,
+   address-taking uses, and clobbered registers still require conservative
+   placement.
+
 9. Implement call-boundary correctness without requiring a clever allocator.
    PA29 must respect the native calling convention for direct calls, indirect calls,
    mixed GPR/XMM arguments, variadic register-save state, stack arguments, scalar and
@@ -664,6 +672,9 @@ strategies include:
   register constraint directly
 - let a representation-preserving scalar copy share an intact parameter
   location when the copied result's interval crosses no clobber
+- record each block's sole predecessor and successor in dense CFG facts so a
+  compiler-created scalar can retain its selected register across one exact
+  adjacent edge without constructing per-block live-value sets
 - retain integer constants as typed MIR immediates, letting native emission
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required

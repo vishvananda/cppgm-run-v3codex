@@ -821,6 +821,7 @@ private:
            (!values_[id].parameter || reusable_destructive_parameter) &&
            !values_[id].fixed_register_home &&
            (!facts_.has(id, FunctionFacts::VF_EDGE_LIVE) ||
+            facts_.has(id, FunctionFacts::VF_EXACT_FORWARD_EDGE) ||
             reusable_destructive_parameter) &&
            values_[id].location.kind == MirOperand::OP_REG &&
            !has_live_location_alias(id, values_[id].location);
@@ -961,6 +962,10 @@ private:
     const MirOperand location = value.location;
     if(location.kind != MirOperand::OP_REG &&
        location.kind != MirOperand::OP_XMM) return;
+    if(facts_.has(instruction.dest, FunctionFacts::VF_EXACT_FORWARD_EDGE)) {
+      if(stats_) ++stats_->exact_forward_edge_register_retains;
+      return;
+    }
     const MirOperand home =
       allocate_temp_frame_binding(instruction.dest, value.type, THR_EDGE_LIVE);
     if(location.kind == MirOperand::OP_XMM) {
