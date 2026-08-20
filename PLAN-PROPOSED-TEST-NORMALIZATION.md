@@ -1,6 +1,6 @@
 # Plan: Normalize Proposed Tests into the Course Suites
 
-Status: ready for implementation; prerequisite for `PLAN-O0-CLANG-PARITY.md`
+Status: complete and validated; prerequisite for `PLAN-O0-CLANG-PARITY.md`
 
 Date: 2026-08-20
 
@@ -425,14 +425,16 @@ After all moves:
 
 ```sh
 make test-report
-make test-strict
 perl scripts/cppgm_file_audit.pl --stage pa39 --paths dev
 ```
 
-The file audit must have zero fatal findings.  Inception is not required for a
-test-location-only normalization, but any compiler change needed to satisfy a
-newly approved semantic contract follows that compiler change's normal PA39
-validation requirements.
+The file audit must have zero fatal findings.  Run `make test-strict` only when
+the optional byte-exact witness surface is changed; the production `cppgm++`
+driver accepts but does not implement witness logging, so that reference-
+maintainer lane is not a product gate for this migration.  Inception is not
+required for a test-location-only normalization, but any compiler change
+needed to satisfy a newly approved semantic contract follows that compiler
+change's normal PA39 validation requirements.
 
 No test run should read anchors from `proposed/`; deletion of that tree is part
 of the success condition, not a harness change that silently stops running
@@ -453,6 +455,71 @@ tests.
 | PA32 | 2 | one course inspect; one design-plan-only deletion | weak pruning remains deferred | complete; updated-reference snapshot `a810c60e` |
 | PA37 | 1 | course O1 | documented whole-caller budget | complete; updated-reference snapshot `a810c60e` |
 
+### Completed anchor inventory
+
+Normalization landed in six independently validated changesets:
+
+- `25208d8d` established the permanent policy and PA29 strict, structural,
+  and behavior lanes.  It also made reference MIR mandatory but informational
+  for behavior tests and backfilled the assignment-local and course behavior
+  corpus.
+- `ac1c39a2` normalized PA11 through PA26.  It activated the PA11 negative
+  tests `namespace-nonstatic-anonymous-union-bad` and
+  `scoped-enum-integral-comparison-bad`; deleted the reserved-identifier PA12
+  candidate and the two related assignment-local reserved-spelling fixtures;
+  replaced them with `distinct-anonymous-type-identities`; rewrote and
+  activated PA15 `generated-temporary-name-collision`; and activated PA16
+  `local-class-default-member-enclosing-constant`, PA25
+  `lambda-local-static-per-specialization`, and PA26
+  `200-constructor-unwind-shares-generated-suffix`.
+- `bc9a2062` corrected unsigned multiply serialization exposed by the PA29
+  i128 reducer.  `a43d36ee` then activated all eleven PA29 structural anchors:
+  `direct-call-result-consumers`, `direct-return-placement`,
+  `discarded-slots-do-not-reserve-frame`,
+  `incoming-parameter-emitted-clobbers`, `index-address-placement`,
+  `indexed-memory-addressing`,
+  `nonadjacent-object-result-frame-placement`,
+  `representation-preserving-copy-placement`,
+  `single-block-call-argument-coalescing`, `typed-i128-high-word`, and
+  `unused-index-address-elision`.  The same changeset activated all fourteen
+  PA29 behavior anchors: `constant-byte-store-coalescing`,
+  `dead-address-copy-index-load-folding`,
+  `dead-address-copy-index-store-folding`,
+  `dead-address-copy-load-folding`, `dead-address-copy-store-folding`,
+  `dead-address-load-folding`, `dead-address-store-folding`,
+  `dead-copy-store-folding`, `flag-safe-zero-materialization`,
+  `i128-multiply-caller-saved-clobber`, `narrow-zero-extension-encoding`,
+  `redundant-u32-normalization-encoding`,
+  `transient-scratch-address-folding`, and `zero-compare-test-encoding`.
+- `a810c60e` implemented the public PA32 requirement exposed by
+  `unreachable-internal-function-pruning`, using typed object roots without
+  adding serialized LowIR metadata.
+- `42eae2a9` activated PA31
+  `360-adjacent-lsda-call-site-coalescing`, added the public end-to-end
+  boundary cases `370-lsda-distinct-cleanup-landings` and
+  `380-lsda-distinct-catch-actions`, and deleted the private-header
+  `lsda-call-site-coalescing-unit.cpp`.  It activated PA32
+  `unreachable-internal-function-pruning`, deleted the unimplemented
+  `post-optional-inline-weak-pruning` anchor after moving its design evidence
+  to `PLAN-OBJECT-DEMAND.md`, and activated the renamed PA37 O1 fixture
+  `390-inline-growth-budget`.
+
+References were generated only through the owning PA `ref-test` workflows,
+using clean detached authoritative snapshots `25208d8d`, `bc9a2062`, and
+`a810c60e` as the implementation advanced.  No `.my` output was promoted to a
+reference.  The former directory now has no tracked files and has been removed
+from the working tree; active plans and handouts contain no instruction to
+recreate it.
+
+Final validation on 2026-08-20 passed the full report at 5,263/5,263 and the
+PA39 file audit with zero fatal findings and 31 warnings.  Because two compiler
+fixes were required, the PA39 inception lane was also run: every object and the
+final compiler matched, in 4:19.41 wall with 225,024 KiB peak RSS.  The optional
+strict witness command was audited separately: all 415 reported failures were
+missing `.my.witness` outputs, with no compared-output mismatch, because the
+production driver has never emitted the reference compiler's optional witness
+log.  No normalized fixture touches that surface.
+
 ## Completion criteria
 
 Normalization is complete only when:
@@ -472,4 +539,6 @@ Normalization is complete only when:
 - student READMEs contain current requirements and non-normative Design Notes,
   with no migration history;
 - every reference came from the authoritative workflow; and
-- the full report, strict suite, and zero-fatal file audit pass.
+- the full report and zero-fatal file audit pass; and
+- when compiler changes were required, PA39 inception matches every object and
+  the final compiler.

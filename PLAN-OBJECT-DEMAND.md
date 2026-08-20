@@ -572,4 +572,4 @@ Before reconsidering it, define a cross-object ownership rule that preserves
 address observability, explicit instantiation, virtual/lifecycle/EH roots, and
 the obligation to contribute an ODR definition. Add a fresh active PA32 or
 optimization-owner course reducer only when that rule is implemented; there is
-no dormant proposed test for this experiment.
+no dormant test anchor for this experiment.

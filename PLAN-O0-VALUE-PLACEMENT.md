@@ -174,9 +174,10 @@ For every stage, record:
 
 PA29 owns O0 selection, ABI placement, allocation correctness, and the MIR
 surface.  PA38 owns generic O1/O2 machine cleanup.  New correctness reducers
-go into the earliest owning course suite when the reference agrees.  A useful
-shape witness unsupported by the older reference remains under
-`proposed/pa29/` or `proposed/pa38/`.
+go into the earliest owning course suite.  If an adopted public shape differs
+from the pinned reference, update the assignment contract and authoritative
+reference before activating the structural fixture.  Behavior-only PA29 tests
+retain informational reference MIR without grading its exact shape.
 
 An intentional public MIR format addition requires a coordinated fixture
 migration.  It is not permission to rebaseline an unrelated behavioral or
@@ -207,16 +208,15 @@ full report, zero-fatal audit, and updated frozen/compiler-size evidence.
 | --- | ---: | ---: | --- | --- |
 | VP0 | 0 | 135 raw MIR and 93 structural sidecars; exactly 223 call lines | Frozen object byte-identical at 4,498,880 bytes; one timing screen 6.29 s wall/5.71 s user; full report 5,188/5,188; audit zero fatal | landed in `43f17b58` |
 | VP1 | 0 | 5 existing MIR fixtures plus one new PA29 structural fixture | Frozen object/text -11,272 bytes; x86 instructions -1,962, including 1,895 moves; three-block ABBA medians tied at 6.295 s wall and 5.720 s user; full report 5,189/5,189; audit zero fatal | landed in `9a7e9dee` |
-| VP2 | 1 proposed LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
-| VP3 | 3 proposed LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases; direct unary returns change no existing fixture; direct integer-conversion returns change 4 exact and 1 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied. Direct unary returns: object/text -16 bytes and 4 instructions/moves; paired user -0.35%, wall -0.48%, RSS +0.63%. Direct integer-conversion returns: object -32 bytes, text -20 bytes, and 6 instructions/moves; paired user -1.05%, wall -0.40%, and RSS -0.21% | complete; VP4/VP5 cover the retained broader placement cases, while the measured broad integer-binary reshaping candidate remains deferred because it increased text size |
+| VP2 | 1 PA29 structural LowIR witness | 5 existing PA29 MIR fixtures; indexed operand syntax added to the scaffold/canonicalizer | Frozen object -4,656 bytes and text -4,288 bytes; x86 instructions -1,741, including 1,848 fewer `lea`, 33 fewer `imul`, 7 fewer `add`, 215 fewer `push`, and 218 fewer `pop`; paired user +0.09%, wall +0.56%, RSS +0.24%; full report 5,189/5,189; audit zero fatal | landed in `4b36cd90` |
+| VP3 | 3 PA29 structural LowIR shape witnesses | 10 existing PA29 fixtures plus the PA38 call-address fixture at O1/O2; the call-result slice changes no existing fixture; fixed-home call forwarding changes 1 behavior-exact PA29 fixture; promoted-slot interval extension changes 2 strict and 1 behavior-exact PA29 fixtures; direct comparison returns change 8 exact and 17 structural report cases; direct unary returns change no existing fixture; direct integer-conversion returns change 4 exact and 1 structural report cases | Input-lifetime slice: frozen object -2,360 bytes, text -2,272 bytes, and 662 instructions. Placement slice: object -2,704 bytes, text -1,090 bytes, and 1,178 instructions. Direct call-result consumers: object -9,048 bytes, text -8,204 bytes, and 2,749 instructions; its paired medians improve user 0.71% and wall 0.85% with RSS +0.24%. Fixed-home forwarding: object -144 bytes, text -59 bytes, and 21 moves; paired user +0.27%, wall +0.73%, RSS +0.22%. Promoted-slot intervals: object -2,416 bytes, text -2,426 bytes, and 915 instructions; paired user +0.62%, wall -0.48%, RSS -0.09%. Dense slot analysis is object-identical and improves paired user 0.27%, wall 0.40%, and RSS 0.16%. Direct comparison returns: object -576 bytes, text -607 bytes, and 111 instructions/moves; paired user -1.32%, wall -1.04%, RSS tied. Direct unary returns: object/text -16 bytes and 4 instructions/moves; paired user -0.35%, wall -0.48%, RSS +0.63%. Direct integer-conversion returns: object -32 bytes, text -20 bytes, and 6 instructions/moves; paired user -1.05%, wall -0.40%, and RSS -0.21% | complete; VP4/VP5 cover the retained broader placement cases, while the measured broad integer-binary reshaping candidate remains deferred because it increased text size |
 | VP4 | 5 course LowIR correctness/shape reducers | Typed/copy slice: 12 strict, 9 structural, and 3 course-exact PA29 fixtures plus 4 PA38 O1/O2 fixtures; direct constraints: 3 strict and 1 structural PA29 fixtures; parameter retention: 3 strict, 12 structural, and 1 behavior-exact PA29 fixture, with overlap; wide spill reuse changes 2 strict and 1 structural PA29 cases (4 MIR/CMIR files); scalar spill reuse changes 1 behavior-exact PA29 fixture and adds PA29 O0 and PA38 O2 course behavior reducers; frame-address placement changes 4 strict and 4 structural PA29 fixtures plus 3 PA38 O1/O2 fixtures | Caller-saved slice: frozen object -21,824 bytes, text -18,494 bytes, and 5,800 instructions. Typed-immediate/copy slice: object -24,688 bytes, text -23,682 bytes, MIR instructions -5,926, x86 instructions -4,533, moves -3,645, and spills 476 -> 318. Direct-constraint slice: object -160 bytes, text -155 bytes, 56 x86 instructions, and 55 moves. Intact-parameter slice: object -1,648 bytes, text -1,305 bytes, and 447 instructions. Its calm ABBA medians are user +0.09%, tied wall, and RSS +0.12%. Wide spill reuse is frozen-object-identical; paired user +0.18%, wall +0.08%, RSS -0.03%. Lifetime-keyed frame forwarding is also frozen-object-identical; paired user -0.70%, wall -0.24%, RSS -0.22%. Scalar reuse removes 80 object bytes and 74 text bytes with unchanged instruction counts; final paired user +0.45%, wall +0.53%, RSS +0.18%. Frame-address placement removes 2,472 object bytes, 2,507 text bytes, 1,341 MIR instructions, and 589 x86 instructions with neutral paired timing | complete: caller-saved pool, clobber-safe reuse, typed-immediate/address rematerialization, safe copy sharing, direct constraints, intact ABI-parameter retention, all scalar spill-home reuse, and frame-forwarding lifetime identity |
-| VP5 | 4 proposed PA29 placement witnesses plus existing course reducers | Existing migrations are enumerated in the phase narrative below; selected parameter demand changes 9 PA29 and 2 PA38 fixture cases; stable promoted homes, direct remainder returns, and the early call-result carrier change no checked fixture; logical large ALU immediates change 1 structural PA29 pair; unread selected homes change 1 strict PA29 fixture and 1 structural raw/canonical pair; compatibility retirement changes no fixtures | Compatibility telemetry falls from 959 operand rewrites / 874 dead definitions / 3 frame corrections to 0 / 0 / 0 before the pass and is then retired; the unread-home slice removes 2,288 object bytes, 2,428 text bytes, and 1,001 x86 instructions, while removing the pass is object-identical and improves paired user/wall time 1.54%/2.01% | complete |
+| VP5 | 4 PA29 structural placement witnesses plus existing course reducers | Existing migrations are enumerated in the phase narrative below; selected parameter demand changes 9 PA29 and 2 PA38 fixture cases; stable promoted homes, direct remainder returns, and the early call-result carrier change no checked fixture; logical large ALU immediates change 1 structural PA29 pair; unread selected homes change 1 strict PA29 fixture and 1 structural raw/canonical pair; compatibility retirement changes no fixtures | Compatibility telemetry falls from 959 operand rewrites / 874 dead definitions / 3 frame corrections to 0 / 0 / 0 before the pass and is then retired; the unread-home slice removes 2,288 object bytes, 2,428 text bytes, and 1,001 x86 instructions, while removing the pass is object-identical and improves paired user/wall time 1.54%/2.01% | complete |
 
-The VP1 proposed call-argument input predates the public MIR placement rule and
-is now supplemental to the active `900-symbolic-global-call-argument` fixture.
-The VP2 scaled-index witness remains proposed because the course reference
-materializes `imul` plus `add`; both compilers execute it successfully, but
-their MIR shapes intentionally disagree.
+The VP1 call-argument input predates the public MIR placement rule and is now
+active supplemental structural coverage beside
+`900-symbolic-global-call-argument`.  The VP2 scaled-index witness is likewise
+active structural coverage under the updated authoritative PA29 reference.
 
 The VP4 caller-saved slice changes strict PA29 MIR for `100-copyobj`,
 `100-zeroinit`, `300-atomic-add-fetch`,
@@ -497,11 +497,12 @@ does not build another value graph or rescan the function. Indirect-result and
 other address-requiring arguments retain their frame home.
 
 No existing PA29 fixture exercises this exact placement shape.
-`proposed/pa29/direct-call-result-consumers.t` covers both consumers and runs
-successfully under the current and course-reference compilers. The reference
-forwards RAX to the consumer but retains dead intermediate result copies, so
-the case remains proposed rather than imposing a new exact course oracle. The
-student README and scaffold state only the required placement rule.
+`cppgm.tests/course/pa29/structural/direct-call-result-consumers.t` covers both consumers and runs
+successfully under the current and course-reference compilers. The older
+reference forwarded RAX to the consumer but retained dead intermediate result
+copies; the updated authoritative reference adopts the public placement rule,
+and the case is active structural course coverage. The student README and
+scaffold state only the required placement rule.
 
 Against `59e7e175`, the frozen object falls from 4,429,536 to 4,420,488 bytes,
 aggregate `.text*` from 943,292 to 935,088 bytes, `.eh_frame` from 138,804 to
@@ -612,10 +613,11 @@ change for `100-frame-address-fold`, `200-cross-block-copy-liveness`, and
 course case `300-call-result-across-eh-push` because the input PA29 MIR already
 places the result in RAX.
 
-The comparison was added to `proposed/pa29/direct-return-placement.t`. Both
-compilers execute the expanded witness successfully. The course reference
-retains a temporary comparison register and final return copy, so the shape
-witness remains proposed rather than becoming a conflicting active oracle.
+The comparison was added to `cppgm.tests/course/pa29/structural/direct-return-placement.t`. Both
+compilers execute the expanded witness successfully. The older course
+reference retained a temporary comparison register and final return copy; the
+updated authoritative reference adopts the public shape, and the witness is
+active structural course coverage.
 Against `51a7243c`, the frozen object falls from 4,417,928 to 4,417,352 bytes,
 aggregate `.text*` from 932,603 to 931,996 bytes, and x86 instructions from
 231,032 to 230,921; all 111 removed instructions are moves. Two ABBA blocks
@@ -655,7 +657,7 @@ adjacent return use, so moving its one input to RAX before the operation cannot
 overwrite another input. The existing adjacency/use query is O(1); no new
 analysis state is retained. No checked-in report fixture contains this exact
 shape. The negation case was therefore added to the existing
-`proposed/pa29/direct-return-placement.t`; both compilers execute it, while the
+`cppgm.tests/course/pa29/structural/direct-return-placement.t`; both compilers execute it, while the
 course reference retains an intermediate register and return copy.
 
 Against `1e6cb571`, the frozen object falls from 4,417,352 to 4,417,336 bytes,
@@ -678,7 +680,7 @@ Strict or behavior-exact MIR changes for PA29
 for PA29 `800-xmm-live-across-integer-call`. Each migration replaces a
 conversion destination temporary and final return copy with direct RAX
 placement. The truncation case was added to
-`proposed/pa29/direct-return-placement.t`; both compilers execute it, while
+`cppgm.tests/course/pa29/structural/direct-return-placement.t`; both compilers execute it, while
 the course reference retains the intermediate register and copy.
 
 Against `31420a14`, the frozen object falls from 4,417,336 to 4,417,304 bytes,
@@ -701,11 +703,10 @@ placement changes the PA29 strict `100-ret0`, `100-structured-global-data`,
 `100-call-address-cleanup` MIR/CMIR pair at both O1 and O2 because the PA29
 load already targets the return register before machine optimization.
 
-`proposed/pa29/index-address-placement.t` and
-`proposed/pa29/direct-return-placement.t` execute successfully with both
-compilers.  They remain proposed because the course reference introduces the
-temporary copies or expanded multiply/add sequences that the public placement
-rule excludes.
+`cppgm.tests/course/pa29/structural/index-address-placement.t` and
+`cppgm.tests/course/pa29/structural/direct-return-placement.t` execute successfully with both
+compilers.  The updated authoritative reference adopts the public placement
+rule, so both are active structural course tests.
 
 The frame-home reuse follow-up fixes a correctness hole in loop interval
 construction.  A nested loop body may be serialized after an outer loop's
@@ -904,9 +905,9 @@ wall, and 364,468/364,962 KiB peak RSS.  Paired medians are +0.51% user,
 +0.18% wall, and +0.25% RSS, all neutral.
 
 No existing MIR fixture changes.  Both compilers execute the new
-`proposed/pa29/incoming-parameter-emitted-clobbers.t` input successfully, but
-the older reference relocates all parameters to callee-saved registers, so
-the shape witness remains proposed.  The affected report passes 368/368, the
+`cppgm.tests/course/pa29/structural/incoming-parameter-emitted-clobbers.t` input successfully.  The
+updated authoritative reference adopts the direct placement, so the witness
+is active structural coverage.  The affected report passes 368/368, the
 PA29 suite passes 224/224, the through-PA29 report passes 4,116/4,116, the
 full report passes 5,204/5,204, and the PA39 file audit has zero fatal
 findings.
@@ -941,11 +942,11 @@ full after another checkout began a 16-way test report during its second block
 and produced a 7.61-second candidate outlier.
 
 No existing fixture changes.  Both compilers omit the operations from
-`proposed/pa29/unused-index-address-elision.t` and execute it successfully,
-but their unrelated startup-call syntax prevents an exact course oracle; the
-behavior-only form observes no property beyond the constant return.  The
-supplemental input therefore remains proposed rather than introducing a new
-test type or a manufactured fixture.
+`cppgm.tests/course/pa29/structural/unused-index-address-elision.t` and execute it successfully,
+but their unrelated startup-call syntax originally prevented an exact course
+oracle.  The explicit PA29 structural lane and updated authoritative reference
+now make the supplemental input an active placement test without manufacturing
+an oracle.
 
 The affected PA29/PA31/PA37/PA38 report passes 368/368, the PA29 suite passes
 224/224, the through-PA29 report passes 4,116/4,116, and the final full report
@@ -980,9 +981,9 @@ The intentional public MIR migration affects
 `pa29/tests/behavior/800-reactive-spill-signed-div`: each now materializes its
 immediate divisor in RCX without a dead RDX intermediate.  The pinned reference
 and current compiler both execute these cases and the extended
-`proposed/pa29/direct-return-placement.t` successfully.  The reference retains
-the extra divisor copy, so the proposed input remains a placement-shape witness
-rather than adding a duplicate behavior fixture.  Existing course PA29 tests
+`cppgm.tests/course/pa29/structural/direct-return-placement.t` successfully.  The updated reference
+adopts the public placement shape, so this remains part of the active
+structural witness rather than adding a duplicate behavior fixture.  Existing course PA29 tests
 already cover directly returned signed/unsigned quotients and remainders.
 
 Against the unused-index baseline, frozen raw MIR falls from 213,003 to 212,642
@@ -1124,7 +1125,7 @@ copy. The selected value records its result type; width- and sign-changing
 conversions remain explicit. The decision is constant-time and adds no state.
 
 No existing fixture changes. The supplemental
-`proposed/pa29/representation-preserving-copy-placement.t` round-trips a
+`cppgm.tests/course/pa29/structural/representation-preserving-copy-placement.t` round-trips a
 pointer through `i64`; both compilers execute it successfully, but the older
 reference assigns new registers to both copies. Since behavior duplicates
 active pointer-copy coverage, it remains a shape witness. The PA29 contract
@@ -1151,7 +1152,7 @@ not adjacent. Selection performs a fixed number of indexed lookups and
 instruction-kind checks; it adds no scan, map, string identity, or state.
 
 No existing fixture changes. Both compilers execute
-`proposed/pa29/nonadjacent-object-result-frame-placement.t`, while the older
+`cppgm.tests/course/pa29/structural/nonadjacent-object-result-frame-placement.t`, while the older
 reference carries the destination in a register across the call. Active PA29
 cases already cover object-result behavior, so the new input remains a shape
 witness. The PA29 contract and typed MIR scaffold state the nonadjacent frame
@@ -1286,7 +1287,7 @@ transfer. The decision extends the existing constant-time adjacent-use query;
 it adds no state, scan, or allocation.
 
 No checked fixture changes. The existing course behavior cases and the
-supplemental `proposed/pa29/direct-return-placement.t` input cover signed and
+supplemental `cppgm.tests/course/pa29/structural/direct-return-placement.t` input cover signed and
 unsigned directly returned remainders. Against `14149ba4`, raw MIR and
 single-block preparation input each fall by one instruction. Preparation falls
 from 2 to 1 operand rewrite and from 24 to 23 dead definitions; its three frame
@@ -1313,12 +1314,13 @@ call setup also checks its already-emitted setup prefix. No unrelated function
 or value scan, string identity, hash table, or allocation is added.
 
 No checked fixture changes. The expanded
-`proposed/pa29/direct-call-result-consumers.t` witness returns a pointer in
+`cppgm.tests/course/pa29/structural/direct-call-result-consumers.t` witness returns a pointer in
 RAX, passes it first to an extended reference call, and uses it again after
 that call. Current MIR copies RAX once to the stable R12 home, passes the first
 argument directly from RAX, and reads R12 for the later call. Both the current
-and course-reference compilers execute the input successfully, but their MIR
-placement differs, so it remains proposed.
+and course-reference compilers execute the input successfully.  The updated
+authoritative reference adopts the public MIR placement, so it is active
+structural course coverage.
 
 Against `c2dd56bd`, single-block preparation reaches zero operand rewrites;
 its 23 dead definitions, three frame corrections, and 17,681 output
@@ -1351,10 +1353,10 @@ The strict `200-indirect-call-six-register-args` fixture and the raw/canonical
 structural pair for `200-stack-arguments-beyond-six` now consume all six intact
 incoming carriers directly and omit five callee saves plus six setup moves.
 Their existing executable checks cover the behavior. The supplemental
-`proposed/pa29/incoming-parameter-emitted-clobbers.t` witness now likewise
+`cppgm.tests/course/pa29/structural/incoming-parameter-emitted-clobbers.t` witness now likewise
 serializes its final reference parameter use directly from RCX without an
-unread `r9 <- rcx` transfer; the older reference retains the stable copy, so
-the witness remains proposed.
+unread `r9 <- rcx` transfer.  The updated authoritative reference adopts that
+public placement, so the witness is active structural course coverage.
 
 Against `c489ddcd`, frozen single-block preparation input falls from 17,704 to
 17,594 instructions and its output is also 17,594: operand rewrites, dead

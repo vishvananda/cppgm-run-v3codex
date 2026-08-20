@@ -188,20 +188,19 @@ is owned by the earliest assignment that owns the behavior:
 - PA37 for LowIR `-O1/-O2` transformations and object round trips; and
 - PA38 for MIR `-O1/-O2` transformations.
 
-References are generated only through the documented `ref-test` target.  If
-the reference agrees with the behavior and required shape, the test goes in
-`cppgm.tests/course/paN/`.  If the source is useful but the reference uses a
-different valid LowIR, MIR, or encoding, it goes in `proposed/paN/` with a
-README entry explaining the disagreement.  A behavior-only test belongs in
-the active course suite when it protects a real correctness boundary; a test
-whose only value is proving our more efficient representation remains
-proposed when the reference does not prove that representation.
+References are generated only through the documented `ref-test` target.  All
+retained regressions go in `cppgm.tests/course/paN/`.  A behavior-only test
+belongs in the active course suite when it protects a real correctness
+boundary; PA29 keeps reference MIR as an informational artifact without
+grading its exact shape.  If the course adopts a representation that differs
+from the pinned reference, update the public contract and authoritative
+reference before activating an exact structural fixture.
 
 PA26 and PA31 explicitly have no standalone reference binary.  For those
-assignments, reference agreement means an existing checked-in or upstream
-assignment fixture already establishes the result.  A new layout or inspect
-oracle without that authority starts under `proposed/paN/`; do not manufacture
-an active `.ref` sidecar from our own output.
+assignments, exact reference authority comes from an existing checked-in or
+upstream assignment fixture.  New correctness coverage should use the active
+course behavior lane unless an authoritative public layout/inspection oracle
+exists; do not manufacture a `.ref` sidecar from our own output.
 
 ### 4.1 Hard O0 fixture rule
 
@@ -232,20 +231,22 @@ not alter compiler behavior.
 
 | Existing fix | Reducer obligation | Expected placement |
 | --- | --- | --- |
-| E4 packed constant byte stores | Keep the existing runtime reducer; add an exact-shape reducer only if an existing inspection lane can prove it without binding register allocation | Existing `proposed/pa29/`; promote only on reference agreement |
-| E5 immediate 64-bit frame reload forwarding | Store is still observable while the reload result is consumed; include same-register and different-register forms | PA29 behavior active if reference agrees; representation proof proposed otherwise |
-| E6 single-use temporary-home elision | Adjacent single store/load positive case plus a second-use negative case | PA29 behavior active; exact frame omission proposed if reference differs |
+| E4 packed constant byte stores | Keep the existing runtime reducer; add an exact-shape reducer only if an authoritative inspection lane can prove it without binding register allocation | PA29 behavior course lane with informational MIR |
+| E5 immediate 64-bit frame reload forwarding | Store is still observable while the reload result is consumed; include same-register and different-register forms | PA29 behavior course lane; exact representation only with an authoritative structural oracle |
+| E6 single-use temporary-home elision | Adjacent single store/load positive case plus a second-use negative case | PA29 behavior course lane; exact frame omission only with an authoritative structural oracle |
 | E7 one independent instruction | Positive load/LEA/move separators and call/store/source-redefinition barriers | PA29 behavior active; optimization-shape proof follows reference routing |
 | E8 two-to-five independent instructions | Positive distances 2 and 5, distance 6 boundary, and a barrier in the window | PA29 behavior active; optimization-shape proof follows reference routing |
 | E9 narrow reload forwarding | i8/i16/i32 cases that expose partial-register, zero-extension, and upper-bit behavior | PA29 behavior active; this is correctness coverage even without exact MIR enforcement |
 
 One reducer should not be forced to prove multiple changesets when separate
-small inputs make a regression attributable.  The old E4 proposed test stays
-proposed unless a genuine active lane can observe the optimization itself.
+small inputs make a regression attributable.  E4 is active behavior coverage:
+execution proves the native folding is safe while its MIR remains
+informational rather than an exact optimization oracle.
 
-T1 landed in `ce76bd95`.  E4 remains covered by the existing proposed
-constant-byte-store witness because its only distinguishing property is the
-native encoding.  Five new PA29 course behavior tests cover E5--E9:
+T1 landed in `ce76bd95`.  E4 is covered by the active PA29 behavior
+`constant-byte-store-coalescing` witness because its only distinguishing
+property is the native encoding.  Five PA29 course behavior tests cover
+E5--E9:
 
 - `immediate-frame-reload-forwarding.t` exercises same-register and
   different-register immediate 64-bit reloads;
@@ -276,7 +277,7 @@ candidate.
 
 | ID | Candidate | Expected LowIR delta | Expected MIR delta | Initial status |
 | --- | --- | ---: | ---: | --- |
-| T1 | E4--E9 reducer backfill | 0 existing | 0 existing | **Landed** in `ce76bd95`; five active PA29 behavior reducers reference-agree, E4 byte-shape witness remains proposed, full report 5,176/5,176 |
+| T1 | E4--E9 reducer backfill | 0 existing | 0 existing | **Landed** in `ce76bd95`; five PA29 behavior reducers reference-agree, E4's byte-shape witness is active behavior coverage with informational MIR, full report 5,176/5,176 |
 | P0 | Retain jemalloc in the PA39 self link | 0 existing | 0 existing | **Landed** in `c6ee9be9`; exact-object A/B improves self-host frozen wall 1.25%, user 1.71%, and peak RSS 3.17%; 8-way inception matches; full report 5,176/5,176 |
 | B1 | Compact memory displacements | 0 existing | 0 existing | **Landed** in `e46bde65`; deterministic object -157,352 bytes and text -156,330 bytes; behavior reference agrees while its unrelated MIR layout differs |
 | B2 | Omit encoded jump to next instruction | 0 existing | 0 existing | **Landed** in `acf3d415`; 9,399 jumps and 18,798 text bytes removed with timing neutral |
@@ -284,17 +285,17 @@ candidate.
 | B3b | Signed positive power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `b37a6a93`; encoder peephole plus explicit-extension correction, active behavior reducers, frozen object -112 bytes, timing neutral |
 | B3n | Signed negative power-of-two division/remainder | 0 existing | 0 existing | **Landed** in `e9cf0de9`; active behavior reducer, `-1` intentionally retained, frozen object byte-identical, timing neutral |
 | B3c | General constant division using multiply-high magic | 0 preferred | 0 preferred; list narrow movement if unavoidable | **Landed** in `b7c61cc5` and `796de10c`; signed quotient/remainder and unsigned quotient/remainder are complete, no existing fixture movement, four active PA29 behavior/O2 reducers, frozen hardware divides 163 to 160, host-compiler wall -1.67%, and generated-self wall +0.64% (neutral) |
-| B4a | Flag-safe zero materialization | 0 existing | 0 existing | **Landed** in `edd35810`; linear per-block flag liveness, proposed encoding reducer, frozen object -11,048 bytes, timing neutral |
-| B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, proposed byte-shape reducer, frozen object -8,104 bytes, timing neutral |
-| B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, proposed byte-shape reducer, frozen object -2,080 bytes, timing neutral |
-| B4d1 | Fold a dead adjacent address calculation into its load | 0 existing | 0 existing | **Landed** in `551e530f`; 1,195 bounded proofs, proposed byte-shape reducer, frozen object -3,920 bytes, timing neutral |
-| B4d2 | Fold a dead adjacent address-register copy into its load | 0 existing | 0 existing | **Landed** in `014b7594`; 144 bounded proofs, proposed byte-shape reducer, frozen object -336 bytes, timing neutral |
-| B4d3 | Fold a dead copy/index/load chain | 0 existing | 0 existing | **Landed** in `2a9adc71`; 54 bounded proofs, proposed byte-shape reducer, frozen object -160 bytes, timing neutral |
-| B4d4 | Fold a dead value copy into its store | 0 existing | 0 existing | **Landed** in `9082687e`; 154 bounded proofs after frame-forwarding barriers, proposed byte-shape reducer, frozen object -400 bytes, timing neutral |
-| B4d5 | Fold a dead address calculation into its store | 0 existing | 0 existing | **Landed** in `40500a27`; 259 bounded proofs, proposed byte-shape reducer, frozen object -928 bytes, timing neutral |
-| B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, proposed byte-shape reducer, frozen object -544 bytes, timing neutral |
-| B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, proposed byte-shape reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
-| B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, proposed PA31 end-to-end and boundary reducers, timing neutral |
+| B4a | Flag-safe zero materialization | 0 existing | 0 existing | **Landed** in `edd35810`; linear per-block flag liveness, active PA29 behavior reducer, frozen object -11,048 bytes, timing neutral |
+| B4b | `cmp reg, 0` to `test reg, reg` | 0 existing | 0 existing | **Landed** in `fba50ba6`; width-aware native selection, active PA29 behavior reducer, frozen object -8,104 bytes, timing neutral |
+| B4c | Narrow zero-extension encodings | 0 existing | 0 existing | **Landed** in `13fa0a10`; 32-bit `movzx` destinations and selective REX, active PA29 behavior reducer, frozen object -2,080 bytes, timing neutral |
+| B4d1 | Fold a dead adjacent address calculation into its load | 0 existing | 0 existing | **Landed** in `551e530f`; 1,195 bounded proofs, active PA29 behavior reducer, frozen object -3,920 bytes, timing neutral |
+| B4d2 | Fold a dead adjacent address-register copy into its load | 0 existing | 0 existing | **Landed** in `014b7594`; 144 bounded proofs, active PA29 behavior reducer, frozen object -336 bytes, timing neutral |
+| B4d3 | Fold a dead copy/index/load chain | 0 existing | 0 existing | **Landed** in `2a9adc71`; 54 bounded proofs, active PA29 behavior reducer, frozen object -160 bytes, timing neutral |
+| B4d4 | Fold a dead value copy into its store | 0 existing | 0 existing | **Landed** in `9082687e`; 154 bounded proofs after frame-forwarding barriers, active PA29 behavior reducer, frozen object -400 bytes, timing neutral |
+| B4d5 | Fold a dead address calculation into its store | 0 existing | 0 existing | **Landed** in `40500a27`; 259 bounded proofs, active PA29 behavior reducer, frozen object -928 bytes, timing neutral |
+| B4d6 | Fold a dead address-register copy into its store | 0 existing | 0 existing | **Landed** in `80327487`; 170 bounded proofs, active PA29 behavior reducer, frozen object -544 bytes, timing neutral |
+| B4d7 | Fold a dead copied-and-indexed address into its store | 0 existing | 0 existing | **Landed** in `53a6f6ea`; 84 bounded proofs, active PA29 behavior reducer, frozen object -320 bytes, timing neutral; closes the safe baseline B4d inventory |
+| B5 | Adjacent LSDA call-site coalescing | 0 existing | 0 existing | **Landed** in `236f78e7`; 5,672 protected calls become 3,294 LSDA entries, frozen object/LSDA -26,936 bytes, active PA31 end-to-end safety family, timing neutral |
 | B6 | Put weak function bodies in real ELF COMDAT groups | 0 existing | 0 existing | **Landed** in `90368327`; actual weak code and relocation sections now share the function COMDAT, FDEs follow the selected code, a reference-agreeing PA32 reducer checks both membership facts, compiler `size` text -7,295,360 bytes, full report 5,186/5,186, zero-fatal audit, and clean object/final-binary inception comparison pass |
 | B7 | Reduce residual copy, frame-home, and address-materialization traffic | 0 preferred | 0 at baseline; intentional only if assigned to PA38 | **Reprofiled after B6**: same-name functions account for about 2.25 MB of the 2.94 MB residual machine-text gap; `mov` and `lea` account for 2.20 MB of the parsed instruction-byte delta, led by register copies, stack homes/reloads, and materialized addresses; prove bounded zero-MIR cases first, then put representation-changing coalescing in PA38 |
 | B7a | Omit a proved redundant 32-bit normalization | 0 existing | 0 existing | **Landed** in `0f01fa1a`; an immediately preceding non-forwarded 32-bit producer proves that the register's upper half is already zero, identical-source O0 self build machine text -41,856 bytes and 16,107 same-register moves, frozen object text -347 bytes, paired compile time neutral |
@@ -312,9 +313,9 @@ candidate.
 | C2b | Exact context-compatible cleanup-tail sharing | Intentional at O1 | Downstream only | **Landed** in `9bf96710`; 50 frozen groups, 97 LowIR instructions, 82 resume calls, and 5,984 object bytes removed; full report 5,178/5,178, timing neutral |
 | C2c | Alpha-equivalent or cross-context cleanup-tail sharing | Potentially broad at O1 | Downstream only | Deferred: exact sharing captured the safe typed subset; cross-context ownership failed the PA36 reducer and alpha-renaming needs a separate SSA/liveness proof |
 | D1 | Typed audit of remaining emitted definitions | 0 | 0 | **Landed** in `6bfef5ea`, corrected in `5517d984`; all 4,578 frozen functions classified, 74 conservative fallback roots and 78 internal-pruning candidates, exact object SHA preserved, full report 5,178/5,178, timing neutral |
-| D2 | Prune unreachable internal native definitions | 0 required | Native function set changes at O0/O1/O2 | **Deferred**: raw prototype removed 78 definitions and 22,376 bytes, but omitted an ABI-required anonymous-namespace base constructor; the metadata repair moved 49 existing LowIR fixtures, while the nonserialized repair broke 3/7 PA37 object round trips |
+| D2 | Prune unreachable internal native definitions | 0 required | Native function set changes at O0/O1/O2 | **Landed** in `a810c60e`: typed and textual object paths prune unreachable internal definitions while internal lifecycle definitions are retained as explicit object roots; active PA32 inspection reducer, full report 5,263/5,263 |
 | O1a | Simplify before inlining and dependency scheduling | Intentional at O1 | Downstream only | **Landed** in `693e4357` and `919c2e55`: two reference-agreeing PA37 reducers, frozen object -1,144 bytes overall and byte-identical in the scheduling slice, five-block paired wall +0.41% and user +0.15%; full report 5,180/5,180, zero-fatal audit, and clean 8/32-worker inception lanes pass |
-| O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | **Deferred** in `37ecea4e`: a per-object second closure removed contract-required weak/COMDAT definitions and failed 49 existing PA32/PA33 tests; explicit `-O2` reference opportunity remains in `proposed/pa32` pending cross-object ownership |
+| O1b | Post-optional-inline weak reachability | O1 native output only | Downstream only | **Deferred** in `37ecea4e`: a per-object second closure removed contract-required weak/COMDAT definitions and failed 49 existing PA32/PA33 tests; the design evidence is retained in `PLAN-OBJECT-DEMAND.md` without a dormant test pending cross-object ownership |
 | O2a | Expanded slot/value promotion | Intentional at O2 | Downstream only | Profile-gated |
 | O2b | Bounded improved register allocation | LowIR unchanged | Intentional at O2 | Profile-gated PA38 work |
 
@@ -513,12 +514,12 @@ excluded: frame reload forwarding can suppress the load, and a same-register
 forward would then make the following normalization semantically necessary.
 Textual MIR is unchanged.
 
-The proposed PA29 byte-shape witness
-`proposed/pa29/redundant-u32-normalization-encoding.t` retains both the global
+The active PA29 behavior witness
+`cppgm.tests/course/pa29/behavior/redundant-u32-normalization-encoding.t` retains both the global
 `load.u32` and the `zext.i32` in MIR while native disassembly omits the
 redundant `mov r32,r32`.  Runtime behavior is already actively covered and
-PA29 has no native-byte oracle, so the representation-only test remains
-proposed.
+PA29 has no native-byte oracle, so the reference MIR remains informational and
+execution is the grading oracle.
 
 For an exact codegen comparison, the compiler immediately before B7a and the
 B7a compiler each compiled the same post-refactor source tree at `-O0`:
@@ -559,7 +560,7 @@ orchestrator from 2,978 to 2,838 lines rather than leaving it at the 3,000-line
 fatal audit boundary.  The new module is present in both compiler and
 `lowir2native` source sets.
 
-The proposed PA29 witness now contains a frame load separated from its store
+The active PA29 behavior witness now contains a frame load separated from its store
 by a call, as well as the original global load.  Its MIR retains each explicit
 `zext.i32`; raw native disassembly omits the redundant instruction after the
 real frame load, and the program exits zero.  Existing active PA29 narrow and
@@ -593,7 +594,7 @@ same final value, including zeroed upper bits, and neither form changes
 condition flags.  The encoder consumes the pair in constant time and leaves
 textual MIR unchanged.
 
-The PA29 proposed witness adds a `u32` function return.  Its dumped MIR retains
+The active PA29 behavior witness adds a `u32` function return.  Its dumped MIR retains
 `mov r8, rax; zext.i32 r8`, while raw native disassembly contains the single
 `mov %eax,%r8d` encoding and the program exits zero.  Existing active unsigned
 call/extension behavior remains the runtime oracle.
@@ -722,7 +723,7 @@ retain the existing forwarding barrier.
 The plan is constructed once per block in O(instructions + operands) time and
 uses one byte per instruction.  Each encoder query is O(1); it replaces no MIR
 and adds no rescan per candidate.  No existing checked-in LowIR or MIR fixture
-changed.  `proposed/pa29/transient-scratch-address-folding.t` is the native-byte
+changed.  `cppgm.tests/course/pa29/behavior/transient-scratch-address-folding.t` is the native-byte
 witness: its one-eightbyte return may fold the R11 setup, while its
 two-eightbyte return must retain one setup for both loads.  Existing active
 object-return tests remain the behavioral oracle.
@@ -793,7 +794,7 @@ general pass composes with, rather than dismantles, the smaller encoding
 peepholes already landed in B4d and B7e.
 
 No checked-in LowIR or MIR fixture changes.  The representation-only witness
-`proposed/pa29/single-block-call-argument-coalescing.t` retains
+`cppgm.tests/course/pa29/structural/single-block-call-argument-coalescing.t` retains
 `mov r8,@value; mov rdi,r8` in its MIR dump but emits the global address
 directly into RDI; active PA29 call-ABI tests remain the behavioral oracle.
 
@@ -1124,7 +1125,7 @@ Analysis and emission remain linear in block instruction count.
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
 fixture changed.  Existing PA29 immediate-move and branch behavior tests are
 the active correctness gate.  The new representation-only candidate is
-`proposed/pa29/flag-safe-zero-materialization.t`: program behavior alone would
+`cppgm.tests/course/pa29/behavior/flag-safe-zero-materialization.t`: program behavior alone would
 duplicate active coverage, while PA29 has no native-byte oracle.  Manual
 inspection confirms its textual MIR retains two `mov ..., 0` instructions and
 its executable contains two `xor eax,eax` encodings.
@@ -1152,10 +1153,10 @@ PF, CF, and OF values.  The selection is local and constant-time.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
 fixture changed.  Existing PA29 zero-compare branch tests remain the active
-behavior and MIR gates.  `proposed/pa29/zero-compare-test-encoding.t` retains
+behavior and MIR gates.  `cppgm.tests/course/pa29/behavior/zero-compare-test-encoding.t` retains
 `cmp ..., 0` in MIR while manual inspection proves u32 and i64 `test`
-encodings; it remains proposed because the active harness has no native-byte
-oracle and its behavior duplicates existing coverage.
+encodings.  The behavior lane executes the safety boundary without grading
+native bytes or exact MIR.
 
 Validation and frozen evidence:
 
@@ -1180,9 +1181,10 @@ continues to use `REX.W`.  The selection is local and constant-time.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
 fixture changed.  Existing PA29 extension tests remain the active behavior
-gate.  `proposed/pa29/narrow-zero-extension-encoding.t` retains byte/word
-`zext` in MIR while manual disassembly proves `movzbl`/`movzwl` destinations;
-it remains proposed because native bytes are not an active PA29 oracle.
+gate.  `cppgm.tests/course/pa29/behavior/narrow-zero-extension-encoding.t` retains byte/word
+`zext` in MIR while manual disassembly proves `movzbl`/`movzwl` destinations.
+The behavior lane executes the safety boundary without treating native bytes
+as a PA29 oracle.
 
 Validation and frozen evidence:
 
@@ -1219,11 +1221,10 @@ safety checks.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
 fixture changed.  This is a native-encoding-only `-O0` change.  The dumped MIR
-for `proposed/pa29/dead-address-load-folding.t` deliberately retains the
-adjacent `lea` and `load`; the generated program succeeds.  The reducer stays
-proposed because PA29 has no standalone reference implementation and its
-active harness does not inspect native instruction bytes, so behavior alone
-would add no new correctness coverage.
+for `cppgm.tests/course/pa29/behavior/dead-address-load-folding.t` deliberately retains the
+adjacent `lea` and `load`; the generated program succeeds.  It is active in
+the behavior lane because execution guards the fold's safety, while native
+instruction bytes and exact MIR remain non-grading artifacts.
 
 The address proof is a separate 95-line implementation module.  Two existing
 instruction encoders moved to the shared encoding module, leaving
@@ -1260,10 +1261,10 @@ at an opcode/shape barrier, one on an address-register read, and one without a
 bounded overwrite.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
-fixture changed.  `proposed/pa29/dead-address-copy-load-folding.t` retains the
+fixture changed.  `cppgm.tests/course/pa29/behavior/dead-address-copy-load-folding.t` retains the
 register copy and indirect load in its dumped MIR and its generated program
-succeeds.  It remains proposed because the active PA29 lane does not inspect
-native bytes and behavior alone duplicates existing indirect-load coverage.
+succeeds.  It is active behavior coverage with informational MIR; native bytes
+are not a grading oracle.
 
 The first implementation screen exposed an approximately 8 ms encoder cost
 from moving the hot `setcc` primitive out of the ELF translation unit merely
@@ -1302,10 +1303,10 @@ overwrites immediately followed the load and two were two instructions later.
 The other 88 reached an opcode/shape barrier before a safe overwrite.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
-fixture changed.  `proposed/pa29/dead-address-copy-index-load-folding.t`
+fixture changed.  `cppgm.tests/course/pa29/behavior/dead-address-copy-index-load-folding.t`
 retains the `mov`/`lea`/`load` chain in its dumped MIR and its generated
-program succeeds.  It remains proposed because behavior duplicates active
-coverage and PA29 has no native-byte oracle.
+program succeeds.  It is active behavior coverage with informational MIR;
+PA29 does not grade native bytes.
 
 The initial implementation made `lowir_native_elf.cpp` 3,008 lines, which is a
 fatal audit violation.  Fold planning and emission now live together in the
@@ -1350,10 +1351,10 @@ instructions later, and three were three instructions later.  It rejected
 barrier, and 16 without a bounded overwrite.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
-fixture changed.  `proposed/pa29/dead-copy-store-folding.t` retains
+fixture changed.  `cppgm.tests/course/pa29/behavior/dead-copy-store-folding.t` retains
 `mov r8, rax`, `store.i64 [rbx], r8`, and the following overwrite in its
-dumped MIR; its generated program succeeds.  It remains proposed because the
-runtime behavior is already covered and PA29 has no native-byte oracle.
+dumped MIR; its generated program succeeds.  It is active behavior coverage
+with informational MIR and no native-byte oracle.
 
 Validation and frozen evidence:
 
@@ -1385,10 +1386,10 @@ two instructions later, and 35 were three instructions later.  It rejected
 424 at an opcode/shape barrier and one without a bounded overwrite.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
-fixture changed.  `proposed/pa29/dead-address-store-folding.t` retains an
+fixture changed.  `cppgm.tests/course/pa29/behavior/dead-address-store-folding.t` retains an
 accepted `lea`/`store` pair and its following overwrite in dumped MIR, and the
-generated program succeeds.  It remains proposed because indexed-store
-behavior is already covered and PA29 has no native-byte oracle.
+generated program succeeds.  It is active behavior coverage with
+informational MIR and no native-byte oracle.
 
 Validation and frozen evidence:
 
@@ -1422,10 +1423,10 @@ were four instructions later.  It rejected 372 at an opcode/shape barrier and
 four without a bounded overwrite.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
-fixture changed.  `proposed/pa29/dead-address-copy-store-folding.t` retains an
+fixture changed.  `cppgm.tests/course/pa29/behavior/dead-address-copy-store-folding.t` retains an
 accepted pointer copy, indirect store, and immediate overwrite in dumped MIR;
-its generated program succeeds.  It remains proposed because indirect-store
-behavior is already covered and PA29 has no native-byte oracle.
+its generated program succeeds.  It is active behavior coverage with
+informational MIR and no native-byte oracle.
 
 Validation and frozen evidence:
 
@@ -1459,10 +1460,10 @@ into the address-folding module; the hot loop classifies each sequence once
 and passes the resulting enum to the out-of-line emitter.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
-fixture changed.  `proposed/pa29/dead-address-copy-index-store-folding.t`
+fixture changed.  `cppgm.tests/course/pa29/behavior/dead-address-copy-index-store-folding.t`
 retains the accepted `mov`/`lea`/`store` chain in dumped MIR and its generated
-program succeeds.  It remains proposed because runtime indirect-store
-behavior is already actively covered and PA29 has no native-byte oracle.
+program succeeds.  It is active behavior coverage with informational MIR and
+no native-byte oracle.
 
 Validation and frozen evidence:
 
@@ -1505,15 +1506,12 @@ scan lives in the separate `lowir_native_lsda.cpp` owner rather than extending
 the already-large native emitter.
 
 No existing checked-in LowIR fixture changed and no existing checked-in MIR
-fixture changed.  PA31 has no standalone reference binary, so the two new
-representation checks remain under `proposed/pa31/`:
-
-- `adjacent-lsda-call-site-coalescing.t` is an end-to-end destructor-unwind
-  reducer whose four protected calls become two LSDA entries and whose second
-  call still unwinds through the destructor; and
-- `lsda-call-site-coalescing-unit.cpp` proves that a potentially throwing
-  unprotected gap, different landing pad, or different action identity blocks
-  coalescing, while an equal no-throw gap coalesces.
+fixture changed.  PA31 has no standalone reference binary, so the stable
+course contract is end-to-end behavior rather than private LSDA layout.  The
+active course family covers equal adjacent cleanup ranges, an unprotected
+potentially throwing barrier, different landing continuations, and different
+typed-catch actions.  The former private-header unit was deleted because its
+`HostFunctionLayout` assertions were not a student-facing contract.
 
 Existing PA31 behavior and inspection fixtures continue to protect typed-catch
 action ordering and `_Unwind_Resume`.  Validation and frozen evidence:
@@ -1751,9 +1749,16 @@ LowIR-fixture change above.
 The output-changing code was therefore reverted.  The landed D1 correction
 keeps the frozen object exactly 3,613,040 bytes with SHA-256
 `5c647dc5...`; PA37 object round trips pass 7/7, the full report passes
-5,178/5,178, and the PA39 audit has zero fatal findings.  The reducer remains
-in `proposed/pa32` because both candidate and reference execute it correctly,
-but the pinned reference deliberately retains the unused local symbol.
+5,178/5,178, and the PA39 audit has zero fatal findings.  This records why the
+first prototype was reverted.
+
+Normalization follow-up `a810c60e` completed D2 without serialized metadata:
+typed and textual object paths now prune unreachable internal definitions,
+ordinary demand reasons and object roots retain demanded internals, and
+internal lifecycle definitions are explicit object roots.  The active PA32
+`unreachable-internal-function-pruning` inspection fixture covers the public
+result, PA37 object round trips remain reproducible, and the full report passed
+5,263/5,263.
 
 **Fixture record:** the raw D2 experiments intentionally changed the native
 function/MIR set at O0, O1, and O2, but no existing exact MIR fixture required
@@ -1849,11 +1854,14 @@ Per-object reachability cannot distinguish “no remaining local edge” from
 “this object owns a definition that another object may select.”  Adding more
 local demand bits would reproduce the serialization/ownership problem already
 seen in D2.  The output-changing code and PA37 roundtrip placeholder were
-reverted, PA1--PA37 returned to 5,154/5,154, and the exact symbol test remains
-in `proposed/pa32`.  **The experiment changed native O1/O2/default-max function
-and MIR sets but did not alter serialized LowIR; no existing fixture was
-updated.**  Revisit O1b only with a native cross-object ownership model or a
-proven visibility class narrower than ordinary weak/COMDAT linkage.
+reverted, and PA1--PA37 returned to 5,154/5,154.  The deferred reducer was
+deleted during test normalization; its design evidence is retained in
+`PLAN-OBJECT-DEMAND.md` without a dormant test.  **The experiment changed
+native O1/O2/default-max function and MIR sets but did not alter serialized
+LowIR; no existing fixture was updated.**  Revisit O1b only with a native
+cross-object ownership model or a proven visibility class narrower than
+ordinary weak/COMDAT linkage, adding a new active test when implementation
+resumes.
 
 ### 4.29 O1 milestone self-host result
 
@@ -2037,9 +2045,9 @@ cover:
 - preserved typed-catch/action ordering and `_Unwind_Resume` behavior.
 
 Because PA31 has no standalone reference binary, new exact coalescing facts
-remain proposed unless the upstream assignment fixtures already contain the
-same case.  Existing PA31 active behavior and EH-fact tests still gate the
-implementation.
+require an authoritative upstream assignment fixture.  Otherwise, use active
+end-to-end course behavior to gate safety without asserting private LSDA
+layout.
 
 This is valid at `-O0` because it is a canonical encoding of the same unwind
 facts.  It must change neither LowIR nor MIR.
@@ -2061,8 +2069,8 @@ largest frozen call-count gaps.  Distinguish two implementations:
 
 Run the PA26 owner report immediately after the O0 prototype.  If LowIR fixture
 movement is broad, record all counts, revert it, and mark C1 deferred.  Then
-implement the PA37 O1 form with explicit optimized LowIR tests.  The existing
-proposed PA26 constructor-unwind reducer remains evidence that two correct O0
+implement the PA37 O1 form with explicit optimized LowIR tests.  The active
+PA26 constructor-unwind behavior reducer demonstrates that two correct O0
 layouts can differ; it is not authority to rewrite checked-in fixtures.
 
 Acceptance records destructor and `_Unwind_Resume` call counts, cleanup block

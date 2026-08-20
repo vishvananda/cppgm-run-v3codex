@@ -30,8 +30,8 @@ For each candidate:
    Do not update the fixture in this pass.
 5. If the change exposes an uncovered case, generate its reference only through
    the documented `ref-test` target.  If the reference compiler disagrees with
-   the proposed shape, keep the source under `proposed/paN/` instead of adding a
-   manually edited oracle.
+   a course-approved shape, update the authoritative reference before adding
+   the active fixture; never add a manually edited oracle.
 6. If no existing fixture changes, run the downstream report set and retain the
    change only when it has a concrete structural benefit and preserves runtime
    behavior.
@@ -40,8 +40,9 @@ For each candidate:
 
 ## Current baseline
 
-Baseline implementation commit: `d549070e` (the later `5205d9d1` commit adds
-only the proposed PA26 test directory).
+Baseline implementation commit: `d549070e` (the later `5205d9d1` commit added
+the PA26 stress input that normalization commit `ac1c39a2` activated in the
+course suite).
 
 Frozen `-O0` measurements after shared constructor cleanup suffixes:
 
@@ -79,11 +80,11 @@ than host contention or E5/E6 cost.
 
 | ID | Candidate and earliest owner | Expected structural effect | Fixture result | Frozen result | Decision |
 | --- | --- | --- | --- | --- | --- |
-| E1 | Share constructor-unwind destructor suffixes; PA26 exception-aware construction | Replace copied cleanup prefixes with one destructor block per constructed subobject | Existing PA16--PA38 fixtures unchanged; proposed PA26 reference uses a different valid layout | Object -27,376 bytes; code/EH -12,448 bytes; `Scope::Scope` 8,254 to 1,952 bytes | **Landed** in `d549070e`; proposed stress case in `5205d9d1` |
-| E2 | Stop reserving frame holes for forwarded and dead-store slots; PA29 native lowering | Reduce frame size and avoid wide stack displacements without changing LowIR | Existing PA29--PA38 fixtures unchanged (1,274 tests); proposed PA29 reference retains dead slots | Object/text -4,624 bytes; three-run compile median unchanged at 6.09 s | **Landed** in `05b46fd9`; proposed regression under `proposed/pa29/` |
+| E1 | Share constructor-unwind destructor suffixes; PA26 exception-aware construction | Replace copied cleanup prefixes with one destructor block per constructed subobject | Existing PA16--PA38 fixtures unchanged; the older PA26 reference used a different valid layout | Object -27,376 bytes; code/EH -12,448 bytes; `Scope::Scope` 8,254 to 1,952 bytes | **Landed** in `d549070e`; stress case added in `5205d9d1` and activated by normalization commit `ac1c39a2` |
+| E2 | Stop reserving frame holes for forwarded and dead-store slots; PA29 native lowering | Reduce frame size and avoid wide stack displacements without changing LowIR | Existing PA29--PA38 fixtures unchanged (1,274 tests); the older PA29 reference retains dead slots | Object/text -4,624 bytes; three-run compile median unchanged at 6.09 s | **Landed** in `05b46fd9`; regression is active in the PA29 structural course lane |
 | E3 | Relax known forward x86 branches after layout; PA29 native encoding | Use short encodings for local forward branches while keeping final offsets, EH ranges, symbols, and fixups coherent | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -56,504 bytes; text -56,246 bytes; EH -266 bytes; deterministic across three loaded-host runs | **Landed** in `633fe401`; final function layout repatches existing backward rel8 branches and translates host EH call-site ranges |
 | E3P | Make E3 branch compaction linear in the current function; PA29 native encoding | Compact bytes in place and adjust only the current function's labels and fixups, with binary-search offset translation | Exact E6 frozen object SHA preserved; PA29--PA38 1,274/1,274 and full report 5,165/5,165 remain clean | Current E6 stats screen: wall 15.16 to 6.18 s and encoding 9.081 to 0.249 s; object remains 3,977,672 bytes | **Landed** in `eb0f7c2a`; fixes the quadratic whole-buffer copying and rescanning accidentally introduced with E3 |
-| E4 | Coalesce adjacent constant byte stores during PA29 native encoding | Replace repeated address setup and scalar stores with packed 64/32/16/8-bit stores while restoring the final MIR-defined registers | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165; proposed runtime reducer passes both implementations but reference MIR uses a different register/frame layout | Object -11,760 bytes; text -11,754 bytes; each frozen `__to_chars_10_impl` specialization falls from about 5.0 KiB to about 1.1 KiB | **Landed** in `a1c74fb1`; proposed regression under `proposed/pa29/` |
+| E4 | Coalesce adjacent constant byte stores during PA29 native encoding | Replace repeated address setup and scalar stores with packed 64/32/16/8-bit stores while restoring the final MIR-defined registers | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165; runtime reducer passes both implementations while reference MIR uses a different valid register/frame layout | Object -11,760 bytes; text -11,754 bytes; each frozen `__to_chars_10_impl` specialization falls from about 5.0 KiB to about 1.1 KiB | **Landed** in `a1c74fb1`; regression is active in the PA29 behavior course lane with informational MIR |
 | E5 | Forward an immediately reloaded 64-bit frame store during PA29 native encoding | Keep the architecturally visible store but replace the following reload with a register move, or no instruction when its destination already contains the value | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -53,720 bytes; text -53,398 bytes; EH -329 bytes; `analyze_call_expression` -15,486 bytes | **Landed** in `ec680854`; encoding-only change preserves O0 MIR and final frame/register state |
 | E6 | Elide single-use temporary frame stores paired with an adjacent 64-bit reload; PA29 native encoding | Prove from all MIR operands that the compiler-only home has exactly one store and one load, then forward the register without materializing unobservable temporary memory | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -37,240 bytes; text -36,836 bytes; EH -408 bytes; `analyze_call_expression` -14,536 bytes | **Landed** in `c7e1715e`; one linear use-count pass per function preserves O0 MIR and final observable state |
 | E7 | Forward a single-use temporary reload across one independent register instruction; PA29 native encoding | Skip the unobservable store/reload when the sole intervening load, LEA, or move writes a different register | Existing PA29--PA38 fixtures unchanged (1,274 tests); full report 5,165/5,165 | Object -5,368 bytes; text -5,318 bytes; EH -34 bytes; `analyze_call_expression` -1,485 bytes; timing screen 6.15 s | **Landed** in `714575a6`; all calls, stores, EH markers, arithmetic, and source-register definitions remain barriers |

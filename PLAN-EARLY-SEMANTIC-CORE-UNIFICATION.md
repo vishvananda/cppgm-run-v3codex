@@ -217,8 +217,9 @@ inception comparison.  Do not use PGO for this work.
 
 New tests belong to the earliest owning assignment under
 `cppgm.tests/course/paN/`.  If the pinned reference disagrees with a
-standard-valid case, place the proposed case under `proposed/paN/` and record
-the disagreement rather than changing the implementation to match it.
+standard-valid case that the course adopts, update the public contract and
+authoritative reference before activating the course fixture.  Do not change
+the implementation merely to reproduce a non-normative reference defect.
 
 ## 7. Success criteria
 
