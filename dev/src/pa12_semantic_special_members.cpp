@@ -19,6 +19,85 @@ bool IsAssignmentSpecialMember(SpecialMemberKind kind)
 		kind == SPECIAL_MEMBER_MOVE_ASSIGNMENT;
 }
 
+enum BitFieldTransferAction
+{
+	BIT_FIELD_TRANSFER_FIELD,
+	BIT_FIELD_TRANSFER_UNIT,
+	BIT_FIELD_TRANSFER_COVERED
+};
+
+bool SupportedBitFieldTransferWidth(std::uint32_t bits)
+{
+	return bits == 8 || bits == 16 || bits == 32 || bits == 64;
+}
+
+bool VolatileBitField(const Program& program, const BindingRecord& member)
+{
+	const TypeRecord& type = program.types.Get(member.type);
+	return type.kind == TYPE_QUALIFIED && (type.cv & CV_VOLATILE) != 0;
+}
+
+class BitFieldTransferClassifier
+{
+public:
+	BitFieldTransferClassifier(const Program& program,
+		const std::vector<BindingId>& members)
+		: program_(program), members_(members), classified_end_(0),
+		  transfer_unit_(false) {}
+
+	BitFieldTransferAction Classify(std::size_t index)
+	{
+		if (index < classified_end_)
+			return transfer_unit_ ? BIT_FIELD_TRANSFER_COVERED :
+				BIT_FIELD_TRANSFER_FIELD;
+		if (index >= members_.size())
+			throw std::logic_error("bit-field transfer index is out of bounds");
+		const BindingRecord& first = program_.bindings[members_[index]];
+		if (!first.bit_field)
+		{
+			classified_end_ = index + 1;
+			transfer_unit_ = false;
+			return BIT_FIELD_TRANSFER_FIELD;
+		}
+		const BindingLayoutFact& first_layout = program_.BindingLayout(first);
+		const std::uint64_t offset = first_layout.member_offset;
+		const std::uint32_t storage_bits = first_layout.bit_storage_bits;
+		std::uint64_t next_bit = first_layout.bit_offset;
+		transfer_unit_ = SupportedBitFieldTransferWidth(storage_bits) &&
+			first_layout.bit_offset == 0;
+		classified_end_ = index;
+		while (classified_end_ < members_.size())
+		{
+			const BindingRecord& member =
+				program_.bindings[members_[classified_end_]];
+			if (!member.bit_field) break;
+			const BindingLayoutFact& layout = program_.BindingLayout(member);
+			if (layout.member_offset != offset ||
+				layout.bit_storage_bits != storage_bits)
+				break;
+			const bool contiguous = layout.bit_offset == next_bit;
+			const bool fits = layout.bit_width != 0 &&
+				layout.bit_width <= storage_bits &&
+				layout.bit_offset <= storage_bits - layout.bit_width;
+			if (!contiguous || !fits || VolatileBitField(program_, member) ||
+				member.member_owner != first.member_owner ||
+				member.potentially_overlapping_member)
+				transfer_unit_ = false;
+			next_bit = static_cast<std::uint64_t>(layout.bit_offset) +
+				layout.bit_width;
+			++classified_end_;
+		}
+		return transfer_unit_ ? BIT_FIELD_TRANSFER_UNIT :
+			BIT_FIELD_TRANSFER_FIELD;
+	}
+
+private:
+	const Program& program_;
+	const std::vector<BindingId>& members_;
+	std::size_t classified_end_;
+	bool transfer_unit_;
+};
+
 EntityId SubobjectClass(const Program& program, TypeId type,
 	bool* is_const, bool* is_reference)
 {
@@ -1051,11 +1130,15 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 			}
 		}
 		if (entity < entity_data_members_.size())
+		{
+			const std::vector<BindingId>& members =
+				entity_data_members_[entity];
+			BitFieldTransferClassifier bit_fields(*program_, members);
 			for (std::size_t i = function.synthesized_prefix_members;
-				i < entity_data_members_[entity].size(); ++i)
+				i < members.size(); ++i)
 			{
 				++special_member_subobject_visits_;
-				const BindingId member = entity_data_members_[entity][i];
+				const BindingId member = members[i];
 				const TypeId type = program_->bindings[member].type;
 				BindingId selected = ConstructorForSubobject(
 					type, function.special_member);
@@ -1076,6 +1159,12 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 				const std::uint32_t step = MakeDump(
 					DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, type,
 					VALUE_NONE, 0, member);
+				const BitFieldTransferAction bit_field_action =
+					bit_fields.Classify(i);
+				if (bit_field_action == BIT_FIELD_TRANSFER_COVERED)
+					continue;
+				if (bit_field_action == BIT_FIELD_TRANSFER_UNIT)
+					dump_.nodes[step].storage_unit_transfer = true;
 				if (selected != kNoBinding &&
 					!GetFunction(selected).trivial_special_member)
 				{
@@ -1086,6 +1175,7 @@ void SemanticAnalyzer::AddSynthesizedConstructorBody(
 				}
 				dump_.Add(construction, step);
 			}
+		}
 	}
 	const std::uint32_t statement = MakeDump(DUMP_EXPRESSION_STATEMENT);
 	dump_.Add(statement, construction);
@@ -1203,11 +1293,15 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 			}
 		}
 		if (entity < entity_data_members_.size())
+		{
+			const std::vector<BindingId>& members =
+				entity_data_members_[entity];
+			BitFieldTransferClassifier bit_fields(*program_, members);
 			for (std::size_t i = function.synthesized_prefix_members;
-				i < entity_data_members_[entity].size(); ++i)
+				i < members.size(); ++i)
 			{
 				++special_member_subobject_visits_;
-				const BindingId member = entity_data_members_[entity][i];
+				const BindingId member = members[i];
 				const TypeId type = program_->bindings[member].type;
 				const BindingId selected =
 					AssignmentForSubobject(type, function.special_member);
@@ -1233,28 +1327,16 @@ void SemanticAnalyzer::AddSynthesizedAssignmentBody(
 				const std::uint32_t step = MakeDump(
 					DUMP_SPECIAL_MEMBER_SUBOBJECT_ACTION, type,
 					VALUE_NONE, 0, member);
-				if (program_->bindings[member].bit_field)
-				{
-					if (i != function.synthesized_prefix_members)
-					{
-						const BindingRecord& previous = program_->bindings[
-							entity_data_members_[entity][i - 1]];
-						const BindingRecord& current =
-							program_->bindings[member];
-						const BindingLayoutFact& previous_layout =
-							program_->BindingLayout(previous);
-						const BindingLayoutFact& current_layout =
-							program_->BindingLayout(current);
-						if (previous.bit_field &&
-							previous_layout.member_offset == current_layout.member_offset &&
-							previous_layout.bit_storage_bits == current_layout.bit_storage_bits)
-							continue;
-					}
+				const BitFieldTransferAction bit_field_action =
+					bit_fields.Classify(i);
+				if (bit_field_action == BIT_FIELD_TRANSFER_COVERED)
+					continue;
+				if (bit_field_action == BIT_FIELD_TRANSFER_UNIT)
 					dump_.nodes[step].storage_unit_transfer = true;
-				}
 				dump_.nodes[step].selected_binding = selected;
 				dump_.Add(assignment, step);
 			}
+		}
 	}
 	const std::uint32_t statement = MakeDump(DUMP_RETURN_STATEMENT);
 	dump_.Add(statement, assignment);

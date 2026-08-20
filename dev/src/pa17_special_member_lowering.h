@@ -354,6 +354,12 @@ protected:
 			derived.Emit(copy);
 			return;
 		}
+		if (step.storage_unit_transfer)
+		{
+			LowerBitFieldStorageUnitTransfer(
+				construction.object_binding, step);
+			return;
+		}
 		if (derived.IsReferenceType(step.type))
 		{
 			if (step.binding == kNoBinding || step.selected_binding != kNoBinding)
@@ -412,6 +418,48 @@ protected:
 			destination, source);
 	}
 
+	LowType BitFieldStorageUnitType(BindingId binding) const
+	{
+		const Derived& derived = static_cast<const Derived&>(*this);
+		if (binding == kNoBinding ||
+			!derived.program_.bindings[binding].bit_field)
+			throw std::logic_error(
+				"invalid synthesized storage-unit transfer");
+		const BindingLayoutFact& layout = derived.program_.BindingLayout(
+			derived.program_.bindings[binding]);
+		switch (layout.bit_storage_bits)
+		{
+		case 8: return LowU8();
+		case 16: return LowU16();
+		case 32: return LowU32();
+		case 64: return LowU64();
+		default:
+			throw std::logic_error(
+				"unsupported synthesized storage-unit width");
+		}
+	}
+
+	void LowerBitFieldStorageUnitTransfer(BindingId source_object,
+		const DumpNode& step)
+	{
+		Derived& derived = static_cast<Derived&>(*this);
+		const LowType type = BitFieldStorageUnitType(step.binding);
+		Operand source = LoadAssignmentObject(source_object);
+		source = derived.ProjectAggregateMember(source, step.binding);
+		const Operand value = derived.LoadStorage(source, type);
+		Operand destination = LoadAssignmentObject(
+			derived.current_this_binding_);
+		destination = derived.ProjectAggregateMember(
+			destination, step.binding);
+		Instruction store(Instruction::STORE);
+		store.type = type;
+		store.first = value;
+		store.second = destination;
+		derived.Emit(store);
+		if (derived.stats_)
+			++derived.stats_->bit_field_storage_unit_transfers;
+	}
+
 	Operand LowerSpecialMemberConstruction(std::uint32_t node)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
@@ -456,24 +504,8 @@ protected:
 		}
 		if (step.storage_unit_transfer)
 		{
-			if (step.binding == kNoBinding ||
-				!derived.program_.bindings[step.binding].bit_field)
-				throw std::logic_error(
-					"invalid synthesized storage-unit transfer");
-			Operand source = LoadAssignmentObject(assignment.object_binding);
-			source = derived.ProjectAggregateMember(source, step.binding);
-			const LowType type = derived.LowerExpressionType(
-				derived.program_.bindings[step.binding].type);
-			const Operand value = derived.LoadStorage(source, type);
-			Operand destination = LoadAssignmentObject(
-				derived.current_this_binding_);
-			destination = derived.ProjectAggregateMember(
-				destination, step.binding);
-			Instruction store(Instruction::STORE);
-			store.type = type;
-			store.first = value;
-			store.second = destination;
-			derived.Emit(store);
+			LowerBitFieldStorageUnitTransfer(
+				assignment.object_binding, step);
 			return;
 		}
 		if (step.binding == kNoBinding &&

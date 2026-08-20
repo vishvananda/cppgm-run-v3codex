@@ -1571,6 +1571,19 @@ void report_source_compile_stats(
 			 << " functions=" << stats.functions
 			 << " globals=" << stats.globals
 			 << " instructions=" << stats.instructions
+			 << " cleanup_state_probes=" << stats.cleanup_state_probes
+			 << " cleanup_state_hits=" << stats.cleanup_state_hits
+			 << " cleanup_unique_states=" << stats.cleanup_unique_states
+			 << " cleanup_blocks_emitted=" << stats.cleanup_blocks_emitted
+			 << " cleanup_destructor_actions_avoided=" <<
+				stats.cleanup_destructor_actions_avoided
+			 << " cleanup_resume_operations_avoided=" <<
+				stats.cleanup_resume_operations_avoided
+			 << " bit_field_storage_unit_transfers=" <<
+				stats.bit_field_storage_unit_transfers
+			 << " constant_template_bytes=" << stats.constant_template_bytes
+			 << " constant_template_globals=" << stats.constant_template_globals
+			 << " constant_template_copies=" << stats.constant_template_copies
 			 << " abi_production_mangles="
 			 << stats.abi.production_mangles
 			 << " abi_fact_records=" << stats.abi.records

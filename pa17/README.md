@@ -126,6 +126,12 @@ copyable storage prefix directly as `copyobj <span> <src>, <dst>` instead of spe
 prefix as separate field operations or a `__builtin_memcpy` helper call in the emitted
 LowIR. That direct storage-copy form is also part of the accepted PA17 output contract.
 
+When a synthesized copy/move constructor or assignment body handles adjacent
+nonvolatile bit-fields in one supported 8-, 16-, 32-, or 64-bit allocation
+unit, it shall transfer that allocation unit once.  A zero-width bit-field or
+a change of storage offset or width starts a new unit.  Fields whose layout
+cannot be transferred safely shall retain field-wise value semantics.
+
 For supported trivially copy-constructible class value transfers, PA17 may also lower the
 copy/move construction step itself directly as `copyobj <span> <src>, <dst>` instead of
 spelling a call to a synthesized trivial copy/move constructor helper. That direct
@@ -361,3 +367,6 @@ Useful intermediate representations include:
   over explicit storage, rather than as a separate object model
 - conversion operators represented through the same typed overload-resolution
   and conversion machinery used for ordinary calls
+- a single linear classifier over completed member-layout facts that marks the
+  first transferable bit-field in an allocation unit and suppresses later
+  fields covered by that transfer

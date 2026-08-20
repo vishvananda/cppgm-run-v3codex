@@ -152,58 +152,18 @@ function @YBits__YBits__sym2(%this : ptr, %other : ptr [pass=reference]) -> void
     %t3 = load ptr $other
     %t4 = index i8 [projection=field] %t3, 0
     call void @YMember__YMember__ov2(%t2, %t4)
-    %t5 = load ptr $this
+    %t5 = load ptr $other
     %t6 = index i8 [projection=field] %t5, 4
-    %t7 = load ptr $other
-    %t8 = index i8 [projection=field] %t7, 4
-    %t9 = load i32 %t8
-    %t10 = binary and i32 %t9, 7
-    %t11 = copy i32 %t10
-    %t12 = binary and i32 %t11, 7
-    %t13 = load i32 %t6
-    %t14 = binary and i32 %t13, 4294967288
-    %t15 = binary or i32 %t14, %t12
-    store i32 %t15, %t6
-    %t16 = load ptr $this
-    %t17 = index i8 [projection=field] %t16, 4
-    %t18 = load ptr $other
-    %t19 = index i8 [projection=field] %t18, 4
-    %t20 = load i32 %t19
-    %t21 = binary shr i32 %t20, 3
-    %t22 = binary and i32 %t21, 31
-    %t23 = copy i32 %t22
-    %t24 = binary and i32 %t23, 31
-    %t25 = binary shl i32 %t24, 3
-    %t26 = load i32 %t17
-    %t27 = binary and i32 %t26, 4294967047
-    %t28 = binary or i32 %t27, %t25
-    store i32 %t28, %t17
-    %t29 = load ptr $this
-    %t30 = index i8 [projection=field] %t29, 8
-    %t31 = load ptr $other
-    %t32 = index i8 [projection=field] %t31, 8
-    %t33 = load i32 %t32
-    %t34 = binary and i32 %t33, 15
-    %t35 = copy i32 %t34
-    %t36 = binary and i32 %t35, 15
-    %t37 = load i32 %t30
-    %t38 = binary and i32 %t37, 4294967280
-    %t39 = binary or i32 %t38, %t36
-    store i32 %t39, %t30
-    %t40 = load ptr $this
-    %t41 = index i8 [projection=field] %t40, 8
-    %t42 = load ptr $other
-    %t43 = index i8 [projection=field] %t42, 8
-    %t44 = load i32 %t43
-    %t45 = binary shr i32 %t44, 4
-    %t46 = binary and i32 %t45, 15
-    %t47 = copy i32 %t46
-    %t48 = binary and i32 %t47, 15
-    %t49 = binary shl i32 %t48, 4
-    %t50 = load i32 %t41
-    %t51 = binary and i32 %t50, 4294967055
-    %t52 = binary or i32 %t51, %t49
-    store i32 %t52, %t41
+    %t7 = load u32 %t6
+    %t8 = load ptr $this
+    %t9 = index i8 [projection=field] %t8, 4
+    store u32 %t7, %t9
+    %t10 = load ptr $other
+    %t11 = index i8 [projection=field] %t10, 8
+    %t12 = load u32 %t11
+    %t13 = load ptr $this
+    %t14 = index i8 [projection=field] %t13, 8
+    store u32 %t12, %t14
     return void
 }
 

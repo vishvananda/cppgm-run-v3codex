@@ -323,6 +323,21 @@ not sufficient by itself.
 Complexity: O(members) while the synthesized body is built, O(1) comparison
 with the previous layout fact, and O(1) lowering per emitted storage unit.
 
+P1 uses one linear layout-fact classifier for both synthesized construction
+and assignment.  The PA17 reducer emits two `u32` transfers instead of four
+field-wise RMW sequences, and the frozen compile records nine storage-unit
+transfers.  Its object falls from 4,406,272 to 4,400,592 bytes, all `.text*`
+falls from 921,044 to 915,371 bytes, and decoded instructions fall from
+227,674 to 226,371.  Base `.text`, EH/LSDA, relocations, and defined functions
+are unchanged.  The PA17 fixture census changes only the new reducer; PA18
+through PA28 remain unchanged at 2,201/2,201 tests.
+
+Three sequential ABBA blocks against P0 measured 4.770/4.740 seconds median
+wall, 4.290/4.265 seconds median user, and 360,682/360,516 KiB median peak RSS
+for baseline/candidate.  Per-compiler outputs were deterministic; their hashes
+differ intentionally because this phase changes generated code.  Paired
+candidate ratios were 0.00% wall, +0.12% user, and -0.05% RSS.
+
 ### P2: canonicalize automatic `constexpr` scalar arrays into constant data
 
 The frozen libstdc++ function contains:
@@ -668,7 +683,7 @@ Fill one row after each independently retained phase.
 | Phase | LowIR fixture effect | MIR/object fixture effect | Frozen size/structure | Compile time/RSS | Validation | Status/commit |
 | --- | --- | --- | --- | --- | --- | --- |
 | P0 baseline | none | none | cppgm++ 4,406,272 bytes; `.text*` 921,044; 5,530 functions; 38,948 relocations | ABBA candidate +0.32% wall, +0.48% user, -0.17% RSS; byte-identical output | same-STL Clang object and active reducers verified | complete |
-| P1 bit-field units | expected PA17 migration | downstream native change | pending | pending | pending | planned |
+| P1 bit-field units | one new PA17 reducer; PA18-PA28 unchanged | 5,673 fewer `.text*` bytes; 1,303 fewer instructions | 4,400,592 bytes; `.text*` 915,371; functions/relocations unchanged | ABBA 0.00% wall, +0.12% user, -0.05% RSS | PA17 242/242; through PA17 1,709/1,709; full report 5,266/5,266; zero-fatal audit | complete |
 | P2 constexpr arrays | expected PA21 migration | PA29 runtime only if added | pending | pending | pending | planned |
 | P3 immediate stores | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
 | P4 memory RHS | none | expected PA29/PA38 MIR migration | pending | pending | pending | planned |
