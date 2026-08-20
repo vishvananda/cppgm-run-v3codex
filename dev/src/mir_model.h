@@ -276,11 +276,14 @@ struct Instruction
     // encoder performs any final ABI transfer.
     MI_IDIV,
     MI_DIV,
-    // These shifts read the count implicitly from rcx/cl; MIR should place the
-    // selected count there directly.
+    // Variable shifts read the count implicitly from rcx/cl. Constant shifts
+    // retain their immediate count as an explicit MIR operand.
     MI_SHL_CL,
     MI_SHR_CL,
     MI_SAR_CL,
+    MI_SHL_IMM,
+    MI_SHR_IMM,
+    MI_SAR_IMM,
     MI_I128_SHL,
     MI_I128_SHR,
     MI_I128_SAR,

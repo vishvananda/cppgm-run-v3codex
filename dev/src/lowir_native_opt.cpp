@@ -119,6 +119,9 @@ bool is_read_write_destination(MirInstruction::Opcode opcode)
   case MirInstruction::MI_SHL_CL:
   case MirInstruction::MI_SHR_CL:
   case MirInstruction::MI_SAR_CL:
+  case MirInstruction::MI_SHL_IMM:
+  case MirInstruction::MI_SHR_IMM:
+  case MirInstruction::MI_SAR_IMM:
     return true;
   default:
     return false;

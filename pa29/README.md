@@ -502,6 +502,11 @@ To complete PA29, implement these goals:
    would overwrite an address register before reading it still materialize the
    required value.
 
+   A shift with a constant count retains that count as an immediate operand in
+   machine IR and uses the target's immediate-count instruction.  A variable
+   shift instead places its count directly in the target-required count
+   register.
+
    A scalar copy may keep a stable source location, including an intact
    incoming parameter register, when the copied result's complete interval
    crosses no clobber and its source and result have the same machine
@@ -697,7 +702,7 @@ strategies include:
 - retain integer constants as typed MIR immediates, letting native emission
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required
-  registers
+  registers while keeping a fixed shift count on the shift instruction
 - encode immediate memory stores directly at 8, 16, and 32 bits and for
   sign-extended 32-bit values at 64 bits; choose an encoder scratch that does
   not overlap a dereference base or index for other 64-bit values

@@ -34,8 +34,7 @@ function @main
     sete r9
     movzx r9, r9
     mov rdi, -16
-    mov rcx, 2
-    shr rdi, cl
+    shr rdi, 2
     mov rdx, 4611686018427387900
     cmp.i64 rdi, rdx
     sete rdi

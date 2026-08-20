@@ -14,8 +14,7 @@ function @shift_with_typed_count
 
   block ^entry
     mov r8, 3
-    mov rcx, 2
-    shl r8, cl
+    shl r8, 2
     sext.i32 r8
     ret r8
 

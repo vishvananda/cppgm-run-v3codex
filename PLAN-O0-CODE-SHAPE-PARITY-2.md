@@ -1018,6 +1018,39 @@ medians of 4.630/4.635 seconds wall, 4.145/4.160 seconds user, and
 user, and +0.23% RSS, inside the neutral gate.  PA29 plus PA38 pass 292/292,
 the full report passes 5,285/5,285, and the file audit has zero fatal findings.
 
+S7e completes the fixed-arithmetic and predicate audit.  Forty-two frozen
+source shifts used a constant count but still emitted a five-byte `rcx` setup
+and a `%cl` shift.  PA29 MIR now retains a fixed count directly on `shl`,
+logical `shr`, or arithmetic `sar`; variable counts retain the existing
+`rcx/cl` constraint.  Native selection uses the one-count or immediate-byte
+x86 form and treats a masked zero count as a no-op.  The change is a single
+typed operand check at the already-visited binary instruction.  PA29 gains a
+structural/behavior reducer for all three shift kinds, one existing course MIR
+fixture and one PA29 strict fixture migrate, and the student contract and
+non-normative design notes describe the two count forms.
+
+The residual census finds only three `%cl` shifts, all variable.  Of 646
+`imul` instructions, 557 already carry an immediate operand.  Constant
+division already uses the local magic-number/power-of-two selector, and the
+23 residual `div`/`idiv` instructions have no fixed legal replacement in this
+translation unit.  Compare results with a sole branch consumer already use
+the direct compare/jump path; the remaining 954 `setcc` instructions are
+materialized data values.  No additional baseline arithmetic or predicate
+rewrite is justified.
+
+Against S7d, frozen MIR and decoded instructions each fall by 42, the object
+falls from 3,209,640 to 3,209,448 bytes, `.text*` from 720,821 to 720,646
+(-175), and immediate-to-register movement by 42 instructions/210 bytes.
+`.eh_frame`, LSDA, relocations, functions, and strings are unchanged.  The
+deterministic SHA-256 is
+`ca3a24a69fa27eb00383d200b848353ebd70dc8fcedde853dfe2e5026faf62c3`.
+
+Three isolated A/B/B/A blocks against exact S7d measured baseline/candidate
+medians of 4.720/4.690 seconds wall, 4.235/4.205 seconds user, and
+360,554/360,234 KiB RSS.  Median paired block movement is -0.95% wall, -0.83%
+user, and -0.24% RSS.  PA29 plus PA38 pass 293/293, the full report passes
+5,286/5,286, and the file audit has zero fatal findings.
+
 ### S8: make baseline register cost explicit
 
 Recount `push`, `pop`, physical epilogues, and preserve-list entries after the
@@ -1109,7 +1142,7 @@ Fill one row after each retained phase.
 | S4 cleanup equivalence | none; all typed key fields remain semantically required | audit-only: frozen object remains byte-identical to S3; O1 finds only 16 exact tail groups/22 instructions and three resume blocks | none; no production change | S3 full 5,280/5,280 and zero-fatal audit remain the boundary; exact O0/O1 cleanup/call census recorded | complete; audit-only |
 | S5 destination placement | PA17 direct xvalue-to-base binding and direct-register class-call destination fixtures; no PA29 migration needed | cumulative through S5b: -3,431 text, -540 LSDA, -97 relocations, -33 terminate calls; all 62 generated object call slots removed | S5b paired 0.000% wall, +0.605% user, +0.451% RSS | PA17 245/245; through-PA17 1,715/1,715; full 5,281/5,281; zero-fatal audit | complete through S5b |
 | S6 bounded scalar retention | PA29 exact-forward-edge MIR/behavior; existing PA29 loop/call/escape and PA38 EH negatives | -185 text, -19 decoded instructions, -34 temporary homes; +108 `.eh_frame` pending S8 cost audit | reverse-order medians both 4.270s user; <0.5% RSS movement | PA29+PA38 289/289; full 5,282/5,282; zero-fatal audit | complete |
-| S7 width normalization | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds behavior while preserving explicit MIR conversions | cumulative through S7d: -10,754 text, -3,570 decoded instructions, -2,670 MIR; S7d encoder has no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%; RSS neutral | PA29+PA38 292/292; full 5,285/5,285; zero-fatal audit | in progress; width work complete, predicate/fixed-arithmetic audit pending |
+| S7 width/fixed arithmetic | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds MIR-stable behavior; S7e adds fixed shift operands and migrates two MIR fixtures | cumulative through S7e: -10,929 text, -3,612 decoded instructions, -2,712 MIR; no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%, S7e -0.83%; RSS neutral | PA29+PA38 293/293; full 5,286/5,286; zero-fatal audit | complete |
 | S8 register cost | PA29 MIR/behavior; PA38 census | pending | pending | pending | planned |
 | S9 demand/optimization remeasure | explicit force-inline owner only at O0; ordinary work deferred to PA37/PA38 | pending | pending | pending | planned |
 

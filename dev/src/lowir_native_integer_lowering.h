@@ -44,14 +44,27 @@ protected:
   {
     using namespace build;
     Derived & lowerer = static_cast<Derived &>(*this);
-    lowerer.move_value_to_register(
-      out, XR_RCX, right, lowerer.operand_type(instruction.second));
     mir_model::MirInstruction::Opcode opcode =
       mir_model::MirInstruction::MI_SHL_CL;
     if(instruction.op.kind == lowir_model::LowOperation::LOP_SHR)
       opcode = mir_model::MirInstruction::MI_SAR_CL;
     else if(instruction.op.kind == lowir_model::LowOperation::LOP_USHR)
       opcode = mir_model::MirInstruction::MI_SHR_CL;
+    if(right.kind == mir_model::MirOperand::OP_IMM) {
+      if(opcode == mir_model::MirInstruction::MI_SHL_CL)
+        opcode = mir_model::MirInstruction::MI_SHL_IMM;
+      else if(opcode == mir_model::MirInstruction::MI_SHR_CL)
+        opcode = mir_model::MirInstruction::MI_SHR_IMM;
+      else
+        opcode = mir_model::MirInstruction::MI_SAR_IMM;
+      mir_model::MirInstruction shift = machine_instruction(opcode);
+      append_operand(shift, destination);
+      append_operand(shift, right);
+      out.push_back(shift);
+      return;
+    }
+    lowerer.move_value_to_register(
+      out, XR_RCX, right, lowerer.operand_type(instruction.second));
     mir_model::MirInstruction shift = machine_instruction(opcode);
     append_operand(shift, destination);
     out.push_back(shift);

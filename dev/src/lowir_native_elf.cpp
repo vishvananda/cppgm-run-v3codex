@@ -991,6 +991,23 @@ void emit_shift(CodeBuffer & out, const mir_model::MirInstruction & instruction,
   emit_modrm(out, 3, extension, destination);
 }
 
+void emit_immediate_shift(
+    CodeBuffer & out, const mir_model::MirInstruction & instruction,
+    unsigned extension)
+{
+  require_operands(instruction, 2);
+  const X64Register destination = require_register(instruction.operands[0]);
+  if(instruction.operands[1].kind != mir_model::MirOperand::OP_IMM)
+    throw std::logic_error("native immediate shift count is not immediate");
+  const unsigned count =
+    static_cast<unsigned>(instruction.operands[1].imm) & 63;
+  if(count == 0) return;
+  emit_rex(out, true, XR_RAX, destination);
+  out.byte(count == 1 ? 0xd1 : 0xc1);
+  emit_modrm(out, 3, extension, destination);
+  if(count != 1) out.byte(count);
+}
+
 lowir_model::LocalLabelId block_target(CodeBuffer & out,
                                        const mir_model::MirOperand & operand)
 {
@@ -1550,6 +1567,15 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     return;
   case mir_model::MirInstruction::MI_SAR_CL:
     emit_shift(out, instruction, 7);
+    return;
+  case mir_model::MirInstruction::MI_SHL_IMM:
+    emit_immediate_shift(out, instruction, 4);
+    return;
+  case mir_model::MirInstruction::MI_SHR_IMM:
+    emit_immediate_shift(out, instruction, 5);
+    return;
+  case mir_model::MirInstruction::MI_SAR_IMM:
+    emit_immediate_shift(out, instruction, 7);
     return;
   case mir_model::MirInstruction::MI_TLS_ADDR:
     emit_tls_address_instruction(out, instruction);

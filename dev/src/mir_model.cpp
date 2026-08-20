@@ -179,6 +179,9 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_SHL_CL: return "shl";
   case Instruction::MI_SHR_CL: return "shr";
   case Instruction::MI_SAR_CL: return "sar";
+  case Instruction::MI_SHL_IMM: return "shl";
+  case Instruction::MI_SHR_IMM: return "shr";
+  case Instruction::MI_SAR_IMM: return "sar";
   case Instruction::MI_TLS_ADDR: return "tls_addr";
   case Instruction::MI_CALL: return "call";
   case Instruction::MI_CALL_INDIRECT: return "call";
