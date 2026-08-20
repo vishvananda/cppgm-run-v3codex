@@ -160,6 +160,7 @@ const char * opcode_name(Instruction::Opcode opcode)
   case Instruction::MI_ADD: return "add";
   case Instruction::MI_SUB: return "sub";
   case Instruction::MI_IMUL: return "imul";
+  case Instruction::MI_MUL: return "mul";
   case Instruction::MI_AND: return "and";
   case Instruction::MI_OR: return "or";
   case Instruction::MI_XOR: return "xor";
