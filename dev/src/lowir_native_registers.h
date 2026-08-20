@@ -20,10 +20,12 @@ public:
   X64Register allocate(bool across_call);
   bool try_allocate(bool across_call, X64Register & result);
   void release(X64Register reg);
+  void discard_unused_reservation(X64Register reg);
   const std::vector<X64Register> & preserves() const;
 
 private:
   bool used_[16];
+  unsigned reservation_count_[16];
   std::vector<X64Register> preserves_;
 
   void remember_preserve(X64Register reg);

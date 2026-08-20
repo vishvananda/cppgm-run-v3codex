@@ -154,7 +154,8 @@ general-purpose temporary that is used only by the return.
 while promoted parameter-slot loads and directly addressed stores lower ahead
 of its final use.  The selected MIR operations before that use do not define
 RCX, so the final store may read the incoming register instead of its stable
-copy.  Both compilers execute the input successfully, but the reference moves
+copy. No setup transfer to that unread stable home is needed. Both compilers
+execute the input successfully, but the reference moves
 the parameters into callee-saved registers and retains separate address
 instructions.  The input is therefore a placement-shape witness rather than
 an active reference fixture.

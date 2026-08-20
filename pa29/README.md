@@ -635,6 +635,8 @@ strategies include:
   earlier GPR call-argument use read its intact `rax` carrier directly
 - omit parameter homes and setup transfers when slot selection removes every
   use that would have consumed them
+- omit a transfer to a stable parameter home when every selected consumer can
+  read the still-intact incoming ABI register
 - let a promoted or forwarded parameter-slot load continue to name the
   parameter's stable selected home; its consumer can apply any required
   register constraint directly

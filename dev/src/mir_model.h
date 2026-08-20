@@ -96,8 +96,10 @@ struct ParamBinding
   // A representation-preserving scalar copy, including ptr/i64, may share
   // this location when the copied result's complete interval also crosses no
   // clobber. A parameter whose apparent uses are all discarded with promoted
-  // or dead slot traffic needs no separate home. Width- and sign-changing
-  // conversions remain explicit.
+  // or dead slot traffic needs no separate home. When every selected use can
+  // read an intact incoming carrier, the unused transfer to a later stable
+  // home is omitted as well. Width- and sign-changing conversions remain
+  // explicit.
   lowir_model::PresentationName name;
   X64Register reg = XR_RDI;
   XmmRegister xmm = XMM_0;

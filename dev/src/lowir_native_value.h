@@ -19,6 +19,9 @@ struct ValueFact
   mir_model::MirOperand spill_home;
   mir_model::MirOperand pointer_global_cell;
   lowir_model::ValueId forwarded_parameter;
+  // A zero-cost alias carries the identity of the optional parameter-home
+  // transfer that established its register value.
+  lowir_model::ValueId selected_parameter_home;
   // A directly selected address keeps its LowIR inputs live until the memory
   // instruction consumes the address.  This avoids manufacturing a pointer
   // temporary solely to feed an x86 addressing mode.

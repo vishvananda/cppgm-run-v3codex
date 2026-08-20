@@ -19,7 +19,6 @@ function @sum8
   frame
     stack_size 64
     scratch_bytes 0
-    preserve <gpr0> <gpr1> <gpr2> <gpr3> <gpr4>
     param-slot %g -> [rbp-<off0>] : i64
     param-slot %h -> [rbp-<off1>] : i64
 
@@ -28,17 +27,11 @@ function @sum8
     store.i64 [rbp-<off0>], rax
     load.i64 rax, [rbp+<off1>]
     store.i64 [rbp-<off1>], rax
-    mov <gpr0>, rdx
-    mov <gpr1>, rcx
-    mov <gpr2>, r8
-    mov <gpr3>, r9
-    mov r9, rsi
-    mov <gpr4>, rdi
     add rdi, rsi
     add rdi, rdx
     add rdi, rcx
     add rdi, r8
-    add rdi, <gpr3>
+    add rdi, r9
     load.i64 rdx, [rbp-<off0>]
     add rdi, rdx
     load.i64 rdx, [rbp-<off1>]
@@ -61,10 +54,10 @@ function @main
     mov rcx, 4
     mov r8, 5
     mov r9, 6
-    mov <gpr5>, 7
-    store.i64 [rsp], <gpr5>
-    mov <gpr5>, 8
-    store.i64 [rsp+<off0>], <gpr5>
+    mov <gpr0>, 7
+    store.i64 [rsp], <gpr0>
+    mov <gpr0>, 8
+    store.i64 [rsp+<off0>], <gpr0>
     call @sum8 [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
     add rsp, 16
     store.i64 [rbp-<off0>], rax

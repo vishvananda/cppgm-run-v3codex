@@ -177,7 +177,8 @@ protected:
          value.location.kind != mir_model::MirOperand::OP_REG ||
          (value.location.reg != XR_RDI && value.location.reg != XR_RSI))
         continue;
-      const mir_model::MirOperand location = value.location;
+      const mir_model::MirOperand location =
+        lowerer.selected_value_location(argument.value);
       const bool shared =
         lowerer.has_live_location_alias(argument.value, location);
       const mir_model::MirOperand home = value.has_spill_home ?

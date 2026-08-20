@@ -12,6 +12,7 @@
 #include "lowir_native_division_lowering.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_frame_layout.h"
+#include "lowir_native_frame_planning.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_index_lowering.h"
 #include "lowir_native_intrinsic_lowering.h"
@@ -52,6 +53,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private call_detail::CallLowering<FunctionLowerer>,
                         private comparison_detail::CompareLowering<FunctionLowerer>,
                         private copy_detail::CopyLowering<FunctionLowerer>,
+                        private frame_planning_detail::FramePlanning<FunctionLowerer>,
                         private index_detail::IndexLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>,
                         private parameter_detail::ParameterRegisterState<FunctionLowerer>,
@@ -64,6 +66,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class call_detail::CallLowering<FunctionLowerer>;
   friend class comparison_detail::CompareLowering<FunctionLowerer>;
   friend class copy_detail::CopyLowering<FunctionLowerer>;
+  friend class frame_planning_detail::FramePlanning<FunctionLowerer>;
   friend class index_detail::IndexLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
   friend class parameter_detail::ParameterRegisterState<FunctionLowerer>;
@@ -121,8 +124,6 @@ public:
       block.instructions.reserve(source_.blocks[i].instructions.size() +
         (i == 0 ? parameter_moves_.size() : 0));
       control_flow_.SelectBlock(i);
-      if(i == 0) block.instructions.insert(block.instructions.end(),
-                                           parameter_moves_.begin(), parameter_moves_.end());
       for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_) {
         const std::size_t first_machine_instruction = block.instructions.size();
         lower_instruction(source_.blocks[i], j, block.instructions);
@@ -154,6 +155,11 @@ public:
       }
       target_.blocks.push_back(std::move(block));
     }
+    discard_unread_parameter_homes();
+    if(!target_.blocks.empty())
+      target_.blocks[0].instructions.insert(
+        target_.blocks[0].instructions.begin(), parameter_moves_.begin(),
+        parameter_moves_.end());
     target_.callee_saved_regs = registers_.preserves();
     frame_layout::finalize_function(
       target_, source_, facts_, storage_facts_, frame_bytes_,
@@ -266,56 +272,6 @@ private:
     return frame_operand(offset,
       static_cast<std::uint32_t>(target_.frame_bindings.size()));
   }
-  void plan_variadic_register_save()
-  {
-    if(!facts_.has_va_start) return;
-    if(source_.boundary.arity != lowir_model::CAM_VARIADIC)
-      throw std::runtime_error("va_start in non-variadic function");
-    variadic_state_ = abi::variadic_state(source_.params);
-    variadic_register_save_offset_ = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP,
-      lowir_model::FPN_VA_REGISTER_SAVE,
-      varargs::register_save_type());
-    varargs::append_register_save(variadic_register_save_offset_, parameter_moves_);
-    uses_scalar_float_ = true;
-  }
-  void plan_slots()
-  {
-    for(std::size_t i = 0; i < source_.slots.size(); ++i) {
-      const lowir_model::SlotId slot = source_.slots[i];
-      const LowType & type = lowir_model::lowir_slot_type(source_, slot);
-      if(storage_facts_.parameter_slot_aliases[slot].valid() ||
-         storage_facts_.promoted_parameter_slots[slot].valid())
-        continue;
-      if(storage_facts_.forwarded_parameter_slots[slot].valid()) {
-        discarded_slots_[slot] = 1;
-        continue;
-      }
-      if(storage_facts_.dead_store_slots[slot]) {
-        discarded_slots_[slot] = 1;
-        continue;
-      }
-      slot_offsets_[slot] = allocate_frame_binding(
-        mir_model::MirFrameBinding::FB_SLOT,
-        source_.slot_names[slot].valid() ?
-          lowir_model::PresentationName::pooled(source_.slot_names[slot]) :
-          lowir_model::PresentationName(), type);
-      slot_offset_known_[slot] = 1;
-    }
-  }
-  void plan_host_eh()
-  {
-    if(!host_eh_detail::requires_host_eh_storage(source_)) return;
-    target_.host_eh_enabled = true;
-    target_.host_eh_exception_offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP,
-      lowir_model::FPN_HOST_EH_EXCEPTION,
-      lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
-    target_.host_eh_selector_offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP,
-      lowir_model::FPN_HOST_EH_SELECTOR,
-      lowir_model::builtin_lowir_type(lowir_model::LTK_I64));
-  }
   bool crosses_call(lowir_model::ValueId value) const
   {
     return facts_.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
@@ -346,6 +302,7 @@ private:
     std::size_t xmm_index = 0;
     std::size_t stack_index = 0;
     std::vector<MirInstruction> gpr_parameter_moves;
+    std::vector<lowir_model::ValueId> gpr_parameter_move_values;
     for(std::size_t i = 0; i < source_.params.size(); ++i) {
       const lowir_model::LowirParameter & parameter = source_.params[i];
       mir_model::MirParamBinding binding;
@@ -377,7 +334,9 @@ private:
             (parameter.type.kind == lowir_model::LTK_PTR && uses > 1)))) {
           const X64Register destination = registers_.allocate(true);
           value.location = reg_operand(destination);
-          append_move(gpr_parameter_moves, value.location, reg_operand(binding.reg));
+          append_optional_parameter_move(gpr_parameter_moves,
+            gpr_parameter_move_values, value, parameter.value,
+            reg_operand(binding.reg));
         }
       } else {
         binding.location = mir_model::MirParamBinding::PL_STACK;
@@ -400,8 +359,8 @@ private:
       target_.params.push_back(binding);
       set_value(parameter.value, value);
     }
-    parameter_moves_.insert(parameter_moves_.end(),
-                            gpr_parameter_moves.begin(), gpr_parameter_moves.end());
+    append_optional_parameter_moves(
+      gpr_parameter_moves, gpr_parameter_move_values);
   }
   void bind_aggregate_parameters()
   {
@@ -503,6 +462,7 @@ private:
     std::vector<unsigned char> cross_call_home_known(
       source_.value_names.size(), 0);
     std::vector<MirInstruction> register_parameter_moves;
+    std::vector<lowir_model::ValueId> register_parameter_move_values;
     if(!wide_gpr_boundary)
       for(std::size_t i = std::min<std::size_t>(source_.params.size(), 6); i != 0; --i) {
         const lowir_model::ValueId value = source_.params[i - 1].value;
@@ -571,14 +531,18 @@ private:
         value.location = reg_operand(cross_call_homes[parameter.value]);
         value.fixed_register_home = storage_facts_.has(
           parameter.value, StorageFacts::VF_PROMOTED_PARAMETER);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
+        append_optional_parameter_move(register_parameter_moves,
+          register_parameter_move_values, value, parameter.value,
+          reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && promoted_incoming_clobbered) {
         const X64Register destination = registers_.is_used(XR_R9) ?
           registers_.allocate(false) : XR_R9;
         if(destination == XR_R9) registers_.reserve(XR_R9);
         value.location = reg_operand(destination);
         value.fixed_register_home = true;
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
+        append_optional_parameter_move(register_parameter_moves,
+          register_parameter_move_values, value, parameter.value,
+          reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && !incoming_clobbered) {
         // Keep an intact incoming ABI register as the value's selected home.
         value.fixed_register_home =
@@ -595,7 +559,9 @@ private:
         const X64Register destination =
           registers_.allocate(crosses_call(parameter.value));
         value.location = reg_operand(destination);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
+        append_optional_parameter_move(register_parameter_moves,
+          register_parameter_move_values, value, parameter.value,
+          reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && incoming_clobbered) {
         const X64Register destination =
           registers_.allocate(crosses_call(parameter.value));
@@ -603,7 +569,9 @@ private:
         value.fixed_register_home =
           storage_facts_.has(parameter.value,
                              StorageFacts::VF_PROMOTED_PARAMETER);
-        append_move(register_parameter_moves, value.location, reg_operand(binding.reg));
+        append_optional_parameter_move(register_parameter_moves,
+          register_parameter_move_values, value, parameter.value,
+          reg_operand(binding.reg));
       }
       if(incoming_pool_reserved[i] &&
          (value.location.kind != MirOperand::OP_REG || value.location.reg != binding.reg))
@@ -612,8 +580,8 @@ private:
         reserve_direct_parameter_register(binding, value, uses);
       set_value(parameter.value, value);
     }
-    parameter_moves_.insert(parameter_moves_.end(), register_parameter_moves.begin(),
-                            register_parameter_moves.end());
+    append_optional_parameter_moves(
+      register_parameter_moves, register_parameter_move_values);
     if(home_unused_register_parameters) {
       frame_bytes_ += 8; // Keep the six-register home area call-aligned.
       return;
@@ -630,14 +598,24 @@ private:
       if(storage_facts_.parameter_selected_uses[index] == 0 ||
          values_[value].location.kind == MirOperand::OP_FRAME)
         continue;
+      const X64Register incoming = abi::argument_register(index);
+      if(!facts_.has(value, FunctionFacts::VF_LOOP_INVARIANT) &&
+         !crosses_register_clobber(value, incoming)) {
+        if(managed_register(incoming) && !registers_.is_used(incoming))
+          registers_.reserve(incoming);
+        continue;
+      }
       const X64Register destination = destinations[index];
       registers_.reserve(destination);
+      const std::size_t first = parameter_moves_.size();
       append_move(parameter_moves_, reg_operand(destination),
-                  reg_operand(abi::argument_register(index)));
+                  reg_operand(incoming));
+      remember_optional_parameter_move(first, value);
       set_value_location(value, reg_operand(destination));
       values_[value].parameter = false;
       values_[value].fixed_register_home = storage_facts_.has(
         value, StorageFacts::VF_PROMOTED_PARAMETER);
+      values_[value].selected_parameter_home = value;
     }
   }
   bool result_is_immediate_return(const lowir_model::LowirBlock & block,
@@ -691,8 +669,22 @@ private:
            !(active_setup_register_clobbers_ & register_mask(incoming)) &&
            incoming_register_is_available(incoming))
           return reg_operand(incoming);
+        const lowir_model::ValueId parameter =
+          values_[operand.value].selected_parameter_home;
+        if(parameter.valid() &&
+           !facts_.has(operand.value, FunctionFacts::VF_LOOP_INVARIANT) &&
+           !facts_.has(incoming_value, FunctionFacts::VF_LOOP_INVARIANT) &&
+           !(active_setup_register_clobbers_ & register_mask(incoming)) &&
+           incoming_register_is_available_without_parameter_setup(incoming)) {
+          OptionalParameterMove * home = optional_parameter_home(parameter);
+          if(!home)
+            throw std::logic_error("selected parameter home has no transfer");
+          home->soft_read = true;
+          home->soft_incoming = incoming;
+          return values_[operand.value].location;
+        }
       }
-      return values_[operand.value].location;
+      return selected_value_location(operand.value);
     }
     if(operand.kind == Operand::OP_SLOT) {
       const std::uint32_t slot = operand.slot;
@@ -712,6 +704,19 @@ private:
     if(operand.kind == Operand::OP_LABEL)
       return native_block_operand(source_, operand);
     throw std::runtime_error("foundation operand kind is not implemented");
+  }
+  MirOperand selected_value_location(lowir_model::ValueId value) const
+  {
+    const MirOperand location = values_[value].location;
+    const lowir_model::ValueId parameter =
+      values_[value].selected_parameter_home;
+    if(parameter.valid()) {
+      OptionalParameterMove * home = optional_parameter_home(parameter);
+      if(!home)
+        throw std::logic_error("selected parameter home has no transfer");
+      home->hard_read = true;
+    }
+    return location;
   }
   const LowType & operand_type(const Operand & operand) const
   {
@@ -771,7 +776,7 @@ private:
       return storage(operand);
     if(operand.kind == Operand::OP_TEMP) {
       if(value_known_[operand.value] && values_[operand.value].deferred_address)
-        return values_[operand.value].location;
+        return selected_value_location(operand.value);
     }
     if(is_frame_address(operand)) {
       const MirOperand address = resolve(operand);
@@ -1193,7 +1198,7 @@ private:
     if(!value_known_[operand.value])
       throw std::runtime_error("missing address value");
     const ValueFact & value = values_[operand.value];
-    const MirOperand & location = value.location;
+    const MirOperand location = selected_value_location(operand.value);
     if(value.frame_address || value.type.kind == lowir_model::LTK_OBJECT ||
        wide::is_integer(value.type)) {
       if(location.kind == MirOperand::OP_FRAME || location.kind == MirOperand::OP_DEREF) {
@@ -1223,17 +1228,18 @@ private:
     ValueFact & found = values_[operand.value];
     if(found.frame_address || found.location.kind == MirOperand::OP_FRAME)
       return found.location;
+    const MirOperand selected = selected_value_location(operand.value);
     const MirOperand home = allocate_temp_home(operand.value, found.type);
-    if(found.location.kind == MirOperand::OP_XMM)
-      append_float_move(out, home, found.location, found.type);
+    if(selected.kind == MirOperand::OP_XMM)
+      append_float_move(out, home, selected, found.type);
     else
-      append_store(out, home, found.location, found.type);
-    if(found.location.kind == MirOperand::OP_REG &&
-       !has_live_location_alias(operand.value, found.location))
-      registers_.release(found.location.reg);
-    else if(found.location.kind == MirOperand::OP_XMM &&
-            !has_live_location_alias(operand.value, found.location))
-      xmms_.release(found.location.xmm);
+      append_store(out, home, selected, found.type);
+    if(selected.kind == MirOperand::OP_REG &&
+       !has_live_location_alias(operand.value, selected))
+      registers_.release(selected.reg);
+    else if(selected.kind == MirOperand::OP_XMM &&
+            !has_live_location_alias(operand.value, selected))
+      xmms_.release(selected.xmm);
     set_value_location(operand.value, home);
     return home;
   }
@@ -1976,7 +1982,7 @@ private:
       if(instruction.args[i].kind == Operand::OP_TEMP) {
         const ValueFact & value = values_[instruction.args[i].value];
         if(value.forwarded_parameter.valid())
-          move.source = values_[value.forwarded_parameter].location;
+          move.source = selected_value_location(value.forwarded_parameter);
       }
       move.type = operand_type(instruction.args[i]);
       move.source_is_address = is_frame_address(instruction.args[i]);

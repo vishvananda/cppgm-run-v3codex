@@ -19,7 +19,6 @@ function @sum8
   frame
     stack_size 64
     scratch_bytes 0
-    preserve rbx r12 r13 r14 r15
     param-slot %g -> [rbp-8] : i64
     param-slot %h -> [rbp-16] : i64
 
@@ -28,17 +27,11 @@ function @sum8
     store.i64 [rbp-8], rax
     load.i64 rax, [rbp+24]
     store.i64 [rbp-16], rax
-    mov rbx, rdx
-    mov r12, rcx
-    mov r13, r8
-    mov r14, r9
-    mov r9, rsi
-    mov r15, rdi
     add rdi, rsi
     add rdi, rdx
     add rdi, rcx
     add rdi, r8
-    add rdi, r14
+    add rdi, r9
     load.i64 rdx, [rbp-8]
     add rdi, rdx
     load.i64 rdx, [rbp-16]
