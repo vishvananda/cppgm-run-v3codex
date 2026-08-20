@@ -5,8 +5,6 @@ translation-unit
     bind #1 = <char, short, int> source=explicit
     bind #2 = sink source=explicit
 template-closure-events
-  ensure-definition
-    entity run_pack
   function-instantiation
     entity run_pack
   function-instantiation

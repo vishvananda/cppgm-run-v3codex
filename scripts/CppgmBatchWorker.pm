@@ -16,6 +16,7 @@ our @EXPORT_OK = qw(
   clear_progress_state
   close_worker
   collect_tests
+  detect_jobs
   ensure_test_app_available
   get_timeout_from_env
   note_progress_state
@@ -313,6 +314,24 @@ sub try_set_process_group
 	die "Unable to set worker process group for $pid: $!";
 }
 
+# Worker count for a test run. Checks each named environment variable in turn
+# and otherwise uses the machine width, matching run_all_tests_common.pl.
+# Falling back to one worker instead made a bare `make -C paN test` run every
+# test serially, which is an order of magnitude slower than the same
+# assignment under `make test-report`.
+sub detect_jobs
+{
+	my @names = @_ ? @_ : ('CPPGM_TEST_JOBS');
+	for my $name (@names)
+	{
+		my $value = $ENV{$name};
+		return $value if defined($value) && $value =~ m/^\d+$/ && $value > 0;
+	}
+	chomp(my $cpus = `getconf _NPROCESSORS_ONLN 2>/dev/null`);
+	return $cpus if $cpus =~ m/^\d+$/ && $cpus > 0;
+	return 1;
+}
+
 sub set_cloexec
 {
 	my ($fh, $label) = @_;
@@ -368,7 +387,11 @@ sub encode_env
 {
 	my ($env) = @_;
 	return '' if !defined($env);
-	return join(';', map { $_ . '=' . $env->{$_} } sort keys %{$env});
+	return join(';', map {
+		my $val = $env->{$_};
+		$val =~ s/[\r\n\t]/ /g;
+		$_ . '=' . $val
+	} sort keys %{$env});
 }
 
 sub submit_cli_request

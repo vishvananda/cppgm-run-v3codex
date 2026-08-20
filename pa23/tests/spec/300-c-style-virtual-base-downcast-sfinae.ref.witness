@@ -1,0 +1,12 @@
+translation-unit
+  function-call at tests/spec/300-c-style-virtual-base-downcast-sfinae.t:4:15
+    callee probe
+    selected instantiation
+    bind #1 = B source=explicit
+    bind #2 = D source=explicit
+    drop probe reason=substitution_failure
+template-closure-events
+  function-instantiation
+    entity probe
+  require-definition
+    entity probe

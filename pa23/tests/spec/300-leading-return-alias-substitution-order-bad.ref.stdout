@@ -1,0 +1,1 @@
+ERROR: static_assert false: sizeof(T) == 0 [bindings hard<int>{types:T=int,hard=struct hard<int>} {types:T=int,hard<int>=struct hard<int>}]

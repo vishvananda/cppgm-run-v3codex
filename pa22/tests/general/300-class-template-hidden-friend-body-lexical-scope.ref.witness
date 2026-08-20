@@ -10,8 +10,6 @@ translation-unit
     bind #1 = second source=explicit
     bind #2 = first source=explicit
 template-closure-events
-  ensure-definition
-    entity flip
   function-instantiation
     entity flip
   require-definition

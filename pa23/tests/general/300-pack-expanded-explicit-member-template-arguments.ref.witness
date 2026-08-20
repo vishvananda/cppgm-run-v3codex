@@ -22,8 +22,6 @@ translation-unit
     selected primary
     bind #1 = <definition<int, long>> source=explicit
 template-closure-events
-  ensure-definition
-    entity factory<definition<int, long>>::make
   function-instantiation
     entity factory<definition<int, long>>::make
   function-instantiation

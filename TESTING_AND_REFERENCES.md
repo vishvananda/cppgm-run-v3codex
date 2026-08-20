@@ -82,6 +82,11 @@ the test suites is intended to be correct, not guaranteed; prefer the handout
 and the standard over exact reference parity. Error message text is never
 compared: failing tests check only the exit status.
 
+Failed-case stdout files are generated on the Linux export host and retained
+as informative examples for students. They are not portable reference oracles
+and are therefore not tracked in the compiler source repository. Successful
+stdout files remain exact checked-in references.
+
 The repository does not store the large binary payloads in Git. The checked-in
 `*-ref` wrappers automatically download, verify, and unpack the pinned
 reference-binary bundle the first time a reference tool is needed. To fetch the
@@ -115,3 +120,10 @@ make ref-test-debuginfo
 
 Strict/reference regeneration is for maintaining fixtures from the provided
 reference tools, not for making current incorrect output pass.
+
+Strict witness comparison is byte-exact. The compact public witness format
+canonicalizes both internal `ensure-definition` and `require-definition`
+lifecycle events as `require-definition`, because they are the same observable
+definition demand and their distinction depends on compiler scheduling. Raw
+patched-Clang JSON and debug witness output retain the original event kinds and
+provenance for investigation.

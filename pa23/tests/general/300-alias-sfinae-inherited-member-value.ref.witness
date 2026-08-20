@@ -33,8 +33,6 @@ translation-unit
     bind #2 = void source=defaulted
     drop function<int ()>::function reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity function<int ()>::function
   function-instantiation
     entity function<int ()>::function
   require-definition

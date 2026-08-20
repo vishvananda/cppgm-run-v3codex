@@ -8,10 +8,6 @@ translation-unit
     selected primary
     bind #1 = n::B source=explicit
 template-closure-events
-  ensure-definition
-    entity Use<n::A>::size
-  ensure-definition
-    entity Use<n::B>::size
   function-instantiation
     entity Use<n::A>::size
   function-instantiation

@@ -15,8 +15,6 @@ translation-unit
     drop ns::helper reason=worse_conversion
     drop ns::helper reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity ns::helper
   function-instantiation
     entity ns::helper
   require-definition

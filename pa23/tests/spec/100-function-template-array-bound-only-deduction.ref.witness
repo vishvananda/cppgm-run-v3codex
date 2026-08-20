@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = 5 source=deduced
 template-closure-events
-  ensure-definition
-    entity array_bound_only_deduction::to_zstr
   function-instantiation
     entity array_bound_only_deduction::to_zstr
   require-definition

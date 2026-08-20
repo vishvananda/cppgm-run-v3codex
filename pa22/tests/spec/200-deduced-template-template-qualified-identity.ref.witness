@@ -1,0 +1,21 @@
+translation-unit
+  class-use at tests/spec/200-deduced-template-template-qualified-identity.t:9:22
+    template lambda
+    selected partial
+    bind #1 = a::x<int> source=explicit
+    specialize #1 = a::x source=deduced
+    specialize #2 = int source=deduced
+  class-use at tests/spec/200-deduced-template-template-qualified-identity.t:9:32
+    template a::x
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/200-deduced-template-template-qualified-identity.t:10:22
+    template lambda
+    selected partial
+    bind #1 = b::x<int> source=explicit
+    specialize #1 = b::x source=deduced
+    specialize #2 = int source=deduced
+  class-use at tests/spec/200-deduced-template-template-qualified-identity.t:10:32
+    template b::x
+    selected primary
+    bind #1 = int source=explicit

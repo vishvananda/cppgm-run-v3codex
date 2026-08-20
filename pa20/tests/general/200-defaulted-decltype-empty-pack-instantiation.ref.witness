@@ -10,8 +10,6 @@ translation-unit
     bind #2 = <> source=deduced
     bind #3 = Box * source=defaulted
 template-closure-events
-  ensure-definition
-    entity construct_at
   function-instantiation
     entity construct_at
   require-definition

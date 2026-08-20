@@ -1,0 +1,39 @@
+translation-unit
+  alias-use at tests/general/500-bool-alias-function-template-result-metadata.t:17:1
+    template bool_constant
+    bind #1 = Nothrow source=explicit
+  class-use at tests/general/500-bool-alias-function-template-result-metadata.t:20:1
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+  class-use at tests/general/500-bool-alias-function-template-result-metadata.t:23:25
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+  class-use at tests/general/500-bool-alias-function-template-result-metadata.t:34:3
+    template integral_constant
+    selected primary
+    bind #1 = bool source=deduced
+    bind #2 = true source=deduced
+  class-use at tests/general/500-bool-alias-function-template-result-metadata.t:34:3
+    template invocable_impl
+    selected partial
+    bind #1 = result_type<target *> source=explicit
+    bind #2 = target * source=explicit
+    bind #3 = false source=defaulted
+    bind #4 = void source=defaulted
+    specialize #1 = result_type<target *> source=deduced
+    specialize #2 = target * source=deduced
+  class-use at tests/general/500-bool-alias-function-template-result-metadata.t:34:18
+    template result_type
+    selected primary
+    bind #1 = target * source=explicit
+template-closure-events
+  function-instantiation
+    entity integral_constant<bool, true>::operator bool
+  require-definition
+    entity integral_constant<bool, true>::operator bool
+  variable-instantiation
+    entity integral_constant<bool, true>::value

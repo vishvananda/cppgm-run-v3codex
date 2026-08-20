@@ -1,0 +1,18 @@
+translation-unit
+  function-call at tests/spec/300-conversion-template-specializations-not-independent.t:15:38
+    callee source::operator value *
+    selected instantiation
+    bind #1 = value source=deduced
+  function-call at tests/spec/300-conversion-template-specializations-not-independent.t:16:51
+    callee const source::operator value *
+    selected instantiation
+    bind #1 = const value source=deduced
+template-closure-events
+  function-instantiation
+    entity const source::operator value *
+  function-instantiation
+    entity source::operator value *
+  require-definition
+    entity const source::operator value *
+  require-definition
+    entity source::operator value *

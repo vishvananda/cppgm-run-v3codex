@@ -1,0 +1,48 @@
+translation-unit
+  class-use at tests/spec/300-dependent-nontype-partial-value-pack.t:76:5
+    template same
+    selected partial
+    bind #1 = int source=explicit
+    bind #2 = int source=explicit
+    specialize #1 = int source=deduced
+  class-use at tests/spec/300-dependent-nontype-partial-value-pack.t:76:10
+    template match
+    selected partial
+    bind #1 = condition<code> source=explicit
+    bind #2 = code::first source=explicit
+    bind #3 = <code::second> source=explicit
+    specialize #1 = code source=deduced
+    specialize #2 = code::first source=deduced
+    specialize #3 = <code::second> source=deduced
+  class-use at tests/spec/300-dependent-nontype-partial-value-pack.t:76:16
+    template condition
+    selected primary
+    bind #1 = code source=explicit
+    bind #2 = code source=defaulted
+  class-use at tests/spec/300-dependent-nontype-partial-value-pack.t:81:10
+    template match
+    selected partial
+    bind #1 = condition<code> source=explicit
+    bind #2 = code::first source=explicit
+    bind #3 = <code::second> source=explicit
+    specialize #1 = code source=deduced
+    specialize #2 = code::first source=deduced
+    specialize #3 = <code::second> source=deduced
+  class-use at tests/spec/300-dependent-nontype-partial-value-pack.t:81:16
+    template condition
+    selected primary
+    bind #1 = code source=explicit
+    bind #2 = code source=defaulted
+template-closure-events
+  function-instantiation
+    entity compare_pack
+  function-instantiation
+    entity match<condition<code>, code::first, code::second>::run
+  require-definition
+    entity compare_pack
+  require-definition
+    entity match<condition<code>, code::first, code::second>::run
+  variable-instantiation
+    entity same<code, code>::value
+  variable-instantiation
+    entity same<int, int>::value

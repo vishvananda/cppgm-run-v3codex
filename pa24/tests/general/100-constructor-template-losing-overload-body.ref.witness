@@ -6,8 +6,6 @@ translation-unit
     drop X::X reason=worse_conversion
     drop X::X reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity X::X
   function-instantiation
     entity X::X
   require-definition

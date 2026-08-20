@@ -6,8 +6,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity Holder<int>::Location
-  ensure-definition
-    entity Holder<int>::read
   function-instantiation
     entity Holder<int>::locate
   function-instantiation

@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity id
   function-instantiation
     entity id
   require-definition

@@ -1,0 +1,13 @@
+translation-unit
+  class-use at tests/general/400-cv-parameter-beats-template-id-partial.t:12:15
+    template holder
+    selected partial
+    bind #1 = const box<int> source=explicit
+    specialize #1 = box<int> source=deduced
+  class-use at tests/general/400-cv-parameter-beats-template-id-partial.t:12:22
+    template box
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  variable-instantiation
+    entity holder<const box<int>>::value

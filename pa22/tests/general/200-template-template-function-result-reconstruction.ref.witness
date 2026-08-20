@@ -1,0 +1,17 @@
+translation-unit
+  alias-use at tests/general/200-template-template-function-result-reconstruction.t:26:11
+    template id_t
+    bind #1 = decltype(call<generator<n::wrapper>>(0)) source=explicit
+  function-call at tests/general/200-template-template-function-result-reconstruction.t:26:25
+    callee call
+    selected instantiation
+    bind #1 = generator<n::wrapper> source=explicit
+    bind #2 = int source=deduced
+  class-use at tests/general/200-template-template-function-result-reconstruction.t:26:30
+    template generator
+    selected primary
+    bind #1 = n::wrapper source=explicit
+  class-use at tests/general/200-template-template-function-result-reconstruction.t:29:1
+    template owner
+    selected primary
+    bind #1 = int source=explicit

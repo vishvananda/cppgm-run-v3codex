@@ -7,8 +7,6 @@ translation-unit
     bind #3 = int source=deduced
     bind #4 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity N::copy_move_unwrap_iters
   function-instantiation
     entity N::__copy_impl::operator()
   function-instantiation

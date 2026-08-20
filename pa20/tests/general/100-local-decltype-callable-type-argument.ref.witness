@@ -9,8 +9,6 @@ translation-unit
     selected instantiation
     bind #1 = factory source=explicit
 template-closure-events
-  ensure-definition
-    entity run
   function-instantiation
     entity run
   require-definition

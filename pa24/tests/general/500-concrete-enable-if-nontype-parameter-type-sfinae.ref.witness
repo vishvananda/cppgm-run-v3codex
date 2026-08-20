@@ -28,12 +28,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity pairish<unsigned long, unsigned long>::CheckArgs
-  ensure-definition
-    entity pairish<unsigned long, unsigned long>::CheckArgs::enable_explicit_default
-  ensure-definition
-    entity pairish<unsigned long, unsigned long>::CheckArgs::enable_implicit_default
-  ensure-definition
-    entity pairish<unsigned long, unsigned long>::pairish
   function-instantiation
     entity pairish<unsigned long, unsigned long>::CheckArgs::enable_explicit_default
   function-instantiation

@@ -22,10 +22,6 @@ translation-unit
     drop wrap<const local *>::wrap reason=too_many_arguments
     drop wrap<const local *>::wrap reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity wrap<const local *>::wrap
-  ensure-definition
-    entity wrap<local *>::wrap
   function-instantiation
     entity wrap<const local *>::wrap
   function-instantiation

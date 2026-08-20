@@ -1,0 +1,26 @@
+translation-unit
+  alias-use at tests/general/300-alias-sfinae-function-pointer-deduction-key.t:28:27
+    template void_t
+    bind #1 = describe<T> source=explicit
+  alias-use at tests/general/300-alias-sfinae-function-pointer-deduction-key.t:28:34
+    template traits::detail::describe
+    bind #1 = T source=explicit
+  alias-use at tests/general/300-alias-sfinae-function-pointer-deduction-key.t:57:10
+    template traits::has_description
+    bind #1 = E1 source=explicit
+  function-call at tests/general/300-alias-sfinae-function-pointer-deduction-key.t:57:10
+    callee test_trait_impl
+    selected instantiation
+    bind #1 = traits::detail::has_description<E1> source=deduced
+  alias-use at tests/general/300-alias-sfinae-function-pointer-deduction-key.t:58:10
+    template traits::has_description
+    bind #1 = E2 source=explicit
+  function-call at tests/general/300-alias-sfinae-function-pointer-deduction-key.t:58:10
+    callee test_trait_impl
+    selected instantiation
+    bind #1 = traits::detail::has_description<E2> source=deduced
+template-closure-events
+  function-instantiation
+    entity test_trait_impl
+  require-definition
+    entity test_trait_impl

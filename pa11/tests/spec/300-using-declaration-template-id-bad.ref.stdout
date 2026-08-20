@@ -1,0 +1,1 @@
+ERROR: expected declaration near KW_USING:using at token 15 at tests/spec/300-using-declaration-template-id-bad.t:3:1

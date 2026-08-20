@@ -1,0 +1,23 @@
+translation-unit
+  class-use at tests/general/400-nontype-pack-fixed-tail-partial-specialization-ordering.t:35:10
+    template bin_literal
+    selected partial
+    bind #1 = bytes<> source=explicit
+    bind #2 = <'0', '0', '0', '0', '0', '0', '0', '0'> source=explicit
+    specialize #1 = <> source=deduced
+    specialize #2 = '0' source=deduced
+    specialize #3 = '0' source=deduced
+    specialize #4 = '0' source=deduced
+    specialize #5 = '0' source=deduced
+    specialize #6 = '0' source=deduced
+    specialize #7 = '0' source=deduced
+    specialize #8 = '0' source=deduced
+    specialize #9 = '0' source=deduced
+    specialize #10 = <> source=deduced
+  class-use at tests/general/400-nontype-pack-fixed-tail-partial-specialization-ordering.t:35:22
+    template bytes
+    selected primary
+    bind #1 = <> source=deduced
+template-closure-events
+  variable-instantiation
+    entity bin_literal<bytes<'\a'>>::size

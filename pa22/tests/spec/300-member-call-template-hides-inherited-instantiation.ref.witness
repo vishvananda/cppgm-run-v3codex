@@ -22,8 +22,6 @@ translation-unit
     bind #1 = iter<int> source=deduced
     bind #2 = derived_fn source=deduced
 template-closure-events
-  ensure-definition
-    entity unrolled<void>::call
   function-instantiation
     entity base_fn::operator()
   function-instantiation

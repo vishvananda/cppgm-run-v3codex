@@ -6,8 +6,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity outer<int, long>::inner
-  ensure-definition
-    entity outer<int, long>::inner::operator==
   function-instantiation
     entity outer<int, long>::inner::operator==
   require-definition

@@ -73,7 +73,7 @@ void SemanticAnalyzer::DeclareAnonymousUnionObject(NodeId source,
 		static_cast<std::uint32_t>(arena_->SourceLine(source)),
 		static_cast<std::uint32_t>(arena_->SourceColumn(source)),
 		static_cast<std::uint32_t>(arena_->TokenFirst(source)),
-		static_cast<std::uint32_t>(arena_->TokenLast(source)), false);
+		static_cast<std::uint32_t>(arena_->TokenLast(source)), false, false);
 
 	const std::vector<BindingId>& members = entity_data_members_[entity];
 	for (std::size_t i = 0; i < members.size(); ++i)

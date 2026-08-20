@@ -1,0 +1,40 @@
+translation-unit
+  function-call at tests/general/200-member-template-implicit-instantiation-not-overload.t:33:11
+    callee declval
+    selected instantiation
+    bind #1 = int source=explicit
+  function-call at tests/general/200-member-template-implicit-instantiation-not-overload.t:36:9
+    callee declval
+    selected instantiation
+    bind #1 = int source=explicit
+  function-call at tests/general/200-member-template-implicit-instantiation-not-overload.t:47:5
+    callee stream::async_read_some
+    selected instantiation
+    bind #1 = int source=deduced
+    bind #2 = void (*)(int) source=deduced
+  function-call at tests/general/200-member-template-implicit-instantiation-not-overload.t:48:12
+    callee stream::async_read_some
+    selected instantiation
+    bind #1 = int source=deduced
+    bind #2 = void (&)(int) source=deduced
+template-closure-events
+  function-instantiation
+    entity async_initiate
+  function-instantiation
+    entity async_result<void (&)(int), void (int)>::initiate
+  function-instantiation
+    entity async_result<void (*)(int), void (int)>::initiate
+  function-instantiation
+    entity declval
+  function-instantiation
+    entity stream::async_read_some
+  require-definition
+    entity async_initiate
+  require-definition
+    entity async_result<void (&)(int), void (int)>::initiate
+  require-definition
+    entity async_result<void (*)(int), void (int)>::initiate
+  require-definition
+    entity declval
+  require-definition
+    entity stream::async_read_some

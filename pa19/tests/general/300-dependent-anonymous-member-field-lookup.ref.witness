@@ -1,1 +1,8 @@
 translation-unit
+  class-use at tests/general/300-dependent-anonymous-member-field-lookup.t:10:26
+    template Box
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  class-instantiation
+    entity Box<int>::(anonymous struct at 3:3)

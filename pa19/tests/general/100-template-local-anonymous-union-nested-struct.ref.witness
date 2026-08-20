@@ -12,8 +12,6 @@ template-closure-events
     entity (unnamed union at 4:5)
   class-instantiation
     entity H<P>::f(P)::(unnamed union)::(unnamed struct at 6:7)
-  ensure-definition
-    entity H<P>::f
   function-instantiation
     entity H<P>::f
   require-definition

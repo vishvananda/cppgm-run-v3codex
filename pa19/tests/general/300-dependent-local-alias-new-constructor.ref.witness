@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity make_pair_argument
   function-instantiation
     entity make_pair_argument
   function-instantiation

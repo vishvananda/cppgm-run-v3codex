@@ -1,0 +1,17 @@
+translation-unit
+  class-use at tests/general/100-out-of-class-nested-method-distinguishes-partial-owner.t:6:24
+    template A
+    selected explicit
+    bind #1 = type-parameter-0-0 & source=explicit
+  class-use at tests/general/100-out-of-class-nested-method-distinguishes-partial-owner.t:7:14
+    template A
+    selected partial
+    bind #1 = int & source=explicit
+    specialize #1 = int source=deduced
+template-closure-events
+  class-instantiation
+    entity A<int &>::B
+  function-instantiation
+    entity A<int &>::B::f
+  require-definition
+    entity A<int &>::B::f

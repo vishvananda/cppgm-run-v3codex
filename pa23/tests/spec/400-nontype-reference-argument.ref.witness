@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = global_value source=explicit
 template-closure-events
-  ensure-definition
-    entity ref_counter<global_value>::bump
   function-instantiation
     entity ref_counter<global_value>::bump
   require-definition

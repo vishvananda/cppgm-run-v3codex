@@ -6,8 +6,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity boost::detail::has_size_type<const char[4]>::yes_type
-  ensure-definition
-    entity boost::size
   function-instantiation
     entity boost::size
   require-definition

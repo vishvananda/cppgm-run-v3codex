@@ -1,0 +1,8 @@
+ERROR: inaccessible base class conversion [function convert] [is_method no] [body_parent_scope <here>] [body_parent_bindings ] [body_function_scope <here>] [body_function_bindings {values:value=pointer to const class derived}]
+Diagnostic context:
+analyze_function_binding_output [convert]
+  analyze_statement [return-statement] at tests/general/200-private-base-static-cast-bad.t:9:3
+    analyze_expression_for_target [static_cast -> pointer to const struct base] at tests/general/200-private-base-static-cast-bad.t:9:10
+      semantic_expression::analyze_expression_for_target [static_cast -> pointer to const struct base] at tests/general/200-private-base-static-cast-bad.t:9:10
+        analyze_expression [static_cast] at tests/general/200-private-base-static-cast-bad.t:9:10
+          semantic_expression::analyze_expression [static_cast] at tests/general/200-private-base-static-cast-bad.t:9:10

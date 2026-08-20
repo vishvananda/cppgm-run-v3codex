@@ -9,8 +9,6 @@ translation-unit
     bind #1 = int * source=deduced
     drop G<int *>::G reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity G<int *>::G
   function-instantiation
     entity G<int *>::G
   require-definition

@@ -7,8 +7,6 @@ translation-unit
     drop lib::condition::condition reason=bad_conversion
     drop lib::condition::condition reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity lib::condition::condition
   function-instantiation
     entity lib::condition::condition
   require-definition

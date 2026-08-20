@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = Traits source=explicit
 template-closure-events
-  ensure-definition
-    entity Table<Traits>::Table
   function-instantiation
     entity Holder<Rebind<int, Node<int, false>>>::Holder
   function-instantiation

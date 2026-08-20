@@ -1,0 +1,20 @@
+translation-unit
+  class-use at tests/spec/300-derived-base-constructor-deduction-explicit-default-binding.t:10:18
+    template base
+    selected primary
+    bind #1 = derived source=explicit
+    bind #2 = alloc source=defaulted
+  class-use at tests/spec/300-derived-base-constructor-deduction-explicit-default-binding.t:20:3
+    template target
+    selected primary
+    bind #1 = alloc source=defaulted
+  function-call at tests/spec/300-derived-base-constructor-deduction-explicit-default-binding.t:20:12
+    callee target<>::target
+    selected instantiation
+    bind #1 = derived source=deduced
+    drop target<>::target reason=worse_conversion
+template-closure-events
+  function-instantiation
+    entity target<>::target
+  require-definition
+    entity target<>::target

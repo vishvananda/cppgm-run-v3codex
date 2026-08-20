@@ -16,8 +16,6 @@ translation-unit
     bind #2 = iterator source=deduced
     drop regex_search reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity regex_search
   function-instantiation
     entity regex_search
   require-definition

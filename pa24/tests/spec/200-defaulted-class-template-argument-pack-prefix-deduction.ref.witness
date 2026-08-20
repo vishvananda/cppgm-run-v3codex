@@ -1,0 +1,28 @@
+translation-unit
+  class-use at tests/spec/200-defaulted-class-template-argument-pack-prefix-deduction.t:37:11
+    template tuples::tuple
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = int source=explicit
+    bind #3 = int source=explicit
+    bind #4 = tuples::null_type source=defaulted
+    bind #5 = tuples::null_type source=defaulted
+    bind #6 = tuples::null_type source=defaulted
+    bind #7 = tuples::null_type source=defaulted
+    bind #8 = tuples::null_type source=defaulted
+    bind #9 = tuples::null_type source=defaulted
+    bind #10 = tuples::null_type source=defaulted
+  function-call at tests/spec/200-defaulted-class-template-argument-pack-prefix-deduction.t:38:10
+    callee take
+    selected instantiation
+    bind #1 = int source=deduced
+    bind #2 = <int, int, tuples::null_type, tuples::null_type, tuples::null_type, tuples::null_type, tuples::null_type, tuples::null_type, tuples::null_type> source=deduced
+template-closure-events
+  function-instantiation
+    entity take
+  function-instantiation
+    entity tuples::tuple<int, int, int>::tuple
+  require-definition
+    entity take
+  require-definition
+    entity tuples::tuple<int, int, int>::tuple

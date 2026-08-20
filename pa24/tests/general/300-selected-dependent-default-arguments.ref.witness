@@ -13,12 +13,6 @@ translation-unit
     bind #1 = has_default source=deduced
     drop choose reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity box<has_default>::box
-  ensure-definition
-    entity box<no_default>::box
-  ensure-definition
-    entity choose
   function-instantiation
     entity box<has_default>::box
   function-instantiation

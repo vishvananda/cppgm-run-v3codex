@@ -1,0 +1,5 @@
+translation-unit
+  class-use at tests/general/100-qualified-function-template-parser-scope-isolation.t:19:24
+    template types::item
+    selected primary
+    bind #1 = int source=explicit

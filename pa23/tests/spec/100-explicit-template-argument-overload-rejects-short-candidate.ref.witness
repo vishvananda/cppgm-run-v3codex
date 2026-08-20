@@ -10,8 +10,6 @@ translation-unit
     bind #2 = int source=explicit
     bind #3 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity holder<int>::pick
   function-instantiation
     entity holder<int>::pick
   require-definition

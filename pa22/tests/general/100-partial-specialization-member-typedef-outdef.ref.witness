@@ -1,0 +1,28 @@
+translation-unit
+  class-use at tests/general/100-partial-specialization-member-typedef-outdef.t:15:11
+    template MapBase
+    selected explicit
+    bind #1 = Pair<type-parameter-0-0, type-parameter-0-1> source=explicit
+    bind #2 = enabled_tag source=explicit
+  class-use at tests/general/100-partial-specialization-member-typedef-outdef.t:26:5
+    template MapBase
+    selected explicit
+    bind #1 = Pair<type-parameter-0-0, type-parameter-0-1> source=explicit
+    bind #2 = enabled_tag source=explicit
+  class-use at tests/general/100-partial-specialization-member-typedef-outdef.t:32:3
+    template MapBase
+    selected partial
+    bind #1 = Pair<int, char> source=explicit
+    bind #2 = enabled_tag source=explicit
+    specialize #1 = int source=deduced
+    specialize #2 = char source=deduced
+  class-use at tests/general/100-partial-specialization-member-typedef-outdef.t:32:11
+    template Pair
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = char source=explicit
+template-closure-events
+  function-instantiation
+    entity MapBase<Pair<int, char>, enabled_tag>::get
+  require-definition
+    entity MapBase<Pair<int, char>, enabled_tag>::get

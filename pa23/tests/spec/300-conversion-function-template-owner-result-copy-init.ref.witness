@@ -1,0 +1,38 @@
+translation-unit
+  class-use at tests/spec/300-conversion-function-template-owner-result-copy-init.t:28:1
+    template basic_string_view
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-conversion-function-template-owner-result-copy-init.t:30:10
+    template basic_string_view
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-conversion-function-template-owner-result-copy-init.t:35:3
+    template basic_string
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = char_traits source=explicit
+    bind #3 = allocator source=explicit
+  function-call at tests/spec/300-conversion-function-template-owner-result-copy-init.t:35:54
+    callee basic_string_view<char>::operator basic_string
+    selected instantiation
+    bind #1 = allocator source=deduced
+    drop basic_string<char, char_traits, allocator>::basic_string reason=explicit_not_allowed
+    drop basic_string<char, char_traits, allocator>::basic_string reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity basic_string<char, char_traits, allocator>::basic_string
+  function-instantiation
+    entity basic_string_view<char>::data
+  function-instantiation
+    entity basic_string_view<char>::operator basic_string
+  function-instantiation
+    entity basic_string_view<char>::size
+  require-definition
+    entity basic_string<char, char_traits, allocator>::basic_string
+  require-definition
+    entity basic_string_view<char>::data
+  require-definition
+    entity basic_string_view<char>::operator basic_string
+  require-definition
+    entity basic_string_view<char>::size

@@ -10,8 +10,6 @@ translation-unit
     bind #2 = value source=deduced
     bind #3 = 0 source=defaulted
 template-closure-events
-  ensure-definition
-    entity call
   function-instantiation
     entity call
   require-definition

@@ -1,0 +1,33 @@
+ERROR: dependent qualified type requires typename: T::type [top-level declaration 0 kind=template-declaration ast={template-declaration
+  template-parameter-clause
+    template-parameter-list
+      type-parameter
+        parameter-key KW_CLASS:class
+        identifier T
+  function-definition
+    decl-specifier-seq
+      decl-specifier KW_INT:int
+    declarator
+      identifier f
+      parameter-clause
+        parameter-declaration
+          decl-specifier-seq
+            decl-specifier TT_IDENTIFIER:T
+            decl-specifier KW_CONST:const
+            decl-specifier KW_VOLATILE:volatile
+          declarator
+            ptr-operator OP_STAR:*
+        parameter-declaration
+          decl-specifier-seq
+            decl-specifier T::type
+          declarator
+            ptr-operator OP_STAR:*
+          default-argument
+            initializer
+              literal 0
+    compound-statement
+      return-statement
+        literal 0
+}]
+Diagnostic context:
+collect_template_declaration [template<class T>int f(T const volatile*,T::type*=0){return 0;}] at tests/general/300-dependent-qualified-type-missing-typename-bad.t:1:1

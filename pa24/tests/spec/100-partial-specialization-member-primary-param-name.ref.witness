@@ -10,8 +10,6 @@ translation-unit
     bind #2 = false source=defaulted
     specialize #1 = 10 source=deduced
 template-closure-events
-  ensure-definition
-    entity accepts_known_digits
   function-instantiation
     entity accepts_known_digits
   require-definition

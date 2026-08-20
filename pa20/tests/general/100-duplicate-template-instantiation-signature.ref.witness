@@ -8,8 +8,6 @@ translation-unit
     bind #4 = 0 source=defaulted
     drop std::__find reason=inconsistent
 template-closure-events
-  ensure-definition
-    entity std::__find
   function-instantiation
     entity std::__find
   require-definition

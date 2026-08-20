@@ -1,0 +1,69 @@
+translation-unit
+  alias-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:36:18
+    template boost::mp11::mp_if
+    bind #1 = mp_valid<F, T...> source=explicit
+    bind #2 = detail::mp_defer_impl<F, T...> source=explicit
+    bind #3 = detail::mp_no_type source=explicit
+  alias-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:36:24
+    template boost::mp11::mp_valid
+    bind #1 = F source=explicit
+    bind #2 = T... source=explicit
+  alias-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:42:37
+    template boost::mp11::mp_defer
+    bind #1 = B source=explicit
+    bind #2 = T... source=explicit
+  alias-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:57:17
+    template boost::mp11::mp_apply_q
+    bind #1 = typename Parameters::binding source=explicit
+    bind #2 = mp11::mp_list<Keyword, Default, mp11::mp_false> source=explicit
+  alias-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:85:22
+    template boost::mp11::mp_if
+    bind #1 = is_same<KW, key_type> source=explicit
+    bind #2 = mp11::mp_if<Reference, reference, value_type> source=explicit
+    bind #3 = mp11::mp_apply_q<next_binding, mp11::mp_list<KW, Default, Reference>> source=explicit
+  alias-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:87:15
+    template boost::mp11::mp_if
+    bind #1 = Reference source=explicit
+    bind #2 = reference source=explicit
+    bind #3 = value_type source=explicit
+  alias-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:88:15
+    template boost::mp11::mp_apply_q
+    bind #1 = next_binding source=explicit
+    bind #2 = mp11::mp_list<KW, Default, Reference> source=explicit
+  class-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:106:30
+    template boost::parameter::aux::arg_list
+    selected primary
+    bind #1 = boost::parameter::aux::tagged_argument<visitor_tag, visitor_type> source=explicit
+    bind #2 = boost::parameter::aux::empty_arg_list source=defaulted
+  class-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:107:34
+    template boost::parameter::aux::tagged_argument
+    selected primary
+    bind #1 = visitor_tag source=explicit
+    bind #2 = visitor_type source=explicit
+  class-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:110:27
+    template boost::parameter::value_type
+    selected primary
+    bind #1 = args source=explicit
+    bind #2 = color_tag source=explicit
+    bind #3 = void source=explicit
+  class-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:111:27
+    template boost::parameter::value_type
+    selected primary
+    bind #1 = args source=explicit
+    bind #2 = visitor_tag source=explicit
+    bind #3 = void source=explicit
+  class-use at tests/general/400-member-alias-template-template-partial-deduction-owner.t:115:17
+    template boost::is_same
+    selected partial
+    bind #1 = void source=explicit
+    bind #2 = void source=explicit
+    specialize #1 = void source=deduced
+template-closure-events
+  class-instantiation
+    entity boost::parameter::aux::arg_list<boost::parameter::aux::tagged_argument<visitor_tag, visitor_type>>::binding
+  variable-instantiation
+    entity boost::is_same<color_tag, visitor_tag>::value
+  variable-instantiation
+    entity boost::is_same<visitor_tag, visitor_tag>::value
+  variable-instantiation
+    entity boost::is_same<void, void>::value

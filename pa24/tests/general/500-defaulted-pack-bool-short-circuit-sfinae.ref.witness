@@ -36,14 +36,6 @@ translation-unit
     drop box<const box<int, int> &>::box reason=worse_conversion
     drop box<const box<int, int> &>::box reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity box<const box<int, int> &>::box
-  ensure-definition
-    entity box<const box<int, int> &>::other
-  ensure-definition
-    entity gate<false>::no
-  ensure-definition
-    entity gate<false>::yes
   function-instantiation
     entity box<const box<int, int> &>::box
   function-instantiation

@@ -1,0 +1,6 @@
+ERROR: use of deleted view::view [function main] [is_method no] [body_parent_scope <here>] [body_parent_bindings ] [body_function_scope <here>] [body_function_bindings {values:value=struct view}]
+Diagnostic context:
+analyze_function_binding_output [main]
+  analyze_statement [simple-declaration] at tests/general/200-deleted-constructor-selected-over-viable-bad.t:12:3
+    try_argument_conversion [target rvalue-reference to struct view]
+      select_constructor_from_exprs [view, args=1]

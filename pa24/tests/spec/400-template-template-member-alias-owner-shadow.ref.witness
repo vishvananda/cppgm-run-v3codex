@@ -1,0 +1,55 @@
+translation-unit
+  alias-use at tests/spec/400-template-template-member-alias-owner-shadow.t:33:23
+    template defer
+    bind #1 = F source=explicit
+    bind #2 = T... source=explicit
+  alias-use at tests/spec/400-template-template-member-alias-owner-shadow.t:52:21
+    template transform
+    bind #1 = Q::template fn source=explicit
+    bind #2 = L source=explicit
+  class-use at tests/spec/400-template-template-member-alias-owner-shadow.t:66:9
+    template list
+    selected primary
+    bind #1 = <integral_constant<unsigned long, 0>> source=explicit
+  class-use at tests/spec/400-template-template-member-alias-owner-shadow.t:66:14
+    template integral_constant
+    selected primary
+    bind #1 = unsigned long source=explicit
+    bind #2 = 0 source=explicit
+  alias-use at tests/spec/400-template-template-member-alias-owner-shadow.t:67:9
+    template transform_q
+    bind #1 = bind_front<to_bits_t, mp_int<4>> source=explicit
+    bind #2 = inputs source=explicit
+  class-use at tests/spec/400-template-template-member-alias-owner-shadow.t:67:21
+    template bind_front
+    selected primary
+    bind #1 = to_bits_t source=explicit
+    bind #2 = <integral_constant<int, 4>> source=explicit
+  alias-use at tests/spec/400-template-template-member-alias-owner-shadow.t:67:43
+    template mp_int
+    bind #1 = 4 source=explicit
+  class-use at tests/spec/400-template-template-member-alias-owner-shadow.t:68:9
+    template list
+    selected primary
+    bind #1 = <list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=explicit
+  class-use at tests/spec/400-template-template-member-alias-owner-shadow.t:68:14
+    template list
+    selected primary
+    bind #1 = <integral_constant<int, 4>, integral_constant<unsigned long, 0>> source=explicit
+  alias-use at tests/spec/400-template-template-member-alias-owner-shadow.t:68:19
+    template mp_int
+    bind #1 = 4 source=explicit
+  class-use at tests/spec/400-template-template-member-alias-owner-shadow.t:68:30
+    template integral_constant
+    selected primary
+    bind #1 = unsigned long source=explicit
+    bind #2 = 0 source=explicit
+  class-use at tests/spec/400-template-template-member-alias-owner-shadow.t:72:10
+    template is_same
+    selected partial
+    bind #1 = list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=explicit
+    bind #2 = list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=explicit
+    specialize #1 = list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=deduced
+template-closure-events
+  variable-instantiation
+    entity is_same<list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>>, list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>>>::value

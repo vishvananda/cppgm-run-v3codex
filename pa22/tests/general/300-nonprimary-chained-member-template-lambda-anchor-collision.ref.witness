@@ -1,11 +1,5 @@
 translation-unit
 template-closure-events
-  ensure-definition
-    entity nonprimary_chained_lambda::first<>::old
-  ensure-definition
-    entity nonprimary_chained_lambda::second<>::postcondition
-  ensure-definition
-    entity nonprimary_chained_lambda::second<>::~second
   function-instantiation
     entity nonprimary_chained_lambda::first<>::old
   function-instantiation

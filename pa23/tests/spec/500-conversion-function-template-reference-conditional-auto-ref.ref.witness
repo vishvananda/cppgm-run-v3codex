@@ -1,0 +1,49 @@
+translation-unit
+  class-use at tests/spec/500-conversion-function-template-reference-conditional-auto-ref.t:11:13
+    template static_storage
+    selected primary
+    bind #1 = wrapper<callable_tag> source=explicit
+  class-use at tests/spec/500-conversion-function-template-reference-conditional-auto-ref.t:48:12
+    template deduce_unique
+    selected primary
+    bind #1 = unique_tag source=explicit
+  function-call at tests/spec/500-conversion-function-template-reference-conditional-auto-ref.t:48:12
+    callee deduce_unique<unique_tag>::const operator wrapper<callable_tag> &
+    selected instantiation
+    bind #1 = wrapper<callable_tag> source=deduced
+  class-use at tests/spec/500-conversion-function-template-reference-conditional-auto-ref.t:48:42
+    template factor
+    selected primary
+    bind #1 = unique_tag source=explicit
+  function-call at tests/spec/500-conversion-function-template-reference-conditional-auto-ref.t:48:63
+    callee factor<unique_tag>::operator=
+    selected instantiation
+    bind #1 = callable_tag source=deduced
+    drop factor<unique_tag>::operator= reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity deduce_unique<unique_tag>::const operator wrapper<callable_tag> &
+  function-instantiation
+    entity deduce_unique<unique_tag>::deduce_unique
+  function-instantiation
+    entity factor<unique_tag>::factor
+  function-instantiation
+    entity factor<unique_tag>::operator=
+  function-instantiation
+    entity static_const_var
+  function-instantiation
+    entity wrapper<callable_tag>::wrapper
+  require-definition
+    entity deduce_unique<unique_tag>::const operator wrapper<callable_tag> &
+  require-definition
+    entity deduce_unique<unique_tag>::deduce_unique
+  require-definition
+    entity factor<unique_tag>::factor
+  require-definition
+    entity factor<unique_tag>::operator=
+  require-definition
+    entity static_const_var
+  require-definition
+    entity wrapper<callable_tag>::wrapper
+  variable-instantiation
+    entity static_storage<wrapper<callable_tag>>::value

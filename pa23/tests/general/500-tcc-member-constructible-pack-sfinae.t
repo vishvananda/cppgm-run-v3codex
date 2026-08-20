@@ -7,11 +7,11 @@ struct enable_if<true, T> {
   typedef T type;
 };
 
-template<bool B>
+template<bool>
 struct _TCC {
   template<class... Args>
   static constexpr bool __is_implicitly_constructible() {
-    return B;
+    return false;
   }
 };
 
@@ -33,5 +33,5 @@ struct tupleish {
 };
 
 int main() {
-  return tupleish<int>::make(1) - 11;
+  return tupleish<int>::make(1) - 4;
 }

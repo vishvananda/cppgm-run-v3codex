@@ -24,8 +24,6 @@ template-closure-events
     entity body<long>::reader
   class-instantiation
     entity body<long>::value_type
-  ensure-definition
-    entity body<long>::reader::reader
   function-instantiation
     entity body<long>::reader::reader
   require-definition

@@ -17,10 +17,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity allocator<int>::allocate_at_least
-  ensure-definition
-    entity allocator_traits<allocator<int>>::allocate_at_least
   function-instantiation
     entity allocator<int>::allocate_at_least
   function-instantiation

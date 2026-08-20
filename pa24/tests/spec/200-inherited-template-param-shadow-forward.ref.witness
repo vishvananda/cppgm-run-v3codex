@@ -11,8 +11,6 @@ translation-unit
     bind #2 = unsigned int source=deduced
     drop ns::Pair<unsigned long, unsigned long>::Pair reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity ns::Pair<unsigned long, unsigned long>::Pair
   function-instantiation
     entity ns::Pair<unsigned long, unsigned long>::Pair
   function-instantiation

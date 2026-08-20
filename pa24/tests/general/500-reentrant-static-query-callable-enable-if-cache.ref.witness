@@ -1,0 +1,123 @@
+translation-unit
+  class-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:68:33
+    template api::execution::detail::relationship::fork_t
+    selected primary
+    bind #1 = 0 source=explicit
+  class-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:69:33
+    template api::execution::detail::relationship::continuation_t
+    selected primary
+    bind #1 = 0 source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:88:3
+    template enable_if_t
+    bind #1 = is_same<decltype(declval<T>().query(declval<Property>())), decltype(declval<T>().query(declval<Property>()))>::value source=explicit
+  function-call at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:131:55
+    callee declval
+    selected instantiation
+    bind #1 = void (*)() source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:173:3
+    template enable_if_t
+    bind #1 = is_applicable_property<decay_t<T>, decay_t<Property>>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:173:38
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:173:50
+    template decay_t
+    bind #1 = Property source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:174:3
+    template enable_if_t
+    bind #1 = static_query<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:181:3
+    template enable_if_t
+    bind #1 = is_applicable_property<decay_t<T>, decay_t<Property>>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:181:38
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:181:50
+    template decay_t
+    bind #1 = Property source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:182:3
+    template enable_if_t
+    bind #1 = !static_query<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:183:3
+    template enable_if_t
+    bind #1 = query_member<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:190:3
+    template enable_if_t
+    bind #1 = is_applicable_property<decay_t<T>, decay_t<Property>>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:190:38
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:190:50
+    template decay_t
+    bind #1 = Property source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:191:3
+    template enable_if_t
+    bind #1 = !static_query<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:192:3
+    template enable_if_t
+    bind #1 = !query_member<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:193:3
+    template enable_if_t
+    bind #1 = query_free<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:200:3
+    template enable_if_t
+    bind #1 = call_traits<impl, T, void (Property)>::overload == static_value source=explicit
+    bind #2 = typename call_traits<impl, T, void (Property)>::result_type source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:210:3
+    template enable_if_t
+    bind #1 = call_traits<impl, T, void (Property)>::overload == call_member source=explicit
+    bind #2 = typename call_traits<impl, T, void (Property)>::result_type source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:231:3
+    template enable_if_t
+    bind #1 = !query_member<T, execution::relationship_t::fork_t>::is_valid && !query_free<T, execution::relationship_t::fork_t>::is_valid && !can_query<T, execution::relationship_t::continuation_t>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:247:3
+    template enable_if_t
+    bind #1 = !query_member<T, execution::relationship_t::continuation_t>::is_valid && !query_free<T, execution::relationship_t::continuation_t>::is_valid && !static_query<T, execution::relationship_t::fork_t>::is_valid source=explicit
+  class-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:266:3
+    template api::execution::detail::relationship::fork_t
+    selected primary
+    bind #1 = 0 source=deduced
+  function-call at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:267:7
+    callee api::query_fn::impl::operator()
+    selected instantiation
+    bind #1 = api::executor source=deduced
+    bind #2 = api::execution::detail::relationship::fork_t<0> source=deduced
+    drop api::query_fn::impl::operator() reason=substitution_failure
+  class-use at tests/general/500-reentrant-static-query-callable-enable-if-cache.t:268:15
+    template api::can_query
+    selected primary
+    bind #1 = api::executor source=explicit
+    bind #2 = api::execution::detail::relationship::fork_t<0> source=explicit
+template-closure-events
+  function-instantiation
+    entity api::query_fn::impl::operator()
+  require-definition
+    entity api::query_fn::impl::operator()
+  variable-instantiation
+    entity api::can_query<api::executor, api::execution::detail::relationship::continuation_t<0>>::value
+  variable-instantiation
+    entity api::can_query<api::executor, api::execution::detail::relationship::fork_t<0>>::value
+  variable-instantiation
+    entity api::is_applicable_property<api::executor, api::execution::detail::relationship::continuation_t<0>>::value
+  variable-instantiation
+    entity api::is_applicable_property<api::executor, api::execution::detail::relationship::fork_t<0>>::value
+  variable-instantiation
+    entity api::is_executor<api::executor>::value
+  variable-instantiation
+    entity api::query_fn::call_traits<api::query_fn::impl, api::executor, void (api::execution::detail::relationship::continuation_t<0>)>::overload
+  variable-instantiation
+    entity api::query_fn::call_traits<api::query_fn::impl, api::executor, void (api::execution::detail::relationship::fork_t<0>)>::overload
+  variable-instantiation
+    entity api::traits::query_free<api::executor, api::execution::detail::relationship::continuation_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_free<api::executor, api::execution::detail::relationship::fork_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_member<api::executor, api::execution::detail::relationship::continuation_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_member<api::executor, api::execution::detail::relationship::fork_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::static_query<api::executor, api::execution::detail::relationship::continuation_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::static_query<api::executor, api::execution::detail::relationship::fork_t<0>>::is_valid
+  variable-instantiation
+    entity is_same<api::execution::detail::relationship::fork_t<0>, api::execution::detail::relationship::fork_t<0>>::value

@@ -10,8 +10,6 @@ translation-unit
     selected instantiation
     bind #1 = hash<int, char, long> source=explicit
 template-closure-events
-  ensure-definition
-    entity library::detail::type_name
   function-instantiation
     entity library::detail::class_template_name
   function-instantiation

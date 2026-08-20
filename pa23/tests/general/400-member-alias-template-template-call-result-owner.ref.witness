@@ -1,0 +1,74 @@
+translation-unit
+  alias-use at tests/general/400-member-alias-template-template-call-result-owner.t:64:22
+    template mp11::mp_if
+    bind #1 = is_same<KW, key_type> source=explicit
+    bind #2 = mp11::mp_if<Reference, reference, value_type> source=explicit
+    bind #3 = mp11::mp_apply_q<next_binding, mp11::mp_list<KW, Default, Reference>> source=explicit
+  alias-use at tests/general/400-member-alias-template-template-call-result-owner.t:66:15
+    template mp11::mp_if
+    bind #1 = Reference source=explicit
+    bind #2 = reference source=explicit
+    bind #3 = value_type source=explicit
+  alias-use at tests/general/400-member-alias-template-template-call-result-owner.t:67:15
+    template mp11::mp_apply_q
+    bind #1 = next_binding source=explicit
+    bind #2 = mp11::mp_list<KW, Default, Reference> source=explicit
+  alias-use at tests/general/400-member-alias-template-template-call-result-owner.t:94:26
+    template mp11::mp_apply_q
+    bind #1 = typename Parameters::binding source=explicit
+    bind #2 = mp11::mp_list<Keyword, Default, mp11::mp_true> source=explicit
+  class-use at tests/general/400-member-alias-template-template-call-result-owner.t:120:1
+    template extractor
+    selected primary
+    bind #1 = requested_feature source=explicit
+  class-use at tests/general/400-member-alias-template-template-call-result-owner.t:128:25
+    template parameter::aux::flat_like_arg_list
+    selected primary
+    bind #1 = <parameter::aux::flat_like_arg_tuple<other_tag, parameter::aux::tagged_argument<other_tag, const double>>, parameter::aux::flat_like_arg_tuple<requested_tag, parameter::aux::tagged_argument<requested_tag, requested_type>>> source=explicit
+  class-use at tests/general/400-member-alias-template-template-call-result-owner.t:129:21
+    template parameter::aux::flat_like_arg_tuple
+    selected primary
+    bind #1 = other_tag source=explicit
+    bind #2 = parameter::aux::tagged_argument<other_tag, const double> source=explicit
+    bind #3 = mp11::mp_true source=defaulted
+  class-use at tests/general/400-member-alias-template-template-call-result-owner.t:131:25
+    template parameter::aux::tagged_argument
+    selected primary
+    bind #1 = other_tag source=explicit
+    bind #2 = const double source=explicit
+  class-use at tests/general/400-member-alias-template-template-call-result-owner.t:133:21
+    template parameter::aux::flat_like_arg_tuple
+    selected primary
+    bind #1 = requested_tag source=explicit
+    bind #2 = parameter::aux::tagged_argument<requested_tag, requested_type> source=explicit
+    bind #3 = mp11::mp_true source=defaulted
+  class-use at tests/general/400-member-alias-template-template-call-result-owner.t:135:25
+    template parameter::aux::tagged_argument
+    selected primary
+    bind #1 = requested_tag source=explicit
+    bind #2 = requested_type source=explicit
+  class-use at tests/general/400-member-alias-template-template-call-result-owner.t:140:3
+    template parameter::aux::flat_like_arg_list
+    selected primary
+    bind #1 = <parameter::aux::flat_like_arg_tuple<other_tag, parameter::aux::tagged_argument<other_tag, const double>>, parameter::aux::flat_like_arg_tuple<requested_tag, parameter::aux::tagged_argument<requested_tag, requested_type>>> source=deduced
+  function-call at tests/general/400-member-alias-template-template-call-result-owner.t:141:3
+    callee use
+    selected instantiation
+    bind #1 = parameter::aux::flat_like_arg_list<parameter::aux::flat_like_arg_tuple<other_tag, parameter::aux::tagged_argument<other_tag, const double>>, parameter::aux::flat_like_arg_tuple<requested_tag, parameter::aux::tagged_argument<requested_tag, requested_type>>> source=deduced
+template-closure-events
+  class-instantiation
+    entity parameter::aux::arg_list<parameter::aux::tagged_argument<other_tag, const double>, parameter::aux::arg_list<parameter::aux::tagged_argument<requested_tag, requested_type>>>::binding
+  class-instantiation
+    entity parameter::aux::arg_list<parameter::aux::tagged_argument<requested_tag, requested_type>>::binding
+  function-instantiation
+    entity extractor<requested_feature>::operator()
+  function-instantiation
+    entity use
+  require-definition
+    entity extractor<requested_feature>::operator()
+  require-definition
+    entity use
+  variable-instantiation
+    entity is_same<requested_tag, other_tag>::value
+  variable-instantiation
+    entity is_same<requested_tag, requested_tag>::value

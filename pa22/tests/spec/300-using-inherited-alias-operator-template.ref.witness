@@ -13,8 +13,6 @@ translation-unit
     drop extends<expr, mark_tag, domain>::operator= reason=bad_conversion
     drop mark_tag::operator= reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity extends<expr, mark_tag, domain>::operator=
   function-instantiation
     entity extends<expr, mark_tag, domain>::operator=
   require-definition

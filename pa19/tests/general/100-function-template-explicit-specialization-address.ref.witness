@@ -18,8 +18,6 @@ translation-unit
     selected primary
     bind #1 = char source=explicit
 template-closure-events
-  ensure-definition
-    entity ns::passthrough
   function-instantiation
     entity ns::passthrough
   require-definition

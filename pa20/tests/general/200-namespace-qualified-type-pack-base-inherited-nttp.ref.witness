@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = policy_impl::sign_policy source=explicit
 template-closure-events
-  ensure-definition
-    entity check_policy_holder
   function-instantiation
     entity check_policy_holder
   require-definition

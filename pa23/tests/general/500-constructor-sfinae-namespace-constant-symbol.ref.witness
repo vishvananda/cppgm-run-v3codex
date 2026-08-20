@@ -1,0 +1,19 @@
+translation-unit
+  class-use at tests/general/500-constructor-sfinae-namespace-constant-symbol.t:42:3
+    template span
+    selected primary
+    bind #1 = const char source=explicit
+    bind #2 = 18446744073709551615 source=defaulted
+  function-call at tests/general/500-constructor-sfinae-namespace-constant-symbol.t:42:20
+    callee span<const char>::span
+    selected instantiation
+    bind #1 = const char source=deduced
+    bind #2 = 0 source=defaulted
+    drop span<const char>::span reason=too_many_arguments
+template-closure-events
+  function-instantiation
+    entity span<const char>::span
+  require-definition
+    entity span<const char>::span
+  variable-instantiation
+    entity is_convertible<const char, const char>::value

@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = n source=explicit
 template-closure-events
-  ensure-definition
-    entity call::execute
   function-instantiation
     entity call::execute
   require-definition

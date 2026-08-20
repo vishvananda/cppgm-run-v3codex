@@ -1,0 +1,26 @@
+translation-unit
+  alias-use at tests/general/500-adl-alias-return-operator-template.t:23:15
+    template fusion::vector0
+  alias-use at tests/general/500-adl-alias-return-operator-template.t:30:12
+    template fusion::vector0
+  class-use at tests/general/500-adl-alias-return-operator-template.t:37:11
+    template fusion::vector
+    selected primary
+    bind #1 = <int> source=explicit
+  function-call at tests/general/500-adl-alias-return-operator-template.t:38:6
+    callee fusion::operators::operator<<
+    selected instantiation
+    bind #1 = fusion::vector<> source=deduced
+  function-call at tests/general/500-adl-alias-return-operator-template.t:38:9
+    callee fusion::clear
+    selected instantiation
+    bind #1 = fusion::vector<int> source=deduced
+template-closure-events
+  function-instantiation
+    entity fusion::clear
+  function-instantiation
+    entity fusion::operators::operator<<
+  require-definition
+    entity fusion::clear
+  require-definition
+    entity fusion::operators::operator<<

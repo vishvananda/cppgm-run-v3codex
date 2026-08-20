@@ -1,0 +1,51 @@
+translation-unit
+  class-use at tests/general/500-weak-ptr-shared-ptr-template-ctor.t:71:3
+    template shared_ptr
+    selected primary
+    bind #1 = X source=explicit
+    bind #2 = int source=explicit
+    bind #3 = deleter<Y> source=explicit
+  class-use at tests/general/500-weak-ptr-shared-ptr-template-ctor.t:71:22
+    template deleter
+    selected primary
+    bind #1 = Y source=explicit
+  class-use at tests/general/500-weak-ptr-shared-ptr-template-ctor.t:72:3
+    template weak_ptr
+    selected primary
+    bind #1 = Y source=explicit
+    bind #2 = int source=explicit
+    bind #3 = deleter<Y> source=explicit
+  class-use at tests/general/500-weak-ptr-shared-ptr-template-ctor.t:72:20
+    template deleter
+    selected primary
+    bind #1 = Y source=explicit
+  function-call at tests/general/500-weak-ptr-shared-ptr-template-ctor.t:72:42
+    callee weak_ptr<Y, int, deleter<Y>>::weak_ptr
+    selected instantiation
+    bind #1 = Y source=deduced
+    drop weak_ptr<Y, int, deleter<Y>>::weak_ptr reason=non_deduced_mismatch
+    drop weak_ptr<Y, int, deleter<Y>>::weak_ptr reason=bad_conversion
+  function-call at tests/general/500-weak-ptr-shared-ptr-template-ctor.t:72:42
+    callee dynamic_pointer_cast
+    selected instantiation
+    bind #1 = Y source=explicit
+    bind #2 = int source=deduced
+    bind #3 = deleter<Y> source=deduced
+    bind #4 = X source=deduced
+template-closure-events
+  function-instantiation
+    entity dynamic_pointer_cast
+  function-instantiation
+    entity shared_ptr<X, int, deleter<Y>>::shared_ptr
+  function-instantiation
+    entity shared_ptr<Y, int, deleter<Y>>::shared_ptr
+  function-instantiation
+    entity weak_ptr<Y, int, deleter<Y>>::weak_ptr
+  require-definition
+    entity dynamic_pointer_cast
+  require-definition
+    entity shared_ptr<X, int, deleter<Y>>::shared_ptr
+  require-definition
+    entity shared_ptr<Y, int, deleter<Y>>::shared_ptr
+  require-definition
+    entity weak_ptr<Y, int, deleter<Y>>::weak_ptr

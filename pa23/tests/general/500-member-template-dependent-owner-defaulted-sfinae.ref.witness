@@ -100,8 +100,6 @@ translation-unit
     bind #1 = context source=deduced
     bind #2 = handler source=deduced
 template-closure-events
-  ensure-definition
-    entity post
   function-instantiation
     entity async_result_initiate
   function-instantiation

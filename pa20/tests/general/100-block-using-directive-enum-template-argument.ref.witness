@@ -1,0 +1,10 @@
+translation-unit
+  function-call at tests/general/100-block-using-directive-enum-template-argument.t:2:40
+    callee N::f
+    selected instantiation
+    bind #1 = N::value source=explicit
+template-closure-events
+  function-instantiation
+    entity N::f
+  require-definition
+    entity N::f

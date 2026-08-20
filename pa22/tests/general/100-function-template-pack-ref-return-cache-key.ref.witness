@@ -9,8 +9,6 @@ translation-unit
     selected instantiation
     bind #1 = <int> source=deduced
 template-closure-events
-  ensure-definition
-    entity N::forward_as_tuple
   function-instantiation
     entity N::forward_as_tuple
   require-definition

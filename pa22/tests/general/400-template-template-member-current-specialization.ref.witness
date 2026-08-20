@@ -12,8 +12,6 @@ translation-unit
     bind #2 = int source=explicit
     bind #3 = LayoutImpl source=explicit
 template-closure-events
-  ensure-definition
-    entity Box<int, int, LayoutImpl>::f
   function-instantiation
     entity Box<int, int, LayoutImpl>::f
   require-definition

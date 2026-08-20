@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = payload source=explicit
 template-closure-events
-  ensure-definition
-    entity move_view<payload>::get
   function-instantiation
     entity move_view<payload>::get
   require-definition

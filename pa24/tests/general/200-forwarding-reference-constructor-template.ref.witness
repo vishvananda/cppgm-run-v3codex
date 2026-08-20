@@ -9,8 +9,6 @@ translation-unit
     bind #1 = int & source=deduced
     drop RefBox<int &>::RefBox reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity RefBox<int &>::RefBox
   function-instantiation
     entity RefBox<int &>::RefBox
   require-definition

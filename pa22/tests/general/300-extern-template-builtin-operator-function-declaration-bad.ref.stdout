@@ -1,0 +1,19 @@
+ERROR: non-member overloaded operator requires a class or enum operand at tests/general/300-extern-template-builtin-operator-function-declaration-bad.t:1:1 [top-level declaration 1 kind=explicit-instantiation-declaration ast={explicit-instantiation-declaration
+  simple-declaration
+    decl-specifier-seq
+      decl-specifier KW_INT:int
+    init-declarator-list
+      init-declarator
+        declarator
+          identifier operator+<int>
+          parameter-clause
+            parameter-declaration
+              decl-specifier-seq
+                decl-specifier KW_INT:int
+            parameter-declaration
+              decl-specifier-seq
+                decl-specifier KW_INT:int
+}]
+Diagnostic context:
+collect_explicit_instantiation [extern template int operator+<int>(int,int);] at tests/general/300-extern-template-builtin-operator-function-declaration-bad.t:4:1
+  instantiate_function_template [operator+, args=1] at tests/general/300-extern-template-builtin-operator-function-declaration-bad.t:1:1

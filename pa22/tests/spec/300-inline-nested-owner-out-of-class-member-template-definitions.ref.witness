@@ -15,10 +15,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity owner<int>::nested
-  ensure-definition
-    entity owner<int>::nested::add
-  ensure-definition
-    entity owner<int>::nested::nested
   function-instantiation
     entity owner<int>::nested::add
   function-instantiation

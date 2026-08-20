@@ -7,8 +7,6 @@ translation-unit
     bind #3 = 0 source=explicit
     bind #4 = 2 source=explicit
 template-closure-events
-  ensure-definition
-    entity engine<unsigned, 1, 0, 2>::run
   function-instantiation
     entity engine<unsigned, 1, 0, 2>::run
   function-instantiation

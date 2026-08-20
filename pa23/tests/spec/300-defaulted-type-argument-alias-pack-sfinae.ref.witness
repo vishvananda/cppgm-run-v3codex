@@ -1,0 +1,19 @@
+translation-unit
+  alias-use at tests/spec/300-defaulted-type-argument-alias-pack-sfinae.t:9:34
+    template all
+    bind #1 = can_output<O, T>... source=explicit
+  class-use at tests/spec/300-defaulted-type-argument-alias-pack-sfinae.t:16:21
+    template can_output
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = box<int> source=explicit
+    bind #3 = void source=defaulted
+  class-use at tests/spec/300-defaulted-type-argument-alias-pack-sfinae.t:16:37
+    template box
+    selected primary
+    bind #1 = <int> source=explicit
+template-closure-events
+  variable-instantiation
+    entity can_output<int, box<int>>::value
+  variable-instantiation
+    entity can_output<int, int>::value

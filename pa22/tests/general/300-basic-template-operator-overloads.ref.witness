@@ -65,32 +65,6 @@ translation-unit
     bind #2 = Number<int> source=deduced
     drop Dispatcher::operator() reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity Dispatcher::operator()
-  ensure-definition
-    entity Number<int>::operator+
-  ensure-definition
-    entity Number<int>::operator-
-  ensure-definition
-    entity Number<int>::operator[]
-  ensure-definition
-    entity operator!=
-  ensure-definition
-    entity operator+
-  ensure-definition
-    entity operator-
-  ensure-definition
-    entity operator<
-  ensure-definition
-    entity operator<<
-  ensure-definition
-    entity operator<=
-  ensure-definition
-    entity operator==
-  ensure-definition
-    entity operator>
-  ensure-definition
-    entity operator>=
   function-instantiation
     entity Dispatcher::operator()
   function-instantiation

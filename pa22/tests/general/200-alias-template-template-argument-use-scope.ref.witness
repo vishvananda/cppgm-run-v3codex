@@ -1,0 +1,34 @@
+translation-unit
+  class-use at tests/general/200-alias-template-template-argument-use-scope.t:17:9
+    template second
+    selected partial
+    bind #1 = V<X<n::B>, X<n::B, n::P>> source=explicit
+    specialize #1 = X<n::B> source=deduced
+    specialize #2 = X<n::B, n::P> source=deduced
+  alias-use at tests/general/200-alias-template-template-argument-use-scope.t:17:16
+    template A
+    bind #1 = X source=explicit
+  class-use at tests/general/200-alias-template-template-argument-use-scope.t:18:9
+    template first
+    selected partial
+    bind #1 = V<X<n::B>, X<n::B, n::P>> source=explicit
+    specialize #1 = X<n::B> source=deduced
+    specialize #2 = X<n::B, n::P> source=deduced
+  alias-use at tests/general/200-alias-template-template-argument-use-scope.t:18:15
+    template A
+    bind #1 = X source=explicit
+  class-use at tests/general/200-alias-template-template-argument-use-scope.t:27:14
+    template Apply
+    selected partial
+    bind #1 = V<X<n::B>, X<n::B, n::P>> source=explicit
+    specialize #1 = <X<n::B>, X<n::B, n::P>> source=deduced
+  alias-use at tests/general/200-alias-template-template-argument-use-scope.t:27:20
+    template A
+    bind #1 = X source=explicit
+template-closure-events
+  class-instantiation
+    entity (anonymous namespace)::X<n::B, n::P>::N
+  function-instantiation
+    entity Run<(anonymous namespace)::X<n::B>, (anonymous namespace)::X<n::B, n::P>>::go
+  require-definition
+    entity Run<(anonymous namespace)::X<n::B>, (anonymous namespace)::X<n::B, n::P>>::go

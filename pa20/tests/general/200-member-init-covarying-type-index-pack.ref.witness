@@ -1,0 +1,45 @@
+translation-unit
+  class-use at tests/general/200-member-init-covarying-type-index-pack.t:32:9
+    template tuple1
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/general/200-member-init-covarying-type-index-pack.t:38:15
+    template tuple1
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/general/200-member-init-covarying-type-index-pack.t:50:3
+    template tuple1
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/200-member-init-covarying-type-index-pack.t:51:10
+    callee run
+    selected instantiation
+    bind #1 = <int> source=deduced
+    bind #2 = <0> source=deduced
+  class-use at tests/general/200-member-init-covarying-type-index-pack.t:51:21
+    template type_list
+    selected primary
+    bind #1 = <int> source=explicit
+  class-use at tests/general/200-member-init-covarying-type-index-pack.t:51:39
+    template indexes
+    selected primary
+    bind #1 = <0> source=explicit
+template-closure-events
+  class-finalization
+    entity pair_like
+  class-instantiation
+    entity pair_like
+  function-instantiation
+    entity get
+  function-instantiation
+    entity identity
+  function-instantiation
+    entity run
+  function-instantiation
+    entity run(tuple1<int> &, type_list<int>, indexes<0>)::pair_like::pair_like
+  require-definition
+    entity get
+  require-definition
+    entity identity
+  require-definition
+    entity run

@@ -1,0 +1,37 @@
+translation-unit
+  class-use at tests/general/300-precompleted-braced-constructor-template.t:3:9
+    template A
+    selected primary
+    bind #1 = 2 source=explicit
+  class-use at tests/general/300-precompleted-braced-constructor-template.t:4:14
+    template A
+    selected primary
+    bind #1 = 1 source=explicit
+  function-call at tests/general/300-precompleted-braced-constructor-template.t:4:19
+    callee A<1>::A
+    selected instantiation
+    bind #1 = int source=deduced
+    drop A<1>::A reason=bad_conversion
+  function-call at tests/general/300-precompleted-braced-constructor-template.t:4:34
+    callee operator<
+    selected instantiation
+    bind #1 = 1 source=deduced
+    bind #2 = 2 source=deduced
+  function-call at tests/general/300-precompleted-braced-constructor-template.t:4:36
+    callee A<2>::A
+    selected instantiation
+    bind #1 = int source=deduced
+    drop A<2>::A reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity A<1>::A
+  function-instantiation
+    entity A<2>::A
+  function-instantiation
+    entity operator<
+  require-definition
+    entity A<1>::A
+  require-definition
+    entity A<2>::A
+  require-definition
+    entity operator<

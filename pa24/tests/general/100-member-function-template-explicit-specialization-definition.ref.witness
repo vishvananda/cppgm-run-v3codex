@@ -1,0 +1,5 @@
+translation-unit
+  function-call at tests/general/100-member-function-template-explicit-specialization-definition.t:20:12
+    callee path::string
+    selected explicit_specialization
+    bind #1 = string_like source=explicit

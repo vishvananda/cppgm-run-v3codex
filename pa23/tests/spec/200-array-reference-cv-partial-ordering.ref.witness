@@ -18,10 +18,6 @@ translation-unit
     drop ns::detail::range_begin reason=better_candidate_selected
     drop ns::detail::range_begin reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity ns::begin
-  ensure-definition
-    entity ns::detail::range_begin
   function-instantiation
     entity ns::begin
   function-instantiation

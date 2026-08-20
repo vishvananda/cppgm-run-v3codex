@@ -10,8 +10,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity proto::terminal<reference_wrapper<const basic_regex<int>>>::type
-  ensure-definition
-    entity by_ref
   function-instantiation
     entity by_ref
   function-instantiation

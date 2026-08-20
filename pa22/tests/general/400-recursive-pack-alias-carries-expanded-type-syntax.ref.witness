@@ -1,0 +1,36 @@
+translation-unit
+  alias-use at tests/general/400-recursive-pack-alias-carries-expanded-type-syntax.t:40:16
+    template select_t
+    bind #1 = contains<List<U...>, First> source=explicit
+    bind #2 = List<U...> source=explicit
+    bind #3 = List<U..., First> source=explicit
+  class-use at tests/general/400-recursive-pack-alias-carries-expanded-type-syntax.t:64:16
+    template set_push_back
+    selected partial
+    bind #1 = type_list<> source=explicit
+    bind #2 = <tags::first, tags::second> source=explicit
+    specialize #1 = type_list source=deduced
+    specialize #2 = <> source=deduced
+    specialize #3 = tags::first source=deduced
+    specialize #4 = <tags::second> source=deduced
+  class-use at tests/general/400-recursive-pack-alias-carries-expanded-type-syntax.t:64:30
+    template type_list
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/general/400-recursive-pack-alias-carries-expanded-type-syntax.t:67:17
+    template same
+    selected partial
+    bind #1 = type_list<tags::first, tags::second> source=explicit
+    bind #2 = type_list<tags::first, tags::second> source=explicit
+    specialize #1 = type_list<tags::first, tags::second> source=deduced
+  class-use at tests/general/400-recursive-pack-alias-carries-expanded-type-syntax.t:67:30
+    template type_list
+    selected primary
+    bind #1 = <tags::first, tags::second> source=explicit
+template-closure-events
+  variable-instantiation
+    entity contains<type_list<>, tags::first>::value
+  variable-instantiation
+    entity contains<type_list<tags::first>, tags::second>::value
+  variable-instantiation
+    entity same<type_list<tags::first, tags::second>, type_list<tags::first, tags::second>>::value

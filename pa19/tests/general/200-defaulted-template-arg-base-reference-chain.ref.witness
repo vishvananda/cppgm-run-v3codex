@@ -18,10 +18,6 @@ translation-unit
     bind #2 = Empty source=defaulted
     bind #3 = void source=defaulted
 template-closure-events
-  ensure-definition
-    entity Chain<char, Chain<int>>::Chain
-  ensure-definition
-    entity Chain<int>::Chain
   function-instantiation
     entity Chain<char, Chain<int>>::Chain
   function-instantiation

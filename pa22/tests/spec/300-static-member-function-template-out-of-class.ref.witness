@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity box<int>::cast
   function-instantiation
     entity box<int>::cast
   require-definition

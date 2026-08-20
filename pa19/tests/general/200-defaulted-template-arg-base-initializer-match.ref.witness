@@ -20,8 +20,6 @@ translation-unit
     bind #1 = char source=explicit
     bind #2 = Def<char> source=defaulted
 template-closure-events
-  ensure-definition
-    entity Base<char>::Base
   function-instantiation
     entity Base<char>::Base
   require-definition

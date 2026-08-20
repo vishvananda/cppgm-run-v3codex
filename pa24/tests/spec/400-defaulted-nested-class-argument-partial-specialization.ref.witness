@@ -1,0 +1,152 @@
+translation-unit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:30:28
+    template switch_action
+    selected primary
+    bind #1 = 2 source=explicit
+    bind #2 = default_label source=explicit
+    bind #3 = null_type source=defaulted
+    bind #4 = null_type source=defaulted
+    bind #5 = null_type source=defaulted
+    bind #6 = null_type source=defaulted
+    bind #7 = null_type source=defaulted
+    bind #8 = null_type source=defaulted
+    bind #9 = null_type source=defaulted
+    bind #10 = null_type source=defaulted
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:59:28
+    template pre_increment_decrement_action
+    selected primary
+    bind #1 = increment_action source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:65:23
+    template switch_case_tag
+    selected primary
+    bind #1 = default_label source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:69:5
+    template switch_case_tag
+    selected primary
+    bind #1 = default_label source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:90:9
+    template lambda_functor
+    selected primary
+    bind #1 = lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>> source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:91:3
+    template lambda_functor_base
+    selected partial
+    bind #1 = pre_increment_decrement_action<increment_action> source=explicit
+    bind #2 = tuple<identity<int>> source=explicit
+    specialize #1 = tuple<identity<int>> source=deduced
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:92:5
+    template pre_increment_decrement_action
+    selected primary
+    bind #1 = increment_action source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:93:5
+    template tuple
+    selected primary
+    bind #1 = identity<int> source=explicit
+    bind #2 = null_type source=defaulted
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:93:11
+    template identity
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:103:9
+    template lambda_functor
+    selected primary
+    bind #1 = placeholder source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:104:1
+    template lambda_functor
+    selected primary
+    bind #1 = placeholder source=deduced
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:105:1
+    template lambda_functor
+    selected primary
+    bind #1 = lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>> source=deduced
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:106:3
+    template lambda_functor_base
+    selected partial
+    bind #1 = pre_increment_decrement_action<increment_action> source=explicit
+    bind #2 = tuple<identity<int>> source=explicit
+    specialize #1 = tuple<identity<int>> source=deduced
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:107:5
+    template pre_increment_decrement_action
+    selected primary
+    bind #1 = increment_action source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:108:5
+    template tuple
+    selected primary
+    bind #1 = identity<int> source=explicit
+    bind #2 = null_type source=defaulted
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:108:11
+    template identity
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:109:5
+    template tuple
+    selected primary
+    bind #1 = identity<int> source=explicit
+    bind #2 = null_type source=defaulted
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:109:11
+    template identity
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:109:37
+    template identity
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:113:10
+    callee selected_case_of
+    selected instantiation
+    bind #1 = lambda_functor_base<switch_action<2, default_label>, tuple<lambda_functor<placeholder>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>> source=deduced
+  function-call at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:114:7
+    callee switch_statement
+    selected instantiation
+    bind #1 = placeholder source=deduced
+    bind #2 = default_label source=deduced
+    bind #3 = lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>> source=deduced
+  function-call at tests/spec/400-defaulted-nested-class-argument-partial-specialization.t:114:43
+    callee default_statement
+    selected instantiation
+    bind #1 = lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>> source=deduced
+template-closure-events
+  function-instantiation
+    entity default_statement
+  function-instantiation
+    entity lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>::lambda_functor
+  function-instantiation
+    entity lambda_functor<lambda_functor_base<switch_action<2, default_label>, tuple<lambda_functor<placeholder>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>>>::lambda_functor
+  function-instantiation
+    entity lambda_functor<placeholder>::lambda_functor
+  function-instantiation
+    entity lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>::lambda_functor_base
+  function-instantiation
+    entity lambda_functor_base<switch_action<2, default_label>, tuple<lambda_functor<placeholder>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>>::lambda_functor_base
+  function-instantiation
+    entity selected_case_of
+  function-instantiation
+    entity switch_statement
+  function-instantiation
+    entity tagged_lambda_functor<switch_case_tag<default_label>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>::tagged_lambda_functor
+  function-instantiation
+    entity tuple<identity<int>>::tuple
+  function-instantiation
+    entity tuple<lambda_functor<placeholder>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>::tuple
+  require-definition
+    entity default_statement
+  require-definition
+    entity lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>::lambda_functor
+  require-definition
+    entity lambda_functor<lambda_functor_base<switch_action<2, default_label>, tuple<lambda_functor<placeholder>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>>>::lambda_functor
+  require-definition
+    entity lambda_functor<placeholder>::lambda_functor
+  require-definition
+    entity lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>::lambda_functor_base
+  require-definition
+    entity lambda_functor_base<switch_action<2, default_label>, tuple<lambda_functor<placeholder>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>>::lambda_functor_base
+  require-definition
+    entity selected_case_of
+  require-definition
+    entity switch_statement
+  require-definition
+    entity tagged_lambda_functor<switch_case_tag<default_label>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>::tagged_lambda_functor
+  require-definition
+    entity tuple<identity<int>>::tuple
+  require-definition
+    entity tuple<lambda_functor<placeholder>, lambda_functor<lambda_functor_base<pre_increment_decrement_action<increment_action>, tuple<identity<int>>>>>::tuple

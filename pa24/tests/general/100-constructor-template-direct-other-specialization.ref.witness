@@ -25,10 +25,6 @@ translation-unit
     drop duration<long, tag<1>>::duration reason=bad_conversion
     drop duration<long, tag<1>>::duration reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity duration<int, tag<2>>::duration
-  ensure-definition
-    entity duration<long, tag<1>>::duration
   function-instantiation
     entity duration<int, tag<2>>::duration
   function-instantiation

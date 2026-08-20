@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = owner::implementation source=explicit
 template-closure-events
-  ensure-definition
-    entity holder<owner::implementation>::~holder
   function-instantiation
     entity holder<owner::implementation>::~holder
   require-definition

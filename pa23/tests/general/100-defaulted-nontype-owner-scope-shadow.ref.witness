@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = second_type source=explicit
 template-closure-events
-  ensure-definition
-    entity exercise
   function-instantiation
     entity container<first_type>::assign
   function-instantiation

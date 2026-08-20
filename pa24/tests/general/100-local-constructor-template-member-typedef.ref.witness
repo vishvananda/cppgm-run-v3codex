@@ -22,10 +22,6 @@ translation-unit
     drop Wrap<const ActiveInterval *>::Wrap reason=too_many_arguments
     drop Wrap<const ActiveInterval *>::Wrap reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity Wrap<ActiveInterval *>::Wrap
-  ensure-definition
-    entity Wrap<const ActiveInterval *>::Wrap
   function-instantiation
     entity Wrap<ActiveInterval *>::Wrap
   function-instantiation

@@ -1,0 +1,36 @@
+translation-unit
+  class-use at tests/spec/300-rooted-qualified-static-data-member-template-definition.t:14:3
+    template n::keyword
+    selected primary
+    bind #1 = tag::color_map source=deduced
+  class-use at tests/spec/300-rooted-qualified-static-data-member-template-definition.t:14:8
+    template n::keyword
+    selected primary
+    bind #1 = tag::color_map source=explicit
+  class-use at tests/spec/300-rooted-qualified-static-data-member-template-definition.t:14:32
+    template n::keyword
+    selected primary
+    bind #1 = tag::color_map source=explicit
+  class-use at tests/spec/300-rooted-qualified-static-data-member-template-definition.t:14:62
+    template n::keyword
+    selected primary
+    bind #1 = tag::color_map source=explicit
+  class-use at tests/spec/300-rooted-qualified-static-data-member-template-definition.t:24:8
+    template n::keyword
+    selected primary
+    bind #1 = tag::color_map source=explicit
+  class-use at tests/spec/300-rooted-qualified-static-data-member-template-definition.t:25:12
+    template n::keyword
+    selected primary
+    bind #1 = tag::color_map source=explicit
+  class-use at tests/spec/300-rooted-qualified-static-data-member-template-definition.t:30:30
+    template n::keyword
+    selected primary
+    bind #1 = tag::color_map source=explicit
+template-closure-events
+  function-instantiation
+    entity n::keyword<tag::color_map>::keyword
+  require-definition
+    entity n::keyword<tag::color_map>::keyword
+  variable-instantiation
+    entity n::keyword<tag::color_map>::instance

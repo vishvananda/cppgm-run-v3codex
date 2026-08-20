@@ -1,0 +1,36 @@
+translation-unit
+  alias-use at tests/general/500-constructor-template-default-constraint-previous-param.t:57:13
+    template meta::constraint_t
+    bind #1 = !meta::is_const<T>::value source=explicit
+    bind #2 = meta::defaulted_constraint source=explicit
+  alias-use at tests/general/500-constructor-template-default-constraint-previous-param.t:60:13
+    template meta::constraint_t
+    bind #1 = sizeof(T) == 1 source=explicit
+    bind #2 = meta::defaulted_constraint source=explicit
+  alias-use at tests/general/500-constructor-template-default-constraint-previous-param.t:63:13
+    template meta::constraint_t
+    bind #1 = meta::is_same<decltype(span.subspan(0, 0)), Span<T, static_cast<size_t>(-1)>>::value source=explicit
+    bind #2 = meta::defaulted_constraint source=explicit
+  class-use at tests/general/500-constructor-template-default-constraint-previous-param.t:86:3
+    template span
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = 1 source=explicit
+  function-call at tests/general/500-constructor-template-default-constraint-previous-param.t:87:18
+    callee mutable_buffer::mutable_buffer
+    selected instantiation
+    bind #1 = span source=deduced
+    bind #2 = char source=deduced
+    bind #3 = 1 source=deduced
+    drop mutable_buffer::mutable_buffer reason=too_many_arguments
+    drop mutable_buffer::mutable_buffer reason=too_few_arguments
+    drop mutable_buffer::mutable_buffer reason=worse_conversion
+template-closure-events
+  function-instantiation
+    entity mutable_buffer::mutable_buffer
+  require-definition
+    entity mutable_buffer::mutable_buffer
+  variable-instantiation
+    entity meta::is_const<char>::value
+  variable-instantiation
+    entity meta::is_same<span<char, 18446744073709551615>, span<char, 18446744073709551615>>::value

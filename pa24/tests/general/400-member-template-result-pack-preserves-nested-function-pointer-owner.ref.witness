@@ -19,8 +19,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity op<bind_like<void (*)(int *, const error_code &), int *&, int>, timer, void (error_code)>::proxy
-  ensure-definition
-    entity op<bind_like<void (*)(int *, const error_code &), int *&, int>, timer, void (error_code)>::start
   function-instantiation
     entity op<bind_like<void (*)(int *, const error_code &), int *&, int>, timer, void (error_code)>::proxy::proxy
   function-instantiation

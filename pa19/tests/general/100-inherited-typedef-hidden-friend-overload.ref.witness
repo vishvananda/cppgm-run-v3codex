@@ -1,6 +1,6 @@
 translation-unit
   class-use at tests/general/100-inherited-typedef-hidden-friend-overload.t:10:15
-    template iterator
+    template ns::iterator
     selected primary
     bind #1 = ns::tag source=explicit
     bind #2 = bool source=explicit

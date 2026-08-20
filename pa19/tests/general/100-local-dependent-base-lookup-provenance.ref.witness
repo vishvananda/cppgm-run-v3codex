@@ -1,0 +1,20 @@
+translation-unit
+  function-call at tests/general/100-local-dependent-base-lookup-provenance.t:36:10
+    callee run
+    selected instantiation
+    bind #1 = dependent_base<int> source=explicit
+  class-use at tests/general/100-local-dependent-base-lookup-provenance.t:36:14
+    template dependent_base
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  class-finalization
+    entity local
+  class-instantiation
+    entity local
+  function-instantiation
+    entity run
+  function-instantiation
+    entity run()::local::call
+  require-definition
+    entity run

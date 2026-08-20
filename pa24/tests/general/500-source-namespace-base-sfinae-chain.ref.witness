@@ -57,8 +57,6 @@ translation-unit
     selected instantiation
     bind #1 = boost::nfp::named_parameter_combine<boost::nfp::named_parameter<const int, outer::max>, boost::nfp::named_parameter_combine<boost::nfp::named_parameter<const char *, outer::kept, const char *>, boost::nfp::named_parameter<const char *, outer::dropped, const char *>>> source=deduced
 template-closure-events
-  ensure-definition
-    entity outer::token_iterator_base<int, char, const char *, int>::apply_modifier
   function-instantiation
     entity boost::nfp::opt_assign
   function-instantiation

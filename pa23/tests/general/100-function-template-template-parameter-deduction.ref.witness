@@ -9,8 +9,6 @@ translation-unit
     bind #1 = double source=deduced
     bind #2 = ttp_deduce::box source=deduced
 template-closure-events
-  ensure-definition
-    entity ttp_deduce::pass
   function-instantiation
     entity ttp_deduce::pass
   require-definition

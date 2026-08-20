@@ -1,0 +1,17 @@
+translation-unit
+  function-call at tests/general/400-function-type-pack-element-substitution.t:8:10
+    callee F::operator()
+    selected instantiation
+    bind #1 = <long &, short> source=deduced
+  function-call at tests/general/400-function-type-pack-element-substitution.t:8:10
+    callee source
+    selected instantiation
+    bind #1 = F source=explicit
+  function-call at tests/general/400-function-type-pack-element-substitution.t:8:22
+    callee source
+    selected instantiation
+    bind #1 = long & source=explicit
+  function-call at tests/general/400-function-type-pack-element-substitution.t:8:40
+    callee source
+    selected instantiation
+    bind #1 = short source=explicit

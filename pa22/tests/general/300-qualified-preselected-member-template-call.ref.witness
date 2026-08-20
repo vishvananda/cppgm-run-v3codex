@@ -5,8 +5,6 @@ translation-unit
     bind #1 = matcher source=explicit
     bind #2 = next source=explicit
 template-closure-events
-  ensure-definition
-    entity static_xpression<matcher, next>::run
   function-instantiation
     entity matcher::match
   function-instantiation

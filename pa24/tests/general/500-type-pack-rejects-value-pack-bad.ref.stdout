@@ -1,0 +1,11 @@
+ERROR: failed non-type template argument evaluation: all<trait<int>::value...>::value [scope <here>] [bindings {types:Type=int,Keys=[int]}] [parameter-scope <here>] [parameter-bindings {types:Type=int,Keys=[int]}] [phase template-resolution] [top-level declaration 6 kind=simple-declaration ast={simple-declaration
+  decl-specifier-seq
+    decl-specifier helper<int,int>
+  init-declarator-list
+    init-declarator
+      declarator
+        identifier x
+}]
+Diagnostic context:
+collect_simple_declaration [helper<int,int>x;] at tests/general/500-type-pack-rejects-value-pack-bad.t:29:1
+  lookup_type [all<trait<int>::value>]

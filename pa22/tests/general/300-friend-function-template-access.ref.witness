@@ -8,10 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity Box<int>::Box
-  ensure-definition
-    entity read
   function-instantiation
     entity Box<int>::Box
   function-instantiation

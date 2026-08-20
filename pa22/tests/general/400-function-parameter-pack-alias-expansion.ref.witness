@@ -14,10 +14,6 @@ translation-unit
     selected primary
     bind #1 = <int, float> source=explicit
 template-closure-events
-  ensure-definition
-    entity Box<>::f
-  ensure-definition
-    entity Box<int, float>::f
   function-instantiation
     entity Box<>::f
   function-instantiation

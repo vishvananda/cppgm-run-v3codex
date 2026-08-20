@@ -5,8 +5,6 @@ translation-unit
     bind #1 = service source=explicit
     drop use_service reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity use_service
   function-instantiation
     entity use_service
   require-definition

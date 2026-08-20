@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity box::operator int
   function-instantiation
     entity box::operator int
   require-definition

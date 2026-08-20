@@ -5,8 +5,6 @@ translation-unit
     bind #1 = unsigned int source=explicit
     bind #2 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity holder<unsigned, int>::holder
   function-instantiation
     entity holder<unsigned, int>::holder
   require-definition

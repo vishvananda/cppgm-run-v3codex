@@ -1,0 +1,135 @@
+translation-unit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:17:9
+    template std::bool_constant
+    selected primary
+    bind #1 = true source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:18:9
+    template std::bool_constant
+    selected primary
+    bind #1 = false source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:36:9
+    template boost::mp11::mp_bool
+    bind #1 = true source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:37:9
+    template boost::mp11::mp_bool
+    bind #1 = false source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:58:18
+    template boost::mp11::mp_bool
+    bind #1 = mp_size<L>::value == 0 source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:58:26
+    template boost::mp11::mp_size
+    bind #1 = L source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:138:16
+    template std::integral_constant
+    selected primary
+    bind #1 = unsigned long source=explicit
+    bind #2 = 0 source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:170:28
+    template boost::mp11::mp_if_c
+    bind #1 = (sizeof...(L) > 0 && sizeof...(L) == mp_count_if<mp_list<L...>, detail::mp_is_value_list>::value) source=explicit
+    bind #2 = detail::append_value_lists source=explicit
+    bind #3 = detail::append_type_lists source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:171:42
+    template boost::mp11::mp_count_if
+    bind #1 = mp_list<L...> source=explicit
+    bind #2 = detail::mp_is_value_list source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:176:21
+    template boost::mp11::mp_append
+    bind #1 = mp_take_c<L, I> source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:176:31
+    template boost::mp11::mp_take_c
+    bind #1 = L source=explicit
+    bind #2 = I source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:176:48
+    template boost::mp11::mp_push_front
+    bind #1 = mp_drop_c<L, I> source=explicit
+    bind #2 = T... source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:176:62
+    template boost::mp11::mp_drop_c
+    bind #1 = L source=explicit
+    bind #2 = I source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:199:33
+    template boost::mp11::mp_if
+    bind #1 = std::is_same<Arg, void_> source=explicit
+    bind #2 = boost::mp11::mp_identity<void_> source=explicit
+    bind #3 = make_item<Spec, Arg, Tail> source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:200:52
+    template boost::mp11::mp_identity
+    selected primary
+    bind #1 = void_ source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:213:18
+    template boost::mp11::mp_if
+    bind #1 = boost::mp11::mp_empty<SpecSeq> source=explicit
+    bind #2 = boost::mp11::mp_identity<void_> source=explicit
+    bind #3 = make_parameter_spec_items_helper<SpecSeq, Args...> source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:213:37
+    template boost::mp11::mp_empty
+    bind #1 = SpecSeq source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:214:37
+    template boost::mp11::mp_identity
+    selected primary
+    bind #1 = void_ source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:219:7
+    template make_items
+    bind #1 = boost::mp11::mp_front<SpecSeq> source=explicit
+    bind #2 = A0 source=explicit
+    bind #3 = make_parameter_spec_items<boost::mp11::mp_pop_front<SpecSeq>, Args...> source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:219:31
+    template boost::mp11::mp_front
+    bind #1 = SpecSeq source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:221:18
+    template make_parameter_spec_items
+    bind #1 = boost::mp11::mp_pop_front<SpecSeq> source=explicit
+    bind #2 = Args... source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:221:57
+    template boost::mp11::mp_pop_front
+    bind #1 = SpecSeq source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:225:24
+    template boost::mp11::mp_insert_c
+    bind #1 = S source=explicit
+    bind #2 = 0 source=explicit
+    bind #3 = K source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:254:22
+    template make_parameter_spec_items
+    bind #1 = parameter_spec source=explicit
+    bind #2 = Args... source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:255:26
+    template boost::mp11::mp_list
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:258:9
+    template parameters
+    selected primary
+    bind #1 = <optional<tag_a>, optional<tag_b>, optional<tag_c>> source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:258:20
+    template optional
+    selected primary
+    bind #1 = tag_a source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:258:37
+    template optional
+    selected primary
+    bind #1 = tag_b source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:258:54
+    template optional
+    selected primary
+    bind #1 = tag_c source=explicit
+  class-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:259:20
+    template parameters<optional<tag_a>, optional<tag_b>, optional<tag_c>>::bind
+    selected primary
+    bind #1 = <arg_a, arg_b, arg_c> source=explicit
+  alias-use at tests/general/500-boost-mp11-conditional-alias-reference-set.t:261:24
+    template boost::mp11::mp_size
+    bind #1 = used source=explicit
+template-closure-events
+  variable-instantiation
+    entity std::integral_constant<bool, false>::value
+  variable-instantiation
+    entity std::integral_constant<bool, true>::value
+  variable-instantiation
+    entity std::integral_constant<unsigned long, 0>::value
+  variable-instantiation
+    entity std::integral_constant<unsigned long, 1>::value
+  variable-instantiation
+    entity std::integral_constant<unsigned long, 2>::value
+  variable-instantiation
+    entity std::integral_constant<unsigned long, 3>::value

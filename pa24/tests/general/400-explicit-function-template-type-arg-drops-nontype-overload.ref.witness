@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = 2 source=explicit
 template-closure-events
-  ensure-definition
-    entity foo::bar
   function-instantiation
     entity foo::bar
   require-definition

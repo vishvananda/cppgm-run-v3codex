@@ -1,0 +1,1 @@
+ERROR: tests/general/200-unsupported-co-return-bad.t: expected block-item near TT_IDENTIFIER:co_return at tests/general/200-unsupported-co-return-bad.t:2:3

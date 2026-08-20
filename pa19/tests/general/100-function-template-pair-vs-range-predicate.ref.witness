@@ -6,8 +6,6 @@ translation-unit
     drop choose reason=too_many_arguments
     drop choose reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity choose
   function-instantiation
     entity choose
   require-definition

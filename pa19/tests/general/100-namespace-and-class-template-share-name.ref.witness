@@ -1,0 +1,16 @@
+translation-unit
+  class-use at tests/general/100-namespace-and-class-template-share-name.t:3:21
+    template lexer::lexer
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = int source=explicit
+  function-call at tests/general/100-namespace-and-class-template-share-name.t:3:40
+    callee f
+    selected instantiation
+    bind #1 = int source=deduced
+    bind #2 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity f
+  require-definition
+    entity f

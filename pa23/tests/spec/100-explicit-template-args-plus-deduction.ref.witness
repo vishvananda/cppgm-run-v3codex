@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = double source=deduced
 template-closure-events
-  ensure-definition
-    entity pair_sum
   function-instantiation
     entity pair_sum
   require-definition

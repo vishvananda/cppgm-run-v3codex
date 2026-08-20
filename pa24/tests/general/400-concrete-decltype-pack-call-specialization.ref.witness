@@ -1,0 +1,8 @@
+translation-unit
+  class-use at tests/general/400-concrete-decltype-pack-call-specialization.t:12:1
+    template result
+    selected partial
+    bind #1 = fn (float) source=explicit
+    bind #2 = void source=defaulted
+    specialize #1 = fn source=deduced
+    specialize #2 = <float> source=deduced

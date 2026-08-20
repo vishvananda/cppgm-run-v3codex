@@ -27,8 +27,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = 3 source=explicit
 template-closure-events
-  ensure-definition
-    entity dispatch
   function-instantiation
     entity count
   function-instantiation

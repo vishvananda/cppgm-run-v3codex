@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = TrueValue source=explicit
 template-closure-events
-  ensure-definition
-    entity read_value
   function-instantiation
     entity read_value
   require-definition

@@ -1,0 +1,22 @@
+translation-unit
+  class-use at tests/spec/400-dependent-nested-nontype-partial-specialization.t:25:9
+    template lambda_functor
+    selected primary
+    bind #1 = lambda_functor_base<switch_action<2, case_label<0>>, null_type> source=explicit
+  class-use at tests/spec/400-dependent-nested-nontype-partial-specialization.t:26:3
+    template lambda_functor_base
+    selected partial
+    bind #1 = switch_action<2, case_label<0>> source=explicit
+    bind #2 = null_type source=explicit
+    specialize #1 = 0 source=deduced
+    specialize #2 = null_type source=deduced
+  class-use at tests/spec/400-dependent-nested-nontype-partial-specialization.t:26:23
+    template switch_action
+    selected primary
+    bind #1 = 2 source=explicit
+    bind #2 = case_label<0> source=explicit
+    bind #3 = null_type source=defaulted
+  class-use at tests/spec/400-dependent-nested-nontype-partial-specialization.t:26:40
+    template case_label
+    selected primary
+    bind #1 = 0 source=explicit

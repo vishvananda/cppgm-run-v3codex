@@ -15,8 +15,6 @@ translation-unit
     bind #1 = executor source=deduced
     drop any_completion_executor::any_completion_executor reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity any_completion_executor::any_completion_executor
   function-instantiation
     entity any_completion_executor::any_completion_executor
   require-definition

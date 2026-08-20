@@ -16,8 +16,6 @@ translation-unit
     specialize #1 = void source=deduced
     specialize #2 = <> source=deduced
 template-closure-events
-  ensure-definition
-    entity function<void ()>::operator=
   function-instantiation
     entity function<void ()>::operator=
   require-definition

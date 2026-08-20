@@ -1,3 +1,0 @@
-ERROR: non-inline namespace cannot be reopened as inline [top-level declaration 1 kind=namespace-definition value=A text=A]
-Diagnostic context:
-semantic_declaration::collect_namespace_definition [A] at course/pa7/280-inline-namespace-reopen-bad.t:5:1

@@ -21,8 +21,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity V<char>::Tag
-  ensure-definition
-    entity S<char, traits<char>, int>::operator V
   function-instantiation
     entity S<char, traits<char>, int>::data
   function-instantiation

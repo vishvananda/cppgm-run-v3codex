@@ -32,8 +32,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity stream<int, true>::implementation
-  ensure-definition
-    entity stream<int, true>::implementation::build
   function-instantiation
     entity stream<int, true>::implementation::build
   require-definition

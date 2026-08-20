@@ -14,8 +14,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity Holder<int>::Holder
   function-instantiation
     entity Holder<int>::Holder
   require-definition

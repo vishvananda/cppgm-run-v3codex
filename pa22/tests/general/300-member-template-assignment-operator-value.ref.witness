@@ -11,8 +11,6 @@ translation-unit
     bind #1 = int source=deduced
     drop wrapper<void ()>::operator= reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity wrapper<void ()>::operator=
   function-instantiation
     entity wrapper<void ()>::operator=
   require-definition

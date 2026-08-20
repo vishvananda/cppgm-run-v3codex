@@ -14,10 +14,6 @@ translation-unit
     bind #1 = int source=deduced
     drop O<int>::O reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity O<int>::O
-  ensure-definition
-    entity O<int>::operator O
   function-instantiation
     entity O<const int &>::O
   function-instantiation

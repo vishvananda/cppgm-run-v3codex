@@ -1,0 +1,57 @@
+translation-unit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:16:9
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:17:9
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:68:34
+    template identity
+    selected primary
+    bind #1 = void_ source=explicit
+  alias-use at tests/general/500-reference-member-dependent-variadic-return.t:81:7
+    template make_items
+    bind #1 = typename front<SpecSeq>::type source=explicit
+    bind #2 = A0 source=explicit
+    bind #3 = typename if_c<empty<typename pop_front<SpecSeq>::type>::value, identity<void_>, make_parameter_spec_items_helper<typename pop_front<SpecSeq>::type, Args...>>::type source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:84:32
+    template identity
+    selected primary
+    bind #1 = void_ source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:92:19
+    template identity
+    selected primary
+    bind #1 = void_ source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:104:12
+    template identity
+    selected primary
+    bind #1 = list<> source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:104:21
+    template list
+    selected primary
+    bind #1 = <> source=deduced
+  alias-use at tests/general/500-reference-member-dependent-variadic-return.t:113:16
+    template make_parameter_spec_items
+    bind #1 = parameter_spec source=explicit
+    bind #2 = A0 source=explicit
+  alias-use at tests/general/500-reference-member-dependent-variadic-return.t:116:18
+    template make_parameter_spec_items
+    bind #1 = parameter_spec source=explicit
+    bind #2 = A0 source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:125:31
+    template parameters
+    selected primary
+    bind #1 = <spec0, spec1> source=explicit
+  class-use at tests/general/500-reference-member-dependent-variadic-return.t:141:3
+    template holder
+    selected primary
+    bind #1 = arg0 source=explicit
+template-closure-events
+  variable-instantiation
+    entity integral_constant<bool, false>::value
+  variable-instantiation
+    entity integral_constant<unsigned long, 2>::value

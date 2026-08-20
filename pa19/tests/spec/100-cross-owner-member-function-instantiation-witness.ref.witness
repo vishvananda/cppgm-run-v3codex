@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity call_touch
   function-instantiation
     entity box<int>::touch
   function-instantiation

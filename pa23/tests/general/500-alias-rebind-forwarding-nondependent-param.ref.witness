@@ -13,8 +13,6 @@ translation-unit
     bind #1 = Ptr<int, long, unsigned long, 0> source=deduced
     bind #2 = true source=deduced
 template-closure-events
-  ensure-definition
-    entity Vec<int>::insert
   function-instantiation
     entity Vec<int>::insert
   function-instantiation

@@ -5,8 +5,6 @@ translation-unit
     bind #1 = 32 source=explicit
     bind #2 = 7 source=explicit
 template-closure-events
-  ensure-definition
-    entity run_crc
   function-instantiation
     entity run_crc
   require-definition

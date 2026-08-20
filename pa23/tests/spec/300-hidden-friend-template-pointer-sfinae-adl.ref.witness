@@ -1,0 +1,29 @@
+translation-unit
+  function-call at tests/spec/300-hidden-friend-template-pointer-sfinae-adl.t:37:16
+    callee declval
+    selected instantiation
+    bind #1 = const tag & source=explicit
+  function-call at tests/spec/300-hidden-friend-template-pointer-sfinae-adl.t:38:16
+    callee declval
+    selected instantiation
+    bind #1 = provider & source=explicit
+  function-call at tests/spec/300-hidden-friend-template-pointer-sfinae-adl.t:39:16
+    callee declval
+    selected instantiation
+    bind #1 = hash & source=explicit
+  function-call at tests/spec/300-hidden-friend-template-pointer-sfinae-adl.t:40:16
+    callee declval
+    selected instantiation
+    bind #1 = const flavor & source=explicit
+  class-use at tests/spec/300-hidden-friend-template-pointer-sfinae-adl.t:56:15
+    template has_tag_invoke
+    selected partial
+    bind #1 = value source=explicit
+    bind #2 = void source=defaulted
+    specialize #1 = value source=deduced
+  class-use at tests/spec/300-hidden-friend-template-pointer-sfinae-adl.t:58:15
+    template has_tag_invoke
+    selected partial
+    bind #1 = const value source=explicit
+    bind #2 = void source=defaulted
+    specialize #1 = const value source=deduced

@@ -1,0 +1,30 @@
+translation-unit
+  class-use at tests/general/500-dependent-result-sizeof-sfinae-base.t:51:16
+    template is_complete
+    selected primary
+    bind #1 = incomplete source=explicit
+  class-use at tests/general/500-dependent-result-sizeof-sfinae-base.t:52:16
+    template nested_type_wknd
+    selected primary
+    bind #1 = is_complete<incomplete> source=explicit
+  class-use at tests/general/500-dependent-result-sizeof-sfinae-base.t:52:33
+    template is_complete
+    selected primary
+    bind #1 = incomplete source=explicit
+  class-use at tests/general/500-dependent-result-sizeof-sfinae-base.t:54:15
+    template is_complete
+    selected primary
+    bind #1 = complete source=explicit
+  class-use at tests/general/500-dependent-result-sizeof-sfinae-base.t:58:10
+    template nested_type_wknd
+    selected primary
+    bind #1 = is_complete<incomplete> source=explicit
+  class-use at tests/general/500-dependent-result-sizeof-sfinae-base.t:58:27
+    template is_complete
+    selected primary
+    bind #1 = incomplete source=explicit
+template-closure-events
+  variable-instantiation
+    entity bool_constant<false>::value
+  variable-instantiation
+    entity bool_constant<true>::value

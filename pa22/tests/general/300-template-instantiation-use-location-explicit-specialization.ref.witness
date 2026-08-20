@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = Local source=deduced
 template-closure-events
-  ensure-definition
-    entity sift
   function-instantiation
     entity Ops<Policy>::iter_move
   function-instantiation

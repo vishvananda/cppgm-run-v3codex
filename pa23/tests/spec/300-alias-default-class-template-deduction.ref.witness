@@ -1,0 +1,14 @@
+translation-unit
+  alias-use at tests/spec/300-alias-default-class-template-deduction.t:7:14
+    template response
+    bind #1 = char source=explicit
+  function-call at tests/spec/300-alias-default-class-template-deduction.t:7:36
+    callee read
+    selected instantiation
+    bind #1 = false source=deduced
+    bind #2 = char source=deduced
+template-closure-events
+  function-instantiation
+    entity read
+  require-definition
+    entity read

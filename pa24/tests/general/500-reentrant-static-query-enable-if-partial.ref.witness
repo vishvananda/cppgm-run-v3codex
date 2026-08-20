@@ -1,0 +1,144 @@
+translation-unit
+  class-use at tests/general/500-reentrant-static-query-enable-if-partial.t:55:37
+    template api::execution::detail::outstanding_work::untracked_t
+    selected primary
+    bind #1 = 0 source=explicit
+  class-use at tests/general/500-reentrant-static-query-enable-if-partial.t:56:37
+    template api::execution::detail::outstanding_work::tracked_t
+    selected primary
+    bind #1 = 0 source=explicit
+  function-call at tests/general/500-reentrant-static-query-enable-if-partial.t:103:55
+    callee api::declval
+    selected instantiation
+    bind #1 = void (*)() source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:144:3
+    template enable_if_t
+    bind #1 = is_applicable_property<decay_t<T>, decay_t<Property>>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:144:38
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:144:50
+    template decay_t
+    bind #1 = Property source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:145:3
+    template enable_if_t
+    bind #1 = static_query<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:152:3
+    template enable_if_t
+    bind #1 = is_applicable_property<decay_t<T>, decay_t<Property>>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:152:38
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:152:50
+    template decay_t
+    bind #1 = Property source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:153:3
+    template enable_if_t
+    bind #1 = !static_query<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:154:3
+    template enable_if_t
+    bind #1 = query_member<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:161:3
+    template enable_if_t
+    bind #1 = is_applicable_property<decay_t<T>, decay_t<Property>>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:161:38
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:161:50
+    template decay_t
+    bind #1 = Property source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:162:3
+    template enable_if_t
+    bind #1 = !static_query<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:163:3
+    template enable_if_t
+    bind #1 = !query_member<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:164:3
+    template enable_if_t
+    bind #1 = query_free<T, Property>::is_valid source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:183:3
+    template enable_if_t
+    bind #1 = !query_member<T, execution::outstanding_work_t::untracked_t>::is_valid && !query_free<T, execution::outstanding_work_t::untracked_t>::is_valid && !can_query<T, execution::outstanding_work_t::tracked_t>::value source=explicit
+  alias-use at tests/general/500-reentrant-static-query-enable-if-partial.t:193:3
+    template enable_if_t
+    bind #1 = !query_member<T, execution::outstanding_work_t::tracked_t>::is_valid && !query_free<T, execution::outstanding_work_t::tracked_t>::is_valid && !static_query<T, execution::outstanding_work_t::untracked_t>::is_valid source=explicit
+  class-use at tests/general/500-reentrant-static-query-enable-if-partial.t:203:28
+    template api::traits::static_query
+    selected partial
+    bind #1 = api::executor source=explicit
+    bind #2 = api::execution::detail::outstanding_work::untracked_t<0> source=explicit
+    bind #3 = void source=defaulted
+    specialize #1 = api::executor source=deduced
+  class-use at tests/general/500-reentrant-static-query-enable-if-partial.t:206:28
+    template api::traits::static_query
+    selected partial
+    bind #1 = const api::executor source=explicit
+    bind #2 = api::execution::detail::outstanding_work::untracked_t<0> source=explicit
+    bind #3 = void source=defaulted
+    specialize #1 = const api::executor source=deduced
+  class-use at tests/general/500-reentrant-static-query-enable-if-partial.t:209:30
+    template api::query_fn::call_traits
+    selected partial
+    bind #1 = api::query_fn::impl source=explicit
+    bind #2 = api::executor source=explicit
+    bind #3 = void (api::execution::detail::outstanding_work::untracked_t<0>) source=explicit
+    bind #4 = void source=defaulted
+    bind #5 = void source=defaulted
+    bind #6 = void source=defaulted
+    bind #7 = void source=defaulted
+    specialize #1 = api::query_fn::impl source=deduced
+    specialize #2 = api::executor source=deduced
+    specialize #3 = api::execution::detail::outstanding_work::untracked_t<0> source=deduced
+  class-use at tests/general/500-reentrant-static-query-enable-if-partial.t:214:20
+    template api::can_query
+    selected primary
+    bind #1 = api::executor source=explicit
+    bind #2 = api::execution::detail::outstanding_work::untracked_t<0> source=explicit
+  class-use at tests/general/500-reentrant-static-query-enable-if-partial.t:220:15
+    template api::can_query
+    selected primary
+    bind #1 = api::executor source=explicit
+    bind #2 = api::execution::detail::outstanding_work::untracked_t<0> source=explicit
+template-closure-events
+  variable-instantiation
+    entity api::can_query<api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::value
+  variable-instantiation
+    entity api::can_query<api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::value
+  variable-instantiation
+    entity api::can_query<const api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::value
+  variable-instantiation
+    entity api::is_applicable_property<api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::value
+  variable-instantiation
+    entity api::is_applicable_property<api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::value
+  variable-instantiation
+    entity api::is_executor<api::executor>::value
+  variable-instantiation
+    entity api::query_fn::call_traits<api::query_fn::impl, api::executor, void (api::execution::detail::outstanding_work::tracked_t<0>)>::overload
+  variable-instantiation
+    entity api::query_fn::call_traits<api::query_fn::impl, api::executor, void (api::execution::detail::outstanding_work::untracked_t<0>)>::overload
+  variable-instantiation
+    entity api::query_fn::call_traits<api::query_fn::impl, const api::executor, void (api::execution::detail::outstanding_work::tracked_t<0>)>::overload
+  variable-instantiation
+    entity api::traits::query_free<api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_free<api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_free<const api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_free<const api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_member<api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_member<api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_member<const api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::query_member<const api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::static_query<api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::static_query<api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::static_query<const api::executor, api::execution::detail::outstanding_work::tracked_t<0>>::is_valid
+  variable-instantiation
+    entity api::traits::static_query<const api::executor, api::execution::detail::outstanding_work::untracked_t<0>>::is_valid

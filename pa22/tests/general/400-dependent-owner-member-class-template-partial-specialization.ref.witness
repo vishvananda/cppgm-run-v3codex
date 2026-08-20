@@ -13,8 +13,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity channel_service<int>::base_implementation_type
-  ensure-definition
-    entity channel_service<int>::implementation_type<int, void ()>::value
   function-instantiation
     entity channel_service<int>::implementation_type<int, void ()>::value
   require-definition

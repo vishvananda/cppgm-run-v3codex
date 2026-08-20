@@ -1,0 +1,23 @@
+ERROR: template parameter redeclared at tests/general/100-local-alias-shadows-template-parameter-bad.t:4:5 [top-level declaration 0 kind=template-declaration ast={template-declaration
+  template-parameter-clause
+    template-parameter-list
+      type-parameter
+        parameter-key KW_CLASS:class
+        identifier U
+  class-specifier S
+    class-key KW_STRUCT:struct
+    function-definition
+      decl-specifier-seq
+        decl-specifier KW_STATIC:static
+        decl-specifier KW_VOID:void
+      declarator
+        identifier f
+        parameter-clause
+      compound-statement
+        alias-declaration U
+          type-id
+            type-specifier-seq
+              type-specifier KW_INT:int
+}]
+Diagnostic context:
+collect_template_declaration [template<class U>struct S{static void f(){using U=int;}};] at tests/general/100-local-alias-shadows-template-parameter-bad.t:1:1

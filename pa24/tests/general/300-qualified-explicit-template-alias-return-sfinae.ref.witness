@@ -14,8 +14,6 @@ translation-unit
     bind #2 = void (*)(int) source=explicit
     bind #3 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity Handler<void, void (*)(int), int>::call
   function-instantiation
     entity Handler<void, void (*)(int), int>::call
   function-instantiation

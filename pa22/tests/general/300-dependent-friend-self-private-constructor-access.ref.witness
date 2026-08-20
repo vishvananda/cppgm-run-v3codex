@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = Box source=explicit
 template-closure-events
-  ensure-definition
-    entity Ref<Box>::Ref
   function-instantiation
     entity Ref<Box>::Ref
   require-definition

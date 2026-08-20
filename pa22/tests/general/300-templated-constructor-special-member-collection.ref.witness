@@ -16,8 +16,6 @@ translation-unit
     drop pair<int>::pair reason=too_many_arguments
     drop pair<int>::pair reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity pair<int>::pair
   function-instantiation
     entity pair<int>::pair
   require-definition

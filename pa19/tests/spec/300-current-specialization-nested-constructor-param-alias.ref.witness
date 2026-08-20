@@ -1,0 +1,30 @@
+translation-unit
+  class-use at tests/spec/300-current-specialization-nested-constructor-param-alias.t:64:3
+    template basic_tree
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = int source=explicit
+    bind #3 = int source=explicit
+  class-use at tests/spec/300-current-specialization-nested-constructor-param-alias.t:65:3
+    template basic_tree
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = int source=explicit
+    bind #3 = int source=explicit
+template-closure-events
+  class-instantiation
+    entity basic_tree<int, int, int>::const_iterator
+  class-instantiation
+    entity basic_tree<int, int, int>::const_reverse_iterator
+  class-instantiation
+    entity basic_tree<int, int, int>::reverse_iterator
+  class-instantiation
+    entity basic_tree<int, int, int>::subs
+  function-instantiation
+    entity basic_tree<int, int, int>::const_reverse_iterator::const_reverse_iterator
+  function-instantiation
+    entity basic_tree<int, int, int>::reverse_iterator::reverse_iterator
+  require-definition
+    entity basic_tree<int, int, int>::const_reverse_iterator::const_reverse_iterator
+  require-definition
+    entity basic_tree<int, int, int>::reverse_iterator::reverse_iterator

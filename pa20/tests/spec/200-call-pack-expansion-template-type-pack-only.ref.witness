@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = <char, short> source=explicit
 template-closure-events
-  ensure-definition
-    entity sizes<char, short>::run
   function-instantiation
     entity sizes<char, short>::run
   require-definition

@@ -5,8 +5,6 @@ translation-unit
     bind #1 = X source=explicit
     bind #2 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity boost::fusion::remove
   function-instantiation
     entity boost::fusion::remove
   require-definition

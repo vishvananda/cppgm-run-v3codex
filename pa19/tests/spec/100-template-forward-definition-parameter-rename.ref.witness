@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity box<int>::get
   function-instantiation
     entity box<int>::get
   require-definition

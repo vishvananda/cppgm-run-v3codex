@@ -15,6 +15,7 @@ use CppgmBatchWorker qw(
 	clear_progress_state
 	close_worker
 	collect_tests
+	detect_jobs
 	ensure_test_app_available
 	get_timeout_from_env
 	note_progress_state
@@ -27,14 +28,6 @@ use CppgmBatchWorker qw(
 	write_file
 	write_numeric_status
 );
-
-sub detect_jobs
-{
-	my $jobs = $ENV{CPPGM_TEST_JOBS};
-	return 1 if !defined($jobs);
-	return 1 if $jobs !~ m/^\d+$/;
-	return $jobs > 0 ? $jobs : 1;
-}
 
 sub host_target_name
 {

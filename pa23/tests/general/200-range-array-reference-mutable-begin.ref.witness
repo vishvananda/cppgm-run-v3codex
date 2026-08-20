@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int[5] source=deduced
     bind #2 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity find_not
   function-instantiation
     entity begin
   function-instantiation

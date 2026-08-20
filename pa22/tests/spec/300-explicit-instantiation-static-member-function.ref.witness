@@ -4,7 +4,7 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity tester<int>::test
   function-instantiation
+    entity tester<int>::test
+  require-definition
     entity tester<int>::test

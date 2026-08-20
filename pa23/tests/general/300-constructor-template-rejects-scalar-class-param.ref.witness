@@ -5,8 +5,6 @@ translation-unit
     bind #1 = iter source=explicit
     bind #2 = bool source=explicit
 template-closure-events
-  ensure-definition
-    entity pair<iter, bool>::pair
   function-instantiation
     entity pair<iter, bool>::pair
   require-definition

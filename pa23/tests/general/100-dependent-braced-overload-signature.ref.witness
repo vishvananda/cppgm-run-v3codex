@@ -1,0 +1,16 @@
+translation-unit
+  function-call at tests/general/100-dependent-braced-overload-signature.t:17:17
+    callee Probe::test
+    selected instantiation
+    bind #1 = int source=deduced
+    drop Probe::test reason=worse_conversion
+  function-call at tests/general/100-dependent-braced-overload-signature.t:22:10
+    callee Probe::test
+    selected instantiation
+    bind #1 = int source=deduced
+    drop Probe::test reason=worse_conversion
+template-closure-events
+  function-instantiation
+    entity Probe::test
+  require-definition
+    entity Probe::test

@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = char source=explicit
 template-closure-events
-  ensure-definition
-    entity use
   function-instantiation
     entity cast
   function-instantiation

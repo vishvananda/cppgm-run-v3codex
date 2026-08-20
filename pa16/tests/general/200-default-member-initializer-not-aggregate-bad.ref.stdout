@@ -2,5 +2,3 @@ ERROR: no viable constructor [class X] [arg_count 1] [ctor-set X::X:function of 
 Diagnostic context:
 analyze_function_binding_output [main]
   analyze_statement [simple-declaration] at tests/general/200-default-member-initializer-not-aggregate-bad.t:2:14
-    try_argument_conversion [target rvalue-reference to struct X]
-      select_constructor_from_exprs [X, args=1]

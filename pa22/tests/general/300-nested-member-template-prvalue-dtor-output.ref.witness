@@ -1,0 +1,34 @@
+translation-unit
+  class-use at tests/general/300-nested-member-template-prvalue-dtor-output.t:23:12
+    template context::executor
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/300-nested-member-template-prvalue-dtor-output.t:25:9
+    callee context::executor<int>::require
+    selected instantiation
+    bind #1 = long source=deduced
+template-closure-events
+  function-instantiation
+    entity context::executor<int>::executor
+  function-instantiation
+    entity context::executor<int>::require
+  function-instantiation
+    entity context::executor<int>::~executor
+  function-instantiation
+    entity context::executor<long>::execute
+  function-instantiation
+    entity context::executor<long>::executor
+  function-instantiation
+    entity context::executor<long>::~executor
+  require-definition
+    entity context::executor<int>::executor
+  require-definition
+    entity context::executor<int>::require
+  require-definition
+    entity context::executor<int>::~executor
+  require-definition
+    entity context::executor<long>::execute
+  require-definition
+    entity context::executor<long>::executor
+  require-definition
+    entity context::executor<long>::~executor

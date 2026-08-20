@@ -1,0 +1,11 @@
+ERROR: failed class template instantiation: X<void(Missing::*)()> [scope <here>] [arg_texts void(Missing::*)()] [bindings ] [phase callsemantic] [top-level declaration 1 kind=simple-declaration ast={simple-declaration
+  decl-specifier-seq
+    decl-specifier X<void(Missing::*)()>
+  init-declarator-list
+    init-declarator
+      declarator
+        identifier x
+}]
+Diagnostic context:
+collect_simple_declaration [X<void(Missing::*)()>x;] at tests/general/300-unknown-member-pointer-owner-bad.t:3:1
+  lookup_type [X<void(Missing::*)()>]

@@ -9,8 +9,6 @@ translation-unit
     bind #1 = proxy source=deduced
     drop lib::optional<edge>::operator= reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity lib::optional<edge>::operator=
   function-instantiation
     entity lib::optional<edge>::operator=
   require-definition

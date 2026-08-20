@@ -1,0 +1,42 @@
+translation-unit
+  class-use at tests/general/500-owner-enum-nontype-result-sfinae.t:130:28
+    template owner_enum_sfinae::generic_hook
+    selected primary
+    bind #1 = owner_enum_sfinae::slist_algorithms source=explicit
+    bind #2 = owner_enum_sfinae::node_traits source=explicit
+    bind #3 = owner_enum_sfinae::default_tag source=explicit
+    bind #4 = owner_enum_sfinae::normal_link source=explicit
+    bind #5 = owner_enum_sfinae::slist_base_hook source=explicit
+  class-use at tests/general/500-owner-enum-nontype-result-sfinae.t:137:34
+    template owner_enum_sfinae::internal_base_hook_bool_is_true
+    selected primary
+    bind #1 = owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook> source=explicit
+  class-use at tests/general/500-owner-enum-nontype-result-sfinae.t:139:35
+    template owner_enum_sfinae::internal_any_hook_bool_is_true
+    selected primary
+    bind #1 = owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook> source=explicit
+  class-use at tests/general/500-owner-enum-nontype-result-sfinae.t:144:29
+    template owner_enum_sfinae::internal_base_hook_bool_is_true
+    selected primary
+    bind #1 = owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook> source=explicit
+  class-use at tests/general/500-owner-enum-nontype-result-sfinae.t:145:30
+    template owner_enum_sfinae::internal_any_hook_bool_is_true
+    selected primary
+    bind #1 = owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook> source=explicit
+template-closure-events
+  variable-instantiation
+    entity owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook>::is_any_hook
+  variable-instantiation
+    entity owner_enum_sfinae::hooktags_impl<owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook>::is_base_hook
+  variable-instantiation
+    entity owner_enum_sfinae::internal_any_hook_bool<owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook>>::value
+  variable-instantiation
+    entity owner_enum_sfinae::internal_any_hook_bool_is_true<owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook>>::value
+  variable-instantiation
+    entity owner_enum_sfinae::internal_base_hook_bool<owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook>>::value
+  variable-instantiation
+    entity owner_enum_sfinae::internal_base_hook_bool_is_true<owner_enum_sfinae::generic_hook<owner_enum_sfinae::slist_algorithms, owner_enum_sfinae::node_traits, owner_enum_sfinae::default_tag, owner_enum_sfinae::normal_link, owner_enum_sfinae::slist_base_hook>>::value
+  variable-instantiation
+    entity owner_enum_sfinae::is_same<owner_enum_sfinae::default_tag, owner_enum_sfinae::default_tag>::value
+  variable-instantiation
+    entity owner_enum_sfinae::is_same<owner_enum_sfinae::default_tag, owner_enum_sfinae::member_tag>::value

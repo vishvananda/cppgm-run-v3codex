@@ -1,0 +1,29 @@
+translation-unit
+  alias-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:5:57
+    template I
+    bind #1 = P<int> source=explicit
+    bind #2 = L<int> source=explicit
+  class-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:5:67
+    template L
+    selected primary
+    bind #1 = <int> source=explicit
+  alias-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:7:60
+    template B
+    bind #1 = A<S, void>... source=explicit
+  alias-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:7:62
+    template A
+    bind #1 = S source=explicit
+    bind #2 = void source=explicit
+  alias-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:8:32
+    template I
+    bind #1 = int source=explicit
+    bind #2 = Q<X<S...>> source=explicit
+  alias-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:8:39
+    template Q
+    bind #1 = X<S...> source=explicit
+  class-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:9:8
+    template L
+    selected primary
+    bind #1 = <int> source=explicit
+  alias-use at tests/general/400-empty-pack-member-alias-owner-specialization.t:10:17
+    template R

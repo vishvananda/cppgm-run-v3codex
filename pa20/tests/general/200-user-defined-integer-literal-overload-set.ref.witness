@@ -1,0 +1,14 @@
+translation-unit
+  function-call at tests/general/200-user-defined-integer-literal-overload-set.t:16:10
+    callee operator""_tag
+    selected instantiation
+    bind #1 = <'0', 'x', '0', '0'> source=deduced
+  function-call at tests/general/200-user-defined-integer-literal-overload-set.t:16:21
+    callee operator""_tag
+    selected instantiation
+    bind #1 = <'1', '.', '5'> source=deduced
+template-closure-events
+  function-instantiation
+    entity operator""_tag
+  require-definition
+    entity operator""_tag

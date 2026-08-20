@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = int[2][2] source=deduced
 template-closure-events
-  ensure-definition
-    entity outer
   function-instantiation
     entity inner
   function-instantiation

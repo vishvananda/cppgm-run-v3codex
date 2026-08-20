@@ -1,0 +1,20 @@
+translation-unit
+  class-use at tests/spec/300-constructor-template-initial-sequence-beats-const-conversion-template.t:42:1
+    template result
+    selected primary
+    bind #1 = payload source=explicit
+  function-call at tests/spec/300-constructor-template-initial-sequence-beats-const-conversion-template.t:44:10
+    callee result<payload>::result
+    selected instantiation
+    bind #1 = error_id source=deduced
+    drop result<payload>::result reason=bad_conversion
+    drop error_id::operator result reason=worse_conversion
+  class-use at tests/spec/300-constructor-template-initial-sequence-beats-const-conversion-template.t:49:3
+    template result
+    selected primary
+    bind #1 = payload source=explicit
+template-closure-events
+  function-instantiation
+    entity result<payload>::result
+  require-definition
+    entity result<payload>::result

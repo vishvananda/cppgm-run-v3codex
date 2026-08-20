@@ -1,0 +1,43 @@
+translation-unit
+  alias-use at tests/general/300-boost-enable-if-type-condition-static-keyword-overload.t:51:20
+    template boost::mp11::mp_if
+    bind #1 = std::is_scalar<Default> source=explicit
+    bind #2 = boost::mp11::mp_true source=explicit
+    bind #3 = boost::mp11::mp_if<std::is_same<typename Tag::qualifier, in_reference>, boost::mp11::mp_true, std::is_same<typename Tag::qualifier, forward_reference>> source=explicit
+  alias-use at tests/general/300-boost-enable-if-type-condition-static-keyword-overload.t:54:24
+    template boost::mp11::mp_if
+    bind #1 = std::is_same<typename Tag::qualifier, in_reference> source=explicit
+    bind #2 = boost::mp11::mp_true source=explicit
+    bind #3 = std::is_same<typename Tag::qualifier, forward_reference> source=explicit
+  alias-use at tests/general/300-boost-enable-if-type-condition-static-keyword-overload.t:66:20
+    template boost::mp11::mp_if
+    bind #1 = std::is_scalar<Default> source=explicit
+    bind #2 = boost::mp11::mp_false source=explicit
+    bind #3 = boost::mp11::mp_if<std::is_same<typename Tag::qualifier, consume_reference>, boost::mp11::mp_true, std::is_same<typename Tag::qualifier, forward_reference>> source=explicit
+  alias-use at tests/general/300-boost-enable-if-type-condition-static-keyword-overload.t:69:24
+    template boost::mp11::mp_if
+    bind #1 = std::is_same<typename Tag::qualifier, consume_reference> source=explicit
+    bind #2 = boost::mp11::mp_true source=explicit
+    bind #3 = std::is_same<typename Tag::qualifier, forward_reference> source=explicit
+  class-use at tests/general/300-boost-enable-if-type-condition-static-keyword-overload.t:95:21
+    template boost::parameter::keyword
+    selected primary
+    bind #1 = boost::graph::keywords::tag::color_map source=explicit
+  function-call at tests/general/300-boost-enable-if-type-condition-static-keyword-overload.t:96:6
+    callee boost::parameter::keyword<boost::graph::keywords::tag::color_map>::operator|
+    selected instantiation
+    bind #1 = int source=deduced
+    drop boost::parameter::keyword<boost::graph::keywords::tag::color_map>::operator| reason=substitution_failure
+template-closure-events
+  function-instantiation
+    entity boost::parameter::aux::default_<boost::graph::keywords::tag::color_map, const int>::default_
+  function-instantiation
+    entity boost::parameter::keyword<boost::graph::keywords::tag::color_map>::operator|
+  require-definition
+    entity boost::parameter::aux::default_<boost::graph::keywords::tag::color_map, const int>::default_
+  require-definition
+    entity boost::parameter::keyword<boost::graph::keywords::tag::color_map>::operator|
+  variable-instantiation
+    entity std::is_same<boost::parameter::in_reference, boost::parameter::consume_reference>::value
+  variable-instantiation
+    entity std::is_same<boost::parameter::in_reference, boost::parameter::in_reference>::value

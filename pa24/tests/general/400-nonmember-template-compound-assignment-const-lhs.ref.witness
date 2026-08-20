@@ -17,8 +17,6 @@ translation-unit
     bind #1 = placeholder<1> source=deduced
     bind #2 = char source=deduced
 template-closure-events
-  ensure-definition
-    entity operator+=
   function-instantiation
     entity operator+=
   require-definition

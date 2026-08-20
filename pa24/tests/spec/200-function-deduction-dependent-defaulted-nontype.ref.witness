@@ -11,8 +11,6 @@ translation-unit
     bind #2 = false source=explicit
     bind #3 = 0 source=defaulted
 template-closure-events
-  ensure-definition
-    entity f
   function-instantiation
     entity f
   require-definition

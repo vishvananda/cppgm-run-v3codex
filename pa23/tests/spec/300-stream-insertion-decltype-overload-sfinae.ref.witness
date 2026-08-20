@@ -1,0 +1,30 @@
+translation-unit
+  class-use at tests/spec/300-stream-insertion-decltype-overload-sfinae.t:13:11
+    template local::basic_ostream
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-stream-insertion-decltype-overload-sfinae.t:14:11
+    template local::basic_ostream
+    selected primary
+    bind #1 = wchar_t source=explicit
+  function-call at tests/spec/300-stream-insertion-decltype-overload-sfinae.t:43:19
+    callee local::declval
+    selected instantiation
+    bind #1 = local::basic_ostream<char> & source=explicit
+  function-call at tests/spec/300-stream-insertion-decltype-overload-sfinae.t:48:19
+    callee local::declval
+    selected instantiation
+    bind #1 = local::basic_ostream<wchar_t> & source=explicit
+  class-use at tests/spec/300-stream-insertion-decltype-overload-sfinae.t:57:22
+    template local::is_same
+    selected partial
+    bind #1 = char source=explicit
+    bind #2 = char source=explicit
+    specialize #1 = char source=deduced
+  class-use at tests/spec/300-stream-insertion-decltype-overload-sfinae.t:57:30
+    template stream_probe
+    selected primary
+    bind #1 = token source=explicit
+template-closure-events
+  variable-instantiation
+    entity local::is_same<char, char>::value

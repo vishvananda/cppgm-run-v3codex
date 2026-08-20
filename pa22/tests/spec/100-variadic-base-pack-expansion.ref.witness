@@ -6,8 +6,6 @@ translation-unit
     specialize #1 = one source=deduced
     specialize #2 = <two> source=deduced
 template-closure-events
-  ensure-definition
-    entity sum_bases<one, two>::sum
   function-instantiation
     entity sum_bases<one, two>::sum
   function-instantiation

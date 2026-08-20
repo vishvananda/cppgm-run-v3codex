@@ -29,10 +29,6 @@ translation-unit
     selected primary
     bind #1 = void * source=explicit
 template-closure-events
-  ensure-definition
-    entity std::allocator<int>::allocator
-  ensure-definition
-    entity std::allocator<void *>::allocator
   function-instantiation
     entity std::allocator<int>::allocator
   function-instantiation

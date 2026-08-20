@@ -3,10 +3,10 @@ translation-unit
     template collection::const_base
     bind #1 = T source=explicit
   alias-use at tests/spec/300-instantiated-owner-nested-alias-deduction.t:10:28
-    template iterator
+    template collection::iterator
     bind #1 = T source=explicit
   alias-use at tests/spec/300-instantiated-owner-nested-alias-deduction.t:10:47
-    template const_iterator
+    template collection::const_iterator
     bind #1 = T source=explicit
   class-use at tests/spec/300-instantiated-owner-nested-alias-deduction.t:13:3
     template collection
@@ -26,8 +26,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity collection<int>::select
   function-instantiation
     entity collection<int>::select
   require-definition

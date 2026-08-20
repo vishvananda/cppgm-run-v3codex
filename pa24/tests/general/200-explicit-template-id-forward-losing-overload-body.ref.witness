@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int & source=explicit
     drop forward reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity forward
   function-instantiation
     entity forward
   require-definition

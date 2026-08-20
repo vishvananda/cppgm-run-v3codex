@@ -18,14 +18,6 @@ translation-unit
     selected primary
     bind #1 = long long source=explicit
 template-closure-events
-  ensure-definition
-    entity duration<long long>::count
-  ensure-definition
-    entity duration<long long>::duration
-  ensure-definition
-    entity duration<long long>::min
-  ensure-definition
-    entity duration<long long>::zero
   function-instantiation
     entity duration<long long>::count
   function-instantiation

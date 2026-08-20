@@ -12,8 +12,6 @@ translation-unit
     bind #1 = callable & source=explicit
     bind #2 = <int &, double &> source=explicit
 template-closure-events
-  ensure-definition
-    entity traits::call_is_nt
   function-instantiation
     entity traits::call_is_nt
   require-definition

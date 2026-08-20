@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = &square source=explicit
 template-closure-events
-  ensure-definition
-    entity evaluator<&square>::run
   function-instantiation
     entity evaluator<&square>::run
   require-definition

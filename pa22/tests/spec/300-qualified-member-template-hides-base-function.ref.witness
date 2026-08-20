@@ -1,0 +1,10 @@
+translation-unit
+  function-call at tests/spec/300-qualified-member-template-hides-base-function.t:31:19
+    callee ordered::insert_
+    selected instantiation
+    bind #1 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity ordered::insert_
+  require-definition
+    entity ordered::insert_

@@ -5,10 +5,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = 7 source=explicit
 template-closure-events
-  ensure-definition
-    entity Control<int, 7>::value
-  ensure-definition
-    entity Control<int, 7>::~Control
   function-instantiation
     entity Control<int, 7>::value
   function-instantiation

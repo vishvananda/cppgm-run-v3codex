@@ -5,10 +5,6 @@ translation-unit
     bind #1 = unsigned char source=explicit
     bind #2 = value_box source=explicit
 template-closure-events
-  ensure-definition
-    entity tiny_assoc<unsigned char, value_box>::subscript
-  ensure-definition
-    entity tiny_assoc<unsigned char, value_box>::tiny_assoc
   function-instantiation
     entity tiny_assoc<unsigned char, value_box>::subscript
   function-instantiation

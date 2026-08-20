@@ -14,8 +14,6 @@ translation-unit
     bind #2 = void source=defaulted
     specialize #1 = range source=deduced
 template-closure-events
-  ensure-definition
-    entity valid_element
   function-instantiation
     entity valid_element
   require-definition

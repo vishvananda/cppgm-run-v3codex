@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = any_executor<int> source=deduced
 template-closure-events
-  ensure-definition
-    entity operator==
   function-instantiation
     entity operator==
   require-definition

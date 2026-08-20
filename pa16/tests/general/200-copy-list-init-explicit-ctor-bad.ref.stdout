@@ -2,5 +2,3 @@ ERROR: no viable constructor [class S] [arg_count 1] [ctor-set S::S:function of 
 Diagnostic context:
 analyze_function_binding_output [main]
   analyze_statement [simple-declaration] at tests/general/200-copy-list-init-explicit-ctor-bad.t:8:3
-    try_argument_conversion [target rvalue-reference to struct S]
-      select_constructor_from_exprs [S, args=1]

@@ -1,0 +1,11 @@
+translation-unit
+  function-call at tests/general/400-defaulted-dependent-pointer-nttp-cstyle-cast-symbol.t:5:21
+    callee f
+    selected instantiation
+    bind #1 = int source=explicit
+    bind #2 = nullptr source=defaulted
+template-closure-events
+  function-instantiation
+    entity f
+  require-definition
+    entity f

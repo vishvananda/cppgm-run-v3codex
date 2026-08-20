@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = Item source=explicit
 template-closure-events
-  ensure-definition
-    entity fwd
   function-instantiation
     entity fwd
   require-definition

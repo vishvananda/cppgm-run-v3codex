@@ -1,0 +1,18 @@
+ERROR: unsupported constexpr variable initializer at tests/general/400-constexpr-reference-parameter-temporary-address-bad.t:10:21 [top-level declaration 1 kind=simple-declaration ast={simple-declaration
+  decl-specifier-seq
+    decl-specifier KW_CONSTEXPR:constexpr
+    decl-specifier KW_CONST:const
+    decl-specifier KW_INT:int
+  init-declarator-list
+    init-declarator
+      declarator
+        ptr-operator OP_STAR:*
+        identifier address
+      initializer
+        call-expression
+          id-expression address_of
+          argument-list
+            literal 5
+}]
+Diagnostic context:
+collect_simple_declaration [constexpr const int*address=address_of(5);] at tests/general/400-constexpr-reference-parameter-temporary-address-bad.t:10:1

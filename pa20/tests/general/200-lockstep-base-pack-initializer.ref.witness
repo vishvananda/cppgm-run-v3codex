@@ -1,0 +1,18 @@
+translation-unit
+  class-use at tests/general/200-lockstep-base-pack-initializer.t:6:14
+    template tuple
+    selected primary
+    bind #1 = <0, 1> source=explicit
+template-closure-events
+  function-instantiation
+    entity base<0>::base
+  function-instantiation
+    entity base<1>::base
+  function-instantiation
+    entity tuple<0, 1>::tuple
+  require-definition
+    entity base<0>::base
+  require-definition
+    entity base<1>::base
+  require-definition
+    entity tuple<0, 1>::tuple

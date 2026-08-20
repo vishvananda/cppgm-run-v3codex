@@ -1,0 +1,19 @@
+translation-unit
+  class-use at tests/general/100-namespace-alias-qualified-function-decltype-type-argument.t:34:15
+    template is_same
+    selected partial
+    bind #1 = const int & source=explicit
+    bind #2 = const int & source=explicit
+    specialize #1 = const int & source=deduced
+  function-call at tests/general/100-namespace-alias-qualified-function-decltype-type-argument.t:35:15
+    callee source::sequence_begin
+    selected instantiation
+    bind #1 = sequence source=deduced
+    drop source::sequence_begin reason=better_candidate_selected
+  function-call at tests/general/100-namespace-alias-qualified-function-decltype-type-argument.t:35:37
+    callee declval
+    selected instantiation
+    bind #1 = const sequence & source=explicit
+template-closure-events
+  variable-instantiation
+    entity is_same<const int &, const int &>::value

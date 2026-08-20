@@ -10,8 +10,6 @@ translation-unit
     bind #1 = Char source=deduced
     bind #2 = Traits source=deduced
 template-closure-events
-  ensure-definition
-    entity manip
   function-instantiation
     entity manip
   require-definition

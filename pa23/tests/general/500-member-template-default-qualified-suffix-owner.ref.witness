@@ -1,0 +1,64 @@
+translation-unit
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:11:11
+    template size_c
+    selected primary
+    bind #1 = 0 source=explicit
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:44:9
+    template cons
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = cons<char, nil> source=explicit
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:44:19
+    template cons
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = nil source=explicit
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:45:9
+    template iterator
+    selected primary
+    bind #1 = cons<int, cons<char, nil>> source=explicit
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:46:9
+    template iterator
+    selected primary
+    bind #1 = nil source=explicit
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:48:27
+    template iterator<cons<int, cons<char, nil>>>::defaults
+    selected primary
+    bind #1 = iterator<cons<int, cons<char, nil>>> source=explicit
+    bind #2 = iterator<nil> source=explicit
+    bind #3 = 2 source=defaulted
+    bind #4 = 0 source=defaulted
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:49:27
+    template iterator<cons<int, cons<char, nil>>>::defaults
+    selected primary
+    bind #1 = iterator<cons<int, cons<char, nil>>> source=explicit
+    bind #2 = iterator<nil> source=explicit
+    bind #3 = 2 source=defaulted
+    bind #4 = 0 source=defaulted
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:50:27
+    template iterator<cons<int, cons<char, nil>>>::equal_to
+    selected primary
+    bind #1 = iterator<cons<int, cons<char, nil>>> source=explicit
+    bind #2 = iterator<nil> source=explicit
+    bind #3 = 2 source=defaulted
+    bind #4 = 0 source=defaulted
+  class-use at tests/general/500-member-template-default-qualified-suffix-owner.t:54:22
+    template iterator<cons<int, cons<char, nil>>>::defaults
+    selected primary
+    bind #1 = iterator<cons<int, cons<char, nil>>> source=explicit
+    bind #2 = iterator<nil> source=explicit
+    bind #3 = 2 source=defaulted
+    bind #4 = 0 source=defaulted
+template-closure-events
+  variable-instantiation
+    entity iterator<cons<int, cons<char, nil>>>::defaults<iterator<cons<int, cons<char, nil>>>, iterator<nil>>::first
+  variable-instantiation
+    entity iterator<cons<int, cons<char, nil>>>::defaults<iterator<cons<int, cons<char, nil>>>, iterator<nil>>::second
+  variable-instantiation
+    entity iterator<cons<int, cons<char, nil>>>::equal_to<iterator<cons<int, cons<char, nil>>>, iterator<nil>>::value
+  variable-instantiation
+    entity size_c<0>::value
+  variable-instantiation
+    entity size_c<1>::value
+  variable-instantiation
+    entity size_c<2>::value

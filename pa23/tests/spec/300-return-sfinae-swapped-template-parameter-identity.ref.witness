@@ -12,8 +12,6 @@ translation-unit
     bind #2 = path source=deduced
     drop equal reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity equal
   function-instantiation
     entity equal
   require-definition

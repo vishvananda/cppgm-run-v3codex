@@ -1,0 +1,11 @@
+translation-unit
+  alias-use at tests/general/300-qualified-owner-static-template-nttp.t:30:22
+    template bool_constant
+    bind #1 = sizeof (Next::has_key(static_cast<key_type *>(0))) == sizeof(support::no_tag) source=explicit
+  class-use at tests/general/300-qualified-owner-static-template-nttp.t:37:1
+    template arg_list
+    selected primary
+    bind #1 = support::empty_list source=explicit
+template-closure-events
+  variable-instantiation
+    entity integral_constant<bool, true>::value

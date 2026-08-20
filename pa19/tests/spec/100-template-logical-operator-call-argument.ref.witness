@@ -1,0 +1,38 @@
+translation-unit
+  function-call at tests/spec/100-template-logical-operator-call-argument.t:33:10
+    callee test
+    selected instantiation
+    bind #1 = bool source=deduced
+    bind #2 = bool source=deduced
+    bind #3 = bool source=deduced
+    bind #4 = bool source=deduced
+  function-call at tests/spec/100-template-logical-operator-call-argument.t:33:19
+    callee operator&&
+    selected instantiation
+    bind #1 = binder source=deduced
+    bind #2 = binder source=deduced
+  function-call at tests/spec/100-template-logical-operator-call-argument.t:34:10
+    callee test
+    selected instantiation
+    bind #1 = bool source=deduced
+    bind #2 = bool source=deduced
+    bind #3 = bool source=deduced
+    bind #4 = bool source=deduced
+  function-call at tests/spec/100-template-logical-operator-call-argument.t:34:20
+    callee operator||
+    selected instantiation
+    bind #1 = binder source=deduced
+    bind #2 = binder source=deduced
+template-closure-events
+  function-instantiation
+    entity operator&&
+  function-instantiation
+    entity operator||
+  function-instantiation
+    entity test
+  require-definition
+    entity operator&&
+  require-definition
+    entity operator||
+  require-definition
+    entity test

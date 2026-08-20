@@ -6,8 +6,6 @@ translation-unit
     bind #2 = char source=explicit
     bind #3 = <int> source=deduced
 template-closure-events
-  ensure-definition
-    entity call
   function-instantiation
     entity call
   require-definition

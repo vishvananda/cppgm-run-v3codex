@@ -1,0 +1,7 @@
+translation-unit
+  class-use at tests/general/400-partial-specialization-conversion-operator-pointer-binding.t:82:15
+    template formatter_arity
+    selected primary
+    bind #1 = string_like (*)(const what_type &) source=explicit
+    bind #2 = what_type source=explicit
+    bind #3 = out_type source=explicit

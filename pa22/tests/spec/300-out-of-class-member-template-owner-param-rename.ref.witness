@@ -9,8 +9,6 @@ translation-unit
     selected instantiation
     bind #1 = int * source=deduced
 template-closure-events
-  ensure-definition
-    entity deque_like<int, char>::h
   function-instantiation
     entity deque_like<int, char>::h
   require-definition

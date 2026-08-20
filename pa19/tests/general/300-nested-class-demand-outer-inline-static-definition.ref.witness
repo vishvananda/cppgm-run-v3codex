@@ -6,8 +6,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity c<int>::n
-  ensure-definition
-    entity c<int>::n::g
   function-instantiation
     entity c<int>::f
   function-instantiation

@@ -1,0 +1,1 @@
+ERROR: tests/general/200-bad-condition-declaration.t: expected if condition near KW_INT:int at tests/general/200-bad-condition-declaration.t:1:18

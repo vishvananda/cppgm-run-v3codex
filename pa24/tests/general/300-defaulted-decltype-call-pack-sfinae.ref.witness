@@ -1,0 +1,14 @@
+translation-unit
+  function-call at tests/general/300-defaulted-decltype-call-pack-sfinae.t:12:50
+    callee value
+    selected instantiation
+    bind #1 = int source=explicit
+  function-call at tests/general/300-defaulted-decltype-call-pack-sfinae.t:16:22
+    callee probe
+    selected instantiation
+    bind #1 = call<no_call> source=explicit
+    drop probe reason=substitution_failure
+  class-use at tests/general/300-defaulted-decltype-call-pack-sfinae.t:16:28
+    template call
+    selected primary
+    bind #1 = no_call source=explicit

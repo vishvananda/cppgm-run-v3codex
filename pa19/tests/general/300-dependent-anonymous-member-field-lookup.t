@@ -7,4 +7,6 @@ struct Box {
   void set(T x) { value = x; }
 };
 
+enum { box_size = sizeof(Box<int>) };
+
 int main() { return 0; }

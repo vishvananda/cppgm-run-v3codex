@@ -1,0 +1,27 @@
+translation-unit
+  class-use at tests/general/300-crtp-static-cast-reference-before-constructor-template.t:22:19
+    template iterator_base
+    selected primary
+    bind #1 = iterator source=explicit
+  function-call at tests/general/300-crtp-static-cast-reference-before-constructor-template.t:35:10
+    callee iterator::iterator
+    selected instantiation
+    bind #1 = init_seq source=deduced
+    drop iterator::iterator reason=worse_conversion
+  function-call at tests/general/300-crtp-static-cast-reference-before-constructor-template.t:51:10
+    callee operator*
+    selected instantiation
+    bind #1 = iterator source=deduced
+template-closure-events
+  function-instantiation
+    entity iterator::iterator
+  function-instantiation
+    entity iterator_base<iterator>::cast
+  function-instantiation
+    entity operator*
+  require-definition
+    entity iterator::iterator
+  require-definition
+    entity iterator_base<iterator>::cast
+  require-definition
+    entity operator*

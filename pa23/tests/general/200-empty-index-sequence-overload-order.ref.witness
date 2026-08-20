@@ -1,0 +1,18 @@
+translation-unit
+  alias-use at tests/general/200-empty-index-sequence-overload-order.t:12:13
+    template index_sequence
+    bind #1 = J... source=explicit
+  alias-use at tests/general/200-empty-index-sequence-overload-order.t:18:13
+    template index_sequence
+  function-call at tests/general/200-empty-index-sequence-overload-order.t:25:10
+    callee pick
+    selected instantiation
+    bind #1 = int source=deduced
+    drop pick reason=better_candidate_selected
+  alias-use at tests/general/200-empty-index-sequence-overload-order.t:25:18
+    template index_sequence
+template-closure-events
+  function-instantiation
+    entity pick
+  require-definition
+    entity pick

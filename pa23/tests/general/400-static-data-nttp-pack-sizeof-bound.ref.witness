@@ -1,0 +1,26 @@
+translation-unit
+  class-use at tests/general/400-static-data-nttp-pack-sizeof-bound.t:14:21
+    template literal
+    selected explicit
+    bind #1 = bytes<value-parameter-0-0...> source=explicit
+  class-use at tests/general/400-static-data-nttp-pack-sizeof-bound.t:14:21
+    template literal
+    selected partial
+    bind #1 = bytes<'\x04', '\a'> source=explicit
+    specialize #1 = <(unsigned char)'\x04', (unsigned char)'\a'> source=deduced
+  class-use at tests/general/400-static-data-nttp-pack-sizeof-bound.t:14:29
+    template bytes
+    selected primary
+    bind #1 = <(unsigned char)'\x04', (unsigned char)'\a'> source=explicit
+  class-use at tests/general/400-static-data-nttp-pack-sizeof-bound.t:20:10
+    template literal
+    selected partial
+    bind #1 = bytes<'\x04', '\a'> source=explicit
+    specialize #1 = <(unsigned char)'\x04', (unsigned char)'\a'> source=deduced
+  class-use at tests/general/400-static-data-nttp-pack-sizeof-bound.t:20:18
+    template bytes
+    selected primary
+    bind #1 = <(unsigned char)'\x04', (unsigned char)'\a'> source=explicit
+template-closure-events
+  variable-instantiation
+    entity literal<bytes<'\x04', '\a'>>::data

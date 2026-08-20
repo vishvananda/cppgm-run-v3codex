@@ -1,0 +1,144 @@
+translation-unit
+  class-use at tests/spec/300-dependent-validity-alias-category.t:17:18
+    template std::integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+  class-use at tests/spec/300-dependent-validity-alias-category.t:20:24
+    template std::integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = true source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:29:9
+    template boost::mp11::mp_bool
+    bind #1 = true source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:30:9
+    template boost::mp11::mp_bool
+    bind #1 = false source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:33:20
+    template boost::mp11::mp_bool
+    bind #1 = static_cast<bool>(T::value) source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:74:18
+    template boost::mp11::mp_if
+    bind #1 = mp_valid<F, T...> source=explicit
+    bind #2 = detail::mp_defer_impl<F, T...> source=explicit
+    bind #3 = detail::mp_no_type source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:74:24
+    template boost::mp11::mp_valid
+    bind #1 = F source=explicit
+    bind #2 = T... source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:85:47
+    template boost::mp11::mp_defer
+    bind #1 = F source=explicit
+    bind #2 = U... source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:102:22
+    template boost::mp11::mp_eval_if
+    bind #1 = C source=explicit
+    bind #2 = T source=explicit
+    bind #3 = mp_cond source=explicit
+    bind #4 = E... source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:105:23
+    template boost::mp11::mp_defer
+    bind #1 = mp_cond_next source=explicit
+    bind #2 = C source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:118:15
+    template boost::mp11::mp_to_bool
+    bind #1 = typename detail::mp_or_impl<T...>::type source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:123:11
+    template boost::mp11::mp_eval_if
+    bind #1 = T1 source=explicit
+    bind #2 = T1 source=explicit
+    bind #3 = mp_or source=explicit
+    bind #4 = T... source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:141:23
+    template lib::detail::supports_tag_invoke
+    bind #1 = tag source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:146:31
+    template boost::mp11::mp_if
+    bind #1 = std::is_same<Direction, direction> source=explicit
+    bind #2 = boost::mp11::mp_valid<has_user_from, T> source=explicit
+    bind #3 = boost::mp11::mp_false source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:148:18
+    template boost::mp11::mp_valid
+    bind #1 = has_user_from source=explicit
+    bind #2 = T source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:153:5
+    template lib::detail::supports_tag_invoke
+    bind #1 = tag source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:157:5
+    template lib::detail::supports_tag_invoke
+    bind #1 = to_tag<T> source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:161:5
+    template lib::detail::supports_tag_invoke
+    bind #1 = try_to_tag<T> source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:164:34
+    template boost::mp11::mp_if
+    bind #1 = std::is_same<Direction, direction> source=explicit
+    bind #2 = boost::mp11::mp_valid<has_context_from, Context, T> source=explicit
+    bind #3 = boost::mp11::mp_or<boost::mp11::mp_valid<has_context_to, Context, T>, boost::mp11::mp_valid<has_nonthrowing_context_to, Context, T>> source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:166:18
+    template boost::mp11::mp_valid
+    bind #1 = has_context_from source=explicit
+    bind #2 = Context source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:167:18
+    template boost::mp11::mp_or
+    bind #1 = boost::mp11::mp_valid<has_context_to, Context, T> source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:168:22
+    template boost::mp11::mp_valid
+    bind #1 = has_context_to source=explicit
+    bind #2 = Context source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:169:22
+    template boost::mp11::mp_valid
+    bind #1 = has_nonthrowing_context_to source=explicit
+    bind #2 = Context source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:173:5
+    template lib::detail::supports_tag_invoke
+    bind #1 = tag source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:176:39
+    template boost::mp11::mp_if
+    bind #1 = std::is_same<Direction, direction> source=explicit
+    bind #2 = boost::mp11::mp_valid<has_full_context_from, Context, T> source=explicit
+    bind #3 = boost::mp11::mp_false source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:178:18
+    template boost::mp11::mp_valid
+    bind #1 = has_full_context_from source=explicit
+    bind #2 = Context source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:186:31
+    template boost::mp11::mp_cond
+    bind #1 = has_full_context<Context, T, Direction> source=explicit
+    bind #2 = full_context_tag source=explicit
+    bind #3 = has_context<Context, T, Direction> source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:187:5
+    template lib::detail::has_full_context
+    bind #1 = Context source=explicit
+    bind #2 = T source=explicit
+    bind #3 = Direction source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:188:5
+    template lib::detail::has_context
+    bind #1 = Context source=explicit
+    bind #2 = T source=explicit
+    bind #3 = Direction source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:189:5
+    template lib::detail::has_user
+    bind #1 = T source=explicit
+    bind #2 = Direction source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:204:29
+    template boost::mp11::mp_valid
+    bind #1 = lib::detail::has_context_from source=explicit
+    bind #2 = lib::detail::context source=explicit
+  alias-use at tests/spec/300-dependent-validity-alias-category.t:207:31
+    template lib::detail::category
+    bind #1 = lib::detail::context source=explicit
+    bind #2 = const info & source=explicit
+    bind #3 = lib::detail::direction source=explicit
+  class-use at tests/spec/300-dependent-validity-alias-category.t:212:20
+    template std::is_same
+    selected partial
+    bind #1 = lib::detail::user_tag source=explicit
+    bind #2 = lib::detail::user_tag source=explicit
+    specialize #1 = lib::detail::user_tag source=deduced
+template-closure-events
+  variable-instantiation
+    entity std::integral_constant<bool, false>::value
+  variable-instantiation
+    entity std::integral_constant<bool, true>::value

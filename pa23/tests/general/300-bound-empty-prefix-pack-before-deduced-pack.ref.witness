@@ -1,0 +1,31 @@
+translation-unit
+  class-use at tests/general/300-bound-empty-prefix-pack-before-deduced-pack.t:11:15
+    template starts
+    selected partial
+    bind #1 = list<int> source=explicit
+    bind #2 = list<> source=explicit
+    specialize #1 = <int> source=deduced
+    specialize #2 = <> source=deduced
+  class-use at tests/general/300-bound-empty-prefix-pack-before-deduced-pack.t:11:22
+    template list
+    selected primary
+    bind #1 = <int> source=explicit
+  class-use at tests/general/300-bound-empty-prefix-pack-before-deduced-pack.t:11:33
+    template list
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/general/300-bound-empty-prefix-pack-before-deduced-pack.t:12:15
+    template starts
+    selected partial
+    bind #1 = list<int, void> source=explicit
+    bind #2 = list<int, void> source=explicit
+    specialize #1 = <int, void> source=deduced
+    specialize #2 = <int, void> source=deduced
+  class-use at tests/general/300-bound-empty-prefix-pack-before-deduced-pack.t:12:22
+    template list
+    selected primary
+    bind #1 = <int, void> source=explicit
+  class-use at tests/general/300-bound-empty-prefix-pack-before-deduced-pack.t:12:39
+    template list
+    selected primary
+    bind #1 = <int, void> source=explicit

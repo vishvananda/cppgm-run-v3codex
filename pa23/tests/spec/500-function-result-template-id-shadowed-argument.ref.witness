@@ -1,0 +1,84 @@
+translation-unit
+  class-use at tests/spec/500-function-result-template-id-shadowed-argument.t:41:9
+    template graph
+    selected explicit
+    bind #1 = directedS source=explicit
+    bind #2 = type-parameter-0-0 source=explicit
+    bind #3 = type-parameter-0-1 source=explicit
+    bind #4 = type-parameter-0-2 source=explicit
+    bind #5 = type-parameter-0-3 source=explicit
+    bind #6 = type-parameter-0-4 source=defaulted
+  class-use at tests/spec/500-function-result-template-id-shadowed-argument.t:45:7
+    template graph
+    selected explicit
+    bind #1 = directedS source=explicit
+    bind #2 = type-parameter-0-0 source=explicit
+    bind #3 = type-parameter-0-1 source=explicit
+    bind #4 = type-parameter-0-2 source=explicit
+    bind #5 = type-parameter-0-3 source=explicit
+    bind #6 = type-parameter-0-4 source=defaulted
+  class-use at tests/spec/500-function-result-template-id-shadowed-argument.t:92:11
+    template graph
+    selected partial
+    bind #1 = directedS source=explicit
+    bind #2 = Vertex source=explicit
+    bind #3 = Edge source=explicit
+    bind #4 = no_property source=explicit
+    bind #5 = unsigned long source=defaulted
+    bind #6 = unsigned long source=defaulted
+    specialize #1 = Vertex source=deduced
+    specialize #2 = Edge source=deduced
+    specialize #3 = no_property source=deduced
+    specialize #4 = unsigned long source=deduced
+    specialize #5 = unsigned long source=deduced
+  class-use at tests/spec/500-function-result-template-id-shadowed-argument.t:94:11
+    template iterator_property_map
+    selected primary
+    bind #1 = Vertex * source=explicit
+    bind #2 = identity_map<unsigned long> source=explicit
+    bind #3 = Vertex source=explicit
+    bind #4 = Vertex & source=explicit
+  class-use at tests/spec/500-function-result-template-id-shadowed-argument.t:94:43
+    template identity_map
+    selected primary
+    bind #1 = unsigned long source=explicit
+  class-use at tests/spec/500-function-result-template-id-shadowed-argument.t:96:3
+    template graph
+    selected partial
+    bind #1 = directedS source=deduced
+    bind #2 = Vertex source=deduced
+    bind #3 = Edge source=deduced
+    bind #4 = no_property source=deduced
+    bind #5 = unsigned long source=defaulted
+    bind #6 = unsigned long source=defaulted
+    specialize #1 = Vertex source=deduced
+    specialize #2 = Edge source=deduced
+    specialize #3 = no_property source=deduced
+    specialize #4 = unsigned long source=deduced
+    specialize #5 = unsigned long source=deduced
+  class-use at tests/spec/500-function-result-template-id-shadowed-argument.t:97:3
+    template iterator_property_map
+    selected primary
+    bind #1 = Vertex * source=deduced
+    bind #2 = identity_map<unsigned long> source=deduced
+    bind #3 = Vertex source=deduced
+    bind #4 = Vertex & source=deduced
+  function-call at tests/spec/500-function-result-template-id-shadowed-argument.t:97:20
+    callee get
+    selected instantiation
+    bind #1 = directedS source=deduced
+    bind #2 = Vertex source=deduced
+    bind #3 = Edge source=deduced
+    bind #4 = no_property source=deduced
+    bind #5 = unsigned long source=deduced
+    bind #6 = unsigned long source=deduced
+    drop get reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity get
+  function-instantiation
+    entity indexed_vertex_properties<graph<directedS, Vertex, Edge, no_property>, Vertex, unsigned long, identity_map<unsigned long>>::get_vertex_bundle
+  require-definition
+    entity get
+  require-definition
+    entity indexed_vertex_properties<graph<directedS, Vertex, Edge, no_property>, Vertex, unsigned long, identity_map<unsigned long>>::get_vertex_bundle

@@ -6,8 +6,6 @@ translation-unit
     bind #2 = std::identity source=deduced
     bind #3 = 0 source=defaulted
 template-closure-events
-  ensure-definition
-    entity std::__find
   function-instantiation
     entity std::__find
   require-definition

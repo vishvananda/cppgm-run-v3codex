@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = view_like source=deduced
 template-closure-events
-  ensure-definition
-    entity string_like<char>::insert
   function-instantiation
     entity string_like<char>::insert
   require-definition

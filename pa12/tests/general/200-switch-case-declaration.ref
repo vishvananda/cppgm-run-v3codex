@@ -10,11 +10,12 @@ translation-unit
         compound-statement
           case-statement
             literal prvalue int 0
-            simple-declaration
-              variable y int
-                literal prvalue int 1
-          return-statement
-            id-expression lvalue int y
+            compound-statement
+              simple-declaration
+                variable y int
+                  literal prvalue int 1
+              return-statement
+                id-expression lvalue int y
           default-statement
             return-statement
               literal prvalue int 0

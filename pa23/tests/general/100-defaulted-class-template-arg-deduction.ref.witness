@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = Info * source=deduced
 template-closure-events
-  ensure-definition
-    entity walk
   function-instantiation
     entity push
   function-instantiation

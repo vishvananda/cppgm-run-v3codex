@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = const int source=explicit
 template-closure-events
-  ensure-definition
-    entity caller<const int>::call
   function-instantiation
     entity caller<const int>::call
   function-instantiation
@@ -15,4 +13,4 @@ template-closure-events
   require-definition
     entity pick
   variable-instantiation
-    entity constis_<const int>::value
+    entity is_const<const int>::value

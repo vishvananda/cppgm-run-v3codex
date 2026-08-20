@@ -9,8 +9,6 @@ translation-unit
     bind #1 = int source=deduced
     bind #2 = void source=defaulted
 template-closure-events
-  ensure-definition
-    entity fn<int>::f
   function-instantiation
     entity fn<int>::f
   require-definition

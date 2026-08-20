@@ -1,0 +1,20 @@
+translation-unit
+  class-use at tests/spec/300-explicit-instantiation-out-of-class-nested-member.t:60:3
+    template adaptor
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  class-finalization
+    entity adaptor
+  class-instantiation
+    entity adaptor<int>::range<false>::iterator
+  function-instantiation
+    entity adaptor<int>::data
+  function-instantiation
+    entity adaptor<int>::range<false>::begin
+  function-instantiation
+    entity adaptor<int>::range<false>::iterator::iterator
+  require-definition
+    entity adaptor<int>::range<false>::begin
+  require-definition
+    entity adaptor<int>::range<false>::iterator::iterator

@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = const object source=deduced
 template-closure-events
-  ensure-definition
-    entity service::make
   function-instantiation
     entity service::make
   function-instantiation

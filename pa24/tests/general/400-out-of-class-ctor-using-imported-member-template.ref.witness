@@ -9,8 +9,6 @@ translation-unit
     bind #1 = int * source=deduced
     drop Table<int>::Table reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity Table<int>::Table
   function-instantiation
     entity InsertBase<int>::insert
   function-instantiation

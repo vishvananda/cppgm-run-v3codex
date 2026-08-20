@@ -12,8 +12,6 @@ translation-unit
     selected instantiation
     bind #1 = add_one source=deduced
 template-closure-events
-  ensure-definition
-    entity box<int>::apply
   function-instantiation
     entity box<int>::apply
   require-definition

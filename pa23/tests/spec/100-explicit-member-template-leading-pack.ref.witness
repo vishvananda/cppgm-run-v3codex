@@ -1,0 +1,28 @@
+translation-unit
+  class-use at tests/spec/100-explicit-member-template-leading-pack.t:3:32
+    template list
+    selected primary
+    bind #1 = <int, float> source=explicit
+  alias-use at tests/spec/100-explicit-member-template-leading-pack.t:10:20
+    template if_
+    bind #1 = both<check<list<T...>, U>...> source=explicit
+  class-use at tests/spec/100-explicit-member-template-leading-pack.t:13:14
+    template box
+    selected primary
+    bind #1 = <int, float> source=explicit
+  function-call at tests/spec/100-explicit-member-template-leading-pack.t:13:32
+    callee box<int, float>::subset
+    selected instantiation
+    bind #1 = <float, int> source=explicit
+    bind #2 = void source=defaulted
+template-closure-events
+  function-instantiation
+    entity box<int, float>::subset
+  require-definition
+    entity box<int, float>::subset
+  variable-instantiation
+    entity both<check<list<int, float>, float>, check<list<int, float>, int>>::value
+  variable-instantiation
+    entity check<list<int, float>, float>::value
+  variable-instantiation
+    entity check<list<int, float>, int>::value

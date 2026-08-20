@@ -13,8 +13,6 @@ translation-unit
     bind #1 = reverse_iterator<int *> source=deduced
     bind #2 = reverse_iterator<int *> source=deduced
 template-closure-events
-  ensure-definition
-    entity dispatch
   function-instantiation
     entity dispatch
   function-instantiation

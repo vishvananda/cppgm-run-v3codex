@@ -1,10 +1,10 @@
 translation-unit
   class-use at tests/general/300-namespace-function-template-hides-outer-callable-object.t:26:9
-    template constouter::static_
+    template outer::static_const
     selected primary
     bind #1 = outer::impl::printer source=explicit
   class-use at tests/general/300-namespace-function-template-hides-outer-callable-object.t:29:40
-    template constouter::static_
+    template outer::static_const
     selected primary
     bind #1 = outer::impl::printer source=explicit
   function-call at tests/general/300-namespace-function-template-hides-outer-callable-object.t:45:10
@@ -12,8 +12,6 @@ translation-unit
     selected instantiation
     bind #1 = token source=deduced
 template-closure-events
-  ensure-definition
-    entity outer::log
   function-instantiation
     entity outer::impl::print
   function-instantiation
@@ -27,4 +25,4 @@ template-closure-events
   require-definition
     entity outer::log
   variable-instantiation
-    entity constouter::static_<outer::impl::printer>::value
+    entity outer::static_const<outer::impl::printer>::value

@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = local source=deduced
 template-closure-events
-  ensure-definition
-    entity call_erase
   function-instantiation
     entity call_erase
   function-instantiation

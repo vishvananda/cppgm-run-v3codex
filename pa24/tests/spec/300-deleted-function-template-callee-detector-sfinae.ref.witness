@@ -15,8 +15,6 @@ translation-unit
     bind #2 = property source=deduced
     drop call_deleted_query reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity call_deleted_query
   function-instantiation
     entity call_deleted_query
   require-definition

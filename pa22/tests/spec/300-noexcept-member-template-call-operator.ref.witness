@@ -1,0 +1,13 @@
+translation-unit
+  function-call at tests/spec/300-noexcept-member-template-call-operator.t:14:24
+    callee identity::operator()
+    selected instantiation
+    bind #1 = int source=deduced
+  function-call at tests/spec/300-noexcept-member-template-call-operator.t:14:24
+    callee as_lvalue
+    selected instantiation
+    bind #1 = const identity source=explicit
+  function-call at tests/spec/300-noexcept-member-template-call-operator.t:14:52
+    callee as_lvalue
+    selected instantiation
+    bind #1 = int source=explicit

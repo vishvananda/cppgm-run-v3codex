@@ -1748,11 +1748,10 @@ private:
 		std::uint32_t source_line, std::uint32_t source_column,
 		std::uint32_t source_token_first, std::uint32_t source_token_last,
 		bool constant_initialized);
-	void RegisterVariableLifetimeAndStorage(ScopeId scope, bool local,
-		bool declaration_only, std::uint32_t variable, BindingId object,
-		TypeId type, NameId source_file, std::uint32_t source_line,
+	void RegisterVariableLifetimeAndStorage(ScopeId scope, bool local, bool declaration_only,
+		std::uint32_t variable, BindingId object, TypeId type, NameId source_file, std::uint32_t source_line,
 		std::uint32_t source_column, std::uint32_t source_token_first,
-		std::uint32_t source_token_last, bool constant_initialized);
+		std::uint32_t source_token_last, bool has_initializer, bool constant_initialized);
 	bool DemandRuntimeInitializerFunctions(std::uint32_t initializer,
 		bool function_addresses_only = false);
 	void AppendScopeDestructionActions(ScopeId scope,
@@ -2149,6 +2148,7 @@ private:
 	// Children copy the active automatic-object count on scope entry; local
 	// declarations increment only their scope's compact prefix entry.
 	std::vector<std::uint32_t> scope_nontrivial_object_lifetime_prefixes_;
+	std::vector<std::uint32_t> scope_switch_entry_barriers_;
 	// Lexically nested callables retain lookup parents but own independent
 	// automatic-object cleanup domains.
 	std::vector<ScopeId> scope_lifetime_domains_;
@@ -2160,6 +2160,7 @@ private:
 	std::vector<std::uint32_t> widest_aggregate_helper_by_entity_;
 	std::vector<ScopeId> break_cleanup_stops_;
 	std::vector<ScopeId> continue_cleanup_stops_;
+	std::vector<ScopeId> switch_label_entry_scopes_;
 	std::vector<EntityId> demanded_default_constructor_entities_;
 	std::vector<std::uint8_t> default_constructor_demand_states_;
 	std::vector<BindingId> demanded_functions_;
@@ -2392,6 +2393,5 @@ private:
 	std::vector<std::int8_t> branch_cleanup_literal_truth_;
 	std::uint32_t branch_cleanup_scan_epoch_;
 };
-
 }
 }

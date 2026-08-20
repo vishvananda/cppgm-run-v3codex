@@ -1,0 +1,23 @@
+translation-unit
+  class-use at tests/spec/300-nested-member-class-template-converting-constructor.t:7:11
+    template c
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nested-member-class-template-converting-constructor.t:8:4
+    template c<int>::i
+    selected primary
+    bind #1 = long source=explicit
+  class-use at tests/spec/300-nested-member-class-template-converting-constructor.t:8:17
+    template c<int>::i
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/300-nested-member-class-template-converting-constructor.t:8:40
+    callee c<int>::i<long>::i
+    selected instantiation
+    bind #1 = int source=deduced
+    drop c<int>::i<long>::i reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity c<int>::i<long>::i
+  require-definition
+    entity c<int>::i<long>::i

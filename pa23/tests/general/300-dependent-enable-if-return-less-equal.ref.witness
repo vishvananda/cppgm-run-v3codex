@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = iter source=deduced
 template-closure-events
-  ensure-definition
-    entity hash_range
   function-instantiation
     entity hash_range
   require-definition

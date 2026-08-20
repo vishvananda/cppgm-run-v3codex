@@ -6,8 +6,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity O<long>::I
-  ensure-definition
-    entity O<long>::I::f
   function-instantiation
     entity O<long>::I::f
   require-definition

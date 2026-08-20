@@ -1,0 +1,97 @@
+translation-unit
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:62:10
+    template override_const_property_t
+    selected primary
+    bind #1 = Map source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:66:10
+    template override_const_property_t
+    selected primary
+    bind #1 = Map source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:67:13
+    template default_
+    selected primary
+    bind #1 = IndexTag source=explicit
+    bind #2 = int source=explicit
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:75:11
+    template tagged_argument
+    selected primary
+    bind #1 = IndexTag source=explicit
+    bind #2 = Map source=explicit
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:76:11
+    template tagged_argument
+    selected primary
+    bind #1 = VisitorTag source=explicit
+    bind #2 = Visitor source=explicit
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:77:11
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<IndexTag, Map> source=explicit
+    bind #2 = empty_arg_list source=defaulted
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:78:11
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<VisitorTag, Visitor> source=explicit
+    bind #2 = arg_list<tagged_argument<IndexTag, Map>> source=explicit
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:80:3
+    template tagged_argument
+    selected primary
+    bind #1 = IndexTag source=deduced
+    bind #2 = Map source=deduced
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:81:3
+    template tagged_argument
+    selected primary
+    bind #1 = VisitorTag source=deduced
+    bind #2 = Visitor source=deduced
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:82:3
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<IndexTag, Map> source=deduced
+    bind #2 = empty_arg_list source=defaulted
+  class-use at tests/spec/300-using-imported-member-template-active-owner.t:83:3
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<VisitorTag, Visitor> source=deduced
+    bind #2 = arg_list<tagged_argument<IndexTag, Map>> source=deduced
+  function-call at tests/spec/300-using-imported-member-template-active-owner.t:84:3
+    callee override_const_property
+    selected instantiation
+    bind #1 = arg_list<tagged_argument<VisitorTag, Visitor>, arg_list<tagged_argument<IndexTag, Map>>> source=deduced
+template-closure-events
+  function-instantiation
+    entity arg_list<tagged_argument<IndexTag, Map>>::arg_list
+  function-instantiation
+    entity arg_list<tagged_argument<IndexTag, Map>>::operator[]
+  function-instantiation
+    entity arg_list<tagged_argument<VisitorTag, Visitor>, arg_list<tagged_argument<IndexTag, Map>>>::arg_list
+  function-instantiation
+    entity default_<IndexTag, int>::default_
+  function-instantiation
+    entity override_const_property
+  function-instantiation
+    entity override_const_property_t<Map, true>::operator()
+  function-instantiation
+    entity tagged_argument<IndexTag, Map>::get_value
+  function-instantiation
+    entity tagged_argument<IndexTag, Map>::tagged_argument
+  function-instantiation
+    entity tagged_argument<VisitorTag, Visitor>::tagged_argument
+  require-definition
+    entity arg_list<tagged_argument<IndexTag, Map>>::arg_list
+  require-definition
+    entity arg_list<tagged_argument<IndexTag, Map>>::operator[]
+  require-definition
+    entity arg_list<tagged_argument<VisitorTag, Visitor>, arg_list<tagged_argument<IndexTag, Map>>>::arg_list
+  require-definition
+    entity default_<IndexTag, int>::default_
+  require-definition
+    entity override_const_property
+  require-definition
+    entity override_const_property_t<Map, true>::operator()
+  require-definition
+    entity tagged_argument<IndexTag, Map>::get_value
+  require-definition
+    entity tagged_argument<IndexTag, Map>::tagged_argument
+  require-definition
+    entity tagged_argument<VisitorTag, Visitor>::tagged_argument

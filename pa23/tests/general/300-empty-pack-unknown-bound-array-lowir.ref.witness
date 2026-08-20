@@ -1,0 +1,15 @@
+translation-unit
+  alias-use at tests/general/300-empty-pack-unknown-bound-array-lowir.t:14:20
+    template index_sequence
+    bind #1 = J... source=explicit
+  function-call at tests/general/300-empty-pack-unknown-bound-array-lowir.t:23:3
+    callee walker::walk
+    selected instantiation
+    bind #1 = <> source=deduced
+  alias-use at tests/general/300-empty-pack-unknown-bound-array-lowir.t:23:16
+    template index_sequence
+template-closure-events
+  function-instantiation
+    entity walker::walk
+  require-definition
+    entity walker::walk

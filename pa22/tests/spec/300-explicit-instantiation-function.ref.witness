@@ -4,7 +4,7 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity plus_one
   function-instantiation
+    entity plus_one
+  require-definition
     entity plus_one

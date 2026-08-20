@@ -174,6 +174,8 @@ ScopeId SemanticAnalyzer::NewScope(ScopeId parent, ScopeKind kind,
 			static_cast<std::size_t>(scope) + 1, kNoScope);
 		scope_nontrivial_object_lifetime_prefixes_.resize(
 			static_cast<std::size_t>(scope) + 1, 0);
+		scope_switch_entry_barriers_.resize(
+			static_cast<std::size_t>(scope) + 1, 0);
 		scope_lifetime_domains_.resize(
 			static_cast<std::size_t>(scope) + 1, kNoScope);
 	}

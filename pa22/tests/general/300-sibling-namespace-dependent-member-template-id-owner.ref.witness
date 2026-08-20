@@ -1,0 +1,5 @@
+translation-unit
+  class-use at tests/general/300-sibling-namespace-dependent-member-template-id-owner.t:29:21
+    template root::lib::outer::result
+    selected primary
+    bind #1 = root::lib::outer (C &, const int &) source=explicit

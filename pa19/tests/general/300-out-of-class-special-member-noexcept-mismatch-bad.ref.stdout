@@ -1,0 +1,15 @@
+ERROR: mismatched function exception specification [tdc-a] at tests/general/300-out-of-class-special-member-noexcept-mismatch-bad.t:1:1 [previous declaration at tests/general/300-out-of-class-special-member-noexcept-mismatch-bad.t:3:3] [top-level declaration 1 kind=template-declaration ast={template-declaration
+  template-parameter-clause
+    template-parameter-list
+      type-parameter
+        parameter-key KW_CLASS:class
+        identifier T
+  special-member-definition S<T>::S
+    declarator
+      identifier S<T>::S
+      parameter-clause
+      function-qualifier noexcept
+    compound-statement
+}]
+Diagnostic context:
+collect_template_declaration [template<class T>S<T>::S()noexcept{}] at tests/general/300-out-of-class-special-member-noexcept-mismatch-bad.t:6:1

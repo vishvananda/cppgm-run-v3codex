@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = 4 source=explicit
 template-closure-events
-  ensure-definition
-    entity box<4>::get
   function-instantiation
     entity box<4>::get
   require-definition

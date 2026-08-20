@@ -1,0 +1,24 @@
+translation-unit
+  class-use at tests/spec/300-current-specialization-constructor-template-canonical-owner.t:30:1
+    template duration_like
+    selected primary
+    bind #1 = long long source=explicit
+  class-use at tests/spec/300-current-specialization-constructor-template-canonical-owner.t:33:10
+    template duration_like
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/300-current-specialization-constructor-template-canonical-owner.t:33:10
+    callee duration_like<int>::cast
+    selected instantiation
+    bind #1 = long long source=deduced
+template-closure-events
+  function-instantiation
+    entity duration_like<int>::cast
+  function-instantiation
+    entity duration_like<int>::duration_like
+  require-definition
+    entity duration_like<int>::cast
+  require-definition
+    entity duration_like<int>::duration_like
+  variable-instantiation
+    entity is_same<int, long long>::value

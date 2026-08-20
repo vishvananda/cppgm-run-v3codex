@@ -14,8 +14,6 @@ translation-unit
     selected explicit
     bind #1 = char16_t source=explicit
 template-closure-events
-  ensure-definition
-    entity lib::traits_base<char16_t, unsigned short, 65535>::lt
   function-instantiation
     entity lib::traits_base<char16_t, unsigned short, 65535>::lt
   require-definition

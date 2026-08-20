@@ -14,10 +14,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop Box<int>::Box reason=too_few_arguments
 template-closure-events
-  ensure-definition
-    entity Box<int>::Box
-  ensure-definition
-    entity check<int>::ok
   function-instantiation
     entity Box<int>::Box
   function-instantiation

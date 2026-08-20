@@ -13,10 +13,6 @@ translation-unit
     bind #1 = 0 source=explicit
     bind #2 = <const V &> source=deduced
 template-closure-events
-  ensure-definition
-    entity forward
-  ensure-definition
-    entity get
   function-instantiation
     entity forward
   function-instantiation

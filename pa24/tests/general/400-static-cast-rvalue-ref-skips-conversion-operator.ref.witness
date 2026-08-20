@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = Holder source=explicit
 template-closure-events
-  ensure-definition
-    entity forward_like
   function-instantiation
     entity forward_like
   require-definition

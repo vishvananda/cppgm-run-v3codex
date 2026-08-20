@@ -1,0 +1,12 @@
+translation-unit
+  function-call at tests/spec/300-explicit-return-sfinae-deleted-overload.t:17:10
+    callee make
+    selected instantiation
+    bind #1 = int source=explicit
+    bind #2 = <int> source=deduced
+    drop make reason=substitution_failure
+template-closure-events
+  function-instantiation
+    entity make
+  require-definition
+    entity make

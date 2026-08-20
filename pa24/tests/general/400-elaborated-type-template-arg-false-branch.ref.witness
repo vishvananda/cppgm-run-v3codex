@@ -13,8 +13,6 @@ translation-unit
     selected primary
     bind #1 = false source=explicit
 template-closure-events
-  ensure-definition
-    entity Iter<false>::operator=
   function-instantiation
     entity Iter<false>::operator=
   require-definition

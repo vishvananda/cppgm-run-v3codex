@@ -1,0 +1,4 @@
+ERROR: no viable constructor [class S] [arg_count 1] [ctor-set S::S:function of (pointer to struct S, int) returning void; S::S:function of (pointer to struct S, lvalue-reference to const struct S) returning void; S::S:function of (pointer to struct S, rvalue-reference to struct S) returning void] [rejections S::S: explicit constructor not allowed; S::S: arg 0 conversion failed param=lvalue-reference to const struct S arg=int category=1; S::S: arg 0 conversion failed param=rvalue-reference to struct S arg=int category=1] [context copy-initialization] [function test] [is_method no] [body_parent_scope <here>] [body_parent_bindings ] [body_function_scope <here>] [body_function_bindings {values:s=struct S}]
+Diagnostic context:
+analyze_function_binding_output [test]
+  analyze_statement [simple-declaration] at tests/general/200-copy-init-explicit-ctor-bad.t:8:3

@@ -45,8 +45,6 @@ translation-unit
     bind #1 = any source=explicit
     bind #2 = false_type source=explicit
 template-closure-events
-  ensure-definition
-    entity count_true
   function-instantiation
     entity count_true
   require-definition

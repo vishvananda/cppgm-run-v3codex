@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = <> source=deduced
 template-closure-events
-  ensure-definition
-    entity N::make
   function-instantiation
     entity N::make
   require-definition

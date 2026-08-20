@@ -1,0 +1,43 @@
+translation-unit
+  alias-use at tests/general/300-constexpr-forwarded-function-designator-pack-call.t:20:24
+    template remove_reference_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/300-constexpr-forwarded-function-designator-pack-call.t:26:24
+    template remove_reference_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/300-constexpr-forwarded-function-designator-pack-call.t:59:21
+    template void_t
+    bind #1 = invoke_result_t<F, A...> source=explicit
+  alias-use at tests/general/300-constexpr-forwarded-function-designator-pack-call.t:59:28
+    template invoke_result_t
+    bind #1 = F source=explicit
+    bind #2 = A... source=explicit
+  class-use at tests/general/300-constexpr-forwarded-function-designator-pack-call.t:74:15
+    template is_invocable
+    selected partial
+    bind #1 = void source=explicit
+    bind #2 = int (&)(int) source=explicit
+    bind #3 = <int> source=explicit
+    specialize #1 = int (&)(int) source=deduced
+    specialize #2 = <int> source=deduced
+  function-call at tests/general/300-constexpr-forwarded-function-designator-pack-call.t:76:15
+    callee invoke
+    selected instantiation
+    bind #1 = int (&)() source=deduced
+    bind #2 = <> source=deduced
+  function-call at tests/general/300-constexpr-forwarded-function-designator-pack-call.t:78:15
+    callee invoke
+    selected instantiation
+    bind #1 = int (&)(int) source=deduced
+    bind #2 = <int> source=deduced
+template-closure-events
+  function-instantiation
+    entity forward
+  function-instantiation
+    entity invoke
+  require-definition
+    entity forward
+  require-definition
+    entity invoke
+  variable-instantiation
+    entity is_invocable<void, int (&)(int), int>::value

@@ -4,10 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity P<int>::get
-  ensure-definition
-    entity make
   function-instantiation
     entity P<int>::get
   function-instantiation

@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = V source=explicit
 template-closure-events
-  ensure-definition
-    entity Ref<V>::Ref
   function-instantiation
     entity Ref<V>::Ref
   require-definition

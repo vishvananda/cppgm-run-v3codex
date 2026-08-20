@@ -1,0 +1,26 @@
+translation-unit
+  class-use at tests/general/400-object-pointer-nttp-address.t:12:1
+    template boost_like::marker
+    selected primary
+    bind #1 = &boost_like::mark source=explicit
+  class-use at tests/general/400-object-pointer-nttp-address.t:34:3
+    template writer
+    selected primary
+    bind #1 = &boost_like::mark source=explicit
+  class-use at tests/general/400-object-pointer-nttp-address.t:35:10
+    template reader
+    selected primary
+    bind #1 = &boost_like::mark source=explicit
+template-closure-events
+  function-instantiation
+    entity boost_like::marker<&boost_like::mark>::marker
+  function-instantiation
+    entity reader<&boost_like::mark>::get
+  function-instantiation
+    entity writer<&boost_like::mark>::set
+  require-definition
+    entity boost_like::marker<&boost_like::mark>::marker
+  require-definition
+    entity reader<&boost_like::mark>::get
+  require-definition
+    entity writer<&boost_like::mark>::set

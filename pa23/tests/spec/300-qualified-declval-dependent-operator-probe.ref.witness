@@ -1,0 +1,34 @@
+translation-unit
+  function-call at tests/spec/300-qualified-declval-dependent-operator-probe.t:40:19
+    callee local::declval
+    selected instantiation
+    bind #1 = stream<char> & source=explicit
+  class-use at tests/spec/300-qualified-declval-dependent-operator-probe.t:40:34
+    template stream
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-qualified-declval-dependent-operator-probe.t:49:15
+    template is_same
+    selected partial
+    bind #1 = char source=explicit
+    bind #2 = char source=explicit
+    specialize #1 = char source=deduced
+  class-use at tests/spec/300-qualified-declval-dependent-operator-probe.t:49:23
+    template stream_probe
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-qualified-declval-dependent-operator-probe.t:51:15
+    template is_same
+    selected partial
+    bind #1 = void source=explicit
+    bind #2 = void source=explicit
+    specialize #1 = void source=deduced
+  class-use at tests/spec/300-qualified-declval-dependent-operator-probe.t:51:23
+    template stream_probe
+    selected primary
+    bind #1 = token source=explicit
+template-closure-events
+  variable-instantiation
+    entity is_same<char, char>::value
+  variable-instantiation
+    entity is_same<void, void>::value

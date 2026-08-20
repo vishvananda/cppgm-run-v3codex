@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = unsigned long source=explicit
 template-closure-events
-  ensure-definition
-    entity X<int>::f
   function-instantiation
     entity X<int>::f
   function-instantiation

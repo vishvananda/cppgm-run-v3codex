@@ -1,0 +1,52 @@
+translation-unit
+  alias-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:37:31
+    template decay_t
+    bind #1 = Args source=explicit
+  alias-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:39:42
+    template decay_t
+    bind #1 = Args source=explicit
+  alias-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:41:33
+    template decay_t
+    bind #1 = Args source=explicit
+  class-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:50:11
+    template async_result
+    selected partial
+    bind #1 = use_future_t<allocator> source=explicit
+    bind #2 = void (tuple<error_code>) source=explicit
+    specialize #1 = allocator source=deduced
+    specialize #2 = void source=deduced
+    specialize #3 = <tuple<error_code>> source=deduced
+  class-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:50:24
+    template use_future_t
+    selected primary
+    bind #1 = allocator source=explicit
+  class-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:50:54
+    template tuple
+    selected primary
+    bind #1 = <error_code> source=explicit
+  class-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:51:3
+    template promise_handler
+    selected primary
+    bind #1 = void (tuple<error_code>) source=explicit
+    bind #2 = allocator source=explicit
+  class-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:51:24
+    template tuple
+    selected primary
+    bind #1 = <error_code> source=explicit
+  class-use at tests/general/500-dependent-function-type-pack-expansion-ctor-init.t:52:3
+    template async_result
+    selected partial
+    bind #1 = use_future_t<allocator> source=deduced
+    bind #2 = void (tuple<error_code>) source=deduced
+    specialize #1 = allocator source=deduced
+    specialize #2 = void source=deduced
+    specialize #3 = <tuple<error_code>> source=deduced
+template-closure-events
+  function-instantiation
+    entity async_result<use_future_t<allocator>, void (tuple<error_code>)>::async_result
+  function-instantiation
+    entity promise_async_result<void (tuple<error_code>), allocator>::promise_async_result
+  require-definition
+    entity async_result<use_future_t<allocator>, void (tuple<error_code>)>::async_result
+  require-definition
+    entity promise_async_result<void (tuple<error_code>), allocator>::promise_async_result

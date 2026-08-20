@@ -16,8 +16,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = const int source=explicit
 template-closure-events
-  ensure-definition
-    entity accept
   function-instantiation
     entity accept
   require-definition

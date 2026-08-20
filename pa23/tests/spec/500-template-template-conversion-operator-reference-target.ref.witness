@@ -1,0 +1,77 @@
+translation-unit
+  class-use at tests/spec/500-template-template-conversion-operator-reference-target.t:76:3
+    template string_like
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = traits source=explicit
+  class-use at tests/spec/500-template-template-conversion-operator-reference-target.t:77:3
+    template view
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = traits source=explicit
+  function-call at tests/spec/500-template-template-conversion-operator-reference-target.t:77:24
+    callee string_like<char, traits>::operator view
+    selected instantiation
+    bind #1 = view source=deduced
+    drop view<char, traits>::view reason=bad_conversion
+  class-use at tests/spec/500-template-template-conversion-operator-reference-target.t:78:3
+    template view
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = traits source=explicit
+  function-call at tests/spec/500-template-template-conversion-operator-reference-target.t:79:8
+    callee string_like<char, traits>::operator view
+    selected instantiation
+    bind #1 = view source=deduced
+    drop view<char, traits>::view reason=bad_conversion
+  class-use at tests/spec/500-template-template-conversion-operator-reference-target.t:81:3
+    template view
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = traits source=explicit
+  class-use at tests/spec/500-template-template-conversion-operator-reference-target.t:82:3
+    template string_like
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = traits source=explicit
+  function-call at tests/spec/500-template-template-conversion-operator-reference-target.t:82:29
+    callee string_like<char, traits>::string_like
+    selected instantiation
+    bind #1 = view source=deduced
+    drop string_like<char, traits>::string_like reason=too_many_arguments
+    drop string_like<char, traits>::string_like reason=bad_conversion
+  class-use at tests/spec/500-template-template-conversion-operator-reference-target.t:83:3
+    template string_like
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = traits source=explicit
+  function-call at tests/spec/500-template-template-conversion-operator-reference-target.t:84:6
+    callee string_like<char, traits>::operator=
+    selected instantiation
+    bind #1 = view source=deduced
+    drop string_like<char, traits>::operator= reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity string_like<char, traits>::data
+  function-instantiation
+    entity string_like<char, traits>::operator view
+  function-instantiation
+    entity string_like<char, traits>::operator=
+  function-instantiation
+    entity string_like<char, traits>::size
+  function-instantiation
+    entity string_like<char, traits>::string_like
+  function-instantiation
+    entity view<char, traits>::view
+  require-definition
+    entity string_like<char, traits>::data
+  require-definition
+    entity string_like<char, traits>::operator view
+  require-definition
+    entity string_like<char, traits>::operator=
+  require-definition
+    entity string_like<char, traits>::size
+  require-definition
+    entity string_like<char, traits>::string_like
+  require-definition
+    entity view<char, traits>::view

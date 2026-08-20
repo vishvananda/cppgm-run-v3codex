@@ -1,0 +1,22 @@
+translation-unit
+  alias-use at tests/general/400-alias-nontype-pack-partial-base.t:7:13
+    template indices
+    bind #1 = I... source=explicit
+  class-use at tests/general/400-alias-nontype-pack-partial-base.t:9:1
+    template impl
+    selected partial
+    bind #1 = sequence<unsigned long, 0, 1> source=explicit
+    bind #2 = <int, char> source=explicit
+    specialize #1 = <0, 1> source=deduced
+    specialize #2 = <int, char> source=deduced
+  alias-use at tests/general/400-alias-nontype-pack-partial-base.t:9:6
+    template indices
+    bind #1 = 0 source=explicit
+  class-use at tests/general/400-alias-nontype-pack-partial-base.t:10:1
+    template leaf
+    selected primary
+    bind #1 = 0 source=explicit
+  class-use at tests/general/400-alias-nontype-pack-partial-base.t:11:1
+    template leaf
+    selected primary
+    bind #1 = 1 source=explicit

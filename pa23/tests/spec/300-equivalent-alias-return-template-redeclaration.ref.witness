@@ -1,0 +1,32 @@
+translation-unit
+  alias-use at tests/spec/300-equivalent-alias-return-template-redeclaration.t:47:18
+    template compat::__enable_if_t
+    bind #1 = __and_<_Cond...>::value source=explicit
+  alias-use at tests/spec/300-equivalent-alias-return-template-redeclaration.t:50:1
+    template compat::_Require
+    bind #1 = __not_<__is_tuple_like<_Tp>> source=explicit
+  function-call at tests/spec/300-equivalent-alias-return-template-redeclaration.t:70:3
+    callee compat::swap
+    selected instantiation
+    bind #1 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity compat::swap
+  require-definition
+    entity compat::swap
+  variable-instantiation
+    entity compat::__and_<>::value
+  variable-instantiation
+    entity compat::__and_<compat::__not_<compat::__is_tuple_like<int>>, compat::is_move_constructible<int>, compat::is_move_assignable<int>>::value
+  variable-instantiation
+    entity compat::__and_<compat::is_move_assignable<int>>::value
+  variable-instantiation
+    entity compat::__and_<compat::is_move_constructible<int>, compat::is_move_assignable<int>>::value
+  variable-instantiation
+    entity compat::__is_tuple_like<int>::value
+  variable-instantiation
+    entity compat::__not_<compat::__is_tuple_like<int>>::value
+  variable-instantiation
+    entity compat::is_move_assignable<int>::value
+  variable-instantiation
+    entity compat::is_move_constructible<int>::value

@@ -1,0 +1,69 @@
+translation-unit
+  alias-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:60:12
+    template lib::__enable_if_t
+    bind #1 = is_same<Up, node_value_type>::value source=explicit
+    bind #2 = int source=explicit
+  alias-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:67:12
+    template lib::__enable_if_t
+    bind #1 = is_same<Up, container_value_type>::value source=explicit
+    bind #2 = int source=explicit
+  class-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:86:9
+    template lib::basic_string
+    selected primary
+    bind #1 = char source=explicit
+    bind #2 = lib::char_traits<char> source=explicit
+    bind #3 = lib::allocator<char> source=explicit
+  class-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:86:28
+    template lib::char_traits
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:86:47
+    template lib::allocator
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:87:9
+    template lib::node_value
+    selected primary
+    bind #1 = lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>> source=explicit
+    bind #2 = unsigned long source=explicit
+  class-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:88:9
+    template lib::node_types
+    selected primary
+    bind #1 = lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long> source=explicit
+  class-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:89:9
+    template lib::pair
+    selected primary
+    bind #1 = const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>> source=explicit
+    bind #2 = unsigned long source=explicit
+  class-use at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:98:3
+    template lib::table
+    selected primary
+    bind #1 = lib::pair<const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long> source=explicit
+    bind #2 = lib::node_types<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>> source=explicit
+  function-call at tests/general/300-inherited-member-template-sfinae-lexical-type-shadow.t:99:10
+    callee lib::key_value_types<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::__get_value
+    selected instantiation
+    bind #1 = lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long> source=deduced
+    bind #2 = 0 source=defaulted
+    drop lib::key_value_types<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::__get_value reason=substitution_failure
+template-closure-events
+  function-instantiation
+    entity lib::key_value_types<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::__get_value
+  function-instantiation
+    entity lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>::__get_value
+  function-instantiation
+    entity lib::table<lib::pair<const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>, lib::node_types<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>>::assign
+  require-definition
+    entity lib::key_value_types<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::__get_value
+  require-definition
+    entity lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>::__get_value
+  require-definition
+    entity lib::table<lib::pair<const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>, lib::node_types<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>>::assign
+  variable-instantiation
+    entity lib::is_same<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>, lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::value
+  variable-instantiation
+    entity lib::is_same<lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>, lib::pair<const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::value
+  variable-instantiation
+    entity lib::is_same<lib::pair<const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>, lib::node_value<lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::value
+  variable-instantiation
+    entity lib::is_same<lib::pair<const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>, lib::pair<const lib::basic_string<char, lib::char_traits<char>, lib::allocator<char>>, unsigned long>>::value

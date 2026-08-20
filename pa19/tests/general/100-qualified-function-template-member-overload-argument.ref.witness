@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = iterlib::iter source=deduced
 template-closure-events
-  ensure-definition
-    entity iterlib::iterator_category
   function-instantiation
     entity iterlib::iterator_category
   require-definition

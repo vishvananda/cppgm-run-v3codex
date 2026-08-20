@@ -1,0 +1,22 @@
+translation-unit
+  class-use at tests/spec/300-extern-template-class-keeps-inline-defaulted-assignment.t:12:13
+    template empty_allocator
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-extern-template-class-keeps-inline-defaulted-assignment.t:13:19
+    template empty_allocator
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-extern-template-class-keeps-inline-defaulted-assignment.t:20:3
+    template empty_allocator
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-extern-template-class-keeps-inline-defaulted-assignment.t:21:3
+    template empty_allocator
+    selected primary
+    bind #1 = char source=explicit
+template-closure-events
+  class-finalization
+    entity empty_allocator
+  require-definition
+    entity empty_allocator<char>::operator=

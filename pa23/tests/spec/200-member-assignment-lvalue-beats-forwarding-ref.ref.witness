@@ -14,8 +14,6 @@ translation-unit
     drop keyword::operator= reason=bad_conversion
     drop keyword::operator= reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity keyword::operator=
   function-instantiation
     entity keyword::operator=
   require-definition

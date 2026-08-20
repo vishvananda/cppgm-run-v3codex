@@ -1,0 +1,25 @@
+translation-unit
+  class-use at tests/general/400-defaulted-sfinae-conversion-function-template-symbol.t:70:3
+    template array
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = 2 source=explicit
+  class-use at tests/general/400-defaulted-sfinae-conversion-function-template-symbol.t:71:11
+    template source
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/400-defaulted-sfinae-conversion-function-template-symbol.t:71:11
+    callee source<int>::operator array
+    selected instantiation
+    bind #1 = array<int, 2> source=deduced
+    bind #2 = void source=defaulted
+    bind #3 = void source=defaulted
+    drop source<int>::operator type-parameter-0-0 reason=substitution_failure
+    drop array<int, 2>::array reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity source<int>::operator array
+  require-definition
+    entity source<int>::operator array
+  variable-instantiation
+    entity is_same<yes_type, yes_type>::value

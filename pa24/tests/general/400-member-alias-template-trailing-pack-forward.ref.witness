@@ -1,0 +1,21 @@
+translation-unit
+  alias-use at tests/general/400-member-alias-template-trailing-pack-forward.t:3:58
+    template A
+    bind #1 = F source=explicit
+  alias-use at tests/general/400-member-alias-template-trailing-pack-forward.t:6:13
+    template B
+    bind #1 = M source=explicit
+  class-use at tests/general/400-member-alias-template-trailing-pack-forward.t:8:11
+    template O
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/general/400-member-alias-template-trailing-pack-forward.t:11:16
+    template S
+    selected partial
+    bind #1 = N<char> source=explicit
+    bind #2 = N<char> source=explicit
+    specialize #1 = N<char> source=deduced
+  class-use at tests/general/400-member-alias-template-trailing-pack-forward.t:11:21
+    template N
+    selected primary
+    bind #1 = char source=explicit

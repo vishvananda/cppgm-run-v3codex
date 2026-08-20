@@ -10,8 +10,6 @@ translation-unit
     bind #2 = 5 source=deduced
     bind #3 = 0 source=defaulted
 template-closure-events
-  ensure-definition
-    entity guarded_extent
   function-instantiation
     entity guarded_extent
   require-definition

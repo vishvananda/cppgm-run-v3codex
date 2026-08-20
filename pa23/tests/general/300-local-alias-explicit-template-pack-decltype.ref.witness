@@ -29,8 +29,6 @@ translation-unit
     bind #3 = WithoutKey source=deduced
     bind #4 = <int &, unsigned long &> source=deduced
 template-closure-events
-  ensure-definition
-    entity api::__try_key_extraction
   function-instantiation
     entity api::__try_key_extraction
   function-instantiation

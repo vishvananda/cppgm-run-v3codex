@@ -10,8 +10,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity box<int, int>::f
   function-instantiation
     entity box<int, int>::f
   require-definition

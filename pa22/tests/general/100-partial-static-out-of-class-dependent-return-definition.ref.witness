@@ -1,0 +1,27 @@
+translation-unit
+  class-use at tests/general/100-partial-static-out-of-class-dependent-return-definition.t:4:28
+    template T
+    selected explicit
+    bind #1 = V<type-parameter-0-0> source=explicit
+  class-use at tests/general/100-partial-static-out-of-class-dependent-return-definition.t:4:40
+    template T
+    selected explicit
+    bind #1 = V<type-parameter-0-0> source=explicit
+  class-use at tests/general/100-partial-static-out-of-class-dependent-return-definition.t:5:21
+    template T
+    selected partial
+    bind #1 = V<int> source=explicit
+    specialize #1 = int source=deduced
+  class-use at tests/general/100-partial-static-out-of-class-dependent-return-definition.t:5:23
+    template V
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/general/100-partial-static-out-of-class-dependent-return-definition.t:5:35
+    template V
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  function-instantiation
+    entity T<V<int>>::f
+  require-definition
+    entity T<V<int>>::f

@@ -1,0 +1,20 @@
+translation-unit
+  class-use at tests/spec/300-lazy-enable-if-member-result-type.t:45:3
+    template tagged_argument
+    selected primary
+    bind #1 = graph_tag source=explicit
+    bind #2 = int & source=explicit
+  function-call at tests/spec/300-lazy-enable-if-member-result-type.t:45:53
+    callee keyword::operator=
+    selected instantiation
+    bind #1 = int source=deduced
+    drop keyword::operator= reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity keyword::operator=
+  function-instantiation
+    entity tagged_argument<graph_tag, int &>::tagged_argument
+  require-definition
+    entity keyword::operator=
+  require-definition
+    entity tagged_argument<graph_tag, int &>::tagged_argument

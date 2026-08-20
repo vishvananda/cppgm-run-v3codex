@@ -7,8 +7,6 @@ translation-unit
     specialize #2 = int source=deduced
     specialize #3 = <int> source=deduced
 template-closure-events
-  ensure-definition
-    entity Box<int, int, int>::get
   function-instantiation
     entity Box<int, int, int>::get
   require-definition

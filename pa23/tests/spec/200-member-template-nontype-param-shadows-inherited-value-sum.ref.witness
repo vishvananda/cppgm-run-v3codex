@@ -17,8 +17,6 @@ translation-unit
     bind #1 = detail::matcher source=explicit
     bind #2 = detail::next source=explicit
 template-closure-events
-  ensure-definition
-    entity detail::expression<detail::matcher, detail::next>::get_width
   function-instantiation
     entity detail::expression<detail::matcher, detail::next>::get_width
   function-instantiation

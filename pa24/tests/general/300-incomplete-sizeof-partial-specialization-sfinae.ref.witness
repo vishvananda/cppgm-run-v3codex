@@ -8,8 +8,6 @@ translation-unit
     bind #1 = X source=explicit
     bind #2 = void source=defaulted
 template-closure-events
-  ensure-definition
-    entity lazy<X>::value
   function-instantiation
     entity lazy<X>::value
   require-definition

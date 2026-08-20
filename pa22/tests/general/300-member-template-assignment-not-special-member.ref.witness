@@ -8,10 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = box source=deduced
 template-closure-events
-  ensure-definition
-    entity assign_const_lvalue
-  ensure-definition
-    entity assign_rvalue
   function-instantiation
     entity assign_const_lvalue
   function-instantiation

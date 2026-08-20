@@ -6,8 +6,6 @@ translation-unit
     bind #2 = rng source=deduced
     drop generate_random_graph reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity generate_random_graph
   function-instantiation
     entity generate_random_graph
   require-definition

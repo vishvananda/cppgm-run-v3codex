@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity call_pointer_to
   function-instantiation
     entity api::traits<int>::pointer_to
   function-instantiation

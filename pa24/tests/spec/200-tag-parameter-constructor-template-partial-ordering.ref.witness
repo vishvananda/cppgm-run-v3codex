@@ -16,10 +16,6 @@ translation-unit
     selected primary
     bind #1 = Deleter source=explicit
 template-closure-events
-  ensure-definition
-    entity Count::Count
-  ensure-definition
-    entity make_holder
   function-instantiation
     entity Count::Count
   function-instantiation

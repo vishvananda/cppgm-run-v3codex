@@ -8,10 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity constant
-  ensure-definition
-    entity protect
   function-instantiation
     entity constant
   function-instantiation

@@ -1,0 +1,66 @@
+translation-unit
+  alias-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:28:27
+    template void_t
+    bind #1 = describe<T> source=explicit
+  alias-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:28:34
+    template traits::detail::describe
+    bind #1 = T source=explicit
+  alias-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:102:10
+    template traits::has_description
+    bind #1 = E1 source=explicit
+  function-call at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:102:10
+    callee boost::detail::test_trait_impl
+    selected instantiation
+    bind #1 = traits::detail::has_description<E1> source=deduced
+  alias-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:103:10
+    template traits::has_description
+    bind #1 = const E1 source=explicit
+  function-call at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:103:10
+    callee boost::detail::test_trait_impl
+    selected instantiation
+    bind #1 = traits::detail::has_description<const E1> source=deduced
+  alias-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:104:10
+    template traits::has_description
+    bind #1 = E2 source=explicit
+  function-call at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:104:10
+    callee boost::detail::test_trait_impl
+    selected instantiation
+    bind #1 = traits::detail::has_description<E2> source=deduced
+  alias-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:105:10
+    template traits::has_description
+    bind #1 = const E2 source=explicit
+  function-call at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:105:10
+    callee boost::detail::test_trait_impl
+    selected instantiation
+    bind #1 = traits::detail::has_description<const E2> source=deduced
+  class-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:106:10
+    template traits::is_pair_like
+    selected primary
+    bind #1 = lib::pair<int, E1> source=explicit
+  class-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:106:10
+    template lib::pair
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = E1 source=explicit
+  function-call at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:106:10
+    callee boost::detail::test_trait_impl
+    selected instantiation
+    bind #1 = traits::is_pair_like<lib::pair<int, E1>> source=deduced
+  class-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:107:10
+    template traits::is_pair_like
+    selected primary
+    bind #1 = const lib::pair<int, E1> source=explicit
+  class-use at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:107:10
+    template lib::pair
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = E1 source=explicit
+  function-call at tests/general/300-qualified-alias-sfinae-function-pointer-deduction-key.t:107:10
+    callee boost::detail::test_trait_impl
+    selected instantiation
+    bind #1 = traits::is_pair_like<const lib::pair<int, E1>> source=deduced
+template-closure-events
+  function-instantiation
+    entity boost::detail::test_trait_impl
+  require-definition
+    entity boost::detail::test_trait_impl

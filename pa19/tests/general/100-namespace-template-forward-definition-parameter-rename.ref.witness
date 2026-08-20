@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity N::fpos<int>::get
   function-instantiation
     entity N::fpos<int>::get
   require-definition

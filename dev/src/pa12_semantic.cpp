@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa15_switch_semantic.h"
 #include "hosted_extension_semantic.h"
 #include <algorithm>
 #include <chrono>
@@ -2218,6 +2219,7 @@ void SemanticAnalyzer::AnalyzeSimple(NodeId node, ScopeId scope,
 			static_cast<std::uint32_t>(arena_->SourceColumn(item)),
 			static_cast<std::uint32_t>(arena_->TokenFirst(item)),
 			static_cast<std::uint32_t>(arena_->TokenLast(item)),
+			has_initializer,
 			has_initializer && HasConstantInitializerFact(initializer));
 		if (local && has_initializer)
 		{
@@ -2602,6 +2604,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 		dump_.Add(output_parent, statement);
 		++switch_depth_;
 		break_cleanup_stops_.push_back(control);
+		switch_label_entry_scopes_.push_back(control);
 		for (std::uint32_t edge = arena_->FirstEdge(node); edge != kNoEdge;
 			edge = arena_->NextEdge(edge))
 		{
@@ -2611,6 +2614,7 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 			else AnalyzeSubstatement(child, control, statement);
 		}
 		break_cleanup_stops_.pop_back();
+		switch_label_entry_scopes_.pop_back();
 		--switch_depth_;
 		AppendScopeDestructionActions(control, output_parent, scope);
 		return;
@@ -2643,6 +2647,8 @@ void SemanticAnalyzer::AnalyzeStatement(NodeId node, ScopeId scope,
 	{
 		if (switch_depth_ == 0)
 			throw std::runtime_error("case/default outside switch");
+		ValidateSwitchLabelEntry(scope, scope_parents_,
+			scope_switch_entry_barriers_, switch_label_entry_scopes_);
 		const bool is_case = arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_CASE_STATEMENT);
 		const std::uint32_t statement = MakeDump(is_case ?
 			DUMP_CASE_STATEMENT : DUMP_DEFAULT_STATEMENT);
@@ -2706,6 +2712,8 @@ void SemanticAnalyzer::Consume(const SyntaxArena& arena, NodeId root)
 	scope_parents_.resize(static_cast<std::size_t>(program.GlobalScope()) + 1,
 		kNoScope);
 	scope_nontrivial_object_lifetime_prefixes_.resize(
+		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
+	scope_switch_entry_barriers_.resize(
 		static_cast<std::size_t>(program.GlobalScope()) + 1, 0);
 	scope_lifetime_domains_.resize(
 		static_cast<std::size_t>(program.GlobalScope()) + 1, kNoScope);

@@ -1,0 +1,11 @@
+translation-unit
+  function-call at tests/general/300-constructor-template-keeps-ctor-refinement-viable.t:19:17
+    callee String::String
+    selected instantiation
+    bind #1 = const char * source=deduced
+    drop String::String reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity String::String
+  require-definition
+    entity String::String

@@ -154,6 +154,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		nearest_initializer_list_lifetime_scopes_.capacity() * sizeof(ScopeId) +
 		scope_nontrivial_object_lifetime_prefixes_.capacity() *
 			sizeof(std::uint32_t) +
+		scope_switch_entry_barriers_.capacity() * sizeof(std::uint32_t) +
 		scope_lifetime_domains_.capacity() * sizeof(ScopeId) +
 		namespace_objects_.capacity() * sizeof(NamespaceObjectAction) +
 		local_static_objects_.capacity() * sizeof(LocalStaticObjectAction) +
@@ -163,6 +164,7 @@ std::size_t SemanticAnalyzer::SideStorageBytes() const
 		widest_aggregate_helper_by_entity_.capacity() * sizeof(std::uint32_t) +
 		break_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		continue_cleanup_stops_.capacity() * sizeof(ScopeId) +
+		switch_label_entry_scopes_.capacity() * sizeof(ScopeId) +
 		exception_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		exception_handler_cleanup_stops_.capacity() * sizeof(ScopeId) +
 		demanded_default_constructor_entities_.capacity() * sizeof(EntityId) +

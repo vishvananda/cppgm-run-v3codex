@@ -1,0 +1,14 @@
+translation-unit
+  class-use at tests/general/300-member-template-as-template-template-argument.t:19:18
+    template use
+    selected primary
+    bind #1 = quote::fn source=explicit
+  class-use at tests/general/300-member-template-as-template-template-argument.t:33:15
+    template same
+    selected partial
+    bind #1 = int source=explicit
+    bind #2 = int source=explicit
+    specialize #1 = int source=deduced
+template-closure-events
+  variable-instantiation
+    entity same<int, int>::value

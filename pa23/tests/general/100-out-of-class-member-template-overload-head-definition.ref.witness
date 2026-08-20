@@ -1,0 +1,11 @@
+translation-unit
+  function-call at tests/general/100-out-of-class-member-template-overload-head-definition.t:44:16
+    callee suite::except
+    selected instantiation
+    bind #1 = problem source=explicit
+    bind #2 = callable source=deduced
+template-closure-events
+  function-instantiation
+    entity suite::except
+  require-definition
+    entity suite::except

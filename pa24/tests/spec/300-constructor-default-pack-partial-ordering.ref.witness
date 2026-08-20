@@ -11,8 +11,6 @@ translation-unit
     drop any_like::any_like reason=worse_conversion
     drop any_like::any_like reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity any_like::any_like
   function-instantiation
     entity any_like::any_like
   require-definition

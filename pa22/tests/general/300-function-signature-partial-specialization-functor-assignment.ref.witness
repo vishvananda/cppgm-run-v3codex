@@ -10,12 +10,6 @@ translation-unit
     selected instantiation
     bind #1 = add_one source=deduced
 template-closure-events
-  ensure-definition
-    entity callable_box<int (int)>::assign
-  ensure-definition
-    entity callable_box<int (int)>::callable_box
-  ensure-definition
-    entity callable_box<int (int)>::operator()
   function-instantiation
     entity callable_box<int (int)>::assign
   function-instantiation

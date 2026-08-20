@@ -31,8 +31,6 @@ translation-unit
     bind #1 = vendor::detail::wrap_iter<const char *> source=explicit
     bind #2 = lib::detail::alternate_matcher<lib::detail::alternates<vendor::detail::wrap_iter<const char *>>, lib::traits<char, lib::traits_impl<char>>> source=deduced
 template-closure-events
-  ensure-definition
-    entity lib::detail::make_dynamic
   function-instantiation
     entity lib::detail::make_dynamic
   function-instantiation

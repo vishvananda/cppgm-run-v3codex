@@ -1,24 +1,22 @@
 translation-unit
   class-use at tests/general/100-forwarding-reference-preserves-top-const-function-pointer.t:71:10
-    template constforwarding_top_::manager
+    template forwarding_top_const::manager
     selected primary
     bind #1 = int (*)() source=explicit
 template-closure-events
-  ensure-definition
-    entity constforwarding_top_::manager<int (*)()>::clone
   function-instantiation
-    entity constforwarding_top_::forward
+    entity forwarding_top_const::forward
   function-instantiation
-    entity constforwarding_top_::manager<int (*)()>::clone
+    entity forwarding_top_const::manager<int (*)()>::clone
   function-instantiation
-    entity constforwarding_top_::manager<int (*)()>::create
+    entity forwarding_top_const::manager<int (*)()>::create
   function-instantiation
-    entity constforwarding_top_::manager<int (*)()>::init
+    entity forwarding_top_const::manager<int (*)()>::init
   require-definition
-    entity constforwarding_top_::forward
+    entity forwarding_top_const::forward
   require-definition
-    entity constforwarding_top_::manager<int (*)()>::clone
+    entity forwarding_top_const::manager<int (*)()>::clone
   require-definition
-    entity constforwarding_top_::manager<int (*)()>::create
+    entity forwarding_top_const::manager<int (*)()>::create
   require-definition
-    entity constforwarding_top_::manager<int (*)()>::init
+    entity forwarding_top_const::manager<int (*)()>::init

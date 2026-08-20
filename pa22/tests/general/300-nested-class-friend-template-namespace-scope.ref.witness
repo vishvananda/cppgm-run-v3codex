@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = Ctype source=explicit
 template-closure-events
-  ensure-definition
-    entity try_use_facet
   function-instantiation
     entity try_use_facet
   require-definition

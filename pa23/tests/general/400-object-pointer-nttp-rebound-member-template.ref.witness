@@ -1,0 +1,20 @@
+translation-unit
+  class-use at tests/general/400-object-pointer-nttp-rebound-member-template.t:36:13
+    template ns::core
+    selected primary
+    bind #1 = factory_marker<&ns::mark> source=explicit
+  class-use at tests/general/400-object-pointer-nttp-rebound-member-template.t:36:18
+    template factory_marker
+    selected primary
+    bind #1 = &ns::mark source=explicit
+template-closure-events
+  class-instantiation
+    entity ns::core<factory_marker<&ns::mark>>::holder_arg
+  function-instantiation
+    entity factory_class<&ns::mark, int, int>::factory_class
+  function-instantiation
+    entity ns::core<factory_marker<&ns::mark>>::init
+  require-definition
+    entity factory_class<&ns::mark, int, int>::factory_class
+  require-definition
+    entity ns::core<factory_marker<&ns::mark>>::init

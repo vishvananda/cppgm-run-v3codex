@@ -1,0 +1,5 @@
+translation-unit
+  class-use at tests/general/300-later-using-directive-does-not-affect-function-template-qualifier.t:8:40
+    template A::D::X
+    selected primary
+    bind #1 = int source=explicit

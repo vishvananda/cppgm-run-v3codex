@@ -15,8 +15,6 @@ translation-unit
     bind #3 = handler source=deduced
     bind #4 = <0, 1> source=deduced
 template-closure-events
-  ensure-definition
-    entity dispatch
   function-instantiation
     entity dispatch
   require-definition

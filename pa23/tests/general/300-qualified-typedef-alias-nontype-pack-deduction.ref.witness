@@ -12,8 +12,6 @@ translation-unit
     bind #1 = unsigned long source=explicit
     bind #2 = <0> source=explicit
 template-closure-events
-  ensure-definition
-    entity count
   function-instantiation
     entity count
   require-definition

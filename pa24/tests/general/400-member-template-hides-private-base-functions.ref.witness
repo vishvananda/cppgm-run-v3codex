@@ -10,8 +10,6 @@ translation-unit
     selected primary
     bind #1 = traits source=explicit
 template-closure-events
-  ensure-definition
-    entity matcher<traits, meta::true_, derived_set<traits>>::match
   function-instantiation
     entity derived_set<traits>::test
   function-instantiation

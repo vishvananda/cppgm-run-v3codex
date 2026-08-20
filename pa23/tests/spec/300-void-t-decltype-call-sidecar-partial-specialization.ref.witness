@@ -1,0 +1,35 @@
+translation-unit
+  alias-use at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:26:5
+    template void_t
+    bind #1 = decltype(__builtin_invoke(declval<Args>()...)) source=explicit
+  alias-use at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:38:11
+    template invoke_result_t
+    bind #1 = F & source=explicit
+  alias-use at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:61:3
+    template result_of_t
+    bind #1 = T (Args...) source=explicit
+  class-use at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:64:9
+    template target
+    selected primary
+    bind #1 = void (*)(int *) source=explicit
+    bind #2 = int * source=explicit
+  class-use at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:65:9
+    template binder
+    selected primary
+    bind #1 = target<void (*)(int *), int *> source=explicit
+  class-use at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:66:9
+    template requirements
+    selected primary
+    bind #1 = 1 source=explicit
+  function-call at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:67:12
+    callee binder<target<void (*)(int *), int *>>::operator()
+    selected instantiation
+    bind #1 = <const error &> source=deduced
+  function-call at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:67:12
+    callee rvalue
+    selected instantiation
+    bind #1 = binder<target<void (*)(int *), int *>> source=explicit
+  function-call at tests/spec/300-void-t-decltype-call-sidecar-partial-specialization.t:67:35
+    callee lvalue
+    selected instantiation
+    bind #1 = const error source=explicit

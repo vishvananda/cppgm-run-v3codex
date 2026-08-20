@@ -1,0 +1,62 @@
+translation-unit
+  class-use at tests/spec/400-template-template-bound-application.t:39:11
+    template make_empty
+    selected primary
+    bind #1 = list source=explicit
+  class-use at tests/spec/400-template-template-bound-application.t:40:11
+    template rebind
+    selected partial
+    bind #1 = list<int> source=explicit
+    bind #2 = <char, long> source=explicit
+    specialize #1 = list source=deduced
+    specialize #2 = <int> source=deduced
+    specialize #3 = <char, long> source=deduced
+  class-use at tests/spec/400-template-template-bound-application.t:40:18
+    template list
+    selected primary
+    bind #1 = <int> source=explicit
+  class-use at tests/spec/400-template-template-bound-application.t:41:11
+    template delayed_apply
+    selected primary
+    bind #1 = list source=explicit
+  class-use at tests/spec/400-template-template-bound-application.t:41:32
+    template delayed_apply<list>::apply
+    selected primary
+    bind #1 = <int, char> source=explicit
+  class-use at tests/spec/400-template-template-bound-application.t:42:10
+    template is_same
+    selected partial
+    bind #1 = list<> source=explicit
+    bind #2 = list<> source=explicit
+    specialize #1 = list<> source=deduced
+  class-use at tests/spec/400-template-template-bound-application.t:42:25
+    template list
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/spec/400-template-template-bound-application.t:43:10
+    template is_same
+    selected partial
+    bind #1 = list<char, long> source=explicit
+    bind #2 = list<char, long> source=explicit
+    specialize #1 = list<char, long> source=deduced
+  class-use at tests/spec/400-template-template-bound-application.t:43:27
+    template list
+    selected primary
+    bind #1 = <char, long> source=explicit
+  class-use at tests/spec/400-template-template-bound-application.t:44:10
+    template is_same
+    selected partial
+    bind #1 = list<int, char> source=explicit
+    bind #2 = list<int, char> source=explicit
+    specialize #1 = list<int, char> source=deduced
+  class-use at tests/spec/400-template-template-bound-application.t:44:27
+    template list
+    selected primary
+    bind #1 = <int, char> source=explicit
+template-closure-events
+  variable-instantiation
+    entity is_same<list<>, list<>>::value
+  variable-instantiation
+    entity is_same<list<char, long>, list<char, long>>::value
+  variable-instantiation
+    entity is_same<list<int, char>, list<int, char>>::value

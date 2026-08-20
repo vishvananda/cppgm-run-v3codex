@@ -1,0 +1,11 @@
+translation-unit
+  function-call at tests/spec/300-conversion-function-template-object-result-copy-init.t:6:24
+    callee X::operator A
+    selected instantiation
+    bind #1 = A source=deduced
+    drop A::A reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity X::operator A
+  require-definition
+    entity X::operator A

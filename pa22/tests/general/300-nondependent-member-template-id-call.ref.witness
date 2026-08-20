@@ -1,0 +1,22 @@
+translation-unit
+  class-use at tests/general/300-nondependent-member-template-id-call.t:9:3
+    template Holder
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/300-nondependent-member-template-id-call.t:10:12
+    callee Holder<int>::get
+    selected instantiation
+    bind #1 = int source=explicit
+  function-call at tests/general/300-nondependent-member-template-id-call.t:13:21
+    callee run
+    selected instantiation
+    bind #1 = int source=explicit
+template-closure-events
+  function-instantiation
+    entity Holder<int>::get
+  function-instantiation
+    entity run
+  require-definition
+    entity Holder<int>::get
+  require-definition
+    entity run

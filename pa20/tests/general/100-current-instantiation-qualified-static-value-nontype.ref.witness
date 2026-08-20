@@ -1,0 +1,14 @@
+translation-unit
+  class-use at tests/general/100-current-instantiation-qualified-static-value-nontype.t:14:11
+    template bool_constant
+    selected primary
+    bind #1 = false source=explicit
+  class-use at tests/general/100-current-instantiation-qualified-static-value-nontype.t:19:16
+    template trait
+    selected primary
+    bind #1 = sequence source=explicit
+template-closure-events
+  variable-instantiation
+    entity bool_constant<false>::value
+  variable-instantiation
+    entity trait<sequence>::value

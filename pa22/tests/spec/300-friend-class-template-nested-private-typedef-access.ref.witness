@@ -1,0 +1,26 @@
+translation-unit
+  function-call at tests/spec/300-friend-class-template-nested-private-typedef-access.t:77:12
+    callee check
+    selected instantiation
+    bind #1 = int source=explicit
+template-closure-events
+  class-instantiation
+    entity direct_heap<int>::impl
+  class-instantiation
+    entity direct_heap<int>::impl::dispatcher
+  class-instantiation
+    entity direct_wrapper<int>::iterator
+  class-instantiation
+    entity inherited_wrapper<int>::iterator
+  function-instantiation
+    entity check
+  function-instantiation
+    entity direct_wrapper<int>::iterator::read
+  function-instantiation
+    entity inherited_wrapper<int>::iterator::read
+  require-definition
+    entity check
+  require-definition
+    entity direct_wrapper<int>::iterator::read
+  require-definition
+    entity inherited_wrapper<int>::iterator::read

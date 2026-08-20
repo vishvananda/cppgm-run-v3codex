@@ -1,0 +1,95 @@
+translation-unit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:103:1
+    template keyword
+    selected primary
+    bind #1 = weight_tag source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:104:1
+    template keyword
+    selected primary
+    bind #1 = predecessor_tag source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:112:11
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<weight_tag, supplied_map> source=explicit
+    bind #2 = arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list> source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:113:7
+    template tagged_argument
+    selected primary
+    bind #1 = weight_tag source=explicit
+    bind #2 = supplied_map source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:114:7
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<predecessor_tag, int> source=explicit
+    bind #2 = empty_arg_list source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:114:16
+    template tagged_argument
+    selected primary
+    bind #1 = predecessor_tag source=explicit
+    bind #2 = int source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:117:3
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<weight_tag, supplied_map> source=deduced
+    bind #2 = arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list> source=deduced
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:118:7
+    template tagged_argument
+    selected primary
+    bind #1 = weight_tag source=explicit
+    bind #2 = supplied_map source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:119:7
+    template arg_list
+    selected primary
+    bind #1 = tagged_argument<predecessor_tag, int> source=explicit
+    bind #2 = empty_arg_list source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:119:16
+    template tagged_argument
+    selected primary
+    bind #1 = predecessor_tag source=explicit
+    bind #2 = int source=explicit
+  class-use at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:120:11
+    template tagged_argument
+    selected primary
+    bind #1 = predecessor_tag source=explicit
+    bind #2 = int source=explicit
+  function-call at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:123:35
+    callee arg_list<tagged_argument<weight_tag, supplied_map>, arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list>>::operator[]
+    selected instantiation
+    bind #1 = default_map source=deduced
+  function-call at tests/spec/200-member-operator-fixed-tag-default-partial-order.t:123:48
+    callee keyword<weight_tag>::operator|
+    selected instantiation
+    bind #1 = default_map source=deduced
+template-closure-events
+  function-instantiation
+    entity arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list>::arg_list
+  function-instantiation
+    entity arg_list<tagged_argument<weight_tag, supplied_map>, arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list>>::arg_list
+  function-instantiation
+    entity arg_list<tagged_argument<weight_tag, supplied_map>, arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list>>::operator[]
+  function-instantiation
+    entity default_<weight_tag, default_map>::default_
+  function-instantiation
+    entity keyword<weight_tag>::operator|
+  function-instantiation
+    entity tagged_argument<predecessor_tag, int>::tagged_argument
+  function-instantiation
+    entity tagged_argument<weight_tag, supplied_map>::get_value
+  function-instantiation
+    entity tagged_argument<weight_tag, supplied_map>::tagged_argument
+  require-definition
+    entity arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list>::arg_list
+  require-definition
+    entity arg_list<tagged_argument<weight_tag, supplied_map>, arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list>>::arg_list
+  require-definition
+    entity arg_list<tagged_argument<weight_tag, supplied_map>, arg_list<tagged_argument<predecessor_tag, int>, empty_arg_list>>::operator[]
+  require-definition
+    entity default_<weight_tag, default_map>::default_
+  require-definition
+    entity keyword<weight_tag>::operator|
+  require-definition
+    entity tagged_argument<predecessor_tag, int>::tagged_argument
+  require-definition
+    entity tagged_argument<weight_tag, supplied_map>::get_value
+  require-definition
+    entity tagged_argument<weight_tag, supplied_map>::tagged_argument

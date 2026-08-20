@@ -8,8 +8,6 @@ translation-unit
     bind #1 = yes_type source=deduced
     drop choose reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity choose
   function-instantiation
     entity choose
   require-definition

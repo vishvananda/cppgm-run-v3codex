@@ -10,8 +10,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity impl<handler>::deleter
-  ensure-definition
-    entity impl<handler>::create
   function-instantiation
     entity impl<handler>::create
   function-instantiation

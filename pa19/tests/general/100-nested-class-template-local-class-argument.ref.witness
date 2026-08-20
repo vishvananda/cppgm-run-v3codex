@@ -10,10 +10,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity Box<Piece>::Guard
-  ensure-definition
-    entity Box<Piece>::Box
-  ensure-definition
-    entity Box<Piece>::~Box
   function-instantiation
     entity Box<Piece>::Box
   function-instantiation

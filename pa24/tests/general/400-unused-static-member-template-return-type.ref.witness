@@ -14,8 +14,6 @@ translation-unit
     bind #1 = const map source=explicit
     bind #2 = 0 source=explicit
 template-closure-events
-  ensure-definition
-    entity convert_iterator<map_iterator<const map, 0>>::call
   function-instantiation
     entity convert_iterator<map_iterator<const map, 0>>::call
   require-definition

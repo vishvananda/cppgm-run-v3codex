@@ -1,0 +1,11 @@
+ERROR: unsupported class member type at tests/spec/300-instantiated-member-typedef-declaration-bad.t:12:47 [instantiated class holder<int>] [source template holder] [dependent-instantiation no] [member-scope-placeholders no] [template-args int] [top-level declaration 2 kind=simple-declaration ast={simple-declaration
+  decl-specifier-seq
+    decl-specifier holder<int>
+  init-declarator-list
+    init-declarator
+      declarator
+        identifier value
+}]
+Diagnostic context:
+collect_simple_declaration [holder<int>value;] at tests/spec/300-instantiated-member-typedef-declaration-bad.t:15:1
+  populate_class_info [holder<int>] at tests/spec/300-instantiated-member-typedef-declaration-bad.t:10:1

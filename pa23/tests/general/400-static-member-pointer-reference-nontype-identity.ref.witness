@@ -1,0 +1,34 @@
+translation-unit
+  class-use at tests/general/400-static-member-pointer-reference-nontype-identity.t:34:10
+    template pointer_holder
+    selected primary
+    bind #1 = &left_owner::value source=explicit
+  class-use at tests/general/400-static-member-pointer-reference-nontype-identity.t:35:10
+    template pointer_holder
+    selected primary
+    bind #1 = &right_owner::value source=explicit
+  class-use at tests/general/400-static-member-pointer-reference-nontype-identity.t:36:10
+    template reference_holder
+    selected primary
+    bind #1 = left_owner::value source=explicit
+  class-use at tests/general/400-static-member-pointer-reference-nontype-identity.t:37:10
+    template reference_holder
+    selected primary
+    bind #1 = right_owner::value source=explicit
+template-closure-events
+  function-instantiation
+    entity pointer_holder<&left_owner::value>::read
+  function-instantiation
+    entity pointer_holder<&right_owner::value>::read
+  function-instantiation
+    entity reference_holder<left_owner::value>::read
+  function-instantiation
+    entity reference_holder<right_owner::value>::read
+  require-definition
+    entity pointer_holder<&left_owner::value>::read
+  require-definition
+    entity pointer_holder<&right_owner::value>::read
+  require-definition
+    entity reference_holder<left_owner::value>::read
+  require-definition
+    entity reference_holder<right_owner::value>::read

@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity f
   function-instantiation
     entity f
   require-definition

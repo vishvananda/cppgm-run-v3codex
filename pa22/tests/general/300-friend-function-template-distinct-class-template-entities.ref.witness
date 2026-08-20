@@ -1,0 +1,15 @@
+translation-unit
+  class-use at tests/general/300-friend-function-template-distinct-class-template-entities.t:22:9
+    template home::view
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/300-friend-function-template-distinct-class-template-entities.t:23:10
+    callee home::put
+    selected instantiation
+    bind #1 = int source=deduced
+    drop home::put reason=non_deduced_mismatch
+template-closure-events
+  function-instantiation
+    entity home::put
+  require-definition
+    entity home::put

@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = object source=deduced
 template-closure-events
-  ensure-definition
-    entity N::addressof
   function-instantiation
     entity N::addressof
   function-instantiation

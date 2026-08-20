@@ -1,0 +1,35 @@
+translation-unit
+  alias-use at tests/spec/400-concrete-alias-target-nested-conversion-template.t:40:1
+    template result
+    bind #1 = int source=explicit
+  alias-use at tests/spec/400-concrete-alias-target-nested-conversion-template.t:42:3
+    template result
+    bind #1 = char source=explicit
+  function-call at tests/spec/400-concrete-alias-target-nested-conversion-template.t:43:10
+    callee leaf::result<char>::error_result::operator result
+    selected instantiation
+    bind #1 = int source=deduced
+    drop leaf::result<int>::result reason=explicit_not_allowed
+    drop leaf::result<int>::result reason=bad_conversion
+  alias-use at tests/spec/400-concrete-alias-target-nested-conversion-template.t:48:3
+    template result
+    bind #1 = int source=explicit
+template-closure-events
+  class-instantiation
+    entity leaf::result<char>::error_result
+  function-instantiation
+    entity leaf::result<char>::error
+  function-instantiation
+    entity leaf::result<char>::error_result::operator result
+  function-instantiation
+    entity leaf::result<char>::result
+  function-instantiation
+    entity leaf::result<int>::result
+  require-definition
+    entity leaf::result<char>::error
+  require-definition
+    entity leaf::result<char>::error_result::operator result
+  require-definition
+    entity leaf::result<char>::result
+  require-definition
+    entity leaf::result<int>::result

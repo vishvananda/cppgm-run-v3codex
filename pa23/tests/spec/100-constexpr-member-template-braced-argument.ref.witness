@@ -1,0 +1,10 @@
+translation-unit
+  function-call at tests/spec/100-constexpr-member-template-braced-argument.t:7:21
+    callee optional::value_or
+    selected instantiation
+    bind #1 = int source=defaulted
+template-closure-events
+  function-instantiation
+    entity optional::value_or
+  require-definition
+    entity optional::value_or

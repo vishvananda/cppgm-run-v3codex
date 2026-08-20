@@ -8,8 +8,6 @@ translation-unit
     bind #1 = value_type source=deduced
     drop select reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity select
   function-instantiation
     entity select
   require-definition

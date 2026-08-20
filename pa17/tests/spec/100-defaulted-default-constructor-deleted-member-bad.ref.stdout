@@ -2,4 +2,3 @@ ERROR: use of deleted holder::holder [function main] [is_method no] [body_parent
 Diagnostic context:
 analyze_function_binding_output [main]
   analyze_statement [simple-declaration] at tests/spec/100-defaulted-default-constructor-deleted-member-bad.t:18:3
-    select_constructor_from_exprs [needs_arg, args=0]

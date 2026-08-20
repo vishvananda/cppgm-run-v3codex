@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa15_switch_semantic.h"
 
 #include <limits>
 #include <stdexcept>
@@ -502,8 +503,10 @@ void SemanticAnalyzer::RegisterVariableLifetimeAndStorage(ScopeId scope,
 	BindingId object, TypeId type, NameId source_file,
 	std::uint32_t source_line, std::uint32_t source_column,
 	std::uint32_t source_token_first, std::uint32_t source_token_last,
-	bool constant_initialized)
+	bool has_initializer, bool constant_initialized)
 {
+	RegisterSwitchEntryDeclaration(*program_, scope, local, declaration_only,
+		object, type, has_initializer, &scope_switch_entry_barriers_);
 	const StorageClass storage = program_->bindings[object].storage_class;
 	if (local && storage == STORAGE_CLASS_NONE)
 	{

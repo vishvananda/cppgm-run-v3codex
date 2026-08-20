@@ -10,8 +10,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity D<int>::R
-  ensure-definition
-    entity D<int>::R::f
   function-instantiation
     entity D<int>::R::f
   require-definition

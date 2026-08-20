@@ -35,10 +35,6 @@ translation-unit
     bind #2 = boost::nfp::named_parameter<int, boost::runtime::second_id, const int &> source=deduced
     drop boost::nfp::opt_append reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity boost::nfp::nfp_detail::named_parameter_base<boost::nfp::named_parameter_combine<boost::nfp::named_parameter<int, boost::runtime::(anonymous namespace)::second_id, const int &>, boost::nfp::named_parameter<int, boost::runtime::(anonymous namespace)::first_id, const int &>>>::marker
-  ensure-definition
-    entity boost::nfp::opt_append
   function-instantiation
     entity boost::nfp::nfp_detail::named_parameter_base<boost::nfp::named_parameter_combine<boost::nfp::named_parameter<int, boost::runtime::(anonymous namespace)::second_id, const int &>, boost::nfp::named_parameter<int, boost::runtime::(anonymous namespace)::first_id, const int &>>>::marker
   function-instantiation

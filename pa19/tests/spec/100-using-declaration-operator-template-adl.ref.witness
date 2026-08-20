@@ -5,8 +5,6 @@ translation-unit
     bind #1 = lib::seq source=deduced
     bind #2 = lib::seq source=deduced
 template-closure-events
-  ensure-definition
-    entity lib::operators::operator==
   function-instantiation
     entity lib::operators::operator==
   require-definition

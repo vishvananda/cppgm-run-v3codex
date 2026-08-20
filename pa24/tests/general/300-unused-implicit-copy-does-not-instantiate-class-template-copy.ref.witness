@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = noncopyable source=explicit
 template-closure-events
-  ensure-definition
-    entity deferred_copy<noncopyable>::deferred_copy
   function-instantiation
     entity deferred_copy<noncopyable>::deferred_copy
   require-definition

@@ -31,8 +31,6 @@ translation-unit
     bind #3 = 0 source=defaulted
     drop traits<int>::construct reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity traits<int>::construct
   function-instantiation
     entity traits<int>::construct
   require-definition

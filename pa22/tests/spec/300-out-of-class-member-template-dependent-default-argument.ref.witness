@@ -1,0 +1,33 @@
+translation-unit
+  class-use at tests/spec/300-out-of-class-member-template-dependent-default-argument.t:15:1
+    template sequence
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = allocator<int> source=defaulted
+  class-use at tests/spec/300-out-of-class-member-template-dependent-default-argument.t:42:3
+    template sequence
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = allocator<int> source=defaulted
+  class-use at tests/spec/300-out-of-class-member-template-dependent-default-argument.t:43:3
+    template graph
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/300-out-of-class-member-template-dependent-default-argument.t:43:14
+    callee graph<int>::graph
+    selected instantiation
+    bind #1 = int source=deduced
+    drop graph<int>::graph reason=worse_conversion
+  function-call at tests/spec/300-out-of-class-member-template-dependent-default-argument.t:44:16
+    callee graph<int>::accept
+    selected instantiation
+    bind #1 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity graph<int>::accept
+  function-instantiation
+    entity graph<int>::graph
+  require-definition
+    entity graph<int>::accept
+  require-definition
+    entity graph<int>::graph

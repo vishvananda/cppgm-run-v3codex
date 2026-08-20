@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = serialization::wrapped source=deduced
 template-closure-events
-  ensure-definition
-    entity probe
   function-instantiation
     entity probe
   require-definition

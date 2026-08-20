@@ -20,10 +20,6 @@ translation-unit
     selected primary
     bind #1 = void source=defaulted
 template-closure-events
-  ensure-definition
-    entity table<>::call
-  ensure-definition
-    entity table<>::position
   function-instantiation
     entity table<>::call
   function-instantiation

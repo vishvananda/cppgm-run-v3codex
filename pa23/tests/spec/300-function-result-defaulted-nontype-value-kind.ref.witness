@@ -1,0 +1,20 @@
+translation-unit
+  class-use at tests/spec/300-function-result-defaulted-nontype-value-kind.t:7:28
+    template lib::trait
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-function-result-defaulted-nontype-value-kind.t:17:14
+    template wrapper
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/300-function-result-defaulted-nontype-value-kind.t:17:43
+    callee wrapper<int>::f
+    selected instantiation
+    bind #1 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity wrapper<int>::f
+  require-definition
+    entity wrapper<int>::f
+  variable-instantiation
+    entity lib::trait<int>::value

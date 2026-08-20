@@ -17,6 +17,6 @@ template-closure-events
   variable-instantiation
     entity check<int>::value
   variable-instantiation
-    entity constis_top_<const int>::value
+    entity is_top_const<const int>::value
   variable-instantiation
-    entity constis_top_<int ()>::value
+    entity is_top_const<int ()>::value

@@ -11,8 +11,6 @@ translation-unit
     bind #3 = <first, second> source=deduced
     drop find reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity find
   function-instantiation
     entity find
   require-definition

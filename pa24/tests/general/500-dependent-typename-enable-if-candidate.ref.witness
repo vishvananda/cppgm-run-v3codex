@@ -15,8 +15,6 @@ translation-unit
     bind #1 = boost::container::dtl::pair<int, int> source=deduced
     bind #2 = boost::container::dtl::pair<int, int> source=deduced
 template-closure-events
-  ensure-definition
-    entity outer
   function-instantiation
     entity helper
   function-instantiation

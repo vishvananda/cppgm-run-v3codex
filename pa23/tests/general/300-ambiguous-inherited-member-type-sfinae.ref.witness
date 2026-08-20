@@ -1,0 +1,14 @@
+translation-unit
+  class-use at tests/general/300-ambiguous-inherited-member-type-sfinae.t:24:16
+    template relocatable
+    selected primary
+    bind #1 = derived source=explicit
+    bind #2 = void source=defaulted
+  class-use at tests/general/300-ambiguous-inherited-member-type-sfinae.t:29:10
+    template relocatable
+    selected primary
+    bind #1 = derived source=explicit
+    bind #2 = void source=defaulted
+template-closure-events
+  variable-instantiation
+    entity relocatable<derived>::value

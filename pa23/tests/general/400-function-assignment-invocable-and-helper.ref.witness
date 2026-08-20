@@ -34,10 +34,6 @@ translation-unit
     bind #2 = void source=defaulted
     drop function<void (int)>::operator= reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity function<void (int)>::function
-  ensure-definition
-    entity function<void (int)>::operator=
   function-instantiation
     entity function<void (int)>::function
   function-instantiation

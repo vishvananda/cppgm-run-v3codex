@@ -1,0 +1,21 @@
+ERROR: unknown id-expression missing_name at tests/general/100-nondependent-template-member-body-lookup-bad.t:3:27 [top-level declaration 0 kind=template-declaration ast={template-declaration
+  template-parameter-clause
+    template-parameter-list
+      type-parameter
+        parameter-key KW_CLASS:class
+        identifier T
+  class-specifier S
+    class-key KW_STRUCT:struct
+    function-definition
+      decl-specifier-seq
+        decl-specifier KW_STATIC:static
+        decl-specifier KW_INT:int
+      declarator
+        identifier f
+        parameter-clause
+      compound-statement
+        return-statement
+          id-expression missing_name
+}]
+Diagnostic context:
+collect_template_declaration [template<class T>struct S{static int f(){return missing_name;}};] at tests/general/100-nondependent-template-member-body-lookup-bad.t:1:1

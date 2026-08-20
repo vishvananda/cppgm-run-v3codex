@@ -1,0 +1,14 @@
+translation-unit
+  class-use at tests/general/500-tcc-member-constructible-pack-sfinae.t:36:10
+    template tupleish
+    selected primary
+    bind #1 = <int> source=explicit
+template-closure-events
+  function-instantiation
+    entity _TCC<true>::__is_implicitly_constructible
+  function-instantiation
+    entity tupleish<int>::make
+  require-definition
+    entity _TCC<true>::__is_implicitly_constructible
+  require-definition
+    entity tupleish<int>::make

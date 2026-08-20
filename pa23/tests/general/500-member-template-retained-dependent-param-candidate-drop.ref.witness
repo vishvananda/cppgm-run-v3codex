@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = string_like<char> source=deduced
 template-closure-events
-  ensure-definition
-    entity run_insert
   function-instantiation
     entity run_insert
   function-instantiation

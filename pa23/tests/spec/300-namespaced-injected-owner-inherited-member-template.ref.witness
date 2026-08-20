@@ -16,8 +16,6 @@ template-closure-events
     entity n::c<n::c<int>>::b
   class-instantiation
     entity n::c<n::c<int>>::d
-  ensure-definition
-    entity n::c<n::c<int>>::b::f
   function-instantiation
     entity n::c<n::c<int>>::b::f
   require-definition

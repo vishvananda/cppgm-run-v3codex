@@ -1,0 +1,38 @@
+translation-unit
+  alias-use at tests/general/500-constructor-sfinae-owner-pack-function-type.t:111:16
+    template enable_if_t
+    bind #1 = !is_same<Executor, any_executor<SupportableProperties...>>::value && !is_base_of<executor_base, Executor>::value && is_valid_target_executor<Executor, void (SupportableProperties...)>::value source=explicit
+  class-use at tests/general/500-constructor-sfinae-owner-pack-function-type.t:126:3
+    template any_executor
+    selected primary
+    bind #1 = <prefer_only<tracked>, prefer_only<untracked>> source=explicit
+  class-use at tests/general/500-constructor-sfinae-owner-pack-function-type.t:126:16
+    template prefer_only
+    selected primary
+    bind #1 = tracked source=explicit
+  class-use at tests/general/500-constructor-sfinae-owner-pack-function-type.t:126:38
+    template prefer_only
+    selected primary
+    bind #1 = untracked source=explicit
+  function-call at tests/general/500-constructor-sfinae-owner-pack-function-type.t:126:63
+    callee any_executor<prefer_only<tracked>, prefer_only<untracked>>::any_executor
+    selected instantiation
+    bind #1 = pool::executor source=deduced
+    drop any_executor<prefer_only<tracked>, prefer_only<untracked>>::any_executor reason=worse_conversion
+template-closure-events
+  function-instantiation
+    entity any_executor<prefer_only<tracked>, prefer_only<untracked>>::any_executor
+  require-definition
+    entity any_executor<prefer_only<tracked>, prefer_only<untracked>>::any_executor
+  variable-instantiation
+    entity is_base_of<executor_base, pool::executor>::value
+  variable-instantiation
+    entity is_same<pool::executor, any_executor<prefer_only<tracked>, prefer_only<untracked>>>::value
+  variable-instantiation
+    entity is_valid_target_executor<pool::executor, void (prefer_only<tracked>, prefer_only<untracked>)>::value
+  variable-instantiation
+    entity supportable_properties<0, void (prefer_only<tracked>)>::is_valid_target<pool::executor>::value
+  variable-instantiation
+    entity supportable_properties<0, void (prefer_only<tracked>, prefer_only<untracked>)>::is_valid_target<pool::executor>::value
+  variable-instantiation
+    entity supportable_properties<1, void (prefer_only<untracked>)>::is_valid_target<pool::executor>::value

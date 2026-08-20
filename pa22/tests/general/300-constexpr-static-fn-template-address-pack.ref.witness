@@ -1,0 +1,18 @@
+translation-unit
+  class-use at tests/general/300-constexpr-static-fn-template-address-pack.t:31:17
+    template table_instance
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = <void ()> source=explicit
+  class-use at tests/general/300-constexpr-static-fn-template-address-pack.t:35:11
+    template table_instance
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = <void ()> source=explicit
+template-closure-events
+  function-instantiation
+    entity slot<void ()>::impl
+  require-definition
+    entity slot<void ()>::impl
+  variable-instantiation
+    entity table_instance<int, void ()>::value

@@ -8,8 +8,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity chainbuf<int, input, public_>::sentry
-  ensure-definition
-    entity chainbuf<int, input, public_>::underflow
   function-instantiation
     entity chainbuf<int, input, public_>::sentry::sentry
   function-instantiation

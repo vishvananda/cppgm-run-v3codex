@@ -4,10 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = double source=explicit
 template-closure-events
-  ensure-definition
-    entity first
-  ensure-definition
-    entity pick
   function-instantiation
     entity first
   function-instantiation

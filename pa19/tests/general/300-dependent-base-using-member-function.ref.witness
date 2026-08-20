@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity split<int>::spare
   function-instantiation
     entity layout<split<int>, int>::__back_spare
   function-instantiation

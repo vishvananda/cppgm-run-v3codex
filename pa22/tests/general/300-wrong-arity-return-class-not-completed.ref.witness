@@ -9,8 +9,6 @@ translation-unit
     bind #1 = int source=deduced
     drop function<operation>::operator() reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity function<operation>::operator()
   function-instantiation
     entity function<operation>::operator()
   require-definition

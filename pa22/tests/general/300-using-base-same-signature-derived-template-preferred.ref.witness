@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = Key source=deduced
 template-closure-events
-  ensure-definition
-    entity Derived::erase
   function-instantiation
     entity Derived::erase
   require-definition

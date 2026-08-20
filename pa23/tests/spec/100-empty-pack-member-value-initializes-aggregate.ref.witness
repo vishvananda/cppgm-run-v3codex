@@ -9,8 +9,6 @@ translation-unit
     bind #1 = <> source=deduced
     drop U<X>::U reason=too_few_arguments
 template-closure-events
-  ensure-definition
-    entity U<X>::U
   function-instantiation
     entity U<X>::U
   require-definition

@@ -1,0 +1,16 @@
+translation-unit
+  class-use at tests/general/300-overlapping-free-function-template-output-identity.t:18:3
+    template graph
+    selected primary
+    bind #1 = directed source=explicit
+    bind #2 = distributed source=explicit
+  function-call at tests/general/300-overlapping-free-function-template-output-identity.t:19:10
+    callee vertex
+    selected instantiation
+    bind #1 = distributed source=deduced
+    drop vertex reason=better_candidate_selected
+template-closure-events
+  function-instantiation
+    entity vertex
+  require-definition
+    entity vertex

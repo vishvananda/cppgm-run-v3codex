@@ -8,8 +8,6 @@ translation-unit
     bind #1 = int & source=deduced
     bind #2 = <> source=deduced
 template-closure-events
-  ensure-definition
-    entity f
   function-instantiation
     entity f
   require-definition

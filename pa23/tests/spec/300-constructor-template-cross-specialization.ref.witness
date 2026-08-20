@@ -14,10 +14,6 @@ translation-unit
     drop wrap<long>::wrap reason=bad_conversion
     drop wrap<long>::wrap reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity wrap<int>::wrap
-  ensure-definition
-    entity wrap<long>::wrap
   function-instantiation
     entity wrap<int>::wrap
   function-instantiation

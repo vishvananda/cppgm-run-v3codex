@@ -5,8 +5,6 @@ translation-unit
     bind #1 = 17 source=deduced
     drop stream_parser::stream_parser reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity stream_parser::stream_parser
   function-instantiation
     entity stream_parser::stream_parser
   require-definition

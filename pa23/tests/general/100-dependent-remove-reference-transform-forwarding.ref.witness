@@ -10,8 +10,6 @@ translation-unit
     selected primary
     bind #1 = G source=explicit
 template-closure-events
-  ensure-definition
-    entity function<G>::function
   function-instantiation
     entity function<G>::function
   function-instantiation

@@ -10,12 +10,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop box<int>::box reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity box<int>::box
-  ensure-definition
-    entity check<int>::first
-  ensure-definition
-    entity check<int>::second
   function-instantiation
     entity box<int>::box
   function-instantiation

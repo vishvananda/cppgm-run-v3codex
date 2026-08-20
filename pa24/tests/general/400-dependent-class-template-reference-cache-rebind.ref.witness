@@ -11,8 +11,6 @@ translation-unit
     template apply
     bind #1 = Q source=explicit
 template-closure-events
-  ensure-definition
-    entity check
   function-instantiation
     entity check
   require-definition

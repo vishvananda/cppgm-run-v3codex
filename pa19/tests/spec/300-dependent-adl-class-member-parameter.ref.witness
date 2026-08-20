@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = user::graph source=explicit
 template-closure-events
-  ensure-definition
-    entity lib::vertex_list_graph<user::graph>::const_constraints
   function-instantiation
     entity lib::vertex_list_graph<user::graph>::const_constraints
   require-definition

@@ -21,10 +21,6 @@ translation-unit
     bind #2 = true source=defaulted
     drop tuple<const int &>::tuple reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity constraints<true, const int &>::constructible
-  ensure-definition
-    entity tuple<const int &>::tuple
   function-instantiation
     entity constraints<true, const int &>::constructible
   function-instantiation

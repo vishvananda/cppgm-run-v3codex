@@ -23,8 +23,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity api::make_pairish
   function-instantiation
     entity api::make_pairish
   function-instantiation

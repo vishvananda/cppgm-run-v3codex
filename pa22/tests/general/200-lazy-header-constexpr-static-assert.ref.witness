@@ -4,10 +4,6 @@ translation-unit
     selected primary
     bind #1 = G source=explicit
 template-closure-events
-  ensure-definition
-    entity complete_or_fallback
-  ensure-definition
-    entity integral_constant<bool, true>::operator bool
   function-instantiation
     entity complete_or_fallback
   function-instantiation

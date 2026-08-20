@@ -5,8 +5,6 @@ translation-unit
     bind #1 = iter source=deduced
     drop box::box reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity box::box
   function-instantiation
     entity box::box
   require-definition

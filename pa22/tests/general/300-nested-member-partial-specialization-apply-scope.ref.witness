@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = void (*)() source=explicit
 template-closure-events
-  ensure-definition
-    entity example::interpreter::register_function
   function-instantiation
     entity example::interpreter::invoker<void (*)(), example::interpreter::last>::apply
   function-instantiation

@@ -16,10 +16,6 @@ translation-unit
     selected instantiation
     bind #1 = const fobj source=explicit
 template-closure-events
-  ensure-definition
-    entity call0
-  ensure-definition
-    entity call1
   function-instantiation
     entity call0
   function-instantiation

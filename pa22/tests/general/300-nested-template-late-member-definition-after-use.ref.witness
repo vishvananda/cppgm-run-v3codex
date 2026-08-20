@@ -16,8 +16,6 @@ translation-unit
     selected primary
     bind #1 = long source=explicit
 template-closure-events
-  ensure-definition
-    entity outer<int>::inner<long>::call
   function-instantiation
     entity outer<int>::inner<long>::call
   require-definition

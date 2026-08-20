@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = char source=explicit
 template-closure-events
-  ensure-definition
-    entity finish
   function-instantiation
     entity finish
   require-definition

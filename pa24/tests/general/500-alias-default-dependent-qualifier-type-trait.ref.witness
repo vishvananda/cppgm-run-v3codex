@@ -20,8 +20,6 @@ translation-unit
     bind #1 = std::Vec<int> source=deduced
     bind #2 = void source=defaulted
 template-closure-events
-  ensure-definition
-    entity take
   function-instantiation
     entity take
   require-definition

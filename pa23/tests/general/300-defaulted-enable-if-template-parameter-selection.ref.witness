@@ -6,8 +6,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop choose reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity choose
   function-instantiation
     entity choose
   require-definition

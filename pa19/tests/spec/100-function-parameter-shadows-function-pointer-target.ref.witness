@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = int (*)(int) source=deduced
 template-closure-events
-  ensure-definition
-    entity preserve_target
   function-instantiation
     entity preserve_target
   require-definition

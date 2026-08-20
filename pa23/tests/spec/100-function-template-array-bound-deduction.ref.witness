@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int source=deduced
     bind #2 = 3 source=deduced
 template-closure-events
-  ensure-definition
-    entity array_size
   function-instantiation
     entity array_size
   require-definition

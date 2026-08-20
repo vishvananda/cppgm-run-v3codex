@@ -5,10 +5,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = P2 source=explicit
 template-closure-events
-  ensure-definition
-    entity Control<int, P2>::value
-  ensure-definition
-    entity Control<int, P2>::~Control
   function-instantiation
     entity Control<int, P2>::value
   function-instantiation

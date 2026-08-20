@@ -1,7 +1,5 @@
 translation-unit
 template-closure-events
-  ensure-definition
-    entity lazy_lookup_lib::min_value
   function-instantiation
     entity lazy_lookup_lib::min_value
   require-definition

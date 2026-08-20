@@ -222,7 +222,7 @@ void SemanticAnalyzer::EmitStructuredBindingStorage(
 		static_cast<std::uint32_t>(arena_->SourceColumn(source)),
 		static_cast<std::uint32_t>(arena_->TokenFirst(source)),
 		static_cast<std::uint32_t>(arena_->TokenLast(source)),
-		HasConstantInitializerFact(initializer));
+		true, HasConstantInitializerFact(initializer));
 
 	for (std::size_t i = 0; i < binding_syntax.size(); ++i)
 	{

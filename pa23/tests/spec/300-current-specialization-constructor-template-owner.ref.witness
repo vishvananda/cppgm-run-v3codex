@@ -1,0 +1,18 @@
+translation-unit
+  class-use at tests/spec/300-current-specialization-constructor-template-owner.t:17:10
+    template holder
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/300-current-specialization-constructor-template-owner.t:17:10
+    callee holder<int>::make
+    selected instantiation
+    bind #1 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity holder<int>::holder
+  function-instantiation
+    entity holder<int>::make
+  require-definition
+    entity holder<int>::holder
+  require-definition
+    entity holder<int>::make

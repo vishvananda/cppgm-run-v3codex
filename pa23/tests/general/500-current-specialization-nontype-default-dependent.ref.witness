@@ -4,10 +4,6 @@ translation-unit
     selected primary
     bind #1 = 64 source=explicit
 template-closure-events
-  ensure-definition
-    entity bitset<64>::operator&=
-  ensure-definition
-    entity bitset_base<1, 64>::bitset_base
   function-instantiation
     entity bitset<64>::operator&=
   function-instantiation

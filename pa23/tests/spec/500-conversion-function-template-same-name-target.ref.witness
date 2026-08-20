@@ -1,0 +1,28 @@
+translation-unit
+  class-use at tests/spec/500-conversion-function-template-same-name-target.t:39:24
+    template target_ns::view
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/500-conversion-function-template-same-name-target.t:46:14
+    template source_ns::view
+    selected primary
+    bind #1 = char source=explicit
+  function-call at tests/spec/500-conversion-function-template-same-name-target.t:47:18
+    callee source_ns::view<char>::operator view
+    selected instantiation
+    bind #1 = char source=deduced
+    drop target_ns::view<char>::view reason=explicit_not_allowed
+    drop target_ns::view<char>::view reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity source_ns::view<char>::operator view
+  function-instantiation
+    entity source_ns::view<char>::view
+  function-instantiation
+    entity target_ns::view<char>::view
+  require-definition
+    entity source_ns::view<char>::operator view
+  require-definition
+    entity source_ns::view<char>::view
+  require-definition
+    entity target_ns::view<char>::view

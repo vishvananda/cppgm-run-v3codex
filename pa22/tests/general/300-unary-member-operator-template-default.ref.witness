@@ -1,0 +1,11 @@
+translation-unit
+  function-call at tests/general/300-unary-member-operator-template-default.t:12:15
+    callee Box::operator*
+    selected instantiation
+    bind #1 = int & source=defaulted
+    bind #2 = int & source=defaulted
+template-closure-events
+  function-instantiation
+    entity Box::operator*
+  require-definition
+    entity Box::operator*

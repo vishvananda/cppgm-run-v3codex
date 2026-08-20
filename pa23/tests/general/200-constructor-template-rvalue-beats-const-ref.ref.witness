@@ -16,8 +16,6 @@ translation-unit
     bind #1 = movable source=explicit
     bind #2 = movable source=explicit
 template-closure-events
-  ensure-definition
-    entity build
   function-instantiation
     entity build
   function-instantiation

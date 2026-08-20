@@ -36,10 +36,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity n::basic_string<char, n::traits<char>, n::alloc<char>>::__alloc_traits
-  ensure-definition
-    entity n::basic_string<char, n::traits<char>, n::alloc<char>>::basic_string
-  ensure-definition
-    entity n::operator+
   function-instantiation
     entity n::basic_string<char, n::traits<char>, n::alloc<char>>::__alloc_traits::select_on_container_copy_construction
   function-instantiation

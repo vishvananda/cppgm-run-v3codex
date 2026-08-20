@@ -25,10 +25,6 @@ translation-unit
     drop X<int, const int *, const int &, const int *const *, 1024>::X reason=too_many_arguments
     drop X<int, const int *, const int &, const int *const *, 1024>::X reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity X<int, const int *, const int &, const int *const *, 1024>::X
-  ensure-definition
-    entity X<int, int *, int &, int **, 1024>::X
   function-instantiation
     entity X<int, const int *, const int &, const int *const *, 1024>::X
   function-instantiation

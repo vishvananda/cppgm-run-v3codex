@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int source=deduced
     drop a::b::f reason=too_few_arguments
 template-closure-events
-  ensure-definition
-    entity a::b::f
   function-instantiation
     entity a::b::f
   require-definition

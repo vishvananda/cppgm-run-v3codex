@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = unsigned long source=deduced
 template-closure-events
-  ensure-definition
-    entity max_like
   function-instantiation
     entity max_like
   require-definition

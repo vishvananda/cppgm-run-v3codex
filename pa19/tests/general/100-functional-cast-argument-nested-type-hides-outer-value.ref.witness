@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = outer::inner::shadow_maker source=deduced
 template-closure-events
-  ensure-definition
-    entity outer::inner::invoke
   function-instantiation
     entity outer::inner::invoke
   require-definition

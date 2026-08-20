@@ -1,0 +1,12 @@
+translation-unit
+  class-use at tests/general/400-partial-specialization-concrete-namespace-argument-order.t:25:20
+    template lib::box
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/general/400-partial-specialization-concrete-namespace-argument-order.t:29:15
+    template lib::box
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  variable-instantiation
+    entity lib::wrapper<lib::box<int>>::value

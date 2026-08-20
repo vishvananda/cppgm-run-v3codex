@@ -1,1 +1,0 @@
-ERROR: invalid initializer [target pointer to char] [source array of 10 const char] [init "immutable"]

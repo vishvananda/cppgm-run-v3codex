@@ -1,0 +1,1 @@
+ERROR: static_assert false: T::value [lookup T::value target=bad declared_in=bad value=0] [bindings hard<bad>{types:T=struct bad,hard=struct hard<bad>} {types:T=struct bad,hard<bad>=struct hard<bad>}]

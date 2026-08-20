@@ -9,8 +9,6 @@ translation-unit
     bind #1 = unsigned long source=explicit
     bind #2 = const char * source=explicit
 template-closure-events
-  ensure-definition
-    entity check
   function-instantiation
     entity check
   require-definition

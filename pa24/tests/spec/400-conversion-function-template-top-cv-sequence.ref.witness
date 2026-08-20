@@ -1,0 +1,42 @@
+translation-unit
+  class-use at tests/spec/400-conversion-function-template-top-cv-sequence.t:32:3
+    template result
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/400-conversion-function-template-top-cv-sequence.t:32:23
+    callee make_result
+    selected instantiation
+    bind #1 = result<int> source=explicit
+  class-use at tests/spec/400-conversion-function-template-top-cv-sequence.t:32:35
+    template result
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/400-conversion-function-template-top-cv-sequence.t:33:9
+    template result
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/400-conversion-function-template-top-cv-sequence.t:33:9
+    template result
+    selected primary
+    bind #1 = int source=deduced
+  function-call at tests/spec/400-conversion-function-template-top-cv-sequence.t:33:30
+    callee make_result
+    selected instantiation
+    bind #1 = const result<int> source=explicit
+  class-use at tests/spec/400-conversion-function-template-top-cv-sequence.t:33:48
+    template result
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  function-instantiation
+    entity make_result
+  function-instantiation
+    entity result<int>::result
+  function-instantiation
+    entity source::operator result
+  require-definition
+    entity make_result
+  require-definition
+    entity result<int>::result
+  require-definition
+    entity source::operator result

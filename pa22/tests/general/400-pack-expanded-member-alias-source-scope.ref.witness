@@ -1,0 +1,19 @@
+translation-unit
+  alias-use at tests/general/400-pack-expanded-member-alias-source-scope.t:6:62
+    template all
+    bind #1 = A<S, T>... source=explicit
+  alias-use at tests/general/400-pack-expanded-member-alias-source-scope.t:6:66
+    template A
+    bind #1 = S source=explicit
+    bind #2 = T source=explicit
+  class-use at tests/general/400-pack-expanded-member-alias-source-scope.t:7:8
+    template B
+    selected primary
+    bind #1 = <double, double> source=explicit
+  class-use at tests/general/400-pack-expanded-member-alias-source-scope.t:8:17
+    template X
+    selected primary
+    bind #1 = <int, int> source=explicit
+  alias-use at tests/general/400-pack-expanded-member-alias-source-scope.t:8:30
+    template X<int, int>::fn
+    bind #1 = int source=explicit

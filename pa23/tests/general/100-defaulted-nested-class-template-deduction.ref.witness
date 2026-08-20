@@ -21,8 +21,6 @@ translation-unit
     selected instantiation
     bind #1 = F source=deduced
 template-closure-events
-  ensure-definition
-    entity lookup
   function-instantiation
     entity lookup
   require-definition

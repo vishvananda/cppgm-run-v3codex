@@ -2793,7 +2793,8 @@ for my $test (@tests)
 
 	if ($mode eq 'witness_t')
 	{
-		my ($state, $message) = compare_witness_text($ref_suffix, $my_suffix, $testbase);
+		my ($state, $message) =
+			compare_witness_text($ref_suffix, $my_suffix, $testbase);
 		if ($state eq 'skip')
 		{
 			++$witness_skipped;

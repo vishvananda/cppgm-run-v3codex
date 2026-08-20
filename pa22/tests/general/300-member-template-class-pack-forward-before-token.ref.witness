@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity sender<error_code, string>::send
   function-instantiation
     entity sender<error_code, string>::send
   require-definition

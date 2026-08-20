@@ -1,0 +1,149 @@
+translation-unit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:17:19
+    template bool_
+    selected primary
+    bind #1 = false source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:91:36
+    template bool_
+    selected primary
+    bind #1 = false source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:156:18
+    template bool_
+    selected primary
+    bind #1 = false source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:172:13
+    template is_random_access
+    selected primary
+    bind #1 = iterator<cons<wrapper<int>>> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:172:30
+    template iterator
+    selected primary
+    bind #1 = cons<wrapper<int>> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:172:39
+    template cons
+    selected primary
+    bind #1 = wrapper<int> source=explicit
+    bind #2 = nil source=defaulted
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:172:44
+    template wrapper
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:173:26
+    template iterator
+    selected primary
+    bind #1 = cons<wrapper<int>> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:173:35
+    template cons
+    selected primary
+    bind #1 = wrapper<int> source=explicit
+    bind #2 = nil source=defaulted
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:173:40
+    template wrapper
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:175:11
+    template iterator
+    selected primary
+    bind #1 = cons<wrapper<int>> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:175:20
+    template cons
+    selected primary
+    bind #1 = wrapper<int> source=explicit
+    bind #2 = nil source=defaulted
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:175:25
+    template wrapper
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:313:18
+    template bool_
+    selected primary
+    bind #1 = false source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:322:7
+    template or_impl
+    selected partial
+    bind #1 = false source=explicit
+    bind #2 = apply_filter<filter_iterator<long, iterator<cons<wrapper<int>>>, iterator<cons<wrapper<long>>>, contains_feature_of_<int>>, bind1<contains_feature_of_<int>, bind1<quote1<value_of>, arg1>>> source=explicit
+    specialize #1 = apply_filter<filter_iterator<long, iterator<cons<wrapper<int>>>, iterator<cons<wrapper<long>>>, contains_feature_of_<int>>, bind1<contains_feature_of_<int>, bind1<quote1<value_of>, arg1>>> source=deduced
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:324:11
+    template apply_filter
+    selected primary
+    bind #1 = filter_iterator<long, iterator<cons<wrapper<int>>>, iterator<cons<wrapper<long>>>, contains_feature_of_<int>> source=explicit
+    bind #2 = bind1<contains_feature_of_<int>, bind1<quote1<value_of>, arg1>> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:325:15
+    template filter_iterator
+    selected primary
+    bind #1 = long source=explicit
+    bind #2 = iterator<cons<wrapper<int>>> source=explicit
+    bind #3 = iterator<cons<wrapper<long>>> source=explicit
+    bind #4 = contains_feature_of_<int> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:327:19
+    template iterator
+    selected primary
+    bind #1 = cons<wrapper<int>> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:327:28
+    template cons
+    selected primary
+    bind #1 = wrapper<int> source=explicit
+    bind #2 = nil source=defaulted
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:327:33
+    template wrapper
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:328:19
+    template iterator
+    selected primary
+    bind #1 = cons<wrapper<long>> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:328:28
+    template cons
+    selected primary
+    bind #1 = wrapper<long> source=explicit
+    bind #2 = nil source=defaulted
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:328:33
+    template wrapper
+    selected primary
+    bind #1 = long source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:329:19
+    template contains_feature_of_
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:330:15
+    template bind1
+    selected primary
+    bind #1 = contains_feature_of_<int> source=explicit
+    bind #2 = bind1<quote1<value_of>, arg1> source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:330:21
+    template contains_feature_of_
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:331:21
+    template bind1
+    selected primary
+    bind #1 = quote1<value_of> source=explicit
+    bind #2 = arg1 source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:331:27
+    template quote1
+    selected primary
+    bind #1 = value_of source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:348:19
+    template identity
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:348:34
+    template identity
+    selected primary
+    bind #1 = long source=explicit
+  class-use at tests/spec/300-nondeduced-partial-pattern-recursive-completion.t:359:3
+    template cold_owner
+    selected primary
+    bind #1 = long source=explicit
+template-closure-events
+  class-instantiation
+    entity has_fusion_tag<filter_iterator<long, iterator<cons<wrapper<int>>>, iterator<cons<wrapper<long>>>, contains_feature_of_<int>>>::sfinae
+  class-instantiation
+    entity has_fusion_tag<iterator<cons<wrapper<int>>>>::sfinae
+  class-instantiation
+    entity has_type<value_of<filter_iterator<long, iterator<cons<wrapper<int>>>, iterator<cons<wrapper<long>>>, contains_feature_of_<int>>>>::sfinae
+  variable-instantiation
+    entity has_fusion_tag<filter_iterator<long, iterator<cons<wrapper<int>>>, iterator<cons<wrapper<long>>>, contains_feature_of_<int>>>::value
+  variable-instantiation
+    entity has_fusion_tag<iterator<cons<wrapper<int>>>>::value

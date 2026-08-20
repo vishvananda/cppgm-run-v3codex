@@ -19,8 +19,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity align_value
   function-instantiation
     entity align_value
   require-definition

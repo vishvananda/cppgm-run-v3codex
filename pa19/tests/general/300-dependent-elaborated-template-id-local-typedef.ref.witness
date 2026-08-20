@@ -1,0 +1,10 @@
+translation-unit
+  function-call at tests/general/300-dependent-elaborated-template-id-local-typedef.t:23:10
+    callee library::read
+    selected instantiation
+    bind #1 = int source=explicit
+template-closure-events
+  function-instantiation
+    entity library::read
+  require-definition
+    entity library::read

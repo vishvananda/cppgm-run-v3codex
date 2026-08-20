@@ -13,8 +13,6 @@ translation-unit
     selected instantiation
     bind #1 = init_functor source=deduced
 template-closure-events
-  ensure-definition
-    entity function_n<void>::assign_to
   function-instantiation
     entity function_n<void>::assign_to
   require-definition

@@ -6,6 +6,17 @@ use Cwd qw(abs_path);
 use File::Find qw(find);
 use FindBin qw($Bin);
 use File::Temp qw(tempdir);
+use POSIX ();
+
+sub detect_jobs {
+  my $jobs = $ENV{CPPGM_TEST_JOBS};
+  return $jobs if defined($jobs) && $jobs =~ /^\d+\z/ && $jobs > 0;
+  my $detected = `getconf _NPROCESSORS_ONLN 2>/dev/null`;
+  $detected = "" unless defined $detected;
+  chomp($detected);
+  return $detected if $detected =~ /^\d+\z/ && $detected > 0;
+  return 1;
+}
 
 sub usage {
   die "usage: run_object_lowir_roundtrip_tests.pl [--debuginfo] --app APP (--test-root DIR | --test FILE)...\n";
@@ -114,82 +125,76 @@ sub safe_name {
   return $path;
 }
 
-sub check_source {
-  my ($test, $source, $temp) = @_;
-  die "missing object-roundtrip test source: $source\n" unless -f $source;
-
-  my $name = safe_name($source);
+sub modes_for {
+  my ($test) = @_;
   my @modes = $debuginfo
     ? (["-gline-tables-only", "-O0", "O0"],
        ["-gline-tables-only", "-O1", "O1"])
     : ([undef, "-O0", "O0"], [undef, "-O1", "O1"],
        [undef, "-O2", "O2"]);
-  my $checks_default = $test =~ /default-maximum-optimization/;
-  if(!$debuginfo && $checks_default) {
+  if(!$debuginfo && $test =~ /default-maximum-optimization/) {
     push @modes, [undef, undef, "default"], [undef, "-O3", "O3"];
   }
-  my %direct_by_level;
-  for my $mode (@modes) {
-    my ($debug_flag, $opt, $level_name) = @$mode;
-    my $debug_label = defined($debug_flag) ? $debug_flag : "nodebug";
-    my $mode_name = safe_name("$debug_label.$level_name");
-    my $direct = "$temp/$name.$mode_name.direct.o";
-    my $lowir = "$temp/$name.$mode_name.lowir";
-    my $from_lowir = "$temp/$name.$mode_name.from-lowir.o";
-
-    my @debug_flags = defined($debug_flag) ? ($debug_flag) : ("-g0");
-    my @optimization_flags = defined($opt) ? ($opt) : ();
-    my @direct_cmd = ($app, "-c", @debug_flags, @optimization_flags);
-    my $direct_error = run_command(@direct_cmd, "-o", $direct, $source);
-    return $direct_error if defined $direct_error;
-    my $emit_error = run_command($app,
-                                 "--emit-lowir",
-                                 @debug_flags,
-                                 "-O0",
-                                 "-o",
-                                 $lowir,
-                                 $source);
-    return $emit_error if defined $emit_error;
-    my $from_lowir_error = run_command($app,
-                                       "-c",
-                                       @debug_flags,
-                                       @optimization_flags,
-                                       "-o",
-                                       $from_lowir,
-                                       $lowir);
-    return $from_lowir_error if defined $from_lowir_error;
-
-    my $direct_bytes = read_bytes($direct);
-    my $from_lowir_bytes = read_bytes($from_lowir);
-    if($direct_bytes ne $from_lowir_bytes) {
-      return "object differs after compiling serialized LowIR: $source $debug_label $level_name\n"
-        . "direct bytes: " . length($direct_bytes) . "\n"
-        . "from-lowir bytes: " . length($from_lowir_bytes) . "\n"
-        . "direct symbols:\n" . object_summary($direct)
-        . "from-lowir symbols:\n" . object_summary($from_lowir);
-    }
-    $direct_by_level{$level_name} = $direct_bytes;
-  }
-  if(!$debuginfo && $checks_default) {
-    for my $level ("O2", "O3") {
-      next if $direct_by_level{"default"} eq $direct_by_level{$level};
-      return "default object differs from maximum optimization: $source default/$level\n"
-        . "default bytes: " . length($direct_by_level{"default"}) . "\n"
-        . "$level bytes: " . length($direct_by_level{$level}) . "\n";
-    }
-  }
-  return undef;
+  return @modes;
 }
 
-sub check_one {
-  my ($test, $temp) = @_;
-  die "missing object-roundtrip test source: $test\n" unless -f $test;
+# Scratch basename for one unit. Keeps the descriptive source/mode name the
+# serial implementation used -- it shows up in failure messages -- and appends
+# the unit index so two sources whose names differ only in punctuation cannot
+# collide now that units run concurrently.
+sub unit_base {
+  my ($source, $mode, $temp, $slot) = @_;
+  my $debug_flag = $mode->[0];
+  my $level_name = $mode->[2];
+  my $debug_label = defined($debug_flag) ? $debug_flag : "nodebug";
+  return "$temp/" . safe_name($source) . "." . safe_name("$debug_label.$level_name") . ".u$slot";
+}
 
-  for my $source (harness_sources($test)) {
-    my $error = check_source($test, $source, $temp);
-    return $error if defined $error;
-  }
-  return undef;
+# One (source, mode) unit: three compiler invocations plus the direct vs
+# from-lowir comparison. Modes are independent of one another, so these are the
+# units spread across workers -- a single hosted test costs three compiler
+# invocations per mode, and running its modes back to back set the floor for
+# the whole bucket.
+sub check_mode {
+  my ($source, $mode, $temp, $slot) = @_;
+  my ($debug_flag, $opt, $level_name) = @$mode;
+  my $debug_label = defined($debug_flag) ? $debug_flag : "nodebug";
+  my $base = unit_base($source, $mode, $temp, $slot);
+  my $direct = "$base.direct.o";
+  my $lowir = "$base.lowir";
+  my $from_lowir = "$base.from-lowir.o";
+
+  my @debug_flags = defined($debug_flag) ? ($debug_flag) : ("-g0");
+  my @optimization_flags = defined($opt) ? ($opt) : ();
+  my @direct_cmd = ($app, "-c", @debug_flags, @optimization_flags);
+  my $direct_error = run_command(@direct_cmd, "-o", $direct, $source);
+  return $direct_error if defined $direct_error;
+  my $emit_error = run_command($app,
+                               "--emit-lowir",
+                               @debug_flags,
+                               "-O0",
+                               "-o",
+                               $lowir,
+                               $source);
+  return $emit_error if defined $emit_error;
+  my $from_lowir_error = run_command($app,
+                                     "-c",
+                                     @debug_flags,
+                                     @optimization_flags,
+                                     "-o",
+                                     $from_lowir,
+                                     $lowir);
+  return $from_lowir_error if defined $from_lowir_error;
+
+  my $direct_bytes = read_bytes($direct);
+  my $from_lowir_bytes = read_bytes($from_lowir);
+  return undef if $direct_bytes eq $from_lowir_bytes;
+
+  return "object differs after compiling serialized LowIR: $source $debug_label $level_name\n"
+    . "direct bytes: " . length($direct_bytes) . "\n"
+    . "from-lowir bytes: " . length($from_lowir_bytes) . "\n"
+    . "direct symbols:\n" . object_summary($direct)
+    . "from-lowir symbols:\n" . object_summary($from_lowir);
 }
 
 sub append_keep_going_summary {
@@ -218,16 +223,129 @@ if(!$keep_going) {
 my $temp = tempdir("cppgm-object-lowir-roundtrip.XXXXXX", TMPDIR => 1, CLEANUP => 1);
 my $passed = 0;
 my $failed = 0;
-for my $test (@selected) {
-  my $error = check_one($test, $temp);
-  if(defined $error) {
-    print STDERR "$test: $error";
+
+# Flatten the work to (source, mode) units. Sources within a test and modes
+# within a source are all independent, which exposes far more parallelism than
+# one unit per test: the slowest hosted test alone ran nine compiler
+# invocations back to back and set the floor for the entire bucket.
+my @units;
+my @test_units;  # test index -> unit indices, in serial-report order
+for my $ti (0 .. $#selected) {
+  my $test = $selected[$ti];
+  die "missing object-roundtrip test source: $test\n" unless -f $test;
+  $test_units[$ti] = [];
+  for my $source (harness_sources($test)) {
+    die "missing object-roundtrip test source: $source\n" unless -f $source;
+    for my $mode (modes_for($test)) {
+      push @units, { source => $source, mode => $mode };
+      push @{ $test_units[$ti] }, $#units;
+    }
+  }
+}
+
+sub maximum_optimization_error {
+  my ($test, $unit_indices) = @_;
+  return undef if $debuginfo || $test !~ /default-maximum-optimization/;
+
+  my %unit_by_source_level;
+  my @sources;
+  my %seen_source;
+  for my $u (@$unit_indices) {
+    my $source = $units[$u]{source};
+    push @sources, $source unless $seen_source{$source}++;
+    my $level_name = $units[$u]{mode}[2];
+    $unit_by_source_level{$source}{$level_name} = $u;
+  }
+
+  for my $source (@sources) {
+    my $default_u = $unit_by_source_level{$source}{default};
+    my $default_path = unit_base($source, $units[$default_u]{mode},
+                                 $temp, $default_u) . ".direct.o";
+    my $default_bytes = read_bytes($default_path);
+    for my $level_name ("O2", "O3") {
+      my $level_u = $unit_by_source_level{$source}{$level_name};
+      my $level_path = unit_base($source, $units[$level_u]{mode},
+                                 $temp, $level_u) . ".direct.o";
+      my $level_bytes = read_bytes($level_path);
+      next if $default_bytes eq $level_bytes;
+      return "default object differs from maximum optimization: $source default/$level_name\n"
+        . "default bytes: " . length($default_bytes) . "\n"
+        . "$level_name bytes: " . length($level_bytes) . "\n";
+    }
+  }
+  return undef;
+}
+
+sub run_unit {
+  my ($u) = @_;
+  my $error = check_mode($units[$u]{source}, $units[$u]{mode}, $temp, $u);
+  return unless defined $error;
+  if(open(my $fh, '>', "$temp/error.$u")) {
+    print $fh $error;
+    close($fh);
+  }
+}
+
+my $jobs = detect_jobs();
+$jobs = scalar(@units) if $jobs > scalar(@units);
+
+if($jobs > 1) {
+  STDOUT->flush();
+  STDERR->flush();
+  my @pids;
+  for my $slot (0 .. $jobs - 1) {
+    my $pid = fork();
+    die "unable to fork object-roundtrip worker: $!\n" unless defined $pid;
+    if($pid == 0) {
+      # Children must not run the parent's File::Temp CLEANUP handler, so they
+      # leave via POSIX::_exit rather than exit.
+      run_unit($_) for grep { $_ % $jobs == $slot } 0 .. $#units;
+      POSIX::_exit(0);
+    }
+    push @pids, $pid;
+  }
+  waitpid($_, 0) for @pids;
+} else {
+  run_unit($_) for 0 .. $#units;
+}
+
+# Reduce unit results back to per-test verdicts in the order the serial
+# implementation would have reported them: the first failing mode of the first
+# failing source.
+my @test_errors;
+for my $ti (0 .. $#selected) {
+  for my $u (@{ $test_units[$ti] }) {
+    next unless -f "$temp/error.$u";
+    $test_errors[$ti] = read_bytes("$temp/error.$u");
+    last;
+  }
+  if(!defined($test_errors[$ti])) {
+    $test_errors[$ti] = maximum_optimization_error(
+      $selected[$ti], $test_units[$ti]);
+  }
+}
+
+# Without KEEP_GOING the serial loop stopped at the first failing test, so only
+# that failure is reported and only earlier passes are counted.
+my $stop_at = $#selected + 1;
+if(!$keep_going) {
+  for my $ti (0 .. $#selected) {
+    if(defined $test_errors[$ti]) {
+      $stop_at = $ti;
+      last;
+    }
+  }
+}
+for my $ti (0 .. $#selected) {
+  last if $ti > $stop_at;
+  if(defined $test_errors[$ti]) {
+    my $error = $test_errors[$ti];
+    print STDERR "$selected[$ti]: $error";
     print STDERR "\n" unless $error =~ /\n\z/;
     $failed = 1;
-    last unless $keep_going;
     next;
   }
-  ++$passed;
+  ++$passed if $ti < $stop_at;
 }
 
 append_keep_going_summary($passed, scalar(@selected), $failed) if $keep_going;

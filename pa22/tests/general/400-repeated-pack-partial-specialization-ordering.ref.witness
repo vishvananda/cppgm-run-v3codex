@@ -1,0 +1,76 @@
+translation-unit
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:27:15
+    template similar_impl
+    selected partial
+    bind #1 = list<> source=explicit
+    bind #2 = list<> source=explicit
+    specialize #1 = list source=deduced
+    specialize #2 = <> source=deduced
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:27:28
+    template list
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:27:36
+    template list
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:28:15
+    template similar_impl
+    selected partial
+    bind #1 = list<int> source=explicit
+    bind #2 = list<int> source=explicit
+    specialize #1 = list source=deduced
+    specialize #2 = <int> source=deduced
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:28:28
+    template list
+    selected primary
+    bind #1 = <int> source=explicit
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:28:39
+    template list
+    selected primary
+    bind #1 = <int> source=explicit
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:29:15
+    template similar_impl
+    selected partial
+    bind #1 = list<int> source=explicit
+    bind #2 = list<long> source=explicit
+    specialize #1 = list source=deduced
+    specialize #2 = <int> source=deduced
+    specialize #3 = <long> source=deduced
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:29:28
+    template list
+    selected primary
+    bind #1 = <int> source=explicit
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:29:39
+    template list
+    selected primary
+    bind #1 = <long> source=explicit
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:30:15
+    template similar_impl
+    selected partial
+    bind #1 = list<> source=explicit
+    bind #2 = list<list<>> source=explicit
+    specialize #1 = list source=deduced
+    specialize #2 = <> source=deduced
+    specialize #3 = <list<>> source=deduced
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:30:28
+    template list
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:30:36
+    template list
+    selected primary
+    bind #1 = <list<>> source=explicit
+  class-use at tests/general/400-repeated-pack-partial-specialization-ordering.t:30:41
+    template list
+    selected primary
+    bind #1 = <> source=deduced
+template-closure-events
+  variable-instantiation
+    entity similar_impl<list<>, list<>>::value
+  variable-instantiation
+    entity similar_impl<list<>, list<list<>>>::value
+  variable-instantiation
+    entity similar_impl<list<int>, list<int>>::value
+  variable-instantiation
+    entity similar_impl<list<int>, list<long>>::value

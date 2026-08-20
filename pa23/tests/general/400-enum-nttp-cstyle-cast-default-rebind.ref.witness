@@ -1,0 +1,44 @@
+translation-unit
+  class-use at tests/general/400-enum-nttp-cstyle-cast-default-rebind.t:239:27
+    template boost::intrusive::generic_hook
+    selected primary
+    bind #1 = boost::intrusive::RbTreeAlgorithms source=explicit
+    bind #2 = boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true> source=explicit
+    bind #3 = boost::intrusive::dft_tag source=explicit
+    bind #4 = boost::intrusive::normal_link source=explicit
+    bind #5 = boost::intrusive::RbTreeBaseHookId source=explicit
+  class-use at tests/general/400-enum-nttp-cstyle-cast-default-rebind.t:241:23
+    template boost::intrusive::rbtree_node_traits
+    selected primary
+    bind #1 = boost::interprocess::offset_ptr<void, long, unsigned long, 0> source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/general/400-enum-nttp-cstyle-cast-default-rebind.t:242:30
+    template boost::interprocess::offset_ptr
+    selected primary
+    bind #1 = void source=explicit
+    bind #2 = long source=explicit
+    bind #3 = unsigned long source=explicit
+    bind #4 = 0 source=explicit
+  class-use at tests/general/400-enum-nttp-cstyle-cast-default-rebind.t:252:27
+    template boost::intrusive::make_multiset
+    selected primary
+    bind #1 = block_ctrl source=explicit
+    bind #2 = boost::intrusive::base_hook<boost::intrusive::generic_hook<boost::intrusive::RbTreeAlgorithms, boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true>, boost::intrusive::dft_tag, boost::intrusive::normal_link, boost::intrusive::RbTreeBaseHookId>> source=explicit
+    bind #3 = void source=defaulted
+  class-use at tests/general/400-enum-nttp-cstyle-cast-default-rebind.t:254:23
+    template boost::intrusive::base_hook
+    selected primary
+    bind #1 = boost::intrusive::generic_hook<boost::intrusive::RbTreeAlgorithms, boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true>, boost::intrusive::dft_tag, boost::intrusive::normal_link, boost::intrusive::RbTreeBaseHookId> source=explicit
+template-closure-events
+  variable-instantiation
+    entity boost::intrusive::detail::internal_any_hook_bool<boost::intrusive::generic_hook<boost::intrusive::RbTreeAlgorithms, boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true>, boost::intrusive::dft_tag, boost::intrusive::normal_link, boost::intrusive::RbTreeBaseHookId>>::value
+  variable-instantiation
+    entity boost::intrusive::detail::internal_any_hook_bool_is_true<boost::intrusive::generic_hook<boost::intrusive::RbTreeAlgorithms, boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true>, boost::intrusive::dft_tag, boost::intrusive::normal_link, boost::intrusive::RbTreeBaseHookId>>::value
+  variable-instantiation
+    entity boost::intrusive::detail::internal_base_hook_bool<boost::intrusive::generic_hook<boost::intrusive::RbTreeAlgorithms, boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true>, boost::intrusive::dft_tag, boost::intrusive::normal_link, boost::intrusive::RbTreeBaseHookId>>::value
+  variable-instantiation
+    entity boost::intrusive::detail::internal_base_hook_bool_is_true<boost::intrusive::generic_hook<boost::intrusive::RbTreeAlgorithms, boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true>, boost::intrusive::dft_tag, boost::intrusive::normal_link, boost::intrusive::RbTreeBaseHookId>>::value
+  variable-instantiation
+    entity boost::intrusive::hooktags_impl<boost::intrusive::rbtree_node_traits<boost::interprocess::offset_ptr<void, long, unsigned long, 0>, true>, boost::intrusive::dft_tag, boost::intrusive::normal_link, boost::intrusive::RbTreeBaseHookId>::is_base_hook
+  variable-instantiation
+    entity boost::intrusive::is_same<boost::intrusive::dft_tag, boost::intrusive::member_tag>::value

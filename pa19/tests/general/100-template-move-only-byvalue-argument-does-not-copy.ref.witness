@@ -12,8 +12,6 @@ translation-unit
     selected primary
     bind #1 = move_only source=explicit
 template-closure-events
-  ensure-definition
-    entity box<move_only>::box
   function-instantiation
     entity box<move_only>::box
   require-definition

@@ -22,14 +22,6 @@ translation-unit
     bind #4 = 0 source=deduced
     bind #5 = void source=deduced
 template-closure-events
-  ensure-definition
-    entity lib::ptr<int>::operator=
-  ensure-definition
-    entity lib::ptr<int>::ptr
-  ensure-definition
-    entity lib::ptr<void>::ptr
-  ensure-definition
-    entity lib::static_pointer_cast
   function-instantiation
     entity lib::ptr<int>::operator=
   function-instantiation

@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = Node source=explicit
 template-closure-events
-  ensure-definition
-    entity Owner<Node>::Owner
   function-instantiation
     entity Control<Node>::Control
   function-instantiation

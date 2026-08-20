@@ -1,0 +1,26 @@
+translation-unit
+  class-use at tests/general/400-partial-specialization-inherited-constructor-template.t:53:3
+    template op
+    selected partial
+    bind #1 = impl source=explicit
+    bind #2 = work source=explicit
+    bind #3 = handler source=explicit
+    bind #4 = <void (int)> source=explicit
+    specialize #1 = impl source=deduced
+    specialize #2 = work source=deduced
+    specialize #3 = handler source=deduced
+    specialize #4 = void source=deduced
+    specialize #5 = <int> source=deduced
+template-closure-events
+  function-instantiation
+    entity impl::operator()
+  function-instantiation
+    entity op<impl, work, handler, void (int)>::run
+  function-instantiation
+    entity op<impl, work, handler>::op
+  require-definition
+    entity impl::operator()
+  require-definition
+    entity op<impl, work, handler, void (int)>::run
+  require-definition
+    entity op<impl, work, handler>::op

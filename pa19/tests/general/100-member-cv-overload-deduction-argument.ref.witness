@@ -8,10 +8,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity allocator_base<int>::allocator_base
-  ensure-definition
-    entity store<int>::move_from
   function-instantiation
     entity allocator_base<int>::allocator_base
   function-instantiation

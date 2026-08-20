@@ -1,0 +1,5 @@
+translation-unit
+  class-use at tests/spec/300-nested-member-class-template-explicit-specialization.t:6:19
+    template A
+    selected explicit
+    bind #1 = int source=explicit

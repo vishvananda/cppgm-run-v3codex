@@ -10,8 +10,6 @@ translation-unit
     drop result<int>::result reason=worse_conversion
     drop result<int>::result reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity result<int>::result
   function-instantiation
     entity reference<int>::reference
   function-instantiation

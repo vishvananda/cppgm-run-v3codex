@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = const char * source=deduced
 template-closure-events
-  ensure-definition
-    entity nondeduced_qualified_member_type_conversion::next
   function-instantiation
     entity nondeduced_qualified_member_type_conversion::next
   require-definition

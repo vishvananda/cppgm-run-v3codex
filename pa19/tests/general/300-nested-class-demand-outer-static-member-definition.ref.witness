@@ -10,8 +10,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity pool<int>::nested
-  ensure-definition
-    entity pool<int>::nested::run
   function-instantiation
     entity pool<int>::get
   function-instantiation

@@ -82,10 +82,15 @@ std::size_t SemanticAnalyzer::RequestedAlignment(NodeId node, ScopeId scope)
 			const NodeId specifiers = FindChild(operand, ::cppgm::pa10_syntax_detail::STAG_TYPE_SPECIFIER_SEQ);
 			const NodeId name = specifiers == kNoNode ? kNoNode :
 				FirstSemanticChild(specifiers);
-			const LookupResult constant = name != kNoNode &&
-				arena_->IsTag(name, ::cppgm::pa10_syntax_detail::STAG_TYPE_NAME) ?
-				LookupSyntaxName(name, scope, LOOKUP_ORDINARY) :
-				LookupResult();
+			const BindingId variable_template = name == kNoNode ? kNoBinding :
+				InstantiateVariableTemplate(name, scope);
+			LookupResult constant;
+			if (variable_template != kNoBinding)
+				constant.ordinary = variable_template;
+			else if (name != kNoNode &&
+				arena_->IsTag(name,
+					::cppgm::pa10_syntax_detail::STAG_TYPE_NAME))
+				constant = LookupSyntaxName(name, scope, LOOKUP_ORDINARY);
 			if (constant.ordinary != kNoBinding)
 			{
 				const ExpressionInfo expression = AnalyzeNamedValue(

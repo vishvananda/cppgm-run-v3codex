@@ -7,8 +7,6 @@ translation-unit
     bind #3 = 1 source=deduced
     drop depth reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity depth
   function-instantiation
     entity depth
   require-definition

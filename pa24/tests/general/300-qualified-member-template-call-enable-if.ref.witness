@@ -15,10 +15,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop pair_like<int, int>::pair_like reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity check<int, int>::f
-  ensure-definition
-    entity pair_like<int, int>::pair_like
   function-instantiation
     entity check<int, int>::f
   function-instantiation

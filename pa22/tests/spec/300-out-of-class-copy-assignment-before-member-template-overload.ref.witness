@@ -17,8 +17,6 @@ translation-unit
     bind #1 = long source=deduced
     drop box<int>::operator= reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity box<int>::operator=
   function-instantiation
     entity box<int>::operator=
   require-definition

@@ -1,0 +1,31 @@
+translation-unit
+  function-call at tests/general/300-nested-class-template-current-owner-lookup.t:72:3
+    callee async_result<appended<binder<int>>>::initiate
+    selected instantiation
+    bind #1 = initiation source=explicit
+  class-use at tests/general/300-nested-class-template-current-owner-lookup.t:72:3
+    template async_result
+    selected partial
+    bind #1 = appended<binder<int>> source=explicit
+    specialize #1 = binder<int> source=deduced
+  class-use at tests/general/300-nested-class-template-current-owner-lookup.t:72:16
+    template appended
+    selected primary
+    bind #1 = binder<int> source=explicit
+  class-use at tests/general/300-nested-class-template-current-owner-lookup.t:72:25
+    template binder
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  function-instantiation
+    entity async_result<appended<binder<int>>>::init_wrapper<initiation>::init_wrapper
+  function-instantiation
+    entity async_result<appended<binder<int>>>::init_wrapper<initiation>::operator()
+  function-instantiation
+    entity async_result<appended<binder<int>>>::initiate
+  require-definition
+    entity async_result<appended<binder<int>>>::init_wrapper<initiation>::init_wrapper
+  require-definition
+    entity async_result<appended<binder<int>>>::init_wrapper<initiation>::operator()
+  require-definition
+    entity async_result<appended<binder<int>>>::initiate

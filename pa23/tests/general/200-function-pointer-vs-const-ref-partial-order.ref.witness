@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int (unsigned long) source=deduced
     drop pick reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity pick
   function-instantiation
     entity pick
   require-definition

@@ -1,0 +1,22 @@
+translation-unit
+  class-use at tests/general/300-out-of-class-nested-definitions-distinguish-partial-owner.t:6:37
+    template A
+    selected explicit
+    bind #1 = type-parameter-0-0 & source=explicit
+  class-use at tests/general/300-out-of-class-nested-definitions-distinguish-partial-owner.t:7:14
+    template A
+    selected partial
+    bind #1 = int & source=explicit
+    specialize #1 = int source=deduced
+  function-call at tests/general/300-out-of-class-nested-definitions-distinguish-partial-owner.t:7:25
+    callee A<int &>::B::B
+    selected instantiation
+    bind #1 = int source=deduced
+    drop A<int &>::B::B reason=worse_conversion
+template-closure-events
+  class-instantiation
+    entity A<int &>::B
+  function-instantiation
+    entity A<int &>::B::B
+  require-definition
+    entity A<int &>::B::B

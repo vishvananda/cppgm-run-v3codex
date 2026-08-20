@@ -1,7 +1,5 @@
 translation-unit
 template-closure-events
-  ensure-definition
-    entity source::function
   function-instantiation
     entity source::function
   require-definition

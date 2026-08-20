@@ -15,8 +15,6 @@ translation-unit
     selected primary
     bind #1 = S::E source=explicit
 template-closure-events
-  ensure-definition
-    entity Pick<PairLike<int, Box<S::E>>>::value
   function-instantiation
     entity Pick<PairLike<int, Box<S::E>>>::value
   require-definition

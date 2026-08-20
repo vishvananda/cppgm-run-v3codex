@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = unsigned int source=deduced
 template-closure-events
-  ensure-definition
-    entity choose
   function-instantiation
     entity choose
   require-definition

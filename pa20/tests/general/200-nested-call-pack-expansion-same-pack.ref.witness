@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = <int, int> source=deduced
 template-closure-events
-  ensure-definition
-    entity nested
   function-instantiation
     entity nested
   function-instantiation

@@ -1,0 +1,33 @@
+translation-unit
+  class-use at tests/general/500-constructor-pack-default-rewritten-pointer.t:4:9
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/general/500-constructor-pack-default-rewritten-pointer.t:5:9
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+  alias-use at tests/general/500-constructor-pack-default-rewritten-pointer.t:38:16
+    template is_base_of
+    bind #1 = vector<T...> source=explicit
+    bind #2 = typename remove_reference<U>::type source=explicit
+  class-use at tests/general/500-constructor-pack-default-rewritten-pointer.t:46:3
+    template vector
+    selected primary
+    bind #1 = <int, int, int, const char *> source=explicit
+  function-call at tests/general/500-constructor-pack-default-rewritten-pointer.t:46:38
+    callee vector<int, int, int, const char *>::vector
+    selected instantiation
+    bind #1 = <int, int, int, const char *> source=deduced
+    bind #2 = void source=defaulted
+    drop vector<int, int, int, const char *>::vector reason=too_many_arguments
+    drop vector<int, int, int, const char *>::vector reason=too_many_arguments
+template-closure-events
+  function-instantiation
+    entity vector<int, int, int, const char *>::vector
+  require-definition
+    entity vector<int, int, int, const char *>::vector
+  variable-instantiation
+    entity integral_constant<bool, true>::value

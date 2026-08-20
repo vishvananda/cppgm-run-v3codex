@@ -1,0 +1,21 @@
+translation-unit
+  class-use at tests/spec/300-member-overload-set-survives-class-completion.t:13:16
+    template exact
+    selected primary
+    bind #1 = float source=explicit
+  class-use at tests/spec/300-member-overload-set-survives-class-completion.t:14:16
+    template exact
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/300-member-overload-set-survives-class-completion.t:24:7
+    callee declval
+    selected instantiation
+    bind #1 = stream<char> & source=explicit
+  class-use at tests/spec/300-member-overload-set-survives-class-completion.t:24:15
+    template stream
+    selected primary
+    bind #1 = char source=explicit
+  class-use at tests/spec/300-member-overload-set-survives-class-completion.t:32:22
+    template probe
+    selected primary
+    bind #1 = int source=explicit

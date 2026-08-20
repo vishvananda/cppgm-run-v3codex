@@ -18,8 +18,6 @@ translation-unit
     bind #1 = float_tag source=explicit
     bind #2 = traits<float_tag> source=defaulted
 template-closure-events
-  ensure-definition
-    entity convert
   function-instantiation
     entity convert
   function-instantiation

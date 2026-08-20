@@ -1,0 +1,45 @@
+translation-unit
+  class-use at tests/spec/500-defaulted-rebind-constructor-deduction.t:103:9
+    template offset_ptr
+    selected primary
+    bind #1 = void source=explicit
+    bind #2 = long source=defaulted
+    bind #3 = unsigned long source=defaulted
+    bind #4 = 0 source=defaulted
+  class-use at tests/spec/500-defaulted-rebind-constructor-deduction.t:104:9
+    template node_traits
+    selected primary
+    bind #1 = offset_ptr<void> source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/spec/500-defaulted-rebind-constructor-deduction.t:115:3
+    template offset_ptr
+    selected primary
+    bind #1 = compact_node<offset_ptr<void>> source=deduced
+    bind #2 = long source=defaulted
+    bind #3 = unsigned long source=defaulted
+    bind #4 = 0 source=defaulted
+  function-call at tests/spec/500-defaulted-rebind-constructor-deduction.t:116:17
+    callee offset_ptr<const compact_node<offset_ptr<void>>>::offset_ptr
+    selected instantiation
+    bind #1 = compact_node<offset_ptr<void>> source=deduced
+    drop offset_ptr<const compact_node<offset_ptr<void>>>::offset_ptr reason=bad_conversion
+    drop offset_ptr<const compact_node<offset_ptr<void>>>::offset_ptr reason=too_many_arguments
+template-closure-events
+  function-instantiation
+    entity offset_ptr<compact_node<offset_ptr<void>>>::offset_ptr
+  function-instantiation
+    entity offset_ptr<const compact_node<offset_ptr<void>>>::offset_ptr
+  require-definition
+    entity offset_ptr<compact_node<offset_ptr<void>>>::offset_ptr
+  require-definition
+    entity offset_ptr<const compact_node<offset_ptr<void>>>::offset_ptr
+  variable-instantiation
+    entity is_convertible<compact_node<offset_ptr<void>> *, const compact_node<offset_ptr<void>> *>::value
+  variable-instantiation
+    entity pointer_has_rebind<offset_ptr<void>, compact_node<offset_ptr<void>>>::value
+  variable-instantiation
+    entity pointer_has_rebind<offset_ptr<void>, const compact_node<offset_ptr<void>>>::value
+  variable-instantiation
+    entity pointer_rebind_mode<offset_ptr<void>, compact_node<offset_ptr<void>>>::mode
+  variable-instantiation
+    entity pointer_rebind_mode<offset_ptr<void>, const compact_node<offset_ptr<void>>>::mode

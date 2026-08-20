@@ -36,10 +36,6 @@ translation-unit
     selected primary
     bind #1 = const proto::expr<tag_assign, proto::list2<const mark_type &, deref_leaf &>, 2> & source=explicit
 template-closure-events
-  ensure-definition
-    entity as_marker::impl<const proto::expr<tag_assign, proto::list2<const mark_type &, deref_leaf &>, 2> &>::operator()
-  ensure-definition
-    entity as_marker::impl<const proto::expr<tag_assign, proto::list2<const mark_type &, plus_leaf &>, 2> &>::operator()
   function-instantiation
     entity as_marker::impl<const proto::expr<tag_assign, proto::list2<const mark_type &, deref_leaf &>, 2> &>::operator()
   function-instantiation

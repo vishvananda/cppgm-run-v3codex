@@ -21,12 +21,6 @@ translation-unit
     bind #1 = std::pair<unsigned long, unsigned long> * source=deduced
     bind #2 = std::pair<unsigned long, unsigned long> * source=deduced
 template-closure-events
-  ensure-definition
-    entity boost::tuples::tie
-  ensure-definition
-    entity boost::tuples::tuple<std::pair<unsigned long, unsigned long> *&, std::pair<unsigned long, unsigned long> *&>::operator=
-  ensure-definition
-    entity std::make_pair
   function-instantiation
     entity boost::tuples::cons<std::pair<unsigned long, unsigned long> *&, boost::tuples::cons<std::pair<unsigned long, unsigned long> *&, boost::tuples::null_type>>::cons
   function-instantiation

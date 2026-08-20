@@ -10,8 +10,6 @@ translation-unit
     drop Base<int>::f reason=bad_conversion
     drop Derived<int>::f reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity Base<int>::f
   function-instantiation
     entity Base<int>::f
   require-definition

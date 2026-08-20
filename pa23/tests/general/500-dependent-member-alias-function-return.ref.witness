@@ -14,8 +14,6 @@ translation-unit
     selected instantiation
     bind #1 = long source=deduced
 template-closure-events
-  ensure-definition
-    entity to_unsigned_like
   function-instantiation
     entity to_unsigned_like
   require-definition

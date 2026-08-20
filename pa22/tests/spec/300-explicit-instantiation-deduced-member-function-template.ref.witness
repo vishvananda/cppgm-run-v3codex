@@ -1,6 +1,6 @@
 translation-unit
 template-closure-events
-  ensure-definition
-    entity Graph::search
   function-instantiation
+    entity Graph::search
+  require-definition
     entity Graph::search

@@ -38,10 +38,6 @@ translation-unit
     drop mini::tuple<Owner::Node *, int>::tuple reason=worse_conversion
     drop mini::tuple<Owner::Node *, int>::tuple reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity mini::_TupleConstraints<true, Owner::Node *, int>::__is_implicitly_default_constructible
-  ensure-definition
-    entity mini::tuple<Owner::Node *, int>::tuple
   function-instantiation
     entity mini::_TupleConstraints<true, Owner::Node *, int>::__is_implicitly_default_constructible
   function-instantiation

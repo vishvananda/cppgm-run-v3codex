@@ -20,8 +20,6 @@ translation-unit
     selected primary
     bind #1 = &f source=explicit
 template-closure-events
-  ensure-definition
-    entity A<int>::A
   function-instantiation
     entity A<int>::A
   require-definition

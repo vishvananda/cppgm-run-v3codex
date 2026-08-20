@@ -8,12 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = value_type source=explicit
 template-closure-events
-  ensure-definition
-    entity map_const_iter<value_type>::map_const_iter
-  ensure-definition
-    entity map_like<value_type>::end
-  ensure-definition
-    entity use_const_ref
   function-instantiation
     entity map_const_iter<value_type>::map_const_iter
   function-instantiation

@@ -1,0 +1,17 @@
+translation-unit
+  function-call at tests/spec/400-dependent-decltype-member-template-conversion-operator.t:36:10
+    callee json_like::operator value_kind
+    selected instantiation
+    bind #1 = value_kind source=deduced
+    bind #2 = 0 source=defaulted
+template-closure-events
+  function-instantiation
+    entity json_like::get
+  function-instantiation
+    entity json_like::operator value_kind
+  require-definition
+    entity json_like::get
+  require-definition
+    entity json_like::operator value_kind
+  variable-instantiation
+    entity has_get<const json_like &, value_kind>::value

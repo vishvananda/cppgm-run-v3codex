@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = const char16_t *& source=deduced
 template-closure-events
-  ensure-definition
-    entity mv
   function-instantiation
     entity mv
   require-definition

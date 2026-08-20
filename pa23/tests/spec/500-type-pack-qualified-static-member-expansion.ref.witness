@@ -1,0 +1,39 @@
+translation-unit
+  class-use at tests/spec/500-type-pack-qualified-static-member-expansion.t:10:13
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/spec/500-type-pack-qualified-static-member-expansion.t:10:13
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+  function-call at tests/spec/500-type-pack-qualified-static-member-expansion.t:36:7
+    callee make_options
+    selected instantiation
+    bind #1 = <integral_constant<bool, true>, integral_constant<bool, false>> source=deduced
+    drop make_options reason=too_few_arguments
+  class-use at tests/spec/500-type-pack-qualified-static-member-expansion.t:36:20
+    template list
+    selected primary
+    bind #1 = <integral_constant<bool, true>, integral_constant<bool, false>> source=explicit
+  class-use at tests/spec/500-type-pack-qualified-static-member-expansion.t:37:11
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = true source=explicit
+  class-use at tests/spec/500-type-pack-qualified-static-member-expansion.t:38:11
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+template-closure-events
+  function-instantiation
+    entity make_options
+  require-definition
+    entity make_options
+  variable-instantiation
+    entity integral_constant<bool, false>::value
+  variable-instantiation
+    entity integral_constant<bool, true>::value

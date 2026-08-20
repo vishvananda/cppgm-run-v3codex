@@ -21,8 +21,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity boost::fusion::vector_detail::value_at_impl
   function-instantiation
     entity boost::fusion::vector_detail::value_at_impl
   require-definition

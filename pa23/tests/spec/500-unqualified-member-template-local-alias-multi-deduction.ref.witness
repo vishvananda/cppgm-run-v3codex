@@ -20,8 +20,6 @@ translation-unit
     selected primary
     bind #1 = char source=explicit
 template-closure-events
-  ensure-definition
-    entity detail::compiler<traits<char>>::run
   function-instantiation
     entity detail::compiler<traits<char>>::insert
   function-instantiation

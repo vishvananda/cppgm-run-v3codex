@@ -13,8 +13,6 @@ translation-unit
     selected primary
     bind #1 = <0, 1> source=explicit
 template-closure-events
-  ensure-definition
-    entity library::apply
   function-instantiation
     entity library::apply
   function-instantiation

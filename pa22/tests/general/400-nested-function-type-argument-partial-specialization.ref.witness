@@ -1,0 +1,18 @@
+translation-unit
+  class-use at tests/general/400-nested-function-type-argument-partial-specialization.t:33:15
+    template call
+    selected partial
+    bind #1 = push (get_value (*)(value)) source=explicit
+    specialize #1 = push source=deduced
+    specialize #2 = get_value (*)(value) source=deduced
+  class-use at tests/general/400-nested-function-type-argument-partial-specialization.t:37:10
+    template call
+    selected partial
+    bind #1 = push (get_value (*)(value)) source=explicit
+    specialize #1 = push source=deduced
+    specialize #2 = get_value (*)(value) source=deduced
+template-closure-events
+  variable-instantiation
+    entity call<push (get_value (*)(value))>::value
+  variable-instantiation
+    entity nested_arg_is_function_pointer<get_value (*)(value)>::value

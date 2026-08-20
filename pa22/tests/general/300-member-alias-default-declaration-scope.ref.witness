@@ -1,0 +1,19 @@
+translation-unit
+  class-use at tests/general/300-member-alias-default-declaration-scope.t:9:11
+    template twice
+    selected primary
+    bind #1 = F<void, void> source=explicit
+    bind #2 = step<F>::fn source=explicit
+  class-use at tests/general/300-member-alias-default-declaration-scope.t:9:17
+    template F
+    selected primary
+    bind #1 = void source=explicit
+    bind #2 = void source=explicit
+  class-use at tests/general/300-member-alias-default-declaration-scope.t:9:32
+    template step
+    selected primary
+    bind #1 = F source=explicit
+  alias-use at tests/general/300-member-alias-default-declaration-scope.t:9:64
+    template twice<F<void, void>, step<F>::fn>::fn
+    bind #1 = int source=explicit
+    bind #2 = char source=explicit

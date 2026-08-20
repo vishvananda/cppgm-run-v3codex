@@ -20,8 +20,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop max_size_select reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity max_size_select
   function-instantiation
     entity max_size_select
   require-definition

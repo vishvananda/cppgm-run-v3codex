@@ -1,0 +1,26 @@
+translation-unit
+  function-call at tests/spec/300-dependent-decltype-pack-overload-replay.t:15:45
+    callee f
+    selected instantiation
+    bind #1 = <const int &, const int &> source=deduced
+  function-call at tests/spec/300-dependent-decltype-pack-overload-replay.t:15:55
+    callee f
+    selected instantiation
+    bind #1 = <const int &, int &> source=deduced
+template-closure-events
+  function-instantiation
+    entity N::B::pick
+  function-instantiation
+    entity N::pair
+  function-instantiation
+    entity Wrap<Pair<C, M>>::Wrap
+  function-instantiation
+    entity f
+  require-definition
+    entity N::B::pick
+  require-definition
+    entity N::pair
+  require-definition
+    entity Wrap<Pair<C, M>>::Wrap
+  require-definition
+    entity f

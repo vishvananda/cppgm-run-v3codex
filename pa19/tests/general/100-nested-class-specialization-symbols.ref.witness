@@ -12,14 +12,6 @@ template-closure-events
     entity Box<char>::Tag
   class-instantiation
     entity Box<int>::Tag
-  ensure-definition
-    entity Box<char>::Box
-  ensure-definition
-    entity Box<char>::~Box
-  ensure-definition
-    entity Box<int>::Box
-  ensure-definition
-    entity Box<int>::~Box
   function-instantiation
     entity Box<char>::Box
   function-instantiation

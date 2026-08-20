@@ -54,13 +54,15 @@ struct RetainedScope
 	std::unordered_set<NameId> dependent_values;
 	std::unordered_set<NameId> class_type_names;
 	std::unordered_set<NameId> class_type_definitions;
+	std::uint32_t switch_entry_barriers;
 	bool defer_unknown_members;
 	bool unmodeled_fixed_base;
 	bool unmodeled_current_class;
 
 	RetainedScope(ScopeId semantic, std::size_t owner, bool defer,
 		bool fixed_base, bool current_class)
-		: semantic_scope(semantic), parent(owner), defer_unknown_members(defer),
+		: semantic_scope(semantic), parent(owner), switch_entry_barriers(0),
+		  defer_unknown_members(defer),
 		  unmodeled_fixed_base(fixed_base),
 		  unmodeled_current_class(current_class) {}
 };
@@ -121,6 +123,7 @@ private:
 	bool SyntaxUsesRetainedValue(NodeId node, std::size_t scope) const;
 	void Visit(NodeId node, std::size_t scope, bool unknown_callee = false);
 	void VisitChildren(NodeId node, std::size_t scope);
+	bool VisitSwitchLabel(NodeId node, std::size_t scope);
 	bool VisitControlStatement(NodeId node, std::size_t scope);
 	void VisitClass(NodeId node, std::size_t scope);
 	void PredeclareClassMembers(NodeId node, std::size_t scope);
@@ -161,6 +164,7 @@ private:
 	std::unordered_set<NameId> parameter_names_;
 	std::unordered_set<NodeId> template_argument_validation_visited_;
 	std::vector<RetainedScope> scopes_;
+	std::vector<std::size_t> switch_entry_scopes_;
 };
 
 std::size_t RetainedTemplateValidator::AddScope(ScopeId semantic_scope,
@@ -498,7 +502,15 @@ bool RetainedTemplateValidator::VisitControlStatement(
 		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_FOR_STATEMENT) &&
 		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_THEN) &&
 		!analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ELSE)) return false;
-	VisitChildren(node, AddChildScope(scope, SCOPE_BLOCK));
+	const std::size_t control = AddChildScope(scope, SCOPE_BLOCK);
+	if (analyzer_.arena_->IsTag(node,
+		::cppgm::pa10_syntax_detail::STAG_SWITCH_STATEMENT))
+	{
+		switch_entry_scopes_.push_back(control);
+		VisitChildren(node, control);
+		switch_entry_scopes_.pop_back();
+	}
+	else VisitChildren(node, control);
 	return true;
 }
 
@@ -869,6 +881,23 @@ void RetainedTemplateValidator::VisitSimple(NodeId node, std::size_t scope,
 		BindFunctionParameters(declarator, function_scope);
 		Visit(item, function_scope);
 	}
+	if (!switch_entry_scopes_.empty() && !IsTypedef(specifiers) &&
+		!analyzer_.HasDeclSpecifier(specifiers, "extern") &&
+		!analyzer_.HasDeclSpecifier(specifiers, "static") &&
+		!analyzer_.HasDeclSpecifier(specifiers, "thread_local"))
+	{
+		for (std::uint32_t edge = analyzer_.arena_->FirstEdge(list);
+			edge != kNoEdge; edge = analyzer_.arena_->NextEdge(edge))
+		{
+			const NodeId item = analyzer_.arena_->EdgeChild(edge);
+			if (analyzer_.FindChild(item,
+				::cppgm::pa10_syntax_detail::STAG_INITIALIZER) != kNoNode)
+			{
+				++scopes_[scope].switch_entry_barriers;
+				break;
+			}
+		}
+	}
 }
 
 void RetainedTemplateValidator::VisitUsing(NodeId node, std::size_t scope)
@@ -1097,6 +1126,7 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 	bool unknown_callee)
 {
 	if (node == kNoNode) return;
+	if (VisitSwitchLabel(node, scope)) return;
 	// The parser and specialization demand own type syntax within this boundary.
 	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_BUILTIN_TYPE_OPERAND)) return;
 	if (analyzer_.arena_->IsTag(node, ::cppgm::pa10_syntax_detail::STAG_ID_EXPRESSION))
@@ -1332,6 +1362,33 @@ void RetainedTemplateValidator::Visit(NodeId node, std::size_t scope,
 				RETAINED_VALUE_NAME);
 	}
 	VisitChildren(node, scope);
+}
+
+bool RetainedTemplateValidator::VisitSwitchLabel(
+	NodeId node, std::size_t scope)
+{
+	if (!analyzer_.arena_->IsTag(node,
+			::cppgm::pa10_syntax_detail::STAG_CASE_STATEMENT) &&
+		!analyzer_.arena_->IsTag(node,
+			::cppgm::pa10_syntax_detail::STAG_DEFAULT_STATEMENT))
+		return false;
+	if (!switch_entry_scopes_.empty())
+	{
+		const std::size_t boundary = switch_entry_scopes_.back();
+		std::size_t current = scope;
+		while (current != boundary)
+		{
+			if (current == std::numeric_limits<std::size_t>::max())
+				throw std::logic_error(
+					"retained switch label is outside its switch");
+			if (scopes_[current].switch_entry_barriers != 0)
+				throw std::runtime_error(
+					"case or default label bypasses variable initialization");
+			current = scopes_[current].parent;
+		}
+	}
+	VisitChildren(node, scope);
+	return true;
 }
 
 RetainedExceptionState

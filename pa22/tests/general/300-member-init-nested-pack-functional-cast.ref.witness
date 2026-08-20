@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = <int, char> source=explicit
 template-closure-events
-  ensure-definition
-    entity wrapper<int, char>::wrapper
   function-instantiation
     entity wrapper<int, char>::wrapper
   require-definition

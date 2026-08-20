@@ -1,0 +1,12 @@
+translation-unit
+  class-use at tests/spec/100-dependent-relational-static-cast-template-default.t:19:10
+    template shift
+    selected primary
+    bind #1 = unsigned int source=explicit
+    bind #2 = 4 source=explicit
+    bind #3 = true source=defaulted
+template-closure-events
+  variable-instantiation
+    entity limits<unsigned>::digits
+  variable-instantiation
+    entity shift<unsigned, 4>::value

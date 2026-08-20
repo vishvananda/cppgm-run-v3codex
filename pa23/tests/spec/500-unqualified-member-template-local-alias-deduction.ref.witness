@@ -21,8 +21,6 @@ translation-unit
     selected instantiation
     bind #1 = true source=deduced
 template-closure-events
-  ensure-definition
-    entity compiler<int>::bracket
   function-instantiation
     entity compiler<int>::bracket
   function-instantiation

@@ -14,8 +14,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop duration_like<int>::duration_like reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity duration_like<int>::duration_like
   function-instantiation
     entity duration_like<int>::duration_like
   require-definition

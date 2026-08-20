@@ -60,12 +60,6 @@ translation-unit
     selected instantiation
     bind #1 = replay_outer<int>::inner<const int &> source=deduced
 template-closure-events
-  ensure-definition
-    entity as_marker::impl<const proto::expr<tag_assign, proto::list2<const mark_type &, deref_leaf &>, 2> &>::operator()
-  ensure-definition
-    entity as_marker::impl<const proto::expr<tag_assign, proto::list2<const mark_type &, plus_leaf &>, 2> &>::operator()
-  ensure-definition
-    entity replay_access::increment
   function-instantiation
     entity as_marker::impl<const proto::expr<tag_assign, proto::list2<const mark_type &, deref_leaf &>, 2> &>::operator()
   function-instantiation

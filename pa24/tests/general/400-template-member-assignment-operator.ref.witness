@@ -11,10 +11,6 @@ translation-unit
     bind #1 = Fun source=deduced
     drop F<void ()>::operator= reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity F<void ()>::F
-  ensure-definition
-    entity F<void ()>::operator=
   function-instantiation
     entity F<void ()>::F
   function-instantiation

@@ -23,8 +23,6 @@ translation-unit
     selected primary
     bind #1 = X * source=explicit
 template-closure-events
-  ensure-definition
-    entity std::hash<X *>::operator()
   function-instantiation
     entity std::hash<X *>::operator()
   require-definition

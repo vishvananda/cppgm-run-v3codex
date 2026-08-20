@@ -1,3 +1,4 @@
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -5,8 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <cctype>
@@ -107,6 +110,7 @@ void chomp_cr(std::string* s)
 
 int open_redirect_fd(int target_fd, const std::string& path, int flags, mode_t mode);
 bool wait_for_pid_exit(pid_t pid, int* status, int wait_ms);
+int reap_child(pid_t pid, int* status, int timeout_ms);
 
 void clear_standard_stream_state()
 {
@@ -117,6 +121,90 @@ void clear_standard_stream_state()
 	std::cout.clear();
 	std::cerr.clear();
 	std::clog.clear();
+}
+
+// fork() does not honour FD_CLOEXEC; execve() does. When a request runs
+// in-process we have to close those descriptors by hand, or the compiler sees
+// worker plumbing that a directly invoked compiler would never see.
+void close_cloexec_descriptors()
+{
+	DIR* dir = opendir("/proc/self/fd");
+	if (dir == NULL)
+	{
+		return;
+	}
+	const int dir_fd = dirfd(dir);
+	std::vector<int> doomed;
+	for (dirent* entry = readdir(dir); entry != NULL; entry = readdir(dir))
+	{
+		char* end = NULL;
+		const long fd = strtol(entry->d_name, &end, 10);
+		if (end == entry->d_name || *end != '\0')
+		{
+			continue;
+		}
+		if (fd <= STDERR_FILENO || fd == dir_fd)
+		{
+			continue;
+		}
+		const int flags = fcntl(static_cast<int>(fd), F_GETFD);
+		if (flags >= 0 && (flags & FD_CLOEXEC) != 0)
+		{
+			doomed.push_back(static_cast<int>(fd));
+		}
+	}
+	closedir(dir);
+	for (size_t i = 0; i < doomed.size(); ++i)
+	{
+		close(doomed[i]);
+	}
+}
+
+// execve() resets caught signals to SIG_DFL but leaves ignored signals
+// ignored. fork() inherits both. Mirror the execve() behaviour so an
+// in-process request starts from the same dispositions as a fresh process.
+void reset_caught_signal_dispositions()
+{
+#ifdef NSIG
+	const int signal_limit = NSIG;
+#else
+	const int signal_limit = 65;
+#endif
+	for (int sig = 1; sig < signal_limit; ++sig)
+	{
+		if (sig == SIGKILL || sig == SIGSTOP)
+		{
+			continue;
+		}
+		struct sigaction current;
+		memset(&current, 0, sizeof(current));
+		if (sigaction(sig, NULL, &current) != 0)
+		{
+			continue;
+		}
+		if ((current.sa_flags & SA_SIGINFO) == 0 &&
+		    (current.sa_handler == SIG_DFL || current.sa_handler == SIG_IGN))
+		{
+			continue;
+		}
+		struct sigaction reset;
+		memset(&reset, 0, sizeof(reset));
+		reset.sa_handler = SIG_DFL;
+		sigemptyset(&reset.sa_mask);
+		sigaction(sig, &reset, NULL);
+	}
+}
+
+// Escape hatch: CPPGM_BATCH_EXEC=1 forces every batch request back through
+// execvp(). Keep this working; it is how in-process regressions get bisected.
+bool batch_force_exec()
+{
+	const char* value = getenv("CPPGM_BATCH_EXEC");
+	if (value == NULL || *value == '\0')
+	{
+		return false;
+	}
+	return strcmp(value, "0") != 0;
 }
 
 int execute_child(
@@ -165,6 +253,8 @@ int execute_child(
 
 	if (use_real_main)
 	{
+		close_cloexec_descriptors();
+		reset_caught_signal_dispositions();
 		clear_standard_stream_state();
 		const int ret = run_real_main(argc, argv);
 		fflush(NULL);
@@ -186,6 +276,11 @@ int run_with_timeout(
 	bool use_real_main,
 	const EnvOverrides& env_overrides = EnvOverrides())
 {
+	// Drain buffered parent output before forking. A child that inherits a
+	// non-empty stdio buffer re-emits it on exit, duplicating worker output.
+	fflush(NULL);
+	std::cout.flush();
+
 	pid_t pid = fork();
 	if (pid < 0)
 	{
@@ -204,28 +299,23 @@ int run_with_timeout(
 	}
 
 	int status = 0;
-	while (timeout_ms > 0)
+	const int reap = reap_child(pid, &status, timeout_ms);
+	if (reap > 0)
 	{
-		pid_t res = waitpid(pid, &status, WNOHANG);
-		if (res == pid)
+		if (WIFEXITED(status))
 		{
-			if (WIFEXITED(status))
-			{
-				return WEXITSTATUS(status);
-			}
-			if (WIFSIGNALED(status))
-			{
-				return 128 + WTERMSIG(status);
-			}
-			return EXIT_FAILURE;
+			return WEXITSTATUS(status);
 		}
-		if (res < 0)
+		if (WIFSIGNALED(status))
 		{
-			perror("waitpid");
-			return EXIT_FAILURE;
+			return 128 + WTERMSIG(status);
 		}
-		usleep(10000);
-		timeout_ms -= 10;
+		return EXIT_FAILURE;
+	}
+	if (reap < 0)
+	{
+		perror("waitpid");
+		return EXIT_FAILURE;
 	}
 
 	kill(-pid, SIGTERM);
@@ -235,6 +325,98 @@ int run_with_timeout(
 		waitpid(pid, &status, 0);
 	}
 	return 124;
+}
+
+double monotonic_ms()
+{
+	struct timespec ts;
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+	{
+		return 0.0;
+	}
+	return ts.tv_sec * 1000.0 + ts.tv_nsec / 1000000.0;
+}
+
+// Waits for a child to exit. Returns >0 once it has been reaped, 0 if
+// timeout_ms elapsed first, <0 on error.
+//
+// A pidfd lets the parent sleep until the child actually exits. The previous
+// implementation polled waitpid(WNOHANG) on a fixed 10 ms tick, so every test
+// was rounded up to a 10 ms multiple -- several times what a whole compiler
+// invocation costs. Note that this also makes the timeout accurate: the old
+// loop charged 10 ms per iteration regardless of how long the iteration really
+// took, so it always waited somewhat longer than asked.
+int reap_child(pid_t pid, int* status, int timeout_ms)
+{
+	if (timeout_ms <= 0)
+	{
+		return 0;
+	}
+
+#if defined(__linux__) && defined(__NR_pidfd_open)
+	const int pidfd = static_cast<int>(syscall(__NR_pidfd_open, pid, 0));
+	if (pidfd >= 0)
+	{
+		int remaining_ms = timeout_ms;
+		int outcome = 0;
+		while (remaining_ms > 0)
+		{
+			const double started_ms = monotonic_ms();
+			struct pollfd pfd;
+			pfd.fd = pidfd;
+			pfd.events = POLLIN;
+			pfd.revents = 0;
+			const int ready = poll(&pfd, 1, remaining_ms);
+			if (ready > 0)
+			{
+				outcome = 1;
+				break;
+			}
+			if (ready == 0)
+			{
+				break;
+			}
+			if (errno != EINTR)
+			{
+				outcome = -1;
+				break;
+			}
+			const int elapsed_ms = static_cast<int>(monotonic_ms() - started_ms);
+			remaining_ms -= elapsed_ms > 0 ? elapsed_ms : 1;
+		}
+		close(pidfd);
+		if (outcome > 0)
+		{
+			return waitpid(pid, status, 0) == pid ? 1 : -1;
+		}
+		return outcome;
+	}
+#endif
+
+	// No pidfd available: back off adaptively rather than sleeping a fixed
+	// 10 ms, which is longer than most tests take to run start to finish.
+	long long remaining_us = static_cast<long long>(timeout_ms) * 1000;
+	int sleep_us = 50;
+	while (remaining_us > 0)
+	{
+		const pid_t res = waitpid(pid, status, WNOHANG);
+		if (res == pid)
+		{
+			return 1;
+		}
+		if (res < 0)
+		{
+			return -1;
+		}
+		const long long nap_us = sleep_us < remaining_us ? sleep_us : remaining_us;
+		usleep(static_cast<useconds_t>(nap_us));
+		remaining_us -= nap_us;
+		if (sleep_us < 2000)
+		{
+			sleep_us *= 2;
+		}
+	}
+	return 0;
 }
 
 bool wait_for_pid_exit(pid_t pid, int* status, int wait_ms)
@@ -323,6 +505,7 @@ std::vector<std::string> batch_base_args(int argc, char** argv)
 int run_batch_stdin(int argc, char** argv)
 {
 	const std::vector<std::string> base_args = batch_base_args(argc, argv);
+	const bool run_wrapped_in_process = !batch_force_exec();
 	std::string line;
 	while (std::getline(std::cin, line))
 	{
@@ -373,10 +556,27 @@ int run_batch_stdin(int argc, char** argv)
 			argv.push_back(NULL);
 			if (argv.size() >= 2)
 			{
-				// Wrapped batch requests still reuse the outer worker process,
-				// but execute each compiler invocation in a fresh child. Use
-				// execvp rather than re-entering run_real_main in-process so the
-				// request follows the same path as direct compiler invocations.
+				// Wrapped batch requests reuse the outer worker process but
+				// execute each compiler invocation in a fresh child, so no test
+				// can observe state left behind by an earlier one: the worker
+				// itself never runs compiler code, and the child's copy dies
+				// with it. That makes re-entering run_real_main in-process
+				// equivalent to execvp for everything except the descriptor,
+				// signal and stdio state fork leaves behind, which
+				// execute_child normalises before dispatching. Skipping the
+				// exec saves the image reload and dynamic-link work per test.
+				//
+				// The compiler does read the environment (cpp_toolchain.cpp
+				// consults CPPGM_HOST_CXX, CXX, CPPGM_STDLIB_FLAGS and
+				// CPPGM_OBJECT_ROOT) and does spawn subprocesses (std::system
+				// there, popen in preprocessor.cpp). Both stay correct here:
+				// execute_child applies the per-request env overrides before
+				// dispatching, and every one of those getenv calls sits inside a
+				// function rather than a namespace-scope initialiser, so each
+				// forked child reads the test's environment rather than a value
+				// captured once in the worker. Adding a static-init-time getenv
+				// would break that invariant.
+				// Set CPPGM_BATCH_EXEC=1 to force the execvp path back.
 				status = run_with_timeout(
 					static_cast<int>(argv.size()) - 1,
 					argv.data(),
@@ -384,7 +584,7 @@ int run_batch_stdin(int argc, char** argv)
 					fields[0],
 					fields[1],
 					get_batch_timeout_override_ms(env_overrides, get_build_batch_timeout_ms()),
-					false,
+					run_wrapped_in_process,
 					env_overrides);
 			}
 		}

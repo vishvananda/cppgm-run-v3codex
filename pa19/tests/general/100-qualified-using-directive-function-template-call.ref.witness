@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = range_like source=deduced
 template-closure-events
-  ensure-definition
-    entity lib::algorithm::call_begin
   function-instantiation
     entity lib::algorithm::call_begin
   function-instantiation

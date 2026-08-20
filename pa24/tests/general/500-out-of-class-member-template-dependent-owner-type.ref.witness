@@ -21,8 +21,6 @@ translation-unit
     bind #2 = <void (int)> source=deduced
     bind #3 = handler & source=deduced
 template-closure-events
-  ensure-definition
-    entity service<mutex_type>::receive
   function-instantiation
     entity service<mutex_type>::receive
   require-definition

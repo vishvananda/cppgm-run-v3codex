@@ -1,0 +1,27 @@
+translation-unit
+  class-use at tests/general/300-inherited-member-template-subscript-action.t:25:15
+    template parser_base
+    selected primary
+    bind #1 = rule source=explicit
+  function-call at tests/general/300-inherited-member-template-subscript-action.t:43:7
+    callee rule::operator=
+    selected instantiation
+    bind #1 = parser_action<rule, action> source=deduced
+    drop rule::operator= reason=bad_conversion
+  function-call at tests/general/300-inherited-member-template-subscript-action.t:43:9
+    callee parser_base<rule>::operator[]
+    selected instantiation
+    bind #1 = action source=deduced
+template-closure-events
+  function-instantiation
+    entity parser_action<rule, action>::parser_action
+  function-instantiation
+    entity parser_base<rule>::operator[]
+  function-instantiation
+    entity rule::operator=
+  require-definition
+    entity parser_action<rule, action>::parser_action
+  require-definition
+    entity parser_base<rule>::operator[]
+  require-definition
+    entity rule::operator=

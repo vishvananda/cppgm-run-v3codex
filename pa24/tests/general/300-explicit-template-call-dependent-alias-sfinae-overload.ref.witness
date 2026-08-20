@@ -16,8 +16,6 @@ translation-unit
     bind #4 = 0 source=defaulted
     drop std::__copy_n reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity std::__copy_n
   function-instantiation
     entity std::__copy_n
   require-definition

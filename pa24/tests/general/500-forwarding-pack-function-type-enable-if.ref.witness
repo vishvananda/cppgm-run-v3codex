@@ -11,8 +11,6 @@ translation-unit
     bind #3 = const property_b & source=deduced
     bind #4 = <const property_c &> source=deduced
 template-closure-events
-  ensure-definition
-    entity prefer_fn::operator()
   function-instantiation
     entity prefer_fn::operator()
   require-definition

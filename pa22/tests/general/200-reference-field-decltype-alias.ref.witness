@@ -1,0 +1,8 @@
+translation-unit
+  alias-use at tests/general/200-reference-field-decltype-alias.t:2:43
+    template I
+    bind #1 = decltype(x + x) source=explicit
+  class-use at tests/general/200-reference-field-decltype-alias.t:4:9
+    template B
+    selected primary
+    bind #1 = int source=explicit

@@ -11,8 +11,6 @@ translation-unit
     bind #2 = <int, int> source=deduced
     drop pick reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity pick
   function-instantiation
     entity pick
   require-definition

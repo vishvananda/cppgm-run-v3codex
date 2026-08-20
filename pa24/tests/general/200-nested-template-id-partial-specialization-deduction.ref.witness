@@ -1,0 +1,12 @@
+translation-unit
+  class-use at tests/general/200-nested-template-id-partial-specialization-deduction.t:79:20
+    template lib::detail::hook
+    selected primary
+    bind #1 = void * source=explicit
+    bind #2 = lib::red_black_tree source=explicit
+    bind #3 = true source=explicit
+  class-use at tests/general/200-nested-template-id-partial-specialization-deduction.t:86:3
+    template map_like
+    selected primary
+    bind #1 = recursive_map source=explicit
+    bind #2 = recursive_map source=explicit

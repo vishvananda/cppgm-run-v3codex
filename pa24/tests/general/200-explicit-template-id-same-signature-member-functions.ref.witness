@@ -16,8 +16,6 @@ translation-unit
     selected instantiation
     bind #1 = long source=explicit
 template-closure-events
-  ensure-definition
-    entity Box<int>::f
   function-instantiation
     entity Box<int>::f
   require-definition

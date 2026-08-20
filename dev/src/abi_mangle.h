@@ -204,11 +204,9 @@ private:
 };
 
 AbiFactRecord parse_fact_record_words(const std::vector<std::string> & words);
-AbiFactFile parse_fact_text(const std::string & text);
 std::string serialize_fact_file(const AbiFactFile & file);
 std::size_t abi_fact_storage_bytes(const AbiFactFile & file);
 std::size_t abi_typed_case_storage_bytes(const AbiTypedCase & fact_case);
-std::string mangle_fact_file(const AbiFactFile & file);
 void mangle_fact_file_to_stream(const AbiFactFile & file, std::ostream & output,
                                 AbiMangleStats * stats = nullptr);
 std::string mangle_fact_files(const std::vector<std::string> & input_paths);

@@ -1,0 +1,18 @@
+translation-unit
+  class-use at tests/general/300-out-of-class-nested-member-template-static-definition.t:11:32
+    template outer
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = 1 source=explicit
+  class-use at tests/general/300-out-of-class-nested-member-template-static-definition.t:18:10
+    template outer
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = 1 source=explicit
+  class-use at tests/general/300-out-of-class-nested-member-template-static-definition.t:18:25
+    template outer<int, 1>::inner
+    selected primary
+    bind #1 = descriptor source=explicit
+template-closure-events
+  variable-instantiation
+    entity outer<int, 1>::inner<descriptor>::pointer

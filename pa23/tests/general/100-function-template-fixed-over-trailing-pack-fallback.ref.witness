@@ -6,8 +6,6 @@ translation-unit
     bind #2 = char & source=deduced
     drop invoke reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity invoke
   function-instantiation
     entity forward_like
   function-instantiation

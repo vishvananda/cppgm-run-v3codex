@@ -1,0 +1,5 @@
+translation-unit
+  function-call at tests/general/100-member-template-specialization-return-prefers-member-call.t:34:12
+    callee path::string
+    selected explicit_specialization
+    bind #1 = string source=explicit

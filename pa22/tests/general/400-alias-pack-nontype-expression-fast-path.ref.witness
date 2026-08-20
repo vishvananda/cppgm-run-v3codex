@@ -17,8 +17,6 @@ translation-unit
     bind #1 = L source=explicit
     bind #2 = pred source=explicit
 template-closure-events
-  ensure-definition
-    entity cx_plus
   function-instantiation
     entity cx_plus
   require-definition

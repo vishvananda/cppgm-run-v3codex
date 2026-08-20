@@ -22,10 +22,6 @@ translation-unit
     selected instantiation
     bind #1 = long long source=deduced
 template-closure-events
-  ensure-definition
-    entity duration_like<int>::cast
-  ensure-definition
-    entity duration_like<long long>::duration_like
   function-instantiation
     entity duration_like<int>::cast
   function-instantiation

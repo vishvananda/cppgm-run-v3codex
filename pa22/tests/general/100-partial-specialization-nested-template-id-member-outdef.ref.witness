@@ -17,8 +17,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = char source=explicit
 template-closure-events
-  ensure-definition
-    entity MapBase<Pair<int, char>, enabled_tag>::get
   function-instantiation
     entity MapBase<Pair<int, char>, enabled_tag>::get
   require-definition

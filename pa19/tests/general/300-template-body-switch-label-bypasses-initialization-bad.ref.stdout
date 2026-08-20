@@ -1,0 +1,44 @@
+ERROR: case or default label bypasses variable initialization [top-level declaration 0 kind=template-declaration ast={template-declaration
+  template-parameter-clause
+    template-parameter-list
+      type-parameter
+        parameter-key KW_CLASS:class
+        identifier T
+  class-specifier switch_condition_body
+    class-key KW_STRUCT:struct
+    function-definition
+      decl-specifier-seq
+        decl-specifier KW_INT:int
+      declarator
+        identifier run
+        parameter-clause
+      compound-statement
+        switch-statement
+          condition
+            condition-declaration
+              decl-specifier-seq
+                decl-specifier KW_INT:int
+              declarator
+                identifier tag
+              initializer
+                literal 0
+          compound-statement
+            case-statement
+              literal 0
+              simple-declaration
+                decl-specifier-seq
+                  decl-specifier KW_INT:int
+                init-declarator-list
+                  init-declarator
+                    declarator
+                      identifier value
+                    initializer
+                      id-expression tag
+            return-statement
+              id-expression value
+            default-statement
+              return-statement
+                literal 1
+}]
+Diagnostic context:
+collect_template_declaration [template<class T>struct switch_condition_body{int run(){switch(int tag=0){case 0:int value=tag;return value;default:return 1;}}};] at tests/general/300-template-body-switch-label-bypasses-initialization-bad.t:1:1

@@ -6,10 +6,6 @@ translation-unit
     drop keyword::operator| reason=worse_conversion
     drop keyword::operator| reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity keyword::operator|
-  ensure-definition
-    entity nonconst_default<visitor>::value
   function-instantiation
     entity keyword::operator|
   function-instantiation

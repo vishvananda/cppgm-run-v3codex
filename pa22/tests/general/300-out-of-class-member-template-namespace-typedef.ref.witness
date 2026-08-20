@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = <int, char> source=explicit
 template-closure-events
-  ensure-definition
-    entity N::Holder<int>::make
   function-instantiation
     entity N::Holder<int>::make
   require-definition

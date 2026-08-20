@@ -22,10 +22,6 @@ translation-unit
     selected primary
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity hidden_friend_current_instantiation::operator!=
-  ensure-definition
-    entity operator+
   function-instantiation
     entity hidden_friend_current_instantiation::operator!=
   function-instantiation

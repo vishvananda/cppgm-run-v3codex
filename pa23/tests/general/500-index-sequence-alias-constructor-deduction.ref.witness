@@ -32,8 +32,6 @@ translation-unit
     drop pair<const int, char>::pair reason=too_many_arguments
     drop pair<const int, char>::pair reason=too_few_arguments
 template-closure-events
-  ensure-definition
-    entity pair<const int, char>::pair
   function-instantiation
     entity pair<const int, char>::pair
   require-definition

@@ -14,8 +14,6 @@ translation-unit
     bind #3 = 0 source=defaulted
     drop wrapper<void>::wrapper reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity wrapper<void>::wrapper
   function-instantiation
     entity wrapper<void>::wrapper
   require-definition

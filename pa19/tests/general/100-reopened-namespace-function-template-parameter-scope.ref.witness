@@ -17,12 +17,6 @@ translation-unit
     bind #3 = long long source=deduced
     bind #4 = A::B::milli source=deduced
 template-closure-events
-  ensure-definition
-    entity A::B::duration<long long, A::B::milli>::duration
-  ensure-definition
-    entity A::B::duration<long long, A::B::nano>::duration
-  ensure-definition
-    entity A::B::greater
   function-instantiation
     entity A::B::duration<long long, A::B::milli>::duration
   function-instantiation

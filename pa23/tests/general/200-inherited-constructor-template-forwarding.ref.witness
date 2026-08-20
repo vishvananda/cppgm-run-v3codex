@@ -1,0 +1,10 @@
+translation-unit
+  class-use at tests/general/200-inherited-constructor-template-forwarding.t:35:3
+    template derived
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  function-instantiation
+    entity base<int>::base
+  require-definition
+    entity base<int>::base

@@ -1,1 +1,1 @@
-ERROR: static_assert false: sizeof() == 0 [bindings S<int>{types:S=struct S<int>} {types:S<int>=struct S<int>}]
+ERROR: static_assert false: sizeof(int) == 0 [bindings S<int>{types:S=struct S<int>} {types:S<int>=struct S<int>}]

@@ -1,0 +1,34 @@
+translation-unit
+  function-call at tests/general/100-function-parameter-empty-middle-pack-alias.t:43:3
+    callee arg_list_factory<arg_list, int &, int &>::reverse
+    selected instantiation
+    bind #1 = <> source=deduced
+  class-use at tests/general/100-function-parameter-empty-middle-pack-alias.t:43:3
+    template arg_list_factory
+    selected partial
+    bind #1 = arg_list source=explicit
+    bind #2 = <int &, int &> source=explicit
+    specialize #1 = arg_list source=deduced
+    specialize #2 = int & source=deduced
+    specialize #3 = <int &> source=deduced
+template-closure-events
+  function-instantiation
+    entity arg_list::arg_list
+  function-instantiation
+    entity arg_list_factory<arg_list, int &, int &>::reverse
+  function-instantiation
+    entity arg_list_factory<arg_list, int &>::reverse
+  function-instantiation
+    entity arg_list_factory<arg_list>::reverse
+  function-instantiation
+    entity forward
+  require-definition
+    entity arg_list::arg_list
+  require-definition
+    entity arg_list_factory<arg_list, int &, int &>::reverse
+  require-definition
+    entity arg_list_factory<arg_list, int &>::reverse
+  require-definition
+    entity arg_list_factory<arg_list>::reverse
+  require-definition
+    entity forward

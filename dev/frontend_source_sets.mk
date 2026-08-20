@@ -32,6 +32,7 @@ FRONTEND_OBJ_BASENAMES_cppgm++ += pa32_entity_ownership_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa15_force_inline
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa15_local_presentation
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa15_function_reachability
+FRONTEND_OBJ_BASENAMES_cppgm++ += pa15_switch_semantic
 FRONTEND_OBJ_BASENAMES_cppgm++ += lowir_function_reachability
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa12_semantic_lifetime
 FRONTEND_OBJ_BASENAMES_cppgm++ += pa19_internal_identity_semantic

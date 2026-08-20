@@ -9,10 +9,6 @@ translation-unit
     bind #1 = <A, B> source=explicit
     bind #2 = <int, char> source=explicit
 template-closure-events
-  ensure-definition
-    entity boost::fusion::make_map
-  ensure-definition
-    entity test_map
   function-instantiation
     entity boost::fusion::make_map
   function-instantiation

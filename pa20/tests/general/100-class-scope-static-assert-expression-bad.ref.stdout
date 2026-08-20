@@ -1,0 +1,1 @@
+ERROR: static_assert false: sizeof(char[2]) != 2 [bindings X{types:X=struct X}]

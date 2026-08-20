@@ -1,0 +1,1 @@
+ERROR: static_assert false: std::__is_invocable_r<int, MakeInt &>::value [lookup std::__is_invocable_r<int,MakeInt&>::value target=std::__is_invocable_r<int|MakeInt &> declared_in=std::__is_invocable_r<int|MakeInt &> value=0]

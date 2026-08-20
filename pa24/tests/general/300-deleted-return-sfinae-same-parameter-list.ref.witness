@@ -13,8 +13,6 @@ translation-unit
     bind #2 = <int, char> source=deduced
     drop get reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity get
   function-instantiation
     entity get
   require-definition

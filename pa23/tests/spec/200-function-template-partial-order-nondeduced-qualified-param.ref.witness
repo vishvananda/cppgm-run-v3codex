@@ -1,0 +1,23 @@
+translation-unit
+  class-use at tests/spec/200-function-template-partial-order-nondeduced-qualified-param.t:50:3
+    template wrapper
+    selected primary
+    bind #1 = local_map<int, global_map, long> source=explicit
+  class-use at tests/spec/200-function-template-partial-order-nondeduced-qualified-param.t:50:11
+    template local_map
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = global_map source=explicit
+    bind #3 = long source=explicit
+  function-call at tests/spec/200-function-template-partial-order-nondeduced-qualified-param.t:51:28
+    callee select
+    selected instantiation
+    bind #1 = int source=deduced
+    bind #2 = global_map source=deduced
+    bind #3 = long source=deduced
+    drop select reason=better_candidate_selected
+template-closure-events
+  function-instantiation
+    entity select
+  require-definition
+    entity select

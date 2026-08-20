@@ -10,8 +10,6 @@ translation-unit
     bind #1 = M source=explicit
     bind #2 = D source=explicit
 template-closure-events
-  ensure-definition
-    entity f
   function-instantiation
     entity f
   require-definition

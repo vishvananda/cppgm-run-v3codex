@@ -1,0 +1,53 @@
+translation-unit
+  alias-use at tests/spec/400-class-template-nttp-scope-value.t:26:16
+    template size_constant
+    bind #1 = I source=explicit
+  alias-use at tests/spec/400-class-template-nttp-scope-value.t:42:23
+    template defer
+    bind #1 = F source=explicit
+    bind #2 = T... source=explicit
+  alias-use at tests/spec/400-class-template-nttp-scope-value.t:61:21
+    template transform
+    bind #1 = Q::template fn source=explicit
+    bind #2 = L source=explicit
+  class-use at tests/spec/400-class-template-nttp-scope-value.t:79:22
+    template iota_one
+    selected primary
+    bind #1 = 0 source=explicit
+  alias-use at tests/spec/400-class-template-nttp-scope-value.t:80:13
+    template transform_q
+    bind #1 = bind_front<value_pair, mp_int<4>> source=explicit
+    bind #2 = inputs source=explicit
+  class-use at tests/spec/400-class-template-nttp-scope-value.t:80:25
+    template bind_front
+    selected primary
+    bind #1 = value_pair source=explicit
+    bind #2 = <integral_constant<int, 4>> source=explicit
+  alias-use at tests/spec/400-class-template-nttp-scope-value.t:80:48
+    template mp_int
+    bind #1 = 4 source=explicit
+  class-use at tests/spec/400-class-template-nttp-scope-value.t:81:13
+    template list
+    selected primary
+    bind #1 = <list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=explicit
+  class-use at tests/spec/400-class-template-nttp-scope-value.t:81:18
+    template list
+    selected primary
+    bind #1 = <integral_constant<int, 4>, integral_constant<unsigned long, 0>> source=explicit
+  alias-use at tests/spec/400-class-template-nttp-scope-value.t:81:23
+    template mp_int
+    bind #1 = 4 source=explicit
+  alias-use at tests/spec/400-class-template-nttp-scope-value.t:81:34
+    template size_constant
+    bind #1 = 0 source=explicit
+  class-use at tests/spec/400-class-template-nttp-scope-value.t:82:24
+    template is_same
+    selected partial
+    bind #1 = list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=explicit
+    bind #2 = list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=explicit
+    specialize #1 = list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>> source=deduced
+template-closure-events
+  variable-instantiation
+    entity integral_constant<unsigned long, 0>::value
+  variable-instantiation
+    entity is_same<list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>>, list<list<integral_constant<int, 4>, integral_constant<unsigned long, 0>>>>::value

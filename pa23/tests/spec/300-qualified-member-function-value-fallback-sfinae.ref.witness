@@ -38,10 +38,6 @@ translation-unit
     drop pair_like<Owner::Node *, int>::pair_like reason=worse_conversion
     drop pair_like<Owner::Node *, int>::pair_like reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity constraints<true, Owner::Node *, int>::ok
-  ensure-definition
-    entity pair_like<Owner::Node *, int>::pair_like
   function-instantiation
     entity constraints<true, Owner::Node *, int>::ok
   function-instantiation

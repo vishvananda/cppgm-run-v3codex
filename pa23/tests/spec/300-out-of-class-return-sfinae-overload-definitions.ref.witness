@@ -12,8 +12,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity selector<void>::select
   function-instantiation
     entity selector<void>::select
   require-definition

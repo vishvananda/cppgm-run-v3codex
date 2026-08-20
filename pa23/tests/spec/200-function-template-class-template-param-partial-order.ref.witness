@@ -23,8 +23,6 @@ translation-unit
     bind #13 = int source=deduced
     drop dijkstra_shortest_paths reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity dijkstra_shortest_paths
   function-instantiation
     entity dijkstra_shortest_paths
   require-definition

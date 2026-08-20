@@ -9,8 +9,6 @@ translation-unit
     bind #1 = placeholder<1> source=deduced
     bind #2 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity mu
   function-instantiation
     entity mu
   require-definition

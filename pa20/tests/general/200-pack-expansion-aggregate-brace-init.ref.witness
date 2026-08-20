@@ -10,8 +10,6 @@ translation-unit
     bind #1 = pair_value source=explicit
     bind #2 = <int, int> source=deduced
 template-closure-events
-  ensure-definition
-    entity construct
   function-instantiation
     entity construct
   require-definition

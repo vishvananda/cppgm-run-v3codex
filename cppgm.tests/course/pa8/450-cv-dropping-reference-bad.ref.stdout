@@ -1,1 +1,0 @@
-ERROR: invalid initializer [target lvalue-reference to int] [source const int] [init value]

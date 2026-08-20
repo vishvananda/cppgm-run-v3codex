@@ -1,0 +1,10 @@
+translation-unit
+  function-call at tests/general/500-dependent-decltype-template-id-multi-pack.t:38:10
+    callee make
+    selected instantiation
+    bind #1 = <int, long> source=deduced
+template-closure-events
+  function-instantiation
+    entity make
+  require-definition
+    entity make

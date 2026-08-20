@@ -15,10 +15,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity target<int>::check
-  ensure-definition
-    entity target<int>::check::enabled
-  ensure-definition
-    entity target<int>::target
   function-instantiation
     entity target<int>::check::enabled
   function-instantiation

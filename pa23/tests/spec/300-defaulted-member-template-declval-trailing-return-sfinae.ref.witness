@@ -1,0 +1,29 @@
+translation-unit
+  function-call at tests/spec/300-defaulted-member-template-declval-trailing-return-sfinae.t:56:7
+    callee local::declval
+    selected instantiation
+    bind #1 = view_type & source=explicit
+  function-call at tests/spec/300-defaulted-member-template-declval-trailing-return-sfinae.t:66:7
+    callee local::declval
+    selected instantiation
+    bind #1 = bool & source=explicit
+  class-use at tests/spec/300-defaulted-member-template-declval-trailing-return-sfinae.t:75:15
+    template is_fields_helper
+    selected primary
+    bind #1 = fields<allocator> source=explicit
+  class-use at tests/spec/300-defaulted-member-template-declval-trailing-return-sfinae.t:75:32
+    template fields
+    selected primary
+    bind #1 = allocator source=explicit
+  class-use at tests/spec/300-defaulted-member-template-declval-trailing-return-sfinae.t:77:15
+    template is_fields_helper
+    selected primary
+    bind #1 = fields<allocator> source=explicit
+  class-use at tests/spec/300-defaulted-member-template-declval-trailing-return-sfinae.t:77:32
+    template fields
+    selected primary
+    bind #1 = allocator source=explicit
+  class-use at tests/spec/300-defaulted-member-template-declval-trailing-return-sfinae.t:79:16
+    template is_fields_helper
+    selected primary
+    bind #1 = no_fields source=explicit

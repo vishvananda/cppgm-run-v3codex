@@ -28,8 +28,6 @@ translation-unit
     bind #1 = int * source=deduced
     bind #2 = 0 source=defaulted
 template-closure-events
-  ensure-definition
-    entity distance_like
   function-instantiation
     entity distance_like
   require-definition

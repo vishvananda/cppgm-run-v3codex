@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = Incomplete source=explicit
 template-closure-events
-  ensure-definition
-    entity box<Incomplete>::later
   function-instantiation
     entity box<Incomplete>::later
   require-definition

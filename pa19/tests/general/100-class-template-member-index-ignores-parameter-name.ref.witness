@@ -1,0 +1,9 @@
+translation-unit
+  class-use at tests/general/100-class-template-member-index-ignores-parameter-name.t:8:16
+    template lock
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/general/100-class-template-member-index-ignores-parameter-name.t:10:28
+    template impl
+    selected primary
+    bind #1 = int source=explicit

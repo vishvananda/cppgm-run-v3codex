@@ -44,9 +44,19 @@ ACTIVE_TEST_REPORT_PAS ?= $(TEST_REPORT_PAS)
 REF_TEST_PAS ?= $(SORTED_PAS)
 STRICT_PAS ?= pa19 pa20 pa22 pa23 pa24
 STRICT_SUBTEST_JOBS ?= $(DEFAULT_BUILD_JOBS)
+# One assignment at a time gets the whole machine: there is nothing else to
+# share it with, unlike test-report where assignments run side by side.
+SINGLE_ASSIGNMENT_SUBTEST_JOBS ?= $(DEFAULT_BUILD_JOBS)
 DEV_BUILD_LOCK = obj/.dev-build.lock
 
-TEST_REPORT_SUBTEST_JOBS ?= 2
+# Assignment costs are heavily skewed: the largest is many seconds of work at
+# two workers while most finish in well under a second. Two workers per
+# assignment leaves the machine idle waiting on the few big ones once the short
+# ones drain, so scale the per-assignment width with the core count instead.
+# The cap keeps assignments x subtests within the core count (see
+# TEST_REPORT_ASSIGNMENT_JOBS below), and the floor of 2 preserves the previous
+# behaviour on small hosts.
+TEST_REPORT_SUBTEST_JOBS ?= $(shell jobs=$$(( $(DEFAULT_BUILD_JOBS) / 8 )); if [ "$$jobs" -lt 2 ]; then jobs=2; fi; if [ "$$jobs" -gt 8 ]; then jobs=8; fi; echo $$jobs)
 TEST_REPORT_ASSIGNMENT_JOBS ?= $(shell subjobs=$(TEST_REPORT_SUBTEST_JOBS); if [ -z "$$subjobs" ] || [ "$$subjobs" -lt 1 ] 2>/dev/null; then subjobs=1; fi; jobs=$$(( $(DEFAULT_BUILD_JOBS) / $$subjobs )); if [ "$$jobs" -lt 1 ]; then jobs=1; fi; echo $$jobs)
 TEST_REPORT_STALL_SEC ?= 90
 TEST_REPORT_BUILD_TIMEOUT_SEC ?= 60
@@ -424,16 +434,7 @@ clean:
 	-rmdir $(DEV_BUILD_LOCK) 2>/dev/null || true
 
 $(ALL_PAS):
-	$(MAKE) build
-	$(MAKE) -C $@ \
-		CXX=$(CXX) \
-		CPPGM_HOST_CXX=$(CPPGM_HOST_CXX) \
-		CPPGM_STDLIB_FLAGS=$(CPPGM_STDLIB_FLAGS) \
-		CPPGM_TEST_RUNNER=$(CPPGM_TEST_RUNNER) \
-		$(SUBMAKE_OBJ_ARG) \
-		$(SUBMAKE_GENERATED_ARG) \
-		$(SUBMAKE_CC_FLAGS_ARG) \
-		CPPGM_SKIP_DEV_REBUILD=1 test
+	@$(MAKE) test-$@
 
 test-strict-%:
 	@if [ ! -f "$*/Makefile" ]; then \
@@ -481,15 +482,10 @@ test-%:
 		exit 2; \
 	fi
 	@$(MAKE) build
-	@$(MAKE) -C $* \
-		CXX=$(CXX) \
-		CPPGM_HOST_CXX=$(CPPGM_HOST_CXX) \
-		CPPGM_STDLIB_FLAGS=$(CPPGM_STDLIB_FLAGS) \
-		CPPGM_TEST_RUNNER=$(CPPGM_TEST_RUNNER) \
-		$(SUBMAKE_OBJ_ARG) \
-		$(SUBMAKE_GENERATED_ARG) \
-		$(SUBMAKE_CC_FLAGS_ARG) \
-		CPPGM_SKIP_DEV_REBUILD=1 test
+	@$(MAKE) test-report-nobuild \
+		ACTIVE_TEST_REPORT_PAS='$*' \
+		TEST_REPORT_SUBTEST_JOBS='$(SINGLE_ASSIGNMENT_SUBTEST_JOBS)' \
+		ORDERED='$(ORDERED)'
 
 reference-binaries:
 	@scripts/ensure_reference_binaries.pl

@@ -13,8 +13,6 @@ translation-unit
     bind #1 = Local * source=deduced
     drop lib::operator== reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity lib::operator==
   function-instantiation
     entity lib::operator==
   require-definition

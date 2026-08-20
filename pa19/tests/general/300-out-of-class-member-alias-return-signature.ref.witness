@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity tree<int>::call
   function-instantiation
     entity tree<int>::call
   function-instantiation

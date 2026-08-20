@@ -1,13 +1,10 @@
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
-    %t1 = call i32 @tupleish_int___make__ov2(1)
-    %t2 = binary sub i32 %t1, 11
+    %t1 = call i32 @tupleish_int___make(1)
+    %t2 = binary sub i32 %t1, 4
     return i32 %t2
 }
-function @tupleish_int___make__ov2(%__param0 : i32) -> i32 [binding=weak, object=_ZN8tupleishIJiEE4makeIJiETnN9enable_ifIXclsr4_TCCIXeqsZT_sZT_EEE29__is_implicitly_constructibleIDpT_EEEiE4typeELi0EEEiDpS3_] {
-  slot $__param0 : i32
-
+function @tupleish_int___make() -> i32 [arity=variadic, binding=weak, object=_ZN8tupleishIJiEE4makeEz] {
   block ^entry:
-    store i32 %__param0, $__param0
-    return i32 11
+    return i32 4
 }

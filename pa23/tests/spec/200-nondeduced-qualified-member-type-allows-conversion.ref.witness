@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = const char * source=deduced
 template-closure-events
-  ensure-definition
-    entity next
   function-instantiation
     entity next
   require-definition

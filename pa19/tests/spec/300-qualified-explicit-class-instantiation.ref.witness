@@ -1,0 +1,11 @@
+translation-unit
+  class-use at tests/spec/300-qualified-explicit-class-instantiation.t:25:16
+    template ns::box
+    selected primary
+    bind #1 = empty source=explicit
+    bind #2 = void source=defaulted
+template-closure-events
+  class-finalization
+    entity ns::box
+  function-instantiation
+    entity ns::box<empty>::value

@@ -15,8 +15,6 @@ translation-unit
     bind #2 = Key & source=deduced
     drop probe reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity probe
   function-instantiation
     entity probe
   require-definition

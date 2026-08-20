@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = object source=explicit
 template-closure-events
-  ensure-definition
-    entity stack<object>::value
   function-instantiation
     entity stack<object>::value
   require-definition

@@ -1,0 +1,19 @@
+translation-unit
+  class-use at tests/general/400-local-class-default-member-variable-template-nontype-type.t:7:22
+    template integral_constant
+    selected primary
+    bind #1 = bool source=explicit
+    bind #2 = false source=explicit
+  variable-use at tests/general/400-local-class-default-member-variable-template-nontype-type.t:14:31
+    template is_floating_point_impl
+    selected primary
+    bind #1 = local source=deduced
+  class-use at tests/general/400-local-class-default-member-variable-template-nontype-type.t:28:10
+    template is_arithmetic
+    selected primary
+    bind #1 = local source=explicit
+template-closure-events
+  variable-instantiation
+    entity integral_constant<bool, false>::value
+  variable-instantiation
+    entity is_floating_point_impl

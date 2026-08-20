@@ -16,8 +16,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity call_member_template
   function-instantiation
     entity Worker::run
   function-instantiation

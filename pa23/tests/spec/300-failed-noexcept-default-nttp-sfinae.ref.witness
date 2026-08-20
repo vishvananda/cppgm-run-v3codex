@@ -1,0 +1,13 @@
+translation-unit
+  class-use at tests/spec/300-failed-noexcept-default-nttp-sfinae.t:5:17
+    template constant
+    selected primary
+    bind #1 = false source=explicit
+  function-call at tests/spec/300-failed-noexcept-default-nttp-sfinae.t:6:25
+    callee probe
+    selected instantiation
+    bind #1 = const int source=explicit
+    drop probe reason=substitution_failure
+template-closure-events
+  variable-instantiation
+    entity constant<false>::value

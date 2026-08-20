@@ -39,8 +39,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop tuple<X &&>::tuple reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity tuple<X &&>::tuple
   function-instantiation
     entity tuple<X &&>::tuple
   require-definition

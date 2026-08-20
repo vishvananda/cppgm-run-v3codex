@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = text_oarchive source=explicit
 template-closure-events
-  ensure-definition
-    entity interface_oarchive<text_oarchive>::get_helper
   function-instantiation
     entity interface_oarchive<text_oarchive>::get_helper
   require-definition

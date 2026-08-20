@@ -14,10 +14,6 @@ translation-unit
     drop ptr<Y>::ptr reason=too_many_arguments
     drop ptr<Y>::ptr reason=worse_conversion
 template-closure-events
-  ensure-definition
-    entity ptr<X>::ptr
-  ensure-definition
-    entity ptr<Y>::ptr
   function-instantiation
     entity count<X>::count
   function-instantiation

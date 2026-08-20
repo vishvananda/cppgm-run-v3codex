@@ -1,0 +1,14 @@
+translation-unit
+  function-call at tests/general/300-using-base-specialization-beats-derived-generic-reference.t:5:21
+    callee B::f
+    selected instantiation
+    bind #1 = int source=deduced
+  class-use at tests/general/300-using-base-specialization-beats-derived-generic-reference.t:5:23
+    template P
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  function-instantiation
+    entity B::f
+  require-definition
+    entity B::f

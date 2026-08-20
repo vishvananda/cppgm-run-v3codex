@@ -1,0 +1,10 @@
+translation-unit
+  class-use at tests/general/300-qualified-array-type-template-argument.t:13:10
+    template box
+    selected primary
+    bind #1 = unsigned int[4] source=explicit
+template-closure-events
+  function-instantiation
+    entity box<unsigned[4]>::size
+  require-definition
+    entity box<unsigned[4]>::size

@@ -1,0 +1,4 @@
+ERROR: case or default label bypasses variable initialization [function main] [is_method no] [body_parent_scope <here>] [body_parent_bindings ] [body_function_scope <here>] [body_function_bindings ]
+Diagnostic context:
+analyze_function_binding_output [main]
+  analyze_statement [switch-statement] at tests/general/100-switch-label-bypasses-initialization-bad.t:2:3

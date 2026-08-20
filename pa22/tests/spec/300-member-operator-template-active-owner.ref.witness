@@ -9,14 +9,6 @@ translation-unit
     selected primary
     bind #1 = active_owner_case::item source=explicit
 template-closure-events
-  ensure-definition
-    entity active_owner_case::buffer<active_owner_case::item, active_owner_case::allocator<active_owner_case::item>>::begin
-  ensure-definition
-    entity active_owner_case::buffer<active_owner_case::item, active_owner_case::allocator<active_owner_case::item>>::rotate
-  ensure-definition
-    entity active_owner_case::iter<active_owner_case::buffer<active_owner_case::item, active_owner_case::allocator<active_owner_case::item>>, active_owner_case::const_traits<active_owner_case::allocator<active_owner_case::item>>>::iter
-  ensure-definition
-    entity active_owner_case::iter<active_owner_case::buffer<active_owner_case::item, active_owner_case::allocator<active_owner_case::item>>, active_owner_case::nonconst_traits<active_owner_case::allocator<active_owner_case::item>>>::operator+
   function-instantiation
     entity active_owner_case::buffer<active_owner_case::item, active_owner_case::allocator<active_owner_case::item>>::begin
   function-instantiation

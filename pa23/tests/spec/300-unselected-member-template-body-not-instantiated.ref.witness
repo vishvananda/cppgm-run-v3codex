@@ -5,8 +5,6 @@ translation-unit
     bind #1 = iterator source=deduced
     drop range::range reason=too_many_arguments
 template-closure-events
-  ensure-definition
-    entity range::range
   function-instantiation
     entity range::initialize
   function-instantiation

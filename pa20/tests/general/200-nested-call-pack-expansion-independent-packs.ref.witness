@@ -9,8 +9,6 @@ translation-unit
     selected primary
     bind #1 = <char, short> source=explicit
 template-closure-events
-  ensure-definition
-    entity transform
   function-instantiation
     entity get
   function-instantiation

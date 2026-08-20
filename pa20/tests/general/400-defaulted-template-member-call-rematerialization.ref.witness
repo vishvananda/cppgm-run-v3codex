@@ -1,0 +1,34 @@
+translation-unit
+  function-call at tests/general/400-defaulted-template-member-call-rematerialization.t:30:10
+    callee append
+    selected instantiation
+    bind #1 = Root source=deduced
+    bind #2 = int source=deduced
+    bind #3 = int source=deduced
+    drop append reason=bad_conversion
+  function-call at tests/general/400-defaulted-template-member-call-rematerialization.t:30:17
+    callee append
+    selected instantiation
+    bind #1 = int source=deduced
+    drop append reason=non_deduced_mismatch
+template-closure-events
+  function-instantiation
+    entity Lazy<Lazy<Root, int>, int>::Lazy
+  function-instantiation
+    entity Lazy<Lazy<Root, int>, int>::operator()
+  function-instantiation
+    entity Lazy<Root, int>::Lazy
+  function-instantiation
+    entity Lazy<Root, int>::operator()
+  function-instantiation
+    entity append
+  require-definition
+    entity Lazy<Lazy<Root, int>, int>::Lazy
+  require-definition
+    entity Lazy<Lazy<Root, int>, int>::operator()
+  require-definition
+    entity Lazy<Root, int>::Lazy
+  require-definition
+    entity Lazy<Root, int>::operator()
+  require-definition
+    entity append

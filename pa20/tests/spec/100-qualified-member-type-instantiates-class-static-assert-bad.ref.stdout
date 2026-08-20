@@ -1,0 +1,1 @@
+ERROR: static_assert false: N == 0 [bindings A<1>{types:A=struct A<1>,N=int:1} {types:A<1>=struct A<1>,N=int:1}]

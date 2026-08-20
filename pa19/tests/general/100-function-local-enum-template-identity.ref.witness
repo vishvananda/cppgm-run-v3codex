@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = T source=explicit
 template-closure-events
-  ensure-definition
-    entity A<T>::A
   function-instantiation
     entity A<T>::A
   require-definition

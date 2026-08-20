@@ -54,10 +54,6 @@ translation-unit
     bind #2 = variadic_null_type source=defaulted
     bind #3 = variadic_null_type source=defaulted
 template-closure-events
-  ensure-definition
-    entity fixed_dispatch
-  ensure-definition
-    entity variadic_dispatch
   function-instantiation
     entity fixed_dispatch
   function-instantiation

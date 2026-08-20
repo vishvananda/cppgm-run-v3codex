@@ -9,8 +9,6 @@ translation-unit
     bind #1 = int source=deduced
     drop pick reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity cache<const int>::fill
   function-instantiation
     entity cache<const int>::fill
   require-definition

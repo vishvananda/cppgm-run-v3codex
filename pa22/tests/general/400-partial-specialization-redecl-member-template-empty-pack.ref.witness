@@ -1,0 +1,32 @@
+translation-unit
+  class-use at tests/general/400-partial-specialization-redecl-member-template-empty-pack.t:5:18
+    template bool_constant
+    selected primary
+    bind #1 = false source=explicit
+  class-use at tests/general/400-partial-specialization-redecl-member-template-empty-pack.t:8:24
+    template bool_constant
+    selected primary
+    bind #1 = true source=explicit
+  class-use at tests/general/400-partial-specialization-redecl-member-template-empty-pack.t:35:9
+    template scoped
+    selected partial
+    bind #1 = <outer0> source=explicit
+    specialize #1 = outer0 source=deduced
+    specialize #2 = <> source=deduced
+  class-use at tests/general/400-partial-specialization-redecl-member-template-empty-pack.t:36:9
+    template scoped
+    selected primary
+    bind #1 = <outer9> source=explicit
+  class-use at tests/general/400-partial-specialization-redecl-member-template-empty-pack.t:38:15
+    template is_same
+    selected partial
+    bind #1 = scoped<outer9> source=explicit
+    bind #2 = scoped<outer9> source=explicit
+    specialize #1 = scoped<outer9> source=deduced
+  class-use at tests/general/400-partial-specialization-redecl-member-template-empty-pack.t:38:32
+    template scoped<outer0>::rebind
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  variable-instantiation
+    entity bool_constant<true>::value

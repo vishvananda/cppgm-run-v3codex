@@ -1,0 +1,1 @@
+ERROR: static_assert unevaluated: read_value(mutable_value) == 7

@@ -8,8 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity S<int (&)()>::g
   function-instantiation
     entity S<int (&)()>::g
   require-definition

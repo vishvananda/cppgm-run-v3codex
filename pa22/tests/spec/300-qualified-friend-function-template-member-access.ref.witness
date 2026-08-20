@@ -8,10 +8,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity N::Box<int>::Box
-  ensure-definition
-    entity N::detail::read
   function-instantiation
     entity N::Box<int>::Box
   function-instantiation

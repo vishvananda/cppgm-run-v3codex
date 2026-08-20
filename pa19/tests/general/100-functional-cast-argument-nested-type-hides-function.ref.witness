@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = host::shadow_maker source=deduced
 template-closure-events
-  ensure-definition
-    entity invoke
   function-instantiation
     entity invoke
   require-definition

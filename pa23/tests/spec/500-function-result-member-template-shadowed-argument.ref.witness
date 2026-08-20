@@ -9,8 +9,6 @@ translation-unit
     bind #1 = actual source=deduced
     drop functor<int>::operator= reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity functor<int>::operator=
   function-instantiation
     entity functor<int>::operator=
   function-instantiation

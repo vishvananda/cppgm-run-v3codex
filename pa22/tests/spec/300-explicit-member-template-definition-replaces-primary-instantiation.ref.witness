@@ -1,0 +1,22 @@
+translation-unit
+  class-use at tests/spec/300-explicit-member-template-definition-replaces-primary-instantiation.t:10:1
+    template Owner
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-explicit-member-template-definition-replaces-primary-instantiation.t:12:34
+    template Owner
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/300-explicit-member-template-definition-replaces-primary-instantiation.t:16:3
+    template Owner
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/300-explicit-member-template-definition-replaces-primary-instantiation.t:17:16
+    callee Owner<int>::member
+    selected instantiation
+    bind #1 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity Owner<int>::member
+  require-definition
+    entity Owner<int>::member

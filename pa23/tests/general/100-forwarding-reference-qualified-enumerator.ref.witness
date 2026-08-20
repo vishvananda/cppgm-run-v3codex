@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int & source=deduced
     bind #2 = N::E source=deduced
 template-closure-events
-  ensure-definition
-    entity pick
   function-instantiation
     entity pick
   require-definition

@@ -5,8 +5,6 @@ translation-unit
     bind #1 = tag source=explicit
     bind #2 = char source=explicit
 template-closure-events
-  ensure-definition
-    entity holder<tag, char>::call
   function-instantiation
     entity holder<tag, char>::call
   function-instantiation

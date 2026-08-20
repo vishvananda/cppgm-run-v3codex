@@ -1,0 +1,35 @@
+translation-unit
+  class-use at tests/spec/300-nested-class-member-template-nontype-return-key.t:40:12
+    template context::executor
+    selected primary
+    bind #1 = allocator<void> source=explicit
+    bind #2 = 4 source=explicit
+  class-use at tests/spec/300-nested-class-member-template-nontype-return-key.t:40:21
+    template allocator
+    selected primary
+    bind #1 = void source=explicit
+  class-use at tests/spec/300-nested-class-member-template-nontype-return-key.t:41:3
+    template allocator_property
+    selected primary
+    bind #1 = allocator<void> source=explicit
+  class-use at tests/spec/300-nested-class-member-template-nontype-return-key.t:41:22
+    template allocator
+    selected primary
+    bind #1 = void source=explicit
+  function-call at tests/spec/300-nested-class-member-template-nontype-return-key.t:43:10
+    callee context::executor<allocator<void>, 4>::require
+    selected instantiation
+    bind #1 = allocator<void> source=deduced
+  function-call at tests/spec/300-nested-class-member-template-nontype-return-key.t:43:28
+    callee context::executor<allocator<void>, 4>::execute
+    selected instantiation
+    bind #1 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity context::executor<allocator<void>, 4>::execute
+  function-instantiation
+    entity context::executor<allocator<void>, 4>::require
+  require-definition
+    entity context::executor<allocator<void>, 4>::execute
+  require-definition
+    entity context::executor<allocator<void>, 4>::require

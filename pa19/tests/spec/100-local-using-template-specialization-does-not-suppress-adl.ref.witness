@@ -12,8 +12,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity boost_no_using_breaks_adl::user::f
   function-instantiation
     entity boost_no_using_breaks_adl::lib::get_pointer
   function-instantiation

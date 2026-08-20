@@ -9,8 +9,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = <definition<int>> source=explicit
 template-closure-events
-  ensure-definition
-    entity wrapper<int, definition<int>>::wrapper
   function-instantiation
     entity tuple<definition<int>>::tuple
   function-instantiation

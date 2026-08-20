@@ -14,8 +14,6 @@ translation-unit
     bind #2 = 0 source=defaulted
     drop lib::f reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity lib::f
   function-instantiation
     entity lib::f
   require-definition

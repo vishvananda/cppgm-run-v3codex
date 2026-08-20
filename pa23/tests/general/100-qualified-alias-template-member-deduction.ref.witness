@@ -1,0 +1,54 @@
+translation-unit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:53:3
+    template alt_t
+    bind #1 = I source=explicit
+    bind #2 = holder<T...> source=explicit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:53:45
+    template boost::mp11::mp_size_t
+    bind #1 = I source=explicit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:59:3
+    template alt_t
+    bind #1 = I source=explicit
+    bind #2 = holder<T...> source=explicit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:59:51
+    template boost::mp11::mp_size_t
+    bind #1 = I source=explicit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:66:23
+    template detail::base
+    bind #1 = T... source=explicit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:68:24
+    template detail::base
+    bind #1 = T... source=explicit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:86:1
+    template alt_t
+    bind #1 = I source=explicit
+    bind #2 = holder<T...> source=explicit
+  alias-use at tests/general/100-qualified-alias-template-member-deduction.t:88:29
+    template boost::mp11::mp_size_t
+    bind #1 = I source=explicit
+  class-use at tests/general/100-qualified-alias-template-member-deduction.t:93:3
+    template holder
+    selected primary
+    bind #1 = <int> source=explicit
+  function-call at tests/general/100-qualified-alias-template-member-deduction.t:94:10
+    callee unsafe_get
+    selected instantiation
+    bind #1 = 0 source=explicit
+    bind #2 = <int> source=deduced
+template-closure-events
+  function-instantiation
+    entity detail::base_impl<false, int>::base_impl
+  function-instantiation
+    entity detail::base_impl<false, int>::get
+  function-instantiation
+    entity holder<int>::holder
+  function-instantiation
+    entity unsafe_get
+  require-definition
+    entity detail::base_impl<false, int>::base_impl
+  require-definition
+    entity detail::base_impl<false, int>::get
+  require-definition
+    entity holder<int>::holder
+  require-definition
+    entity unsafe_get

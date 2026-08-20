@@ -13,8 +13,6 @@ translation-unit
     selected instantiation
     bind #1 = int * source=deduced
 template-closure-events
-  ensure-definition
-    entity boost::container::dtl::proxy<int, int>::call
   function-instantiation
     entity boost::container::dtl::proxy<int, int>::call
   function-instantiation

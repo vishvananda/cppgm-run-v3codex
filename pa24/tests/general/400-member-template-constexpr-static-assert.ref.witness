@@ -10,8 +10,6 @@ translation-unit
     bind #1 = unsigned long source=explicit
     bind #2 = unsigned long source=explicit
 template-closure-events
-  ensure-definition
-    entity check_pair_construction<unsigned long, unsigned long>::is_pair_constructible
   function-instantiation
     entity check_pair_construction<unsigned long, unsigned long>::is_pair_constructible
   require-definition

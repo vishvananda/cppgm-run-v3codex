@@ -10,8 +10,6 @@ translation-unit
     selected primary
     bind #1 = void source=explicit
 template-closure-events
-  ensure-definition
-    entity bit_iterator<holder<void>, true>::value
   function-instantiation
     entity bit_iterator<holder<void>, true>::value
   require-definition

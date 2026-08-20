@@ -13,8 +13,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity make_value
   function-instantiation
     entity make_value
   require-definition

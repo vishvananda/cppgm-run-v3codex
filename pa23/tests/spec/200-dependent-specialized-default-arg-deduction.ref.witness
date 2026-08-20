@@ -21,8 +21,6 @@ translation-unit
     bind #1 = char source=deduced
     bind #2 = const char source=deduced
 template-closure-events
-  ensure-definition
-    entity boostish::assign_op
   function-instantiation
     entity boostish::assign_op
   require-definition

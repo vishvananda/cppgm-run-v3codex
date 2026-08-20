@@ -4,10 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = volatile int source=deduced
 template-closure-events
-  ensure-definition
-    entity cref_like
-  ensure-definition
-    entity ref_view<const volatile int>::get
   function-instantiation
     entity cref_like
   function-instantiation

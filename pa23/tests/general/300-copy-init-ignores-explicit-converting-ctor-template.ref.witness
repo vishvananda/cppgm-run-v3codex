@@ -1,0 +1,24 @@
+translation-unit
+  class-use at tests/general/300-copy-init-ignores-explicit-converting-ctor-template.t:19:3
+    template box
+    selected primary
+    bind #1 = type source=explicit
+  class-use at tests/general/300-copy-init-ignores-explicit-converting-ctor-template.t:21:3
+    template box
+    selected primary
+    bind #1 = const type source=explicit
+  function-call at tests/general/300-copy-init-ignores-explicit-converting-ctor-template.t:21:28
+    callee box<const type>::box
+    selected instantiation
+    bind #1 = type source=deduced
+    drop box<const type>::box reason=explicit_not_allowed
+    drop box<const type>::box reason=bad_conversion
+template-closure-events
+  function-instantiation
+    entity box<const type>::box
+  function-instantiation
+    entity box<type>::box
+  require-definition
+    entity box<const type>::box
+  require-definition
+    entity box<type>::box

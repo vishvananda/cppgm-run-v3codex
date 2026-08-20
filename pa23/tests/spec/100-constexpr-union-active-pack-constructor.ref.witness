@@ -1,0 +1,40 @@
+translation-unit
+  class-use at tests/spec/100-constexpr-union-active-pack-constructor.t:12:11
+    template U
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/100-constexpr-union-active-pack-constructor.t:12:11
+    template U
+    selected primary
+    bind #1 = int source=deduced
+  class-use at tests/spec/100-constexpr-union-active-pack-constructor.t:12:29
+    template U
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/100-constexpr-union-active-pack-constructor.t:13:11
+    template U
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/spec/100-constexpr-union-active-pack-constructor.t:13:11
+    template U
+    selected primary
+    bind #1 = int source=deduced
+  class-use at tests/spec/100-constexpr-union-active-pack-constructor.t:13:27
+    template U
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/spec/100-constexpr-union-active-pack-constructor.t:13:27
+    callee U<int>::U
+    selected instantiation
+    bind #1 = <int> source=deduced
+    drop U<int>::U reason=bad_conversion
+    drop U<int>::U reason=worse_conversion
+template-closure-events
+  function-instantiation
+    entity U<int>::U
+  function-instantiation
+    entity forward
+  require-definition
+    entity U<int>::U
+  require-definition
+    entity forward

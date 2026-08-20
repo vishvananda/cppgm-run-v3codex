@@ -1,0 +1,25 @@
+translation-unit
+  alias-use at tests/general/500-inherited-constructor-template-member-alias-pack.t:65:32
+    template tuple_like::accepts
+    bind #1 = Args &&... source=explicit
+  class-use at tests/general/500-inherited-constructor-template-member-alias-pack.t:80:3
+    template key
+    selected primary
+    bind #1 = <first, second, third> source=explicit
+template-closure-events
+  class-instantiation
+    entity tuple_like<first, second, third>::tag
+  function-instantiation
+    entity tuple_like<first, second, third>::tuple_like
+  require-definition
+    entity tuple_like<first, second, third>::tuple_like
+  variable-instantiation
+    entity is_same<first, tuple_like<first, second, third>::tag>::value
+  variable-instantiation
+    entity is_same<tuple_like<first, second, third>::tag, tuple_like<first, second, third>::tag>::value
+  variable-instantiation
+    entity tuple_like<first, second, third>::accepts_impl<>::value
+  variable-instantiation
+    entity tuple_like<first, second, third>::accepts_impl<first &, second &, third &>::value
+  variable-instantiation
+    entity tuple_like<first, second, third>::accepts_impl<tuple_like<first, second, third>::tag &&, first &, second &, third &>::value

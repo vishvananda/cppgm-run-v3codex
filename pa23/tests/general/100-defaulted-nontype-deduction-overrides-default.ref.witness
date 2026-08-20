@@ -1,0 +1,23 @@
+translation-unit
+  class-use at tests/general/100-defaulted-nontype-deduction-overrides-default.t:3:12
+    template X
+    selected primary
+    bind #1 = 5 source=explicit
+  function-call at tests/general/100-defaulted-nontype-deduction-overrides-default.t:4:20
+    callee f
+    selected instantiation
+    bind #1 = 1 source=deduced
+    bind #2 = 4 source=deduced
+  class-use at tests/general/100-defaulted-nontype-deduction-overrides-default.t:4:22
+    template X
+    selected primary
+    bind #1 = 1 source=explicit
+  class-use at tests/general/100-defaulted-nontype-deduction-overrides-default.t:4:30
+    template X
+    selected primary
+    bind #1 = 4 source=explicit
+template-closure-events
+  function-instantiation
+    entity f
+  require-definition
+    entity f

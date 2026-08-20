@@ -1,0 +1,18 @@
+translation-unit
+  variable-use at tests/general/200-variable-template-alignas-member-alias.t:17:23
+    template stdish::alignment
+    selected primary
+    bind #1 = long long source=deduced
+  class-use at tests/general/200-variable-template-alignas-member-alias.t:21:1
+    template holder
+    selected primary
+    bind #1 = long long source=explicit
+  class-use at tests/general/200-variable-template-alignas-member-alias.t:25:18
+    template holder
+    selected primary
+    bind #1 = long long source=explicit
+template-closure-events
+  class-instantiation
+    entity holder<long long>::(anonymous struct at 15:3)
+  variable-instantiation
+    entity stdish::alignment

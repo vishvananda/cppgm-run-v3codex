@@ -14,10 +14,6 @@ translation-unit
     bind #2 = <> source=deduced
     bind #3 = 0 source=defaulted
 template-closure-events
-  ensure-definition
-    entity N::S<int>::S
-  ensure-definition
-    entity N::make
   function-instantiation
     entity N::S<int>::S
   function-instantiation

@@ -12,8 +12,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity helper_inline_ns::vec<int>::vec
   function-instantiation
     entity helper_inline_ns::vec<int>::vec
   require-definition

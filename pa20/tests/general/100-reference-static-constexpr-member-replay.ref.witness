@@ -1,0 +1,39 @@
+translation-unit
+  class-use at tests/general/100-reference-static-constexpr-member-replay.t:34:5
+    template basic_tests
+    selected primary
+    bind #1 = basic_any<> source=explicit
+  class-use at tests/general/100-reference-static-constexpr-member-replay.t:38:22
+    template basic_tests
+    selected primary
+    bind #1 = basic_any<> source=explicit
+  class-use at tests/general/100-reference-static-constexpr-member-replay.t:38:34
+    template basic_any
+    selected primary
+    bind #1 = 8 source=defaulted
+    bind #2 = 8 source=defaulted
+template-closure-events
+  class-instantiation
+    entity basic_tests<basic_any<>>::copy_counter
+  function-instantiation
+    entity basic_any<>::basic_any
+  function-instantiation
+    entity basic_tests<basic_any<>>::copy_counter::copy_counter
+  function-instantiation
+    entity basic_tests<basic_any<>>::copy_counter::get_count
+  function-instantiation
+    entity basic_tests<basic_any<>>::run_tests
+  require-definition
+    entity basic_any<>::basic_any
+  require-definition
+    entity basic_tests<basic_any<>>::copy_counter::copy_counter
+  require-definition
+    entity basic_tests<basic_any<>>::copy_counter::get_count
+  require-definition
+    entity basic_tests<basic_any<>>::run_tests
+  variable-instantiation
+    entity basic_any<>::buffer_align
+  variable-instantiation
+    entity basic_any<>::buffer_size
+  variable-instantiation
+    entity basic_tests<basic_any<>>::copy_counter::count

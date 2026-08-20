@@ -1,0 +1,3 @@
+ERROR: invalid initializer [target int] [source array of 4 const char] [init "bad"]
+Diagnostic context:
+analyze_statement [simple-declaration] at tests/general/300-function-address-nttp-instantiates-member-body-bad.t:10:14

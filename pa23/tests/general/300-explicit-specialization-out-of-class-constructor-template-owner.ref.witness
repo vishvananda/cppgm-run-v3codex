@@ -13,8 +13,6 @@ translation-unit
     bind #1 = void (&)(int &) source=deduced
     drop explicit_specialization_constructor_owner::box<void>::box reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity explicit_specialization_constructor_owner::box<void>::box
   function-instantiation
     entity explicit_specialization_constructor_owner::box<void>::box
   require-definition

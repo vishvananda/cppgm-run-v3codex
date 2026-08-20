@@ -1,0 +1,12 @@
+translation-unit
+  function-call at tests/general/400-decorated-template-id-type-argument-pack-replay.t:46:10
+    callee initiate
+    selected instantiation
+    bind #1 = partial source=explicit
+    bind #2 = <void (int)> source=explicit
+    bind #3 = int source=deduced
+template-closure-events
+  function-instantiation
+    entity initiate
+  require-definition
+    entity initiate

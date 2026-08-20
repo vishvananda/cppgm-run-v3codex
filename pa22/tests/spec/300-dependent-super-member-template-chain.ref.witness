@@ -12,8 +12,6 @@ translation-unit
     selected instantiation
     bind #1 = tag source=deduced
 template-closure-events
-  ensure-definition
-    entity layer<second>::insert_
   function-instantiation
     entity layer<second>::insert_
   function-instantiation

@@ -25,10 +25,6 @@ translation-unit
     selected primary
     bind #1 = 2 source=explicit
 template-closure-events
-  ensure-definition
-    entity duration<int, tag<2>>::duration
-  ensure-definition
-    entity duration<long, tag<1>>::duration
   function-instantiation
     entity duration<int, tag<2>>::duration
   function-instantiation

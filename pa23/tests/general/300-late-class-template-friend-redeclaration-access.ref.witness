@@ -9,8 +9,6 @@ translation-unit
     bind #1 = 0 source=explicit
     bind #2 = <int> source=deduced
 template-closure-events
-  ensure-definition
-    entity get
   function-instantiation
     entity get
   require-definition

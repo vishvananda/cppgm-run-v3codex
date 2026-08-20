@@ -13,8 +13,6 @@ translation-unit
     bind #1 = payload source=deduced
     drop sink<int>::operator<< reason=bad_conversion
 template-closure-events
-  ensure-definition
-    entity sink<int>::operator<<
   function-instantiation
     entity sink<int>::operator<<
   require-definition

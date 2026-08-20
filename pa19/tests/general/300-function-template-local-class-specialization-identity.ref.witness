@@ -1,0 +1,26 @@
+translation-unit
+  function-call at tests/general/300-function-template-local-class-specialization-identity.t:35:3
+    callee visit
+    selected instantiation
+    bind #1 = int source=deduced
+  function-call at tests/general/300-function-template-local-class-specialization-identity.t:36:3
+    callee visit
+    selected instantiation
+    bind #1 = long source=deduced
+template-closure-events
+  class-finalization
+    entity cleanup
+  class-instantiation
+    entity cleanup
+  function-instantiation
+    entity observe
+  function-instantiation
+    entity visit
+  function-instantiation
+    entity visit(int *, int *)::cleanup::~cleanup
+  function-instantiation
+    entity visit(long *, long *)::cleanup::~cleanup
+  require-definition
+    entity observe
+  require-definition
+    entity visit

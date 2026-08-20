@@ -10,8 +10,6 @@ translation-unit
     bind #1 = missing source=deduced
     drop has_value reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity has_value
   function-instantiation
     entity has_value
   require-definition

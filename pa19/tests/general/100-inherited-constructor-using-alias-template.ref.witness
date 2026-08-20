@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = YTraits source=explicit
 template-closure-events
-  ensure-definition
-    entity YHolder<YTraits>::YHolder
   function-instantiation
     entity YBase<YTraits>::YBase
   function-instantiation

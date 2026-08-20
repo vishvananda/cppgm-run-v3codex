@@ -1,0 +1,19 @@
+translation-unit
+  function-call at tests/general/100-aggregate-functional-braced-cast.t:6:14
+    callee make
+    selected instantiation
+    bind #1 = array<item, 2> source=explicit
+  class-use at tests/general/100-aggregate-functional-braced-cast.t:6:19
+    template array
+    selected primary
+    bind #1 = item source=explicit
+    bind #2 = 2 source=explicit
+template-closure-events
+  function-instantiation
+    entity make
+  function-instantiation
+    entity result<array<item, 2>>::result
+  require-definition
+    entity make
+  require-definition
+    entity result<array<item, 2>>::result

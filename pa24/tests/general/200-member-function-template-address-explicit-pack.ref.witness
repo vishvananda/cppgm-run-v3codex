@@ -4,8 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = service source=explicit
 template-closure-events
-  ensure-definition
-    entity service_registry::get
   function-instantiation
     entity service_registry::create
   function-instantiation

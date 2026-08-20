@@ -1,0 +1,15 @@
+translation-unit
+  class-use at tests/spec/300-dependent-nontype-result-lexical-template-lookup-sfinae.t:84:15
+    template same
+    selected partial
+    bind #1 = char source=explicit
+    bind #2 = char source=explicit
+    specialize #1 = char source=deduced
+  function-call at tests/spec/300-dependent-nontype-result-lexical-template-lookup-sfinae.t:84:29
+    callee second::is_range
+    selected instantiation
+    bind #1 = X source=explicit
+    drop second::is_range reason=substitution_failure
+template-closure-events
+  variable-instantiation
+    entity same<char, char>::value

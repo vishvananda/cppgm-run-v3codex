@@ -4,10 +4,6 @@ translation-unit
     selected instantiation
     bind #1 = char[4] source=deduced
 template-closure-events
-  ensure-definition
-    entity array_reference_cv_lazy_impl<array_reference_cv_lazy, char[4]>::operator()
-  ensure-definition
-    entity operator<<
   function-instantiation
     entity array_reference_cv_detail::operator<<
   function-instantiation

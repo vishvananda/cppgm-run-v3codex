@@ -1,0 +1,9 @@
+translation-unit
+  class-use at tests/general/100-partial-typedef-late-using-directive-shadow.t:31:25
+    template N::make
+    selected partial
+    bind #1 = int * source=explicit
+    specialize #1 = int source=deduced
+template-closure-events
+  variable-instantiation
+    entity N::make<int *>::lower

@@ -8,10 +8,6 @@ translation-unit
     selected instantiation
     bind #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity sum
-  ensure-definition
-    entity zdef
   function-instantiation
     entity sum
   function-instantiation

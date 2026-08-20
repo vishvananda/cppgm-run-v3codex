@@ -12,8 +12,6 @@ translation-unit
     bind #2 = vec<int> source=deduced
     bind #3 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity operator+=
   function-instantiation
     entity operator+=
   require-definition

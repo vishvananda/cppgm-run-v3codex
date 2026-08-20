@@ -22,8 +22,6 @@ translation-unit
     template iter_diff_t
     bind #1 = char * source=explicit
 template-closure-events
-  ensure-definition
-    entity helper
   function-instantiation
     entity helper
   require-definition

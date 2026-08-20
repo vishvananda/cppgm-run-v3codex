@@ -1,0 +1,19 @@
+translation-unit
+  alias-use at tests/general/400-constructor-template-pack-before-defaulted-nontype.t:36:31
+    template tuple_like::are_convertible
+    bind #1 = Args &&... source=explicit
+  class-use at tests/general/400-constructor-template-pack-before-defaulted-nontype.t:43:3
+    template tuple_like
+    selected primary
+    bind #1 = <first_arg, second_arg> source=explicit
+  function-call at tests/general/400-constructor-template-pack-before-defaulted-nontype.t:43:37
+    callee tuple_like<first_arg, second_arg>::tuple_like
+    selected instantiation
+    bind #1 = <first_arg &, second_arg &> source=deduced
+    bind #2 = nullptr source=defaulted
+    drop tuple_like<first_arg, second_arg>::tuple_like reason=too_many_arguments
+template-closure-events
+  function-instantiation
+    entity tuple_like<first_arg, second_arg>::tuple_like
+  require-definition
+    entity tuple_like<first_arg, second_arg>::tuple_like

@@ -1,0 +1,5 @@
+translation-unit
+  class-use at tests/general/100-lazy-static-value-before-shadowing-typedef.t:5:3
+    template M
+    selected primary
+    bind #1 = int source=explicit

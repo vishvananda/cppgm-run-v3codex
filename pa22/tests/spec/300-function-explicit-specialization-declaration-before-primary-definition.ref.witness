@@ -1,0 +1,9 @@
+translation-unit
+  function-call at tests/spec/300-function-explicit-specialization-declaration-before-primary-definition.t:38:10
+    callee transformer::transform
+    selected explicit_specialization
+    bind #1 = external_special source=explicit
+  function-call at tests/spec/300-function-explicit-specialization-declaration-before-primary-definition.t:43:17
+    callee transformer::transform
+    selected explicit_specialization
+    bind #1 = defined_special source=deduced

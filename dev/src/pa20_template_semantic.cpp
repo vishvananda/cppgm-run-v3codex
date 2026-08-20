@@ -1142,7 +1142,7 @@ BindingId SemanticAnalyzer::InstantiateVariableTemplate(
 			}
 			RegisterVariableLifetimeAndStorage(selected.owner, false, false,
 				variable, binding, parsed.type, 0, 0, 0, 0, 0,
-				HasConstantInitializerFact(initializer));
+				true, HasConstantInitializerFact(initializer));
 		}
 	}
 	request.Complete(binding);

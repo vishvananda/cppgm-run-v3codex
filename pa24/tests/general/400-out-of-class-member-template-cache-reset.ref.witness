@@ -1,0 +1,48 @@
+translation-unit
+  alias-use at tests/general/400-out-of-class-member-template-cache-reset.t:41:5
+    template void_t
+    bind #1 = decltype(declval<T>().execute(declval<F>())) source=explicit
+  alias-use at tests/general/400-out-of-class-member-template-cache-reset.t:52:5
+    template void_t
+    bind #1 = decltype(declval<T>().execute(declval<F>())) source=explicit
+  class-use at tests/general/400-out-of-class-member-template-cache-reset.t:56:9
+    template executor
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = 0 source=explicit
+  class-use at tests/general/400-out-of-class-member-template-cache-reset.t:58:15
+    template execute_member_valid
+    selected partial
+    bind #1 = const executor<int, 0> source=explicit
+    bind #2 = function_object source=explicit
+    bind #3 = void source=defaulted
+    specialize #1 = const executor<int, 0> source=deduced
+    specialize #2 = function_object source=deduced
+  class-use at tests/general/400-out-of-class-member-template-cache-reset.t:58:42
+    template executor
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = 0 source=explicit
+  class-use at tests/general/400-out-of-class-member-template-cache-reset.t:61:36
+    template executor
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = 0 source=explicit
+  class-use at tests/general/400-out-of-class-member-template-cache-reset.t:63:16
+    template execute_member_noexcept
+    selected partial
+    bind #1 = const executor<int, 0> source=explicit
+    bind #2 = function_object source=explicit
+    bind #3 = void source=defaulted
+    specialize #1 = const executor<int, 0> source=deduced
+    specialize #2 = function_object source=deduced
+  class-use at tests/general/400-out-of-class-member-template-cache-reset.t:63:46
+    template executor
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = 0 source=explicit
+template-closure-events
+  variable-instantiation
+    entity execute_member_noexcept<const executor<int, 0>, function_object>::value
+  variable-instantiation
+    entity execute_member_valid<const executor<int, 0>, function_object>::value

@@ -13,8 +13,6 @@ translation-unit
     bind #1 = 1 source=explicit
     bind #2 = <First, Second> source=deduced
 template-closure-events
-  ensure-definition
-    entity get
   function-instantiation
     entity get
   require-definition

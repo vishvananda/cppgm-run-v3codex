@@ -1,0 +1,52 @@
+translation-unit
+  class-use at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:48:10
+    template traits
+    selected explicit
+    bind #1 = type-parameter-0-0 source=explicit
+    bind #2 = false source=explicit
+  class-use at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:49:1
+    template traits
+    selected explicit
+    bind #1 = type-parameter-0-0 source=explicit
+    bind #2 = false source=explicit
+  class-use at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:56:10
+    template traits
+    selected explicit
+    bind #1 = type-parameter-0-0 source=explicit
+    bind #2 = false source=explicit
+  class-use at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:56:41
+    template traits
+    selected explicit
+    bind #1 = type-parameter-0-0 source=explicit
+    bind #2 = false source=explicit
+  function-call at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:65:18
+    callee traits<const int &, false>::check
+    selected instantiation
+    bind #1 = int source=deduced
+    drop traits<const int &, false>::check reason=worse_conversion
+  class-use at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:65:18
+    template traits
+    selected partial
+    bind #1 = const int & source=explicit
+    bind #2 = false source=explicit
+    specialize #1 = const int & source=deduced
+  function-call at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:66:30
+    callee traits<const int &, false>::check
+    selected instantiation
+    bind #1 = int source=deduced
+    drop traits<const int &, false>::check reason=better_candidate_selected
+  class-use at tests/general/400-out-of-class-partial-member-template-owner-parameter-alias.t:66:30
+    template traits
+    selected partial
+    bind #1 = const int & source=explicit
+    bind #2 = false source=explicit
+    specialize #1 = const int & source=deduced
+template-closure-events
+  function-instantiation
+    entity peek
+  function-instantiation
+    entity traits<const int &, false>::check
+  require-definition
+    entity peek
+  require-definition
+    entity traits<const int &, false>::check

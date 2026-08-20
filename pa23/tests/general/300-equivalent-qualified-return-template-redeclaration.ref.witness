@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int source=deduced
     drop n::make reason=better_candidate_selected
 template-closure-events
-  ensure-definition
-    entity n::make
   function-instantiation
     entity n::make
   require-definition

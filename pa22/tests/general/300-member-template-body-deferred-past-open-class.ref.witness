@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = node source=explicit
 template-closure-events
-  ensure-definition
-    entity box<node>::demand
   function-instantiation
     entity box<node>::assign
   function-instantiation

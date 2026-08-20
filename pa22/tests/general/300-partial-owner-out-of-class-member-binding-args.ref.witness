@@ -11,8 +11,6 @@ translation-unit
     bind #2 = int source=explicit
     specialize #1 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity box<bool, int>::f
   function-instantiation
     entity box<bool, int>::f
   require-definition

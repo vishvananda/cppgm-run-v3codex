@@ -1,0 +1,29 @@
+translation-unit
+  class-use at tests/spec/300-dependent-result-defaulted-nontype-declaring-scope.t:56:10
+    template units::box
+    selected primary
+    bind #1 = long source=explicit
+  class-use at tests/spec/300-dependent-result-defaulted-nontype-declaring-scope.t:57:10
+    template units::box
+    selected primary
+    bind #1 = double source=explicit
+  function-call at tests/spec/300-dependent-result-defaulted-nontype-declaring-scope.t:57:37
+    callee units::operator/
+    selected instantiation
+    bind #1 = long source=deduced
+    bind #2 = double source=deduced
+template-closure-events
+  function-instantiation
+    entity units::box<double>::box
+  function-instantiation
+    entity units::box<long>::box
+  function-instantiation
+    entity units::operator/
+  require-definition
+    entity units::box<double>::box
+  require-definition
+    entity units::box<long>::box
+  require-definition
+    entity units::operator/
+  variable-instantiation
+    entity units::detail::is_box<double>::value

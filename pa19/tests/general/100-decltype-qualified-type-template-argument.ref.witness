@@ -5,8 +5,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = interval source=explicit
 template-closure-events
-  ensure-definition
-    entity compute
   function-instantiation
     entity compute
   require-definition

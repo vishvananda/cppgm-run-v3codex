@@ -30,10 +30,6 @@ translation-unit
     drop duration_like<int>::duration_like reason=worse_conversion
     drop duration_like<int>::duration_like reason=substitution_failure
 template-closure-events
-  ensure-definition
-    entity duration_like<int>::duration_like
-  ensure-definition
-    entity duration_like<long long>::duration_like
   function-instantiation
     entity duration_like<int>::duration_like
   function-instantiation

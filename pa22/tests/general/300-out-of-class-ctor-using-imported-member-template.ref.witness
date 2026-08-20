@@ -1,0 +1,23 @@
+translation-unit
+  class-use at tests/general/300-out-of-class-ctor-using-imported-member-template.t:42:14
+    template Table
+    selected primary
+    bind #1 = int source=explicit
+  class-use at tests/general/300-out-of-class-ctor-using-imported-member-template.t:45:11
+    template Table
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/300-out-of-class-ctor-using-imported-member-template.t:45:11
+    callee Table<int>::Table
+    selected instantiation
+    bind #1 = int * source=deduced
+    drop Table<int>::Table reason=too_many_arguments
+template-closure-events
+  function-instantiation
+    entity InsertBase<int>::insert
+  function-instantiation
+    entity Table<int>::Table
+  require-definition
+    entity InsertBase<int>::insert
+  require-definition
+    entity Table<int>::Table

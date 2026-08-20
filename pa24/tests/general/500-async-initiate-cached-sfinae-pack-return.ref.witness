@@ -1,0 +1,129 @@
+translation-unit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:126:21
+    template type_identity_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:128:15
+    template enable_if_t
+    bind #1 = enable_if_t<are_completion_signatures<Signatures...>::value, has_initiate<CompletionToken, Signatures...>>::value source=explicit
+    bind #2 = async_result<decay_t<CompletionToken>, Signatures...> source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:129:7
+    template enable_if_t
+    bind #1 = are_completion_signatures<Signatures...>::value source=explicit
+    bind #2 = has_initiate<CompletionToken, Signatures...> source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:131:20
+    template decay_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:136:23
+    template decay_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:146:10
+    template enable_if_t
+    bind #1 = !enable_if_t<are_completion_signatures<Signatures...>::value, has_initiate<CompletionToken, Signatures...>>::value source=explicit
+    bind #2 = async_result<decay_t<CompletionToken>, Signatures...> source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:147:6
+    template enable_if_t
+    bind #1 = are_completion_signatures<Signatures...>::value source=explicit
+    bind #2 = has_initiate<CompletionToken, Signatures...> source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:149:18
+    template decay_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:150:30
+    template type_identity_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:159:10
+    template enable_if_t
+    bind #1 = !enable_if_t<are_completion_signatures<Signatures...>::value, has_initiate<CompletionToken, Signatures...>>::value source=explicit
+    bind #2 = async_result<decay_t<CompletionToken>, Signatures...> source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:160:6
+    template enable_if_t
+    bind #1 = are_completion_signatures<Signatures...>::value source=explicit
+    bind #2 = has_initiate<CompletionToken, Signatures...> source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:162:18
+    template decay_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:205:17
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:207:26
+    template decay_t
+    bind #1 = T source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:241:9
+    template conditional_t
+    bind #1 = is_const<remove_reference_t<RawCompletionToken>>::value source=explicit
+    bind #2 = const T source=explicit
+    bind #3 = T source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:241:32
+    template remove_reference_t
+    bind #1 = RawCompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:245:30
+    template decay_t
+    bind #1 = Initiation source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:261:10
+    template decay_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:261:36
+    template decay_t
+    bind #1 = Values source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:264:19
+    template decay_t
+    bind #1 = CompletionToken source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:264:45
+    template decay_t
+    bind #1 = Values source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:266:19
+    template decay_t
+    bind #1 = Values source=explicit
+  alias-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:288:30
+    template decay_t
+    bind #1 = Initiation source=explicit
+  function-call at tests/general/500-async-initiate-cached-sfinae-pack-return.t:305:9
+    callee declval
+    selected instantiation
+    bind #1 = initiate_wait source=explicit
+  class-use at tests/general/500-async-initiate-cached-sfinae-pack-return.t:315:3
+    template waitable_timer
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/500-async-initiate-cached-sfinae-pack-return.t:316:26
+    callee waitable_timer<int>::async_wait
+    selected instantiation
+    bind #1 = append_t<executor_binder<handler, executor>, int, int> source=deduced
+  function-call at tests/general/500-async-initiate-cached-sfinae-pack-return.t:317:7
+    callee append
+    selected instantiation
+    bind #1 = executor_binder<handler, executor> source=deduced
+    bind #2 = <int, int> source=deduced
+  function-call at tests/general/500-async-initiate-cached-sfinae-pack-return.t:317:14
+    callee bind_executor
+    selected instantiation
+    bind #1 = executor source=deduced
+    bind #2 = handler source=deduced
+template-closure-events
+  variable-instantiation
+    entity are_completion_signatures<append_t<executor_binder<handler, executor>, int, int>, void (int)>::value
+  variable-instantiation
+    entity are_completion_signatures<executor_binder<handler, executor>, void (int, int, int)>::value
+  variable-instantiation
+    entity are_completion_signatures<handler, void (int, int, int)>::value
+  variable-instantiation
+    entity are_completion_signatures<void (int)>::value
+  variable-instantiation
+    entity are_completion_signatures<void (int, int, int)>::value
+  variable-instantiation
+    entity has_initiate<append_t<executor_binder<handler, executor>, int, int>, void (int)>::value
+  variable-instantiation
+    entity has_initiate<executor_binder<handler, executor>, void (int, int, int)>::value
+  variable-instantiation
+    entity has_initiate<handler, void (int, int, int)>::value
+  variable-instantiation
+    entity is_const<executor_binder<handler, executor>>::value
+  variable-instantiation
+    entity is_signature<append_t<executor_binder<handler, executor>, int, int>>::value
+  variable-instantiation
+    entity is_signature<executor_binder<handler, executor>>::value
+  variable-instantiation
+    entity is_signature<handler>::value
+  variable-instantiation
+    entity is_signature<void (int)>::value
+  variable-instantiation
+    entity is_signature<void (int, int, int)>::value

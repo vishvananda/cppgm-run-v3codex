@@ -1,0 +1,25 @@
+translation-unit
+  class-use at tests/general/300-class-template-member-overload-braced-call-operator.t:50:3
+    template node_value
+    selected primary
+    bind #1 = key source=explicit
+  class-use at tests/general/300-class-template-member-overload-braced-call-operator.t:51:3
+    template hash_code_base
+    selected primary
+    bind #1 = key source=explicit
+    bind #2 = key source=explicit
+    bind #3 = identity source=explicit
+    bind #4 = hash_key source=explicit
+template-closure-events
+  function-instantiation
+    entity hash_code_base<key, key, identity, hash_key>::_M_hash_code
+  function-instantiation
+    entity identity::operator()
+  function-instantiation
+    entity node_value<key>::_M_v
+  require-definition
+    entity hash_code_base<key, key, identity, hash_key>::_M_hash_code
+  require-definition
+    entity identity::operator()
+  require-definition
+    entity node_value<key>::_M_v

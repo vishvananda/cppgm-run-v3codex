@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = void source=explicit
 template-closure-events
-  ensure-definition
-    entity source<void>::operator int
   function-instantiation
     entity source<void>::operator int
   require-definition

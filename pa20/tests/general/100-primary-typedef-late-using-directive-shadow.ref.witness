@@ -1,0 +1,8 @@
+translation-unit
+  class-use at tests/general/100-primary-typedef-late-using-directive-shadow.t:28:25
+    template N::make
+    selected primary
+    bind #1 = int source=explicit
+template-closure-events
+  variable-instantiation
+    entity N::make<int>::lower

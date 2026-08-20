@@ -1,0 +1,63 @@
+translation-unit
+  function-call at tests/general/400-concrete-recursive-node-layout-retry.t:35:37
+    callee boost::ac::p
+    selected instantiation
+    bind #1 = boost::container::k<int> source=explicit
+  class-use at tests/general/400-concrete-recursive-node-layout-retry.t:35:50
+    template boost::container::k
+    selected primary
+    bind #1 = int source=explicit
+  function-call at tests/general/400-concrete-recursive-node-layout-retry.t:39:37
+    callee boost::ae::m_fn4
+    selected instantiation
+    bind #1 = boost::container::k<int> source=explicit
+  class-use at tests/general/400-concrete-recursive-node-layout-retry.t:39:61
+    template boost::container::k
+    selected primary
+    bind #1 = int source=explicit
+  alias-use at tests/general/400-concrete-recursive-node-layout-retry.t:68:38
+    template boost::container::z::al
+    bind #1 = j source=explicit
+  class-use at tests/general/400-concrete-recursive-node-layout-retry.t:85:31
+    template boost::av
+    selected primary
+    bind #1 = <> source=deduced
+  class-use at tests/general/400-concrete-recursive-node-layout-retry.t:228:46
+    template boost::by
+    selected primary
+    bind #1 = boost::aq source=explicit
+  class-use at tests/general/400-concrete-recursive-node-layout-retry.t:247:23
+    template boost::container::c
+    selected primary
+    bind #1 = recursive_slist source=explicit
+template-closure-events
+  class-instantiation
+    entity boost::container::w<boost::container::base_node<recursive_slist> *>::x
+  class-instantiation
+    entity boost::container::w<recursive_slist *>::x
+  function-instantiation
+    entity boost::container::base_node<recursive_slist>::base_node
+  function-instantiation
+    entity boost::container::c<recursive_slist>::m_fn2
+  function-instantiation
+    entity boost::container::de<boost::container::k<recursive_slist>, boost::cy<boost::bhtraits<boost::container::base_node<recursive_slist>, boost::as<void *>>>>::m_fn1
+  function-instantiation
+    entity boost::container::de<boost::container::k<recursive_slist>, boost::cy<boost::bhtraits<boost::container::base_node<recursive_slist>, boost::as<void *>>>>::m_fn5
+  require-definition
+    entity boost::container::base_node<recursive_slist>::base_node
+  require-definition
+    entity boost::container::c<recursive_slist>::m_fn2
+  require-definition
+    entity boost::container::de<boost::container::k<recursive_slist>, boost::cy<boost::bhtraits<boost::container::base_node<recursive_slist>, boost::as<void *>>>>::m_fn1
+  require-definition
+    entity boost::container::de<boost::container::k<recursive_slist>, boost::cy<boost::bhtraits<boost::container::base_node<recursive_slist>, boost::as<void *>>>>::m_fn5
+  variable-instantiation
+    entity boost::bh<boost::ba<int, boost::bu<boost::ch<boost::as<void *>, boost::aq, 0>>, boost::bq, boost::bs>>::g
+  variable-instantiation
+    entity boost::bh<boost::ba<int, boost::bw<void *>, boost::by<boost::aq>>>::g
+  variable-instantiation
+    entity boost::by<boost::aq>::bo<boost::bw<void *>::bo<int>>::by
+  variable-instantiation
+    entity boost::cf<boost::ba<int, boost::bu<boost::ch<boost::as<void *>, boost::aq, 0>>, boost::bq, boost::bs>, boost::av<0, 1, 2, 3>>::bk
+  variable-instantiation
+    entity boost::cf<boost::ba<int, boost::bw<void *>, boost::by<boost::aq>>, boost::av<0, 1, 2>>::bk

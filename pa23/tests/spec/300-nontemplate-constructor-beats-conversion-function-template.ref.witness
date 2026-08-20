@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = payload source=explicit
 template-closure-events
-  ensure-definition
-    entity result<payload>::result
   function-instantiation
     entity result<payload>::result
   require-definition

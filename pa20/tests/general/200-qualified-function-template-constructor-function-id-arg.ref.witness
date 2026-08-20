@@ -8,12 +8,6 @@ translation-unit
     selected primary
     bind #1 = mutex_type source=explicit
 template-closure-events
-  ensure-definition
-    entity qft_ctor_arg::adapter<mutex_type>::adapter
-  ensure-definition
-    entity qft_ctor_arg::launch
-  ensure-definition
-    entity qft_ctor_arg::lock_and_sleep
   function-instantiation
     entity qft_ctor_arg::adapter<mutex_type>::adapter
   function-instantiation

@@ -14,12 +14,6 @@ translation-unit
 template-closure-events
   class-instantiation
     entity Outer<int>::Ref
-  ensure-definition
-    entity Iter<int>::operator++
-  ensure-definition
-    entity Outer<int>::Ref::Ref
-  ensure-definition
-    entity Outer<int>::Ref::operator bool
   function-instantiation
     entity Iter<int>::operator++
   function-instantiation

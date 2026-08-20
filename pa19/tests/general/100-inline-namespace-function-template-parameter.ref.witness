@@ -29,8 +29,6 @@ translation-unit
     bind #2 = abi_case::traits<char> source=deduced
     bind #3 = abi_case::alloc<char> source=deduced
 template-closure-events
-  ensure-definition
-    entity abi_case::fetch
   function-instantiation
     entity abi_case::fetch
   require-definition

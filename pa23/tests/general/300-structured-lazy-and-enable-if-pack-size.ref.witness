@@ -30,8 +30,6 @@ translation-unit
     selected primary
     bind #1 = <int, int, int> source=explicit
 template-closure-events
-  ensure-definition
-    entity Box<int, int, int>::select
   function-instantiation
     entity Box<int, int, int>::select
   require-definition

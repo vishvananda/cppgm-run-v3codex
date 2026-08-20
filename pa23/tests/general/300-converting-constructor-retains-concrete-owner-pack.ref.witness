@@ -1,0 +1,22 @@
+translation-unit
+  class-use at tests/general/300-converting-constructor-retains-concrete-owner-pack.t:29:9
+    template allocator_adaptor
+    selected partial
+    bind #1 = <outer_two, inner> source=explicit
+    specialize #1 = outer_two source=deduced
+    specialize #2 = <inner> source=deduced
+  class-use at tests/general/300-converting-constructor-retains-concrete-owner-pack.t:30:9
+    template allocator_adaptor
+    selected partial
+    bind #1 = <outer_one, inner> source=explicit
+    specialize #1 = outer_one source=deduced
+    specialize #2 = <inner> source=deduced
+  function-call at tests/general/300-converting-constructor-retains-concrete-owner-pack.t:33:31
+    callee declval
+    selected instantiation
+    bind #1 = const allocator_adaptor<outer_two, inner> & source=explicit
+  function-call at tests/general/300-converting-constructor-retains-concrete-owner-pack.t:40:17
+    callee probe
+    selected instantiation
+    bind #1 = allocator_adaptor<outer_one, inner> source=explicit
+    drop probe reason=worse_conversion

@@ -1,0 +1,34 @@
+translation-unit
+  class-use at tests/spec/400-function-type-pack-template-argument.t:61:9
+    template call_result
+    selected partial
+    bind #1 = void (int &, bool &, char &) source=explicit
+    specialize #1 = void source=deduced
+    specialize #2 = int & source=deduced
+    specialize #3 = <bool &, char &> source=deduced
+  class-use at tests/spec/400-function-type-pack-template-argument.t:66:15
+    template is_same
+    selected partial
+    bind #1 = int (*)(int &, bool &, char &) source=explicit
+    bind #2 = int (*)(int &, bool &, char &) source=explicit
+    specialize #1 = int (*)(int &, bool &, char &) source=deduced
+  class-use at tests/spec/400-function-type-pack-template-argument.t:72:11
+    template make_function_type
+    selected primary
+    bind #1 = int source=explicit
+    bind #2 = <char, long> source=explicit
+  class-use at tests/spec/400-function-type-pack-template-argument.t:73:10
+    template is_same
+    selected partial
+    bind #1 = int source=explicit
+    bind #2 = int source=explicit
+    specialize #1 = int source=deduced
+template-closure-events
+  variable-instantiation
+    entity function_traits<int (char, long)>::arity
+  variable-instantiation
+    entity is_same<int (*)(int &, bool &, char &), int (*)(int &, bool &, char &)>::value
+  variable-instantiation
+    entity is_same<int, int>::value
+  variable-instantiation
+    entity make_function_type<int, char, long>::arity

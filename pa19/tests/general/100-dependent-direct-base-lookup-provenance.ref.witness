@@ -8,8 +8,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity derived<dependent_base<int>>::run
   function-instantiation
     entity derived<dependent_base<int>>::run
   require-definition

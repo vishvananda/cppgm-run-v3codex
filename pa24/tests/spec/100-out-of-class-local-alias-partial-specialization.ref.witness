@@ -9,8 +9,6 @@ translation-unit
     selected primary
     bind #1 = Node source=explicit
 template-closure-events
-  ensure-definition
-    entity Control<Node, Alloc<Node>>::release_weak
   function-instantiation
     entity Alloc<Control<Node, Alloc<Node>>>::deallocate
   function-instantiation

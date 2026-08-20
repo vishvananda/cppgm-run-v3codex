@@ -1,0 +1,24 @@
+translation-unit
+  alias-use at tests/general/400-partial-owner-member-alias-scope-shadow.t:7:11
+    template X
+    bind #1 = O<N, false>::template A source=explicit
+  class-use at tests/general/400-partial-owner-member-alias-scope-shadow.t:7:13
+    template O
+    selected partial
+    bind #1 = N source=explicit
+    bind #2 = false source=explicit
+    specialize #1 = N source=deduced
+  class-use at tests/general/400-partial-owner-member-alias-scope-shadow.t:10:16
+    template S
+    selected partial
+    bind #1 = N<N<char>> source=explicit
+    bind #2 = N<N<char>> source=explicit
+    specialize #1 = N<N<char>> source=deduced
+  class-use at tests/general/400-partial-owner-member-alias-scope-shadow.t:10:21
+    template N
+    selected primary
+    bind #1 = N<char> source=explicit
+  class-use at tests/general/400-partial-owner-member-alias-scope-shadow.t:10:23
+    template N
+    selected primary
+    bind #1 = char source=explicit

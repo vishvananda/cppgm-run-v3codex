@@ -5,8 +5,6 @@ translation-unit
     bind #1 = long source=explicit
     bind #2 = void source=defaulted
 template-closure-events
-  ensure-definition
-    entity stack_like::pop
   function-instantiation
     entity stack_like::pop
   require-definition

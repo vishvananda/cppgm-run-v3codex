@@ -10,12 +10,6 @@ translation-unit
     bind #1 = int source=explicit
     bind #2 = int source=deduced
 template-closure-events
-  ensure-definition
-    entity S<int, int>::S
-  ensure-definition
-    entity S<int, int>::operator View
-  ensure-definition
-    entity helper
   function-instantiation
     entity S<int, int>::S
   function-instantiation

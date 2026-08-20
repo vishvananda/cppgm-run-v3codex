@@ -4,8 +4,6 @@ translation-unit
     selected primary
     bind #1 = int source=explicit
 template-closure-events
-  ensure-definition
-    entity allocator<int>::allocate
   function-instantiation
     entity allocator<int>::allocate
   function-instantiation

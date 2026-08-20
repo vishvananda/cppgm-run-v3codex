@@ -1,0 +1,15 @@
+translation-unit
+  alias-use at tests/spec/200-instantiated-member-alias-cv-partial-order.t:11:32
+    template segment::const_iterator
+    bind #1 = U source=explicit
+  alias-use at tests/spec/200-instantiated-member-alias-cv-partial-order.t:12:33
+    template segment::iterator
+    bind #1 = U source=explicit
+  class-use at tests/spec/200-instantiated-member-alias-cv-partial-order.t:15:3
+    template segment
+    selected primary
+    bind #1 = model source=explicit
+  function-call at tests/spec/200-instantiated-member-alias-cv-partial-order.t:17:19
+    callee segment<model>::insert
+    selected instantiation
+    bind #1 = int source=deduced

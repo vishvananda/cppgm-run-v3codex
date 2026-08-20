@@ -16,8 +16,6 @@ translation-unit
     selected primary
     bind #1 = E source=explicit
 template-closure-events
-  ensure-definition
-    entity owner<int>::set
   function-instantiation
     entity owner<int>::set
   require-definition
