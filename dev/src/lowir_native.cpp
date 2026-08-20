@@ -1620,7 +1620,7 @@ private:
     MirOperand pressure_home;
     MirOperand destination;
     if(direct_division_return)
-      destination = reg_operand(XR_RAX);
+      destination = reg_operand(division.remainder ? XR_RDX : XR_RAX);
     else if(!pressure_leaf)
       destination = binary_destination(instruction, left, out, true, &pressure_home);
     else if(instruction.first.value == source_.params.front().value) {

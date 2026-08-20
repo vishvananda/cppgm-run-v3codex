@@ -642,6 +642,9 @@ strategies include:
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required
   registers
+- keep an immediately returned quotient in `rax` and an immediately returned
+  remainder in `rdx`; the return instruction may name that selected result
+  carrier directly
 - prefer an available caller-saved register to adding a callee-saved register
   to the frame's `preserve` list
 - reuse compatible compiler-created temporary frame locations when their value
