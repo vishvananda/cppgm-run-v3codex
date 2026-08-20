@@ -90,6 +90,9 @@ struct ParamBinding
   // emitted have left it intact, even if a fixed home carries the value across
   // a later clobber. A logical instruction that emits no MIR does not clobber
   // the incoming location; lowering can maintain this fact in a fixed mask.
+  // A promoted or forwarded slot load should continue to name this selected
+  // home instead of adding a speculative register copy after a call; its
+  // eventual consumer can select any fixed machine register it requires.
   // A representation-preserving scalar copy, including ptr/i64, may share
   // this location when the copied result's complete interval also crosses no
   // clobber. A parameter whose apparent uses are all discarded with promoted

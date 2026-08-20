@@ -64,34 +64,6 @@ protected:
 						lowerer.registers_.reserve(incoming);
 					value.location = reg_operand(incoming);
 				}
-				else if (load_position > lowerer.facts_.calls.front())
-				{
-					const bool preserved =
-						lowerer.result_crosses_call(instruction.dest);
-					const bool direct_call_alias =
-						value.fixed_register_home && !preserved &&
-						lowerer.facts_.has(instruction.dest,
-							analysis::FunctionFacts::VF_ONLY_CALL_ARGUMENT);
-					X64Register forwarded = XR_R9;
-					bool allocated = true;
-					if (direct_call_alias)
-						allocated = false;
-					else if (preserved)
-						allocated = lowerer.try_allocate_result(
-							instruction.dest, out, &forwarded);
-					else if (lowerer.nonparameter_value_live_in_register(forwarded))
-						allocated = lowerer.registers_.try_allocate(false, forwarded);
-					else if (!lowerer.registers_.is_used(forwarded))
-						lowerer.registers_.reserve(forwarded);
-					// Storage analysis already required a stable cross-call home.
-					// If the speculative copy cannot allocate a register, calls can
-					// continue to consume that home directly.
-					if (!direct_call_alias && allocated)
-					{
-						append_move(out, reg_operand(forwarded), value.location);
-						value.location = reg_operand(forwarded);
-					}
-				}
 			}
 				lowerer.set_value(instruction.dest, value);
 			return;

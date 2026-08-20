@@ -633,6 +633,9 @@ strategies include:
   emitted instruction invalidates that location
 - omit parameter homes and setup transfers when slot selection removes every
   use that would have consumed them
+- let a promoted or forwarded parameter-slot load continue to name the
+  parameter's stable selected home; its consumer can apply any required
+  register constraint directly
 - let a representation-preserving scalar copy share an intact parameter
   location when the copied result's interval crosses no clobber
 - retain encodable integer constants as immediates and place division or
