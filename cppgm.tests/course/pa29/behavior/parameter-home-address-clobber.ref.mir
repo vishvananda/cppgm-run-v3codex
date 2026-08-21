@@ -1,0 +1,123 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 160
+    scratch_bytes 48
+    preserve rbx r12 r13 r14
+    slot $object -> [rbp-24] : obj<24x8>
+    slot $first -> [rbp-32] : i64
+    slot $second -> [rbp-40] : i64
+    slot $context -> [rbp-48] : i64
+    slot $atomic_object -> [rbp-72] : obj<24x8>
+    slot $atomic_context -> [rbp-80] : i64
+
+  block ^entry
+    lea rbx, [rbp-32]
+    lea r12, [rbp-40]
+    lea r13, [rbp-48]
+    lea rdi, [rbp-24]
+    mov rsi, rbx
+    mov rdx, r12
+    mov rcx, r13
+    call @initialize [args=(rcx,rdx,rsi,rdi)]
+    mov r14, rax
+    cmp.ptr r14, r13
+    setne r14
+    movzx r14, r14
+    lea r13, [rbp-80]
+    lea rdi, [rbp-72]
+    mov rsi, rbx
+    mov rdx, r12
+    mov rcx, r13
+    call @initialize_atomic [args=(rcx,rdx,rsi,rdi)]
+    cmp.ptr rax, r13
+    setne rax
+    movzx rax, rax
+    or r14, rax
+    mov rax, r14
+    sext.i32 rax
+    ret rax
+
+function @initialize
+  abi
+    param %this -> rdi : ptr
+    param %first -> rsi : ptr
+    param %second -> rdx : ptr
+    param %context -> rcx : ptr
+    return ptr -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %context_field -> [rbp-24] : ptr
+
+  block ^entry
+    lea rbx, [rdi+16]
+    store.ptr [rbp-24], rbx
+    load.ptr rax, [rbp-24]
+    store.ptr [rax], rcx
+    eh_push ^unwind, 0
+    call @touch [args=()]
+    eh_pop
+    jmp ^read_context
+
+  block ^unwind
+    resume
+
+  block ^read_context
+    load.ptr rcx, [rbp-24]
+    load.ptr rax, [rcx]
+    ret rax
+
+function @initialize_atomic
+  abi
+    param %this -> rdi : ptr
+    param %first -> rsi : ptr
+    param %second -> rdx : ptr
+    param %context -> rcx : ptr
+    return ptr -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %context_field -> [rbp-24] : ptr
+
+  block ^entry
+    lea rbx, [rdi+16]
+    store.ptr [rbp-24], rbx
+    load.ptr rax, [rbp-24]
+    store.ptr [rax], rcx
+    eh_push ^unwind, 0
+    call @touch [args=()]
+    eh_pop
+    jmp ^read_context
+
+  block ^unwind
+    resume
+
+  block ^read_context
+    load.ptr rcx, [rbp-24]
+    load.ptr rax, [rcx]
+    ret rax
+
+function @touch
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret

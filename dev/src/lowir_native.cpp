@@ -800,7 +800,8 @@ private:
     return dereference(address.reg);
   }
   MirOperand materialized_storage(const Operand & operand,
-                                  std::vector<MirInstruction> & out)
+                                  std::vector<MirInstruction> & out,
+                                  X64Register scratch = XR_RCX)
   {
     if(operand.kind == Operand::OP_GLOBAL) {
       const lowir_model::SymbolId wrapper = tls_wrappers_[operand.symbol];
@@ -823,13 +824,13 @@ private:
       if(address.kind == MirOperand::OP_FRAME ||
          address.kind == MirOperand::OP_DEREF)
         return address;
-      append_address(out, XR_RCX, address);
-      return dereference(XR_RCX);
+      append_address(out, scratch, address);
+      return dereference(scratch);
     }
     const MirOperand address = resolve(operand);
     if(address.kind == MirOperand::OP_REG) return dereference(address.reg);
-    move_value_to_register(out, XR_RCX, address, operand_type(operand));
-    return dereference(XR_RCX);
+    move_value_to_register(out, scratch, address, operand_type(operand));
+    return dereference(scratch);
   }
   wide::Value wide_value(const Operand & operand) const
   {

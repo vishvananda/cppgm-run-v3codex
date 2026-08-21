@@ -288,7 +288,9 @@ protected:
 			value = reg_operand(scratch);
 		}
 		append_operand(store,
-			lowerer.materialized_storage(instruction.second, out));
+			lowerer.materialized_storage(instruction.second, out,
+				value.kind == mir_model::MirOperand::OP_REG && value.reg == XR_RCX ?
+				XR_RAX : XR_RCX));
 		append_operand(store, value);
 		out.push_back(store);
 		if (value.kind == mir_model::MirOperand::OP_IMM && lowerer.stats_)

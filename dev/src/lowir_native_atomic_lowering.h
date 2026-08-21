@@ -82,7 +82,9 @@ protected:
 			value = reg_operand(XR_RAX);
 		}
 		const mir_model::MirOperand address =
-			derived.materialized_storage(instruction.second, out);
+			derived.materialized_storage(instruction.second, out,
+				value.kind == mir_model::MirOperand::OP_REG && value.reg == XR_RCX ?
+				XR_RAX : XR_RCX);
 		if (sequential)
 			append_atomic(mir_model::MirInstruction::MI_XCHG,
 				instruction.type, address, XR_RAX, out);
