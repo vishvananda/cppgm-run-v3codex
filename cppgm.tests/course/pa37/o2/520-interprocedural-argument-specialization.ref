@@ -1,0 +1,77 @@
+global @effect_count : i64 = 0
+global @constant_value : i64 [storage=readonly] = 7
+
+function @__o2spec0(%value : i64) -> i64 [unwind=no, no_inline=yes] {
+  block ^entry:
+    return i64 %value
+}
+function @effect() -> i64 [unwind=no, no_inline=yes] {
+  block ^entry:
+    %before = load i64 @effect_count
+    %after = binary add i64 %before, 1
+    store i64 %after, @effect_count
+    return i64 %after
+}
+function @internal_target(%value : i64) -> i64 [unwind=no, binding=internal, no_inline=yes] {
+  block ^entry:
+    %result = binary add i64 %value, 1
+    return i64 %result
+}
+function @read_constant(%addend : i64) -> i64 [effects=readonly, unwind=no, binding=internal, no_inline=yes] {
+  block ^entry:
+    %value = load i64 @constant_value
+    %result = binary add i64 %value, %addend
+    return i64 %result
+}
+function @differing(%mode : i64) -> i64 [unwind=no, binding=internal, no_inline=yes] {
+  block ^entry:
+    branch %mode, ^selected, ^other
+
+  block ^selected:
+    return i64 5
+
+  block ^other:
+    return i64 -5
+}
+function @addressed(%mode : i64, %value : i64) -> i64 [unwind=no, binding=weak, no_inline=yes] {
+  block ^entry:
+    %result = binary add i64 %mode, %value
+    return i64 %result
+}
+function @rooted(%mode : i64, %value : i64) -> i64 [unwind=no, binding=weak, object_root=yes, no_inline=yes] {
+  block ^entry:
+    %result = binary add i64 %mode, %value
+    return i64 %result
+}
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    %effect_value = call i64 @effect()
+    %internal_a = call i64 @internal_target(20)
+    %internal_b = call i64 @internal_target(30)
+    %weak_a = call i64 @__o2spec1(40)
+    %weak_b = call i64 @__o2spec1(50)
+    %constant_a = call i64 @read_constant(1)
+    %constant_b = call i64 @read_constant(2)
+    %different_a = call i64 @differing(0)
+    %different_b = call i64 @differing(1)
+    %address = addr @addressed
+    %addressed_indirect = call i64 %address(2, 3) as (%mode : i64, %value : i64) -> i64 [unwind=no]
+    %addressed_direct = call i64 @addressed(2, 4)
+    %rooted_value = call i64 @rooted(3, 4)
+    %sum1 = binary add i64 %internal_a, %internal_b
+    %sum2 = binary add i64 %weak_a, %weak_b
+    %sum3 = binary add i64 %different_a, %different_b
+    %sum4 = binary add i64 %addressed_indirect, %addressed_direct
+    %sum5 = binary add i64 %sum1, %sum2
+    %sum6 = binary add i64 %sum3, %sum4
+    %sum7 = binary add i64 %sum5, %sum6
+    %sum8 = binary add i64 %constant_a, %constant_b
+    %sum9 = binary add i64 %sum7, %sum8
+    %result = binary add i64 %sum9, %rooted_value
+    return i64 %result
+}
+function @__o2spec1(%value : i64) -> i64 [unwind=no, binding=internal] {
+  block ^entry:
+    %step40 = binary add i64 %value, 41
+    return i64 %step40
+}

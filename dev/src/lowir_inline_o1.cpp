@@ -354,13 +354,14 @@ class Inliner
 {
 public:
   Inliner(LowirProgram * program,
+          const InlineCallGraph & call_graph,
           const std::vector<unsigned char> & prepared_oversized_symbols,
           const std::vector<std::size_t> & original_instruction_counts,
           std::vector<unsigned char> * rewritten_symbols,
           Stats * stats)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
-      call_graph_(analyze_inline_call_graph(*program, stats)),
+      call_graph_(call_graph),
       no_unwind_(program->symbol_names.size(), 0),
       prepared_oversized_symbols_(prepared_oversized_symbols),
       original_instruction_counts_(original_instruction_counts), rewrites_(0)
@@ -438,7 +439,7 @@ private:
   LowirProgram & program_;
   std::vector<unsigned char> * rewritten_symbols_;
   Stats * stats_;
-  InlineCallGraph call_graph_;
+  const InlineCallGraph & call_graph_;
   std::vector<unsigned char> no_unwind_;
   const std::vector<unsigned char> & prepared_oversized_symbols_;
   const std::vector<std::size_t> & original_instruction_counts_;
@@ -1072,12 +1073,13 @@ private:
 
 std::size_t inline_o1_calls(
   LowirProgram & program,
+  const InlineCallGraph & call_graph,
   const std::vector<unsigned char> & prepared_oversized_symbols,
   const std::vector<std::size_t> & original_instruction_counts,
   std::vector<unsigned char> * rewritten_symbols,
   Stats * stats)
 {
-  Inliner inliner(&program, prepared_oversized_symbols,
+  Inliner inliner(&program, call_graph, prepared_oversized_symbols,
     original_instruction_counts, rewritten_symbols, stats);
   return inliner.run();
 }

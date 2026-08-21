@@ -86,6 +86,22 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " inline_changed_callers=" << stats.inline_changed_callers
 		 << " inline_eh_blocked_records=" << stats.inline_eh_blocked_records
 		 << " inline_revisited_callers=" << stats.inline_revisited_callers
+		 << " ipa_direct_call_visits=" << stats.ipa_direct_call_visits
+		 << " ipa_instruction_visits=" << stats.ipa_instruction_visits
+		 << " ipa_candidate_functions=" << stats.ipa_candidate_functions
+		 << " ipa_address_observable_rejects="
+		 << stats.ipa_address_observable_rejects
+		 << " ipa_uniform_parameters=" << stats.ipa_uniform_parameters
+		 << " ipa_disagreeing_parameters=" << stats.ipa_disagreeing_parameters
+		 << " ipa_substituted_operands=" << stats.ipa_substituted_operands
+		 << " ipa_dead_parameters=" << stats.ipa_dead_parameters
+		 << " ipa_calls_rewritten=" << stats.ipa_calls_rewritten
+		 << " ipa_arguments_removed=" << stats.ipa_arguments_removed
+		 << " ipa_functions_changed=" << stats.ipa_functions_changed
+		 << " ipa_specialized_clones=" << stats.ipa_specialized_clones
+		 << " ipa_cloned_instructions=" << stats.ipa_cloned_instructions
+		 << " ipa_clone_budget_skips=" << stats.ipa_clone_budget_skips
+		 << " ipa_peak_analysis_bytes=" << stats.ipa_peak_analysis_bytes
 		 << " budget_skips=" << stats.budget_skips
 		 << " rewrites=" << stats.rewrites
 		 << " simplify_runs=" << stats.simplify_runs
@@ -174,6 +190,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " cleanup_tail_instructions_removed="
 		 << stats.cleanup_tail_instructions_removed
 		 << " inline_ns=" << stats.inline_nanoseconds
+		 << " ipa_ns=" << stats.ipa_nanoseconds
 		 << " simplify_ns=" << stats.simplify_nanoseconds
 		 << " memory_gvn_ns=" << stats.memory_gvn_nanoseconds
 		 << " pre_ns=" << stats.pre_nanoseconds

@@ -4,6 +4,8 @@
 #include "lowir_expression_key.h"
 #include "lowir_function_reachability.h"
 #include "lowir_inline_o1.h"
+#include "lowir_inline_analysis.h"
+#include "lowir_interprocedural_specialization.h"
 #include "lowir_loop_opt.h"
 #include "lowir_loop_simplify.h"
 #include "lowir_memory_gvn.h"
@@ -2544,7 +2546,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     }
     return;
   }
-  const FunctionBoundaries boundaries =
+  FunctionBoundaries boundaries =
     function_boundaries(program);
   std::vector<unsigned char> prepared_oversized_symbols(
     program.symbol_names.size(), 0);
@@ -2565,11 +2567,11 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       prepare_for_inlining(&program.functions[i], boundaries, stats) ? 1 : 0;
   }
   std::vector<unsigned char> inlined_symbols(program.symbol_names.size(), 0);
-  MemoryGVNSession memory_gvn(program);
+  const InlineCallGraph call_graph = analyze_inline_call_graph(program, stats);
   std::chrono::steady_clock::time_point inline_started;
   if(stats) inline_started = std::chrono::steady_clock::now();
   const std::size_t inline_rewrites =
-    inline_o1_calls(program, prepared_oversized_symbols,
+    inline_o1_calls(program, call_graph, prepared_oversized_symbols,
       original_instruction_counts, &inlined_symbols, stats);
   if(stats) {
     stats->inline_changed_callers =
@@ -2579,6 +2581,30 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - inline_started).count());
   }
+  if(level >= 2) {
+    std::vector<unsigned char> ipa_rewritten_symbols(
+      program.symbol_names.size(), 0);
+    const std::chrono::steady_clock::time_point ipa_started =
+      stats ? std::chrono::steady_clock::now() :
+              std::chrono::steady_clock::time_point();
+    const std::size_t ipa_rewrites = specialize_interprocedural_arguments(
+      program, call_graph, &ipa_rewritten_symbols, stats);
+    if(stats) {
+      stats->rewrites += ipa_rewrites;
+      stats->ipa_nanoseconds += static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - ipa_started).count());
+    }
+    post_cfg_values_changed.resize(program.functions.size(), 0);
+    inlined_symbols.resize(program.symbol_names.size(), 0);
+    boundaries = function_boundaries(program);
+    for(std::size_t i = 0; i < program.functions.size(); ++i)
+      if(ipa_rewritten_symbols[program.functions[i].symbol])
+        post_cfg_values_changed[i] =
+          prepare_for_inlining(&program.functions[i], boundaries, stats) ||
+          post_cfg_values_changed[i];
+  }
+  MemoryGVNSession memory_gvn(program);
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     Function & function = program.functions[i];
     // Keep this an explicit bounded schedule.  A stage is revisited only when

@@ -239,6 +239,22 @@ value. It must additionally support these conservative loop transforms:
 - removing a loop only when its body has no observable or trapping operation,
   its values are unused outside the loop, and its finite termination can be
   proved without integer overflow
+- propagating an integer, floating, or global-address argument into an
+  internal direct-call target when every remaining direct call supplies the
+  same value and the target is not observable through an address, lifecycle
+  role, object root, alias, or variadic signature
+- removing an unused directly passed scalar parameter from such an internal
+  target and all of its direct calls; computations that produced a removed
+  argument remain subject to ordinary effect-aware dead-code elimination
+- specializing a discardable weak target through one internal clone instead
+  of changing the weak target's externally observable ABI; rooted,
+  address-observable, recursive, `no_inline`, and mismatched-signature weak
+  targets must remain unchanged
+
+Interprocedural specialization is bounded to 256 clones and 8,192 cloned
+LowIR instructions per translation unit. Budget exhaustion skips later
+candidates in deterministic function order. `-O1` does not perform argument
+specialization.
 
 Slot-value forwarding and promotion remain an `-O2` responsibility. At `-O1`,
 a live load whose value is consumed along multiple successor paths must remain
@@ -325,8 +341,8 @@ PA37 does not require:
 - loop unrolling, peeling, vectorization, or loop transformations beyond the
   conservative motion and counted-loop rules described above
 - machine-IR scheduling or register-allocation optimization
-- interprocedural optimization beyond direct-call graph ordering, the required
-  small-function inlining, and post-inline reachability cleanup
+- unbounded interprocedural cloning, externally observable ABI changes,
+  semantic body merging, or indirect-call specialization
 - size-specific `-Os` or `-Oz` behavior
 
 ### Design Notes
@@ -337,6 +353,15 @@ components once identifies recursive callees and provides a stable callee-first
 order without repeated symbol-name lookup. Use the typed symbol operands and
 metadata already present in LowIR when building the graph and its reachability
 roots; string rendering is only needed when serializing the final program.
+
+Interprocedural argument agreement can reuse that same direct-call graph and
+its dense symbol-to-function table. Store parameter facts in one packed array
+with per-function offsets, and scan typed call operands once; do not build a
+second graph or use rendered symbol names as keys. A weak target keeps its
+original body while direct calls are redirected to a bounded internal clone,
+so pruning the now-undemanded weak body remains an ordinary reachability
+decision. Run local simplification and effect-aware dead-code elimination only
+for changed callees and callers.
 
 For slot promotion, collect definition blocks by typed slot identity and place
 phis with an iterated dominance-frontier worklist. Dense block epochs let one
