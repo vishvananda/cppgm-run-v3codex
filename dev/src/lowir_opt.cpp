@@ -1330,7 +1330,9 @@ bool cleanup_cfg(Function * function, Stats * stats)
        block.instructions.back().kind != Instruction::IK_JUMP) continue;
     const std::size_t target =
       graph.find(block.instructions.back().first.block);
-    if(target == kNoBlockIndex || target == i ||
+    // A backward merge would relocate the target after blocks that may use
+    // values it defines, violating LowIR's presentation-order requirement.
+    if(target == kNoBlockIndex || target <= i ||
        block_has_eh[i] || block_has_eh[target] ||
        graph.eh_targets[static_cast<std::uint32_t>(block.id)] ||
        graph.eh_targets[static_cast<std::uint32_t>(

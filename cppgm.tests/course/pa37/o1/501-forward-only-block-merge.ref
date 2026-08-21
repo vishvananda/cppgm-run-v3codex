@@ -1,0 +1,26 @@
+declare function @observe(%value : i64) -> void [unwind=no]
+
+function @preserve_definition_order(%seed : i64, %choose : u8) -> i64 {
+  block ^entry:
+    branch %choose, ^head, ^alternate
+
+  block ^definition:
+    %value = binary add i64 %seed, 2
+    branch %choose, ^add, ^subtract
+
+  block ^add:
+    %added = binary add i64 %seed, 3
+    return i64 %added
+
+  block ^subtract:
+    %subtracted = binary sub i64 %value, 1
+    return i64 %subtracted
+
+  block ^alternate:
+    call void @observe(%seed)
+    jump ^head
+
+  block ^head:
+    call void @observe(%seed)
+    jump ^definition
+}

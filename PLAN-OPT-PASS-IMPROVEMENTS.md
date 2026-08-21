@@ -2161,6 +2161,19 @@ A change inside the established 3% noise band needs a deterministic structural
 benefit; a compile-time or RSS regression beyond it needs a larger generated-
 runtime win and an explicit ledger decision.
 
+Implementation checkpoint (2026-08-21): the 20-instruction/320-caller-budget
+probe exposed an optimizer correctness bug and was not treated as an
+ineligibility reason.  Straight-line CFG cleanup could merge an earlier target
+into a later predecessor, moving target definitions after uses in intervening
+serialized blocks.  The PA37 `501-forward-only-block-merge` reducer makes the
+old optimizer emit an undefined `%value`; reparsing that output at `-O0`
+rejects it.  Cleanup now admits only forward-presentation merges with one O(1)
+block-index comparison.  The original aggressive frozen O1 compile then
+completed at 1,628,080 object bytes, 692,846 `.text*` bytes, and 5.22 seconds
+wall on the host-built compiler.  The retained 7/128 policy passes the full
+5,397-test report and the PA39 audit has zero fatal findings.  Profitability
+selection remains separate from this required correctness fix.
+
 #### R11i. Defer true EH grafting
 
 Inlining a callee with genuinely live EH regions requires remapping nested

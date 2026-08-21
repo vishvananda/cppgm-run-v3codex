@@ -176,7 +176,8 @@ running optimizing transforms.
   selectors, removing unreachable blocks, bypassing trivial jump-only blocks,
   merging safe straight-line block pairs, and collapsing empty branch diamonds
   when both arms resolve through non-EH jump-only blocks to the same
-  continuation
+  continuation; straight-line merging must preserve the serialized LowIR rule
+  that every temporary definition precedes every use
 - removal of a conditional edge whose target begins with a call to the PA13
   `role=unreachable` operation, when the other edge remains a normal successor
 - preservation of exceptional handler targets and exception-structure blocks
@@ -554,6 +555,11 @@ lists, and epoch-marked membership vectors keep loop discovery proportional to
 CFG edges and reported loop memberships. For invariant motion, build a packed
 producer-to-user worklist and use typed value, slot, and global IDs for memory
 checks; render names only while writing LowIR text.
+
+Straight-line CFG cleanup can preserve definition-before-use presentation with
+an O(1) block-order check: merge a sole-successor target into its predecessor
+only when the target is later in the serialized block sequence. More general
+block motion requires tracking all affected definitions and uses.
 
 Full unrolling can reuse those loop facts and a dense value-ID replacement
 table. Plan the trip count and growth before cloning, use generated value IDs
