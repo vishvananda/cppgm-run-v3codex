@@ -1,0 +1,120 @@
+declare global @__external_rtti_vtable____fundamental_type_info [role=rtti_data, binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
+declare global @__external_rtti__int [role=rtti_data, binding=strong, object=_ZTIi]
+
+declare function @__external_runtime____cxa_allocate_exception(%arg0 : i64) -> ptr [role=eh_allocate_exception, linkage=c, binding=strong, object=__cxa_allocate_exception]
+declare function @__external_runtime____cxa_begin_catch(%arg0 : ptr) -> ptr [role=eh_begin_catch, linkage=c, binding=strong, object=__cxa_begin_catch]
+declare function @__external_runtime____cxa_end_catch() -> void [role=eh_end_catch, linkage=c, binding=strong, object=__cxa_end_catch]
+declare function @__external_runtime____cxa_throw(%arg0 : ptr, %arg1 : ptr, %arg2 : ptr) -> void [return=noreturn, role=eh_throw, linkage=c, binding=strong, object=__cxa_throw]
+
+global @__typeinfo_name__int [binding=weak, object=_ZTSi] = {
+  i8 105
+  i8 0
+}
+global @__rtti_int [binding=weak, object=_ZTIi] = {
+  ptr addr @__external_rtti_vtable____fundamental_type_info + 16
+  ptr addr @__typeinfo_name__int
+}
+global @__ehobj_int [binding=internal, object=@__ehobj_int] = {
+  zero 4
+}
+global @cleanup_count : i32 [binding=strong, object=_Z13cleanup_count] = zero
+
+function @fail() -> void [binding=strong, object=_Z4failv, no_inline=yes] {
+  block ^entry:
+    %t1 = call ptr @__external_runtime____cxa_allocate_exception(4)
+    store i32 7, %t1
+    %t2 = addr @__external_rtti__int
+    call void @__external_runtime____cxa_throw(%t1, %t2, 0)
+    return void
+}
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $value : obj<1x1>
+  slot $cond__2 : i32
+  slot $land__3 : i64
+
+  block ^entry:
+    eh_try ^catch_dispatch_1
+    eh_try ^call_unwind_dispatch_6
+    call void @fail()
+    eh_end
+    jump ^call_unwind_end_7
+
+  block ^cleanup_resume_4:
+    eh_end
+    eh_end
+    jump ^catch_entry_2
+
+  block ^cleanup_action_5:
+    %__o1inl0__t1 = load i32 @cleanup_count
+    %__o1inl0__t2 = binary add i32 %__o1inl0__t1, 1
+    store i32 %__o1inl0__t2, @cleanup_count
+    jump ^cleanup_resume_4
+
+  block ^call_unwind_dispatch_6:
+    eh_catch @__external_rtti__int, 1
+    eh_cleanup
+    jump ^cleanup_action_5
+
+  block ^call_unwind_end_7:
+    %__o1inl1__t1 = load i32 @cleanup_count
+    %__o1inl1__t2 = binary add i32 %__o1inl1__t1, 1
+    store i32 %__o1inl1__t2, @cleanup_count
+    eh_end
+    jump ^try_end_3
+
+  block ^catch_dispatch_1:
+    eh_catch @__external_rtti__int, 1
+    jump ^catch_entry_2
+
+  block ^catch_entry_2:
+    %t4 = exception ptr
+    %t5 = exception_selector i32
+    %t6 = cmp eq i32 %t5, 1
+    branch %t6, ^catch_body_8, ^catch_next_9
+
+  block ^catch_body_8:
+    %t7 = call ptr @__external_runtime____cxa_begin_catch(%t4)
+    eh_cleanup ^catch_cleanup_10
+    %t8 = load i32 %t7
+    %t10 = cmp eq i32 %t8, 7
+    branch %t10, ^land_rhs_14, ^land_short_15
+
+  block ^land_rhs_14:
+    %t11 = load i32 @cleanup_count
+    %t12 = cmp eq i32 %t11, 1
+    store i64 %t12, $land__3
+    jump ^land_end_16
+
+  block ^land_short_15:
+    store i64 0, $land__3
+    jump ^land_end_16
+
+  block ^land_end_16:
+    %t14 = load i64 $land__3
+    branch %t14, ^cond_then_11, ^cond_else_12
+
+  block ^cond_then_11:
+    store i32 0, $cond__2
+    jump ^cond_end_13
+
+  block ^cond_else_12:
+    store i32 1, $cond__2
+    jump ^cond_end_13
+
+  block ^cond_end_13:
+    %t15 = load i32 $cond__2
+    eh_end
+    call void @__external_runtime____cxa_end_catch()
+    return i32 %t15
+
+  block ^catch_cleanup_10:
+    call void @__external_runtime____cxa_end_catch()
+    eh_end
+    resume
+
+  block ^catch_next_9:
+    resume
+
+  block ^try_end_3:
+    return i32 2
+}

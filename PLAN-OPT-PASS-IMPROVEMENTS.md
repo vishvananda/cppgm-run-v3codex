@@ -2002,6 +2002,25 @@ callee, and an explicit `no_inline`.  Behavioral cases must exercise both the
 ordinary cleanup path and an exception already in flight so terminate/resume
 semantics cannot be accidentally weakened.
 
+Implementation result (2026-08-21): the existing dense landing bitmap now
+admits a call only when the callee's cached symbol fact is no-unwind and its
+cached body summary is EH-free.  No new graph, map, string key, or retry loop is
+introduced; all ordinary policy, cost, recursion, and growth checks run first.
+Three PA37 LowIR reducers cover explicit and inferred no-unwind helpers across
+multiple landings plus the complete unsafe matrix.  A PA37 source reducer shows
+the actual cleanup destructor body substituted into the landing block, and a
+PA30 runtime reducer executes it while an integer exception is already in
+flight.  One existing PA37 incoming-EH-edge fixture moved to the newly legal
+shape.
+
+Against R11d, frozen O1 falls from 1,571,664 to 1,541,816 object bytes
+(-29,848), from 564,959 to 563,436 `.text*` bytes (-1,523), and from 2,833 to
+2,728 defined symbols.  Ordinary/late inlines rise from 9,345/1,619 to
+9,988/1,873; landing rejections fall from 4,714 to the 12 genuinely unsafe
+sites.  `_Unwind_Resume` remains 250, while basic-string destructor calls fall
+from 868 to 676 and shared-pointer destructor calls from 594 to 585.  Three
+host-built wall runs are 5.12, 5.13, and 5.06 seconds (5.12-second median).
+
 #### R11f. Remeasure effects and eligibility before expanding value passes
 
 On the exact retained R11a--e tree, repeat the frozen O1/O2/O3 census before
@@ -2301,7 +2320,7 @@ Fill one row for every retained or rejected phase:
 | R11b | preserve bounded C++ inline preference as `inline_hint` | PA13 syntax/scaffold; PA15/16/19 producers; PA37 policy/source/object/debug | cap 12 rejected; retained cap 7: object -592 B, `.text*` +384 B, definitions -5; basic-string calls unchanged | one typed Boolean and cached shape test; existing 128 caller budget; no strings | 5,382/5,382; zero fatal, 32 warnings | final combined self/inception lane required; PA37 object/debug clean | implementation complete; host-built frozen O1 median 5.18 s; proceed to residual EH gate |
 | R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 mixed-region/publication reducers; six exact refs moved; debug/object clean | object -115,568 B, `.text*` -29,705 B, definitions -220, resume 412 to 250 | dense typed region/stack facts per EH function; bounded callee-first waves; no strings | 5,384/5,384; zero fatal, 32 warnings | final combined self/inception lane required | implementation complete; host O1 median 5.12 s; 1,361/8,296 regions removed and 112 facts published |
 | R11d | separate lifecycle publication/retention from explicit `no_inline` | PA28 exact policy; PA30 foreign relocation; PA32 publication; PA37 source/object roundtrip | vs R11c: object +31,880 B, text -1,946 B, +172 definitions; ordinary/late inlines +538/+184 | one transient typed Boolean; reuse native reachability; object-root fact serialized | 5,387/5,387; PA37 object/debug clean; zero fatal | final combined O0/O3 lane required | implementation complete; host O1 median 5.18 s |
-| R11e | proven-no-unwind landing-block inlining | PA37 O1 exact and exception-in-flight behavior | measure landing rejects, cleanup calls, text and EH metadata | existing dense summaries and budgets | pending | pending | conditional after R11c/d |
+| R11e | proven-no-unwind landing-block inlining | PA37 exact/source; PA30 exception-in-flight runtime | vs R11d: object -29,848 B, text -1,523 B, -105 definitions; basic-string destructor calls -192 | existing dense landing/no-unwind/EH summaries and budgets | 5,392/5,392; PA37 debug clean; zero fatal | final combined lane required | implementation complete; host O1 median 5.12 s |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | stats/object diagnostics; PA33/37 only for retained `pure`/`const` effects | call-family frequency, rejection, EH definition, effects and MIR movement census | numeric optional stats; names out of band | pending | diagnostic | planned measurement gate; GNU `nothrow` absent from frozen input |
 | R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 per-pass exact/behavior/scaling; PA38 O2 MIR/behavior/debug | measure each subphase independently | shared compact EH states; bounded barriers and conservative fallback | pending | required for each retained subphase | conditional on R11f |
 | R11h | post-harvest inliner profitability sweep | PA37 only for a retained policy change | exact-self maximum runtime plus object/text/EH deltas | one-variable bounded sweep; no production profiling strings | pending | final retained policy only | conditional on R11a--g |

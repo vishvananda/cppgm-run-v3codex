@@ -697,7 +697,8 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
       return false;
     }
-    if(landing) {
+    if(landing &&
+       (!no_unwind_[callee_function.symbol] || contains_eh_[target])) {
       if(record_stats && stats_) ++stats_->inline_reject_landing;
       if(record_stats && stats_ && definition_removing_only_)
         ++stats_->post_prune_inline_reject_landing;

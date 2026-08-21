@@ -220,6 +220,10 @@ running optimizing transforms.
   region even when the callee may unwind; potentially throwing calls cloned
   from that callee remain inside the caller's active region and therefore use
   its landing destination
+- inlining from an exceptional landing block only when the callee has no EH
+  control instructions and its explicit or inferred boundary proves that it
+  cannot unwind; potentially throwing, EH-bearing, indirect, and explicitly
+  `no_inline` calls remain intact while an exception is already in flight
 - treating `throw`, `exception`, `exception_selector`, and `resume` as
   EH-bearing instructions, just like the `eh_*` markers; a function containing
   any of them is not an ordinary inlining candidate
