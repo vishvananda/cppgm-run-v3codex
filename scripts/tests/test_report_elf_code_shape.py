@@ -75,6 +75,38 @@ class ElfCodeShapeParserTest(unittest.TestCase):
             1, details["functions"]["caller()"]["call_targets"]["target-0x4"]
         )
 
+    def test_lsda_call_site_shape(self):
+        relocations = (
+            "Relocation section '.rela.eh_frame' at offset 0x100:\n"
+            "00000019  00000002 R_X86_64_PC32 0 .gcc_except_table + 0\n"
+            "00000039  00000002 R_X86_64_PC32 0 .gcc_except_table + c\n"
+        )
+        hex_dump = (
+            "Hex dump of section '.gcc_except_table':\n"
+            "  0x00000000 ffff0108 02010000 05010900  .........\n"
+            "  0x0000000c ffff0104 03010000           ........\n"
+        )
+        sections = MODULE.parse_hex_sections(
+            hex_dump, {".gcc_except_table": 20}
+        )
+        self.assertEqual(
+            {".gcc_except_table": [0, 12]},
+            MODULE.parse_lsda_relocations(relocations),
+        )
+        self.assertEqual(
+            {
+                "lsdas": 2,
+                "protected_bytes": 4,
+                "protected_records": 1,
+                "table_bytes": 12,
+                "unprotected_bytes": 8,
+                "unprotected_records": 2,
+            },
+            MODULE.parse_lsda_call_sites(
+                sections, MODULE.parse_lsda_relocations(relocations)
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

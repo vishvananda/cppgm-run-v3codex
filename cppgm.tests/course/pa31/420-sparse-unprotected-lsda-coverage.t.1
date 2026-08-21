@@ -1,0 +1,45 @@
+int events;
+
+struct Guard
+{
+  ~Guard()
+  {
+    events += 10;
+  }
+};
+
+void may_throw(int value)
+{
+  events += value;
+  throw value;
+}
+
+void exercise(int value)
+{
+  if(value == 1) may_throw(value);
+  Guard guard;
+  if(value == 2) may_throw(value);
+  events += 100;
+}
+
+int main()
+{
+  try
+  {
+    exercise(1);
+  }
+  catch(int value)
+  {
+    if(value != 1 || events != 1) return 1;
+  }
+
+  try
+  {
+    exercise(2);
+  }
+  catch(int value)
+  {
+    if(value != 2 || events != 13) return 2;
+  }
+  return 0;
+}

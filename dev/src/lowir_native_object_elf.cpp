@@ -1,5 +1,6 @@
 #include "lowir_native_object_elf.h"
 #include "lowir_native_elf_string_table.h"
+#include "lowir_native_lsda.h"
 #include "lowir_native_object_fixups.h"
 
 #include <algorithm>
@@ -545,12 +546,13 @@ std::string host_symbol_spelling(const std::string & raw);
 
 HostSection make_host_lsda(
     std::vector<HostFunctionLayout> & functions,
-    std::vector<HostRelocation> & relocations)
+    std::vector<HostRelocation> & relocations, Stats * stats)
 {
   HostSection section;
   section.name = SectionIdentity(SK_GCC_EXCEPT_TABLE);
   section.flags = 2;
   section.alignment = 4;
+  std::vector<lsda_detail::CallSiteTableEntry> sites;
   for(std::size_t i = 0; i < functions.size(); ++i) {
     HostFunctionLayout & function = functions[i];
     if(function.call_sites.empty()) continue;
@@ -639,40 +641,23 @@ HostSection make_host_lsda(
       action_offsets[block] = next_action + 1;
     }
 
-    std::vector<HostFunctionLayout::CallSite> sites = function.call_sites;
-    std::sort(sites.begin(), sites.end(),
-      [](const HostFunctionLayout::CallSite & left,
-         const HostFunctionLayout::CallSite & right) {
-        return left.start < right.start;
-      });
-    std::size_t cursor = 0;
+    lsda_detail::sparse_call_site_table(function, sites, stats);
     for(std::size_t site = 0; site < sites.size(); ++site) {
-      if(sites[site].start > cursor) {
-        append_uleb128(call_table, cursor);
-        append_uleb128(call_table, sites[site].start - cursor);
-        append_uleb128(call_table, 0);
-        append_uleb128(call_table, 0);
-      } else if(site == 0 && cursor == 0 && sites[site].start == 0) {
-        append_uleb128(call_table, 0);
-        append_uleb128(call_table, 0);
-        append_uleb128(call_table, 0);
-        append_uleb128(call_table, 0);
-      }
+      const std::size_t entry_start = call_table.size();
       append_uleb128(call_table, sites[site].start);
       append_uleb128(call_table, sites[site].length);
-      append_uleb128(call_table, sites[site].landing_pad_offset);
+      append_uleb128(call_table, sites[site].has_landing_pad ?
+        sites[site].landing_pad_offset : 0);
       const std::uint32_t action_block = sites[site].action_block;
-      const std::size_t action = action_block < action_offsets.size() ?
+      const std::size_t action = sites[site].has_landing_pad &&
+        action_block < action_offsets.size() ?
         action_offsets[action_block] : no_action;
       append_uleb128(call_table, action == no_action ? 0 : action);
-      cursor = std::max(cursor, sites[site].start + sites[site].length);
+      if(stats && !sites[site].has_landing_pad)
+        stats->eh_lsda_unprotected_call_site_bytes +=
+          call_table.size() - entry_start;
     }
-    if(cursor < function.size) {
-      append_uleb128(call_table, cursor);
-      append_uleb128(call_table, function.size - cursor);
-      append_uleb128(call_table, 0);
-      append_uleb128(call_table, 0);
-    }
+    if(stats) stats->eh_lsda_call_site_table_bytes += call_table.size();
 
     std::vector<unsigned char> body;
     body.push_back(0x01);
@@ -1657,7 +1642,7 @@ std::vector<unsigned char> make_linux_relocatable_image(
     data_relocations[i] = host_relocations(
       mutable_data[i], encoded_labels, program, declarations);
   std::vector<HostRelocation> lsda_relocations;
-  HostSection lsda = make_host_lsda(functions, lsda_relocations);
+  HostSection lsda = make_host_lsda(functions, lsda_relocations, stats);
   std::vector<HostRelocation> eh_relocations;
   HostSection eh = make_host_eh_frame(functions, eh_relocations);
   struct PendingRelocations

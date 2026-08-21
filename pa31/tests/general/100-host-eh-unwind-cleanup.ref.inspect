@@ -1,7 +1,7 @@
 object 1 lsda call_site_has_cleanup
 object 1 lsda call_site_has_landingpad
 object 1 lsda call_site_has_no_landingpad
-object 1 lsda call_site_starts_at_zero
+object 1 lsda call_site_has_sparse_gap
 object 1 lsda call_site_table
 object 1 lsda present
 object 1 reloc_call _Unwind_Resume
@@ -23,7 +23,7 @@ object 2 lsda action_has_catch
 object 2 lsda call_site_has_action
 object 2 lsda call_site_has_landingpad
 object 2 lsda call_site_has_no_landingpad
-object 2 lsda call_site_starts_at_zero
+object 2 lsda call_site_has_sparse_gap
 object 2 lsda call_site_table
 object 2 lsda present
 object 2 lsda type_table

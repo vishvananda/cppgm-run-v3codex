@@ -212,6 +212,11 @@ runtime-helper object surface for `cppgm++ -c` within the supported subset:
     `_Unwind_Resume` terminal that reloads the active exception from the
     function's host-EH slot. Keep the source cleanup paths distinct in LowIR
     and MIR.
+12. Keep the LSDA call-site table sparse. In an LSDA-bearing function, a
+    potentially throwing call outside a protected region still needs an
+    explicit null-landing entry so unwinding continues through the function,
+    but ordinary instruction gaps need no entry. Adjacent unprotected calls
+    between the same protected regions may share one null-landing range.
 
 If object inspection shows missing or malformed host EH metadata for a basic
 throw/catch/cleanup case, fix the host-EH lowering or object-emission path.
@@ -255,3 +260,9 @@ The host-object layout walk can count MIR resume operations once, allocate a
 terminal only for a function that needs one, and branch each resume to it. A
 single typed frame-slot identity is sufficient; rendered slot or label names
 are not needed.
+
+The same layout walk can retain exact unprotected potentially-throwing call
+ranges. Merge those ranges with protected call sites in address order when
+writing the LSDA, coalescing unprotected calls only within one interval between
+protected sites. This avoids reconstructing call-site coverage from the full
+function byte range.

@@ -1928,6 +1928,14 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " eh_lsda_call_sites=" << native_stats.eh_lsda_call_sites
          << " eh_coalesced_call_sites="
          << native_stats.eh_coalesced_call_sites
+         << " eh_lsda_unprotected_call_sites="
+         << native_stats.eh_lsda_unprotected_call_sites
+         << " eh_lsda_uncovered_code_bytes="
+         << native_stats.eh_lsda_uncovered_code_bytes
+         << " eh_lsda_call_site_table_bytes="
+         << native_stats.eh_lsda_call_site_table_bytes
+         << " eh_lsda_unprotected_call_site_bytes="
+         << native_stats.eh_lsda_unprotected_call_site_bytes
          << " semantic_resume_instructions="
          << native_stats.semantic_resume_instructions
          << " physical_resume_terminals="

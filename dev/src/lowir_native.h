@@ -120,6 +120,10 @@ struct Stats
   std::size_t eh_call_sites = 0;
   std::size_t eh_lsda_call_sites = 0;
   std::size_t eh_coalesced_call_sites = 0;
+  std::size_t eh_lsda_unprotected_call_sites = 0;
+  std::size_t eh_lsda_uncovered_code_bytes = 0;
+  std::size_t eh_lsda_call_site_table_bytes = 0;
+  std::size_t eh_lsda_unprotected_call_site_bytes = 0;
   std::size_t semantic_resume_instructions = 0;
   std::size_t physical_resume_terminals = 0;
   std::size_t shared_resume_branches = 0;

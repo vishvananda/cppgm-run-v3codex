@@ -27,6 +27,12 @@ FUNCTION_HEADER_RE = re.compile(r"^\s*[0-9A-Fa-f]+\s+<(.+)>:\s*$")
 RELOCATION_RE = re.compile(
     r"^\s*[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+R_[A-Za-z0-9_]+"
 )
+RELOCATION_SECTION_RE = re.compile(r"^Relocation section '([^']+)' ")
+LSDA_RELOCATION_RE = re.compile(
+    r"\s(\.gcc_except_table\S*)\s+\+\s+([0-9A-Fa-f]+)\s*$"
+)
+HEX_SECTION_RE = re.compile(r"^Hex dump of section '([^']+)':$")
+HEX_LINE_RE = re.compile(r"^\s*0x[0-9A-Fa-f]+\s+(.*)$")
 CALL_TARGET_RE = re.compile(r"<([^>]+)>")
 CALL_RELOCATION_RE = re.compile(
     r"^\s*[0-9A-Fa-f]+:\s+R_[A-Za-z0-9_]+\s+(\S+)"
@@ -264,6 +270,158 @@ def parse_relocation_count(text):
     return sum(bool(RELOCATION_RE.match(line)) for line in text.splitlines())
 
 
+def parse_lsda_relocations(text):
+    starts = collections.defaultdict(set)
+    relocation_section = ""
+    for line in text.splitlines():
+        header = RELOCATION_SECTION_RE.match(line)
+        if header:
+            relocation_section = header.group(1)
+            continue
+        if relocation_section != ".rela.eh_frame":
+            continue
+        match = LSDA_RELOCATION_RE.search(line)
+        if match:
+            section, addend = match.groups()
+            starts[section].add(int(addend, 16))
+    return {
+        section: sorted(offsets)
+        for section, offsets in starts.items()
+    }
+
+
+def parse_hex_sections(text, section_sizes):
+    result = {}
+    section = ""
+    for line in text.splitlines():
+        header = HEX_SECTION_RE.match(line)
+        if header:
+            section = header.group(1)
+            result[section] = bytearray()
+            continue
+        match = HEX_LINE_RE.match(line)
+        if not section or not match:
+            continue
+        target_size = section_sizes.get(section, 0)
+        for token in match.group(1).split():
+            if not re.fullmatch(r"[0-9A-Fa-f]{2,8}", token):
+                break
+            if len(token) % 2:
+                break
+            result[section].extend(bytes.fromhex(token))
+            if target_size and len(result[section]) >= target_size:
+                del result[section][target_size:]
+                break
+    return {name: bytes(data) for name, data in result.items()}
+
+
+def read_uleb128(data, offset, limit):
+    value = 0
+    shift = 0
+    while offset < limit:
+        byte = data[offset]
+        offset += 1
+        value |= (byte & 0x7f) << shift
+        if not byte & 0x80:
+            return value, offset
+        shift += 7
+        if shift >= 64:
+            break
+    raise ValueError("invalid ULEB128 value")
+
+
+def read_sleb128(data, offset, limit):
+    value = 0
+    shift = 0
+    while offset < limit:
+        byte = data[offset]
+        offset += 1
+        value |= (byte & 0x7f) << shift
+        shift += 7
+        if not byte & 0x80:
+            if shift < 64 and byte & 0x40:
+                value |= -(1 << shift)
+            return value, offset
+        if shift >= 64:
+            break
+    raise ValueError("invalid SLEB128 value")
+
+
+def read_encoded_value(data, offset, limit, encoding):
+    value_format = encoding & 0x0f
+    if value_format == 0x01:
+        return read_uleb128(data, offset, limit)
+    if value_format == 0x09:
+        return read_sleb128(data, offset, limit)
+    widths = {
+        0x00: 8,
+        0x02: 2,
+        0x03: 4,
+        0x04: 8,
+        0x0a: 2,
+        0x0b: 4,
+        0x0c: 8,
+    }
+    width = widths.get(value_format)
+    if width is None or offset + width > limit:
+        raise ValueError("unsupported or truncated DWARF encoding")
+    signed = value_format >= 0x09
+    value = int.from_bytes(data[offset:offset + width], "little", signed=signed)
+    return value, offset + width
+
+
+def parse_lsda_call_sites(hex_sections, starts_by_section):
+    totals = collections.Counter()
+    for section, starts in starts_by_section.items():
+        data = hex_sections.get(section, b"")
+        for index, start in enumerate(starts):
+            limit = starts[index + 1] if index + 1 < len(starts) else len(data)
+            try:
+                if start >= limit:
+                    raise ValueError("empty LSDA")
+                offset = start
+                lpstart_encoding = data[offset]
+                offset += 1
+                if lpstart_encoding != 0xff:
+                    _lpstart, offset = read_encoded_value(
+                        data, offset, limit, lpstart_encoding
+                    )
+                ttype_encoding = data[offset]
+                offset += 1
+                if ttype_encoding != 0xff:
+                    _ttype_offset, offset = read_uleb128(data, offset, limit)
+                call_site_encoding = data[offset]
+                offset += 1
+                table_length, offset = read_uleb128(data, offset, limit)
+                table_end = offset + table_length
+                if table_end > limit:
+                    raise ValueError("truncated LSDA call-site table")
+                totals["lsdas"] += 1
+                totals["table_bytes"] += table_length
+                while offset < table_end:
+                    entry_start = offset
+                    _start, offset = read_encoded_value(
+                        data, offset, table_end, call_site_encoding
+                    )
+                    _length, offset = read_encoded_value(
+                        data, offset, table_end, call_site_encoding
+                    )
+                    landing_pad, offset = read_encoded_value(
+                        data, offset, table_end, call_site_encoding
+                    )
+                    action, offset = read_uleb128(data, offset, table_end)
+                    entry_bytes = offset - entry_start
+                    if landing_pad or action:
+                        totals["protected_records"] += 1
+                        totals["protected_bytes"] += entry_bytes
+                    else:
+                        totals["unprotected_records"] += 1
+                        totals["unprotected_bytes"] += entry_bytes
+            except (IndexError, ValueError):
+                totals["unparsed_lsdas"] += 1
+    return dict(sorted(totals.items()))
+
+
 def sum_sections(sections, predicate):
     return sum(section["size"] for section in sections if predicate(section))
 
@@ -273,9 +431,28 @@ def report_object(path, selected_functions, selected_calls, top_functions, tools
     functions = parse_symbols(
         run_tool(tools["readelf"], "-Ws", "--demangle", str(path))
     )
-    relocations = parse_relocation_count(
-        run_tool(tools["readelf"], "-Wr", str(path))
-    )
+    relocation_text = run_tool(tools["readelf"], "-Wr", str(path))
+    relocations = parse_relocation_count(relocation_text)
+    lsda_sections = [
+        section for section in sections
+        if section["name"].startswith(".gcc_except_table") and
+        section["type"] == "PROGBITS"
+    ]
+    lsda_call_sites = {}
+    if lsda_sections:
+        hex_arguments = []
+        for section in lsda_sections:
+            hex_arguments.extend(("-x", str(section["index"])))
+        hex_text = run_tool(
+            tools["readelf"], *hex_arguments, str(path)
+        )
+        section_sizes = {
+            section["name"]: section["size"] for section in lsda_sections
+        }
+        lsda_call_sites = parse_lsda_call_sites(
+            parse_hex_sections(hex_text, section_sizes),
+            parse_lsda_relocations(relocation_text),
+        )
     disassembly = parse_disassembly_details(
         # Wide output keeps every encoded instruction on one line. Without
         # -w, objdump may wrap trailing bytes onto a line that resembles an
@@ -318,6 +495,7 @@ def report_object(path, selected_functions, selected_calls, top_functions, tools
             ),
         },
         "relocations": relocations,
+        "lsda_call_sites": lsda_call_sites,
         "defined_functions": {
             "total": len(functions),
             "by_binding": dict(sorted(bindings.items())),
@@ -426,6 +604,8 @@ def print_summary(report):
         "  decoded_instructions=%d decoded_instruction_bytes=%d"
         % (report["decoded_instructions"], report["decoded_instruction_bytes"])
     )
+    if report["lsda_call_sites"]:
+        print("  lsda_call_sites=%s" % report["lsda_call_sites"])
     movement = report["movement_operand_classes"]
     if movement:
         print(

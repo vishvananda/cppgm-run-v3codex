@@ -461,6 +461,7 @@ sub parse_lsda_candidate
 	$facts{'lsda type_table'} = 1 if $has_type_table;
 	my @action_offsets;
 	my $call_site_count = 0;
+	my $covered_end = 0;
 	while($pos < $call_site_end)
 	{
 		my @start_value = read_uleb128($bytes, $pos);
@@ -472,6 +473,10 @@ sub parse_lsda_candidate
 		my @action_value = read_uleb128($bytes, $landing_value[1]);
 		return if scalar(@action_value) != 2;
 		$pos = $action_value[1];
+		$facts{'lsda call_site_has_sparse_gap'} = 1
+			if $start_value[0] > $covered_end;
+		my $entry_end = $start_value[0] + $length_value[0];
+		$covered_end = $entry_end if $entry_end > $covered_end;
 		$facts{'lsda call_site_starts_at_zero'} = 1
 			if $call_site_count == 0 && $start_value[0] == 0;
 		$facts{'lsda call_site_has_landingpad'} = 1 if $landing_value[0] != 0;

@@ -1139,8 +1139,8 @@ existing PA35 native-object value-transport reducer emits `use_one`,
 `use_sixteen`, and `use`, but no `pass_one` or `pass_sixteen` body.  PA33 plus
 PA35 pass 248/248.  No missing PA33 fact or new reducer is needed.
 
-The final host-toolchain comparison uses the same GCC 15 libstdc++ headers.
-cppgm++ is 3,209,448 bytes versus GCC's 3,196,024 (+0.42%), but still has
+The S9-boundary host-toolchain comparison uses the same GCC 15 libstdc++
+headers.  cppgm++ is 3,209,448 bytes versus GCC's 3,196,024 (+0.42%), but still has
 720,646 `.text*` bytes versus GCC's 599,783 (+120,863) and Clang's 523,269
 (+197,377).  The base-text gaps are 108,797 bytes to GCC and 109,799 to Clang;
 the COMDAT-text gaps are only 12,066 to GCC but 87,578 to Clang.  cppgm++ has
@@ -1151,21 +1151,91 @@ and its different template/code-generation policy.  Ordinary inlining,
 source-slot promotion, trace layout, and post-hoc preserve cleanup remain in
 PA37/PA38 rather than being hidden at baseline.
 
+### S10: emit sparse physical LSDA coverage
+
+The S9 LSDA writer emitted a null-landing call-site record for every byte gap
+between protected ranges and for the trailing function suffix.  That is more
+coverage than the Itanium personality contract requires.  An instruction
+pointer absent from a function's call-site table terminates the search, while
+an explicit record with no landing pad continues unwinding.  Consequently an
+unprotected potentially throwing call must remain covered, but ordinary
+prologue, arithmetic, branch, and epilogue bytes need no record.
+
+The durable LSDA census makes the distinction explicit.  At the S9 boundary,
+the frozen object has 621 LSDAs and 35,990 call-site-table bytes: 2,975
+protected records occupy 18,039 bytes and 3,592 null-landing records occupy
+17,951 bytes.  The comparable GCC object has 463 LSDAs and 14,006 call-site
+bytes: 1,782 protected records occupy 11,192 bytes and 584 null-landing records
+occupy 2,814 bytes.  The old aggregate section-size measurement hid that
+almost half of cppgm++'s call-site table was unconditional gap padding.
+
+The retained PA31 change consumes the exact typed
+`unprotected_unwind_ranges` already recorded during layout.  It walks those
+ranges and the sorted protected sites once.  Within each interval between
+protected sites it emits one null-landing hull only when the interval contains
+an unprotected potentially throwing call, then emits the protected site.  A
+single reusable vector carries typed offsets, lengths, landing-pad offsets,
+and action block identities to the encoder.  There is no rendered identity,
+string set, lookup map, rescanning of machine bytes, or per-function sort.
+The complexity is O(P + U) time with O(P + U) reusable scratch space for P
+protected and U unprotected ranges.
+
+PA31 owns this physical host-object rule; LowIR and MIR remain unchanged.  The
+student-facing PA31 contract now requires sparse ordinary gaps and explicit
+unprotected throwing coverage, and its Design Notes recommend the typed
+layout merge without prescribing this implementation.  The new course reducer
+`420-sparse-unprotected-lsda-coverage` executes one throw before a cleanup
+lifetime and another during it.  Thus behavior requires the former call's
+null-landing record, while normalized inspection requires an ordinary sparse
+gap.  The S9 compiler still passes the program but fails the new inspection.
+Nine existing PA31 inspection references move from the old
+`call_site_starts_at_zero` shape to `call_site_has_sparse_gap`; they and the new
+fixture were regenerated with the documented PA31 `ref-test` path using the
+explicit local compiler binary.
+
+The frozen call-site table falls from 35,990 to 26,500 bytes.  Protected shape
+is byte-identical, while null-landing shape falls from 3,592 records/17,951
+bytes to 1,697 records/8,461 bytes.  `.gcc_except_table` falls from 41,302 to
+31,802 bytes and the object from 3,209,448 to 3,199,952 bytes; `.text*`,
+`.eh_frame`, relocations, functions, and all 180,534 decoded instructions are
+unchanged.  The deterministic object SHA-256 is
+`3adc50057636ce1c5a343eba423fb7cd17fff3a93af9dbc95fc35fdab86d033a`.
+
+The remaining 15,539-byte LSDA gap to GCC is now classified rather than
+treated as one opaque EH problem.  Call-site tables account for 12,494 bytes:
+cppgm++ still has 1,193 more protected records/6,847 bytes and 1,113 more
+required null records/5,647 bytes.  The other 3,045 bytes are the aggregate
+header, action, type, and alignment difference.  cppgm++ also has 158 more
+LSDAs and 548 more defined functions.  Closing those differences requires
+fewer live EH-bearing bodies, fewer protected cleanup boundaries, or more
+proof that calls cannot throw; omitting their records at the object writer
+would be incorrect.  Those are demand, source/EH lowering, and PA37/PA38
+optimization questions, not another unconditional O0 padding deletion.
+
+Two A/A calibration blocks show effectively zero wall movement and -0.24%
+median user movement.  Three load-screened A/B/B/A blocks measure the S9
+baseline/candidate at 4.630/4.640 seconds median wall, 4.145/4.185 seconds
+median user, and 360,222/360,286 KiB median peak RSS.  Paired movement is
++0.65% wall, +1.21% user, and +0.08% RSS, within the 3% guardrail.  The exact
+tree passes PA31 31/31, through-PA31 4,312/4,312, the full report
+5,287/5,287, five reporting-script unit tests, and the file audit with zero
+fatal findings and the same 28 advisory warnings.
+
 ## Final closeout
 
 The completed second pass reduces the deterministic frozen object from
-3,246,896 to 3,209,448 bytes (-37,448), `.text*` from 738,654 to 720,646
+3,246,896 to 3,199,952 bytes (-46,944), `.text*` from 738,654 to 720,646
 (-18,008), base text from 428,192 to 418,542 (-9,650), COMDAT text from
-310,462 to 302,104 (-8,358), LSDA from 42,376 to 41,302 (-1,074), relocations
+310,462 to 302,104 (-8,358), LSDA from 42,376 to 31,802 (-10,574), relocations
 from 26,936 to 26,184 (-752), and decoded instructions from 185,500 to 180,534
 (-4,966, using the final report script for both objects).  `.eh_frame` moves
 from 137,264 to 137,300 (+36); S8 accounts for the profitable retained-register
 portion of that increase.  The final object is deterministic at SHA-256
-`ca3a24a69fa27eb00383d200b848353ebd70dc8fcedde853dfe2e5026faf62c3`.
+`3adc50057636ce1c5a343eba423fb7cd17fff3a93af9dbc95fc35fdab86d033a`.
 
-Three final consecutive frozen compiles take 4.66, 4.66, and 4.70 seconds
-wall, with a 4.17-second median user time and 360,140 KiB median peak RSS.
-The final baseline compile is therefore comfortably below the 15-second gate.
+The final load-screened S10 timing has a 4.640-second median wall time,
+4.185-second median user time, and 360,286 KiB median peak RSS.  The final
+baseline compile is therefore comfortably below the 15-second gate.
 
 Starting with no PA39 object tree, the clean 32-worker `cppgm++-self` build
 completed in 19.02 seconds wall, 429.75 seconds aggregate user, and 44.27
@@ -1180,10 +1250,11 @@ objects successfully and produce the exact 16,700,152-byte self compiler at
 SHA-256
 `e66422284087c862466bcdeb6aa751405bc9cacf28ee03d2c0f703ff791277a9`.
 
-The exact closeout tree passes the full 5,286/5,286 report and the PA39 file
+The S9 closeout self/inception values above predate the S10 extension and are
+retained as its performance baseline until the final PA39 lanes below are
+rerun.  The S10 tree passes the full 5,287/5,287 report and the PA39 file
 audit with zero fatal findings (28 pre-existing warnings).  Every retained
-phase has an owning fixture or a documented audit-only conclusion, and the
-plan is complete.
+phase has an owning fixture or a documented audit-only conclusion.
 
 ## Performance and correctness gates
 
@@ -1245,7 +1316,8 @@ Fill one row after each retained phase.
 | S7 width/fixed arithmetic | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds MIR-stable behavior; S7e adds fixed shift operands and migrates two MIR fixtures | cumulative through S7e: -10,929 text, -3,612 decoded instructions, -2,712 MIR; no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%, S7e -0.83%; RSS neutral | PA29+PA38 293/293; full 5,286/5,286; zero-fatal audit | complete |
 | S8 register cost | existing PA29 profitable-retention and no-preserve short-value fixtures already cover both decisions | audit-only: register retention is 80 bytes smaller than frame traffic including unwind; reuse-first prototype rejected at +16 text/object | no production change; S7e timing remains authoritative | S7e full 5,286/5,286 and zero-fatal audit; two diagnostic frozen objects compared | complete; audit-only |
 | S9 demand/optimization remeasure | existing PA35 forced-inline object reducer; no missing PA33 fact and no fixture change | weak count unchanged; only two S5 allocator-destructor aliases lost their last typed demand; every remaining body has an enumerated root | no production change; S7e timing remains authoritative | PA33+PA35 248/248; zero conservative fallbacks; final GCC/Clang code-shape census recorded | complete; audit-only |
-| Final PA39 gate | no fixture change | final frozen object 3,209,448 bytes / 720,646 text / 180,534 decoded instructions | frozen median 4.66s wall; clean self 19.02s; inception j8 3:57.66 and fully clean j32 1:46.94 | full 5,286/5,286; zero-fatal audit; 191/191 objects and final compiler match in both inception lanes | complete |
+| S10 sparse LSDA coverage | PA31 behavior/inspection reducer; nine PA31 inspection refs migrate to sparse-gap fact; no LowIR/MIR change | -9,500 LSDA / -9,496 object; protected entries and all machine code byte-identical | paired +0.65% wall / +1.21% user / +0.08% RSS | PA31 31/31; through-PA31 4,312/4,312; full 5,287/5,287; five script tests; zero-fatal audit | accepted; final PA39 gate pending |
+| Final PA39 gate | no fixture change | final frozen object 3,199,952 bytes / 720,646 text / 180,534 decoded instructions | frozen median 4.64s wall; S9 clean self 19.02s and inception j8 3:57.66/j32 1:46.94 pending S10 refresh | full 5,287/5,287; zero-fatal audit; S10 inception refresh pending | in progress |
 
 ## Completion criteria
 
