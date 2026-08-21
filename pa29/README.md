@@ -524,6 +524,12 @@ To complete PA29, implement these goals:
    address-taking uses, and clobbered registers still require conservative
    placement.
 
+   Instructions with fixed register effects must preserve an unrelated live
+   value already carried by one of those registers.  In particular, widening
+   a scalar to signed `i128` uses both halves of the target register pair, so a
+   later scalar operand in the high-half register must first receive another
+   stable location.
+
 9. Implement call-boundary correctness without requiring a clever allocator.
    PA29 must respect the native calling convention for direct calls, indirect calls,
    mixed GPR/XMM arguments, variadic register-save state, stack arguments, scalar and
@@ -679,6 +685,9 @@ strategies include:
 
 - keep incoming parameters and call results in their ABI registers until an
   emitted instruction invalidates that location
+- represent each instruction's fixed-register writes as a compact register
+  mask and keep a scalar in an incoming register only when its live interval
+  crosses none of those writes
 - when a full-width scalar call result also needs a stable later home, let an
   earlier GPR call-argument use read its intact `rax` carrier directly
 - omit parameter homes and setup transfers when slot selection removes every
