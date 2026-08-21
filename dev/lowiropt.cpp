@@ -222,6 +222,19 @@ int run_lowiropt_mode(const vector<string> & args)
               << " gvn_expression_keys=" << stats.gvn_expression_keys
               << " gvn_expression_peak_scope="
               << stats.gvn_expression_peak_scope
+              << " memory_gvn_runs=" << stats.memory_gvn_runs
+              << " memory_gvn_classes=" << stats.memory_gvn_classes
+              << " memory_gvn_merge_versions="
+              << stats.memory_gvn_merge_versions
+              << " memory_gvn_load_probes="
+              << stats.memory_gvn_load_probes
+              << " memory_gvn_loads_eliminated="
+              << stats.memory_gvn_loads_eliminated
+              << " memory_gvn_unknown_barriers="
+              << stats.memory_gvn_unknown_barriers
+              << " memory_gvn_eh_skips=" << stats.memory_gvn_eh_skips
+              << " memory_gvn_budget_skips="
+              << stats.memory_gvn_budget_skips
               << " dce_runs=" << stats.dce_runs
               << " dce_changes=" << stats.dce_changes
               << " dce_candidate_skips=" << stats.dce_candidate_skips
@@ -255,6 +268,7 @@ int run_lowiropt_mode(const vector<string> & args)
               << stats.cleanup_tail_instructions_removed
          << " inline_ns=" << stats.inline_nanoseconds
          << " simplify_ns=" << stats.simplify_nanoseconds
+         << " memory_gvn_ns=" << stats.memory_gvn_nanoseconds
          << " dce_ns=" << stats.dce_nanoseconds
          << " cfg_ns=" << stats.cfg_nanoseconds
               << " slot_ns=" << stats.slot_nanoseconds

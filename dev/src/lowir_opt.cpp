@@ -5,6 +5,7 @@
 #include "lowir_inline_o1.h"
 #include "lowir_loop_opt.h"
 #include "lowir_loop_simplify.h"
+#include "lowir_memory_gvn.h"
 #include "lowir_slot_forward_o1.h"
 #include "lowir_slot_promotion.h"
 
@@ -2718,6 +2719,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       prepare_for_inlining(&program.functions[i], boundaries, stats) ? 1 : 0;
   }
   std::vector<unsigned char> inlined_symbols(program.symbol_names.size(), 0);
+  MemoryGVNSession memory_gvn(program);
   std::chrono::steady_clock::time_point inline_started;
   if(stats) inline_started = std::chrono::steady_clock::now();
   const std::size_t inline_rewrites =
@@ -2810,6 +2812,12 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
     }
     hoist_loop_invariants(&program, &function, &analysis, level, stats);
+    if(level >= 2 &&
+       memory_gvn.eliminate_redundant_loads(&function, &analysis, stats)) {
+      timed_function_pass(simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+      timed_dce(&function, boundaries, stats);
+    }
   }
   const lowir_model::FunctionPruningSummary pruning =
     lowir_model::prune_unreachable_weak_functions(program);

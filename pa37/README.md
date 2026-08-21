@@ -216,6 +216,15 @@ value. It must additionally support these conservative loop transforms:
 - hoisting a direct global or nonescaping direct-slot load only when no store,
   call, atomic operation, or other memory effect in the loop can change the
   loaded object
+- eliminating a redundant scalar load when a dominating load reads the same
+  typed location and no store, call, atomic operation, or other memory effect
+  can change that location on any intervening path; direct locations,
+  nonescaping slot addresses, repeated pointer values, and proven disjoint
+  constant projections must use the same conservative alias rules
+- preserving load invalidation across control-flow joins, unknown pointers,
+  ordinary read/write calls, atomic operations, and exception regions, while
+  allowing explicitly `readnone` and `readonly` calls and immutable globals
+  to retain the facts their metadata permits
 - recognizing simple `i64` induction variables with one latch and constant
   initial value, step, and bound
 - canonicalizing an inverted counted-loop exit and replacing multiplication
@@ -326,6 +335,13 @@ phis with an iterated dominance-frontier worklist. Dense block epochs let one
 set of scratch vectors serve every slot. Keep the work proportional to direct
 slot accesses, relevant control-flow edges, and inserted phis, and apply an
 explicit growth bound before adding merge instructions.
+
+For redundant-load elimination, derive compact location identities from the
+typed `addr` and `index` operations. Sparse memory versions placed through the
+same dominance frontiers can represent stores and conservative unknown-memory
+barriers without copying a dense location table into every block. Hash keys
+should contain typed IDs, offsets, types, and version numbers rather than
+rendered LowIR text.
 
 CFG, dominator, and natural-loop facts can share one per-function analysis
 owner with an explicit invalidation epoch. Dense block IDs, compact successor

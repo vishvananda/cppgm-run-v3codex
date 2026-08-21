@@ -81,6 +81,14 @@ struct Stats
   std::size_t gvn_expression_hits = 0;
   std::size_t gvn_expression_keys = 0;
   std::size_t gvn_expression_peak_scope = 0;
+  std::size_t memory_gvn_runs = 0;
+  std::size_t memory_gvn_classes = 0;
+  std::size_t memory_gvn_merge_versions = 0;
+  std::size_t memory_gvn_load_probes = 0;
+  std::size_t memory_gvn_loads_eliminated = 0;
+  std::size_t memory_gvn_unknown_barriers = 0;
+  std::size_t memory_gvn_eh_skips = 0;
+  std::size_t memory_gvn_budget_skips = 0;
   std::size_t dce_runs = 0;
   std::size_t dce_changes = 0;
   std::size_t dce_candidate_skips = 0;
@@ -123,6 +131,7 @@ struct Stats
   std::size_t cleanup_tail_instructions_removed = 0;
   std::uint64_t inline_nanoseconds = 0;
   std::uint64_t simplify_nanoseconds = 0;
+  std::uint64_t memory_gvn_nanoseconds = 0;
   std::uint64_t dce_nanoseconds = 0;
   std::uint64_t cfg_nanoseconds = 0;
   std::uint64_t slot_nanoseconds = 0;
