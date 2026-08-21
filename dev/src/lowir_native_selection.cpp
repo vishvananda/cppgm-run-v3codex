@@ -50,6 +50,12 @@ bool is_integer_or_pointer(const lowir_model::LowType & type)
          type.kind == lowir_model::LTK_PTR;
 }
 
+bool is_narrow_integer(const lowir_model::LowType & type)
+{
+  return is_integer_or_pointer(type) && type.kind != lowir_model::LTK_PTR &&
+    lowir_model::lowir_type_bit_width(type) < 64;
+}
+
 bool is_scalar_float(const lowir_model::LowType & type)
 {
   return type.kind == lowir_model::LTK_F32 || type.kind == lowir_model::LTK_F64;
@@ -177,6 +183,60 @@ bool result_is_immediate_store_address_with_later_use(
   return store.kind == lowir_model::Instruction::IK_STORE &&
     store.second.kind == lowir_model::Operand::OP_TEMP &&
     store.second.value == destination;
+}
+
+bool call_result_needs_normalization(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const lowir_model::Instruction & call,
+    const analysis::FunctionFacts & facts)
+{
+  using lowir_model::Instruction;
+  using lowir_model::LowOperation;
+  using lowir_model::Operand;
+  if(result_is_immediate_return(block, instruction_index, call.dest, facts))
+    return false;
+  if(facts.uses[call.dest] == 1 &&
+     instruction_index + 1 < block.instructions.size()) {
+    const Instruction & consumer = block.instructions[instruction_index + 1];
+    if(consumer.kind == Instruction::IK_CONVERT &&
+       consumer.first.kind == Operand::OP_TEMP &&
+       consumer.first.value == call.dest &&
+       is_integer_or_pointer(consumer.source_type) &&
+       is_integer_or_pointer(consumer.type) &&
+       (consumer.op.kind == LowOperation::LOP_SEXT ||
+        consumer.op.kind == LowOperation::LOP_ZEXT ||
+        consumer.op.kind == LowOperation::LOP_TRUNC))
+      return false;
+  }
+  if(!result_is_immediately_stored(
+       block, instruction_index, call.dest, facts)) return true;
+  return block.instructions[instruction_index + 1].type != call.type;
+}
+
+bool result_is_next_direct_call_argument(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const lowir_model::Instruction & producer,
+    const analysis::FunctionFacts & facts,
+    const abi::FunctionSignatureIndex & signatures)
+{
+  using lowir_model::Instruction;
+  using lowir_model::Operand;
+  if(facts.uses[producer.dest] != 1 ||
+     instruction_index + 1 >= block.instructions.size()) return false;
+  const Instruction & call = block.instructions[instruction_index + 1];
+  if(call.kind != Instruction::IK_CALL) return false;
+  const std::vector<lowir_model::LowirParameter> * parameters = 0;
+  if(call.has_call_signature) parameters = &call.call_params;
+  else if(call.first.kind == Operand::OP_GLOBAL)
+    parameters = signatures[call.first.symbol].params;
+  for(std::size_t i = 0; i < call.args.size(); ++i) {
+    if(call.args[i].kind != Operand::OP_TEMP ||
+       call.args[i].value != producer.dest) continue;
+    return !parameters || i >= parameters->size() ||
+      (*parameters)[i].metadata.passing == lowir_model::PPM_DIRECT ||
+      producer.type.kind == lowir_model::LTK_PTR;
+  }
+  return false;
 }
 
 }  // namespace selection

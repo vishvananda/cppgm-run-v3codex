@@ -1,0 +1,49 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    temp %left -> [rbp-8] : i64
+    temp %right -> [rbp-16] : i64
+    temp %iteration -> [rbp-24] : i64
+    temp %phi-cycle-scratch -> [rbp-32] : i64
+
+  block ^entry
+    mov r11, 1
+    store.i64 [rbp-8], r11
+    mov r11, 2
+    store.i64 [rbp-16], r11
+    mov r11, 0
+    store.i64 [rbp-24], r11
+    jmp ^loop
+
+  block ^loop
+    cmp.i64 [rbp-24], 1
+    jge ^exit
+    jmp ^latch
+
+  block ^latch
+    load.i64 r8, [rbp-24]
+    add r8, 1
+    store.i64 [rbp-24], r8
+    load.i64 r11, [rbp-16]
+    store.i64 [rbp-32], r11
+    load.i64 r11, [rbp-8]
+    store.i64 [rbp-16], r11
+    load.i64 r11, [rbp-32]
+    store.i64 [rbp-8], r11
+    jmp ^loop
+
+  block ^exit
+    load.i64 r8, [rbp-8]
+    imul r8, 10
+    add r8, [rbp-16]
+    ret r8

@@ -76,6 +76,27 @@ class LowIrComparisonTest(unittest.TestCase):
         result = self.compare(REFERENCE, RENAMED)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_lowir_sanity_accepts_phi_loop_backedge_value(self):
+        program = """function @main() -> i64 {
+  block ^entry:
+    jump ^loop
+
+  block ^loop:
+    %current = phi i64 [^entry: 0, ^latch: %next]
+    %done = cmp ge i64 %current, 3
+    branch %done, ^exit, ^latch
+
+  block ^latch:
+    %next = binary add i64 %current, 1
+    jump ^loop
+
+  block ^exit:
+    return i64 %current
+}
+"""
+        result = self.compare(program, program)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_relaxed_compare_retains_operand_identity(self):
         changed = RENAMED.replace(
             "binary add i64 %a, %b", "binary add i64 %a, %a"

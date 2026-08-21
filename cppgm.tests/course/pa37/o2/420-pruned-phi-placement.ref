@@ -1,0 +1,28 @@
+global @take_work : i64 = 1
+global @take_right : i64 = 0
+global @result : i64 = 0
+
+function @main() -> i64 {
+  block ^entry:
+    %work = load i64 @take_work
+    branch %work, ^choose, ^exit
+
+  block ^choose:
+    %right = load i64 @take_right
+    branch %right, ^right, ^left
+
+  block ^left:
+    jump ^join
+
+  block ^right:
+    jump ^join
+
+  block ^join:
+    %t0 = phi i64 [^left: 7, ^right: 9]
+    store i64 %t0, @result
+    jump ^exit
+
+  block ^exit:
+    %answer = load i64 @result
+    return i64 %answer
+}

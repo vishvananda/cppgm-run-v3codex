@@ -101,6 +101,14 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.promote_blocked_loop_loads
 		 << " promote_blocked_eh_loads="
 		 << stats.promote_blocked_eh_loads
+		 << " promote_phi_instructions="
+		 << stats.promote_phi_instructions
+		 << " promote_phi_incoming_edges="
+		 << stats.promote_phi_incoming_edges
+		 << " promote_phi_loads="
+		 << stats.promote_phi_loads
+		 << " promote_phi_budget_skips="
+		 << stats.promote_phi_budget_skips
 		 << " promote_peak_transient_bytes="
 		 << stats.promote_peak_transient_bytes
 		 << " dead_store_runs=" << stats.dead_store_runs

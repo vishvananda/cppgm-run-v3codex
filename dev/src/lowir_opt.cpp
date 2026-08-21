@@ -2,6 +2,7 @@
 #include "lowir_cleanup_o1.h"
 #include "lowir_function_reachability.h"
 #include "lowir_inline_o1.h"
+#include "lowir_slot_forward_o1.h"
 
 #include <algorithm>
 #include <chrono>
@@ -286,6 +287,7 @@ bool is_eh_instruction(Instruction::Kind kind)
 bool is_pure(Instruction::Kind kind)
 {
   return kind == Instruction::IK_CONST || kind == Instruction::IK_COPY ||
+    kind == Instruction::IK_PHI ||
     kind == Instruction::IK_ADDR || kind == Instruction::IK_INDEX ||
     kind == Instruction::IK_UNARY || kind == Instruction::IK_BINARY ||
     kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT;
@@ -910,6 +912,48 @@ DominatorTree dominators(const Graph & graph, Stats * stats)
   return result;
 }
 
+std::vector<EdgeList> dominance_frontiers(const Graph & graph,
+                                          const DominatorTree & dom)
+{
+  const std::size_t count = graph.successors.size();
+  std::vector<EdgeList> result(count);
+  std::vector<EdgeList> children(count);
+  for(std::size_t block = 1; block < count; ++block)
+    if(dom.immediate[block] != kNoBlock && dom.immediate[block] != block)
+      children[dom.immediate[block]].push_back(block);
+  struct Frame { std::size_t block; std::size_t child; };
+  std::vector<Frame> stack;
+  std::vector<std::size_t> postorder;
+  if(count && dom.preorder[0]) stack.push_back(Frame{0, 0});
+  while(!stack.empty()) {
+    Frame & frame = stack.back();
+    if(frame.child < children[frame.block].size()) {
+      const std::size_t child = children[frame.block][frame.child++];
+      stack.push_back(Frame{child, 0});
+    } else {
+      postorder.push_back(frame.block);
+      stack.pop_back();
+    }
+  }
+  for(std::size_t order = 0; order < postorder.size(); ++order) {
+    const std::size_t block = postorder[order];
+    for(std::size_t edge = 0; edge < graph.successors[block].size(); ++edge) {
+      const std::size_t successor = graph.successors[block][edge];
+      if(dom.immediate[successor] != block)
+        result[block].insert_sorted_unique(successor);
+    }
+    for(std::size_t child = 0; child < children[block].size(); ++child) {
+      const EdgeList & child_frontier = result[children[block][child]];
+      for(std::size_t edge = 0; edge < child_frontier.size(); ++edge) {
+        const std::size_t frontier = child_frontier[edge];
+        if(dom.immediate[frontier] != block)
+          result[block].insert_sorted_unique(frontier);
+      }
+    }
+  }
+  return result;
+}
+
 struct Fact
 {
   Operand value;
@@ -936,6 +980,7 @@ void resolve_instruction_operands(Instruction * ins,
                                   const std::vector<Fact> & facts,
                                   const std::vector<unsigned char> & known,
                                   std::size_t block,
+                                  const std::vector<std::size_t> & block_index,
                                   const DominatorTree & dom)
 {
   Operand * values[] = {&ins->first, &ins->second, &ins->third};
@@ -953,19 +998,18 @@ void resolve_instruction_operands(Instruction * ins,
     }
   }
   for(std::size_t i = 0; i < ins->args.size(); ++i)
-    if(ins->args[i].kind == Operand::OP_TEMP)
-      ins->args[i] = resolve_operand(ins->args[i], facts, known, block, dom);
-}
-
-LowType result_type(const Instruction & ins)
-{
-  if(ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX)
-    return lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
-  if(ins.kind == Instruction::IK_CMP ||
-     ins.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE ||
-     ins.kind == Instruction::IK_EXCEPTION_SELECTOR)
-    return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
-  return ins.type;
+    if(ins->args[i].kind == Operand::OP_TEMP) {
+      std::size_t use_block = block;
+      if(ins->kind == Instruction::IK_PHI && i > 0 && (i & 1) &&
+         ins->args[i - 1].kind == Operand::OP_LABEL) {
+        const std::uint32_t predecessor = ins->args[i - 1].block;
+        if(predecessor < block_index.size() &&
+           block_index[predecessor] != kNoBlockIndex)
+          use_block = block_index[predecessor];
+      }
+      ins->args[i] = resolve_operand(
+        ins->args[i], facts, known, use_block, dom);
+    }
 }
 
 struct DefinitionFact
@@ -1061,6 +1105,20 @@ bool simplify_values(Function * function, Stats * stats)
   bool function_has_eh = false;
   const std::vector<unsigned char> storage_temporaries =
     find_storage_temporaries(*function, &function_has_eh);
+  std::vector<std::size_t> block_index(
+    function->next_block_id, kNoBlockIndex);
+  std::vector<unsigned char> phi_used(function->value_names.size(), 0);
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    block_index[function->blocks[block].id] = block;
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.kind != Instruction::IK_PHI) break;
+      for(std::size_t incoming = 1; incoming < ins.args.size(); incoming += 2)
+        if(ins.args[incoming].kind == Operand::OP_TEMP)
+          phi_used[ins.args[incoming].value] = 1;
+    }
+  }
 
   typedef PassAllocator<std::pair<const ExpressionKey, Fact> >
     ExpressionAllocator;
@@ -1083,7 +1141,8 @@ bool simplify_values(Function * function, Stats * stats)
     for(std::size_t index = 0; index < original_size; ++index) {
       Instruction & ins = instructions[index];
       if(stats) ++stats->instruction_visits;
-      resolve_instruction_operands(&ins, facts, known_facts, block, dom);
+      resolve_instruction_operands(
+        &ins, facts, known_facts, block, block_index, dom);
 
       Operand replacement;
       bool replace = false;
@@ -1120,13 +1179,22 @@ bool simplify_values(Function * function, Stats * stats)
         }
       } else if(ins.kind == Instruction::IK_CONVERT)
         replace = fold_convert(ins, &replacement);
+      else if(ins.kind == Instruction::IK_PHI && ins.args.size() >= 2) {
+        replacement = ins.args[1];
+        replace = true;
+        for(std::size_t incoming = 3; incoming < ins.args.size(); incoming += 2)
+          if(!same_operand(replacement, ins.args[incoming])) {
+            replace = false;
+            break;
+          }
+      }
 
       if(replace && ins.dest.valid()) {
         facts[ins.dest] = Fact{replacement, block};
         known_facts[ins.dest] = 1;
         changed = true;
         if(stats) { ++stats->rewrites; ++stats->worklist_pushes; }
-        continue;
+        if(!phi_used[ins.dest]) continue;
       }
 
       if(cse_eligible(ins.kind) && ins.dest.valid()) {
@@ -1159,6 +1227,14 @@ bool simplify_values(Function * function, Stats * stats)
     }
     instructions.resize(kept);
   }
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.kind != Instruction::IK_PHI) break;
+      resolve_instruction_operands(
+        &ins, facts, known_facts, block, block_index, dom);
+    }
   return changed;
 }
 
@@ -1346,6 +1422,15 @@ std::vector<BlockId> bypass_targets(const Function & function,
 bool cleanup_cfg(Function * function, Stats * stats)
 {
   if(function->blocks.empty()) return false;
+  // Phi predecessor identities are part of the instruction contract.  Phi
+  // construction runs after CFG cleanup; a later optimizer round trip keeps
+  // that CFG stable until edge-aware repair is requested by a transform.
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function->blocks[block].instructions.size();
+        ++instruction)
+      if(function->blocks[block].instructions[instruction].kind ==
+         Instruction::IK_PHI) return false;
   bool changed = false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     Block & block = function->blocks[i];
@@ -1845,317 +1930,6 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
   return changed;
 }
 
-bool remove_dead_slots(Function * function, Stats * stats)
-{
-  if(function->slots.empty()) return false;
-  std::vector<std::size_t> loads(function->slot_names.size(), 0);
-  std::vector<unsigned char> escaped(function->slot_names.size(), 0);
-  for(std::size_t i = 0; i < function->blocks.size(); ++i)
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[i].instructions[j];
-      if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
-        ++loads[ins.first.slot];
-      const Operand * values[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(values[k]->kind == Operand::OP_SLOT &&
-           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)))
-          escaped[values[k]->slot] = 1;
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_SLOT)
-          escaped[ins.args[k].slot] = 1;
-    }
-  std::vector<unsigned char> dead(function->slot_names.size(), 0);
-  std::size_t dead_count = 0;
-  for(std::size_t i = 0; i < function->slots.size(); ++i) {
-    const lowir_model::SlotId slot = function->slots[i];
-    if(!loads[slot] && !escaped[slot]) { dead[slot] = 1; ++dead_count; }
-  }
-  if(dead_count == 0) return false;
-  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::vector<Instruction> & instructions =
-      function->blocks[i].instructions;
-    const std::size_t original_size = instructions.size();
-    std::size_t kept = 0;
-    for(std::size_t j = 0; j < original_size; ++j) {
-      Instruction & ins = instructions[j];
-      if((ins.kind == Instruction::IK_LOAD &&
-          ins.first.kind == Operand::OP_SLOT &&
-          dead[ins.first.slot]) ||
-         (ins.kind == Instruction::IK_STORE &&
-          ins.second.kind == Operand::OP_SLOT &&
-          dead[ins.second.slot])) {
-        if(stats) ++stats->rewrites;
-        continue;
-      }
-      if(kept != j) instructions[kept] = std::move(ins);
-      ++kept;
-    }
-    instructions.resize(kept);
-  }
-  const std::size_t original_slots = function->slots.size();
-  std::size_t kept_slots = 0;
-  for(std::size_t i = 0; i < original_slots; ++i)
-    if(!dead[function->slots[i]]) {
-      if(kept_slots != i)
-        function->slots[kept_slots] = std::move(function->slots[i]);
-      ++kept_slots;
-    }
-  function->slots.resize(kept_slots);
-  return true;
-}
-
-bool local_slot_forward(Function * function, Stats * stats)
-{
-  if(function->slots.empty()) return false;
-  struct UseBlocks
-  {
-    std::size_t first = kNoBlock;
-    bool multiple = false;
-  };
-  std::vector<UseBlocks> use_blocks(function->value_names.size());
-  const auto note_use = [&use_blocks](lowir_model::ValueId value,
-                                      std::size_t block) {
-    UseBlocks & uses = use_blocks[value];
-    if(uses.first == kNoBlock) uses.first = block;
-    else if(uses.first != block) uses.multiple = true;
-  };
-  for(std::size_t i = 0; i < function->blocks.size(); ++i)
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[i].instructions[j];
-      const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(operands[k]->kind == Operand::OP_TEMP)
-          note_use(operands[k]->value, i);
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_TEMP)
-          note_use(ins.args[k].value, i);
-    }
-  bool changed = false;
-  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::vector<Operand> values(function->slot_names.size());
-    std::vector<unsigned char> has_value(function->slot_names.size(), 0);
-    std::vector<Operand> aliases(function->value_names.size());
-    std::vector<unsigned char> has_alias(function->value_names.size(), 0);
-    std::vector<Instruction> & instructions =
-      function->blocks[i].instructions;
-    const std::size_t original_size = instructions.size();
-    std::size_t kept = 0;
-    for(std::size_t j = 0; j < original_size; ++j) {
-      Instruction & ins = instructions[j];
-      Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(operands[k]->kind == Operand::OP_TEMP &&
-           has_alias[operands[k]->value])
-          *operands[k] = aliases[operands[k]->value];
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_TEMP &&
-           has_alias[ins.args[k].value])
-          ins.args[k] = aliases[ins.args[k].value];
-      // Taking a slot's address or storing through an indirect pointer can
-      // change a previously recorded slot value.  Inlining commonly exposes
-      // exactly this shape, so retaining the old value here would turn a real
-      // load into a stale constant before the escape-aware O2 pass sees it.
-      const Operand * slot_operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(slot_operands[k]->kind == Operand::OP_SLOT &&
-           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)))
-          has_value[slot_operands[k]->slot] = 0;
-      if((ins.kind == Instruction::IK_STORE ||
-          ins.kind == Instruction::IK_ATOMIC_STORE) &&
-         ins.second.kind != Operand::OP_SLOT)
-        std::fill(has_value.begin(), has_value.end(), 0);
-      if(ins.kind == Instruction::IK_STORE && ins.second.kind == Operand::OP_SLOT) {
-        values[ins.second.slot] = ins.first;
-        has_value[ins.second.slot] = 1;
-      } else if(ins.kind == Instruction::IK_LOAD &&
-                ins.first.kind == Operand::OP_SLOT && has_value[ins.first.slot] &&
-                (!use_blocks[ins.dest].multiple &&
-                 (use_blocks[ins.dest].first == kNoBlock ||
-                  use_blocks[ins.dest].first == i))) {
-        aliases[ins.dest] = values[ins.first.slot];
-        has_alias[ins.dest] = 1;
-        changed = true;
-        if(stats) ++stats->rewrites;
-        continue;
-      } else {
-        if(ins.kind == Instruction::IK_CALL || ins.kind == Instruction::IK_COPYOBJ ||
-           ins.kind == Instruction::IK_ZEROINIT || is_eh_instruction(ins.kind))
-          std::fill(has_value.begin(), has_value.end(), 0);
-      }
-      if(kept != j) instructions[kept] = std::move(ins);
-      ++kept;
-    }
-    instructions.resize(kept);
-  }
-  return changed;
-}
-
-bool forward_single_store_slots(Function * function, Stats * stats)
-{
-  if(function->slots.empty()) return false;
-  struct SlotFact
-  {
-    std::size_t stores = 0;
-    std::size_t store_block = 0;
-    std::size_t store_instruction = 0;
-    Operand value;
-    bool escaped = false;
-    bool dominates_loads = true;
-    std::size_t first_entry_load = kNoBlock;
-    bool has_nonentry_load = false;
-  };
-  struct LoadFact
-  {
-    std::size_t slot;
-    lowir_model::ValueId destination;
-  };
-  std::vector<SlotFact> facts(function->slot_names.size());
-  std::vector<unsigned char> eligible(function->slot_names.size(), 0);
-  std::vector<LoadFact> loads;
-  std::vector<unsigned char> storage_temporaries(
-    function->value_names.size(), 0);
-  std::size_t first_exception_edge = kNoBlock;
-  for(std::size_t i = 0; i < function->slots.size(); ++i) {
-    const lowir_model::SlotId slot = function->slots[i];
-    if(lowir_model::lowir_slot_type(*function, slot).kind !=
-       lowir_model::LTK_OBJECT)
-      eligible[slot] = 1;
-  }
-  const auto find_slot = [&eligible](const Operand & operand) {
-    if(operand.kind != Operand::OP_SLOT) return kNoBlock;
-    const std::uint32_t slot = operand.slot;
-    return slot < eligible.size() && eligible[slot] ? slot : kNoBlock;
-  };
-  for(std::size_t b = 0; b < function->blocks.size(); ++b)
-    for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
-      const Instruction & ins = function->blocks[b].instructions[j];
-      const std::size_t stored_slot = ins.kind == Instruction::IK_STORE ?
-        find_slot(ins.second) : kNoBlock;
-      if(stored_slot != kNoBlock) {
-        SlotFact & fact = facts[stored_slot];
-        ++fact.stores;
-        fact.store_block = b;
-        fact.store_instruction = j;
-        fact.value = ins.first;
-      }
-      const std::size_t loaded_slot = ins.kind == Instruction::IK_LOAD ?
-        find_slot(ins.first) : kNoBlock;
-      if(loaded_slot != kNoBlock) {
-        SlotFact & fact = facts[loaded_slot];
-        if(b == 0) fact.first_entry_load =
-          std::min(fact.first_entry_load, j);
-        else fact.has_nonentry_load = true;
-        loads.push_back(LoadFact{loaded_slot, ins.dest});
-      }
-      if(b == 0 && (ins.kind == Instruction::IK_EH_TRY ||
-                    ins.kind == Instruction::IK_EH_CLEANUP))
-        first_exception_edge = std::min(first_exception_edge, j);
-      if((ins.kind == Instruction::IK_LOAD ||
-          ins.kind == Instruction::IK_ATOMIC_LOAD) &&
-         ins.first.kind == Operand::OP_TEMP)
-        storage_temporaries[ins.first.value] = 1;
-      if((ins.kind == Instruction::IK_STORE ||
-          ins.kind == Instruction::IK_ATOMIC_STORE) &&
-         ins.second.kind == Operand::OP_TEMP)
-        storage_temporaries[ins.second.value] = 1;
-      const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k) {
-        const std::size_t slot = find_slot(*operands[k]);
-        if(slot != kNoBlock &&
-           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)))
-          facts[slot].escaped = true;
-      }
-      for(std::size_t k = 0; k < ins.args.size(); ++k) {
-        const std::size_t slot = find_slot(ins.args[k]);
-        if(slot != kNoBlock) facts[slot].escaped = true;
-      }
-    }
-  for(std::size_t i = 0; i < facts.size(); ++i) {
-    if(!eligible[i]) continue;
-    SlotFact & fact = facts[i];
-    if(fact.stores != 1 || fact.store_block != 0 || fact.escaped) continue;
-    if(fact.first_entry_load < fact.store_instruction ||
-       (fact.has_nonentry_load &&
-        first_exception_edge < fact.store_instruction))
-      fact.dominates_loads = false;
-  }
-  std::vector<unsigned char> forwarded(facts.size(), 0);
-  std::size_t forwarded_count = 0;
-  for(std::size_t i = 0; i < facts.size(); ++i)
-    if(eligible[i] && facts[i].stores == 1 && facts[i].store_block == 0 &&
-       !facts[i].escaped && facts[i].dominates_loads) {
-      forwarded[i] = 1;
-      ++forwarded_count;
-    }
-  if(!forwarded_count) return false;
-
-  std::vector<Operand> aliases(function->value_names.size());
-  std::vector<unsigned char> has_alias(function->value_names.size(), 0);
-  for(std::size_t i = 0; i < loads.size(); ++i)
-    if(forwarded[loads[i].slot] &&
-       !storage_temporaries[loads[i].destination]) {
-      aliases[loads[i].destination] = facts[loads[i].slot].value;
-      has_alias[loads[i].destination] = 1;
-    }
-  const auto resolve_alias = [&aliases, &has_alias](Operand value) {
-    for(std::size_t step = 0;
-        step < aliases.size() && value.kind == Operand::OP_TEMP; ++step) {
-      const std::uint32_t id = value.value;
-      if(id >= aliases.size() || !has_alias[id]) break;
-      value = aliases[id];
-    }
-    return value;
-  };
-  for(std::size_t b = 0; b < function->blocks.size(); ++b) {
-    std::vector<Instruction> & instructions =
-      function->blocks[b].instructions;
-    const std::size_t original_size = instructions.size();
-    std::size_t kept = 0;
-    for(std::size_t j = 0; j < original_size; ++j) {
-      Instruction & ins = instructions[j];
-      const std::size_t loaded_slot = ins.kind == Instruction::IK_LOAD ?
-        find_slot(ins.first) : kNoBlock;
-      const std::size_t stored_slot = ins.kind == Instruction::IK_STORE ?
-        find_slot(ins.second) : kNoBlock;
-      if(loaded_slot != kNoBlock && forwarded[loaded_slot] &&
-         storage_temporaries[ins.dest]) {
-        ins.first = resolve_alias(facts[loaded_slot].value);
-        ins.kind = ins.first.kind == Operand::OP_INTEGER ||
-          ins.first.kind == Operand::OP_FLOAT ?
-            Instruction::IK_CONST : Instruction::IK_COPY;
-        ins.second = Operand();
-        ins.third = Operand();
-        if(stats) ++stats->rewrites;
-      } else if((loaded_slot != kNoBlock && forwarded[loaded_slot]) ||
-         (stored_slot != kNoBlock && forwarded[stored_slot])) {
-        if(stats) ++stats->rewrites;
-        continue;
-      } else {
-        Operand * operands[] = {&ins.first, &ins.second, &ins.third};
-        for(std::size_t k = 0; k < 3; ++k)
-          *operands[k] = resolve_alias(*operands[k]);
-        for(std::size_t k = 0; k < ins.args.size(); ++k)
-          ins.args[k] = resolve_alias(ins.args[k]);
-      }
-      if(kept != j) instructions[kept] = std::move(ins);
-      ++kept;
-    }
-    instructions.resize(kept);
-  }
-  const std::size_t original_slots = function->slots.size();
-  std::size_t kept_slots = 0;
-  for(std::size_t i = 0; i < original_slots; ++i)
-    if(!forwarded[function->slots[i]]) {
-      if(kept_slots != i)
-        function->slots[kept_slots] = std::move(function->slots[i]);
-      ++kept_slots;
-    }
-  function->slots.resize(kept_slots);
-  return true;
-}
 
 struct AbstractState
 {
@@ -2167,6 +1941,33 @@ struct AbstractState
   };
   std::vector<SlotBinding> slots;
 };
+
+bool abstract_slot_value(const AbstractState & state,
+                         lowir_model::SlotId slot, Operand * value)
+{
+  if(!state.executable) return false;
+  for(std::size_t i = 0; i < state.slots.size(); ++i)
+    if(state.slots[i].slot == slot) {
+      *value = state.slots[i].value;
+      return true;
+    }
+  return false;
+}
+
+bool phi_scalar_type(const LowType & type)
+{
+  return type.kind == lowir_model::LTK_I1 ||
+    type.kind == lowir_model::LTK_I8 ||
+    type.kind == lowir_model::LTK_U8 ||
+    type.kind == lowir_model::LTK_I16 ||
+    type.kind == lowir_model::LTK_U16 ||
+    type.kind == lowir_model::LTK_I32 ||
+    type.kind == lowir_model::LTK_U32 ||
+    type.kind == lowir_model::LTK_I64 ||
+    type.kind == lowir_model::LTK_F32 ||
+    type.kind == lowir_model::LTK_F64 ||
+    type.kind == lowir_model::LTK_PTR;
+}
 
 class SparseMeetScratch
 {
@@ -2455,6 +2256,139 @@ bool promote_slots(Function * function, Stats * stats)
     find_storage_temporaries(*function);
 
   const Graph graph = build_graph(*function, stats);
+  const DominatorTree promotion_dominators = dominators(graph, stats);
+  const std::vector<EdgeList> frontiers =
+    dominance_frontiers(graph, promotion_dominators);
+  std::vector<unsigned char> slot_has_load(function->slot_names.size(), 0);
+  typedef std::pair<std::uint32_t, std::uint32_t> SlotDefinition;
+  std::vector<SlotDefinition> slot_definitions;
+  std::size_t instruction_count = 0;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function->blocks[block].instructions[index];
+      ++instruction_count;
+      if(ins.kind == Instruction::IK_LOAD &&
+         ins.first.kind == Operand::OP_SLOT && eligible[ins.first.slot])
+        slot_has_load[ins.first.slot] = 1;
+      else if(ins.kind == Instruction::IK_STORE &&
+              ins.second.kind == Operand::OP_SLOT && eligible[ins.second.slot])
+        slot_definitions.push_back(SlotDefinition(
+          static_cast<std::uint32_t>(ins.second.slot),
+          static_cast<std::uint32_t>(block)));
+    }
+  std::sort(slot_definitions.begin(), slot_definitions.end());
+  slot_definitions.erase(
+    std::unique(slot_definitions.begin(), slot_definitions.end()),
+    slot_definitions.end());
+
+  struct PlannedPhi
+  {
+    lowir_model::SlotId slot;
+    lowir_model::ValueId destination;
+    std::size_t block;
+    std::size_t next;
+    Instruction instruction;
+    bool complete;
+  };
+  std::vector<PlannedPhi> planned_phis;
+  std::vector<std::size_t> first_phi(function->blocks.size(), kNoBlockIndex);
+  std::vector<std::size_t> last_phi(function->blocks.size(), kNoBlockIndex);
+  std::vector<std::uint32_t> definition_epochs(
+    function->blocks.size(), 0);
+  std::vector<std::uint32_t> phi_epochs(function->blocks.size(), 0);
+  std::vector<std::size_t> phi_work;
+  std::vector<std::size_t> slot_phi_blocks;
+  std::uint32_t phi_epoch = 0;
+  const std::size_t phi_budget = std::min<std::size_t>(
+    65536, std::max<std::size_t>(64, instruction_count / 2 + 1));
+  std::size_t definition_cursor = 0;
+  for(std::size_t slot_index = 0;
+      slot_index < function->slots.size(); ++slot_index) {
+    const lowir_model::SlotId slot = function->slots[slot_index];
+    const std::uint32_t slot_id = slot;
+    while(definition_cursor < slot_definitions.size() &&
+          slot_definitions[definition_cursor].first < slot_id)
+      ++definition_cursor;
+    std::size_t definition_end = definition_cursor;
+    while(definition_end < slot_definitions.size() &&
+          slot_definitions[definition_end].first == slot_id)
+      ++definition_end;
+    if(!eligible[slot] || !slot_has_load[slot] ||
+       !phi_scalar_type(lowir_model::lowir_slot_type(*function, slot)) ||
+       definition_end - definition_cursor < 2) {
+      definition_cursor = definition_end;
+      continue;
+    }
+    ++phi_epoch;
+    if(phi_epoch == 0) {
+      std::fill(definition_epochs.begin(), definition_epochs.end(), 0);
+      std::fill(phi_epochs.begin(), phi_epochs.end(), 0);
+      phi_epoch = 1;
+    }
+    phi_work.clear();
+    slot_phi_blocks.clear();
+    for(std::size_t definition = definition_cursor;
+        definition < definition_end; ++definition) {
+      const std::size_t block = slot_definitions[definition].second;
+      if(!promotion_dominators.preorder[block] ||
+         definition_epochs[block] == phi_epoch) continue;
+      definition_epochs[block] = phi_epoch;
+      phi_work.push_back(block);
+    }
+    bool exhausted = false;
+    for(std::size_t work_index = 0;
+        work_index < phi_work.size() && !exhausted; ++work_index) {
+      const EdgeList & block_frontier = frontiers[phi_work[work_index]];
+      for(std::size_t edge = 0; edge < block_frontier.size(); ++edge) {
+        const std::size_t join = block_frontier[edge];
+        const std::uint32_t block_id = function->blocks[join].id;
+        if(!promotion_dominators.preorder[join] ||
+           graph.predecessors[join].size() <= 1 ||
+           (block_id < graph.eh_targets.size() &&
+            graph.eh_targets[block_id]) ||
+           phi_epochs[join] == phi_epoch)
+          continue;
+        if(planned_phis.size() + slot_phi_blocks.size() == phi_budget) {
+          exhausted = true;
+          break;
+        }
+        phi_epochs[join] = phi_epoch;
+        slot_phi_blocks.push_back(join);
+        if(definition_epochs[join] != phi_epoch) {
+          definition_epochs[join] = phi_epoch;
+          phi_work.push_back(join);
+        }
+      }
+    }
+    definition_cursor = definition_end;
+    if(exhausted) {
+      if(stats) { ++stats->promote_phi_budget_skips; ++stats->budget_skips; }
+      continue;
+    }
+    std::sort(slot_phi_blocks.begin(), slot_phi_blocks.end());
+    for(std::size_t index = 0; index < slot_phi_blocks.size(); ++index) {
+      PlannedPhi planned;
+      planned.slot = slot;
+      planned.block = slot_phi_blocks[index];
+      planned.next = kNoBlockIndex;
+      planned.complete = false;
+      planned.instruction.kind = Instruction::IK_PHI;
+      planned.instruction.type =
+        lowir_model::lowir_slot_type(*function, slot);
+      planned.destination = lowir_model::append_lowir_fresh_generated_value(
+        *function, planned.instruction.type);
+      planned.instruction.dest = planned.destination;
+      const std::size_t planned_index = planned_phis.size();
+      planned_phis.push_back(std::move(planned));
+      if(first_phi[slot_phi_blocks[index]] == kNoBlockIndex)
+        first_phi[slot_phi_blocks[index]] = planned_index;
+      else
+        planned_phis[last_phi[slot_phi_blocks[index]]].next = planned_index;
+      last_phi[slot_phi_blocks[index]] = planned_index;
+    }
+  }
+
   std::vector<AbstractState> incoming(function->blocks.size());
   incoming[0].executable = true;
   std::deque<std::size_t> work;
@@ -2468,6 +2402,7 @@ bool promote_slots(Function * function, Stats * stats)
   };
   std::vector<std::vector<LoadReplacement> > replacements(
     function->blocks.size());
+  std::vector<AbstractState> outgoing_states(function->blocks.size());
   SparseTransferState state(
     function->slot_names.size(), function->value_names.size());
   SparseMeetScratch meet(function->slot_names.size());
@@ -2475,6 +2410,13 @@ bool promote_slots(Function * function, Stats * stats)
     const std::size_t block_index = work.front(); work.pop_front();
     queued[block_index] = 0;
     state.begin(incoming[block_index]);
+    for(std::size_t phi = first_phi[block_index];
+        phi != kNoBlockIndex; phi = planned_phis[phi].next) {
+      Operand merged;
+      merged.kind = Operand::OP_TEMP;
+      merged.value = planned_phis[phi].destination;
+      state.set_slot(planned_phis[phi].slot, merged);
+    }
     replacements[block_index].clear();
     const Block & block = function->blocks[block_index];
     std::vector<std::pair<std::size_t, AbstractState> > exceptional;
@@ -2567,23 +2509,55 @@ bool promote_slots(Function * function, Stats * stats)
         if(stats) { ++stats->worklist_pushes; ++stats->dataflow_updates; }
       }
     }
-    const AbstractState outgoing = state.snapshot();
+    const AbstractState outgoing_state = state.snapshot();
+    outgoing_states[block_index] = outgoing_state;
     for(std::size_t i = 0; i < normal.size(); ++i)
-      if(meet.meet(&incoming[normal[i]], outgoing, stats) &&
+      if(meet.meet(&incoming[normal[i]], outgoing_state, stats) &&
          !queued[normal[i]]) {
         work.push_back(normal[i]); queued[normal[i]] = 1;
         if(stats) { ++stats->worklist_pushes; ++stats->dataflow_updates; }
       }
   }
 
+  for(std::size_t phi = 0; phi < planned_phis.size(); ++phi) {
+    PlannedPhi & planned = planned_phis[phi];
+    const EdgeList & predecessors = graph.predecessors[planned.block];
+    planned.complete = true;
+    for(std::size_t predecessor = 0;
+        predecessor < predecessors.size(); ++predecessor) {
+      const std::size_t source = predecessors[predecessor];
+      Operand value;
+      if(!abstract_slot_value(outgoing_states[source], planned.slot, &value)) {
+        planned.complete = false;
+        break;
+      }
+      Operand label;
+      label.kind = Operand::OP_LABEL;
+      label.block = function->blocks[source].id;
+      planned.instruction.args.push_back(label);
+      planned.instruction.args.push_back(value);
+    }
+  }
+
   if(stats) {
     std::size_t transient_bytes = state.storage_bytes() +
       meet.storage_bytes() +
       incoming.capacity() * sizeof(AbstractState) +
-      replacements.capacity() * sizeof(std::vector<LoadReplacement>);
+      outgoing_states.capacity() * sizeof(AbstractState) +
+      replacements.capacity() * sizeof(std::vector<LoadReplacement>) +
+      planned_phis.capacity() * sizeof(PlannedPhi) +
+      first_phi.capacity() * sizeof(std::size_t) +
+      last_phi.capacity() * sizeof(std::size_t) +
+      definition_epochs.capacity() * sizeof(std::uint32_t) +
+      phi_epochs.capacity() * sizeof(std::uint32_t) +
+      phi_work.capacity() * sizeof(std::size_t) +
+      slot_phi_blocks.capacity() * sizeof(std::size_t) +
+      slot_definitions.capacity() * sizeof(SlotDefinition);
     for(std::size_t block = 0; block < incoming.size(); ++block) {
       stats->promote_sparse_state_entries += incoming[block].slots.size();
       transient_bytes += incoming[block].slots.capacity() *
+        sizeof(AbstractState::SlotBinding);
+      transient_bytes += outgoing_states[block].slots.capacity() *
         sizeof(AbstractState::SlotBinding);
       transient_bytes += replacements[block].capacity() *
         sizeof(LoadReplacement);
@@ -2631,16 +2605,19 @@ bool promote_slots(Function * function, Stats * stats)
         if(destination.valid() && replacement_temporaries[destination])
           replacement_definitions[destination] = block;
       }
+    for(std::size_t phi = 0; phi < planned_phis.size(); ++phi)
+      if(planned_phis[phi].complete &&
+         replacement_temporaries[planned_phis[phi].destination])
+        replacement_definitions[planned_phis[phi].destination] =
+          planned_phis[phi].block;
   }
   std::vector<unsigned char> slots_with_loads(function->slot_names.size(), 0);
   std::vector<unsigned char> slots_with_unresolved_loads(
     function->slot_names.size(), 0);
   std::vector<lowir_model::SlotId> load_slots(function->value_names.size());
   std::vector<unsigned char> has_load_slot(function->value_names.size(), 0);
-  DominatorTree blocked_join_dominators;
   std::vector<unsigned char> blocked_join_slots;
   if(stats) {
-    blocked_join_dominators = dominators(graph, stats);
     blocked_join_slots.assign(function->slot_names.size(), 0);
   }
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
@@ -2658,7 +2635,9 @@ bool promote_slots(Function * function, Stats * stats)
          !parameter_temporaries[replacement.value]) {
         textually_available =
           replacement_definitions[replacement.value] != kNoBlockIndex &&
-          replacement_definitions[replacement.value] <= i;
+          replacement_definitions[replacement.value] <= i &&
+          promotion_dominators.dominates(
+            replacement_definitions[replacement.value], i);
       }
       if(!textually_available) {
         slots_with_unresolved_loads[ins.first.slot] = 1;
@@ -2673,7 +2652,7 @@ bool promote_slots(Function * function, Stats * stats)
             bool loop_header = false;
             for(std::size_t predecessor = 0;
                 predecessor < graph.predecessors[i].size(); ++predecessor)
-              loop_header = loop_header || blocked_join_dominators.dominates(
+              loop_header = loop_header || promotion_dominators.dominates(
                 i, graph.predecessors[i][predecessor]);
             if(loop_header) ++stats->promote_blocked_loop_loads;
             else ++stats->promote_blocked_ordinary_loads;
@@ -2698,6 +2677,26 @@ bool promote_slots(Function * function, Stats * stats)
     }
   }
   if(promoted_count == 0) return false;
+  std::vector<std::vector<Instruction> > inserted_phis(
+    function->blocks.size());
+  std::vector<unsigned char> phi_values(function->value_names.size(), 0);
+  for(std::size_t phi = 0; phi < planned_phis.size(); ++phi)
+    if(planned_phis[phi].complete && promoted[planned_phis[phi].slot]) {
+      phi_values[planned_phis[phi].destination] = 1;
+      if(stats) {
+        ++stats->promote_phi_instructions;
+        stats->promote_phi_incoming_edges +=
+          planned_phis[phi].instruction.args.size() / 2;
+      }
+      inserted_phis[planned_phis[phi].block].push_back(
+        std::move(planned_phis[phi].instruction));
+    }
+  for(std::size_t block = 0; block < inserted_phis.size(); ++block)
+    if(!inserted_phis[block].empty())
+      function->blocks[block].instructions.insert(
+        function->blocks[block].instructions.begin(),
+        std::make_move_iterator(inserted_phis[block].begin()),
+        std::make_move_iterator(inserted_phis[block].end()));
   std::vector<Operand> load_aliases(function->value_names.size());
   std::vector<unsigned char> has_load_alias(function->value_names.size(), 0);
   for(std::size_t value = 0; value < has_replacement.size(); ++value)
@@ -2705,6 +2704,9 @@ bool promote_slots(Function * function, Stats * stats)
          promoted[load_slots[value]]) {
         load_aliases[value] = replacement_values[value];
         has_load_alias[value] = 1;
+        if(stats && replacement_values[value].kind == Operand::OP_TEMP &&
+           phi_values[replacement_values[value].value])
+          ++stats->promote_phi_loads;
       }
   rewrite_promoted_slots(function, promoted, storage_temporaries,
     load_aliases, has_load_alias, stats);

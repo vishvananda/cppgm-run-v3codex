@@ -970,6 +970,36 @@ sub validate_lowir_instruction
 		$state->{temps}{$1} = $2;
 		return 0;
 	}
+	if ($line =~ /^%([A-Za-z0-9_]+)\s*=\s*phi\s+($type_pattern)\s+\[(.*)\]$/)
+	{
+		my ($destination, $type, $incoming_text) = ($1, $2, $3);
+		my @incoming = split(/\s*,\s*/, lowir_trim($incoming_text));
+		push @$errors, "$context phi requires an incoming edge"
+			if scalar(@incoming) == 0;
+		for my $incoming (@incoming)
+		{
+			if ($incoming !~ /^(\^[A-Za-z0-9_]+)\s*:\s*(.+)$/)
+			{
+				push @$errors, "$context phi has invalid incoming edge '$incoming'";
+				next;
+			}
+			my ($label, $value) = ($1, $2);
+			validate_lowir_operand($label, $state, $errors, "$context phi");
+			if ($value =~ /^%([A-Za-z0-9_]+)$/ &&
+			    !exists($state->{temps}{$1}))
+			{
+				push @$errors, "$context phi uses undefined temporary %$1"
+					if !exists($state->{all_temps}{$1});
+			}
+			else
+			{
+				validate_lowir_value_operand_type(
+					$value, $type, $state, $errors, "$context phi");
+			}
+		}
+		$state->{temps}{$destination} = $type;
+		return 0;
+	}
 	if ($line =~ /^%([A-Za-z0-9_]+)\s*=\s*copy\s+([A-Za-z0-9_]+)\s+(.+)$/)
 	{
 		validate_lowir_value_operand_type($3, $2, $state, $errors, "$context copy");
@@ -1413,6 +1443,13 @@ sub validate_lowir_structure
 		}
 
 		my %temps = map { $_->{name} => $_->{type} } @$params_or_error;
+		my %all_temps = %temps;
+		for (my $scan = $i + 1;
+		     $scan < scalar(@lines) && $lines[$scan] !~ /^\}$/; ++$scan)
+		{
+			$all_temps{$1} = 1
+				if $lines[$scan] =~ /^\s*%([A-Za-z0-9_]+)\s*=/;
+		}
 		my %slots;
 		my %blocks;
 		my %block_has_terminator;
@@ -1467,6 +1504,7 @@ sub validate_lowir_structure
 				ret => $ret_type,
 				current_block => $current_block,
 				temps => \%temps,
+				all_temps => \%all_temps,
 				slots => \%slots,
 				block_targets => \@block_targets,
 				all_symbols => $all_symbols,

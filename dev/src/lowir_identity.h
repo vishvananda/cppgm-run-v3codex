@@ -53,7 +53,8 @@ enum FixedPresentationName
   FPN_HOST_EH_EXCEPTION,
   FPN_HOST_EH_SELECTOR,
   FPN_XMM_CALL_SCRATCH,
-  FPN_F80_RETURN
+  FPN_F80_RETURN,
+  FPN_PHI_CYCLE_SCRATCH
 };
 
 // Generated public spellings reserve their numeric component once at the
@@ -72,12 +73,15 @@ enum GeneratedNameReservationKind : std::uint8_t
   GNR_FORCE_CONTINUATION,
   GNR_O1_SITE,
   GNR_O1_SCALAR_MERGE_SUFFIX,
-  GNR_O1_OBJECT_MERGE_SUFFIX
+  GNR_O1_OBJECT_MERGE_SUFFIX,
+  GNR_GENERATED_VALUE,
+  GNR_KIND_COUNT
 };
 
 class GeneratedNameReservations
 {
 public:
+  GeneratedNameReservations();
   void clear();
   void append(GeneratedNameReservationKind kind, std::uint32_t ordinal);
   void normalize();
@@ -86,11 +90,15 @@ public:
   void reserve(GeneratedNameReservationKind kind, std::uint32_t ordinal);
   void merge_kind(const GeneratedNameReservations & source,
                   GeneratedNameReservationKind kind);
+  std::uint32_t claim_first_available(GeneratedNameReservationKind kind);
   std::size_t size() const;
   std::size_t storage_bytes() const;
 
 private:
+  void update_first_available(GeneratedNameReservationKind kind);
+
   std::vector<std::uint64_t> entries_;
+  std::uint32_t first_available_[GNR_KIND_COUNT];
 };
 
 bool parse_generated_name_ordinal(const std::string & name,

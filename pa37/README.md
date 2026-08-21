@@ -198,9 +198,12 @@ running optimizing transforms.
 `-O2` must include all `-O1` work and then conservatively promote eligible
 non-escaping scalar slots, including eligible `ptr` slots. Promotion must be
 limited to slots accessed through direct `store` and `load` operations whose
-current value can be tracked without introducing phi nodes. Beyond the direct
-slot cleanup already allowed at `-O1`, `-O2` also removes dead stores to
-promoted slots when no observable load can see the stored value.
+current value is defined on every executable path. When predecessor paths
+carry different values, promotion uses the PA13 `phi` instruction at an
+ordinary join. A phi must not be introduced at an exceptional-handler target.
+Beyond the direct slot cleanup already allowed at `-O1`, `-O2` also removes
+dead stores to promoted slots when no observable load can see the stored
+value.
 
 Slot-value forwarding and promotion remain an `-O2` responsibility. At `-O1`,
 a live load whose value is consumed along multiple successor paths must remain
@@ -280,7 +283,7 @@ directory's LowIR validation mode.
 
 PA37 does not require:
 
-- SSA construction as an IR requirement
+- input programs to arrive in SSA form
 - global value numbering or partial redundancy elimination
 - alias-driven aggressive dead-store elimination
 - loop optimizations, vectorization, or general-purpose inlining beyond the
@@ -298,6 +301,12 @@ components once identifies recursive callees and provides a stable callee-first
 order without repeated symbol-name lookup. Use the typed symbol operands and
 metadata already present in LowIR when building the graph and its reachability
 roots; string rendering is only needed when serializing the final program.
+
+For slot promotion, collect definition blocks by typed slot identity and place
+phis with an iterated dominance-frontier worklist. Dense block epochs let one
+set of scratch vectors serve every slot. Keep the work proportional to direct
+slot accesses, relevant control-flow edges, and inserted phis, and apply an
+explicit growth bound before adding merge instructions.
 
 ### After PA37
 

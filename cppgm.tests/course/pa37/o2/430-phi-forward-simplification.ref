@@ -1,0 +1,15 @@
+function @main() -> i64 {
+  block ^entry:
+    jump ^loop
+
+  block ^loop:
+    %t0 = phi i64 [^entry: 7, ^latch: %t0]
+    %done = cmp ge i64 %t0, 7
+    branch %done, ^exit, ^latch
+
+  block ^latch:
+    jump ^loop
+
+  block ^exit:
+    return i64 %t0
+}

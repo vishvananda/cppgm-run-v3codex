@@ -1,0 +1,54 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @touch
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    temp %result -> [rbp-8] : i64
+
+  block ^entry
+    mov rax, 1
+    cmp.i64 rax, 0
+    jne ^left
+    jmp ^right
+
+  block ^left
+    jmp ^__force_inline_prologue_1
+
+  block ^__force_inline_prologue_1
+    jmp ^__force_inline_block_0
+
+  block ^__force_inline_block_0
+    jmp ^__force_inline_continuation_2
+
+  block ^__force_inline_continuation_2
+    mov r8, 40
+    add r8, 2
+    store.i64 [rbp-8], r8
+    jmp ^join
+
+  block ^right
+    mov r11, 7
+    store.i64 [rbp-8], r11
+    jmp ^join
+
+  block ^join
+    load.i64 rax, [rbp-8]
+    ret rax

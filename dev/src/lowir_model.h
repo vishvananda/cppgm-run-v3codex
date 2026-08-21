@@ -582,6 +582,8 @@ ValueId append_lowir_unnamed_value(Function & function,
 ValueId append_lowir_generated_value(Function & function,
                                      std::uint32_t ordinal,
                                      const LowType & type);
+ValueId append_lowir_fresh_generated_value(Function & function,
+                                           const LowType & type);
 std::string lowir_value_name(const StringPool & strings,
                              const Function & function, ValueId value);
 const LowType & lowir_value_type(const Function & function, ValueId value);

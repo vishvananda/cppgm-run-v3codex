@@ -21,6 +21,7 @@
 #include "lowir_native_memory_lowering.h"
 #include "lowir_native_movement_stats.h"
 #include "lowir_native_parameter_lowering.h"
+#include "lowir_native_phi_lowering.h"
 #include "lowir_native_program.h"
 #include "lowir_native_registers.h"
 #include "lowir_native_return_lowering.h"
@@ -60,6 +61,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private integer_detail::IntegerLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>,
                         private parameter_detail::ParameterRegisterState<FunctionLowerer>,
+                        private phi_detail::Emitter,
                         private return_detail::ReturnLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
@@ -118,7 +120,7 @@ public:
     record_parameter_setup_clobbers();
     plan_slots();
     plan_host_eh();
-    plan_phi_values();
+    phi_detail::plan_transfers(source_, this, &phi_transfers_);
   }
   mir_model::MirFunction lower()
   {
@@ -215,13 +217,7 @@ private:
   std::vector<X64Register> incoming_parameter_registers_;
   std::vector<unsigned char> incoming_parameter_register_known_;
   std::vector<unsigned char> discarded_slots_;
-  struct PhiTransfer
-  {
-    lowir_model::ValueId destination;
-    Operand source;
-    LowType type;
-  };
-  std::vector<std::vector<PhiTransfer> > phi_transfers_;
+  std::vector<std::vector<phi_detail::Transfer> > phi_transfers_;
   MirOperand phi_cycle_scratch_;
   std::vector<MirInstruction> parameter_moves_;
   const Instruction * active_instruction_ = 0;
@@ -329,35 +325,14 @@ private:
       static_cast<std::uint32_t>(target_.frame_bindings.size()));
   }
 
-  MirOperand allocate_persistent_temp(lowir_model::ValueId value,
-                                      const LowType & type)
+  void DefinePhi(lowir_model::ValueId value,
+                 const LowType & type) override
   {
     const long long offset = allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP,
       lowir_model::lowir_value_presentation(source_, value), type);
-    return frame_operand(offset,
-      static_cast<std::uint32_t>(target_.frame_bindings.size()));
-  }
-
-  void plan_phi_values()
-  {
-    phi_transfers_.resize(source_.next_block_id);
-    for(std::size_t block = 0; block < source_.blocks.size(); ++block) {
-      const lowir_model::LowirBlock & target = source_.blocks[block];
-      for(std::size_t i = 0; i < target.instructions.size(); ++i) {
-        const Instruction & phi = target.instructions[i];
-        if(phi.kind != Instruction::IK_PHI) break;
-        define(phi.dest, phi.type, allocate_persistent_temp(phi.dest, phi.type));
-        for(std::size_t incoming = 0;
-            incoming + 1 < phi.args.size(); incoming += 2) {
-          const std::uint32_t predecessor = phi.args[incoming].block;
-          if(predecessor >= phi_transfers_.size())
-            throw std::logic_error("invalid native phi predecessor");
-          phi_transfers_[predecessor].push_back(
-            PhiTransfer{phi.dest, phi.args[incoming + 1], phi.type});
-        }
-      }
-    }
+    define(value, type, frame_operand(offset,
+      static_cast<std::uint32_t>(target_.frame_bindings.size())));
   }
   bool crosses_call(lowir_model::ValueId value) const
   {
@@ -684,58 +659,6 @@ private:
     std::size_t instruction_index, lowir_model::ValueId destination) const
   { return selection::result_is_immediate_unary_not_branch(
       block, instruction_index, destination, facts_); }
-  bool call_result_needs_normalization(
-      const lowir_model::LowirBlock & block, std::size_t instruction_index,
-      const Instruction & call) const
-  {
-    if(result_is_immediate_return(block, instruction_index, call.dest))
-      return false;
-    if(facts_.uses[call.dest] == 1 &&
-       instruction_index + 1 < block.instructions.size()) {
-      const Instruction & consumer =
-        block.instructions[instruction_index + 1];
-      if(consumer.kind == Instruction::IK_CONVERT &&
-         consumer.first.kind == Operand::OP_TEMP &&
-         consumer.first.value == call.dest &&
-         is_integer_or_pointer(consumer.source_type) &&
-         is_integer_or_pointer(consumer.type) &&
-         (consumer.op.kind == LowOperation::LOP_SEXT ||
-          consumer.op.kind == LowOperation::LOP_ZEXT ||
-          consumer.op.kind == LowOperation::LOP_TRUNC))
-        return false;
-    }
-    if(!selection::result_is_immediately_stored(
-         block, instruction_index, call.dest, facts_)) return true;
-    return block.instructions[instruction_index + 1].type != call.type;
-  }
-  bool is_narrow_integer(const LowType & type) const
-  {
-    return is_integer_or_pointer(type) &&
-      type.kind != lowir_model::LTK_PTR &&
-      lowir_model::lowir_type_bit_width(type) < 64;
-  }
-  bool result_is_next_direct_call_argument(
-      const lowir_model::LowirBlock & block, std::size_t instruction_index,
-      const Instruction & producer) const
-  {
-    if(facts_.uses[producer.dest] != 1 ||
-       instruction_index + 1 >= block.instructions.size()) return false;
-    const Instruction & call = block.instructions[instruction_index + 1];
-    if(call.kind != Instruction::IK_CALL) return false;
-    const std::vector<lowir_model::LowirParameter> * parameters = 0;
-    if(call.has_call_signature) parameters = &call.call_params;
-    else if(call.first.kind == Operand::OP_GLOBAL) {
-      parameters = signatures_[call.first.symbol].params;
-    }
-    for(std::size_t i = 0; i < call.args.size(); ++i) {
-      if(call.args[i].kind != Operand::OP_TEMP ||
-         call.args[i].value != producer.dest) continue;
-      return !parameters || i >= parameters->size() ||
-        (*parameters)[i].metadata.passing == lowir_model::PPM_DIRECT ||
-        producer.type.kind == lowir_model::LTK_PTR;
-    }
-    return false;
-  }
   MirOperand global_operand(MirOperand::Kind kind,
                             const Operand & operand) const
   {
@@ -745,7 +668,13 @@ private:
   {
     if(operand.kind == Operand::OP_TEMP) {
       if(!value_known_[operand.value])
-        throw std::runtime_error("missing lowered temporary");
+        throw std::runtime_error("missing lowered temporary " +
+          lowir_model::lowir_value_name(
+            program_.strings, source_, operand.value) + " (" +
+          std::to_string(static_cast<std::uint32_t>(operand.value)) + ")" +
+          " in function @" +
+          lowir_model::lowir_symbol_name(program_, source_.symbol) +
+          " at instruction " + std::to_string(position_));
       lowir_model::ValueId incoming_value = operand.value;
       if(values_[operand.value].forwarded_parameter.valid())
         incoming_value = values_[operand.value].forwarded_parameter;
@@ -2556,8 +2485,8 @@ private:
          !result_is_immediate_return(block, instruction_index, instruction.dest) &&
          !selection::result_is_immediately_stored(
            block, instruction_index, instruction.dest, facts_) &&
-         !result_is_next_direct_call_argument(
-           block, instruction_index, instruction) &&
+         !selection::result_is_next_direct_call_argument(
+           block, instruction_index, instruction, facts_, signatures_) &&
          !result_is_immediate_unary_not_branch(block, instruction_index,
                                                instruction.dest)) {
         X64Register result = XR_RSP;
@@ -2569,11 +2498,11 @@ private:
             instruction.dest, instruction.type, THR_CALL_RESULT);
         }
       }
-      if(is_narrow_integer(instruction.type) &&
-         call_result_needs_normalization(
-           block, instruction_index, instruction))
+      if(selection::is_narrow_integer(instruction.type) &&
+         selection::call_result_needs_normalization(
+           block, instruction_index, instruction, facts_))
         append_integer_normalization(out, instruction.type, location);
-      else if(is_narrow_integer(instruction.type) && stats_)
+      else if(selection::is_narrow_integer(instruction.type) && stats_)
         ++stats_->narrow_call_result_normalizations_omitted;
       if(pressure_home.kind == MirOperand::OP_FRAME)
         append_store(out, pressure_home, location, instruction.type);
@@ -2736,8 +2665,8 @@ private:
            !result_is_immediate_return(block, instruction_index, instruction.dest) &&
            !selection::result_is_immediately_stored(
              block, instruction_index, instruction.dest, facts_) &&
-           !result_is_next_direct_call_argument(
-             block, instruction_index, instruction) &&
+           !selection::result_is_next_direct_call_argument(
+             block, instruction_index, instruction, facts_, signatures_) &&
            !result_is_immediate_unary_not_branch(block, instruction_index,
                                                  instruction.dest)) {
           const bool across = result_crosses_call(instruction.dest);
@@ -2757,11 +2686,11 @@ private:
             append_move(out, location, reg_operand(XR_RAX));
           }
         }
-        if(is_narrow_integer(instruction.type) &&
-           call_result_needs_normalization(
-             block, instruction_index, instruction))
+        if(selection::is_narrow_integer(instruction.type) &&
+           selection::call_result_needs_normalization(
+             block, instruction_index, instruction, facts_))
           append_integer_normalization(out, instruction.type, location);
-        else if(is_narrow_integer(instruction.type) && stats_)
+        else if(selection::is_narrow_integer(instruction.type) && stats_)
           ++stats_->narrow_call_result_normalizations_omitted;
         if(fallback_home.kind == MirOperand::OP_FRAME)
           append_store(out, fallback_home, location, instruction.type);
@@ -2884,110 +2813,58 @@ private:
     out.push_back(raise);
     consume(instruction.first);
   }
-  static bool same_phi_location(const MirOperand & left,
-                                const MirOperand & right)
+  MirOperand PhiDestination(
+      lowir_model::ValueId value) const override
   {
-    if(left.kind != right.kind) return false;
-    if(left.kind == MirOperand::OP_FRAME) return left.offset == right.offset;
-    if(left.kind == MirOperand::OP_REG) return left.reg == right.reg;
-    if(left.kind == MirOperand::OP_XMM) return left.xmm == right.xmm;
-    return false;
+    return selected_value_location(value);
   }
-  MirOperand phi_cycle_scratch()
+  MirOperand PhiSource(const Operand & operand) const override
+  {
+    return resolve(operand);
+  }
+  MirOperand PhiCycleScratch() override
   {
     if(phi_cycle_scratch_.kind == MirOperand::OP_FRAME)
       return phi_cycle_scratch_;
     const LowType & type = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
     const long long offset = allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP,
-      lowir_model::PresentationName(), type);
+      lowir_model::FPN_PHI_CYCLE_SCRATCH, type);
     phi_cycle_scratch_ = frame_operand(offset,
       static_cast<std::uint32_t>(target_.frame_bindings.size()));
     return phi_cycle_scratch_;
   }
-  void emit_phi_move(const MirOperand & destination,
-                     const MirOperand & source, const LowType & type,
-                     std::vector<MirInstruction> & out)
+  void EmitPhiMove(const MirOperand & destination,
+                   const MirOperand & source, const LowType & type,
+                   std::vector<MirInstruction> * out) override
   {
     if(is_scalar_float(type)) {
       if(source.kind == MirOperand::OP_XMM)
-        append_float_move(out, destination, source, type);
+        append_float_move(*out, destination, source, type);
       else {
-        append_float_move(out, xmm_operand(XMM_7), source, type);
-        append_float_move(out, destination, xmm_operand(XMM_7), type);
+        append_float_move(*out, xmm_operand(XMM_7), source, type);
+        append_float_move(*out, destination, xmm_operand(XMM_7), type);
       }
       return;
     }
     if(source.kind == MirOperand::OP_REG)
-      append_store(out, destination, source, type);
+      append_store(*out, destination, source, type);
     else {
-      move_value_to_register(out, XR_R11, source, type);
-      append_store(out, destination, reg_operand(XR_R11), type);
+      move_value_to_register(*out, XR_R11, source, type);
+      append_store(*out, destination, reg_operand(XR_R11), type);
     }
+  }
+  void ConsumePhiSource(const Operand & operand) override
+  {
+    consume(operand);
   }
   void emit_phi_transfers(lowir_model::BlockId predecessor,
                           std::vector<MirInstruction> & out)
   {
     const std::uint32_t predecessor_id = predecessor;
-    if(predecessor_id >= phi_transfers_.size() ||
-       phi_transfers_[predecessor_id].empty()) return;
-    struct Move
-    {
-      MirOperand destination;
-      MirOperand source;
-      Operand source_operand;
-      LowType type;
-      bool pending;
-    };
-    const std::vector<PhiTransfer> & transfers =
-      phi_transfers_[predecessor_id];
-    std::vector<Move> moves;
-    moves.reserve(transfers.size());
-    for(std::size_t i = 0; i < transfers.size(); ++i) {
-      const MirOperand destination =
-        selected_value_location(transfers[i].destination);
-      const MirOperand source = resolve(transfers[i].source);
-      if(same_phi_location(destination, source)) {
-        consume(transfers[i].source);
-        continue;
-      }
-      moves.push_back(Move{destination, source, transfers[i].source,
-                           transfers[i].type, true});
-    }
-    std::size_t remaining = moves.size();
-    while(remaining) {
-      bool progressed = false;
-      for(std::size_t i = 0; i < moves.size(); ++i) {
-        if(!moves[i].pending) continue;
-        bool destination_needed = false;
-        for(std::size_t j = 0; j < moves.size(); ++j)
-          if(i != j && moves[j].pending &&
-             same_phi_location(moves[i].destination, moves[j].source)) {
-            destination_needed = true;
-            break;
-          }
-        if(destination_needed) continue;
-        emit_phi_move(moves[i].destination, moves[i].source,
-                      moves[i].type, out);
-        consume(moves[i].source_operand);
-        moves[i].pending = false;
-        --remaining;
-        progressed = true;
-      }
-      if(progressed) continue;
-      std::size_t cycle = 0;
-      while(cycle < moves.size() && !moves[cycle].pending) ++cycle;
-      if(cycle == moves.size() ||
-         moves[cycle].source.kind != MirOperand::OP_FRAME)
-        throw std::logic_error("invalid native phi transfer cycle");
-      const MirOperand saved_source = moves[cycle].source;
-      const MirOperand scratch = phi_cycle_scratch();
-      emit_phi_move(scratch, saved_source, moves[cycle].type, out);
-      for(std::size_t i = 0; i < moves.size(); ++i)
-        if(moves[i].pending &&
-           same_phi_location(moves[i].source, saved_source))
-          moves[i].source = scratch;
-    }
+    if(predecessor_id >= phi_transfers_.size()) return;
+    phi_detail::emit_parallel_transfers(
+      phi_transfers_[predecessor_id], this, &out);
   }
   void lower_instruction(const lowir_model::LowirBlock & block,
                          std::size_t instruction_index,

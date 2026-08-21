@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <string>
 
+#include "lowir_native_abi.h"
 #include "lowir_native_analysis.h"
 #include "lowir_model.h"
 #include "mir_model.h"
@@ -17,6 +18,7 @@ long long canonical_integer_constant(long long value,
 long long atomic_order(const lowir_model::Operand & operand);
 bool is_signed_integer(const lowir_model::LowType & type);
 bool is_integer_or_pointer(const lowir_model::LowType & type);
+bool is_narrow_integer(const lowir_model::LowType & type);
 bool is_scalar_float(const lowir_model::LowType & type);
 bool is_extended_float(const lowir_model::LowType & type);
 bool is_floating(const lowir_model::LowType & type);
@@ -40,6 +42,15 @@ bool result_is_immediately_stored(
 bool result_is_immediate_store_address_with_later_use(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
     lowir_model::ValueId destination, const analysis::FunctionFacts & facts);
+bool call_result_needs_normalization(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const lowir_model::Instruction & call,
+    const analysis::FunctionFacts & facts);
+bool result_is_next_direct_call_argument(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    const lowir_model::Instruction & producer,
+    const analysis::FunctionFacts & facts,
+    const abi::FunctionSignatureIndex & signatures);
 inline bool address_only_feeds_dead_index(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
     lowir_model::ValueId destination, const analysis::FunctionFacts & facts)

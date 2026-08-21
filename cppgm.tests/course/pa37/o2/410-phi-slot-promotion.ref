@@ -1,0 +1,26 @@
+global @choose_loop : i64 = 0
+
+function @main() -> i64 {
+  block ^entry:
+    %choose = load i64 @choose_loop
+    branch %choose, ^side, ^join
+
+  block ^side:
+    jump ^join
+
+  block ^join:
+    %t0 = phi i64 [^entry: 7, ^side: 9]
+    jump ^loop
+
+  block ^loop:
+    %t1 = phi i64 [^join: %t0, ^latch: %next]
+    %done = cmp ge i64 %t1, 12
+    branch %done, ^exit, ^latch
+
+  block ^latch:
+    %next = binary add i64 %t1, 1
+    jump ^loop
+
+  block ^exit:
+    return i64 %t1
+}

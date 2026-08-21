@@ -384,6 +384,60 @@ void extend_loop_liveness(FunctionFacts & facts,
     }
 }
 
+void note_instruction_uses(
+    FunctionFacts * facts, const Instruction & instruction,
+    std::size_t position, std::size_t block,
+    const std::vector<std::size_t> & block_index,
+    const std::vector<std::size_t> & block_last_position,
+    const std::vector<std::size_t> & definition_blocks,
+    std::vector<std::pair<lowir_model::ValueId, std::size_t> > * block_uses,
+    std::vector<unsigned char> * call_arguments,
+    std::vector<unsigned char> * other_uses)
+{
+  if(instruction.kind != Instruction::IK_PHI)
+    note_instruction_operands(*facts, instruction, position);
+  else for(std::size_t i = 1; i < instruction.args.size(); i += 2) {
+    const Operand & operand = instruction.args[i];
+    if(operand.kind != Operand::OP_TEMP) continue;
+    const std::uint32_t predecessor_id = instruction.args[i - 1].block;
+    if(predecessor_id >= block_index.size() ||
+       block_index[predecessor_id] == FunctionFacts::missing_position())
+      continue;
+    const std::size_t predecessor = block_index[predecessor_id];
+    const lowir_model::ValueId value = operand.value;
+    note_operand(*facts, operand, block_last_position[predecessor]);
+    block_uses->push_back(std::make_pair(value, predecessor));
+    (*other_uses)[value] = 1;
+    if(definition_blocks[value] != predecessor)
+      facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
+  }
+  const Operand * fixed[] = {
+    &instruction.first, &instruction.second, &instruction.third
+  };
+  for(std::size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i)
+    if(fixed[i]->kind == Operand::OP_TEMP) {
+      const lowir_model::ValueId value = fixed[i]->value;
+      (*other_uses)[value] = 1;
+      block_uses->push_back(std::make_pair(value, block));
+      if(definition_blocks[value] != FunctionFacts::missing_position() &&
+         definition_blocks[value] != block)
+        facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
+    }
+  for(std::size_t i = 0;
+      instruction.kind != Instruction::IK_PHI &&
+      i < instruction.args.size(); ++i)
+    if(instruction.args[i].kind == Operand::OP_TEMP) {
+      const lowir_model::ValueId value = instruction.args[i].value;
+      block_uses->push_back(std::make_pair(value, block));
+      if(definition_blocks[value] != FunctionFacts::missing_position() &&
+         definition_blocks[value] != block)
+        facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
+      if(instruction.kind == Instruction::IK_CALL)
+        (*call_arguments)[value] = 1;
+      else (*other_uses)[value] = 1;
+    }
+}
+
 }  // namespace
 
 unsigned register_mask(X64Register reg)
@@ -454,49 +508,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j, ++position) {
       const Instruction & instruction = function.blocks[i].instructions[j];
-      if(instruction.kind != Instruction::IK_PHI)
-        note_instruction_operands(facts, instruction, position);
-      else for(std::size_t k = 1; k < instruction.args.size(); k += 2) {
-        const Operand & value_operand = instruction.args[k];
-        if(value_operand.kind != Operand::OP_TEMP) continue;
-        const std::uint32_t predecessor_id = instruction.args[k - 1].block;
-        if(predecessor_id >= block_index.size() ||
-           block_index[predecessor_id] == FunctionFacts::missing_position())
-          continue;
-        const std::size_t predecessor = block_index[predecessor_id];
-        const lowir_model::ValueId value = value_operand.value;
-        note_operand(facts, value_operand,
-                     block_last_position[predecessor]);
-        block_uses.push_back(std::make_pair(value, predecessor));
-        other_uses[value] = 1;
-        if(definition_blocks[value] != predecessor)
-          facts.mark(value, FunctionFacts::VF_EDGE_LIVE);
-      }
-      const Operand * fixed[] = {
-        &instruction.first, &instruction.second, &instruction.third
-      };
-      for(std::size_t k = 0; k < sizeof(fixed) / sizeof(fixed[0]); ++k)
-        if(fixed[k]->kind == Operand::OP_TEMP) {
-          const lowir_model::ValueId value = fixed[k]->value;
-          other_uses[value] = 1;
-          block_uses.push_back(std::make_pair(value, i));
-          if(definition_blocks[value] != FunctionFacts::missing_position() &&
-             definition_blocks[value] != i)
-            facts.mark(value, FunctionFacts::VF_EDGE_LIVE);
-        }
-      for(std::size_t k = 0;
-          instruction.kind != Instruction::IK_PHI &&
-          k < instruction.args.size(); ++k)
-        if(instruction.args[k].kind == Operand::OP_TEMP) {
-          const lowir_model::ValueId value = instruction.args[k].value;
-          block_uses.push_back(std::make_pair(value, i));
-          if(definition_blocks[value] != FunctionFacts::missing_position() &&
-             definition_blocks[value] != i)
-            facts.mark(value, FunctionFacts::VF_EDGE_LIVE);
-          if(instruction.kind == Instruction::IK_CALL)
-            call_arguments[value] = 1;
-          else other_uses[value] = 1;
-        }
+      note_instruction_uses(
+        &facts, instruction, position, i, block_index, block_last_position,
+        definition_blocks, &block_uses, &call_arguments, &other_uses);
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
          facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&

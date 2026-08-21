@@ -64,7 +64,7 @@ PresentationName PresentationName::generated_value(std::uint32_t ordinal)
 PresentationName PresentationName::fixed(FixedPresentationName name)
 {
   const std::uint32_t id = static_cast<std::uint32_t>(name);
-  if(id > static_cast<std::uint32_t>(FPN_F80_RETURN))
+  if(id > static_cast<std::uint32_t>(FPN_PHI_CYCLE_SCRATCH))
     throw std::runtime_error("invalid fixed presentation identity");
   return PresentationName(kPresentationFixedValue | id);
 }
@@ -111,7 +111,7 @@ FixedPresentationName PresentationName::fixed_name() const
   if(!fixed())
     throw std::logic_error("presentation identity has no fixed name");
   const std::uint32_t id = encoded_ & kPresentationPayloadMask;
-  if(id > static_cast<std::uint32_t>(FPN_F80_RETURN))
+  if(id > static_cast<std::uint32_t>(FPN_PHI_CYCLE_SCRATCH))
     throw std::logic_error("invalid fixed presentation identity");
   return static_cast<FixedPresentationName>(id);
 }
@@ -124,6 +124,7 @@ const char * fixed_presentation_name_text(FixedPresentationName name)
   case FPN_HOST_EH_SELECTOR: return "%host-eh-selector";
   case FPN_XMM_CALL_SCRATCH: return "%xmm-call-scratch";
   case FPN_F80_RETURN: return "%f80-return";
+  case FPN_PHI_CYCLE_SCRATCH: return "%phi-cycle-scratch";
   }
   throw std::logic_error("invalid fixed presentation identity");
 }
@@ -138,7 +139,16 @@ std::uint64_t generated_name_reservation_key(
 
 }  // namespace
 
-void GeneratedNameReservations::clear() { entries_.clear(); }
+GeneratedNameReservations::GeneratedNameReservations()
+{
+  std::fill(first_available_, first_available_ + GNR_KIND_COUNT, 0);
+}
+
+void GeneratedNameReservations::clear()
+{
+  entries_.clear();
+  std::fill(first_available_, first_available_ + GNR_KIND_COUNT, 0);
+}
 
 void GeneratedNameReservations::append(GeneratedNameReservationKind kind,
                                         std::uint32_t ordinal)
@@ -150,6 +160,9 @@ void GeneratedNameReservations::normalize()
 {
   std::sort(entries_.begin(), entries_.end());
   entries_.erase(std::unique(entries_.begin(), entries_.end()), entries_.end());
+  std::fill(first_available_, first_available_ + GNR_KIND_COUNT, 0);
+  for(std::size_t kind = 0; kind < GNR_KIND_COUNT; ++kind)
+    update_first_available(static_cast<GeneratedNameReservationKind>(kind));
 }
 
 bool GeneratedNameReservations::contains(
@@ -167,6 +180,7 @@ void GeneratedNameReservations::reserve(
     std::lower_bound(entries_.begin(), entries_.end(), key);
   if(position == entries_.end() || *position != key)
     entries_.insert(position, key);
+  if(ordinal == first_available_[kind]) update_first_available(kind);
 }
 
 void GeneratedNameReservations::merge_kind(
@@ -186,6 +200,26 @@ void GeneratedNameReservations::merge_kind(
     if(position == entries_.end() || *position != *at)
       entries_.insert(position, *at);
   }
+  update_first_available(kind);
+}
+
+void GeneratedNameReservations::update_first_available(
+    GeneratedNameReservationKind kind)
+{
+  std::uint32_t & next = first_available_[kind];
+  while(next != std::numeric_limits<std::uint32_t>::max() &&
+        contains(kind, next))
+    ++next;
+}
+
+std::uint32_t GeneratedNameReservations::claim_first_available(
+    GeneratedNameReservationKind kind)
+{
+  const std::uint32_t result = first_available_[kind];
+  if(result == std::numeric_limits<std::uint32_t>::max())
+    throw std::runtime_error("too many generated presentation identities");
+  reserve(kind, result);
+  return result;
 }
 
 std::size_t GeneratedNameReservations::size() const
@@ -778,8 +812,19 @@ ValueId append_lowir_generated_value(Function & function,
                                      std::uint32_t ordinal,
                                      const LowType & type)
 {
+  function.generated_name_reservations.reserve(
+    GNR_GENERATED_VALUE, ordinal);
   return append_value_identity(
     function, PresentationName::generated_value(ordinal), type);
+}
+
+ValueId append_lowir_fresh_generated_value(Function & function,
+                                           const LowType & type)
+{
+  const std::uint32_t ordinal =
+    function.generated_name_reservations.claim_first_available(
+      GNR_GENERATED_VALUE);
+  return append_lowir_generated_value(function, ordinal, type);
 }
 
 std::string lowir_value_name(const StringPool & strings,
@@ -843,6 +888,8 @@ void append_ordinal_reservation(const std::string & name,
 void classify_lowir_value_name(const std::string & name,
                                GeneratedNameReservations * reservations)
 {
+  append_ordinal_reservation(
+    name, "t", GNR_GENERATED_VALUE, reservations);
   collect_o1_site_reservations(name, reservations);
   append_ordinal_reservation(name, "__force_inline_parameter_",
     GNR_FORCE_PARAMETER, reservations);
@@ -890,7 +937,10 @@ void classify_lowir_generated_name_reservations(
       if(!dest.valid()) continue;
       const PresentationName presentation =
         lowir_value_presentation(function, dest);
-      if(!presentation.generated())
+      if(presentation.generated())
+        reservations.append(
+          GNR_GENERATED_VALUE, presentation.generated_ordinal());
+      else if(!presentation.fixed())
         classify_lowir_value_name(strings.get(presentation.spelling()),
           &reservations);
     }

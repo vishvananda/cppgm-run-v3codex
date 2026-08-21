@@ -270,6 +270,7 @@ bool may_be_shared_cleanup_instruction(Instruction::Kind kind)
            kind <= Instruction::IK_EH_END) &&
     kind != Instruction::IK_THROW && kind != Instruction::IK_EXCEPTION &&
     kind != Instruction::IK_EXCEPTION_SELECTOR &&
+    kind != Instruction::IK_PHI &&
     kind != Instruction::IK_RESUME && kind != Instruction::IK_JUMP &&
     kind != Instruction::IK_BRANCH && kind != Instruction::IK_SWITCH &&
     kind != Instruction::IK_RETURN;

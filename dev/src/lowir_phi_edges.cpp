@@ -106,12 +106,15 @@ void split_function(lowir_model::LowirProgram * program,
   if(edges.empty()) return;
   std::vector<std::size_t> block_index(function->next_block_id,
                                        function->blocks.size());
-  std::unordered_set<std::string> labels;
+  bool has_presentation = true;
+  std::unordered_set<std::uint32_t> labels;
   labels.reserve(function->blocks.size() + edges.size());
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     block_index[function->blocks[i].id] = i;
-    labels.insert(lowir_model::lowir_block_label(
-      program->strings, *function, function->blocks[i].id));
+    const lowir_model::StringId label =
+      function->block_labels[function->blocks[i].id];
+    if(!label.valid()) has_presentation = false;
+    else labels.insert(static_cast<std::uint32_t>(label));
   }
   for(std::size_t edge = 0; edge < edges.size(); ++edge) {
     const std::uint32_t predecessor = edges[edge].predecessor;
@@ -120,13 +123,17 @@ void split_function(lowir_model::LowirProgram * program,
        block_index[predecessor] >= function->blocks.size() ||
        block_index[target] >= function->blocks.size())
       throw std::logic_error("invalid critical phi edge");
-    std::string label;
-    std::size_t ordinal = function->next_block_id;
-    do label = "__phi_edge_" + std::to_string(ordinal++);
-    while(labels.count(label));
-    labels.insert(label);
-    const BlockId edge_block = lowir_model::allocate_lowir_block_id(
-      *function, program->strings.intern(label));
+    lowir_model::StringId label;
+    if(has_presentation) {
+      std::size_t ordinal = function->next_block_id;
+      do {
+        label = program->strings.intern(
+          "__phi_edge_" + std::to_string(ordinal++));
+      } while(labels.count(static_cast<std::uint32_t>(label)));
+      labels.insert(static_cast<std::uint32_t>(label));
+    }
+    const BlockId edge_block =
+      lowir_model::allocate_lowir_block_id(*function, label);
 
     LowirBlock & source = function->blocks[block_index[predecessor]];
     rewrite_target(&source.instructions.back(), edges[edge].target,
