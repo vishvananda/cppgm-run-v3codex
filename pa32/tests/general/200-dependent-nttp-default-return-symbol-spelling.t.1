@@ -6,6 +6,7 @@ template<class C, bool IsConst, typename C::storage_type = 0>
 struct bit_iterator {};
 
 template<class C, class Size>
+__attribute__((noinline))
 bit_iterator<C, false> __fill_n(bit_iterator<C, false> first,
                                 Size,
                                 const bool&)
@@ -20,6 +21,7 @@ OutputIterator __fill_n(OutputIterator first, Size, const T&)
 }
 
 template<class OutputIterator, class Size, class T>
+__attribute__((noinline))
 OutputIterator fill_n(OutputIterator first, Size n, const T& value)
 {
   return __fill_n(first, n, value);

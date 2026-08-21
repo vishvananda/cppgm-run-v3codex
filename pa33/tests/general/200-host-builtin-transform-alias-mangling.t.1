@@ -1,6 +1,7 @@
 template<class T> using decay_alias = __decay(T);
 
 template<class T>
+__attribute__((noinline))
 decay_alias<T> decay_return(T *value)
 {
   return *value;

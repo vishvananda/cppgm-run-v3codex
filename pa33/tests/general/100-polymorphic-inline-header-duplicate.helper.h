@@ -1,4 +1,5 @@
 struct Poly {
+  __attribute__((noinline)) Poly() {}
   virtual int f() const { return 7; }
-  virtual ~Poly() {}
+  __attribute__((noinline)) virtual ~Poly() {}
 };

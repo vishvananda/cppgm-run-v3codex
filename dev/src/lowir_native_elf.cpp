@@ -2849,19 +2849,22 @@ void write_linux_relocatable(
   if(target != "linux")
     throw std::runtime_error("ELF object writer requires linux target");
   ProgramLoweringSession lowering(source, target, optimization_level, stats);
+  const lowir_model::LowirProgram & prepared_source =
+    lowering.prepared_program();
   mir_model::MirProgram program = lowering.take_program_shell();
   CodeBuffer text(0, true);
   text.bind_symbol_names(program.symbol_names);
   text.bind_strings(program.strings);
   text.bind_stats(stats);
   std::vector<HostFunctionLayout> functions;
-  functions.reserve(lowering.function_count() + source.function_declarations.size());
+  functions.reserve(
+    lowering.function_count() + prepared_source.function_declarations.size());
   std::uint64_t encode_nanoseconds = 0;
   std::vector<unsigned char> emitted_tls_wrappers(
-    source.symbol_names.size(), 0);
-  for(std::size_t i = 0; i < source.function_declarations.size(); ++i) {
+    prepared_source.symbol_names.size(), 0);
+  for(std::size_t i = 0; i < prepared_source.function_declarations.size(); ++i) {
     const lowir_model::FunctionDeclaration & wrapper =
-      source.function_declarations[i];
+      prepared_source.function_declarations[i];
     const std::uint32_t symbol = wrapper.symbol;
     if(!wrapper.metadata.tls_for_symbol_id.valid()) continue;
     if(!wrapper.symbol.valid() || symbol >= emitted_tls_wrappers.size())
@@ -2891,7 +2894,7 @@ void write_linux_relocatable(
   data_sections[0].content.bind_strings(program.strings);
   data_sections[0].content.bind_stats(stats);
   const std::vector<unsigned char> suppressed_globals =
-    host_external_global_definitions(source, program);
+    host_external_global_definitions(prepared_source, program);
   for(std::size_t i = 0; i < program.globals.size(); ++i) {
     const mir_model::MirGlobalDefinition & global = program.globals[i];
     if(suppressed_globals[global.symbol]) continue;
@@ -2912,10 +2915,10 @@ void write_linux_relocatable(
     emit_global(section.content, global);
   }
   object_elf_detail::DeclarationObjectSymbols host_declarations =
-    declaration_object_symbols(source);
+    declaration_object_symbols(prepared_source);
   CodeBuffer & ordinary_data = data_sections[0].content;
   eh_reference_detail::emit_host_eh_reference_data(
-    source, host_declarations, functions, ordinary_data,
+    prepared_source, host_declarations, functions, ordinary_data,
     data_sections[0].alignment);
   const std::chrono::steady_clock::time_point image_started =
     stats ? std::chrono::steady_clock::now() :
@@ -2929,7 +2932,7 @@ void write_linux_relocatable(
       data_section_identity(data_sections[i]),
       data_sections[i].flags, data_sections[i].alignment));
   const std::vector<unsigned char> image = make_linux_relocatable_image(
-    source, std::move(host_declarations),
+    prepared_source, std::move(host_declarations),
     encoded_section(std::move(text),
       object_elf_detail::SectionIdentity(object_elf_detail::SK_TEXT), 6, 16),
     std::move(encoded_data_sections),

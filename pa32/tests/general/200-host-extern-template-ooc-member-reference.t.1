@@ -2,7 +2,7 @@ template<class T>
 struct Box {
   ~Box();
   int out();
-  int in() { return 4; }
+  __attribute__((noinline)) int in() { return 4; }
 };
 
 template<class T>

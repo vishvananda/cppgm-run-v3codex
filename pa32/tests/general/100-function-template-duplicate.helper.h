@@ -1,5 +1,5 @@
 template<class T>
-int add_template(T x)
+__attribute__((noinline)) int add_template(T x)
 {
   return static_cast<int>(x) + 1;
 }

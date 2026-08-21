@@ -22,12 +22,12 @@ struct Used
   operator int() const;
 };
 
-inline Used::~Used()
+__attribute__((noinline)) inline Used::~Used()
 {
   cleanup_count += 1;
 }
 
-inline Used::operator int() const
+__attribute__((noinline)) inline Used::operator int() const
 {
   return 5;
 }

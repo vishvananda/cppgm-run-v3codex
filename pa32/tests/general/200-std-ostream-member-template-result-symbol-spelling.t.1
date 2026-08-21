@@ -8,7 +8,7 @@ struct basic_ostream
   typedef basic_ostream<C, Traits> ostream_type;
 
   template<class Value>
-  ostream_type& _M_insert(Value);
+  __attribute__((noinline)) ostream_type& _M_insert(Value);
 };
 
 template<class C, class Traits>

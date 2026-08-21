@@ -4,7 +4,7 @@ struct Box
 };
 
 template<class T>
-Box<T> make_box()
+__attribute__((noinline)) Box<T> make_box()
 {
   return Box<T>();
 }

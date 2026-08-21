@@ -28,6 +28,7 @@ struct Marker {
 template<class T,
          class Compare,
          typename EnableIf<IsSame<Compare, typename MakeTransparent<T, Compare>::type>::value, int>::type = 0>
+__attribute__((noinline))
 Compare & as_transparent(Compare & comp)
 {
   comp.value += 1;

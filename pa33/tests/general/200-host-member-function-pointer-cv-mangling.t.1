@@ -15,6 +15,7 @@ int HostMemberPointerCv::g() const
 }
 
 template<class T>
+__attribute__((noinline))
 int use_member_pointer(T)
 {
   return 0;

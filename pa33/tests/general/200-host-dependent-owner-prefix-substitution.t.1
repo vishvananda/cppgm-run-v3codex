@@ -7,6 +7,7 @@ struct Id {
 };
 
 template<class T>
+__attribute__((noinline))
 void f(typename Id<T>::type *)
 {
 }

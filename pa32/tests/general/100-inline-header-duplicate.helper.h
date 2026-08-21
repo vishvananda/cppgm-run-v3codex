@@ -1,4 +1,4 @@
-inline int add2(int x)
+__attribute__((noinline)) inline int add2(int x)
 {
   return x + 2;
 }

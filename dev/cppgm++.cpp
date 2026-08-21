@@ -10,6 +10,7 @@
 #include "pa30_object.h"
 #include "pa30_elf_object.h"
 #include "lowir_function_reachability.h"
+#include "lowir_driver_stats_report.h"
 #include "lowir_prepare.h"
 #include "lowir_native.h"
 #include "lowir_native_stats_report.h"
@@ -885,153 +886,16 @@ void optimize_lowir(lowir_model::LowirProgram * program, int level,
 {
 	lowir_opt::Stats stats;
 	lowir_opt::optimize(*program, level, collect ? &stats : 0);
-	if(!collect) return;
-	cerr << "pa37_opt_stats"
-		 << " input=" << input
-		 << " functions=" << stats.functions
-		 << " input_instructions=" << stats.input_instructions
-		 << " output_instructions=" << stats.output_instructions
-		 << " instruction_visits=" << stats.instruction_visits
-		 << " block_visits=" << stats.block_visits
-		 << " cfg_edge_visits=" << stats.cfg_edge_visits
-		 << " worklist_pushes=" << stats.worklist_pushes
-		 << " dataflow_updates=" << stats.dataflow_updates
-		 << " inline_call_visits=" << stats.inline_call_visits
-		 << " inline_calls=" << stats.inline_calls
-		 << " inline_changed_callers=" << stats.inline_changed_callers
-		 << " inline_eh_blocked_records="
-		 << stats.inline_eh_blocked_records
-		 << " inline_revisited_callers=" << stats.inline_revisited_callers
-		 << " budget_skips=" << stats.budget_skips
-		 << " rewrites=" << stats.rewrites
-		  << " simplify_runs=" << stats.simplify_runs
-		  << " simplify_changes=" << stats.simplify_changes
-		  << " simplify_candidate_skips=" << stats.simplify_candidate_skips
-		  << " dce_runs=" << stats.dce_runs
-		  << " dce_changes=" << stats.dce_changes
-		  << " dce_candidate_skips=" << stats.dce_candidate_skips
-		  << " cfg_runs=" << stats.cfg_runs
-		  << " cfg_changes=" << stats.cfg_changes
-		  << " slot_runs=" << stats.slot_runs
-		  << " slot_changes=" << stats.slot_changes
-		  << " forward_slot_runs=" << stats.forward_slot_runs
-		  << " forward_slot_changes=" << stats.forward_slot_changes
-		  << " local_slot_runs=" << stats.local_slot_runs
-		  << " local_slot_changes=" << stats.local_slot_changes
-		  << " remove_slot_runs=" << stats.remove_slot_runs
-		  << " remove_slot_changes=" << stats.remove_slot_changes
-		  << " promote_slot_runs=" << stats.promote_slot_runs
-		  << " promote_slot_changes=" << stats.promote_slot_changes
-		  << " dead_store_runs=" << stats.dead_store_runs
-		  << " dead_store_changes=" << stats.dead_store_changes
-		  << " cleanup_resume_runs=" << stats.cleanup_resume_runs
-		  << " cleanup_resume_block_visits="
-		  << stats.cleanup_resume_block_visits
-		  << " cleanup_resume_blocks_removed="
-		  << stats.cleanup_resume_blocks_removed
-		  << " cleanup_tail_runs=" << stats.cleanup_tail_runs
-		  << " cleanup_tail_block_visits="
-		  << stats.cleanup_tail_block_visits
-		  << " cleanup_tail_groups_shared="
-		  << stats.cleanup_tail_groups_shared
-		  << " cleanup_tail_blocks_rewritten="
-		  << stats.cleanup_tail_blocks_rewritten
-		  << " cleanup_tail_instructions_removed="
-		  << stats.cleanup_tail_instructions_removed
-		 << " inline_ns=" << stats.inline_nanoseconds
-		 << " simplify_ns=" << stats.simplify_nanoseconds
-		 << " dce_ns=" << stats.dce_nanoseconds
-		 << " cfg_ns=" << stats.cfg_nanoseconds
-		 << " slot_ns=" << stats.slot_nanoseconds
-		 << " forward_slot_ns=" << stats.forward_slot_nanoseconds
-		 << " local_slot_ns=" << stats.local_slot_nanoseconds
-		 << " remove_slot_ns=" << stats.remove_slot_nanoseconds
-		 << " promote_slot_ns=" << stats.promote_slot_nanoseconds
-		 << " dead_store_ns=" << stats.dead_store_nanoseconds
-		 << " cleanup_resume_ns=" << stats.cleanup_resume_nanoseconds
-		 << " cleanup_tail_ns=" << stats.cleanup_tail_nanoseconds
-		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+	if(collect)
+		lowir_driver_stats_report::ReportOptimizer(cerr, input, stats);
 }
 
 void report_lowir_preparation_stats(
 	const string & path, const cppgm::LowIRLoweringStats & stats,
 	const lowir_model::LowirPreparationStats & preparation_stats)
 {
-	for(size_t fallback = 0;
-		fallback < stats.post_inline_retained_conservative_fallback_names.size();
-		++fallback)
-		cerr << "pa15_retained_fallback"
-			 << " file=" << path
-			 << " symbol="
-			 << stats.post_inline_retained_conservative_fallback_names[fallback]
-			 << '\n';
-	for(size_t internal = 0;
-		internal < stats.post_inline_unreachable_internal_names.size();
-		++internal)
-		cerr << "pa15_unreachable_internal"
-			 << " file=" << path
-			 << " symbol="
-			 << stats.post_inline_unreachable_internal_names[internal]
-			 << '\n';
-	cerr << "pa37_prepare_stats"
-		 << " file=" << path
-		 << " typed_name_entries=" << preparation_stats.typed_name_entries
-		 << " typed_name_bytes=" << preparation_stats.typed_name_bytes
-		 << " adapter_prefix_renders="
-		 << preparation_stats.adapter_prefix_renders
-		 << " adapter_prefix_bytes="
-		 << preparation_stats.adapter_prefix_bytes
-		 << " adapter_integer_renders="
-		 << preparation_stats.adapter_integer_renders
-		 << " adapter_integer_bytes="
-		 << preparation_stats.adapter_integer_bytes
-		 << " adapter_literal_materializations="
-		 << preparation_stats.adapter_literal_materializations
-		 << " adapter_pool_calls="
-		 << preparation_stats.adapter_string_pool.intern_calls
-		 << " adapter_pool_hits="
-		 << preparation_stats.adapter_string_pool.intern_hits
-		 << " adapter_pool_misses="
-		 << preparation_stats.adapter_string_pool.intern_misses
-		 << " adapter_pool_hash_bytes="
-		 << preparation_stats.adapter_string_pool.hash_bytes
-		 << " adapter_pool_slot_probes="
-		 << preparation_stats.adapter_string_pool.slot_probes
-		 << " lowir_string_entries="
-		 << preparation_stats.lowir_string_entries
-		 << " lowir_spelling_bytes="
-		 << preparation_stats.lowir_spelling_bytes
-		 << " lowir_string_storage_bytes="
-		 << preparation_stats.lowir_string_storage_bytes
-		 << " lowir_model_storage_bytes="
-		 << preparation_stats.lowir_model_storage_bytes
-		 << " typed_lowir_peak_live_bytes="
-		 << preparation_stats.typed_lowir_peak_live_bytes
-		 << " reference_operand_visits="
-		 << preparation_stats.reference_operand_visits
-		 << " referenced_symbols=" << preparation_stats.referenced_symbols
-		 << " declaration_visits=" << preparation_stats.declaration_visits
-		 << " retained_declarations="
-		 << preparation_stats.retained_declarations
-		 << " function_order_visits="
-		 << preparation_stats.function_order_visits
-		 << " function_moves=" << preparation_stats.function_moves
-		 << " function_copies=" << preparation_stats.function_copies
-		 << " alias_order_visits=" << preparation_stats.alias_order_visits
-		 << " alias_moves=" << preparation_stats.alias_moves
-		 << " serialized_operand_visits="
-		 << preparation_stats.serialized_operand_visits
-		 << " derived_operand_visits="
-		 << preparation_stats.derived_operand_visits
-		 << " boundary_call_visits="
-		 << preparation_stats.boundary_call_visits
-		 << " exports=" << preparation_stats.exports
-		 << " frontend_canonical_ns="
-		 << preparation_stats.frontend_canonical_nanoseconds
-		 << " serialized_canonical_ns="
-		 << preparation_stats.serialized_canonical_nanoseconds
-			 << " derived_facts_ns="
-			 << preparation_stats.derived_facts_nanoseconds << '\n';
+	lowir_driver_stats_report::ReportPreparation(
+		cerr, path, stats, preparation_stats);
 }
 
 void report_compile_phase_stats(
@@ -1041,61 +905,10 @@ void report_compile_phase_stats(
 	uint64_t text_parse_nanoseconds, uint64_t prune_nanoseconds,
 	uint64_t debug_nanoseconds, uint64_t lowir_opt_nanoseconds)
 {
-	const cppgm::SemanticAnalysisStats & semantic = stats.semantic;
-	const uint64_t typed_accounted_nanoseconds =
-		semantic.elapsed_nanoseconds + stats.lowering_nanoseconds;
-	const uint64_t typed_glue_nanoseconds = typed_pipeline_nanoseconds >
-		typed_accounted_nanoseconds ?
-		typed_pipeline_nanoseconds - typed_accounted_nanoseconds : 0;
-	const uint64_t preparation_nanoseconds =
-		preparation_stats.frontend_canonical_nanoseconds +
-		preparation_stats.serialized_canonical_nanoseconds +
-		preparation_stats.derived_facts_nanoseconds;
-	const uint64_t adapter_build_nanoseconds = adapter_nanoseconds >
-		preparation_nanoseconds ?
-		adapter_nanoseconds - preparation_nanoseconds : 0;
-	cerr << " typed_identity_paths=" << stats.typed_identity_paths
-		 << " typed_identity_types=" << stats.typed_identity_types
-		 << " local_source_names_scanned="
-		 << stats.local_presentation.source_names_scanned
-		 << " local_source_name_bytes="
-		 << stats.local_presentation.source_name_bytes
-		 << " local_reservation_matches="
-		 << stats.local_presentation.reservation_matches
-		 << " local_temporary_reservations="
-		 << stats.local_presentation.temporary_reservations
-		 << " local_temporary_probes="
-		 << stats.local_presentation.temporary_probes
-		 << " local_temporary_hits="
-		 << stats.local_presentation.temporary_hits
-		 << " block_order_functions="
-		 << stats.local_presentation.block_order_functions
-		 << " block_order_comparisons="
-		 << stats.local_presentation.block_order_comparisons
-		 << " block_order_characters="
-		 << stats.local_presentation.block_order_characters
-		 << " typed_identity_bytes=" << stats.typed_identity_bytes
-		 << " typed_bytes=" << stats.typed_storage_bytes
-		 << " preprocess_ns=" << semantic.preprocessing.elapsed_nanoseconds
-		 << " parse_ns=" << semantic.parse_nanoseconds
-		 << " semantic_ns=" << semantic.analysis_nanoseconds
-		 << " frontend_ns=" << semantic.elapsed_nanoseconds
-		 << " lowering_ns=" << stats.lowering_nanoseconds
-		 << " typed_glue_ns=" << typed_glue_nanoseconds
-		 << " adapter_build_ns=" << adapter_build_nanoseconds
-		 << " preparation_ns=" << preparation_nanoseconds
-		 << " adapt_ns=" << adapter_nanoseconds
-		 << " text_parse_ns=" << text_parse_nanoseconds
-		 << " prune_ns=" << prune_nanoseconds
-		 << " debug_ns=" << debug_nanoseconds
-		 << " lowir_opt_ns=" << lowir_opt_nanoseconds
-		 << " lowir_type_record_bytes=" << sizeof(lowir_model::LowType)
-		 << " lowir_operand_record_bytes=" << sizeof(lowir_model::Operand)
-		 << " lowir_instruction_record_bytes="
-		 << sizeof(lowir_model::Instruction)
-		 << " mir_operand_record_bytes=" << sizeof(mir_model::Operand)
-		 << " mir_instruction_record_bytes=" << sizeof(mir_model::Instruction)
-		 << '\n';
+	lowir_driver_stats_report::ReportCompilePhases(cerr, stats,
+		preparation_stats, typed_pipeline_nanoseconds, adapter_nanoseconds,
+		text_parse_nanoseconds, prune_nanoseconds, debug_nanoseconds,
+		lowir_opt_nanoseconds);
 }
 
 bool is_lowir_source_path(const string & path)
@@ -2536,7 +2349,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 	}
 	cppgm::LowIRLoweringStats stats;
 	const bool object_capable_output = invocation.has_debug_info ||
-		invocation.optimization_level != 0;
+		invocation.has_optimization_level;
 	if(!object_capable_output) {
 		cppgm::WriteLowIRProgram(sources, options, output,
 			invocation.collect_stats ? &stats : 0);

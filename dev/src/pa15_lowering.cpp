@@ -205,6 +205,7 @@ public:
 			EmitTop(graph_.root, false, true);
 		}
 		else EmitTop(graph_.root, true, true);
+		OrderLifecycleBaseEntries();
 		pa18_lowering_detail::EmitDeletingDestructors(graph_, output_, stats_,
 			function_symbols_, &polymorphism_);
 		pa18_lowering_detail::EmitVtableThunks(graph_, output_, stats_,
@@ -348,6 +349,71 @@ private:
 		const TypeRecord& record = program_.types.Get(unqualified);
 		return record.kind == TYPE_NAMED &&
 			!program_.entities[record.entity].complete ? LowVoid() : LowerType(type); }
+	struct LifecycleBaseEntry
+	{
+		SymbolIdentity complete_identity;
+		SymbolId base_symbol;
+
+		LifecycleBaseEntry(const SymbolIdentity& identity, SymbolId symbol)
+			: complete_identity(identity), base_symbol(symbol)
+		{
+			complete_identity.lifecycle_role = 0;
+		}
+	};
+	void RecordLifecycleBaseEntry(const SymbolIdentity& identity,
+		SymbolId symbol)
+	{
+		if (identity.lifecycle_role != 0)
+			lifecycle_base_entries_.push_back(
+				LifecycleBaseEntry(identity, symbol));
+	}
+	void OrderLifecycleBaseEntries()
+	{
+		if (lifecycle_base_entries_.empty()) return;
+		const std::size_t first = polymorphism_.source_function_first;
+		if (first >= output_.functions.size()) return;
+		const std::size_t missing = std::numeric_limits<std::size_t>::max();
+		std::vector<std::size_t> function_by_symbol(
+			output_.symbols.size(), missing);
+		for (std::size_t i = first; i < output_.functions.size(); ++i)
+			function_by_symbol[output_.functions[i].symbol] = i;
+		std::vector<std::size_t> base_by_complete(
+			output_.symbols.size(), missing);
+		bool needs_ordering = false;
+		for (std::size_t i = 0; i < lifecycle_base_entries_.size(); ++i)
+		{
+			SymbolId complete(kNoLowId);
+			if (!output_.symbol_index.Find(
+				lifecycle_base_entries_[i].complete_identity, &complete)) continue;
+			const SymbolId base = lifecycle_base_entries_[i].base_symbol;
+			if (complete >= function_by_symbol.size() ||
+				base >= function_by_symbol.size()) continue;
+			const std::size_t base_function = function_by_symbol[base];
+			const std::size_t complete_function = function_by_symbol[complete];
+			if (base_function == missing || complete_function == missing) continue;
+			base_by_complete[complete] = base_function;
+			needs_ordering |= base_function > complete_function;
+		}
+		if (!needs_ordering) return;
+		std::vector<unsigned char> moved(output_.functions.size(), 0);
+		std::vector<Function> ordered;
+		ordered.reserve(output_.functions.size() - first);
+		for (std::size_t i = first; i < output_.functions.size(); ++i)
+		{
+			if (moved[i]) continue;
+			const SymbolId symbol = output_.functions[i].symbol;
+			const std::size_t base = symbol < base_by_complete.size() ?
+				base_by_complete[symbol] : missing;
+			if (base != missing && base > i && !moved[base])
+			{
+				ordered.push_back(std::move(output_.functions[base]));
+				moved[base] = 1;
+			}
+			ordered.push_back(std::move(output_.functions[i]));
+		}
+		for (std::size_t i = 0; i < ordered.size(); ++i)
+			output_.functions[first + i] = std::move(ordered[i]);
+	}
 	SymbolId InternSymbol(const DumpNode& node, Symbol::Kind kind,
 		const std::string& proposed_name, const std::string& object_name)
 	{
@@ -444,10 +510,12 @@ private:
 			symbol.object_output_root |= binding.object_output_root;
 			symbol.demand_reason_mask |= canonical_binding.demand_reason_mask;
 			symbol.force_inline |= binding.force_inline || canonical_binding.force_inline;
+			symbol.no_inline |= binding.no_inline || canonical_binding.no_inline;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function,
 				binding.hosted_memory_intrinsic);
 			pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(output_, &symbol);
+			RecordLifecycleBaseEntry(identity, found);
 			return found;
 		}
 		if (output_.symbols.size() >= kNoLowId)
@@ -474,7 +542,9 @@ private:
 		output_.symbols.back().demand_reason_mask =
 			canonical_binding.demand_reason_mask;
 		output_.symbols.back().force_inline = binding.force_inline || canonical_binding.force_inline;
+		output_.symbols.back().no_inline = binding.no_inline || canonical_binding.no_inline;
 		output_.symbol_index.Insert(identity, symbol);
+		RecordLifecycleBaseEntry(identity, symbol);
 		return symbol;
 	}
 	void RegisterFunction(std::uint32_t node)
@@ -2518,6 +2588,7 @@ private:
 	LowIRLoweringStats* stats_;
 	abi_mangle::AbiMangleContext abi_context_;
 	std::vector<SymbolId> function_symbols_;
+	std::vector<LifecycleBaseEntry> lifecycle_base_entries_;
 	std::vector<SymbolId> global_symbols_;
 	std::vector<SymbolId> literal_symbols_;
 	std::vector<std::uint8_t> temporary_initialized_;

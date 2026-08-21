@@ -4,6 +4,7 @@ struct box {
 };
 
 template<template<class> class TT>
+__attribute__((noinline))
 void use(TT<int>) {}
 
 int main() {

@@ -1163,6 +1163,13 @@ inline const TemplateParameter& TemplateParameterForArgument(
 	return parameters[argument < fixed ? argument : parameters.size() - 1];
 }
 
+enum FunctionControlAttribute : std::uint8_t
+{
+	FUNCTION_CONTROL_NORETURN = 1,
+	FUNCTION_CONTROL_FORCE_INLINE = 2,
+	FUNCTION_CONTROL_NO_INLINE = 4
+};
+
 struct FunctionTemplatePattern
 {
 	ScopeId owner;
@@ -1204,6 +1211,7 @@ struct FunctionTemplatePattern
 	BindingId lambda_this_capture_member;
 	LanguageLinkage language_linkage;
 	AccessKind member_access;
+	std::uint8_t function_control_attributes;
 	bool defined;
 	bool ordinary_visible;
 	bool definition_in_class;
@@ -1239,6 +1247,7 @@ struct FunctionTemplatePattern
 		  lambda_capture_begin(0), lambda_capture_count(0),
 		  lambda_this_capture_member(kNoBinding),
 		  language_linkage(LANGUAGE_LINKAGE_CPP), member_access(ACCESS_PUBLIC),
+		  function_control_attributes(0),
 		  defined(false), ordinary_visible(true), definition_in_class(false),
 		  nonthrowing(false), dependent_exception_specification(false),
 		  function_parameter_pack(false), static_member(false),

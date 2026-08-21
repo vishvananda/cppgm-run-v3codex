@@ -5,6 +5,7 @@ struct Tagged {
   {
   }
 
+  __attribute__((noinline))
   Tagged(const Tagged &) __attribute__((__abi_tag__("tag"))) : value(1)
   {
   }

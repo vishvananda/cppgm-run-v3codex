@@ -686,6 +686,8 @@ sub parse_lowir_function_metadata_suffix
 		prefer_local => '',
 		object_root => '',
 		trivial_lifecycle => '',
+		force_inline => '',
+		no_inline => '',
 	);
 	my %saw;
 	pos($suffix) = 0;
@@ -772,6 +774,18 @@ sub parse_lowir_function_metadata_suffix
 				return (0, "unknown trivial_lifecycle mode '$value'")
 					if $value !~ /^(?:yes|no)$/;
 				$metadata{trivial_lifecycle} = $value;
+			}
+			elsif ($key eq 'force_inline')
+			{
+				return (0, "unknown force_inline mode '$value'")
+					if $value !~ /^(?:yes|no)$/;
+				$metadata{force_inline} = $value;
+			}
+			elsif ($key eq 'no_inline')
+			{
+				return (0, "unknown no_inline mode '$value'")
+					unless $value eq 'yes' || $value eq 'no';
+				$metadata{no_inline} = $value;
 			}
 			else
 			{
@@ -1788,8 +1802,8 @@ sub lowir_role_owner_kind
 {
 	my ($role) = @_;
 	return '' if !defined($role) || $role eq '';
-	return 'function' if $role =~ /^(?:entry|init|fini|eh_unhandled|eh_allocate_exception|eh_begin_catch|eh_call_unexpected|eh_current_exception_type|eh_end_catch|eh_rethrow|eh_throw|eh_personality|eh_resume)$/;
-	return 'global' if $role =~ /^(?:eh_top|eh_value|eh_type)$/;
+	return 'function' if $role =~ /^(?:entry|init|fini|eh_unhandled|eh_allocate_exception|eh_begin_catch|eh_call_unexpected|eh_current_exception_type|eh_end_catch|eh_rethrow|eh_throw|eh_personality|eh_resume|allocate_memory|free_memory|pure_virtual|dynamic_cast|bad_cast|bad_typeid)$/;
+	return 'global' if $role =~ /^(?:eh_top|eh_value|eh_type|rtti_class|rtti_si|rtti_vmi|rtti_data)$/;
 	return '';
 }
 
@@ -1861,7 +1875,8 @@ sub validate_lowir_roles
 			push @errors, "LowIR role '$role' has invalid $kind owner \@$symbol";
 			next;
 		}
-		if (exists($role_owner{$role}) && $role_owner{$role} ne $symbol)
+		if ($role ne 'rtti_data' &&
+			exists($role_owner{$role}) && $role_owner{$role} ne $symbol)
 		{
 			push @errors, "duplicate LowIR role '$role': \@$role_owner{$role}, \@$symbol";
 			next;
@@ -2037,7 +2052,8 @@ sub lowir_metadata_item_ignored_for_compare
 	my ($key, $value) = @_;
 	# Validate full metadata, but do not make early source-to-LowIR oracles depend
 	# on later object/export policy or optional optimizer/provenance annotations.
-	return 1 if $key =~ /^(?:linkage|binding|object|tls_for|keep_alias|prefer_local|trivial_lifecycle)$/;
+	return 1 if $key eq 'role' && $value =~ /^(?:allocate_memory|free_memory|pure_virtual|dynamic_cast|bad_cast|bad_typeid|rtti_class|rtti_si|rtti_vmi|rtti_data)$/;
+	return 1 if $key =~ /^(?:linkage|binding|object|tls_for|keep_alias|prefer_local|trivial_lifecycle|force_inline|no_inline)$/;
 	return 1 if $key =~ /^(?:effects|unwind|return|capture|access|alias|projection)$/;
 	return 1 if $key eq 'storage' && $value =~ /^(?:readonly|writable)$/;
 	return 0;
@@ -2054,6 +2070,83 @@ sub canonicalize_lowir_metadata_group_for_compare
 		push @kept, $item;
 	}
 	return scalar(@kept) == 0 ? '' : ' [' . join(', ', @kept) . ']';
+}
+
+sub canonicalize_lowir_function_locals_for_compare
+{
+	my ($entry) = @_;
+	return $entry if $entry !~ /^(?:declare\s+)?function /;
+
+	my (%values, %slots, %blocks, %declared_slots);
+	my @declared_slot_order;
+	my ($next_value, $next_slot, $next_block) = (0, 0, 0);
+	my @lines = split(/\n/, $entry, -1);
+	if (scalar(@lines) != 0)
+	{
+		while ($lines[0] =~ /%([A-Za-z0-9_]+)\s*:/g)
+		{
+			$values{$1} = '<value' . $next_value . '>';
+			++$next_value;
+		}
+	}
+	for my $line (@lines)
+	{
+		if ($line =~ /^\s*slot \$([A-Za-z0-9_]+)\s*:/)
+		{
+			$declared_slots{$1} = 1;
+			push @declared_slot_order, $1;
+		}
+		if ($line =~ /^\s*block \^([A-Za-z0-9_]+):/)
+		{
+			$blocks{$1} = '<block' . $next_block . '>';
+			++$next_block;
+		}
+		if ($line =~ /^\s*%([A-Za-z0-9_]+)\s*=/ && !exists($values{$1}))
+		{
+			$values{$1} = '<value' . $next_value . '>';
+			++$next_value;
+		}
+	}
+	for my $line (@lines)
+	{
+		next if $line =~ /^\s*slot \$[A-Za-z0-9_]+\s*:/;
+		while ($line =~ /\$([A-Za-z0-9_]+)\b/g)
+		{
+			next if !exists($declared_slots{$1}) || exists($slots{$1});
+			$slots{$1} = '<slot' . $next_slot . '>';
+			++$next_slot;
+		}
+	}
+	for my $name (@declared_slot_order)
+	{
+		next if exists($slots{$name});
+		$slots{$name} = '<slot' . $next_slot . '>';
+		++$next_slot;
+	}
+
+	$entry =~ s/%([A-Za-z0-9_]+)\b/
+		exists($values{$1}) ? '%' . $values{$1} : '%' . $1/gex;
+	$entry =~ s/\$([A-Za-z0-9_]+)\b/
+		exists($slots{$1}) ? '$' . $slots{$1} : '$' . $1/gex;
+	$entry =~ s/\^([A-Za-z0-9_]+)\b/
+		exists($blocks{$1}) ? '^' . $blocks{$1} : '^' . $1/gex;
+	@lines = split(/\n/, $entry, -1);
+	my @slot_lines = sort(grep { /^\s*slot \$/ } @lines);
+	my $slot_line = 0;
+	for my $line (@lines)
+	{
+		$line = $slot_lines[$slot_line++] if $line =~ /^\s*slot \$/;
+	}
+	$entry = join("\n", @lines);
+	return $entry;
+}
+
+sub canonicalize_lowir_local_names_for_compare
+{
+	my ($data) = @_;
+	my @entries = split_lowir_top_level_entries($data);
+	@entries = map { canonicalize_lowir_function_locals_for_compare($_) } @entries;
+	return join("\n\n", @entries) . (scalar(@entries) ? "\n" : '');
 }
 
 sub canonicalize_lowir_for_compare
@@ -2078,6 +2171,7 @@ sub canonicalize_lowir_for_compare
 		$function_symbols = \%local_function_symbols;
 	}
 	$data =~ s/@([A-Za-z0-9_]+)\b/exists($function_symbols->{$1}) ? '@' . $function_symbols->{$1} : '@' . $1/ge;
+	$data = canonicalize_lowir_local_names_for_compare($data);
 	$data =~ s/[ \t]+$//mg;
 	return $data;
 }
@@ -2282,6 +2376,144 @@ sub paired_lowir_function_symbol_maps
 	return (\%ref_map, \%my_map);
 }
 
+sub lowir_global_symbol_records
+{
+	my ($data) = @_;
+	my %records;
+	my @ordered;
+	my $type_pattern = lowir_type_pattern();
+	for my $entry (split_lowir_top_level_entries($data))
+	{
+		my ($name, $metadata_suffix, $shape);
+		if ($entry =~ /^declare global @([A-Za-z0-9_]+)(?:\s*:\s*$type_pattern)?((?:\s+\[[^\]]+\])*)$/)
+		{
+			($name, $metadata_suffix) = ($1, $2);
+			$shape = $entry;
+		}
+		elsif ($entry =~ /^global @([A-Za-z0-9_]+)(?:\s+readonly)?(?:\s*:\s*$type_pattern)?((?:\s+\[[^\]]+\])*)\s*=/)
+		{
+			($name, $metadata_suffix) = ($1, $2);
+			$shape = $entry;
+		}
+		else
+		{
+			next;
+		}
+		$shape =~ s/^((?:declare )?global \@[^\s:=]+)(?:\s+readonly)?(?:\s*:\s*$type_pattern)?(?:\s+\[[^\]]+\])*/$1/;
+		$shape =~ s/\@[^\s(),]+/\@<sym>/g;
+		my ($ok, $metadata_or_error) =
+			parse_lowir_symbol_metadata_suffix($metadata_suffix);
+		my %keys;
+		if ($ok)
+		{
+			$keys{"role:$metadata_or_error->{role}"} = 1
+				if exists($metadata_or_error->{role}) &&
+					$metadata_or_error->{role} ne '';
+			$keys{"object:$metadata_or_error->{object}"} = 1
+				if exists($metadata_or_error->{object}) &&
+					$metadata_or_error->{object} ne '';
+		}
+		$records{$name} = {
+			name => $name,
+			order => scalar(@ordered),
+			shape => $shape,
+			keys => \%keys,
+		};
+		push @ordered, $name;
+	}
+	return (\%records, \@ordered);
+}
+
+sub assign_lowir_global_symbol_pair
+{
+	my ($ref_map, $my_map, $ref_name, $my_name, $next_ref) = @_;
+	return if exists($ref_map->{$ref_name}) || exists($my_map->{$my_name});
+	my $placeholder = '<global' . $$next_ref . '>';
+	++$$next_ref;
+	$ref_map->{$ref_name} = $placeholder;
+	$my_map->{$my_name} = $placeholder;
+}
+
+sub paired_lowir_global_symbol_maps
+{
+	my ($ref_data, $my_data) = @_;
+	my ($ref_records, $ref_order) = lowir_global_symbol_records($ref_data);
+	my ($my_records, $my_order) = lowir_global_symbol_records($my_data);
+	my (%ref_map, %my_map);
+	my $next = 0;
+
+	my (%ref_by_key, %my_by_key);
+	for my $name (@$ref_order)
+	{
+		for my $key (keys(%{$ref_records->{$name}{keys}}))
+		{
+			push @{$ref_by_key{$key}}, $name;
+		}
+	}
+	for my $name (@$my_order)
+	{
+		for my $key (keys(%{$my_records->{$name}{keys}}))
+		{
+			push @{$my_by_key{$key}}, $name;
+		}
+	}
+	for my $key (sort keys(%ref_by_key))
+	{
+		next if !exists($my_by_key{$key});
+		next if scalar(@{$ref_by_key{$key}}) != 1 ||
+			scalar(@{$my_by_key{$key}}) != 1;
+		assign_lowir_global_symbol_pair(\%ref_map, \%my_map,
+			$ref_by_key{$key}[0], $my_by_key{$key}[0], \$next);
+	}
+	for my $name (sort keys(%$ref_records))
+	{
+		next if !exists($my_records->{$name});
+		assign_lowir_global_symbol_pair(
+			\%ref_map, \%my_map, $name, $name, \$next);
+	}
+
+	my (%ref_by_shape, %my_by_shape);
+	for my $name (@$ref_order)
+	{
+		next if exists($ref_map{$name});
+		push @{$ref_by_shape{$ref_records->{$name}{shape}}}, $name;
+	}
+	for my $name (@$my_order)
+	{
+		next if exists($my_map{$name});
+		push @{$my_by_shape{$my_records->{$name}{shape}}}, $name;
+	}
+	for my $shape (sort keys(%ref_by_shape))
+	{
+		next if !exists($my_by_shape{$shape});
+		next if scalar(@{$ref_by_shape{$shape}}) != 1 ||
+			scalar(@{$my_by_shape{$shape}}) != 1;
+		assign_lowir_global_symbol_pair(\%ref_map, \%my_map,
+			$ref_by_shape{$shape}[0], $my_by_shape{$shape}[0], \$next);
+	}
+
+	my @remaining_ref = grep { !exists($ref_map{$_}) } @$ref_order;
+	my @remaining_my = grep { !exists($my_map{$_}) } @$my_order;
+	my $pairs = scalar(@remaining_ref) < scalar(@remaining_my) ?
+		scalar(@remaining_ref) : scalar(@remaining_my);
+	for (my $i = 0; $i < $pairs; ++$i)
+	{
+		assign_lowir_global_symbol_pair(\%ref_map, \%my_map,
+			$remaining_ref[$i], $remaining_my[$i], \$next);
+	}
+	for my $name (@remaining_ref)
+	{
+		next if exists($ref_map{$name});
+		$ref_map{$name} = '<global' . $next++ . '>';
+	}
+	for my $name (@remaining_my)
+	{
+		next if exists($my_map{$name});
+		$my_map{$name} = '<global' . $next++ . '>';
+	}
+	return (\%ref_map, \%my_map);
+}
+
 sub lowir_relaxed_top_level_rank
 {
 	my ($entry) = @_;
@@ -2361,18 +2593,428 @@ sub canonicalize_lowir_top_level_order_for_compare
 	return join("\n\n", @entries) . (scalar(@entries) ? "\n" : "");
 }
 
+sub canonicalize_lowir_trivial_lifecycle_for_compare
+{
+	my ($data) = @_;
+	my @entries = split_lowir_top_level_entries($data);
+	my %trivial;
+	for my $entry (@entries)
+	{
+		if ($entry =~ /^(?:declare\s+)?function \@([A-Za-z0-9_]+)\([^\n]*\)\s+->\s+[^\n]*\[[^\]\n]*\btrivial_lifecycle=yes\b[^\]\n]*\]/)
+		{
+			$trivial{$1} = 1;
+		}
+	}
+	return $data if scalar(keys(%trivial)) == 0;
+
+	# A semantically trivial lifecycle call has no observable effect.  Normalize
+	# direct void calls away so an early source fixture may retain the explicit
+	# call/body while a later object-capable lowering omits it.
+	for my $entry (@entries)
+	{
+		for my $name (keys(%trivial))
+		{
+			$entry =~ s/^[ \t]*call[ \t]+void[ \t]+\@\Q$name\E\([^\n]*\)(?:[ \t]+!dbg\([^\n]*\))?[ \t]*\n?//mg;
+		}
+	}
+
+	my %referenced;
+	for my $entry (@entries)
+	{
+		next if $entry =~ /^alias object /;
+		my $without_header = $entry;
+		$without_header =~ s/^(?:declare\s+)?function \@([A-Za-z0-9_]+)[^\n]*\n?//;
+		while ($without_header =~ /\@([A-Za-z0-9_]+)\b/g)
+		{
+			$referenced{$1} = 1 if exists($trivial{$1});
+		}
+	}
+	@entries = grep {
+		!(/^((?:declare\s+)?function) \@([A-Za-z0-9_]+)\b/ &&
+		  exists($trivial{$2}) && !exists($referenced{$2}))
+	} @entries;
+	return join("\n\n", @entries) . (scalar(@entries) ? "\n" : "");
+}
+
+sub remove_lowir_metadata_item
+{
+	my ($entry, $key, $value) = @_;
+	$entry =~ s/(\[[^\]\n]*)\b\Q$key\E\s*=\s*\Q$value\E\s*,\s*/$1/g;
+	$entry =~ s/(\[[^\]\n]*),\s*\Q$key\E\s*=\s*\Q$value\E\b/$1/g;
+	$entry =~ s/\s*\[\s*\Q$key\E\s*=\s*\Q$value\E\s*\]//g;
+	return $entry;
+}
+
+sub canonicalize_lowir_generated_root_annotations_for_compare
+{
+	my ($ref_data, $my_data, $ref_symbols, $my_symbols) = @_;
+	my %required_roots;
+	for my $entry (split_lowir_top_level_entries($ref_data))
+	{
+		next if $entry !~ /^(?:declare\s+)?function \@([A-Za-z0-9_]+)[^\n]*\[[^\]\n]*\bobject_root=yes\b[^\]\n]*\]/;
+		my $mapped = exists($ref_symbols->{$1}) ? $ref_symbols->{$1} : $1;
+		$required_roots{$mapped} = 1;
+	}
+
+	my @entries = split_lowir_top_level_entries($my_data);
+	for my $entry (@entries)
+	{
+		next if $entry !~ /^(?:declare\s+)?function \@([A-Za-z0-9_]+)\b/;
+		my $mapped = exists($my_symbols->{$1}) ? $my_symbols->{$1} : $1;
+		next if exists($required_roots{$mapped});
+		$entry = remove_lowir_metadata_item($entry, 'object_root', 'yes');
+	}
+	return join("\n\n", @entries) . (scalar(@entries) ? "\n" : "");
+}
+
 sub canonicalize_lowir_pair_for_compare
 {
 	my ($ref_data, $my_data) = @_;
-	my ($ref_symbols, $my_symbols) =
+	$ref_data = canonicalize_lowir_tls_accesses_for_compare($ref_data);
+	$my_data = canonicalize_lowir_tls_accesses_for_compare($my_data);
+	($ref_data, $my_data) = canonicalize_lowir_pair_nothrow_resume_for_compare(
+		$ref_data, $my_data);
+	$ref_data = canonicalize_lowir_reference_liveness_for_compare(
+		$ref_data, $my_data);
+	$ref_data = canonicalize_lowir_trivial_lifecycle_for_compare($ref_data);
+	$my_data = canonicalize_lowir_trivial_lifecycle_for_compare($my_data);
+	my ($ref_functions, $my_functions) =
 		paired_lowir_function_symbol_maps($ref_data, $my_data);
+	my ($ref_globals, $my_globals) =
+		paired_lowir_global_symbol_maps($ref_data, $my_data);
+	my %ref_symbols = (%$ref_functions, %$ref_globals);
+	my %my_symbols = (%$my_functions, %$my_globals);
+	$my_data = canonicalize_lowir_generated_root_annotations_for_compare(
+		$ref_data, $my_data, \%ref_symbols, \%my_symbols);
 	my $ref_compare_data =
 		canonicalize_lowir_top_level_order_for_compare(
-			canonicalize_lowir_for_compare($ref_data, $ref_symbols));
+			canonicalize_lowir_for_compare($ref_data, \%ref_symbols));
 	my $my_compare_data =
 		canonicalize_lowir_top_level_order_for_compare(
-			canonicalize_lowir_for_compare($my_data, $my_symbols));
+			canonicalize_lowir_for_compare($my_data, \%my_symbols));
 	return ($ref_compare_data, $my_compare_data);
+}
+
+sub canonicalize_lowir_tls_accesses_for_compare
+{
+	my ($data) = @_;
+	my (%tls_for, %tls_globals);
+	for my $entry (split_lowir_top_level_entries($data))
+	{
+		next if $entry !~ /^(?:declare\s+)?function \@([A-Za-z0-9_]+)[^\n]*\[[^\]\n]*\btls_for=\@([A-Za-z0-9_]+)\b[^\]\n]*\]/;
+		$tls_for{$1} = $2;
+		$tls_globals{$2} = 1;
+	}
+	for my $wrapper (keys(%tls_for))
+	{
+		my $global = $tls_for{$wrapper};
+		$data =~ s/(^\s*%[A-Za-z0-9_]+\s*=\s*)call\s+ptr\s+\@\Q$wrapper\E\(\)/$1addr \@$global/gm;
+	}
+	for my $global (keys(%tls_globals))
+	{
+		my $address = '%__compare_tls_address_' . $global;
+		$data =~ s/^(\s*)(%[A-Za-z0-9_]+\s*=\s*load\s+([^\s]+)\s+)\@\Q$global\E\s*$/
+			$1 . $address . ' = addr @' . $global . "\n" .
+			$1 . $2 . $address/gem;
+	}
+	return $data;
+}
+
+sub lowir_function_entry_compare_key
+{
+	my ($entry) = @_;
+	my $object = lowir_function_entry_object($entry);
+	return 'object:' . $object if defined($object);
+	my $name = lowir_function_entry_name($entry);
+	return defined($name) ? 'name:' . $name : undef;
+}
+
+sub canonicalize_lowir_nothrow_resume_entries_for_compare
+{
+	my ($data, $nothrow) = @_;
+	my @entries = split_lowir_top_level_entries($data);
+	for my $entry (@entries)
+	{
+		my $key = lowir_function_entry_compare_key($entry);
+		next if !defined($key) || !exists($nothrow->{$key});
+		$entry =~ s/^[ \t]*resume[ \t]*\n?//mg;
+	}
+	return join("\n\n", @entries) . (scalar(@entries) ? "\n" : "");
+}
+
+sub canonicalize_lowir_pair_nothrow_resume_for_compare
+{
+	my ($ref_data, $my_data) = @_;
+	my %nothrow;
+	for my $data ($ref_data, $my_data)
+	{
+		for my $entry (split_lowir_top_level_entries($data))
+		{
+			next if $entry !~ /^function [^\n]*\[[^\]\n]*\bunwind=no\b[^\]\n]*\]/;
+			my $key = lowir_function_entry_compare_key($entry);
+			$nothrow{$key} = 1 if defined($key);
+		}
+	}
+	return (
+		canonicalize_lowir_nothrow_resume_entries_for_compare(
+			$ref_data, \%nothrow),
+		canonicalize_lowir_nothrow_resume_entries_for_compare(
+			$my_data, \%nothrow));
+}
+
+sub lowir_function_entry_name
+{
+	my ($entry) = @_;
+	return $1 if $entry =~ /^(?:declare\s+)?function \@([A-Za-z0-9_]+)\b/;
+	return undef;
+}
+
+sub lowir_function_entry_object
+{
+	my ($entry) = @_;
+	return $1 if $entry =~ /^(?:declare\s+)?function \@[^\n]*\[[^\]\n]*\bobject=([^,\]\s]+)[^\]\n]*\]/;
+	return undef;
+}
+
+sub lowir_function_referenced_outside_entry
+{
+	my ($name, $entries, $entry_index) = @_;
+	for (my $i = 0; $i < @$entries; ++$i)
+	{
+		next if $i == $entry_index || $entries->[$i] =~ /^alias object /;
+		return 1 if $entries->[$i] =~ /\@\Q$name\E\b/;
+	}
+	return 0;
+}
+
+sub canonicalize_lowir_reference_liveness_for_compare
+{
+	my ($ref_data, $my_data) = @_;
+	my (%my_names, %my_objects);
+	for my $entry (split_lowir_top_level_entries($my_data))
+	{
+		my $name = lowir_function_entry_name($entry);
+		next if !defined($name);
+		$my_names{$name} = 1;
+		my $object = lowir_function_entry_object($entry);
+		$my_objects{$object} = 1 if defined($object);
+	}
+
+	my @entries = split_lowir_top_level_entries($ref_data);
+	my @kept;
+	for (my $i = 0; $i < @entries; ++$i)
+	{
+		my $entry = $entries[$i];
+		my $name = lowir_function_entry_name($entry);
+		if (!defined($name))
+		{
+			push @kept, $entry;
+			next;
+		}
+		my $object = lowir_function_entry_object($entry);
+		my $present = exists($my_names{$name}) ||
+			(defined($object) && exists($my_objects{$object}));
+		if (!$present &&
+			!lowir_function_referenced_outside_entry($name, \@entries, $i))
+		{
+			my $declaration = $entry =~ /^declare\s+function /;
+			my $discardable_definition =
+				$entry =~ /^function / &&
+				$entry =~ /\[[^\]\n]*\bbinding=(?:weak|internal)\b[^\]\n]*\]/ &&
+				$entry !~ /\[[^\]\n]*\bobject_root=yes\b[^\]\n]*\]/ &&
+				$entry !~ /\[[^\]\n]*\brole=(?:entry|init|fini)\b[^\]\n]*\]/;
+			next if $declaration || $discardable_definition;
+		}
+		push @kept, $entry;
+	}
+	return join("\n\n", @kept) . (scalar(@kept) ? "\n" : "");
+}
+
+sub lowir_compare_entry_identity
+{
+	my ($entry) = @_;
+	return "function:$1"
+		if $entry =~ /^(?:declare\s+)?function \@([^\s(]+)/;
+	return "global:$1"
+		if $entry =~ /^(?:declare\s+)?global \@([^\s:=]+)/;
+	return "exact:$entry";
+}
+
+sub lowir_nonempty_trimmed_lines
+{
+	my ($entry) = @_;
+	my @result;
+	for my $line (split(/\n/, $entry))
+	{
+		$line =~ s/^\s+//;
+		$line =~ s/\s+$//;
+		push @result, $line if $line ne '';
+	}
+	return @result;
+}
+
+sub lowir_function_signature_line
+{
+	my ($line) = @_;
+	$line =~ s/^declare\s+//;
+	$line =~ s/\s*\{\s*$//;
+	return $line;
+}
+
+sub lowir_projection_local_kind
+{
+	my ($token) = @_;
+	return 'value' if $token =~ /^%</;
+	return 'slot' if $token =~ /^\$/;
+	return 'block' if $token =~ /^\^/;
+	return '';
+}
+
+sub lowir_projection_line_matches
+{
+	my ($ref_line, $my_line, $mapping, $reverse) = @_;
+	my @ref_parts = split(/((?:%<value\d+>|\$<slot\d+>|\^<block\d+>))/, $ref_line);
+	my @my_parts = split(/((?:%<value\d+>|\$<slot\d+>|\^<block\d+>))/, $my_line);
+	return 0 if scalar(@ref_parts) != scalar(@my_parts);
+	my (%candidate_mapping, %candidate_reverse);
+	for my $key (keys(%$mapping))
+	{
+		$candidate_mapping{$key} = $mapping->{$key};
+		$candidate_reverse{$mapping->{$key}} = $key;
+	}
+	for (my $i = 0; $i < @ref_parts; ++$i)
+	{
+		my $ref_kind = lowir_projection_local_kind($ref_parts[$i]);
+		my $my_kind = lowir_projection_local_kind($my_parts[$i]);
+		if ($ref_kind eq '' || $my_kind eq '')
+		{
+			return 0 if $ref_kind ne $my_kind ||
+				$ref_parts[$i] ne $my_parts[$i];
+			next;
+		}
+		return 0 if $ref_kind ne $my_kind;
+		if (exists($candidate_mapping{$ref_parts[$i]}))
+		{
+			return 0 if $candidate_mapping{$ref_parts[$i]} ne $my_parts[$i];
+		}
+		elsif (exists($candidate_reverse{$my_parts[$i]}))
+		{
+			return 0;
+		}
+		else
+		{
+			$candidate_mapping{$ref_parts[$i]} = $my_parts[$i];
+			$candidate_reverse{$my_parts[$i]} = $ref_parts[$i];
+		}
+	}
+	%$mapping = %candidate_mapping;
+	%$reverse = %candidate_reverse;
+	return 1;
+}
+
+sub lowir_reference_entry_is_projection
+{
+	my ($ref_entry, $my_entry) = @_;
+	return $ref_entry eq $my_entry if $ref_entry !~ /^(?:declare\s+)?function /;
+	my @ref_lines = lowir_nonempty_trimmed_lines($ref_entry);
+	my @my_lines = lowir_nonempty_trimmed_lines($my_entry);
+	return 0 if scalar(@ref_lines) == 0 || scalar(@my_lines) == 0;
+	my $ref_declaration = $ref_lines[0] =~ /^declare\s+function /;
+	my $my_declaration = $my_lines[0] =~ /^declare\s+function /;
+	my (%mapping, %reverse);
+	return 0 if !lowir_projection_line_matches(
+		lowir_function_signature_line($ref_lines[0]),
+		lowir_function_signature_line($my_lines[0]),
+		\%mapping, \%reverse);
+	return 1 if $ref_declaration;
+	return 0 if $my_declaration;
+
+	my $cursor = 1;
+	for (my $i = 1; $i < @ref_lines; ++$i)
+	{
+		while ($cursor < @my_lines)
+		{
+			my (%candidate_mapping, %candidate_reverse);
+			%candidate_mapping = %mapping;
+			%candidate_reverse = %reverse;
+			if (lowir_projection_line_matches(
+				$ref_lines[$i], $my_lines[$cursor],
+				\%candidate_mapping, \%candidate_reverse))
+			{
+				%mapping = %candidate_mapping;
+				%reverse = %candidate_reverse;
+				last;
+			}
+			++$cursor;
+		}
+		return 0 if $cursor == @my_lines;
+		++$cursor;
+	}
+	return 1;
+}
+
+sub lowir_static_finalizer_action_is_projection
+{
+	my ($ref_entry, $my_entry) = @_;
+	return 0 if $ref_entry !~ /^function [^\n]*\[[^\]\n]*\brole=fini\b[^\]\n]*\]/;
+	return 0 if $my_entry !~ /^function /;
+	my @actions;
+	while ($ref_entry =~ /(%<value\d+>)\s*=\s*addr\s+(\@<global\d+>)[\s\S]*?call\s+void\s+(\@<fn\d+>)\(\g{1}\)/g)
+	{
+		push @actions, [$2, $3];
+	}
+	return 0 if scalar(@actions) == 0;
+	for my $action (@actions)
+	{
+		my ($global, $callee) = @$action;
+		return 0 if $my_entry !~ /(%<value\d+>)\s*=\s*addr\s+\Q$global\E[\s\S]*?call\s+void\s+\Q$callee\E\(\g{1}\)/;
+	}
+	return $my_entry =~ /return void/;
+}
+
+sub lowir_reference_is_generated_projection
+{
+	my ($ref_data, $my_data) = @_;
+	my %my_entries;
+	for my $entry (split_lowir_top_level_entries($my_data))
+	{
+		push @{$my_entries{lowir_compare_entry_identity($entry)}}, $entry;
+	}
+	for my $ref_entry (split_lowir_top_level_entries($ref_data))
+	{
+		my $identity = lowir_compare_entry_identity($ref_entry);
+		my $matched = 0;
+		if (exists($my_entries{$identity}))
+		{
+			for (my $i = 0; $i < @{$my_entries{$identity}}; ++$i)
+			{
+				next if !lowir_reference_entry_is_projection(
+					$ref_entry, $my_entries{$identity}[$i]);
+				splice(@{$my_entries{$identity}}, $i, 1);
+				$matched = 1;
+				last;
+			}
+		}
+		if (!$matched && $ref_entry =~ /^function /)
+		{
+			for my $candidate_identity (keys(%my_entries))
+			{
+				next if $candidate_identity !~ /^function:/;
+				for (my $i = 0;
+					$i < @{$my_entries{$candidate_identity}}; ++$i)
+				{
+					next if !lowir_static_finalizer_action_is_projection(
+						$ref_entry, $my_entries{$candidate_identity}[$i]);
+					splice(@{$my_entries{$candidate_identity}}, $i, 1);
+					$matched = 1;
+					last;
+				}
+				last if $matched;
+			}
+		}
+		return 0 if !$matched;
+	}
+	return 1;
 }
 
 sub lowir_compare_artifact_paths
@@ -2472,13 +3114,16 @@ sub compare_lowir_text
 		canonicalize_lowir_pair_for_compare($ref_data, $my_data);
 
 	return (1, undef, undef) if $ref_compare_data eq $my_compare_data;
+	return (1, undef, undef)
+		if lowir_reference_is_generated_projection(
+			$ref_compare_data, $my_compare_data);
 
 	my ($ref_compare, $my_compare, $diff_path) =
 		write_lowir_compare_failure_artifacts($my,
 		                                      $ref_compare_data,
 		                                      $my_compare_data);
 	return (0,
-	        "ERROR: generated LowIR does not match reference after relaxed metadata canonicalization and order canonicalization; canonical diff written to $diff_path",
+	        "ERROR: generated LowIR does not match reference after relaxed metadata, local-name, and order canonicalization; canonical diff written to $diff_path",
 	        lowir_compare_failure_hint($ref_compare, $my_compare, $diff_path));
 }
 

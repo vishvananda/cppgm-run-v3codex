@@ -1,6 +1,6 @@
 struct HostSimpleCtor {
   int value;
-  HostSimpleCtor() : value(3) {}
+  __attribute__((noinline)) HostSimpleCtor() : value(3) {}
 };
 
 int main()

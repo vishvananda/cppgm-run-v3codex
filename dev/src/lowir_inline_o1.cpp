@@ -1,4 +1,5 @@
 #include "lowir_inline_o1.h"
+#include "lowir_inline_analysis.h"
 #include "lowir_opt.h"
 
 #include <algorithm>
@@ -6,6 +7,7 @@
 #include <deque>
 #include <iterator>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -23,7 +25,7 @@ using lowir_model::LowType;
 using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
-const std::size_t kNoFunction = static_cast<std::size_t>(-1);
+const std::size_t kNoFunction = InlineCallGraph::no_function();
 const std::size_t kInlineInstructionBudget = 128;
 class ValueMap
 {
@@ -358,23 +360,23 @@ public:
           Stats * stats)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
-      definition_(program->symbol_names.size(), kNoFunction),
+      call_graph_(analyze_inline_call_graph(*program, stats)),
       no_unwind_(program->symbol_names.size(), 0),
       prepared_oversized_symbols_(prepared_oversized_symbols),
       original_instruction_counts_(original_instruction_counts), rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
-    for(std::size_t i = 0; i < program_.functions.size(); ++i)
-      definition_[program_.functions[i].symbol] = i;
     contains_eh_.resize(program_.functions.size(), 0);
     instruction_counts_.resize(program_.functions.size(), 0);
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       contains_eh_[i] = contains_eh(program_.functions[i]);
       instruction_counts_[i] = instruction_count(program_.functions[i]);
     }
+    if(stats_) stats_->inline_input_instructions =
+      std::accumulate(instruction_counts_.begin(), instruction_counts_.end(),
+        static_cast<std::size_t>(0));
     infer_no_unwind();
-    mark_recursive();
     state_.assign(program_.functions.size(), 0);
     remaining_inline_budget_.assign(program_.functions.size(),
       kInlineInstructionBudget);
@@ -383,13 +385,16 @@ public:
   std::size_t run()
   {
     std::deque<std::size_t> stripped;
-    for(std::size_t i = 0; i < program_.functions.size(); ++i)
-      if(expand(i) && has_eh_blocked_callers(i) &&
-         instruction_counts_[i] <= 4 &&
-         leaf_inline_shape(program_.functions[i])) {
-        stripped.push_back(i);
+    for(std::size_t cursor = 0;
+        cursor < call_graph_.callee_first_order.size(); ++cursor) {
+      const std::size_t function = call_graph_.callee_first_order[cursor];
+      if(expand(function) && has_eh_blocked_callers(function) &&
+         instruction_counts_[function] <= 4 &&
+         leaf_inline_shape(program_.functions[function])) {
+        stripped.push_back(function);
         if(stats_) ++stats_->worklist_pushes;
       }
+    }
     while(!stripped.empty()) {
       const std::size_t target = stripped.front();
       stripped.pop_front();
@@ -420,6 +425,12 @@ public:
         }
       }
     }
+    if(stats_) {
+      stats_->inline_output_instructions = 0;
+      for(std::size_t i = 0; i < program_.functions.size(); ++i)
+        stats_->inline_output_instructions +=
+          instruction_count(program_.functions[i]);
+    }
     return rewrites_;
   }
 
@@ -427,11 +438,11 @@ private:
   LowirProgram & program_;
   std::vector<unsigned char> * rewritten_symbols_;
   Stats * stats_;
-  std::vector<std::size_t> definition_;
+  InlineCallGraph call_graph_;
   std::vector<unsigned char> no_unwind_;
   const std::vector<unsigned char> & prepared_oversized_symbols_;
   const std::vector<std::size_t> & original_instruction_counts_;
-  std::vector<unsigned char> recursive_, state_, contains_eh_;
+  std::vector<unsigned char> state_, contains_eh_;
   std::vector<std::size_t> instruction_counts_;
   std::vector<std::size_t> remaining_inline_budget_;
   std::unordered_map<std::size_t, std::vector<std::size_t> >
@@ -442,7 +453,7 @@ private:
   {
     lowir_model::SymbolId symbol;
     if(!direct_call(instruction, &symbol)) return kNoFunction;
-    return definition_[symbol];
+    return call_graph_.definition_by_symbol[symbol];
   }
 
   bool has_eh_blocked_callers(std::size_t target) const
@@ -514,100 +525,67 @@ private:
     }
   }
 
-  void mark_recursive()
-  {
-    const std::size_t count = program_.functions.size();
-    recursive_.assign(count, 0);
-    std::vector<std::vector<std::size_t> > edges(count), reverse(count);
-    std::vector<unsigned char> self(count, 0);
-    for(std::size_t i = 0; i < count; ++i) {
-      const Function & function = program_.functions[i];
-      for(std::size_t b = 0; b < function.blocks.size(); ++b)
-        for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
-          const std::size_t target = callee(function.blocks[b].instructions[j]);
-          if(target == kNoFunction) continue;
-          edges[i].push_back(target);
-          reverse[target].push_back(i);
-          self[i] = self[i] || target == i;
-        }
-    }
-    struct Frame { std::size_t node; std::size_t edge; };
-    std::vector<unsigned char> seen(count, 0);
-    std::vector<std::size_t> order;
-    for(std::size_t root = 0; root < count; ++root) {
-      if(seen[root]) continue;
-      std::vector<Frame> stack;
-      seen[root] = 1;
-      stack.push_back(Frame{root, 0});
-      while(!stack.empty()) {
-        Frame & frame = stack.back();
-        if(frame.edge < edges[frame.node].size()) {
-          const std::size_t next = edges[frame.node][frame.edge++];
-          if(!seen[next]) {
-            seen[next] = 1;
-            stack.push_back(Frame{next, 0});
-          }
-        } else {
-          order.push_back(frame.node);
-          stack.pop_back();
-        }
-      }
-    }
-    std::fill(seen.begin(), seen.end(), 0);
-    for(std::size_t cursor = order.size(); cursor > 0; --cursor) {
-      const std::size_t root = order[cursor - 1];
-      if(seen[root]) continue;
-      std::vector<std::size_t> component, stack(1, root);
-      seen[root] = 1;
-      while(!stack.empty()) {
-        const std::size_t node = stack.back();
-        stack.pop_back();
-        component.push_back(node);
-        for(std::size_t i = 0; i < reverse[node].size(); ++i)
-          if(!seen[reverse[node][i]]) {
-            seen[reverse[node][i]] = 1;
-            stack.push_back(reverse[node][i]);
-          }
-      }
-      if(component.size() > 1 || self[root])
-        for(std::size_t i = 0; i < component.size(); ++i)
-          recursive_[component[i]] = 1;
-    }
-  }
-
   bool candidate(std::size_t caller, std::size_t target,
                  const Instruction & call,
-                 bool landing, bool inside_eh)
+                 bool landing, bool inside_eh, bool record_stats = false)
   {
-    if(target == kNoFunction || recursive_[target] || target == caller) return false;
+    if(target == kNoFunction) return false;
+    if(call_graph_.recursive[target] || target == caller) {
+      if(record_stats && stats_) ++stats_->inline_reject_recursive;
+      return false;
+    }
     const Function & callee_function = program_.functions[target];
-	if(callee_function.metadata.no_inline) return false;
+    if(callee_function.metadata.no_inline) {
+      if(record_stats && stats_) ++stats_->inline_reject_no_inline;
+      return false;
+    }
     // Some pre-PA37 virtual-base ABI wrappers intentionally leave hidden
     // boundary operands to native lowering.  They are valid backend calls but
     // are not structurally safe to substitute as ordinary LowIR parameters.
-    if(callee_function.params.size() != call.args.size()) return false;
-    if(callee_function.boundary.arity == lowir_model::CAM_VARIADIC)
+    if(callee_function.params.size() != call.args.size()) {
+      if(record_stats && stats_) ++stats_->inline_reject_argument_shape;
       return false;
+    }
+    if(callee_function.boundary.arity == lowir_model::CAM_VARIADIC) {
+      if(record_stats && stats_) ++stats_->inline_reject_variadic;
+      return false;
+    }
     if(instruction_counts_[target] > 40 &&
-       !callee_function.metadata.prefer_local_object_binding) return false;
+       !callee_function.metadata.prefer_local_object_binding) {
+      if(record_stats && stats_) ++stats_->inline_reject_callee_size;
+      return false;
+    }
     if(prepared_oversized_symbols_[callee_function.symbol] &&
        (instruction_counts_[target] > 4 ||
-        !leaf_inline_shape(callee_function))) return false;
-    if(landing) return false;
+        !leaf_inline_shape(callee_function))) {
+      if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
+      return false;
+    }
+    if(landing) {
+      if(record_stats && stats_) ++stats_->inline_reject_landing;
+      return false;
+    }
     // Preserve externally visible calls inside an EH region.  Earlier object
     // contracts inspect the call-site table emitted for these calls, and an
     // inferred no-throw body is not part of that external ABI contract.
-    if(inside_eh && callee_function.metadata.object_symbol.valid())
+    if(inside_eh && callee_function.metadata.object_symbol.valid()) {
+      if(record_stats && stats_) ++stats_->inline_reject_eh_visibility;
       return false;
-    if(inside_eh && !no_unwind_[callee_function.symbol]) return false;
+    }
+    if(inside_eh && !no_unwind_[callee_function.symbol]) {
+      if(record_stats && stats_) ++stats_->inline_reject_eh_unwind;
+      return false;
+    }
     if(contains_eh_[target]) {
       if(callee_function.boundary.unwind == lowir_model::CUM_NO &&
          instruction_counts_[target] <= 8) {
         eh_blocked_callers_[target].push_back(caller);
         if(stats_) ++stats_->inline_eh_blocked_records;
       }
+      if(record_stats && stats_) ++stats_->inline_reject_callee_eh;
       return false;
     }
+    if(record_stats && stats_) ++stats_->inline_candidate_calls;
     return true;
   }
 
@@ -983,8 +961,13 @@ private:
     for(std::size_t i = 0; i < source.size(); ++i) {
       const Instruction & ins = source[i];
       const std::size_t target = callee(ins);
-      if(target != kNoFunction &&
-         candidate(function_index, target, ins, landing, active) &&
+      bool eligible = false;
+      if(target != kNoFunction) {
+        if(stats_) ++stats_->inline_call_visits;
+        eligible = candidate(
+          function_index, target, ins, landing, active, true);
+      }
+      if(eligible &&
          leaf_inline_shape(program_.functions[target]) &&
          consume_inline_budget(target, inline_budget)) {
         inline_leaf_call(function_index, ins, program_.functions[target],
@@ -992,8 +975,8 @@ private:
         ++rewrites_;
         changed = true;
         if(stats_) {
-          ++stats_->inline_call_visits;
           ++stats_->inline_calls;
+          stats_->inline_cloned_instructions += instruction_counts_[target];
         }
         continue;
       }
@@ -1058,12 +1041,17 @@ private:
                  eh.landing_blocks.size() &&
                eh.landing_blocks[
                  program_.functions[function_index].blocks[b].id] != 0,
-               active) && consume_inline_budget(target, &inline_budget)) {
+               active, true) &&
+             consume_inline_budget(target, &inline_budget)) {
             inline_call(function_index, b, j, program_.functions[target],
               &names, &replacements, &block_eh, active);
             ++rewrites_;
             changed = true;
-            if(stats_) ++stats_->inline_calls;
+            if(stats_) {
+              ++stats_->inline_calls;
+              stats_->inline_cloned_instructions +=
+                instruction_counts_[target];
+            }
             continue;
           }
         }

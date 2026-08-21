@@ -41,6 +41,7 @@ global @D__vtable [storage=readonly, binding=weak, object=_ZTV1D] = {
   i64 0
   ptr addr @__rtti_struct_D
   ptr addr @B1__anchor
+  ptr addr @D__current
 }
 global @D____view__B2__8__vtable [storage=readonly, binding=weak, object=@D____view__B2__8__vtable] = {
   i64 -8

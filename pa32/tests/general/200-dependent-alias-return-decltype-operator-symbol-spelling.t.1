@@ -10,6 +10,7 @@ struct move_iterator {
 };
 
 template<class I1, class I2>
+__attribute__((noinline))
 auto operator-(const move_iterator<I1> & x,
                const move_iterator<I2> & y) -> decltype(x.base() - y.base())
 {
@@ -31,6 +32,7 @@ struct cat {
 };
 
 template<class RandIter, enable_if_t<cat<RandIter>::value, int> = 0>
+__attribute__((noinline))
 iter_distance_t<RandIter> distance_like(RandIter first, RandIter last)
 {
   return last - first;

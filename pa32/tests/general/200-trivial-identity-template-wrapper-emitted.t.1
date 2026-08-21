@@ -1,5 +1,5 @@
 template<class T>
-inline T * identity_ptr(T * p)
+__attribute__((noinline)) inline T * identity_ptr(T * p)
 {
   return p;
 }

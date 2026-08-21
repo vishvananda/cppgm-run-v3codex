@@ -1,7 +1,7 @@
 template<class...> struct V {};
 template<class... T> struct A {
   typedef V<T...> X;
-  X f(X x) { return x; }
+  __attribute__((noinline)) X f(X x) { return x; }
 };
 
 int main() {

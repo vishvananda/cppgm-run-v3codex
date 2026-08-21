@@ -1,5 +1,6 @@
 #include "lowir_opt.h"
 #include "lowir_cleanup_o1.h"
+#include "lowir_function_reachability.h"
 #include "lowir_inline_o1.h"
 
 #include <algorithm>
@@ -2806,7 +2807,27 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         &Stats::slot_runs, &Stats::slot_nanoseconds);
     }
   }
+  const lowir_model::FunctionPruningSummary pruning =
+    lowir_model::prune_unreachable_weak_functions(program);
   if(stats) {
+    stats->inline_reachable_functions = pruning.reachable_functions;
+    stats->inline_pruned_functions = pruning.pruned_functions;
+    stats->inline_unreachable_weak_functions =
+      pruning.unreachable_weak_functions;
+    stats->inline_unreachable_internal_functions =
+      pruning.unreachable_internal_functions;
+    stats->inline_retained_external_strong =
+      pruning.retained_external_strong;
+    stats->inline_retained_address_or_relocation =
+      pruning.retained_address_or_relocation;
+    stats->inline_retained_direct_call = pruning.retained_direct_call;
+    stats->inline_retained_lifecycle = pruning.retained_lifecycle;
+    stats->inline_retained_object_output_root =
+      pruning.retained_object_output_root;
+    stats->inline_retained_object_output_root_weak =
+      pruning.retained_object_output_root_weak;
+    stats->inline_retained_object_output_root_internal =
+      pruning.retained_object_output_root_internal;
     stats->output_instructions = instruction_count(program);
     stats->elapsed_nanoseconds = static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::nanoseconds>(

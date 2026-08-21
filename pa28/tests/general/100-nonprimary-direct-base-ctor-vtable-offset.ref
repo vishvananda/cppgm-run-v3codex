@@ -51,6 +51,7 @@ global @Derived__vtable [storage=readonly, binding=weak, object=_ZTV7Derived] = 
   i64 0
   ptr addr @__rtti_struct_Derived
   ptr addr @Derived__f
+  ptr addr @Derived__g
 }
 global @Derived____view__Right__8__vtable [storage=readonly, binding=weak, object=@Derived____view__Right__8__vtable] = {
   i64 -8

@@ -79,6 +79,7 @@ global @implementation__vtable [storage=readonly, binding=weak, object=_ZTV14imp
   i64 0
   ptr addr @__rtti_struct_implementation
   ptr addr @implementation__first
+  ptr addr @implementation__second
 }
 global @implementation____view__right__8__vtable [storage=readonly, binding=weak, object=@implementation____view__right__8__vtable] = {
   i64 -8

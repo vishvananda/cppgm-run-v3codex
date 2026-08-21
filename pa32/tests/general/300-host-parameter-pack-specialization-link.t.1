@@ -1,10 +1,6 @@
 #include "300-host-parameter-pack-specialization-link.helper.h"
 
-template<class... Types>
-int pack_sum(Types&&... values)
-{
-  return sizeof...(values);
-}
+template int pack_sum<int&>(int&);
 
 int main()
 {

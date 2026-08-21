@@ -15,10 +15,12 @@ struct duration {
   duration() : value(0) {}
   duration(rep value) : value(value) {}
 
+  __attribute__((noinline))
   duration<typename common_type<rep>::type> operator+() const;
 };
 
 template<class Rep>
+__attribute__((noinline))
 duration<typename common_type<Rep>::type> duration<Rep>::operator+() const
 {
   return duration<typename common_type<Rep>::type>(value + 1);

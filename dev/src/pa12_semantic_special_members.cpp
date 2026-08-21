@@ -324,6 +324,7 @@ BindingId SemanticAnalyzer::EnsureConstructorBaseEntry(BindingId constructor)
 		source_binding.unnamed_namespace_linkage;
 	binding.inline_function = source_binding.inline_function;
 	binding.force_inline = source_binding.force_inline;
+	binding.no_inline = source_binding.no_inline;
 	binding.weak_odr = source_binding.weak_odr;
 	binding.weak_symbol = source_binding.weak_symbol;
 	binding.object_output_root = source_binding.object_output_root;
@@ -1446,6 +1447,7 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 		IsNonthrowing(declarator, parsed.parameter_scope));
 	ConfigureFunctionExceptionSpecification(
 		special, declarator, parsed.parameter_scope);
+	ApplyFunctionAbiTagAttributes(node, special);
 	FunctionInfo& info = GetMutableFunction(special);
 	if (parsed.parameters.size() != info.parameters.size())
 		throw std::logic_error(

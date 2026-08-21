@@ -2,7 +2,7 @@ template<int, class...> struct A;
 template<int I, class T, class... U>
 struct A<I, T, U...> {
   A() {}
-  A(A const &) {}
+  __attribute__((noinline)) A(A const &) {}
 };
 
 int main() {

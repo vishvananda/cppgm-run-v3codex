@@ -156,8 +156,56 @@ int run_lowiropt_mode(const vector<string> & args)
          << " cfg_edge_visits=" << stats.cfg_edge_visits
          << " worklist_pushes=" << stats.worklist_pushes
          << " dataflow_updates=" << stats.dataflow_updates
+         << " inline_direct_edges=" << stats.inline_direct_edges
+         << " inline_sccs=" << stats.inline_sccs
+         << " inline_recursive_functions="
+         << stats.inline_recursive_functions
          << " inline_call_visits=" << stats.inline_call_visits
+         << " inline_candidate_calls=" << stats.inline_candidate_calls
          << " inline_calls=" << stats.inline_calls
+         << " inline_cloned_instructions="
+         << stats.inline_cloned_instructions
+         << " inline_input_instructions="
+         << stats.inline_input_instructions
+         << " inline_output_instructions="
+         << stats.inline_output_instructions
+         << " inline_reject_recursive=" << stats.inline_reject_recursive
+         << " inline_reject_no_inline=" << stats.inline_reject_no_inline
+         << " inline_reject_argument_shape="
+         << stats.inline_reject_argument_shape
+         << " inline_reject_variadic=" << stats.inline_reject_variadic
+         << " inline_reject_callee_size="
+         << stats.inline_reject_callee_size
+         << " inline_reject_prepared_size="
+         << stats.inline_reject_prepared_size
+         << " inline_reject_landing=" << stats.inline_reject_landing
+         << " inline_reject_eh_visibility="
+         << stats.inline_reject_eh_visibility
+         << " inline_reject_eh_unwind="
+         << stats.inline_reject_eh_unwind
+         << " inline_reject_callee_eh="
+         << stats.inline_reject_callee_eh
+         << " inline_reachable_functions="
+         << stats.inline_reachable_functions
+         << " inline_pruned_functions=" << stats.inline_pruned_functions
+         << " inline_unreachable_weak_functions="
+         << stats.inline_unreachable_weak_functions
+         << " inline_unreachable_internal_functions="
+         << stats.inline_unreachable_internal_functions
+         << " inline_retained_external_strong="
+         << stats.inline_retained_external_strong
+         << " inline_retained_address_or_relocation="
+         << stats.inline_retained_address_or_relocation
+         << " inline_retained_direct_call="
+         << stats.inline_retained_direct_call
+         << " inline_retained_lifecycle="
+         << stats.inline_retained_lifecycle
+         << " inline_retained_object_output_root="
+         << stats.inline_retained_object_output_root
+         << " inline_retained_object_output_root_weak="
+         << stats.inline_retained_object_output_root_weak
+         << " inline_retained_object_output_root_internal="
+         << stats.inline_retained_object_output_root_internal
          << " inline_changed_callers=" << stats.inline_changed_callers
          << " inline_eh_blocked_records="
          << stats.inline_eh_blocked_records

@@ -199,50 +199,6 @@ void canonicalize_frontend_lowir(Program& program,
 	}
 	program.function_declarations.swap(functions);
 
-	const std::size_t no_function = static_cast<std::size_t>(-1);
-	std::vector<std::size_t> function_index(
-		program.symbol_names.size(), no_function);
-	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		function_index[program.functions[i].symbol] = i;
-	std::vector<std::size_t> order;
-	order.reserve(program.functions.size());
-	std::vector<unsigned char> queued(program.functions.size(), 0);
-	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		if (program.functions[i].metadata.binding != SBM_WEAK)
-		{
-			queued[i] = 1;
-			order.push_back(i);
-		}
-	for (std::size_t cursor = 0; cursor < order.size(); ++cursor)
-	{
-		const Function& function = program.functions[order[cursor]];
-		for (std::size_t b = 0; b < function.blocks.size(); ++b)
-			for (std::size_t j = 0;
-				j < function.blocks[b].instructions.size(); ++j)
-			{
-				if (stats) ++stats->function_order_visits;
-				const Instruction& ins = function.blocks[b].instructions[j];
-				if (ins.kind != Instruction::IK_CALL ||
-					ins.first.kind != Operand::OP_GLOBAL) continue;
-				const std::size_t found = function_index[ins.first.symbol];
-				if (found != no_function && !queued[found])
-				{
-					queued[found] = 1;
-					order.push_back(found);
-				}
-			}
-	}
-	for (std::size_t i = 0; i < program.functions.size(); ++i)
-		if (!queued[i]) order.push_back(i);
-	std::vector<Function> ordered_functions;
-	ordered_functions.reserve(program.functions.size());
-	for (std::size_t i = 0; i < order.size(); ++i)
-	{
-		ordered_functions.push_back(std::move(program.functions[order[i]]));
-		if (stats) ++stats->function_moves;
-	}
-	program.functions.swap(ordered_functions);
-
 	std::vector<ObjectAlias> ordered_aliases;
 	ordered_aliases.reserve(program.object_aliases.size());
 	std::vector<std::vector<std::size_t> > aliases_by_target(

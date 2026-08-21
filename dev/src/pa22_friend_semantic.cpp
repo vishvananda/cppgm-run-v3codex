@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa33_function_control_attributes.h"
 
 #include <stdexcept>
 #include <vector>
@@ -107,6 +108,9 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 		ConfigureFunctionExceptionSpecification(
 			binding, declarators[i], parsed.parameter_scope);
 		ApplyFunctionNoreturnAttribute(node, binding); ApplyFunctionNoreturnAttribute(declarators[i], binding);
+		ApplyFunctionNoInlineAttribute(*arena_, program_, node, binding);
+		ApplyFunctionNoInlineAttribute(
+			*arena_, program_, declarators[i], binding);
 		FunctionInfo& info = GetMutableFunction(binding);
 		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
 		PublishInlineFunctionFacts(

@@ -1,44 +1,45 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-declare global @__external_rtti_vtable____vmi_class_type_info [binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____vmi_class_type_info [role=rtti_vmi, binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
+
 declare function @D__tag(%arg0 : ptr) -> i32 [binding=strong, object=_ZN1D3tagEv]
 
-global @__typeinfo_name__struct_D [storage=readonly, binding=weak, object=_ZTS1D] = {
-  i8 49
-  i8 68
-  i8 0
-}
-global @__typeinfo_name__struct_V [storage=readonly, binding=weak, object=_ZTS1V] = {
+global @__typeinfo_name__struct_V [binding=weak, object=_ZTS1V] = {
   i8 49
   i8 86
   i8 0
 }
-global @__rtti_struct_V [storage=readonly, binding=weak, object=_ZTI1V] = {
+global @__rtti_struct_V [binding=weak, object=_ZTI1V] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_V
 }
-global @__rtti_struct_D [storage=readonly, binding=weak, object=_ZTI1D] = {
+global @__typeinfo_name__struct_D [binding=weak, object=_ZTS1D] = {
+  i8 49
+  i8 68
+  i8 0
+}
+global @__rtti_struct_D [binding=weak, object=_ZTI1D] = {
   ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
   ptr addr @__typeinfo_name__struct_D
   i32 0
   i32 1
   ptr addr @__rtti_struct_V
-  i64 -8189
+  i64 -6141
 }
-global @D__vtable [storage=readonly, binding=strong, object=_ZTV1D] = {
+global @D__vtable [binding=strong, object=_ZTV1D] = {
   i64 8
-  i64 0
   i64 0
   ptr addr @__rtti_struct_D
   ptr addr @D__id
+  ptr addr @D__tag
 }
-global @D____view__V__8__vtable [storage=readonly, binding=weak, object=@D____view__V__8__vtable] = {
+global @D____view__V__8__vtable [binding=internal, object=@D____view__V__8__vtable] = {
   i64 0
   i64 -8
   ptr addr @__rtti_struct_D
   ptr addr @_D__tag__vtable_return_adjust__this_neg8__return_pos0
 }
-global @D____vtt [storage=readonly, binding=weak, object=_ZTT1D, object_root=yes] = {
-  ptr addr @D__vtable + 32
+global @D____vtt [binding=weak, object=_ZTT1D, object_root=yes] = {
+  ptr addr @D__vtable + 24
   ptr addr @D____view__V__8__vtable + 24
 }
 
@@ -49,7 +50,7 @@ function @D__id(%this : ptr) -> i32 [binding=strong, object=_ZN1D2idEv] {
     store ptr %this, $this
     return i32 1
 }
-function @_D__tag__vtable_return_adjust__this_neg8__return_pos0(%arg0 : ptr) -> i32 [binding=internal] {
+function @_D__tag__vtable_return_adjust__this_neg8__return_pos0(%arg0 : ptr) -> i32 [binding=strong, object=_ZThn8_N1D3tagEv] {
   block ^entry:
     %t1 = index i8 %arg0, -8
     %t2 = call i32 @D__tag(%t1)

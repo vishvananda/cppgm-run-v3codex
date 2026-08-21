@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa33_function_control_attributes.h"
 
 #include <stdexcept>
 
@@ -35,6 +36,8 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaratio
 	ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 	ApplyFunctionAsmLabel(declarator, function);
 	ApplyFunctionNoreturnAttribute(source_declaration, function);
+	ApplyFunctionNoInlineAttribute(
+		*arena_, program_, source_declaration, function);
 	ApplyFunctionAbiTagAttributes(item, function);
 	PublishInlineFunctionFacts(
 		function, spec.inline_specifier || spec.is_constexpr);

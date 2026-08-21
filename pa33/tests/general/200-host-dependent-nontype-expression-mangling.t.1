@@ -12,6 +12,7 @@ template<class T>
 using sized_value_t = sized_value<T, width<T>::value>;
 
 template<class T>
+__attribute__((noinline))
 T read_value(sized_value_t<T> value) {
   return value.value;
 }

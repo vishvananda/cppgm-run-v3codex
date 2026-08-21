@@ -7,7 +7,7 @@ struct function<Rp(Args...)> {
   function(Fp);
 
   ~function();
-  Rp operator()(Args...) const;
+  __attribute__((noinline)) Rp operator()(Args...) const;
 };
 
 template<class Rp, class... Args>
@@ -18,6 +18,7 @@ template<class Rp, class... Args>
 function<Rp(Args...)>::~function() {}
 
 template<class Rp, class... Args>
+__attribute__((noinline))
 Rp function<Rp(Args...)>::operator()(Args...) const
 {
   return Rp();

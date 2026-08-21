@@ -3,7 +3,7 @@ struct Box {
   int value;
 
   template<typename U>
-  Box(U u);
+  __attribute__((noinline)) Box(U u);
 };
 
 template<typename T>

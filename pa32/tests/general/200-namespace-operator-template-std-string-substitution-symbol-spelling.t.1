@@ -12,6 +12,7 @@ template<class C, class Tr, class A>
 struct string {};
 
 template<class C, class Tr, class A>
+__attribute__((noinline))
 ostream<C, Tr> & operator<<(ostream<C, Tr> & out,
                             const string<C, Tr, A> &)
 {
@@ -33,6 +34,7 @@ template<class C, class Tr, class A>
 struct basic_string {};
 
 template<class C, class Tr, class A>
+__attribute__((noinline))
 basic_ostream<C, Tr> & operator<<(basic_ostream<C, Tr> & out,
                                   const basic_string<C, Tr, A> &)
 {
@@ -40,6 +42,7 @@ basic_ostream<C, Tr> & operator<<(basic_ostream<C, Tr> & out,
 }
 
 template<class Tr>
+__attribute__((noinline))
 basic_ostream<char, Tr> & operator<<(basic_ostream<char, Tr> & out,
                                      const char *)
 {

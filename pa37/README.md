@@ -171,6 +171,10 @@ running optimizing transforms.
 - conservative inlining of small direct calls, including `unwind=no` callees
   inside EH regions only when the caller EH shape can be preserved; a callee
   containing its own EH instructions must remain a call even at caller EH depth zero
+- preservation of calls to functions marked `no_inline=yes`; source-level GNU
+  `noinline` attributes must reach that LowIR metadata on the driver path
+- bottom-up processing of the direct-call graph so an eligible callee is
+  simplified before callers decide whether to inline it
 - a deterministic 128-instruction whole-caller inlining budget, charged by
   the greater of a callee's original and simplified instruction counts, so
   repeated individually eligible calls cannot cause unbounded growth
@@ -186,6 +190,10 @@ running optimizing transforms.
   stores to direct local slots that have no remaining loads, escaping uses, or
   other non-store uses
 - removal of slot declarations that become unused after simplification
+- removal, after inlining, of unreachable weak or internal function
+  definitions, while retaining externally visible strong definitions,
+  `object_root=yes` definitions, lifecycle roots, and definitions referenced
+  by calls, addresses, relocations, or structured object data
 
 `-O2` must include all `-O1` work and then conservatively promote eligible
 non-escaping scalar slots, including eligible `ptr` slots. Promotion must be
@@ -278,8 +286,18 @@ PA37 does not require:
 - loop optimizations, vectorization, or general-purpose inlining beyond the
   small direct-call inlining described for `-O1`
 - machine-IR scheduling or register-allocation optimization
-- interprocedural optimization
+- interprocedural optimization beyond direct-call graph ordering, the required
+  small-function inlining, and post-inline reachability cleanup
 - size-specific `-Os` or `-Oz` behavior
+
+### Design Notes
+
+A compact implementation can assign dense indices to function definitions and
+store direct-call edges in adjacency arrays. Computing strongly connected
+components once identifies recursive callees and provides a stable callee-first
+order without repeated symbol-name lookup. Use the typed symbol operands and
+metadata already present in LowIR when building the graph and its reachability
+roots; string rendering is only needed when serializing the final program.
 
 ### After PA37
 

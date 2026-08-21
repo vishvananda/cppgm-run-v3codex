@@ -1,9 +1,10 @@
 template<class T>
 struct Sink {
-  Sink & operator<<(Sink & (*pf)(Sink &));
+  __attribute__((noinline)) Sink & operator<<(Sink & (*pf)(Sink &));
 };
 
 template<class T>
+__attribute__((noinline))
 Sink<T> & Sink<T>::operator<<(Sink<T> & (*pf)(Sink<T> &))
 {
   return pf(*this);

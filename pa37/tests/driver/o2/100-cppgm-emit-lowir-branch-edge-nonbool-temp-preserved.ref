@@ -14,59 +14,15 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = addr $p
     %__o1inl0__t3 = index i8 [projection=field] %t1, 0
     store ptr 4660, %__o1inl0__t3
-    %__o1inl2__t3 = load ptr %__o1inl0__t3
+    %__o1inl1____o1inl0__t3 = load ptr %__o1inl0__t3
     store ptr 0, %__o1inl0__t3
-    branch %__o1inl2__t3, ^__o1inl2__if_then_1, ^__o1inl1__cont
+    branch %__o1inl1____o1inl0__t3, ^__o1inl1____o1inl0__if_then_1, ^__o1inl1__cont
 
-  block ^__o1inl2__if_then_1:
-    %__o1inl3__t1 = addr @__strlit__1
-    %__o1inl3__t3 = call i32 @printf(%__o1inl3__t1, %__o1inl2__t3)
+  block ^__o1inl1____o1inl0__if_then_1:
+    %__o1inl1____o1inl0____o1inl0__t1 = addr @__strlit__1
+    %__o1inl1____o1inl0____o1inl0__t3 = call i32 @printf(%__o1inl1____o1inl0____o1inl0__t1, %__o1inl1____o1inl0__t3)
     jump ^__o1inl1__cont
 
   block ^__o1inl1__cont:
     return i32 0
 }
-function @P__P(%this : ptr, %q : ptr) -> void [binding=weak, object=_ZN1PC1EPi] {
-  block ^entry:
-    %t3 = index i8 [projection=field] %this, 0
-    store ptr %q, %t3
-    return void
-}
-function @P___P(%this : ptr) -> void [binding=weak, object=_ZN1PD1Ev] {
-  block ^entry:
-    %__o1inl0__t2 = index i8 [projection=field] %this, 0
-    %__o1inl0__t3 = load ptr %__o1inl0__t2
-    store ptr 0, %__o1inl0__t2
-    branch %__o1inl0__t3, ^__o1inl0__if_then_1, ^__o1inl0__cont
-
-  block ^__o1inl0__if_then_1:
-    %__o1inl1__t1 = addr @__strlit__1
-    %__o1inl1__t3 = call i32 @printf(%__o1inl1__t1, %__o1inl0__t3)
-    jump ^__o1inl0__cont
-
-  block ^__o1inl0__cont:
-    return void
-}
-function @P__reset(%this : ptr, %q : ptr) -> void [binding=weak, object=_ZN1P5resetEPi] {
-  block ^entry:
-    %t2 = index i8 [projection=field] %this, 0
-    %t3 = load ptr %t2
-    store ptr %q, %t2
-    branch %t3, ^if_then_1, ^if_end_3
-
-  block ^if_then_1:
-    %__o1inl0__t1 = addr @__strlit__1
-    %__o1inl0__t3 = call i32 @printf(%__o1inl0__t1, %t3)
-    jump ^if_end_3
-
-  block ^if_end_3:
-    return void
-}
-function @D__operator__(%this : ptr, %p : ptr) -> void [binding=weak, object=_ZNK1DclEPi] {
-  block ^entry:
-    %t1 = addr @__strlit__1
-    %t3 = call i32 @printf(%t1, %p)
-    return void
-}
-alias object _ZN1PC2EPi = @P__P
-alias object _ZN1PD2Ev = @P___P

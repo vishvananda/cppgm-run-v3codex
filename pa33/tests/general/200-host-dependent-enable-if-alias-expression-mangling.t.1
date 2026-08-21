@@ -28,6 +28,7 @@ using deref_t = decltype(*declval<Iter&>());
 
 struct Ops {
   template<class Iter, enable_if_t<is_reference<deref_t<Iter> >::value, int> = 0>
+  __attribute__((noinline))
   static deref_t<Iter> iter_move(Iter&& i)
   {
     return *i;

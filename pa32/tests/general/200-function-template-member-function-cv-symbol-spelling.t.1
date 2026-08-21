@@ -3,7 +3,9 @@ struct X {
   int g() const { return 0; }
 };
 
-template<class R, class T> int bind(R (T::*)()) { return 0; }
-template<class R, class T> int bind(R (T::*)() const) { return 1; }
+template<class R, class T>
+__attribute__((noinline)) int bind(R (T::*)()) { return 0; }
+template<class R, class T>
+__attribute__((noinline)) int bind(R (T::*)() const) { return 1; }
 
 int main() { return bind(&X::f) + bind(&X::g) - 1; }

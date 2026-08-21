@@ -1,7 +1,7 @@
 int destroyed = 0;
 
 struct Tagged {
-  ~Tagged() __attribute__((__abi_tag__("tag")))
+  __attribute__((noinline)) ~Tagged() __attribute__((__abi_tag__("tag")))
   {
     destroyed = 1;
   }

@@ -1,5 +1,5 @@
 template<class T>
-inline void write_one(T * p)
+__attribute__((noinline)) inline void write_one(T * p)
 {
   *p = T(7);
 }

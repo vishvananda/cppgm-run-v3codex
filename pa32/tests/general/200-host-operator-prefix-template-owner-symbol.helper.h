@@ -20,7 +20,7 @@ struct operator_arrow_dispatch
 
   typedef proxy result_type;
 
-  static result_type apply(Reference const& x)
+  __attribute__((noinline)) static result_type apply(Reference const& x)
   {
     return result_type(x);
   }

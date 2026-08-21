@@ -3,6 +3,7 @@ struct algo {
 };
 
 template<class H, unsigned long N>
+__attribute__((noinline))
 typename H::result_type array_ref_probe(unsigned long seed,
                                         char const (&str)[N])
 {
@@ -10,6 +11,7 @@ typename H::result_type array_ref_probe(unsigned long seed,
 }
 
 template<class H, unsigned long N>
+__attribute__((noinline))
 typename H::result_type array_ref_probe(unsigned long seed,
                                         unsigned char const (&buf)[N])
 {

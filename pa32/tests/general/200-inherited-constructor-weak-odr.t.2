@@ -3,5 +3,6 @@
 int inherited_right()
 {
   inherited_linkage_derived value(4);
-  return value.value;
+  inherited_linkage_derived retained(6L);
+  return value.value + retained.value - 6;
 }

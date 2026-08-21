@@ -185,7 +185,8 @@ function @boot() -> void [role=init, binding=strong] {
 
 The currently defined top-level metadata keys are `role`, `linkage`, `binding`, `object`,
 `tls_for` (functions only), `keep_alias`, `prefer_local`, `object_root`, `trivial_lifecycle`
-(functions only), `force_inline` (functions only), and `storage` (globals only).
+(functions only), `force_inline` (functions only), `no_inline` (functions only), and
+`storage` (globals only).
 
 The currently defined global `storage` values are:
 
@@ -215,13 +216,26 @@ The currently defined role values are:
   - `eh_throw`
   - `eh_personality`
   - `eh_resume`
+  - `allocate_memory`
+  - `free_memory`
+  - `pure_virtual`
+  - `dynamic_cast`
+  - `bad_cast`
+  - `bad_typeid`
 - global roles:
   - `eh_top`
   - `eh_value`
   - `eh_type`
+  - `rtti_class`
+  - `rtti_si`
+  - `rtti_vmi`
+  - `rtti_data`
 
-Only one symbol may own each singleton role inside a LowIR program. A role must also appear
-on the correct top-level kind: function roles on functions and global roles on globals.
+Only one symbol may own each singleton role inside a LowIR program. All roles
+listed above are singleton roles except `rtti_data`, which may describe each
+distinct runtime type-information object or category helper used by the
+program. A role must also appear on the correct top-level kind: function roles
+on functions and global roles on globals.
 
 The currently defined linkage values are:
 
@@ -271,6 +285,11 @@ same-program calls must be expanded during object preparation at every
 optimization level. It does not relax call-boundary, ABI, type, recursion, or
 control-flow safety checks. Canonical `lowiropt -O0` preserves this metadata
 without performing the object-preparation transform.
+
+The `no_inline` metadata key is a `yes`/`no` flag for top-level function
+declarations and definitions. `no_inline=yes` prevents optional inlining of
+calls to that function. It does not make the function an object-emission root,
+change its symbol binding, or suppress other semantics-preserving transforms.
 
 `alias object <object-symbol> = @target` records an additional object-file symbol spelling
 that must resolve to the same emitted top-level LowIR function or global as `@target`.
@@ -364,7 +383,7 @@ normally.
 Call signatures only accept call-boundary metadata such as `arity=...`, `effects=...`,
 `unwind=...`, and `return=...`. Top-level symbol metadata such as `role=...`, `linkage=...`,
 `binding=...`, `object=...`, `keep_alias=...`, `prefer_local=...`, `object_root=...`, and
-`trivial_lifecycle=...` and `force_inline=...` are not valid on `as (...) -> ...`
+`trivial_lifecycle=...`, `force_inline=...`, and `no_inline=...` are not valid on `as (...) -> ...`
 call signatures.
 
 Later backend lowering may also introduce internal compiler builtin helper symbols for

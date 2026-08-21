@@ -1,5 +1,5 @@
 template <class T>
-T plain_template(T value)
+__attribute__((noinline)) T plain_template(T value)
 {
   return value + 1;
 }

@@ -46,6 +46,7 @@ global @YD__vtable [storage=readonly, binding=weak, object=_ZTV2YD] = {
   i64 0
   ptr addr @__rtti_class_YD
   ptr addr @YA__f
+  ptr addr @YD__g
 }
 global @YD____view__YB__8__vtable [storage=readonly, binding=weak, object=@YD____view__YB__8__vtable] = {
   i64 -8

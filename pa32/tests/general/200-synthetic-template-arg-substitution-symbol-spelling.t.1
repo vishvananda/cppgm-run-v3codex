@@ -8,7 +8,7 @@ struct Text {};
 
 template<class Char, class TraitsT, class AllocT>
 struct Reader {
-  Reader(Text<Char, TraitsT, AllocT> const &);
+  __attribute__((noinline)) Reader(Text<Char, TraitsT, AllocT> const &);
 };
 
 template<class Char, class TraitsT, class AllocT>

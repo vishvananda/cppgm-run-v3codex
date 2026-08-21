@@ -8,6 +8,7 @@ template<class Char, class TraitsT>
 struct Sink {};
 
 template<class Char, class TraitsT, class AllocT>
+__attribute__((noinline))
 Sink<Char, TraitsT> & operator<<(Sink<Char, TraitsT> & sink,
                                  Text<Char, TraitsT, AllocT> const &)
 {

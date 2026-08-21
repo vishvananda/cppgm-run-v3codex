@@ -1,7 +1,7 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-declare global @__external_rtti_vtable____vmi_class_type_info [binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____vmi_class_type_info [role=rtti_vmi, binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
 
-global @__typeinfo_name__struct_virtual_base [storage=readonly, binding=weak, object=_ZTS12virtual_base] = {
+global @__typeinfo_name__struct_virtual_base [binding=weak, object=_ZTS12virtual_base] = {
   i8 49
   i8 50
   i8 118
@@ -18,27 +18,11 @@ global @__typeinfo_name__struct_virtual_base [storage=readonly, binding=weak, ob
   i8 101
   i8 0
 }
-global @__rtti_struct_virtual_base [storage=readonly, binding=weak, object=_ZTI12virtual_base] = {
+global @__rtti_struct_virtual_base [binding=weak, object=_ZTI12virtual_base] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_virtual_base
 }
-global @virtual_base__vtable [storage=readonly, binding=weak, object=_ZTV12virtual_base] = {
-  i64 0
-  ptr addr @__rtti_struct_virtual_base
-  ptr addr @virtual_base__function
-}
-global @__typeinfo_name__struct_derived [storage=readonly, binding=weak, object=_ZTS7derived] = {
-  i8 55
-  i8 100
-  i8 101
-  i8 114
-  i8 105
-  i8 118
-  i8 101
-  i8 100
-  i8 0
-}
-global @__typeinfo_name__struct_empty_base [storage=readonly, binding=weak, object=_ZTS10empty_base] = {
+global @__typeinfo_name__struct_empty_base [binding=weak, object=_ZTS10empty_base] = {
   i8 49
   i8 48
   i8 101
@@ -53,11 +37,22 @@ global @__typeinfo_name__struct_empty_base [storage=readonly, binding=weak, obje
   i8 101
   i8 0
 }
-global @__rtti_struct_empty_base [storage=readonly, binding=weak, object=_ZTI10empty_base] = {
+global @__rtti_struct_empty_base [binding=weak, object=_ZTI10empty_base] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_empty_base
 }
-global @__rtti_struct_derived [storage=readonly, binding=weak, object=_ZTI7derived] = {
+global @__typeinfo_name__struct_derived [binding=weak, object=_ZTS7derived] = {
+  i8 55
+  i8 100
+  i8 101
+  i8 114
+  i8 105
+  i8 118
+  i8 101
+  i8 100
+  i8 0
+}
+global @__rtti_struct_derived [binding=weak, object=_ZTI7derived] = {
   ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
   ptr addr @__typeinfo_name__struct_derived
   i32 0
@@ -65,22 +60,26 @@ global @__rtti_struct_derived [storage=readonly, binding=weak, object=_ZTI7deriv
   ptr addr @__rtti_struct_empty_base
   i64 2
   ptr addr @__rtti_struct_virtual_base
-  i64 -8189
+  i64 -6141
 }
-global @derived__vtable [storage=readonly, binding=weak, object=_ZTV7derived] = {
-  i64 8
+global @virtual_base__vtable [binding=weak, object=_ZTV12virtual_base] = {
   i64 0
+  ptr addr @__rtti_struct_virtual_base
+  ptr addr @virtual_base__function
+}
+global @derived__vtable [binding=weak, object=_ZTV7derived] = {
+  i64 8
   i64 0
   ptr addr @__rtti_struct_derived
 }
-global @derived____view__virtual_base__8__vtable [storage=readonly, binding=weak, object=@derived____view__virtual_base__8__vtable] = {
+global @derived____view__virtual_base__8__vtable [binding=internal, object=@derived____view__virtual_base__8__vtable] = {
   i64 0
   i64 -8
   ptr addr @__rtti_struct_derived
   ptr addr @virtual_base__function
 }
-global @derived____vtt [storage=readonly, binding=weak, object=_ZTT7derived, object_root=yes] = {
-  ptr addr @derived__vtable + 32
+global @derived____vtt [binding=weak, object=_ZTT7derived, object_root=yes] = {
+  ptr addr @derived__vtable + 24
   ptr addr @derived____view__virtual_base__8__vtable + 24
 }
 global @called : i32 [binding=strong, object=_Z6called] = zero
@@ -94,7 +93,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @derived__derived(%t1)
     %t2 = addr $value
     %t3 = load ptr %t2
-    %t4 = index i8 %t3, -32
+    %t4 = index i8 %t3, -24
     %t5 = load i64 %t4
     %t6 = index i8 %t2, %t5
     %t7 = index i8 [projection=base_subobject] %t6, 0
@@ -125,7 +124,7 @@ function @virtual_base__function(%this : ptr) -> void [binding=weak, object=_ZN1
     store i32 1, @called
     return void
 }
-function @derived__derived(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7derivedC1Ev] {
+function @derived__derived(%this : ptr) -> void [binding=weak, object=_ZN7derivedC1Ev] {
   slot $this : ptr
 
   block ^entry:
@@ -135,11 +134,11 @@ function @derived__derived(%this : ptr) -> void [unwind=no, binding=weak, object
     call void @virtual_base__virtual_base__base_entry(%t2)
     %t3 = load ptr $this
     %t4 = addr @derived__vtable
-    %t5 = index i8 %t4, 32
+    %t5 = index i8 %t4, 24
     store ptr %t5, %t3
     %t6 = load ptr $this
     %t7 = load ptr %t6
-    %t8 = index i8 %t7, -32
+    %t8 = index i8 %t7, -24
     %t9 = load i64 %t8
     %t10 = index i8 %t6, %t9
     %t11 = index i8 [projection=base_subobject] %t10, 0
@@ -148,7 +147,7 @@ function @derived__derived(%this : ptr) -> void [unwind=no, binding=weak, object
     store ptr %t13, %t11
     return void
 }
-function @virtual_base__virtual_base__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN12virtual_baseC2Ev] {
+function @virtual_base__virtual_base__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN12virtual_baseC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:

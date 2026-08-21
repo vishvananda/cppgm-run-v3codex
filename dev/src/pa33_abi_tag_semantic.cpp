@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa33_function_control_attributes.h"
 #include "post_tokenizer.h"
 
 #include <algorithm>
@@ -132,6 +133,20 @@ void MergeAbiTags(Program* program, const std::vector<NameId>& additions,
 
 }
 
+std::uint8_t FunctionControlAttributeMask(
+	const SyntaxArena& arena, NodeId declaration)
+{
+	std::uint8_t result = 0;
+	if (HasFunctionAttribute(arena, declaration,
+		"noreturn", "__noreturn__")) result |= FUNCTION_CONTROL_NORETURN;
+	if (HasFunctionAttribute(arena, declaration,
+		"always_inline", "__always_inline__"))
+		result |= FUNCTION_CONTROL_FORCE_INLINE;
+	if (HasFunctionAttribute(arena, declaration,
+		"noinline", "__noinline__")) result |= FUNCTION_CONTROL_NO_INLINE;
+	return result;
+}
+
 void SemanticAnalyzer::ApplyClassAbiTagAttributes(
 	NodeId declaration, EntityId entity)
 {
@@ -154,6 +169,7 @@ void SemanticAnalyzer::ApplyFunctionAbiTagAttributes(
 		throw std::logic_error("attributed function has no canonical binding");
 	BindingRecord& canonical = program_->bindings[record.canonical];
 	ApplyFunctionNoreturnAttribute(declaration, binding);
+	ApplyFunctionNoInlineAttribute(*arena_, program_, declaration, binding);
 	if (HasFunctionAttribute(*arena_, declaration,
 		"always_inline", "__always_inline__"))
 	{
@@ -182,6 +198,21 @@ void SemanticAnalyzer::ApplyFunctionNoreturnAttribute(
 		"noreturn", "__noreturn__")) return;
 	record.noreturn_function = true;
 	program_->bindings[record.canonical].noreturn_function = true;
+}
+
+void ApplyFunctionNoInlineAttribute(const SyntaxArena& arena,
+	Program* program, NodeId declaration, BindingId binding)
+{
+	if (!program || binding == kNoBinding || binding >= program->bindings.size())
+		throw std::logic_error("attributed function has no semantic binding");
+	BindingRecord& record = program->bindings[binding];
+	if (record.canonical == kNoBinding ||
+		record.canonical >= program->bindings.size())
+		throw std::logic_error("attributed function has no canonical binding");
+	if (!HasFunctionAttribute(arena, declaration,
+		"noinline", "__noinline__")) return;
+	record.no_inline = true;
+	program->bindings[record.canonical].no_inline = true;
 }
 
 }

@@ -183,7 +183,12 @@ To complete PA28, implement these goals:
 2. Polymorphic dispatch over adjusted vtable views.
    Calling a virtual through a class with virtual-base adjustment rows must select the
    requested logical slot. Calling through a later polymorphic base must lower through the
-   correct vtable view and apply the required `this` adjustment.
+   correct vtable view and apply the required `this` adjustment. A final overrider inherited
+   from a non-primary or virtual base must also occupy its required slot in the derived
+   class's primary vtable group, in addition to any adjusted secondary-view entry. Each
+   vtable segment must contain only the vcall-offset and virtual-base-offset rows owned by
+   that segment; in particular, vcall rows belonging to a secondary virtual-base view must
+   not enlarge the primary segment or its address point.
 
 3. Sibling cross-cast support.
    Pointer-form `dynamic_cast` across sibling polymorphic bases should lower into the
@@ -234,3 +239,8 @@ The same monotonic-extension rule applies here:
   subset
 - in practice, the richer vtable / RTTI layout should stay source-driven rather than
   changing earlier single-vptr cases unnecessarily
+
+For Itanium-layout vtable segments, emit any vcall-offset rows before the
+virtual-base-offset rows, followed by offset-to-top, RTTI, and the function
+slots. Track each segment's address point from the rows actually emitted for
+that segment instead of using one class-wide negative-row count.

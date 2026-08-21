@@ -233,6 +233,11 @@ std::size_t ProgramLoweringSession::function_count() const
   return impl_->source.functions.size();
 }
 
+const lowir_model::LowirProgram & ProgramLoweringSession::prepared_program() const
+{
+  return impl_->source;
+}
+
 mir_model::MirFunction ProgramLoweringSession::lower_function(std::size_t index)
 {
   return impl_->LowerFunction(index);

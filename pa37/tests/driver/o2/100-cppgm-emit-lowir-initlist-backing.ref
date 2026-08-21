@@ -35,9 +35,3 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t7 = binary sub i32 %__o1inl0__t6, 14
     return i32 %t7
 }
-function @std__initializer_list_int___begin(%this : ptr) -> ptr [binding=weak, object=_ZNKSt16initializer_listIiE5beginEv] {
-  block ^entry:
-    %t2 = index i8 [projection=field] %this, 0
-    %t3 = load ptr %t2
-    return ptr %t3
-}

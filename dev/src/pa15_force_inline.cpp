@@ -671,8 +671,6 @@ void RewriteProgram(TypedProgram* program, LowIRLoweringStats* stats,
 {
 	if (!program) throw std::logic_error("force-inline program is null");
 	ClassifyPresentationReservations(program);
-	Inliner inliner(program, stats);
-	if (inliner.HasCandidates()) inliner.Run();
 	const pa15_function_reachability::Summary reachability =
 		prune_unreachable_weak_functions ?
 		pa15_function_reachability::PruneUnreachableWeakFunctions(program) :

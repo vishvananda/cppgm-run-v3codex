@@ -1,50 +1,29 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-declare global @__external_rtti_vtable____vmi_class_type_info [binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____vmi_class_type_info [role=rtti_vmi, binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
 
-global @__typeinfo_name__struct_B [storage=readonly, binding=weak, object=_ZTS1B] = {
-  i8 49
-  i8 66
-  i8 0
-}
-global @__typeinfo_name__struct_V [storage=readonly, binding=weak, object=_ZTS1V] = {
+global @__typeinfo_name__struct_V [binding=weak, object=_ZTS1V] = {
   i8 49
   i8 86
   i8 0
 }
-global @__rtti_struct_V [storage=readonly, binding=weak, object=_ZTI1V] = {
+global @__rtti_struct_V [binding=weak, object=_ZTI1V] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_V
 }
-global @__rtti_struct_B [storage=readonly, binding=weak, object=_ZTI1B] = {
+global @__typeinfo_name__struct_B [binding=weak, object=_ZTS1B] = {
+  i8 49
+  i8 66
+  i8 0
+}
+global @__rtti_struct_B [binding=weak, object=_ZTI1B] = {
   ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
   ptr addr @__typeinfo_name__struct_B
   i32 0
   i32 1
   ptr addr @__rtti_struct_V
-  i64 -8189
+  i64 -6141
 }
-global @B__vtable [storage=readonly, binding=weak, object=_ZTV1B] = {
-  i64 8
-  i64 0
-  i64 0
-  ptr addr @__rtti_struct_B
-}
-global @B____view__V__8__vtable [storage=readonly, binding=weak, object=@B____view__V__8__vtable] = {
-  i64 0
-  i64 -8
-  ptr addr @__rtti_struct_B
-  ptr addr @V__probe
-}
-global @B____vtt [storage=readonly, binding=weak, object=_ZTT1B, object_root=yes] = {
-  ptr addr @B__vtable + 32
-  ptr addr @B____view__V__8__vtable + 24
-}
-global @V__vtable [storage=readonly, binding=weak, object=_ZTV1V] = {
-  i64 0
-  ptr addr @__rtti_struct_V
-  ptr addr @V__probe
-}
-global @__typeinfo_name__struct_Payload [storage=readonly, binding=weak, object=_ZTS7Payload] = {
+global @__typeinfo_name__struct_Payload [binding=weak, object=_ZTS7Payload] = {
   i8 55
   i8 80
   i8 97
@@ -55,21 +34,11 @@ global @__typeinfo_name__struct_Payload [storage=readonly, binding=weak, object=
   i8 100
   i8 0
 }
-global @__rtti_struct_Payload [storage=readonly, binding=weak, object=_ZTI7Payload] = {
+global @__rtti_struct_Payload [binding=weak, object=_ZTI7Payload] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_Payload
 }
-global @Payload__vtable [storage=readonly, binding=weak, object=_ZTV7Payload] = {
-  i64 0
-  ptr addr @__rtti_struct_Payload
-  ptr addr @Payload__read
-}
-global @__typeinfo_name__struct_D [storage=readonly, binding=weak, object=_ZTS1D] = {
-  i8 49
-  i8 68
-  i8 0
-}
-global @__typeinfo_name__struct_Holder [storage=readonly, binding=weak, object=_ZTS6Holder] = {
+global @__typeinfo_name__struct_Holder [binding=weak, object=_ZTS6Holder] = {
   i8 54
   i8 72
   i8 111
@@ -79,11 +48,16 @@ global @__typeinfo_name__struct_Holder [storage=readonly, binding=weak, object=_
   i8 114
   i8 0
 }
-global @__rtti_struct_Holder [storage=readonly, binding=weak, object=_ZTI6Holder] = {
+global @__rtti_struct_Holder [binding=weak, object=_ZTI6Holder] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_Holder
 }
-global @__rtti_struct_D [storage=readonly, binding=weak, object=_ZTI1D] = {
+global @__typeinfo_name__struct_D [binding=weak, object=_ZTS1D] = {
+  i8 49
+  i8 68
+  i8 0
+}
+global @__rtti_struct_D [binding=weak, object=_ZTI1D] = {
   ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
   ptr addr @__typeinfo_name__struct_D
   i32 0
@@ -93,38 +67,82 @@ global @__rtti_struct_D [storage=readonly, binding=weak, object=_ZTI1D] = {
   ptr addr @__rtti_struct_B
   i64 2
 }
-global @D__vtable [storage=readonly, binding=weak, object=_ZTV1D] = {
-  i64 16
+global @V__vtable [binding=weak, object=_ZTV1V] = {
   i64 0
+  ptr addr @__rtti_struct_V
+  ptr addr @V__probe
+}
+global @B__vtable [binding=weak, object=_ZTV1B] = {
+  i64 8
+  i64 0
+  ptr addr @__rtti_struct_B
+}
+global @B____view__V__8__vtable [binding=internal, object=@B____view__V__8__vtable] = {
+  i64 0
+  i64 -8
+  ptr addr @__rtti_struct_B
+  ptr addr @V__probe
+}
+global @B____vtt [binding=weak, object=_ZTT1B, object_root=yes] = {
+  ptr addr @B__vtable + 24
+  ptr addr @B____view__V__8__vtable + 24
+}
+global @Payload__vtable [binding=weak, object=_ZTV7Payload] = {
+  i64 0
+  ptr addr @__rtti_struct_Payload
+  ptr addr @Payload__read
+}
+global @D__vtable [binding=weak, object=_ZTV1D] = {
+  i64 16
   i64 0
   ptr addr @__rtti_struct_D
 }
-global @D____view__V__16__vtable [storage=readonly, binding=weak, object=@D____view__V__16__vtable] = {
+global @D____view__V__16__vtable [binding=internal, object=@D____view__V__16__vtable] = {
   i64 0
   i64 -16
   ptr addr @__rtti_struct_D
   ptr addr @V__probe
 }
-global @D____construction__B__0__s0__vtable [storage=readonly, binding=weak, object=@D____construction__B__0__s0__vtable] = {
+global @D____construction__B__0__s0__vtable [binding=internal, object=@D____construction__B__0__s0__vtable] = {
   i64 16
-  i64 0
   i64 0
   ptr addr @__rtti_struct_B
 }
-global @D____construction__B__0__s1__vtable [storage=readonly, binding=weak, object=@D____construction__B__0__s1__vtable] = {
+global @D____construction__B__0__s1__vtable [binding=internal, object=@D____construction__B__0__s1__vtable] = {
   i64 0
   i64 -16
   ptr addr @__rtti_struct_V
   ptr addr @V__probe
 }
-global @D____vtt [storage=readonly, binding=weak, object=_ZTT1D, object_root=yes] = {
-  ptr addr @D__vtable + 32
-  ptr addr @D____construction__B__0__s0__vtable + 32
+global @D____vtt [binding=weak, object=_ZTT1D, object_root=yes] = {
+  ptr addr @D__vtable + 24
+  ptr addr @D____construction__B__0__s0__vtable + 24
   ptr addr @D____construction__B__0__s1__vtable + 24
   ptr addr @D____view__V__16__vtable + 24
 }
 
-function @B__B__base_entry(%this : ptr, %__vtt : ptr, %__vbptr0 : ptr) -> void [binding=strong, object=_ZN1BC2Ev] {
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $d : obj<24x8>
+
+  block ^entry:
+    %t1 = addr $d
+    call void @D__D(%t1)
+    %t2 = addr $d
+    %t3 = index i8 [projection=base_subobject] %t2, 8
+    %t4 = index i8 [projection=field] %t3, 0
+    %t5 = load ptr %t4
+    %t6 = load ptr %t5
+    %t7 = call i32 %t6(%t4) as (%arg0 : ptr) -> i32
+    return i32 %t7
+}
+function @V__probe(%this : ptr) -> void [binding=weak, object=_ZN1V5probeEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @B__B__base_entry(%this : ptr, %__vtt : ptr, %__vbptr0 : ptr) -> void [binding=strong, object=_ZN1BC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:
@@ -148,11 +166,11 @@ function @B__B(%this : ptr) -> void [binding=strong, object=_ZN1BC1Ev] {
     call void @V__V__base_entry(%t2)
     %t3 = load ptr $this
     %t4 = addr @B__vtable
-    %t5 = index i8 %t4, 32
+    %t5 = index i8 %t4, 24
     store ptr %t5, %t3
     %t6 = load ptr $this
     %t7 = load ptr %t6
-    %t8 = index i8 %t7, -32
+    %t8 = index i8 %t7, -24
     %t9 = load i64 %t8
     %t10 = index i8 %t6, %t9
     %t11 = index i8 [projection=base_subobject] %t10, 0
@@ -160,45 +178,6 @@ function @B__B(%this : ptr) -> void [binding=strong, object=_ZN1BC1Ev] {
     %t13 = index i8 %t12, 24
     store ptr %t13, %t11
     return void
-}
-function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
-  slot $d : obj<24x8>
-
-  block ^entry:
-    %t1 = addr $d
-    call void @D__D(%t1)
-    %t2 = addr $d
-    %t3 = index i8 [projection=base_subobject] %t2, 8
-    %t4 = index i8 [projection=field] %t3, 0
-    %t5 = load ptr %t4
-    %t6 = load ptr %t5
-    %t7 = call i32 %t6(%t4) as (%arg0 : ptr) -> i32
-    return i32 %t7
-}
-function @V__V__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1VC2Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = addr @V__vtable
-    %t3 = index i8 %t2, 16
-    store ptr %t3, %t1
-    return void
-}
-function @V__probe(%this : ptr) -> void [binding=weak, object=_ZN1V5probeEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return void
-}
-function @Payload__read(%this : ptr) -> i32 [binding=weak, object=_ZN7Payload4readEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return i32 0
 }
 function @D__D(%this : ptr) -> void [binding=weak, object=_ZN1DC1Ev] {
   slot $this : ptr
@@ -216,15 +195,15 @@ function @D__D(%this : ptr) -> void [binding=weak, object=_ZN1DC1Ev] {
     %t7 = addr @D____vtt
     %t8 = index i8 %t7, 8
     %t9 = load ptr $this
-    %t10 = index i8 %t9, 16
+    %t10 = index i8 [projection=base_subobject] %t9, 16
     call void @B__B__base_entry(%t6, %t8, %t10)
     %t11 = load ptr $this
     %t12 = addr @D__vtable
-    %t13 = index i8 %t12, 32
+    %t13 = index i8 %t12, 24
     store ptr %t13, %t11
     %t14 = load ptr $this
     %t15 = load ptr %t14
-    %t16 = index i8 %t15, -32
+    %t16 = index i8 %t15, -24
     %t17 = load i64 %t16
     %t18 = index i8 %t14, %t17
     %t19 = index i8 [projection=base_subobject] %t18, 0
@@ -233,7 +212,25 @@ function @D__D(%this : ptr) -> void [binding=weak, object=_ZN1DC1Ev] {
     store ptr %t21, %t19
     return void
 }
-function @Holder__Holder__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN6HolderC2Ev] {
+function @Payload__read(%this : ptr) -> i32 [binding=weak, object=_ZN7Payload4readEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 0
+}
+function @V__V__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1VC2Ev, no_inline=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = addr @V__vtable
+    %t3 = index i8 %t2, 16
+    store ptr %t3, %t1
+    return void
+}
+function @Holder__Holder__base_entry(%this : ptr) -> void [binding=weak, object=_ZN6HolderC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:

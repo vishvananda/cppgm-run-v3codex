@@ -1,5 +1,5 @@
 template<class T>
-inline void touch_noop(T * p)
+__attribute__((noinline)) inline void touch_noop(T * p)
 {
 }
 

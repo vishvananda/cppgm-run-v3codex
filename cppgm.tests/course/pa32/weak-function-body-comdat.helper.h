@@ -1,7 +1,7 @@
 int comdat_leaf(int value);
 extern int (*comdat_leaf_ptr)(int);
 
-inline int comdat_body_value(int value)
+__attribute__((noinline)) inline int comdat_body_value(int value)
 {
   value = value * 3 + 1;
   value = value * 5 + 2;

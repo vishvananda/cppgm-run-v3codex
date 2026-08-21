@@ -1,7 +1,19 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-declare global @__external_rtti_vtable____vmi_class_type_info [binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____vmi_class_type_info [role=rtti_vmi, binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
 
-global @__typeinfo_name__struct_derived [storage=readonly, binding=weak, object=_ZTS7derived] = {
+global @__typeinfo_name__struct_root [binding=weak, object=_ZTS4root] = {
+  i8 52
+  i8 114
+  i8 111
+  i8 111
+  i8 116
+  i8 0
+}
+global @__rtti_struct_root [binding=weak, object=_ZTI4root] = {
+  ptr addr @__external_rtti_vtable____class_type_info + 16
+  ptr addr @__typeinfo_name__struct_root
+}
+global @__typeinfo_name__struct_derived [binding=weak, object=_ZTS7derived] = {
   i8 55
   i8 100
   i8 101
@@ -12,48 +24,35 @@ global @__typeinfo_name__struct_derived [storage=readonly, binding=weak, object=
   i8 100
   i8 0
 }
-global @__typeinfo_name__struct_root [storage=readonly, binding=weak, object=_ZTS4root] = {
-  i8 52
-  i8 114
-  i8 111
-  i8 111
-  i8 116
-  i8 0
-}
-global @__rtti_struct_root [storage=readonly, binding=weak, object=_ZTI4root] = {
-  ptr addr @__external_rtti_vtable____class_type_info + 16
-  ptr addr @__typeinfo_name__struct_root
-}
-global @__rtti_struct_derived [storage=readonly, binding=weak, object=_ZTI7derived] = {
+global @__rtti_struct_derived [binding=weak, object=_ZTI7derived] = {
   ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
   ptr addr @__typeinfo_name__struct_derived
   i32 0
   i32 1
   ptr addr @__rtti_struct_root
-  i64 -8189
+  i64 -6141
 }
-global @derived__vtable [storage=readonly, binding=weak, object=_ZTV7derived] = {
-  i64 8
+global @root__vtable [binding=weak, object=_ZTV4root] = {
   i64 0
+  ptr addr @__rtti_struct_root
+  ptr addr @root__anchor
+}
+global @derived__vtable [binding=weak, object=_ZTV7derived] = {
+  i64 8
   i64 0
   ptr addr @__rtti_struct_derived
   ptr addr @derived__first
   ptr addr @derived__second
 }
-global @derived____view__root__8__vtable [storage=readonly, binding=weak, object=@derived____view__root__8__vtable] = {
+global @derived____view__root__8__vtable [binding=internal, object=@derived____view__root__8__vtable] = {
   i64 0
   i64 -8
   ptr addr @__rtti_struct_derived
   ptr addr @root__anchor
 }
-global @derived____vtt [storage=readonly, binding=weak, object=_ZTT7derived, object_root=yes] = {
-  ptr addr @derived__vtable + 32
+global @derived____vtt [binding=weak, object=_ZTT7derived, object_root=yes] = {
+  ptr addr @derived__vtable + 24
   ptr addr @derived____view__root__8__vtable + 24
-}
-global @root__vtable [storage=readonly, binding=weak, object=_ZTV4root] = {
-  i64 0
-  ptr addr @__rtti_struct_root
-  ptr addr @root__anchor
 }
 
 function @call_second(%value : ptr [pass=reference], %__pvbptr0 : ptr) -> i32 [binding=strong, object=_Z11call_secondR7derived] {
@@ -70,19 +69,19 @@ function @call_second(%value : ptr [pass=reference], %__pvbptr0 : ptr) -> i32 [b
     %t5 = call i32 %t4(%t1) as (%arg0 : ptr) -> i32
     return i32 %t5
 }
-function @derived__second(%this : ptr) -> i32 [binding=weak, object=_ZN7derived6secondEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return i32 3
-}
 function @derived__first(%this : ptr) -> i32 [binding=weak, object=_ZN7derived5firstEv] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return i32 2
+}
+function @derived__second(%this : ptr) -> i32 [binding=weak, object=_ZN7derived6secondEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 3
 }
 function @root__anchor(%this : ptr) -> i32 [binding=weak, object=_ZN4root6anchorEv] {
   slot $this : ptr

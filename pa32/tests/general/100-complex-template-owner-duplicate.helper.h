@@ -16,10 +16,10 @@ struct Alloc
 template<class K, class H, class E, class A>
 struct Table
 {
-  Table() {}
+  __attribute__((noinline)) Table() {}
   ~Table() {}
 
-  int value(int x)
+  __attribute__((noinline)) int value(int x)
   {
     return x + 1;
   }

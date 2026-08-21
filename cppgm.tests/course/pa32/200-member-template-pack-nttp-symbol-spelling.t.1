@@ -7,7 +7,10 @@ struct Convert {
 
 template<int (Convert::*Operation)(int, int) const>
 struct Invoke {
-  static int call(Convert& object) { return (object.*Operation)(1, 2); }
+  __attribute__((noinline)) static int call(Convert& object)
+  {
+    return (object.*Operation)(1, 2);
+  }
 };
 
 int main()

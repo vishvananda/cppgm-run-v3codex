@@ -159,6 +159,7 @@ Required metadata families:
 
 - top-level `role`, `linkage`, `binding`, `object`, function `tls_for`,
   `keep_alias`, `prefer_local`, and global `storage`
+- function `object_root`, `trivial_lifecycle`, `force_inline`, and `no_inline`
 - function `arity`, `effects`, `unwind`, and `return`
 - parameter `pass`, `capture`, `access`, and `alias`
 - index `projection`
@@ -170,6 +171,11 @@ stages must be able to preserve semantic call-boundary and symbol-boundary
 facts in LowIR text. PA13 translates those facts only to the extent needed for
 the CY86 adapter. It does not implement native object symbol binding, host ABI
 register assignment, or debugger behavior.
+
+The `role` family includes the entry/init/fini and exception roles as well as
+the allocation, deallocation, pure-virtual, dynamic-cast, bad-cast, bad-typeid,
+and RTTI runtime roles listed in `lowir.md`. Accept and validate those roles
+even when the CY86 adapter does not otherwise act on them.
 
 You may keep a typed LowIR model internally, and the optional
 `dev/src/lowir_model.h` scaffold names the common program, symbol, type,

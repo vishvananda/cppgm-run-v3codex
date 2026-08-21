@@ -1,4 +1,5 @@
 #include "pa12_semantic_detail.h"
+#include "pa33_function_control_attributes.h"
 
 #include <algorithm>
 #include <limits>
@@ -299,6 +300,30 @@ void MergeFunctionTemplateSpecifierFacts(FunctionTemplatePattern* retained,
 	retained->explicit_specifier |= incoming.explicit_specifier;
 	retained->inline_specifier |= incoming.inline_specifier;
 	retained->deleted_function |= incoming.deleted_function;
+	retained->function_control_attributes |=
+		incoming.function_control_attributes;
+}
+
+void ApplyFunctionTemplateControlAttributes(Program* program,
+	BindingId binding, BindingId canonical, std::uint8_t attributes)
+{
+	BindingRecord& record = program->bindings[binding];
+	BindingRecord& canonical_record = program->bindings[canonical];
+	if ((attributes & FUNCTION_CONTROL_NORETURN) != 0)
+	{
+		record.noreturn_function = true;
+		canonical_record.noreturn_function = true;
+	}
+	if ((attributes & FUNCTION_CONTROL_FORCE_INLINE) != 0)
+	{
+		record.force_inline = true;
+		canonical_record.force_inline = true;
+	}
+	if ((attributes & FUNCTION_CONTROL_NO_INLINE) != 0)
+	{
+		record.no_inline = true;
+		canonical_record.no_inline = true;
+	}
 }
 
 bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,
@@ -1051,6 +1076,8 @@ void SemanticAnalyzer::RegisterFunctionTemplatePattern(NodeId target,
 	pattern.parameters = parameters;
 	pattern.language_linkage = current_language_linkage_;
 	pattern.member_access = member_access;
+	pattern.function_control_attributes =
+		FunctionControlAttributeMask(*arena_, target);
 	pattern.defined = definition;
 	pattern.conversion_template = special_member_template && FindChild(
 		declarator, ::cppgm::pa10_syntax_detail::STAG_CONVERSION_TYPE_ID) != kNoNode;
@@ -2068,6 +2095,8 @@ BindingId SemanticAnalyzer::InstantiateFunctionTemplate(std::size_t index,
 		function_template_specialization_declarations_.Insert(
 			declaration_key, canonical_binding);
 	BindingRecord& binding_record = program_->bindings[binding];
+	ApplyFunctionTemplateControlAttributes(program_, binding,
+		canonical_binding, pattern.function_control_attributes);
 	PublishFunctionTemplateInternalEmission(program_, binding, canonical_binding, completed);
 	if (pattern.abi_recipe == kNoFunctionTemplateAbiRecipe ||
 		pattern.abi_recipe >= program_->function_template_abi_recipes.size())

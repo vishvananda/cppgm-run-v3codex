@@ -178,6 +178,7 @@ public:
   ~ProgramLoweringSession();
 
   std::size_t function_count() const;
+  const lowir_model::LowirProgram & prepared_program() const;
   mir_model::MirFunction lower_function(std::size_t index);
   mir_model::MirProgram take_program_shell();
 

@@ -54,8 +54,7 @@ bool HasTrivialLifecycleMetadata(const pa11::Program& program,
 	if (function.parameter_count != 0) return false;
 	const EntityRecord& owner = program.entities[record.member_owner];
 	return (record.constructor && !record.constructor_base_entry &&
-			(!owner.has_user_declared_constructor ||
-			 owner.trivial_default_constructor)) ||
+			owner.trivial_default_constructor) ||
 		(record.destructor && owner.trivial_destructor);
 }
 
@@ -108,7 +107,7 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 		node.kind == pa12_semantic_detail::DUMP_FUNCTION_DEFINITION &&
 		(binding.constructor || binding.destructor))
 		record.object_output_root = true;
-	record.no_inline = output->host_object_emission &&
+	record.no_inline |= output->host_object_emission &&
 		(binding.constructor_base_entry || binding.destructor_base_entry);
 	const bool complete_entry =
 		(binding.constructor && !binding.constructor_base_entry) ||

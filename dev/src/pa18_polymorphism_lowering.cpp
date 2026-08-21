@@ -191,6 +191,17 @@ private:
 		return state_.class_host_primary_slots[entity];
 	}
 
+	std::uint64_t PrimaryAddressPoint(
+		const ClassPolymorphismFacts& facts) const
+	{
+		if (!output_.host_object_emission) return facts.address_point;
+		const std::uint64_t secondary_vcall_bytes =
+			static_cast<std::uint64_t>(facts.virtual_call_offsets.size()) * 8;
+		if (secondary_vcall_bytes > facts.address_point)
+			throw std::logic_error("primary vtable address point is invalid");
+		return facts.address_point - secondary_vcall_bytes;
+	}
+
 	void InitializeState()
 	{
 		state_.source_function_first = output_.functions.size();
@@ -224,7 +235,8 @@ private:
 				graph_.class_polymorphism[entity];
 			state_.class_view_vtable_symbols[entity].assign(
 				facts.views.size(), kNoLowId);
-			state_.class_vtable_address_points[entity] = facts.address_point;
+			state_.class_vtable_address_points[entity] =
+				PrimaryAddressPoint(facts);
 			state_.class_view_address_points[entity].assign(
 				facts.views.size(), 16);
 			state_.class_construction_vtable_symbols[entity].resize(
@@ -1242,8 +1254,8 @@ private:
 			state_.class_vtable_external[entity] = 1;
 			const SymbolId symbol = AddExternalVtable(entity);
 			state_.class_vtable_symbols[entity] = symbol;
-			const std::uint64_t primary_address_point = facts.address_point -
-				facts.virtual_call_offsets.size() * 8;
+			const std::uint64_t primary_address_point =
+				PrimaryAddressPoint(facts);
 			state_.class_vtable_address_points[entity] = primary_address_point;
 			if (program_.entities[entity].virtual_base_count != 0)
 			{
@@ -1542,20 +1554,10 @@ private:
 		Global vtable;
 		vtable.symbol = symbol;
 		vtable.initializer_kind = Global::STRUCTURED_VALUE;
-		if (output_.host_object_emission)
-		{
-			for (std::size_t row = 0; row < virtual_call_offsets.size(); ++row)
-				AddIntegerItem(&vtable, LowI64(), virtual_call_offsets[row]);
-			for (std::size_t row = 0; row < virtual_base_offsets.size(); ++row)
-				AddIntegerItem(&vtable, LowI64(), virtual_base_offsets[row]);
-		}
-		else
-		{
-			for (std::size_t row = 0; row < virtual_base_offsets.size(); ++row)
-				AddIntegerItem(&vtable, LowI64(), virtual_base_offsets[row]);
-			for (std::size_t row = 0; row < virtual_call_offsets.size(); ++row)
-				AddIntegerItem(&vtable, LowI64(), virtual_call_offsets[row]);
-		}
+		for (std::size_t row = 0; row < virtual_call_offsets.size(); ++row)
+			AddIntegerItem(&vtable, LowI64(), virtual_call_offsets[row]);
+		for (std::size_t row = 0; row < virtual_base_offsets.size(); ++row)
+			AddIntegerItem(&vtable, LowI64(), virtual_base_offsets[row]);
 		if (stats_) stats_->vtable_offset_rows +=
 			virtual_base_offsets.size() + virtual_call_offsets.size();
 		AddIntegerItem(&vtable, LowI64(),
@@ -1599,7 +1601,8 @@ private:
 		const std::vector<std::int64_t> no_virtual_call_offsets;
 		EmitVtableView(base_entity, base_entity, symbols[(*cursor)++],
 			base_offset, PrimarySlots(base_entity), offsets,
-			base_offset == 0 ? base.virtual_call_offsets : no_virtual_call_offsets,
+			!output_.host_object_emission && base_offset == 0 ?
+				base.virtual_call_offsets : no_virtual_call_offsets,
 			state_.class_view_slot_symbols[base_entity][0],
 			state_.class_view_deleting_slot_symbols[base_entity][0]);
 		for (std::size_t ordinal = 0;
@@ -1672,9 +1675,10 @@ private:
 			graph_.class_polymorphism[base_entity];
 		if (*cursor >= symbols.size())
 			throw std::logic_error("construction VTT subtree is truncated");
-		const std::uint64_t address_point = base_offset == 0 ?
-			base.address_point : base.address_point -
-				base.virtual_call_offsets.size() * 8;
+		const std::uint64_t address_point = output_.host_object_emission ?
+			PrimaryAddressPoint(base) :
+			(base_offset == 0 ? base.address_point : base.address_point -
+				base.virtual_call_offsets.size() * 8);
 		AddAddressItem(vtt, symbols[(*cursor)++],
 			static_cast<std::int64_t>(address_point));
 		const EntityRecord& owner = program_.entities[base_entity];
@@ -1704,7 +1708,7 @@ private:
 		vtt.symbol = symbol;
 		vtt.initializer_kind = Global::STRUCTURED_VALUE;
 		AddAddressItem(&vtt, state_.class_vtable_symbols[entity],
-			static_cast<std::int64_t>(facts.address_point));
+			static_cast<std::int64_t>(PrimaryAddressPoint(facts)));
 		for (std::size_t ordinal = 0;
 			ordinal < state_.class_construction_vtable_symbols[entity].size();
 			++ordinal)
@@ -1877,6 +1881,7 @@ private:
 			if (stats_) stats_->globals += 2;
 		}
 
+		const std::vector<std::int64_t> no_virtual_call_offsets;
 		for (EntityId entity = 0;
 			entity < graph_.class_polymorphism.size(); ++entity)
 		{
@@ -1889,7 +1894,8 @@ private:
 			EmitVtableView(entity, entity,
 				state_.class_vtable_symbols[entity], 0,
 				PrimarySlots(entity), facts.virtual_base_offsets,
-				facts.virtual_call_offsets,
+				output_.host_object_emission ?
+					no_virtual_call_offsets : facts.virtual_call_offsets,
 				state_.class_view_slot_symbols[entity][0],
 				state_.class_view_deleting_slot_symbols[entity][0]);
 			for (std::size_t view = 0; view < facts.views.size(); ++view)

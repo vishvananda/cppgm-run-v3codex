@@ -1,7 +1,9 @@
 template<class T>
 struct owner {
   owner() {}
-  int marker() const { return sizeof(T *) > 0 ? 9 : 1; }
+  __attribute__((noinline)) int marker() const {
+    return sizeof(T *) > 0 ? 9 : 1;
+  }
 };
 
 int touch(owner<int *[]> & value) { return value.marker(); }
