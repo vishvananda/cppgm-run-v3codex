@@ -1142,6 +1142,55 @@ seconds user. At the default maximum it is 5.20/5.20 seconds wall and
 this is the cost of making previously implicit narrow `bool` boundaries
 explicit and remains a later typed code-generation simplification target.
 
+Rank 9b first admitted every optimized nonrecursive, non-EH body of at most 40
+instructions.  That broad policy inlined 1,895 late calls and cloned 20,156
+instructions, but it was not profitable: although pruning reduced the frozen
+object from 2,061,016 to 2,043,680 bytes, aggregate text grew from 567,619 to
+618,634 bytes.  The generated compiler grew to 15,683,352 bytes and an
+interleaved self-compiler A/B showed no runtime improvement.  Commit
+`3eecc5f4` preserves the typed multi-block implementation and its phi-edge
+reducer, but the unrestricted 40-instruction policy is not the retained
+profitability endpoint.
+
+The retained policy keeps the 40-instruction limit for a single-block,
+single-return leaf and caps a callful or multi-block optimized body at six
+instructions.  Compact leaf-shape facts are computed once per function and
+updated only for rewritten functions; candidate call sites do not rescan
+callee bodies.  A PA37 O3 fixture proves that the optimizer admits small
+callful and multi-block bodies after local simplification, and a boundary
+fixture proves that a seven-instruction callful body remains a call.  The
+1x/2x/4x synthetic audit reports 2/4/8 direct edges, 2/4/8 late call visits,
+2/4/8 late calls, and 5/10/20 cloned instructions.
+
+The frozen cap sweep selected six by executable text rather than by total file
+size:
+
+| Complex-body cap | Object bytes | Aggregate text | Defined functions |
+| ---: | ---: | ---: | ---: |
+| leaf-only baseline | 2,061,016 | 567,619 | 3,256 |
+| 4 | 2,031,744 | 565,648 | 3,176 |
+| 6 | 2,025,496 | 565,513 | 3,161 |
+| 7 | 2,024,928 | 567,321 | 3,154 |
+| 8 | 2,022,600 | 567,948 | 3,147 |
+
+At cap six the late wave inlines 1,283 calls, clones 7,248 instructions, and
+changes 448 callers.  One measured run spends 51.6 ms in that wave and 537.4
+ms in the full optimizer.  Three exact same-source interleaved self-compiler
+A/B rounds reduce median frozen compile wall time from 17.71 to 17.42 seconds
+and average wall time from 17.70 to 17.43 seconds.  Median aggregate user work
+falls from 17.16 to 16.92 seconds.  The generated compiler shrinks from
+14,673,336 to 14,539,192 bytes.  A second A/B against the retained older matrix
+binary is neutral at 17.53 seconds median for both sides, so neither host-load
+sample indicates a regression.
+
+The final Rank 9b tree passes 5,352/5,352 report tests and the PA39 file audit
+with zero fatal findings.  A fresh 32-worker O3 self build takes 19.11 seconds
+wall, 459.05 seconds aggregate user, 42.41 seconds system, and 231,868 KiB peak
+RSS.  Its separate 32-worker inception compare takes 73.42 seconds wall,
+1,965.06 seconds aggregate user, 62.02 seconds system, and 228,816 KiB peak
+RSS.  All 209 objects and the final compiler match.  The retained policy is
+committed as `276a5c5d`.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1316,7 +1365,7 @@ Fill one row for every retained or rejected phase:
 | R8b | typed unreachable-edge cleanup and bounded late O3 leaf inlining | PA13 role/scaffold/ownership tests; PA16 existing producer fixture; PA37 O1 direct/source and O3 late reducer | frozen O3 2,116,672 to 2,056,816 B; 1,007 late calls removed | unreachable 1.6 ms; late inline 47.6 ms; host wall 5.16 s | 5,346/5,346; zero fatal | self 19.27 s / inception 74.64 s, timed separately; all matches | complete, `9816f4f6`; generated-code correctives `93467e1c`, `f5fe92e1`, `ad7a88d6` |
 | R8c | preserve phi predecessor identity when inlining moves a terminal edge | PA37 O1 exact reducer; PA37 normative inlining contract | no intended frozen change while O3 remains leaf-only | typed block IDs; work bounded by the fixed 128-instruction caller budget | 5,347/5,347; zero fatal | not rerun for output-neutral prerequisite | complete, `9fb2b10b` |
 | R9a | canonical source-lowered `cmp` value identity | PA15 normative contract and exact course reducer; PA37 object roundtrip; 147 PA15--PA28 references regenerated in place | frozen O0 +1,432 B; maximum +4,200 B; 6,836,572-byte O3 LowIR exact parse/dump roundtrip | old/new median O0 wall 4.73/4.72 s, user 4.23/4.26 s; maximum wall 5.20/5.20 s, user 4.71/4.69 s; direct compact types, no new pass or text identity | 5,349/5,349; zero fatal, 31 warnings | clean O0: self 19.49 s / inception 153.97 s, timed separately; all matches | complete, `45b15f22` |
-| R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O3 exact/behavior/work-counter fixtures | pending | retain 40-instruction callee and 128-instruction caller caps; pending measured policy | pending | pending | ready after R9a |
+| R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O1 phi-edge reducer; O3 optimized-shape and seven-instruction boundary fixtures; 1x/2x/4x counters | vs leaf-only: object -35,520 B, text -2,106 B, defined functions -95 | exact self A/B median 17.71 to 17.42 s; late wave 51.6 ms; compact cached shape facts | 5,352/5,352; zero fatal | self 19.11 s / inception 73.42 s; 209 objects and final compiler match | complete, broad implementation `3eecc5f4`, retained cap `276a5c5d` |
 
 ## Completion criteria
 
