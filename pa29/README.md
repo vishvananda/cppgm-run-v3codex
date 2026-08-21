@@ -565,6 +565,10 @@ To complete PA29, implement these goals:
    on each iteration must retain their current value across calls without a later
    iteration overwriting an earlier spill home.
 
+   A representation-preserving scalar copy or decay may share its source's
+   physical location, but that location remains live until the final use of
+   every value that shares it.
+
 10. Keep mixed-width conversion and floating-bool materialization explicit.
    Mixed integer/float conversion chains should keep their conversion family and width
    visible in MIR, and floating compare results used as values may materialize booleans
@@ -697,7 +701,7 @@ strategies include:
 - let a promoted or forwarded parameter-slot load continue to name the
   parameter's stable selected home; its consumer can apply any required
   register constraint directly
-- let a representation-preserving scalar copy share an intact parameter
+- let a representation-preserving scalar copy or decay share an intact parameter
   location when the copied result's interval crosses no clobber
 - record each block's sole predecessor and successor in dense CFG facts so a
   compiler-created scalar can retain its selected register across one exact

@@ -165,13 +165,16 @@ bool direct_memory_index_use(const FunctionFacts & facts,
   return load || store;
 }
 
-bool copy_may_share_frame_home(const Instruction & instruction)
+bool scalar_identity_may_share_frame_home(const Instruction & instruction)
 {
-  return instruction.kind == Instruction::IK_COPY &&
-    instruction.first.kind == Operand::OP_TEMP &&
-    ((instruction.type.kind >= lowir_model::LTK_I1 &&
-      instruction.type.kind <= lowir_model::LTK_I64) ||
-     instruction.type.kind == lowir_model::LTK_PTR);
+  if(instruction.first.kind != Operand::OP_TEMP ||
+     !((instruction.type.kind >= lowir_model::LTK_I1 &&
+        instruction.type.kind <= lowir_model::LTK_I64) ||
+       instruction.type.kind == lowir_model::LTK_PTR))
+    return false;
+  return instruction.kind == Instruction::IK_COPY ||
+    (instruction.kind == Instruction::IK_UNARY &&
+     instruction.op.kind == lowir_model::LowOperation::LOP_DECAY);
 }
 
 void extend_shared_storage_liveness(
@@ -181,14 +184,14 @@ void extend_shared_storage_liveness(
     const std::vector<Instruction> & instructions =
       function.blocks[block].instructions;
     for(std::size_t index = instructions.size(); index-- > 0; ) {
-      const Instruction & copy = instructions[index];
-      if(!copy_may_share_frame_home(copy)) continue;
-      std::size_t end = facts.last_use[copy.dest] ==
-          FunctionFacts::missing_position() ? 0 : facts.last_use[copy.dest];
-      if(facts.shared_storage_last_use[copy.dest] !=
+      const Instruction & identity = instructions[index];
+      if(!scalar_identity_may_share_frame_home(identity)) continue;
+      std::size_t end = facts.last_use[identity.dest] ==
+          FunctionFacts::missing_position() ? 0 : facts.last_use[identity.dest];
+      if(facts.shared_storage_last_use[identity.dest] !=
          FunctionFacts::missing_position())
-        end = std::max(end, facts.shared_storage_last_use[copy.dest]);
-      const lowir_model::ValueId source = copy.first.value;
+        end = std::max(end, facts.shared_storage_last_use[identity.dest]);
+      const lowir_model::ValueId source = identity.first.value;
       if(facts.last_use[source] != FunctionFacts::missing_position() &&
          end > facts.last_use[source]) {
         std::size_t & extended = facts.shared_storage_last_use[source];
