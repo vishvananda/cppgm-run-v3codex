@@ -380,7 +380,8 @@ public:
           const std::vector<std::size_t> & original_instruction_counts,
           std::vector<unsigned char> * rewritten_symbols,
           Stats * stats, bool optimized_late_wave = false,
-          bool definition_removing_only = false)
+          bool definition_removing_only = false,
+          const InlineCleanup * cleanup = 0)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
       call_graph_(call_graph),
@@ -390,7 +391,8 @@ public:
       remaining_single_call_translation_unit_budget_(
         kMinimumSingleCallTranslationUnitBudget),
       optimized_late_wave_(optimized_late_wave),
-      definition_removing_only_(definition_removing_only), rewrites_(0)
+      definition_removing_only_(definition_removing_only), cleanup_(cleanup),
+      rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
@@ -471,7 +473,7 @@ public:
       for(std::size_t i = 0; i < blocked.size(); ++i) {
         const std::size_t caller = blocked[i];
         if(stats_) ++stats_->inline_revisited_callers;
-        inline_calls(caller);
+        const bool caller_inlined = inline_calls(caller);
         const bool caller_stripped =
           strip_explicit_no_unwind_eh(&program_.functions[caller]);
         if(caller_stripped) {
@@ -479,6 +481,8 @@ public:
           if(rewritten_symbols_)
             (*rewritten_symbols_)[program_.functions[caller].symbol] = 1;
         }
+        if((caller_inlined || caller_stripped) && cleanup_ && cleanup_->run)
+          cleanup_->run(&program_.functions[caller], stats_, cleanup_->context);
         contains_eh_[caller] = contains_eh(program_.functions[caller]);
         leaf_inline_shapes_[caller] =
           leaf_inline_shape(program_.functions[caller]);
@@ -527,6 +531,7 @@ private:
   std::size_t remaining_single_call_translation_unit_budget_;
   bool optimized_late_wave_;
   bool definition_removing_only_;
+  const InlineCleanup * cleanup_;
   std::unordered_map<std::size_t, std::vector<std::size_t> >
     eh_blocked_callers_;
   std::size_t rewrites_;
@@ -798,7 +803,7 @@ private:
   {
     if(state_[function_index] == 2 || state_[function_index] == 1) return false;
     state_[function_index] = 1;
-    inline_calls(function_index);
+    const bool inlined = inline_calls(function_index);
     const bool stripped =
       strip_explicit_no_unwind_eh(&program_.functions[function_index]);
     if(stripped) {
@@ -806,6 +811,9 @@ private:
       if(rewritten_symbols_)
         (*rewritten_symbols_)[program_.functions[function_index].symbol] = 1;
     }
+    if((inlined || stripped) && cleanup_ && cleanup_->run)
+      cleanup_->run(
+        &program_.functions[function_index], stats_, cleanup_->context);
     contains_eh_[function_index] = contains_eh(program_.functions[function_index]);
     leaf_inline_shapes_[function_index] =
       leaf_inline_shape(program_.functions[function_index]);
@@ -1182,7 +1190,7 @@ private:
     return changed;
   }
 
-  void inline_calls(std::size_t function_index)
+  bool inline_calls(std::size_t function_index)
   {
     bool has_candidate = false;
     const Function & original = program_.functions[function_index];
@@ -1195,7 +1203,7 @@ private:
           break;
         }
       }
-    if(!has_candidate) return;
+    if(!has_candidate) return false;
 
     Names names(program_, program_.functions[function_index]);
     EhContext eh;
@@ -1283,6 +1291,7 @@ private:
     replace_values(&program_.functions[function_index], replacements);
     if(changed && rewritten_symbols_)
       (*rewritten_symbols_)[program_.functions[function_index].symbol] = 1;
+    return changed;
   }
 };
 
@@ -1305,7 +1314,8 @@ std::size_t inline_optimized_calls(
   LowirProgram & program,
   const InlineCallGraph & call_graph,
   std::vector<unsigned char> * rewritten_symbols,
-  Stats * stats)
+  Stats * stats,
+  const InlineCleanup * cleanup)
 {
   std::vector<unsigned char> no_prepared_oversized(
     program.symbol_names.size(), 0);
@@ -1314,7 +1324,8 @@ std::size_t inline_optimized_calls(
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     optimized_instruction_counts[i] = instruction_count(program.functions[i]);
   Inliner inliner(&program, call_graph, no_prepared_oversized,
-    optimized_instruction_counts, rewritten_symbols, stats, true);
+    optimized_instruction_counts, rewritten_symbols, stats, true, false,
+    cleanup);
   return inliner.run();
 }
 

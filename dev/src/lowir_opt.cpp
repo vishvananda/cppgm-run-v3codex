@@ -2577,6 +2577,19 @@ bool prepare_for_inlining(Function * function,
   return values_changed;
 }
 
+struct LateInlineCleanupContext
+{
+  const FunctionBoundaries * boundaries;
+};
+
+void cleanup_late_inline_body(Function * function, Stats * stats,
+                              void * opaque)
+{
+  const LateInlineCleanupContext & context =
+    *static_cast<const LateInlineCleanupContext *>(opaque);
+  prepare_for_inlining(function, *context.boundaries, stats);
+}
+
 }  // namespace
 
 void optimize(LowirProgram & program, int level, Stats * stats)
@@ -2798,18 +2811,16 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       stats->late_inline_direct_edges = late_call_graph.edges.size();
     std::vector<unsigned char> late_rewritten_symbols(
       program.symbol_names.size(), 0);
+    LateInlineCleanupContext cleanup_context = {&boundaries};
+    InlineCleanup cleanup;
+    cleanup.run = cleanup_late_inline_body;
+    cleanup.context = &cleanup_context;
     const std::size_t late_rewrites = inline_optimized_calls(
-      program, late_call_graph, &late_rewritten_symbols, stats);
+      program, late_call_graph, &late_rewritten_symbols, stats, &cleanup);
     if(stats) {
       stats->rewrites += late_rewrites;
       stats->late_inline_changed_callers = std::count(
         late_rewritten_symbols.begin(), late_rewritten_symbols.end(), 1);
-    }
-    if(late_rewrites) {
-      boundaries = function_boundaries(program);
-      for(std::size_t i = 0; i < program.functions.size(); ++i)
-        if(late_rewritten_symbols[program.functions[i].symbol])
-          prepare_for_inlining(&program.functions[i], boundaries, stats);
     }
     if(stats) stats->late_inline_nanoseconds =
       static_cast<std::uint64_t>(

@@ -192,6 +192,9 @@ running optimizing transforms.
   that LowIR metadata on the driver path
 - bottom-up processing of the direct-call graph so an eligible callee is
   simplified before callers decide whether to inline it
+- immediate local simplification, dead-code elimination, and control-flow
+  cleanup after a late inlining batch, so the callee's compact shape is
+  visible to every later caller in the same bottom-up traversal
 - a deterministic 128-instruction whole-caller inlining budget, charged by
   the greater of a callee's original and simplified instruction counts, so
   repeated individually eligible calls cannot cause unbounded growth
@@ -449,6 +452,13 @@ Represent an ordinary call to an internal function with its typed call edge,
 not with a permanent object root.  Reserve object roots for independent
 address, lifecycle, ABI, or explicit-publication requirements so a definition
 can disappear when inlining removes its last call.
+
+Publish a changed nonrecursive callee's cleaned instruction, block, call, and
+EH shape before advancing through that stable order. Direct calls cloned from
+the callee can only target descendants that have already been visited, so the
+ordinary acyclic case converges in one traversal. This avoids whole-program
+fixed-point retries; only a later policy that changes incoming-use eligibility
+needs a deduplicated reverse-caller worklist.
 
 The direct-call graph can record non-call observation in one byte per function
 while it scans instruction operands and structured global data. Reverse-edge

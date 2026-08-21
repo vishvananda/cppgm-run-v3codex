@@ -1,0 +1,46 @@
+declare function @bad() -> void [effects=readwrite]
+
+function @main() -> i64 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    return i64 1
+}
+function @other() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap7() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap6() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap5() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap4() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap3() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap2() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap1() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @wrap0() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
+function @leaf() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 1
+}
