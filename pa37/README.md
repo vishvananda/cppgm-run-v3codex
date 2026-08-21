@@ -192,6 +192,8 @@ running optimizing transforms.
 - preservation of object-parameter copies and isolated return-merge slots and
   continuations when direct calls with object or nested multi-block callees are
   inlined
+- retargeting of successor `phi` inputs when inlining moves a caller block's
+  terminating edge into a new continuation block
 - removal of no-op EH markers in functions known not to unwind when the
   protected region contains no operation that can transfer to the handler
 - discovery of natural loops from dominators and backedges, including loop

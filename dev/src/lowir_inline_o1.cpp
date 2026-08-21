@@ -1,6 +1,7 @@
 #include "lowir_inline_o1.h"
 #include "lowir_inline_analysis.h"
 #include "lowir_opt.h"
+#include "lowir_phi_edges.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -864,6 +865,9 @@ private:
       lowir_model::allocate_lowir_block_id(
         caller, names->retain ? program_.strings.intern(prefix + "cont") :
           lowir_model::StringId());
+    if(!tail.empty())
+      lowir_phi_edges::rewrite_moved_phi_edges(
+        &caller, tail.back(), caller.blocks[block_index].id, continuation_id);
     block_eh->resize(caller.next_block_id, 0);
     (*block_eh)[continuation_id] = inside_eh ? 1 : 0;
     caller.blocks[block_index].instructions.push_back(jump_to(

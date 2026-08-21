@@ -8,13 +8,13 @@
 #include <vector>
 
 namespace lowir_phi_edges {
-namespace {
-
 using lowir_model::BlockId;
 using lowir_model::Instruction;
 using lowir_model::LowirBlock;
 using lowir_model::LowirFunction;
 using lowir_model::Operand;
+
+namespace {
 
 struct Edge
 {
@@ -26,6 +26,25 @@ void append_unique(std::vector<BlockId> * values, BlockId value)
 {
   if(std::find(values->begin(), values->end(), value) == values->end())
     values->push_back(value);
+}
+
+bool terminal_targets(const Instruction & terminal, BlockId target)
+{
+  if(terminal.kind == Instruction::IK_JUMP)
+    return terminal.first.kind == Operand::OP_LABEL &&
+      terminal.first.block == target;
+  if(terminal.kind == Instruction::IK_BRANCH)
+    return (terminal.second.kind == Operand::OP_LABEL &&
+            terminal.second.block == target) ||
+      (terminal.third.kind == Operand::OP_LABEL &&
+       terminal.third.block == target);
+  if(terminal.kind != Instruction::IK_SWITCH) return false;
+  if(terminal.second.kind == Operand::OP_LABEL &&
+     terminal.second.block == target) return true;
+  for(std::size_t i = 1; i < terminal.args.size(); i += 2)
+    if(terminal.args[i].kind == Operand::OP_LABEL &&
+       terminal.args[i].block == target) return true;
+  return false;
 }
 
 std::vector<std::vector<BlockId> > ordinary_successors(
@@ -160,6 +179,27 @@ void split_function(lowir_model::LowirProgram * program,
 }
 
 }  // namespace
+
+void rewrite_moved_phi_edges(LowirFunction * function,
+                             const Instruction & terminal,
+                             BlockId old_predecessor,
+                             BlockId continuation)
+{
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    LowirBlock & target = function->blocks[block];
+    if(!terminal_targets(terminal, target.id)) continue;
+    for(std::size_t instruction = 0;
+        instruction < target.instructions.size(); ++instruction) {
+      Instruction & phi = target.instructions[instruction];
+      if(phi.kind != Instruction::IK_PHI) break;
+      for(std::size_t incoming = 0;
+          incoming + 1 < phi.args.size(); incoming += 2)
+        if(phi.args[incoming].kind == Operand::OP_LABEL &&
+           phi.args[incoming].block == old_predecessor)
+          phi.args[incoming].block = continuation;
+    }
+  }
+}
 
 bool has_critical_phi_edges(const lowir_model::LowirProgram & program)
 {

@@ -1,4 +1,5 @@
 #include "lowir_force_inline.h"
+#include "lowir_phi_edges.h"
 
 #include "lowir_function_reachability.h"
 
@@ -391,46 +392,6 @@ private:
     return result;
   }
 
-  static bool TerminalTargets(const Instruction & terminal, BlockId target)
-  {
-    if(terminal.kind == Instruction::IK_JUMP)
-      return terminal.first.kind == Operand::OP_LABEL &&
-        terminal.first.block == target;
-    if(terminal.kind == Instruction::IK_BRANCH)
-      return (terminal.second.kind == Operand::OP_LABEL &&
-              terminal.second.block == target) ||
-        (terminal.third.kind == Operand::OP_LABEL &&
-         terminal.third.block == target);
-    if(terminal.kind != Instruction::IK_SWITCH) return false;
-    if(terminal.second.kind == Operand::OP_LABEL &&
-       terminal.second.block == target) return true;
-    for(std::size_t i = 1; i < terminal.args.size(); i += 2)
-      if(terminal.args[i].kind == Operand::OP_LABEL &&
-         terminal.args[i].block == target) return true;
-    return false;
-  }
-
-  static void RewriteMovedPhiEdges(Function * caller,
-                                   const Instruction & terminal,
-                                   BlockId old_predecessor,
-                                   BlockId continuation)
-  {
-    for(std::size_t block = 0; block < caller->blocks.size(); ++block) {
-      Block & target = caller->blocks[block];
-      if(!TerminalTargets(terminal, target.id)) continue;
-      for(std::size_t instruction = 0;
-          instruction < target.instructions.size(); ++instruction) {
-        Instruction & phi = target.instructions[instruction];
-        if(phi.kind != Instruction::IK_PHI) break;
-        for(std::size_t incoming = 0;
-            incoming + 1 < phi.args.size(); incoming += 2)
-          if(phi.args[incoming].kind == Operand::OP_LABEL &&
-             phi.args[incoming].block == old_predecessor)
-            phi.args[incoming].block = continuation;
-      }
-    }
-  }
-
   void InlineCall(Function * caller, std::size_t block_index,
                   std::size_t instruction_index, const Function & callee,
                   InlineNames * names)
@@ -459,7 +420,7 @@ private:
     if(tail.empty())
       throw std::logic_error("force-inline call has no continuation");
     const BlockId old_predecessor = caller->blocks[block_index].id;
-    RewriteMovedPhiEdges(
+    lowir_phi_edges::rewrite_moved_phi_edges(
       caller, tail.back(), old_predecessor, continuation_id);
     caller->blocks[block_index].instructions.resize(instruction_index);
     caller->blocks[block_index].instructions.push_back(jump_to(prologue_id));
