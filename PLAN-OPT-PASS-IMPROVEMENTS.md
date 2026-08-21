@@ -2120,7 +2120,25 @@ fallback.  Eliminated loads rise from 575 to 645, while the object falls from
 1,473,216 to 1,472,920 bytes and `.text*` from 520,510 to 520,192 bytes.  The
 pass rises from about 5.2 ms to 9.9 ms; total one-run wall time was 5.44 seconds
 under variable host load.  The full 5,396-test report passes and the file audit
-has zero fatal findings.  PRE remains the next separately measured subphase.
+has zero fatal findings.
+
+The separately prototyped PRE extension is rejected.  It admitted 301 EH
+functions (72 conflict fallbacks), but found no partial redundancy in the
+frozen source.  Instead, it converted 280 fully available expressions into
+join phis, growing the object from 1,472,920 to 1,480,480 bytes and `.text*`
+from 520,192 to 527,801 bytes while doubling PRE time from about 5.0 to 10.0
+ms.  The exact equal-region/handler reducer proved the context rule itself,
+but there is no production or course-fixture change to retain for a rejected
+optimization.  Any future PRE revisit must first avoid profitable full
+expressions and demonstrate partial-redundancy evidence independently.
+
+Native edge-register placement is rejected at the same checkpoint.  Removing
+the EH-wide gate as an upper-bound experiment raises planned retained values
+from 591 to 1,150, but grows the object from 1,472,920 to 1,478,728 bytes and
+`.text*` from 520,192 to 525,930 bytes.  Definition-time fallback stores and
+the extra register pressure outweigh saved reloads before any state-analysis
+cost is added.  Therefore the measured population does not justify building
+a region-aware placement analysis; the existing conservative EH guard stays.
 
 #### R11h. Re-run profitability selection after eligibility and harvesting
 
@@ -2366,7 +2384,7 @@ Fill one row for every retained or rejected phase:
 | R11d | separate lifecycle publication/retention from explicit `no_inline` | PA28 exact policy; PA30 foreign relocation; PA32 publication; PA37 source/object roundtrip | vs R11c: object +31,880 B, text -1,946 B, +172 definitions; ordinary/late inlines +538/+184 | one transient typed Boolean; reuse native reachability; object-root fact serialized | 5,387/5,387; PA37 object/debug clean; zero fatal | final combined O0/O3 lane required | implementation complete; host O1 median 5.18 s |
 | R11e | proven-no-unwind landing-block inlining | PA37 exact/source; PA30 exception-in-flight runtime | vs R11d: object -29,848 B, text -1,523 B, -105 definitions; basic-string destructor calls -192 | existing dense landing/no-unwind/EH summaries and budgets | 5,392/5,392; PA37 debug clean; zero fatal | final combined lane required | implementation complete; host O1 median 5.12 s |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | PA33 source; PA37 source/DCE positives and negatives | 53 declarations but 26 attributable live calls; 291/1,432 serialized definitions EH-bearing; O1 byte-identical | compact canonical effects enum; single-pass attribute collection | 5,395/5,395; zero fatal | diagnostic | complete; GNU `nothrow` absent and `basic_string` cleanup unannotated |
-| R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 memory EH positive/barrier/conflict; PRE and PA38 placement coverage pending | memory: +70 eliminated loads, -296 B object, -318 B text; 72/301 conflict fallbacks | shared compact EH states and one sparse barrier version | 5,396/5,396; zero fatal | required for each retained subphase | memory GVN complete; PRE/placement pending |
+| R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 memory EH positive/barrier/conflict; no rejected-prototype fixtures retained | memory: +70 eliminated loads, -296 B object, -318 B text; PRE +7,560 B object; placement +5,808 B object | shared compact EH states only for retained memory GVN; rejected prototypes removed | 5,396/5,396; zero fatal | required for each retained subphase | complete: memory retained; PRE and placement rejected |
 | R11h | post-harvest inliner profitability sweep | PA37 only for a retained policy change | exact-self maximum runtime plus object/text/EH deltas | one-variable bounded sweep; no production profiling strings | pending | final retained policy only | conditional on R11a--g |
 | R11i | true EH-region grafting | PA37 only if justified by a residual profiled-hot population | separate genuine live-EH effect from dead-region work | no unbounded retry or private LowIR side channel | pending | required if retained | deferred pending R11f/h residual census |
 
