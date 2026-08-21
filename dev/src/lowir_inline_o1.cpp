@@ -582,13 +582,6 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_landing;
       return false;
     }
-    // Preserve externally visible calls inside an EH region.  Earlier object
-    // contracts inspect the call-site table emitted for these calls, and an
-    // inferred no-throw body is not part of that external ABI contract.
-    if(inside_eh && callee_function.metadata.object_symbol.valid()) {
-      if(record_stats && stats_) ++stats_->inline_reject_eh_visibility;
-      return false;
-    }
     if(inside_eh && !no_unwind_[callee_function.symbol]) {
       if(record_stats && stats_) ++stats_->inline_reject_eh_unwind;
       return false;

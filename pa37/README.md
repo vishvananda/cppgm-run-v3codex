@@ -181,8 +181,11 @@ running optimizing transforms.
 - preservation of exceptional handler targets and exception-structure blocks
   while doing CFG cleanup
 - conservative inlining of small direct calls, including `unwind=no` callees
-  inside EH regions only when the caller EH shape can be preserved; a callee
-  containing its own EH instructions must remain a call even at caller EH depth zero
+  inside EH regions only when the caller EH shape can be preserved; serialized
+  `object` identity does not make a callee ineligible when either its public
+  boundary or typed body analysis proves that it cannot unwind; a callee
+  containing its own EH instructions must remain a call even at caller EH
+  depth zero
 - preservation of calls to functions marked `no_inline=yes`; source-level GNU
   `noinline` attributes must reach that LowIR metadata on the driver path
 - bottom-up processing of the direct-call graph so an eligible callee is

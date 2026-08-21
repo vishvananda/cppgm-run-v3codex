@@ -1191,6 +1191,33 @@ RSS.  Its separate 32-worker inception compare takes 73.42 seconds wall,
 RSS.  All 209 objects and the final compiler match.  The retained policy is
 committed as `276a5c5d`.
 
+Rank 10a removes an over-conservative early-inliner condition that rejected
+every object-named callee inside an EH region.  Object identity is a linkage
+fact, not an unwind effect.  The existing compact `no_unwind_` analysis already
+combines the serialized public boundary with typed body inference, so the
+inliner can safely admit an object-named callee exactly when that analysis
+proves it cannot unwind.  Callees that may unwind, contain their own EH, or are
+called from a landing handler remain rejected.  This is one deleted branch in
+the candidate check and adds no lookup, allocation, or program scan.
+
+Two older fixtures exposed by the stronger policy now state their actual
+contracts.  The PA31 reactive-spill input calls a separately compiled opaque
+helper, because GCC and Clang both prove the former same-translation-unit
+helper nonthrowing and omit its LSDA even at O0.  The PA33 ABI-tag publication
+input uses explicit class-template instantiation plus escaped member-function
+addresses, because GCC and Clang may omit ordinary inline/template bodies once
+all local calls disappear.  Existing LowIR object roots and address references
+then retain exactly the definitions the source makes observable; no object-only
+LowIR or new metadata field is required.
+
+On the frozen O1 compile, Rank 10a reduces the object from 2,173,384 to
+2,007,640 bytes, aggregate text from 614,863 to 597,171 bytes, `.eh_frame`
+from 82,056 to 71,496 bytes, and the measured weak/local function population
+by 391.  Six-run interleaved explicit-O1 timing is neutral: baseline/candidate
+medians are 4.979/4.984 seconds (+0.10%).  The focused PA31/PA33/PA37 report
+passes 264/264 and the full report passes 5,354/5,354; the file audit has zero
+fatal findings and 29 advisory warnings.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1366,6 +1393,7 @@ Fill one row for every retained or rejected phase:
 | R8c | preserve phi predecessor identity when inlining moves a terminal edge | PA37 O1 exact reducer; PA37 normative inlining contract | no intended frozen change while O3 remains leaf-only | typed block IDs; work bounded by the fixed 128-instruction caller budget | 5,347/5,347; zero fatal | not rerun for output-neutral prerequisite | complete, `9fb2b10b` |
 | R9a | canonical source-lowered `cmp` value identity | PA15 normative contract and exact course reducer; PA37 object roundtrip; 147 PA15--PA28 references regenerated in place | frozen O0 +1,432 B; maximum +4,200 B; 6,836,572-byte O3 LowIR exact parse/dump roundtrip | old/new median O0 wall 4.73/4.72 s, user 4.23/4.26 s; maximum wall 5.20/5.20 s, user 4.71/4.69 s; direct compact types, no new pass or text identity | 5,349/5,349; zero fatal, 31 warnings | clean O0: self 19.49 s / inception 153.97 s, timed separately; all matches | complete, `45b15f22` |
 | R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O1 phi-edge reducer; O3 optimized-shape and seven-instruction boundary fixtures; 1x/2x/4x counters | vs leaf-only: object -35,520 B, text -2,106 B, defined functions -95 | exact self A/B median 17.71 to 17.42 s; late wave 51.6 ms; compact cached shape facts | 5,352/5,352; zero fatal | self 19.11 s / inception 73.42 s; 209 objects and final compiler match | complete, broad implementation `3eecc5f4`, retained cap `276a5c5d` |
+| R10a | admit object-named proven-no-unwind callees inside EH regions | PA37 O1 exact + object-roundtrip reducers; PA31 opaque throwing-boundary fixture; PA33 explicit publication roots | O1 object -165,744 B, text -17,692 B, `.eh_frame` -10,560 B, 391 fewer measured function definitions | six-run explicit-O1 A/B median 4.979 to 4.984 s (+0.10%); no new analysis or storage | 5,354/5,354; zero fatal, 29 warnings | final combined lane pending | implementation complete; commit pending |
 
 ## Completion criteria
 

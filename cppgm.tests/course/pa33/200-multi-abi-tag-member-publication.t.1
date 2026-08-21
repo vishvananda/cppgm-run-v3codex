@@ -67,6 +67,19 @@ TaggedOuter::Nested<T>::~Nested()
 {
 }
 
+// Make the object-publication requirements explicit.  Optimizers may remove
+// out-of-line template bodies whose only ordinary calls were inlined.
+template struct TaggedTemplate<int>;
+template struct TaggedOuter::Nested<int>;
+
+typedef int (TaggedTemplate<int>::*TemplateSame)(
+  const TaggedTemplate<int> *) const;
+TemplateSame volatile template_same = &TaggedTemplate<int>::same;
+
+typedef int (TaggedOuter::Nested<int>::*NestedSame)(
+  const TaggedOuter::Nested<int> *) const;
+NestedSame volatile nested_same = &TaggedOuter::Nested<int>::same;
+
 int local_value()
 {
   struct __attribute__((abi_tag("alpha", "beta"))) Local {
