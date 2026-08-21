@@ -60,6 +60,11 @@ struct Stats
   std::size_t inline_candidate_calls = 0;
   std::size_t inline_calls = 0;
   std::size_t inline_cloned_instructions = 0;
+  std::size_t inline_single_call_candidates = 0;
+  std::size_t inline_single_call_calls = 0;
+  std::size_t inline_single_call_instructions = 0;
+  std::size_t inline_single_call_discarded_bodies = 0;
+  std::size_t inline_single_call_budget_skips = 0;
   std::size_t inline_input_instructions = 0;
   std::size_t inline_output_instructions = 0;
   std::size_t inline_reject_recursive = 0;

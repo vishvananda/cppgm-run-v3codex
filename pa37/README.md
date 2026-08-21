@@ -194,6 +194,16 @@ running optimizing transforms.
 - a deterministic 128-instruction whole-caller inlining budget, charged by
   the greater of a callee's original and simplified instruction counts, so
   repeated individually eligible calls cannot cause unbounded growth
+- a separate definition-removing path for a weak or internal function that
+  has exactly one direct call and no address, relocation, structured-data,
+  alias, lifecycle, object-root, or other non-call use; this path may admit a
+  body of at most 160 instructions, uses a 320-instruction budget per caller
+  and a 10,240-instruction budget per translation unit, and removes the
+  transferred definition after substitution
+- preservation of the ordinary 128-instruction policy when a definition is
+  in the single-call class but a separate single-call budget is exhausted;
+  calls that meet the ordinary size and growth rules remain ordinary inline
+  candidates
 - preservation of object-parameter copies and isolated return-merge slots and
   continuations when direct calls with object or nested multi-block callees are
   inlined
@@ -424,6 +434,14 @@ Represent an ordinary call to an internal function with its typed call edge,
 not with a permanent object root.  Reserve object roots for independent
 address, lifecycle, ABI, or explicit-publication requirements so a definition
 can disappear when inlining removes its last call.
+
+The direct-call graph can record non-call observation in one byte per function
+while it scans instruction operands and structured global data. Reverse-edge
+counts then identify the single-direct-call case without another symbol lookup
+or program pass. When that definition is discardable, move the instruction
+payloads into their renamed caller form and release the old body immediately.
+Keep the ordinary and definition-removing budgets independent so exhausting
+the latter does not suppress an otherwise ordinary inline.
 
 Interprocedural argument agreement can reuse that same direct-call graph and
 its dense symbol-to-function table. Store parameter facts in one packed array

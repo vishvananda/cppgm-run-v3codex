@@ -30,16 +30,51 @@ void build_edges(const LowirProgram & program, InlineCallGraph * graph)
 {
   const std::size_t count = program.functions.size();
   std::vector<std::size_t> out_degree(count, 0), in_degree(count, 0);
+  graph->non_call_use.assign(count, 0);
+  const auto mark_non_call_use = [graph](const Operand & operand) {
+    if(operand.kind != Operand::OP_GLOBAL) return;
+    const std::size_t symbol = operand.symbol;
+    if(symbol >= graph->definition_by_symbol.size()) return;
+    const std::size_t function = graph->definition_by_symbol[symbol];
+    if(function != InlineCallGraph::no_function())
+      graph->non_call_use[function] = 1;
+  };
   for(std::size_t caller = 0; caller < count; ++caller) {
     const Function & function = program.functions[caller];
     for(std::size_t b = 0; b < function.blocks.size(); ++b)
       for(std::size_t i = 0; i < function.blocks[b].instructions.size(); ++i) {
+        const Instruction & instruction = function.blocks[b].instructions[i];
         const std::size_t callee = direct_callee(
-          function.blocks[b].instructions[i], graph->definition_by_symbol);
-        if(callee == InlineCallGraph::no_function()) continue;
-        ++out_degree[caller];
-        ++in_degree[callee];
+          instruction, graph->definition_by_symbol);
+        if(callee != InlineCallGraph::no_function()) {
+          ++out_degree[caller];
+          ++in_degree[callee];
+        } else mark_non_call_use(instruction.first);
+        mark_non_call_use(instruction.second);
+        mark_non_call_use(instruction.third);
+        for(std::size_t a = 0; a < instruction.args.size(); ++a)
+          mark_non_call_use(instruction.args[a]);
       }
+  }
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    mark_non_call_use(program.globals[i].init_operand);
+    for(std::size_t item = 0;
+        item < program.globals[i].data_items.size(); ++item) {
+      const lowir_model::GlobalDefinition::DataItem & data =
+        program.globals[i].data_items[item];
+      if(data.kind != lowir_model::GlobalDefinition::DataItem::ITEM_ADDR)
+        continue;
+      Operand address;
+      address.kind = Operand::OP_GLOBAL;
+      address.symbol = data.symbol_id;
+      mark_non_call_use(address);
+    }
+  }
+  for(std::size_t i = 0; i < program.object_aliases.size(); ++i) {
+    Operand target;
+    target.kind = Operand::OP_GLOBAL;
+    target.symbol = program.object_aliases[i].target_id;
+    mark_non_call_use(target);
   }
 
   graph->edge_offsets.assign(count + 1, 0);

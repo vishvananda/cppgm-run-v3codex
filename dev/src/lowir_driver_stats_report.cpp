@@ -75,6 +75,15 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " inline_candidate_calls=" << stats.inline_candidate_calls
 		 << " inline_calls=" << stats.inline_calls
 		 << " inline_cloned_instructions=" << stats.inline_cloned_instructions
+		 << " inline_single_call_candidates="
+		 << stats.inline_single_call_candidates
+		 << " inline_single_call_calls=" << stats.inline_single_call_calls
+		 << " inline_single_call_instructions="
+		 << stats.inline_single_call_instructions
+		 << " inline_single_call_discarded_bodies="
+		 << stats.inline_single_call_discarded_bodies
+		 << " inline_single_call_budget_skips="
+		 << stats.inline_single_call_budget_skips
 		 << " inline_input_instructions=" << stats.inline_input_instructions
 		 << " inline_output_instructions=" << stats.inline_output_instructions
 		 << " inline_reject_recursive=" << stats.inline_reject_recursive

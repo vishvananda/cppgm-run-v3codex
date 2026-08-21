@@ -1245,6 +1245,62 @@ strong counts are unchanged.  Six-run interleaved explicit-O1 timing remains
 neutral at 4.990/4.992 seconds (+0.04%).  The full report passes 5,356/5,356
 and the file audit has zero fatal findings and 29 advisory warnings.
 
+Rank 10c adds the bounded GCC-style `-finline-functions-called-once` class that
+was still absent from ordinary O1.  The existing CSR call-graph construction
+marks non-call observation while it scans typed operands and structured object
+data.  A weak or internal definition is transferable only when its reverse
+edge range contains exactly one call and no address, relocation, alias,
+lifecycle, object-root, or other independent use exists.  This adds one byte
+per function and no string key, rendered symbol, or second program walk.
+
+The definition-removing class has independent limits of 160 instructions per
+body, 320 per caller, and 10,240 per translation unit.  The greater of the
+original and simplified body counts is charged.  Exhausting this budget falls
+back to the ordinary 128-instruction policy when that policy would have
+accepted the call, so the new class cannot suppress an old inline.  A retained
+transfer moves instruction-owned payloads through the existing typed renamer
+and releases the old body immediately; the final reachability pass remains the
+single authority that removes the now-unreferenced definition.
+
+The cap is a backend-safety boundary, not an arbitrary object-size optimum.
+At 192 and 256 instructions, compiling `lowir_loop_simplify.cpp` with the
+candidate exposes the existing reactive-register exhaustion in
+`simplify_counted_loops`; 160 compiles that file and
+`lowir_full_unroll_o3.cpp` successfully.  A later backend phase must add the
+earliest reducer and spill support before this inlining class is widened.
+Ownership transfer is byte-identical to the initial clone-and-release
+prototype on the frozen object.
+
+A synthetic 1x/2x/4x audit reports 1/2/4 direct edges, call visits, eligible
+single-call candidates, transferred calls, and discarded bodies, with
+42/84/168 transferred instructions.  Thus the added analysis and retained
+work remain linear in typed operands, call edges, and transferred body size.
+
+Against Rank 10b, the frozen O1 object falls from 1,908,944 to 1,885,744 bytes
+and measured definitions fall from 2,645 to 2,589.  `.eh_frame` falls from
+62,696 to 60,864 bytes.  Aggregate text rises by 1,551 bytes, from 585,993 to
+587,544, because the generated caller shape is not always as compact as the
+separate body; the generated compiler's runtime nevertheless improves.  Its
+O1-built binary file falls by 6,552 bytes while loaded text rises by 220,240
+bytes.  Three alternating exact-self A/B frozen compiles give these medians:
+
+| Frozen input level | Rank 10b wall/user | Rank 10c wall/user | Change |
+| --- | ---: | ---: | ---: |
+| O0 | 17.21 / 16.66 s | 16.77 / 16.22 s | -2.6% / -2.6% |
+| O1 | 18.34 / 17.80 s | 17.98 / 17.44 s | -2.0% / -2.0% |
+
+Three alternating host-built compiler runs at O1 also improve from 5.04 to
+5.00 seconds median wall and from 4.57 to 4.52 seconds median user. Releasing
+the 453 transferred frozen bodies before the later per-function schedule
+offsets the added graph fact and profitability checks.
+
+The separately timed clean O1 self builds were 19.24 and 26.24 seconds wall,
+but CPU utilization differed by 655 percentage points; their aggregate user
+times were 460.52 and 468.47 seconds.  The alternating single-process A/B is
+the acceptance signal on this intermittently loaded host.  PA37 reducers cover
+the transferred body, multiple direct calls, address observation, and the
+160-instruction boundary.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1421,7 +1477,8 @@ Fill one row for every retained or rejected phase:
 | R9a | canonical source-lowered `cmp` value identity | PA15 normative contract and exact course reducer; PA37 object roundtrip; 147 PA15--PA28 references regenerated in place | frozen O0 +1,432 B; maximum +4,200 B; 6,836,572-byte O3 LowIR exact parse/dump roundtrip | old/new median O0 wall 4.73/4.72 s, user 4.23/4.26 s; maximum wall 5.20/5.20 s, user 4.71/4.69 s; direct compact types, no new pass or text identity | 5,349/5,349; zero fatal, 31 warnings | clean O0: self 19.49 s / inception 153.97 s, timed separately; all matches | complete, `45b15f22` |
 | R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O1 phi-edge reducer; O3 optimized-shape and seven-instruction boundary fixtures; 1x/2x/4x counters | vs leaf-only: object -35,520 B, text -2,106 B, defined functions -95 | exact self A/B median 17.71 to 17.42 s; late wave 51.6 ms; compact cached shape facts | 5,352/5,352; zero fatal | self 19.11 s / inception 73.42 s; 209 objects and final compiler match | complete, broad implementation `3eecc5f4`, retained cap `276a5c5d` |
 | R10a | admit object-named proven-no-unwind callees inside EH regions | PA37 O1 exact + object-roundtrip reducers; PA31 opaque throwing-boundary fixture; PA33 explicit publication roots | O1 object -165,744 B, text -17,692 B, `.eh_frame` -10,560 B, 391 fewer measured function definitions | six-run explicit-O1 A/B median 4.979 to 4.984 s (+0.10%); no new analysis or storage | 5,354/5,354; zero fatal, 29 warnings | final combined lane pending | complete, `8fffcbca` |
-| R10b | stop treating ordinary calls to internal functions as permanent object roots | six PA15/17/22/25 exact refs lose only stale root metadata; seven PA31--PA36 symbol fixtures gain explicit retention; PA37 lambda-control and pruning reducers | vs R10a: object -98,696 B, text -11,178 B, `.eh_frame` -8,800 B, 312 fewer measured local definitions | six-run explicit-O1 A/B median 4.990 to 4.992 s (+0.04%); one constant mask test per symbol | 5,356/5,356; zero fatal, 29 warnings | final combined lane pending | implementation complete; commit pending |
+| R10b | stop treating ordinary calls to internal functions as permanent object roots | six PA15/17/22/25 exact refs lose only stale root metadata; seven PA31--PA36 symbol fixtures gain explicit retention; PA37 lambda-control and pruning reducers | vs R10a: object -98,696 B, text -11,178 B, `.eh_frame` -8,800 B, 312 fewer measured local definitions | six-run explicit-O1 A/B median 4.990 to 4.992 s (+0.04%); one constant mask test per symbol | 5,356/5,356; zero fatal, 29 warnings | final combined lane pending | complete, `134f0c17` |
+| R10c | bounded definition-removing single-call inlining with immediate body release | PA37 O1 positive/address/multiple-use reducer and 160-instruction boundary; normative limits and typed Design Notes | vs R10b: object -23,200 B, text +1,551 B, `.eh_frame` -1,832 B, 56 fewer measured definitions | exact O1-built-self frozen medians: O0 17.21 to 16.77 s, O1 18.34 to 17.98 s; host O1 5.04 to 5.00 s; typed scan adds one byte/function; ownership transfer avoids instruction payload copies | 5,358/5,358; zero fatal, 31 warnings | O1 self build succeeds; final O3 32-way lane pending | implementation measured; commit pending |
 
 ## Completion criteria
 

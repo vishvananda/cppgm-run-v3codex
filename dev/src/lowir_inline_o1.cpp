@@ -28,6 +28,9 @@ using lowir_model::Operand;
 
 const std::size_t kNoFunction = InlineCallGraph::no_function();
 const std::size_t kInlineInstructionBudget = 128;
+const std::size_t kSingleCallInstructionLimit = 160;
+const std::size_t kSingleCallCallerBudget = 320;
+const std::size_t kSingleCallTranslationUnitBudget = 10240;
 const std::size_t kLateNonleafInstructionLimit = 6;
 class ValueMap
 {
@@ -189,23 +192,39 @@ void rename_operand(Operand * operand, const ValueMap & values,
   }
 }
 
+void rename_instruction(Instruction * result, const ValueMap & values,
+                        const SlotMap & slots, const BlockMap & blocks)
+{
+  if(result->dest.valid()) {
+    const Operand * found = values.find(result->dest);
+    if(!found || found->kind != Operand::OP_TEMP)
+      throw std::logic_error("inlined result has no value name");
+    result->dest = found->value;
+  }
+  rename_operand(&result->first, values, slots, blocks);
+  rename_operand(&result->second, values, slots, blocks);
+  rename_operand(&result->third, values, slots, blocks);
+  for(std::size_t i = 0; i < result->args.size(); ++i)
+    rename_operand(&result->args[i], values, slots, blocks);
+}
+
 Instruction clone_instruction(const Instruction & source,
                               const ValueMap & values,
                               const SlotMap & slots,
                               const BlockMap & blocks)
 {
   Instruction result = source;
-  if(result.dest.valid()) {
-    const Operand * found = values.find(result.dest);
-    if(!found || found->kind != Operand::OP_TEMP)
-      throw std::logic_error("inlined result has no value name");
-    result.dest = found->value;
-  }
-  rename_operand(&result.first, values, slots, blocks);
-  rename_operand(&result.second, values, slots, blocks);
-  rename_operand(&result.third, values, slots, blocks);
-  for(std::size_t i = 0; i < result.args.size(); ++i)
-    rename_operand(&result.args[i], values, slots, blocks);
+  rename_instruction(&result, values, slots, blocks);
+  return result;
+}
+
+Instruction transfer_instruction(Instruction * source,
+                                 const ValueMap & values,
+                                 const SlotMap & slots,
+                                 const BlockMap & blocks)
+{
+  Instruction result = std::move(*source);
+  rename_instruction(&result, values, slots, blocks);
   return result;
 }
 
@@ -367,6 +386,8 @@ public:
       no_unwind_(program->symbol_names.size(), 0),
       prepared_oversized_symbols_(prepared_oversized_symbols),
       original_instruction_counts_(original_instruction_counts),
+      remaining_single_call_translation_unit_budget_(
+        kSingleCallTranslationUnitBudget),
       optimized_late_wave_(optimized_late_wave), rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
@@ -374,10 +395,22 @@ public:
     contains_eh_.resize(program_.functions.size(), 0);
     leaf_inline_shapes_.resize(program_.functions.size(), 0);
     instruction_counts_.resize(program_.functions.size(), 0);
+    single_call_discardable_.resize(program_.functions.size(), 0);
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       contains_eh_[i] = contains_eh(program_.functions[i]);
       leaf_inline_shapes_[i] = leaf_inline_shape(program_.functions[i]);
       instruction_counts_[i] = instruction_count(program_.functions[i]);
+      const Function & function = program_.functions[i];
+      const std::size_t direct_uses =
+        call_graph_.reverse_offsets[i + 1] - call_graph_.reverse_offsets[i];
+      single_call_discardable_[i] = direct_uses == 1 &&
+        !call_graph_.non_call_use[i] &&
+        (function.metadata.binding == lowir_model::SBM_INTERNAL ||
+         function.metadata.binding == lowir_model::SBM_WEAK) &&
+        !function.metadata.object_output_root &&
+        !function.metadata.keep_internal_alias &&
+        function.metadata.role == lowir_model::SR_NONE &&
+        !function.metadata.tls_for_symbol_id.valid();
     }
     if(stats_ && !optimized_late_wave_) stats_->inline_input_instructions =
       std::accumulate(instruction_counts_.begin(), instruction_counts_.end(),
@@ -386,6 +419,8 @@ public:
     state_.assign(program_.functions.size(), 0);
     remaining_inline_budget_.assign(program_.functions.size(),
       kInlineInstructionBudget);
+    remaining_single_call_budget_.assign(program_.functions.size(),
+      kSingleCallCallerBudget);
   }
 
   std::size_t run()
@@ -451,8 +486,11 @@ private:
   const std::vector<unsigned char> & prepared_oversized_symbols_;
   const std::vector<std::size_t> & original_instruction_counts_;
   std::vector<unsigned char> state_, contains_eh_, leaf_inline_shapes_;
+  std::vector<unsigned char> single_call_discardable_;
   std::vector<std::size_t> instruction_counts_;
   std::vector<std::size_t> remaining_inline_budget_;
+  std::vector<std::size_t> remaining_single_call_budget_;
+  std::size_t remaining_single_call_translation_unit_budget_;
   bool optimized_late_wave_;
   std::unordered_map<std::size_t, std::vector<std::size_t> >
     eh_blocked_callers_;
@@ -559,9 +597,15 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_variadic;
       return false;
     }
+    const std::size_t inline_cost = std::max(
+      instruction_counts_[target], original_instruction_counts_[target]);
+    const bool bounded_single_call = !optimized_late_wave_ &&
+      single_call_discardable_[target] &&
+      inline_cost <= kSingleCallInstructionLimit;
     if(instruction_counts_[target] > 40 &&
        (optimized_late_wave_ ||
-        !callee_function.metadata.prefer_local_object_binding)) {
+        !callee_function.metadata.prefer_local_object_binding) &&
+       !bounded_single_call) {
       if(record_stats && stats_) ++stats_->inline_reject_callee_size;
       return false;
     }
@@ -574,7 +618,7 @@ private:
     if(!optimized_late_wave_ &&
        prepared_oversized_symbols_[callee_function.symbol] &&
        (instruction_counts_[target] > 4 ||
-        !leaf_inline_shapes_[target])) {
+        !leaf_inline_shapes_[target]) && !bounded_single_call) {
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
       return false;
     }
@@ -595,22 +639,58 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_callee_eh;
       return false;
     }
+    if(record_stats && stats_ && bounded_single_call)
+      ++stats_->inline_single_call_candidates;
     if(record_stats && stats_) ++stats_->inline_candidate_calls;
     return true;
   }
 
-  bool consume_inline_budget(std::size_t target, std::size_t * remaining)
+  bool consume_inline_budget(std::size_t target, std::size_t * remaining,
+                             std::size_t * single_call_remaining,
+                             bool * used_single_call)
   {
+    *used_single_call = false;
     const std::size_t cost = std::max<std::size_t>(optimized_late_wave_ ?
       instruction_counts_[target] :
       std::max(instruction_counts_[target],
         original_instruction_counts_[target]), 1);
+    if(!optimized_late_wave_ && single_call_discardable_[target] &&
+       cost <= kSingleCallInstructionLimit) {
+      if(cost <= *single_call_remaining &&
+         cost <= remaining_single_call_translation_unit_budget_) {
+        *single_call_remaining -= cost;
+        remaining_single_call_translation_unit_budget_ -= cost;
+        *used_single_call = true;
+        return true;
+      }
+      if(stats_) ++stats_->inline_single_call_budget_skips;
+      const Function & function = program_.functions[target];
+      const bool ordinary_size_candidate =
+        (instruction_counts_[target] <= 40 ||
+         function.metadata.prefer_local_object_binding) &&
+        (!prepared_oversized_symbols_[function.symbol] ||
+         (instruction_counts_[target] <= 4 &&
+          leaf_inline_shapes_[target]));
+      if(!ordinary_size_candidate)
+        return false;
+    }
     if(cost > *remaining) {
       if(stats_) ++stats_->budget_skips;
       return false;
     }
     *remaining -= cost;
     return true;
+  }
+
+  void discard_single_call_body(std::size_t target, bool used_single_call)
+  {
+    if(!used_single_call) return;
+    std::vector<Block>().swap(program_.functions[target].blocks);
+    instruction_counts_[target] = 0;
+    contains_eh_[target] = 0;
+    leaf_inline_shapes_[target] = 0;
+    single_call_discardable_[target] = 0;
+    if(stats_) ++stats_->inline_single_call_discarded_bodies;
   }
 
   bool strip_explicit_no_unwind_eh(Function * function)
@@ -734,11 +814,12 @@ private:
   }
 
   void inline_leaf_call(std::size_t caller_index, const Instruction & call,
-                        const Function & callee_function, Names * names,
+                        Function & callee_function, bool transfer_body,
+                        Names * names,
                         ValueMap * replacements,
                         std::vector<Instruction> * output)
   {
-    const Block & source = callee_function.blocks[0];
+    Block & source = callee_function.blocks[0];
     const std::uint32_t site = names->next_site();
     const std::string prefix = names->retain ?
       "__o1inl" + std::to_string(site) + "__" : std::string();
@@ -749,9 +830,11 @@ private:
     build_maps(&caller, callee_function, call, prefix, names, &values, &slots,
                &blocks);
     for(std::size_t i = 0; i < source.instructions.size(); ++i) {
-      const Instruction & instruction = source.instructions[i];
+      Instruction & instruction = source.instructions[i];
       if(instruction.kind != Instruction::IK_RETURN) {
-        output->push_back(clone_instruction(instruction, values, slots, blocks));
+        output->push_back(transfer_body ?
+          transfer_instruction(&instruction, values, slots, blocks) :
+          clone_instruction(instruction, values, slots, blocks));
         continue;
       }
       if(call.call_returns_void) continue;
@@ -762,8 +845,8 @@ private:
   }
 
   void inline_call(std::size_t caller_index, std::size_t block_index,
-                   std::size_t instruction_index, const Function & callee_function,
-                   Names * names, ValueMap * replacements,
+                   std::size_t instruction_index, Function & callee_function,
+                   bool transfer_body, Names * names, ValueMap * replacements,
                    std::vector<unsigned char> * block_eh,
                    bool inside_eh)
   {
@@ -814,7 +897,7 @@ private:
     Operand single_scalar_return;
     bool have_single_scalar_return = false;
     if(callee_function.blocks.size() == 1 && returns == 1) {
-      const Block & source = callee_function.blocks[0];
+      Block & source = callee_function.blocks[0];
       bool void_call_wrapper = call.call_returns_void;
       bool wrapper_has_call = false;
       for(std::size_t j = 0; j < source.instructions.size(); ++j)
@@ -828,10 +911,12 @@ private:
             lowir_model::StringId()) :
         BlockId();
       for(std::size_t j = 0; j < source.instructions.size(); ++j) {
-        const Instruction & ins = source.instructions[j];
+        Instruction & ins = source.instructions[j];
         if(ins.kind != Instruction::IK_RETURN) {
           caller.blocks[block_index].instructions.push_back(
-            clone_instruction(ins, values, slots, blocks));
+            transfer_body ?
+              transfer_instruction(&ins, values, slots, blocks) :
+              clone_instruction(ins, values, slots, blocks));
         } else if(void_call_wrapper) {
           caller.blocks[block_index].instructions.push_back(
             jump_to(wrapper_continuation_id));
@@ -885,9 +970,11 @@ private:
       block.id = blocks[callee_function.blocks[b].id].id;
       for(std::size_t j = 0;
           j < callee_function.blocks[b].instructions.size(); ++j) {
-        const Instruction & ins = callee_function.blocks[b].instructions[j];
+        Instruction & ins = callee_function.blocks[b].instructions[j];
         if(ins.kind != Instruction::IK_RETURN) {
-          block.instructions.push_back(clone_instruction(ins, values, slots, blocks));
+          block.instructions.push_back(transfer_body ?
+            transfer_instruction(&ins, values, slots, blocks) :
+            clone_instruction(ins, values, slots, blocks));
           continue;
         }
         Operand returned = ins.first;
@@ -990,19 +1077,31 @@ private:
           function_index, target, ins, landing, active, true);
       }
       if(eligible &&
-         leaf_inline_shapes_[target] &&
-         consume_inline_budget(target, inline_budget)) {
+         leaf_inline_shapes_[target]) {
+        bool used_single_call = false;
+        if(!consume_inline_budget(target, inline_budget,
+             &remaining_single_call_budget_[function_index],
+             &used_single_call)) {
+          rebuilt.push_back(std::move(source[i]));
+          continue;
+        }
+        const std::size_t cloned_instructions = instruction_counts_[target];
         inline_leaf_call(function_index, ins, program_.functions[target],
-          names, replacements, &rebuilt);
+          used_single_call, names, replacements, &rebuilt);
+        discard_single_call_body(target, used_single_call);
         ++rewrites_;
         changed = true;
         if(stats_) {
           ++stats_->inline_calls;
-          stats_->inline_cloned_instructions += instruction_counts_[target];
+          stats_->inline_cloned_instructions += cloned_instructions;
+          if(used_single_call) {
+            ++stats_->inline_single_call_calls;
+            stats_->inline_single_call_instructions += cloned_instructions;
+          }
           if(optimized_late_wave_) {
             ++stats_->o3_late_inline_calls;
             stats_->o3_late_inline_cloned_instructions +=
-              instruction_counts_[target];
+              cloned_instructions;
           }
         }
         continue;
@@ -1070,20 +1169,31 @@ private:
                  eh.landing_blocks.size() &&
                eh.landing_blocks[
                  program_.functions[function_index].blocks[b].id] != 0,
-               active, true) &&
-             consume_inline_budget(target, &inline_budget)) {
+               active, true)) {
+            bool used_single_call = false;
+            if(!consume_inline_budget(target, &inline_budget,
+                 &remaining_single_call_budget_[function_index],
+                 &used_single_call)) {
+              ++j;
+              continue;
+            }
+            const std::size_t cloned_instructions = instruction_counts_[target];
             inline_call(function_index, b, j, program_.functions[target],
-              &names, &replacements, &block_eh, active);
+              used_single_call, &names, &replacements, &block_eh, active);
+            discard_single_call_body(target, used_single_call);
             ++rewrites_;
             changed = true;
             if(stats_) {
               ++stats_->inline_calls;
-              stats_->inline_cloned_instructions +=
-                instruction_counts_[target];
+              stats_->inline_cloned_instructions += cloned_instructions;
+              if(used_single_call) {
+                ++stats_->inline_single_call_calls;
+                stats_->inline_single_call_instructions += cloned_instructions;
+              }
               if(optimized_late_wave_) {
                 ++stats_->o3_late_inline_calls;
                 stats_->o3_late_inline_cloned_instructions +=
-                  instruction_counts_[target];
+                  cloned_instructions;
               }
             }
             continue;

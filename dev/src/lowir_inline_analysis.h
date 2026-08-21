@@ -22,6 +22,10 @@ struct InlineCallGraph
   std::vector<std::size_t> callee_first_order;
   std::vector<std::size_t> component;
   std::vector<unsigned char> recursive;
+  // True when a definition is observed through a typed non-call operand or
+  // structured object reference.  This is a dense function-index fact; it is
+  // used to distinguish a removable direct-call body from an addressable one.
+  std::vector<unsigned char> non_call_use;
   std::size_t component_count = 0;
 
   static std::size_t no_function()
