@@ -1,7 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--5 are complete through `a04e5900`; Ranks 6--7 and
-the final self/inception gate remain
+Status: active; Ranks 1--6 are complete through `41f679cc`; Rank 7 and the
+final self/inception gate remain
 
 Date: 2026-08-21
 
@@ -850,6 +850,55 @@ budget.  The likely low-value tail-recursion and jump-threading cases may be
 implemented here only when a reducer or profile identifies them; they are not
 standalone priority phases.
 
+#### Rank 6 result
+
+The retained O2 pass reuses the Rank 1 `InlineCallGraph` and its dense
+symbol-to-function table after inlining.  One linear call-site scan records
+typed integer, floating, and global-address agreement in a packed
+parameter-indexed array.  Non-address-observable internal functions are
+rewritten in place; discardable nonrecursive weak functions use one bounded
+internal clone while their observable definition and ABI remain untouched.
+Rooted, addressed, lifecycle, alias, variadic, recursive, mismatched, and
+`no_inline` candidates remain conservative.  Removing an argument never
+removes its side-effecting producer.
+
+The translation-unit limits are 256 clones and 8,192 cloned instructions.
+Scratch storage is one dense parameter mask plus reusable value/parameter
+vectors rather than one allocation per candidate.  On the frozen workload the
+pass visits 13,402 direct calls and 55,917 candidate-body instructions,
+classifies 1,370 candidates, and changes 66 functions.  It substitutes 67
+operands, removes 68 parameters and 166 call arguments across 162 call sites,
+and creates 66 clones containing 4,821 instructions.  No budget is exhausted;
+peak accounted analysis scratch is 739,817 bytes and the measured pass takes
+22.5 ms.
+
+Relative to final Rank 5, the O2 object falls from 2,142,080 to 2,127,200
+bytes, `.text*` from 577,716 to 575,238 bytes, decoded instructions from
+137,901 to 137,352, and relocations from 19,950 to 19,883.  Defined symbol
+count rises from 3,342 to 3,352 because some safe internal clones coexist with
+still-demanded weak definitions; the total object and executable text both
+shrink.  Three load-screened ABBA blocks give 5.150 versus 5.155 seconds median
+wall, 4.650 versus 4.665 seconds median user, and 359,758 versus 359,830 KiB
+median peak RSS: +0.29%, +0.22%, and +0.10%, respectively.  Stats-enabled and
+ordinary objects are byte-identical, and O0/O1 output remains byte-identical
+to Rank 5.
+
+PA37 contains an exact O2 transformation fixture and an object-roundtrip
+behavior fixture covering uniform and disagreeing arguments, a preserved
+effectful producer, global addresses, clone-name collision, weak cloning, and
+addressed/rooted/`no_inline` rejection.  Existing PA32 linkage fixtures caught
+and prevented specialization of required `no_inline` COMDAT bodies.  The PA37
+local report passes 116/116, through-PA37 passes 5,289/5,289, the full report
+passes 5,323/5,323, the debug lane is clean, and the PA39 audit has zero fatal
+findings.
+
+Multiple specialized versions, semantic-body folding, tail recursion, and
+jump threading were not retained.  Only five frozen parameters disagree
+across calls, so multiversioning has little measured opportunity; body folding
+would add linkage, relocation, EH, debug, and address-identity risk without a
+demonstrated dominant body class.  These remain measured low-value candidates
+rather than hidden Rank 6 work.
+
 ### Rank 7: a distinct O3
 
 Keep O3 as an O2 alias until there is an accepted O3-only transformation.  Do
@@ -1044,7 +1093,7 @@ Fill one row for every retained or rejected phase:
 | R3 | LICM and loop simplification | PA37 O1/O2 | active course reducers | +0.6% optimizer sample | +3,480 B object | 5,309/5,309 plus debug lane | complete; frozen benefit absent, +1.5% generated-self remains below gate |
 | R4 | GVN/load elimination/PRE | PA37 O1/O2 typed GVN, memory, PRE, budget, EH, and behavior reducers; no PA13 movement | -682 LowIR instructions, -2,208 B object, -2,721 B text, -616 decoded instructions vs R3 | wall +0.2%, user +0.5%, RSS +0.1%; memory 6.09 ms, PRE 5.31 ms | 5,315/5,315; zero fatal | final lane deferred until compiler stops changing | complete, `50b2b037`, `c950139c`, `1a71f6b4`, `8bb6be47` |
 | R5 | MIR placement/coalescing | PA38 O1/O2 structure, behavior, and debug; PA29 narrow x87 corrective | object -920 B, text -1,877 B, decoded -88; 853 edge retains and 235 identity moves | wall +0.4%, user +0.7%, RSS -0.03%; overlapping host-noise range | 5,321/5,321; zero fatal | final lane deferred until compiler stops changing | complete, corrective `3a7ccfeb`, Rank 5 `a04e5900` |
-| R6 | IPA argument/scalar work | PA37 O2/O3 | pending | pending | pending | pending | not started |
+| R6 | IPA argument/scalar work | PA37 O2 exact transform and object behavior; existing PA32 linkage negatives | object -14,880 B, text -2,478 B, decoded -549, relocations -67; +10 defined symbols | wall +0.29%, user +0.22%, RSS +0.10%; IPA 22.5 ms and 0.74 MiB scratch | 5,323/5,323; PA37 debug clean; zero fatal | final lane deferred until compiler stops changing | complete, `41f679cc` |
 | R7 | distinct O3 | PA37/PA38 O3 plus help/scaffolds | pending | pending | pending | pending | not started |
 
 ## Completion criteria
