@@ -1441,12 +1441,27 @@ void SemanticAnalyzer::AnalyzeOutOfClassSpecialMember(NodeId node,
 			throw std::runtime_error("duplicate function definition");
 		GetMutableFunction(special).defined = true;
 	}
-	else special = DeclareFunction(owner, path.Last(),
-		parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
-		current_language_linkage_,
-		IsNonthrowing(declarator, parsed.parameter_scope));
-	ConfigureFunctionExceptionSpecification(
-		special, declarator, parsed.parameter_scope);
+	else
+	{
+		const NodeId qualifier = FindChild(declarator,
+			::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+		if (destructor_definition)
+		{
+			const BindingId declaration = DestructorForType(
+				program_->entities[entity].type);
+			if (declaration != kNoBinding)
+				EnsureFunctionExceptionSpecification(declaration);
+		}
+		const bool nonthrowing = destructor_definition && qualifier == kNoNode ?
+			EvaluateDestructorSubobjects(entity, false, 0) :
+			IsNonthrowing(declarator, parsed.parameter_scope);
+		special = DeclareFunction(owner, path.Last(),
+			parsed.type, parsed.parameters, true, false, STORAGE_CLASS_NONE,
+			current_language_linkage_, nonthrowing);
+		if (!destructor_definition || qualifier != kNoNode)
+			ConfigureFunctionExceptionSpecification(
+				special, declarator, parsed.parameter_scope);
+	}
 	ApplyFunctionAbiTagAttributes(node, special);
 	FunctionInfo& info = GetMutableFunction(special);
 	if (parsed.parameters.size() != info.parameters.size())

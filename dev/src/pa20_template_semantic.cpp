@@ -507,16 +507,23 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 		function.lexical_scope = definition_scope;
 		function.constexpr_function = function.constexpr_function ||
 			member_spec.is_constexpr;
-		const bool nonthrowing =
-			IsNonthrowing(declarator, parsed.parameter_scope, true);
 		program_->bindings[selected].explicit_instantiation_suppressed = false;
-		program_->bindings[selected].nonthrowing = nonthrowing;
-		ConfigureFunctionExceptionSpecification(
-			selected, declarator, parsed.parameter_scope, true);
+		const NodeId exception_qualifier = FindChild(declarator,
+			::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+		if (function.destructor && exception_qualifier == kNoNode)
+			EnsureFunctionExceptionSpecification(selected);
+		else
+		{
+			program_->bindings[selected].nonthrowing =
+				IsNonthrowing(declarator, parsed.parameter_scope, true);
+			ConfigureFunctionExceptionSpecification(
+				selected, declarator, parsed.parameter_scope, true);
+		}
 		FunctionInfo& completed = GetMutableFunction(selected);
 		completed.exception_specification_scope = kNoScope;
-		completed.exception_specification_state =
-			EXCEPTION_SPECIFICATION_FIXED;
+		if (!function.destructor || exception_qualifier != kNoNode)
+			completed.exception_specification_state =
+				EXCEPTION_SPECIFICATION_FIXED;
 		PublishInlineFunctionFacts(selected,
 			member_spec.inline_specifier || member_spec.is_constexpr);
 		return true;
@@ -807,15 +814,22 @@ bool SemanticAnalyzer::AnalyzeExplicitTemplateSpecialization(
 	function.deferred = true;
 	function.definition_body = FindChild(target, ::cppgm::pa10_syntax_detail::STAG_COMPOUND_STATEMENT);
 	function.lexical_scope = specialization_semantic_scope;
-	const bool nonthrowing =
-		IsNonthrowing(declarator, parsed.parameter_scope, true);
-	program_->bindings[selected].nonthrowing = nonthrowing;
-	ConfigureFunctionExceptionSpecification(
-		selected, declarator, parsed.parameter_scope, true);
+	const NodeId exception_qualifier = FindChild(declarator,
+		::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+	if (function.destructor && exception_qualifier == kNoNode)
+		EnsureFunctionExceptionSpecification(selected);
+	else
+	{
+		program_->bindings[selected].nonthrowing =
+			IsNonthrowing(declarator, parsed.parameter_scope, true);
+		ConfigureFunctionExceptionSpecification(
+			selected, declarator, parsed.parameter_scope, true);
+	}
 	FunctionInfo& completed = GetMutableFunction(selected);
 	completed.exception_specification_scope = kNoScope;
-	completed.exception_specification_state =
-		EXCEPTION_SPECIFICATION_FIXED;
+	if (!function.destructor || exception_qualifier != kNoNode)
+		completed.exception_specification_state =
+			EXCEPTION_SPECIFICATION_FIXED;
 	program_->bindings[selected].explicit_instantiation_suppressed = false;
 	PublishInlineFunctionFacts(
 		selected, spec.inline_specifier || spec.is_constexpr);

@@ -1,9 +1,8 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--10i are implemented or measured and their final
-correctness/inception gate is clean; Rank 11 is planned from the measured EH
-eligibility and value-harvesting wall, while the under-15-second maximum
-frozen-compile objective remains open
+Status: active; Ranks 1--10i and R11a are implemented and clean through the
+full report; Rank 11 continues at the LowIR inline-hint boundary, while the
+under-15-second maximum frozen-compile objective remains open
 
 Date: 2026-08-21
 
@@ -1794,6 +1793,26 @@ definitions lack the boundary, including `basic_string`, `shared_ptr`,
 containers, and pairs.  Treat these numbers as an opportunity estimate, not a
 license to mark every destructor nonthrowing; the typed subobject rule decides.
 
+Implementation result (2026-08-21): every destructor with an omitted
+exception-specification now defers to one cached completed-class computation.
+The computation walks typed nonvirtual bases, virtual bases, and members;
+defaulted destructors alone retain the separate deletion/triviality mutation.
+Out-of-class definitions, class-template instantiations, and explicit member
+specializations reuse the canonical result.  A typed `terminate` runtime role
+was added at the existing PA13 role boundary so standalone native emission can
+materialize the corrected terminate edge without recognizing a symbol name.
+
+Active reducers now live in PA13, PA16, PA19, PA20, PA21, PA28, and PA35.  One
+standard-invalid PA30 definition was corrected to repeat its declared
+`noexcept(false)`, and two existing PA26/PA37 references moved for the newly
+visible boundary.  The full report is 5,374/5,374 with zero fatal audit issues.
+Against the retained pre-R11 host-built compiler, frozen O1 object size moved
+from 1,733,112 to 1,655,944 bytes, `.text*` from 619,577 to 596,226 bytes, and
+defined symbols from 2,976 to 2,886.  Three consecutive host-built frozen
+medians are 4.79 seconds at O0 and 5.27 seconds at maximum optimization; the
+final generated-self O0/O3 and inception lanes remain the combined Rank 11
+gate.
+
 #### R11b. Preserve the C++ inline hint across LowIR
 
 The semantic model already records `inline_function` for explicit `inline`,
@@ -2215,7 +2234,7 @@ Fill one row for every retained or rejected phase:
 | R10i-b | broader measured O1 profitability | no fixture or contract movement because no broader point is retained | 8/192: object -4,080 B but text +4,816 B; 12/320: object -2,088 B but text +16,290 B; 18/512 and 24/768 grow object and text | exact-self medians vs 6/128: 8/192 +1.5%, 12/320 -0.6% noise, 18/512 +9.4%; 24/768 host compile +13.6% wall | R10i-a baseline remains 5,366/5,366, zero fatal | four exact O1 self compilers built; no retained policy, so no inception | complete, all broader points rejected; exact 6/128 restored |
 | R10i-c | bounded external-to-recursive-SCC tail | no fixture or contract movement because the measured opportunity does not justify a new policy | 207 external-to-recursive calls narrow to eight eligible sites / three targets / at most 46 cloned instructions | rejected before production implementation; avoids a stable-site snapshot, graph update, and propagation scan for a negligible upper bound | R10i-a baseline remains 5,366/5,366, zero fatal | diagnostic only; final combined lane covers the retained inliner | complete, rejected by typed frozen census; conservative recursive rejection retained |
 | R10i-d | preserve frame-address value identity through native phi transfers | active PA29 behavioral reducer with informational MIR; PA29 normative and Design Notes; no LowIR change | corrected generated compiler; frozen self medians O0 14.96 s / maximum 16.74 s; deterministic objects 2,965,936 / 1,659,296 B | one transient Boolean per phi move, no scan or string identity; phi adapter separated and main lowerer reduced to 2,938 lines | 5,367/5,367; PA37/PA38 debug clean; zero fatal, 32 warnings | O3 self 19.10 s / inception 69.76 s; all 209 objects and final binary match | corrective complete, `a8420b92`; under-15 maximum objective remains open |
-| R11a | standard implicit destructor exception specifications and terminate boundary | earliest semantic/lifecycle PA through PA21/26 conformance/behavior; PA37 source boundary | measure corrected destructor boundaries, EH/calls and broad fixture movement | cached typed completed-class fact; no new LowIR syntax | pending | explicit O0 and O3 lanes required | planned first; basic-string probe currently fails cppgm++ and passes GCC/Clang |
+| R11a | standard implicit destructor exception specifications and terminate boundary | PA13/16/19/20/21/28/35 active reducers; PA26/30/37 corrective movement | O1 object -77,168 B, `.text*` -23,351 B, defined symbols -90 against retained pre-R11 host compiler | one cached typed completed-class walk; typed terminate role; no string identity | 5,374/5,374; zero fatal, 32 warnings | final combined O0/O3 self/inception lane required | implementation complete; host-built frozen medians O0 4.79 s / maximum 5.27 s |
 | R11b | preserve bounded C++ inline preference as `inline_hint` | PA13 syntax/scaffold/roundtrip; PA15/class/template producers; PA37 policy/scaling | measure basic-string call chain, bodies, text and aliases | one typed Boolean; bounded hint cap, no strings | pending | required | planned after R11a |
 | R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 exact/source/behavior/scaling; no PA13 syntax change | measure protected regions removed after R11a/b | shared dense typed EH state; one bounded callee-first visit | pending | pending | conditional on residual census |
 | R11d | separate lifecycle publication/retention from explicit `no_inline` | earliest affected lifecycle PA determined by report; PA32/33 object inspection; PA37 positive/negative | measure base entries inlined and required symbols/aliases retained | deletes blanket policy; no replacement metadata unless proven necessary | pending | explicit O0 and O3 lanes required | planned after R11a/b census |

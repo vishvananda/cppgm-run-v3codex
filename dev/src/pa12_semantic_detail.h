@@ -1487,8 +1487,8 @@ private:
 		BindingId constructor);
 	void CompleteDefaultedDefaultConstructor(EntityId entity,
 		BindingId constructor);
-	void ValidateConstexprConstructorDefinition(
-		const FunctionInfo& constructor);
+	void ValidateConstexprConstructorDefinition(const FunctionInfo& constructor);
+	bool EvaluateDestructorSubobjects(EntityId, bool, bool*);
 	void CompleteDefaultedDestructor(EntityId entity, BindingId destructor);
 	void RegisterClassSpecialMember(BindingId binding);
 	void ConfigureAssignmentSpecialMember(BindingId binding,

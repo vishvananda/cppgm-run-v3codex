@@ -168,37 +168,60 @@ void SemanticAnalyzer::CompleteDefaultedDefaultConstructor(EntityId entity,
 	program_->bindings[constructor].nonthrowing = !deleted && trivial;
 }
 
-void SemanticAnalyzer::CompleteDefaultedDestructor(EntityId entity,
-	BindingId destructor)
+bool SemanticAnalyzer::EvaluateDestructorSubobjects(EntityId entity,
+	bool defaulted_destructor, bool* deleted)
 {
-	bool deleted = false;
+	if (deleted) *deleted = false;
 	bool nonthrowing = true;
 	const EntityRecord& owner = program_->entities[entity];
-	const auto visit = [this, entity, &deleted, &nonthrowing](
+	const auto visit = [this, entity, deleted, &nonthrowing](
 		TypeId type, bool variant)
 	{
 		const EntityId subobject = DestructedEntity(type);
 		if (subobject == kNoEntity) return;
 		const BindingId selected = DestructorForType(type);
-		if (selected == kNoBinding ||
+		if (deleted && (selected == kNoBinding ||
 			!program_->entities[subobject].destructible ||
 			GetFunction(selected).deleted_destructor ||
-			!CanAccessMember(selected, subobject, entity))
-			deleted = true;
+			!CanAccessMember(selected, subobject, entity)))
+			*deleted = true;
 		if (selected == kNoBinding ||
 			!FunctionIsNonthrowing(selected))
 			nonthrowing = false;
-		if (variant && !program_->entities[subobject].trivial_destructor)
-			deleted = true;
+		if (deleted && variant &&
+			!program_->entities[subobject].trivial_destructor)
+			*deleted = true;
 	};
 	for (std::size_t base_ordinal = 0;
 		base_ordinal < owner.direct_base_count; ++base_ordinal)
-		visit(program_->entities[program_->DirectBase(
-			entity, base_ordinal).entity].type, false);
+	{
+		const DirectBaseEdge& edge = program_->DirectBase(
+			entity, base_ordinal);
+		if (!edge.virtual_base)
+			visit(program_->entities[edge.entity].type, false);
+	}
+	for (std::size_t virtual_ordinal = 0;
+		virtual_ordinal < owner.virtual_base_count; ++virtual_ordinal)
+		visit(program_->entities[program_->VirtualBase(
+			entity, virtual_ordinal).entity].type, false);
 	if (entity < entity_data_members_.size())
 		for (std::size_t i = 0; i < entity_data_members_[entity].size(); ++i)
-			visit(program_->bindings[entity_data_members_[entity][i]].type,
-				owner.flavor == NAMED_UNION);
+		{
+			const BindingRecord& member = program_->bindings[
+				entity_data_members_[entity][i]];
+			if (member.anonymous_union_storage && !defaulted_destructor)
+				continue;
+			visit(member.type, owner.flavor == NAMED_UNION);
+		}
+	return nonthrowing;
+}
+
+void SemanticAnalyzer::CompleteDefaultedDestructor(EntityId entity,
+	BindingId destructor)
+{
+	bool deleted = false;
+	const bool nonthrowing = EvaluateDestructorSubobjects(
+		entity, true, &deleted);
 	FunctionInfo& info = GetMutableFunction(destructor);
 	info.deleted_destructor = deleted;
 	program_->entities[entity].destructible = !deleted;

@@ -29,6 +29,7 @@ const char * role_name(SymbolRole role)
   case SR_EH_RESUME: return "eh_resume";
   case SR_ALLOCATE_MEMORY: return "allocate_memory";
   case SR_FREE_MEMORY: return "free_memory";
+  case SR_TERMINATE: return "terminate";
   case SR_PURE_VIRTUAL: return "pure_virtual";
   case SR_DYNAMIC_CAST: return "dynamic_cast";
   case SR_BAD_CAST: return "bad_cast";

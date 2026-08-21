@@ -887,6 +887,7 @@ BindingId SemanticAnalyzer::EnsureImplicitDestructor(EntityId entity)
 	info.destructor = true;
 	info.implicit_destructor = true;
 	info.deleted_destructor = !owner.destructible;
+	info.exception_specification_state = EXCEPTION_SPECIFICATION_DEFERRED;
 	info.deferred = owner.destructible;
 	entity_destructor_by_entity_[entity] = destructor;
 	return destructor;
@@ -1345,8 +1346,11 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 			parsed.type, parsed.parameters, source_definition || defaulted,
 			false, STORAGE_CLASS_NONE, current_language_linkage_,
 			IsNonthrowing(declarator, parsed.parameter_scope));
-		ConfigureFunctionExceptionSpecification(
-			destructor, declarator, parsed.parameter_scope);
+		const NodeId exception_qualifier = FindChild(declarator,
+			::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER);
+		if (exception_qualifier != kNoNode)
+			ConfigureFunctionExceptionSpecification(
+				destructor, declarator, parsed.parameter_scope);
 		ApplyFunctionAbiTagAttributes(node, destructor);
 		BindingRecord& binding = program_->bindings[destructor];
 		binding.member_owner = entity;
@@ -1377,8 +1381,7 @@ void SemanticAnalyzer::AnalyzeSpecialMember(NodeId node, ScopeId scope,
 		info.defaulted_destructor =
 			info.defaulted_destructor || defaulted;
 		info.deleted_destructor = info.deleted_destructor || deleted;
-		if (defaulted &&
-			FindChild(declarator, ::cppgm::pa10_syntax_detail::STAG_FUNCTION_QUALIFIER) == kNoNode)
+		if (exception_qualifier == kNoNode)
 		{
 			// The implicit exception specification is a completed-class fact.
 			// Retain it on the canonical destructor until noexcept or another

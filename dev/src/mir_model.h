@@ -456,6 +456,7 @@ struct RuntimeFunction
     RF_EH_RESUME,
     RF_ALLOCATE_MEMORY,
     RF_FREE_MEMORY,
+    RF_TERMINATE,
     RF_PURE_VIRTUAL,
     RF_DYNAMIC_CAST,
     RF_BAD_CAST,

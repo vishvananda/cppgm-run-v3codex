@@ -25,6 +25,7 @@ const char* RuntimeRoleName(Symbol::RuntimeRole role)
 	case Symbol::RUNTIME_ROLE_EH_RETHROW: return "eh_rethrow";
 	case Symbol::RUNTIME_ROLE_EH_THROW: return "eh_throw";
 	case Symbol::RUNTIME_ROLE_EH_PERSONALITY: return "eh_personality";
+	case Symbol::RUNTIME_ROLE_TERMINATE: return "terminate";
 	case Symbol::RUNTIME_ROLE_ALLOCATE_MEMORY:
 	case Symbol::RUNTIME_ROLE_FREE_MEMORY:
 	case Symbol::RUNTIME_ROLE_PURE_VIRTUAL:

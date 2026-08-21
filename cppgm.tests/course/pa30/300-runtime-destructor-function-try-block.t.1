@@ -6,7 +6,7 @@ struct guarded
   ~guarded() noexcept(false);
 };
 
-guarded::~guarded()
+guarded::~guarded() noexcept(false)
 try
 {
   throw 7;

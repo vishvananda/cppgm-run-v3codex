@@ -173,9 +173,10 @@ the CY86 adapter. It does not implement native object symbol binding, host ABI
 register assignment, or debugger behavior.
 
 The `role` family includes the entry/init/fini and exception roles as well as
-the allocation, deallocation, pure-virtual, dynamic-cast, bad-cast, bad-typeid,
-unreachable, and RTTI runtime roles listed in `lowir.md`. Accept and validate
-those roles even when the CY86 adapter does not otherwise act on them.
+the allocation, deallocation, termination, pure-virtual, dynamic-cast,
+bad-cast, bad-typeid, unreachable, and RTTI runtime roles listed in
+`lowir.md`. Accept and validate those roles even when the CY86 adapter does not
+otherwise act on them.
 
 You may keep a typed LowIR model internally, and the optional
 `dev/src/lowir_model.h` scaffold names the common program, symbol, type,

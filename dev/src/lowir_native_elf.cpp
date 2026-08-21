@@ -2219,6 +2219,7 @@ void emit_eh_runtime(CodeBuffer & out, const mir_model::MirProgram & program)
     case mir_model::RuntimeFunction::RF_EH_RESUME: break;
     case mir_model::RuntimeFunction::RF_ALLOCATE_MEMORY: emit_malloc_runtime(out); break;
     case mir_model::RuntimeFunction::RF_FREE_MEMORY: out.byte(0xc3); break;
+    case mir_model::RuntimeFunction::RF_TERMINATE: emit_abort_runtime(out); break;
     case mir_model::RuntimeFunction::RF_PURE_VIRTUAL: emit_abort_runtime(out); break;
     case mir_model::RuntimeFunction::RF_DYNAMIC_CAST:
       emit_dynamic_cast_runtime(

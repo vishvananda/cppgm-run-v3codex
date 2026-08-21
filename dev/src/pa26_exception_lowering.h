@@ -413,6 +413,7 @@ protected:
 			const SymbolId symbol = derived.AddSyntheticSymbol(
 				Symbol::FUNCTION_SYMBOL, "std_terminate", "_ZSt9terminatev", false);
 			Symbol& record = derived.output_.symbols[symbol];
+			record.runtime_role = Symbol::RUNTIME_ROLE_TERMINATE;
 			record.nonthrowing = true;
 			record.noreturn = true;
 			record.declaration_emitted = true;

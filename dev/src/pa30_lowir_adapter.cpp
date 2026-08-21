@@ -423,6 +423,8 @@ void AdaptSymbolFacts(const Symbol& source,
 		symbol->role = lowir_model::SR_ALLOCATE_MEMORY; break;
 	case Symbol::RUNTIME_ROLE_FREE_MEMORY:
 		symbol->role = lowir_model::SR_FREE_MEMORY; break;
+	case Symbol::RUNTIME_ROLE_TERMINATE:
+		symbol->role = lowir_model::SR_TERMINATE; break;
 	case Symbol::RUNTIME_ROLE_PURE_VIRTUAL:
 		symbol->role = lowir_model::SR_PURE_VIRTUAL; break;
 	case Symbol::RUNTIME_ROLE_DYNAMIC_CAST:

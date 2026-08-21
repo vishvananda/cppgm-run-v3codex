@@ -28,6 +28,8 @@ bool runtime_kind(lowir_model::SymbolRole role,
     target = mir_model::RuntimeFunction::RF_ALLOCATE_MEMORY; return true;
   case lowir_model::SR_FREE_MEMORY:
     target = mir_model::RuntimeFunction::RF_FREE_MEMORY; return true;
+  case lowir_model::SR_TERMINATE:
+    target = mir_model::RuntimeFunction::RF_TERMINATE; return true;
   case lowir_model::SR_PURE_VIRTUAL:
     target = mir_model::RuntimeFunction::RF_PURE_VIRTUAL; return true;
   case lowir_model::SR_DYNAMIC_CAST:

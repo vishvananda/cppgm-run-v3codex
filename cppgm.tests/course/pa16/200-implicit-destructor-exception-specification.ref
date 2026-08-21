@@ -1,0 +1,34 @@
+function @destroy_safe(%value : ptr) -> void [binding=strong, object=_Z12destroy_safeP9SafeOwner] {
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = load ptr $value
+    call void @SafeOwner___SafeOwner(%t1)
+    return void
+}
+function @destroy_throwing(%value : ptr) -> void [binding=strong, object=_Z16destroy_throwingP13ThrowingOwner] {
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = load ptr $value
+    call void @ThrowingOwner___ThrowingOwner(%t1)
+    return void
+}
+function @SafeOwner___SafeOwner(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN9SafeOwnerD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+function @ThrowingOwner___ThrowingOwner(%this : ptr) -> void [binding=weak, object=_ZN13ThrowingOwnerD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
+alias object _ZN9SafeOwnerD2Ev = @SafeOwner___SafeOwner
+alias object _ZN13ThrowingOwnerD2Ev = @ThrowingOwner___ThrowingOwner

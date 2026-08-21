@@ -219,6 +219,7 @@ The currently defined role values are:
   - `eh_resume`
   - `allocate_memory`
   - `free_memory`
+  - `terminate`
   - `pure_virtual`
   - `dynamic_cast`
   - `bad_cast`
@@ -245,6 +246,11 @@ the compiler intrinsic use `effects=readnone`, `unwind=no`, and
 `return=noreturn` as the corresponding boundary facts. The role is the stable
 symbol identity that lets later stages recognize this operation without
 depending on a source or object symbol spelling.
+
+The `terminate` role identifies the C++ termination runtime used at a
+non-throwing function boundary. A standalone backend may provide this runtime
+directly, while an object backend may retain the declared object symbol for the
+host C++ runtime.
 
 The currently defined linkage values are:
 
