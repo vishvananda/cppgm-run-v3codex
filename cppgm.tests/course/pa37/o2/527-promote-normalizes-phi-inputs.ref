@@ -1,0 +1,18 @@
+function @choose_boolean(%choose_left : i64, %left_value : i64, %right_value : i64) -> u8 [no_inline=yes] {
+  block ^entry:
+    branch %choose_left, ^left, ^right
+
+  block ^left:
+    %left_boolean = cmp eq i64 %left_value, 0
+    %t1 = copy u8 %left_boolean
+    jump ^join
+
+  block ^right:
+    %right_boolean = cmp ne i64 %right_value, 0
+    %t2 = copy u8 %right_boolean
+    jump ^join
+
+  block ^join:
+    %t0 = phi u8 [^left: %t1, ^right: %t2]
+    return u8 %t0
+}

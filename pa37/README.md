@@ -217,6 +217,10 @@ limited to slots accessed through direct `store` and `load` operations whose
 current value is defined on every executable path. When predecessor paths
 carry different values, promotion uses the PA13 `phi` instruction at an
 ordinary join. A phi must not be introduced at an exceptional-handler target.
+Each incoming value must have the phi result type. A type-changing `copy` that
+feeds a promoted slot must therefore remain, and promotion must insert an
+ordinary typed `copy` on a predecessor edge when another value needs the slot
+type before it can become a phi input.
 Beyond the direct slot cleanup already allowed at `-O1`, `-O2` also removes
 dead stores to promoted slots when no observable load can see the stored
 value. It must additionally support these conservative loop transforms:

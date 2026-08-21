@@ -1,0 +1,15 @@
+function @choose_unsigned(%take_signed : i64, %signed_value : i32) -> u32 [no_inline=yes] {
+  block ^entry:
+    branch %take_signed, ^signed, ^constant
+
+  block ^signed:
+    %as_unsigned = copy u32 %signed_value
+    jump ^join
+
+  block ^constant:
+    jump ^join
+
+  block ^join:
+    %t0 = phi u32 [^signed: %as_unsigned, ^constant: 7]
+    return u32 %t0
+}

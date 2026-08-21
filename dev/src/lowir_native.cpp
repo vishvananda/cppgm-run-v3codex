@@ -97,6 +97,7 @@ public:
   {
     values_.resize(source_.value_names.size());
     value_known_.assign(source_.value_names.size(), 0);
+    cyclic_register_assumed_.assign(source_.value_names.size(), 0);
     incoming_parameter_registers_.resize(source_.value_names.size(), XR_RSP);
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
     target_.symbol = source.symbol;
@@ -158,6 +159,8 @@ public:
             block.instructions, after_instruction, block.instructions.size());
         record_emitted_register_definitions(
           block.instructions, first_machine_instruction);
+        record_cyclic_register_assumptions(
+          block.instructions, first_machine_instruction);
         record_rax_first_use_carrier(source_.blocks[i].instructions[j],
           block.instructions, first_machine_instruction);
         const lowir_model::Instruction * debug_source =
@@ -218,6 +221,7 @@ private:
   location_planning::GeneratedFrameNames generated_frame_names_;
   std::vector<ValueFact> values_;
   std::vector<unsigned char> value_known_;
+  std::vector<unsigned char> cyclic_register_assumed_;
   std::vector<long long> slot_offsets_;
   std::vector<unsigned char> slot_offset_known_;
   std::vector<X64Register> incoming_parameter_registers_;
@@ -939,6 +943,7 @@ private:
   {
     if(!value_known_[value] || values_[value].parameter ||
        values_[value].location.kind != MirOperand::OP_REG ||
+       cyclic_register_assumed_[value] ||
        !location_planning::managed_register(values_[value].location.reg) ||
        (needs_callee_saved &&
         !is_callee_saved(values_[value].location.reg)) ||
@@ -948,6 +953,33 @@ private:
              !control_flow_.CurrentBlockIsCyclic()) ||
             control_flow_.SpillIsSafe(value, position_)) &&
       facts_.uses[value] != 0;
+  }
+  void record_cyclic_register_assumptions(
+      const std::vector<MirInstruction> & instructions,
+      std::size_t first)
+  {
+    if(!control_flow_.CurrentBlockIsCyclic()) return;
+    for(std::size_t instruction = first;
+        instruction < instructions.size(); ++instruction)
+      for(std::size_t operand = 0;
+          operand < instructions[instruction].operands.size(); ++operand) {
+        const MirOperand & location =
+          instructions[instruction].operands[operand];
+        if(location.kind == MirOperand::OP_REG)
+          record_cyclic_register_assumption(location.reg);
+        else if(location.kind == MirOperand::OP_DEREF) {
+          record_cyclic_register_assumption(location.reg);
+          if(location.has_index)
+            record_cyclic_register_assumption(location.index);
+        }
+      }
+  }
+  void record_cyclic_register_assumption(X64Register reg)
+  {
+    const std::vector<lowir_model::ValueId> & occupants =
+      live_locations_.gpr_values(reg);
+    for(std::size_t value = 0; value < occupants.size(); ++value)
+      cyclic_register_assumed_[occupants[value]] = 1;
   }
   lowir_model::ValueId
   find_spill_victim_full_scan(bool needs_callee_saved)

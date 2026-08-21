@@ -2101,7 +2101,11 @@ bool promote_slots_with_analysis(
         bool known = ins.kind == Instruction::IK_CONST ? (folded = ins.first, true) :
           ins.kind == Instruction::IK_COPY &&
             !lowir_model::lowir_value_preserves_copy(
-              *function, ins.dest) ?
+              *function, ins.dest) &&
+            (ins.first.kind != Operand::OP_TEMP ||
+             lowir_model::same_lowir_type(
+               lowir_model::lowir_value_type(*function, ins.first.value),
+               ins.type)) ?
               (folded = ins.first, true) :
           ins.kind == Instruction::IK_UNARY ? fold_unary(ins, &folded) :
           ins.kind == Instruction::IK_BINARY ? fold_binary(ins, &folded) :
@@ -2362,9 +2366,35 @@ bool promote_slots_with_analysis(
   if(promoted_count == 0) return false;
   std::vector<std::vector<Instruction> > inserted_phis(
     function->blocks.size());
+  std::vector<std::vector<Instruction> > inserted_phi_edge_copies(
+    function->blocks.size());
   std::vector<unsigned char> phi_values(function->value_names.size(), 0);
   for(std::size_t phi = 0; phi < planned_phis.size(); ++phi)
     if(planned_phis[phi].complete && promoted[planned_phis[phi].slot]) {
+      Instruction & instruction = planned_phis[phi].instruction;
+      for(std::size_t incoming = 1;
+          incoming < instruction.args.size(); incoming += 2) {
+        Operand & value = instruction.args[incoming];
+        if(value.kind != Operand::OP_TEMP ||
+           lowir_model::same_lowir_type(
+             lowir_model::lowir_value_type(*function, value.value),
+             instruction.type))
+          continue;
+        const std::size_t predecessor =
+          graph.find(instruction.args[incoming - 1].block);
+        if(predecessor == kNoBlockIndex)
+          throw std::logic_error("invalid promoted phi predecessor");
+        Instruction copy;
+        copy.kind = Instruction::IK_COPY;
+        copy.type = instruction.type;
+        copy.first = value;
+        copy.dest = lowir_model::append_lowir_fresh_generated_value(
+          *function, copy.type);
+        value.kind = Operand::OP_TEMP;
+        value.value = copy.dest;
+        inserted_phi_edge_copies[predecessor].push_back(std::move(copy));
+        if(stats) ++stats->rewrites;
+      }
       phi_values[planned_phis[phi].destination] = 1;
       if(stats) {
         ++stats->promote_phi_instructions;
@@ -2372,8 +2402,23 @@ bool promote_slots_with_analysis(
           planned_phis[phi].instruction.args.size() / 2;
       }
       inserted_phis[planned_phis[phi].block].push_back(
-        std::move(planned_phis[phi].instruction));
+        std::move(instruction));
     }
+  for(std::size_t block = 0;
+      block < inserted_phi_edge_copies.size(); ++block) {
+    std::vector<Instruction> & copies = inserted_phi_edge_copies[block];
+    if(copies.empty()) continue;
+    std::vector<Instruction> & instructions =
+      function->blocks[block].instructions;
+    std::size_t position = instructions.size();
+    while(position &&
+          instructions[position - 1].kind == Instruction::IK_EH_END)
+      --position;
+    if(position) --position;
+    instructions.insert(instructions.begin() + position,
+      std::make_move_iterator(copies.begin()),
+      std::make_move_iterator(copies.end()));
+  }
   for(std::size_t block = 0; block < inserted_phis.size(); ++block)
     if(!inserted_phis[block].empty())
       function->blocks[block].instructions.insert(
