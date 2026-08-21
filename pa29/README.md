@@ -609,10 +609,18 @@ To complete PA29, implement these goals:
    conversions and truncation/extension path should still stay visible and testable in
    MIR.
 
-13. Cover direct compare-fed branch lowering at ordinary 64-bit integer width too.
+13. Cover direct compare-fed branch lowering at 64-bit and 128-bit integer widths too.
    The direct compare/branch quality rule is not limited to `i32` and `u32`. PA29 should
-   also show the same direct branch shape for straightforward `i64` comparisons. The core
-   oracle for this is the `500-i64-direct-compare-branch` family.
+   show the same direct branch shape for straightforward `i64` and `i128`
+   comparisons. An `i128` ordering comparison decides unequal high words with
+   the predicate's signed or unsigned ordering and compares the low words as
+   unsigned only when the high words are equal. It should branch without first
+   allocating a scalar Boolean result. When an `i128` comparison is instead
+   used as a value, register pressure must not make lowering fail; the
+   materialized Boolean may use a temporary frame home when no GPR is free.
+   The core ordinary-width oracle is the `500-i64-direct-compare-branch`
+   family, and the course suite supplies the wide structural and pressure
+   cases.
 
 14. Keep pointer/null comparisons on the direct machine compare/branch path.
    Ordinary pointer/null tests should remain visibly pointer-typed in MIR and branch
@@ -746,6 +754,9 @@ strategies include:
 - keep an immediately returned quotient in `rax` and an immediately returned
   remainder in `rdx`; the return instruction may name that selected result
   carrier directly
+- lower a sole-use `i128` comparison and branch as high-word decisions plus an
+  unsigned low-word tie-break, and give a comparison used as a value a frame
+  fallback instead of requiring a free GPR
 - prefer an available caller-saved register to adding a callee-saved register
   to the frame's `preserve` list
 - reuse compatible compiler-created temporary frame locations when their value

@@ -229,6 +229,87 @@ void append_compare(const Value & left, const Value & right,
   append_register_binary(MirInstruction::MI_OR, XR_R10, XR_R11, out);
 }
 
+void append_compare_branch(const Value & left, const Value & right,
+                           lowir_model::LowOperation operation,
+                           const MirOperand & true_target,
+                           const MirOperand & false_target,
+                           std::vector<MirInstruction> & out)
+{
+  append_pair_to_registers(left, XR_RAX, XR_RDX, XR_R11, out);
+  append_pair_to_registers(right, XR_RCX, XR_RSI, XR_R11, out);
+
+  MirInstruction high_compare = machine_instruction(
+    MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
+  append_operand(high_compare, reg_operand(XR_RDX));
+  append_operand(high_compare, reg_operand(XR_RSI));
+  out.push_back(high_compare);
+
+  if(operation.kind == LowOperation::LOP_EQ ||
+     operation.kind == LowOperation::LOP_NE) {
+    MirInstruction high_decision = machine_instruction(MirInstruction::MI_JCC);
+    high_decision.condition = XC_NE;
+    append_operand(high_decision,
+      operation.kind == LowOperation::LOP_EQ ? false_target : true_target);
+    out.push_back(high_decision);
+
+    MirInstruction low_compare = machine_instruction(
+      MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
+    append_operand(low_compare, reg_operand(XR_RAX));
+    append_operand(low_compare, reg_operand(XR_RCX));
+    out.push_back(low_compare);
+    MirInstruction low_decision = machine_instruction(MirInstruction::MI_JCC);
+    low_decision.condition = operation.kind == LowOperation::LOP_EQ ? XC_E : XC_NE;
+    append_operand(low_decision, true_target);
+    out.push_back(low_decision);
+  } else {
+    const bool less = operation.kind == LowOperation::LOP_LT ||
+      operation.kind == LowOperation::LOP_LE ||
+      operation.kind == LowOperation::LOP_ULT ||
+      operation.kind == LowOperation::LOP_ULE;
+    const bool greater = operation.kind == LowOperation::LOP_GT ||
+      operation.kind == LowOperation::LOP_GE ||
+      operation.kind == LowOperation::LOP_UGT ||
+      operation.kind == LowOperation::LOP_UGE;
+    if(!less && !greater)
+      throw std::runtime_error(std::string("unsupported i128 comparison: ") +
+        lowir_model::lowir_operation_text(operation));
+    const bool signed_high = operation.kind == LowOperation::LOP_LT ||
+      operation.kind == LowOperation::LOP_LE ||
+      operation.kind == LowOperation::LOP_GT ||
+      operation.kind == LowOperation::LOP_GE;
+    const bool inclusive = operation.kind == LowOperation::LOP_LE ||
+      operation.kind == LowOperation::LOP_GE ||
+      operation.kind == LowOperation::LOP_ULE ||
+      operation.kind == LowOperation::LOP_UGE;
+
+    MirInstruction high_true = machine_instruction(MirInstruction::MI_JCC);
+    high_true.condition = less ? (signed_high ? XC_L : XC_B) :
+      (signed_high ? XC_G : XC_A);
+    append_operand(high_true, true_target);
+    out.push_back(high_true);
+    MirInstruction high_false = machine_instruction(MirInstruction::MI_JCC);
+    high_false.condition = less ? (signed_high ? XC_G : XC_A) :
+      (signed_high ? XC_L : XC_B);
+    append_operand(high_false, false_target);
+    out.push_back(high_false);
+
+    MirInstruction low_compare = machine_instruction(
+      MirInstruction::MI_CMP, machine_type(lowir_model::LTK_I64));
+    append_operand(low_compare, reg_operand(XR_RAX));
+    append_operand(low_compare, reg_operand(XR_RCX));
+    out.push_back(low_compare);
+    MirInstruction low_decision = machine_instruction(MirInstruction::MI_JCC);
+    low_decision.condition = less ? (inclusive ? XC_BE : XC_B) :
+      (inclusive ? XC_AE : XC_A);
+    append_operand(low_decision, true_target);
+    out.push_back(low_decision);
+  }
+
+  MirInstruction jump_false = machine_instruction(MirInstruction::MI_JMP);
+  append_operand(jump_false, false_target);
+  out.push_back(jump_false);
+}
+
 void append_binary(const MirOperand & destination,
                    const Value & left, const Value & right,
                    lowir_model::LowOperation operation,

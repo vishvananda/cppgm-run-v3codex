@@ -39,6 +39,11 @@ void append_copy(const mir_model::MirOperand & destination, const Value & source
 void append_compare(const Value & left, const Value & right,
                     lowir_model::LowOperation operation,
                     std::vector<mir_model::MirInstruction> & out);
+void append_compare_branch(const Value & left, const Value & right,
+                           lowir_model::LowOperation operation,
+                           const mir_model::MirOperand & true_target,
+                           const mir_model::MirOperand & false_target,
+                           std::vector<mir_model::MirInstruction> & out);
 void append_binary(const mir_model::MirOperand & destination,
                    const Value & left, const Value & right,
                    lowir_model::LowOperation operation,

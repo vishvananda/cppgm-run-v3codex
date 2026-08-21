@@ -1,0 +1,139 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 1
+    mov rdx, 1
+    mov rcx, 1
+    mov rsi, 1
+    cmp.i64 rdx, rsi
+    jne ^bad
+    cmp.i64 rax, rcx
+    je ^ne
+    jmp ^bad
+
+  block ^ne
+    mov rax, 1
+    mov rdx, 1
+    mov rcx, 2
+    mov rsi, 1
+    cmp.i64 rdx, rsi
+    jne ^lt
+    cmp.i64 rax, rcx
+    jne ^lt
+    jmp ^bad
+
+  block ^lt
+    mov rax, 0
+    mov rdx, -1
+    mov rcx, 0
+    mov rsi, 0
+    cmp.i64 rdx, rsi
+    jl ^le
+    jg ^bad
+    cmp.i64 rax, rcx
+    jb ^le
+    jmp ^bad
+
+  block ^le
+    mov rax, 0
+    mov rdx, -1
+    mov rcx, 0
+    mov rsi, -1
+    cmp.i64 rdx, rsi
+    jl ^gt
+    jg ^bad
+    cmp.i64 rax, rcx
+    jbe ^gt
+    jmp ^bad
+
+  block ^gt
+    mov rax, 0
+    mov rdx, 1
+    mov rcx, 0
+    mov rsi, 0
+    cmp.i64 rdx, rsi
+    jg ^ge
+    jl ^bad
+    cmp.i64 rax, rcx
+    ja ^ge
+    jmp ^bad
+
+  block ^ge
+    mov rax, 0
+    mov rdx, 1
+    mov rcx, 0
+    mov rsi, 1
+    cmp.i64 rdx, rsi
+    jg ^ult
+    jl ^bad
+    cmp.i64 rax, rcx
+    jae ^ult
+    jmp ^bad
+
+  block ^ult
+    mov rax, 0
+    mov rdx, 1
+    mov rcx, 1
+    mov rsi, 1
+    cmp.i64 rdx, rsi
+    jb ^ule
+    ja ^bad
+    cmp.i64 rax, rcx
+    jb ^ule
+    jmp ^bad
+
+  block ^ule
+    mov rax, 0
+    mov rdx, 1
+    mov rcx, 0
+    mov rsi, 1
+    cmp.i64 rdx, rsi
+    jb ^ugt
+    ja ^bad
+    cmp.i64 rax, rcx
+    jbe ^ugt
+    jmp ^bad
+
+  block ^ugt
+    mov rax, -1
+    mov rdx, -1
+    mov rcx, 0
+    mov rsi, 1
+    cmp.i64 rdx, rsi
+    ja ^uge
+    jb ^bad
+    cmp.i64 rax, rcx
+    ja ^uge
+    jmp ^bad
+
+  block ^uge
+    mov rax, -1
+    mov rdx, -1
+    mov rcx, -1
+    mov rsi, -1
+    cmp.i64 rdx, rsi
+    ja ^good
+    jb ^bad
+    cmp.i64 rax, rcx
+    jae ^good
+    jmp ^bad
+
+  block ^bad
+    mov rax, 1
+    ret rax
+
+  block ^good
+    mov rax, 0
+    ret rax

@@ -1658,6 +1658,19 @@ private:
     consume(comparison.second);
     if(skip_branch) skipped_position_ = position_ + 1;
   }
+  void emit_wide_direct_compare_branch(const Instruction & comparison,
+                                       const Instruction & branch,
+                                       std::vector<MirInstruction> & out,
+                                       bool skip_branch = true)
+  {
+    wide::append_compare_branch(
+      wide_value(comparison.first), wide_value(comparison.second), comparison.op,
+      native_block_operand(source_, branch.second),
+      native_block_operand(source_, branch.third), out);
+    consume(comparison.first);
+    consume(comparison.second);
+    if(skip_branch) skipped_position_ = position_ + 1;
+  }
   void emit_compare_value(const Instruction & instruction,
                           const lowir_model::LowirBlock & block,
                           std::size_t instruction_index,
@@ -1666,15 +1679,27 @@ private:
     const bool direct_return = result_is_immediate_return(
       block, instruction_index, instruction.dest);
     if(wide::is_integer(instruction.type)) {
+      const LowType & result_type =
+        lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
       wide::append_compare(wide_value(instruction.first),
                            wide_value(instruction.second), instruction.op, out);
-      const MirOperand destination = direct_return ? reg_operand(XR_RAX) :
-        reg_operand(allocate_result(instruction.dest, out));
-      append_move(out, destination, reg_operand(XR_R10));
+      MirOperand destination;
+      if(direct_return) {
+        destination = reg_operand(XR_RAX);
+        append_move(out, destination, reg_operand(XR_R10));
+      } else {
+        X64Register result = XR_RSP;
+        if(try_allocate_result(instruction.dest, out, &result)) {
+          destination = reg_operand(result);
+          append_move(out, destination, reg_operand(XR_R10));
+        } else {
+          destination = allocate_temp_home(instruction.dest, result_type);
+          append_store(out, destination, reg_operand(XR_R10), result_type);
+        }
+      }
       consume(instruction.first);
       consume(instruction.second);
-      define(instruction.dest,
-        lowir_model::builtin_lowir_type(lowir_model::LTK_I64), destination);
+      define(instruction.dest, result_type, destination);
       return;
     }
     if(!is_integer_or_pointer(instruction.type))
@@ -2900,7 +2925,12 @@ private:
       emit_binary(instruction, block, instruction_index, out);
     else if(instruction.kind == Instruction::IK_CMP) {
       if(facts_.deferred_branch_comparisons[instruction.dest]) return;
-      if(wide::is_integer(instruction.type))
+      if(wide::is_integer(instruction.type) &&
+         selection::result_is_immediate_branch(
+           block, instruction_index, instruction.dest, facts_))
+        emit_wide_direct_compare_branch(
+          instruction, block.instructions[instruction_index + 1], out);
+      else if(wide::is_integer(instruction.type))
         emit_compare_value(instruction, block, instruction_index, out);
       else if(is_floating(instruction.type) &&
          selection::result_is_immediate_branch(
@@ -2930,6 +2960,8 @@ private:
         instruction.first.kind == Operand::OP_TEMP ?
         facts_.deferred_branch_comparisons[instruction.first.value] : 0;
       if(!deferred) emit_branch(instruction, out);
+      else if(wide::is_integer(deferred->type))
+        emit_wide_direct_compare_branch(*deferred, instruction, out, false);
       else if(is_floating(deferred->type))
         emit_float_direct_compare_branch(*deferred, instruction, out, false);
       else emit_direct_compare_branch(*deferred, instruction, out, false);

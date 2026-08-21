@@ -1,0 +1,116 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @wide
+  storage scalar i128
+  init i128 1
+
+global @g1
+  storage scalar i64
+  init i64 1
+
+global @g2
+  storage scalar i64
+  init i64 2
+
+global @g3
+  storage scalar i64
+  init i64 3
+
+global @g4
+  storage scalar i64
+  init i64 4
+
+global @g5
+  storage scalar i64
+  init i64 5
+
+function @touch
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @probe
+  abi
+    param %p1 -> rdi : ptr
+    param %p2 -> rsi : ptr
+    param %p3 -> rdx : ptr
+    param %p4 -> rcx : ptr
+    param %p5 -> r8 : ptr
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    preserve rbx r12 r13 r14 r15
+    temp %wide -> [rbp-16] : i128
+    temp %positive -> [rbp-24] : i64
+
+  block ^entry
+    mov r15, rdi
+    mov r14, rsi
+    mov r13, rdx
+    mov r12, rcx
+    mov rbx, r8
+    mov r11, @wide
+    load.i64 rax, [r11]
+    load.i64 rdx, [r11+8]
+    lea r11, [rbp-16]
+    store.i64 [r11], rax
+    store.i64 [r11+8], rdx
+    lea r11, [rbp-16]
+    load.i64 rax, [r11]
+    load.i64 rdx, [r11+8]
+    mov rcx, 0
+    mov rsi, 0
+    cmp.i64 rax, rcx
+    seta r10
+    movzx r10, r10
+    cmp.i64 rdx, rsi
+    sete r11
+    movzx r11, r11
+    and r10, r11
+    cmp.i64 rdx, rsi
+    setg r11
+    movzx r11, r11
+    or r10, r11
+    store.i64 [rbp-24], r10
+    call @touch [args=()]
+    load.i64 r8, [r15]
+    load.i64 r9, [r14]
+    load.i64 rdi, [r13]
+    load.i64 rsi, [r12]
+    load.i64 r15, [rbx]
+    add r8, r9
+    add r8, rdi
+    add r8, rsi
+    add r8, r15
+    add r8, [rbp-24]
+    ret r8
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, @g1
+    mov rsi, @g2
+    mov rdx, @g3
+    mov rcx, @g4
+    mov r8, @g5
+    call @probe [args=(rcx,rdx,rsi,rdi,r8)]
+    cmp.i64 rax, 16
+    setne rax
+    movzx rax, rax
+    ret rax
