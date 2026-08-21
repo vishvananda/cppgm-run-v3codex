@@ -207,6 +207,8 @@ int run_lowir2native_mode(const vector<string> & args)
          << " machine_opt_cfg_edges=" << stats.machine_opt_cfg_edge_visits
          << " machine_opt_pushes=" << stats.machine_opt_worklist_pushes
          << " machine_opt_rewrites=" << stats.machine_opt_rewrites
+         << " machine_opt_identity_moves="
+         << stats.machine_opt_identity_moves
          << " machine_opt_peak_bytes="
          << stats.machine_opt_peak_analysis_bytes
          << " live_location_scans=" << stats.live_location_scans
@@ -221,7 +223,9 @@ int run_lowir2native_mode(const vector<string> & args)
          << " temporary_frame_homes_created="
          << stats.temporary_frame_homes_created
          << " temporary_frame_homes_reused="
-         << stats.temporary_frame_homes_reused;
+         << stats.temporary_frame_homes_reused
+         << " planned_edge_register_retains="
+         << stats.planned_edge_register_retains;
     lowir_native::report_code_shape_stats(cerr, stats);
     cerr
          << " shared_storage_lifetime_extensions="

@@ -13,6 +13,6 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 1 !dbg(test.cpp, 1, 1)
+    mov r8, 1 !dbg(test.cpp, 3, 1)
     add r8, 2 !dbg(test.cpp, 3, 1)
     ret r8 !dbg(test.cpp, 4, 1)

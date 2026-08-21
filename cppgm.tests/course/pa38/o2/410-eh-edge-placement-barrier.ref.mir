@@ -1,0 +1,47 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    ret rdi
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %stable -> [rbp-24] : i64
+
+  block ^entry
+    mov rbx, 40
+    add rbx, 2
+    store.i64 [rbp-24], rbx
+    eh_push ^handler, 0
+    load.i64 rdi, [rbp-24]
+    call @identity [args=(rdi), unwind=no]
+    eh_pop
+
+  block ^done
+    cmp.i64 [rbp-24], 42
+    setne rax
+    movzx rax, rax
+    ret rax
+
+  block ^handler
+    mov rax, 2
+    ret rax

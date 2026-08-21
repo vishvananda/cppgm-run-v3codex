@@ -24,7 +24,6 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 20 !dbg(test.cpp, 5, 1)
     mov rdi, 20 !dbg(test.cpp, 6, 1)
     call @id [args=(rdi)] !dbg(test.cpp, 6, 1)
     ret rax !dbg(test.cpp, 7, 1)

@@ -36,6 +36,9 @@ bool result_is_immediate_return(const lowir_model::LowirBlock & block,
 bool result_is_immediate_unary_not_branch(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
     lowir_model::ValueId destination, const analysis::FunctionFacts & facts);
+bool result_is_immediate_branch(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts);
 bool result_is_immediately_stored(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
     lowir_model::ValueId destination, const analysis::FunctionFacts & facts);

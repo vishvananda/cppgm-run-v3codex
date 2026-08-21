@@ -19,6 +19,7 @@ struct Stats
   std::size_t rewrites = 0;
   std::size_t operand_rewrites = 0;
   std::size_t dead_definitions = 0;
+  std::size_t identity_moves = 0;
   std::size_t frame_rewrites = 0;
   std::size_t implicit_return_rewrites = 0;
   std::size_t peak_analysis_bytes = 0;

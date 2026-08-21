@@ -539,6 +539,10 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
       if(instruction.kind == Instruction::IK_VA_START) facts.has_va_start = true;
       if(instruction.kind == Instruction::IK_STACK_ALLOC)
         facts.has_dynamic_stack = true;
+      if((instruction.kind >= Instruction::IK_EH_TRY &&
+          instruction.kind <= Instruction::IK_RESUME) ||
+         instruction.kind == Instruction::IK_THROW)
+        facts.has_eh = true;
       if((instruction.kind == Instruction::IK_ATOMIC_LOAD ||
           instruction.kind == Instruction::IK_ATOMIC_COMPARE_EXCHANGE) &&
          instruction.type.kind == lowir_model::LTK_I128)

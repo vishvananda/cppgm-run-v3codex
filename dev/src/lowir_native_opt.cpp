@@ -707,6 +707,22 @@ void retain_debug(const MirInstruction & removed, MirInstruction * survivor)
   }
 }
 
+bool is_identity_move(const MirInstruction & instruction)
+{
+  if((instruction.opcode != MirInstruction::MI_MOV &&
+      instruction.opcode != MirInstruction::MI_FMOV) ||
+     instruction.operands.size() != 2)
+    return false;
+  const MirOperand & destination = instruction.operands[0];
+  const MirOperand & source = instruction.operands[1];
+  if(destination.kind != source.kind) return false;
+  if(destination.kind == MirOperand::OP_REG)
+    return destination.reg == source.reg;
+  if(destination.kind == MirOperand::OP_XMM)
+    return destination.xmm == source.xmm;
+  return false;
+}
+
 void remove_dead_definitions(MirFunction & function,
                              const std::vector<std::vector<bool> > & preserve,
                              const Liveness & liveness, Stats * stats)
@@ -720,10 +736,16 @@ void remove_dead_definitions(MirFunction & function,
       const std::size_t index = i - 1;
       const MirInstruction & instruction = block.instructions[index];
       if(stats) ++stats->instruction_visits;
-      if(index < preserve[block_index].size() && !preserve[block_index][index] &&
-         is_removable_definition(instruction, live)) {
+      const bool identity = is_identity_move(instruction);
+      const bool unpreserved = index < preserve[block_index].size() &&
+        !preserve[block_index][index];
+      if(identity || (unpreserved &&
+         is_removable_definition(instruction, live))) {
         retain_debug(instruction, reverse.empty() ? 0 : &reverse.back());
-        if(stats) ++stats->rewrites;
+        if(stats) {
+          ++stats->rewrites;
+          if(identity) ++stats->identity_moves;
+        }
         continue;
       }
       live &= ~instruction_defs(instruction);

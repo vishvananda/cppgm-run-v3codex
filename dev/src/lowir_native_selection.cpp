@@ -159,6 +159,19 @@ bool result_is_immediate_unary_not_branch(
     branch.first.value == unary.dest;
 }
 
+bool result_is_immediate_branch(
+    const lowir_model::LowirBlock & block, std::size_t instruction_index,
+    lowir_model::ValueId destination, const analysis::FunctionFacts & facts)
+{
+  if(instruction_index + 1 >= block.instructions.size() ||
+     facts.uses[destination] != 1) return false;
+  const lowir_model::Instruction & branch =
+    block.instructions[instruction_index + 1];
+  return branch.kind == lowir_model::Instruction::IK_BRANCH &&
+    branch.first.kind == lowir_model::Operand::OP_TEMP &&
+    branch.first.value == destination;
+}
+
 bool result_is_immediately_stored(
     const lowir_model::LowirBlock & block, std::size_t instruction_index,
     lowir_model::ValueId destination, const analysis::FunctionFacts & facts)

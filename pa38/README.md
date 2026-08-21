@@ -136,6 +136,8 @@ semantic-preserving rewrites where safe:
 - remove unconditional jumps to the immediately following block
 - coalesce block-local integer and floating-point register copies
 - remove redundant move chains and simple return shuffles
+- remove integer and floating-point moves whose source and destination are the
+  same physical register
 - clean up call-result and call-argument copies
 - retain register copies that are still required for ABI call-argument setup,
   distinct bulk-copy source/destination operands, or values live into successor
@@ -154,6 +156,14 @@ semantic-preserving rewrites where safe:
 
 - improve block layout by following unconditional jump traces so likely
   successors become natural fallthrough blocks
+- retain a LowIR value in one physical register through joins or backedges
+  when its complete interval conflicts with no fixed-register use; a value
+  that crosses a call may remain in a callee-saved GPR, while an XMM value may
+  remain register-resident only when it crosses no call
+- use a frame home when exception flow or register pressure prevents a stable
+  whole-function register placement; cyclic placement must leave register
+  capacity for values first produced inside the cycle and must not evict a
+  location that an already-emitted backedge will use on its next iteration
 - remove callee-saved register preservation that is no longer needed after
   optimization
 - recompute final stack reservation from the surviving frame state
@@ -235,10 +245,30 @@ PA38 does not require:
 - redefining `lowir2native -O0`
 - source-language semantic changes
 - wall-clock performance grading
-- global register allocation beyond the machine-IR cleanup contract
+- unbounded graph-coloring register allocation or a private virtual-register
+  IR that is absent from the machine-IR dump
 - instruction scheduling, vectorization, or target-specific peephole work not
   covered by the tests
 - interprocedural backend optimization
+
+### Design Notes
+
+Whole-function placement can reuse the dense LowIR definition, use, last-use,
+call-clobber, and edge-liveness facts built for baseline lowering. A compact
+interval table indexed by LowIR value ID and fixed-size tables indexed by
+physical register keep allocation linear or near-linear without string keys.
+
+Treat ABI argument and result registers, division and shift registers, calls,
+and exception edges as explicit constraints. Prefer a callee-saved register
+only when its save/restore cost is lower than the frame traffic it avoids.
+When a proof is unavailable, retain the ordinary frame-home path. The
+optimized machine-IR dump must contain the final physical registers, frame
+bindings, edge copies, and callee-save list used by native encoding.
+
+A definition-time frame copy can be reused if acyclic pressure later evicts a
+retained register. Inside a cycle, earlier machine instructions execute again
+after a backedge, so plan enough headroom up front instead of changing their
+assumed location while lowering a later instruction.
 
 ### Handoff
 

@@ -16,6 +16,7 @@ mir_model::MirFunction lower_native_function(
     const std::vector<unsigned char> & pointer_globals,
     const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
+    int optimization_level,
     Stats * stats);
 
 }  // namespace session_detail

@@ -60,6 +60,7 @@ struct FunctionFacts
   bool has_dynamic_stack = false;
   bool has_i128_atomic = false;
   bool has_direct_branch_parameter = false;
+  bool has_eh = false;
 
   static std::size_t missing_position()
   {

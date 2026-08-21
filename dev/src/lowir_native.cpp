@@ -12,11 +12,13 @@
 #include "lowir_native_division_lowering.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_frame_layout.h"
+#include "lowir_native_frame_home_planning.h"
 #include "lowir_native_frame_planning.h"
 #include "lowir_native_host_eh.h"
 #include "lowir_native_index_lowering.h"
 #include "lowir_native_integer_lowering.h"
 #include "lowir_native_intrinsic_lowering.h"
+#include "lowir_native_location_planning.h"
 #include "lowir_native_mir.h"
 #include "lowir_native_memory_lowering.h"
 #include "lowir_native_movement_stats.h"
@@ -83,12 +85,15 @@ public:
                   const std::vector<unsigned char> & pointer_globals,
                   const std::vector<lowir_model::SymbolId> & tls_wrappers,
                   const FunctionSignatureIndex & signatures,
+                  int optimization_level,
                   lowir_native::Stats * stats)
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
-      signatures_(signatures), stats_(stats),
+      signatures_(signatures), optimization_level_(optimization_level),
+      stats_(stats),
       facts_(analyze_function(source, stats)),
-      control_flow_(source), position_(0)
+      control_flow_(source), live_locations_(stats),
+      generated_frame_names_(source), position_(0)
   {
     values_.resize(source_.value_names.size());
     value_known_.assign(source_.value_names.size(), 0);
@@ -200,6 +205,7 @@ private:
   const std::vector<unsigned char> & pointer_globals_;
   const std::vector<lowir_model::SymbolId> & tls_wrappers_;
   const FunctionSignatureIndex & signatures_;
+  int optimization_level_;
   lowir_native::Stats * stats_;
   FunctionFacts facts_;
   StorageFacts storage_facts_;
@@ -208,10 +214,10 @@ private:
   RegisterPool registers_;
   XmmPool xmms_;
   spill_slots::Pool spill_slots_;
+  location_planning::LiveLocationIndex live_locations_;
+  location_planning::GeneratedFrameNames generated_frame_names_;
   std::vector<ValueFact> values_;
   std::vector<unsigned char> value_known_;
-  std::vector<lowir_model::ValueId> live_gpr_values_[16];
-  std::vector<lowir_model::ValueId> live_xmm_values_[8];
   std::vector<long long> slot_offsets_;
   std::vector<unsigned char> slot_offset_known_;
   std::vector<X64Register> incoming_parameter_registers_;
@@ -229,22 +235,11 @@ private:
   long long variadic_register_save_offset_ = 0;
   abi::VariadicState variadic_state_;
 
-  TemporaryHomeReason inferred_home_reason(
-      lowir_model::ValueId value, const LowType & type) const
-  {
-    if(type.kind == lowir_model::LTK_OBJECT) return THR_OBJECT_VALUE;
-    if(type.kind == lowir_model::LTK_I128 || is_extended_float(type))
-      return THR_EXTENDED_REPRESENTATION;
-    if(facts_.has(value, FunctionFacts::VF_EDGE_LIVE)) return THR_EDGE_LIVE;
-    if(result_crosses_call(value)) return THR_LIVE_ACROSS_CALL;
-    return THR_SCALAR_VALUE;
-  }
-
   long long allocate_frame_binding(mir_model::MirFrameBinding::Kind kind,
                                    lowir_model::FixedPresentationName name,
                                    const LowType & type)
   {
-    return frame_layout::append_binding(
+    return frame_home_planning::allocate_binding(
       target_, frame_bytes_, kind,
       lowir_model::PresentationName::fixed(name), type);
   }
@@ -252,7 +247,7 @@ private:
                                    lowir_model::StringId name,
                                    const LowType & type)
   {
-    return frame_layout::append_binding(
+    return frame_home_planning::allocate_binding(
       target_, frame_bytes_, kind,
       name.valid() ? lowir_model::PresentationName::pooled(name) :
         lowir_model::PresentationName(), type);
@@ -261,7 +256,7 @@ private:
                                    lowir_model::PresentationName name,
                                    const LowType & type)
   {
-    return frame_layout::append_binding(
+    return frame_home_planning::allocate_binding(
       target_, frame_bytes_, kind, name, type);
   }
   std::uint32_t append_frame_binding(
@@ -270,59 +265,16 @@ private:
                             const LowType & type,
                             long long offset)
   {
-    if(target_.frame_bindings.size() >=
-       std::numeric_limits<std::uint32_t>::max())
-      throw std::runtime_error("too many native frame bindings");
-    mir_model::MirFrameBinding binding;
-    binding.kind = kind;
-    binding.name = name;
-    binding.offset = offset;
-    binding.type = type;
-    target_.frame_bindings.push_back(binding);
-    return static_cast<std::uint32_t>(target_.frame_bindings.size());
+    return frame_home_planning::append_binding(
+      target_, kind, name, type, offset);
   }
   MirOperand allocate_temp_frame_binding(lowir_model::ValueId value,
                                          const LowType & type,
                                          TemporaryHomeReason reason = THR_COUNT)
   {
-    if(stats_) {
-      if(reason == THR_COUNT) reason = inferred_home_reason(value, type);
-      ++stats_->temporary_home_requests_by_reason[reason];
-    }
-    const std::size_t size = abi::frame_storage_size(type);
-    std::size_t available_after = facts_.last_use[value] ==
-      FunctionFacts::missing_position() ? position_ : facts_.last_use[value];
-    if(facts_.shared_storage_last_use[value] !=
-       FunctionFacts::missing_position())
-      available_after = std::max(
-        available_after, facts_.shared_storage_last_use[value]);
-    const lowir_model::PresentationName name =
-      lowir_model::lowir_value_presentation(source_, value);
-    const bool reusable = type.kind != lowir_model::LTK_OBJECT;
-    long long offset = 0;
-    if(reusable && spill_slots_.acquire(size, type.alignment, position_,
-                                        available_after, &offset)) {
-      if(stats_) {
-        ++stats_->temporary_frame_homes_reused;
-        ++stats_->temporary_home_reuses_by_reason[reason];
-      }
-      const std::uint32_t binding = append_frame_binding(
-        mir_model::MirFrameBinding::FB_TEMP, name, type, offset);
-      return frame_operand(offset, binding);
-    }
-    if(stats_) {
-      ++stats_->temporary_frame_homes_created;
-      ++stats_->temporary_home_creations_by_reason[reason];
-    }
-    offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP, name, type);
-    if(reusable)
-      spill_slots_.remember(size, type.alignment, available_after, offset);
-    if(target_.frame_bindings.size() >
-       std::numeric_limits<std::uint32_t>::max())
-      throw std::runtime_error("too many native frame bindings");
-    return frame_operand(offset,
-      static_cast<std::uint32_t>(target_.frame_bindings.size()));
+    return frame_home_planning::allocate_temporary(
+      target_, frame_bytes_, spill_slots_, generated_frame_names_, facts_,
+      value, type, position_, reason, result_crosses_call(value), stats_);
   }
 
   void DefinePhi(lowir_model::ValueId value,
@@ -659,18 +611,20 @@ private:
     std::size_t instruction_index, lowir_model::ValueId destination) const
   { return selection::result_is_immediate_unary_not_branch(
       block, instruction_index, destination, facts_); }
+  bool comparison_feeds_branch(const lowir_model::LowirBlock & block,
+    std::size_t instruction_index, const Instruction & comparison) const
+  { return selection::result_is_immediate_branch(
+      block, instruction_index, comparison.dest, facts_); }
   MirOperand global_operand(MirOperand::Kind kind,
                             const Operand & operand) const
-  {
-    return build::global_operand(kind, operand);
-  }
+  { return build::global_operand(kind, operand); }
   MirOperand resolve(const Operand & operand) const
   {
     if(operand.kind == Operand::OP_TEMP) {
       if(!value_known_[operand.value])
         throw std::runtime_error("missing lowered temporary " +
-          lowir_model::lowir_value_name(
-            program_.strings, source_, operand.value) + " (" +
+          location_planning::diagnostic_value_name(
+            program_, source_, operand.value) + " (" +
           std::to_string(static_cast<std::uint32_t>(operand.value)) + ")" +
           " in function @" +
           lowir_model::lowir_symbol_name(program_, source_.symbol) +
@@ -716,7 +670,7 @@ private:
         operand.has_spelling ? operand.literal :
           lowir_model::StringId());
     if(operand.kind == Operand::OP_GLOBAL)
-      return global_operand(MirOperand::OP_SYMBOL, operand);
+      return build::global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind == Operand::OP_LABEL)
       return native_block_operand(source_, operand);
     throw std::runtime_error("foundation operand kind is not implemented");
@@ -763,7 +717,7 @@ private:
   MirOperand storage(const Operand & operand) const
   {
     if(operand.kind == Operand::OP_GLOBAL)
-      return global_operand(MirOperand::OP_GLOBAL, operand);
+      return build::global_operand(MirOperand::OP_GLOBAL, operand);
     if(operand.kind == Operand::OP_SLOT) {
       const std::uint32_t slot = operand.slot;
       if(slot >= slot_offsets_.size() || !slot_offset_known_[slot])
@@ -843,7 +797,7 @@ private:
       !facts_.has(id, FunctionFacts::VF_EDGE_LIVE);
     --facts_.uses[id];
     if(stops_being_live)
-      remove_live_location(id, values_[id].location);
+      live_locations_.remove(id, values_[id].location);
     if(facts_.uses[id] == 0) {
       const ValueFact & value = values_[id];
       if(value.location.kind == MirOperand::OP_REG &&
@@ -855,6 +809,7 @@ private:
         registers_.release(value.location.reg);
       }
       if(!value.parameter && value.location.kind == MirOperand::OP_XMM &&
+         !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&
          !has_live_location_alias(id, value.location))
         xmms_.release(value.location.xmm);
       if(value.deferred_address) {
@@ -887,48 +842,20 @@ private:
     return false;
   }
   static bool managed_register(X64Register reg)
-  {
-    return reg == XR_RDI || reg == XR_RSI || reg == XR_R8 || reg == XR_R9 ||
-      is_callee_saved(reg);
-  }
+  { return location_planning::managed_register(reg); }
   bool value_is_live(lowir_model::ValueId value) const
   {
     return facts_.uses[value] != 0 ||
       facts_.has(value, FunctionFacts::VF_EDGE_LIVE);
   }
-  void add_live_location(lowir_model::ValueId value,
-                         const MirOperand & location)
-  {
-    if(location.kind == MirOperand::OP_REG)
-      live_gpr_values_[location.reg].push_back(value);
-    else if(location.kind == MirOperand::OP_XMM)
-      live_xmm_values_[location.xmm].push_back(value);
-    else return;
-    if(stats_) ++stats_->live_location_updates;
-  }
-  void remove_live_location(lowir_model::ValueId value,
-                            const MirOperand & location)
-  {
-    std::vector<lowir_model::ValueId> * values = 0;
-    if(location.kind == MirOperand::OP_REG) values = &live_gpr_values_[location.reg];
-    else if(location.kind == MirOperand::OP_XMM) values = &live_xmm_values_[location.xmm];
-    if(!values) return;
-    const std::vector<lowir_model::ValueId>::iterator found =
-      std::find(values->begin(), values->end(), value);
-    if(found == values->end())
-      throw std::logic_error("native live-location index is inconsistent");
-    *found = values->back();
-    values->pop_back();
-    if(stats_) ++stats_->live_location_updates;
-  }
   void set_value(lowir_model::ValueId value, const ValueFact & replacement)
   {
     const bool live = value_is_live(value);
     if(live && value_known_[value])
-      remove_live_location(value, values_[value].location);
+      live_locations_.remove(value, values_[value].location);
     values_[value] = replacement;
     value_known_[value] = 1;
-    if(live) add_live_location(value, replacement.location);
+    if(live) live_locations_.add(value, replacement.location);
   }
   void set_value_location(lowir_model::ValueId value,
                           const MirOperand & replacement)
@@ -936,25 +863,19 @@ private:
     if(!value_known_[value])
       throw std::logic_error("cannot move an unknown native value");
     const bool live = value_is_live(value);
-    if(live) remove_live_location(value, values_[value].location);
+    if(live) live_locations_.remove(value, values_[value].location);
     values_[value].location = replacement;
     if(replacement.kind == MirOperand::OP_FRAME &&
        replacement.frame_binding != 0) {
       values_[value].has_spill_home = true;
       values_[value].spill_home = replacement;
     }
-    if(live) add_live_location(value, replacement);
+    if(live) live_locations_.add(value, replacement);
   }
   bool has_live_location_alias(lowir_model::ValueId value,
                                const MirOperand & location) const
   {
-    if(stats_) ++stats_->live_location_alias_queries;
-    const std::size_t self = value_is_live(value) ? 1 : 0;
-    if(location.kind == MirOperand::OP_REG)
-      return live_gpr_values_[location.reg].size() > self;
-    if(location.kind == MirOperand::OP_XMM)
-      return live_xmm_values_[location.xmm].size() > self;
-    return false;
+    return live_locations_.has_alias(value, location, value_is_live(value));
   }
   void stabilize_edge_live_result(
       const Instruction & instruction,
@@ -971,6 +892,30 @@ private:
        location.kind != MirOperand::OP_XMM) return;
     if(facts_.has(instruction.dest, FunctionFacts::VF_EXACT_FORWARD_EDGE)) {
       if(stats_) ++stats_->exact_forward_edge_register_retains;
+      return;
+    }
+    const bool crosses = result_crosses_call(instruction.dest);
+    const bool narrow_register_alias = location.kind == MirOperand::OP_REG &&
+      selection::is_narrow_integer(value.type) &&
+      has_live_location_alias(instruction.dest, location);
+    const bool fixed_register_clobber = location.kind == MirOperand::OP_REG &&
+      crosses_register_clobber(instruction.dest, location.reg);
+    if(location_planning::should_retain_edge_register(
+         location, optimization_level_, facts_.has_eh,
+         facts_.has(instruction.dest, FunctionFacts::VF_LOOP_INVARIANT),
+         crosses, narrow_register_alias, fixed_register_clobber,
+         registers_, xmms_)) {
+      if(location.kind == MirOperand::OP_REG &&
+         selection::is_narrow_integer(value.type))
+        append_integer_normalization(out, value.type, location);
+      const MirOperand fallback = allocate_temp_frame_binding(
+        instruction.dest, value.type, THR_EDGE_LIVE);
+      if(location.kind == MirOperand::OP_XMM)
+        append_float_move(out, fallback, location, value.type);
+      else append_store(out, fallback, location, value.type);
+      value.has_spill_home = true;
+      value.spill_home = fallback;
+      if(stats_) ++stats_->planned_edge_register_retains;
       return;
     }
     const MirOperand home =
@@ -994,12 +939,14 @@ private:
   {
     if(!value_known_[value] || values_[value].parameter ||
        values_[value].location.kind != MirOperand::OP_REG ||
-       !managed_register(values_[value].location.reg) ||
+       !location_planning::managed_register(values_[value].location.reg) ||
        (needs_callee_saved &&
         !is_callee_saved(values_[value].location.reg)) ||
        has_live_location_alias(value, values_[value].location) ||
        current_instruction_uses(value)) return false;
-    return control_flow_.SpillIsSafe(value, position_) &&
+    return ((values_[value].has_spill_home &&
+             !control_flow_.CurrentBlockIsCyclic()) ||
+            control_flow_.SpillIsSafe(value, position_)) &&
       facts_.uses[value] != 0;
   }
   lowir_model::ValueId
@@ -1028,7 +975,7 @@ private:
     bool tied = false;
     for(std::size_t reg = 0; reg < 16; ++reg) {
       const std::vector<lowir_model::ValueId> & occupants =
-        live_gpr_values_[reg];
+        live_locations_.gpr_values(static_cast<X64Register>(reg));
       for(std::size_t i = 0; i < occupants.size(); ++i) {
         if(stats_) ++stats_->spill_value_visits;
         const lowir_model::ValueId value = occupants[i];
@@ -1058,10 +1005,11 @@ private:
     if(!victim.valid()) return false;
     MirOperand home;
     if(values_[victim].has_spill_home) home = values_[victim].spill_home;
-    else
+    else {
       home = allocate_temp_frame_binding(
         victim, values_[victim].type, THR_REGISTER_PRESSURE);
-    append_store(out, home, values_[victim].location, values_[victim].type);
+      append_store(out, home, values_[victim].location, values_[victim].type);
+    }
     const X64Register released = values_[victim].location.reg;
     set_value_location(victim, home);
     registers_.release(released);
@@ -1078,7 +1026,7 @@ private:
       if(!value_known_[value]) continue;
       if(!values_[value].parameter || values_[value].fixed_register_home ||
          values_[value].location.kind != MirOperand::OP_REG ||
-         !managed_register(values_[value].location.reg) ||
+         !location_planning::managed_register(values_[value].location.reg) ||
          !registers_.is_used(values_[value].location.reg) ||
          (needs_callee_saved &&
           !is_callee_saved(values_[value].location.reg)))
@@ -1131,8 +1079,7 @@ private:
     if(try_allocate_result(value, out, &result, force_preserved)) return result;
     throw std::runtime_error("reactive GPR allocation exhausted in " +
       lowir_model::lowir_symbol_name(program_, source_.symbol) + " for " +
-      lowir_model::lowir_value_name(
-        program_.strings, source_, value) +
+      location_planning::diagnostic_value_name(program_, source_, value) +
       " at LowIR position " +
 	  std::to_string(position_));
   }
@@ -1214,7 +1161,7 @@ private:
         return;
       }
       append_move(out, reg_operand(destination),
-                  global_operand(MirOperand::OP_SYMBOL, operand));
+                  build::global_operand(MirOperand::OP_SYMBOL, operand));
       return;
     }
     if(operand.kind != Operand::OP_TEMP)
@@ -1244,7 +1191,7 @@ private:
   {
     if(operand.kind == Operand::OP_SLOT) return storage(operand);
     if(operand.kind == Operand::OP_GLOBAL)
-      return global_operand(MirOperand::OP_SYMBOL, operand);
+      return build::global_operand(MirOperand::OP_SYMBOL, operand);
     if(operand.kind != Operand::OP_TEMP)
       throw std::runtime_error("call argument cannot be passed by address");
     if(!value_known_[operand.value])
@@ -1613,17 +1560,6 @@ private:
     }
     throw std::runtime_error("conversion categories are not implemented");
   }
-  bool comparison_feeds_branch(const lowir_model::LowirBlock & block,
-                               std::size_t instruction_index,
-                               const Instruction & comparison) const
-  {
-    if(instruction_index + 1 >= block.instructions.size() ||
-       facts_.uses[comparison.dest] != 1) return false;
-    const Instruction & branch = block.instructions[instruction_index + 1];
-    return branch.kind == Instruction::IK_BRANCH &&
-      branch.first.kind == Operand::OP_TEMP &&
-      branch.first.value == comparison.dest;
-  }
   MirOperand direct_compare_left(const Operand & operand,
                                  std::vector<MirInstruction> & out)
   {
@@ -1825,13 +1761,6 @@ private:
     define(instruction.dest, result_type,
            pressure_home.kind == MirOperand::OP_FRAME ? pressure_home : destination);
   }
-  bool unary_not_feeds_branch(const lowir_model::LowirBlock & block,
-                              std::size_t instruction_index,
-                              const Instruction & instruction) const
-  {
-    return instruction.op.kind == LowOperation::LOP_NOT &&
-      comparison_feeds_branch(block, instruction_index, instruction);
-  }
   void emit_direct_unary_not_branch(const Instruction & instruction,
                                     const Instruction & branch,
                                     std::vector<MirInstruction> & out)
@@ -1931,23 +1860,6 @@ private:
       if(is_scalar_float(operand_type(instruction.args[i]))) return true;
     return false;
   }
-  struct XmmMove
-  {
-    XmmRegister destination = XMM_0;
-    MirOperand source;
-    LowType type;
-    bool pending = true;
-  };
-  bool xmm_destination_is_safe(const std::vector<XmmMove> & moves,
-                               std::size_t candidate) const
-  {
-    for(std::size_t i = 0; i < moves.size(); ++i) {
-      if(i == candidate || !moves[i].pending ||
-         moves[i].source.kind != MirOperand::OP_XMM) continue;
-      if(moves[i].source.xmm == moves[candidate].destination) return false;
-    }
-    return true;
-  }
   long long xmm_call_scratch()
   {
     if(has_xmm_call_scratch_) return xmm_call_scratch_;
@@ -1962,11 +1874,11 @@ private:
                                std::vector<MirInstruction> & out)
   {
     std::size_t xmm_index = 0;
-    std::vector<XmmMove> moves;
+    std::vector<location_planning::ParallelXmmMove> moves;
     for(std::size_t i = 0; i < instruction.args.size() && xmm_index < 8; ++i) {
       const LowType & type = operand_type(instruction.args[i]);
       if(!is_scalar_float(type)) continue;
-      XmmMove move;
+      location_planning::ParallelXmmMove move;
       move.destination = static_cast<XmmRegister>(xmm_index++);
       move.source = resolve(instruction.args[i]);
       move.type = type;
@@ -1976,7 +1888,8 @@ private:
     while(remaining) {
       bool progressed = false;
       for(std::size_t i = 0; i < moves.size(); ++i) {
-        if(!moves[i].pending || !xmm_destination_is_safe(moves, i)) continue;
+        if(!moves[i].pending ||
+           !location_planning::xmm_destination_is_safe(moves, i)) continue;
         append_float_move(out, xmm_operand(moves[i].destination), moves[i].source,
                           moves[i].type, true);
         moves[i].pending = false;
@@ -2196,7 +2109,7 @@ private:
       std::vector<MirInstruction> & out)
   {
     std::vector<GprMove> gpr_moves;
-    std::vector<XmmMove> xmm_moves;
+    std::vector<location_planning::ParallelXmmMove> xmm_moves;
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
       const abi::Piece & piece = plan.pieces[i];
       const Operand & argument = instruction.args[piece.parameter_index];
@@ -2228,7 +2141,7 @@ private:
         }
         gpr_moves.push_back(move);
       } else if(piece.location == abi::PL_XMM) {
-        XmmMove move;
+        location_planning::ParallelXmmMove move;
         move.destination = piece.xmm;
         move.source = resolve(argument);
         move.type = piece.type;
@@ -2262,7 +2175,8 @@ private:
     while(remaining) {
       bool progressed = false;
       for(std::size_t i = 0; i < xmm_moves.size(); ++i) {
-        if(!xmm_moves[i].pending || !xmm_destination_is_safe(xmm_moves, i)) continue;
+        if(!xmm_moves[i].pending ||
+           !location_planning::xmm_destination_is_safe(xmm_moves, i)) continue;
         append_float_move(out, xmm_operand(xmm_moves[i].destination),
                           xmm_moves[i].source,
                           xmm_moves[i].type, true);
@@ -2359,7 +2273,8 @@ private:
         value.location = address.location;
         value.frame_address = address.frame_address;
       } else {
-        value.location = global_operand(MirOperand::OP_SYMBOL, *destination);
+        value.location = build::global_operand(
+          MirOperand::OP_SYMBOL, *destination);
       }
     } else {
       value.location = home;
@@ -2428,7 +2343,7 @@ private:
     call.call_stack_bytes = plan.stack_bytes;
     abi::record_argument_registers(call, plan);
     append_operand(call, direct ?
-      global_operand(MirOperand::OP_SYMBOL, instruction.first) :
+      build::global_operand(MirOperand::OP_SYMBOL, instruction.first) :
       indirect_target);
     out.push_back(call);
     emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
@@ -2605,7 +2520,7 @@ private:
       call.call_stack_bytes = stack_bytes;
       abi::record_argument_registers(call, parameters);
       append_operand(call,
-        global_operand(MirOperand::OP_SYMBOL, instruction.first));
+        build::global_operand(MirOperand::OP_SYMBOL, instruction.first));
       out.push_back(call);
     } else {
       MirInstruction call = machine_instruction(MirInstruction::MI_CALL_INDIRECT);
@@ -2768,11 +2683,12 @@ private:
   }
   bool nonparameter_value_live_in_register(X64Register reg) const
   {
-    for(std::size_t value = 0; value < values_.size(); ++value) {
+    const std::vector<lowir_model::ValueId> & values =
+      live_locations_.gpr_values(reg);
+    for(std::size_t i = 0; i < values.size(); ++i) {
+      const lowir_model::ValueId value = values[i];
       if(value_known_[value] && facts_.uses[value] != 0 &&
-         !values_[value].parameter &&
-         values_[value].location.kind == MirOperand::OP_REG &&
-         values_[value].location.reg == reg)
+         !values_[value].parameter)
         return true;
     }
     return false;
@@ -2941,15 +2857,19 @@ private:
       if(wide::is_integer(instruction.type))
         emit_compare_value(instruction, block, instruction_index, out);
       else if(is_floating(instruction.type) &&
-         comparison_feeds_branch(block, instruction_index, instruction))
+         selection::result_is_immediate_branch(
+           block, instruction_index, instruction.dest, facts_))
         emit_float_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
       else if(is_floating(instruction.type))
         emit_float_compare_value(instruction, block, instruction_index, out);
-      else if(comparison_feeds_branch(block, instruction_index, instruction))
+      else if(selection::result_is_immediate_branch(
+                block, instruction_index, instruction.dest, facts_))
         emit_direct_compare_branch(instruction, block.instructions[instruction_index + 1], out);
       else emit_compare_value(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_UNARY) {
-      if(unary_not_feeds_branch(block, instruction_index, instruction))
+      if(instruction.op.kind == LowOperation::LOP_NOT &&
+         selection::result_is_immediate_branch(
+           block, instruction_index, instruction.dest, facts_))
         emit_direct_unary_not_branch(instruction, block.instructions[instruction_index + 1], out);
       else emit_unary_value(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_CONVERT)
@@ -2991,10 +2911,11 @@ mir_model::MirFunction session_detail::lower_native_function(
     const std::vector<unsigned char> & pointer_globals,
     const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
+    int optimization_level,
     lowir_native::Stats * stats)
 {
   return FunctionLowerer(program, function, pointer_globals, tls_wrappers,
-                         signatures, stats).lower();
+                         signatures, optimization_level, stats).lower();
 }
 
 }  // namespace lowir_native

@@ -193,7 +193,7 @@ struct ProgramLoweringSession::Impl
     if(stats) started = std::chrono::steady_clock::now();
     mir_model::MirFunction result = session_detail::lower_native_function(
       source, source.functions[index], pointer_globals, tls_wrappers,
-      signatures, stats);
+      signatures, optimization_level, stats);
     machine_opt::Stats opt_stats;
     machine_opt::optimize_function(result, optimization_level,
                                    stats ? &opt_stats : 0);
@@ -208,6 +208,7 @@ struct ProgramLoweringSession::Impl
       stats->machine_opt_cfg_edge_visits += opt_stats.cfg_edge_visits;
       stats->machine_opt_worklist_pushes += opt_stats.worklist_pushes;
       stats->machine_opt_rewrites += opt_stats.rewrites;
+      stats->machine_opt_identity_moves += opt_stats.identity_moves;
       stats->machine_opt_peak_analysis_bytes = std::max(
         stats->machine_opt_peak_analysis_bytes,
         opt_stats.peak_analysis_bytes);

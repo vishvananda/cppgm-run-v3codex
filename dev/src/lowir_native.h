@@ -85,6 +85,7 @@ struct Stats
   std::size_t machine_opt_cfg_edge_visits = 0;
   std::size_t machine_opt_worklist_pushes = 0;
   std::size_t machine_opt_rewrites = 0;
+  std::size_t machine_opt_identity_moves = 0;
   std::size_t machine_opt_peak_analysis_bytes = 0;
   std::size_t live_location_scans = 0;
   std::size_t live_location_value_visits = 0;
@@ -99,6 +100,7 @@ struct Stats
   std::size_t temporary_frame_homes_reused = 0;
   std::size_t exact_forward_edge_values = 0;
   std::size_t exact_forward_edge_register_retains = 0;
+  std::size_t planned_edge_register_retains = 0;
   std::size_t narrow_call_result_normalizations_omitted = 0;
   std::size_t redundant_integer_normalizations_omitted = 0;
   std::size_t fused_integer_normalization_moves = 0;

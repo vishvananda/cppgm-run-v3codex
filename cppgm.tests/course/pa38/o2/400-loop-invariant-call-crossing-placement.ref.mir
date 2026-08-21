@@ -1,0 +1,68 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @identity
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    ret rdi
+
+function @float_loop
+  abi
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    temp %stable -> [rbp-8] : f64
+
+  block ^entry
+    fmov.f64 xmm0, 3.5
+    fmov.f64 [rbp-8], xmm0
+
+  block ^loop
+    fcmp.f64 xmm0, 3.5
+    jp ^loop
+    jne ^loop
+
+  block ^done
+    mov rax, 0
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx r12
+    temp %stable -> [rbp-8] : i64
+
+  block ^entry
+    mov rbx, 40
+    add rbx, 2
+    store.i64 [rbp-8], rbx
+
+  block ^loop
+    mov rdi, rbx
+    call @identity [args=(rdi), unwind=no]
+    mov r8, rax
+    test.i64 rax, rax
+    je ^loop
+
+  block ^done
+    mov rdx, 42
+    cmp.i64 r8, rdx
+    setne r12
+    movzx r12, r12
+    call @float_loop [args=(), unwind=no]
+    or r12, rax
+    ret r12

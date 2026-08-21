@@ -1714,6 +1714,8 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " machine_opt_pushes="
          << native_stats.machine_opt_worklist_pushes
          << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
+         << " machine_opt_identity_moves="
+         << native_stats.machine_opt_identity_moves
          << " machine_opt_peak_bytes="
          << native_stats.machine_opt_peak_analysis_bytes
          << " live_location_scans=" << native_stats.live_location_scans
@@ -1736,6 +1738,8 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.exact_forward_edge_values
          << " exact_forward_edge_register_retains="
          << native_stats.exact_forward_edge_register_retains
+         << " planned_edge_register_retains="
+         << native_stats.planned_edge_register_retains
          << " narrow_call_result_normalizations_omitted="
          << native_stats.narrow_call_result_normalizations_omitted
          << " redundant_integer_normalizations_omitted="
@@ -1869,6 +1873,8 @@ int run_link_driver(const DriverInvocation & invocation,
 		 << " machine_opt_pushes="
 		 << native_stats.machine_opt_worklist_pushes
 		 << " machine_opt_rewrites=" << native_stats.machine_opt_rewrites
+		 << " machine_opt_identity_moves="
+		 << native_stats.machine_opt_identity_moves
 		 << " machine_opt_peak_bytes="
 		 << native_stats.machine_opt_peak_analysis_bytes
 			 << " live_location_scans=" << native_stats.live_location_scans
@@ -1891,6 +1897,8 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << native_stats.exact_forward_edge_values
 			 << " exact_forward_edge_register_retains="
 			 << native_stats.exact_forward_edge_register_retains
+			 << " planned_edge_register_retains="
+			 << native_stats.planned_edge_register_retains
 			 << " narrow_call_result_normalizations_omitted="
 			 << native_stats.narrow_call_result_normalizations_omitted
 			 << " redundant_integer_normalizations_omitted="
