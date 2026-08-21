@@ -1,7 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--6 are complete through `41f679cc`; Rank 7 and the
-final self/inception gate remain
+Status: active; Ranks 1--7 are complete through `3bc622b7`; the final
+self/inception gate remains
 
 Date: 2026-08-21
 
@@ -925,6 +925,56 @@ debug-info tests to accept and exercise O3.  The no-option driver then selects
 that maximum level.  Until then it continues to select the current O2-backed
 maximum.
 
+#### Rank 7 result
+
+The retained O3-only transformation is bounded full unrolling for canonical
+constant-trip loops. It accepts signed and unsigned integer comparisons, an
+exact trip count of at most four, one preheader/latch/exit, a single linear
+body path, and no exceptional region. The planner proves induction range and
+all outside replacements before mutation. It preserves body instruction and
+debug-location order, uses fresh typed value IDs for clones, and maps every
+loop-carried value to its final state. Zero-trip and inverted-exit loops use
+the same path.
+
+Growth is capped at 64 cloned instructions for a loop, one retained loop per
+function, and 4,096 cloned instructions per translation unit. The pass reuses
+the shared loop forest, keeps replacements in dense value-ID vectors, scans a
+function once, and invalidates CFG analysis once after a retained rewrite. It
+does not render or parse LowIR names and adds no hidden object-only data. The
+existing PA13 typed LowIR operations express the complete result, so no PA13
+syntax, fixture, or student-scaffold change is required.
+
+PA37 now owns the O3 LowIR contract, exact signed/unsigned/zero-trip/side-
+effect/budget reducers, 1x/2x/4x scaling fixtures, source-driver and debug
+lanes, and source/serialized-LowIR object equivalence. PA38 owns structural,
+behavior, and debug coverage for carrying that result through the ordinary
+MIR pipeline. The tools and help accept internal level 3, PA38 applies its O2
+machine rules at O3, and the ordinary no-option driver now selects O3.
+
+On a no-inline synthetic kernel invoked 12 million times, O3 reduces three
+consecutive generated-program runs from 0.36 seconds at O2 to 0.17 seconds at
+O3 (about 53%) and reduces ELF text from 352 to 348 bytes. The pass reports
+one unrolled loop, four iterations, 20 cloned instructions, five inspected
+body instructions, 8,107 bytes of accounted peak scratch, and 34.9
+microseconds. The 1x/2x/4x fixtures report exactly 1/2/4 loop visits,
+4/8/16 iterations, 4/8/16 clones, and 1/2/4 body-instruction visits while
+peak scratch remains 1,967 bytes.
+
+The frozen source contains no loop meeting these deliberately narrow
+constant-trip conditions: 442 loops are considered, none is unrolled, and
+only 63 body instructions are inspected. Its O3 object therefore remains
+byte-identical to Rank 6 O2 at 2,127,200 bytes. O0, O1, and O2 outputs are
+also byte-identical to Rank 6. Three load-screened ABBA blocks give 5.160
+versus 5.190 seconds median wall, 4.700 versus 4.715 seconds median user, and
+360,774 versus 361,396 KiB peak RSS: +0.39%, +0.21%, and +0.04%,
+respectively, all within the 3% gate.
+
+Partial unrolling, peeling, SLP, and loop vectorization are not retained in
+this rank. They have no demonstrated frozen opportunity, require broader
+dependence or growth policy, and would add more compile work than the measured
+bounded full-unroll result justifies. The full report passes 5,331/5,331, the
+PA37/PA38 debug lane is clean, and the PA39 audit has zero fatal findings.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1094,7 +1144,7 @@ Fill one row for every retained or rejected phase:
 | R4 | GVN/load elimination/PRE | PA37 O1/O2 typed GVN, memory, PRE, budget, EH, and behavior reducers; no PA13 movement | -682 LowIR instructions, -2,208 B object, -2,721 B text, -616 decoded instructions vs R3 | wall +0.2%, user +0.5%, RSS +0.1%; memory 6.09 ms, PRE 5.31 ms | 5,315/5,315; zero fatal | final lane deferred until compiler stops changing | complete, `50b2b037`, `c950139c`, `1a71f6b4`, `8bb6be47` |
 | R5 | MIR placement/coalescing | PA38 O1/O2 structure, behavior, and debug; PA29 narrow x87 corrective | object -920 B, text -1,877 B, decoded -88; 853 edge retains and 235 identity moves | wall +0.4%, user +0.7%, RSS -0.03%; overlapping host-noise range | 5,321/5,321; zero fatal | final lane deferred until compiler stops changing | complete, corrective `3a7ccfeb`, Rank 5 `a04e5900` |
 | R6 | IPA argument/scalar work | PA37 O2 exact transform and object behavior; existing PA32 linkage negatives | object -14,880 B, text -2,478 B, decoded -549, relocations -67; +10 defined symbols | wall +0.29%, user +0.22%, RSS +0.10%; IPA 22.5 ms and 0.74 MiB scratch | 5,323/5,323; PA37 debug clean; zero fatal | final lane deferred until compiler stops changing | complete, `41f679cc` |
-| R7 | distinct O3 | PA37/PA38 O3 plus help/scaffolds | pending | pending | pending | pending | not started |
+| R7 | bounded full unrolling; distinct O3 | PA37 exact/source/object/debug O3; PA38 structural/behavior/debug O3; help and READMEs; no PA13 change | frozen O3 unchanged at 2,127,200 B; synthetic runtime -53%, text 352 to 348 B | wall +0.39%, user +0.21%, RSS +0.04%; 1x/2x/4x visits linear | 5,331/5,331; PA37/PA38 debug clean; zero fatal | final lane pending | implementation complete, `3bc622b7` |
 
 ## Completion criteria
 
