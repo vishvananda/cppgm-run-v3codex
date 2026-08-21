@@ -1600,6 +1600,18 @@ If the frozen census and generated-self profile show no material opportunity
 from these 89 overlapping recursive definitions, record that disposition and
 retain the conservative rejection instead of adding the tail phase.
 
+The typed late-wave census rejects this phase before implementation.  The
+frozen graph contains 188 calls within recursive components and 207 calls
+from other components into recursive targets.  Applying every existing late
+eligibility rule except the recursive-target rejection leaves only eight call
+sites, seven callers, and three target definitions, for a total upper bound of
+46 cloned instructions.  This is too small to move the generated compiler's
+runtime materially, while the stable-site snapshot, a second graph update,
+and wrapper propagation would add production machinery to every optimizing
+compile.  Keep all recursive targets rejected.  The diagnostic was an
+out-of-band typed census and was removed after measurement, so ordinary
+builds gain no scan, counter, string lookup, or storage.
+
 #### R10i reducers and acceptance order
 
 PA37 O1 owns the scheduling contract.  Add exact course reducers for an
@@ -1812,7 +1824,7 @@ Fill one row for every retained or rejected phase:
 | R10h | admit EH-control-free callees inside an active caller EH region; atomic-load pressure corrective | PA37 O1 inherited-EH and direct-throw exact reducers; PA29 atomic-load behavior/MIR pressure reducer; PA29/PA37 normative and Design Notes | vs R10g: object -38,984 B, text +10,868 B, `.eh_frame` -3,956 B, LSDA +167 B, 135 fewer definitions; 96 post-prune bodies / 5,465 instructions | host A/B wall -0.36%, user +0.20%, RSS -0.91%; exact-self raw medians wall +0.9%, user +0.8%, RSS -0.1%; no new graph or string-keyed state | 5,365/5,365; zero fatal, 32 warnings | O1 self 19.49 s / 463.69 user / 228,696 KiB; final combined 32-way inception pending | complete, backend `6e4c9fb8`, inliner `a8062b96` |
 | R10i-a | cleanup-coupled nonrecursive convergence in one callee-first traversal | PA37 O1 eight-level cleanup-transition reducer with adversarial definition order and two parents; existing deterministic budget fixture retained; no PA13 change | frozen O1 byte-identical at six/128; reducer removes two retained wrapper calls and all newly unreachable calls | host A/B wall +0.58%, user +0.64%, RSS +0.73%; exact-self wall -1.1%, user -1.0%, RSS +0.6%; 1x/2x/4x work counters exactly linear; no queue/string state | 5,366/5,366; zero fatal, 32 warnings | repeat O1 self 19.31 s / 465.31 user / 228,472 KiB; final combined 32-way inception pending | complete, `96aad279` |
 | R10i-b | broader measured O1 profitability | no fixture or contract movement because no broader point is retained | 8/192: object -4,080 B but text +4,816 B; 12/320: object -2,088 B but text +16,290 B; 18/512 and 24/768 grow object and text | exact-self medians vs 6/128: 8/192 +1.5%, 12/320 -0.6% noise, 18/512 +9.4%; 24/768 host compile +13.6% wall | R10i-a baseline remains 5,366/5,366, zero fatal | four exact O1 self compilers built; no retained policy, so no inception | complete, all broader points rejected; exact 6/128 restored |
-| R10i-c | bounded external-to-recursive-SCC tail | PA37 self/mutual same-SCC negatives, external positive, retained recursive call, and wrapper propagation | retain only if recursive census/profile and generated-self A/B show material value | stable external-call snapshot; cloned recursive calls never enter snapshot; subsequent queue excludes recursive targets | pending | final retained phase only | planned measurement; may be rejected |
+| R10i-c | bounded external-to-recursive-SCC tail | no fixture or contract movement because the measured opportunity does not justify a new policy | 207 external-to-recursive calls narrow to eight eligible sites / three targets / at most 46 cloned instructions | rejected before production implementation; avoids a stable-site snapshot, graph update, and propagation scan for a negligible upper bound | R10i-a baseline remains 5,366/5,366, zero fatal | diagnostic only; final combined lane covers the retained inliner | complete, rejected by typed frozen census; conservative recursive rejection retained |
 
 ## Completion criteria
 
