@@ -91,6 +91,16 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.promote_sparse_merge_facts
 		 << " promote_blocked_join_loads="
 		 << stats.promote_blocked_join_loads
+		 << " promote_blocked_join_slots="
+		 << stats.promote_blocked_join_slots
+		 << " promote_blocked_join_functions="
+		 << stats.promote_blocked_join_functions
+		 << " promote_blocked_ordinary_loads="
+		 << stats.promote_blocked_ordinary_loads
+		 << " promote_blocked_loop_loads="
+		 << stats.promote_blocked_loop_loads
+		 << " promote_blocked_eh_loads="
+		 << stats.promote_blocked_eh_loads
 		 << " promote_peak_transient_bytes="
 		 << stats.promote_peak_transient_bytes
 		 << " dead_store_runs=" << stats.dead_store_runs

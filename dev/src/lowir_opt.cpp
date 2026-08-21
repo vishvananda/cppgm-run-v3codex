@@ -2637,6 +2637,12 @@ bool promote_slots(Function * function, Stats * stats)
     function->slot_names.size(), 0);
   std::vector<lowir_model::SlotId> load_slots(function->value_names.size());
   std::vector<unsigned char> has_load_slot(function->value_names.size(), 0);
+  DominatorTree blocked_join_dominators;
+  std::vector<unsigned char> blocked_join_slots;
+  if(stats) {
+    blocked_join_dominators = dominators(graph, stats);
+    blocked_join_slots.assign(function->slot_names.size(), 0);
+  }
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
@@ -2656,10 +2662,31 @@ bool promote_slots(Function * function, Stats * stats)
       }
       if(!textually_available) {
         slots_with_unresolved_loads[ins.first.slot] = 1;
-        if(stats && graph.predecessors[i].size() > 1)
+        if(stats && graph.predecessors[i].size() > 1) {
           ++stats->promote_blocked_join_loads;
+          blocked_join_slots[ins.first.slot] = 1;
+          const std::uint32_t block_id = function->blocks[i].id;
+          if(block_id < graph.eh_targets.size() &&
+             graph.eh_targets[block_id]) {
+            ++stats->promote_blocked_eh_loads;
+          } else {
+            bool loop_header = false;
+            for(std::size_t predecessor = 0;
+                predecessor < graph.predecessors[i].size(); ++predecessor)
+              loop_header = loop_header || blocked_join_dominators.dominates(
+                i, graph.predecessors[i][predecessor]);
+            if(loop_header) ++stats->promote_blocked_loop_loads;
+            else ++stats->promote_blocked_ordinary_loads;
+          }
+        }
       }
     }
+  if(stats) {
+    const std::size_t blocked_slots =
+      std::count(blocked_join_slots.begin(), blocked_join_slots.end(), 1);
+    stats->promote_blocked_join_slots += blocked_slots;
+    if(blocked_slots) ++stats->promote_blocked_join_functions;
+  }
   std::vector<unsigned char> promoted(function->slot_names.size(), 0);
   std::size_t promoted_count = 0;
   for(std::size_t i = 0; i < function->slots.size(); ++i) {

@@ -75,6 +75,11 @@ struct Stats
   std::size_t promote_sparse_state_entries = 0;
   std::size_t promote_sparse_merge_facts = 0;
   std::size_t promote_blocked_join_loads = 0;
+  std::size_t promote_blocked_join_slots = 0;
+  std::size_t promote_blocked_join_functions = 0;
+  std::size_t promote_blocked_ordinary_loads = 0;
+  std::size_t promote_blocked_loop_loads = 0;
+  std::size_t promote_blocked_eh_loads = 0;
   std::size_t promote_peak_transient_bytes = 0;
   std::size_t dead_store_runs = 0;
   std::size_t dead_store_changes = 0;
