@@ -1,7 +1,8 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--10i are implemented or measured; the final R10i
-correctness and inception gate is clean, while the under-15-second maximum
+Status: active; Ranks 1--10i are implemented or measured and their final
+correctness/inception gate is clean; Rank 11 is planned from the measured EH
+eligibility and value-harvesting wall, while the under-15-second maximum
 frozen-compile objective remains open
 
 Date: 2026-08-21
@@ -22,8 +23,10 @@ The primary workload is:
 
 This plan supersedes the unstarted broad O1/O2 recommendations in
 `PLAN-CODEGEN-AND-SELFHOST-OPTIMIZATION.md`.  It does not reopen completed O0,
-EH, demand, LowIR/MIR representation, or code-shape phases recorded by the
-earlier plans.
+demand, LowIR/MIR representation, or backend code-shape phases recorded by the
+earlier plans.  Rank 11 does extend the optimizer's treatment of LowIR EH
+regions because the final R10 census identifies that eligibility boundary as
+the next measured optimization constraint.
 
 The required outcomes are:
 
@@ -1698,6 +1701,333 @@ frozen compiles for the primary runtime signal.  The final retained inliner
 then requires the zero-fatal audit, a clean timed self build, and the separate
 timed 32-worker inception comparison with peak RSS.
 
+### Rank 11: remove the EH eligibility and value-harvesting wall
+
+`INLINER-FEEDBACK.md` adds a call-site-weighted census to the definition census
+above.  The central result is actionable: 6,861 of 13,410 remaining static O3
+calls are constructor/destructor calls, while the largest O3 rejection classes
+are callee EH (4,487), landing blocks (3,592), and `no_inline` (2,337).  Memory
+GVN and PRE skip 610 EH-bearing functions, and native edge-register placement
+also rejects an entire function when it contains any EH structure.  This
+explains why the R10i-b cap sweep moved definitions without improving the
+generated compiler: the sweep did not change the eligibility or harvesting
+walls around the dominant call population.
+
+The basic-string case corrects the feedback's ordering.  The GCC 15 libstdc++
+header does not attach `_GLIBCXX_NOEXCEPT` or a GNU `nothrow` attribute to
+`~basic_string`; it relies on the C++11 rule that a destructor without an
+explicit exception specification has the specification implied by its bases
+and members.  The same-header probe
+`static_assert(noexcept(value.~basic_string()), "")` passes GCC and Clang but
+fails cppgm++.  Our O0 LowIR consequently omits `unwind=no` from
+`~basic_string`, even though it correctly preserves `throw()` as `unwind=no`
+on `_M_destroy` and the explicit `noexcept` on `operator delete`.
+
+The host pipelines expose two further, distinct steps.  Clang O0 marks the
+destructor `nounwind` and retains a terminate landing around `_M_dispose`;
+Clang O1 inlines the chain and reduces it to the local-buffer check plus
+`operator delete`.  GCC's initial GIMPLE likewise contains
+`eh_must_not_throw`, but its O0 EH pass already proves the `_M_dispose` chain
+nonthrowing and removes that handler; GCC O1 then inlines the chain completely.
+Manually adding only `unwind=no` to our probe lets the current O1 strip remove
+the destructor cleanup and one call, but `_M_dispose` remains opaque under the
+six-instruction late cap.  Therefore the next work is not one magic host pass:
+it is (1) the missing standard exception specification, (2) preservation of
+the source inline hint, and (3) the existing body no-unwind/cleanup machinery,
+in that order.
+
+There is no frozen-source GNU `nothrow` shortcut hiding this case.  The exact
+preprocessed frozen input contains 160 `always_inline` and three `noinline`
+attributes, both already represented by `force_inline`/`no_inline`, but no
+`nothrow` attribute.  It does contain 35 `pure`, 18 `const`, and 25 `cold`
+attributes.  Those deserve a separate effects/profitability audit below, but
+none occurs on the `basic_string` destructor chain.  No phase may recognize a
+`std` name, ABI spelling, or libstdc++ header path.
+
+Two safety qualifications from the first review still apply.  The existing
+`no_unwind_` bitmap contains useful callee facts but cannot itself prove an
+EH-bearing function nonthrowing because `infer_no_unwind` deliberately marks
+that function unsafe.  A residual region-removal phase needs an explicit
+region-local proof followed by publication of the newly EH-free function fact.
+Also, a call in a landing block must be proven not to unwind; merely containing
+no EH control instruction is insufficient while another exception is active.
+
+#### R11a. Implement implicit destructor exception specifications
+
+Fix the semantic fact before changing the optimizer.  A user-provided as well
+as an implicitly declared destructor with no `noexcept`-specifier receives the
+exception specification implied by the destructors of its potentially
+constructed base and member subobjects; the destructor body does not determine
+that public specification.  An exception escaping a resulting nonthrowing
+destructor reaches the existing terminate boundary.
+
+Generalize the current deferred defaulted-destructor machinery rather than add
+a late lowering guess.  Mark every destructor without an explicit exception
+specification as a completed-class fact.  Extract a non-mutating typed
+subobject exception-specification computation from
+`CompleteDefaultedDestructor`; keep deletion and triviality changes exclusive
+to genuinely defaulted destructors.  Reuse `FunctionIsNonthrowing` and its
+existing deferred/in-progress/succeeded state so class templates and nested
+subobjects are evaluated once on demand.  Include potentially constructed
+virtual bases and arrays, and conservatively diagnose a real recursive
+exception-specification dependency.  Publish the canonical
+`BindingRecord::nonthrowing` and terminate boundary before LowIR lowering, so
+the existing `unwind=no` field carries the fact with no new IR syntax.
+
+The earliest semantic/lifecycle owner gets exact tests for user-provided
+destructors with (a) only nonthrowing scalar/subobject destruction and (b) a
+`noexcept(false)` member or base.  PA18 covers virtual override compatibility,
+PA19 covers dependent class-template subobjects, PA21 covers `noexcept(...)`
+and the minimal basic-string assertion, and PA26 covers a body call/throw that
+must terminate rather than unwind through the caller.  PA37 adds a source
+driver reducer proving the corrected boundary reaches optimized LowIR.  Locate
+the earliest changed assignment with through-PA reports and regenerate all
+intentional boundary/EH fixture movement in place; this semantic correction is
+expected to move broad O0 LowIR and must be committed separately.  Student
+READMEs state the exception-specification and terminate requirements only.
+
+Before moving on, rerun the frozen destructor census: total definitions,
+definitions with `unwind=no`, EH-bearing definitions, static destructor calls,
+and terminate/`_Unwind_Resume` sites.  The available source-LowIR census has
+706 destructor definitions, 446 without `unwind=no`; 278 of 482 `std` destructor
+definitions lack the boundary, including `basic_string`, `shared_ptr`,
+containers, and pairs.  Treat these numbers as an opportunity estimate, not a
+license to mark every destructor nonthrowing; the typed subobject rule decides.
+
+#### R11b. Preserve the C++ inline hint across LowIR
+
+The semantic model already records `inline_function` for explicit `inline`,
+in-class definitions (including `~basic_string` and `_M_dispose`), and template
+ODR/emission decisions, but LowIR currently discards that fact.  Add compact
+`inline_hint=yes` function metadata at the PA13 boundary.  It is a bounded
+profitability hint, distinct from mandatory GNU `always_inline`
+(`force_inline`), prohibitive GNU `noinline`, ELF `prefer_local`, weak binding,
+and object retention.  Carry one Boolean through the typed PA15 model,
+PA30/object adapter, parser/serializer, and optimizer; do not recover it from
+symbol spelling or linkage.
+
+PA13 owns syntax, parse/dump/roundtrip, scaffold, and student instructions.
+PA15 owns explicit free-function `inline` lowering; the first class assignment
+owns the implicit in-class-definition producer; PA19 covers template
+specializations; and PA37 O1 owns positive, negative, size-budget, and
+1x/2x/4x optimizer behavior.  Existing source LowIR fixtures will gain the
+field broadly and must be regenerated in place with the exact movement counted
+in the ledger.  The direct source-object path and serialized LowIR object path
+must remain byte-identical.
+
+Start inlining policy at the retained six/128 baseline.  Measure a separate
+bounded inline-hint body cap one value at a time, charging the same original-
+versus-cleaned cost and caller growth budget; do not make the hint an unlimited
+force-inline path.  The basic-string acceptance case requires callee-first
+cleanup to expose `_M_destroy`/`operator delete`, remove calls through
+`~basic_string`, `_M_dispose`, and `_M_is_local` when profitable, and finally
+prune the weak bodies and D1/D2 aliases when no observable use remains.  Compare
+the resulting probe object and frozen call family directly with GCC and Clang.
+
+#### R11c. Strip provably dead protected regions in callee-first order
+
+Replace the whole-function gate in `strip_explicit_no_unwind_eh` with a typed,
+region-granular proof.  Seed the existing dense per-symbol no-unwind facts from
+explicit boundaries and declarations.  As the R10i callee-first traversal
+visits a function, propagate its EH stack through the CFG, assign compact IDs
+to protected regions, and mark every active region unsafe when it contains an
+operation that can transfer to a handler.  Direct calls to already proven
+no-unwind targets are safe; indirect calls, unresolved or may-unwind direct
+calls, `throw`, and `resume` are unsafe.  A live nested region or cleanup that
+can resume into an outer region also keeps the outer region live.  Ambiguous
+EH state at a CFG merge is a conservative rejection, not a guessed context.
+
+Remove only a matched `eh_try`/`eh_cleanup` and `eh_end` pair whose complete
+protected region is proven unable to unwind.  Then run the existing local CFG
+cleanup so its now-unreferenced landing blocks disappear, recompute the compact
+EH/leaf/instruction summaries, and publish a newly inferred no-unwind function
+fact before its callers are visited.  This makes a destructor-cleanup cascade
+converge in one ordinary callee-first traversal rather than with a translation-
+unit fixed point.  Recursive SCCs remain conservative unless every member can
+be proven without assuming another member's result.
+
+The implementation should extract or share the existing typed EH-state
+propagation in `lowir_cleanup_o1.cpp`, rather than add a second string-keyed or
+block-order approximation.  Use dense block/region arrays and compact
+persistent stack nodes bounded by EH pushes; allocate scratch once per
+function and release it after cleanup.  Work is O(blocks + instructions + CFG
+edges + removed blocks), with each region published at most once.  Add stats
+only to the existing optional `Stats` sink: regions considered/removed,
+protected instructions visited, conflict rejections, and cascading functions
+made EH-free.  Ordinary compiles gain no symbol spellings, demangling, or
+call-site maps.
+
+First remeasure the existing whole-function strip after R11a/b: the corrected
+destructor boundary plus already inferred no-unwind callees may remove most of
+the basic-string and standard-library population without a new region
+analysis.  Retain the region-granular implementation below only for a material
+residual population in functions whose whole body cannot be stripped.
+
+PA37 O1 owns the transformation contract and student-facing requirement.  Add
+exact course reducers for a destructor-shaped cleanup around a direct inferred
+no-unwind chain, nested removable regions, a region spanning blocks,
+adversarial definition order, and a multi-level cascade.  Negative reducers
+retain regions containing a may-unwind direct call, an indirect call, a
+`throw`, a `resume`, a live nested cleanup, and a conflicting incoming EH
+state.  A 1x/2x/4x stats ladder must establish linear visits and publications.
+No PA13 syntax or scaffold change is required.  Add a PA37 source/behavior
+case using ordinary C++ destruction so the optimizer is not validated only on
+handwritten LowIR; update changed optimized fixtures in place.
+
+#### R11d. Separate lifecycle retention from inlining policy
+
+Audit and then remove the host-object rule in `pa15_lowering_abi.cpp` that sets
+`no_inline` on every constructor/destructor base entry.  ABI publication and
+definition retention must remain expressed by `object_output_root`, lifecycle
+role, object aliases, and reachability.  `no_inline` must mean only the explicit
+source/control policy defined by PA13 and PA37.  Do not add replacement
+metadata unless an object inspection proves that an existing typed retention
+fact is insufficient.
+
+This phase begins with a lifecycle matrix: complete/base constructor and
+destructor entries, weak/internal binding, shared and distinct C1/C2/D1/D2
+bodies, virtual-base entries, aliases, address use, explicit `inline`, GNU
+`always_inline`, and GNU `noinline`.  Verify both the earlier PA15 force-inline
+path and the PA37 optimizer, because a synthesized base entry can currently
+carry `force_inline=yes` and `no_inline=yes` simultaneously.  Before retaining
+the deletion, inspect symbols, aliases, COMDAT groups, and relocations and prove
+that every externally required base entry remains emitted.
+
+The first source-level lifecycle assignment whose output changes owns the
+exact reducer and any fixture regeneration; current evidence points to PA17,
+but the prototype must establish the earliest affected PA with
+`make test-report-through-paN` rather than assuming it.  PA32/PA33 gain or
+extend object inspection for base-entry publication and alias retention, and
+PA37 gains positive inlining plus explicit-`noinline` negative coverage.  The
+PA13 metadata syntax and scaffold do not change.  Student-facing text changes
+only where the owning assignment currently requires the synthesized
+`no_inline`; implementation history and the linkage diagnosis stay here.
+
+#### R11e. Inline proven-no-unwind callees from landing blocks
+
+After R11a--d shrink the population, relax the landing rejection only
+when the target has no EH control instructions *and* its explicit or inferred
+fact proves it cannot unwind.  The ordinary size, recursion, signature,
+variadic, `no_inline`, and growth checks still apply.  Keep potentially
+throwing callees and every callee containing `eh_*`, `throw`, `exception`,
+`exception_selector`, or `resume` as calls.  This admits empty and small
+cleanup destructors without requiring true EH-region grafting.
+
+PA37 O1 exact reducers cover an empty destructor-like callee, a small inferred
+no-unwind chain, and multiple landing callers.  Negative cases cover a
+potentially throwing direct call, indirect call, direct `throw`, an EH-bearing
+callee, and an explicit `no_inline`.  Behavioral cases must exercise both the
+ordinary cleanup path and an exception already in flight so terminate/resume
+semantics cannot be accidentally weakened.
+
+#### R11f. Remeasure effects and eligibility before expanding value passes
+
+On the exact retained R11a--e tree, repeat the frozen O1/O2/O3 census before
+changing another pass.  Record static calls by typed target category and call
+frequency, rejection counts, EH-bearing definitions, `_Unwind_Resume` calls,
+LSDA/`.eh_frame`/text, retained bodies, and the existing MIR movement buckets.
+The optional production counters use fixed numeric categories; demangled
+function-family names remain an out-of-band object/profile report.  Also
+profile the generated compiler so a frequent static call is not automatically
+treated as a hot runtime call.
+
+At the same checkpoint, audit the preprocessed GNU function attributes against
+semantic and LowIR facts.  `always_inline` and `noinline` are already covered.
+If the 35 `pure` or 18 `const` declarations have material live call traffic,
+map them through the existing typed effects contract (`readonly` and
+`readnone`, respectively) with PA33 source tests and PA37 DCE/GVN positives and
+side-effect negatives.  Validate the mapping against GCC attribute semantics;
+do not infer effects merely because the current body looks pure.  Treat `cold`
+as a profitability hint only if a profile shows value, and do not add `leaf` or
+`artificial` to production LowIR without a consumer.  A GNU `nothrow` extension
+can map to the existing unwind fact when implemented for compatibility, but it
+has zero occurrences in this frozen C++ input and is not on the critical path.
+
+This measurement decides whether the remaining whole-function EH exclusions
+are still high value.  It also corrects the R10i-b conclusion narrowly: the
+measured 8/192 through 24/768 policies remain rejected on the old eligibility
+tree, but their result is not evidence about profitability after R11.
+
+#### R11g. Make value harvesting region-aware where evidence remains
+
+If R11f still shows a material EH-skipped population, replace whole-function
+exclusion one pass at a time.  Memory GVN comes first, then PRE, because the
+former directly attacks redundant loads/stores introduced by inlining and is
+easier to bound.  Reuse the shared compact EH-context analysis and treat every
+region transition, may-unwind call, landing entry, cleanup, `throw`, and
+`resume` as a value-state barrier.  Transform only ordinary blocks/edges whose
+incoming EH state is unique and equal; never propagate a memory or expression
+fact across an exceptional edge.  Retain the current function-wide fallback
+when state is conflicting or the existing instruction/probe budgets are
+exhausted.
+
+These remain O2/O3 passes initially.  Moving them into O1 is a separate policy
+decision requiring matching-level compile-time and generated-runtime evidence;
+it is not bundled into removal of the EH guard.  PA37 O2 owns exact positive,
+barrier, nested-region, conflict, budget, behavior, and 1x/2x/4x work tests.
+Existing PA37 O1 EH fixtures remain negatives for transformations not promised
+at O1.
+
+For native edge-register placement, replace `function_has_eh` only if the
+remeasured movement census justifies it.  An edge is eligible when its exact
+source and target have one equal ordinary EH state and it is not an exception,
+landing, cleanup, or resume edge; all other edges use the current frame
+fallback.  Reuse compact block/edge facts and keep allocation near-linear.
+PA38 O2 owns MIR structure, behavior, pressure/fallback, debug, and scaling
+coverage.  This backend subphase is committed separately from LowIR GVN/PRE so
+fixture movement and timing are attributable.
+
+#### R11h. Re-run profitability selection after eligibility and harvesting
+
+Only after R11a--g are measured, repeat the inliner cap experiment.  Sweep one
+variable at a time from the retained 6-instruction/128-growth baseline instead
+of another diagonal sweep: body shape/cap first, then per-caller growth, then
+the separate single-call limits if its population changed.  Score candidates
+by call/return work removed, constant arguments exposed, cleanup removal,
+last-use body deletion, and post-harvest instruction count.  Keep the smallest
+policy with a material exact generated-self runtime win; do not recognize STL
+or mangled spellings.
+
+The primary performance gate is the exact O3-built self compiler compiling the
+frozen source at the maximum level, because that is the under-15-second goal.
+Retain O1 and O2 matching-level measurements to prevent a higher-level policy
+from silently changing a lower level.  Use three-run interleaved medians and
+ABBA follow-up under comparable host load, never concurrent builds.  Record
+compiler/object/text/EH size, pass time, total wall/user/system, and peak RSS.
+A change inside the established 3% noise band needs a deterministic structural
+benefit; a compile-time or RSS regression beyond it needs a larger generated-
+runtime win and an explicit ledger decision.
+
+#### R11i. Defer true EH grafting
+
+Inlining a callee with genuinely live EH regions requires remapping nested
+handler state, landing blocks, cleanup continuations, exception values, and
+resume ownership.  Implement that only if R11f/h leave a large, profiled-hot
+population that cannot be reached by dead-region removal.  It is not a default
+follow-up to R11e.  The source exception-specification correction is R11a and
+must not be replaced by optimizer inference.  True grafting remains a PA37
+optimizer feature and adds no private LowIR side channel.
+
+#### R11 acceptance order
+
+Implement and commit the semantic correction (R11a) and LowIR inline hint
+(R11b) independently, with their earliest through-PA reports and full
+`make test-report` clean.  Measure the basic-string reducer and frozen census
+before deciding whether the residual region analysis (R11c), lifecycle-policy
+split (R11d), and landing relaxation (R11e) are still material; retain each in
+its own changeset.  R11f is then a measurement/effects checkpoint and may
+reject any or all of R11g.  Commit memory GVN, PRE, and native placement
+separately when retained.  R11h follows only the retained eligibility and
+harvesting phases, and R11i requires a new measured justification.
+
+At the end of R11, run the zero-fatal audit, a clean timed 32-worker O3 self
+build, and a separate clean timed 32-worker inception comparison with peak RSS
+and byte-for-byte object/final-binary comparison.  Also run a clean explicit
+O0 32-worker inception after any source-lowering or lifecycle metadata change,
+because O3 inception can hide unoptimized generated-code defects.  The phase
+is not complete until the full root `make test-report` passes on the exact
+ledger commit.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1885,6 +2215,15 @@ Fill one row for every retained or rejected phase:
 | R10i-b | broader measured O1 profitability | no fixture or contract movement because no broader point is retained | 8/192: object -4,080 B but text +4,816 B; 12/320: object -2,088 B but text +16,290 B; 18/512 and 24/768 grow object and text | exact-self medians vs 6/128: 8/192 +1.5%, 12/320 -0.6% noise, 18/512 +9.4%; 24/768 host compile +13.6% wall | R10i-a baseline remains 5,366/5,366, zero fatal | four exact O1 self compilers built; no retained policy, so no inception | complete, all broader points rejected; exact 6/128 restored |
 | R10i-c | bounded external-to-recursive-SCC tail | no fixture or contract movement because the measured opportunity does not justify a new policy | 207 external-to-recursive calls narrow to eight eligible sites / three targets / at most 46 cloned instructions | rejected before production implementation; avoids a stable-site snapshot, graph update, and propagation scan for a negligible upper bound | R10i-a baseline remains 5,366/5,366, zero fatal | diagnostic only; final combined lane covers the retained inliner | complete, rejected by typed frozen census; conservative recursive rejection retained |
 | R10i-d | preserve frame-address value identity through native phi transfers | active PA29 behavioral reducer with informational MIR; PA29 normative and Design Notes; no LowIR change | corrected generated compiler; frozen self medians O0 14.96 s / maximum 16.74 s; deterministic objects 2,965,936 / 1,659,296 B | one transient Boolean per phi move, no scan or string identity; phi adapter separated and main lowerer reduced to 2,938 lines | 5,367/5,367; PA37/PA38 debug clean; zero fatal, 32 warnings | O3 self 19.10 s / inception 69.76 s; all 209 objects and final binary match | corrective complete, `a8420b92`; under-15 maximum objective remains open |
+| R11a | standard implicit destructor exception specifications and terminate boundary | earliest semantic/lifecycle PA through PA21/26 conformance/behavior; PA37 source boundary | measure corrected destructor boundaries, EH/calls and broad fixture movement | cached typed completed-class fact; no new LowIR syntax | pending | explicit O0 and O3 lanes required | planned first; basic-string probe currently fails cppgm++ and passes GCC/Clang |
+| R11b | preserve bounded C++ inline preference as `inline_hint` | PA13 syntax/scaffold/roundtrip; PA15/class/template producers; PA37 policy/scaling | measure basic-string call chain, bodies, text and aliases | one typed Boolean; bounded hint cap, no strings | pending | required | planned after R11a |
+| R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 exact/source/behavior/scaling; no PA13 syntax change | measure protected regions removed after R11a/b | shared dense typed EH state; one bounded callee-first visit | pending | pending | conditional on residual census |
+| R11d | separate lifecycle publication/retention from explicit `no_inline` | earliest affected lifecycle PA determined by report; PA32/33 object inspection; PA37 positive/negative | measure base entries inlined and required symbols/aliases retained | deletes blanket policy; no replacement metadata unless proven necessary | pending | explicit O0 and O3 lanes required | planned after R11a/b census |
+| R11e | proven-no-unwind landing-block inlining | PA37 O1 exact and exception-in-flight behavior | measure landing rejects, cleanup calls, text and EH metadata | existing dense summaries and budgets | pending | pending | conditional after R11c/d |
+| R11f | post-eligibility weighted census, profile, and GNU effects audit | stats/object diagnostics; PA33/37 only for retained `pure`/`const` effects | call-family frequency, rejection, EH definition, effects and MIR movement census | numeric optional stats; names out of band | pending | diagnostic | planned measurement gate; GNU `nothrow` absent from frozen input |
+| R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 per-pass exact/behavior/scaling; PA38 O2 MIR/behavior/debug | measure each subphase independently | shared compact EH states; bounded barriers and conservative fallback | pending | required for each retained subphase | conditional on R11f |
+| R11h | post-harvest inliner profitability sweep | PA37 only for a retained policy change | exact-self maximum runtime plus object/text/EH deltas | one-variable bounded sweep; no production profiling strings | pending | final retained policy only | conditional on R11a--g |
+| R11i | true EH-region grafting | PA37 only if justified by a residual profiled-hot population | separate genuine live-EH effect from dead-region work | no unbounded retry or private LowIR side channel | pending | required if retained | deferred pending R11f/h residual census |
 
 ## Completion criteria
 
