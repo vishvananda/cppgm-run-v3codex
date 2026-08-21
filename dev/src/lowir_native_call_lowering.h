@@ -197,15 +197,15 @@ protected:
     for(std::size_t i = 0; i < plan.pieces.size(); ++i) {
       const abi::Piece & piece = plan.pieces[i];
       const std::size_t parameter = piece.parameter_index;
-      if(piece.location != abi::PL_GPR ||
+      if(piece.location == abi::PL_XMM ||
          parameters[parameter].type.kind == lowir_model::LTK_OBJECT ||
          wide::is_integer(parameters[parameter].type))
         continue;
       const lowir_model::Operand & argument = instruction.args[parameter];
       if(argument.kind != lowir_model::Operand::OP_TEMP) continue;
+      if(!lowerer.value_known_[argument.value]) continue;
       ValueFact & value = lowerer.values_[argument.value];
-      if(!lowerer.value_known_[argument.value] ||
-         value.location.kind != mir_model::MirOperand::OP_REG ||
+      if(value.location.kind != mir_model::MirOperand::OP_REG ||
          (value.location.reg != XR_RDI && value.location.reg != XR_RSI))
         continue;
       const mir_model::MirOperand location =

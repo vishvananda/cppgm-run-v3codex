@@ -1,0 +1,87 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @observe
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    param %payload -> [rbp+16] : i8
+    param %value -> [rbp+24] : i64
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    param-slot %a -> [rbp-8] : i64
+    param-slot %b -> [rbp-16] : i64
+    param-slot %c -> [rbp-24] : i64
+    param-slot %d -> [rbp-32] : i64
+    param-slot %e -> [rbp-40] : i64
+    param-slot %f -> [rbp-48] : i64
+    param-slot %payload -> [rbp-49] : obj<1x1>
+    param-slot %value -> [rbp-64] : i64
+
+  block ^entry
+    store.i64 [rbp-8], rdi
+    store.i64 [rbp-16], rsi
+    store.i64 [rbp-24], rdx
+    store.i64 [rbp-32], rcx
+    store.i64 [rbp-40], r8
+    store.i64 [rbp-48], r9
+    load.i8 rax, [rbp+16]
+    store.i8 [rbp-49], rax
+    load.i64 rax, [rbp+24]
+    store.i64 [rbp-64], rax
+    load.i64 rax, [rbp-64]
+    ret rax
+
+function @forward
+  abi
+    param %value -> rdi : i64
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $payload -> [rbp-1] : obj<1x1>
+    temp %value -> [rbp-16] : i64
+
+  block ^entry
+    store.i64 [rbp-16], rdi
+    sub rsp, 16
+    lea rdi, [rsp]
+    lea rsi, [rbp-1]
+    copy_bytes 1x1, rdi, rsi
+    load.i64 r11, [rbp-16]
+    store.i64 [rsp+8], r11
+    mov rdi, 0
+    mov rsi, 0
+    mov rdx, 0
+    mov rcx, 0
+    mov r8, 0
+    mov r9, 0
+    call @observe [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
+    add rsp, 16
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 42
+    call @forward [args=(rdi)]
+    mov rdx, 42
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
+    ret rax

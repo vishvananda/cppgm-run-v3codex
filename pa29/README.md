@@ -554,6 +554,11 @@ To complete PA29, implement these goals:
    argument, MIR should load that chunk directly from its frame location. It
    should not materialize the object's base address solely for the load.
 
+   Copying a stack-passed object may use the target's copy registers while
+   preparing a call. A scalar argument whose source occupies either copy
+   register must retain its value until its register or stack argument is
+   written, including when the scalar follows the object on the call stack.
+
    Direct object returns follow the same rule in both directions: returning a
    frame-resident object loads its chunks directly into the ABI result
    registers, and storing a direct object call result writes those registers
