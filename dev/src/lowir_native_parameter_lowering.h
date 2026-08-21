@@ -219,7 +219,8 @@ protected:
       const X64Register incoming = abi::argument_register(index);
       if(lowerer.facts_.has(value,
            analysis::FunctionFacts::VF_LOOP_INVARIANT) ||
-         lowerer.crosses_register_clobber(value, incoming))
+         lowerer.promoted_parameter_crosses_clobber(
+           index, value, incoming))
         clobbers |= analysis::register_mask(destinations[index]);
     }
     return clobbers;
@@ -244,7 +245,8 @@ protected:
       const X64Register incoming = abi::argument_register(index);
       if(!lowerer.facts_.has(value,
            analysis::FunctionFacts::VF_LOOP_INVARIANT) &&
-         !lowerer.crosses_register_clobber(value, incoming) &&
+         !lowerer.promoted_parameter_crosses_clobber(
+           index, value, incoming) &&
          !(setup_clobbers & analysis::register_mask(incoming))) {
         if(lowerer.managed_register(incoming) &&
            !lowerer.registers_.is_used(incoming))

@@ -1,0 +1,109 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @cppgm_priv_exc_top
+  storage scalar ptr
+  init ptr 0
+
+global @cppgm_priv_exc_value
+  storage scalar ptr
+  init ptr 0
+
+function @cppgm_priv_exc_unhandled
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @clobber
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+
+  block ^entry
+    add rdi, rsi
+    add rdx, rcx
+    add r8, r9
+    add rdi, rdx
+    add rdi, r8
+    ret rdi
+
+function @preserve
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    param %f -> r9 : i64
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    param-slot %a -> [rbp-8] : i64
+    param-slot %b -> [rbp-16] : i64
+    param-slot %c -> [rbp-24] : i64
+    param-slot %d -> [rbp-32] : i64
+    param-slot %e -> [rbp-40] : i64
+    param-slot %f -> [rbp-48] : i64
+
+  block ^entry
+    store.i64 [rbp-8], rdi
+    store.i64 [rbp-16], rsi
+    store.i64 [rbp-24], rdx
+    store.i64 [rbp-32], rcx
+    store.i64 [rbp-40], r8
+    store.i64 [rbp-48], r9
+    mov rdi, 101
+    mov rsi, 102
+    mov rdx, 103
+    mov rcx, 104
+    mov r8, 105
+    mov r9, 106
+    call @clobber [args=(rcx,rdx,rsi,rdi,r8,r9)]
+    load.i64 r8, [rbp-8]
+    add r8, [rbp-16]
+    load.i64 r9, [rbp-24]
+    add r9, [rbp-32]
+    load.i64 rdi, [rbp-40]
+    add rdi, [rbp-48]
+    add r8, r9
+    add r8, rdi
+    ret r8
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 1
+    mov rsi, 2
+    mov rdx, 3
+    mov rcx, 4
+    mov r8, 5
+    mov r9, 6
+    call @preserve [args=(rcx,rdx,rsi,rdi,r8,r9)]
+    mov rdx, 21
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
+    ret rax

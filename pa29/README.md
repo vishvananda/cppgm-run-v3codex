@@ -545,6 +545,11 @@ To complete PA29, implement these goals:
    into different ABI registers. Forwarding those parameters after earlier scratch-using
    operations must preserve their original values too.
 
+   Eliminating a scalar parameter's initial store to and later load from a local slot
+   must preserve the parameter across every intervening instruction that clobbers its
+   incoming register, including a call. This requirement also applies at six or more
+   integer or pointer parameters, where all incoming argument registers are occupied.
+
    When a frame-resident object or wide-integer chunk is assigned to a GPR
    argument, MIR should load that chunk directly from its frame location. It
    should not materialize the object's base address solely for the load.
@@ -700,7 +705,8 @@ strategies include:
   read the still-intact incoming ABI register
 - let a promoted or forwarded parameter-slot load continue to name the
   parameter's stable selected home; its consumer can apply any required
-  register constraint directly
+  register constraint directly, after accounting for clobbers between the
+  eliminated store and load
 - let a representation-preserving scalar copy or decay share an intact parameter
   location when the copied result's interval crosses no clobber
 - record each block's sole predecessor and successor in dense CFG facts so a

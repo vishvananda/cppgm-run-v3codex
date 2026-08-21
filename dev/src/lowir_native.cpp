@@ -300,6 +300,20 @@ private:
   {
     return analysis::crosses_register_clobber(facts_, value, reg);
   }
+  bool promoted_parameter_crosses_clobber(
+      std::size_t parameter, lowir_model::ValueId value,
+      X64Register reg) const
+  {
+    return crosses_register_clobber(value, reg) ||
+      (parameter < storage_facts_.promoted_parameter_clobbers.size() &&
+       (storage_facts_.promoted_parameter_clobbers[parameter] &
+        analysis::register_mask(reg)) != 0);
+  }
+  bool parameter_crosses_call(lowir_model::ValueId value) const
+  {
+    return crosses_call(value) || storage_facts_.has(
+      value, StorageFacts::VF_PROMOTED_ACROSS_CALL);
+  }
   bool incoming_parameter_register_is_intact(
       lowir_model::ValueId name, X64Register reg) const
   {
@@ -345,8 +359,8 @@ private:
         binding.reg = abi::argument_register(parameter_gpr_index);
         value.location = reg_operand(binding.reg);
         const std::size_t uses = facts_.uses[parameter.value];
-        const bool clobbered =
-          crosses_register_clobber(parameter.value, binding.reg);
+        const bool clobbered = promoted_parameter_crosses_clobber(
+          i, parameter.value, binding.reg);
         if(clobbered || (facts_.has_va_start &&
            ((parameter_gpr_index != 0 && uses) ||
             (parameter.type.kind == lowir_model::LTK_PTR && uses > 1)))) {
@@ -485,8 +499,7 @@ private:
       for(std::size_t i = std::min<std::size_t>(source_.params.size(), 6); i != 0; --i) {
         const lowir_model::ValueId value = source_.params[i - 1].value;
         if(storage_facts_.parameter_selected_uses[i - 1] &&
-           (crosses_call(value) ||
-           storage_facts_.has(value, StorageFacts::VF_PROMOTED_ACROSS_CALL))) {
+           parameter_crosses_call(value)) {
           cross_call_homes[value] = registers_.allocate(true);
           cross_call_home_known[value] = 1;
         }
@@ -566,7 +579,8 @@ private:
         value.fixed_register_home =
           storage_facts_.has(parameter.value,
                              StorageFacts::VF_PROMOTED_PARAMETER);
-      } else if(wide_gpr_boundary && crosses_call(parameter.value)) {
+      } else if(wide_gpr_boundary &&
+                parameter_crosses_call(parameter.value)) {
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
