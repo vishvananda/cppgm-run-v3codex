@@ -38,29 +38,30 @@ function @f() -> i32 [binding=strong, object=_Z1fv] {
 
   block ^lor_end_3:
     %t7 = load i64 $lor__1
-    store u8 %t7, $b
-    %t8 = load i32 $x
-    %t9 = binary add i32 %t8, 1
-    store i32 %t9, $x
-    %t10 = load i32 $y
-    %t11 = binary add i32 %t10, 1
-    store i32 %t11, $y
-    %t12 = load u8 $b
-    branch %t12, ^cond_then_7, ^cond_else_8
+    %t8 = convert trunc u8 i64 %t7
+    store u8 %t8, $b
+    %t9 = load i32 $x
+    %t10 = binary add i32 %t9, 1
+    store i32 %t10, $x
+    %t11 = load i32 $y
+    %t12 = binary add i32 %t11, 1
+    store i32 %t12, $y
+    %t13 = load u8 $b
+    branch %t13, ^cond_then_7, ^cond_else_8
 
   block ^cond_then_7:
-    %t13 = load i32 $x
-    store i32 %t13, $cond__3
-    jump ^cond_end_9
-
-  block ^cond_else_8:
-    %t14 = load i32 $y
+    %t14 = load i32 $x
     store i32 %t14, $cond__3
     jump ^cond_end_9
 
+  block ^cond_else_8:
+    %t15 = load i32 $y
+    store i32 %t15, $cond__3
+    jump ^cond_end_9
+
   block ^cond_end_9:
-    %t15 = load i32 $cond__3
-    return i32 %t15
+    %t16 = load i32 $cond__3
+    return i32 %t16
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:

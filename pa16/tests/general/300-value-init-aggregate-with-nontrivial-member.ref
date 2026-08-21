@@ -28,7 +28,6 @@ function @value_init_dirty_stack() -> void [binding=strong, object=_Z22value_ini
   block ^for_end_4:
     return void
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $value : obj<8x4>
   slot $cond__1 : i32
@@ -53,7 +52,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t4 = load i32 $cond__1
     return i32 %t4
 }
-
 function @value_init_aggregate_wrapper__value_init_aggregate_wrapper(%this : ptr) -> void [binding=weak, object=_ZN28value_init_aggregate_wrapperC1Ev] {
   slot $this : ptr
 
@@ -65,7 +63,6 @@ function @value_init_aggregate_wrapper__value_init_aggregate_wrapper(%this : ptr
     call void @value_init_aggregate_with_int__value_init_aggregate_with_int(%t2)
     return void
 }
-
 function @value_init_aggregate_wrapper__check(%this : ptr) -> i32 [binding=weak, object=_ZNK28value_init_aggregate_wrapper5checkEv] {
   slot $this : ptr
   slot $land__1 : i64
@@ -94,11 +91,10 @@ function @value_init_aggregate_wrapper__check(%this : ptr) -> i32 [binding=weak,
 
   block ^land_end_3:
     %t11 = load i64 $land__1
-    %t12 = convert zext i32 u8 %t11
+    %t12 = convert trunc i32 i64 %t11
     return i32 %t12
 }
-
-function @value_init_aggregate_with_int__value_init_aggregate_with_int(%this : ptr) -> void [binding=weak, object=_ZN29value_init_aggregate_with_intC1Ev, trivial_lifecycle=yes] {
+function @value_init_aggregate_with_int__value_init_aggregate_with_int(%this : ptr) -> void [binding=weak, object=_ZN29value_init_aggregate_with_intC1Ev] {
   slot $this : ptr
 
   block ^entry:
@@ -108,7 +104,6 @@ function @value_init_aggregate_with_int__value_init_aggregate_with_int(%this : p
     call void @value_init_nontrivial_member__value_init_nontrivial_member(%t2)
     return void
 }
-
 function @value_init_nontrivial_member__ok(%this : ptr) -> i32 [binding=weak, object=_ZNK28value_init_nontrivial_member2okEv] {
   slot $this : ptr
 
@@ -118,10 +113,9 @@ function @value_init_nontrivial_member__ok(%this : ptr) -> i32 [binding=weak, ob
     %t2 = index i8 [projection=field] %t1, 0
     %t3 = load i32 %t2
     %t4 = cmp eq i32 %t3, 42
-    %t5 = convert zext i32 u8 %t4
+    %t5 = convert trunc i32 i64 %t4
     return i32 %t5
 }
-
 function @value_init_nontrivial_member__value_init_nontrivial_member(%this : ptr) -> void [binding=weak, object=_ZN28value_init_nontrivial_memberC1Ev] {
   slot $this : ptr
 
@@ -132,3 +126,6 @@ function @value_init_nontrivial_member__value_init_nontrivial_member(%this : ptr
     store i32 42, %t2
     return void
 }
+alias object _ZN28value_init_aggregate_wrapperC2Ev = @value_init_aggregate_wrapper__value_init_aggregate_wrapper
+alias object _ZN29value_init_aggregate_with_intC2Ev = @value_init_aggregate_with_int__value_init_aggregate_with_int
+alias object _ZN28value_init_nontrivial_memberC2Ev = @value_init_nontrivial_member__value_init_nontrivial_member

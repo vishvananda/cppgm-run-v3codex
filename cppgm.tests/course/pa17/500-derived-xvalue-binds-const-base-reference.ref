@@ -13,10 +13,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t6 = index i8 [projection=field] %t5, 0
     %t7 = load ptr %t6
     %t8 = cmp ne ptr %t7, 0
-    %t9 = convert zext i32 u8 %t8
+    %t9 = convert trunc i32 i64 %t8
     return i32 %t9
 }
-
 function @Impl__Impl(%this : ptr) -> void [binding=weak, object=_ZN4ImplC1Ev] {
   slot $this : ptr
 
@@ -30,7 +29,6 @@ function @Impl__Impl(%this : ptr) -> void [binding=weak, object=_ZN4ImplC1Ev] {
     call void @Data__Data__base_entry(%t4)
     return void
 }
-
 function @Impl__Impl__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN4ImplC1EOS_] {
   slot $this : ptr
   slot $other : ptr
@@ -50,16 +48,14 @@ function @Impl__Impl__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [u
     call void @Data__Data__ov2__base_entry(%t6, %t8)
     return void
 }
-
-function @Empty__Empty__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5EmptyC2Ev] {
+function @Empty__Empty__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5EmptyC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return void
 }
-
-function @Data__Data__base_entry(%this : ptr) -> void [binding=weak, object=_ZN4DataC2Ev] {
+function @Data__Data__base_entry(%this : ptr) -> void [binding=weak, object=_ZN4DataC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:
@@ -75,8 +71,7 @@ function @Data__Data__base_entry(%this : ptr) -> void [binding=weak, object=_ZN4
     store ptr 0, %t6
     return void
 }
-
-function @Empty__Empty__ov2__base_entry(%this : ptr, %__param1 : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN5EmptyC2ERKS_] {
+function @Empty__Empty__ov2__base_entry(%this : ptr, %__param1 : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN5EmptyC2ERKS_, no_inline=yes] {
   slot $this : ptr
   slot $__param1 : ptr
 
@@ -85,8 +80,7 @@ function @Empty__Empty__ov2__base_entry(%this : ptr, %__param1 : ptr [pass=refer
     store ptr %__param1, $__param1
     return void
 }
-
-function @Data__Data__ov2__base_entry(%this : ptr, %other : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN4DataC2EOS_] {
+function @Data__Data__ov2__base_entry(%this : ptr, %other : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN4DataC2EOS_, no_inline=yes] {
   slot $this : ptr
   slot $other : ptr
 
@@ -113,3 +107,5 @@ function @Data__Data__ov2__base_entry(%this : ptr, %other : ptr [pass=reference]
     store ptr %t13, %t15
     return void
 }
+alias object _ZN4ImplC2Ev = @Impl__Impl
+alias object _ZN4ImplC2EOS_ = @Impl__Impl__ov2

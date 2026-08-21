@@ -414,7 +414,7 @@ protected:
 		}
 		const BlockId initialize = derived.AddBlock(derived.NewLabel("new_init"));
 		const BlockId done = derived.AddBlock(derived.NewLabel("new_end"));
-		const Operand nonnull = derived.Temp(LowU8());
+		const Operand nonnull = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = nonnull.id;
 		compare.op = LOW_OP_NE;
@@ -488,7 +488,7 @@ protected:
 		const BlockId nonnull = derived.AddBlock(
 			derived.NewLabel("delete_nonnull"));
 		const BlockId done = derived.AddBlock(derived.NewLabel("delete_end"));
-		const Operand condition = derived.Temp(LowU8());
+		const Operand condition = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = condition.id;
 		compare.op = LOW_OP_NE;

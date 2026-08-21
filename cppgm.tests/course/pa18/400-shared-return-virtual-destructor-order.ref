@@ -1,6 +1,6 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
 
-declare function @operatordelete(%arg0 : ptr) -> void [effects=readwrite, unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
+declare function @operatordelete(%arg0 : ptr) -> void [effects=readwrite, unwind=no, role=free_memory, binding=strong, object=cppgm_builtin_operator_delete]
 
 global @__typeinfo_name__struct_Base [binding=weak, object=_ZTS4Base] = {
   i8 52
@@ -10,12 +10,10 @@ global @__typeinfo_name__struct_Base [binding=weak, object=_ZTS4Base] = {
   i8 101
   i8 0
 }
-
 global @__rtti_struct_Base [binding=weak, object=_ZTI4Base] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_Base
 }
-
 global @Base__vtable [binding=weak, object=_ZTV4Base] = {
   i64 0
   ptr addr @__rtti_struct_Base
@@ -54,7 +52,6 @@ function @choose(%first : u8) -> i32 [binding=strong, object=_Z6chooseb] {
     store i32 9, $cleanup_return__1
     jump ^return_cleanup_action_5
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $lor__1 : i64
 
@@ -76,10 +73,20 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t6 = load i64 $lor__1
-    %t7 = convert zext i32 u8 %t6
+    %t7 = convert trunc i32 i64 %t6
     return i32 %t7
 }
+function @Base___Base__base_entry(%this : ptr) -> void [binding=weak, object=_ZN4BaseD2Ev, object_root=yes, no_inline=yes] {
+  slot $this : ptr
 
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = addr @Base__vtable
+    %t3 = index i8 %t2, 16
+    store ptr %t3, %t1
+    return void
+}
 function @Base___Base__deleting_entry(%this : ptr) -> void [binding=weak, object=_ZN4BaseD0Ev] {
   slot $this : ptr
 
@@ -104,7 +111,6 @@ function @Base___Base__deleting_entry(%this : ptr) -> void [binding=weak, object
   block ^destructor_end_2:
     return void
 }
-
 function @Base___Base(%this : ptr) -> void [binding=weak, object=_ZN4BaseD1Ev] {
   slot $this : ptr
 
@@ -116,8 +122,7 @@ function @Base___Base(%this : ptr) -> void [binding=weak, object=_ZN4BaseD1Ev] {
     store ptr %t3, %t1
     return void
 }
-
-function @Base__Base(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN4BaseC1Ev, trivial_lifecycle=yes] {
+function @Base__Base(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN4BaseC1Ev] {
   slot $this : ptr
 
   block ^entry:
@@ -128,3 +133,4 @@ function @Base__Base(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN4B
     store ptr %t3, %t1
     return void
 }
+alias object _ZN4BaseC2Ev = @Base__Base

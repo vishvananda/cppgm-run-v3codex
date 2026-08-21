@@ -68,5 +68,6 @@ function @X__same(%this : ptr, %other : ptr [pass=reference]) -> u8 [binding=wea
     %t1 = load ptr $this
     %t2 = load ptr $other
     %t3 = cmp eq ptr %t1, %t2
-    return u8 %t3
+    %t4 = convert trunc u8 i64 %t3
+    return u8 %t4
 }

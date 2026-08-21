@@ -12,7 +12,8 @@ function @eq(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [bindin
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp eq i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $cond__1 : i32

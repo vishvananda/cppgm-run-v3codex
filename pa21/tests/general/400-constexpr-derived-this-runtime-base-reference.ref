@@ -13,15 +13,15 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = call i32 @test()
     %t2 = cmp ne i32 %t1, 1
-    %t3 = convert zext i32 u8 %t2
+    %t3 = convert trunc i32 i64 %t2
     return i32 %t3
 }
-function @runtime_base__value(%this : ptr) -> i32 [binding=weak, object=_ZNK12runtime_base5valueEv] {
+function @runtime_derived__runtime_derived(%this : ptr) -> void [binding=weak, object=_ZN15runtime_derivedC1Ev] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
-    return i32 1
+    return void
 }
 function @runtime_derived__get(%this : ptr) -> ptr [binding=weak, object=_ZNK15runtime_derived3getEv] {
   slot $this : ptr
@@ -32,11 +32,11 @@ function @runtime_derived__get(%this : ptr) -> ptr [binding=weak, object=_ZNK15r
     %t2 = index i8 [projection=base_subobject] %t1, 0
     return ptr %t2
 }
-function @runtime_derived__runtime_derived(%this : ptr) -> void [binding=weak, object=_ZN15runtime_derivedC1Ev] {
+function @runtime_base__value(%this : ptr) -> i32 [binding=weak, object=_ZNK12runtime_base5valueEv] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
-    return void
+    return i32 1
 }
 alias object _ZN15runtime_derivedC2Ev = @runtime_derived__runtime_derived

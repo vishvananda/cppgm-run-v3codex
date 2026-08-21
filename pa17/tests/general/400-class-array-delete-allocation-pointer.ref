@@ -1,5 +1,5 @@
-declare function @operator_delete__(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete_array]
-declare function @operator_new__(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatornew__(%arg0 : i64) -> ptr [effects=readwrite, role=allocate_memory, binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatordelete__(%arg0 : ptr) -> void [effects=readwrite, unwind=no, role=free_memory, binding=strong, object=cppgm_builtin_operator_delete_array]
 
 global @allocated : ptr [binding=strong, object=_Z9allocated] = zero
 global @good : i32 [binding=strong, object=_Z4good] = zero
@@ -42,8 +42,25 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^array_delete_end_2:
     %t13 = load i32 @good
     %t14 = cmp eq i32 %t13, 0
-    %t15 = convert zext i32 u8 %t14
+    %t15 = convert trunc i32 i64 %t14
     return i32 %t15
+}
+function @X__operatornew__(%n : i64) -> ptr [binding=weak, object=_ZN1XnaEm] {
+  slot $n : i64
+
+  block ^entry:
+    store i64 %n, $n
+    %t1 = load i64 $n
+    %t2 = call ptr @operatornew__(%t1)
+    store ptr %t2, @allocated
+    return ptr %t2
+}
+function @X___X(%this : ptr) -> void [binding=weak, object=_ZN1XD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return void
 }
 function @X__operatordelete__(%p : ptr) -> void [unwind=no, binding=weak, object=_ZN1XdaEPv] {
   slot $p : ptr
@@ -53,27 +70,10 @@ function @X__operatordelete__(%p : ptr) -> void [unwind=no, binding=weak, object
     %t1 = load ptr $p
     %t2 = load ptr @allocated
     %t3 = cmp eq ptr %t1, %t2
-    %t4 = convert zext i32 u8 %t3
+    %t4 = convert trunc i32 i64 %t3
     store i32 %t4, @good
     %t5 = load ptr $p
-    call void @operator_delete__(%t5)
-    return void
-}
-function @X__operatornew__(%n : i64) -> ptr [binding=weak, object=_ZN1XnaEm] {
-  slot $n : i64
-
-  block ^entry:
-    store i64 %n, $n
-    %t1 = load i64 $n
-    %t2 = call ptr @operator_new__(%t1)
-    store ptr %t2, @allocated
-    return ptr %t2
-}
-function @X___X(%this : ptr) -> void [binding=weak, object=_ZN1XD1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
+    call void @operatordelete__(%t5)
     return void
 }
 alias object _ZN1XD2Ev = @X___X

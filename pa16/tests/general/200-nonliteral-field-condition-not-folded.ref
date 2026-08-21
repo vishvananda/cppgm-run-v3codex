@@ -70,14 +70,15 @@ function @state__read(%this : ptr) -> u8 [binding=weak, object=_ZNK5state4readEv
     %t6 = load ptr %t5
     %t7 = load i32 %t6
     %t8 = cmp ne i32 %t7, 0
-    return u8 %t8
+    %t9 = convert trunc u8 i64 %t8
+    return u8 %t9
 
   block ^if_else_2:
     jump ^if_end_3
 
   block ^if_end_3:
-    %t9 = load ptr $this
-    %t10 = index i8 [projection=field] %t9, 0
-    %t11 = load u8 %t10
-    return u8 %t11
+    %t10 = load ptr $this
+    %t11 = index i8 [projection=field] %t10, 0
+    %t12 = load u8 %t11
+    return u8 %t12
 }

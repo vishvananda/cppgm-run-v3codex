@@ -106,7 +106,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t33 = load i32 $cond__2
     return i32 %t33
 }
-
 function @Range__begin(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range5beginEv] {
   slot $this : ptr
   slot $retobj__1 : obj<8x8>
@@ -120,7 +119,6 @@ function @Range__begin(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range5
     call void @Iterator__Iterator__aggregate(%t1, %t4)
     return obj<8x8> $retobj__1
 }
-
 function @Range__end(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range3endEv] {
   slot $this : ptr
   slot $retobj__1 : obj<8x8>
@@ -136,7 +134,6 @@ function @Range__end(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range3en
     call void @Iterator__Iterator__aggregate(%t1, %t6)
     return obj<8x8> $retobj__1
 }
-
 function @Iterator__operator__(%this : ptr, %other : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK8IteratorneERKS_] {
   slot $this : ptr
   slot $other : ptr
@@ -151,9 +148,9 @@ function @Iterator__operator__(%this : ptr, %other : ptr [pass=reference]) -> u8
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load ptr %t5
     %t7 = cmp ne ptr %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
-
 function @Iterator__operator_(%this : ptr) -> ptr [binding=weak, object=_ZNK8IteratordeEv] {
   slot $this : ptr
 
@@ -164,7 +161,6 @@ function @Iterator__operator_(%this : ptr) -> ptr [binding=weak, object=_ZNK8Ite
     %t3 = load ptr %t2
     return ptr %t3
 }
-
 function @Iterator__operator____sym2(%ret : ptr [pass=indirect_result], %this : ptr) -> void [binding=weak, object=_ZN8IteratorppEv] {
   slot $this : ptr
 
@@ -179,7 +175,6 @@ function @Iterator__operator____sym2(%ret : ptr [pass=indirect_result], %this : 
     call void @Step__Step(%ret)
     return void
 }
-
 function @Step___Step(%this : ptr) -> void [binding=weak, object=_ZN4StepD1Ev] {
   slot $this : ptr
 
@@ -190,7 +185,6 @@ function @Step___Step(%this : ptr) -> void [binding=weak, object=_ZN4StepD1Ev] {
     store i32 %t2, @destructions
     return void
 }
-
 function @Step__Step(%this : ptr) -> void [binding=weak, object=_ZN4StepC1Ev] {
   slot $this : ptr
 
@@ -198,7 +192,6 @@ function @Step__Step(%this : ptr) -> void [binding=weak, object=_ZN4StepC1Ev] {
     store ptr %this, $this
     return void
 }
-
 function @Iterator__Iterator__aggregate(%this : ptr, %current : ptr) -> void [unwind=no, binding=internal] {
   slot $this : ptr
   slot $current : ptr
@@ -212,3 +205,5 @@ function @Iterator__Iterator__aggregate(%this : ptr, %current : ptr) -> void [un
     store ptr %t1, %t3
     return void
 }
+alias object _ZN4StepD2Ev = @Step___Step
+alias object _ZN4StepC2Ev = @Step__Step

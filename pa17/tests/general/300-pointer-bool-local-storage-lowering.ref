@@ -10,7 +10,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     store ptr %t1, $p
     %t2 = load ptr $p
     %t3 = cmp ne ptr %t2, 0
-    %t4 = copy u8 %t3
+    %t4 = convert trunc u8 i64 %t3
     store u8 %t4, $b
     %t5 = load u8 $b
     %t6 = convert zext i32 u8 %t5

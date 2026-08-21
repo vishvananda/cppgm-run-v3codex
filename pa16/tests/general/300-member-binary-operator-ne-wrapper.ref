@@ -14,7 +14,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     store i32 2, %t6
     %t7 = addr $a
     %t8 = addr $b
-    %t9 = call u8 @L__operator____ov2(%t7, %t8)
+    %t9 = call u8 @L__operator__(%t7, %t8)
     branch %t9, ^cond_then_1, ^cond_else_2
 
   block ^cond_then_1:
@@ -29,7 +29,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t10 = load i32 $cond__1
     return i32 %t10
 }
-function @L__operator____ov2(%this : ptr, %y : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK1LneERKS_] {
+function @L__operator__(%this : ptr, %y : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK1LneERKS_] {
   slot $this : ptr
   slot $y : ptr
 
@@ -38,11 +38,12 @@ function @L__operator____ov2(%this : ptr, %y : ptr [pass=reference]) -> u8 [bind
     store ptr %y, $y
     %t1 = load ptr $this
     %t2 = load ptr $y
-    %t3 = call u8 @L__operator__(%t1, %t2)
+    %t3 = call u8 @L__operator____sym2(%t1, %t2)
     %t4 = cmp eq u8 %t3, 0
-    return u8 %t4
+    %t5 = convert trunc u8 i64 %t4
+    return u8 %t5
 }
-function @L__operator__(%this : ptr, %y : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK1LeqERKS_] {
+function @L__operator____sym2(%this : ptr, %y : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK1LeqERKS_] {
   slot $this : ptr
   slot $y : ptr
 
@@ -56,5 +57,6 @@ function @L__operator__(%this : ptr, %y : ptr [pass=reference]) -> u8 [binding=w
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp eq i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }

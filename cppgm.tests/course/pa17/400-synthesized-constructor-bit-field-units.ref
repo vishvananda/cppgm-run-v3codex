@@ -125,11 +125,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t67 = load i64 $lor__1
-    %t68 = convert zext i32 u8 %t67
+    %t68 = convert trunc i32 i64 %t67
     return i32 %t68
 }
-
-function @YBits__YBits(%this : ptr) -> void [binding=weak, object=_ZN5YBitsC1Ev, trivial_lifecycle=yes] {
+function @YBits__YBits(%this : ptr) -> void [binding=weak, object=_ZN5YBitsC1Ev] {
   slot $this : ptr
 
   block ^entry:
@@ -139,7 +138,6 @@ function @YBits__YBits(%this : ptr) -> void [binding=weak, object=_ZN5YBitsC1Ev,
     call void @YMember__YMember(%t2)
     return void
 }
-
 function @YBits__YBits__sym2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN5YBitsC1ERKS_] {
   slot $this : ptr
   slot $other : ptr
@@ -166,7 +164,6 @@ function @YBits__YBits__sym2(%this : ptr, %other : ptr [pass=reference]) -> void
     store u32 %t12, %t14
     return void
 }
-
 function @YMember__YMember(%this : ptr) -> void [binding=weak, object=_ZN7YMemberC1Ev] {
   slot $this : ptr
 
@@ -177,7 +174,6 @@ function @YMember__YMember(%this : ptr) -> void [binding=weak, object=_ZN7YMembe
     store i32 0, %t2
     return void
 }
-
 function @YMember__YMember__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [binding=weak, object=_ZN7YMemberC1ERKS_] {
   slot $this : ptr
   slot $other : ptr
@@ -193,3 +189,7 @@ function @YMember__YMember__ov2(%this : ptr, %other : ptr [pass=reference]) -> v
     store i32 %t3, %t5
     return void
 }
+alias object _ZN5YBitsC2Ev = @YBits__YBits
+alias object _ZN5YBitsC2ERKS_ = @YBits__YBits__sym2
+alias object _ZN7YMemberC2Ev = @YMember__YMember
+alias object _ZN7YMemberC2ERKS_ = @YMember__YMember__ov2

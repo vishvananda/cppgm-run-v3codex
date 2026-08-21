@@ -1107,6 +1107,26 @@ the existing hard growth budgets, a 1x/2x/4x work counter, and a new PA37 O3
 contract fixture. Only after that gate should later scalar replacement and
 copy propagation be expanded inside the newly inlined callers.
 
+Rank 9a found 147 affected checked-in LowIR references across PA15--PA28. The
+movement is the direct consequence of PA13's existing result contract:
+comparison temporaries are `i64`, and source `bool` storage, arguments, and
+returns now use explicit `i64` to `u8` conversions. The references were
+regenerated in place through their owning PA targets. A new PA15 course
+fixture fixes the earliest source-lowering requirement, and a PA37
+object-roundtrip fixture exercises the serialized boundary at O0/O1/O2/O3.
+The full frozen O3 LowIR is 6,836,572 bytes and survives an exact O0 parse/dump
+roundtrip.
+
+The implementation changes only compact `LowType` values at result creation;
+it adds no text repair, string-keyed lookup, extra analysis set, or pass over
+the program. Three interleaved old/new frozen compiles show no compile-time
+regression. At O0 the old/new median is 4.73/4.72 seconds wall and 4.23/4.26
+seconds user. At the default maximum it is 5.20/5.20 seconds wall and
+4.71/4.69 seconds user. The corrected frozen objects grow from 2,999,352 to
+3,000,784 bytes at O0 and from 2,056,816 to 2,061,016 bytes at the maximum;
+this is the cost of making previously implicit narrow `bool` boundaries
+explicit and remains a later typed code-generation simplification target.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1280,7 +1300,7 @@ Fill one row for every retained or rejected phase:
 | R8a | complete small-object scalar replacement and scalar residual copies | PA37 O2 exact/object; one existing optimized fixture moved; PA29 Design Notes, no MIR change | frozen O3 2,116,672 B; generated-self frozen O0 30.15 to 18.30 s | host compile neutral; bounded dense facts and union/find | 5,338/5,338; zero fatal | self 19.57 s / inception pending | complete, `a30c982f` |
 | R8b | typed unreachable-edge cleanup and bounded late O3 leaf inlining | PA13 role/scaffold/ownership tests; PA16 existing producer fixture; PA37 O1 direct/source and O3 late reducer | frozen O3 2,116,672 to 2,056,816 B; 1,007 late calls removed | unreachable 1.6 ms; late inline 47.6 ms; host wall 5.16 s | 5,346/5,346; zero fatal | self 19.27 s / inception 74.64 s, timed separately; all matches | complete, `9816f4f6`; generated-code correctives `93467e1c`, `f5fe92e1`, `ad7a88d6` |
 | R8c | preserve phi predecessor identity when inlining moves a terminal edge | PA37 O1 exact reducer; PA37 normative inlining contract | no intended frozen change while O3 remains leaf-only | typed block IDs; work bounded by the fixed 128-instruction caller budget | 5,347/5,347; zero fatal | not rerun for output-neutral prerequisite | complete, `9fb2b10b` |
-| R9a | canonical source-lowered `cmp` value identity | earliest PA15 source lowering plus PA37 serialization/object roundtrip; fixture movement to be measured | pending | direct typed LowIR; no text repair or hot string identity | pending | pending | active prerequisite |
+| R9a | canonical source-lowered `cmp` value identity | PA15 normative contract and exact course reducer; PA37 object roundtrip; 147 PA15--PA28 references regenerated in place | frozen O0 +1,432 B; maximum +4,200 B; 6,836,572-byte O3 LowIR exact parse/dump roundtrip | old/new median O0 wall 4.73/4.72 s, user 4.23/4.26 s; maximum wall 5.20/5.20 s, user 4.71/4.69 s; direct compact types, no new pass or text identity | 5,349/5,349; zero fatal, 31 warnings | pending required clean O0 lane | implementation and fixture gate complete; commit pending |
 | R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O3 exact/behavior/work-counter fixtures | pending | retain 40-instruction callee and 128-instruction caller caps; pending measured policy | pending | pending | blocked on R9a |
 
 ## Completion criteria

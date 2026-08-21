@@ -1,8 +1,8 @@
-function @a__f() -> i32 [linkage=c, binding=internal, object=_ZN1a1fEv] {
+function @a__f() -> i32 [linkage=c, binding=internal, object=f, object_root=yes] {
   block ^entry:
     return i32 1
 }
-function @b__f() -> i32 [linkage=c, binding=internal, object=_ZN1b1fEv] {
+function @b__f() -> i32 [linkage=c, binding=internal, object=f, object_root=yes] {
   block ^entry:
     return i32 2
 }
@@ -12,6 +12,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = call i32 @b__f()
     %t3 = binary add i32 %t1, %t2
     %t4 = cmp ne i32 %t3, 3
-    %t5 = convert zext i32 u8 %t4
+    %t5 = convert trunc i32 i64 %t4
     return i32 %t5
 }

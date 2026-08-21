@@ -7,7 +7,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = addr $tmpobj__1
-    call void @object__object(%t1)
     %t2 = index i8 [projection=base_subobject] %t1, 0
     store ptr %t2, $value
     eh_try ^call_unwind_dispatch_4
@@ -46,7 +45,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @object___object(%t1)
     %t7 = load i32 @destroyed
     %t8 = cmp ne i32 %t7, 1
-    %t9 = convert zext i32 u8 %t8
+    %t9 = convert trunc i32 i64 %t8
     return i32 %t9
 }
 function @base__operatorbool(%this : ptr) -> u8 [binding=weak, object=_ZNK4basecvbEv] {
@@ -55,13 +54,6 @@ function @base__operatorbool(%this : ptr) -> u8 [binding=weak, object=_ZNK4basec
   block ^entry:
     store ptr %this, $this
     return u8 0
-}
-function @object__object(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN6objectC1Ev, trivial_lifecycle=yes] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return void
 }
 function @object___object(%this : ptr) -> void [binding=weak, object=_ZN6objectD1Ev] {
   slot $this : ptr
@@ -73,5 +65,4 @@ function @object___object(%this : ptr) -> void [binding=weak, object=_ZN6objectD
     store i32 %t2, @destroyed
     return void
 }
-alias object _ZN6objectC2Ev = @object__object
 alias object _ZN6objectD2Ev = @object___object

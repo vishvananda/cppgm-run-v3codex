@@ -54,7 +54,6 @@ function @choose(%first : u8, %trace : ptr) -> i32 [binding=strong, object=_Z6ch
     store i32 9, $cleanup_return__1
     jump ^return_cleanup_action_9
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $first_trace : i32
   slot $second_trace : i32
@@ -114,10 +113,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t16 = load i64 $lor__1
-    %t17 = convert zext i32 u8 %t16
+    %t17 = convert trunc i32 i64 %t16
     return i32 %t17
 }
-
 function @Trace__Trace(%this : ptr, %p : ptr) -> void [binding=weak, object=_ZN5TraceC1EPi] {
   slot $this : ptr
   slot $p : ptr
@@ -131,7 +129,6 @@ function @Trace__Trace(%this : ptr, %p : ptr) -> void [binding=weak, object=_ZN5
     store ptr %t1, %t3
     return void
 }
-
 function @Trace___Trace(%this : ptr) -> void [binding=weak, object=_ZN5TraceD1Ev] {
   slot $this : ptr
 
@@ -149,3 +146,5 @@ function @Trace___Trace(%this : ptr) -> void [binding=weak, object=_ZN5TraceD1Ev
     store i32 %t6, %t9
     return void
 }
+alias object _ZN5TraceC2EPi = @Trace__Trace
+alias object _ZN5TraceD2Ev = @Trace___Trace

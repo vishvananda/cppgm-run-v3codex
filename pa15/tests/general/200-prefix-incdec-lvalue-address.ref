@@ -22,7 +22,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t7 = addr $p
     %t8 = load ptr $paddr
     %t9 = cmp eq ptr %t7, %t8
-    %t10 = convert zext i32 u8 %t9
+    %t10 = convert trunc i32 i64 %t9
     store i32 %t10, $ok_inc
     %t11 = addr $values
     %t12 = unary decay ptr %t11
@@ -39,7 +39,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t20 = addr $q
     %t21 = load ptr $qaddr
     %t22 = cmp eq ptr %t20, %t21
-    %t23 = convert zext i32 u8 %t22
+    %t23 = convert trunc i32 i64 %t22
     store i32 %t23, $ok_dec
     %t24 = load i32 $ok_inc
     branch %t24, ^land_rhs_4, ^land_short_5

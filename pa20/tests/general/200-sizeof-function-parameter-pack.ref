@@ -2,7 +2,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = call i32 @g(1, 97)
     %t2 = cmp ne i32 %t1, 2
-    %t3 = convert zext i32 u8 %t2
+    %t3 = convert trunc i32 i64 %t2
     return i32 %t3
 }
 function @g(%args2 : i32, %args2__pack2 : i8) -> i32 [binding=weak, object=_Z1gIJicEEiDpT_] {

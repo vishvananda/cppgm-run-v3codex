@@ -6,7 +6,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = addr $x
     %t3 = call i32 @n__number__operatorint(%t2)
     %t4 = cmp gt i32 %t3, 0
-    %t5 = convert zext i32 u8 %t4
+    %t5 = convert trunc i32 i64 %t4
     return i32 %t5
 }
 function @n__number__operatorint(%this : ptr) -> i32 [binding=weak, object=_ZNK1n6numbercviEv] {

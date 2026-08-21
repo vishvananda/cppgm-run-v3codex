@@ -1,20 +1,11 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-
-declare global @__external_rtti_vtable____fundamental_type_info [binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
-
-declare global @__external_rtti__int [binding=strong, object=_ZTIi]
-
-declare function @__external_runtime___Unwind_Resume() -> void [return=noreturn, role=eh_resume, linkage=c, binding=strong, object=_Unwind_Resume]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____fundamental_type_info [role=rtti_data, binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
+declare global @__external_rtti__int [role=rtti_data, binding=strong, object=_ZTIi]
 
 declare function @__external_runtime____cxa_allocate_exception(%arg0 : i64) -> ptr [role=eh_allocate_exception, linkage=c, binding=strong, object=__cxa_allocate_exception]
-
 declare function @__external_runtime____cxa_begin_catch(%arg0 : ptr) -> ptr [role=eh_begin_catch, linkage=c, binding=strong, object=__cxa_begin_catch]
-
 declare function @__external_runtime____cxa_end_catch() -> void [role=eh_end_catch, linkage=c, binding=strong, object=__cxa_end_catch]
-
 declare function @__external_runtime____cxa_throw(%arg0 : ptr, %arg1 : ptr, %arg2 : ptr) -> void [return=noreturn, role=eh_throw, linkage=c, binding=strong, object=__cxa_throw]
-
-declare function @__external_runtime____gxx_personality_v0() -> void [role=eh_personality, linkage=c, binding=strong, object=__gxx_personality_v0]
 
 global @__typeinfo_name__struct_Error [binding=weak, object=_ZTS5Error] = {
   i8 53
@@ -25,38 +16,29 @@ global @__typeinfo_name__struct_Error [binding=weak, object=_ZTS5Error] = {
   i8 114
   i8 0
 }
-
 global @__rtti_struct_Error [binding=weak, object=_ZTI5Error] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_Error
 }
-
 global @__typeinfo_name__int [binding=weak, object=_ZTSi] = {
   i8 105
   i8 0
 }
-
 global @__rtti_int [binding=weak, object=_ZTIi] = {
   ptr addr @__external_rtti_vtable____fundamental_type_info + 16
   ptr addr @__typeinfo_name__int
 }
-
 global @__ehobj_int [binding=internal, object=@__ehobj_int] = {
   zero 4
 }
-
 global @__ehobj_struct_Error [binding=internal, object=@__ehobj_struct_Error] = {
   zero 4
 }
-
 global @temporary_destructions : i32 [binding=strong, object=_Z22temporary_destructions] = zero
-
 global @scope_destructions : i32 [binding=strong, object=_Z18scope_destructions] = zero
-
 global @source [binding=strong, object=_Z6source] = {
   zero 4
 }
-
 global @__strlit__1 [binding=internal] = {
   i8 117
   i8 110
@@ -81,7 +63,6 @@ function @operator_(%ret : ptr [pass=indirect_result], %__param0 : ptr, %right :
     call void @Text__Text(%ret, %t4)
     return void
 }
-
 function @raise_later() -> void [binding=strong, object=_Z11raise_laterv] {
   block ^entry:
     %t1 = call ptr @__external_runtime____cxa_allocate_exception(4)
@@ -90,7 +71,6 @@ function @raise_later() -> void [binding=strong, object=_Z11raise_laterv] {
     call void @__external_runtime____cxa_throw(%t1, %t2, 0)
     return void
 }
-
 function @exercise(%take_throw : u8) -> void [binding=strong, object=_Z8exerciseb] {
   slot $take_throw : u8
   slot $scope : obj<1x1>
@@ -155,7 +135,6 @@ function @exercise(%take_throw : u8) -> void [binding=strong, object=_Z8exercise
     call void @Scope___Scope(%t11)
     return void
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $lor__1 : i64
 
@@ -208,10 +187,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_9:
     %t10 = load i64 $lor__1
-    %t11 = convert zext i32 u8 %t10
+    %t11 = convert trunc i32 i64 %t10
     return i32 %t11
 }
-
 function @Text__Text(%this : ptr, %input : i32) -> void [binding=weak, object=_ZN4TextC1Ei] {
   slot $this : ptr
   slot $input : i32
@@ -225,7 +203,6 @@ function @Text__Text(%this : ptr, %input : i32) -> void [binding=weak, object=_Z
     store i32 %t1, %t3
     return void
 }
-
 function @Text___Text(%this : ptr) -> void [binding=weak, object=_ZN4TextD1Ev] {
   slot $this : ptr
 
@@ -236,7 +213,16 @@ function @Text___Text(%this : ptr) -> void [binding=weak, object=_ZN4TextD1Ev] {
     store i32 %t2, @temporary_destructions
     return void
 }
+function @Scope___Scope(%this : ptr) -> void [binding=weak, object=_ZN5ScopeD1Ev] {
+  slot $this : ptr
 
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @scope_destructions
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @scope_destructions
+    return void
+}
 function @Error__Error(%this : ptr, %text : ptr [pass=reference]) -> void [binding=weak, object=_ZN5ErrorC1ERK4Text] {
   slot $this : ptr
   slot $text : ptr
@@ -252,7 +238,6 @@ function @Error__Error(%this : ptr, %text : ptr [pass=reference]) -> void [bindi
     store i32 %t3, %t5
     return void
 }
-
 function @Error___Error(%this : ptr) -> void [binding=weak, object=_ZN5ErrorD1Ev] {
   slot $this : ptr
 
@@ -260,28 +245,20 @@ function @Error___Error(%this : ptr) -> void [binding=weak, object=_ZN5ErrorD1Ev
     store ptr %this, $this
     return void
 }
-
-function @Scope___Scope(%this : ptr) -> void [binding=weak, object=_ZN5ScopeD1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load i32 @scope_destructions
-    %t2 = binary add i32 %t1, 1
-    store i32 %t2, @scope_destructions
-    return void
-}
-
 function @__cppgm_init() -> void [role=init, binding=internal] {
   block ^entry:
     %t1 = addr @source
     call void @Text__Text(%t1, 3)
     return void
 }
-
 function @__cppgm_fini() -> void [role=fini, binding=internal] {
   block ^entry:
     %t1 = addr @source
     call void @Text___Text(%t1)
     return void
 }
+alias object _ZN4TextC2Ei = @Text__Text
+alias object _ZN4TextD2Ev = @Text___Text
+alias object _ZN5ScopeD2Ev = @Scope___Scope
+alias object _ZN5ErrorC2ERK4Text = @Error__Error
+alias object _ZN5ErrorD2Ev = @Error___Error

@@ -40,5 +40,6 @@ function @lazy_qualified_shadow__api__ctype_char___is(%this : ptr, %__param1 : i
     %t1 = load i8 $value
     %t2 = convert sext i32 i8 %t1
     %t3 = cmp ne i32 %t2, 0
-    return u8 %t3
+    %t4 = convert trunc u8 i64 %t3
+    return u8 %t4
 }

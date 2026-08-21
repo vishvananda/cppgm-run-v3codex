@@ -1,5 +1,4 @@
 global @alive : i32 [binding=strong, object=_Z5alive] = zero
-
 global @choose_second : u8 [binding=strong, object=_Z13choose_second] = 1
 
 function @operator_(%__param0 : ptr [pass=reference], %__param1 : ptr [pass=reference]) -> i32 [binding=strong, object=_ZplRK5valueS1_] {
@@ -26,7 +25,6 @@ function @operator_(%__param0 : ptr [pass=reference], %__param1 : ptr [pass=refe
     %t3 = load i32 $cond__1
     return i32 %t3
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $result : i32
   slot $call__1 : i32
@@ -103,10 +101,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_12:
     %t11 = load i64 $lor__4
-    %t12 = convert zext i32 u8 %t11
+    %t12 = convert trunc i32 i64 %t11
     return i32 %t12
 }
-
 function @value__value(%this : ptr) -> void [binding=weak, object=_ZN5valueC1Ev] {
   slot $this : ptr
 
@@ -117,7 +114,6 @@ function @value__value(%this : ptr) -> void [binding=weak, object=_ZN5valueC1Ev]
     store i32 %t2, @alive
     return void
 }
-
 function @value___value(%this : ptr) -> void [binding=weak, object=_ZN5valueD1Ev] {
   slot $this : ptr
 
@@ -128,3 +124,5 @@ function @value___value(%this : ptr) -> void [binding=weak, object=_ZN5valueD1Ev
     store i32 %t2, @alive
     return void
 }
+alias object _ZN5valueC2Ev = @value__value
+alias object _ZN5valueD2Ev = @value___value

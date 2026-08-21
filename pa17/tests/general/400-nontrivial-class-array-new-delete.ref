@@ -1,10 +1,10 @@
-declare function @operator_delete__(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete_array]
-declare function @operator_new__(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatornew__(%arg0 : i64) -> ptr [effects=readwrite, role=allocate_memory, binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatordelete__(%arg0 : ptr) -> void [effects=readwrite, unwind=no, role=free_memory, binding=strong, object=cppgm_builtin_operator_delete_array]
 
-global @constructed : i32 [binding=internal, object=_ZL11constructed] = zero
-global @destroyed : i32 [binding=internal, object=_ZL9destroyed] = zero
-global @fail : i32 [binding=internal, object=_ZL4fail] = zero
-global @expected : i32 [binding=internal, object=_ZL8expected] = 3
+global @constructed : i32 [binding=internal, object=_Z11constructed] = zero
+global @destroyed : i32 [binding=internal, object=_Z9destroyed] = zero
+global @fail : i32 [binding=internal, object=_Z4fail] = zero
+global @expected : i32 [binding=internal, object=_Z8expected] = 3
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $items : ptr
@@ -21,7 +21,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = convert sext i64 i32 20
-    %t2 = call ptr @operator_new__(%t1)
+    %t2 = call ptr @operatornew__(%t1)
     %t3 = index i8 %t2, 8
     %t4 = const i64 3
     store i64 %t4, %t2
@@ -66,7 +66,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     jump ^array_dtor_cond_6
 
   block ^array_dtor_end_8:
-    call void @operator_delete__(%t2)
+    call void @operatordelete__(%t2)
     resume
 
   block ^array_new_ctor_cont_5:
@@ -111,7 +111,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^land_end_11:
     %t34 = load i64 $land__3
-    %t35 = convert zext i32 u8 %t34
+    %t35 = convert trunc i32 i64 %t34
     store i32 %t35, $ok
     %t36 = load ptr $items
     %t37 = cmp ne ptr %t36, 0
@@ -137,7 +137,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     jump ^array_delete_dtor_cond_17
 
   block ^array_delete_dtor_end_19:
-    call void @operator_delete__(%t38)
+    call void @operatordelete__(%t38)
     jump ^array_delete_end_16
 
   block ^array_delete_end_16:

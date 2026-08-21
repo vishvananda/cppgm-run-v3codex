@@ -47,7 +47,7 @@ function @prefix_ref(%p : ptr) -> i32 [binding=strong, object=_Z10prefix_refPi] 
     %t6 = load ptr %t5
     %t7 = load ptr $p
     %t8 = cmp eq ptr %t6, %t7
-    %t9 = convert zext i32 u8 %t8
+    %t9 = convert trunc i32 i64 %t8
     return i32 %t9
 }
 function @array_eq() -> i32 [binding=strong, object=_Z8array_eqv] {
@@ -61,7 +61,7 @@ function @array_eq() -> i32 [binding=strong, object=_Z8array_eqv] {
     %t5 = addr $a
     %t6 = unary decay ptr %t5
     %t7 = cmp eq ptr %t4, %t6
-    %t8 = convert zext i32 u8 %t7
+    %t8 = convert trunc i32 i64 %t7
     return i32 %t8
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {

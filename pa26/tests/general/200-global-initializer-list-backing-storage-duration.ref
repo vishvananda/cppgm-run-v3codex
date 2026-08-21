@@ -1,9 +1,9 @@
 global @live : i32 [binding=strong, object=_Z4live] = zero
-global @values [binding=strong, object=_Z6values] = {
-  zero 16
-}
 global @__cppgm_initlist_backing_1 [binding=internal] = {
   zero 8
+}
+global @values [binding=strong, object=_Z6values] = {
+  zero 16
 }
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
@@ -53,18 +53,8 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t20 = load i64 $lor__1
-    %t21 = convert zext i32 u8 %t20
+    %t21 = convert trunc i32 i64 %t20
     return i32 %t21
-}
-function @std__initializer_list_item___begin(%this : ptr) -> ptr [binding=weak, object=_ZNKSt16initializer_listI4itemE5beginEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load ptr %t2
-    return ptr %t3
 }
 function @item__item(%this : ptr, %x : i32) -> void [binding=weak, object=_ZN4itemC1Ei] {
   slot $this : ptr
@@ -82,12 +72,32 @@ function @item__item(%this : ptr, %x : i32) -> void [binding=weak, object=_ZN4it
     store i32 %t5, @live
     return void
 }
+function @item___item(%this : ptr) -> void [binding=weak, object=_ZN4itemD1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @live
+    %t2 = binary sub i32 %t1, 1
+    store i32 %t2, @live
+    return void
+}
+function @std__initializer_list_item___begin(%this : ptr) -> ptr [binding=weak, object=_ZNKSt16initializer_listI4itemE5beginEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    return ptr %t3
+}
 function @__cppgm_init() -> void [role=init, binding=internal] {
   block ^entry:
     %t1 = addr @values
     %t2 = addr @__cppgm_initlist_backing_1
     call void @item__item(%t2, 1)
-    %t3 = index i8 %t2, 4
+    %t3 = index i8 [projection=array_element] %t2, 4
     eh_try ^call_unwind_dispatch_1
     call void @item__item(%t3, 2)
     eh_end
@@ -123,16 +133,6 @@ function @__cppgm_fini() -> void [role=fini, binding=internal] {
     %t7 = binary mul i64 0, 4
     %t8 = index i8 [projection=array_element] %t6, %t7
     call void @item___item(%t8)
-    return void
-}
-function @item___item(%this : ptr) -> void [binding=weak, object=_ZN4itemD1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load i32 @live
-    %t2 = binary sub i32 %t1, 1
-    store i32 %t2, @live
     return void
 }
 alias object _ZN4itemC2Ei = @item__item

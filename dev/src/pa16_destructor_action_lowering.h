@@ -229,7 +229,7 @@ protected:
 		derived.EmitJump(condition);
 		derived.SelectBlock(condition);
 		const Operand remaining = derived.LoadStorage(progress, LowI64());
-		const Operand any = derived.Temp(LowU8());
+		const Operand any = derived.Temp(LowI64());
 		Instruction nonzero(Instruction::CMP);
 		nonzero.dest = any.id;
 		nonzero.op = LOW_OP_NE;
@@ -252,7 +252,7 @@ protected:
 			derived.SelectBlock(cleanup);
 			const Operand cleanup_remaining =
 				derived.LoadStorage(progress, LowI64());
-			const Operand cleanup_any = derived.Temp(LowU8());
+			const Operand cleanup_any = derived.Temp(LowI64());
 			Instruction cleanup_nonzero(Instruction::CMP);
 			cleanup_nonzero.dest = cleanup_any.id;
 			cleanup_nonzero.op = LOW_OP_NE;

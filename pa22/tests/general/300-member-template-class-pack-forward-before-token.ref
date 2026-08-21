@@ -33,34 +33,8 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t5 = load i32 $token
     %t6 = call i32 @sender_error_code__string___send(%t2, $argobj__1, $argobj__2, %t5)
     %t7 = cmp ne i32 %t6, 6
-    %t8 = convert zext i32 u8 %t7
+    %t8 = convert trunc i32 i64 %t7
     return i32 %t8
-}
-function @sender_error_code__string___send(%this : ptr, %args : obj<4x4>, %args__pack2 : obj<4x4>, %token : i32) -> i32 [binding=weak, object=_ZN6senderIJ10error_code6stringEE4sendIiEEiS0_T_S4_] {
-  slot $this : ptr
-  slot $args : obj<4x4>
-  slot $args__pack2 : obj<4x4>
-  slot $token : i32
-  slot $argobj__1 : obj<4x4>
-  slot $argobj__2 : obj<4x4>
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = addr $args
-    copyobj 4x4 %args, %t1
-    %t2 = addr $args__pack2
-    copyobj 4x4 %args__pack2, %t2
-    store i32 %token, $token
-    %t3 = addr $argobj__1
-    %t4 = addr $args
-    copyobj 4x4 %t4, %t3
-    %t5 = addr $argobj__2
-    %t6 = addr $args__pack2
-    copyobj 4x4 %t6, %t5
-    %t7 = call i32 @combine($argobj__1, $argobj__2)
-    %t8 = load i32 $token
-    %t9 = binary add i32 %t7, %t8
-    return i32 %t9
 }
 function @error_code__error_code(%this : ptr, %v : i32) -> void [binding=weak, object=_ZN10error_codeC1Ei] {
   slot $this : ptr
@@ -87,6 +61,32 @@ function @string__string(%this : ptr, %v : i32) -> void [binding=weak, object=_Z
     %t3 = index i8 [projection=field] %t2, 0
     store i32 %t1, %t3
     return void
+}
+function @sender_error_code__string___send(%this : ptr, %args : obj<4x4>, %args__pack2 : obj<4x4>, %token : i32) -> i32 [binding=weak, object=_ZN6senderIJ10error_code6stringEE4sendIiEEiS0_S1_T_] {
+  slot $this : ptr
+  slot $args : obj<4x4>
+  slot $args__pack2 : obj<4x4>
+  slot $token : i32
+  slot $argobj__1 : obj<4x4>
+  slot $argobj__2 : obj<4x4>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $args
+    copyobj 4x4 %args, %t1
+    %t2 = addr $args__pack2
+    copyobj 4x4 %args__pack2, %t2
+    store i32 %token, $token
+    %t3 = addr $argobj__1
+    %t4 = addr $args
+    copyobj 4x4 %t4, %t3
+    %t5 = addr $argobj__2
+    %t6 = addr $args__pack2
+    copyobj 4x4 %t6, %t5
+    %t7 = call i32 @combine($argobj__1, $argobj__2)
+    %t8 = load i32 $token
+    %t9 = binary add i32 %t7, %t8
+    return i32 %t9
 }
 alias object _ZN10error_codeC2Ei = @error_code__error_code
 alias object _ZN6stringC2Ei = @string__string

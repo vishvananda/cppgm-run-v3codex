@@ -14,7 +14,8 @@ function @N__operator_(%a : obj<4x4>, %b : obj<4x4>) -> u8 [binding=strong, obje
     %t7 = index i8 [projection=field] %t6, 0
     %t8 = load i32 %t7
     %t9 = cmp gt i32 %t5, %t8
-    return u8 %t9
+    %t10 = convert trunc u8 i64 %t9
+    return u8 %t10
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $a : obj<4x4>

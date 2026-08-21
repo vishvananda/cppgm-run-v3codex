@@ -87,7 +87,7 @@ protected:
 	Operand PointerIsNull(const Operand& pointer)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const Operand result = derived.Temp(LowU8());
+		const Operand result = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = result.id;
 		compare.op = LOW_OP_EQ;

@@ -66,18 +66,6 @@ function @Outer_int___Ref__Ref(%this : ptr, %input : ptr [pass=reference]) -> vo
     store ptr %t1, %t3
     return void
 }
-function @Outer_int___Ref__operatorbool(%this : ptr) -> u8 [binding=weak, object=_ZNK5OuterIiE3RefcvbEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=reference_field] %t1, 0
-    %t3 = load ptr %t2
-    %t4 = load i32 %t3
-    %t5 = cmp ne i32 %t4, 0
-    return u8 %t5
-}
 function @Iter_int___operator__(%this : ptr) -> ptr [binding=weak, object=_ZN4IterIiEppEv] {
   slot $this : ptr
 
@@ -90,5 +78,18 @@ function @Iter_int___operator__(%this : ptr) -> ptr [binding=weak, object=_ZN4It
     store i32 %t4, %t2
     %t5 = load ptr $this
     return ptr %t5
+}
+function @Outer_int___Ref__operatorbool(%this : ptr) -> u8 [binding=weak, object=_ZNK5OuterIiE3RefcvbEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    %t4 = load i32 %t3
+    %t5 = cmp ne i32 %t4, 0
+    %t6 = convert trunc u8 i64 %t5
+    return u8 %t6
 }
 alias object _ZN5OuterIiE3RefC2ERi = @Outer_int___Ref__Ref

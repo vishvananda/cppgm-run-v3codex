@@ -286,6 +286,12 @@ This PA15 milestone supports the following:
   - built-in arithmetic, bitwise, shift, logical, comparison, conditional, comma, and
     subscript forms from the PA12 procedural subset
 
+As required by PA13, every LowIR `cmp` instruction produces an `i64` truth
+value. When a comparison or logical expression must be materialized as the
+course `bool` representation (`u8`) for storage, an argument, or a return,
+emit an explicit conversion from that `i64` result. A branch may consume the
+canonical comparison result directly.
+
 Compiler-generated slots and helper names must remain distinct from source
 identifiers so a source declaration cannot redirect an internal temporary.
 The source lowering path should carry compact value, slot, block, and symbol
@@ -347,3 +353,8 @@ Useful intermediate representations include:
 - explicit local slot/layout information
 - a centralized type-to-LowIR lowering and conversion layer
 - a stable mapping from resolved expressions to LowIR values and stack locations
+
+It is useful for the lowering layer to derive result types from the LowIR
+operation as it creates a temporary. In particular, keeping the canonical
+`i64` comparison result there avoids duplicating result-type decisions at
+each later use.

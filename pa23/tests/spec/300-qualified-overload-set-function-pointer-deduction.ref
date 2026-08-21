@@ -7,7 +7,8 @@ function @api__create(%value : ptr [pass=reference]) -> u8 [binding=strong, obje
     %t2 = index i8 [projection=field] %t1, 0
     %t3 = load i32 %t2
     %t4 = cmp eq i32 %t3, 7
-    return u8 %t4
+    %t5 = convert trunc u8 i64 %t4
+    return u8 %t5
 }
 function @api__create__ov2(%__param0 : ptr [pass=reference], %__param1 : i32) -> u8 [binding=strong, object=_ZN3api6createERKNS_4pathEi] {
   slot $__param0 : ptr

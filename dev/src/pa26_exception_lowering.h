@@ -352,7 +352,7 @@ protected:
 		read.dest = selector.id;
 		read.type = LowI32();
 		derived.Emit(read);
-		const Operand disallowed = derived.Temp(LowU8());
+		const Operand disallowed = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = disallowed.id;
 		compare.op = LOW_OP_EQ;
@@ -972,7 +972,7 @@ protected:
 		read_selector.dest = selector.id;
 		read_selector.type = LowI32();
 		derived.Emit(read_selector);
-		const Operand selected = derived.Temp(LowU8());
+		const Operand selected = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = selected.id;
 		compare.op = LOW_OP_EQ;

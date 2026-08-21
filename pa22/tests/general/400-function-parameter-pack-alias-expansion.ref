@@ -19,7 +19,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t6 = load i64 $lor__1
-    %t7 = convert zext i32 u8 %t6
+    %t7 = convert trunc i32 i64 %t6
     return i32 %t7
 }
 function @Box____f() -> i32 [binding=weak, object=_ZN3BoxIJEE1fEv] {

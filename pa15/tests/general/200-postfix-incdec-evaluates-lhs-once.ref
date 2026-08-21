@@ -36,6 +36,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t16 = load i64 $lor__1
-    %t17 = convert zext i32 u8 %t16
+    %t17 = convert trunc i32 i64 %t16
     return i32 %t17
 }

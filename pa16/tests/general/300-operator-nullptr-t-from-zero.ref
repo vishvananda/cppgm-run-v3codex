@@ -9,7 +9,8 @@ function @operator__(%p : ptr [pass=reference], %__param1 : i64) -> u8 [binding=
     %t2 = index i8 [projection=field] %t1, 0
     %t3 = load i32 %t2
     %t4 = cmp ne i32 %t3, 0
-    return u8 %t4
+    %t5 = convert trunc u8 i64 %t4
+    return u8 %t5
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $p : obj<4x4>

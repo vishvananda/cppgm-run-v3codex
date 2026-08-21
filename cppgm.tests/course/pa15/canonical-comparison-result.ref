@@ -1,0 +1,35 @@
+function @less_than(%left : i32, %right : i32) -> u8 [binding=strong, object=_Z9less_thanii] {
+  slot $left : i32
+  slot $right : i32
+  slot $result : u8
+
+  block ^entry:
+    store i32 %left, $left
+    store i32 %right, $right
+    %t1 = load i32 $left
+    %t2 = load i32 $right
+    %t3 = cmp lt i32 %t1, %t2
+    %t4 = convert trunc u8 i64 %t3
+    store u8 %t4, $result
+    %t5 = load u8 $result
+    return u8 %t5
+}
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  slot $cond__1 : i32
+
+  block ^entry:
+    %t1 = call u8 @less_than(1, 2)
+    branch %t1, ^cond_then_1, ^cond_else_2
+
+  block ^cond_then_1:
+    store i32 0, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_else_2:
+    store i32 1, $cond__1
+    jump ^cond_end_3
+
+  block ^cond_end_3:
+    %t2 = load i32 $cond__1
+    return i32 %t2
+}

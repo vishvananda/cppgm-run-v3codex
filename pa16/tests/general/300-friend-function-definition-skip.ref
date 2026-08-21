@@ -1,3 +1,7 @@
+function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
+  block ^entry:
+    return i32 0
+}
 function @operator__(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZeqRK1XS1_] {
   slot $a : ptr
   slot $b : ptr
@@ -12,9 +16,6 @@ function @operator__(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp eq i32 %t3, %t6
-    return u8 %t7
-}
-function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
-  block ^entry:
-    return i32 0
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }

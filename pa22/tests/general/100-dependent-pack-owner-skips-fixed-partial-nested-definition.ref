@@ -21,7 +21,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t5 = load i32 $cond__1
     return i32 %t5
 }
-function @outer_int__long_int___inner__operator__(%this : ptr, %other : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK5outerIJilEE5innereqERKS1_] {
+function @outer_int__long_int___inner__operator__(%this : ptr, %other : ptr [pass=reference]) -> u8 [binding=strong, object=_ZNK5outerIJilEE5innereqERKS1_] {
   slot $this : ptr
   slot $other : ptr
 
@@ -31,5 +31,6 @@ function @outer_int__long_int___inner__operator__(%this : ptr, %other : ptr [pas
     %t1 = load ptr $this
     %t2 = load ptr $other
     %t3 = cmp eq ptr %t1, %t2
-    return u8 %t3
+    %t4 = convert trunc u8 i64 %t3
+    return u8 %t4
 }

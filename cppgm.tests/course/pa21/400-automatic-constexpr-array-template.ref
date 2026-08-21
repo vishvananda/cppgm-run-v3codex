@@ -29,10 +29,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t6 = load i64 $lor__1
-    %t7 = convert zext i32 u8 %t6
+    %t7 = convert trunc i32 i64 %t6
     return i32 %t7
 }
-
 function @read_digits() -> i32 [binding=weak, object=_Z11read_digitsILi2EEiv] {
   slot $first : obj<7x1>
   slot $second : obj<7x1>
@@ -92,7 +91,6 @@ function @read_digits() -> i32 [binding=weak, object=_Z11read_digitsILi2EEiv] {
     %t26 = load i32 $cond__1
     return i32 %t26
 }
-
 function @read_digits__ov2() -> i32 [binding=weak, object=_Z11read_digitsILi5EEiv] {
   slot $first : obj<7x1>
   slot $second : obj<7x1>

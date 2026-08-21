@@ -7,7 +7,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = addr $value
-    call void @context__executor_int___executor(%t1)
+    call void @context__executor_int___executor_long_int_(%t1)
     store i64 0, $next_value
     eh_try ^cleanup_action_2
     %t2 = addr $tmpobj__1
@@ -39,53 +39,18 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^call_unwind_end_5:
     %t6 = load i32 @sink
     %t7 = cmp ne i32 %t6, 2
-    %t8 = convert zext i32 u8 %t7
+    %t8 = convert trunc i32 i64 %t7
     %t9 = addr $value
     call void @context__executor_int____executor(%t9)
     return i32 %t8
 }
-
-function @context__executor_int___executor(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIiEC1Ev] {
+function @context__executor_int___executor_long_int_(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIiEC1Ev] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return void
 }
-
-function @context__executor_int___require(%ret : ptr [pass=indirect_result], %this : ptr, %__param1 : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZNK7context8executorIiE7requireIlEENS_8executorIT_EERKS3_] {
-  slot $this : ptr
-  slot $__param1 : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    store ptr %__param1, $__param1
-    call void @context__executor_long_int___executor(%ret)
-    return void
-}
-
-function @context__executor_long_int___execute(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIlE7executeEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load i32 @sink
-    %t2 = binary add i32 %t1, 1
-    store i32 %t2, @sink
-    return void
-}
-
-function @context__executor_long_int____executor(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIlED1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load i32 @sink
-    %t2 = binary add i32 %t1, 1
-    store i32 %t2, @sink
-    return void
-}
-
 function @context__executor_int____executor(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIiED1Ev] {
   slot $this : ptr
 
@@ -96,11 +61,44 @@ function @context__executor_int____executor(%this : ptr) -> void [unwind=no, bin
     store i32 %t2, @sink
     return void
 }
+function @context__executor_int___require(%ret : ptr [pass=indirect_result], %this : ptr, %__param1 : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZNK7context8executorIiE7requireIlEENS_8executorIT_EERKS3_] {
+  slot $this : ptr
+  slot $__param1 : ptr
 
-function @context__executor_long_int___executor(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIlEC1Ev] {
+  block ^entry:
+    store ptr %this, $this
+    store ptr %__param1, $__param1
+    call void @context__executor_long_int___executor_long_int_(%ret)
+    return void
+}
+function @context__executor_long_int___execute(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIlE7executeEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @sink
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @sink
+    return void
+}
+function @context__executor_long_int____executor(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIlED1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @sink
+    %t2 = binary add i32 %t1, 1
+    store i32 %t2, @sink
+    return void
+}
+function @context__executor_long_int___executor_long_int_(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7context8executorIlEC1Ev] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return void
 }
+alias object _ZN7context8executorIiEC2Ev = @context__executor_int___executor_long_int_
+alias object _ZN7context8executorIiED2Ev = @context__executor_int____executor
+alias object _ZN7context8executorIlED2Ev = @context__executor_long_int____executor
+alias object _ZN7context8executorIlEC2Ev = @context__executor_long_int___executor_long_int_

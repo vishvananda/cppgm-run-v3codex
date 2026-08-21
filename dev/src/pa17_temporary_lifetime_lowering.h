@@ -1366,7 +1366,7 @@ protected:
 			derived.LowerStorageType(variable.type)),
 			derived.LowerExpressionType(variable.type));
 		if (!boolean_condition || !IsFloating(value.type)) return value;
-		const Operand truth = derived.Temp(LowU8());
+		const Operand truth = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = truth.id;
 		compare.op = LOW_OP_NE;

@@ -185,7 +185,7 @@ protected:
 		derived.EmitJump(condition);
 		derived.SelectBlock(condition);
 		const Operand index = derived.LoadStorage(progress, LowI64());
-		const Operand more = derived.Temp(LowU8());
+		const Operand more = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = more.id;
 		compare.op = LOW_OP_ULT;
@@ -222,7 +222,7 @@ protected:
 		{
 			derived.SelectBlock(cleanup);
 			const Operand remaining = derived.LoadStorage(progress, LowI64());
-			const Operand any = derived.Temp(LowU8());
+			const Operand any = derived.Temp(LowI64());
 			Instruction nonzero(Instruction::CMP);
 			nonzero.dest = any.id;
 			nonzero.op = LOW_OP_NE;
@@ -485,7 +485,7 @@ protected:
 		derived.EmitJump(condition);
 		derived.SelectBlock(condition);
 		const Operand index = derived.LoadStorage(offset, LowI64());
-		const Operand more = derived.Temp(LowU8());
+		const Operand more = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = more.id;
 		compare.op = LOW_OP_ULT;
@@ -542,7 +542,7 @@ protected:
 		derived.EmitJump(condition);
 		derived.SelectBlock(condition);
 		const Operand index = derived.LoadStorage(index_slot, LowI64());
-		const Operand more = derived.Temp(LowU8());
+		const Operand more = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = more.id;
 		compare.op = LOW_OP_ULT;
@@ -604,7 +604,7 @@ protected:
 			derived.EmitJump(dtor_condition);
 			derived.SelectBlock(dtor_condition);
 			const Operand remaining = derived.LoadStorage(cleanup_slot, LowI64());
-			const Operand any = derived.Temp(LowU8());
+			const Operand any = derived.Temp(LowI64());
 			Instruction nonzero(Instruction::CMP);
 			nonzero.dest = any.id;
 			nonzero.op = LOW_OP_NE;
@@ -710,7 +710,7 @@ protected:
 			derived.NewLabel("array_delete_nonnull"));
 		const BlockId end = derived.AddBlock(
 			derived.NewLabel("array_delete_end"));
-		const Operand condition = derived.Temp(LowU8());
+		const Operand condition = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = condition.id;
 		compare.op = LOW_OP_NE;
@@ -741,7 +741,7 @@ protected:
 			derived.EmitJump(dtor_condition);
 			derived.SelectBlock(dtor_condition);
 			const Operand remaining = derived.LoadStorage(index_slot, LowI64());
-			const Operand any = derived.Temp(LowU8());
+			const Operand any = derived.Temp(LowI64());
 			Instruction nonzero(Instruction::CMP);
 			nonzero.dest = any.id;
 			nonzero.op = LOW_OP_NE;

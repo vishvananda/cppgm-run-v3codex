@@ -102,7 +102,7 @@ protected:
 		if (operation == OP_LNOT)
 		{
 			const Operand value = derived.LowerValue(children[0]);
-			const Operand result = derived.Temp(LowU8());
+			const Operand result = derived.Temp(LowI64());
 			Instruction compare(Instruction::CMP);
 			compare.dest = result.id;
 			compare.op = LOW_OP_EQ;

@@ -17,7 +17,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t10 = call i32 @test(%t9, 0, 1, 1)
     %t11 = addr $zero
     %t12 = addr $one
-    %t13 = call u8 @operator____ov2(%t11, %t12)
+    %t13 = call u8 @operator____sym2(%t11, %t12)
     %t14 = call i32 @test(%t13, 0, 1, 1)
     %t15 = binary add i32 %t10, %t14
     return i32 %t15
@@ -51,7 +51,8 @@ function @operator__(%lhs : ptr [pass=reference], %rhs : ptr [pass=reference]) -
 
   block ^land_end_3:
     %t10 = load i64 $land__1
-    return u8 %t10
+    %t11 = convert trunc u8 i64 %t10
+    return u8 %t11
 }
 function @test(%f : u8, %a1 : u8, %a2 : u8, %r : u8) -> i32 [binding=weak, object=_Z4testIbbbbEiT_T0_T1_T2_] {
   slot $f : u8
@@ -118,7 +119,7 @@ function @test(%f : u8, %a1 : u8, %a2 : u8, %r : u8) -> i32 [binding=weak, objec
     %t16 = load i32 $cond__1
     return i32 %t16
 }
-function @operator____ov2(%lhs : ptr [pass=reference], %rhs : ptr [pass=reference]) -> u8 [binding=weak, object=_ZooI6binderS0_EbRKT_RKT0_] {
+function @operator____sym2(%lhs : ptr [pass=reference], %rhs : ptr [pass=reference]) -> u8 [binding=weak, object=_ZooI6binderS0_EbRKT_RKT0_] {
   slot $lhs : ptr
   slot $rhs : ptr
   slot $lor__1 : i64
@@ -147,5 +148,6 @@ function @operator____ov2(%lhs : ptr [pass=reference], %rhs : ptr [pass=referenc
 
   block ^lor_end_3:
     %t10 = load i64 $lor__1
-    return u8 %t10
+    %t11 = convert trunc u8 i64 %t10
+    return u8 %t11
 }

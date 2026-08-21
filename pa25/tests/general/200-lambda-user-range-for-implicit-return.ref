@@ -34,7 +34,89 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t15 = load i32 $cond__1
     return i32 %t15
 }
-function @__lambda_main_t132_137__operator__(%this : ptr, %r : ptr [pass=reference]) -> i32 [binding=strong, object=_ZZ4mainENK3$_0clER5Range, prefer_local=yes] {
+function @Iter__operator__(%this : ptr) -> ptr [binding=weak, object=_ZN4IterppEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    %t4 = binary mul i64 1, 4
+    %t5 = index i8 %t3, %t4
+    store ptr %t5, %t2
+    %t6 = load ptr $this
+    return ptr %t6
+}
+function @Iter__operator_(%this : ptr) -> ptr [binding=weak, object=_ZN4IterdeEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    return ptr %t3
+}
+function @Iter__operator____sym2(%this : ptr, %other : obj<8x8>) -> u8 [binding=weak, object=_ZN4IterneES_] {
+  slot $this : ptr
+  slot $other : obj<8x8>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $other
+    copyobj 8x8 %other, %t1
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = load ptr %t3
+    %t5 = addr $other
+    %t6 = index i8 [projection=field] %t5, 0
+    %t7 = load ptr %t6
+    %t8 = cmp ne ptr %t4, %t7
+    %t9 = convert trunc u8 i64 %t8
+    return u8 %t9
+}
+function @Range__end(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range3endEv] {
+  slot $this : ptr
+  slot $it : obj<8x8>
+  slot $retobj__1 : obj<8x8>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $it
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = unary decay ptr %t3
+    %t5 = binary mul i64 2, 4
+    %t6 = index i8 %t4, %t5
+    %t7 = addr $it
+    %t8 = index i8 [projection=field] %t7, 0
+    store ptr %t6, %t8
+    %t9 = addr $retobj__1
+    %t10 = addr $it
+    copyobj 8x8 %t10, %t9
+    return obj<8x8> $retobj__1
+}
+function @Range__begin(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range5beginEv] {
+  slot $this : ptr
+  slot $it : obj<8x8>
+  slot $retobj__1 : obj<8x8>
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = addr $it
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = unary decay ptr %t3
+    %t5 = addr $it
+    %t6 = index i8 [projection=field] %t5, 0
+    store ptr %t4, %t6
+    %t7 = addr $retobj__1
+    %t8 = addr $it
+    copyobj 8x8 %t8, %t7
+    return obj<8x8> $retobj__1
+}
+function @__lambda_main_t132_137__operator__(%this : ptr, %r : ptr [pass=reference]) -> i32 [binding=internal, object=_ZZ4mainENK3$_0clER5Range, prefer_local=yes, object_root=yes] {
   slot $this : ptr
   slot $r : ptr
   slot $__begin1 : obj<8x8>
@@ -60,7 +142,7 @@ function @__lambda_main_t132_137__operator__(%this : ptr, %r : ptr [pass=referen
     %t8 = addr $argobj__1
     %t9 = addr $__end2
     copyobj 8x8 %t9, %t8
-    %t10 = call u8 @Iter__operator____ov2(%t7, $argobj__1)
+    %t10 = call u8 @Iter__operator____sym2(%t7, $argobj__1)
     branch %t10, ^for_body_2, ^for_end_4
 
   block ^for_body_2:
@@ -78,85 +160,4 @@ function @__lambda_main_t132_137__operator__(%this : ptr, %r : ptr [pass=referen
 
   block ^for_end_4:
     return i32 0
-}
-function @Iter__operator____ov2(%this : ptr, %other : obj<8x8>) -> u8 [binding=weak, object=_ZN4IterneES_] {
-  slot $this : ptr
-  slot $other : obj<8x8>
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = addr $other
-    copyobj 8x8 %other, %t1
-    %t2 = load ptr $this
-    %t3 = index i8 [projection=field] %t2, 0
-    %t4 = load ptr %t3
-    %t5 = addr $other
-    %t6 = index i8 [projection=field] %t5, 0
-    %t7 = load ptr %t6
-    %t8 = cmp ne ptr %t4, %t7
-    return u8 %t8
-}
-function @Iter__operator_(%this : ptr) -> ptr [binding=weak, object=_ZN4IterdeEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load ptr %t2
-    return ptr %t3
-}
-function @Iter__operator__(%this : ptr) -> ptr [binding=weak, object=_ZN4IterppEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load ptr %t2
-    %t4 = binary mul i64 1, 4
-    %t5 = index i8 %t3, %t4
-    store ptr %t5, %t2
-    %t6 = load ptr $this
-    return ptr %t6
-}
-function @Range__begin(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range5beginEv] {
-  slot $this : ptr
-  slot $it : obj<8x8>
-  slot $retobj__1 : obj<8x8>
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = addr $it
-    %t2 = load ptr $this
-    %t3 = index i8 [projection=field] %t2, 0
-    %t4 = unary decay ptr %t3
-    %t5 = addr $it
-    %t6 = index i8 [projection=field] %t5, 0
-    store ptr %t4, %t6
-    %t7 = addr $retobj__1
-    %t8 = addr $it
-    copyobj 8x8 %t8, %t7
-    return obj<8x8> $retobj__1
-}
-function @Range__end(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range3endEv] {
-  slot $this : ptr
-  slot $it : obj<8x8>
-  slot $retobj__1 : obj<8x8>
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = addr $it
-    %t2 = load ptr $this
-    %t3 = index i8 [projection=field] %t2, 0
-    %t4 = unary decay ptr %t3
-    %t5 = binary mul i64 2, 4
-    %t6 = index i8 %t4, %t5
-    %t7 = addr $it
-    %t8 = index i8 [projection=field] %t7, 0
-    store ptr %t6, %t8
-    %t9 = addr $retobj__1
-    %t10 = addr $it
-    copyobj 8x8 %t10, %t9
-    return obj<8x8> $retobj__1
 }

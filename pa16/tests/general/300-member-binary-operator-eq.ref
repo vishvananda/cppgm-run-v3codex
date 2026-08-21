@@ -43,5 +43,6 @@ function @L__operator__(%this : ptr, %y : ptr [pass=reference]) -> u8 [binding=w
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp eq i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }

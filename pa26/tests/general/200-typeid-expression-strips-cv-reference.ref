@@ -1,15 +1,16 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-declare function @operator_delete(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
-declare function @operator_new(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
 
-global @__typeinfo_name__struct_Foo [storage=readonly, binding=weak, object=_ZTS3Foo] = {
+declare function @operatornew(%arg0 : i64) -> ptr [effects=readwrite, role=allocate_memory, binding=strong, object=cppgm_builtin_operator_new]
+declare function @operatordelete(%arg0 : ptr) -> void [effects=readwrite, unwind=no, role=free_memory, binding=strong, object=cppgm_builtin_operator_delete]
+
+global @__typeinfo_name__struct_Foo [binding=weak, object=_ZTS3Foo] = {
   i8 51
   i8 70
   i8 111
   i8 111
   i8 0
 }
-global @__rtti_struct_Foo [storage=readonly, binding=weak, object=_ZTI3Foo] = {
+global @__rtti_struct_Foo [binding=weak, object=_ZTI3Foo] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_Foo
 }
@@ -37,35 +38,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t4 = load i32 $cond__1
     return i32 %t4
 }
-function @same_cloned_type(%r : ptr [pass=reference]) -> i32 [binding=weak, object=_Z16same_cloned_typeI3FooEiRKT_] {
-  slot $r : ptr
-  slot $copy : ptr
-  slot $same : i32
-
-  block ^entry:
-    store ptr %r, $r
-    %t1 = convert sext i64 i32 4
-    %t2 = call ptr @operator_new(%t1)
-    %t3 = load ptr $r
-    call void @Foo__Foo__ov2(%t2, %t3)
-    store ptr %t2, $copy
-    %t4 = addr @__rtti_struct_Foo
-    %t5 = addr @__rtti_struct_Foo
-    %t6 = cmp eq ptr %t4, %t5
-    %t7 = convert zext i32 u8 %t6
-    store i32 %t7, $same
-    %t8 = load ptr $copy
-    %t9 = cmp ne ptr %t8, 0
-    branch %t9, ^delete_nonnull_1, ^delete_end_2
-
-  block ^delete_nonnull_1:
-    call void @operator_delete(%t8)
-    jump ^delete_end_2
-
-  block ^delete_end_2:
-    %t10 = load i32 $same
-    return i32 %t10
-}
 function @Foo__Foo(%this : ptr, %v : i32) -> void [binding=weak, object=_ZN3FooC1Ei] {
   slot $this : ptr
   slot $v : i32
@@ -79,7 +51,36 @@ function @Foo__Foo(%this : ptr, %v : i32) -> void [binding=weak, object=_ZN3FooC
     store i32 %t1, %t3
     return void
 }
-function @Foo__Foo__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN3FooC1ERKS_, trivial_lifecycle=yes] {
+function @same_cloned_type(%r : ptr [pass=reference]) -> i32 [binding=weak, object=_Z16same_cloned_typeI3FooEiRKT_] {
+  slot $r : ptr
+  slot $copy : ptr
+  slot $same : i32
+
+  block ^entry:
+    store ptr %r, $r
+    %t1 = convert sext i64 i32 4
+    %t2 = call ptr @operatornew(%t1)
+    %t3 = load ptr $r
+    call void @Foo__Foo__ov2(%t2, %t3)
+    store ptr %t2, $copy
+    %t4 = addr @__rtti_struct_Foo
+    %t5 = addr @__rtti_struct_Foo
+    %t6 = cmp eq ptr %t4, %t5
+    %t7 = convert trunc i32 i64 %t6
+    store i32 %t7, $same
+    %t8 = load ptr $copy
+    %t9 = cmp ne ptr %t8, 0
+    branch %t9, ^delete_nonnull_1, ^delete_end_2
+
+  block ^delete_nonnull_1:
+    call void @operatordelete(%t8)
+    jump ^delete_end_2
+
+  block ^delete_end_2:
+    %t10 = load i32 $same
+    return i32 %t10
+}
+function @Foo__Foo__ov2(%this : ptr, %other : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN3FooC1ERKS_] {
   slot $this : ptr
   slot $other : ptr
 

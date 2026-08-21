@@ -6,10 +6,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = call ptr @get(%t1)
     %t3 = addr $value
     %t4 = cmp ne ptr %t2, %t3
-    %t5 = convert zext i32 u8 %t4
+    %t5 = convert trunc i32 i64 %t4
     return i32 %t5
 }
-function @get(%value : ptr [pass=reference]) -> ptr [binding=weak, object=_Z3getIiiEDTcl10unsafe_getIT_Efp_EERT0_] {
+function @get(%value : ptr [pass=reference]) -> ptr [binding=weak, object=_Z3getIiiERiRT0_] {
   slot $value : ptr
 
   block ^entry:

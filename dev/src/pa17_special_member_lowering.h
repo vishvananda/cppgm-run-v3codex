@@ -296,7 +296,7 @@ protected:
 		derived.EmitJump(condition);
 		derived.SelectBlock(condition);
 		const Operand index = derived.LoadStorage(index_slot, LowI64());
-		const Operand more = derived.Temp(LowU8());
+		const Operand more = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = more.id;
 		compare.op = LOW_OP_ULT;

@@ -1,10 +1,5 @@
-declare function @__external_runtime___Unwind_Resume() -> void [return=noreturn, role=eh_resume, linkage=c, binding=strong, object=_Unwind_Resume]
-
 declare function @__external_runtime____cxa_begin_catch(%arg0 : ptr) -> ptr [role=eh_begin_catch, linkage=c, binding=strong, object=__cxa_begin_catch]
-
 declare function @__external_runtime____cxa_end_catch() -> void [role=eh_end_catch, linkage=c, binding=strong, object=__cxa_end_catch]
-
-declare function @__external_runtime____gxx_personality_v0() -> void [role=eh_personality, linkage=c, binding=strong, object=__gxx_personality_v0]
 
 global @trace : i32 [binding=strong, object=_Z5trace] = zero
 
@@ -18,7 +13,6 @@ function @read(%value : ptr [pass=reference]) -> i32 [binding=strong, object=_Z4
     %t3 = load i32 %t2
     return i32 %t3
 }
-
 function @choose(%first : u8) -> i32 [binding=strong, object=_Z6chooseb] {
   slot $first : u8
   slot $call__1 : i32
@@ -165,7 +159,6 @@ function @choose(%first : u8) -> i32 [binding=strong, object=_Z6chooseb] {
   block ^try_end_3:
     return i32 0
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $lor__1 : i64
 
@@ -205,10 +198,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_7:
     %t10 = load i64 $lor__1
-    %t11 = convert zext i32 u8 %t10
+    %t11 = convert trunc i32 i64 %t10
     return i32 %t11
 }
-
 function @Value__Value(%this : ptr, %n : i32) -> void [binding=weak, object=_ZN5ValueC1Ei] {
   slot $this : ptr
   slot $n : i32
@@ -222,7 +214,6 @@ function @Value__Value(%this : ptr, %n : i32) -> void [binding=weak, object=_ZN5
     store i32 %t1, %t3
     return void
 }
-
 function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev] {
   slot $this : ptr
 
@@ -237,3 +228,5 @@ function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev
     store i32 %t6, @trace
     return void
 }
+alias object _ZN5ValueC2Ei = @Value__Value
+alias object _ZN5ValueD2Ev = @Value___Value

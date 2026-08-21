@@ -1,9 +1,58 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
-declare global @__external_rtti_vtable____si_class_type_info [binding=strong, object=_ZTVN10__cxxabiv120__si_class_type_infoE]
-declare global @__external_rtti_vtable____vmi_class_type_info [binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
-declare function @__cxa_pure_virtual(%arg0 : ptr) -> i32 [effects=readnone, unwind=no, return=noreturn, binding=strong]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____si_class_type_info [role=rtti_si, binding=strong, object=_ZTVN10__cxxabiv120__si_class_type_infoE]
+declare global @__external_rtti_vtable____vmi_class_type_info [role=rtti_vmi, binding=strong, object=_ZTVN10__cxxabiv121__vmi_class_type_infoE]
 
-global @__typeinfo_name__struct_implementation [storage=readonly, binding=weak, object=_ZTS14implementation] = {
+declare function @__cxa_pure_virtual(%arg0 : ptr) -> i32 [unwind=no, return=noreturn, role=pure_virtual, binding=strong]
+
+global @__typeinfo_name__struct_left [binding=weak, object=_ZTS4left] = {
+  i8 52
+  i8 108
+  i8 101
+  i8 102
+  i8 116
+  i8 0
+}
+global @__rtti_struct_left [binding=weak, object=_ZTI4left] = {
+  ptr addr @__external_rtti_vtable____class_type_info + 16
+  ptr addr @__typeinfo_name__struct_left
+}
+global @__typeinfo_name__struct_right [binding=weak, object=_ZTS5right] = {
+  i8 53
+  i8 114
+  i8 105
+  i8 103
+  i8 104
+  i8 116
+  i8 0
+}
+global @__rtti_struct_right [binding=weak, object=_ZTI5right] = {
+  ptr addr @__external_rtti_vtable____class_type_info + 16
+  ptr addr @__typeinfo_name__struct_right
+}
+global @__typeinfo_name__struct_interface [binding=weak, object=_ZTS9interface] = {
+  i8 57
+  i8 105
+  i8 110
+  i8 116
+  i8 101
+  i8 114
+  i8 102
+  i8 97
+  i8 99
+  i8 101
+  i8 0
+}
+global @__rtti_struct_interface [binding=weak, object=_ZTI9interface] = {
+  ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
+  ptr addr @__typeinfo_name__struct_interface
+  i32 0
+  i32 2
+  ptr addr @__rtti_struct_left
+  i64 2
+  ptr addr @__rtti_struct_right
+  i64 2050
+}
+global @__typeinfo_name__struct_implementation [binding=weak, object=_ZTS14implementation] = {
   i8 49
   i8 52
   i8 105
@@ -22,89 +71,41 @@ global @__typeinfo_name__struct_implementation [storage=readonly, binding=weak, 
   i8 110
   i8 0
 }
-global @__typeinfo_name__struct_interface [storage=readonly, binding=weak, object=_ZTS9interface] = {
-  i8 57
-  i8 105
-  i8 110
-  i8 116
-  i8 101
-  i8 114
-  i8 102
-  i8 97
-  i8 99
-  i8 101
-  i8 0
-}
-global @__typeinfo_name__struct_left [storage=readonly, binding=weak, object=_ZTS4left] = {
-  i8 52
-  i8 108
-  i8 101
-  i8 102
-  i8 116
-  i8 0
-}
-global @__rtti_struct_left [storage=readonly, binding=weak, object=_ZTI4left] = {
-  ptr addr @__external_rtti_vtable____class_type_info + 16
-  ptr addr @__typeinfo_name__struct_left
-}
-global @__typeinfo_name__struct_right [storage=readonly, binding=weak, object=_ZTS5right] = {
-  i8 53
-  i8 114
-  i8 105
-  i8 103
-  i8 104
-  i8 116
-  i8 0
-}
-global @__rtti_struct_right [storage=readonly, binding=weak, object=_ZTI5right] = {
-  ptr addr @__external_rtti_vtable____class_type_info + 16
-  ptr addr @__typeinfo_name__struct_right
-}
-global @__rtti_struct_interface [storage=readonly, binding=weak, object=_ZTI9interface] = {
-  ptr addr @__external_rtti_vtable____vmi_class_type_info + 16
-  ptr addr @__typeinfo_name__struct_interface
-  i32 0
-  i32 2
-  ptr addr @__rtti_struct_left
-  i64 2
-  ptr addr @__rtti_struct_right
-  i64 2050
-}
-global @__rtti_struct_implementation [storage=readonly, binding=weak, object=_ZTI14implementation] = {
+global @__rtti_struct_implementation [binding=weak, object=_ZTI14implementation] = {
   ptr addr @__external_rtti_vtable____si_class_type_info + 16
   ptr addr @__typeinfo_name__struct_implementation
   ptr addr @__rtti_struct_interface
 }
-global @implementation__vtable [storage=readonly, binding=weak, object=_ZTV14implementation] = {
+global @left__vtable [binding=weak, object=_ZTV4left] = {
+  i64 0
+  ptr addr @__rtti_struct_left
+  ptr addr @__cxa_pure_virtual
+}
+global @right__vtable [binding=weak, object=_ZTV5right] = {
+  i64 0
+  ptr addr @__rtti_struct_right
+  ptr addr @__cxa_pure_virtual
+}
+global @interface__vtable [binding=weak, object=_ZTV9interface] = {
+  i64 0
+  ptr addr @__rtti_struct_interface
+  ptr addr @__cxa_pure_virtual
+}
+global @interface____view__right__8__vtable [binding=internal, object=@interface____view__right__8__vtable] = {
+  i64 -8
+  ptr addr @__rtti_struct_interface
+  ptr addr @__cxa_pure_virtual
+}
+global @implementation__vtable [binding=weak, object=_ZTV14implementation] = {
   i64 0
   ptr addr @__rtti_struct_implementation
   ptr addr @implementation__first
   ptr addr @implementation__second
 }
-global @implementation____view__right__8__vtable [storage=readonly, binding=weak, object=@implementation____view__right__8__vtable] = {
+global @implementation____view__right__8__vtable [binding=internal, object=@implementation____view__right__8__vtable] = {
   i64 -8
   ptr addr @__rtti_struct_implementation
   ptr addr @_implementation__second__vtable_return_adjust__this_neg8__return_pos0
-}
-global @interface__vtable [storage=readonly, binding=weak, object=_ZTV9interface] = {
-  i64 0
-  ptr addr @__rtti_struct_interface
-  ptr addr @__cxa_pure_virtual
-}
-global @interface____view__right__8__vtable [storage=readonly, binding=weak, object=@interface____view__right__8__vtable] = {
-  i64 -8
-  ptr addr @__rtti_struct_interface
-  ptr addr @__cxa_pure_virtual
-}
-global @left__vtable [storage=readonly, binding=weak, object=_ZTV4left] = {
-  i64 0
-  ptr addr @__rtti_struct_left
-  ptr addr @__cxa_pure_virtual
-}
-global @right__vtable [storage=readonly, binding=weak, object=_ZTV5right] = {
-  i64 0
-  ptr addr @__rtti_struct_right
-  ptr addr @__cxa_pure_virtual
 }
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
@@ -143,10 +144,24 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t17 = load i64 $lor__1
-    %t18 = convert zext i32 u8 %t17
+    %t18 = convert trunc i32 i64 %t17
     return i32 %t18
 }
-function @implementation__implementation(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN14implementationC1Ev] {
+function @implementation__first(%this : ptr) -> i32 [binding=weak, object=_ZN14implementation5firstEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 3
+}
+function @implementation__second(%this : ptr) -> i32 [binding=weak, object=_ZN14implementation6secondEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    return i32 4
+}
+function @implementation__implementation(%this : ptr) -> void [binding=weak, object=_ZN14implementationC1Ev] {
   slot $this : ptr
 
   block ^entry:
@@ -165,21 +180,7 @@ function @implementation__implementation(%this : ptr) -> void [unwind=no, bindin
     store ptr %t9, %t7
     return void
 }
-function @implementation__second(%this : ptr) -> i32 [binding=weak, object=_ZN14implementation6secondEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return i32 4
-}
-function @implementation__first(%this : ptr) -> i32 [binding=weak, object=_ZN14implementation5firstEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return i32 3
-}
-function @interface__interface__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN9interfaceC2Ev] {
+function @interface__interface__base_entry(%this : ptr) -> void [binding=weak, object=_ZN9interfaceC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:
@@ -201,7 +202,7 @@ function @interface__interface__base_entry(%this : ptr) -> void [unwind=no, bind
     store ptr %t11, %t9
     return void
 }
-function @left__left__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN4leftC2Ev] {
+function @left__left__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN4leftC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:
@@ -212,7 +213,7 @@ function @left__left__base_entry(%this : ptr) -> void [unwind=no, binding=weak, 
     store ptr %t3, %t1
     return void
 }
-function @right__right__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5rightC2Ev] {
+function @right__right__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5rightC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:

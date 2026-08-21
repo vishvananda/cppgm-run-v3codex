@@ -12,7 +12,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = addr @inc
     %t2 = call i32 @apply(41, %t1)
     %t3 = cmp ne i32 %t2, 42
-    %t4 = convert zext i32 u8 %t3
+    %t4 = convert trunc i32 i64 %t3
     return i32 %t4
 }
 function @apply(%value : i32, %fn : ptr [pass=reference]) -> i32 [binding=weak, object=_Z5applyIFiiEEiiRKT_] {

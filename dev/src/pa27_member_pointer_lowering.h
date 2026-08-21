@@ -67,7 +67,7 @@ protected:
 		const Operand value = derived.LowerValue(children[0], value_type);
 		const Operand low_word = function_member ?
 			derived.Convert(value, LowU64(), false) : value;
-		const Operand nonnull = derived.Temp(LowU8());
+		const Operand nonnull = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = nonnull.id;
 		compare.op = LOW_OP_NE;

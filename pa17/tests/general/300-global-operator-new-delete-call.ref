@@ -1,17 +1,17 @@
-declare function @operator_delete(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete]
-declare function @operator_new(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new]
+declare function @operatornew(%arg0 : i64) -> ptr [effects=readwrite, role=allocate_memory, binding=strong, object=cppgm_builtin_operator_new]
+declare function @operatordelete(%arg0 : ptr) -> void [effects=readwrite, unwind=no, role=free_memory, binding=strong, object=cppgm_builtin_operator_delete]
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $p : ptr
 
   block ^entry:
     %t1 = const i64 4
-    %t2 = call ptr @operator_new(%t1)
+    %t2 = call ptr @operatornew(%t1)
     store ptr %t2, $p
     %t3 = load ptr $p
-    call void @operator_delete(%t3)
+    call void @operatordelete(%t3)
     %t4 = load ptr $p
     %t5 = cmp eq ptr %t4, 0
-    %t6 = convert zext i32 u8 %t5
+    %t6 = convert trunc i32 i64 %t5
     return i32 %t6
 }

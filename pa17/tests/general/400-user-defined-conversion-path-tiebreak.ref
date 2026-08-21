@@ -28,7 +28,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t6 = addr $rhs
     %t7 = call i32 @source__operatorint(%t6)
     %t8 = cmp ne i32 %t7, 0
-    %t9 = copy u8 %t8
+    %t9 = convert trunc u8 i64 %t8
     %t10 = call i32 @pick(%t5, %t9)
     return i32 %t10
 }

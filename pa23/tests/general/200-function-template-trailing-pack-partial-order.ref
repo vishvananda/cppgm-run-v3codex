@@ -12,10 +12,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t3 = addr $fp
     %t4 = call i32 @invoke__ov2(%t3)
     %t5 = cmp ne i32 %t4, 7
-    %t6 = convert zext i32 u8 %t5
+    %t6 = convert trunc i32 i64 %t5
     return i32 %t6
 }
-function @invoke__ov2(%f : ptr [pass=reference]) -> i32 [binding=weak, object=_Z6invokeIRPFivEJEEDTclfp_spfp0_EEOT_DpOT0_] {
+function @invoke__ov2(%f : ptr [pass=reference]) -> i32 [binding=weak, object=_Z6invokeIRPFivEJEEiOT_DpOT0_] {
   slot $f : ptr
 
   block ^entry:

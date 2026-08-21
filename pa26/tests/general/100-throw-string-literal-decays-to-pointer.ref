@@ -1,39 +1,38 @@
-declare global @__external_rtti__pointer_to_const_char [binding=strong, object=_ZTIPKc]
-declare global @__external_rtti_vtable____fundamental_type_info [binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
-declare global @__external_rtti_vtable____pointer_type_info [binding=strong, object=_ZTVN10__cxxabiv119__pointer_type_infoE]
-declare function @__external_runtime___Unwind_Resume() -> void [return=noreturn, role=eh_resume, linkage=c, binding=strong, object=_Unwind_Resume]
+declare global @__external_rtti_vtable____fundamental_type_info [role=rtti_data, binding=strong, object=_ZTVN10__cxxabiv123__fundamental_type_infoE]
+declare global @__external_rtti_vtable____pointer_type_info [role=rtti_data, binding=strong, object=_ZTVN10__cxxabiv119__pointer_type_infoE]
+declare global @__external_rtti__pointer_to_const_char [role=rtti_data, binding=strong, object=_ZTIPKc]
+
 declare function @__external_runtime____cxa_allocate_exception(%arg0 : i64) -> ptr [role=eh_allocate_exception, linkage=c, binding=strong, object=__cxa_allocate_exception]
 declare function @__external_runtime____cxa_begin_catch(%arg0 : ptr) -> ptr [role=eh_begin_catch, linkage=c, binding=strong, object=__cxa_begin_catch]
 declare function @__external_runtime____cxa_end_catch() -> void [role=eh_end_catch, linkage=c, binding=strong, object=__cxa_end_catch]
 declare function @__external_runtime____cxa_throw(%arg0 : ptr, %arg1 : ptr, %arg2 : ptr) -> void [return=noreturn, role=eh_throw, linkage=c, binding=strong, object=__cxa_throw]
-declare function @__external_runtime____gxx_personality_v0() -> void [role=eh_personality, linkage=c, binding=strong, object=__gxx_personality_v0]
 
-global @__strlit__1 [binding=internal] = {
-  i8 120
+global @__typeinfo_name__char [binding=weak, object=_ZTSc] = {
+  i8 99
   i8 0
 }
-global @__typeinfo_name_type_PKc [storage=readonly, binding=weak, object=_ZTSPKc] = {
+global @__rtti_char [binding=weak, object=_ZTIc] = {
+  ptr addr @__external_rtti_vtable____fundamental_type_info + 16
+  ptr addr @__typeinfo_name__char
+}
+global @__typeinfo_name_type_PKc [binding=weak, object=_ZTSPKc] = {
   i8 80
   i8 75
   i8 99
   i8 0
 }
-global @__typeinfo_name__char [storage=readonly, binding=weak, object=_ZTSc] = {
-  i8 99
-  i8 0
-}
-global @__rtti_char [storage=readonly, binding=weak, object=_ZTIc] = {
-  ptr addr @__external_rtti_vtable____fundamental_type_info + 16
-  ptr addr @__typeinfo_name__char
-}
-global @__rtti_type_PKc [storage=readonly, binding=weak, object=_ZTIPKc] = {
+global @__rtti_type_PKc [binding=weak, object=_ZTIPKc] = {
   ptr addr @__external_rtti_vtable____pointer_type_info + 16
   ptr addr @__typeinfo_name_type_PKc
   i32 1
   ptr addr @__rtti_char
 }
-global @__ehobj_type_PKc [binding=weak, object=@__ehobj_type_PKc] = {
+global @__ehobj_type_PKc [binding=internal, object=@__ehobj_type_PKc] = {
   zero 8
+}
+global @__strlit__1 [binding=internal] = {
+  i8 120
+  i8 0
 }
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
@@ -69,7 +68,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t9 = load i8 %t8
     %t10 = convert sext i32 i8 %t9
     %t11 = cmp ne i32 %t10, 120
-    %t12 = convert zext i32 u8 %t11
+    %t12 = convert trunc i32 i64 %t11
     eh_end
     call void @__external_runtime____cxa_end_catch()
     return i32 %t12

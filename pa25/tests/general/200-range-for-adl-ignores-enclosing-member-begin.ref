@@ -97,7 +97,7 @@ function @Owner__sum(%this : ptr, %r : ptr [pass=reference]) -> i32 [binding=wea
   block ^for_cond_1:
     %t7 = addr $__begin1
     %t8 = addr $__end2
-    %t9 = call u8 @Iter__operator____ov2(%t7, %t8)
+    %t9 = call u8 @Iter__operator__(%t7, %t8)
     branch %t9, ^for_body_2, ^for_end_4
 
   block ^for_body_2:
@@ -113,14 +113,14 @@ function @Owner__sum(%this : ptr, %r : ptr [pass=reference]) -> i32 [binding=wea
 
   block ^for_iter_3:
     %t16 = addr $__begin1
-    %t17 = call ptr @Iter__operator__(%t16)
+    %t17 = call ptr @Iter__operator____sym2(%t16)
     jump ^for_cond_1
 
   block ^for_end_4:
     %t18 = load i32 $total
     return i32 %t18
 }
-function @Iter__operator____ov2(%this : ptr, %o : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK4IterneERKS_] {
+function @Iter__operator__(%this : ptr, %o : ptr [pass=reference]) -> u8 [binding=weak, object=_ZNK4IterneERKS_] {
   slot $this : ptr
   slot $o : ptr
 
@@ -134,9 +134,20 @@ function @Iter__operator____ov2(%this : ptr, %o : ptr [pass=reference]) -> u8 [b
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load ptr %t5
     %t7 = cmp ne ptr %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
-function @Iter__operator__(%this : ptr) -> ptr [binding=weak, object=_ZN4IterppEv] {
+function @Iter__operator_(%this : ptr) -> ptr [binding=weak, object=_ZNK4IterdeEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load ptr %t2
+    return ptr %t3
+}
+function @Iter__operator____sym2(%this : ptr) -> ptr [binding=weak, object=_ZN4IterppEv] {
   slot $this : ptr
 
   block ^entry:
@@ -149,16 +160,6 @@ function @Iter__operator__(%this : ptr) -> ptr [binding=weak, object=_ZN4IterppE
     store ptr %t5, %t2
     %t6 = load ptr $this
     return ptr %t6
-}
-function @Iter__operator_(%this : ptr) -> ptr [binding=weak, object=_ZNK4IterdeEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load ptr %t2
-    return ptr %t3
 }
 alias object _ZN4IterC2EPi = @Iter__Iter
 alias object _ZN2ns5RangeC2EPi = @ns__Range__Range

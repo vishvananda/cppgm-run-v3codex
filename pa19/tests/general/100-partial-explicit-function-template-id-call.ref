@@ -2,10 +2,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = call i32 @g(1, 2)
     %t2 = cmp ne i32 %t1, 3
-    %t3 = convert zext i32 u8 %t2
+    %t3 = convert trunc i32 i64 %t2
     return i32 %t3
 }
-function @g(%t : i32, %u : i32) -> i32 [binding=weak, object=_Z1gIiiEDTcl1fIT_Efp_fp0_EES0_T0_] {
+function @g(%t : i32, %u : i32) -> i32 [binding=weak, object=_Z1gIiiEiT_T0_] {
   slot $t : i32
   slot $u : i32
 

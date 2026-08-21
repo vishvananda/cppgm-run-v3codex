@@ -9,7 +9,6 @@ function @boost_no_using_breaks_adl__test() -> i32 [binding=strong, object=_ZN25
     %t1 = call i32 @boost_no_using_breaks_adl__user__f(nullptr)
     store i32 %t1, $first
     %t2 = addr $argobj__1
-    call void @boost_no_using_breaks_adl__lib__inner__X_int___X(%t2)
     %t3 = call i32 @boost_no_using_breaks_adl__user__f__ov2($argobj__1)
     store i32 %t3, $second
     %t4 = load i32 $first
@@ -48,13 +47,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = call i32 @boost_no_using_breaks_adl__test()
     return i32 %t1
 }
-function @boost_no_using_breaks_adl__lib__inner__X_int___X(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN25boost_no_using_breaks_adl3lib5inner1XIiEC1Ev, trivial_lifecycle=yes] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return void
-}
 function @boost_no_using_breaks_adl__user__f(%x : ptr) -> i32 [binding=weak, object=_ZN25boost_no_using_breaks_adl4user1fIPvEEiT_] {
   slot $x : ptr
 
@@ -63,7 +55,7 @@ function @boost_no_using_breaks_adl__user__f(%x : ptr) -> i32 [binding=weak, obj
     %t1 = load ptr $x
     %t2 = call ptr @boost_no_using_breaks_adl__lib__get_pointer(%t1)
     %t3 = cmp eq ptr %t2, 0
-    %t4 = convert zext i32 u8 %t3
+    %t4 = convert trunc i32 i64 %t3
     return i32 %t4
 }
 function @boost_no_using_breaks_adl__user__f__ov2(%x : obj<1x1>) -> i32 [binding=weak, object=_ZN25boost_no_using_breaks_adl4user1fINS_3lib5inner1XIiEEEEiT_] {
@@ -75,7 +67,7 @@ function @boost_no_using_breaks_adl__user__f__ov2(%x : obj<1x1>) -> i32 [binding
     %t2 = addr $x
     %t3 = call ptr @boost_no_using_breaks_adl__lib__inner__get_pointer($argobj__1)
     %t4 = cmp eq ptr %t3, 0
-    %t5 = convert zext i32 u8 %t4
+    %t5 = convert trunc i32 i64 %t4
     return i32 %t5
 }
 function @boost_no_using_breaks_adl__lib__get_pointer(%p : ptr) -> ptr [binding=weak, object=_ZN25boost_no_using_breaks_adl3lib11get_pointerIvEEPT_S3_] {
@@ -92,4 +84,3 @@ function @boost_no_using_breaks_adl__lib__inner__get_pointer(%__param0 : obj<1x1
   block ^entry:
     return ptr 0
 }
-alias object _ZN25boost_no_using_breaks_adl3lib5inner1XIiEC2Ev = @boost_no_using_breaks_adl__lib__inner__X_int___X

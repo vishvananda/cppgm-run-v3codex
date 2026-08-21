@@ -1,5 +1,5 @@
-declare function @operator_delete__(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete_array]
-declare function @operator_new__(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatornew__(%arg0 : i64) -> ptr [effects=readwrite, role=allocate_memory, binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatordelete__(%arg0 : ptr) -> void [effects=readwrite, unwind=no, role=free_memory, binding=strong, object=cppgm_builtin_operator_delete_array]
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $p : ptr
@@ -8,12 +8,12 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = const i64 4
     %t2 = convert sext i64 i32 4
     %t3 = binary mul i64 %t1, %t2
-    %t4 = call ptr @operator_new__(%t3)
+    %t4 = call ptr @operatornew__(%t3)
     store ptr %t4, $p
     %t5 = load ptr $p
-    call void @operator_delete__(%t5)
+    call void @operatordelete__(%t5)
     %t6 = load ptr $p
     %t7 = cmp eq ptr %t6, 0
-    %t8 = convert zext i32 u8 %t7
+    %t8 = convert trunc i32 i64 %t7
     return i32 %t8
 }

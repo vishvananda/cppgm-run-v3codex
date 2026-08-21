@@ -3,16 +3,15 @@ function @f() -> i64 [binding=strong, object=_Z1fv] {
 
   block ^entry:
     %t1 = addr $x
-    call void @R_Iter_int____R(%t1)
+    call void @R_Iter_int____R_Iter_int__(%t1)
     %t2 = addr $x
     %t3 = index i8 [projection=field] %t2, 0
     %t4 = index i8 [projection=field] %t3, 0
     %t5 = load ptr %t4
     %t6 = cmp eq ptr %t5, 0
-    %t7 = convert zext i64 u8 %t6
-    return i64 %t7
+    return i64 %t6
 }
-function @R_Iter_int____R(%this : ptr) -> void [binding=weak, object=_ZN1RI4IterIiEEC1Ev] {
+function @R_Iter_int____R_Iter_int__(%this : ptr) -> void [binding=weak, object=_ZN1RI4IterIiEEC1Ev] {
   slot $this : ptr
 
   block ^entry:
@@ -32,5 +31,5 @@ function @Iter_int___Iter(%this : ptr) -> void [binding=weak, object=_ZN4IterIiE
     store ptr 0, %t2
     return void
 }
-alias object _ZN1RI4IterIiEEC2Ev = @R_Iter_int____R
+alias object _ZN1RI4IterIiEEC2Ev = @R_Iter_int____R_Iter_int__
 alias object _ZN4IterIiEC2Ev = @Iter_int___Iter

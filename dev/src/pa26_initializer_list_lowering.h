@@ -246,7 +246,7 @@ protected:
 		const BlockId resume = derived.AddBlock(
 			derived.NewLabel("initlist_constructor_resume"));
 		const Operand remaining = derived.LoadStorage(progress, LowI64());
-		const Operand any = derived.Temp(LowU8());
+		const Operand any = derived.Temp(LowI64());
 		Instruction nonzero(Instruction::CMP);
 		nonzero.dest = any.id;
 		nonzero.op = LOW_OP_NE;

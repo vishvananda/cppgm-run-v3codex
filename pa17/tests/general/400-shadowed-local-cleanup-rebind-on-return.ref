@@ -65,7 +65,13 @@ function @f(%pattern : ptr [pass=by_address], %actual : ptr [pass=by_address]) -
     store u8 0, $cleanup_return__1
     jump ^return_cleanup_action_9
 }
+function @S___S(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1SD1Ev, object_root=yes] {
+  slot $this : ptr
 
+  block ^entry:
+    store ptr %this, $this
+    return void
+}
 function @S__S(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1SC1Ev] {
   slot $this : ptr
 
@@ -76,7 +82,6 @@ function @S__S(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1SC1Ev] 
     store ptr 0, %t2
     return void
 }
-
 function @S__S__ov2(%this : ptr, %o : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN1SC1ERKS_] {
   slot $this : ptr
   slot $o : ptr
@@ -92,7 +97,6 @@ function @S__S__ov2(%this : ptr, %o : ptr [pass=reference]) -> void [unwind=no, 
     store ptr %t3, %t5
     return void
 }
-
 function @S__operatorbool(%this : ptr) -> u8 [unwind=no, binding=weak, object=_ZNK1ScvbEv] {
   slot $this : ptr
 
@@ -102,9 +106,9 @@ function @S__operatorbool(%this : ptr) -> u8 [unwind=no, binding=weak, object=_Z
     %t2 = index i8 [projection=field] %t1, 0
     %t3 = load ptr %t2
     %t4 = cmp ne ptr %t3, 0
-    return u8 %t4
+    %t5 = convert trunc u8 i64 %t4
+    return u8 %t5
 }
-
 function @S__operator_(%this : ptr, %o : ptr [pass=reference]) -> ptr [unwind=no, binding=weak, object=_ZN1SaSERKS_] {
   slot $this : ptr
   slot $o : ptr
@@ -121,11 +125,6 @@ function @S__operator_(%this : ptr, %o : ptr [pass=reference]) -> ptr [unwind=no
     %t6 = load ptr $this
     return ptr %t6
 }
-
-function @S___S(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1SD1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return void
-}
+alias object _ZN1SD2Ev = @S___S
+alias object _ZN1SC2Ev = @S__S
+alias object _ZN1SC2ERKS_ = @S__S__ov2

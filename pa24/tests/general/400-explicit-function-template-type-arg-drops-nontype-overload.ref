@@ -29,7 +29,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t11 = load i64 $lor__1
-    %t12 = convert zext i32 u8 %t11
+    %t12 = convert trunc i32 i64 %t11
     return i32 %t12
 }
 function @foo__bar(%this : ptr) -> i32 [binding=weak, object=_ZN3foo3barIcEEiv] {

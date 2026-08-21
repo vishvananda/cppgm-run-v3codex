@@ -112,7 +112,7 @@ protected:
 				mask.first = low_word;
 				mask.second = Operand(1, LowU64());
 				derived.Emit(mask);
-				const Operand is_virtual = derived.Temp(LowU8());
+				const Operand is_virtual = derived.Temp(LowI64());
 				Instruction compare(Instruction::CMP);
 				compare.dest = is_virtual.id;
 				compare.op = LOW_OP_NE;

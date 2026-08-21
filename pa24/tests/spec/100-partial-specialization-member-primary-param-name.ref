@@ -5,7 +5,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = addr $argobj__2
     %t2 = convert sext i64 i32 10
-    call void @known_digits_10__false___known_digits__ov4(%t1, %t2)
+    call void @__cppgm_class_template_identity_0_0_0__known_digits__aggregate(%t1, %t2)
     %t3 = call u8 @accepts_known_digits(1, $argobj__2)
     branch %t3, ^cond_then_1, ^cond_else_2
 
@@ -20,19 +20,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^cond_end_3:
     %t4 = load i32 $cond__1
     return i32 %t4
-}
-function @known_digits_10__false___known_digits__ov4(%this : ptr, %value : i64) -> void [unwind=no, binding=weak, object=_ZN12known_digitsILj10ELb0EEC1Ey] {
-  slot $this : ptr
-  slot $value : i64
-
-  block ^entry:
-    store ptr %this, $this
-    store i64 %value, $value
-    %t1 = load i64 $value
-    %t2 = load ptr $this
-    %t3 = index i8 [projection=field] %t2, 0
-    store i64 %t1, %t3
-    return void
 }
 function @accepts_known_digits(%current : i32, %next : obj<8x8>) -> u8 [binding=weak, object=_Z20accepts_known_digitsI12known_digitsILj10ELb0EEEbiT_] {
   slot $current : i32
@@ -78,6 +65,19 @@ function @accepts_known_digits(%current : i32, %next : obj<8x8>) -> u8 [binding=
 
   block ^land_end_3:
     %t13 = load i64 $land__1
-    return u8 %t13
+    %t14 = convert trunc u8 i64 %t13
+    return u8 %t14
 }
-alias object _ZN12known_digitsILj10ELb0EEC2Ey = @known_digits_10__false___known_digits__ov4
+function @__cppgm_class_template_identity_0_0_0__known_digits__aggregate(%this : ptr, %value : i64) -> void [unwind=no, binding=internal] {
+  slot $this : ptr
+  slot $value : i64
+
+  block ^entry:
+    store ptr %this, $this
+    store i64 %value, $value
+    %t1 = load i64 $value
+    %t2 = load ptr $this
+    %t3 = index i8 [projection=field] %t2, 0
+    store i64 %t1, %t3
+    return void
+}

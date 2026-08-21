@@ -1,9 +1,9 @@
-global @n__value : u32 [linkage=c, binding=internal, object=_ZN1nL5valueE] = 12
+global @n__value : u32 [linkage=c, binding=internal, object=_ZN1n5valueE] = 12
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = load u32 @n__value
     %t2 = cmp ne u32 %t1, 12
-    %t3 = convert zext i32 u8 %t2
+    %t3 = convert trunc i32 i64 %t2
     return i32 %t3
 }

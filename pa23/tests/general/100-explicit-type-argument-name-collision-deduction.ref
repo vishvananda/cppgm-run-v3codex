@@ -11,7 +11,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t5 = call ptr @f(%t2, %t3, %t4)
     %t6 = load ptr $p
     %t7 = cmp ne ptr %t5, %t6
-    %t8 = convert zext i32 u8 %t7
+    %t8 = convert trunc i32 i64 %t7
     return i32 %t8
 }
 function @f(%__param0 : ptr [pass=reference], %__param1 : ptr, %__param2 : ptr) -> ptr [binding=weak, object=_Z1fI1VKS0_S1_EPKT_RT1_PT0_S4_] {

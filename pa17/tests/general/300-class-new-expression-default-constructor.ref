@@ -1,16 +1,16 @@
+declare function @operatornew(%arg0 : i64) -> ptr [effects=readwrite, role=allocate_memory, binding=strong, object=cppgm_builtin_operator_new]
 declare function @S__S(%arg0 : ptr) -> void [binding=strong, object=_ZN1SC1Ev]
-declare function @operator_new(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new]
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $p : ptr
 
   block ^entry:
     %t1 = convert sext i64 i32 1
-    %t2 = call ptr @operator_new(%t1)
+    %t2 = call ptr @operatornew(%t1)
     call void @S__S(%t2)
     store ptr %t2, $p
     %t3 = load ptr $p
     %t4 = cmp eq ptr %t3, 0
-    %t5 = convert zext i32 u8 %t4
+    %t5 = convert trunc i32 i64 %t4
     return i32 %t5
 }

@@ -2,6 +2,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %t1 = cmp eq u8 1, 0
     %t2 = cmp ne i64 %t1, 0
-    %t3 = convert zext i32 u8 %t2
+    %t3 = convert trunc i32 i64 %t2
     return i32 %t3
 }

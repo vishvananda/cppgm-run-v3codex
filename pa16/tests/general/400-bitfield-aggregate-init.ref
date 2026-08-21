@@ -14,6 +14,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t9 = binary shl i32 %t8, 29
     %t10 = binary shr i32 %t9, 29
     %t11 = cmp ne i32 %t10, 3
-    %t12 = convert zext i32 u8 %t11
+    %t12 = convert trunc i32 i64 %t11
     return i32 %t12
 }

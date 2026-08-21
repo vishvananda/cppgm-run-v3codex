@@ -1,4 +1,18 @@
-function @logic__operator__(%lhs : obj<4x4>, %__param1 : obj<4x4>) -> obj<4x4> [binding=strong, object=_ZN5logiceqENS_7triboolES0_] {
+function @logic__indeterminate(%value : obj<4x4>, %__param1 : obj<1x1>) -> u8 [binding=weak, object=_ZN5logic13indeterminateENS_7triboolENS_6markerE] {
+  slot $value : obj<4x4>
+  slot $__param1 : obj<1x1>
+
+  block ^entry:
+    %t1 = addr $value
+    copyobj 4x4 %value, %t1
+    %t2 = addr $value
+    %t3 = index i8 [projection=field] %t2, 0
+    %t4 = load i32 %t3
+    %t5 = cmp eq i32 %t4, 2
+    %t6 = convert trunc u8 i64 %t5
+    return u8 %t6
+}
+function @logic__operator____ov2(%lhs : obj<4x4>, %__param1 : obj<4x4>) -> obj<4x4> [binding=strong, object=_ZN5logiceqENS_7triboolES0_] {
   slot $lhs : obj<4x4>
   slot $__param1 : obj<4x4>
   slot $retobj__1 : obj<4x4>
@@ -13,7 +27,7 @@ function @logic__operator__(%lhs : obj<4x4>, %__param1 : obj<4x4>) -> obj<4x4> [
     copyobj 4x4 %t4, %t3
     return obj<4x4> $retobj__1
 }
-function @logic__operator____ov2(%lhs : obj<4x4>, %__param1 : u8) -> obj<4x4> [binding=strong, object=_ZN5logiceqENS_7triboolEb] {
+function @logic__operator____ov3(%lhs : obj<4x4>, %__param1 : u8) -> obj<4x4> [binding=strong, object=_ZN5logiceqENS_7triboolEb] {
   slot $lhs : obj<4x4>
   slot $__param1 : u8
   slot $retobj__1 : obj<4x4>
@@ -27,7 +41,7 @@ function @logic__operator____ov2(%lhs : obj<4x4>, %__param1 : u8) -> obj<4x4> [b
     copyobj 4x4 %t3, %t2
     return obj<4x4> $retobj__1
 }
-function @logic__operator____ov3(%__param0 : u8, %rhs : obj<4x4>) -> obj<4x4> [binding=strong, object=_ZN5logiceqEbNS_7triboolE] {
+function @logic__operator____ov4(%__param0 : u8, %rhs : obj<4x4>) -> obj<4x4> [binding=strong, object=_ZN5logiceqEbNS_7triboolE] {
   slot $__param0 : u8
   slot $rhs : obj<4x4>
   slot $retobj__1 : obj<4x4>
@@ -54,7 +68,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t3 = addr $value
     copyobj 4x4 %t3, %t2
     %t4 = addr $argobj__3
-    call void @logic__marker__marker(%t4)
     %t5 = call u8 @logic__indeterminate($argobj__2, $argobj__3)
     branch %t5, ^cond_then_1, ^cond_else_2
 
@@ -69,19 +82,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^cond_end_3:
     %t6 = load i32 $cond__1
     return i32 %t6
-}
-function @logic__indeterminate(%value : obj<4x4>, %__param1 : obj<1x1>) -> u8 [binding=weak, object=_ZN5logic13indeterminateENS_7triboolENS_6markerE] {
-  slot $value : obj<4x4>
-  slot $__param1 : obj<1x1>
-
-  block ^entry:
-    %t1 = addr $value
-    copyobj 4x4 %value, %t1
-    %t2 = addr $value
-    %t3 = index i8 [projection=field] %t2, 0
-    %t4 = load i32 %t3
-    %t5 = cmp eq i32 %t4, 2
-    return u8 %t5
 }
 function @logic__tribool__tribool(%this : ptr, %initial : u8) -> void [binding=weak, object=_ZN5logic7triboolC1Eb] {
   slot $this : ptr
@@ -109,12 +109,4 @@ function @logic__tribool__tribool(%this : ptr, %initial : u8) -> void [binding=w
     store i32 %t2, %t4
     return void
 }
-function @logic__marker__marker(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5logic6markerC1Ev, trivial_lifecycle=yes] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    return void
-}
 alias object _ZN5logic7triboolC2Eb = @logic__tribool__tribool
-alias object _ZN5logic6markerC2Ev = @logic__marker__marker

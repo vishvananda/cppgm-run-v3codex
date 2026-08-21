@@ -8,7 +8,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     store i32 %t1, $wide_minus_one
     %t2 = load i32 $wide_minus_one
     %t3 = cmp lt i32 %t2, 0
-    %t4 = cmp eq u8 %t3, 0
+    %t4 = cmp eq i64 %t3, 0
     branch %t4, ^if_then_1, ^if_else_2
 
   block ^if_then_1:

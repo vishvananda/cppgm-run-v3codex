@@ -1368,7 +1368,7 @@ private:
 		Operand value = LowerValue(node);
 		if (IsBooleanType(record.type) || !IsFloating(value.type))
 			return value;
-		const Operand result = Temp(LowU8());
+		const Operand result = Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = result.id;
 		compare.op = LOW_OP_NE;
@@ -1652,7 +1652,7 @@ private:
 		else right = Convert(right, operand_type, CanonicalizeBinaryImmediate(
 			children[1], operand_type, canonicalize_immediates, comparison,
 			record.constant, record.template_layout_constant));
-		const LowType result_type = LowerType(record.type);
+		const LowType result_type = comparison ? LowI64() : LowerType(record.type);
 		const Operand result = Temp(result_type);
 		Instruction instruction(comparison ? Instruction::CMP : Instruction::BINARY);
 		instruction.dest = result.id;

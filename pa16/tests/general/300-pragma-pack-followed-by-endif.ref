@@ -3,6 +3,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t1 = const i64 5
     %t2 = convert sext i64 i32 5
     %t3 = cmp ne i64 %t1, %t2
-    %t4 = convert zext i32 u8 %t3
+    %t4 = convert trunc i32 i64 %t3
     return i32 %t4
 }

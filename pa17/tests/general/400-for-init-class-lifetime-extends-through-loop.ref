@@ -85,15 +85,6 @@ function @Guard__Guard(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN
     store i32 1, @live
     return void
 }
-function @Guard__operatorbool(%this : ptr) -> u8 [unwind=no, binding=weak, object=_ZNK5GuardcvbEv] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load i32 @live
-    %t2 = cmp ne i32 %t1, 0
-    return u8 %t2
-}
 function @Guard___Guard(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN5GuardD1Ev] {
   slot $this : ptr
 
@@ -104,6 +95,16 @@ function @Guard___Guard(%this : ptr) -> void [unwind=no, binding=weak, object=_Z
     %t2 = binary add i32 %t1, 1
     store i32 %t2, @destroyed
     return void
+}
+function @Guard__operatorbool(%this : ptr) -> u8 [unwind=no, binding=weak, object=_ZNK5GuardcvbEv] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load i32 @live
+    %t2 = cmp ne i32 %t1, 0
+    %t3 = convert trunc u8 i64 %t2
+    return u8 %t3
 }
 alias object _ZN5GuardC2Ev = @Guard__Guard
 alias object _ZN5GuardD2Ev = @Guard___Guard

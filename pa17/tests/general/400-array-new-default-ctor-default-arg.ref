@@ -1,5 +1,5 @@
-declare function @operator_delete__(%arg0 : ptr) -> void [unwind=no, binding=strong, object=cppgm_builtin_operator_delete_array]
-declare function @operator_new__(%arg0 : i64) -> ptr [binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatornew__(%arg0 : i64) -> ptr [effects=readwrite, role=allocate_memory, binding=strong, object=cppgm_builtin_operator_new_array]
+declare function @operatordelete__(%arg0 : ptr) -> void [effects=readwrite, unwind=no, role=free_memory, binding=strong, object=cppgm_builtin_operator_delete_array]
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $items : ptr
@@ -10,7 +10,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = convert sext i64 i32 16
-    %t2 = call ptr @operator_new__(%t1)
+    %t2 = call ptr @operatornew__(%t1)
     %t3 = index i8 %t2, 8
     %t4 = const i64 2
     store i64 %t4, %t2
@@ -38,7 +38,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^array_new_ctor_cleanup_4:
     %t11 = load i64 $array_new_index__1
-    call void @operator_delete__(%t2)
+    call void @operatordelete__(%t2)
     resume
 
   block ^array_new_ctor_cont_5:
@@ -68,7 +68,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^land_end_8:
     %t25 = load i64 $land__2
-    %t26 = convert zext i32 u8 %t25
+    %t26 = convert trunc i32 i64 %t25
     store i32 %t26, $ok
     %t27 = load ptr $items
     %t28 = cmp ne ptr %t27, 0
@@ -77,7 +77,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^array_delete_nonnull_9:
     %t29 = index i8 %t27, -8
     %t30 = load i64 %t29
-    call void @operator_delete__(%t29)
+    call void @operatordelete__(%t29)
     jump ^array_delete_end_10
 
   block ^array_delete_end_10:

@@ -10,7 +10,6 @@ function @read(%value : ptr [pass=reference]) -> i32 [binding=strong, object=_Z4
     %t3 = load i32 %t2
     return i32 %t3
 }
-
 function @choose(%first : u8) -> i32 [binding=strong, object=_Z6chooseb] {
   slot $first : u8
   slot $call__1 : i32
@@ -72,7 +71,6 @@ function @choose(%first : u8) -> i32 [binding=strong, object=_Z6chooseb] {
   block ^call_unwind_end_9:
     return i32 %t7
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $lor__1 : i64
 
@@ -112,10 +110,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_7:
     %t10 = load i64 $lor__1
-    %t11 = convert zext i32 u8 %t10
+    %t11 = convert trunc i32 i64 %t10
     return i32 %t11
 }
-
 function @Value__Value(%this : ptr, %n : i32) -> void [binding=weak, object=_ZN5ValueC1Ei] {
   slot $this : ptr
   slot $n : i32
@@ -129,7 +126,6 @@ function @Value__Value(%this : ptr, %n : i32) -> void [binding=weak, object=_ZN5
     store i32 %t1, %t3
     return void
 }
-
 function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev] {
   slot $this : ptr
 
@@ -144,3 +140,5 @@ function @Value___Value(%this : ptr) -> void [binding=weak, object=_ZN5ValueD1Ev
     store i32 %t6, @trace
     return void
 }
+alias object _ZN5ValueC2Ei = @Value__Value
+alias object _ZN5ValueD2Ev = @Value___Value

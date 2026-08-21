@@ -20,10 +20,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t12 = addr $h
     %t13 = call i32 @Holder__f(%t12)
     %t14 = cmp ne i32 %t13, 7
-    %t15 = convert zext i32 u8 %t14
+    %t15 = convert trunc i32 i64 %t14
     return i32 %t15
 }
-function @D__D(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1DC1Ev] {
+function @D__D(%this : ptr) -> void [binding=weak, object=_ZN1DC1Ev] {
   slot $this : ptr
 
   block ^entry:
@@ -31,12 +31,12 @@ function @D__D(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1DC1Ev] 
     %t1 = load ptr $this
     %t2 = index i8 [projection=base_subobject] %t1, 0
     %t3 = load ptr $this
-    %t4 = index i8 %t3, 8
+    %t4 = index i8 [projection=base_subobject] %t3, 8
     call void @B__B__base_entry(%t2, %t4)
     %t5 = load ptr $this
     %t6 = index i8 [projection=base_subobject] %t5, 4
     %t7 = load ptr $this
-    %t8 = index i8 %t7, 8
+    %t8 = index i8 [projection=base_subobject] %t7, 8
     call void @C__C__base_entry(%t6, %t8)
     return void
 }
@@ -61,21 +61,21 @@ function @Holder__f(%this : ptr) -> i32 [binding=weak, object=_ZN6Holder1fEv] {
   block ^entry:
     store ptr %this, $this
     %t1 = load ptr $this
-    %t2 = index i8 [projection=reference_field] %t1, 0
+    %t2 = index i8 [projection=field] %t1, 0
     %t3 = load ptr %t2
     %t4 = index i8 [projection=base_subobject] %t3, 4
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     return i32 %t6
 }
-function @B__B__base_entry(%this : ptr, %__vbptr0 : ptr) -> void [unwind=no, binding=weak, object=_ZN1BC2Ev] {
+function @B__B__base_entry(%this : ptr, %__vbptr0 : ptr) -> void [unwind=no, binding=weak, object=_ZN1BC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     return void
 }
-function @C__C__base_entry(%this : ptr, %__vbptr0 : ptr) -> void [unwind=no, binding=weak, object=_ZN1CC2Ev] {
+function @C__C__base_entry(%this : ptr, %__vbptr0 : ptr) -> void [unwind=no, binding=weak, object=_ZN1CC2Ev, no_inline=yes] {
   slot $this : ptr
 
   block ^entry:

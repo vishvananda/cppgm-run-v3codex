@@ -1,32 +1,3 @@
-function @operator__(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZeqRK1XS1_] {
-  slot $a : ptr
-  slot $b : ptr
-
-  block ^entry:
-    store ptr %a, $a
-    store ptr %b, $b
-    %t1 = load ptr $a
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load i32 %t2
-    %t4 = load ptr $b
-    %t5 = index i8 [projection=field] %t4, 0
-    %t6 = load i32 %t5
-    %t7 = cmp eq i32 %t3, %t6
-    return u8 %t7
-}
-function @operator____ov2(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZneRK1XS1_] {
-  slot $a : ptr
-  slot $b : ptr
-
-  block ^entry:
-    store ptr %a, $a
-    store ptr %b, $b
-    %t1 = load ptr $a
-    %t2 = load ptr $b
-    %t3 = call u8 @operator__(%t1, %t2)
-    %t4 = cmp eq u8 %t3, 0
-    return u8 %t4
-}
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $cond__1 : i32
   slot $arg__2 : obj<4x4>
@@ -37,7 +8,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @X__X(%t1, 1)
     %t2 = addr $arg__3
     call void @X__X(%t2, 2)
-    %t3 = call u8 @operator____ov2(%t1, %t2)
+    %t3 = call u8 @operator__(%t1, %t2)
     branch %t3, ^cond_then_1, ^cond_else_2
 
   block ^cond_then_1:
@@ -64,5 +35,36 @@ function @X__X(%this : ptr, %x : i32) -> void [binding=weak, object=_ZN1XC1Ei] {
     %t3 = index i8 [projection=field] %t2, 0
     store i32 %t1, %t3
     return void
+}
+function @operator__(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZneRK1XS1_] {
+  slot $a : ptr
+  slot $b : ptr
+
+  block ^entry:
+    store ptr %a, $a
+    store ptr %b, $b
+    %t1 = load ptr $a
+    %t2 = load ptr $b
+    %t3 = call u8 @operator____sym2(%t1, %t2)
+    %t4 = cmp eq u8 %t3, 0
+    %t5 = convert trunc u8 i64 %t4
+    return u8 %t5
+}
+function @operator____sym2(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZeqRK1XS1_] {
+  slot $a : ptr
+  slot $b : ptr
+
+  block ^entry:
+    store ptr %a, $a
+    store ptr %b, $b
+    %t1 = load ptr $a
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i32 %t2
+    %t4 = load ptr $b
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load i32 %t5
+    %t7 = cmp eq i32 %t3, %t6
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
 alias object _ZN1XC2Ei = @X__X

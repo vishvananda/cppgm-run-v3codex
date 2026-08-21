@@ -77,7 +77,7 @@ protected:
 		derived.Emit(short_store);
 		derived.EmitJump(end_block);
 		derived.SelectBlock(end_block);
-		const Operand result = derived.Temp(LowU8());
+		const Operand result = derived.Temp(LowI64());
 		Instruction load(Instruction::LOAD);
 		load.dest = result.id;
 		load.type = LowI64();

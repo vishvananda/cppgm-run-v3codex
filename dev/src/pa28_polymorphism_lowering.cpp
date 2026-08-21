@@ -115,7 +115,7 @@ private:
 				throw std::logic_error(
 					"covariant vtable thunk result is not pointer-shaped");
 			const Operand returned(TempId(2), LowPtr());
-			const Operand is_null(TempId(3), LowU8());
+			const Operand is_null(TempId(3), LowI64());
 			Instruction compare(Instruction::CMP);
 			compare.dest = is_null.id;
 			compare.op = LOW_OP_EQ;

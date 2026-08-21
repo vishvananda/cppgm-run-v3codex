@@ -5,7 +5,7 @@ function @f(%x : i32) -> i32 [binding=strong, object=_Z1f1E] {
     store i32 %x, $x
     %t1 = load i32 $x
     %t2 = cmp eq i32 %t1, 0
-    %t3 = convert zext i32 u8 %t2
+    %t3 = convert trunc i32 i64 %t2
     return i32 %t3
 }
 function @g() -> i32 [binding=strong, object=_Z1gv] {

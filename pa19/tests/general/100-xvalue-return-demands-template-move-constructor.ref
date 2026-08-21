@@ -4,7 +4,7 @@ function @move_box(%ret : ptr [pass=indirect_result], %x : ptr [pass=reference])
   block ^entry:
     store ptr %x, $x
     %t1 = load ptr $x
-    call void @box_int___box__ov2(%ret, %t1)
+    call void @box_int___box_int___ov2(%ret, %t1)
     return void
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
@@ -13,27 +13,17 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = addr $x
-    call void @box_int___box(%t1)
+    call void @box_int___box_int_(%t1)
     %t2 = addr $tmpobj__1
     %t3 = addr $x
     call void @move_box(%t2, %t3)
     %t4 = index i8 [projection=field] %t2, 0
     %t5 = load i32 %t4
     %t6 = cmp ne i32 %t5, 1
-    %t7 = convert zext i32 u8 %t6
+    %t7 = convert trunc i32 i64 %t6
     return i32 %t7
 }
-function @box_int___box(%this : ptr) -> void [binding=weak, object=_ZN3boxIiEC1Ev] {
-  slot $this : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
-    %t2 = index i8 [projection=field] %t1, 0
-    store i32 0, %t2
-    return void
-}
-function @box_int___box__ov2(%this : ptr, %__param1 : ptr [pass=reference]) -> void [binding=weak, object=_ZN3boxIiEC1EOS0_] {
+function @box_int___box_int___ov2(%this : ptr, %__param1 : ptr [pass=reference]) -> void [binding=weak, object=_ZN3boxIiEC1EOS0_] {
   slot $this : ptr
   slot $__param1 : ptr
 
@@ -45,5 +35,15 @@ function @box_int___box__ov2(%this : ptr, %__param1 : ptr [pass=reference]) -> v
     store i32 1, %t2
     return void
 }
-alias object _ZN3boxIiEC2Ev = @box_int___box
-alias object _ZN3boxIiEC2EOS0_ = @box_int___box__ov2
+function @box_int___box_int_(%this : ptr) -> void [binding=weak, object=_ZN3boxIiEC1Ev] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    %t2 = index i8 [projection=field] %t1, 0
+    store i32 0, %t2
+    return void
+}
+alias object _ZN3boxIiEC2EOS0_ = @box_int___box_int___ov2
+alias object _ZN3boxIiEC2Ev = @box_int___box_int_

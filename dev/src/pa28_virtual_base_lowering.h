@@ -957,7 +957,7 @@ protected:
 			derived.NewLabel("basecast_adjust"));
 		const BlockId end_block = derived.AddBlock(
 			derived.NewLabel("basecast_end"));
-		const Operand is_null = derived.Temp(LowU8());
+		const Operand is_null = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = is_null.id;
 		compare.op = LOW_OP_EQ;

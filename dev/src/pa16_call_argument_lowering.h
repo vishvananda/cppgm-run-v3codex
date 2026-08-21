@@ -158,7 +158,7 @@ protected:
 			intrinsic.operation, value, type);
 		if (intrinsic.kind == hosted_builtin::INTEGER_INTRINSIC_CLZG)
 		{
-			const Operand nonzero = derived.Temp(LowU8());
+			const Operand nonzero = derived.Temp(LowI64());
 			Instruction compare(Instruction::CMP);
 			compare.dest = nonzero.id;
 			compare.op = LOW_OP_NE;
@@ -186,7 +186,7 @@ protected:
 		const Operand& left, const Operand& right)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const Operand compared = derived.Temp(LowU8());
+		const Operand compared = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = compared.id;
 		compare.op = operation;
@@ -620,7 +620,7 @@ protected:
 	Operand AtomicTruthValue(const Operand& value, const LowType& type)
 	{
 		Derived& derived = static_cast<Derived&>(*this);
-		const Operand result = derived.Temp(LowU8());
+		const Operand result = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = result.id;
 		compare.op = LOW_OP_NE;
@@ -902,7 +902,7 @@ protected:
 			store.second = derived.LowerValue(children[3], LowPtr());
 			derived.Emit(store);
 			const Operand round_trip = derived.Convert(narrowed, wide);
-			const Operand overflowed = derived.Temp(LowU8());
+			const Operand overflowed = derived.Temp(LowI64());
 			Instruction compare(Instruction::CMP);
 			compare.dest = overflowed.id;
 			compare.op = LOW_OP_NE;
@@ -1012,7 +1012,7 @@ protected:
 		if (source.kind == TYPE_MEMBER_POINTER &&
 			derived.program_.types.IsFunction(source.child))
 			truth_value = derived.Convert(value, LowU64(), false);
-		const Operand boolean = derived.Temp(LowU8());
+		const Operand boolean = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = boolean.id;
 		compare.op = LOW_OP_NE;
@@ -1022,13 +1022,7 @@ protected:
 			derived.FloatingOperand("0.0", truth_value.type) :
 			Operand(0, truth_value.type);
 		derived.Emit(compare);
-		const Operand result = derived.Temp(target);
-		Instruction copy(Instruction::COPY);
-		copy.dest = result.id;
-		copy.type = target;
-		copy.first = boolean;
-		derived.Emit(copy);
-		return result;
+		return derived.Convert(boolean, target, false);
 	}
 
 	bool IsClassValueType(TypeId type) const
@@ -1208,7 +1202,7 @@ protected:
 			derived.NewLabel("basecast_adjust"));
 		const BlockId end_block = derived.AddBlock(
 			derived.NewLabel("basecast_end"));
-		const Operand is_null = derived.Temp(LowU8());
+		const Operand is_null = derived.Temp(LowI64());
 		Instruction compare(Instruction::CMP);
 		compare.dest = is_null.id;
 		compare.op = LOW_OP_EQ;

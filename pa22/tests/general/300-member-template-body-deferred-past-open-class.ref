@@ -20,7 +20,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t12 = index i8 [projection=field] %t11, 4
     %t13 = load i32 %t12
     %t14 = cmp ne i32 %t13, 2
-    %t15 = convert zext i32 u8 %t14
+    %t15 = convert trunc i32 i64 %t14
     return i32 %t15
 }
 function @box_node___demand(%this : ptr, %dst : ptr [pass=reference], %src : ptr [pass=reference]) -> void [binding=weak, object=_ZN3boxI4nodeE6demandERS0_RKS0_] {
@@ -38,7 +38,7 @@ function @box_node___demand(%this : ptr, %dst : ptr [pass=reference], %src : ptr
     call void @box_node___assign(%t1, %t2, %t3)
     return void
 }
-function @box_node___assign(%this : ptr, %dst : ptr [pass=reference], %src : ptr [pass=reference]) -> void [binding=weak, object=_ZN3boxI4nodeE6assignIS0_EEvRT_RKS3_] {
+function @box_node___assign(%this : ptr, %dst : ptr [pass=reference], %src : ptr [pass=reference]) -> void [binding=weak, object=_ZN3boxI4nodeE6assignIS0_EEvRT_RKS2_] {
   slot $this : ptr
   slot $dst : ptr
   slot $src : ptr
@@ -67,4 +67,14 @@ function @node__operator_(%this : ptr, %other : ptr [pass=reference]) -> ptr [un
     store i32 %t3, %t5
     %t6 = load ptr $this
     return ptr %t6
+}
+function @box_node___operator_(%this : ptr, %other : ptr [pass=reference]) -> ptr [unwind=no, binding=weak, object=_ZN3boxI4nodeEaSERKS1_] {
+  slot $this : ptr
+  slot $other : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %other, $other
+    %t1 = load ptr $this
+    return ptr %t1
 }

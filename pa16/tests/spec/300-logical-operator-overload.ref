@@ -13,9 +13,10 @@ function @operator__(%lhs : ptr [pass=reference], %rhs : ptr [pass=reference]) -
     %t6 = load i32 %t5
     %t7 = binary add i32 %t3, %t6
     %t8 = cmp eq i32 %t7, 3
-    return u8 %t8
+    %t9 = convert trunc u8 i64 %t8
+    return u8 %t9
 }
-function @operator____ov2(%lhs : ptr [pass=reference], %rhs : ptr [pass=reference]) -> u8 [binding=strong, object=_ZooRK5LogicS1_] {
+function @operator____sym2(%lhs : ptr [pass=reference], %rhs : ptr [pass=reference]) -> u8 [binding=strong, object=_ZooRK5LogicS1_] {
   slot $lhs : ptr
   slot $rhs : ptr
 
@@ -30,7 +31,8 @@ function @operator____ov2(%lhs : ptr [pass=reference], %rhs : ptr [pass=referenc
     %t6 = load i32 %t5
     %t7 = binary add i32 %t3, %t6
     %t8 = cmp eq i32 %t7, 4
-    return u8 %t8
+    %t9 = convert trunc u8 i64 %t8
+    return u8 %t9
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $one : obj<4x4>
@@ -60,7 +62,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_4:
     %t13 = addr $one
     %t14 = addr $three
-    %t15 = call u8 @operator____ov2(%t13, %t14)
+    %t15 = call u8 @operator____sym2(%t13, %t14)
     %t16 = cmp ne i64 %t15, 0
     store i64 %t16, $land__2
     jump ^land_end_6

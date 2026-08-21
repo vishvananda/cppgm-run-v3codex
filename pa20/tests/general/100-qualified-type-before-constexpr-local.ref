@@ -16,6 +16,6 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t4 = index u32 [projection=array_element] %t3, 2
     %t5 = load u32 %t4
     %t6 = cmp ne u32 %t5, 3
-    %t7 = convert zext i32 u8 %t6
+    %t7 = convert trunc i32 i64 %t6
     return i32 %t7
 }

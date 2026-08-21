@@ -22,7 +22,8 @@ function @both(%lhs : f64, %rhs : i32) -> u8 [binding=strong, object=_Z4bothdi] 
 
   block ^land_end_3:
     %t5 = load i64 $land__1
-    return u8 %t5
+    %t6 = convert trunc u8 i64 %t5
+    return u8 %t6
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $guard : i32

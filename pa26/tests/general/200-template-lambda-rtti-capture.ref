@@ -1,6 +1,6 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
 
-global @__typeinfo_name__class___lambda_has_lambda_rtti__int_t25_27 [storage=readonly, binding=weak, object=_ZTSZ15has_lambda_rttiIiEiT_EUlvE_] = {
+global @__typeinfo_name__class___lambda_has_lambda_rtti__int_t25_27 [binding=weak, object=_ZTSZ15has_lambda_rttiIiEiT_EUlvE_] = {
   i8 90
   i8 49
   i8 53
@@ -33,7 +33,7 @@ global @__typeinfo_name__class___lambda_has_lambda_rtti__int_t25_27 [storage=rea
   i8 95
   i8 0
 }
-global @__rtti_class___lambda_has_lambda_rtti__int_t25_27 [storage=readonly, binding=weak, object=_ZTIZ15has_lambda_rttiIiEiT_EUlvE_] = {
+global @__rtti_class___lambda_has_lambda_rtti__int_t25_27 [binding=weak, object=_ZTIZ15has_lambda_rttiIiEiT_EUlvE_] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__class___lambda_has_lambda_rtti__int_t25_27
 }
@@ -69,6 +69,6 @@ function @has_lambda_rtti(%value : i32) -> i32 [binding=weak, object=_Z15has_lam
     %t3 = addr @__rtti_class___lambda_has_lambda_rtti__int_t25_27
     %t4 = addr @__rtti_class___lambda_has_lambda_rtti__int_t25_27
     %t5 = cmp eq ptr %t3, %t4
-    %t6 = convert zext i32 u8 %t5
+    %t6 = convert trunc i32 i64 %t5
     return i32 %t6
 }

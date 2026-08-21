@@ -1,6 +1,6 @@
-declare global @__external_rtti_vtable____class_type_info [binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
+declare global @__external_rtti_vtable____class_type_info [role=rtti_class, binding=strong, object=_ZTVN10__cxxabiv117__class_type_infoE]
 
-declare function @__external_runtime____cxa_bad_typeid() -> void [effects=readnone, return=noreturn, linkage=c, binding=strong, object=__cxa_bad_typeid]
+declare function @__external_runtime____cxa_bad_typeid() -> void [return=noreturn, role=bad_typeid, linkage=c, binding=strong, object=__cxa_bad_typeid]
 
 global @__typeinfo_name__struct_base [binding=weak, object=_ZTS4base] = {
   i8 52
@@ -10,12 +10,10 @@ global @__typeinfo_name__struct_base [binding=weak, object=_ZTS4base] = {
   i8 101
   i8 0
 }
-
 global @__rtti_struct_base [binding=weak, object=_ZTI4base] = {
   ptr addr @__external_rtti_vtable____class_type_info + 16
   ptr addr @__typeinfo_name__struct_base
 }
-
 global @base__vtable [binding=weak, object=_ZTV4base] = {
   i64 0
   ptr addr @__rtti_struct_base
@@ -31,7 +29,6 @@ function @select(%__param0 : obj<1x1>, %value : ptr [pass=reference]) -> ptr [bi
     %t1 = load ptr $value
     return ptr %t1
 }
-
 function @probe(%value : ptr [pass=reference]) -> i32 [binding=strong, object=_Z5probeR4base] {
   slot $value : ptr
   slot $argobj__1 : obj<1x1>
@@ -55,10 +52,9 @@ function @probe(%value : ptr [pass=reference]) -> i32 [binding=strong, object=_Z
     %t7 = load ptr %t6
     %t8 = addr @__rtti_struct_base
     %t9 = cmp eq ptr %t7, %t8
-    %t10 = convert zext i32 u8 %t9
+    %t10 = convert trunc i32 i64 %t9
     return i32 %t10
 }
-
 function @argument__argument(%this : ptr) -> void [binding=weak, object=_ZN8argumentC1Ev] {
   slot $this : ptr
 
@@ -66,7 +62,6 @@ function @argument__argument(%this : ptr) -> void [binding=weak, object=_ZN8argu
     store ptr %this, $this
     return void
 }
-
 function @base__key(%this : ptr) -> i32 [binding=weak, object=_ZN4base3keyEv] {
   slot $this : ptr
 
@@ -74,3 +69,4 @@ function @base__key(%this : ptr) -> i32 [binding=weak, object=_ZN4base3keyEv] {
     store ptr %this, $this
     return i32 0
 }
+alias object _ZN8argumentC2Ev = @argument__argument

@@ -13,7 +13,6 @@ function @make_pair(%value : i64) -> obj<16x8> [binding=strong, object=_Z9make_p
     call void @Pair__Pair(%t1, %t2, %t4)
     return obj<16x8> $retobj__1
 }
-
 function @read(%value : ptr [pass=reference], %__param1 : ptr [pass=reference]) -> i64 [binding=strong, object=_Z4readRK4PairRK5Guard] {
   slot $value : ptr
   slot $__param1 : ptr
@@ -34,7 +33,6 @@ function @read(%value : ptr [pass=reference], %__param1 : ptr [pass=reference]) 
     %t10 = binary add i64 %t6, %t9
     return i64 %t10
 }
-
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $first : u8
   slot $result : i64
@@ -117,10 +115,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_10:
     %t18 = load i64 $lor__8
-    %t19 = convert zext i32 u8 %t18
+    %t19 = convert trunc i32 i64 %t18
     return i32 %t19
 }
-
 function @Pair__Pair(%this : ptr, %a : i64, %b : i64) -> void [binding=weak, object=_ZN4PairC1Ell] {
   slot $this : ptr
   slot $a : i64
@@ -140,7 +137,6 @@ function @Pair__Pair(%this : ptr, %a : i64, %b : i64) -> void [binding=weak, obj
     store i64 %t4, %t6
     return void
 }
-
 function @Guard__Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardC1Ev] {
   slot $this : ptr
 
@@ -152,7 +148,6 @@ function @Guard__Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardC1Ev]
     store i32 %t3, @trace
     return void
 }
-
 function @Guard___Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardD1Ev] {
   slot $this : ptr
 
@@ -164,3 +159,6 @@ function @Guard___Guard(%this : ptr) -> void [binding=weak, object=_ZN5GuardD1Ev
     store i32 %t3, @trace
     return void
 }
+alias object _ZN4PairC2Ell = @Pair__Pair
+alias object _ZN5GuardC2Ev = @Guard__Guard
+alias object _ZN5GuardD2Ev = @Guard___Guard

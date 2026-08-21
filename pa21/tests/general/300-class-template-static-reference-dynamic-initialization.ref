@@ -1,25 +1,25 @@
-global @holder_value___instance : ptr [binding=weak, object=_ZN6holderI5valueE8instanceE] = zero
-global @__local_static__function_symbol_5f5a33676574493576616c75654552545f76__decl0__stored [binding=weak, object=@__local_static__function_symbol_5f5a33676574493576616c75654552545f76__decl0__stored] = {
+global @__local_static__function_symbol_5f5a33676574493576616c75654552545f76__decl0__stored [binding=weak] = {
   i32 7
 }
+global @__cppgm_class_template_identity_0_0_0__instance : ptr [binding=weak, object=_ZN6holderI5valueE8instanceE] = zero
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
-    %t1 = load ptr @holder_value___instance
+    %t1 = load ptr @__cppgm_class_template_identity_0_0_0__instance
     %t2 = index i8 [projection=field] %t1, 0
     %t3 = load i32 %t2
     %t4 = cmp ne i32 %t3, 7
-    %t5 = convert zext i32 u8 %t4
+    %t5 = convert trunc i32 i64 %t4
     return i32 %t5
 }
-function @get__ov2() -> ptr [binding=weak, object=_Z3getI5valueERT_v] {
+function @get() -> ptr [binding=weak, object=_Z3getI5valueERT_v] {
   block ^entry:
     %t1 = addr @__local_static__function_symbol_5f5a33676574493576616c75654552545f76__decl0__stored
     return ptr %t1
 }
 function @__cppgm_init() -> void [role=init, binding=internal] {
   block ^entry:
-    %t1 = call ptr @get__ov2()
-    store ptr %t1, @holder_value___instance
+    %t1 = call ptr @get()
+    store ptr %t1, @__cppgm_class_template_identity_0_0_0__instance
     return void
 }

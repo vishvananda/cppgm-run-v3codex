@@ -1,6 +1,6 @@
 global @copies : i32 [binding=strong, object=_Z6copies] = zero
 
-function @operatornew(%__param0 : i64, %p : ptr) -> ptr [unwind=no, binding=strong, object=_ZnwmPv] {
+function @operatornew__ov2(%__param0 : i64, %p : ptr) -> ptr [unwind=no, binding=strong, object=_ZnwmPv] {
   slot $__param0 : i64
   slot $p : ptr
 
@@ -23,7 +23,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t4 = addr $memory
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = unary decay ptr %t5
-    %t7 = call ptr @operatornew(%t3, %t6)
+    %t7 = call ptr @operatornew__ov2(%t3, %t6)
     %t8 = addr $input
     call void @source__operatorresult(%t7, %t8)
     store ptr %t7, $output
@@ -45,7 +45,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^lor_end_3:
     %t15 = load i64 $lor__1
-    %t16 = convert zext i32 u8 %t15
+    %t16 = convert trunc i32 i64 %t15
     return i32 %t16
 }
 function @source__operatorresult(%ret : ptr [pass=indirect_result], %this : ptr) -> void [binding=weak, object=_ZN6sourcecv6resultEv] {

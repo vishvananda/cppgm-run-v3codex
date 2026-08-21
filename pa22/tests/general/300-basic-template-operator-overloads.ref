@@ -118,7 +118,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^land_rhs_34:
     %t53 = addr $a
-    %t54 = call i32 @Number_int___operator___ov2(%t53)
+    %t54 = call i32 @Number_int___operator___sym2(%t53)
     %t55 = unary neg i32 5
     %t56 = cmp eq i32 %t54, %t55
     %t57 = cmp ne i64 %t56, 0
@@ -153,7 +153,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_28:
     %t65 = addr $a
     %t66 = addr $b
-    %t67 = call i32 @operator___ov2(%t65, %t66)
+    %t67 = call i32 @operator___sym2(%t65, %t66)
     %t68 = cmp eq i32 %t67, 2
     %t69 = cmp ne i64 %t68, 0
     store i64 %t69, $land__10
@@ -170,7 +170,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_25:
     %t71 = addr $b
     %t72 = addr $a
-    %t73 = call u8 @operator___ov3(%t71, %t72)
+    %t73 = call u8 @operator___sym3(%t71, %t72)
     %t74 = cmp ne i64 %t73, 0
     store i64 %t74, $land__9
     jump ^land_end_27
@@ -186,7 +186,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_22:
     %t76 = addr $a
     %t77 = addr $b
-    %t78 = call u8 @operator___ov4(%t76, %t77)
+    %t78 = call u8 @operator___sym4(%t76, %t77)
     %t79 = cmp ne i64 %t78, 0
     store i64 %t79, $land__8
     jump ^land_end_24
@@ -202,7 +202,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_19:
     %t81 = addr $a
     %t82 = addr $a
-    %t83 = call u8 @operator____ov2(%t81, %t82)
+    %t83 = call u8 @operator____sym2(%t81, %t82)
     %t84 = cmp ne i64 %t83, 0
     store i64 %t84, $land__7
     jump ^land_end_21
@@ -218,7 +218,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_16:
     %t86 = addr $a
     %t87 = addr $a
-    %t88 = call u8 @operator____ov3(%t86, %t87)
+    %t88 = call u8 @operator____sym3(%t86, %t87)
     %t89 = cmp ne i64 %t88, 0
     store i64 %t89, $land__6
     jump ^land_end_18
@@ -234,7 +234,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_13:
     %t91 = addr $a
     %t92 = addr $a
-    %t93 = call u8 @operator____ov4(%t91, %t92)
+    %t93 = call u8 @operator____sym4(%t91, %t92)
     %t94 = cmp ne i64 %t93, 0
     store i64 %t94, $land__5
     jump ^land_end_15
@@ -250,7 +250,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_10:
     %t96 = addr $a
     %t97 = addr $b
-    %t98 = call u8 @operator____ov5(%t96, %t97)
+    %t98 = call u8 @operator____sym5(%t96, %t97)
     %t99 = cmp ne i64 %t98, 0
     store i64 %t99, $land__4
     jump ^land_end_12
@@ -310,6 +310,26 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t114 = load i32 $cond__1
     return i32 %t114
 }
+function @operator__(%stream : ptr [pass=reference], %value : ptr [pass=reference]) -> ptr [binding=weak, object=_ZlsIiER6StreamS1_RK6NumberIT_E] {
+  slot $stream : ptr
+  slot $value : ptr
+
+  block ^entry:
+    store ptr %stream, $stream
+    store ptr %value, $value
+    %t1 = load ptr $stream
+    %t2 = index i8 [projection=field] %t1, 0
+    %t3 = load i32 %t2
+    %t4 = load ptr $value
+    %t5 = index i8 [projection=field] %t4, 0
+    %t6 = load i32 %t5
+    %t7 = binary add i32 %t3, %t6
+    %t8 = load ptr $stream
+    %t9 = index i8 [projection=field] %t8, 0
+    store i32 %t7, %t9
+    %t10 = load ptr $stream
+    return ptr %t10
+}
 function @Number_int___operator__(%this : ptr, %i : i32) -> i32 [binding=weak, object=_ZNK6NumberIiEixEi] {
   slot $this : ptr
   slot $i : i32
@@ -335,7 +355,7 @@ function @Number_int___operator_(%this : ptr) -> i32 [binding=weak, object=_ZNK6
     %t3 = load i32 %t2
     return i32 %t3
 }
-function @Number_int___operator___ov2(%this : ptr) -> i32 [binding=weak, object=_ZNK6NumberIiEngEv] {
+function @Number_int___operator___sym2(%this : ptr) -> i32 [binding=weak, object=_ZNK6NumberIiEngEv] {
   slot $this : ptr
 
   block ^entry:
@@ -345,26 +365,6 @@ function @Number_int___operator___ov2(%this : ptr) -> i32 [binding=weak, object=
     %t3 = load i32 %t2
     %t4 = unary neg i32 %t3
     return i32 %t4
-}
-function @operator__(%stream : ptr [pass=reference], %value : ptr [pass=reference]) -> ptr [binding=weak, object=_ZlsIiER6StreamS1_RK6NumberIT_E] {
-  slot $stream : ptr
-  slot $value : ptr
-
-  block ^entry:
-    store ptr %stream, $stream
-    store ptr %value, $value
-    %t1 = load ptr $stream
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = load i32 %t2
-    %t4 = load ptr $value
-    %t5 = index i8 [projection=field] %t4, 0
-    %t6 = load i32 %t5
-    %t7 = binary add i32 %t3, %t6
-    %t8 = load ptr $stream
-    %t9 = index i8 [projection=field] %t8, 0
-    store i32 %t7, %t9
-    %t10 = load ptr $stream
-    return ptr %t10
 }
 function @operator_(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> i32 [binding=weak, object=_ZplIiET_RK6NumberIS0_ES4_] {
   slot $a : ptr
@@ -382,7 +382,7 @@ function @operator_(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> i32
     %t7 = binary add i32 %t3, %t6
     return i32 %t7
 }
-function @operator___ov2(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> i32 [binding=weak, object=_ZmiIiET_RK6NumberIS0_ES4_] {
+function @operator___sym2(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> i32 [binding=weak, object=_ZmiIiET_RK6NumberIS0_ES4_] {
   slot $a : ptr
   slot $b : ptr
 
@@ -398,7 +398,7 @@ function @operator___ov2(%a : ptr [pass=reference], %b : ptr [pass=reference]) -
     %t7 = binary sub i32 %t3, %t6
     return i32 %t7
 }
-function @operator___ov3(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZltIiEbRK6NumberIT_ES4_] {
+function @operator___sym3(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZltIiEbRK6NumberIT_ES4_] {
   slot $a : ptr
   slot $b : ptr
 
@@ -412,9 +412,10 @@ function @operator___ov3(%a : ptr [pass=reference], %b : ptr [pass=reference]) -
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp lt i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
-function @operator___ov4(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZgtIiEbRK6NumberIT_ES4_] {
+function @operator___sym4(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZgtIiEbRK6NumberIT_ES4_] {
   slot $a : ptr
   slot $b : ptr
 
@@ -428,9 +429,10 @@ function @operator___ov4(%a : ptr [pass=reference], %b : ptr [pass=reference]) -
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp gt i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
-function @operator____ov2(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZleIiEbRK6NumberIT_ES4_] {
+function @operator____sym2(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZleIiEbRK6NumberIT_ES4_] {
   slot $a : ptr
   slot $b : ptr
 
@@ -444,9 +446,10 @@ function @operator____ov2(%a : ptr [pass=reference], %b : ptr [pass=reference]) 
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp le i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
-function @operator____ov3(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZgeIiEbRK6NumberIT_ES4_] {
+function @operator____sym3(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZgeIiEbRK6NumberIT_ES4_] {
   slot $a : ptr
   slot $b : ptr
 
@@ -460,9 +463,10 @@ function @operator____ov3(%a : ptr [pass=reference], %b : ptr [pass=reference]) 
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp ge i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
-function @operator____ov4(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZeqIiEbRK6NumberIT_ES4_] {
+function @operator____sym4(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZeqIiEbRK6NumberIT_ES4_] {
   slot $a : ptr
   slot $b : ptr
 
@@ -476,9 +480,10 @@ function @operator____ov4(%a : ptr [pass=reference], %b : ptr [pass=reference]) 
     %t5 = index i8 [projection=field] %t4, 0
     %t6 = load i32 %t5
     %t7 = cmp eq i32 %t3, %t6
-    return u8 %t7
+    %t8 = convert trunc u8 i64 %t7
+    return u8 %t8
 }
-function @operator____ov5(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZneIiEbRK6NumberIT_ES4_] {
+function @operator____sym5(%a : ptr [pass=reference], %b : ptr [pass=reference]) -> u8 [binding=weak, object=_ZneIiEbRK6NumberIT_ES4_] {
   slot $a : ptr
   slot $b : ptr
 
@@ -487,9 +492,10 @@ function @operator____ov5(%a : ptr [pass=reference], %b : ptr [pass=reference]) 
     store ptr %b, $b
     %t1 = load ptr $a
     %t2 = load ptr $b
-    %t3 = call u8 @operator____ov4(%t1, %t2)
+    %t3 = call u8 @operator____sym4(%t1, %t2)
     %t4 = cmp eq u8 %t3, 0
-    return u8 %t4
+    %t5 = convert trunc u8 i64 %t4
+    return u8 %t5
 }
 function @Dispatcher__operator__(%this : ptr, %__param1 : ptr [pass=reference]) -> i32 [binding=weak, object=_ZNK10DispatcherclI6NumberIiEEEiRKT_] {
   slot $this : ptr

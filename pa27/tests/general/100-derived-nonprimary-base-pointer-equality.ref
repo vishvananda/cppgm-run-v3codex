@@ -91,7 +91,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t23 = load ptr $basecast__3
     %t24 = load ptr $volatile_base_pointer
     %t25 = cmp eq ptr %t23, %t24
-    %t26 = cmp eq u8 %t25, 0
+    %t26 = cmp eq i64 %t25, 0
     branch %t26, ^if_then_13, ^if_else_14
 
   block ^if_then_13:

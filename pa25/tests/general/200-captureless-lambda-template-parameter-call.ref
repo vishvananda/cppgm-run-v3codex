@@ -6,7 +6,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = call i32 @invoke($argobj__1)
     return i32 %t2
 }
-function @invoke(%pred : obj<1x1>) -> i32 [binding=weak, object=_Z6invokeIZ4mainE3$_0EiT_] {
+function @invoke(%pred : obj<1x1>) -> i32 [binding=internal, object=_Z6invokeIZ4mainE3$_0EiT_, object_root=yes] {
   slot $pred : obj<1x1>
   slot $cond__1 : i32
 
@@ -27,7 +27,7 @@ function @invoke(%pred : obj<1x1>) -> i32 [binding=weak, object=_Z6invokeIZ4main
     %t3 = load i32 $cond__1
     return i32 %t3
 }
-function @__lambda_main_t33_38__operator__(%this : ptr, %ch : u8) -> u8 [binding=strong, object=_ZZ4mainENK3$_0clEh, prefer_local=yes] {
+function @__lambda_main_t33_38__operator__(%this : ptr, %ch : u8) -> u8 [binding=internal, object=_ZZ4mainENK3$_0clEh, prefer_local=yes, object_root=yes] {
   slot $this : ptr
   slot $ch : u8
 
@@ -37,5 +37,6 @@ function @__lambda_main_t33_38__operator__(%this : ptr, %ch : u8) -> u8 [binding
     %t1 = load u8 $ch
     %t2 = convert zext i32 u8 %t1
     %t3 = cmp eq i32 %t2, 32
-    return u8 %t3
+    %t4 = convert trunc u8 i64 %t3
+    return u8 %t4
 }

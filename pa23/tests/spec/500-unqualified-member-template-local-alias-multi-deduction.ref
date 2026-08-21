@@ -5,7 +5,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = call ptr @get_compiler()
-    %t2 = call u8 @detail__compiler_traits_char____run(%t1)
+    %t2 = call u8 @detail__compiler___cppgm_class_template_identity_0_0_0___run(%t1)
     branch %t2, ^cond_then_1, ^cond_else_2
 
   block ^cond_then_1:
@@ -20,16 +20,16 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t3 = load i32 $cond__1
     return i32 %t3
 }
-function @detail__compiler_traits_char____run(%this : ptr) -> u8 [binding=weak, object=_ZN6detail8compilerI6traitsIcEE3runEv] {
+function @detail__compiler___cppgm_class_template_identity_0_0_0___run(%this : ptr) -> u8 [binding=weak, object=_ZN6detail8compilerI6traitsIcEE3runEv] {
   slot $this : ptr
 
   block ^entry:
     store ptr %this, $this
     %t1 = load ptr $this
-    call void @detail__compiler_traits_char____insert(%t1)
+    call void @detail__compiler___cppgm_class_template_identity_0_0_0___insert(%t1)
     return u8 0
 }
-function @detail__compiler_traits_char____insert(%this : ptr) -> void [binding=weak, object=_ZN6detail8compilerI6traitsIcEE6insertILb1ELb0EEEvv] {
+function @detail__compiler___cppgm_class_template_identity_0_0_0___insert(%this : ptr) -> void [binding=weak, object=_ZN6detail8compilerI6traitsIcEE6insertILb1ELb0EEEvv] {
   slot $this : ptr
   slot $s : obj<1x1>
   slot $m : obj<1x1>
@@ -44,7 +44,7 @@ function @detail__compiler_traits_char____insert(%this : ptr) -> void [binding=w
     %t3 = load ptr $this
     %t4 = addr $s
     %t5 = addr $m
-    %t6 = call u8 @detail__compiler_traits_char____term(%t3, %t4, %t5)
+    %t6 = call u8 @detail__compiler___cppgm_class_template_identity_0_0_0___term(%t3, %t4, %t5)
     branch %t6, ^while_body_2, ^while_end_3
 
   block ^while_body_2:
@@ -53,7 +53,7 @@ function @detail__compiler_traits_char____insert(%this : ptr) -> void [binding=w
   block ^while_end_3:
     return void
 }
-function @detail__compiler_traits_char____term(%this : ptr, %__param1 : ptr [pass=reference], %__param2 : ptr [pass=reference]) -> u8 [binding=weak, object=_ZN6detail8compilerI6traitsIcEE4termILb1ELb0EEEbR5stateRNS_7matcherIS2_XT_EXT0_EEE] {
+function @detail__compiler___cppgm_class_template_identity_0_0_0___term(%this : ptr, %__param1 : ptr [pass=reference], %__param2 : ptr [pass=reference]) -> u8 [binding=weak, object=_ZN6detail8compilerI6traitsIcEE4termILb1ELb0EEEbR5stateRNS_7matcherIS2_Lb0ELb0EEE] {
   slot $this : ptr
   slot $__param1 : ptr
   slot $__param2 : ptr
@@ -63,5 +63,6 @@ function @detail__compiler_traits_char____term(%this : ptr, %__param1 : ptr [pas
     store ptr %__param1, $__param1
     store ptr %__param2, $__param2
     %t1 = cmp ne i64 0, 0
-    return u8 %t1
+    %t2 = convert trunc u8 i64 %t1
+    return u8 %t2
 }

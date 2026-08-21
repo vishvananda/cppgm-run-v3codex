@@ -10,7 +10,8 @@ function @eq_char(%lhs : i8, %rhs : i8) -> u8 [binding=strong, object=_Z7eq_char
     %t3 = convert sext i32 i8 %t1
     %t4 = convert sext i32 i8 %t2
     %t5 = cmp eq i32 %t3, %t4
-    return u8 %t5
+    %t6 = convert trunc u8 i64 %t5
+    return u8 %t6
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $fn : ptr
