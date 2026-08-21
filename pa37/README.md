@@ -252,8 +252,9 @@ running optimizing transforms.
 - creation of a loop preheader by splitting a single critical entry edge only
   when a small explicit block budget and sufficient invariant work justify it
 - dead-code elimination for unused pure temp-producing instructions
-- removal of unused calls only when the callee is explicitly `readnone`, cannot
-  unwind, and is not `noreturn`
+- removal of unused calls only when the callee is explicitly `readnone` or
+  `readonly`, cannot unwind, and is not `noreturn`; source GNU `const` and
+  `pure` attributes supply those respective effect facts
 - removal of dead local-slot traffic for unused direct slot loads and for
   stores to direct local slots that have no remaining loads, escaping uses, or
   other non-store uses

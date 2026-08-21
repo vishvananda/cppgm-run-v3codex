@@ -320,6 +320,13 @@ enum BindingKind : std::uint8_t
 	BIND_PARAMETER
 };
 
+enum FunctionMemoryEffects : std::uint8_t
+{
+	FUNCTION_EFFECTS_DEFAULT,
+	FUNCTION_EFFECTS_READONLY,
+	FUNCTION_EFFECTS_READNONE
+};
+
 enum LanguageLinkage : std::uint8_t
 {
 	LANGUAGE_LINKAGE_CPP,
@@ -686,6 +693,7 @@ struct BindingRecord
 	LanguageLinkage language_linkage;
 	StorageClass storage_class;
 	AccessKind access;
+	FunctionMemoryEffects function_effects;
 	bool constant : 1, nonthrowing : 1, noreturn_function : 1,
 		unnamed_namespace_linkage : 1, thread_local_storage : 1,
 		non_static_data_member : 1, mutable_member : 1, bit_field : 1,

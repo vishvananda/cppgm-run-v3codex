@@ -68,27 +68,37 @@ void CollectFunctionAbiTags(const SyntaxArena& arena, Program* program,
 	CollectDirectAbiTags(arena, program, declarator, tags);
 }
 
-bool HasDirectFunctionAttribute(const SyntaxArena& arena, NodeId owner,
-	const char* name, const char* alternate)
+std::uint8_t DirectFunctionControlAttributeMask(
+	const SyntaxArena& arena, NodeId owner)
 {
-	if (owner == kNoNode) return false;
+	if (owner == kNoNode) return 0;
+	std::uint8_t result = 0;
 	for (std::uint32_t edge = arena.FirstEdge(owner); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 	{
 		const NodeId attribute = arena.EdgeChild(edge);
 		if (!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_GNU_ATTRIBUTE) &&
 			!arena.IsTag(attribute, ::cppgm::pa10_syntax_detail::STAG_STANDARD_ATTRIBUTE)) continue;
-		const std::string spelling = arena.SemanticPayload(attribute);
-		if (spelling == name || spelling == alternate) return true;
+		const std::string& spelling = arena.SemanticPayload(attribute);
+		if (spelling == "noreturn" || spelling == "__noreturn__")
+			result |= FUNCTION_CONTROL_NORETURN;
+		else if (spelling == "always_inline" || spelling == "__always_inline__")
+			result |= FUNCTION_CONTROL_FORCE_INLINE;
+		else if (spelling == "noinline" || spelling == "__noinline__")
+			result |= FUNCTION_CONTROL_NO_INLINE;
+		else if (spelling == "pure" || spelling == "__pure__")
+			result |= FUNCTION_CONTROL_PURE;
+		else if (spelling == "const" || spelling == "__const__")
+			result |= FUNCTION_CONTROL_CONST;
 	}
-	return false;
+	return result;
 }
 
-bool HasFunctionAttribute(const SyntaxArena& arena, NodeId declaration,
-	const char* name, const char* alternate)
+std::uint8_t CollectFunctionControlAttributeMask(
+	const SyntaxArena& arena, NodeId declaration)
 {
-	if (HasDirectFunctionAttribute(arena, declaration, name, alternate))
-		return true;
+	std::uint8_t result =
+		DirectFunctionControlAttributeMask(arena, declaration);
 	for (std::uint32_t edge = arena.FirstEdge(declaration); edge != kNoEdge;
 		edge = arena.NextEdge(edge))
 	{
@@ -98,11 +108,10 @@ bool HasFunctionAttribute(const SyntaxArena& arena, NodeId declaration,
 				::cppgm::pa10_syntax_detail::STAG_LAMBDA_DECLARATOR) ||
 			arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ))
 		{
-			if (HasDirectFunctionAttribute(arena, child, name, alternate))
-				return true;
+			result |= DirectFunctionControlAttributeMask(arena, child);
 		}
 	}
-	return false;
+	return result;
 }
 
 void MergeAbiTags(Program* program, const std::vector<NameId>& additions,
@@ -138,15 +147,33 @@ void MergeAbiTags(Program* program, const std::vector<NameId>& additions,
 std::uint8_t FunctionControlAttributeMask(
 	const SyntaxArena& arena, NodeId declaration)
 {
-	std::uint8_t result = 0;
-	if (HasFunctionAttribute(arena, declaration,
-		"noreturn", "__noreturn__")) result |= FUNCTION_CONTROL_NORETURN;
-	if (HasFunctionAttribute(arena, declaration,
-		"always_inline", "__always_inline__"))
-		result |= FUNCTION_CONTROL_FORCE_INLINE;
-	if (HasFunctionAttribute(arena, declaration,
-		"noinline", "__noinline__")) result |= FUNCTION_CONTROL_NO_INLINE;
-	return result;
+	return CollectFunctionControlAttributeMask(arena, declaration);
+}
+
+void ApplyFunctionControlAttributes(Program* program,
+	BindingId binding, std::uint8_t attributes)
+{
+	if (!program || binding == kNoBinding || binding >= program->bindings.size())
+		throw std::logic_error("attributed function has no semantic binding");
+	BindingRecord& record = program->bindings[binding];
+	if (record.canonical == kNoBinding ||
+		record.canonical >= program->bindings.size())
+		throw std::logic_error("attributed function has no canonical binding");
+	BindingRecord& canonical = program->bindings[record.canonical];
+	if ((attributes & FUNCTION_CONTROL_NORETURN) != 0)
+		record.noreturn_function = canonical.noreturn_function = true;
+	if ((attributes & FUNCTION_CONTROL_FORCE_INLINE) != 0)
+		record.force_inline = canonical.force_inline = true;
+	if ((attributes & FUNCTION_CONTROL_NO_INLINE) != 0)
+		record.no_inline = canonical.no_inline = true;
+	const FunctionMemoryEffects effects =
+		(attributes & FUNCTION_CONTROL_CONST) != 0 ?
+			FUNCTION_EFFECTS_READNONE :
+		(attributes & FUNCTION_CONTROL_PURE) != 0 ?
+			FUNCTION_EFFECTS_READONLY : FUNCTION_EFFECTS_DEFAULT;
+	if (effects > record.function_effects) record.function_effects = effects;
+	if (effects > canonical.function_effects)
+		canonical.function_effects = effects;
 }
 
 void SemanticAnalyzer::ApplyClassAbiTagAttributes(
@@ -170,14 +197,8 @@ void SemanticAnalyzer::ApplyFunctionAbiTagAttributes(
 		record.canonical >= program_->bindings.size())
 		throw std::logic_error("attributed function has no canonical binding");
 	BindingRecord& canonical = program_->bindings[record.canonical];
-	ApplyFunctionNoreturnAttribute(declaration, binding);
-	ApplyFunctionNoInlineAttribute(*arena_, program_, declaration, binding);
-	if (HasFunctionAttribute(*arena_, declaration,
-		"always_inline", "__always_inline__"))
-	{
-		record.force_inline = true;
-		canonical.force_inline = true;
-	}
+	ApplyFunctionControlAttributes(program_, binding,
+		FunctionControlAttributeMask(*arena_, declaration));
 	std::vector<NameId> tags;
 	CollectFunctionAbiTags(*arena_, program_, declaration, &tags);
 	if (tags.empty()) return;
@@ -185,36 +206,6 @@ void SemanticAnalyzer::ApplyFunctionAbiTagAttributes(
 		&canonical.abi_tag_begin, &canonical.abi_tag_count);
 	record.abi_tag_begin = canonical.abi_tag_begin;
 	record.abi_tag_count = canonical.abi_tag_count;
-}
-
-void SemanticAnalyzer::ApplyFunctionNoreturnAttribute(
-	NodeId declaration, BindingId binding)
-{
-	if (binding == kNoBinding || binding >= program_->bindings.size())
-		throw std::logic_error("attributed function has no semantic binding");
-	BindingRecord& record = program_->bindings[binding];
-	if (record.canonical == kNoBinding ||
-		record.canonical >= program_->bindings.size())
-		throw std::logic_error("attributed function has no canonical binding");
-	if (!HasFunctionAttribute(*arena_, declaration,
-		"noreturn", "__noreturn__")) return;
-	record.noreturn_function = true;
-	program_->bindings[record.canonical].noreturn_function = true;
-}
-
-void ApplyFunctionNoInlineAttribute(const SyntaxArena& arena,
-	Program* program, NodeId declaration, BindingId binding)
-{
-	if (!program || binding == kNoBinding || binding >= program->bindings.size())
-		throw std::logic_error("attributed function has no semantic binding");
-	BindingRecord& record = program->bindings[binding];
-	if (record.canonical == kNoBinding ||
-		record.canonical >= program->bindings.size())
-		throw std::logic_error("attributed function has no canonical binding");
-	if (!HasFunctionAttribute(arena, declaration,
-		"noinline", "__noinline__")) return;
-	record.no_inline = true;
-	program->bindings[record.canonical].no_inline = true;
 }
 
 }

@@ -201,6 +201,9 @@ the supported subset:
 - ordinary host-linked rethrow and advanced catch behavior
 - cleanup and unwind interactions beyond the basic PA31 fact owners
 - foreign catch-all interaction in the tested subset
+- GNU `pure` and `const` attributes on ordinary functions and function
+  templates, preserved on the canonical callable as read-only-memory and
+  no-memory-access effects, respectively
 
 If host link succeeds but the host C++ ABI/runtime behavior is wrong, fix the
 host ABI/runtime lowering, metadata, or object-emission path.
@@ -229,6 +232,11 @@ layer before object emission. Feed semantic facts for the entity into the
 mangler, then let the object writer preserve the final raw symbol name. That
 keeps ABI spelling decisions close to semantic information and avoids a second
 name-construction path in object-format code.
+
+Function effects can be represented as a small ordered enum on the canonical
+semantic binding and copied to the existing LowIR call-boundary metadata. This
+lets redeclarations and template instantiations merge the strongest declared
+effect without a string-keyed side table.
 
 ### After PA33
 

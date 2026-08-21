@@ -107,10 +107,10 @@ void SemanticAnalyzer::AnalyzeFriendFunction(NodeId node,
 			IsNonthrowing(declarators[i], parsed.parameter_scope), false);
 		ConfigureFunctionExceptionSpecification(
 			binding, declarators[i], parsed.parameter_scope);
-		ApplyFunctionNoreturnAttribute(node, binding); ApplyFunctionNoreturnAttribute(declarators[i], binding);
-		ApplyFunctionNoInlineAttribute(*arena_, program_, node, binding);
-		ApplyFunctionNoInlineAttribute(
-			*arena_, program_, declarators[i], binding);
+		ApplyFunctionControlAttributes(program_, binding,
+			FunctionControlAttributeMask(*arena_, node));
+		ApplyFunctionControlAttributes(program_, binding,
+			FunctionControlAttributeMask(*arena_, declarators[i]));
 		FunctionInfo& info = GetMutableFunction(binding);
 		info.constexpr_function = info.constexpr_function || spec.is_constexpr;
 		PublishInlineFunctionFacts(

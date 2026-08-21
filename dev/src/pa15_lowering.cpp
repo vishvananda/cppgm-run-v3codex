@@ -517,6 +517,14 @@ private:
 				&symbol, binding.builtin_function,
 				binding.hosted_memory_intrinsic);
 			pa15_lowering_abi::ApplyNativeRuntimeSymbolMetadata(output_, &symbol);
+			const FunctionMemoryEffects effects =
+				std::max(binding.function_effects,
+					canonical_binding.function_effects);
+			if (effects == FUNCTION_EFFECTS_READNONE)
+				symbol.effects = Symbol::EFFECTS_READNONE;
+			else if (effects == FUNCTION_EFFECTS_READONLY &&
+				symbol.effects != Symbol::EFFECTS_READNONE)
+				symbol.effects = Symbol::EFFECTS_READONLY;
 			RecordLifecycleBaseEntry(identity, found);
 			return found;
 		}
@@ -547,6 +555,13 @@ private:
 		output_.symbols.back().inline_hint = binding.inline_function ||
 			canonical_binding.inline_function;
 		output_.symbols.back().no_inline = binding.no_inline || canonical_binding.no_inline;
+		const FunctionMemoryEffects effects =
+			std::max(binding.function_effects,
+				canonical_binding.function_effects);
+		if (effects == FUNCTION_EFFECTS_READNONE)
+			output_.symbols.back().effects = Symbol::EFFECTS_READNONE;
+		else if (effects == FUNCTION_EFFECTS_READONLY)
+			output_.symbols.back().effects = Symbol::EFFECTS_READONLY;
 		output_.symbol_index.Insert(identity, symbol);
 		RecordLifecycleBaseEntry(identity, symbol);
 		return symbol;

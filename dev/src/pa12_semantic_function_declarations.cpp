@@ -35,9 +35,8 @@ void SemanticAnalyzer::AnalyzeSimpleFunctionDeclaration(NodeId source_declaratio
 		function, declarator, parsed.parameter_scope);
 	ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 	ApplyFunctionAsmLabel(declarator, function);
-	ApplyFunctionNoreturnAttribute(source_declaration, function);
-	ApplyFunctionNoInlineAttribute(
-		*arena_, program_, source_declaration, function);
+	ApplyFunctionControlAttributes(program_, function,
+		FunctionControlAttributeMask(*arena_, source_declaration));
 	ApplyFunctionAbiTagAttributes(item, function);
 	PublishInlineFunctionFacts(
 		function, spec.inline_specifier || spec.is_constexpr);

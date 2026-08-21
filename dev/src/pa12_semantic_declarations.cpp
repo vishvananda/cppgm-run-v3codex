@@ -1,5 +1,6 @@
 #include "pa12_semantic_detail.h"
 #include "hosted_extension_semantic.h"
+#include "pa33_function_control_attributes.h"
 #include <algorithm>
 #include <cctype>
 #include <limits>
@@ -1050,7 +1051,7 @@ void SemanticAnalyzer::AnalyzeClassMember(NodeId node, ScopeId scope,
 				current_language_linkage_, IsNonthrowing(declarator, parsed.parameter_scope));
 			ConfigureFunctionExceptionSpecification(function, declarator, parsed.parameter_scope);
 			ApplyFunctionAsmLabel(declarator, function);
-			ApplyFunctionNoreturnAttribute(node, function); ApplyFunctionAbiTagAttributes(item, function);
+			ApplyFunctionControlAttributes(program_, function, FunctionControlAttributeMask(*arena_, node)); ApplyFunctionAbiTagAttributes(item, function);
 			BindingRecord& binding = program_->bindings[function];
 			ConfigurePlaceholderFunctionReturn(function, parsed, spec.placeholder_cv);
 			binding.member_owner = EntityOf(owner_type);
@@ -2557,6 +2558,7 @@ BindingId SemanticAnalyzer::EnsureDestructorBaseEntry(BindingId destructor,
 	binding.inline_function = source_binding_copy.inline_function;
 	binding.force_inline = source_binding_copy.force_inline;
 	binding.no_inline = source_binding_copy.no_inline;
+	binding.function_effects = source_binding_copy.function_effects;
 	binding.weak_odr = source_binding_copy.weak_odr;
 	binding.weak_symbol = source_binding_copy.weak_symbol;
 	binding.object_output_root = source_binding_copy.object_output_root;
@@ -2606,6 +2608,7 @@ void SemanticAnalyzer::PublishUsingAccess(BindingId alias,
 	target.inline_function = original.inline_function;
 	target.force_inline = original.force_inline;
 	target.no_inline = original.no_inline;
+	target.function_effects = original.function_effects;
 }
 
 void SemanticAnalyzer::ValidateNonmemberOperator(BindingId binding) const

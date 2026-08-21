@@ -59,7 +59,8 @@ bool ConsumeGnuObjectAttributeFacts(
 	{
 		if (*position >= tokens.size() || tokens[*position].Kind() == kEofToken)
 			throw std::runtime_error("unterminated GNU attribute");
-		if (tokens[*position].Kind() != kIdentifierToken)
+		if (tokens[*position].Kind() != kIdentifierToken &&
+			tokens[*position].Kind() != KW_CONST)
 		{
 			++*position;
 			continue;

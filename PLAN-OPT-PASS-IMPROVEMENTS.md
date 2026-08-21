@@ -2049,6 +2049,31 @@ are still high value.  It also corrects the R10i-b conclusion narrowly: the
 measured 8/192 through 24/768 policies remain rejected on the old eligibility
 tree, but their result is not evidence about profitability after R11.
 
+Implementation result (2026-08-21): the exact preprocessed frozen input has 53
+relevant declarations (35 `pure`, 18 `const`), but only 26 plainly attributable
+static calls survive in the O1 object: nine calls each to the red-black-tree
+increment and decrement helpers, four to `std::uncaught_exception`, and four to
+`atoi`.  The `basic_string` destructor and `_M_dispose` chain is not annotated;
+its remaining gap is therefore inlining, constant propagation, scalar
+replacement, and dead cleanup work rather than a missing GNU effect tag.
+
+The source facts were nevertheless retained because the implementation is
+small and general.  A single ordered byte enum on the canonical semantic
+binding maps GNU `pure` to LowIR `readonly` and GNU `const` to `readnone`;
+redeclarations and template patterns merge the stronger fact without a string
+map.  Attribute collection now scans each relevant syntax owner once, and O1
+DCE accepts an unused `readonly`, no-unwind, returning call just as it accepts
+`readnone`.  PA33 source coverage exercises ordinary and template attributes;
+PA37 source and exact LowIR reducers cover propagation, direct/indirect DCE,
+ordinary side effects, and may-unwind retention.
+
+The generated frozen O1 object remains byte-identical to R11e at 1,541,816
+bytes (563,436 `.text*` bytes, 2,728 definitions).  Three O1 host-built runs are
+5.23, 5.15, and 5.13 seconds (5.15-second median); the one O2 structural check
+also retains the prior 1,473,216-byte object, 520,510 text bytes, and 301
+whole-function EH skips.  Serialized LowIR contains 1,432 definitions, 291 of
+them EH-bearing, so region-aware value harvesting remains justified for R11g.
+
 #### R11g. Make value harvesting region-aware where evidence remains
 
 If R11f still shows a material EH-skipped population, replace whole-function
@@ -2321,7 +2346,7 @@ Fill one row for every retained or rejected phase:
 | R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 mixed-region/publication reducers; six exact refs moved; debug/object clean | object -115,568 B, `.text*` -29,705 B, definitions -220, resume 412 to 250 | dense typed region/stack facts per EH function; bounded callee-first waves; no strings | 5,384/5,384; zero fatal, 32 warnings | final combined self/inception lane required | implementation complete; host O1 median 5.12 s; 1,361/8,296 regions removed and 112 facts published |
 | R11d | separate lifecycle publication/retention from explicit `no_inline` | PA28 exact policy; PA30 foreign relocation; PA32 publication; PA37 source/object roundtrip | vs R11c: object +31,880 B, text -1,946 B, +172 definitions; ordinary/late inlines +538/+184 | one transient typed Boolean; reuse native reachability; object-root fact serialized | 5,387/5,387; PA37 object/debug clean; zero fatal | final combined O0/O3 lane required | implementation complete; host O1 median 5.18 s |
 | R11e | proven-no-unwind landing-block inlining | PA37 exact/source; PA30 exception-in-flight runtime | vs R11d: object -29,848 B, text -1,523 B, -105 definitions; basic-string destructor calls -192 | existing dense landing/no-unwind/EH summaries and budgets | 5,392/5,392; PA37 debug clean; zero fatal | final combined lane required | implementation complete; host O1 median 5.12 s |
-| R11f | post-eligibility weighted census, profile, and GNU effects audit | stats/object diagnostics; PA33/37 only for retained `pure`/`const` effects | call-family frequency, rejection, EH definition, effects and MIR movement census | numeric optional stats; names out of band | pending | diagnostic | planned measurement gate; GNU `nothrow` absent from frozen input |
+| R11f | post-eligibility weighted census, profile, and GNU effects audit | PA33 source; PA37 source/DCE positives and negatives | 53 declarations but 26 attributable live calls; 291/1,432 serialized definitions EH-bearing; O1 byte-identical | compact canonical effects enum; single-pass attribute collection | 5,395/5,395; zero fatal | diagnostic | complete; GNU `nothrow` absent and `basic_string` cleanup unannotated |
 | R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 per-pass exact/behavior/scaling; PA38 O2 MIR/behavior/debug | measure each subphase independently | shared compact EH states; bounded barriers and conservative fallback | pending | required for each retained subphase | conditional on R11f |
 | R11h | post-harvest inliner profitability sweep | PA37 only for a retained policy change | exact-self maximum runtime plus object/text/EH deltas | one-variable bounded sweep; no production profiling strings | pending | final retained policy only | conditional on R11a--g |
 | R11i | true EH-region grafting | PA37 only if justified by a residual profiled-hot population | separate genuine live-EH effect from dead-region work | no unbounded retry or private LowIR side channel | pending | required if retained | deferred pending R11f/h residual census |

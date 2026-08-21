@@ -1,0 +1,24 @@
+int observed;
+
+__attribute__((pure)) int read_observed() noexcept
+{
+  return observed;
+}
+
+__attribute__((const)) int square(int value) noexcept
+{
+  return value * value;
+}
+
+template<class T>
+__attribute__((const)) T identity(T value) noexcept
+{
+  return value;
+}
+
+int main()
+{
+  observed = 3;
+  return read_observed() == 3 && square(4) == 16 && identity(5) == 5 ?
+    0 : 1;
+}

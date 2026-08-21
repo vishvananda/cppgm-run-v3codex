@@ -307,23 +307,9 @@ void MergeFunctionTemplateSpecifierFacts(FunctionTemplatePattern* retained,
 void ApplyFunctionTemplateControlAttributes(Program* program,
 	BindingId binding, BindingId canonical, std::uint8_t attributes)
 {
-	BindingRecord& record = program->bindings[binding];
-	BindingRecord& canonical_record = program->bindings[canonical];
-	if ((attributes & FUNCTION_CONTROL_NORETURN) != 0)
-	{
-		record.noreturn_function = true;
-		canonical_record.noreturn_function = true;
-	}
-	if ((attributes & FUNCTION_CONTROL_FORCE_INLINE) != 0)
-	{
-		record.force_inline = true;
-		canonical_record.force_inline = true;
-	}
-	if ((attributes & FUNCTION_CONTROL_NO_INLINE) != 0)
-	{
-		record.no_inline = true;
-		canonical_record.no_inline = true;
-	}
+	if (program->bindings[binding].canonical != canonical)
+		throw std::logic_error("function template control canonical mismatch");
+	ApplyFunctionControlAttributes(program, binding, attributes);
 }
 
 bool EquivalentFunctionTemplateParameterLists(const SyntaxArena& arena,

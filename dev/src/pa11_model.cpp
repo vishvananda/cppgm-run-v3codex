@@ -716,6 +716,7 @@ BindingRecord::BindingRecord()
 		  hosted_memory_intrinsic(hosted_builtin::MEMORY_INTRINSIC_NONE),
 		  operator_literal_suffix(0), language_linkage(LANGUAGE_LINKAGE_CPP),
 	  storage_class(STORAGE_CLASS_NONE), access(ACCESS_PUBLIC),
+	  function_effects(FUNCTION_EFFECTS_DEFAULT),
 	  constant(false), nonthrowing(false), noreturn_function(false),
 	  unnamed_namespace_linkage(false),
 	  thread_local_storage(false),

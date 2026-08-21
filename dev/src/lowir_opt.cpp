@@ -926,7 +926,8 @@ bool call_is_removable(const Instruction & ins,
   FunctionBoundaryMetadata boundary = ins.call_boundary;
   if(ins.first.kind == Operand::OP_GLOBAL && boundaries.known[ins.first.symbol])
     boundary = boundaries.values[ins.first.symbol];
-  return boundary.effects == lowir_model::CFXM_READNONE &&
+  return (boundary.effects == lowir_model::CFXM_READNONE ||
+          boundary.effects == lowir_model::CFXM_READONLY) &&
     boundary.unwind == lowir_model::CUM_NO &&
     boundary.returns != lowir_model::CRM_NORETURN;
 }

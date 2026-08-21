@@ -429,7 +429,6 @@ private:
 	void ApplyVariableObjectAttributes(NodeId declaration, BindingId binding);
 	void ApplyClassAbiTagAttributes(NodeId declaration, EntityId entity);
 	void ApplyFunctionAbiTagAttributes(NodeId declaration, BindingId binding);
-	void ApplyFunctionNoreturnAttribute(NodeId declaration, BindingId binding);
 	void ApplyFunctionAsmLabel(NodeId declarator, BindingId binding);
 	std::uint32_t MakeVariableDeclarationDump(TypeId type, NameId name,
 		BindingId binding, bool local, bool has_initializer,

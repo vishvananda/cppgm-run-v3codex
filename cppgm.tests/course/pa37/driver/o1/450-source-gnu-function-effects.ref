@@ -1,0 +1,16 @@
+declare function @readonly_value(%arg0 : ptr) -> i32 [effects=readonly, unwind=no, linkage=c, binding=strong]
+declare function @readnone_value(%arg0 : i32) -> i32 [effects=readnone, unwind=no, linkage=c, binding=strong]
+declare function @ordinary_value(%arg0 : i32) -> i32 [unwind=no, linkage=c, binding=strong]
+declare function @potentially_throwing_value() -> i32 [effects=readonly, linkage=c, binding=strong]
+
+function @use_effects(%value : i32) -> i32 [binding=strong, object=_Z11use_effectsi] {
+  slot $value : i32
+
+  block ^entry:
+    store i32 %value, $value
+    %t7 = call i32 @potentially_throwing_value()
+    %t8 = load i32 $value
+    %t9 = call i32 @ordinary_value(%t8)
+    %t10 = load i32 $value
+    return i32 %t10
+}
