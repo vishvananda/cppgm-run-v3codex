@@ -6,8 +6,8 @@ struct Scope {
 struct Analyzer {
   int lookup_functions(int base)
   {
-    auto collect = [&]() {
-      auto visit = [&](Scope &current) {
+    auto collect = [&]() __attribute__((noinline, used)) {
+      auto visit = [&](Scope &current) __attribute__((noinline, used)) {
         return base + current.value;
       };
       Scope scope(5);

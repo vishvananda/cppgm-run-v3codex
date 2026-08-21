@@ -116,7 +116,7 @@ function @Range__begin(%this : ptr) -> obj<8x8> [binding=weak, object=_ZN5Range5
     copyobj 8x8 %t8, %t7
     return obj<8x8> $retobj__1
 }
-function @__lambda_main_t132_137__operator__(%this : ptr, %r : ptr [pass=reference]) -> i32 [binding=internal, object=_ZZ4mainENK3$_0clER5Range, prefer_local=yes, object_root=yes] {
+function @__lambda_main_t132_137__operator__(%this : ptr, %r : ptr [pass=reference]) -> i32 [binding=internal, object=_ZZ4mainENK3$_0clER5Range, prefer_local=yes] {
   slot $this : ptr
   slot $r : ptr
   slot $__begin1 : obj<8x8>

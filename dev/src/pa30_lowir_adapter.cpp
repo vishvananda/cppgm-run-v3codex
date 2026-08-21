@@ -1,6 +1,7 @@
 #include "pa30_lowir_adapter.h"
 
 #include "decimal_spelling.h"
+#include "function_demand_reason.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -373,6 +374,16 @@ void AdaptBoundaryFacts(const Symbol& source,
 	if (source.noreturn) boundary->returns = lowir_model::CRM_NORETURN;
 }
 
+bool HasNonCallDemand(const Symbol& source)
+{
+	using namespace pa12_semantic_detail;
+	const std::uint16_t call_mask =
+		FunctionDemandReasonMask(FUNCTION_DEMAND_EVALUATED_USE) |
+		FunctionDemandReasonMask(FUNCTION_DEMAND_RETAINED_CALL);
+	return (source.demand_reason_mask &
+		static_cast<std::uint16_t>(~call_mask)) != 0;
+}
+
 void AdaptSymbolFacts(const Symbol& source,
 	lowir_model::SymbolMetadata* symbol,
 	lowir_model::FunctionBoundaryMetadata* boundary)
@@ -386,7 +397,7 @@ void AdaptSymbolFacts(const Symbol& source,
 	symbol->keep_internal_alias = false;
 	symbol->prefer_local_object_binding = source.prefer_local_object_binding;
 	symbol->object_output_root = source.object_output_root ||
-		(source.internal_linkage && source.demand_reason_mask != 0);
+		(source.internal_linkage && HasNonCallDemand(source));
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	symbol->force_inline = source.force_inline;
 	symbol->no_inline = source.no_inline;

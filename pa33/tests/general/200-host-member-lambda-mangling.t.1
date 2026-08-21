@@ -1,7 +1,9 @@
 struct LambdaHostMangle {
   int apply(int base)
   {
-    auto add = [base](int delta) { return base + delta; };
+    auto add = [base](int delta) __attribute__((noinline, used)) {
+      return base + delta;
+    };
     return add(5);
   }
 };

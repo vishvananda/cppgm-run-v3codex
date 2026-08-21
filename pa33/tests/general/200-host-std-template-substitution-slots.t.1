@@ -50,6 +50,7 @@ struct Scope {
 namespace host_substitution_probe {
 namespace {
 template<class Partial>
+__attribute__((noinline, used))
 bool match_like(model::Services & services,
                 model::Scope & scope,
                 const Partial & partial,

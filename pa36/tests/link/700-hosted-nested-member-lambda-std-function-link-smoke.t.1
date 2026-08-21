@@ -8,8 +8,9 @@ struct Scope {
 struct Analyzer {
   int lookup_functions(int base) {
     int result = 0;
-    auto collect = [&]() {
-      std::function<void(Scope &)> visit = [&](Scope & current) {
+    auto collect = [&]() __attribute__((noinline, used)) {
+      std::function<void(Scope &)> visit =
+        [&](Scope & current) __attribute__((noinline, used)) {
         result = base + current.value;
       };
       Scope s{5};

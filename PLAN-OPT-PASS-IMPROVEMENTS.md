@@ -1218,6 +1218,33 @@ medians are 4.979/4.984 seconds (+0.10%).  The focused PA31/PA33/PA37 report
 passes 264/264 and the full report passes 5,354/5,354; the file audit has zero
 fatal findings and 29 advisory warnings.
 
+Rank 10b separates ordinary internal call reachability from independent object
+publication.  The PA30 typed adapter formerly promoted every nonzero semantic
+demand mask on an internal function to `object_root=yes`; evaluated-use and
+retained-call demand therefore survived even after the optimizer removed the
+corresponding typed call edge.  The adapter now excludes only those two call
+reasons.  Address, lifecycle, vtable, static-lifecycle, EH, explicit
+instantiation, ABI, and explicit source roots remain permanent.  This is one
+constant mask test per adapted symbol; the optimizer continues to use its
+existing dense symbol table and typed reachability walk.
+
+Six existing exact O0 LowIR fixtures in PA15, PA17, PA22, and PA25 lose only
+the obsolete `object_root=yes` metadata and were regenerated in place through
+their documented local reference selection.  Seven PA31--PA36 object-symbol
+fixtures that intended to inspect internal mangling now use GNU
+`noinline,used`, matching Clang O3 emission rather than depending on an
+optimizer retaining an otherwise unobservable body.  That exposed and fixed
+lambda-declarator function-control propagation; a PA37 driver reducer checks
+`no_inline=yes` on the synthesized call operator, and a second reducer checks
+that a call-only internal definition disappears after inlining.
+
+Against Rank 10a, the frozen O1 object falls from 2,007,640 to 1,908,944 bytes,
+aggregate text from 597,171 to 585,993 bytes, `.eh_frame` from 71,496 to
+62,696 bytes, and measured local definitions from 1,024 to 712.  Weak and
+strong counts are unchanged.  Six-run interleaved explicit-O1 timing remains
+neutral at 4.990/4.992 seconds (+0.04%).  The full report passes 5,356/5,356
+and the file audit has zero fatal findings and 29 advisory warnings.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1393,7 +1420,8 @@ Fill one row for every retained or rejected phase:
 | R8c | preserve phi predecessor identity when inlining moves a terminal edge | PA37 O1 exact reducer; PA37 normative inlining contract | no intended frozen change while O3 remains leaf-only | typed block IDs; work bounded by the fixed 128-instruction caller budget | 5,347/5,347; zero fatal | not rerun for output-neutral prerequisite | complete, `9fb2b10b` |
 | R9a | canonical source-lowered `cmp` value identity | PA15 normative contract and exact course reducer; PA37 object roundtrip; 147 PA15--PA28 references regenerated in place | frozen O0 +1,432 B; maximum +4,200 B; 6,836,572-byte O3 LowIR exact parse/dump roundtrip | old/new median O0 wall 4.73/4.72 s, user 4.23/4.26 s; maximum wall 5.20/5.20 s, user 4.71/4.69 s; direct compact types, no new pass or text identity | 5,349/5,349; zero fatal, 31 warnings | clean O0: self 19.49 s / inception 153.97 s, timed separately; all matches | complete, `45b15f22` |
 | R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O1 phi-edge reducer; O3 optimized-shape and seven-instruction boundary fixtures; 1x/2x/4x counters | vs leaf-only: object -35,520 B, text -2,106 B, defined functions -95 | exact self A/B median 17.71 to 17.42 s; late wave 51.6 ms; compact cached shape facts | 5,352/5,352; zero fatal | self 19.11 s / inception 73.42 s; 209 objects and final compiler match | complete, broad implementation `3eecc5f4`, retained cap `276a5c5d` |
-| R10a | admit object-named proven-no-unwind callees inside EH regions | PA37 O1 exact + object-roundtrip reducers; PA31 opaque throwing-boundary fixture; PA33 explicit publication roots | O1 object -165,744 B, text -17,692 B, `.eh_frame` -10,560 B, 391 fewer measured function definitions | six-run explicit-O1 A/B median 4.979 to 4.984 s (+0.10%); no new analysis or storage | 5,354/5,354; zero fatal, 29 warnings | final combined lane pending | implementation complete; commit pending |
+| R10a | admit object-named proven-no-unwind callees inside EH regions | PA37 O1 exact + object-roundtrip reducers; PA31 opaque throwing-boundary fixture; PA33 explicit publication roots | O1 object -165,744 B, text -17,692 B, `.eh_frame` -10,560 B, 391 fewer measured function definitions | six-run explicit-O1 A/B median 4.979 to 4.984 s (+0.10%); no new analysis or storage | 5,354/5,354; zero fatal, 29 warnings | final combined lane pending | complete, `8fffcbca` |
+| R10b | stop treating ordinary calls to internal functions as permanent object roots | six PA15/17/22/25 exact refs lose only stale root metadata; seven PA31--PA36 symbol fixtures gain explicit retention; PA37 lambda-control and pruning reducers | vs R10a: object -98,696 B, text -11,178 B, `.eh_frame` -8,800 B, 312 fewer measured local definitions | six-run explicit-O1 A/B median 4.990 to 4.992 s (+0.04%); one constant mask test per symbol | 5,356/5,356; zero fatal, 29 warnings | final combined lane pending | implementation complete; commit pending |
 
 ## Completion criteria
 

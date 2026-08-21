@@ -21,7 +21,7 @@ function @g(%args : i32, %args__pack2 : i8) -> i32 [binding=weak, object=_Z1gIJi
     %t6 = convert trunc i32 i64 %t5
     return i32 %t6
 }
-function @__lambda_g__int__char_t19_24__operator__(%this : ptr, %args2 : i32, %args2__pack2 : i8) -> i64 [binding=internal, object=_ZZ1gIJicEEiDpT_S1_ENKUlicE_clEic, object_root=yes] {
+function @__lambda_g__int__char_t19_24__operator__(%this : ptr, %args2 : i32, %args2__pack2 : i8) -> i64 [binding=internal, object=_ZZ1gIJicEEiDpT_S1_ENKUlicE_clEic] {
   slot $this : ptr
   slot $args2 : i32
   slot $args2__pack2 : i8

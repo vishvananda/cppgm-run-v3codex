@@ -94,6 +94,8 @@ bool HasFunctionAttribute(const SyntaxArena& arena, NodeId declaration,
 	{
 		const NodeId child = arena.EdgeChild(edge);
 		if (arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECLARATOR) ||
+			arena.IsTag(child,
+				::cppgm::pa10_syntax_detail::STAG_LAMBDA_DECLARATOR) ||
 			arena.IsTag(child, ::cppgm::pa10_syntax_detail::STAG_DECL_SPECIFIER_SEQ))
 		{
 			if (HasDirectFunctionAttribute(arena, child, name, alternate))

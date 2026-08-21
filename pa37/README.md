@@ -187,7 +187,8 @@ running optimizing transforms.
   containing its own EH instructions must remain a call even at caller EH
   depth zero
 - preservation of calls to functions marked `no_inline=yes`; source-level GNU
-  `noinline` attributes must reach that LowIR metadata on the driver path
+  `noinline` attributes on named functions and lambda call operators must reach
+  that LowIR metadata on the driver path
 - bottom-up processing of the direct-call graph so an eligible callee is
   simplified before callers decide whether to inline it
 - a deterministic 128-instruction whole-caller inlining budget, charged by
@@ -419,6 +420,10 @@ components once identifies recursive callees and provides a stable callee-first
 order without repeated symbol-name lookup. Use the typed symbol operands and
 metadata already present in LowIR when building the graph and its reachability
 roots; string rendering is only needed when serializing the final program.
+Represent an ordinary call to an internal function with its typed call edge,
+not with a permanent object root.  Reserve object roots for independent
+address, lifecycle, ABI, or explicit-publication requirements so a definition
+can disappear when inlining removes its last call.
 
 Interprocedural argument agreement can reuse that same direct-call graph and
 its dense symbol-to-function table. Store parameter facts in one packed array

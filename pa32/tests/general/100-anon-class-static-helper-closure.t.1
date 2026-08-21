@@ -1,6 +1,6 @@
 namespace {
 struct Box {
-  static int helper(int x)
+  static __attribute__((noinline, used)) int helper(int x)
   {
     return x + 1;
   }

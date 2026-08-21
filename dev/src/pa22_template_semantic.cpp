@@ -451,6 +451,7 @@ ExpressionInfo SemanticAnalyzer::AnalyzeLambdaExpression(NodeId node,
 		BindingRecord& call_binding = program_->bindings[call_operator];
 		call_binding.member_owner = entity;
 		call_binding.access = ACCESS_PUBLIC;
+		ApplyFunctionAbiTagAttributes(node, call_operator);
 		closure.lambda_call_operator = call_operator;
 		FunctionInfo& call = GetMutableFunction(call_operator);
 		call.member_owner = closure_type;

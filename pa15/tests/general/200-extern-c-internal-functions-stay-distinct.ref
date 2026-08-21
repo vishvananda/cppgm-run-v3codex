@@ -1,8 +1,8 @@
-function @a__f() -> i32 [linkage=c, binding=internal, object=f, object_root=yes] {
+function @a__f() -> i32 [linkage=c, binding=internal, object=f] {
   block ^entry:
     return i32 1
 }
-function @b__f() -> i32 [linkage=c, binding=internal, object=f, object_root=yes] {
+function @b__f() -> i32 [linkage=c, binding=internal, object=f] {
   block ^entry:
     return i32 2
 }

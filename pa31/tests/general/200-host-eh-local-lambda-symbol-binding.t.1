@@ -1,6 +1,6 @@
 int main()
 {
-  auto value = []() { return 7; };
+  auto value = []() __attribute__((noinline, used)) { return 7; };
   try
   {
     throw value();

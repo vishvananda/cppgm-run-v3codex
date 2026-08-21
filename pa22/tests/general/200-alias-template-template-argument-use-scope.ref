@@ -7,7 +7,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t4 = convert trunc i32 i64 %t3
     return i32 %t4
 }
-function @__cppgm_class_template_7_0__go() -> void [binding=internal, object=_ZN3RunIJN12_GLOBAL__N_11XIN1n1BEvEENS1_INS2_1BENS2_1PEEEEE2goEv, object_root=yes] {
+function @__cppgm_class_template_7_0__go() -> void [binding=internal, object=_ZN3RunIJN12_GLOBAL__N_11XIN1n1BEvEENS1_INS2_1BENS2_1PEEEEE2goEv] {
   slot $a : obj<8x4>
   slot $discard__1 : obj<1x1>
   slot $discard__2 : obj<1x1>

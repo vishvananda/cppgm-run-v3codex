@@ -7,7 +7,9 @@ struct HostedLocalLambdaStdFunctionLinkSmoke
 
   void init(int base)
   {
-    callback = [base](int value) { return base + value; };
+    callback = [base](int value) __attribute__((noinline, used)) {
+      return base + value;
+    };
   }
 };
 

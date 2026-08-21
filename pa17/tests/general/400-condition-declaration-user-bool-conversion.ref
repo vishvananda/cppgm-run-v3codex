@@ -1,4 +1,4 @@
-function @f() -> u8 [binding=internal, object=_Z1fv, object_root=yes] {
+function @f() -> u8 [binding=internal, object=_Z1fv] {
   slot $direct : obj<4x4>
 
   block ^entry:
