@@ -1486,47 +1486,58 @@ EH-bearing, 343 explicit-no-inline, and 89 recursive definitions.  Scheduling
 is therefore a material problem, but repeated called-once waves alone cannot
 close the GCC/Clang gap.
 
-#### R10i-a. Publish compact summaries and converge nonrecursive callers
+#### R10i-a. Publish cleaned nonrecursive bodies in one graph traversal
 
-Extend the existing typed `InlineCallGraph`; do not introduce a second graph,
-rendered-name key, or alternate LowIR.  Each function publishes one compact
-summary containing current instruction and block counts, leaf/callful and
-return shape, EH shape, direct-call count, incoming-call count, and a version.
-Linkage, address observation, object-root, `no_inline`, boundary, and SCC facts
-remain in their existing dense owners rather than being duplicated as text or
-sets.
+The reducer changed the required scheduler design.  In the current ordinary
+policy, recursive targets are rejected and every direct edge cloned into a
+caller points to a descendant of the cloned callee.  The existing CSR
+callee-first order has therefore already visited every possible target before
+it visits the caller.  A versioned reverse-caller queue would duplicate that
+order without exposing another acyclic candidate.
 
-Seed a deduplicated dirty-function queue in stable callee-first SCC order.
-For each dequeued nonrecursive function:
+Retain the existing graph and dense cached instruction-count, leaf/callful,
+and EH-shape arrays.  For each nonrecursive function in stable callee-first
+order:
 
-1. evaluate call sites from O(1) callee summaries and retain the existing
-   monotonic per-call, per-caller, and translation-unit budgets;
-2. perform a bounded batch of successful inlines;
-3. simplify, DCE, and repair CFG only from inserted instructions and affected
-   successor blocks, using `FunctionAnalysis` invalidation rather than a full
-   function or program retry;
-4. republish the summary when an eligibility or profitability fact changes;
-   and
-5. enqueue only reverse callers whose last-seen callee version is stale.
+1. evaluate calls from those O(1) facts under the existing monotonic six/128
+   policy;
+2. perform the bounded inline batch;
+3. if the body changed, immediately run local simplification, effect-aware
+   DCE, and CFG cleanup on that function; and
+4. republish its dense shape facts before advancing to its callers.
 
-Successful cloning updates exact direct-use counts.  Definition-removing body
-transfer moves child edges without increasing their counts; ordinary cloning
-adds them, and local DCE decrements calls that disappear.  Reverse scheduling
-adjacency may remain a conservative append-only typed list within the phase,
-because a stale dependency causes at most a deduplicated no-change visit.
-Initial SCC membership remains a conservative recursion partition while edges
-are deleted; rebuild it only at the existing prune boundary if the recursive
-tail below is enabled.  This keeps the common bound proportional to input IR,
-cloned instructions, changed call edges, and dirty cleanup, rather than
-functions multiplied by a fixed round count.
+The cleanup is reached through a direct non-owning function pointer and typed
+caller context, not `std::function`, strings, or a heap-allocated pass object.
+Each ordinary function is expanded once.  A changed function receives at most
+one additional full local cleanup in the common acyclic path, so this remains
+proportional to input IR plus cloned instructions.  The existing candidate
+checks make one-block and no-simplification bodies cheap.  A finer inserted-
+instruction worklist would require new def-use maintenance but produced no
+frozen output benefit at the retained policy, so defer it until a profile
+shows repeated local cleanup rather than inlining policy is material.
 
-Disabled telemetry remains output-neutral.  Add counters for initial and
-repeat queue visits, summary publications and meaningful version changes,
-reverse dependency notifications, stale no-change visits, inline batches,
-dirty instructions/blocks processed by cleanup, edge additions/removals, and
-budget exhaustion.  A 1x/2x/4x nested-wrapper ladder must scale with source
-and successful clone size; it must not show one whole-program scan per wrapper
-depth.
+The PA37 reducer places both parents before an eight-level wrapper chain.  The
+old pass leaves two calls to the top wrapper because its newly constant dead
+branch is not removed before the parents are considered.  The retained pass
+inlines both parents in the same traversal and removes all unreachable calls.
+The 1x/2x/4x ladder is exactly linear in work: functions 11/22/44, input
+instructions 109/218/436, late call visits 6/12/24, late calls 6/12/24,
+simplifier and DCE runs 43/86/172, and CFG runs 24/48/96.  Frozen O1 output is
+byte-identical under six/128.  Two host-built ABBA blocks measure candidate
+wall +0.58%, user +0.64%, and RSS +0.73%, all within the 3% noise gate.
+Two exact-self ABBA blocks measure candidate median wall 19.315 versus 19.530
+seconds (-1.1%), user 18.750 versus 18.945 seconds (-1.0%), and RSS +0.6%; the
+paired medians are wall -2.53%, user -2.36%, and RSS +1.01%.  A first clean
+self build ran during host contention at 21.03 seconds wall and 501.00 seconds
+user; the immediate clean repeat is 19.31 seconds wall, 465.31 seconds user,
+43.90 seconds system, and 228,472 KiB peak RSS, matching the R10h range.  The
+full report passes 5,366/5,366 and the audit has zero fatal findings and 32
+warnings.
+
+A reverse-caller worklist remains appropriate only when a later phase changes
+incoming-use eligibility, or after the separately bounded recursive snapshot.
+At that point maintain exact typed edge counts and enqueue only affected
+callers; do not add a generic fixed-point loop to this ordinary acyclic path.
 
 #### R10i-b. Select broader O1 profitability after convergence works
 
@@ -1780,7 +1791,7 @@ Fill one row for every retained or rejected phase:
 | R10f | stats-only post-pruning retained-call census | no output fixture movement; fixed typed bucket contract recorded in this plan | 1,162 discardable definitions / 4,134 calls / 76,460 instructions; 656 become single-use after pruning, 600 at most 160 instructions | one compact CSR rebuild only with a `Stats` sink; fixed dense counters, no strings | PA37/PA38 178/178; zero fatal, 29 warnings | diagnostic only | complete, `02025dcf` |
 | R10g | one post-prune definition-removing cascade plus wide-compare corrective | PA37 exact cascade and normative contract; PA29 structural, predicate-behavior, and pressure reducers; PA29 Design Note | vs R10e/f O1: object -17,856 B, text +5,373 B, `.eh_frame` -1,708 B, 64 fewer definitions; 59 bodies transferred | exact O1-self A/B wall 17.48 to 17.78 s (+1.7%), user 16.93 to 17.27 s (+2.0%); one compact CSR graph and dense caller byte; no fixed point | 5,362/5,362; zero fatal, 32 warnings | O1 self 20.11 s / 462.13 user / 228,468 KiB; final 32-way lane pending | complete, backend `2e6be885`, inliner `b53bbde4` |
 | R10h | admit EH-control-free callees inside an active caller EH region; atomic-load pressure corrective | PA37 O1 inherited-EH and direct-throw exact reducers; PA29 atomic-load behavior/MIR pressure reducer; PA29/PA37 normative and Design Notes | vs R10g: object -38,984 B, text +10,868 B, `.eh_frame` -3,956 B, LSDA +167 B, 135 fewer definitions; 96 post-prune bodies / 5,465 instructions | host A/B wall -0.36%, user +0.20%, RSS -0.91%; exact-self raw medians wall +0.9%, user +0.8%, RSS -0.1%; no new graph or string-keyed state | 5,365/5,365; zero fatal, 32 warnings | O1 self 19.49 s / 463.69 user / 228,696 KiB; final combined 32-way inception pending | complete, backend `6e4c9fb8`, inliner `a8062b96` |
-| R10i-a | cleanup-coupled incremental nonrecursive convergence | PA37 O1 deep-chain, cleanup-transition, definition-order, notification, budget, and 1x/2x/4x reducers; no PA13 change | establish six/128 output baseline, then record bodies/calls/text/EH | typed summary versions and deduplicated reverse-caller queue; work proportional to input + clones + dirty cleanup | pending | final retained phase only | planned |
+| R10i-a | cleanup-coupled nonrecursive convergence in one callee-first traversal | PA37 O1 eight-level cleanup-transition reducer with adversarial definition order and two parents; existing deterministic budget fixture retained; no PA13 change | frozen O1 byte-identical at six/128; reducer removes two retained wrapper calls and all newly unreachable calls | host A/B wall +0.58%, user +0.64%, RSS +0.73%; exact-self wall -1.1%, user -1.0%, RSS +0.6%; 1x/2x/4x work counters exactly linear; no queue/string state | 5,366/5,366; zero fatal, 32 warnings | repeat O1 self 19.31 s / 465.31 user / 228,472 KiB; final combined 32-way inception pending | complete, `96aad279` |
 | R10i-b | broader measured O1 profitability | PA37 exact boundary fixture at retained cap; update intentionally moved O1 fixtures in place | sweep callful caps 8/12/18/24 and caller budgets 192/320/512/768; select by generated-self runtime plus code shape | immutable exact-O1-self A/B; reject >3% compile-time/RSS regression without approved larger runtime win | pending | final retained phase only | planned after R10i-a |
 | R10i-c | bounded external-to-recursive-SCC tail | PA37 self/mutual same-SCC negatives, external positive, retained recursive call, and wrapper propagation | retain only if recursive census/profile and generated-self A/B show material value | stable external-call snapshot; cloned recursive calls never enter snapshot; subsequent queue excludes recursive targets | pending | final retained phase only | planned measurement; may be rejected |
 
