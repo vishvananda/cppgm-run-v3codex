@@ -1,7 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--7 and the final generated-compiler correctives are
-implemented; the final self/inception gate remains
+Status: active; Ranks 1--8 are implemented and gated; the matching-level
+matrix and Rank 9 correctness analysis are active
 
 Date: 2026-08-21
 
@@ -1013,7 +1013,99 @@ On the frozen host compile this wave inlines 1,007 calls and clones 6,272
 optimized instructions in 47.6 ms; unreachable-edge cleanup removes 74 edges
 in 1.6 ms. The O3 object falls from 2,116,672 bytes before these two parts to
 2,056,816 bytes, while a first host compile remains 5.16 seconds. Exact
-generated-self and inception results are pending the final committed lane.
+generated-self and inception results are recorded below.
+
+## Rank 8 final gate and matching-level matrix
+
+The exact clean Rank 8 tree through commit `ad7a88d6` passes the full report at
+5,346/5,346 and the PA39 file audit with zero fatal findings (31 warnings). A
+fresh 32-worker O3 lane, timed as two separate commands against one explicit
+object root, gives:
+
+| Stage | Wall | Aggregate user | System | Peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| `cppgm++-self` | 19.27 s | 462.99 s | 43.68 s | 229,004 KiB |
+| inception compare | 74.64 s | 2,014.92 s | 64.68 s | 230,788 KiB |
+| combined | 93.91 s | 2,477.91 s | 108.36 s | 230,788 KiB |
+
+All inception objects and the final compiler match. The apparent regression
+from about 1:11 to about 1:30 was a stage-labeling error: the latter figure
+included the roughly 19-second self build. The inception-only delta from the
+remembered 71 seconds to 74.64 seconds is not evidence of a regression under
+the intermittently loaded host; repeat only the stage-only measurement when a
+candidate otherwise warrants another expensive inception run.
+
+A separate fresh O0-generated 32-worker lane also passes every object and the
+final comparison. Its combined self plus inception command takes 170.90
+seconds wall, 4,759.18 seconds user, 132.80 seconds system, and 229,768 KiB
+peak RSS. File modification times place about 19 seconds in self construction
+and about 151 seconds in the inception work; future O0 evidence must use two
+explicit timers so that approximation is not mistaken for a measured split.
+
+Twelve immutable compilers were then built from the same source: GCC, Clang
+with GCC's libstdc++ headers and library, and cppgm++ self output, each at
+O0/O1/O2/O3. Three frozen compiles were interleaved by round under the same
+host conditions. The frozen invocation intentionally has no `-O` flag, so it
+exercises the compiler's required default maximum pipeline while the table
+compares the quality of compiler executables built at matching levels.
+
+| Executable producer | Build level | Median wall | Median user | Median system | Peak RSS | Frozen object |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| GCC | O0 | 37.16 s | 36.45 s | 0.63 s | 361,492 KiB | 2,056,816 B |
+| Clang + libstdc++ | O0 | 30.75 s | 30.17 s | 0.57 s | 360,400 KiB | 2,057,056 B |
+| cppgm++ self | O0 | 35.46 s | 34.91 s | 0.59 s | 360,768 KiB | 2,056,816 B |
+| GCC | O1 | 6.01 s | 5.49 s | 0.47 s | 361,360 KiB | 2,056,816 B |
+| Clang + libstdc++ | O1 | 5.71 s | 5.21 s | 0.49 s | 361,280 KiB | 2,057,056 B |
+| cppgm++ self | O1 | 20.23 s | 19.60 s | 0.58 s | 362,396 KiB | 2,056,816 B |
+| GCC | O2 | 5.61 s | 5.05 s | 0.48 s | 358,768 KiB | 2,056,816 B |
+| Clang + libstdc++ | O2 | 5.61 s | 5.06 s | 0.50 s | 361,560 KiB | 2,057,056 B |
+| cppgm++ self | O2 | 18.73 s | 18.18 s | 0.54 s | 362,908 KiB | 2,056,816 B |
+| GCC | O3 | 5.21 s | 4.71 s | 0.50 s | 361,796 KiB | 2,056,816 B |
+| Clang + libstdc++ | O3 | 5.41 s | 4.90 s | 0.50 s | 363,036 KiB | 2,057,056 B |
+| cppgm++ self | O3 | 17.73 s | 17.12 s | 0.53 s | 361,708 KiB | 2,056,816 B |
+
+GCC and cppgm++ produce byte-identical frozen objects at all four executable
+build levels. Clang's object is deterministic and 240 bytes larger because of
+the already understood host-configuration-family difference. The generated
+O0 compiler beats GCC O0 but not Clang O0. At O1--O3 the generated compiler is
+about 3.3--3.5 times slower than either host-built peer, so the under-15-second
+objective remains open.
+
+Flat `cpu-clock` profiles and symbol census identify two related gaps. The GCC
+O1 compiler defines 4,822 functions (1,110 weak, 2,340 global, and 1,372
+local), while the cppgm++ O1 compiler defines 36,857 (15,523 weak, 2,338
+global, and 18,996 local). The cppgm++ profile spends time in separately
+emitted trivial accessors such as `basic_string::size`,
+`FixedQueue::operator[]`, `TypeTable::Get`, and `SyntaxArena::IsTag`. In
+`Lexer::Peek`, GCC O1 emits 259 bytes and GCC O3 187 bytes; cppgm++ emits 617
+and 624 bytes respectively. The generated body retains a 144-byte frame,
+repeated address construction and loads, boolean materialization, and a call
+to `FixedQueue::operator[]` where GCC operates directly on fields.
+
+The existing O3 late wave rejects 13,277 encountered calls because the
+optimized callee is not a single-block leaf. A bounded experiment admitted
+small non-EH acyclic callees under the existing 40-instruction callee and
+128-instruction caller limits. It exposed two correctness prerequisites:
+
+1. Moving the caller tail into an inline continuation failed to retarget
+   successor phi predecessor identities. PA37 now has an active O1 reducer,
+   and shared typed edge repair is committed as `9fb2b10b` after a clean
+   5,347/5,347 report and zero-fatal audit.
+2. Even the unmodified `ad7a88d6` compiler can emit frozen O3 LowIR that fails
+   an O0 parse/dump roundtrip: a `phi u8` receives a comparison temporary,
+   although PA13 specifies every `cmp` result as canonical `i64`. The direct
+   in-memory path masks this source-lowering type mismatch. Broader late
+   inlining makes the mismatch reach additional CFG and native-lowering
+   shapes, including a missing-temporary failure.
+
+The broad inliner experiment is therefore rejected in its current form. Rank
+9a first aligns every source-lowered comparison value with the existing PA13
+contract, adds the earliest PA15 source reducer and PA37 serialized/object
+roundtrip coverage, and measures fixture movement. Rank 9b then re-evaluates
+small callful and multi-block late inlining with typed values, valid phi edges,
+the existing hard growth budgets, a 1x/2x/4x work counter, and a new PA37 O3
+contract fixture. Only after that gate should later scalar replacement and
+copy propagation be expanded inside the newly inlined callers.
 
 ## Fixture and public-contract policy
 
@@ -1186,7 +1278,10 @@ Fill one row for every retained or rejected phase:
 | R6 | IPA argument/scalar work | PA37 O2 exact transform and object behavior; existing PA32 linkage negatives | object -14,880 B, text -2,478 B, decoded -549, relocations -67; +10 defined symbols | wall +0.29%, user +0.22%, RSS +0.10%; IPA 22.5 ms and 0.74 MiB scratch | 5,323/5,323; PA37 debug clean; zero fatal | final lane deferred until compiler stops changing | complete, `41f679cc` |
 | R7 | bounded full unrolling; distinct O3 | PA37 exact/source/object/debug O3; PA38 structural/behavior/debug O3; help and READMEs; no PA13 change | frozen O3 unchanged at 2,127,200 B; synthetic runtime -53%, text 352 to 348 B | wall +0.39%, user +0.21%, RSS +0.04%; 1x/2x/4x visits linear | 5,331/5,331; PA37/PA38 debug clean; zero fatal | final lane pending | implementation complete, `3bc622b7` |
 | R8a | complete small-object scalar replacement and scalar residual copies | PA37 O2 exact/object; one existing optimized fixture moved; PA29 Design Notes, no MIR change | frozen O3 2,116,672 B; generated-self frozen O0 30.15 to 18.30 s | host compile neutral; bounded dense facts and union/find | 5,338/5,338; zero fatal | self 19.57 s / inception pending | complete, `a30c982f` |
-| R8b | typed unreachable-edge cleanup and bounded late O3 leaf inlining | PA13 role/scaffold/ownership tests; PA16 existing producer fixture; PA37 O1 direct/source and O3 late reducer | frozen O3 2,116,672 to 2,056,816 B; 1,007 late calls removed | unreachable 1.6 ms; late inline 47.6 ms; host wall 5.16 s | final report/audit pending | final lane pending | implementation complete; commit pending |
+| R8b | typed unreachable-edge cleanup and bounded late O3 leaf inlining | PA13 role/scaffold/ownership tests; PA16 existing producer fixture; PA37 O1 direct/source and O3 late reducer | frozen O3 2,116,672 to 2,056,816 B; 1,007 late calls removed | unreachable 1.6 ms; late inline 47.6 ms; host wall 5.16 s | 5,346/5,346; zero fatal | self 19.27 s / inception 74.64 s, timed separately; all matches | complete, `9816f4f6`; generated-code correctives `93467e1c`, `f5fe92e1`, `ad7a88d6` |
+| R8c | preserve phi predecessor identity when inlining moves a terminal edge | PA37 O1 exact reducer; PA37 normative inlining contract | no intended frozen change while O3 remains leaf-only | typed block IDs; work bounded by the fixed 128-instruction caller budget | 5,347/5,347; zero fatal | not rerun for output-neutral prerequisite | complete, `9fb2b10b` |
+| R9a | canonical source-lowered `cmp` value identity | earliest PA15 source lowering plus PA37 serialization/object roundtrip; fixture movement to be measured | pending | direct typed LowIR; no text repair or hot string identity | pending | pending | active prerequisite |
+| R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O3 exact/behavior/work-counter fixtures | pending | retain 40-instruction callee and 128-instruction caller caps; pending measured policy | pending | pending | blocked on R9a |
 
 ## Completion criteria
 
