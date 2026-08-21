@@ -225,6 +225,13 @@ value. It must additionally support these conservative loop transforms:
   ordinary read/write calls, atomic operations, and exception regions, while
   allowing explicitly `readnone` and `readonly` calls and immutable globals
   to retain the facts their metadata permits
+- eliminating a fully redundant pure expression at an ordinary join by
+  replacing the join computation with a `phi` of the available predecessor
+  values
+- eliminating a partially redundant expression only when the missing
+  predecessor has a single successor, every operand is available there, and
+  moving the operation cannot introduce a trap or other observable behavior;
+  insertion is limited to 64 expressions and 64 phis per function
 - recognizing simple `i64` induction variables with one latch and constant
   initial value, step, and bound
 - canonicalizing an inverted counted-loop exit and replacing multiplication
@@ -312,7 +319,8 @@ directory's LowIR validation mode.
 PA37 does not require:
 
 - input programs to arrive in SSA form
-- global value numbering or partial redundancy elimination
+- PRE that requires critical-edge splitting, speculative trapping operations,
+  or an unbounded insertion/fixed-point schedule
 - alias-driven aggressive dead-store elimination
 - loop unrolling, peeling, vectorization, or loop transformations beyond the
   conservative motion and counted-loop rules described above
@@ -342,6 +350,12 @@ same dominance frontiers can represent stores and conservative unknown-memory
 barriers without copying a dense location table into every block. Hash keys
 should contain typed IDs, offsets, types, and version numbers rather than
 rendered LowIR text.
+
+For expression PRE, index occurrences by the same typed expression key used
+for ordinary value reuse. Dominator queries can find values available on each
+incoming edge without copying expression maps into every block. Keep
+availability probes and inserted instructions explicitly bounded, and skip a
+candidate when a safe insertion would require splitting a critical edge.
 
 CFG, dominator, and natural-loop facts can share one per-function analysis
 owner with an explicit invalidation epoch. Dense block IDs, compact successor

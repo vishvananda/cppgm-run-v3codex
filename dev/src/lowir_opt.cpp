@@ -7,6 +7,7 @@
 #include "lowir_loop_opt.h"
 #include "lowir_loop_simplify.h"
 #include "lowir_memory_gvn.h"
+#include "lowir_pre.h"
 #include "lowir_slot_forward_o1.h"
 #include "lowir_slot_promotion.h"
 
@@ -2659,6 +2660,12 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     hoist_loop_invariants(&program, &function, &analysis, level, stats);
     if(level >= 2 &&
        memory_gvn.eliminate_redundant_loads(&function, &analysis, stats)) {
+      timed_function_pass(simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+      timed_dce(&function, boundaries, stats);
+    }
+    if(level >= 2 &&
+       eliminate_partial_redundancies(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
       timed_dce(&function, boundaries, stats);

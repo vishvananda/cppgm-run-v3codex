@@ -89,6 +89,16 @@ struct Stats
   std::size_t memory_gvn_unknown_barriers = 0;
   std::size_t memory_gvn_eh_skips = 0;
   std::size_t memory_gvn_budget_skips = 0;
+  std::size_t pre_runs = 0;
+  std::size_t pre_candidates = 0;
+  std::size_t pre_full_redundancies = 0;
+  std::size_t pre_partial_redundancies = 0;
+  std::size_t pre_inserted_expressions = 0;
+  std::size_t pre_inserted_phis = 0;
+  std::size_t pre_availability_probes = 0;
+  std::size_t pre_critical_edge_skips = 0;
+  std::size_t pre_eh_skips = 0;
+  std::size_t pre_budget_skips = 0;
   std::size_t dce_runs = 0;
   std::size_t dce_changes = 0;
   std::size_t dce_candidate_skips = 0;
@@ -132,6 +142,7 @@ struct Stats
   std::uint64_t inline_nanoseconds = 0;
   std::uint64_t simplify_nanoseconds = 0;
   std::uint64_t memory_gvn_nanoseconds = 0;
+  std::uint64_t pre_nanoseconds = 0;
   std::uint64_t dce_nanoseconds = 0;
   std::uint64_t cfg_nanoseconds = 0;
   std::uint64_t slot_nanoseconds = 0;

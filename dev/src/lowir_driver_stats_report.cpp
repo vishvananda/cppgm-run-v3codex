@@ -107,6 +107,16 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.memory_gvn_unknown_barriers
 		 << " memory_gvn_eh_skips=" << stats.memory_gvn_eh_skips
 		 << " memory_gvn_budget_skips=" << stats.memory_gvn_budget_skips
+		 << " pre_runs=" << stats.pre_runs
+		 << " pre_candidates=" << stats.pre_candidates
+		 << " pre_full_redundancies=" << stats.pre_full_redundancies
+		 << " pre_partial_redundancies=" << stats.pre_partial_redundancies
+		 << " pre_inserted_expressions=" << stats.pre_inserted_expressions
+		 << " pre_inserted_phis=" << stats.pre_inserted_phis
+		 << " pre_availability_probes=" << stats.pre_availability_probes
+		 << " pre_critical_edge_skips=" << stats.pre_critical_edge_skips
+		 << " pre_eh_skips=" << stats.pre_eh_skips
+		 << " pre_budget_skips=" << stats.pre_budget_skips
 		 << " dce_runs=" << stats.dce_runs
 		 << " dce_changes=" << stats.dce_changes
 		 << " dce_candidate_skips=" << stats.dce_candidate_skips
@@ -166,6 +176,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " inline_ns=" << stats.inline_nanoseconds
 		 << " simplify_ns=" << stats.simplify_nanoseconds
 		 << " memory_gvn_ns=" << stats.memory_gvn_nanoseconds
+		 << " pre_ns=" << stats.pre_nanoseconds
 		 << " dce_ns=" << stats.dce_nanoseconds
 		 << " cfg_ns=" << stats.cfg_nanoseconds
 		 << " slot_ns=" << stats.slot_nanoseconds

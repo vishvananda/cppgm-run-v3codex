@@ -1,0 +1,63 @@
+function @full_redundancy(%value : i64, %choose : i64) -> i64 [no_inline=yes] {
+  block ^entry:
+    branch %choose, ^left, ^right
+
+  block ^left:
+    %left_value = binary mul i64 %value, 3
+    jump ^join
+
+  block ^right:
+    %right_value = binary mul i64 %value, 3
+    jump ^join
+
+  block ^join:
+    %selected = phi i64 [^left: %left_value, ^right: %right_value]
+    %redundant = phi i64 [^left: %left_value, ^right: %right_value]
+    %result = binary add i64 %selected, %redundant
+    return i64 %result
+}
+function @partial_redundancy(%value : i64, %choose : i64) -> i64 [no_inline=yes] {
+  block ^entry:
+    branch %choose, ^left, ^right
+
+  block ^left:
+    %left_value = binary and i64 %value, 255
+    jump ^join
+
+  block ^right:
+    %marker = binary xor i64 %value, 1
+    %t0 = binary and i64 %value, 255
+    jump ^join
+
+  block ^join:
+    %side = phi i64 [^left: %left_value, ^right: %marker]
+    %masked = phi i64 [^left: %left_value, ^right: %t0]
+    %result = binary xor i64 %masked, %side
+    return i64 %result
+}
+function @keep_critical_edge(%value : i64, %choose : i64) -> i64 [no_inline=yes] {
+  block ^entry:
+    branch %choose, ^left, ^join
+
+  block ^left:
+    %left_value = binary and i64 %value, 127
+    jump ^join
+
+  block ^join:
+    %selected = phi i64 [^entry: 0, ^left: %left_value]
+    %masked = binary and i64 %value, 127
+    %result = binary add i64 %selected, %masked
+    return i64 %result
+}
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    %full = call i64 @full_redundancy(5, 1)
+    %full_failed = cmp ne i64 %full, 30
+    %partial = call i64 @partial_redundancy(123, 0)
+    %partial_failed = cmp ne i64 %partial, 1
+    %critical = call i64 @keep_critical_edge(5, 0)
+    %critical_failed = cmp ne i64 %critical, 5
+    %first = binary or i64 %full_failed, %partial_failed
+    %failed = binary or i64 %first, %critical_failed
+    return i64 %failed
+}
