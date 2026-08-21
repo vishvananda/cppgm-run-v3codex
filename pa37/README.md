@@ -124,8 +124,9 @@ For successful runs:
 - `-O2` applies all `-O1` work and additional conservative slot-promotion
   optimizations.
 - `-O3` applies all `-O2` work and bounded full unrolling of eligible small
-  constant-trip loops, then performs one bounded late inlining wave for leaf
-  functions made small by the preceding scalar and control-flow passes.
+  constant-trip loops, then performs one bounded late inlining wave for small
+  acyclic functions made compact by the preceding scalar and control-flow
+  passes.
 
 The assignment grades the optimized LowIR shape as well as behavior
 preservation. The goal is a deterministic optimization stage, not elapsed-time
@@ -300,6 +301,15 @@ most 4,096 loop-body instructions per translation unit. If any proof or budget
 is unavailable, the loop remains unchanged. `-O2` does not perform this full
 unrolling.
 
+After these transforms, `-O3` rebuilds the typed direct-call graph once and
+may inline an additional nonrecursive function whose optimized body has at
+most 40 instructions and contains no exception-handling instructions. The
+callee may have multiple blocks or contain calls. This late wave has a fresh
+128-instruction budget for each caller, charged by the optimized instruction
+count of every inlined body. It must continue to preserve `no_inline`,
+variadic, exception-region, unwind, and externally visible call-site
+restrictions from ordinary inlining.
+
 Slot-value forwarding and promotion remain an `-O2` responsibility. At `-O1`,
 a live load whose value is consumed along multiple successor paths must remain
 unless an ordinary non-slot propagation rule independently proves each use.
@@ -455,10 +465,12 @@ rewrite. A single function scan and a translation-unit instruction counter are
 sufficient; no loop-level fixed point or rendered-name map is needed.
 
 The late O3 inlining wave may rebuild the typed direct-call graph once after
-local optimization. Restrict it to single-block leaf functions, charge each
-optimized body against a fresh bounded caller budget, and revisit only callers
-that changed. This permits scalar replacement and CFG cleanup to expose small
-accessors without an unbounded optimizer fixed point.
+local optimization. Admit only nonrecursive bodies within the explicit size
+limit, charge each optimized body against a fresh bounded caller budget, and
+revisit only callers that changed. Multi-block substitution can reuse the
+ordinary typed block, value, slot, return-merge, and phi-edge machinery. This
+permits scalar replacement and CFG cleanup to expose small accessors and
+wrappers without an unbounded optimizer fixed point.
 
 For unreachable-edge cleanup, build one dense bitmap indexed by `SymbolId` from
 the program's typed role metadata, then mark target blocks by `BlockId` within

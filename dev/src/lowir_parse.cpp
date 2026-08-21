@@ -1338,7 +1338,9 @@ private:
         throw ParseError("duplicate phi predecessor");
       if(expected == predecessors.end() ||
          !expected->second.count(predecessor_name))
-        throw ParseError("phi label is not a predecessor");
+        throw ParseError("phi label " + predecessor_name +
+          " is not a predecessor of " + block_name + " in function @" +
+          lowir_symbol_name(program_, function.symbol));
       validate_operand(value, all_values, slots);
       if(value.kind == Operand::OP_SLOT || value.kind == Operand::OP_LABEL)
         throw ParseError("phi incoming operand is not a scalar value");

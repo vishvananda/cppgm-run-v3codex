@@ -20,10 +20,10 @@ std::size_t inline_o1_calls(
   std::vector<unsigned char> * rewritten_symbols = 0,
   Stats * stats = 0);
 
-// At O3, revisit only leaf bodies after scalar replacement and other local
+// At O3, revisit small acyclic bodies after scalar replacement and other local
 // passes have exposed their final compact shape.  The late wave has its own
 // bounded caller budget and charges the optimized body size.
-std::size_t inline_o3_optimized_leaf_calls(
+std::size_t inline_o3_optimized_calls(
   lowir_model::LowirProgram & program,
   const InlineCallGraph & call_graph,
   std::vector<unsigned char> * rewritten_symbols = 0,

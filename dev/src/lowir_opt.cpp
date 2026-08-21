@@ -2798,7 +2798,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       stats->o3_late_inline_direct_edges = late_call_graph.edges.size();
     std::vector<unsigned char> late_rewritten_symbols(
       program.symbol_names.size(), 0);
-    const std::size_t late_rewrites = inline_o3_optimized_leaf_calls(
+    const std::size_t late_rewrites = inline_o3_optimized_calls(
       program, late_call_graph, &late_rewritten_symbols, stats);
     if(stats) {
       stats->rewrites += late_rewrites;

@@ -1,0 +1,36 @@
+declare function @observe(%value : i64) -> void [unwind=no]
+
+function @callful(%value : i64) -> void [unwind=no, binding=strong] {
+  block ^entry:
+    call void @observe(%value)
+    return void
+}
+function @choose(%condition : i64, %value : i64) -> i64 [binding=strong] {
+  block ^entry:
+    branch %condition, ^selected, ^zero
+
+  block ^selected:
+    return i64 %value
+
+  block ^zero:
+    return i64 0
+}
+function @main(%condition : i64, %value : i64) -> i64 [role=entry] {
+  slot $__o1inl1__retmerge__1 : i64
+
+  block ^entry:
+    call void @observe(%value)
+    branch %condition, ^__o1inl1__selected, ^__o1inl1__zero
+
+  block ^__o1inl1__selected:
+    store i64 %value, $__o1inl1__retmerge__1
+    jump ^__o1inl1__cont
+
+  block ^__o1inl1__zero:
+    store i64 0, $__o1inl1__retmerge__1
+    jump ^__o1inl1__cont
+
+  block ^__o1inl1__cont:
+    %selected = load i64 $__o1inl1__retmerge__1
+    return i64 %selected
+}

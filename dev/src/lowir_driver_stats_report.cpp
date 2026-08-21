@@ -59,6 +59,8 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.o3_unroll_peak_scratch_bytes
 		 << " o3_late_inline_direct_edges="
 		 << stats.o3_late_inline_direct_edges
+		 << " o3_late_inline_call_visits="
+		 << stats.o3_late_inline_call_visits
 		 << " o3_late_inline_calls=" << stats.o3_late_inline_calls
 		 << " o3_late_inline_cloned_instructions="
 		 << stats.o3_late_inline_cloned_instructions

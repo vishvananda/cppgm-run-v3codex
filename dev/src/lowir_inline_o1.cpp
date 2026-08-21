@@ -359,14 +359,14 @@ public:
           const std::vector<unsigned char> & prepared_oversized_symbols,
           const std::vector<std::size_t> & original_instruction_counts,
           std::vector<unsigned char> * rewritten_symbols,
-          Stats * stats, bool optimized_leaf_only = false)
+          Stats * stats, bool optimized_late_wave = false)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
       call_graph_(call_graph),
       no_unwind_(program->symbol_names.size(), 0),
       prepared_oversized_symbols_(prepared_oversized_symbols),
       original_instruction_counts_(original_instruction_counts),
-      optimized_leaf_only_(optimized_leaf_only), rewrites_(0)
+      optimized_late_wave_(optimized_late_wave), rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
@@ -376,7 +376,7 @@ public:
       contains_eh_[i] = contains_eh(program_.functions[i]);
       instruction_counts_[i] = instruction_count(program_.functions[i]);
     }
-    if(stats_ && !optimized_leaf_only_) stats_->inline_input_instructions =
+    if(stats_ && !optimized_late_wave_) stats_->inline_input_instructions =
       std::accumulate(instruction_counts_.begin(), instruction_counts_.end(),
         static_cast<std::size_t>(0));
     infer_no_unwind();
@@ -448,7 +448,7 @@ private:
   std::vector<unsigned char> state_, contains_eh_;
   std::vector<std::size_t> instruction_counts_;
   std::vector<std::size_t> remaining_inline_budget_;
-  bool optimized_leaf_only_;
+  bool optimized_late_wave_;
   std::unordered_map<std::size_t, std::vector<std::size_t> >
     eh_blocked_callers_;
   std::size_t rewrites_;
@@ -555,15 +555,12 @@ private:
       return false;
     }
     if(instruction_counts_[target] > 40 &&
-       !callee_function.metadata.prefer_local_object_binding) {
+       (optimized_late_wave_ ||
+        !callee_function.metadata.prefer_local_object_binding)) {
       if(record_stats && stats_) ++stats_->inline_reject_callee_size;
       return false;
     }
-    if(optimized_leaf_only_ && !leaf_inline_shape(callee_function)) {
-      if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
-      return false;
-    }
-    if(!optimized_leaf_only_ &&
+    if(!optimized_late_wave_ &&
        prepared_oversized_symbols_[callee_function.symbol] &&
        (instruction_counts_[target] > 4 ||
         !leaf_inline_shape(callee_function))) {
@@ -600,7 +597,7 @@ private:
 
   bool consume_inline_budget(std::size_t target, std::size_t * remaining)
   {
-    const std::size_t cost = std::max<std::size_t>(optimized_leaf_only_ ?
+    const std::size_t cost = std::max<std::size_t>(optimized_late_wave_ ?
       instruction_counts_[target] :
       std::max(instruction_counts_[target],
         original_instruction_counts_[target]), 1);
@@ -843,6 +840,10 @@ private:
         }
       }
       if(void_call_wrapper) {
+        if(!tail.empty())
+          lowir_phi_edges::rewrite_moved_phi_edges(
+            &caller, tail.back(), caller.blocks[block_index].id,
+            wrapper_continuation_id);
         Block continuation_block;
         continuation_block.id = wrapper_continuation_id;
         continuation_block.instructions = std::move(tail);
@@ -977,6 +978,8 @@ private:
       bool eligible = false;
       if(target != kNoFunction) {
         if(stats_) ++stats_->inline_call_visits;
+        if(stats_ && optimized_late_wave_)
+          ++stats_->o3_late_inline_call_visits;
         eligible = candidate(
           function_index, target, ins, landing, active, true);
       }
@@ -990,7 +993,7 @@ private:
         if(stats_) {
           ++stats_->inline_calls;
           stats_->inline_cloned_instructions += instruction_counts_[target];
-          if(optimized_leaf_only_) {
+          if(optimized_late_wave_) {
             ++stats_->o3_late_inline_calls;
             stats_->o3_late_inline_cloned_instructions +=
               instruction_counts_[target];
@@ -1053,6 +1056,8 @@ private:
         const std::size_t target = callee(ins);
         if(target != kNoFunction) {
           if(stats_) ++stats_->inline_call_visits;
+          if(stats_ && optimized_late_wave_)
+            ++stats_->o3_late_inline_call_visits;
           if(candidate(function_index, target, ins,
                static_cast<std::uint32_t>(
                  program_.functions[function_index].blocks[b].id) <
@@ -1069,6 +1074,11 @@ private:
               ++stats_->inline_calls;
               stats_->inline_cloned_instructions +=
                 instruction_counts_[target];
+              if(optimized_late_wave_) {
+                ++stats_->o3_late_inline_calls;
+                stats_->o3_late_inline_cloned_instructions +=
+                  instruction_counts_[target];
+              }
             }
             continue;
           }
@@ -1101,7 +1111,7 @@ std::size_t inline_o1_calls(
   return inliner.run();
 }
 
-std::size_t inline_o3_optimized_leaf_calls(
+std::size_t inline_o3_optimized_calls(
   LowirProgram & program,
   const InlineCallGraph & call_graph,
   std::vector<unsigned char> * rewritten_symbols,
