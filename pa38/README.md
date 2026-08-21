@@ -13,7 +13,9 @@ The questions for this assignment are:
 
 - can `lowir2native -O1` perform local machine-IR cleanup?
 - can `lowir2native -O2` perform whole-function machine-IR cleanup?
-- can both levels preserve debug metadata and generated program behavior?
+- can `lowir2native -O3` carry the maximum optimization level through the
+  same optimized machine path?
+- can all levels preserve debug metadata and generated program behavior?
 - can the optimized machine-IR path stay reusable by `cppgm++` rather than
   becoming a standalone `lowir2native` shortcut?
 
@@ -58,10 +60,13 @@ PA38 requires these invocations:
 ```sh
 lowir2native -O1 -o <program> <lowirfile>...
 lowir2native -O2 -o <program> <lowirfile>...
+lowir2native -O3 -o <program> <lowirfile>...
 lowir2native -O1 --dump-machine-ir <mirfile> <lowirfile>...
 lowir2native -O2 --dump-machine-ir <mirfile> <lowirfile>...
+lowir2native -O3 --dump-machine-ir <mirfile> <lowirfile>...
 lowir2native -O1 --dump-machine-ir <mirfile> -o <program> <lowirfile>...
 lowir2native -O2 --dump-machine-ir <mirfile> -o <program> <lowirfile>...
+lowir2native -O3 --dump-machine-ir <mirfile> -o <program> <lowirfile>...
 ```
 
 `--help` and `-h` print usage information and exit successfully.
@@ -71,7 +76,7 @@ set the target through the harness environment, but the optimization
 contract is independent of host-specific elapsed time.
 
 `-O0` remains the PA29 baseline. PA38 must preserve that earlier behavior while
-adding the explicit `-O1` and `-O2` backend optimization levels.
+adding the explicit `-O1`, `-O2`, and `-O3` backend optimization levels.
 
 When `cppgm++` later emits native objects or executables at an optimization
 level, it should use this same backend optimization pipeline after PA37 LowIR
@@ -168,7 +173,12 @@ semantic-preserving rewrites where safe:
   optimization
 - recompute final stack reservation from the surviving frame state
 
-Both levels must preserve valid debug metadata. Optimizations may choose to be
+`-O3` must accept the LowIR produced by PA37's maximum optimization level and
+apply all `-O2` machine improvements. PA38 does not require an additional
+O3-only MIR rewrite; the distinct O3 transformation is the PA37 LowIR full
+unroller, and its result must lower through the ordinary serialized MIR path.
+
+All levels must preserve valid debug metadata. Optimizations may choose to be
 more conservative when a rewrite would make source locations misleading.
 
 ### Validation Modes
@@ -192,8 +202,10 @@ make test
 
 - `tests/o1`
 - `tests/o2`
+- `tests/o3`
 - `tests/behavior/o1`
 - `tests/behavior/o2`
+- `tests/behavior/o3`
 
 Run the debug metadata preservation lanes with:
 
@@ -205,6 +217,7 @@ make test-debuginfo
 
 - `tests/debuginfo/o1`
 - `tests/debuginfo/o2`
+- `tests/debuginfo/o3`
 
 These directories are organized by backend role and validation mode, not by
 N3485 source-language clauses.
@@ -213,11 +226,14 @@ N3485 source-language clauses.
   backend cleanup.
 - `tests/o2` runs `lowir2native -O2` over LowIR inputs, repeats the `-O1`
   surface, and adds O2-only layout and frame cleanup cases.
-- `tests/behavior/o1` and `tests/behavior/o2` check successful lowering and
-  generated-program behavior where several valid machine-IR layouts are
-  possible. These tests do not compare a machine-IR oracle.
-- `tests/debuginfo/o1` and `tests/debuginfo/o2` run equivalent machine-IR
-  rewrite cases carrying `!dbg(...)` metadata.
+- `tests/o3` runs `lowir2native -O3` over LowIR already optimized by PA37 and
+  checks that the O2 machine path remains in use.
+- `tests/behavior/o1`, `tests/behavior/o2`, and `tests/behavior/o3` check
+  successful lowering and generated-program behavior where several valid
+  machine-IR layouts are possible. These tests do not compare a machine-IR
+  oracle.
+- `tests/debuginfo/o1`, `tests/debuginfo/o2`, and `tests/debuginfo/o3` run
+  equivalent machine-IR rewrite cases carrying `!dbg(...)` metadata.
 
 For each `.t` test, the harness builds with `--dump-machine-ir` and `-o`,
 records implementation exit status, runs the generated program when the build

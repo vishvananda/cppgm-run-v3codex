@@ -67,6 +67,10 @@ bool is_optimization_level(const string & arg, int & level)
     level = 2;
     return true;
   }
+  if(arg == "-O3") {
+    level = 3;
+    return true;
+  }
   return false;
 }
 

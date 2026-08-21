@@ -1,0 +1,16 @@
+function @loop0() -> i64 [no_inline=yes] {
+  block ^entry:
+    return i64 4
+}
+function @loop1() -> i64 [no_inline=yes] {
+  block ^entry:
+    return i64 4
+}
+function @loop2() -> i64 [no_inline=yes] {
+  block ^entry:
+    return i64 4
+}
+function @loop3() -> i64 [no_inline=yes] {
+  block ^entry:
+    return i64 4
+}

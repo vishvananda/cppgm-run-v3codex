@@ -2,11 +2,11 @@
 
 ## Objective and ownership
 
-The ordinary `cppgm++` compile and link driver will use the highest implemented
-optimization level when no `-O` option is present.  Today that level is 2;
-`-O3` is accepted as an alias for level 2.  Explicit `-O0` remains the PA29
-baseline, but it must travel through the same LowIR preparation and native
-pipeline as every other level.
+The ordinary `cppgm++` compile and link driver uses the highest implemented
+optimization level when no `-O` option is present. The base unification landed
+with level 2; the current PA37 extension raises it to a distinct level 3.
+Explicit `-O0` remains the PA29 baseline, but it must travel through the same
+LowIR preparation and native pipeline as every other level.
 
 PA37 is the primary owner because it introduced optimization-level plumbing,
 the source/LowIR object-equivalence contract, and the shared LowIR optimizer.
@@ -30,7 +30,7 @@ The current driver has two materially different source-object paths:
 | --- | --- | --- | --- |
 | source, no `-O` | raw PA30 adapter result | skipped | level 0 |
 | source, explicit `-O0` | frontend canonicalization plus object normalization | level-0 no-op | level 0 |
-| source, `-O1`/`-O2`/`-O3` | frontend canonicalization plus object normalization | requested level (`-O3` maps to 2) | requested level |
+| source, `-O1`/`-O2`/`-O3` | frontend canonicalization plus object normalization | requested level | requested level |
 | textual `.lowir` | parser normalizes, then driver normalizes again | requested level | requested level |
 | compiler `.o` at link | binary payload is read without the source/text preparation path | not rerun | link invocation level |
 
@@ -189,7 +189,7 @@ Create minimal failures before modifying their owners:
 | --- | --- | --- |
 | binary object loses a derived global-address fact | PA30 | compile to `.o`, relink the payload, and inspect/run an imported address use |
 | source object differs from text-reconstructed object | PA37 | one source-owned root, weak helpers in first-use order, unused declarations, and an ABI alias |
-| omitted `-O` is not the maximum policy | PA37 | byte-compare no flag, `-O2`, and `-O3`; also compare direct source with O0-text-to-default object |
+| omitted `-O` is not the maximum policy | PA37 | byte-compare no flag and `-O3`; also compare direct source with O0-text-to-default object |
 | LowIR optimization behavior depends on frontend-only facts | PA37 | run the same small program from source and handwritten/serialized LowIR at each level |
 | native level selection differs between driver paths | PA38 | compare structural MIR/behavior for explicit maximum and the chosen default surface |
 | a frozen C++ file exposes a language/backend failure | its first language/backend PA | reduce the syntax and semantics there; do not add the first regression only to PA39 |
@@ -318,20 +318,18 @@ guessed.
 
 Introduce one shared driver policy with two independent fields:
 
-- `effective_level`, defaulting to the maximum implemented level (2);
+- `effective_level`, defaulting to the maximum implemented level (3);
 - `was_explicit`, used only for diagnostics/telemetry.
 
-`-O0`, `-O1`, and `-O2` select their matching levels; `-O3` selects level 2
-until a distinct level-3 schedule exists.  The ordinary compile and link paths
-pass the same effective level to PA37 and PA38.  No production branch may test
-`was_explicit`.
+`-O0`, `-O1`, `-O2`, and `-O3` select their matching levels. The ordinary
+compile and link paths pass the same effective level to PA37 and PA38. No
+production branch may test `was_explicit`.
 
 The default flip lands only after the explicit-O2 performance gate is met.
 Then all of these must hold:
 
 ```text
-cppgm++ -c source.cpp        == cppgm++ -c -O2 source.cpp
-cppgm++ -c -O3 source.cpp    == cppgm++ -c -O2 source.cpp
+cppgm++ -c source.cpp        == cppgm++ -c -O3 source.cpp
 emit O0 text -> compile default == direct source compile default
 direct default link behavior == separate default compile/link behavior
 ```

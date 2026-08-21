@@ -3,6 +3,7 @@
 #include "lowir_function_analysis.h"
 #include "lowir_expression_key.h"
 #include "lowir_function_reachability.h"
+#include "lowir_full_unroll_o3.h"
 #include "lowir_inline_o1.h"
 #include "lowir_inline_analysis.h"
 #include "lowir_interprocedural_specialization.h"
@@ -2529,7 +2530,8 @@ bool prepare_for_inlining(Function * function,
 
 void optimize(LowirProgram & program, int level, Stats * stats)
 {
-  if(level < 0 || level > 2) throw std::logic_error("invalid LowIR optimization level");
+  if(level < 0 || level > 3)
+    throw std::logic_error("invalid LowIR optimization level");
   std::chrono::steady_clock::time_point started;
   if(stats) {
     started = std::chrono::steady_clock::now();
@@ -2605,6 +2607,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
           post_cfg_values_changed[i];
   }
   MemoryGVNSession memory_gvn(program);
+  O3UnrollBudget o3_unroll_budget;
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     Function & function = program.functions[i];
     // Keep this an explicit bounded schedule.  A stage is revisited only when
@@ -2682,6 +2685,24 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_dce(&function, boundaries, stats);
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+    }
+    if(level >= 3) {
+      const std::chrono::steady_clock::time_point unroll_started =
+        stats ? std::chrono::steady_clock::now() :
+                std::chrono::steady_clock::time_point();
+      const bool unrolled = fully_unroll_small_loop(
+        &function, &analysis, &o3_unroll_budget, stats);
+      if(stats) stats->o3_unroll_nanoseconds +=
+        static_cast<std::uint64_t>(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now() - unroll_started).count());
+      if(unrolled) {
+        timed_function_pass(simplify_values, &function, stats,
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        timed_dce(&function, boundaries, stats);
+        timed_function_pass(cleanup_cfg, &function, stats,
+          &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+      }
     }
     hoist_loop_invariants(&program, &function, &analysis, level, stats);
     if(level >= 2 &&

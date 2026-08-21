@@ -23,20 +23,26 @@ RDEPDIR = $(OBJ)/release/.d
 DDEPDIR = $(OBJ)/debug/.d
 O1_TEST_ROOT ?= tests/o1
 O2_TEST_ROOT ?= tests/o2
+O3_TEST_ROOT ?= tests/o3
 DEBUGINFO_TEST_ROOT ?= tests/debuginfo
 DEBUGINFO_O1_TEST_ROOT ?= $(DEBUGINFO_TEST_ROOT)/o1
 DEBUGINFO_O2_TEST_ROOT ?= $(DEBUGINFO_TEST_ROOT)/o2
+DEBUGINFO_O3_TEST_ROOT ?= $(DEBUGINFO_TEST_ROOT)/o3
 BEHAVIOR_TEST_ROOT ?= tests/behavior
 BEHAVIOR_O1_TEST_ROOT ?= $(BEHAVIOR_TEST_ROOT)/o1
 BEHAVIOR_O2_TEST_ROOT ?= $(BEHAVIOR_TEST_ROOT)/o2
+BEHAVIOR_O3_TEST_ROOT ?= $(BEHAVIOR_TEST_ROOT)/o3
 COURSE_O1_TEST_ROOT ?= course/pa38/o1
 COURSE_O2_TEST_ROOT ?= course/pa38/o2
+COURSE_O3_TEST_ROOT ?= course/pa38/o3
 COURSE_DEBUGINFO_TEST_ROOT ?= course/pa38/debuginfo
 COURSE_DEBUGINFO_O1_TEST_ROOT ?= $(COURSE_DEBUGINFO_TEST_ROOT)/o1
 COURSE_DEBUGINFO_O2_TEST_ROOT ?= $(COURSE_DEBUGINFO_TEST_ROOT)/o2
+COURSE_DEBUGINFO_O3_TEST_ROOT ?= $(COURSE_DEBUGINFO_TEST_ROOT)/o3
 COURSE_BEHAVIOR_TEST_ROOT ?= course/pa38/behavior
 COURSE_BEHAVIOR_O1_TEST_ROOT ?= $(COURSE_BEHAVIOR_TEST_ROOT)/o1
 COURSE_BEHAVIOR_O2_TEST_ROOT ?= $(COURSE_BEHAVIOR_TEST_ROOT)/o2
+COURSE_BEHAVIOR_O3_TEST_ROOT ?= $(COURSE_BEHAVIOR_TEST_ROOT)/o3
 
 $(shell mkdir -p $(RDEPDIR) $(DDEPDIR) >/dev/null)
 
@@ -83,16 +89,22 @@ test: $(TEST_DEPS)
 	$(call run_native_bucket,$(COURSE_O1_TEST_ROOT),-O1)
 	$(call run_native_bucket,$(O2_TEST_ROOT),-O2)
 	$(call run_native_bucket,$(COURSE_O2_TEST_ROOT),-O2)
+	$(call run_native_bucket,$(O3_TEST_ROOT),-O3)
+	$(call run_native_bucket,$(COURSE_O3_TEST_ROOT),-O3)
 	$(call run_native_bucket,$(BEHAVIOR_O1_TEST_ROOT),-O1)
 	$(call run_native_bucket,$(COURSE_BEHAVIOR_O1_TEST_ROOT),-O1)
 	$(call run_native_bucket,$(BEHAVIOR_O2_TEST_ROOT),-O2)
 	$(call run_native_bucket,$(COURSE_BEHAVIOR_O2_TEST_ROOT),-O2)
+	$(call run_native_bucket,$(BEHAVIOR_O3_TEST_ROOT),-O3)
+	$(call run_native_bucket,$(COURSE_BEHAVIOR_O3_TEST_ROOT),-O3)
 
 test-debuginfo: $(TEST_DEPS)
 	$(call run_native_bucket,$(DEBUGINFO_O1_TEST_ROOT),-O1)
 	$(call run_native_bucket,$(COURSE_DEBUGINFO_O1_TEST_ROOT),-O1)
 	$(call run_native_bucket,$(DEBUGINFO_O2_TEST_ROOT),-O2)
 	$(call run_native_bucket,$(COURSE_DEBUGINFO_O2_TEST_ROOT),-O2)
+	$(call run_native_bucket,$(DEBUGINFO_O3_TEST_ROOT),-O3)
+	$(call run_native_bucket,$(COURSE_DEBUGINFO_O3_TEST_ROOT),-O3)
 
 ref-test:
 ifneq ($(strip $(TEST)),)
@@ -100,21 +112,25 @@ ifneq ($(strip $(TEST)),)
 else
 	$(call run_native_bucket_ref,$(O1_TEST_ROOT),-O1)
 	$(call run_native_bucket_ref,$(O2_TEST_ROOT),-O2)
+	$(call run_native_bucket_ref,$(O3_TEST_ROOT),-O3)
 endif
 
 ref-test-debuginfo:
 	$(call run_native_bucket_ref,$(DEBUGINFO_O1_TEST_ROOT),-O1)
 	$(call run_native_bucket_ref,$(DEBUGINFO_O2_TEST_ROOT),-O2)
+	$(call run_native_bucket_ref,$(DEBUGINFO_O3_TEST_ROOT),-O3)
 
 REF_TEST_RUN = case "$(TEST)" in \
-	$(O1_TEST_ROOT)/*|$(COURSE_O1_TEST_ROOT)/*|$(BEHAVIOR_O1_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O1_TEST_ROOT)/*) CPPGM_APP_ARGS='-O1' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
-	$(O2_TEST_ROOT)/*|$(COURSE_O2_TEST_ROOT)/*|$(BEHAVIOR_O2_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O2_TEST_ROOT)/*) CPPGM_APP_ARGS='-O2' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
-	*) echo "Usage: make ref-test TEST=$(O1_TEST_ROOT)/<file>.t | $(O2_TEST_ROOT)/<file>.t"; exit 1 ;; \
+	$(O1_TEST_ROOT)/*|$(COURSE_O1_TEST_ROOT)/*|$(DEBUGINFO_O1_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O1_TEST_ROOT)/*|$(BEHAVIOR_O1_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O1_TEST_ROOT)/*) CPPGM_APP_ARGS='-O1' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
+	$(O2_TEST_ROOT)/*|$(COURSE_O2_TEST_ROOT)/*|$(DEBUGINFO_O2_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O2_TEST_ROOT)/*|$(BEHAVIOR_O2_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O2_TEST_ROOT)/*) CPPGM_APP_ARGS='-O2' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
+	$(O3_TEST_ROOT)/*|$(COURSE_O3_TEST_ROOT)/*|$(DEBUGINFO_O3_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O3_TEST_ROOT)/*|$(BEHAVIOR_O3_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O3_TEST_ROOT)/*) CPPGM_APP_ARGS='-O3' perl ../scripts/run_lowir_native_tests_worker.pl $(LOWIR2NATIVE_REF_APP) ref "$(TEST)" && perl ../scripts/canonicalize_lowir_native_refs.pl "$(TEST)" ;; \
+	*) echo "Usage: make ref-test TEST=$(O1_TEST_ROOT)/<file>.t | $(O2_TEST_ROOT)/<file>.t | $(O3_TEST_ROOT)/<file>.t"; exit 1 ;; \
 esac
 
 CHECK_RUN = perl ../scripts/run_routed_test_spec.pl "$(TEST)" \
 	'$(O1_TEST_ROOT)/*|$(COURSE_O1_TEST_ROOT)/*|$(DEBUGINFO_O1_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O1_TEST_ROOT)/*|$(BEHAVIOR_O1_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O1_TEST_ROOT)/*::CPPGM_APP_ARGS=-O1 scripts/run_all_tests.pl $(LOWIR2NATIVE_APP) check {tests}' \
-	'$(O2_TEST_ROOT)/*|$(COURSE_O2_TEST_ROOT)/*|$(DEBUGINFO_O2_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O2_TEST_ROOT)/*|$(BEHAVIOR_O2_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O2_TEST_ROOT)/*::CPPGM_APP_ARGS=-O2 scripts/run_all_tests.pl $(LOWIR2NATIVE_APP) check {tests}'
+	'$(O2_TEST_ROOT)/*|$(COURSE_O2_TEST_ROOT)/*|$(DEBUGINFO_O2_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O2_TEST_ROOT)/*|$(BEHAVIOR_O2_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O2_TEST_ROOT)/*::CPPGM_APP_ARGS=-O2 scripts/run_all_tests.pl $(LOWIR2NATIVE_APP) check {tests}' \
+	'$(O3_TEST_ROOT)/*|$(COURSE_O3_TEST_ROOT)/*|$(DEBUGINFO_O3_TEST_ROOT)/*|$(COURSE_DEBUGINFO_O3_TEST_ROOT)/*|$(BEHAVIOR_O3_TEST_ROOT)/*|$(COURSE_BEHAVIOR_O3_TEST_ROOT)/*::CPPGM_APP_ARGS=-O3 scripts/run_all_tests.pl $(LOWIR2NATIVE_APP) check {tests}'
 include ../scripts/pa_run_check_targets.mk
 
 .PHONY: dev-shared-target ref-test ref-test-debuginfo test-debuginfo

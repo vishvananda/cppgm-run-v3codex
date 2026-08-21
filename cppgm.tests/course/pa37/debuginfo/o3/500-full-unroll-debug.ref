@@ -1,0 +1,9 @@
+global @observed : i64 = 0
+
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    store i64 0, @observed !dbg(loop.cpp, 5, 5)
+    store i64 1, @observed !dbg(loop.cpp, 5, 5)
+    store i64 2, @observed !dbg(loop.cpp, 5, 5)
+    return i64 0 !dbg(loop.cpp, 7, 3)
+}

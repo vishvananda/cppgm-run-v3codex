@@ -37,6 +37,15 @@ struct Stats
   std::size_t induction_strength_reductions = 0;
   std::size_t loop_exits_canonicalized = 0;
   std::size_t dead_loops_removed = 0;
+  std::size_t o3_loops_considered = 0;
+  std::size_t o3_loops_unrolled = 0;
+  std::size_t o3_unroll_iterations = 0;
+  std::size_t o3_unroll_cloned_instructions = 0;
+  std::size_t o3_unroll_candidate_skips = 0;
+  std::size_t o3_unroll_trip_skips = 0;
+  std::size_t o3_unroll_budget_skips = 0;
+  std::size_t o3_unroll_instruction_visits = 0;
+  std::size_t o3_unroll_peak_scratch_bytes = 0;
   std::size_t worklist_pushes = 0;
   std::size_t dataflow_updates = 0;
   std::size_t inline_direct_edges = 0;
@@ -170,6 +179,7 @@ struct Stats
   std::uint64_t cleanup_resume_nanoseconds = 0;
   std::uint64_t cleanup_tail_nanoseconds = 0;
   std::uint64_t loop_nanoseconds = 0;
+  std::uint64_t o3_unroll_nanoseconds = 0;
   std::uint64_t licm_nanoseconds = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };

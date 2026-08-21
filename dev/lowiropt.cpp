@@ -77,6 +77,10 @@ bool is_optimization_level(const string & arg, int & level)
     level = 2;
     return true;
   }
+  if(arg == "-O3") {
+    level = 3;
+    return true;
+  }
   return false;
 }
 
@@ -226,6 +230,19 @@ int run_lowiropt_mode(const vector<string> & args)
          << " ipa_cloned_instructions=" << stats.ipa_cloned_instructions
          << " ipa_clone_budget_skips=" << stats.ipa_clone_budget_skips
          << " ipa_peak_analysis_bytes=" << stats.ipa_peak_analysis_bytes
+         << " o3_loops_considered=" << stats.o3_loops_considered
+         << " o3_loops_unrolled=" << stats.o3_loops_unrolled
+         << " o3_unroll_iterations=" << stats.o3_unroll_iterations
+         << " o3_unroll_cloned_instructions="
+         << stats.o3_unroll_cloned_instructions
+         << " o3_unroll_candidate_skips="
+         << stats.o3_unroll_candidate_skips
+         << " o3_unroll_trip_skips=" << stats.o3_unroll_trip_skips
+         << " o3_unroll_budget_skips=" << stats.o3_unroll_budget_skips
+         << " o3_unroll_instruction_visits="
+         << stats.o3_unroll_instruction_visits
+         << " o3_unroll_peak_scratch_bytes="
+         << stats.o3_unroll_peak_scratch_bytes
          << " budget_skips=" << stats.budget_skips
          << " rewrites=" << stats.rewrites
               << " simplify_runs=" << stats.simplify_runs
@@ -299,6 +316,7 @@ int run_lowiropt_mode(const vector<string> & args)
               << stats.cleanup_tail_instructions_removed
          << " inline_ns=" << stats.inline_nanoseconds
          << " ipa_ns=" << stats.ipa_nanoseconds
+         << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
          << " simplify_ns=" << stats.simplify_nanoseconds
          << " memory_gvn_ns=" << stats.memory_gvn_nanoseconds
          << " pre_ns=" << stats.pre_nanoseconds

@@ -945,7 +945,7 @@ std::uint64_t instruction_definition_mask(
 
 void optimize_function(MirFunction & function, int level, Stats * stats)
 {
-  if(level < 0 || level > 2)
+  if(level < 0 || level > 3)
     throw std::logic_error("unsupported machine optimization level");
   if(level == 0) return;
   const std::chrono::steady_clock::time_point started =

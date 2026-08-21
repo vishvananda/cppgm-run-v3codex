@@ -4,11 +4,12 @@
 
 PA37 adds the first explicit optimization stage to the compiler. The new tool,
 `lowiropt`, reads PA13 LowIR text, applies a deterministic optimization
-pipeline selected by `-O0`, `-O1`, or `-O2`, and writes LowIR text.
+pipeline selected by `-O0`, `-O1`, `-O2`, or `-O3`, and writes LowIR text.
 
 The same LowIR optimizer is also reached from `cppgm++` when source programs
-are compiled with `--emit-lowir -O1`, `--emit-lowir -O2`, or through the
-ordinary compile/link driver at an optimization level.
+are compiled with `--emit-lowir -O1`, `--emit-lowir -O2`,
+`--emit-lowir -O3`, or through the ordinary compile/link driver at an
+optimization level.
 
 ### Prerequisites
 
@@ -51,6 +52,7 @@ more LowIR input files:
 lowiropt -O0 -o <outfile> <lowirfile>...
 lowiropt -O1 -o <outfile> <lowirfile>...
 lowiropt -O2 -o <outfile> <lowirfile>...
+lowiropt -O3 -o <outfile> <lowirfile>...
 ```
 
 `--help` and `-h` print usage information and exit successfully.
@@ -61,18 +63,22 @@ optimizer:
 ```sh
 cppgm++ --emit-lowir -g0 -O1 -o <outfile> <srcfile>...
 cppgm++ --emit-lowir -g0 -O2 -o <outfile> <srcfile>...
+cppgm++ --emit-lowir -g0 -O3 -o <outfile> <srcfile>...
 cppgm++ --emit-lowir -gline-tables-only -O1 -o <outfile> <srcfile>...
 cppgm++ --emit-lowir -gline-tables-only -O2 -o <outfile> <srcfile>...
+cppgm++ --emit-lowir -gline-tables-only -O3 -o <outfile> <srcfile>...
 ```
 
 The ordinary `cppgm++ -c` and link-driver paths must also accept `-O0`, `-O1`,
-and `-O2` and use the same LowIR optimization level before object generation.
+`-O2`, and `-O3` and use the same LowIR optimization level before object
+generation. With no `-O` option, the ordinary driver selects `-O3`.
 Compile mode must also accept serialized LowIR text as an input:
 
 ```sh
 cppgm++ -c -O0 -o <objfile> <lowirfile>
 cppgm++ -c -O1 -o <objfile> <lowirfile>
 cppgm++ -c -O2 -o <objfile> <lowirfile>
+cppgm++ -c -O3 -o <objfile> <lowirfile>
 ```
 
 This LowIR object input mode parses LowIR text, runs the same object-prep and
@@ -117,6 +123,8 @@ For successful runs:
 - `-O1` applies local and control-flow-aware LowIR simplifications.
 - `-O2` applies all `-O1` work and additional conservative slot-promotion
   optimizations.
+- `-O3` applies all `-O2` work and bounded full unrolling of eligible small
+  constant-trip loops.
 
 The assignment grades the optimized LowIR shape as well as behavior
 preservation. The goal is a deterministic optimization stage, not elapsed-time
@@ -256,6 +264,25 @@ LowIR instructions per translation unit. Budget exhaustion skips later
 candidates in deterministic function order. `-O1` does not perform argument
 specialization.
 
+`-O3` must include all `-O2` work. It additionally fully unrolls a canonical
+constant-trip loop when all of these conditions hold:
+
+- the loop has one preheader, one latch, one exit, no exceptional region, and
+  one straight-line body path back to its header
+- header phis describe the loop-carried values, and an integral induction phi
+  has a constant initial value, nonzero constant step, and constant signed or
+  unsigned bound
+- the exact trip count is at most four and can be proved without overflowing
+  the induction value
+- every loop value used after the exit has a value after the final iteration
+
+The transform must preserve the order and count of calls, stores, atomics,
+traps, and other observable body operations. It may unroll at most one loop
+per function, clone at most 64 body instructions for that loop, and clone at
+most 4,096 loop-body instructions per translation unit. If any proof or budget
+is unavailable, the loop remains unchanged. `-O2` does not perform this full
+unrolling.
+
 Slot-value forwarding and promotion remain an `-O2` responsibility. At `-O1`,
 a live load whose value is consumed along multiple successor paths must remain
 unless an ordinary non-slot propagation rule independently proves each use.
@@ -282,8 +309,10 @@ make test
 - `tests/o0`
 - `tests/o1`
 - `tests/o2`
+- `tests/o3`
 - `tests/driver/o1`
 - `tests/driver/o2`
+- `tests/driver/o3`
 - `tests/object-roundtrip`
 
 These directories are organized by tool mode and validation mode, not by N3485
@@ -292,8 +321,10 @@ source-language clauses.
 - `tests/o0` runs `lowiropt -O0` on handwritten LowIR.
 - `tests/o1` runs `lowiropt -O1` on handwritten LowIR.
 - `tests/o2` runs `lowiropt -O2` on handwritten LowIR.
+- `tests/o3` runs `lowiropt -O3` on handwritten LowIR.
 - `tests/driver/o1` runs `cppgm++ --emit-lowir -g0 -O1` on source programs.
 - `tests/driver/o2` runs `cppgm++ --emit-lowir -g0 -O2` on source programs.
+- `tests/driver/o3` runs `cppgm++ --emit-lowir -g0 -O3` on source programs.
 - `tests/object-roundtrip` compares direct `cppgm++ -c` output against an
   object produced by `cppgm++ --emit-lowir -O0` followed by `cppgm++ -c` on
   the generated LowIR file. This checks that object emission can be
@@ -301,7 +332,9 @@ source-language clauses.
   data. These tests may be standalone `.cpp` files or symlinks to existing
   `.t` harness cases; a selected `.t` test expands to its numbered `.t.1`,
   `.t.2`, ... source files when those sidecars exist. The harness checks
-  no-debug objects at `-O0`, `-O1`, and `-O2`.
+  no-debug objects at `-O0`, `-O1`, `-O2`, and `-O3`. A
+  `default-maximum-optimization` case also checks that omitting `-O` matches
+  explicit `-O3`.
 
 Run the debug metadata preservation lanes with:
 
@@ -311,14 +344,16 @@ make test-debuginfo
 
 This also runs `tests/object-roundtrip` in debuginfo mode, comparing direct
 `cppgm++ -c` output against LowIR-input `cppgm++ -c` output with
-`-gline-tables-only` at `-O0` and `-O1`.
+`-gline-tables-only` at `-O0`, `-O1`, `-O2`, and `-O3`.
 
 `make test-debuginfo` runs:
 
 - `tests/debuginfo/o1`
 - `tests/debuginfo/o2`
+- `tests/debuginfo/o3`
 - `tests/debuginfo/driver/o1`
 - `tests/debuginfo/driver/o2`
+- `tests/debuginfo/driver/o3`
 
 The direct debug-info tests run `lowiropt -O*` over LowIR containing
 `!dbg(...)` metadata. The driver debug-info tests run
@@ -338,8 +373,8 @@ PA37 does not require:
 - PRE that requires critical-edge splitting, speculative trapping operations,
   or an unbounded insertion/fixed-point schedule
 - alias-driven aggressive dead-store elimination
-- loop unrolling, peeling, vectorization, or loop transformations beyond the
-  conservative motion and counted-loop rules described above
+- partial unrolling, peeling, vectorization, or loop transformations beyond
+  the conservative motion and full-unrolling rules described above
 - machine-IR scheduling or register-allocation optimization
 - unbounded interprocedural cloning, externally observable ABI changes,
   semantic body merging, or indirect-call specialization
@@ -388,6 +423,12 @@ lists, and epoch-marked membership vectors keep loop discovery proportional to
 CFG edges and reported loop memberships. For invariant motion, build a packed
 producer-to-user worklist and use typed value, slot, and global IDs for memory
 checks; render names only while writing LowIR text.
+
+Full unrolling can reuse those loop facts and a dense value-ID replacement
+table. Plan the trip count and growth before cloning, use generated value IDs
+for each iteration, and invalidate the shared CFG facts once after a retained
+rewrite. A single function scan and a translation-unit instruction counter are
+sufficient; no loop-level fixed point or rendered-name map is needed.
 
 ### After PA37
 

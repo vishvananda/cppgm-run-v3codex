@@ -1,0 +1,21 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, 40 !dbg(test.cpp, 3, 3)
+    add r8, 2 !dbg(test.cpp, 3, 3)
+    cmp.i64 r8, 42 !dbg(test.cpp, 5, 3)
+    setne rax !dbg(test.cpp, 5, 3)
+    movzx rax, rax !dbg(test.cpp, 5, 3)
+    ret rax !dbg(test.cpp, 6, 3)

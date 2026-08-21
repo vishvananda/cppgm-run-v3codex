@@ -129,11 +129,13 @@ sub modes_for {
   my ($test) = @_;
   my @modes = $debuginfo
     ? (["-gline-tables-only", "-O0", "O0"],
-       ["-gline-tables-only", "-O1", "O1"])
+       ["-gline-tables-only", "-O1", "O1"],
+       ["-gline-tables-only", "-O2", "O2"],
+       ["-gline-tables-only", "-O3", "O3"])
     : ([undef, "-O0", "O0"], [undef, "-O1", "O1"],
-       [undef, "-O2", "O2"]);
+       [undef, "-O2", "O2"], [undef, "-O3", "O3"]);
   if(!$debuginfo && $test =~ /default-maximum-optimization/) {
-    push @modes, [undef, undef, "default"], [undef, "-O3", "O3"];
+    push @modes, [undef, undef, "default"];
   }
   return @modes;
 }
@@ -262,7 +264,7 @@ sub maximum_optimization_error {
     my $default_path = unit_base($source, $units[$default_u]{mode},
                                  $temp, $default_u) . ".direct.o";
     my $default_bytes = read_bytes($default_path);
-    for my $level_name ("O2", "O3") {
+    for my $level_name ("O3") {
       my $level_u = $unit_by_source_level{$source}{$level_name};
       my $level_path = unit_base($source, $units[$level_u]{mode},
                                  $temp, $level_u) . ".direct.o";

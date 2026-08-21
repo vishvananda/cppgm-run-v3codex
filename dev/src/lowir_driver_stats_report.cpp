@@ -44,6 +44,19 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.induction_strength_reductions
 		 << " loop_exits_canonicalized=" << stats.loop_exits_canonicalized
 		 << " dead_loops_removed=" << stats.dead_loops_removed
+		 << " o3_loops_considered=" << stats.o3_loops_considered
+		 << " o3_loops_unrolled=" << stats.o3_loops_unrolled
+		 << " o3_unroll_iterations=" << stats.o3_unroll_iterations
+		 << " o3_unroll_cloned_instructions="
+		 << stats.o3_unroll_cloned_instructions
+		 << " o3_unroll_candidate_skips="
+		 << stats.o3_unroll_candidate_skips
+		 << " o3_unroll_trip_skips=" << stats.o3_unroll_trip_skips
+		 << " o3_unroll_budget_skips=" << stats.o3_unroll_budget_skips
+		 << " o3_unroll_instruction_visits="
+		 << stats.o3_unroll_instruction_visits
+		 << " o3_unroll_peak_scratch_bytes="
+		 << stats.o3_unroll_peak_scratch_bytes
 		 << " worklist_pushes=" << stats.worklist_pushes
 		 << " dataflow_updates=" << stats.dataflow_updates
 		 << " inline_direct_edges=" << stats.inline_direct_edges
@@ -205,6 +218,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " cleanup_resume_ns=" << stats.cleanup_resume_nanoseconds
 		 << " cleanup_tail_ns=" << stats.cleanup_tail_nanoseconds
 		 << " loop_ns=" << stats.loop_nanoseconds
+		 << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }

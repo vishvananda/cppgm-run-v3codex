@@ -85,7 +85,7 @@ struct DriverInvocation
   bool hosted_system_includes;
 
   DriverInvocation()
-      : mode(DriverMode::Link), optimization_level(2), line_tables(false),
+      : mode(DriverMode::Link), optimization_level(3), line_tables(false),
         collect_stats(false), hosted_system_includes(true)
   {
   }
@@ -139,7 +139,8 @@ int parse_optimization_level(const string & arg)
 {
   if(arg == "-O0") return 0;
   if(arg == "-O1") return 1;
-  if(arg == "-O2" || arg == "-O3") return 2;
+  if(arg == "-O2") return 2;
+  if(arg == "-O3") return 3;
   throw logic_error("unsupported optimization level: " + arg);
 }
 
