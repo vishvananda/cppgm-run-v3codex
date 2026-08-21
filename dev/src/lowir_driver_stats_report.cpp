@@ -83,6 +83,16 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " remove_slot_changes=" << stats.remove_slot_changes
 		 << " promote_slot_runs=" << stats.promote_slot_runs
 		 << " promote_slot_changes=" << stats.promote_slot_changes
+		 << " promote_eligible_slots=" << stats.promote_eligible_slots
+		 << " promote_sparse_meets=" << stats.promote_sparse_meets
+		 << " promote_sparse_state_entries="
+		 << stats.promote_sparse_state_entries
+		 << " promote_sparse_merge_facts="
+		 << stats.promote_sparse_merge_facts
+		 << " promote_blocked_join_loads="
+		 << stats.promote_blocked_join_loads
+		 << " promote_peak_transient_bytes="
+		 << stats.promote_peak_transient_bytes
 		 << " dead_store_runs=" << stats.dead_store_runs
 		 << " dead_store_changes=" << stats.dead_store_changes
 		 << " cleanup_resume_runs=" << stats.cleanup_resume_runs

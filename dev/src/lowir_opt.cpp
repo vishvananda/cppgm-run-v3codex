@@ -2160,72 +2160,179 @@ bool forward_single_store_slots(Function * function, Stats * stats)
 struct AbstractState
 {
   bool executable = false;
-  std::vector<Operand> values;
-  std::vector<unsigned char> known_values;
-  std::vector<Operand> slots;
-  std::vector<unsigned char> known_slots;
+  struct SlotBinding
+  {
+    lowir_model::SlotId slot;
+    Operand value;
+  };
+  std::vector<SlotBinding> slots;
 };
 
-bool meet_state(AbstractState * target, const AbstractState & incoming)
+class SparseMeetScratch
 {
-  if(!incoming.executable) return false;
-  if(!target->executable) { *target = incoming; return true; }
-  bool changed = false;
-  for(std::size_t value = 0; value < target->known_values.size(); ++value)
-    if(target->known_values[value] &&
-       (!incoming.known_values[value] ||
-        !same_operand(target->values[value], incoming.values[value]))) {
-      target->known_values[value] = 0;
-      changed = true;
-    }
-  for(std::size_t slot = 0; slot < target->known_slots.size(); ++slot)
-    if(target->known_slots[slot] &&
-       (!incoming.known_slots[slot] ||
-        !same_operand(target->slots[slot], incoming.slots[slot]))) {
-      target->known_slots[slot] = 0;
-      changed = true;
-    }
-  return changed;
-}
+public:
+  explicit SparseMeetScratch(std::size_t slot_count)
+    : values_(slot_count), epochs_(slot_count, 0), epoch_(0)
+  {}
 
-Operand abstract_resolve(Operand value, const AbstractState & state)
-{
-  for(std::size_t step = 0;
-      step < state.values.size() + state.slots.size() &&
-      (value.kind == Operand::OP_TEMP || value.kind == Operand::OP_SLOT);
-      ++step) {
-    if(value.kind == Operand::OP_SLOT) {
-      const std::uint32_t slot = value.slot;
-      if(slot >= state.known_slots.size() || !state.known_slots[slot]) break;
-      value = state.slots[slot];
-      continue;
+  bool meet(AbstractState * target, const AbstractState & incoming,
+            Stats * stats)
+  {
+    if(!incoming.executable) return false;
+    if(stats) ++stats->promote_sparse_meets;
+    if(!target->executable) {
+      *target = incoming;
+      return true;
     }
-    const std::uint32_t id = value.value;
-    if(id >= state.values.size() || !state.known_values[id]) break;
-    value = state.values[id];
+    advance_epoch();
+    for(std::size_t i = 0; i < incoming.slots.size(); ++i) {
+      const std::uint32_t slot = incoming.slots[i].slot;
+      epochs_[slot] = epoch_;
+      values_[slot] = incoming.slots[i].value;
+    }
+    std::size_t kept = 0;
+    for(std::size_t i = 0; i < target->slots.size(); ++i) {
+      const std::uint32_t slot = target->slots[i].slot;
+      if(epochs_[slot] != epoch_ ||
+         !same_operand(target->slots[i].value, values_[slot]))
+        continue;
+      if(kept != i) target->slots[kept] = target->slots[i];
+      ++kept;
+    }
+    const bool changed = kept != target->slots.size();
+    target->slots.resize(kept);
+    return changed;
   }
-  return value;
-}
 
-void strip_local_facts(AbstractState * state,
-                       const std::vector<lowir_model::ValueId> & local_values)
+  std::size_t storage_bytes() const
+  {
+    return values_.capacity() * sizeof(Operand) +
+      epochs_.capacity() * sizeof(std::uint32_t);
+  }
+
+private:
+  void advance_epoch()
+  {
+    ++epoch_;
+    if(epoch_ != 0) return;
+    std::fill(epochs_.begin(), epochs_.end(), 0);
+    epoch_ = 1;
+  }
+
+  std::vector<Operand> values_;
+  std::vector<std::uint32_t> epochs_;
+  std::uint32_t epoch_;
+};
+
+class SparseTransferState
 {
-  if(local_values.empty()) return;
-  std::vector<unsigned char> locals(state->values.size(), 0);
-  for(std::size_t i = 0; i < local_values.size(); ++i)
-    locals[local_values[i]] = 1;
-  for(std::size_t value = 0; value < state->known_values.size(); ++value)
-    if(state->known_values[value] &&
-       (locals[value] ||
-        (state->values[value].kind == Operand::OP_TEMP &&
-         locals[state->values[value].value])))
-      state->known_values[value] = 0;
-  for(std::size_t slot = 0; slot < state->known_slots.size(); ++slot)
-    if(state->known_slots[slot] &&
-       state->slots[slot].kind == Operand::OP_TEMP &&
-       locals[state->slots[slot].value])
-      state->known_slots[slot] = 0;
-}
+public:
+  SparseTransferState(std::size_t slot_count, std::size_t value_count)
+    : slot_values_(slot_count), slot_epochs_(slot_count, 0),
+      value_values_(value_count), value_epochs_(value_count, 0), epoch_(0)
+  {}
+
+  void begin(const AbstractState & incoming)
+  {
+    advance_epoch();
+    active_slots_.clear();
+    for(std::size_t i = 0; i < incoming.slots.size(); ++i)
+      set_slot(incoming.slots[i].slot, incoming.slots[i].value);
+  }
+
+  void set_slot(lowir_model::SlotId slot, const Operand & value)
+  {
+    const std::uint32_t id = slot;
+    if(slot_epochs_[id] != epoch_) {
+      slot_epochs_[id] = epoch_;
+      active_slots_.push_back(slot);
+    }
+    slot_values_[id] = value;
+  }
+
+  bool slot_value(lowir_model::SlotId slot, Operand * value) const
+  {
+    const std::uint32_t id = slot;
+    if(id >= slot_epochs_.size() || slot_epochs_[id] != epoch_) return false;
+    *value = slot_values_[id];
+    return true;
+  }
+
+  void set_value(lowir_model::ValueId value, const Operand & replacement)
+  {
+    const std::uint32_t id = value;
+    value_epochs_[id] = epoch_;
+    value_values_[id] = replacement;
+  }
+
+  void clear_value(lowir_model::ValueId value)
+  {
+    value_epochs_[static_cast<std::uint32_t>(value)] = 0;
+  }
+
+  Operand resolve(Operand value) const
+  {
+    const std::size_t limit = slot_values_.size() + value_values_.size();
+    for(std::size_t step = 0; step < limit; ++step) {
+      if(value.kind == Operand::OP_SLOT) {
+        Operand replacement;
+        if(!slot_value(value.slot, &replacement)) break;
+        value = replacement;
+      } else if(value.kind == Operand::OP_TEMP) {
+        const std::uint32_t id = value.value;
+        if(id >= value_epochs_.size() || value_epochs_[id] != epoch_) break;
+        value = value_values_[id];
+      } else break;
+    }
+    return value;
+  }
+
+  AbstractState snapshot() const
+  {
+    AbstractState result;
+    result.executable = true;
+    result.slots.reserve(active_slots_.size());
+    for(std::size_t i = 0; i < active_slots_.size(); ++i) {
+      const lowir_model::SlotId slot = active_slots_[i];
+      const Operand & value = slot_values_[static_cast<std::uint32_t>(slot)];
+      if(value.kind == Operand::OP_TEMP) {
+        const std::uint32_t id = value.value;
+        if(id < value_epochs_.size() && value_epochs_[id] == epoch_) continue;
+      }
+      AbstractState::SlotBinding binding;
+      binding.slot = slot;
+      binding.value = value;
+      result.slots.push_back(binding);
+    }
+    return result;
+  }
+
+  std::size_t storage_bytes() const
+  {
+    return slot_values_.capacity() * sizeof(Operand) +
+      slot_epochs_.capacity() * sizeof(std::uint32_t) +
+      value_values_.capacity() * sizeof(Operand) +
+      value_epochs_.capacity() * sizeof(std::uint32_t) +
+      active_slots_.capacity() * sizeof(lowir_model::SlotId);
+  }
+
+private:
+  void advance_epoch()
+  {
+    ++epoch_;
+    if(epoch_ != 0) return;
+    std::fill(slot_epochs_.begin(), slot_epochs_.end(), 0);
+    std::fill(value_epochs_.begin(), value_epochs_.end(), 0);
+    epoch_ = 1;
+  }
+
+  std::vector<Operand> slot_values_;
+  std::vector<std::uint32_t> slot_epochs_;
+  std::vector<lowir_model::SlotId> active_slots_;
+  std::vector<Operand> value_values_;
+  std::vector<std::uint32_t> value_epochs_;
+  std::uint32_t epoch_;
+};
 
 void rewrite_promoted_slots(Function * function,
                             const std::vector<unsigned char> & promoted,
@@ -2343,50 +2450,34 @@ bool promote_slots(Function * function, Stats * stats)
   const std::vector<unsigned char> eligible =
     find_promotable_slots(*function, &eligible_count);
   if(eligible_count == 0) return false;
-  std::size_t instruction_total = 0;
-  for(std::size_t i = 0; i < function->blocks.size(); ++i)
-    instruction_total += function->blocks[i].instructions.size();
-  if(exceeds_state_budget(function->blocks.size(), eligible_count,
-                          instruction_total)) {
-    if(stats) ++stats->budget_skips;
-    return false;
-  }
-
+  if(stats) stats->promote_eligible_slots += eligible_count;
   const std::vector<unsigned char> storage_temporaries =
     find_storage_temporaries(*function);
 
   const Graph graph = build_graph(*function, stats);
   std::vector<AbstractState> incoming(function->blocks.size());
-  for(std::size_t i = 0; i < incoming.size(); ++i) {
-    incoming[i].values.resize(function->value_names.size());
-    incoming[i].known_values.assign(function->value_names.size(), 0);
-    incoming[i].slots.resize(function->slot_names.size());
-    incoming[i].known_slots.assign(function->slot_names.size(), 0);
-  }
   incoming[0].executable = true;
   std::deque<std::size_t> work;
   std::vector<unsigned char> queued(function->blocks.size(), 0);
   work.push_back(0); queued[0] = 1;
   if(stats) ++stats->worklist_pushes;
-  struct BlockReplacements
+  struct LoadReplacement
   {
-    std::vector<Operand> values;
-    std::vector<unsigned char> known;
+    lowir_model::ValueId destination;
+    Operand value;
   };
-  std::vector<BlockReplacements> replacements(function->blocks.size());
-  for(std::size_t i = 0; i < replacements.size(); ++i) {
-    replacements[i].values.resize(function->value_names.size());
-    replacements[i].known.assign(function->value_names.size(), 0);
-  }
+  std::vector<std::vector<LoadReplacement> > replacements(
+    function->blocks.size());
+  SparseTransferState state(
+    function->slot_names.size(), function->value_names.size());
+  SparseMeetScratch meet(function->slot_names.size());
   while(!work.empty()) {
     const std::size_t block_index = work.front(); work.pop_front();
     queued[block_index] = 0;
-    AbstractState state = incoming[block_index];
-    std::fill(replacements[block_index].known.begin(),
-              replacements[block_index].known.end(), 0);
+    state.begin(incoming[block_index]);
+    replacements[block_index].clear();
     const Block & block = function->blocks[block_index];
     std::vector<std::pair<std::size_t, AbstractState> > exceptional;
-    std::vector<lowir_model::ValueId> local_temporaries;
     for(std::size_t i = 0; i < block.instructions.size(); ++i) {
       const Instruction & source = block.instructions[i];
       Instruction ins;
@@ -2395,33 +2486,30 @@ bool promote_slots(Function * function, Stats * stats)
       ins.type = source.type;
       ins.source_type = source.source_type;
       ins.op = source.op;
-      ins.first = abstract_resolve(source.first, state);
-      ins.second = abstract_resolve(source.second, state);
-      ins.third = abstract_resolve(source.third, state);
+      ins.first = state.resolve(source.first);
+      ins.second = state.resolve(source.second);
+      ins.third = state.resolve(source.third);
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
          graph.find(ins.first.block) != kNoBlockIndex) {
-        AbstractState handler = state;
-        strip_local_facts(&handler, local_temporaries);
         exceptional.push_back(std::make_pair(
-          graph.find(ins.first.block), handler));
+          graph.find(ins.first.block), state.snapshot()));
       }
       if(ins.kind == Instruction::IK_STORE &&
          source.second.kind == Operand::OP_SLOT &&
          eligible[source.second.slot]) {
-        state.slots[source.second.slot] = ins.first;
-        state.known_slots[source.second.slot] = 1;
+        state.set_slot(source.second.slot, ins.first);
       }
       else if(ins.kind == Instruction::IK_LOAD &&
               source.first.kind == Operand::OP_SLOT &&
               eligible[source.first.slot]) {
-        if(state.known_slots[source.first.slot]) {
-          state.values[ins.dest] = state.slots[source.first.slot];
-          state.known_values[ins.dest] = 1;
-          local_temporaries.push_back(ins.dest);
-          replacements[block_index].values[ins.dest] =
-            state.slots[source.first.slot];
-          replacements[block_index].known[ins.dest] = 1;
+        Operand value;
+        if(state.slot_value(source.first.slot, &value)) {
+          state.set_value(ins.dest, value);
+          LoadReplacement replacement;
+          replacement.destination = ins.dest;
+          replacement.value = value;
+          replacements[block_index].push_back(replacement);
         }
       } else if(ins.dest.valid()) {
         Operand folded;
@@ -2434,19 +2522,15 @@ bool promote_slots(Function * function, Stats * stats)
           ins.kind == Instruction::IK_BINARY ? fold_binary(ins, &folded) :
           ins.kind == Instruction::IK_CMP ? fold_compare(ins, &folded) :
           ins.kind == Instruction::IK_CONVERT ? fold_convert(ins, &folded) : false;
-        if(known) {
-          state.values[ins.dest] = folded;
-          state.known_values[ins.dest] = 1;
-          local_temporaries.push_back(ins.dest);
-        }
-        else state.known_values[ins.dest] = 0;
+        if(known) state.set_value(ins.dest, folded);
+        else state.clear_value(ins.dest);
       }
       if(stats) ++stats->instruction_visits;
     }
     std::vector<std::size_t> normal;
     if(!block.instructions.empty()) {
       const Instruction & term = block.instructions.back();
-      const Operand selector = abstract_resolve(term.first, state);
+      const Operand selector = state.resolve(term.first);
       if(term.kind == Instruction::IK_JUMP &&
          graph.find(selector.block) != kNoBlockIndex)
         normal.push_back(graph.find(selector.block));
@@ -2463,7 +2547,7 @@ bool promote_slots(Function * function, Stats * stats)
         Operand selected = term.second;
         if(selector.kind == Operand::OP_INTEGER && selector.has_int_value)
           for(std::size_t i = 0; i + 1 < term.args.size(); i += 2) {
-            Operand case_value = abstract_resolve(term.args[i], state);
+            Operand case_value = state.resolve(term.args[i]);
             if(case_value.kind == Operand::OP_INTEGER && case_value.has_int_value &&
                case_value.int_value == selector.int_value) selected = term.args[i + 1];
           }
@@ -2475,29 +2559,58 @@ bool promote_slots(Function * function, Stats * stats)
               normal.push_back(graph.find(term.args[i].block));
       }
     }
-    strip_local_facts(&state, local_temporaries);
     for(std::size_t i = 0; i < exceptional.size(); ++i) {
-      if(meet_state(&incoming[exceptional[i].first], exceptional[i].second) &&
+      if(meet.meet(&incoming[exceptional[i].first], exceptional[i].second,
+                   stats) &&
          !queued[exceptional[i].first]) {
         work.push_back(exceptional[i].first); queued[exceptional[i].first] = 1;
         if(stats) { ++stats->worklist_pushes; ++stats->dataflow_updates; }
       }
     }
+    const AbstractState outgoing = state.snapshot();
     for(std::size_t i = 0; i < normal.size(); ++i)
-      if(meet_state(&incoming[normal[i]], state) && !queued[normal[i]]) {
+      if(meet.meet(&incoming[normal[i]], outgoing, stats) &&
+         !queued[normal[i]]) {
         work.push_back(normal[i]); queued[normal[i]] = 1;
         if(stats) { ++stats->worklist_pushes; ++stats->dataflow_updates; }
       }
   }
 
+  if(stats) {
+    std::size_t transient_bytes = state.storage_bytes() +
+      meet.storage_bytes() +
+      incoming.capacity() * sizeof(AbstractState) +
+      replacements.capacity() * sizeof(std::vector<LoadReplacement>);
+    for(std::size_t block = 0; block < incoming.size(); ++block) {
+      stats->promote_sparse_state_entries += incoming[block].slots.size();
+      transient_bytes += incoming[block].slots.capacity() *
+        sizeof(AbstractState::SlotBinding);
+      transient_bytes += replacements[block].capacity() *
+        sizeof(LoadReplacement);
+      if(graph.predecessors[block].size() > 1)
+        stats->promote_sparse_merge_facts += incoming[block].slots.size();
+    }
+    stats->promote_peak_transient_bytes = std::max(
+      stats->promote_peak_transient_bytes, transient_bytes);
+  }
+
+  std::vector<Operand> replacement_values(function->value_names.size());
+  std::vector<unsigned char> has_replacement(
+    function->value_names.size(), 0);
+  for(std::size_t block = 0; block < replacements.size(); ++block)
+    for(std::size_t i = 0; i < replacements[block].size(); ++i) {
+      const lowir_model::ValueId destination =
+        replacements[block][i].destination;
+      replacement_values[destination] = replacements[block][i].value;
+      has_replacement[destination] = 1;
+    }
   std::vector<unsigned char> replacement_temporaries(
     function->value_names.size(), 0);
   bool has_replacement_temporary = false;
-  for(std::size_t block = 0; block < replacements.size(); ++block)
-    for(std::size_t value = 0; value < replacements[block].known.size(); ++value)
-      if(replacements[block].known[value] &&
-         replacements[block].values[value].kind == Operand::OP_TEMP) {
-        replacement_temporaries[replacements[block].values[value].value] = 1;
+  for(std::size_t value = 0; value < has_replacement.size(); ++value)
+      if(has_replacement[value] &&
+         replacement_values[value].kind == Operand::OP_TEMP) {
+        replacement_temporaries[replacement_values[value].value] = 1;
         has_replacement_temporary = true;
       }
   std::vector<std::size_t> replacement_definitions(
@@ -2533,16 +2646,19 @@ bool promote_slots(Function * function, Stats * stats)
       slots_with_loads[ins.first.slot] = 1;
       load_slots[ins.dest] = ins.first.slot;
       has_load_slot[ins.dest] = 1;
-      bool textually_available = replacements[i].known[ins.dest];
-      const Operand & replacement = replacements[i].values[ins.dest];
+      bool textually_available = has_replacement[ins.dest];
+      const Operand & replacement = replacement_values[ins.dest];
       if(textually_available && replacement.kind == Operand::OP_TEMP &&
          !parameter_temporaries[replacement.value]) {
         textually_available =
           replacement_definitions[replacement.value] != kNoBlockIndex &&
           replacement_definitions[replacement.value] <= i;
       }
-      if(!textually_available)
+      if(!textually_available) {
         slots_with_unresolved_loads[ins.first.slot] = 1;
+        if(stats && graph.predecessors[i].size() > 1)
+          ++stats->promote_blocked_join_loads;
+      }
     }
   std::vector<unsigned char> promoted(function->slot_names.size(), 0);
   std::size_t promoted_count = 0;
@@ -2557,11 +2673,10 @@ bool promote_slots(Function * function, Stats * stats)
   if(promoted_count == 0) return false;
   std::vector<Operand> load_aliases(function->value_names.size());
   std::vector<unsigned char> has_load_alias(function->value_names.size(), 0);
-  for(std::size_t i = 0; i < replacements.size(); ++i)
-    for(std::size_t value = 0; value < replacements[i].known.size(); ++value)
-      if(replacements[i].known[value] && has_load_slot[value] &&
+  for(std::size_t value = 0; value < has_replacement.size(); ++value)
+      if(has_replacement[value] && has_load_slot[value] &&
          promoted[load_slots[value]]) {
-        load_aliases[value] = replacements[i].values[value];
+        load_aliases[value] = replacement_values[value];
         has_load_alias[value] = 1;
       }
   rewrite_promoted_slots(function, promoted, storage_temporaries,

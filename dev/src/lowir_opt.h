@@ -70,6 +70,12 @@ struct Stats
   std::size_t remove_slot_changes = 0;
   std::size_t promote_slot_runs = 0;
   std::size_t promote_slot_changes = 0;
+  std::size_t promote_eligible_slots = 0;
+  std::size_t promote_sparse_meets = 0;
+  std::size_t promote_sparse_state_entries = 0;
+  std::size_t promote_sparse_merge_facts = 0;
+  std::size_t promote_blocked_join_loads = 0;
+  std::size_t promote_peak_transient_bytes = 0;
   std::size_t dead_store_runs = 0;
   std::size_t dead_store_changes = 0;
   std::size_t cleanup_resume_runs = 0;
