@@ -115,6 +115,23 @@ struct Stats
     inline_retained_discardable_call_matrix = {};
   std::array<std::size_t, kInlineRetainedMatrixSize>
     inline_retained_discardable_instruction_matrix = {};
+  std::size_t post_prune_inline_direct_edges = 0;
+  std::size_t post_prune_inline_calls = 0;
+  std::size_t post_prune_inline_instructions = 0;
+  std::size_t post_prune_inline_discarded_bodies = 0;
+  std::size_t post_prune_inline_budget_skips = 0;
+  std::size_t post_prune_inline_changed_callers = 0;
+  std::size_t post_prune_inline_considered_single_calls = 0;
+  std::size_t post_prune_inline_reject_recursive = 0;
+  std::size_t post_prune_inline_reject_no_inline = 0;
+  std::size_t post_prune_inline_reject_argument_shape = 0;
+  std::size_t post_prune_inline_reject_variadic = 0;
+  std::size_t post_prune_inline_reject_size = 0;
+  std::size_t post_prune_inline_reject_landing = 0;
+  std::size_t post_prune_inline_reject_eh_unwind = 0;
+  std::size_t post_prune_inline_reject_callee_eh = 0;
+  std::size_t post_prune_inline_translation_unit_budget = 0;
+  std::size_t post_prune_inline_translation_unit_budget_remaining = 0;
   std::size_t inline_changed_callers = 0;
   std::size_t inline_eh_blocked_records = 0;
   std::size_t inline_revisited_callers = 0;
@@ -229,6 +246,7 @@ struct Stats
   std::uint64_t loop_nanoseconds = 0;
   std::uint64_t o3_unroll_nanoseconds = 0;
   std::uint64_t late_inline_nanoseconds = 0;
+  std::uint64_t post_prune_inline_nanoseconds = 0;
   std::uint64_t licm_nanoseconds = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };

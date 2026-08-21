@@ -1371,6 +1371,45 @@ cascading as the next policy step before any positive-growth multi-use policy.
 The remaining population includes 210 leaf, 299 EH-bearing, 80 recursive, and
 317 explicit-no-inline definitions; these categories overlap.
 
+Rank 10g consumes the population established by that census.  After the first
+reachability prune it builds one compact typed CSR call graph and runs only the
+definition-removing single-call policy.  The graph is processed in callee-first
+order, so a transferred callee can become part of a transferred caller without
+an unbounded whole-program fixed point.  A dense byte marks only callers of
+single-use discardable definitions; unrelated functions are skipped before an
+instruction scan.  The wave retains the 160-instruction body,
+320-instruction caller, and proportional translation-unit limits, uses the
+already optimized body counts, prepares only rewritten callers, and performs
+one final reachability prune.
+
+On the frozen O1 input the post-prune graph has 10,401 direct edges.  The wave
+transfers 59 bodies containing 2,935 instructions into 38 callers, exhausts no
+budget, and reduces measured definitions from 2,321 to 2,257.  The object falls
+from 1,786,440 to 1,768,584 bytes and `.eh_frame` from 53,340 to 51,632 bytes;
+aggregate text rises from 603,829 to 609,202 bytes.  The final census falls to
+1,103 discardable definitions, 4,075 calls, and 75,972 body instructions.
+
+Three serial alternating exact-O1-self frozen compiles remain within the
+declared host-noise gate.  Baseline/candidate median wall is 17.48/17.78
+seconds (+1.7%), median user time is 16.93/17.27 seconds (+2.0%), and RSS is
+neutral.  The clean candidate O1 self build takes 20.11 seconds wall, 462.13
+seconds aggregate user, 43.55 seconds system, and 228,468 KiB peak RSS.
+
+The first candidate self build exposed an earlier PA29 backend defect rather
+than an inliner limit: a wide comparison always required a fresh scalar result
+GPR, even when its only consumer was a branch, and its comparison-as-value
+path had no frame fallback.  PA29 now lowers a sole-use `i128` comparison as
+direct high-word decisions plus an unsigned low-word tie-break.  A retained
+Boolean result spills to a typed temporary home when the preserved GPR pool is
+full.  The active PA29 course suite includes a structural direct-branch oracle,
+all ten wide predicates, and a five-live-parameter pressure reducer that the
+prior compiler rejected.  These new references were generated through the
+documented local `REF_TEST_APP=../dev/lowir2native` path because the pinned
+bundle predates this backend correction.  The full report passes 5,362/5,362
+and the PA39 file audit has zero fatal findings.  The audit also caused the
+duplicate `lowiropt` telemetry printer to be replaced by the existing shared
+driver report module.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1550,8 +1589,9 @@ Fill one row for every retained or rejected phase:
 | R10b | stop treating ordinary calls to internal functions as permanent object roots | six PA15/17/22/25 exact refs lose only stale root metadata; seven PA31--PA36 symbol fixtures gain explicit retention; PA37 lambda-control and pruning reducers | vs R10a: object -98,696 B, text -11,178 B, `.eh_frame` -8,800 B, 312 fewer measured local definitions | six-run explicit-O1 A/B median 4.990 to 4.992 s (+0.04%); one constant mask test per symbol | 5,356/5,356; zero fatal, 29 warnings | final combined lane pending | complete, `134f0c17` |
 | R10c | bounded definition-removing single-call inlining with immediate body release | PA37 O1 positive/address/multiple-use reducer and 160-instruction boundary; normative limits and typed Design Notes | vs R10b: object -23,200 B, text +1,551 B, `.eh_frame` -1,832 B, 56 fewer measured definitions | exact O1-built-self frozen medians: O0 17.21 to 16.77 s, O1 18.34 to 17.98 s; host O1 5.04 to 5.00 s; typed scan adds one byte/function; ownership transfer avoids instruction payload copies | 5,358/5,358; zero fatal, 31 warnings | O1 self build succeeds; final O3 32-way lane pending | complete, `0d39bea1` |
 | R10d | run the bounded optimized-body wave at every optimizing level | two existing PA37 O1/O2 exact refs move; PA37 level contract and Design Notes; no PA38 movement | vs R10c O1: object -61,416 B, text +11,146 B, `.eh_frame` -4,276 B, 165 fewer definitions; 1,007 calls inlined | exact O1-self A/B wall 17.99 to 17.66 s, user 17.42 to 17.09 s; one typed graph rebuild and 60.1 ms measured late wave | 5,358/5,358; PA37 debug clean; zero fatal, 31 warnings | O1 self 19.61 s / 459.79 user / 229,928 KiB; final 32-way lane pending | complete, `0fd38172` |
-| R10e | proportional called-once translation-unit budget | PA37 normative limit and typed Design Notes; no fixture movement | vs R10d O1: object -37,888 B, text +5,139 B, `.eh_frame` -3,248 B, 103 fewer definitions; 2,014 called-once bodies transferred | exact O1-self A/B wall 17.48 to 17.55 s, user 16.95 to 17.04 s; budget accumulated in the existing dense summary loop | 5,358/5,358; zero fatal, 31 warnings | O1 self 19.06 s / 458.20 user / 229,340 KiB; final 32-way lane pending | implementation measured; commit pending |
-| R10f | stats-only post-pruning retained-call census | no output fixture movement; fixed typed bucket contract recorded in this plan | 1,162 discardable definitions / 4,134 calls / 76,460 instructions; 656 become single-use after pruning, 600 at most 160 instructions | one compact CSR rebuild only with a `Stats` sink; fixed dense counters, no strings | PA37/PA38 178/178; zero fatal, 29 warnings | diagnostic only | implementation measured; commit pending |
+| R10e | proportional called-once translation-unit budget | PA37 normative limit and typed Design Notes; no fixture movement | vs R10d O1: object -37,888 B, text +5,139 B, `.eh_frame` -3,248 B, 103 fewer definitions; 2,014 called-once bodies transferred | exact O1-self A/B wall 17.48 to 17.55 s, user 16.95 to 17.04 s; budget accumulated in the existing dense summary loop | 5,358/5,358; zero fatal, 31 warnings | O1 self 19.06 s / 458.20 user / 229,340 KiB; final 32-way lane pending | complete, `40c0325b` |
+| R10f | stats-only post-pruning retained-call census | no output fixture movement; fixed typed bucket contract recorded in this plan | 1,162 discardable definitions / 4,134 calls / 76,460 instructions; 656 become single-use after pruning, 600 at most 160 instructions | one compact CSR rebuild only with a `Stats` sink; fixed dense counters, no strings | PA37/PA38 178/178; zero fatal, 29 warnings | diagnostic only | complete, `02025dcf` |
+| R10g | one post-prune definition-removing cascade plus wide-compare corrective | PA37 exact cascade and normative contract; PA29 structural, predicate-behavior, and pressure reducers; PA29 Design Note | vs R10e/f O1: object -17,856 B, text +5,373 B, `.eh_frame` -1,708 B, 64 fewer definitions; 59 bodies transferred | exact O1-self A/B wall 17.48 to 17.78 s (+1.7%), user 16.93 to 17.27 s (+2.0%); one compact CSR graph and dense caller byte; no fixed point | 5,362/5,362; zero fatal, 32 warnings | O1 self 20.11 s / 462.13 user / 228,468 KiB; final 32-way lane pending | implementation measured; commit pending |
 
 ## Completion criteria
 

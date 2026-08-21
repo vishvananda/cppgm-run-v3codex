@@ -202,6 +202,11 @@ running optimizing transforms.
   and removes the transferred definition after substitution; its
   translation-unit budget is the greater of 10,240 and the original input
   instruction count
+- one post-reachability graph rebuild followed by the definition-removing path
+  alone, so removing dead callers may expose a new single-call definition;
+  this wave uses the optimized body count with the same 160-instruction body,
+  320-instruction caller, and proportional translation-unit limits, then
+  prunes transferred definitions
 - preservation of the ordinary 128-instruction policy when a definition is
   in the single-call class but a separate single-call budget is exhausted;
   calls that meet the ordinary size and growth rules remain ordinary inline
@@ -447,7 +452,10 @@ Keep the ordinary and definition-removing budgets independent so exhausting
 the latter does not suppress an otherwise ordinary inline. Charging at most
 one original translation unit of definition-removing work keeps the policy
 linear while allowing a large input proportionally more useful transfers than
-a small one.
+a small one. After pruning dead callers, rebuild the compact graph once and
+run only this definition-removing policy in callee-first order. A transferred
+callee can then become part of a later transferred caller in the same wave;
+do not implement the cascade as repeated whole-program fixed-point scans.
 
 Interprocedural argument agreement can reuse that same direct-call graph and
 its dense symbol-to-function table. Store parameter facts in one packed array

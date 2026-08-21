@@ -14,7 +14,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 	const lowir_opt::Stats& stats)
 {
 	output << "pa37_opt_stats"
-		 << " input=" << input
+		 << (input.empty() ? "" : " input=") << input
 		 << " functions=" << stats.functions
 		 << " input_instructions=" << stats.input_instructions
 		 << " output_instructions=" << stats.output_instructions
@@ -146,6 +146,39 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.inline_retained_nonpositive_leaf_instructions
 		 << " inline_retained_nonpositive_leaf_estimated_savings="
 		 << stats.inline_retained_nonpositive_leaf_estimated_savings
+		 << " post_prune_inline_direct_edges="
+		 << stats.post_prune_inline_direct_edges
+		 << " post_prune_inline_calls=" << stats.post_prune_inline_calls
+		 << " post_prune_inline_instructions="
+		 << stats.post_prune_inline_instructions
+		 << " post_prune_inline_discarded_bodies="
+		 << stats.post_prune_inline_discarded_bodies
+		 << " post_prune_inline_budget_skips="
+		 << stats.post_prune_inline_budget_skips
+		 << " post_prune_inline_changed_callers="
+		 << stats.post_prune_inline_changed_callers
+		 << " post_prune_inline_considered_single_calls="
+		 << stats.post_prune_inline_considered_single_calls
+		 << " post_prune_inline_reject_recursive="
+		 << stats.post_prune_inline_reject_recursive
+		 << " post_prune_inline_reject_no_inline="
+		 << stats.post_prune_inline_reject_no_inline
+		 << " post_prune_inline_reject_argument_shape="
+		 << stats.post_prune_inline_reject_argument_shape
+		 << " post_prune_inline_reject_variadic="
+		 << stats.post_prune_inline_reject_variadic
+		 << " post_prune_inline_reject_size="
+		 << stats.post_prune_inline_reject_size
+		 << " post_prune_inline_reject_landing="
+		 << stats.post_prune_inline_reject_landing
+		 << " post_prune_inline_reject_eh_unwind="
+		 << stats.post_prune_inline_reject_eh_unwind
+		 << " post_prune_inline_reject_callee_eh="
+		 << stats.post_prune_inline_reject_callee_eh
+		 << " post_prune_inline_translation_unit_budget="
+		 << stats.post_prune_inline_translation_unit_budget
+		 << " post_prune_inline_translation_unit_budget_remaining="
+		 << stats.post_prune_inline_translation_unit_budget_remaining
 		 << " inline_changed_callers=" << stats.inline_changed_callers
 		 << " inline_eh_blocked_records=" << stats.inline_eh_blocked_records
 		 << " inline_revisited_callers=" << stats.inline_revisited_callers
@@ -283,6 +316,8 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " loop_ns=" << stats.loop_nanoseconds
 		 << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
 		 << " late_inline_ns=" << stats.late_inline_nanoseconds
+		 << " post_prune_inline_ns="
+		 << stats.post_prune_inline_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds;
 	output << " inline_retained_discardable_definition_matrix=";

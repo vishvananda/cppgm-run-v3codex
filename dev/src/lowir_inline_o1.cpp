@@ -379,7 +379,8 @@ public:
           const std::vector<unsigned char> & prepared_oversized_symbols,
           const std::vector<std::size_t> & original_instruction_counts,
           std::vector<unsigned char> * rewritten_symbols,
-          Stats * stats, bool optimized_late_wave = false)
+          Stats * stats, bool optimized_late_wave = false,
+          bool definition_removing_only = false)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
       call_graph_(call_graph),
@@ -388,7 +389,8 @@ public:
       original_instruction_counts_(original_instruction_counts),
       remaining_single_call_translation_unit_budget_(
         kMinimumSingleCallTranslationUnitBudget),
-      optimized_late_wave_(optimized_late_wave), rewrites_(0)
+      optimized_late_wave_(optimized_late_wave),
+      definition_removing_only_(definition_removing_only), rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
@@ -396,6 +398,7 @@ public:
     leaf_inline_shapes_.resize(program_.functions.size(), 0);
     instruction_counts_.resize(program_.functions.size(), 0);
     single_call_discardable_.resize(program_.functions.size(), 0);
+    candidate_callers_.resize(program_.functions.size(), 0);
     std::size_t input_instruction_budget = 0;
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       contains_eh_[i] = contains_eh(program_.functions[i]);
@@ -412,6 +415,11 @@ public:
         !function.metadata.keep_internal_alias &&
         function.metadata.role == lowir_model::SR_NONE &&
         !function.metadata.tls_for_symbol_id.valid();
+      if(definition_removing_only_ && single_call_discardable_[i]) {
+        const std::size_t caller =
+          call_graph_.reverse_edges[call_graph_.reverse_offsets[i]];
+        candidate_callers_[caller] = 1;
+      }
       if(input_instruction_budget <=
          std::numeric_limits<std::size_t>::max() -
            original_instruction_counts_[i])
@@ -421,12 +429,16 @@ public:
     }
     remaining_single_call_translation_unit_budget_ = std::max(
       kMinimumSingleCallTranslationUnitBudget, input_instruction_budget);
-    if(stats_ && !optimized_late_wave_)
+    if(stats_ && definition_removing_only_)
+      stats_->post_prune_inline_translation_unit_budget =
+        remaining_single_call_translation_unit_budget_;
+    else if(stats_ && !optimized_late_wave_)
       stats_->inline_single_call_translation_unit_budget =
         remaining_single_call_translation_unit_budget_;
-    if(stats_ && !optimized_late_wave_) stats_->inline_input_instructions =
-      std::accumulate(instruction_counts_.begin(), instruction_counts_.end(),
-        static_cast<std::size_t>(0));
+    if(stats_ && !optimized_late_wave_ && !definition_removing_only_)
+      stats_->inline_input_instructions =
+        std::accumulate(instruction_counts_.begin(), instruction_counts_.end(),
+          static_cast<std::size_t>(0));
     infer_no_unwind();
     state_.assign(program_.functions.size(), 0);
     remaining_inline_budget_.assign(program_.functions.size(),
@@ -441,6 +453,7 @@ public:
     for(std::size_t cursor = 0;
         cursor < call_graph_.callee_first_order.size(); ++cursor) {
       const std::size_t function = call_graph_.callee_first_order[cursor];
+      if(definition_removing_only_ && !candidate_callers_[function]) continue;
       if(expand(function) && has_eh_blocked_callers(function) &&
          instruction_counts_[function] <= 4 &&
          leaf_inline_shapes_[function]) {
@@ -481,13 +494,18 @@ public:
       }
     }
     if(stats_) {
-      if(!optimized_late_wave_)
+      if(definition_removing_only_)
+        stats_->post_prune_inline_translation_unit_budget_remaining =
+          remaining_single_call_translation_unit_budget_;
+      else if(!optimized_late_wave_)
         stats_->inline_single_call_translation_unit_budget_remaining =
           remaining_single_call_translation_unit_budget_;
-      stats_->inline_output_instructions = 0;
-      for(std::size_t i = 0; i < program_.functions.size(); ++i)
-        stats_->inline_output_instructions +=
-          instruction_count(program_.functions[i]);
+      if(!definition_removing_only_) {
+        stats_->inline_output_instructions = 0;
+        for(std::size_t i = 0; i < program_.functions.size(); ++i)
+          stats_->inline_output_instructions +=
+            instruction_count(program_.functions[i]);
+      }
     }
     return rewrites_;
   }
@@ -502,11 +520,13 @@ private:
   const std::vector<std::size_t> & original_instruction_counts_;
   std::vector<unsigned char> state_, contains_eh_, leaf_inline_shapes_;
   std::vector<unsigned char> single_call_discardable_;
+  std::vector<unsigned char> candidate_callers_;
   std::vector<std::size_t> instruction_counts_;
   std::vector<std::size_t> remaining_inline_budget_;
   std::vector<std::size_t> remaining_single_call_budget_;
   std::size_t remaining_single_call_translation_unit_budget_;
   bool optimized_late_wave_;
+  bool definition_removing_only_;
   std::unordered_map<std::size_t, std::vector<std::size_t> >
     eh_blocked_callers_;
   std::size_t rewrites_;
@@ -592,13 +612,22 @@ private:
                  bool landing, bool inside_eh, bool record_stats = false)
   {
     if(target == kNoFunction) return false;
+    if(record_stats && stats_ && definition_removing_only_ &&
+       single_call_discardable_[target])
+      ++stats_->post_prune_inline_considered_single_calls;
     if(call_graph_.recursive[target] || target == caller) {
       if(record_stats && stats_) ++stats_->inline_reject_recursive;
+      if(record_stats && stats_ && definition_removing_only_ &&
+         single_call_discardable_[target])
+        ++stats_->post_prune_inline_reject_recursive;
       return false;
     }
     const Function & callee_function = program_.functions[target];
     if(callee_function.metadata.no_inline) {
       if(record_stats && stats_) ++stats_->inline_reject_no_inline;
+      if(record_stats && stats_ && definition_removing_only_ &&
+         single_call_discardable_[target])
+        ++stats_->post_prune_inline_reject_no_inline;
       return false;
     }
     // Some pre-PA37 virtual-base ABI wrappers intentionally leave hidden
@@ -606,10 +635,16 @@ private:
     // are not structurally safe to substitute as ordinary LowIR parameters.
     if(callee_function.params.size() != call.args.size()) {
       if(record_stats && stats_) ++stats_->inline_reject_argument_shape;
+      if(record_stats && stats_ && definition_removing_only_ &&
+         single_call_discardable_[target])
+        ++stats_->post_prune_inline_reject_argument_shape;
       return false;
     }
     if(callee_function.boundary.arity == lowir_model::CAM_VARIADIC) {
       if(record_stats && stats_) ++stats_->inline_reject_variadic;
+      if(record_stats && stats_ && definition_removing_only_ &&
+         single_call_discardable_[target])
+        ++stats_->post_prune_inline_reject_variadic;
       return false;
     }
     const std::size_t inline_cost = std::max(
@@ -617,6 +652,11 @@ private:
     const bool bounded_single_call = !optimized_late_wave_ &&
       single_call_discardable_[target] &&
       inline_cost <= kSingleCallInstructionLimit;
+    if(definition_removing_only_ && !bounded_single_call) {
+      if(record_stats && stats_ && single_call_discardable_[target])
+        ++stats_->post_prune_inline_reject_size;
+      return false;
+    }
     if(instruction_counts_[target] > 40 &&
        (optimized_late_wave_ ||
         !callee_function.metadata.prefer_local_object_binding) &&
@@ -639,10 +679,14 @@ private:
     }
     if(landing) {
       if(record_stats && stats_) ++stats_->inline_reject_landing;
+      if(record_stats && stats_ && definition_removing_only_)
+        ++stats_->post_prune_inline_reject_landing;
       return false;
     }
     if(inside_eh && !no_unwind_[callee_function.symbol]) {
       if(record_stats && stats_) ++stats_->inline_reject_eh_unwind;
+      if(record_stats && stats_ && definition_removing_only_)
+        ++stats_->post_prune_inline_reject_eh_unwind;
       return false;
     }
     if(contains_eh_[target]) {
@@ -652,9 +696,12 @@ private:
         if(stats_) ++stats_->inline_eh_blocked_records;
       }
       if(record_stats && stats_) ++stats_->inline_reject_callee_eh;
+      if(record_stats && stats_ && definition_removing_only_)
+        ++stats_->post_prune_inline_reject_callee_eh;
       return false;
     }
-    if(record_stats && stats_ && bounded_single_call)
+    if(record_stats && stats_ && bounded_single_call &&
+       !definition_removing_only_)
       ++stats_->inline_single_call_candidates;
     if(record_stats && stats_) ++stats_->inline_candidate_calls;
     return true;
@@ -679,12 +726,17 @@ private:
         return true;
       }
       if(stats_) {
-        ++stats_->inline_single_call_budget_skips;
-        if(cost > *single_call_remaining)
-          ++stats_->inline_single_call_caller_budget_skips;
-        if(cost > remaining_single_call_translation_unit_budget_)
-          ++stats_->inline_single_call_translation_unit_budget_skips;
+        if(definition_removing_only_)
+          ++stats_->post_prune_inline_budget_skips;
+        else {
+          ++stats_->inline_single_call_budget_skips;
+          if(cost > *single_call_remaining)
+            ++stats_->inline_single_call_caller_budget_skips;
+          if(cost > remaining_single_call_translation_unit_budget_)
+            ++stats_->inline_single_call_translation_unit_budget_skips;
+        }
       }
+      if(definition_removing_only_) return false;
       const Function & function = program_.functions[target];
       const bool ordinary_size_candidate =
         (instruction_counts_[target] <= 40 ||
@@ -711,7 +763,11 @@ private:
     contains_eh_[target] = 0;
     leaf_inline_shapes_[target] = 0;
     single_call_discardable_[target] = 0;
-    if(stats_) ++stats_->inline_single_call_discarded_bodies;
+    if(stats_) {
+      if(definition_removing_only_)
+        ++stats_->post_prune_inline_discarded_bodies;
+      else ++stats_->inline_single_call_discarded_bodies;
+    }
   }
 
   bool strip_explicit_no_unwind_eh(Function * function)
@@ -1116,8 +1172,13 @@ private:
           ++stats_->inline_calls;
           stats_->inline_cloned_instructions += cloned_instructions;
           if(used_single_call) {
-            ++stats_->inline_single_call_calls;
-            stats_->inline_single_call_instructions += cloned_instructions;
+            if(definition_removing_only_) {
+              ++stats_->post_prune_inline_calls;
+              stats_->post_prune_inline_instructions += cloned_instructions;
+            } else {
+              ++stats_->inline_single_call_calls;
+              stats_->inline_single_call_instructions += cloned_instructions;
+            }
           }
           if(optimized_late_wave_) {
             ++stats_->late_inline_calls;
@@ -1208,8 +1269,15 @@ private:
               ++stats_->inline_calls;
               stats_->inline_cloned_instructions += cloned_instructions;
               if(used_single_call) {
-                ++stats_->inline_single_call_calls;
-                stats_->inline_single_call_instructions += cloned_instructions;
+                if(definition_removing_only_) {
+                  ++stats_->post_prune_inline_calls;
+                  stats_->post_prune_inline_instructions +=
+                    cloned_instructions;
+                } else {
+                  ++stats_->inline_single_call_calls;
+                  stats_->inline_single_call_instructions +=
+                    cloned_instructions;
+                }
               }
               if(optimized_late_wave_) {
                 ++stats_->late_inline_calls;
@@ -1262,6 +1330,23 @@ std::size_t inline_optimized_calls(
     optimized_instruction_counts[i] = instruction_count(program.functions[i]);
   Inliner inliner(&program, call_graph, no_prepared_oversized,
     optimized_instruction_counts, rewritten_symbols, stats, true);
+  return inliner.run();
+}
+
+std::size_t inline_post_prune_single_calls(
+  LowirProgram & program,
+  const InlineCallGraph & call_graph,
+  std::vector<unsigned char> * rewritten_symbols,
+  Stats * stats)
+{
+  std::vector<unsigned char> no_prepared_oversized(
+    program.symbol_names.size(), 0);
+  std::vector<std::size_t> optimized_instruction_counts(
+    program.functions.size(), 0);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    optimized_instruction_counts[i] = instruction_count(program.functions[i]);
+  Inliner inliner(&program, call_graph, no_prepared_oversized,
+    optimized_instruction_counts, rewritten_symbols, stats, false, true);
   return inliner.run();
 }
 

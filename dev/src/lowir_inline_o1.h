@@ -29,4 +29,13 @@ std::size_t inline_optimized_calls(
   std::vector<unsigned char> * rewritten_symbols = 0,
   Stats * stats = 0);
 
+// After reachability pruning, revisit only definition-removing single-call
+// candidates.  Callee-first order lets transfer chains cascade in one graph
+// wave without enabling ordinary positive-growth inlining.
+std::size_t inline_post_prune_single_calls(
+  lowir_model::LowirProgram & program,
+  const InlineCallGraph & call_graph,
+  std::vector<unsigned char> * rewritten_symbols = 0,
+  Stats * stats = 0);
+
 }  // namespace lowir_opt

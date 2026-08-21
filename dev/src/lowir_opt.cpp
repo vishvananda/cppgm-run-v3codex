@@ -2816,8 +2816,46 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - late_inline_started).count());
   }
-  const lowir_model::FunctionPruningSummary pruning =
+  lowir_model::FunctionPruningSummary pruning =
     lowir_model::prune_unreachable_weak_functions(program);
+  if(level >= 1) {
+    const std::chrono::steady_clock::time_point post_prune_inline_started =
+      stats ? std::chrono::steady_clock::now() :
+              std::chrono::steady_clock::time_point();
+    const InlineCallGraph post_prune_call_graph =
+      analyze_inline_call_graph(program, 0);
+    if(stats)
+      stats->post_prune_inline_direct_edges = post_prune_call_graph.edges.size();
+    std::vector<unsigned char> post_prune_rewritten_symbols(
+      program.symbol_names.size(), 0);
+    const std::size_t post_prune_rewrites = inline_post_prune_single_calls(
+      program, post_prune_call_graph, &post_prune_rewritten_symbols, stats);
+    if(stats) {
+      stats->rewrites += post_prune_rewrites;
+      stats->post_prune_inline_changed_callers = std::count(
+        post_prune_rewritten_symbols.begin(),
+        post_prune_rewritten_symbols.end(), 1);
+    }
+    if(post_prune_rewrites) {
+      boundaries = function_boundaries(program);
+      for(std::size_t i = 0; i < program.functions.size(); ++i)
+        if(post_prune_rewritten_symbols[program.functions[i].symbol])
+          prepare_for_inlining(&program.functions[i], boundaries, stats);
+      const std::size_t prior_pruned = pruning.pruned_functions;
+      const std::size_t prior_unreachable_weak =
+        pruning.unreachable_weak_functions;
+      const std::size_t prior_unreachable_internal =
+        pruning.unreachable_internal_functions;
+      pruning = lowir_model::prune_unreachable_weak_functions(program);
+      pruning.pruned_functions += prior_pruned;
+      pruning.unreachable_weak_functions += prior_unreachable_weak;
+      pruning.unreachable_internal_functions += prior_unreachable_internal;
+    }
+    if(stats) stats->post_prune_inline_nanoseconds =
+      static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now() - post_prune_inline_started).count());
+  }
   if(stats) {
     collect_retained_inline_census(program, stats);
     stats->inline_reachable_functions = pruning.reachable_functions;

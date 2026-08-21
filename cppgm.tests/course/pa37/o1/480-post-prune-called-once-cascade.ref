@@ -1,0 +1,47 @@
+global @sink : i64 = 0
+
+function @main(%value : i64) -> i64 [unwind=no, role=entry] {
+  block ^entry:
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    store i64 %value, @sink
+    return i64 %value
+}
