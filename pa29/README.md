@@ -650,7 +650,9 @@ To complete PA29, implement these goals:
 
 18. Exercise non-64-bit atomic widths explicitly.
    The PA29 atomic contract is not only about `i64`; smaller-width atomic load/store
-   behavior should survive through the direct native backend.
+   behavior should survive through the direct native backend. An atomic load
+   result that remains live across a call must also have a frame fallback when
+   every preserved GPR is occupied.
 
 The PA29 tests intentionally include all of those cases so students can tell whether they
 have actually implemented a direct `LowIR -> machine IR -> native` path, rather than only
@@ -757,6 +759,8 @@ strategies include:
 - lower a sole-use `i128` comparison and branch as high-word decisions plus an
   unsigned low-word tie-break, and give a comparison used as a value a frame
   fallback instead of requiring a free GPR
+- give an atomic load result a typed temporary frame home when its live range
+  requires a register class with no free member
 - prefer an available caller-saved register to adding a callee-saved register
   to the frame's `preserve` list
 - reuse compatible compiler-created temporary frame locations when their value

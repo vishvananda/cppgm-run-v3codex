@@ -56,16 +56,27 @@ protected:
 			derived.define(instruction.dest, instruction.type, destination);
 			return;
 		}
-		const mir_model::MirOperand destination =
-			derived.result_is_immediate_return(
-				block, instruction_index, instruction.dest) ? reg_operand(XR_RAX) :
-			reg_operand(derived.allocate_result(instruction.dest, out));
+		mir_model::MirOperand destination = reg_operand(XR_RAX);
+		mir_model::MirOperand pressure_home;
+		if (!derived.result_is_immediate_return(
+			block, instruction_index, instruction.dest))
+		{
+			X64Register result = XR_RSP;
+			if (derived.try_allocate_result(instruction.dest, out, &result))
+				destination = reg_operand(result);
+			else pressure_home =
+				derived.allocate_temp_home(instruction.dest, instruction.type);
+		}
 		append_load(out, destination,
 			derived.materialized_storage(instruction.first, out), instruction.type);
 		append_integer_normalization(out, instruction.type, destination);
 		derived.consume(instruction.first, destination.reg);
 		derived.consume(instruction.args[0]);
-		derived.define(instruction.dest, instruction.type, destination);
+		if (pressure_home.kind == mir_model::MirOperand::OP_FRAME)
+			append_store(out, pressure_home, destination, instruction.type);
+		derived.define(instruction.dest, instruction.type,
+			pressure_home.kind == mir_model::MirOperand::OP_FRAME ?
+			pressure_home : destination);
 	}
 
 	void emit_atomic_store(const lowir_model::Instruction& instruction,
