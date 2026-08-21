@@ -1,0 +1,12 @@
+declare function @observe(%arg0 : i32) -> void [unwind=no, linkage=c, binding=strong]
+
+function @use_preferred(%value : i32) -> i32 [binding=strong, object=_Z13use_preferredi] {
+  block ^entry:
+    call void @observe(%value)
+    call void @observe(%value)
+    call void @observe(%value)
+    call void @observe(%value)
+    call void @observe(%value)
+    call void @observe(%value)
+    return i32 %value
+}

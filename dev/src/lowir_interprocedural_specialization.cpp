@@ -166,6 +166,7 @@ void make_internal_clone(Function * function, lowir_model::SymbolId symbol)
   function->metadata.prefer_local_object_binding = false;
   function->metadata.object_output_root = false;
   function->metadata.force_inline = false;
+  function->metadata.inline_hint = false;
   function->metadata.no_inline = false;
 }
 

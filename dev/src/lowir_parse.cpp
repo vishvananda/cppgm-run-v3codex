@@ -448,6 +448,9 @@ private:
     } else if(key == "force_inline") {
       if(!function_symbol) throw ParseError("force_inline metadata requires a function");
       out.force_inline = yes_no(value);
+    } else if(key == "inline_hint") {
+      if(!function_symbol) throw ParseError("inline_hint metadata requires a function");
+      out.inline_hint = yes_no(value);
     } else if(key == "no_inline") {
       if(!function_symbol) throw ParseError("no_inline metadata requires a function");
       out.no_inline = yes_no(value);

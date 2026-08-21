@@ -400,6 +400,7 @@ void AdaptSymbolFacts(const Symbol& source,
 		(source.internal_linkage && HasNonCallDemand(source));
 	symbol->object_trivial_lifecycle = source.trivial_lifecycle;
 	symbol->force_inline = source.force_inline;
+	symbol->inline_hint = source.inline_hint;
 	symbol->no_inline = source.no_inline;
 	if (boundary) AdaptBoundaryFacts(source, boundary);
 	switch (source.runtime_role)

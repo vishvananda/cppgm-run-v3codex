@@ -501,6 +501,7 @@ struct Symbol
 	bool object_output_root;
 	bool trivial_lifecycle;
 	bool force_inline;
+	bool inline_hint;
 	bool no_inline;
 
 	Symbol(Kind kind_value, lowir_model::StringId name_value,
@@ -518,7 +519,7 @@ struct Symbol
 		  demand_reason_mask(0),
 		  declaration_emitted(false), definition_emitted(false), referenced(false),
 		  object_output_root(false), trivial_lifecycle(false), force_inline(false),
-		  no_inline(false) {}
+		  inline_hint(false), no_inline(false) {}
 };
 
 }

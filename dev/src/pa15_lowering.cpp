@@ -510,6 +510,8 @@ private:
 			symbol.object_output_root |= binding.object_output_root;
 			symbol.demand_reason_mask |= canonical_binding.demand_reason_mask;
 			symbol.force_inline |= binding.force_inline || canonical_binding.force_inline;
+			symbol.inline_hint |= binding.inline_function ||
+				canonical_binding.inline_function;
 			symbol.no_inline |= binding.no_inline || canonical_binding.no_inline;
 			pa15_lowering_abi::ApplyBuiltinSymbolMetadata(
 				&symbol, binding.builtin_function,
@@ -542,6 +544,8 @@ private:
 		output_.symbols.back().demand_reason_mask =
 			canonical_binding.demand_reason_mask;
 		output_.symbols.back().force_inline = binding.force_inline || canonical_binding.force_inline;
+		output_.symbols.back().inline_hint = binding.inline_function ||
+			canonical_binding.inline_function;
 		output_.symbols.back().no_inline = binding.no_inline || canonical_binding.no_inline;
 		output_.symbol_index.Insert(identity, symbol);
 		RecordLifecycleBaseEntry(identity, symbol);

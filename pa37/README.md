@@ -190,6 +190,9 @@ running optimizing transforms.
 - preservation of calls to functions marked `no_inline=yes`; source-level GNU
   `noinline` attributes on named functions and lambda call operators must reach
   that LowIR metadata on the driver path
+- preservation of the source `inline` preference as `inline_hint=yes`, distinct
+  from mandatory `force_inline=yes`, prohibitive `no_inline=yes`, linkage, and
+  object-retention metadata
 - bottom-up processing of the direct-call graph so an eligible callee is
   simplified before callers decide whether to inline it
 - immediate local simplification, dead-code elimination, and control-flow
@@ -337,9 +340,11 @@ rebuilds the typed direct-call graph once and may inline an additional
 nonrecursive function whose optimized body contains no exception-handling
 instructions. A single-block, single-return body with no calls may have at
 most 40 instructions. A body that contains a call or has multiple blocks may
-have at most six instructions. This late wave has a fresh 128-instruction
+have at most six instructions, or at most seven instructions when its
+definition has `inline_hint=yes`. This late wave has a fresh 128-instruction
 budget for each caller, charged by the optimized instruction count of every
-inlined body. It must continue to preserve `no_inline`, variadic,
+inlined body. The hint does not override that budget or `no_inline=yes`. The
+wave must continue to preserve variadic,
 exception-region, unwind, and externally visible call-site restrictions from
 ordinary inlining.
 
@@ -537,6 +542,11 @@ changed. Multi-block substitution can reuse the ordinary typed block, value,
 slot, return-merge, and phi-edge machinery. This permits scalar replacement
 and CFG cleanup to expose small accessors and wrappers without an unbounded
 optimizer fixed point or repeated body scans at call sites.
+
+Carry the inline preference as one Boolean in typed symbol metadata and test it
+beside the cached body-shape summary. It should not require source-name lookup,
+rendered metadata parsing, a separate call graph, or an additional function
+scan.
 
 For unreachable-edge cleanup, build one dense bitmap indexed by `SymbolId` from
 the program's typed role metadata, then mark target blocks by `BlockId` within

@@ -186,8 +186,8 @@ function @boot() -> void [role=init, binding=strong] {
 
 The currently defined top-level metadata keys are `role`, `linkage`, `binding`, `object`,
 `tls_for` (functions only), `keep_alias`, `prefer_local`, `object_root`, `trivial_lifecycle`
-(functions only), `force_inline` (functions only), `no_inline` (functions only), and
-`storage` (globals only).
+(functions only), `force_inline` (functions only), `inline_hint` (functions only),
+`no_inline` (functions only), and `storage` (globals only).
 
 The currently defined global `storage` values are:
 
@@ -301,6 +301,12 @@ optimization level. It does not relax call-boundary, ABI, type, recursion, or
 control-flow safety checks. Canonical `lowiropt -O0` preserves this metadata
 without performing the object-preparation transform.
 
+The `inline_hint` metadata key is a `yes`/`no` flag for top-level function
+declarations and definitions. `inline_hint=yes` records a source-language
+preference for inlining eligible direct calls. It may increase a bounded
+profitability limit, but does not require substitution, change linkage, make
+the definition an object root, or override `no_inline=yes`.
+
 The `no_inline` metadata key is a `yes`/`no` flag for top-level function
 declarations and definitions. `no_inline=yes` prevents optional inlining of
 calls to that function. It does not make the function an object-emission root,
@@ -398,7 +404,8 @@ normally.
 Call signatures only accept call-boundary metadata such as `arity=...`, `effects=...`,
 `unwind=...`, and `return=...`. Top-level symbol metadata such as `role=...`, `linkage=...`,
 `binding=...`, `object=...`, `keep_alias=...`, `prefer_local=...`, `object_root=...`, and
-`trivial_lifecycle=...`, `force_inline=...`, and `no_inline=...` are not valid on `as (...) -> ...`
+`trivial_lifecycle=...`, `force_inline=...`, `inline_hint=...`, and
+`no_inline=...` are not valid on `as (...) -> ...`
 call signatures.
 
 Later backend lowering may also introduce internal compiler builtin helper symbols for

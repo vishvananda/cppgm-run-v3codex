@@ -22,7 +22,7 @@ namespace
 {
 
 const char kMagic[] = "CPPGMOBJ";
-const std::uint32_t kVersion = 2;
+const std::uint32_t kVersion = 3;
 const std::uint64_t kMaxObjectElements = UINT64_C(1) << 28;
 
 class Writer
@@ -353,6 +353,7 @@ void WriteSymbolMetadata(Writer& out,
 	out.Bool(value.object_output_root);
 	out.Bool(value.object_trivial_lifecycle);
 	out.Bool(value.force_inline);
+	out.Bool(value.inline_hint);
 	out.Bool(value.no_inline);
 }
 
@@ -379,6 +380,7 @@ lowir_model::SymbolMetadata ReadSymbolMetadata(
 	value.object_output_root = in.Bool();
 	value.object_trivial_lifecycle = in.Bool();
 	value.force_inline = in.Bool();
+	value.inline_hint = in.Bool();
 	value.no_inline = in.Bool();
 	return value;
 }

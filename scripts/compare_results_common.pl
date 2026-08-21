@@ -687,6 +687,7 @@ sub parse_lowir_function_metadata_suffix
 		object_root => '',
 		trivial_lifecycle => '',
 		force_inline => '',
+		inline_hint => '',
 		no_inline => '',
 	);
 	my %saw;
@@ -780,6 +781,12 @@ sub parse_lowir_function_metadata_suffix
 				return (0, "unknown force_inline mode '$value'")
 					if $value !~ /^(?:yes|no)$/;
 				$metadata{force_inline} = $value;
+			}
+			elsif ($key eq 'inline_hint')
+			{
+				return (0, "unknown inline_hint mode '$value'")
+					if $value !~ /^(?:yes|no)$/;
+				$metadata{inline_hint} = $value;
 			}
 			elsif ($key eq 'no_inline')
 			{
@@ -2091,7 +2098,7 @@ sub lowir_metadata_item_ignored_for_compare
 	# Validate full metadata, but do not make early source-to-LowIR oracles depend
 	# on later object/export policy or optional optimizer/provenance annotations.
 	return 1 if $key eq 'role' && $value =~ /^(?:allocate_memory|free_memory|terminate|pure_virtual|dynamic_cast|bad_cast|bad_typeid|rtti_class|rtti_si|rtti_vmi|rtti_data)$/;
-	return 1 if $key =~ /^(?:linkage|binding|object|tls_for|keep_alias|prefer_local|trivial_lifecycle|force_inline|no_inline)$/;
+	return 1 if $key =~ /^(?:linkage|binding|object|tls_for|keep_alias|prefer_local|trivial_lifecycle|force_inline|inline_hint|no_inline)$/;
 	return 1 if $key =~ /^(?:effects|unwind|return|capture|access|alias|projection)$/;
 	return 1 if $key eq 'storage' && $value =~ /^(?:readonly|writable)$/;
 	return 0;

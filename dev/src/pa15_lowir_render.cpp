@@ -582,6 +582,7 @@ void WriteSymbolMetadata(std::ostream& output, const Symbol& symbol,
 	if (function && symbol.trivial_lifecycle)
 		output << ", trivial_lifecycle=yes";
 	if (function && symbol.force_inline) output << ", force_inline=yes";
+	if (function && symbol.inline_hint) output << ", inline_hint=yes";
 	if (function && symbol.no_inline) output << ", no_inline=yes";
 	output << ']';
 }

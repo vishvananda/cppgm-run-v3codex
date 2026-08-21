@@ -32,6 +32,7 @@ const std::size_t kSingleCallInstructionLimit = 160;
 const std::size_t kSingleCallCallerBudget = 320;
 const std::size_t kMinimumSingleCallTranslationUnitBudget = 10240;
 const std::size_t kLateNonleafInstructionLimit = 6;
+const std::size_t kLateHintNonleafInstructionLimit = 7;
 class ValueMap
 {
 public:
@@ -669,9 +670,13 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_callee_size;
       return false;
     }
+    const std::size_t late_nonleaf_limit = callee_function.metadata.inline_hint ?
+      kLateHintNonleafInstructionLimit : kLateNonleafInstructionLimit;
     if(optimized_late_wave_ &&
-       instruction_counts_[target] > kLateNonleafInstructionLimit &&
+       instruction_counts_[target] > late_nonleaf_limit &&
        !leaf_inline_shapes_[target]) {
+      if(record_stats && stats_ && callee_function.metadata.inline_hint)
+        ++stats_->inline_hint_size_rejects;
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
       return false;
     }
@@ -702,6 +707,8 @@ private:
     if(record_stats && stats_ && bounded_single_call &&
        !definition_removing_only_)
       ++stats_->inline_single_call_candidates;
+    if(record_stats && stats_ && callee_function.metadata.inline_hint)
+      ++stats_->inline_hint_candidates;
     if(record_stats && stats_) ++stats_->inline_candidate_calls;
     return true;
   }
@@ -1159,6 +1166,8 @@ private:
           continue;
         }
         const std::size_t cloned_instructions = instruction_counts_[target];
+        const bool inline_hint =
+          program_.functions[target].metadata.inline_hint;
         inline_leaf_call(function_index, ins, program_.functions[target],
           used_single_call, names, replacements, &rebuilt);
         discard_single_call_body(target, used_single_call);
@@ -1166,6 +1175,7 @@ private:
         changed = true;
         if(stats_) {
           ++stats_->inline_calls;
+          if(inline_hint) ++stats_->inline_hint_calls;
           stats_->inline_cloned_instructions += cloned_instructions;
           if(used_single_call) {
             if(definition_removing_only_) {
@@ -1253,6 +1263,8 @@ private:
               continue;
             }
             const std::size_t cloned_instructions = instruction_counts_[target];
+            const bool inline_hint =
+              program_.functions[target].metadata.inline_hint;
             inline_call(function_index, b, j, program_.functions[target],
               used_single_call, &names, &replacements, &block_eh, active);
             discard_single_call_body(target, used_single_call);
@@ -1260,6 +1272,7 @@ private:
             changed = true;
             if(stats_) {
               ++stats_->inline_calls;
+              if(inline_hint) ++stats_->inline_hint_calls;
               stats_->inline_cloned_instructions += cloned_instructions;
               if(used_single_call) {
                 if(definition_removing_only_) {

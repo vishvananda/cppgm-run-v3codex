@@ -1,0 +1,18 @@
+function @preferred(%value : i32) -> i32 [binding=weak, object=_Z9preferredi, inline_hint=yes] {
+  slot $value : i32
+
+  block ^entry:
+    store i32 %value, $value
+    %t1 = load i32 $value
+    %t2 = binary add i32 %t1, 1
+    return i32 %t2
+}
+function @use_preferred(%value : i32) -> i32 [binding=strong, object=_Z13use_preferredi] {
+  slot $value : i32
+
+  block ^entry:
+    store i32 %value, $value
+    %t1 = load i32 $value
+    %t2 = call i32 @preferred(%t1)
+    return i32 %t2
+}

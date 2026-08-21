@@ -333,6 +333,7 @@ struct SymbolMetadata
   bool object_output_root = false;
   bool object_trivial_lifecycle = false;
   bool force_inline = false;
+  bool inline_hint = false;
   bool no_inline = false;
   bool inferred_legacy_role = false;
 };

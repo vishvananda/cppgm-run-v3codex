@@ -1,0 +1,17 @@
+function @use_identity(%value : i32) -> i32 [binding=strong, object=_Z12use_identityi] {
+  slot $value : i32
+
+  block ^entry:
+    store i32 %value, $value
+    %t1 = load i32 $value
+    %t2 = call i32 @identity(%t1)
+    return i32 %t2
+}
+function @identity(%value : i32) -> i32 [binding=weak, object=_Z8identityIiET_S0_, inline_hint=yes] {
+  slot $value : i32
+
+  block ^entry:
+    store i32 %value, $value
+    %t1 = load i32 $value
+    return i32 %t1
+}

@@ -159,7 +159,8 @@ Required metadata families:
 
 - top-level `role`, `linkage`, `binding`, `object`, function `tls_for`,
   `keep_alias`, `prefer_local`, and global `storage`
-- function `object_root`, `trivial_lifecycle`, `force_inline`, and `no_inline`
+- function `object_root`, `trivial_lifecycle`, `force_inline`, `inline_hint`,
+  and `no_inline`
 - function `arity`, `effects`, `unwind`, and `return`
 - parameter `pass`, `capture`, `access`, and `alias`
 - index `projection`
@@ -357,3 +358,7 @@ need a small adapter label so transfers for an untaken edge do not execute.
 
 Represent `role` values with a compact enum after parsing. Later passes should
 compare the enum and `SymbolId`, not rendered role or symbol spellings.
+
+Represent `force_inline`, `inline_hint`, and `no_inline` as independent Boolean
+facts. This keeps a source inlining preference separate from a required or
+prohibited transform without adding string comparisons to optimizer paths.

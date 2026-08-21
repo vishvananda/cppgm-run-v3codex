@@ -1,7 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--10i and R11a are implemented and clean through the
-full report; Rank 11 continues at the LowIR inline-hint boundary, while the
+Status: active; Ranks 1--10i and R11a--b are implemented and clean through the
+full report; Rank 11 continues at residual EH stripping, while the
 under-15-second maximum frozen-compile objective remains open
 
 Date: 2026-08-21
@@ -1829,10 +1829,11 @@ PA13 owns syntax, parse/dump/roundtrip, scaffold, and student instructions.
 PA15 owns explicit free-function `inline` lowering; the first class assignment
 owns the implicit in-class-definition producer; PA19 covers template
 specializations; and PA37 O1 owns positive, negative, size-budget, and
-1x/2x/4x optimizer behavior.  Existing source LowIR fixtures will gain the
-field broadly and must be regenerated in place with the exact movement counted
-in the ledger.  The direct source-object path and serialized LowIR object path
-must remain byte-identical.
+1x/2x/4x optimizer behavior.  Source LowIR gains the field broadly, but the
+early relaxed comparator treats optional policy metadata as non-layout; add
+targeted owning references rather than churn unrelated source fixtures.  The
+direct source-object path and serialized LowIR object path must remain
+byte-identical.
 
 Start inlining policy at the retained six/128 baseline.  Measure a separate
 bounded inline-hint body cap one value at a time, charging the same original-
@@ -1842,6 +1843,25 @@ cleanup to expose `_M_destroy`/`operator delete`, remove calls through
 `~basic_string`, `_M_dispose`, and `_M_is_local` when profitable, and finally
 prune the weak bodies and D1/D2 aliases when no observable use remains.  Compare
 the resulting probe object and frozen call family directly with GCC and Clang.
+
+Implementation result (2026-08-21): `BindingRecord::inline_function` now
+reaches serialized LowIR as one typed `inline_hint` Boolean and survives the
+PA30 compiler-object round trip.  PA13 owns its function-only syntax and
+scaffold field; PA15, PA16, and PA19 reducers cover explicit free functions,
+in-class definitions, and function-template specializations.  PA37 covers the
+source path, `no_inline` precedence, the size boundary, and byte-identical
+direct-versus-serialized objects at O0 through O3 and in the debug lane.
+
+The measured 12-instruction hinted late cap was rejected: it removed 19
+additional definitions but grew the frozen O1 object by 5,760 bytes and
+`.text*` by 9,471 bytes.  The narrow next-step cap of seven is retained.  It
+uses the existing cached typed shape and 128-instruction caller budget, removes
+five additional definitions, changes the object by -592 bytes and `.text*` by
++384 bytes, and leaves the three-run host-built O1 wall median at 5.18 seconds.
+The basic-string destructor and `_M_dispose` call counts are not reduced yet;
+their residual EH/landing eligibility, rather than missing inline preference,
+is now the next gate.  The full report is 5,382/5,382, the PA37 debug/object
+lane is clean, and the file audit has zero fatal findings.
 
 #### R11c. Strip provably dead protected regions in callee-first order
 
@@ -2235,7 +2255,7 @@ Fill one row for every retained or rejected phase:
 | R10i-c | bounded external-to-recursive-SCC tail | no fixture or contract movement because the measured opportunity does not justify a new policy | 207 external-to-recursive calls narrow to eight eligible sites / three targets / at most 46 cloned instructions | rejected before production implementation; avoids a stable-site snapshot, graph update, and propagation scan for a negligible upper bound | R10i-a baseline remains 5,366/5,366, zero fatal | diagnostic only; final combined lane covers the retained inliner | complete, rejected by typed frozen census; conservative recursive rejection retained |
 | R10i-d | preserve frame-address value identity through native phi transfers | active PA29 behavioral reducer with informational MIR; PA29 normative and Design Notes; no LowIR change | corrected generated compiler; frozen self medians O0 14.96 s / maximum 16.74 s; deterministic objects 2,965,936 / 1,659,296 B | one transient Boolean per phi move, no scan or string identity; phi adapter separated and main lowerer reduced to 2,938 lines | 5,367/5,367; PA37/PA38 debug clean; zero fatal, 32 warnings | O3 self 19.10 s / inception 69.76 s; all 209 objects and final binary match | corrective complete, `a8420b92`; under-15 maximum objective remains open |
 | R11a | standard implicit destructor exception specifications and terminate boundary | PA13/16/19/20/21/28/35 active reducers; PA26/30/37 corrective movement | O1 object -77,168 B, `.text*` -23,351 B, defined symbols -90 against retained pre-R11 host compiler | one cached typed completed-class walk; typed terminate role; no string identity | 5,374/5,374; zero fatal, 32 warnings | final combined O0/O3 self/inception lane required | implementation complete; host-built frozen medians O0 4.79 s / maximum 5.27 s |
-| R11b | preserve bounded C++ inline preference as `inline_hint` | PA13 syntax/scaffold/roundtrip; PA15/class/template producers; PA37 policy/scaling | measure basic-string call chain, bodies, text and aliases | one typed Boolean; bounded hint cap, no strings | pending | required | planned after R11a |
+| R11b | preserve bounded C++ inline preference as `inline_hint` | PA13 syntax/scaffold; PA15/16/19 producers; PA37 policy/source/object/debug | cap 12 rejected; retained cap 7: object -592 B, `.text*` +384 B, definitions -5; basic-string calls unchanged | one typed Boolean and cached shape test; existing 128 caller budget; no strings | 5,382/5,382; zero fatal, 32 warnings | final combined self/inception lane required; PA37 object/debug clean | implementation complete; host-built frozen O1 median 5.18 s; proceed to residual EH gate |
 | R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 exact/source/behavior/scaling; no PA13 syntax change | measure protected regions removed after R11a/b | shared dense typed EH state; one bounded callee-first visit | pending | pending | conditional on residual census |
 | R11d | separate lifecycle publication/retention from explicit `no_inline` | earliest affected lifecycle PA determined by report; PA32/33 object inspection; PA37 positive/negative | measure base entries inlined and required symbols/aliases retained | deletes blanket policy; no replacement metadata unless proven necessary | pending | explicit O0 and O3 lanes required | planned after R11a/b census |
 | R11e | proven-no-unwind landing-block inlining | PA37 O1 exact and exception-in-flight behavior | measure landing rejects, cleanup calls, text and EH metadata | existing dense summaries and budgets | pending | pending | conditional after R11c/d |
