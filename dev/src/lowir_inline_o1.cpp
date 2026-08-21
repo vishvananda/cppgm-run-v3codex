@@ -79,7 +79,7 @@ typedef std::vector<RenamedBlock> BlockMap;
 
 bool is_eh_instruction(Instruction::Kind kind)
 {
-  return kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_EH_END;
+  return kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_RESUME;
 }
 
 bool direct_call(const Instruction & instruction,
@@ -609,7 +609,7 @@ private:
 
   bool candidate(std::size_t caller, std::size_t target,
                  const Instruction & call,
-                 bool landing, bool inside_eh, bool record_stats = false)
+                 bool landing, bool record_stats = false)
   {
     if(target == kNoFunction) return false;
     if(record_stats && stats_ && definition_removing_only_ &&
@@ -681,12 +681,6 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_landing;
       if(record_stats && stats_ && definition_removing_only_)
         ++stats_->post_prune_inline_reject_landing;
-      return false;
-    }
-    if(inside_eh && !no_unwind_[callee_function.symbol]) {
-      if(record_stats && stats_) ++stats_->inline_reject_eh_unwind;
-      if(record_stats && stats_ && definition_removing_only_)
-        ++stats_->post_prune_inline_reject_eh_unwind;
       return false;
     }
     if(contains_eh_[target]) {
@@ -1111,7 +1105,6 @@ private:
   bool batch_inline_leaf_calls(std::size_t function_index,
                                std::size_t block_index,
                                const EhContext & eh,
-                               const std::vector<unsigned char> & block_eh,
                                Names * names, ValueMap * replacements,
                                std::size_t * inline_budget)
   {
@@ -1121,17 +1114,13 @@ private:
     const std::uint32_t id = function.blocks[block_index].id;
     const bool landing = id < eh.landing_blocks.size() &&
       eh.landing_blocks[id] != 0;
-    bool active = block_eh[id] != 0;
     bool batch_safe = true;
     for(std::size_t i = 0; batch_safe && i < source.size(); ++i) {
       const std::size_t target = callee(source[i]);
       if(target != kNoFunction &&
-         candidate(function_index, target, source[i], landing, active) &&
+         candidate(function_index, target, source[i], landing) &&
          !leaf_inline_shapes_[target])
         batch_safe = false;
-      if(source[i].kind == Instruction::IK_EH_TRY ||
-         source[i].kind == Instruction::IK_EH_CLEANUP) active = true;
-      else if(source[i].kind == Instruction::IK_EH_END) active = false;
     }
     if(!batch_safe) {
       function.blocks[block_index].instructions.swap(source);
@@ -1140,7 +1129,6 @@ private:
 
     std::vector<Instruction> rebuilt;
     rebuilt.reserve(source.size());
-    active = block_eh[id] != 0;
     bool changed = false;
     for(std::size_t i = 0; i < source.size(); ++i) {
       const Instruction & ins = source[i];
@@ -1151,7 +1139,7 @@ private:
         if(stats_ && optimized_late_wave_)
           ++stats_->late_inline_call_visits;
         eligible = candidate(
-          function_index, target, ins, landing, active, true);
+          function_index, target, ins, landing, true);
       }
       if(eligible &&
          leaf_inline_shapes_[target]) {
@@ -1188,9 +1176,6 @@ private:
         }
         continue;
       }
-      if(ins.kind == Instruction::IK_EH_TRY ||
-         ins.kind == Instruction::IK_EH_CLEANUP) active = true;
-      else if(ins.kind == Instruction::IK_EH_END) active = false;
       rebuilt.push_back(std::move(source[i]));
     }
     function.blocks[block_index].instructions.swap(rebuilt);
@@ -1205,7 +1190,7 @@ private:
       for(std::size_t j = 0; j < original.blocks[b].instructions.size(); ++j) {
         const std::size_t target = callee(original.blocks[b].instructions[j]);
         if(candidate(function_index, target, original.blocks[b].instructions[j],
-             false, false)) {
+             false)) {
           has_candidate = true;
           break;
         }
@@ -1232,7 +1217,7 @@ private:
     std::size_t & inline_budget = remaining_inline_budget_[function_index];
     for(std::size_t b = 0;
         b < program_.functions[function_index].blocks.size(); ++b) {
-      changed |= batch_inline_leaf_calls(function_index, b, eh, block_eh,
+      changed |= batch_inline_leaf_calls(function_index, b, eh,
         &names, &replacements, &inline_budget);
       bool active = block_eh[
         program_.functions[function_index].blocks[b].id] != 0;
@@ -1251,7 +1236,7 @@ private:
                  eh.landing_blocks.size() &&
                eh.landing_blocks[
                  program_.functions[function_index].blocks[b].id] != 0,
-               active, true)) {
+               true)) {
             bool used_single_call = false;
             if(!consume_inline_budget(target, &inline_budget,
                  &remaining_single_call_budget_[function_index],

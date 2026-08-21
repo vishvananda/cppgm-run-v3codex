@@ -207,6 +207,13 @@ running optimizing transforms.
   this wave uses the optimized body count with the same 160-instruction body,
   320-instruction caller, and proportional translation-unit limits, then
   prunes transferred definitions
+- inlining a callee with no EH control instructions from an active caller EH
+  region even when the callee may unwind; potentially throwing calls cloned
+  from that callee remain inside the caller's active region and therefore use
+  its landing destination
+- treating `throw`, `exception`, `exception_selector`, and `resume` as
+  EH-bearing instructions, just like the `eh_*` markers; a function containing
+  any of them is not an ordinary inlining candidate
 - preservation of the ordinary 128-instruction policy when a definition is
   in the single-call class but a separate single-call budget is exhausted;
   calls that meet the ordinary size and growth rules remain ordinary inline
@@ -456,6 +463,12 @@ a small one. After pruning dead callers, rebuild the compact graph once and
 run only this definition-removing policy in callee-first order. A transferred
 callee can then become part of a later transferred caller in the same wave;
 do not implement the cascade as repeated whole-program fixed-point scans.
+
+Track the caller's active EH state as one dense fact per block. A callee that
+contains no EH control instruction can inherit that state without rewriting
+exception metadata: its cloned ordinary calls remain between the caller's
+existing `eh_try`/`eh_cleanup` and `eh_end`. Keep landing blocks themselves and
+callees with their own EH control out of the ordinary inlining path.
 
 Interprocedural argument agreement can reuse that same direct-call graph and
 its dense symbol-to-function table. Store parameter facts in one packed array
