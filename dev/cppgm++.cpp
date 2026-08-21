@@ -830,6 +830,16 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 		const lowir_model::InstructionDebugLocation return_loc =
 			source_location(debug_file, return_line + 1,
 				first_source_column(lines[return_line]));
+		unordered_set<string> used_value_names = parameters;
+		for(size_t i = 0; i < function.value_names.size(); ++i) {
+			const lowir_model::PresentationName presentation =
+				lowir_model::lowir_value_presentation(
+					function, lowir_model::ValueId(static_cast<uint32_t>(i)));
+			if(presentation.valid()) used_value_names.insert(
+				lowir_model::lowir_value_name(program->strings, function,
+					lowir_model::ValueId(static_cast<uint32_t>(i))));
+		}
+		vector<size_t> debug_value_ordinals(function.slot_names.size(), 0);
 		for(size_t b = 0; b < function.blocks.size(); ++b) {
 			vector<lowir_model::Instruction> with_debug;
 			for(size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
@@ -848,8 +858,13 @@ void attach_line_table_debug(lowir_model::LowirProgram * program,
 							lowir_model::Instruction copy;
 							copy.kind = lowir_model::Instruction::IK_COPY;
 							copy.type = ins.type;
+							string debug_name;
+							do {
+								debug_name = "dbg_" + slot + "__" + to_string(
+									++debug_value_ordinals[ins.second.slot]);
+							} while(!used_value_names.insert(debug_name).second);
 							copy.dest = lowir_model::append_lowir_value(function,
-								program->strings.intern("dbg_" + slot + "__1"),
+								program->strings.intern(debug_name),
 								copy.type, true);
 						copy.first = ins.first;
 						copy.debug_location = ins.debug_location;
