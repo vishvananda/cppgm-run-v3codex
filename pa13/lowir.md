@@ -20,7 +20,8 @@ LowIR is:
 - block-based
 - text-based and deterministic
 - explicit about globals, functions, stack slots, temporaries, and control flow
-- non-SSA by requirement, but compatible with later SSA conversion if desired
+- not required to be in SSA form, while providing an explicit merge operation
+  for values selected by incoming control-flow edges
 
 LowIR text is the serialized form of the compiler-owned backend program model.
 Implementations may use a typed in-memory representation, and the starter
@@ -824,6 +825,25 @@ representation is:
 That keeps `index f80`, structured global layout, and later native/object lowering aligned
 with the same LowIR storage model while still allowing PA13-style execution through a
 different internal calling convention if needed.
+
+### Control-Flow Value Merges
+
+```text
+%t = phi <type> [^predecessor: <value>, ...]
+```
+
+`phi` selects the value paired with the ordinary control-flow edge by which
+execution entered the current block. A `phi` must name every distinct ordinary
+predecessor of its block exactly once, and may not name any other block. All
+`phi` instructions in a block precede its ordinary instructions and execute in
+parallel, so one `phi` may use the value produced by another `phi` on a loop's
+previous iteration.
+
+The result and every incoming value have the same directly representable
+scalar type: `i1`, `i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `f32`,
+`f64`, or `ptr`. A block reached as an exception handler target may not contain
+`phi`; exception state remains represented by the explicit exception/runtime
+instructions.
 
 ### Memory and Addressing
 

@@ -215,7 +215,7 @@ test of its rendered name.
 
 Required instructions:
 
-- `const`, `copy`, `addr`, `load`, and `store`
+- `const`, `copy`, `phi`, `addr`, `load`, and `store`
 - `atomic_load`, `atomic_store`, `atomic_exchange`,
   `atomic_compare_exchange`, `atomic_add_fetch`, `atomic_thread_fence`, and
   `atomic_signal_fence`
@@ -274,6 +274,9 @@ Reject structurally malformed LowIR, including:
 - `indirect_result` parameters that are not first or are used on non-`void`
   functions
 - indirect calls that omit the required explicit signature
+- a `phi` that is not at the start of its block, omits or duplicates an
+  ordinary predecessor, names a non-predecessor, merges mismatched types, or
+  appears in an exception-handler target block
 
 Diagnostics are not graded, but the exit status is.
 
@@ -345,3 +348,8 @@ A robust `lowir2cy86` design usually has three layers:
 
 Keep the translation monotonic. Adding a new LowIR instruction later should add
 a translation case without changing the CY86 output for existing PA13 programs.
+
+For `phi`, compact block and value identities make predecessor checks and edge
+transfer planning independent of label spelling. Emit the incoming assignments
+as parallel transfers on predecessor edges; a conditional or multi-way edge may
+need a small adapter label so transfers for an untaken edge do not execute.

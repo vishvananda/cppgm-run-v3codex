@@ -462,7 +462,10 @@ struct Instruction
     IK_JUMP,
     IK_BRANCH,
     IK_SWITCH,
-    IK_RETURN
+    IK_RETURN,
+    // Kept at the end so existing serialized instruction identities remain
+    // stable.  args stores alternating OP_LABEL/typed-value operands.
+    IK_PHI
   } kind = IK_CONST;
 
   ValueId dest;

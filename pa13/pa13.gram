@@ -140,6 +140,7 @@ assign-instruction:
 rvalue-instruction:
 	KW_CONST type scalar-literal
 	KW_COPY type value
+	KW_PHI type OP_LSQUARE phi-incoming (OP_COMMA phi-incoming)* OP_RSQUARE
 	KW_ADDR addressable
 	KW_LOAD type storage
 	KW_ATOMIC_LOAD type value OP_COMMA integer-literal
@@ -155,6 +156,9 @@ rvalue-instruction:
 	KW_CALL type callee OP_LPAREN argument-list OP_RPAREN call-signature?
 	KW_EXCEPTION type
 	KW_EXCEPTION_SELECTOR type
+
+phi-incoming:
+	block-name OP_COLON value
 
 store-instruction:
 	KW_STORE type value OP_COMMA storage

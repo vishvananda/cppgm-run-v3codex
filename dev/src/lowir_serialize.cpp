@@ -404,6 +404,17 @@ void write_instruction(std::ostream & out, const Instruction & ins,
     out << "return " << lowir_type_text(ins.type);
     if(ins.type.kind != LTK_VOID) { out << ' '; write_operand(out, ins.first, program, function); }
     break;
+  case Instruction::IK_PHI:
+    write_result(out, ins, program, function);
+    out << " = phi " << lowir_type_text(ins.type) << " [";
+    for(std::size_t i = 0; i + 1 < ins.args.size(); i += 2) {
+      if(i) out << ", ";
+      write_operand(out, ins.args[i], program, function);
+      out << ": ";
+      write_operand(out, ins.args[i + 1], program, function);
+    }
+    out << ']';
+    break;
   }
   write_debug(out, ins.debug_location, program);
 }

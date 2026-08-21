@@ -133,12 +133,23 @@ private:
   TextOutput & out_;
   std::vector<Location> value_locations_;
   std::vector<Location> slot_locations_;
+  std::vector<Location> phi_stage_locations_;
+  struct PhiEdgeCopy
+  {
+    BlockId target;
+    ValueId destination;
+    Operand source;
+    LowType type;
+  };
+  std::vector<std::vector<PhiEdgeCopy> > phi_edge_copies_;
   Location return_location_;
   std::size_t frame_size_;
   std::size_t scratch_[4];
   std::size_t instruction_count_;
   bool has_f80_;
   bool indirect_result_;
+  BlockId current_block_;
+  std::size_t phi_edge_label_;
 
   void BuildLayout();
   Location AddLocation(const LowType & type, bool address_value,
@@ -162,6 +173,9 @@ private:
   void EmitBulk(const Instruction & ins);
   void EmitAtomic(const Instruction & ins);
   void EmitControl(const Instruction & ins);
+  bool HasPhiCopies(BlockId predecessor, BlockId target) const;
+  void EmitPhiCopies(BlockId predecessor, BlockId target);
+  std::string PhiEdgeLabel(std::size_t ordinal) const;
   void EmitException(const Instruction & ins);
   void EmitResumeSequence();
   void EmitReturn(const Instruction & ins);
@@ -465,11 +479,28 @@ FunctionEmitter::FunctionEmitter(ProgramEmitter & owner, const Function & functi
                                  TextOutput & out)
   : owner_(owner), function_(function), out_(out), frame_size_(0),
     instruction_count_(0), has_f80_(false),
-    indirect_result_(is_large_value(function.return_type))
+    indirect_result_(is_large_value(function.return_type)),
+    phi_edge_label_(0)
 {
   std::fill(scratch_, scratch_ + 4, 0);
   value_locations_.resize(function_.value_names.size());
   slot_locations_.resize(function_.slot_names.size());
+  phi_stage_locations_.resize(function_.value_names.size());
+  phi_edge_copies_.resize(function_.next_block_id);
+  for(std::size_t b = 0; b < function_.blocks.size(); ++b) {
+    const Block & block = function_.blocks[b];
+    for(std::size_t i = 0; i < block.instructions.size(); ++i) {
+      const Instruction & phi = block.instructions[i];
+      if(phi.kind != Instruction::IK_PHI) break;
+      for(std::size_t incoming = 0; incoming + 1 < phi.args.size(); incoming += 2) {
+        const BlockId predecessor = phi.args[incoming].block;
+        if(static_cast<std::uint32_t>(predecessor) >= phi_edge_copies_.size())
+          throw ParseError("invalid phi predecessor identity");
+        phi_edge_copies_[predecessor].push_back(
+          PhiEdgeCopy{block.id, phi.dest, phi.args[incoming + 1], phi.type});
+      }
+    }
+  }
   BuildLayout();
 }
 
@@ -506,6 +537,9 @@ void FunctionEmitter::BuildLayout()
         const LowType & result_type = instruction_result_type(ins);
         value_locations_[ins.dest] = AddLocation(
           result_type, is_large_value(result_type), used);
+        if(ins.kind == Instruction::IK_PHI)
+          phi_stage_locations_[ins.dest] = AddLocation(
+            result_type, false, used);
       }
       if(is_f80(ins.type) || is_f80(ins.source_type) || ins.kind == Instruction::IK_CONVERT)
         has_f80_ = true;
@@ -619,6 +653,7 @@ void FunctionEmitter::EmitParameterCopies()
 
 void FunctionEmitter::EmitBlock(const Block & block)
 {
+  current_block_ = block.id;
   out_.Label(BlockLabel(lowir_model::lowir_block_label(
     owner_.program_.strings, function_, block.id)));
   for(std::size_t i = 0; i < block.instructions.size(); ++i) {
@@ -652,6 +687,7 @@ void FunctionEmitter::EmitInstruction(const Instruction & ins)
   case Instruction::IK_THROW: case Instruction::IK_EXCEPTION: case Instruction::IK_RESUME:
     EmitException(ins); break;
   case Instruction::IK_RETURN: EmitReturn(ins); break;
+  case Instruction::IK_PHI: break;
   default: throw ParseError("unsupported PA13 instruction in CY86 emitter");
   }
 }
@@ -1147,23 +1183,93 @@ void FunctionEmitter::EmitAtomic(const Instruction & ins)
   }
 }
 
+bool FunctionEmitter::HasPhiCopies(BlockId predecessor, BlockId target) const
+{
+  const std::uint32_t id = predecessor;
+  if(id >= phi_edge_copies_.size()) return false;
+  const std::vector<PhiEdgeCopy> & copies = phi_edge_copies_[id];
+  for(std::size_t i = 0; i < copies.size(); ++i)
+    if(copies[i].target == target) return true;
+  return false;
+}
+
+void FunctionEmitter::EmitPhiCopies(BlockId predecessor, BlockId target)
+{
+  const std::uint32_t id = predecessor;
+  if(id >= phi_edge_copies_.size()) return;
+  const std::vector<PhiEdgeCopy> & copies = phi_edge_copies_[id];
+  // Stage every source before writing any destination.  Phi assignments are
+  // parallel, so this also handles swaps around loop backedges.
+  for(std::size_t i = 0; i < copies.size(); ++i) {
+    if(copies[i].target != target) continue;
+    const TypeShape item = shape(copies[i].type);
+    EmitScalarValue(copies[i].source, copies[i].type, 'x');
+    out_.Instruction("move" + std::to_string(item.width) + " " +
+      memory_bp(phi_stage_locations_[copies[i].destination].offset) + " " +
+      register_name('x', item.width));
+  }
+  for(std::size_t i = 0; i < copies.size(); ++i) {
+    if(copies[i].target != target) continue;
+    const TypeShape item = shape(copies[i].type);
+    out_.Instruction("move" + std::to_string(item.width) + " " +
+      register_name('x', item.width) + " " +
+      memory_bp(phi_stage_locations_[copies[i].destination].offset));
+    StoreScalarTemp(copies[i].destination, copies[i].type, 'x');
+  }
+}
+
+std::string FunctionEmitter::PhiEdgeLabel(std::size_t ordinal) const
+{
+  return "fn__" + lowir_model::lowir_symbol_name(
+    owner_.program_, function_.symbol) + "__phi_edge__" +
+    std::to_string(ordinal);
+}
+
 void FunctionEmitter::EmitControl(const Instruction & ins)
 {
-  if(ins.kind == Instruction::IK_JUMP) out_.Instruction("jump " + BlockLabel(ins.first));
+  if(ins.kind == Instruction::IK_JUMP) {
+    EmitPhiCopies(current_block_, ins.first.block);
+    out_.Instruction("jump " + BlockLabel(ins.first));
+  }
   else if(ins.kind == Instruction::IK_BRANCH) {
     EmitScalarValue(ins.first, builtin_lowir_type(LTK_I64), 'x');
     out_.Instruction("ieq64 z8 x64 0");
-    out_.Instruction("jumpif z8 " + BlockLabel(ins.third));
+    const bool false_copies = HasPhiCopies(current_block_, ins.third.block);
+    const std::size_t false_edge = phi_edge_label_++;
+    out_.Instruction("jumpif z8 " +
+      (false_copies ? PhiEdgeLabel(false_edge) : BlockLabel(ins.third)));
+    EmitPhiCopies(current_block_, ins.second.block);
     out_.Instruction("jump " + BlockLabel(ins.second));
+    if(false_copies) {
+      out_.Label(PhiEdgeLabel(false_edge));
+      EmitPhiCopies(current_block_, ins.third.block);
+      out_.Instruction("jump " + BlockLabel(ins.third));
+    }
   } else {
     const LowType & type = builtin_lowir_type(LTK_I64);
     EmitScalarValue(ins.first, type, 'x');
+    struct CaseEdge { std::size_t label; BlockId target; };
+    std::vector<CaseEdge> copied_cases;
     for(std::size_t i = 0; i < ins.args.size(); i += 2) {
       EmitScalarValue(ins.args[i], type, 't');
       out_.Instruction("ieq64 z8 x64 t64");
-      out_.Instruction("jumpif z8 " + BlockLabel(ins.args[i + 1]));
+      const BlockId target = ins.args[i + 1].block;
+      if(HasPhiCopies(current_block_, target)) {
+        const std::size_t label = phi_edge_label_++;
+        copied_cases.push_back(CaseEdge{label, target});
+        out_.Instruction("jumpif z8 " + PhiEdgeLabel(label));
+      } else out_.Instruction("jumpif z8 " + BlockLabel(ins.args[i + 1]));
     }
+    EmitPhiCopies(current_block_, ins.second.block);
     out_.Instruction("jump " + BlockLabel(ins.second));
+    for(std::size_t i = 0; i < copied_cases.size(); ++i) {
+      out_.Label(PhiEdgeLabel(copied_cases[i].label));
+      EmitPhiCopies(current_block_, copied_cases[i].target);
+      Operand target;
+      target.kind = Operand::OP_LABEL;
+      target.block = copied_cases[i].target;
+      out_.Instruction("jump " + BlockLabel(target));
+    }
   }
 }
 

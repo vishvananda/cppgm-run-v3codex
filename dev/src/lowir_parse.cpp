@@ -760,6 +760,7 @@ private:
     const std::string op = take();
     if(op == "const") parse_typed_unary(out, Instruction::IK_CONST);
     else if(op == "copy") parse_typed_unary(out, Instruction::IK_COPY);
+    else if(op == "phi") parse_phi(out);
     else if(op == "addr") {
       out.kind = Instruction::IK_ADDR;
       out.first = operand();
@@ -797,6 +798,19 @@ private:
     out.kind = kind;
     out.type = type();
     out.first = operand();
+  }
+
+  void parse_phi(Instruction & out)
+  {
+    out.kind = Instruction::IK_PHI;
+    out.type = type();
+    expect("[");
+    do {
+      out.args.push_back(operand());
+      expect(":");
+      out.args.push_back(operand());
+    } while(accept(","));
+    expect("]");
   }
 
   void parse_index(Instruction & out)
@@ -1013,6 +1027,8 @@ public:
 
 private:
   typedef std::unordered_map<std::string, const LowType *> TypeIndex;
+  typedef std::unordered_map<std::string, std::unordered_set<std::string> >
+    PredecessorIndex;
 
   const Program & program_;
   LowirEntryPolicy entry_policy_;
@@ -1182,11 +1198,13 @@ private:
     validate_parameters(function.params, function.return_type);
     if(function.blocks.empty()) throw ParseError("function has no blocks");
     TypeIndex values;
+    TypeIndex all_values;
     TypeIndex slots;
     std::unordered_set<std::string> blocks;
     for(std::size_t i = 0; i < function.params.size(); ++i)
       values[lowir_parameter_name(program_, function.params[i])] =
-        &function.params[i].type;
+        all_values[lowir_parameter_name(program_, function.params[i])] =
+          &function.params[i].type;
     for(std::size_t i = 0; i < function.slots.size(); ++i) {
       if(!slots.emplace(lowir_slot_name(program_.strings, function,
                                         function.slots[i]),
@@ -1198,22 +1216,73 @@ private:
                                           function.blocks[i].id)).second)
         throw ParseError("duplicate block");
     for(std::size_t i = 0; i < function.blocks.size(); ++i)
-      validate_block(function, function.blocks[i], values, slots, blocks);
+      for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
+        const Instruction & ins = function.blocks[i].instructions[j];
+        if(!ins.dest.valid()) continue;
+        const std::string name = lowir_value_name(
+          program_.strings, function, ins.dest);
+        if(all_values.count(name))
+          throw ParseError("duplicate temporary definition");
+        all_values[name] = &lowir_value_type(function, ins.dest);
+      }
+    PredecessorIndex predecessors;
+    std::unordered_set<std::string> exception_targets;
+    for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+      const Block & source = function.blocks[i];
+      const std::string & source_name = lowir_block_label(
+        program_.strings, function, source.id);
+      for(std::size_t j = 0; j < source.instructions.size(); ++j) {
+        const Instruction & ins = source.instructions[j];
+        if(ins.kind == Instruction::IK_EH_TRY ||
+           ins.kind == Instruction::IK_EH_CLEANUP)
+          exception_targets.insert(operand_spelling(ins.first));
+      }
+      if(source.instructions.empty()) continue;
+      const Instruction & terminal = source.instructions.back();
+      const auto add_predecessor = [&](const Operand & target) {
+        if(target.kind == Operand::OP_LABEL)
+          predecessors[operand_spelling(target)].insert(source_name);
+      };
+      if(terminal.kind == Instruction::IK_JUMP)
+        add_predecessor(terminal.first);
+      else if(terminal.kind == Instruction::IK_BRANCH) {
+        add_predecessor(terminal.second);
+        add_predecessor(terminal.third);
+      } else if(terminal.kind == Instruction::IK_SWITCH) {
+        add_predecessor(terminal.second);
+        for(std::size_t j = 1; j < terminal.args.size(); j += 2)
+          add_predecessor(terminal.args[j]);
+      }
+    }
+    for(std::size_t i = 0; i < function.blocks.size(); ++i)
+      validate_block(function, function.blocks[i], values, all_values, slots,
+                     blocks, predecessors, exception_targets);
   }
 
   void validate_block(const Function & function, const Block & block,
                       TypeIndex & values,
+                      const TypeIndex & all_values,
                       const TypeIndex & slots,
-                      const std::unordered_set<std::string> & blocks)
+                      const std::unordered_set<std::string> & blocks,
+                      const PredecessorIndex & predecessors,
+                      const std::unordered_set<std::string> & exception_targets)
   {
     if(block.instructions.empty()) throw ParseError("empty block");
+    bool saw_non_phi = false;
     for(std::size_t i = 0; i < block.instructions.size(); ++i) {
       const Instruction & ins = block.instructions[i];
-      validate_instruction(function, ins, values, slots, blocks);
+      if(ins.kind == Instruction::IK_PHI) {
+        if(saw_non_phi)
+          throw ParseError("phi instructions must precede ordinary instructions");
+        validate_phi(function, block, ins, all_values, slots, blocks,
+                     predecessors, exception_targets);
+      } else {
+        saw_non_phi = true;
+        validate_instruction(function, ins, values, slots, blocks);
+      }
       if(ins.dest.valid()) {
         const std::string name = lowir_value_name(
           program_.strings, function, ins.dest);
-        if(values.count(name)) throw ParseError("duplicate temporary definition");
         values[name] = &lowir_value_type(function, ins.dest);
       }
     }
@@ -1228,6 +1297,69 @@ private:
 	if(!terminated)
 	  throw ParseError("block has no terminator: " +
             lowir_block_label(program_.strings, function, block.id));
+  }
+
+  bool phi_type_supported(const LowType & type) const
+  {
+    return type.kind == LTK_I1 || type.kind == LTK_I8 ||
+      type.kind == LTK_U8 || type.kind == LTK_I16 ||
+      type.kind == LTK_U16 || type.kind == LTK_I32 ||
+      type.kind == LTK_U32 || type.kind == LTK_I64 ||
+      type.kind == LTK_F32 || type.kind == LTK_F64 ||
+      type.kind == LTK_PTR;
+  }
+
+  void validate_phi(const Function & function, const Block & block,
+                    const Instruction & ins, const TypeIndex & all_values,
+                    const TypeIndex & slots,
+                    const std::unordered_set<std::string> & blocks,
+                    const PredecessorIndex & predecessors,
+                    const std::unordered_set<std::string> & exception_targets)
+  {
+    if(!phi_type_supported(ins.type))
+      throw ParseError("phi requires a directly representable scalar type");
+    if(ins.args.empty() || ins.args.size() % 2)
+      throw ParseError("phi requires predecessor/value pairs");
+    const std::string & block_name = lowir_block_label(
+      program_.strings, function, block.id);
+    if(exception_targets.count(block_name))
+      throw ParseError("phi is not permitted in an exception handler block");
+    const PredecessorIndex::const_iterator expected =
+      predecessors.find(block_name);
+    const std::size_t expected_count = expected == predecessors.end() ? 0 :
+      expected->second.size();
+    std::unordered_set<std::string> incoming;
+    for(std::size_t i = 0; i < ins.args.size(); i += 2) {
+      const Operand & predecessor = ins.args[i];
+      const Operand & value = ins.args[i + 1];
+      validate_target(predecessor, blocks);
+      const std::string & predecessor_name = operand_spelling(predecessor);
+      if(!incoming.insert(predecessor_name).second)
+        throw ParseError("duplicate phi predecessor");
+      if(expected == predecessors.end() ||
+         !expected->second.count(predecessor_name))
+        throw ParseError("phi label is not a predecessor");
+      validate_operand(value, all_values, slots);
+      if(value.kind == Operand::OP_SLOT || value.kind == Operand::OP_LABEL)
+        throw ParseError("phi incoming operand is not a scalar value");
+      if(value.kind == Operand::OP_TEMP) {
+        const TypeIndex::const_iterator found =
+          all_values.find(operand_spelling(value));
+        if(found == all_values.end() ||
+           !same_lowir_type(*found->second, ins.type))
+          throw ParseError("phi incoming temporary type mismatch");
+      } else if(value.kind == Operand::OP_GLOBAL && ins.type.kind != LTK_PTR) {
+        throw ParseError("phi global operand requires ptr type");
+      } else if(value.kind == Operand::OP_FLOAT &&
+                ins.type.kind != LTK_F32 && ins.type.kind != LTK_F64) {
+        throw ParseError("phi floating literal type mismatch");
+      } else if(value.kind == Operand::OP_INTEGER &&
+                (ins.type.kind == LTK_F32 || ins.type.kind == LTK_F64)) {
+        throw ParseError("phi integer literal type mismatch");
+      }
+    }
+    if(incoming.size() != expected_count)
+      throw ParseError("phi must name every ordinary predecessor exactly once");
   }
 
   bool instruction_terminates(const Instruction & ins) const
@@ -1445,6 +1577,10 @@ void assign_instruction_literal_types(Program & program, Instruction & ins)
   case Instruction::IK_COPY:
   case Instruction::IK_UNARY:
     assign_literal_type(program, ins.first, ins.type);
+    break;
+  case Instruction::IK_PHI:
+    for(std::size_t i = 1; i < ins.args.size(); i += 2)
+      assign_literal_type(program, ins.args[i], ins.type);
     break;
   case Instruction::IK_BINARY:
   case Instruction::IK_CMP:
