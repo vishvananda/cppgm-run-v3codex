@@ -47,11 +47,34 @@ struct DominatorTree
   bool dominates(std::size_t parent, std::size_t child) const;
 };
 
+struct NaturalLoop
+{
+  std::size_t header;
+  std::size_t preheader;
+  std::size_t parent;
+  std::vector<std::size_t> blocks;
+  std::vector<std::size_t> latches;
+  std::vector<std::size_t> exits;
+  bool has_eh;
+
+  bool contains(std::size_t block) const;
+};
+
+struct LoopForest
+{
+  std::vector<NaturalLoop> loops;
+  std::vector<std::size_t> innermost_loop;
+  std::size_t backedges;
+};
+
 Graph build_graph(const lowir_model::Function & function,
                   lowir_opt::Stats * stats);
 DominatorTree dominators(const Graph & graph, lowir_opt::Stats * stats);
 std::vector<EdgeList> dominance_frontiers(const Graph & graph,
                                           const DominatorTree & dom);
+LoopForest discover_loops(const lowir_model::Function & function,
+                          const Graph & graph, const DominatorTree & dom,
+                          lowir_opt::Stats * stats);
 
 class FunctionAnalysis
 {
@@ -62,6 +85,7 @@ public:
   const Graph & graph();
   const DominatorTree & dominator_tree();
   const std::vector<EdgeList> & dominance_frontier();
+  const LoopForest & loop_forest();
   void invalidate_cfg();
   std::size_t epoch() const;
 
@@ -71,10 +95,12 @@ private:
   Graph graph_;
   DominatorTree dominators_;
   std::vector<EdgeList> frontiers_;
+  LoopForest loops_;
   std::size_t epoch_;
   bool graph_valid_;
   bool dominators_valid_;
   bool frontiers_valid_;
+  bool loops_valid_;
 };
 
 }  // namespace lowir_analysis

@@ -3,6 +3,8 @@
 #include "lowir_function_analysis.h"
 #include "lowir_function_reachability.h"
 #include "lowir_inline_o1.h"
+#include "lowir_loop_opt.h"
+#include "lowir_loop_simplify.h"
 #include "lowir_slot_forward_o1.h"
 #include "lowir_slot_promotion.h"
 
@@ -803,7 +805,9 @@ std::vector<unsigned char> find_storage_temporaries(
   return storage;
 }
 
-bool simplify_values(Function * function, Stats * stats)
+bool simplify_values_with_analysis(
+    Function * function, Stats * stats,
+    lowir_analysis::FunctionAnalysis * analysis)
 {
   if(function->blocks.empty()) return false;
   bool has_candidate = false;
@@ -817,15 +821,19 @@ bool simplify_values(Function * function, Stats * stats)
     if(stats) ++stats->simplify_candidate_skips;
     return false;
   }
-  DominatorTree dom;
+  DominatorTree owned_dom;
+  const DominatorTree * dom_view = &owned_dom;
   if(function->blocks.size() == 1) {
-    dom.immediate.assign(1, 0);
-    dom.preorder.assign(1, 1);
-    dom.postorder.assign(1, 1);
+    owned_dom.immediate.assign(1, 0);
+    owned_dom.preorder.assign(1, 1);
+    owned_dom.postorder.assign(1, 1);
+  } else if(analysis) {
+    dom_view = &analysis->dominator_tree();
   } else {
     const Graph graph = build_graph(*function, stats);
-    dom = dominators(graph, stats);
+    owned_dom = dominators(graph, stats);
   }
+  const DominatorTree & dom = *dom_view;
   std::size_t instruction_total = 0;
   for(std::size_t i = 0; i < function->blocks.size(); ++i)
     instruction_total += function->blocks[i].instructions.size();
@@ -964,6 +972,11 @@ bool simplify_values(Function * function, Stats * stats)
         &ins, facts, known_facts, block, block_index, dom);
     }
   return changed;
+}
+
+bool simplify_values(Function * function, Stats * stats)
+{
+  return simplify_values_with_analysis(function, stats, 0);
 }
 
 struct FunctionBoundaries
@@ -1923,7 +1936,9 @@ void rewrite_promoted_slots(Function * function,
   function->slots.resize(kept_slots);
 }
 
-bool promote_slots(Function * function, Stats * stats)
+bool promote_slots_with_analysis(
+    Function * function, Stats * stats,
+    lowir_analysis::FunctionAnalysis * analysis)
 {
   if(function->blocks.empty() || function->slots.empty()) return false;
   std::size_t eligible_count = 0;
@@ -1934,10 +1949,27 @@ bool promote_slots(Function * function, Stats * stats)
   const std::vector<unsigned char> storage_temporaries =
     find_storage_temporaries(*function);
 
-  const Graph graph = build_graph(*function, stats);
-  const DominatorTree promotion_dominators = dominators(graph, stats);
-  const std::vector<EdgeList> frontiers =
-    dominance_frontiers(graph, promotion_dominators);
+  Graph owned_graph;
+  DominatorTree owned_dominators;
+  std::vector<EdgeList> owned_frontiers;
+  const Graph * graph_view;
+  const DominatorTree * dominator_view;
+  const std::vector<EdgeList> * frontier_view;
+  if(analysis) {
+    graph_view = &analysis->graph();
+    dominator_view = &analysis->dominator_tree();
+    frontier_view = &analysis->dominance_frontier();
+  } else {
+    owned_graph = build_graph(*function, stats);
+    owned_dominators = dominators(owned_graph, stats);
+    owned_frontiers = dominance_frontiers(owned_graph, owned_dominators);
+    graph_view = &owned_graph;
+    dominator_view = &owned_dominators;
+    frontier_view = &owned_frontiers;
+  }
+  const Graph & graph = *graph_view;
+  const DominatorTree & promotion_dominators = *dominator_view;
+  const std::vector<EdgeList> & frontiers = *frontier_view;
   std::vector<unsigned char> slot_has_load(function->slot_names.size(), 0);
   typedef std::pair<std::uint32_t, std::uint32_t> SlotDefinition;
   std::vector<SlotDefinition> slot_definitions;
@@ -2432,6 +2464,11 @@ bool promote_slots(Function * function, Stats * stats)
   return true;
 }
 
+bool promote_slots(Function * function, Stats * stats)
+{
+  return promote_slots_with_analysis(function, stats, 0);
+}
+
 FunctionBoundaries
 function_boundaries(const LowirProgram & program)
 {
@@ -2465,9 +2502,21 @@ typedef bool (*FunctionPass)(Function *, Stats *);
 
 bool timed_function_pass(FunctionPass pass, Function * function,
                          Stats * stats, std::size_t Stats::* runs,
-                         std::uint64_t Stats::* nanoseconds)
+                         std::uint64_t Stats::* nanoseconds,
+                         lowir_analysis::FunctionAnalysis * analysis = 0)
 {
-  if(!stats) return pass(function, 0);
+  const auto run = [pass, function, analysis](Stats * pass_stats) {
+    if(analysis && pass == simplify_values)
+      return simplify_values_with_analysis(function, pass_stats, analysis);
+    if(analysis && pass == promote_slots)
+      return promote_slots_with_analysis(function, pass_stats, analysis);
+    return pass(function, pass_stats);
+  };
+  if(!stats) {
+    const bool changed = run(0);
+    if(changed && analysis && pass == cleanup_cfg) analysis->invalidate_cfg();
+    return changed;
+  }
   ++(stats->*runs);
   std::size_t Stats::* detailed_runs = 0;
   std::size_t Stats::* detailed_changes = 0;
@@ -2496,7 +2545,7 @@ bool timed_function_pass(FunctionPass pass, Function * function,
   if(detailed_runs) ++(stats->*detailed_runs);
   const std::chrono::steady_clock::time_point started =
     std::chrono::steady_clock::now();
-  const bool changed = pass(function, stats);
+  const bool changed = run(stats);
   const std::uint64_t elapsed = static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - started).count());
@@ -2508,6 +2557,7 @@ bool timed_function_pass(FunctionPass pass, Function * function,
   }
   stats->*nanoseconds += elapsed;
   if(detailed_nanoseconds) stats->*detailed_nanoseconds += elapsed;
+  if(changed && analysis && pass == cleanup_cfg) analysis->invalidate_cfg();
   return changed;
 }
 
@@ -2624,51 +2674,60 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - cleanup_tail_started).count());
+    lowir_analysis::FunctionAnalysis analysis(function, stats);
     bool slot_values_changed = false;
     if(inlined_symbols[function.symbol] || level >= 2)
       slot_values_changed = timed_function_pass(
         forward_single_store_slots, &function, stats,
-        &Stats::slot_runs, &Stats::slot_nanoseconds);
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     if(inlined_symbols[function.symbol])
       slot_values_changed = timed_function_pass(
         local_slot_forward, &function, stats,
-        &Stats::slot_runs, &Stats::slot_nanoseconds) || slot_values_changed;
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis) ||
+          slot_values_changed;
     if(slot_values_changed) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
       timed_dce(&function, boundaries, stats);
     }
     if(post_cfg_values_changed[i] || slot_values_changed)
       timed_function_pass(cleanup_cfg, &function, stats,
-        &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
     if(timed_function_pass(remove_dead_slots, &function, stats,
-        &Stats::slot_runs, &Stats::slot_nanoseconds)) {
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
       timed_function_pass(cleanup_cfg, &function, stats,
-        &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
       timed_dce(&function, boundaries, stats);
       timed_function_pass(cleanup_cfg, &function, stats,
-        &Stats::cfg_runs, &Stats::cfg_nanoseconds);
+        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
     }
     if(level >= 2 && timed_function_pass(promote_slots, &function, stats,
-        &Stats::slot_runs, &Stats::slot_nanoseconds)) {
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
       timed_dce(&function, boundaries, stats);
       if(timed_function_pass(cleanup_cfg, &function, stats,
-          &Stats::cfg_runs, &Stats::cfg_nanoseconds)) {
+          &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis)) {
         timed_function_pass(simplify_values, &function, stats,
-          &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
         timed_dce(&function, boundaries, stats);
       }
       timed_function_pass(remove_dead_slots, &function, stats,
-        &Stats::slot_runs, &Stats::slot_nanoseconds);
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
     if(level >= 2 && timed_function_pass(eliminate_dead_slot_stores,
-        &function, stats, &Stats::slot_runs, &Stats::slot_nanoseconds)) {
+        &function, stats, &Stats::slot_runs, &Stats::slot_nanoseconds,
+        &analysis)) {
       timed_dce(&function, boundaries, stats);
       timed_function_pass(remove_dead_slots, &function, stats,
-        &Stats::slot_runs, &Stats::slot_nanoseconds);
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
+    if(level >= 2 && simplify_counted_loops(&function, &analysis, stats)) {
+      timed_dce(&function, boundaries, stats);
+      timed_function_pass(cleanup_cfg, &function, stats,
+        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+    }
+    hoist_loop_invariants(&program, &function, &analysis, level, stats);
   }
   const lowir_model::FunctionPruningSummary pruning =
     lowir_model::prune_unreachable_weak_functions(program);

@@ -3,6 +3,7 @@
 #include "lowir_opt.h"
 
 #include <algorithm>
+#include <chrono>
 #include <stdexcept>
 #include <vector>
 
@@ -100,6 +101,11 @@ bool DominatorTree::dominates(std::size_t parent, std::size_t child) const
     preorder[parent] != 0 && preorder[child] != 0 &&
     preorder[parent] <= preorder[child] &&
     postorder[child] <= postorder[parent];
+}
+
+bool NaturalLoop::contains(std::size_t block) const
+{
+  return std::binary_search(blocks.begin(), blocks.end(), block);
 }
 
 Graph build_graph(const lowir_model::Function & function,
@@ -268,10 +274,139 @@ std::vector<EdgeList> dominance_frontiers(const Graph & graph,
   return result;
 }
 
+LoopForest discover_loops(const lowir_model::Function & function,
+                          const Graph & graph, const DominatorTree & dom,
+                          lowir_opt::Stats * stats)
+{
+  LoopForest result;
+  const std::size_t count = function.blocks.size();
+  result.innermost_loop.assign(count, kNoBlock);
+  result.backedges = 0;
+  std::vector<std::size_t> header_loop(count, kNoBlock);
+  for(std::size_t source = 0; source < count; ++source)
+    for(std::size_t edge = 0; edge < graph.successors[source].size(); ++edge) {
+      const std::size_t header = graph.successors[source][edge];
+      if(!dom.dominates(header, source)) continue;
+      ++result.backedges;
+      if(header_loop[header] == kNoBlock) {
+        header_loop[header] = result.loops.size();
+        NaturalLoop loop;
+        loop.header = header;
+        loop.preheader = kNoBlock;
+        loop.parent = kNoBlock;
+        loop.has_eh = false;
+        result.loops.push_back(loop);
+      }
+      result.loops[header_loop[header]].latches.push_back(source);
+    }
+
+  std::vector<std::uint32_t> membership(count, 0);
+  std::vector<std::uint32_t> exit_membership(count, 0);
+  std::uint32_t epoch = 0;
+  std::vector<std::size_t> work;
+  for(std::size_t loop_index = 0;
+      loop_index < result.loops.size(); ++loop_index) {
+    NaturalLoop & loop = result.loops[loop_index];
+    ++epoch;
+    if(epoch == 0) {
+      std::fill(membership.begin(), membership.end(), 0);
+      epoch = 1;
+    }
+    work.clear();
+    membership[loop.header] = epoch;
+    loop.blocks.push_back(loop.header);
+    for(std::size_t i = 0; i < loop.latches.size(); ++i)
+      if(membership[loop.latches[i]] != epoch) {
+        membership[loop.latches[i]] = epoch;
+        loop.blocks.push_back(loop.latches[i]);
+        work.push_back(loop.latches[i]);
+      }
+    while(!work.empty()) {
+      const std::size_t block = work.back();
+      work.pop_back();
+      for(std::size_t edge = 0;
+          edge < graph.predecessors[block].size(); ++edge) {
+        const std::size_t predecessor = graph.predecessors[block][edge];
+        if(membership[predecessor] == epoch ||
+           !dom.dominates(loop.header, predecessor)) continue;
+        membership[predecessor] = epoch;
+        loop.blocks.push_back(predecessor);
+        work.push_back(predecessor);
+      }
+    }
+    std::sort(loop.blocks.begin(), loop.blocks.end());
+    for(std::size_t i = 0; i < loop.blocks.size(); ++i) {
+      const std::size_t block = loop.blocks[i];
+      const std::uint32_t block_id = function.blocks[block].id;
+      loop.has_eh = loop.has_eh ||
+        (block_id < graph.eh_targets.size() && graph.eh_targets[block_id]);
+      for(std::size_t instruction = 0;
+          instruction < function.blocks[block].instructions.size();
+          ++instruction) {
+        const lowir_model::Instruction::Kind kind =
+          function.blocks[block].instructions[instruction].kind;
+        loop.has_eh = loop.has_eh ||
+          (kind >= lowir_model::Instruction::IK_EH_TRY &&
+           kind <= lowir_model::Instruction::IK_RESUME);
+      }
+      for(std::size_t edge = 0;
+          edge < graph.successors[block].size(); ++edge) {
+        const std::size_t successor = graph.successors[block][edge];
+        if(!loop.contains(successor) && exit_membership[successor] != epoch) {
+          exit_membership[successor] = epoch;
+          loop.exits.push_back(successor);
+        }
+      }
+    }
+    std::sort(loop.exits.begin(), loop.exits.end());
+    std::size_t outside_predecessor = kNoBlock;
+    bool multiple_outside = false;
+    for(std::size_t edge = 0;
+        edge < graph.predecessors[loop.header].size(); ++edge) {
+      const std::size_t predecessor = graph.predecessors[loop.header][edge];
+      if(loop.contains(predecessor)) continue;
+      if(outside_predecessor != kNoBlock) multiple_outside = true;
+      outside_predecessor = predecessor;
+    }
+    if(!multiple_outside && outside_predecessor != kNoBlock &&
+       graph.successors[outside_predecessor].size() == 1)
+      loop.preheader = outside_predecessor;
+  }
+
+  std::vector<std::size_t> by_size(result.loops.size());
+  for(std::size_t i = 0; i < by_size.size(); ++i) by_size[i] = i;
+  std::stable_sort(by_size.begin(), by_size.end(),
+    [&result](std::size_t left, std::size_t right) {
+      return result.loops[left].blocks.size() <
+        result.loops[right].blocks.size();
+    });
+  // Install outer loops first.  The current owner of a loop header is then
+  // its immediate containing loop, and overwriting each member records the
+  // innermost owner.  This makes nesting proportional to loop membership
+  // instead of comparing every pair of loops.
+  for(std::size_t order = by_size.size(); order > 0; --order) {
+    const std::size_t child = by_size[order - 1];
+    result.loops[child].parent =
+      result.innermost_loop[result.loops[child].header];
+    for(std::size_t block = 0;
+        block < result.loops[child].blocks.size(); ++block)
+      result.innermost_loop[result.loops[child].blocks[block]] = child;
+  }
+  if(stats) {
+    stats->loop_backedges += result.backedges;
+    stats->loops_discovered += result.loops.size();
+    for(std::size_t i = 0; i < result.loops.size(); ++i) {
+      stats->loop_block_memberships += result.loops[i].blocks.size();
+      stats->loop_exits += result.loops[i].exits.size();
+    }
+  }
+  return result;
+}
+
 FunctionAnalysis::FunctionAnalysis(const lowir_model::Function & function,
                                    lowir_opt::Stats * stats)
   : function_(function), stats_(stats), epoch_(1), graph_valid_(false),
-    dominators_valid_(false), frontiers_valid_(false)
+    dominators_valid_(false), frontiers_valid_(false), loops_valid_(false)
 {}
 
 const Graph & FunctionAnalysis::graph()
@@ -306,11 +441,32 @@ const std::vector<EdgeList> & FunctionAnalysis::dominance_frontier()
   return frontiers_;
 }
 
+const LoopForest & FunctionAnalysis::loop_forest()
+{
+  if(loops_valid_) {
+    if(stats_) ++stats_->loop_analysis_reuses;
+    return loops_;
+  }
+  const std::chrono::steady_clock::time_point started =
+    stats_ ? std::chrono::steady_clock::now() :
+             std::chrono::steady_clock::time_point();
+  loops_ = discover_loops(function_, graph(), dominator_tree(), stats_);
+  loops_valid_ = true;
+  if(stats_) {
+    ++stats_->loop_analysis_builds;
+    stats_->loop_nanoseconds += static_cast<std::uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - started).count());
+  }
+  return loops_;
+}
+
 void FunctionAnalysis::invalidate_cfg()
 {
   graph_valid_ = false;
   dominators_valid_ = false;
   frontiers_valid_ = false;
+  loops_valid_ = false;
   ++epoch_;
   if(stats_) ++stats_->cfg_analysis_invalidations;
 }

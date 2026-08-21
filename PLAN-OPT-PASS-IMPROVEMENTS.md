@@ -391,6 +391,83 @@ The self/inception changes remain below the 3% rejection threshold.  The
 generated-self frozen compile is still above the final 15-second goal, so
 Ranks 3--7 remain necessary.
 
+## Rank 3 result
+
+Rank 3 adds one reusable natural-loop forest to the per-function analysis
+epoch.  It derives headers and merged latches from dominator backedges, builds
+membership and exits with dense epoch vectors, and derives immediate nesting
+in time proportional to reported loop memberships.  A CFG mutation explicitly
+invalidates the shared graph, dominator, frontier, and loop views.
+
+At O1, LICM moves only nontrapping pure scalar/address instructions without an
+explicit debug location and never crosses EH state.  Candidate dependencies
+use a packed producer-to-user worklist.  A missing canonical preheader is
+created only for a single critical entry edge, only when at least two root
+invariants justify it, and under an eight-block per-function budget.  At O2,
+typed direct global or nonescaping-slot loads are eligible only when the loop
+has no same-object store or conservative call/atomic/unknown-memory clobber.
+Simple `i64` induction facts additionally support inverted-exit
+canonicalization, power-of-two multiply-to-shift rewriting, and deletion of a
+finite loop whose body has no observable or trapping operation and whose
+values do not escape the loop.
+
+This work adds no LowIR field and no private object-only representation.  PA13
+therefore does not move in this rank: PA37 consumes the public PA13 `phi`
+instruction already added by Rank 2.  Active PA37 course reducers cover pure
+LICM, nested and multiple-exit loops, bounded preheader creation, divide/EH/no-
+preheader/debug negatives, distinct and aliasing globals, unknown-call and
+atomic barriers, exit canonicalization, induction strength reduction,
+unproven termination, and zero/one/multiple-trip dead-loop deletion.  The
+existing `440-incomplete-phi-dependency` reference moves because invariant
+global loads now reside before its loops.
+
+The reducer pass found two correctness issues before commit.  Rewriting a
+literal's numeric payload while retaining its input spelling serialized a
+shift count of `8` instead of `3`; generated constants now clear presentation
+spelling.  Inserting a preheader changed block indices while LICM still held
+old definition indices; those dense facts are rebuilt immediately after the
+CFG epoch changes, and generated preheaders serialize immediately before their
+headers so PA13's definition-before-use rule remains true.  The separate PA37
+debug object-roundtrip lane also exposed repeated `%dbg_*` presentation names
+in existing O0 source LowIR.  Commit `85b4982e` gives every preserved debug
+copy a unique deterministic temporary, making that serialized path parseable.
+
+Load-screened alternating Rank 2/Rank 3 frozen O2 compiles produced:
+
+| Metric | Rank 2 | Rank 3 | Delta |
+| --- | ---: | ---: | ---: |
+| median wall, six runs each | 5.065 s | 5.085 s | +0.4% |
+| median user | 4.575 s | 4.610 s | +0.8% |
+| median peak RSS | 361,708 KiB | 361,680 KiB | unchanged |
+| optimizer time, instrumented sample | 418.4 ms | 420.7 ms | +0.6% |
+| optimized LowIR instructions | 91,224 | 91,224 | unchanged |
+| object bytes | 2,141,728 | 2,145,208 | +3,480 |
+| `.text*` bytes | 578,860 | 582,314 | +3,454 |
+
+The frozen input contains 437 natural loops and 445 backedges.  LICM examines
+1,530 candidates and hoists 417 pure instructions in 1.90 ms; it finds no safe
+memory load or counted-loop rewrite in this input.  The current backend grows
+code for 27 sections and shrinks none after those moves, principally because
+the moved values acquire longer live ranges.  This is measured placement debt,
+not extra LowIR work, and is an explicit Rank 5 input.
+
+A clean 32-worker self build took 18.84 s wall, 441.29 s user, 42.45 s system,
+and 229,264 KiB peak RSS.  Alternating generated-self frozen O3 compiles were
+29.815 s for Rank 2 and 30.275 s for Rank 3 (+1.5% wall and user), with peak RSS
+within 0.4%.  The projected frozen-workload speedup therefore did not appear,
+but both the host and generated-self changes remain below the plan's 3%
+rejection threshold.  Rank 3 is retained for its bounded PA37 contract and the
+shared loop facts needed by later ranks; Rank 5 must recover the measured
+live-range/code-size loss.
+
+Rank 3 validation is:
+
+- `make test-report-through-pa37`: 5,280/5,280;
+- `make test-report`: 5,309/5,309;
+- PA37 debug-info and debug object-roundtrip lanes: 18/18;
+- PA39 file audit: zero fatal findings (28 advisory warnings); and
+- every repeated frozen object was byte-identical within its compiler variant.
+
 ## Ranked implementation plan
 
 Rank 0 is a prerequisite and does not change output.  Ranks 1 through 7 are
@@ -861,7 +938,7 @@ Fill one row for every retained or rejected phase:
 | R1c | post-inline weak/internal pruning audit | PA37 object roundtrip; PA32 owning linkage inputs | defined functions -39.5%; 2,038 weak bodies pruned at O1 | included above | 5,291/5,291; zero fatal | same clean lane | complete, `1085fcfb` |
 | R2a | sparse promotion state | no new contract; no checked fixture movement | -278 LowIR instructions, object -1,256 B after one old dense-budget skip was removed; intermediate exact-output guard missed and recorded | promotion 485.6 ms to 49.5 ms (9.8x); 1.33 MiB peak sparse scratch | included in final Rank 2 gate | included in final Rank 2 lane | retained with staged-guard discrepancy, `eae03449`; telemetry `9de9d17f` |
 | R2b | public phi-capable scalar replacement | PA13 syntax/scaffold; PA29 lowering/correctives; PA37 O2 and object roundtrip | vs Rank 1: LowIR -4.8%, object -0.1%, text -0.3%; functions unchanged | wall -6.6%, user -4.4%, RSS +0.1%; optimizer -50.8%, promotion 8.1x faster | 5,303/5,303; zero fatal | self 18.24 s / inception 1:41.31; all 197 objects and final binary match | complete, `84b4c184`, `01aebb78`, `9f0538be`, corrective `9c63791f` |
-| R3 | LICM and loop simplification | PA37 O1/O2 | pending | pending | pending | pending | not started |
+| R3 | LICM and loop simplification | PA37 O1/O2 | active course reducers | +0.6% optimizer sample | +3,480 B object | 5,309/5,309 plus debug lane | complete; frozen benefit absent, +1.5% generated-self remains below gate |
 | R4 | GVN/load elimination/PRE | PA37 O2 | pending | pending | pending | pending | not started |
 | R5 | MIR placement/coalescing | PA38 O2 and debuginfo | pending | pending | pending | pending | not started |
 | R6 | IPA argument/scalar work | PA37 O2/O3 | pending | pending | pending | pending | not started |

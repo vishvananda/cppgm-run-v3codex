@@ -20,6 +20,23 @@ struct Stats
   std::size_t cfg_analysis_invalidations = 0;
   std::size_t dominator_analysis_builds = 0;
   std::size_t dominator_analysis_reuses = 0;
+  std::size_t loop_analysis_builds = 0;
+  std::size_t loop_analysis_reuses = 0;
+  std::size_t loop_backedges = 0;
+  std::size_t loops_discovered = 0;
+  std::size_t loop_block_memberships = 0;
+  std::size_t loop_exits = 0;
+  std::size_t licm_candidates = 0;
+  std::size_t licm_hoisted = 0;
+  std::size_t licm_loads_hoisted = 0;
+  std::size_t licm_preheaders_created = 0;
+  std::size_t licm_no_preheader = 0;
+  std::size_t licm_eh_skips = 0;
+  std::size_t licm_budget_skips = 0;
+  std::size_t induction_variables = 0;
+  std::size_t induction_strength_reductions = 0;
+  std::size_t loop_exits_canonicalized = 0;
+  std::size_t dead_loops_removed = 0;
   std::size_t worklist_pushes = 0;
   std::size_t dataflow_updates = 0;
   std::size_t inline_direct_edges = 0;
@@ -112,6 +129,8 @@ struct Stats
   std::uint64_t dead_store_nanoseconds = 0;
   std::uint64_t cleanup_resume_nanoseconds = 0;
   std::uint64_t cleanup_tail_nanoseconds = 0;
+  std::uint64_t loop_nanoseconds = 0;
+  std::uint64_t licm_nanoseconds = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };
 

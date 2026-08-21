@@ -183,6 +183,14 @@ running optimizing transforms.
   inlined
 - removal of no-op EH markers in functions known not to unwind when the
   protected region contains no operation that can transfer to the handler
+- discovery of natural loops from dominators and backedges, including loop
+  headers, latches, exits, nesting, and existing canonical preheaders
+- loop-invariant motion of nontrapping pure scalar and address calculations
+  whose operands are defined outside the loop; explicitly located debug
+  instructions, trapping division or remainder, EH regions, and operations
+  with observable effects must stay in place
+- creation of a loop preheader by splitting a single critical entry edge only
+  when a small explicit block budget and sufficient invariant work justify it
 - dead-code elimination for unused pure temp-producing instructions
 - removal of unused calls only when the callee is explicitly `readnone`, cannot
   unwind, and is not `noreturn`
@@ -203,7 +211,18 @@ carry different values, promotion uses the PA13 `phi` instruction at an
 ordinary join. A phi must not be introduced at an exceptional-handler target.
 Beyond the direct slot cleanup already allowed at `-O1`, `-O2` also removes
 dead stores to promoted slots when no observable load can see the stored
-value.
+value. It must additionally support these conservative loop transforms:
+
+- hoisting a direct global or nonescaping direct-slot load only when no store,
+  call, atomic operation, or other memory effect in the loop can change the
+  loaded object
+- recognizing simple `i64` induction variables with one latch and constant
+  initial value, step, and bound
+- canonicalizing an inverted counted-loop exit and replacing multiplication
+  of the induction value by a positive power of two with a left shift
+- removing a loop only when its body has no observable or trapping operation,
+  its values are unused outside the loop, and its finite termination can be
+  proved without integer overflow
 
 Slot-value forwarding and promotion remain an `-O2` responsibility. At `-O1`,
 a live load whose value is consumed along multiple successor paths must remain
@@ -286,8 +305,8 @@ PA37 does not require:
 - input programs to arrive in SSA form
 - global value numbering or partial redundancy elimination
 - alias-driven aggressive dead-store elimination
-- loop optimizations, vectorization, or general-purpose inlining beyond the
-  small direct-call inlining described for `-O1`
+- loop unrolling, peeling, vectorization, or loop transformations beyond the
+  conservative motion and counted-loop rules described above
 - machine-IR scheduling or register-allocation optimization
 - interprocedural optimization beyond direct-call graph ordering, the required
   small-function inlining, and post-inline reachability cleanup
@@ -307,6 +326,13 @@ phis with an iterated dominance-frontier worklist. Dense block epochs let one
 set of scratch vectors serve every slot. Keep the work proportional to direct
 slot accesses, relevant control-flow edges, and inserted phis, and apply an
 explicit growth bound before adding merge instructions.
+
+CFG, dominator, and natural-loop facts can share one per-function analysis
+owner with an explicit invalidation epoch. Dense block IDs, compact successor
+lists, and epoch-marked membership vectors keep loop discovery proportional to
+CFG edges and reported loop memberships. For invariant motion, build a packed
+producer-to-user worklist and use typed value, slot, and global IDs for memory
+checks; render names only while writing LowIR text.
 
 ### After PA37
 

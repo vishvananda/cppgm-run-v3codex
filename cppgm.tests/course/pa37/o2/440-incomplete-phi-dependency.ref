@@ -6,6 +6,9 @@ global @result : i64 = 0
 
 function @main() -> i64 {
   block ^entry:
+    %take = load i64 @take_path
+    %right = load i64 @take_right
+    %again = load i64 @repeat_inner
     jump ^outer_header
 
   block ^outer_header:
@@ -13,11 +16,9 @@ function @main() -> i64 {
     branch %outer, ^inner_header, ^exit
 
   block ^inner_header:
-    %take = load i64 @take_path
     branch %take, ^choose, ^inner_merge
 
   block ^choose:
-    %right = load i64 @take_right
     branch %right, ^right, ^left
 
   block ^left:
@@ -32,7 +33,6 @@ function @main() -> i64 {
     jump ^inner_merge
 
   block ^inner_merge:
-    %again = load i64 @repeat_inner
     branch %again, ^inner_header, ^outer_latch
 
   block ^outer_latch:

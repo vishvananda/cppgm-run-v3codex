@@ -26,6 +26,24 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " cfg_analysis_invalidations=" << stats.cfg_analysis_invalidations
 		 << " dominator_analysis_builds=" << stats.dominator_analysis_builds
 		 << " dominator_analysis_reuses=" << stats.dominator_analysis_reuses
+		 << " loop_analysis_builds=" << stats.loop_analysis_builds
+		 << " loop_analysis_reuses=" << stats.loop_analysis_reuses
+		 << " loop_backedges=" << stats.loop_backedges
+		 << " loops_discovered=" << stats.loops_discovered
+		 << " loop_block_memberships=" << stats.loop_block_memberships
+		 << " loop_exits=" << stats.loop_exits
+		 << " licm_candidates=" << stats.licm_candidates
+		 << " licm_hoisted=" << stats.licm_hoisted
+		 << " licm_loads_hoisted=" << stats.licm_loads_hoisted
+		 << " licm_preheaders_created=" << stats.licm_preheaders_created
+		 << " licm_no_preheader=" << stats.licm_no_preheader
+		 << " licm_eh_skips=" << stats.licm_eh_skips
+		 << " licm_budget_skips=" << stats.licm_budget_skips
+		 << " induction_variables=" << stats.induction_variables
+		 << " induction_strength_reductions="
+		 << stats.induction_strength_reductions
+		 << " loop_exits_canonicalized=" << stats.loop_exits_canonicalized
+		 << " dead_loops_removed=" << stats.dead_loops_removed
 		 << " worklist_pushes=" << stats.worklist_pushes
 		 << " dataflow_updates=" << stats.dataflow_updates
 		 << " inline_direct_edges=" << stats.inline_direct_edges
@@ -141,6 +159,8 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " dead_store_ns=" << stats.dead_store_nanoseconds
 		 << " cleanup_resume_ns=" << stats.cleanup_resume_nanoseconds
 		 << " cleanup_tail_ns=" << stats.cleanup_tail_nanoseconds
+		 << " loop_ns=" << stats.loop_nanoseconds
+		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }
 
