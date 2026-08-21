@@ -37,4 +37,10 @@ struct InlineCallGraph
 InlineCallGraph analyze_inline_call_graph(
   const lowir_model::LowirProgram & program, Stats * stats = 0);
 
+// Collect final retained-body telemetry after reachability pruning.  This is
+// deliberately separate from production policy and is called only when the
+// optimizer was given a Stats sink.
+void collect_retained_inline_census(
+  const lowir_model::LowirProgram & program, Stats * stats);
+
 }  // namespace lowir_opt

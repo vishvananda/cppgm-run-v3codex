@@ -3,6 +3,7 @@
 #include "lowir_opt.h"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -167,6 +168,22 @@ void finish_order_and_components(InlineCallGraph * graph)
   }
 }
 
+std::size_t retained_use_bucket(std::size_t uses)
+{
+  if(uses <= 4) return uses - 1;
+  if(uses <= 8) return 4;
+  if(uses <= 16) return 5;
+  return 6;
+}
+
+std::size_t retained_size_bucket(std::size_t instructions)
+{
+  const std::size_t limits[] = {1, 2, 3, 4, 6, 8, 12, 20, 40, 160};
+  for(std::size_t i = 0; i < sizeof(limits) / sizeof(limits[0]); ++i)
+    if(instructions <= limits[i]) return i;
+  return sizeof(limits) / sizeof(limits[0]);
+}
+
 }  // namespace
 
 InlineCallGraph analyze_inline_call_graph(
@@ -192,6 +209,85 @@ InlineCallGraph analyze_inline_call_graph(
       std::count(result.recursive.begin(), result.recursive.end(), 1);
   }
   return result;
+}
+
+void collect_retained_inline_census(
+  const LowirProgram & program, Stats * stats)
+{
+  if(!stats) return;
+  const InlineCallGraph graph = analyze_inline_call_graph(program, 0);
+  stats->inline_retained_direct_edges = graph.edges.size();
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
+    const std::size_t uses =
+      graph.reverse_offsets[i + 1] - graph.reverse_offsets[i];
+    if(uses == 0) continue;
+    const Function & function = program.functions[i];
+    const bool discardable = !graph.non_call_use[i] &&
+      (function.metadata.binding == lowir_model::SBM_INTERNAL ||
+       function.metadata.binding == lowir_model::SBM_WEAK) &&
+      !function.metadata.object_output_root &&
+      !function.metadata.keep_internal_alias &&
+      function.metadata.role == lowir_model::SR_NONE &&
+      !function.metadata.tls_for_symbol_id.valid();
+    if(!discardable) continue;
+
+    std::size_t instructions = 0;
+    std::size_t returns = 0;
+    bool has_eh = false;
+    bool has_call = false;
+    for(std::size_t b = 0; b < function.blocks.size(); ++b) {
+      instructions += function.blocks[b].instructions.size();
+      for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
+        const Instruction::Kind kind = function.blocks[b].instructions[j].kind;
+        if(kind == Instruction::IK_RETURN) ++returns;
+        if(kind == Instruction::IK_CALL) has_call = true;
+        if(kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_EH_END)
+          has_eh = true;
+      }
+    }
+    const bool leaf = function.blocks.size() == 1 && returns == 1 && !has_call;
+    ++stats->inline_retained_discardable_definitions;
+    stats->inline_retained_discardable_calls += uses;
+    stats->inline_retained_discardable_instructions += instructions;
+    if(leaf) ++stats->inline_retained_discardable_leaf_definitions;
+    if(has_eh) ++stats->inline_retained_discardable_eh_definitions;
+    if(graph.recursive[i])
+      ++stats->inline_retained_discardable_recursive_definitions;
+    if(function.metadata.no_inline)
+      ++stats->inline_retained_discardable_no_inline_definitions;
+
+    const std::size_t matrix_index =
+      retained_use_bucket(uses) * Stats::kInlineRetainedSizeBucketCount +
+      retained_size_bucket(instructions);
+    ++stats->inline_retained_discardable_definition_matrix[matrix_index];
+    stats->inline_retained_discardable_call_matrix[matrix_index] += uses;
+    stats->inline_retained_discardable_instruction_matrix[matrix_index] +=
+      instructions;
+
+    if(uses < 2 || !leaf || has_eh || graph.recursive[i] ||
+       function.metadata.no_inline ||
+       function.boundary.arity == lowir_model::CAM_VARIADIC)
+      continue;
+    const std::size_t per_call_growth = instructions > 2 ?
+      instructions - 2 : 0;
+    const std::size_t extra_savings_per_call = instructions < 2 ?
+      2 - instructions : 0;
+    if(per_call_growth != 0 &&
+       uses > std::numeric_limits<std::size_t>::max() / per_call_growth)
+      continue;
+    const std::size_t growth = uses * per_call_growth;
+    std::size_t savings = instructions;
+    if(extra_savings_per_call != 0 &&
+       uses <= (std::numeric_limits<std::size_t>::max() - savings) /
+         extra_savings_per_call)
+      savings += uses * extra_savings_per_call;
+    if(growth > savings) continue;
+    ++stats->inline_retained_nonpositive_leaf_definitions;
+    stats->inline_retained_nonpositive_leaf_calls += uses;
+    stats->inline_retained_nonpositive_leaf_instructions += instructions;
+    stats->inline_retained_nonpositive_leaf_estimated_savings +=
+      savings - growth;
+  }
 }
 
 }  // namespace lowir_opt

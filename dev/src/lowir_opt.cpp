@@ -2819,6 +2819,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
   const lowir_model::FunctionPruningSummary pruning =
     lowir_model::prune_unreachable_weak_functions(program);
   if(stats) {
+    collect_retained_inline_census(program, stats);
     stats->inline_reachable_functions = pruning.reachable_functions;
     stats->inline_pruned_functions = pruning.pruned_functions;
     stats->inline_unreachable_weak_functions =

@@ -2,6 +2,7 @@
 
 #include "lowir_model.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -9,6 +10,10 @@ namespace lowir_opt {
 
 struct Stats
 {
+  static const std::size_t kInlineRetainedUseBucketCount = 7;
+  static const std::size_t kInlineRetainedSizeBucketCount = 11;
+  static const std::size_t kInlineRetainedMatrixSize =
+    kInlineRetainedUseBucketCount * kInlineRetainedSizeBucketCount;
   std::size_t functions = 0;
   std::size_t input_instructions = 0;
   std::size_t output_instructions = 0;
@@ -92,6 +97,24 @@ struct Stats
   std::size_t inline_retained_object_output_root = 0;
   std::size_t inline_retained_object_output_root_weak = 0;
   std::size_t inline_retained_object_output_root_internal = 0;
+  std::size_t inline_retained_direct_edges = 0;
+  std::size_t inline_retained_discardable_definitions = 0;
+  std::size_t inline_retained_discardable_calls = 0;
+  std::size_t inline_retained_discardable_instructions = 0;
+  std::size_t inline_retained_discardable_leaf_definitions = 0;
+  std::size_t inline_retained_discardable_eh_definitions = 0;
+  std::size_t inline_retained_discardable_recursive_definitions = 0;
+  std::size_t inline_retained_discardable_no_inline_definitions = 0;
+  std::size_t inline_retained_nonpositive_leaf_definitions = 0;
+  std::size_t inline_retained_nonpositive_leaf_calls = 0;
+  std::size_t inline_retained_nonpositive_leaf_instructions = 0;
+  std::size_t inline_retained_nonpositive_leaf_estimated_savings = 0;
+  std::array<std::size_t, kInlineRetainedMatrixSize>
+    inline_retained_discardable_definition_matrix = {};
+  std::array<std::size_t, kInlineRetainedMatrixSize>
+    inline_retained_discardable_call_matrix = {};
+  std::array<std::size_t, kInlineRetainedMatrixSize>
+    inline_retained_discardable_instruction_matrix = {};
   std::size_t inline_changed_callers = 0;
   std::size_t inline_eh_blocked_records = 0;
   std::size_t inline_revisited_callers = 0;

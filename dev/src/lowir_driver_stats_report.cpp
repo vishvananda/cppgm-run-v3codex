@@ -122,6 +122,30 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.inline_retained_object_output_root_weak
 		 << " inline_retained_object_output_root_internal="
 		 << stats.inline_retained_object_output_root_internal
+		 << " inline_retained_direct_edges="
+		 << stats.inline_retained_direct_edges
+		 << " inline_retained_discardable_definitions="
+		 << stats.inline_retained_discardable_definitions
+		 << " inline_retained_discardable_calls="
+		 << stats.inline_retained_discardable_calls
+		 << " inline_retained_discardable_instructions="
+		 << stats.inline_retained_discardable_instructions
+		 << " inline_retained_discardable_leaf_definitions="
+		 << stats.inline_retained_discardable_leaf_definitions
+		 << " inline_retained_discardable_eh_definitions="
+		 << stats.inline_retained_discardable_eh_definitions
+		 << " inline_retained_discardable_recursive_definitions="
+		 << stats.inline_retained_discardable_recursive_definitions
+		 << " inline_retained_discardable_no_inline_definitions="
+		 << stats.inline_retained_discardable_no_inline_definitions
+		 << " inline_retained_nonpositive_leaf_definitions="
+		 << stats.inline_retained_nonpositive_leaf_definitions
+		 << " inline_retained_nonpositive_leaf_calls="
+		 << stats.inline_retained_nonpositive_leaf_calls
+		 << " inline_retained_nonpositive_leaf_instructions="
+		 << stats.inline_retained_nonpositive_leaf_instructions
+		 << " inline_retained_nonpositive_leaf_estimated_savings="
+		 << stats.inline_retained_nonpositive_leaf_estimated_savings
 		 << " inline_changed_callers=" << stats.inline_changed_callers
 		 << " inline_eh_blocked_records=" << stats.inline_eh_blocked_records
 		 << " inline_revisited_callers=" << stats.inline_revisited_callers
@@ -260,7 +284,29 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
 		 << " late_inline_ns=" << stats.late_inline_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
-		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
+		 << " elapsed_ns=" << stats.elapsed_nanoseconds;
+	output << " inline_retained_discardable_definition_matrix=";
+	for (std::size_t i = 0;
+		i < stats.inline_retained_discardable_definition_matrix.size(); ++i)
+	{
+		if (i) output << ',';
+		output << stats.inline_retained_discardable_definition_matrix[i];
+	}
+	output << " inline_retained_discardable_call_matrix=";
+	for (std::size_t i = 0;
+		i < stats.inline_retained_discardable_call_matrix.size(); ++i)
+	{
+		if (i) output << ',';
+		output << stats.inline_retained_discardable_call_matrix[i];
+	}
+	output << " inline_retained_discardable_instruction_matrix=";
+	for (std::size_t i = 0;
+		i < stats.inline_retained_discardable_instruction_matrix.size(); ++i)
+	{
+		if (i) output << ',';
+		output << stats.inline_retained_discardable_instruction_matrix[i];
+	}
+	output << '\n';
 }
 
 void ReportPreparation(std::ostream& output, const std::string& path,
