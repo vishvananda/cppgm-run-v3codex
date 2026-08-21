@@ -229,8 +229,13 @@ running optimizing transforms.
   inlined
 - retargeting of successor `phi` inputs when inlining moves a caller block's
   terminating edge into a new continuation block
-- removal of no-op EH markers in functions known not to unwind when the
-  protected region contains no operation that can transfer to the handler
+- removal of a matched protected region when its direct calls are already
+  known not to unwind and it contains no indirect call, throw, resume, or
+  other operation that can transfer to the handler; safe regions may be
+  removed independently while unsafe sibling regions remain
+- publication of an EH-free function as inferred nonthrowing after its last
+  protected region is removed and every remaining direct call is nonthrowing,
+  so later callers in the same callee-first traversal can use that fact
 - discovery of natural loops from dominators and backedges, including loop
   headers, latches, exits, nesting, and existing canonical preheaders
 - loop-invariant motion of nontrapping pure scalar and address calculations
@@ -484,6 +489,13 @@ contains no EH control instruction can inherit that state without rewriting
 exception metadata: its cloned ordinary calls remain between the caller's
 existing `eh_try`/`eh_cleanup` and `eh_end`. Keep landing blocks themselves and
 callees with their own EH control out of the ordinary inlining path.
+
+For dead protected-region removal, assign compact region IDs to `eh_try` and
+`eh_cleanup` instructions and propagate the active region stack over ordinary
+CFG edges. Mark a region unsafe from typed call/unwind facts, then propagate
+that state to its parent once. Conflicting stacks at a merge reject the
+function conservatively. This keeps the proof proportional to instructions,
+CFG edges, and EH nesting rather than retrying the translation unit.
 
 Interprocedural argument agreement can reuse that same direct-call graph and
 its dense symbol-to-function table. Store parameter facts in one packed array

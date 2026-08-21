@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <iterator>
 #include <limits>
@@ -296,8 +297,17 @@ void remove_unreachable_blocks(Function * function)
   std::vector<std::size_t> pending(1, 0);
   reachable[0] = 1;
   for(std::size_t cursor = 0; cursor < pending.size(); ++cursor) {
-    const std::vector<std::size_t> successors =
+    std::vector<std::size_t> successors =
       normal_successors(*function, pending[cursor], index);
+    const Block & block = function->blocks[pending[cursor]];
+    for(std::size_t j = 0; j < block.instructions.size(); ++j) {
+      const Instruction & instruction = block.instructions[j];
+      if(instruction.kind != Instruction::IK_EH_TRY &&
+         instruction.kind != Instruction::IK_EH_CLEANUP) continue;
+      const std::uint32_t id = instruction.first.block;
+      if(id < index.size() && index[id] != no_block)
+        successors.push_back(index[id]);
+    }
     for(std::size_t i = 0; i < successors.size(); ++i)
       if(!reachable[successors[i]]) {
         reachable[successors[i]] = 1;
@@ -476,7 +486,7 @@ public:
         if(stats_) ++stats_->inline_revisited_callers;
         const bool caller_inlined = inline_calls(caller);
         const bool caller_stripped =
-          strip_explicit_no_unwind_eh(&program_.functions[caller]);
+          strip_dead_eh_regions(&program_.functions[caller]);
         if(caller_stripped) {
           ++rewrites_;
           if(rewritten_symbols_)
@@ -776,16 +786,33 @@ private:
     }
   }
 
-  bool strip_explicit_no_unwind_eh(Function * function)
+  bool instruction_can_unwind(const Instruction & instruction) const
+  {
+    if(instruction.kind == Instruction::IK_THROW ||
+       instruction.kind == Instruction::IK_RESUME) return true;
+    if(instruction.kind != Instruction::IK_CALL) return false;
+    lowir_model::SymbolId target;
+    return !direct_call(instruction, &target) || target >= no_unwind_.size() ||
+      !no_unwind_[target];
+  }
+
+  bool body_is_no_unwind(const Function & function) const
+  {
+    if(contains_eh(function)) return false;
+    for(std::size_t b = 0; b < function.blocks.size(); ++b)
+      for(std::size_t j = 0; j < function.blocks[b].instructions.size(); ++j)
+        if(instruction_can_unwind(function.blocks[b].instructions[j]))
+          return false;
+    return true;
+  }
+
+  bool strip_all_no_unwind_eh(Function * function)
   {
     if(function->boundary.unwind != lowir_model::CUM_NO) return false;
     for(std::size_t b = 0; b < function->blocks.size(); ++b)
       for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
         const Instruction & ins = function->blocks[b].instructions[j];
-        if(ins.kind == Instruction::IK_CALL) {
-          lowir_model::SymbolId target;
-          if(!direct_call(ins, &target) || !no_unwind_[target]) return false;
-        } else if(ins.kind == Instruction::IK_THROW) return false;
+        if(instruction_can_unwind(ins)) return false;
       }
     bool changed = false;
     for(std::size_t b = 0; b < function->blocks.size(); ++b) {
@@ -806,13 +833,135 @@ private:
     return changed;
   }
 
+  bool strip_dead_eh_regions(Function * function)
+  {
+    if(!contains_eh(*function)) return false;
+    if(strip_all_no_unwind_eh(function)) return true;
+    const std::uint32_t kUnknown = UINT32_MAX;
+    const std::uint32_t kAmbiguous = UINT32_MAX - 1;
+    struct Region {
+      std::uint32_t parent;
+      bool parent_known, unsafe, closed;
+      Region() : parent(0), parent_known(false), unsafe(false), closed(false) {}
+    };
+    std::vector<std::size_t> offsets(function->blocks.size() + 1, 0);
+    for(std::size_t b = 0; b < function->blocks.size(); ++b)
+      offsets[b + 1] = offsets[b] + function->blocks[b].instructions.size();
+    std::vector<std::uint32_t> marker_region(offsets.back(), kUnknown);
+    std::vector<Region> regions;
+    for(std::size_t b = 0; b < function->blocks.size(); ++b)
+      for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
+        const Instruction::Kind kind = function->blocks[b].instructions[j].kind;
+        if(kind != Instruction::IK_EH_TRY &&
+           kind != Instruction::IK_EH_CLEANUP) continue;
+        marker_region[offsets[b] + j] =
+          static_cast<std::uint32_t>(regions.size());
+        regions.push_back(Region());
+      }
+    if(regions.empty()) return false;
+    if(stats_) stats_->inline_eh_regions_analyzed += regions.size();
+
+    const std::size_t no_block = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> index(function->next_block_id, no_block);
+    for(std::size_t b = 0; b < function->blocks.size(); ++b)
+      index[function->blocks[b].id] = b;
+    std::vector<std::uint32_t> incoming(function->blocks.size(), kUnknown);
+    std::vector<unsigned char> queued(function->blocks.size(), 0);
+    std::deque<std::size_t> work;
+    incoming[0] = 0;
+    queued[0] = 1;
+    work.push_back(0);
+    bool ambiguous = false;
+    while(!work.empty() && !ambiguous) {
+      const std::size_t block = work.front();
+      work.pop_front();
+      queued[block] = 0;
+      std::uint32_t top = incoming[block];
+      for(std::size_t j = 0;
+          j < function->blocks[block].instructions.size(); ++j) {
+        const Instruction & instruction =
+          function->blocks[block].instructions[j];
+        if(instruction.kind == Instruction::IK_EH_TRY ||
+           instruction.kind == Instruction::IK_EH_CLEANUP) {
+          const std::uint32_t region = marker_region[offsets[block] + j];
+          if(!regions[region].parent_known) {
+            regions[region].parent = top;
+            regions[region].parent_known = true;
+          } else if(regions[region].parent != top) {
+            ambiguous = true;
+            break;
+          }
+          top = region + 1;
+        } else if(instruction.kind == Instruction::IK_EH_END) {
+          if(top == 0) {
+            ambiguous = true;
+            break;
+          }
+          const std::uint32_t region = top - 1;
+          marker_region[offsets[block] + j] = region;
+          regions[region].closed = true;
+          top = regions[region].parent;
+        } else if(top != 0 && instruction_can_unwind(instruction))
+          regions[top - 1].unsafe = true;
+      }
+      if(ambiguous) break;
+      const std::vector<std::size_t> successors =
+        normal_successors(*function, block, index);
+      for(std::size_t i = 0; i < successors.size(); ++i) {
+        const std::size_t successor = successors[i];
+        if(incoming[successor] == kUnknown) incoming[successor] = top;
+        else if(incoming[successor] != top) {
+          incoming[successor] = kAmbiguous;
+          ambiguous = true;
+          break;
+        } else continue;
+        if(!queued[successor]) {
+          queued[successor] = 1;
+          work.push_back(successor);
+          if(stats_) ++stats_->worklist_pushes;
+        }
+      }
+    }
+    if(ambiguous) {
+      if(stats_) ++stats_->inline_eh_ambiguous_functions;
+      return false;
+    }
+    for(std::size_t i = regions.size(); i != 0; --i) {
+      Region & region = regions[i - 1];
+      if(!region.unsafe || region.parent == 0) continue;
+      regions[region.parent - 1].unsafe = true;
+    }
+    std::size_t removed_regions = 0;
+    for(std::size_t i = 0; i < regions.size(); ++i)
+      if(regions[i].closed && !regions[i].unsafe) ++removed_regions;
+    if(removed_regions == 0) return false;
+    for(std::size_t b = 0; b < function->blocks.size(); ++b) {
+      std::vector<Instruction> kept;
+      kept.reserve(function->blocks[b].instructions.size());
+      for(std::size_t j = 0; j < function->blocks[b].instructions.size(); ++j) {
+        const Instruction & instruction = function->blocks[b].instructions[j];
+        const std::uint32_t region = marker_region[offsets[b] + j];
+        const bool marker = instruction.kind == Instruction::IK_EH_TRY ||
+          instruction.kind == Instruction::IK_EH_CLEANUP ||
+          instruction.kind == Instruction::IK_EH_END;
+        if(marker && region != kUnknown && regions[region].closed &&
+           !regions[region].unsafe) continue;
+        kept.push_back(std::move(function->blocks[b].instructions[j]));
+      }
+      function->blocks[b].instructions.swap(kept);
+    }
+    remove_unreachable_blocks(function);
+    if(stats_) stats_->inline_eh_regions_removed += removed_regions;
+    return true;
+  }
+
   bool expand(std::size_t function_index)
   {
     if(state_[function_index] == 2 || state_[function_index] == 1) return false;
     state_[function_index] = 1;
     const bool inlined = inline_calls(function_index);
     const bool stripped =
-      strip_explicit_no_unwind_eh(&program_.functions[function_index]);
+      strip_dead_eh_regions(&program_.functions[function_index]);
     if(stripped) {
       ++rewrites_;
       if(rewritten_symbols_)
@@ -826,6 +975,13 @@ private:
       leaf_inline_shape(program_.functions[function_index]);
     instruction_counts_[function_index] =
       instruction_count(program_.functions[function_index]);
+    const lowir_model::SymbolId symbol =
+      program_.functions[function_index].symbol;
+    if(stripped && !no_unwind_[symbol] &&
+       body_is_no_unwind(program_.functions[function_index])) {
+      no_unwind_[symbol] = 1;
+      if(stats_) ++stats_->inline_no_unwind_published_after_strip;
+    }
     state_[function_index] = 2;
     return stripped;
   }

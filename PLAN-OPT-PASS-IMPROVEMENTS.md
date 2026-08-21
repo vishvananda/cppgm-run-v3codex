@@ -1,7 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--10i and R11a--b are implemented and clean through the
-full report; Rank 11 continues at residual EH stripping, while the
+Status: active; Ranks 1--10i and R11a--c are implemented and clean through the
+full report; Rank 11 continues at lifecycle policy separation, while the
 under-15-second maximum frozen-compile objective remains open
 
 Date: 2026-08-21
@@ -1885,6 +1885,26 @@ converge in one ordinary callee-first traversal rather than with a translation-
 unit fixed point.  Recursive SCCs remain conservative unless every member can
 be proven without assuming another member's result.
 
+Implementation result (2026-08-21): each inliner wave now assigns dense region
+IDs only inside EH-bearing functions, propagates one compact active-stack fact
+over normal CFG edges, and removes independently proven-safe regions.  An
+ambiguous stack merge rejects that function.  Retained EH markers contribute
+their landing edges to reachability, so deleting a safe sibling cannot delete
+an unsafe handler.  When the last region disappears, an EH-free body whose
+remaining typed calls are nonthrowing publishes that fact immediately for
+later callers in the same callee-first traversal.
+
+Two active PA37 reducers cover mixed safe/unsafe sibling regions and
+callee-to-caller no-unwind publication; six earlier PA37 references moved only
+by newly dead markers/handlers.  The frozen O1 pass analyzes 8,296 regions
+across its bounded waves, removes 1,361, publishes 112 facts, and encounters no
+ambiguous functions.  Versus R11b, the object shrinks 115,568 bytes, `.text*`
+shrinks 29,705 bytes, definitions fall by 220, and host-built O1 wall improves
+from 5.18 to 5.12 seconds.  `_Unwind_Resume` relocations fall from 412 to 250;
+basic-string destructor calls fall 934 to 841 and shared-pointer destructor
+calls 652 to 592.  The full report is 5,384/5,384, PA37 debug/object tests are
+clean, and the file audit has zero fatal findings.
+
 The implementation should extract or share the existing typed EH-state
 propagation in `lowir_cleanup_o1.cpp`, rather than add a second string-keyed or
 block-order approximation.  Use dense block/region arrays and compact
@@ -2256,7 +2276,7 @@ Fill one row for every retained or rejected phase:
 | R10i-d | preserve frame-address value identity through native phi transfers | active PA29 behavioral reducer with informational MIR; PA29 normative and Design Notes; no LowIR change | corrected generated compiler; frozen self medians O0 14.96 s / maximum 16.74 s; deterministic objects 2,965,936 / 1,659,296 B | one transient Boolean per phi move, no scan or string identity; phi adapter separated and main lowerer reduced to 2,938 lines | 5,367/5,367; PA37/PA38 debug clean; zero fatal, 32 warnings | O3 self 19.10 s / inception 69.76 s; all 209 objects and final binary match | corrective complete, `a8420b92`; under-15 maximum objective remains open |
 | R11a | standard implicit destructor exception specifications and terminate boundary | PA13/16/19/20/21/28/35 active reducers; PA26/30/37 corrective movement | O1 object -77,168 B, `.text*` -23,351 B, defined symbols -90 against retained pre-R11 host compiler | one cached typed completed-class walk; typed terminate role; no string identity | 5,374/5,374; zero fatal, 32 warnings | final combined O0/O3 self/inception lane required | implementation complete; host-built frozen medians O0 4.79 s / maximum 5.27 s |
 | R11b | preserve bounded C++ inline preference as `inline_hint` | PA13 syntax/scaffold; PA15/16/19 producers; PA37 policy/source/object/debug | cap 12 rejected; retained cap 7: object -592 B, `.text*` +384 B, definitions -5; basic-string calls unchanged | one typed Boolean and cached shape test; existing 128 caller budget; no strings | 5,382/5,382; zero fatal, 32 warnings | final combined self/inception lane required; PA37 object/debug clean | implementation complete; host-built frozen O1 median 5.18 s; proceed to residual EH gate |
-| R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 exact/source/behavior/scaling; no PA13 syntax change | measure protected regions removed after R11a/b | shared dense typed EH state; one bounded callee-first visit | pending | pending | conditional on residual census |
+| R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 mixed-region/publication reducers; six exact refs moved; debug/object clean | object -115,568 B, `.text*` -29,705 B, definitions -220, resume 412 to 250 | dense typed region/stack facts per EH function; bounded callee-first waves; no strings | 5,384/5,384; zero fatal, 32 warnings | final combined self/inception lane required | implementation complete; host O1 median 5.12 s; 1,361/8,296 regions removed and 112 facts published |
 | R11d | separate lifecycle publication/retention from explicit `no_inline` | earliest affected lifecycle PA determined by report; PA32/33 object inspection; PA37 positive/negative | measure base entries inlined and required symbols/aliases retained | deletes blanket policy; no replacement metadata unless proven necessary | pending | explicit O0 and O3 lanes required | planned after R11a/b census |
 | R11e | proven-no-unwind landing-block inlining | PA37 O1 exact and exception-in-flight behavior | measure landing rejects, cleanup calls, text and EH metadata | existing dense summaries and budgets | pending | pending | conditional after R11c/d |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | stats/object diagnostics; PA33/37 only for retained `pure`/`const` effects | call-family frequency, rejection, EH definition, effects and MIR movement census | numeric optional stats; names out of band | pending | diagnostic | planned measurement gate; GNU `nothrow` absent from frozen input |

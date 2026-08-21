@@ -1,0 +1,17 @@
+declare function @safe() -> void [unwind=no]
+
+function @outer() -> void [binding=strong, no_inline=yes] {
+  block ^entry:
+    call void @inner()
+    return void
+}
+function @inner() -> void [binding=strong, no_inline=yes] {
+  block ^entry:
+    call void @safe()
+    return void
+}
+function @main() -> void [role=entry] {
+  block ^entry:
+    call void @outer()
+    return void
+}

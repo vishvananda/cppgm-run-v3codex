@@ -13,13 +13,8 @@ function @caller(%p : ptr, %out : ptr) -> void {
   slot $__o1inl0__retobj__1 : obj<8x8>
 
   block ^entry:
-    eh_try ^dispatch
     %__o1inl0__t1 = addr $__o1inl0__retobj__1
     store ptr %p, %__o1inl0__t1
     copyobj 8x8 $__o1inl0__retobj__1, %out
-    eh_end
     return void
-
-  block ^dispatch:
-    resume
 }

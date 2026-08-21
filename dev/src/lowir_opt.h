@@ -138,6 +138,10 @@ struct Stats
   std::size_t inline_changed_callers = 0;
   std::size_t inline_eh_blocked_records = 0;
   std::size_t inline_revisited_callers = 0;
+  std::size_t inline_eh_regions_analyzed = 0;
+  std::size_t inline_eh_regions_removed = 0;
+  std::size_t inline_eh_ambiguous_functions = 0;
+  std::size_t inline_no_unwind_published_after_strip = 0;
   std::size_t ipa_direct_call_visits = 0;
   std::size_t ipa_instruction_visits = 0;
   std::size_t ipa_candidate_functions = 0;

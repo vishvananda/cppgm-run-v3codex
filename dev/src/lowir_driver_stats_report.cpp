@@ -185,6 +185,12 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " inline_changed_callers=" << stats.inline_changed_callers
 		 << " inline_eh_blocked_records=" << stats.inline_eh_blocked_records
 		 << " inline_revisited_callers=" << stats.inline_revisited_callers
+		 << " inline_eh_regions_analyzed=" << stats.inline_eh_regions_analyzed
+		 << " inline_eh_regions_removed=" << stats.inline_eh_regions_removed
+		 << " inline_eh_ambiguous_functions="
+		 << stats.inline_eh_ambiguous_functions
+		 << " inline_no_unwind_published_after_strip="
+		 << stats.inline_no_unwind_published_after_strip
 		 << " ipa_direct_call_visits=" << stats.ipa_direct_call_visits
 		 << " ipa_instruction_visits=" << stats.ipa_instruction_visits
 		 << " ipa_candidate_functions=" << stats.ipa_candidate_functions

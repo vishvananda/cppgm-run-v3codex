@@ -8,10 +8,5 @@ function @id(%p : ptr) -> ptr {
 }
 function @caller(%p : ptr) -> ptr {
   block ^entry:
-    eh_try ^dispatch
-    eh_end
     return ptr %p
-
-  block ^dispatch:
-    resume
 }
