@@ -575,6 +575,11 @@ To complete PA29, implement these goals:
    on each iteration must retain their current value across calls without a later
    iteration overwriting an earlier spill home.
 
+   A `phi ptr` edge transfer whose source is a retained frame address transfers
+   the address value, not the scalar contents stored at that frame location.
+   The generated machine code must materialize the address before placing it in
+   the phi destination.
+
    A representation-preserving scalar copy or decay may share its source's
    physical location, but that location remains live until the final use of
    every value that shares it.
@@ -729,6 +734,9 @@ strategies include:
   adjacent edge without constructing per-block live-value sets
 - lower `phi` values to parallel edge transfers; split a critical edge before
   MIR selection so copies for an untaken successor never execute
+- retain a compact address-value bit on a parallel phi source so location
+  equality and cycle scheduling do not confuse a frame address with a scalar
+  stored at the same frame location; rematerialize that source with `lea`
 - select the signed or unsigned extending memory form directly for a typed
   narrow integer load instead of emitting a partial load followed by a
   register-only normalization

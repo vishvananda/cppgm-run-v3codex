@@ -1,0 +1,74 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @select_local_address
+  abi
+    param %take_left -> rdi : i64
+    return i32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $value -> [rbp-8] : obj<8x8>
+    temp %selected -> [rbp-16] : ptr
+
+  block ^entry
+    mov r8, rdi
+    lea rdi, [rbp-8]
+    zero_bytes 8x8, rdi
+    store.i64 [rbp-8], 77
+    mov rax, r8
+    cmp.i64 rax, 0
+    jne ^left
+    jmp ^right
+
+  block ^left
+    lea r11, [rbp-8]
+    store.ptr [rbp-16], r11
+    jmp ^join
+
+  block ^right
+    lea r11, [rbp-8]
+    store.ptr [rbp-16], r11
+    jmp ^join
+
+  block ^join
+    load.ptr rcx, [rbp-16]
+    load.i64 r9, [rcx]
+    mov rax, r9
+    sext.i32 rax
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+
+  block ^entry
+    mov rdi, 1
+    call @select_local_address [args=(rdi)]
+    mov rbx, rax
+    sext.i32 rbx
+    mov rdi, 0
+    call @select_local_address [args=(rdi)]
+    mov r8, rax
+    sext.i32 r8
+    mov rdx, 77
+    cmp.i32 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
+    mov rdx, 77
+    cmp.i32 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rbx, r8
+    mov rax, rbx
+    zext.i64 rax
+    sext.i32 rax
+    ret rax

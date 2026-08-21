@@ -63,7 +63,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private integer_detail::IntegerLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>,
                         private parameter_detail::ParameterRegisterState<FunctionLowerer>,
-                        private phi_detail::Emitter,
+                        private phi_detail::PhiLowering<FunctionLowerer>,
                         private return_detail::ReturnLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
@@ -78,6 +78,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class integer_detail::IntegerLowering<FunctionLowerer>;
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
   friend class parameter_detail::ParameterRegisterState<FunctionLowerer>;
+  friend class phi_detail::PhiLowering<FunctionLowerer>;
   friend class return_detail::ReturnLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirProgram & program,
@@ -281,15 +282,6 @@ private:
       value, type, position_, reason, result_crosses_call(value), stats_);
   }
 
-  void DefinePhi(lowir_model::ValueId value,
-                 const LowType & type) override
-  {
-    const long long offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP,
-      lowir_model::lowir_value_presentation(source_, value), type);
-    define(value, type, frame_operand(offset,
-      static_cast<std::uint32_t>(target_.frame_bindings.size())));
-  }
   bool crosses_call(lowir_model::ValueId value) const
   {
     return facts_.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
@@ -2799,59 +2791,6 @@ private:
     append_operand(raise, value);
     out.push_back(raise);
     consume(instruction.first);
-  }
-  MirOperand PhiDestination(
-      lowir_model::ValueId value) const override
-  {
-    return selected_value_location(value);
-  }
-  MirOperand PhiSource(const Operand & operand) const override
-  {
-    return resolve(operand);
-  }
-  MirOperand PhiCycleScratch() override
-  {
-    if(phi_cycle_scratch_.kind == MirOperand::OP_FRAME)
-      return phi_cycle_scratch_;
-    const LowType & type = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
-    const long long offset = allocate_frame_binding(
-      mir_model::MirFrameBinding::FB_TEMP,
-      lowir_model::FPN_PHI_CYCLE_SCRATCH, type);
-    phi_cycle_scratch_ = frame_operand(offset,
-      static_cast<std::uint32_t>(target_.frame_bindings.size()));
-    return phi_cycle_scratch_;
-  }
-  void EmitPhiMove(const MirOperand & destination,
-                   const MirOperand & source, const LowType & type,
-                   std::vector<MirInstruction> * out) override
-  {
-    if(is_scalar_float(type)) {
-      if(source.kind == MirOperand::OP_XMM)
-        append_float_move(*out, destination, source, type);
-      else {
-        append_float_move(*out, xmm_operand(XMM_7), source, type);
-        append_float_move(*out, destination, xmm_operand(XMM_7), type);
-      }
-      return;
-    }
-    if(source.kind == MirOperand::OP_REG)
-      append_store(*out, destination, source, type);
-    else {
-      move_value_to_register(*out, XR_R11, source, type);
-      append_store(*out, destination, reg_operand(XR_R11), type);
-    }
-  }
-  void ConsumePhiSource(const Operand & operand) override
-  {
-    consume(operand);
-  }
-  void emit_phi_transfers(lowir_model::BlockId predecessor,
-                          std::vector<MirInstruction> & out)
-  {
-    const std::uint32_t predecessor_id = predecessor;
-    if(predecessor_id >= phi_transfers_.size()) return;
-    phi_detail::emit_parallel_transfers(
-      phi_transfers_[predecessor_id], this, &out);
   }
   void lower_instruction(const lowir_model::LowirBlock & block,
                          std::size_t instruction_index,
