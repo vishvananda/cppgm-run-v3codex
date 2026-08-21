@@ -428,6 +428,8 @@ void AdaptSymbolFacts(const Symbol& source,
 		symbol->role = lowir_model::SR_RTTI_VMI; break;
 	case Symbol::RUNTIME_ROLE_RTTI_DATA:
 		symbol->role = lowir_model::SR_RTTI_DATA; break;
+	case Symbol::RUNTIME_ROLE_UNREACHABLE:
+		symbol->role = lowir_model::SR_UNREACHABLE; break;
 	}
 }
 

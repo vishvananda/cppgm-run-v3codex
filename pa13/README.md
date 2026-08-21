@@ -174,8 +174,8 @@ register assignment, or debugger behavior.
 
 The `role` family includes the entry/init/fini and exception roles as well as
 the allocation, deallocation, pure-virtual, dynamic-cast, bad-cast, bad-typeid,
-and RTTI runtime roles listed in `lowir.md`. Accept and validate those roles
-even when the CY86 adapter does not otherwise act on them.
+unreachable, and RTTI runtime roles listed in `lowir.md`. Accept and validate
+those roles even when the CY86 adapter does not otherwise act on them.
 
 You may keep a typed LowIR model internally, and the optional
 `dev/src/lowir_model.h` scaffold names the common program, symbol, type,
@@ -353,3 +353,6 @@ For `phi`, compact block and value identities make predecessor checks and edge
 transfer planning independent of label spelling. Emit the incoming assignments
 as parallel transfers on predecessor edges; a conditional or multi-way edge may
 need a small adapter label so transfers for an untaken edge do not execute.
+
+Represent `role` values with a compact enum after parsing. Later passes should
+compare the enum and `SymbolId`, not rendered role or symbol spellings.

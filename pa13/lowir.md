@@ -223,6 +223,7 @@ The currently defined role values are:
   - `dynamic_cast`
   - `bad_cast`
   - `bad_typeid`
+  - `unreachable`
 - global roles:
   - `eh_top`
   - `eh_value`
@@ -237,6 +238,13 @@ listed above are singleton roles except `rtti_data`, which may describe each
 distinct runtime type-information object or category helper used by the
 program. A role must also appear on the correct top-level kind: function roles
 on functions and global roles on globals.
+
+The `unreachable` role identifies a function whose execution has undefined
+behavior. Such a function does not return normally; declarations emitted for
+the compiler intrinsic use `effects=readnone`, `unwind=no`, and
+`return=noreturn` as the corresponding boundary facts. The role is the stable
+symbol identity that lets later stages recognize this operation without
+depending on a source or object symbol spelling.
 
 The currently defined linkage values are:
 

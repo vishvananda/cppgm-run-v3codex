@@ -1,0 +1,8 @@
+function @late_candidate() -> i64 [binding=strong] {
+  block ^entry:
+    return i64 42
+}
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    return i64 42
+}

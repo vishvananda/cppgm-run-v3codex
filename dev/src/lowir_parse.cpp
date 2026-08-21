@@ -484,7 +484,7 @@ private:
       {"dynamic_cast", SR_DYNAMIC_CAST}, {"bad_cast", SR_BAD_CAST},
       {"bad_typeid", SR_BAD_TYPEID}, {"rtti_class", SR_RTTI_CLASS},
       {"rtti_si", SR_RTTI_SI}, {"rtti_vmi", SR_RTTI_VMI},
-      {"rtti_data", SR_RTTI_DATA}
+      {"rtti_data", SR_RTTI_DATA}, {"unreachable", SR_UNREACHABLE}
     };
     for(std::size_t i = 0; i < sizeof(roles) / sizeof(roles[0]); ++i)
       if(value == roles[i].first) return roles[i].second;

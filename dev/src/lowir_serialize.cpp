@@ -37,6 +37,7 @@ const char * role_name(SymbolRole role)
   case SR_RTTI_SI: return "rtti_si";
   case SR_RTTI_VMI: return "rtti_vmi";
   case SR_RTTI_DATA: return "rtti_data";
+  case SR_UNREACHABLE: return "unreachable";
   }
   throw std::logic_error("invalid LowIR symbol role");
 }

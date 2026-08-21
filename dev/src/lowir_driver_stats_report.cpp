@@ -57,6 +57,13 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.o3_unroll_instruction_visits
 		 << " o3_unroll_peak_scratch_bytes="
 		 << stats.o3_unroll_peak_scratch_bytes
+		 << " o3_late_inline_direct_edges="
+		 << stats.o3_late_inline_direct_edges
+		 << " o3_late_inline_calls=" << stats.o3_late_inline_calls
+		 << " o3_late_inline_cloned_instructions="
+		 << stats.o3_late_inline_cloned_instructions
+		 << " o3_late_inline_changed_callers="
+		 << stats.o3_late_inline_changed_callers
 		 << " worklist_pushes=" << stats.worklist_pushes
 		 << " dataflow_updates=" << stats.dataflow_updates
 		 << " inline_direct_edges=" << stats.inline_direct_edges
@@ -210,6 +217,9 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.cleanup_tail_blocks_rewritten
 		 << " cleanup_tail_instructions_removed="
 		 << stats.cleanup_tail_instructions_removed
+		 << " unreachable_role_symbols=" << stats.unreachable_role_symbols
+		 << " unreachable_marker_blocks=" << stats.unreachable_marker_blocks
+		 << " unreachable_edges_removed=" << stats.unreachable_edges_removed
 		 << " inline_ns=" << stats.inline_nanoseconds
 		 << " ipa_ns=" << stats.ipa_nanoseconds
 		 << " simplify_ns=" << stats.simplify_nanoseconds
@@ -226,8 +236,10 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " dead_store_ns=" << stats.dead_store_nanoseconds
 		 << " cleanup_resume_ns=" << stats.cleanup_resume_nanoseconds
 		 << " cleanup_tail_ns=" << stats.cleanup_tail_nanoseconds
+		 << " unreachable_ns=" << stats.unreachable_nanoseconds
 		 << " loop_ns=" << stats.loop_nanoseconds
 		 << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
+		 << " o3_late_inline_ns=" << stats.o3_late_inline_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }

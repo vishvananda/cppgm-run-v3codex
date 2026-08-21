@@ -1,7 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--7 are complete through `3bc622b7`; the final
-self/inception gate remains
+Status: active; Ranks 1--7 and the final generated-compiler correctives are
+implemented; the final self/inception gate remains
 
 Date: 2026-08-21
 
@@ -975,6 +975,46 @@ dependence or growth policy, and would add more compile work than the measured
 bounded full-unroll result justifies. The full report passes 5,331/5,331, the
 PA37/PA38 debug lane is clean, and the PA39 audit has zero fatal findings.
 
+## Final generated-compiler correctives
+
+The first exact generated-self gate after Rank 7 remained above the objective:
+the frozen O0 compile took 30.15 seconds even though the host compiler completed
+the same work in about five seconds. Profiling showed the generated compiler
+spending most of its time in tiny STL accessors and object copies, rather than
+in one expensive optimization pass.
+
+Commit `a30c982f` adds bounded O2 small-object scalar replacement for complete,
+nonescaping objects whose accesses prove one scalar type. It uses dense typed
+slot/value facts and a union/find over complete copy edges; it does not infer
+object structure from names or rendered LowIR. The same changeset lowers
+1/2/4/8-byte residual `copyobj` operations as one scalar load/store pair in the
+native backend. Active PA37 and PA29 coverage distinguishes complete objects
+from escaped and partial objects. Only the pre-existing PA37
+`525-pre-address-result-type` optimized fixture changes. The full report passed
+5,338/5,338 with zero fatal audit findings. An exact 32-worker self build took
+19.57 seconds wall, 458.95 seconds user, 44.64 seconds system, and 229,924 KiB
+peak RSS; that compiler reduced the frozen O0 compile to 18.30 seconds.
+
+The remaining corrective has two typed parts. PA13 now defines the function
+role `unreachable`, and source lowering attaches it to the compiler intrinsic
+together with the existing read-none, no-unwind, and no-return boundary facts.
+An O1 CFG pass builds one dense symbol bitmap and removes a conditional edge
+whose target begins with that operation. It allocates a block bitmap only for
+functions that actually contain a marker block. Ordinary `noreturn` calls
+without the role remain untouched. This public contract is covered in PA13,
+the existing PA16 boundary fixture, and direct/source PA37 reducers.
+
+At O3, one fresh linear call-graph build follows local scalar and CFG work. A
+bounded late inlining wave accepts only single-block leaves, charges optimized
+instruction count against a fresh 128-instruction caller budget, and cleans
+only rewritten callers. A PA37 reducer proves that a 42-instruction complete
+object-copy body remains a call at O2 after shrinking, but is inlined at O3.
+On the frozen host compile this wave inlines 1,007 calls and clones 6,272
+optimized instructions in 47.6 ms; unreachable-edge cleanup removes 74 edges
+in 1.6 ms. The O3 object falls from 2,116,672 bytes before these two parts to
+2,056,816 bytes, while a first host compile remains 5.16 seconds. Exact
+generated-self and inception results are pending the final committed lane.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1145,6 +1185,8 @@ Fill one row for every retained or rejected phase:
 | R5 | MIR placement/coalescing | PA38 O1/O2 structure, behavior, and debug; PA29 narrow x87 corrective | object -920 B, text -1,877 B, decoded -88; 853 edge retains and 235 identity moves | wall +0.4%, user +0.7%, RSS -0.03%; overlapping host-noise range | 5,321/5,321; zero fatal | final lane deferred until compiler stops changing | complete, corrective `3a7ccfeb`, Rank 5 `a04e5900` |
 | R6 | IPA argument/scalar work | PA37 O2 exact transform and object behavior; existing PA32 linkage negatives | object -14,880 B, text -2,478 B, decoded -549, relocations -67; +10 defined symbols | wall +0.29%, user +0.22%, RSS +0.10%; IPA 22.5 ms and 0.74 MiB scratch | 5,323/5,323; PA37 debug clean; zero fatal | final lane deferred until compiler stops changing | complete, `41f679cc` |
 | R7 | bounded full unrolling; distinct O3 | PA37 exact/source/object/debug O3; PA38 structural/behavior/debug O3; help and READMEs; no PA13 change | frozen O3 unchanged at 2,127,200 B; synthetic runtime -53%, text 352 to 348 B | wall +0.39%, user +0.21%, RSS +0.04%; 1x/2x/4x visits linear | 5,331/5,331; PA37/PA38 debug clean; zero fatal | final lane pending | implementation complete, `3bc622b7` |
+| R8a | complete small-object scalar replacement and scalar residual copies | PA37 O2 exact/object; one existing optimized fixture moved; PA29 Design Notes, no MIR change | frozen O3 2,116,672 B; generated-self frozen O0 30.15 to 18.30 s | host compile neutral; bounded dense facts and union/find | 5,338/5,338; zero fatal | self 19.57 s / inception pending | complete, `a30c982f` |
+| R8b | typed unreachable-edge cleanup and bounded late O3 leaf inlining | PA13 role/scaffold/ownership tests; PA16 existing producer fixture; PA37 O1 direct/source and O3 late reducer | frozen O3 2,116,672 to 2,056,816 B; 1,007 late calls removed | unreachable 1.6 ms; late inline 47.6 ms; host wall 5.16 s | final report/audit pending | final lane pending | implementation complete; commit pending |
 
 ## Completion criteria
 

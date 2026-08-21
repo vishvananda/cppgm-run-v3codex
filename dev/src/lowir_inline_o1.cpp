@@ -358,13 +358,14 @@ public:
           const std::vector<unsigned char> & prepared_oversized_symbols,
           const std::vector<std::size_t> & original_instruction_counts,
           std::vector<unsigned char> * rewritten_symbols,
-          Stats * stats)
+          Stats * stats, bool optimized_leaf_only = false)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
       call_graph_(call_graph),
       no_unwind_(program->symbol_names.size(), 0),
       prepared_oversized_symbols_(prepared_oversized_symbols),
-      original_instruction_counts_(original_instruction_counts), rewrites_(0)
+      original_instruction_counts_(original_instruction_counts),
+      optimized_leaf_only_(optimized_leaf_only), rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
@@ -374,7 +375,7 @@ public:
       contains_eh_[i] = contains_eh(program_.functions[i]);
       instruction_counts_[i] = instruction_count(program_.functions[i]);
     }
-    if(stats_) stats_->inline_input_instructions =
+    if(stats_ && !optimized_leaf_only_) stats_->inline_input_instructions =
       std::accumulate(instruction_counts_.begin(), instruction_counts_.end(),
         static_cast<std::size_t>(0));
     infer_no_unwind();
@@ -446,6 +447,7 @@ private:
   std::vector<unsigned char> state_, contains_eh_;
   std::vector<std::size_t> instruction_counts_;
   std::vector<std::size_t> remaining_inline_budget_;
+  bool optimized_leaf_only_;
   std::unordered_map<std::size_t, std::vector<std::size_t> >
     eh_blocked_callers_;
   std::size_t rewrites_;
@@ -556,7 +558,12 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_callee_size;
       return false;
     }
-    if(prepared_oversized_symbols_[callee_function.symbol] &&
+    if(optimized_leaf_only_ && !leaf_inline_shape(callee_function)) {
+      if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
+      return false;
+    }
+    if(!optimized_leaf_only_ &&
+       prepared_oversized_symbols_[callee_function.symbol] &&
        (instruction_counts_[target] > 4 ||
         !leaf_inline_shape(callee_function))) {
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
@@ -592,7 +599,8 @@ private:
 
   bool consume_inline_budget(std::size_t target, std::size_t * remaining)
   {
-    const std::size_t cost = std::max<std::size_t>(
+    const std::size_t cost = std::max<std::size_t>(optimized_leaf_only_ ?
+      instruction_counts_[target] :
       std::max(instruction_counts_[target],
         original_instruction_counts_[target]), 1);
     if(cost > *remaining) {
@@ -978,6 +986,11 @@ private:
         if(stats_) {
           ++stats_->inline_calls;
           stats_->inline_cloned_instructions += instruction_counts_[target];
+          if(optimized_leaf_only_) {
+            ++stats_->o3_late_inline_calls;
+            stats_->o3_late_inline_cloned_instructions +=
+              instruction_counts_[target];
+          }
         }
         continue;
       }
@@ -1081,6 +1094,23 @@ std::size_t inline_o1_calls(
 {
   Inliner inliner(&program, call_graph, prepared_oversized_symbols,
     original_instruction_counts, rewritten_symbols, stats);
+  return inliner.run();
+}
+
+std::size_t inline_o3_optimized_leaf_calls(
+  LowirProgram & program,
+  const InlineCallGraph & call_graph,
+  std::vector<unsigned char> * rewritten_symbols,
+  Stats * stats)
+{
+  std::vector<unsigned char> no_prepared_oversized(
+    program.symbol_names.size(), 0);
+  std::vector<std::size_t> optimized_instruction_counts(
+    program.functions.size(), 0);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    optimized_instruction_counts[i] = instruction_count(program.functions[i]);
+  Inliner inliner(&program, call_graph, no_prepared_oversized,
+    optimized_instruction_counts, rewritten_symbols, stats, true);
   return inliner.run();
 }
 

@@ -1,5 +1,5 @@
 declare function @__builtin_strlen(%arg0 : ptr [capture=nocapture, access=read]) -> i64 [effects=readonly, unwind=no, binding=strong, object=cppgm_builtin_strlen]
-declare function @__builtin_unreachable() -> void [effects=readnone, unwind=no, return=noreturn, binding=strong, object=cppgm_builtin_unreachable]
+declare function @__builtin_unreachable() -> void [effects=readnone, unwind=no, return=noreturn, role=unreachable, binding=strong, object=cppgm_builtin_unreachable]
 
 global @__strlit__1 [binding=internal] = {
   i8 120

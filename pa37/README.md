@@ -124,7 +124,8 @@ For successful runs:
 - `-O2` applies all `-O1` work and additional conservative slot-promotion
   optimizations.
 - `-O3` applies all `-O2` work and bounded full unrolling of eligible small
-  constant-trip loops.
+  constant-trip loops, then performs one bounded late inlining wave for leaf
+  functions made small by the preceding scalar and control-flow passes.
 
 The assignment grades the optimized LowIR shape as well as behavior
 preservation. The goal is a deterministic optimization stage, not elapsed-time
@@ -174,6 +175,8 @@ running optimizing transforms.
   merging safe straight-line block pairs, and collapsing empty branch diamonds
   when both arms resolve through non-EH jump-only blocks to the same
   continuation
+- removal of a conditional edge whose target begins with a call to the PA13
+  `role=unreachable` operation, when the other edge remains a normal successor
 - preservation of exceptional handler targets and exception-structure blocks
   while doing CFG cleanup
 - conservative inlining of small direct calls, including `unwind=no` callees
@@ -448,6 +451,17 @@ table. Plan the trip count and growth before cloning, use generated value IDs
 for each iteration, and invalidate the shared CFG facts once after a retained
 rewrite. A single function scan and a translation-unit instruction counter are
 sufficient; no loop-level fixed point or rendered-name map is needed.
+
+The late O3 inlining wave may rebuild the typed direct-call graph once after
+local optimization. Restrict it to single-block leaf functions, charge each
+optimized body against a fresh bounded caller budget, and revisit only callers
+that changed. This permits scalar replacement and CFG cleanup to expose small
+accessors without an unbounded optimizer fixed point.
+
+For unreachable-edge cleanup, build one dense bitmap indexed by `SymbolId` from
+the program's typed role metadata, then mark target blocks by `BlockId` within
+each function. This keeps the scan linear in symbols, blocks, and instructions
+without symbol-name or metadata-text lookups.
 
 ### After PA37
 
