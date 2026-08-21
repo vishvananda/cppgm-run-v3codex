@@ -15,6 +15,11 @@ struct Stats
   std::size_t instruction_visits = 0;
   std::size_t block_visits = 0;
   std::size_t cfg_edge_visits = 0;
+  std::size_t cfg_analysis_builds = 0;
+  std::size_t cfg_analysis_reuses = 0;
+  std::size_t cfg_analysis_invalidations = 0;
+  std::size_t dominator_analysis_builds = 0;
+  std::size_t dominator_analysis_reuses = 0;
   std::size_t worklist_pushes = 0;
   std::size_t dataflow_updates = 0;
   std::size_t inline_direct_edges = 0;

@@ -21,6 +21,11 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " instruction_visits=" << stats.instruction_visits
 		 << " block_visits=" << stats.block_visits
 		 << " cfg_edge_visits=" << stats.cfg_edge_visits
+		 << " cfg_analysis_builds=" << stats.cfg_analysis_builds
+		 << " cfg_analysis_reuses=" << stats.cfg_analysis_reuses
+		 << " cfg_analysis_invalidations=" << stats.cfg_analysis_invalidations
+		 << " dominator_analysis_builds=" << stats.dominator_analysis_builds
+		 << " dominator_analysis_reuses=" << stats.dominator_analysis_reuses
 		 << " worklist_pushes=" << stats.worklist_pushes
 		 << " dataflow_updates=" << stats.dataflow_updates
 		 << " inline_direct_edges=" << stats.inline_direct_edges
