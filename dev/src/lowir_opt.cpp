@@ -3,6 +3,7 @@
 #include "lowir_function_reachability.h"
 #include "lowir_inline_o1.h"
 #include "lowir_slot_forward_o1.h"
+#include "lowir_slot_promotion.h"
 
 #include <algorithm>
 #include <chrono>
@@ -1954,21 +1955,6 @@ bool abstract_slot_value(const AbstractState & state,
   return false;
 }
 
-bool phi_scalar_type(const LowType & type)
-{
-  return type.kind == lowir_model::LTK_I1 ||
-    type.kind == lowir_model::LTK_I8 ||
-    type.kind == lowir_model::LTK_U8 ||
-    type.kind == lowir_model::LTK_I16 ||
-    type.kind == lowir_model::LTK_U16 ||
-    type.kind == lowir_model::LTK_I32 ||
-    type.kind == lowir_model::LTK_U32 ||
-    type.kind == lowir_model::LTK_I64 ||
-    type.kind == lowir_model::LTK_F32 ||
-    type.kind == lowir_model::LTK_F64 ||
-    type.kind == lowir_model::LTK_PTR;
-}
-
 class SparseMeetScratch
 {
 public:
@@ -2210,40 +2196,6 @@ void rewrite_promoted_slots(Function * function,
   function->slots.resize(kept_slots);
 }
 
-std::vector<unsigned char> find_promotable_slots(
-    const Function & function, std::size_t * count)
-{
-  std::vector<unsigned char> eligible(function.slot_names.size(), 0);
-  *count = 0;
-  for(std::size_t i = 0; i < function.slots.size(); ++i) {
-    const lowir_model::SlotId slot = function.slots[i];
-    if(lowir_model::lowir_slot_type(function, slot).kind !=
-       lowir_model::LTK_OBJECT) {
-      eligible[slot] = 1;
-      ++*count;
-    }
-  }
-  for(std::size_t i = 0; i < function.blocks.size(); ++i)
-    for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
-      const Instruction & ins = function.blocks[i].instructions[j];
-      const Operand * values[] = {&ins.first, &ins.second, &ins.third};
-      for(std::size_t k = 0; k < 3; ++k)
-        if(values[k]->kind == Operand::OP_SLOT &&
-          !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)) &&
-           eligible[values[k]->slot]) {
-          eligible[values[k]->slot] = 0;
-          --*count;
-        }
-      for(std::size_t k = 0; k < ins.args.size(); ++k)
-        if(ins.args[k].kind == Operand::OP_SLOT && eligible[ins.args[k].slot]) {
-          eligible[ins.args[k].slot] = 0;
-          --*count;
-        }
-    }
-  return eligible;
-}
-
 bool promote_slots(Function * function, Stats * stats)
 {
   if(function->blocks.empty() || function->slots.empty()) return false;
@@ -2315,7 +2267,7 @@ bool promote_slots(Function * function, Stats * stats)
           slot_definitions[definition_end].first == slot_id)
       ++definition_end;
     if(!eligible[slot] || !slot_has_load[slot] ||
-       !phi_scalar_type(lowir_model::lowir_slot_type(*function, slot)) ||
+       !slot_is_phi_scalar_type(lowir_model::lowir_slot_type(*function, slot)) ||
        definition_end - definition_cursor < 2) {
       definition_cursor = definition_end;
       continue;
@@ -2539,6 +2491,42 @@ bool promote_slots(Function * function, Stats * stats)
     }
   }
 
+  struct PhiDependency
+  {
+    std::size_t dependent;
+    std::size_t next;
+  };
+  std::vector<std::size_t> phi_owner(
+    function->value_names.size(), kNoBlockIndex);
+  std::vector<std::size_t> first_dependents(
+    planned_phis.size(), kNoBlockIndex);
+  std::vector<PhiDependency> phi_dependencies;
+  std::vector<std::size_t> incomplete_phis;
+  incomplete_phis.reserve(planned_phis.size());
+  for(std::size_t phi = 0; phi < planned_phis.size(); ++phi)
+    phi_owner[planned_phis[phi].destination] = phi;
+  for(std::size_t phi = 0; phi < planned_phis.size(); ++phi) {
+    if(!planned_phis[phi].complete) incomplete_phis.push_back(phi);
+    const std::vector<Operand> & args = planned_phis[phi].instruction.args;
+    for(std::size_t incoming = 1; incoming < args.size(); incoming += 2) {
+      if(args[incoming].kind != Operand::OP_TEMP) continue;
+      const std::size_t source = phi_owner[args[incoming].value];
+      if(source == kNoBlockIndex) continue;
+      PhiDependency dependency = {phi, first_dependents[source]};
+      first_dependents[source] = phi_dependencies.size();
+      phi_dependencies.push_back(dependency);
+    }
+  }
+  for(std::size_t cursor = 0; cursor < incomplete_phis.size(); ++cursor)
+    for(std::size_t edge = first_dependents[incomplete_phis[cursor]];
+        edge != kNoBlockIndex; edge = phi_dependencies[edge].next) {
+      PlannedPhi & dependent =
+        planned_phis[phi_dependencies[edge].dependent];
+      if(!dependent.complete) continue;
+      dependent.complete = false;
+      incomplete_phis.push_back(phi_dependencies[edge].dependent);
+    }
+
   if(stats) {
     std::size_t transient_bytes = state.storage_bytes() +
       meet.storage_bytes() +
@@ -2552,7 +2540,11 @@ bool promote_slots(Function * function, Stats * stats)
       phi_epochs.capacity() * sizeof(std::uint32_t) +
       phi_work.capacity() * sizeof(std::size_t) +
       slot_phi_blocks.capacity() * sizeof(std::size_t) +
-      slot_definitions.capacity() * sizeof(SlotDefinition);
+      slot_definitions.capacity() * sizeof(SlotDefinition) +
+      phi_owner.capacity() * sizeof(std::size_t) +
+      first_dependents.capacity() * sizeof(std::size_t) +
+      phi_dependencies.capacity() * sizeof(PhiDependency) +
+      incomplete_phis.capacity() * sizeof(std::size_t);
     for(std::size_t block = 0; block < incoming.size(); ++block) {
       stats->promote_sparse_state_entries += incoming[block].slots.size();
       transient_bytes += incoming[block].slots.capacity() *

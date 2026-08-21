@@ -1,0 +1,15 @@
+#pragma once
+
+#include "lowir_model.h"
+
+#include <cstddef>
+#include <vector>
+
+namespace lowir_opt {
+
+bool slot_is_phi_scalar_type(const lowir_model::LowType & type);
+
+std::vector<unsigned char> find_promotable_slots(
+  const lowir_model::Function & function, std::size_t * count);
+
+}  // namespace lowir_opt
