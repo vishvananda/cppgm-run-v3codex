@@ -190,6 +190,9 @@ running optimizing transforms.
 - preservation of calls to functions marked `no_inline=yes`; source-level GNU
   `noinline` attributes on named functions and lambda call operators must reach
   that LowIR metadata on the driver path
+- independent treatment of object retention and inlining policy: a reachable
+  constructor or destructor base entry may remain an `object_root=yes`
+  definition while its eligible direct calls are inlined
 - preservation of the source `inline` preference as `inline_hint=yes`, distinct
   from mandatory `force_inline=yes`, prohibitive `no_inline=yes`, linkage, and
   object-retention metadata

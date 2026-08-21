@@ -256,9 +256,31 @@ private:
 
 }
 
-Summary Analyze(const TypedProgram& program)
+namespace
 {
-	return Analyzer(program, true).Run();
+
+void PreserveReachableLifecycleBaseEntries(TypedProgram* program,
+	const Analyzer& analyzer)
+{
+	for (std::size_t i = 0; i < program->functions.size(); ++i)
+	{
+		const std::uint32_t symbol = program->functions[i].symbol;
+		if (analyzer.Reachable(i) &&
+			program->symbols[symbol].lifecycle_base_entry)
+			program->symbols[symbol].object_output_root = true;
+	}
+}
+
+}
+
+Summary Analyze(TypedProgram* program)
+{
+	if (!program) throw std::logic_error(
+		"cannot analyze a null typed LowIR program");
+	Analyzer object_reachability(*program, false);
+	(void)object_reachability.Run();
+	PreserveReachableLifecycleBaseEntries(program, object_reachability);
+	return Analyzer(*program, true).Run();
 }
 
 Summary AuditWithoutInternalRoots(const TypedProgram& program)
@@ -272,6 +294,7 @@ Summary PruneUnreachableWeakFunctions(TypedProgram* program)
 		"cannot prune a null typed LowIR program");
 	Analyzer analyzer(*program, false);
 	Summary result = analyzer.Run();
+	PreserveReachableLifecycleBaseEntries(program, analyzer);
 	std::vector<Function> retained;
 	retained.reserve(result.reachable_functions);
 	for (std::size_t i = 0; i < program->functions.size(); ++i)

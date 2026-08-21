@@ -499,6 +499,7 @@ struct Symbol
 	bool definition_emitted;
 	bool referenced;
 	bool object_output_root;
+	bool lifecycle_base_entry;
 	bool trivial_lifecycle;
 	bool force_inline;
 	bool inline_hint;
@@ -518,7 +519,8 @@ struct Symbol
 		  tls_for_symbol(kNoLowId), source_type(kNoLowId),
 		  demand_reason_mask(0),
 		  declaration_emitted(false), definition_emitted(false), referenced(false),
-		  object_output_root(false), trivial_lifecycle(false), force_inline(false),
+		  object_output_root(false), lifecycle_base_entry(false),
+		  trivial_lifecycle(false), force_inline(false),
 		  inline_hint(false), no_inline(false) {}
 };
 

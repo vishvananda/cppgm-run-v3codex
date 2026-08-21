@@ -1962,6 +1962,29 @@ PA13 metadata syntax and scaffold do not change.  Student-facing text changes
 only where the owning assignment currently requires the synthesized
 `no_inline`; implementation history and the linkage diagnosis stay here.
 
+Implementation result (2026-08-21): lifecycle base-entry identity is one
+transient typed Boolean in the PA15 symbol record rather than serialized
+policy.  The initial typed reachability walk promotes only base entries reached
+from an object-emission root to the existing `object_root` fact; the transient
+Boolean then dies at the adapter boundary.  This preserves a required C2/D2
+definition after later call inlining without turning every synthesized entry
+into a root.  Textual LowIR emission runs the same object-root projection so a
+direct object and an object rebuilt from serialized LowIR remain identical.
+The hot native-object path adds no graph pass: it reuses the reachability walk
+that already prunes weak/internal definitions.  The non-pruning text path pays
+one additional object-reachability walk solely to serialize the same contract.
+
+PA28 owns the exact source metadata reducer, PA30's existing foreign-relocation
+case proves that a weak C2 remains linkable, PA32 now checks C2 publication
+rather than requiring an optimizer-visible call instruction, and PA37 covers
+positive inlining plus direct/serialized object identity.  The frozen O1
+result versus R11c is 1,571,664 object bytes (+31,880), 564,959 `.text*` bytes
+(-1,946), and 2,833 defined symbols (+172).  Ordinary and late inlines rise
+from 8,807/1,435 to 9,345/1,619 while `no_inline` rejections fall from 2,913 to
+1,058.  Three host-built wall runs are 5.21, 5.18, and 5.16 seconds (5.18-second
+median); the extra retained ABI bodies explain the file-size increase, while
+their call sites are now eligible for the following landing-block phase.
+
 #### R11e. Inline proven-no-unwind callees from landing blocks
 
 After R11a--d shrink the population, relax the landing rejection only
@@ -2277,7 +2300,7 @@ Fill one row for every retained or rejected phase:
 | R11a | standard implicit destructor exception specifications and terminate boundary | PA13/16/19/20/21/28/35 active reducers; PA26/30/37 corrective movement | O1 object -77,168 B, `.text*` -23,351 B, defined symbols -90 against retained pre-R11 host compiler | one cached typed completed-class walk; typed terminate role; no string identity | 5,374/5,374; zero fatal, 32 warnings | final combined O0/O3 self/inception lane required | implementation complete; host-built frozen medians O0 4.79 s / maximum 5.27 s |
 | R11b | preserve bounded C++ inline preference as `inline_hint` | PA13 syntax/scaffold; PA15/16/19 producers; PA37 policy/source/object/debug | cap 12 rejected; retained cap 7: object -592 B, `.text*` +384 B, definitions -5; basic-string calls unchanged | one typed Boolean and cached shape test; existing 128 caller budget; no strings | 5,382/5,382; zero fatal, 32 warnings | final combined self/inception lane required; PA37 object/debug clean | implementation complete; host-built frozen O1 median 5.18 s; proceed to residual EH gate |
 | R11c | residual region-granular dead-EH stripping and no-unwind publication | PA37 O1 mixed-region/publication reducers; six exact refs moved; debug/object clean | object -115,568 B, `.text*` -29,705 B, definitions -220, resume 412 to 250 | dense typed region/stack facts per EH function; bounded callee-first waves; no strings | 5,384/5,384; zero fatal, 32 warnings | final combined self/inception lane required | implementation complete; host O1 median 5.12 s; 1,361/8,296 regions removed and 112 facts published |
-| R11d | separate lifecycle publication/retention from explicit `no_inline` | earliest affected lifecycle PA determined by report; PA32/33 object inspection; PA37 positive/negative | measure base entries inlined and required symbols/aliases retained | deletes blanket policy; no replacement metadata unless proven necessary | pending | explicit O0 and O3 lanes required | planned after R11a/b census |
+| R11d | separate lifecycle publication/retention from explicit `no_inline` | PA28 exact policy; PA30 foreign relocation; PA32 publication; PA37 source/object roundtrip | vs R11c: object +31,880 B, text -1,946 B, +172 definitions; ordinary/late inlines +538/+184 | one transient typed Boolean; reuse native reachability; object-root fact serialized | 5,387/5,387; PA37 object/debug clean; zero fatal | final combined O0/O3 lane required | implementation complete; host O1 median 5.18 s |
 | R11e | proven-no-unwind landing-block inlining | PA37 O1 exact and exception-in-flight behavior | measure landing rejects, cleanup calls, text and EH metadata | existing dense summaries and budgets | pending | pending | conditional after R11c/d |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | stats/object diagnostics; PA33/37 only for retained `pure`/`const` effects | call-family frequency, rejection, EH definition, effects and MIR movement census | numeric optional stats; names out of band | pending | diagnostic | planned measurement gate; GNU `nothrow` absent from frozen input |
 | R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 per-pass exact/behavior/scaling; PA38 O2 MIR/behavior/debug | measure each subphase independently | shared compact EH states; bounded barriers and conservative fallback | pending | required for each retained subphase | conditional on R11f |

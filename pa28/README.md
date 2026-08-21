@@ -244,3 +244,8 @@ For Itanium-layout vtable segments, emit any vcall-offset rows before the
 virtual-base-offset rows, followed by offset-to-top, RTTI, and the function
 slots. Track each segment's address point from the rows actually emitted for
 that segment instead of using one class-wide negative-row count.
+
+Keep a synthesized constructor or destructor base entry's ABI identity
+separate from inlining policy. The entry may need its own object symbol or
+retained definition, but it gains `no_inline=yes` only when the source-level
+function has the corresponding prohibition.

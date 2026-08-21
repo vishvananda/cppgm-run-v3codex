@@ -42,7 +42,7 @@ struct Summary
 		retained_conservative_fallback(0) {}
 };
 
-Summary Analyze(const pa15_lowir_detail::TypedProgram& program);
+Summary Analyze(pa15_lowir_detail::TypedProgram* program);
 Summary AuditWithoutInternalRoots(
 	const pa15_lowir_detail::TypedProgram& program);
 Summary PruneUnreachableWeakFunctions(

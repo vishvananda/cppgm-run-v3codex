@@ -215,6 +215,10 @@ object files within the supported subset:
 7. Omit an unreferenced translation-unit-local function definition from the
    native object while retaining local functions whose addresses or bodies are
    required by emitted runtime code.
+8. Retain a reachable constructor or destructor base-entry definition needed
+   at the object boundary even when optimization removes its last direct call.
+   Retention does not by itself prohibit inlining that entry at other call
+   sites.
 
 If the host linker rejects generated objects as ordinary objects, fix the
 host-compatible object-emission path.

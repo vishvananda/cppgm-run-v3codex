@@ -102,13 +102,13 @@ void ApplyLifecycleSymbolMetadata(const pa11::Program& program,
 	const bool trivial_destructor = HasTrivialLifecycleMetadata(
 		program, node.binding) && binding.destructor;
 	Symbol& record = output->symbols[symbol];
+	record.lifecycle_base_entry |=
+		binding.constructor_base_entry || binding.destructor_base_entry;
 	record.trivial_lifecycle = trivial_constructor || trivial_destructor;
 	if (output->host_object_emission && record.internal_linkage &&
 		node.kind == pa12_semantic_detail::DUMP_FUNCTION_DEFINITION &&
 		(binding.constructor || binding.destructor))
 		record.object_output_root = true;
-	record.no_inline |= output->host_object_emission &&
-		(binding.constructor_base_entry || binding.destructor_base_entry);
 	const bool complete_entry =
 		(binding.constructor && !binding.constructor_base_entry) ||
 		(binding.destructor && !binding.destructor_base_entry);

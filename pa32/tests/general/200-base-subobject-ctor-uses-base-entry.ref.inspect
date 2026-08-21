@@ -1,2 +1,2 @@
-relocation_class_canonical 1 branch_call _ZN4BaseC2Ev 1
+defined_symbol_canonical 1 _ZN4BaseC2Ev 1
 absent_relocation_class_canonical 1 branch_call _ZN4BaseC1Ev 0
