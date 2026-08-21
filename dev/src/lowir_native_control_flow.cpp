@@ -20,8 +20,14 @@ ControlFlowQueries::ControlFlowQueries(
 	  reachability_ready_(false), dominance_ready_(false)
 {
 	std::vector<std::size_t> blocks(function.next_block_id, kNoBlock);
+	std::vector<std::size_t> block_last_position(function.blocks.size(), 0);
+	std::size_t next_position = 0;
 	for (std::size_t i = 0; i < function.blocks.size(); ++i)
+	{
 		blocks[function.blocks[i].id] = i;
+		next_position += function.blocks[i].instructions.size();
+		block_last_position[i] = next_position ? next_position - 1 : 0;
+	}
 	std::size_t position = 0;
 	for (std::size_t i = 0; i < function.blocks.size(); ++i)
 	{
@@ -29,11 +35,26 @@ ControlFlowQueries::ControlFlowQueries(
 		for (std::size_t j = 0; j < block.instructions.size(); ++j, ++position)
 		{
 			const Instruction& instruction = block.instructions[j];
-			RecordUse(instruction.first, position, i);
-			RecordUse(instruction.second, position, i);
-			RecordUse(instruction.third, position, i);
-			for (std::size_t k = 0; k < instruction.args.size(); ++k)
-				RecordUse(instruction.args[k], position, i);
+			if (instruction.kind == Instruction::IK_PHI)
+			{
+				for (std::size_t k = 1; k < instruction.args.size(); k += 2)
+				{
+					const std::uint32_t predecessor = instruction.args[k - 1].block;
+					if (predecessor >= blocks.size() || blocks[predecessor] == kNoBlock)
+						continue;
+					const std::size_t predecessor_block = blocks[predecessor];
+					RecordUse(instruction.args[k],
+						block_last_position[predecessor_block], predecessor_block);
+				}
+			}
+			else
+			{
+				RecordUse(instruction.first, position, i);
+				RecordUse(instruction.second, position, i);
+				RecordUse(instruction.third, position, i);
+				for (std::size_t k = 0; k < instruction.args.size(); ++k)
+					RecordUse(instruction.args[k], position, i);
+			}
 			if (instruction.kind == Instruction::IK_EH_TRY ||
 				instruction.kind == Instruction::IK_EH_CLEANUP)
 				AppendSuccessor(i, instruction.first, blocks);

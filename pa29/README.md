@@ -373,6 +373,8 @@ PA15-PA28, including:
 - functions, blocks, slots, temporaries, and runtime hooks
 - direct and indirect calls
 - control flow, integer operations, and pointer/index operations
+- `phi` value merges as parallel transfers on their incoming control-flow
+  edges, including loop backedges and critical edges
 - floating scalar operations and comparisons over `f32`, `f64`, and `f80`
 - explicit scalar conversions:
   - `sitofp`
@@ -691,6 +693,8 @@ strategies include:
 - record each block's sole predecessor and successor in dense CFG facts so a
   compiler-created scalar can retain its selected register across one exact
   adjacent edge without constructing per-block live-value sets
+- lower `phi` values to parallel edge transfers; split a critical edge before
+  MIR selection so copies for an untaken successor never execute
 - select the signed or unsigned extending memory form directly for a typed
   narrow integer load instead of emitting a partial load followed by a
   register-only normalization

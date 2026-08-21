@@ -3,6 +3,7 @@
 #include "lowir_force_inline.h"
 #include "lowir_native_eh.h"
 #include "lowir_native_opt.h"
+#include "lowir_phi_edges.h"
 #include "lowir_native_program.h"
 #include "lowir_native_session.h"
 
@@ -14,6 +15,19 @@
 namespace lowir_native {
 
 namespace {
+
+std::unique_ptr<lowir_model::LowirProgram> rewrite_native_program(
+    const lowir_model::LowirProgram & program)
+{
+  std::unique_ptr<lowir_model::LowirProgram> rewritten =
+    force_inline::rewrite_program(program);
+  const lowir_model::LowirProgram & current = rewritten ? *rewritten : program;
+  if(!lowir_phi_edges::has_critical_phi_edges(current)) return rewritten;
+  if(!rewritten)
+    rewritten.reset(new lowir_model::LowirProgram(program));
+  lowir_phi_edges::split_critical_phi_edges(rewritten.get());
+  return rewritten;
+}
 
 std::size_t mir_instruction_storage_bytes(
 	const mir_model::MirInstruction & instruction)
@@ -88,7 +102,7 @@ struct ProgramLoweringSession::Impl
 
   Impl(const lowir_model::LowirProgram & program, const std::string & target,
        int level, Stats * output_stats)
-    : rewritten(force_inline::rewrite_program(program)),
+    : rewritten(rewrite_native_program(program)),
       source(rewritten ? *rewritten : program), stats(output_stats),
       optimization_level(level), mir_shell_bytes(0)
   {

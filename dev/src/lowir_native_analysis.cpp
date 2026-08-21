@@ -120,9 +120,10 @@ void note_operand(FunctionFacts & facts, const Operand & operand, std::size_t po
   if(operand.kind != Operand::OP_TEMP) return;
   const lowir_model::ValueId value = operand.value;
   ++facts.uses[value];
-  if(facts.first_use[value] == FunctionFacts::missing_position())
-    facts.first_use[value] = position;
-  facts.last_use[value] = position;
+  facts.first_use[value] = std::min(facts.first_use[value], position);
+  if(facts.last_use[value] == FunctionFacts::missing_position())
+    facts.last_use[value] = position;
+  else facts.last_use[value] = std::max(facts.last_use[value], position);
 }
 
 void note_instruction_operands(FunctionFacts & facts,
@@ -428,6 +429,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   std::vector<std::size_t> block_first_position(function.blocks.size(), 0);
   std::vector<std::size_t> block_last_position(function.blocks.size(), 0);
   std::vector<std::vector<std::size_t> > clobber_positions(16);
+  std::vector<std::size_t> block_index(function.next_block_id,
+                                       FunctionFacts::missing_position());
   std::size_t position = 0;
   for(std::size_t i = 0; i < function.params.size(); ++i) {
     const lowir_model::ValueId value = function.params[i].value;
@@ -436,10 +439,39 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
     definition_blocks[value] = 0;
   }
   for(std::size_t i = 0; i < function.blocks.size(); ++i) {
+    block_index[function.blocks[i].id] = i;
     block_first_position[i] = position;
+    for(std::size_t j = 0; j < function.blocks[i].instructions.size();
+        ++j, ++position) {
+      const Instruction & instruction = function.blocks[i].instructions[j];
+      if(!instruction.dest.valid()) continue;
+      facts.definition[instruction.dest] = position;
+      definition_blocks[instruction.dest] = i;
+    }
+    block_last_position[i] = position ? position - 1 : 0;
+  }
+  position = 0;
+  for(std::size_t i = 0; i < function.blocks.size(); ++i) {
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j, ++position) {
       const Instruction & instruction = function.blocks[i].instructions[j];
-      note_instruction_operands(facts, instruction, position);
+      if(instruction.kind != Instruction::IK_PHI)
+        note_instruction_operands(facts, instruction, position);
+      else for(std::size_t k = 1; k < instruction.args.size(); k += 2) {
+        const Operand & value_operand = instruction.args[k];
+        if(value_operand.kind != Operand::OP_TEMP) continue;
+        const std::uint32_t predecessor_id = instruction.args[k - 1].block;
+        if(predecessor_id >= block_index.size() ||
+           block_index[predecessor_id] == FunctionFacts::missing_position())
+          continue;
+        const std::size_t predecessor = block_index[predecessor_id];
+        const lowir_model::ValueId value = value_operand.value;
+        note_operand(facts, value_operand,
+                     block_last_position[predecessor]);
+        block_uses.push_back(std::make_pair(value, predecessor));
+        other_uses[value] = 1;
+        if(definition_blocks[value] != predecessor)
+          facts.mark(value, FunctionFacts::VF_EDGE_LIVE);
+      }
       const Operand * fixed[] = {
         &instruction.first, &instruction.second, &instruction.third
       };
@@ -452,7 +484,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
              definition_blocks[value] != i)
             facts.mark(value, FunctionFacts::VF_EDGE_LIVE);
         }
-      for(std::size_t k = 0; k < instruction.args.size(); ++k)
+      for(std::size_t k = 0;
+          instruction.kind != Instruction::IK_PHI &&
+          k < instruction.args.size(); ++k)
         if(instruction.args[k].kind == Operand::OP_TEMP) {
           const lowir_model::ValueId value = instruction.args[k].value;
           block_uses.push_back(std::make_pair(value, i));
@@ -463,10 +497,6 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
             call_arguments[value] = 1;
           else other_uses[value] = 1;
         }
-      if(instruction.dest.valid()) {
-        facts.definition[instruction.dest] = position;
-        definition_blocks[instruction.dest] = i;
-      }
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
          facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
@@ -500,7 +530,6 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
          instruction.type.kind == lowir_model::LTK_I128)
         facts.has_i128_atomic = true;
     }
-    block_last_position[i] = position ? position - 1 : 0;
   }
   for(std::size_t value = 0; value < value_count; ++value)
     if(call_arguments[value] && !other_uses[value])

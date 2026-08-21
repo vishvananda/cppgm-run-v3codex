@@ -118,6 +118,7 @@ public:
     record_parameter_setup_clobbers();
     plan_slots();
     plan_host_eh();
+    plan_phi_values();
   }
   mir_model::MirFunction lower()
   {
@@ -130,6 +131,13 @@ public:
       control_flow_.SelectBlock(i);
       for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_) {
         const std::size_t first_machine_instruction = block.instructions.size();
+        const Instruction & source_instruction =
+          source_.blocks[i].instructions[j];
+        active_instruction_ = &source_instruction;
+        if(source_instruction.kind == Instruction::IK_JUMP ||
+           source_instruction.kind == Instruction::IK_BRANCH ||
+           source_instruction.kind == Instruction::IK_SWITCH)
+          emit_phi_transfers(source_.blocks[i].id, block.instructions);
         lower_instruction(source_.blocks[i], j, block.instructions);
         const std::size_t after_instruction = block.instructions.size();
         if(stats_)
@@ -207,6 +215,14 @@ private:
   std::vector<X64Register> incoming_parameter_registers_;
   std::vector<unsigned char> incoming_parameter_register_known_;
   std::vector<unsigned char> discarded_slots_;
+  struct PhiTransfer
+  {
+    lowir_model::ValueId destination;
+    Operand source;
+    LowType type;
+  };
+  std::vector<std::vector<PhiTransfer> > phi_transfers_;
+  MirOperand phi_cycle_scratch_;
   std::vector<MirInstruction> parameter_moves_;
   const Instruction * active_instruction_ = 0;
   std::size_t position_, frame_bytes_ = 0;
@@ -311,6 +327,37 @@ private:
       throw std::runtime_error("too many native frame bindings");
     return frame_operand(offset,
       static_cast<std::uint32_t>(target_.frame_bindings.size()));
+  }
+
+  MirOperand allocate_persistent_temp(lowir_model::ValueId value,
+                                      const LowType & type)
+  {
+    const long long offset = allocate_frame_binding(
+      mir_model::MirFrameBinding::FB_TEMP,
+      lowir_model::lowir_value_presentation(source_, value), type);
+    return frame_operand(offset,
+      static_cast<std::uint32_t>(target_.frame_bindings.size()));
+  }
+
+  void plan_phi_values()
+  {
+    phi_transfers_.resize(source_.next_block_id);
+    for(std::size_t block = 0; block < source_.blocks.size(); ++block) {
+      const lowir_model::LowirBlock & target = source_.blocks[block];
+      for(std::size_t i = 0; i < target.instructions.size(); ++i) {
+        const Instruction & phi = target.instructions[i];
+        if(phi.kind != Instruction::IK_PHI) break;
+        define(phi.dest, phi.type, allocate_persistent_temp(phi.dest, phi.type));
+        for(std::size_t incoming = 0;
+            incoming + 1 < phi.args.size(); incoming += 2) {
+          const std::uint32_t predecessor = phi.args[incoming].block;
+          if(predecessor >= phi_transfers_.size())
+            throw std::logic_error("invalid native phi predecessor");
+          phi_transfers_[predecessor].push_back(
+            PhiTransfer{phi.dest, phi.args[incoming + 1], phi.type});
+        }
+      }
+    }
   }
   bool crosses_call(lowir_model::ValueId value) const
   {
@@ -2837,12 +2884,118 @@ private:
     out.push_back(raise);
     consume(instruction.first);
   }
+  static bool same_phi_location(const MirOperand & left,
+                                const MirOperand & right)
+  {
+    if(left.kind != right.kind) return false;
+    if(left.kind == MirOperand::OP_FRAME) return left.offset == right.offset;
+    if(left.kind == MirOperand::OP_REG) return left.reg == right.reg;
+    if(left.kind == MirOperand::OP_XMM) return left.xmm == right.xmm;
+    return false;
+  }
+  MirOperand phi_cycle_scratch()
+  {
+    if(phi_cycle_scratch_.kind == MirOperand::OP_FRAME)
+      return phi_cycle_scratch_;
+    const LowType & type = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+    const long long offset = allocate_frame_binding(
+      mir_model::MirFrameBinding::FB_TEMP,
+      lowir_model::PresentationName(), type);
+    phi_cycle_scratch_ = frame_operand(offset,
+      static_cast<std::uint32_t>(target_.frame_bindings.size()));
+    return phi_cycle_scratch_;
+  }
+  void emit_phi_move(const MirOperand & destination,
+                     const MirOperand & source, const LowType & type,
+                     std::vector<MirInstruction> & out)
+  {
+    if(is_scalar_float(type)) {
+      if(source.kind == MirOperand::OP_XMM)
+        append_float_move(out, destination, source, type);
+      else {
+        append_float_move(out, xmm_operand(XMM_7), source, type);
+        append_float_move(out, destination, xmm_operand(XMM_7), type);
+      }
+      return;
+    }
+    if(source.kind == MirOperand::OP_REG)
+      append_store(out, destination, source, type);
+    else {
+      move_value_to_register(out, XR_R11, source, type);
+      append_store(out, destination, reg_operand(XR_R11), type);
+    }
+  }
+  void emit_phi_transfers(lowir_model::BlockId predecessor,
+                          std::vector<MirInstruction> & out)
+  {
+    const std::uint32_t predecessor_id = predecessor;
+    if(predecessor_id >= phi_transfers_.size() ||
+       phi_transfers_[predecessor_id].empty()) return;
+    struct Move
+    {
+      MirOperand destination;
+      MirOperand source;
+      Operand source_operand;
+      LowType type;
+      bool pending;
+    };
+    const std::vector<PhiTransfer> & transfers =
+      phi_transfers_[predecessor_id];
+    std::vector<Move> moves;
+    moves.reserve(transfers.size());
+    for(std::size_t i = 0; i < transfers.size(); ++i) {
+      const MirOperand destination =
+        selected_value_location(transfers[i].destination);
+      const MirOperand source = resolve(transfers[i].source);
+      if(same_phi_location(destination, source)) {
+        consume(transfers[i].source);
+        continue;
+      }
+      moves.push_back(Move{destination, source, transfers[i].source,
+                           transfers[i].type, true});
+    }
+    std::size_t remaining = moves.size();
+    while(remaining) {
+      bool progressed = false;
+      for(std::size_t i = 0; i < moves.size(); ++i) {
+        if(!moves[i].pending) continue;
+        bool destination_needed = false;
+        for(std::size_t j = 0; j < moves.size(); ++j)
+          if(i != j && moves[j].pending &&
+             same_phi_location(moves[i].destination, moves[j].source)) {
+            destination_needed = true;
+            break;
+          }
+        if(destination_needed) continue;
+        emit_phi_move(moves[i].destination, moves[i].source,
+                      moves[i].type, out);
+        consume(moves[i].source_operand);
+        moves[i].pending = false;
+        --remaining;
+        progressed = true;
+      }
+      if(progressed) continue;
+      std::size_t cycle = 0;
+      while(cycle < moves.size() && !moves[cycle].pending) ++cycle;
+      if(cycle == moves.size() ||
+         moves[cycle].source.kind != MirOperand::OP_FRAME)
+        throw std::logic_error("invalid native phi transfer cycle");
+      const MirOperand saved_source = moves[cycle].source;
+      const MirOperand scratch = phi_cycle_scratch();
+      emit_phi_move(scratch, saved_source, moves[cycle].type, out);
+      for(std::size_t i = 0; i < moves.size(); ++i)
+        if(moves[i].pending &&
+           same_phi_location(moves[i].source, saved_source))
+          moves[i].source = scratch;
+    }
+  }
   void lower_instruction(const lowir_model::LowirBlock & block,
                          std::size_t instruction_index,
                          std::vector<MirInstruction> & out)
   {
     const Instruction & instruction = block.instructions[instruction_index];
     active_instruction_ = &instruction; if(position_ == skipped_position_) return;
+    if(instruction.kind == Instruction::IK_PHI) return;
     if(instruction.kind == Instruction::IK_CONST) {
       if(wide::is_integer(instruction.type)) {
         const MirOperand destination = allocate_temp_home(instruction.dest, instruction.type);
