@@ -1072,7 +1072,7 @@ private:
       if(target != kNoFunction) {
         if(stats_) ++stats_->inline_call_visits;
         if(stats_ && optimized_late_wave_)
-          ++stats_->o3_late_inline_call_visits;
+          ++stats_->late_inline_call_visits;
         eligible = candidate(
           function_index, target, ins, landing, active, true);
       }
@@ -1099,8 +1099,8 @@ private:
             stats_->inline_single_call_instructions += cloned_instructions;
           }
           if(optimized_late_wave_) {
-            ++stats_->o3_late_inline_calls;
-            stats_->o3_late_inline_cloned_instructions +=
+            ++stats_->late_inline_calls;
+            stats_->late_inline_cloned_instructions +=
               cloned_instructions;
           }
         }
@@ -1162,7 +1162,7 @@ private:
         if(target != kNoFunction) {
           if(stats_) ++stats_->inline_call_visits;
           if(stats_ && optimized_late_wave_)
-            ++stats_->o3_late_inline_call_visits;
+            ++stats_->late_inline_call_visits;
           if(candidate(function_index, target, ins,
                static_cast<std::uint32_t>(
                  program_.functions[function_index].blocks[b].id) <
@@ -1191,8 +1191,8 @@ private:
                 stats_->inline_single_call_instructions += cloned_instructions;
               }
               if(optimized_late_wave_) {
-                ++stats_->o3_late_inline_calls;
-                stats_->o3_late_inline_cloned_instructions +=
+                ++stats_->late_inline_calls;
+                stats_->late_inline_cloned_instructions +=
                   cloned_instructions;
               }
             }
@@ -1227,7 +1227,7 @@ std::size_t inline_o1_calls(
   return inliner.run();
 }
 
-std::size_t inline_o3_optimized_calls(
+std::size_t inline_optimized_calls(
   LowirProgram & program,
   const InlineCallGraph & call_graph,
   std::vector<unsigned char> * rewritten_symbols,

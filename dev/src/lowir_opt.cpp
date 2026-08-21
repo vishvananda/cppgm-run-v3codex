@@ -2788,21 +2788,21 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_dce(&function, boundaries, stats);
     }
   }
-  if(level >= 3) {
+  if(level >= 1) {
     const std::chrono::steady_clock::time_point late_inline_started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();
     const InlineCallGraph late_call_graph =
       analyze_inline_call_graph(program, stats);
     if(stats)
-      stats->o3_late_inline_direct_edges = late_call_graph.edges.size();
+      stats->late_inline_direct_edges = late_call_graph.edges.size();
     std::vector<unsigned char> late_rewritten_symbols(
       program.symbol_names.size(), 0);
-    const std::size_t late_rewrites = inline_o3_optimized_calls(
+    const std::size_t late_rewrites = inline_optimized_calls(
       program, late_call_graph, &late_rewritten_symbols, stats);
     if(stats) {
       stats->rewrites += late_rewrites;
-      stats->o3_late_inline_changed_callers = std::count(
+      stats->late_inline_changed_callers = std::count(
         late_rewritten_symbols.begin(), late_rewritten_symbols.end(), 1);
     }
     if(late_rewrites) {
@@ -2811,7 +2811,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         if(late_rewritten_symbols[program.functions[i].symbol])
           prepare_for_inlining(&program.functions[i], boundaries, stats);
     }
-    if(stats) stats->o3_late_inline_nanoseconds =
+    if(stats) stats->late_inline_nanoseconds =
       static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - late_inline_started).count());

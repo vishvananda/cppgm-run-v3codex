@@ -1262,12 +1262,15 @@ transfer moves instruction-owned payloads through the existing typed renamer
 and releases the old body immediately; the final reachability pass remains the
 single authority that removes the now-unreferenced definition.
 
-The cap is a backend-safety boundary, not an arbitrary object-size optimum.
-At 192 and 256 instructions, compiling `lowir_loop_simplify.cpp` with the
-candidate exposes the existing reactive-register exhaustion in
-`simplify_counted_loops`; 160 compiles that file and
-`lowir_full_unroll_o3.cpp` successfully.  A later backend phase must add the
-earliest reducer and spill support before this inlining class is widened.
+The retained cap is a profitability boundary rather than a backend-safety
+workaround.  A clean post-commit reproduction audit compiled the individual
+`lowir_loop_simplify.cpp` source and the frozen source at O1, O2, and O3 with
+caps 192 and 256 without register exhaustion.  The earlier failure came from
+an intermediate broad-policy experiment and is not a current backend blocker.
+With the original 10,240-instruction translation-unit budget, cap 256 admits
+only 21 more candidates but lets early larger bodies displace 58 smaller
+inlines: the object changes by only -88 bytes and one more definition remains.
+That source-order budget interaction is handled as a separate policy question.
 Ownership transfer is byte-identical to the initial clone-and-release
 prototype on the frozen object.
 
@@ -1300,6 +1303,33 @@ times were 460.52 and 468.47 seconds.  The alternating single-process A/B is
 the acceptance signal on this intermittently loaded host.  PA37 reducers cover
 the transferred body, multiple direct calls, address observation, and the
 160-instruction boundary.
+
+Rank 10d makes the existing bounded optimized-body wave part of O1 and O2 as
+well as O3.  This is one late wave after the transformations selected by the
+level, not one wave per inherited level.  It rebuilds the typed call graph
+once and retains the established limits: 40 instructions for a call-free
+single-block leaf, six for a callful or multi-block body, and 128 cloned
+instructions per caller.  The telemetry and helper names are level-neutral so
+the implementation does not retain a false O3-only contract.
+
+Two existing PA37 fixtures move.  The O1 growth-budget fixture now demonstrates
+that three calls become eligible only after the callee folds to one addition;
+the remaining calls still prove deterministic budget exhaustion.  The O2 IPA
+fixture now demonstrates that a constant-specialized weak body can be inlined
+and pruned after specialization.  PA38 has no movement.  The student-facing
+contract describes the selected level's single late wave and its exact limits.
+
+Against Rank 10c, frozen O1 performs 1,007 additional inlines and clones 8,872
+optimized instructions.  The object falls from 1,885,744 to 1,824,328 bytes,
+defined functions from 2,589 to 2,424, and `.eh_frame` from 60,864 to 56,588
+bytes.  Aggregate text rises from 587,544 to 598,690 bytes.  The O1-generated
+compiler has 1,564 fewer measured function symbols; its loaded text rises from
+8,464,124 to 8,659,986 bytes.  Three alternating exact-self frozen O1 runs
+improve median wall time from 17.99 to 17.66 seconds and median user time from
+17.42 to 17.09 seconds, both about 1.9%.  Peak RSS is neutral to slightly lower.
+The clean O1 self build takes 19.61 seconds wall, 459.79 seconds aggregate user,
+43.64 seconds system, and 229,928 KiB peak RSS.  The full report passes
+5,358/5,358 before that self build.
 
 ## Fixture and public-contract policy
 
@@ -1478,7 +1508,8 @@ Fill one row for every retained or rejected phase:
 | R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O1 phi-edge reducer; O3 optimized-shape and seven-instruction boundary fixtures; 1x/2x/4x counters | vs leaf-only: object -35,520 B, text -2,106 B, defined functions -95 | exact self A/B median 17.71 to 17.42 s; late wave 51.6 ms; compact cached shape facts | 5,352/5,352; zero fatal | self 19.11 s / inception 73.42 s; 209 objects and final compiler match | complete, broad implementation `3eecc5f4`, retained cap `276a5c5d` |
 | R10a | admit object-named proven-no-unwind callees inside EH regions | PA37 O1 exact + object-roundtrip reducers; PA31 opaque throwing-boundary fixture; PA33 explicit publication roots | O1 object -165,744 B, text -17,692 B, `.eh_frame` -10,560 B, 391 fewer measured function definitions | six-run explicit-O1 A/B median 4.979 to 4.984 s (+0.10%); no new analysis or storage | 5,354/5,354; zero fatal, 29 warnings | final combined lane pending | complete, `8fffcbca` |
 | R10b | stop treating ordinary calls to internal functions as permanent object roots | six PA15/17/22/25 exact refs lose only stale root metadata; seven PA31--PA36 symbol fixtures gain explicit retention; PA37 lambda-control and pruning reducers | vs R10a: object -98,696 B, text -11,178 B, `.eh_frame` -8,800 B, 312 fewer measured local definitions | six-run explicit-O1 A/B median 4.990 to 4.992 s (+0.04%); one constant mask test per symbol | 5,356/5,356; zero fatal, 29 warnings | final combined lane pending | complete, `134f0c17` |
-| R10c | bounded definition-removing single-call inlining with immediate body release | PA37 O1 positive/address/multiple-use reducer and 160-instruction boundary; normative limits and typed Design Notes | vs R10b: object -23,200 B, text +1,551 B, `.eh_frame` -1,832 B, 56 fewer measured definitions | exact O1-built-self frozen medians: O0 17.21 to 16.77 s, O1 18.34 to 17.98 s; host O1 5.04 to 5.00 s; typed scan adds one byte/function; ownership transfer avoids instruction payload copies | 5,358/5,358; zero fatal, 31 warnings | O1 self build succeeds; final O3 32-way lane pending | implementation measured; commit pending |
+| R10c | bounded definition-removing single-call inlining with immediate body release | PA37 O1 positive/address/multiple-use reducer and 160-instruction boundary; normative limits and typed Design Notes | vs R10b: object -23,200 B, text +1,551 B, `.eh_frame` -1,832 B, 56 fewer measured definitions | exact O1-built-self frozen medians: O0 17.21 to 16.77 s, O1 18.34 to 17.98 s; host O1 5.04 to 5.00 s; typed scan adds one byte/function; ownership transfer avoids instruction payload copies | 5,358/5,358; zero fatal, 31 warnings | O1 self build succeeds; final O3 32-way lane pending | complete, `0d39bea1` |
+| R10d | run the bounded optimized-body wave at every optimizing level | two existing PA37 O1/O2 exact refs move; PA37 level contract and Design Notes; no PA38 movement | vs R10c O1: object -61,416 B, text +11,146 B, `.eh_frame` -4,276 B, 165 fewer definitions; 1,007 calls inlined | exact O1-self A/B wall 17.99 to 17.66 s, user 17.42 to 17.09 s; one typed graph rebuild and 60.1 ms measured late wave | 5,358/5,358; PA37 debug clean; zero fatal, 31 warnings | O1 self 19.61 s / 459.79 user / 229,928 KiB; final 32-way lane pending | implementation measured; commit pending |
 
 ## Completion criteria
 

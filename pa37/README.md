@@ -120,13 +120,14 @@ and cleanup bodies.
 For successful runs:
 
 - `-O0` performs a deterministic parse/dump round trip.
-- `-O1` applies local and control-flow-aware LowIR simplifications.
+- `-O1` applies local and control-flow-aware LowIR simplifications, then one
+  bounded late inlining wave for small acyclic functions made compact by
+  those transforms.
 - `-O2` applies all `-O1` work and additional conservative slot-promotion
-  optimizations.
+  optimizations, with its late inlining wave following the additional scalar
+  and control-flow work.
 - `-O3` applies all `-O2` work and bounded full unrolling of eligible small
-  constant-trip loops, then performs one bounded late inlining wave for small
-  acyclic functions made compact by the preceding scalar and control-flow
-  passes.
+  constant-trip loops before its bounded late inlining wave.
 
 The assignment grades the optimized LowIR shape as well as behavior
 preservation. The goal is a deterministic optimization stage, not elapsed-time
@@ -315,15 +316,16 @@ most 4,096 loop-body instructions per translation unit. If any proof or budget
 is unavailable, the loop remains unchanged. `-O2` does not perform this full
 unrolling.
 
-After these transforms, `-O3` rebuilds the typed direct-call graph once and
-may inline an additional nonrecursive function whose optimized body contains
-no exception-handling instructions. A single-block, single-return body with no
-calls may have at most 40 instructions. A body that contains a call or has
-multiple blocks may have at most six instructions. This late wave has a fresh
-128-instruction budget for each caller, charged by the optimized instruction
-count of every inlined body. It must continue to preserve `no_inline`,
-variadic, exception-region, unwind, and externally visible call-site
-restrictions from ordinary inlining.
+After the level's scalar and control-flow transforms, every optimizing level
+rebuilds the typed direct-call graph once and may inline an additional
+nonrecursive function whose optimized body contains no exception-handling
+instructions. A single-block, single-return body with no calls may have at
+most 40 instructions. A body that contains a call or has multiple blocks may
+have at most six instructions. This late wave has a fresh 128-instruction
+budget for each caller, charged by the optimized instruction count of every
+inlined body. It must continue to preserve `no_inline`, variadic,
+exception-region, unwind, and externally visible call-site restrictions from
+ordinary inlining.
 
 Slot-value forwarding and promotion remain an `-O2` responsibility. At `-O1`,
 a live load whose value is consumed along multiple successor paths must remain
@@ -491,15 +493,15 @@ for each iteration, and invalidate the shared CFG facts once after a retained
 rewrite. A single function scan and a translation-unit instruction counter are
 sufficient; no loop-level fixed point or rendered-name map is needed.
 
-The late O3 inlining wave may rebuild the typed direct-call graph once after
-local optimization. Cache compact per-function instruction counts and shape
-facts while building that graph. Admit only nonrecursive bodies within the
-explicit size limits, charge each optimized body against a fresh bounded
-caller budget, and revisit only callers that changed. Multi-block substitution
-can reuse the ordinary typed block, value, slot, return-merge, and phi-edge
-machinery. This permits scalar replacement and CFG cleanup to expose small
-accessors and wrappers without an unbounded optimizer fixed point or repeated
-body scans at call sites.
+The late optimized inlining wave may rebuild the typed direct-call graph once
+after the selected level's local transforms. Cache compact per-function
+instruction counts and shape facts while building that graph. Admit only
+nonrecursive bodies within the explicit size limits, charge each optimized
+body against a fresh bounded caller budget, and revisit only callers that
+changed. Multi-block substitution can reuse the ordinary typed block, value,
+slot, return-merge, and phi-edge machinery. This permits scalar replacement
+and CFG cleanup to expose small accessors and wrappers without an unbounded
+optimizer fixed point or repeated body scans at call sites.
 
 For unreachable-edge cleanup, build one dense bitmap indexed by `SymbolId` from
 the program's typed role metadata, then mark target blocks by `BlockId` within

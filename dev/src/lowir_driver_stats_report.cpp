@@ -57,15 +57,15 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.o3_unroll_instruction_visits
 		 << " o3_unroll_peak_scratch_bytes="
 		 << stats.o3_unroll_peak_scratch_bytes
-		 << " o3_late_inline_direct_edges="
-		 << stats.o3_late_inline_direct_edges
-		 << " o3_late_inline_call_visits="
-		 << stats.o3_late_inline_call_visits
-		 << " o3_late_inline_calls=" << stats.o3_late_inline_calls
-		 << " o3_late_inline_cloned_instructions="
-		 << stats.o3_late_inline_cloned_instructions
-		 << " o3_late_inline_changed_callers="
-		 << stats.o3_late_inline_changed_callers
+		 << " late_inline_direct_edges="
+		 << stats.late_inline_direct_edges
+		 << " late_inline_call_visits="
+		 << stats.late_inline_call_visits
+		 << " late_inline_calls=" << stats.late_inline_calls
+		 << " late_inline_cloned_instructions="
+		 << stats.late_inline_cloned_instructions
+		 << " late_inline_changed_callers="
+		 << stats.late_inline_changed_callers
 		 << " worklist_pushes=" << stats.worklist_pushes
 		 << " dataflow_updates=" << stats.dataflow_updates
 		 << " inline_direct_edges=" << stats.inline_direct_edges
@@ -250,7 +250,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " unreachable_ns=" << stats.unreachable_nanoseconds
 		 << " loop_ns=" << stats.loop_nanoseconds
 		 << " o3_unroll_ns=" << stats.o3_unroll_nanoseconds
-		 << " o3_late_inline_ns=" << stats.o3_late_inline_nanoseconds
+		 << " late_inline_ns=" << stats.late_inline_nanoseconds
 		 << " licm_ns=" << stats.licm_nanoseconds
 		 << " elapsed_ns=" << stats.elapsed_nanoseconds << '\n';
 }

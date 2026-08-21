@@ -46,11 +46,11 @@ struct Stats
   std::size_t o3_unroll_budget_skips = 0;
   std::size_t o3_unroll_instruction_visits = 0;
   std::size_t o3_unroll_peak_scratch_bytes = 0;
-  std::size_t o3_late_inline_direct_edges = 0;
-  std::size_t o3_late_inline_call_visits = 0;
-  std::size_t o3_late_inline_calls = 0;
-  std::size_t o3_late_inline_cloned_instructions = 0;
-  std::size_t o3_late_inline_changed_callers = 0;
+  std::size_t late_inline_direct_edges = 0;
+  std::size_t late_inline_call_visits = 0;
+  std::size_t late_inline_calls = 0;
+  std::size_t late_inline_cloned_instructions = 0;
+  std::size_t late_inline_changed_callers = 0;
   std::size_t worklist_pushes = 0;
   std::size_t dataflow_updates = 0;
   std::size_t inline_direct_edges = 0;
@@ -201,7 +201,7 @@ struct Stats
   std::uint64_t unreachable_nanoseconds = 0;
   std::uint64_t loop_nanoseconds = 0;
   std::uint64_t o3_unroll_nanoseconds = 0;
-  std::uint64_t o3_late_inline_nanoseconds = 0;
+  std::uint64_t late_inline_nanoseconds = 0;
   std::uint64_t licm_nanoseconds = 0;
   std::uint64_t elapsed_nanoseconds = 0;
 };
