@@ -1238,23 +1238,21 @@ The final load-screened S10 timing has a 4.640-second median wall time,
 baseline compile is therefore comfortably below the 15-second gate.
 
 Starting with no PA39 object tree, the clean 32-worker `cppgm++-self` build
-completed in 19.02 seconds wall, 429.75 seconds aggregate user, and 44.27
-seconds aggregate system time, with 229,956 KiB peak RSS.  Starting with no
-inception objects, the separate 8-worker comparison completed in 3:57.66 wall,
-1,820.43 seconds user, and 44.78 seconds system, with 231,000 KiB peak RSS.
+completed in 18.70 seconds wall, 425.56 seconds aggregate user, and 43.26
+seconds aggregate system time, with 228,436 KiB peak RSS.  Starting with no
+inception objects, the separate 8-worker comparison completed in 3:55.61 wall,
+1,807.86 seconds user, and 44.36 seconds system, with 229,460 KiB peak RSS.
 After moving both generated inception object and binary trees out of
-`obj/pa39`, the separate 32-worker comparison completed in 1:46.94 wall,
-2,916.76 seconds user, and 72.19 seconds system, with 225,868 KiB peak RSS.
-Both lanes compare all 191
-objects successfully and produce the exact 16,700,152-byte self compiler at
-SHA-256
-`e66422284087c862466bcdeb6aa751405bc9cacf28ee03d2c0f703ff791277a9`.
+`obj/pa39`, the separate 32-worker comparison completed in 1:46.59 wall,
+2,901.81 seconds user, and 71.15 seconds system, with 226,780 KiB peak RSS.
+Both lanes compare all 191 objects successfully and produce the exact
+16,635,736-byte self compiler at SHA-256
+`7a17b9111c05bb72672087b759a0afbce0dcc049bb72c54e7dde785501bff189`.
 
-The S9 closeout self/inception values above predate the S10 extension and are
-retained as its performance baseline until the final PA39 lanes below are
-rerun.  The S10 tree passes the full 5,287/5,287 report and the PA39 file
-audit with zero fatal findings (28 pre-existing warnings).  Every retained
-phase has an owning fixture or a documented audit-only conclusion.
+The exact closeout tree passes the full 5,287/5,287 report, five reporting
+script tests, and the PA39 file audit with zero fatal findings (28 pre-existing
+warnings).  Every retained phase has an owning fixture or a documented
+audit-only conclusion, and the extended plan is complete.
 
 ## Performance and correctness gates
 
@@ -1316,8 +1314,8 @@ Fill one row after each retained phase.
 | S7 width/fixed arithmetic | S7a migrates 17 PA29 and five inherited PA38 MIR fixtures; S7b/S7c add two PA29 producer/consumer fixtures and migrate three course MIR fixtures; S7d adds MIR-stable behavior; S7e adds fixed shift operands and migrates two MIR fixtures | cumulative through S7e: -10,929 text, -3,612 decoded instructions, -2,712 MIR; no extra scan/map | paired user: S7a -0.82%, S7b +0.83%, S7c -0.24%, S7d +0.36%, S7e -0.83%; RSS neutral | PA29+PA38 293/293; full 5,286/5,286; zero-fatal audit | complete |
 | S8 register cost | existing PA29 profitable-retention and no-preserve short-value fixtures already cover both decisions | audit-only: register retention is 80 bytes smaller than frame traffic including unwind; reuse-first prototype rejected at +16 text/object | no production change; S7e timing remains authoritative | S7e full 5,286/5,286 and zero-fatal audit; two diagnostic frozen objects compared | complete; audit-only |
 | S9 demand/optimization remeasure | existing PA35 forced-inline object reducer; no missing PA33 fact and no fixture change | weak count unchanged; only two S5 allocator-destructor aliases lost their last typed demand; every remaining body has an enumerated root | no production change; S7e timing remains authoritative | PA33+PA35 248/248; zero conservative fallbacks; final GCC/Clang code-shape census recorded | complete; audit-only |
-| S10 sparse LSDA coverage | PA31 behavior/inspection reducer; nine PA31 inspection refs migrate to sparse-gap fact; no LowIR/MIR change | -9,500 LSDA / -9,496 object; protected entries and all machine code byte-identical | paired +0.65% wall / +1.21% user / +0.08% RSS | PA31 31/31; through-PA31 4,312/4,312; full 5,287/5,287; five script tests; zero-fatal audit | accepted; final PA39 gate pending |
-| Final PA39 gate | no fixture change | final frozen object 3,199,952 bytes / 720,646 text / 180,534 decoded instructions | frozen median 4.64s wall; S9 clean self 19.02s and inception j8 3:57.66/j32 1:46.94 pending S10 refresh | full 5,287/5,287; zero-fatal audit; S10 inception refresh pending | in progress |
+| S10 sparse LSDA coverage | PA31 behavior/inspection reducer; nine PA31 inspection refs migrate to sparse-gap fact; no LowIR/MIR change | -9,500 LSDA / -9,496 object; protected entries and all machine code byte-identical | paired +0.65% wall / +1.21% user / +0.08% RSS | PA31 31/31; through-PA31 4,312/4,312; full 5,287/5,287; five script tests; zero-fatal audit | complete; `78874ae8` |
+| Final PA39 gate | no fixture change | final frozen object 3,199,952 bytes / 720,646 text / 180,534 decoded instructions | frozen median 4.64s wall; clean self 18.70s; inception j8 3:55.61 and fully clean j32 1:46.59 | full 5,287/5,287; zero-fatal audit; 191/191 objects and final compiler match in both inception lanes | complete |
 
 ## Completion criteria
 
