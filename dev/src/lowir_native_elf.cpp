@@ -660,6 +660,35 @@ X64Register materialize_integer_operand(CodeBuffer & out,
   return XR_R11;
 }
 
+const lowir_model::LowType & normalized_integer_type(unsigned width,
+                                                     bool sign_extend)
+{
+  if(width <= 8)
+    return lowir_model::builtin_lowir_type(
+      sign_extend ? lowir_model::LTK_I8 : lowir_model::LTK_U8);
+  if(width <= 16)
+    return lowir_model::builtin_lowir_type(
+      sign_extend ? lowir_model::LTK_I16 : lowir_model::LTK_U16);
+  if(width <= 32)
+    return lowir_model::builtin_lowir_type(
+      sign_extend ? lowir_model::LTK_I32 : lowir_model::LTK_U32);
+  return lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+}
+
+X64Register materialize_x87_integer_operand(
+    CodeBuffer & out, const mir_model::MirOperand & source, unsigned width,
+    bool sign_extend, const mir_model::MirFunction & function)
+{
+  if((source.kind == mir_model::MirOperand::OP_FRAME ||
+      source.kind == mir_model::MirOperand::OP_GLOBAL ||
+      source.kind == mir_model::MirOperand::OP_DEREF) && width < 64) {
+    emit_address_normalized_load(out, XR_R11, source,
+      normalized_integer_type(width, sign_extend), function);
+    return XR_R11;
+  }
+  return materialize_integer_operand(out, source, width, function);
+}
+
 void emit_near_jump(CodeBuffer & out, X86Condition condition,
                     lowir_model::LocalLabelId target)
 {
@@ -686,7 +715,8 @@ void emit_x87_load_signed_integer(CodeBuffer & out,
                                   unsigned width,
                                   const mir_model::MirFunction & function)
 {
-  const X64Register value = materialize_integer_operand(out, source, width, function);
+  const X64Register value = materialize_x87_integer_operand(
+    out, source, width, true, function);
   emit_stack_adjust(out, true, 16);
   const unsigned stored_width = width <= 16 ? 16 : (width <= 32 ? 32 : 64);
   emit_store(out, XR_RSP, 0, value, stored_width);
@@ -702,7 +732,8 @@ void emit_x87_load_unsigned_integer(CodeBuffer & out,
                                     unsigned width,
                                     const mir_model::MirFunction & function)
 {
-  const X64Register value = materialize_integer_operand(out, source, width, function);
+  const X64Register value = materialize_x87_integer_operand(
+    out, source, width, false, function);
   if(width < 64) {
     emit_stack_adjust(out, true, 16);
     emit_store(out, XR_RSP, 0, value, 64);
