@@ -2103,6 +2103,25 @@ PA38 O2 owns MIR structure, behavior, pressure/fallback, debug, and scaling
 coverage.  This backend subphase is committed separately from LowIR GVN/PRE so
 fixture movement and timing are attributable.
 
+Memory-GVN implementation result (2026-08-21): a shared typed EH-context
+module assigns compact marker/parent states over ordinary CFG edges and rejects
+the function when unequal stacks meet.  Handler entries, EH instructions, and
+calls that may unwind feed one sparse barrier version included in every memory
+key.  This invalidates all locations in constant work per boundary instead of
+clearing a per-location table or walking a string-keyed set.  The existing
+PA37 `480-memory-value-numbering-barriers` fixture now eliminates the adjacent
+load inside one protected state; its atomic case remains unchanged.  New PA37
+fixture 481 makes the newly legal protected/landing eliminations and the
+transition, may-unwind, and conflicting-merge negatives explicit.
+
+On the frozen O2 compile, all 301 EH-bearing functions are analyzed, 72 with
+conflicting incoming stacks conservatively retain the old whole-function
+fallback.  Eliminated loads rise from 575 to 645, while the object falls from
+1,473,216 to 1,472,920 bytes and `.text*` from 520,510 to 520,192 bytes.  The
+pass rises from about 5.2 ms to 9.9 ms; total one-run wall time was 5.44 seconds
+under variable host load.  The full 5,396-test report passes and the file audit
+has zero fatal findings.  PRE remains the next separately measured subphase.
+
 #### R11h. Re-run profitability selection after eligibility and harvesting
 
 Only after R11a--g are measured, repeat the inliner cap experiment.  Sweep one
@@ -2347,7 +2366,7 @@ Fill one row for every retained or rejected phase:
 | R11d | separate lifecycle publication/retention from explicit `no_inline` | PA28 exact policy; PA30 foreign relocation; PA32 publication; PA37 source/object roundtrip | vs R11c: object +31,880 B, text -1,946 B, +172 definitions; ordinary/late inlines +538/+184 | one transient typed Boolean; reuse native reachability; object-root fact serialized | 5,387/5,387; PA37 object/debug clean; zero fatal | final combined O0/O3 lane required | implementation complete; host O1 median 5.18 s |
 | R11e | proven-no-unwind landing-block inlining | PA37 exact/source; PA30 exception-in-flight runtime | vs R11d: object -29,848 B, text -1,523 B, -105 definitions; basic-string destructor calls -192 | existing dense landing/no-unwind/EH summaries and budgets | 5,392/5,392; PA37 debug clean; zero fatal | final combined lane required | implementation complete; host O1 median 5.12 s |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | PA33 source; PA37 source/DCE positives and negatives | 53 declarations but 26 attributable live calls; 291/1,432 serialized definitions EH-bearing; O1 byte-identical | compact canonical effects enum; single-pass attribute collection | 5,395/5,395; zero fatal | diagnostic | complete; GNU `nothrow` absent and `basic_string` cleanup unannotated |
-| R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 per-pass exact/behavior/scaling; PA38 O2 MIR/behavior/debug | measure each subphase independently | shared compact EH states; bounded barriers and conservative fallback | pending | required for each retained subphase | conditional on R11f |
+| R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 memory EH positive/barrier/conflict; PRE and PA38 placement coverage pending | memory: +70 eliminated loads, -296 B object, -318 B text; 72/301 conflict fallbacks | shared compact EH states and one sparse barrier version | 5,396/5,396; zero fatal | required for each retained subphase | memory GVN complete; PRE/placement pending |
 | R11h | post-harvest inliner profitability sweep | PA37 only for a retained policy change | exact-self maximum runtime plus object/text/EH deltas | one-variable bounded sweep; no production profiling strings | pending | final retained policy only | conditional on R11a--g |
 | R11i | true EH-region grafting | PA37 only if justified by a residual profiled-hot population | separate genuine live-EH effect from dead-region work | no unbounded retry or private LowIR side channel | pending | required if retained | deferred pending R11f/h residual census |
 

@@ -294,9 +294,11 @@ value. It must additionally support these conservative loop transforms:
   nonescaping slot addresses, repeated pointer values, and proven disjoint
   constant projections must use the same conservative alias rules
 - preserving load invalidation across control-flow joins, unknown pointers,
-  ordinary read/write calls, atomic operations, and exception regions, while
-  allowing explicitly `readnone` and `readonly` calls and immutable globals
-  to retain the facts their metadata permits
+  ordinary read/write calls, atomic operations, exceptional-handler entries,
+  EH region transitions, and calls that may unwind; within one equal,
+  unambiguous EH state, redundant loads may still be eliminated, and
+  explicitly `readnone` and `readonly` calls plus immutable globals retain the
+  facts their metadata permits
 - eliminating a fully redundant pure expression at an ordinary join by
   replacing the join computation with a `phi` of the available predecessor
   values; the phi and any inserted predecessor computation use the original
@@ -533,6 +535,12 @@ same dominance frontiers can represent stores and conservative unknown-memory
 barriers without copying a dense location table into every block. Hash keys
 should contain typed IDs, offsets, types, and version numbers rather than
 rendered LowIR text.
+
+EH-aware value passes can propagate a compact region-stack identity over
+ordinary CFG edges. Give handler entries and region-changing or may-unwind
+instructions a shared sparse barrier version, and reject a function when two
+different stacks reach an ordinary merge. Including that one version in each
+typed memory key avoids clearing every location at every boundary.
 
 For expression PRE, index occurrences by the same typed expression key used
 for ordinary value reuse. Dominator queries can find values available on each

@@ -172,6 +172,8 @@ struct Stats
   std::size_t memory_gvn_load_probes = 0;
   std::size_t memory_gvn_loads_eliminated = 0;
   std::size_t memory_gvn_unknown_barriers = 0;
+  std::size_t memory_gvn_eh_functions = 0;
+  std::size_t memory_gvn_eh_barriers = 0;
   std::size_t memory_gvn_eh_skips = 0;
   std::size_t memory_gvn_budget_skips = 0;
   std::size_t pre_runs = 0;

@@ -226,6 +226,8 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.memory_gvn_loads_eliminated
 		 << " memory_gvn_unknown_barriers="
 		 << stats.memory_gvn_unknown_barriers
+		 << " memory_gvn_eh_functions=" << stats.memory_gvn_eh_functions
+		 << " memory_gvn_eh_barriers=" << stats.memory_gvn_eh_barriers
 		 << " memory_gvn_eh_skips=" << stats.memory_gvn_eh_skips
 		 << " memory_gvn_budget_skips=" << stats.memory_gvn_budget_skips
 		 << " pre_runs=" << stats.pre_runs

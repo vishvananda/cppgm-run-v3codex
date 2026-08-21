@@ -1,5 +1,6 @@
 #include "lowir_memory_gvn.h"
 
+#include "lowir_eh_context.h"
 #include "lowir_opt.h"
 
 #include <algorithm>
@@ -29,7 +30,8 @@ enum MemoryClassKind
   MCK_SLOT,
   MCK_GLOBAL,
   MCK_UNKNOWN_POINTER,
-  MCK_UNKNOWN_GLOBAL
+  MCK_UNKNOWN_GLOBAL,
+  MCK_EH_BARRIER
 };
 
 struct MemoryClass
@@ -50,19 +52,6 @@ bool scalar_load_type(const LowType & type)
   return type.kind != lowir_model::LTK_INVALID &&
     type.kind != lowir_model::LTK_VOID &&
     type.kind != lowir_model::LTK_OBJECT;
-}
-
-bool exceptional_function(const Function & function)
-{
-  for(std::size_t block = 0; block < function.blocks.size(); ++block)
-    for(std::size_t index = 0;
-        index < function.blocks[block].instructions.size(); ++index) {
-      const Instruction::Kind kind =
-        function.blocks[block].instructions[index].kind;
-      if(kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_RESUME)
-        return true;
-    }
-  return false;
 }
 
 enum AddressRootKind
@@ -246,6 +235,7 @@ struct MemoryKey
   std::size_t memory_class;
   std::size_t version;
   std::size_t unknown_version;
+  std::size_t eh_version;
   lowir_model::LowTypeKind type_kind;
   std::size_t type_size;
   std::uint32_t type_alignment;
@@ -255,6 +245,7 @@ struct MemoryKey
     return memory_class == other.memory_class &&
       version == other.version &&
       unknown_version == other.unknown_version &&
+      eh_version == other.eh_version &&
       type_kind == other.type_kind && type_size == other.type_size &&
       type_alignment == other.type_alignment;
   }
@@ -310,6 +301,7 @@ struct MemoryKeyHash
     std::size_t result = key.memory_class;
     combine_hash(&result, key.version);
     combine_hash(&result, key.unknown_version);
+    combine_hash(&result, key.eh_version);
     combine_hash(&result, static_cast<std::size_t>(key.type_kind));
     combine_hash(&result, key.type_size);
     combine_hash(&result, key.type_alignment);
@@ -384,6 +376,45 @@ bool is_other_memory_write(Instruction::Kind kind)
 typedef std::unordered_map<LocationKey, LocationInfo, LocationKeyHash>
   LocationMap;
 
+void collect_load_locations(
+    const Function & function, const std::vector<AddressFact> & addresses,
+    const std::vector<unsigned char> & escaped_slots,
+    const std::vector<lowir_model::GlobalStorageMode> & global_storage,
+    LocationMap * locations, std::vector<LocationKey> * location_order)
+{
+  locations->reserve(function.value_names.size() / 8 + 1);
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const Instruction & instruction =
+        function.blocks[block].instructions[index];
+      if(instruction.kind != Instruction::IK_LOAD ||
+         instruction.debug_location.present() ||
+         !scalar_load_type(instruction.type)) continue;
+      const AddressFact address = operand_address(
+        instruction.first, addresses);
+      if(!address.known() ||
+         (address.root_kind == ARK_SLOT &&
+          escaped_slots[address.identity]) ||
+         (address.root_kind == ARK_GLOBAL &&
+          (address.identity >= global_storage.size() ||
+           global_storage[address.identity] ==
+             lowir_model::GSM_THREAD_LOCAL))) continue;
+      const LocationKey key = location_key(address, instruction.type);
+      const auto inserted = locations->emplace(key, LocationInfo());
+      if(inserted.second) location_order->push_back(key);
+      ++inserted.first->second.load_count;
+    }
+}
+
+void record_elapsed(Stats * stats,
+                    const std::chrono::steady_clock::time_point & started)
+{
+  if(stats) stats->memory_gvn_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
+}
+
 std::size_t load_class(const Instruction & instruction,
                        const std::vector<AddressFact> & addresses,
                        const LocationMap & locations)
@@ -445,7 +476,7 @@ void visit_store_classes(
   }
 }
 
-template<typename CallEffects>
+template<typename CallBoundary>
 void collect_memory_definitions(
     const Function & function, const std::vector<AddressFact> & addresses,
     const std::vector<MemoryClass> & classes,
@@ -453,23 +484,32 @@ void collect_memory_definitions(
     const std::vector<std::uint32_t> & symbol_epochs,
     std::uint32_t function_epoch,
     const std::vector<std::size_t> & first_symbol_class,
-    std::size_t unknown_class, bool has_unknown_pointer,
-    const CallEffects & call_effects,
+    std::size_t unknown_class, std::size_t eh_class,
+    bool has_unknown_pointer,
+    const lowir_eh_context::Context & eh_context,
+    const CallBoundary & call_boundary,
     std::vector<std::vector<std::size_t> > * definitions)
 {
-  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    if(eh_class != kNoIndex && eh_context.entry_barriers[block])
+      add_definition(definitions, eh_class, block);
     for(std::size_t index = 0;
         index < function.blocks[block].instructions.size(); ++index) {
       const Instruction & instruction =
         function.blocks[block].instructions[index];
       bool unknown_write = is_atomic_barrier(instruction.kind) ||
         is_other_memory_write(instruction.kind);
+      lowir_model::FunctionBoundaryMetadata boundary;
       if(instruction.kind == Instruction::IK_CALL) {
-        const lowir_model::CallEffectsMode effects =
-          call_effects(instruction);
-        unknown_write = effects != lowir_model::CFXM_READNONE &&
-          effects != lowir_model::CFXM_READONLY;
+        boundary = call_boundary(instruction);
+        unknown_write = boundary.effects != lowir_model::CFXM_READNONE &&
+          boundary.effects != lowir_model::CFXM_READONLY;
       }
+      if(eh_class != kNoIndex &&
+         (lowir_eh_context::is_eh_instruction(instruction.kind) ||
+          (instruction.kind == Instruction::IK_CALL &&
+           boundary.unwind != lowir_model::CUM_NO)))
+        add_definition(definitions, eh_class, block);
       if(instruction.kind == Instruction::IK_STORE) {
         const AddressFact store = operand_address(
           instruction.second, addresses);
@@ -486,6 +526,7 @@ void collect_memory_definitions(
       if(unknown_write && unknown_class != kNoIndex)
         add_definition(definitions, unknown_class, block);
     }
+  }
 }
 
 bool place_memory_merges(
@@ -634,12 +675,16 @@ bool MemoryGVNSession::eliminate_redundant_loads(
             std::chrono::steady_clock::time_point();
   if(stats) ++stats->memory_gvn_runs;
   if(function->blocks.empty()) return false;
-  if(exceptional_function(*function)) {
+  const lowir_eh_context::Context eh_context =
+    lowir_eh_context::analyze(*function, analysis->graph());
+  if(eh_context.has_eh && stats) {
+    ++stats->memory_gvn_eh_functions;
+    stats->memory_gvn_eh_barriers += eh_context.barrier_count;
+  }
+  if(eh_context.conflicting) {
     if(stats) {
       ++stats->memory_gvn_eh_skips;
-      stats->memory_gvn_nanoseconds += static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::steady_clock::now() - started).count());
+      record_elapsed(stats, started);
     }
     return false;
   }
@@ -650,29 +695,8 @@ bool MemoryGVNSession::eliminate_redundant_loads(
     find_escaped_slots(*function, addresses);
   LocationMap locations;
   std::vector<LocationKey> location_order;
-  locations.reserve(function->value_names.size() / 8 + 1);
-  for(std::size_t block = 0; block < function->blocks.size(); ++block)
-    for(std::size_t index = 0;
-        index < function->blocks[block].instructions.size(); ++index) {
-      const Instruction & instruction =
-        function->blocks[block].instructions[index];
-      if(instruction.kind != Instruction::IK_LOAD ||
-         instruction.debug_location.present() ||
-         !scalar_load_type(instruction.type)) continue;
-      const AddressFact address = operand_address(
-        instruction.first, addresses);
-    if(!address.known() ||
-         (address.root_kind == ARK_SLOT &&
-          escaped_slots[address.identity]) ||
-         (address.root_kind == ARK_GLOBAL &&
-          (address.identity >= global_storage_.size() ||
-           global_storage_[address.identity] ==
-             lowir_model::GSM_THREAD_LOCAL))) continue;
-      const LocationKey key = location_key(address, instruction.type);
-      const auto inserted = locations.emplace(key, LocationInfo());
-      if(inserted.second) location_order.push_back(key);
-      ++inserted.first->second.load_count;
-    }
+  collect_load_locations(*function, addresses, escaped_slots,
+    global_storage_, &locations, &location_order);
 
   std::vector<MemoryClass> classes;
   std::vector<std::size_t> first_slot_class(
@@ -700,18 +724,14 @@ bool MemoryGVNSession::eliminate_redundant_loads(
     else if(global) symbol_classes_[key.identity] = info.memory_class;
   }
   if(classes.empty()) {
-    if(stats) stats->memory_gvn_nanoseconds += static_cast<std::uint64_t>(
-      std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - started).count());
+    record_elapsed(stats, started);
     return false;
   }
   if(classes.size() > kMaximumClasses) {
     if(stats) {
       ++stats->memory_gvn_budget_skips;
       ++stats->budget_skips;
-      stats->memory_gvn_nanoseconds += static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::steady_clock::now() - started).count());
+      record_elapsed(stats, started);
     }
     return false;
   }
@@ -730,12 +750,17 @@ bool MemoryGVNSession::eliminate_redundant_loads(
     classes.begin(), classes.end(), [](const MemoryClass & memory_class) {
       return memory_class.kind == MCK_UNKNOWN_POINTER;
     }) != classes.end();
+  const std::size_t eh_class = eh_context.has_eh ? classes.size() : kNoIndex;
+  if(eh_class != kNoIndex)
+    classes.push_back(MemoryClass{
+      MCK_EH_BARRIER, 0, lowir_model::ValueId(), 0, 0, kNoIndex,
+      false, false, true});
   std::vector<std::vector<std::size_t> > definitions(classes.size());
   collect_memory_definitions(*function, addresses, classes,
     first_slot_class, symbol_epochs_, function_epoch_, symbol_classes_,
-    unknown_class, has_unknown_pointer,
+    unknown_class, eh_class, has_unknown_pointer, eh_context,
     [this](const Instruction & instruction) {
-      return call_boundary(instruction).effects;
+      return call_boundary(instruction);
     }, &definitions);
   const std::vector<lowir_analysis::EdgeList> & frontiers =
     analysis->dominance_frontier();
@@ -743,13 +768,21 @@ bool MemoryGVNSession::eliminate_redundant_loads(
     function->blocks.size());
   place_memory_merges(
     definitions, frontiers, &classes, &block_merges, stats);
+  if(eh_class != kNoIndex && !classes[eh_class].enabled) {
+    if(stats) {
+      ++stats->memory_gvn_eh_skips;
+      record_elapsed(stats, started);
+    }
+    return false;
+  }
   if(unknown_class != kNoIndex && !classes[unknown_class].enabled)
     for(std::size_t index = 0; index < classes.size(); ++index)
       if((classes[index].kind == MCK_GLOBAL && !classes[index].readonly) ||
          classes[index].kind == MCK_UNKNOWN_POINTER)
         classes[index].enabled = false;
   if(stats) stats->memory_gvn_classes += classes.size() -
-    (unknown_class == kNoIndex ? 0 : 1);
+    (unknown_class == kNoIndex ? 0 : 1) -
+    (eh_class == kNoIndex ? 0 : 1);
 
   const lowir_analysis::DominatorTree & dominators =
     analysis->dominator_tree();
@@ -794,11 +827,22 @@ bool MemoryGVNSession::eliminate_redundant_loads(
         merge < block_merges[block].size(); ++merge)
       if(classes[block_merges[block][merge]].enabled)
         assign_version(block_merges[block][merge]);
+    if(eh_class != kNoIndex && eh_context.entry_barriers[block])
+      assign_version(eh_class);
     std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
     for(std::size_t index = 0; index < instructions.size(); ++index) {
       Instruction & instruction = instructions[index];
       if(stats) ++stats->instruction_visits;
+      lowir_model::FunctionBoundaryMetadata boundary;
+      const bool call = instruction.kind == Instruction::IK_CALL;
+      if(call) boundary = call_boundary(instruction);
+      if(eh_class != kNoIndex &&
+         (lowir_eh_context::is_eh_instruction(instruction.kind) ||
+          (call && boundary.unwind != lowir_model::CUM_NO))) {
+        assign_version(eh_class);
+        if(stats && call) ++stats->memory_gvn_eh_barriers;
+      }
       if(instruction.kind == Instruction::IK_LOAD &&
          !instruction.debug_location.present() &&
          scalar_load_type(instruction.type)) {
@@ -813,6 +857,7 @@ bool MemoryGVNSession::eliminate_redundant_loads(
               versions[unknown_class] : 0;
           const MemoryKey key = {
             memory_class, versions[memory_class], unknown_version,
+            eh_class == kNoIndex ? 0 : versions[eh_class],
             instruction.type.kind, instruction.type.storage_size,
             instruction.type.alignment};
           if(stats) ++stats->memory_gvn_load_probes;
@@ -840,11 +885,9 @@ bool MemoryGVNSession::eliminate_redundant_loads(
 
       bool unknown_write = is_atomic_barrier(instruction.kind) ||
         is_other_memory_write(instruction.kind);
-      if(instruction.kind == Instruction::IK_CALL) {
-        const lowir_model::CallEffectsMode effects =
-          call_boundary(instruction).effects;
-        unknown_write = effects != lowir_model::CFXM_READNONE &&
-          effects != lowir_model::CFXM_READONLY;
+      if(call) {
+        unknown_write = boundary.effects != lowir_model::CFXM_READNONE &&
+          boundary.effects != lowir_model::CFXM_READONLY;
       }
       if(instruction.kind == Instruction::IK_STORE) {
         const AddressFact store = operand_address(
@@ -863,9 +906,7 @@ bool MemoryGVNSession::eliminate_redundant_loads(
       }
     }
   }
-  if(stats) stats->memory_gvn_nanoseconds += static_cast<std::uint64_t>(
-    std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::steady_clock::now() - started).count());
+  record_elapsed(stats, started);
   return changed;
 }
 
