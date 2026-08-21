@@ -28,6 +28,7 @@ using lowir_model::Operand;
 
 const std::size_t kNoFunction = InlineCallGraph::no_function();
 const std::size_t kInlineInstructionBudget = 128;
+const std::size_t kLateNonleafInstructionLimit = 6;
 class ValueMap
 {
 public:
@@ -371,9 +372,11 @@ public:
     if(original_instruction_counts_.size() != program_.functions.size())
       throw std::logic_error("inline cost summary count mismatch");
     contains_eh_.resize(program_.functions.size(), 0);
+    leaf_inline_shapes_.resize(program_.functions.size(), 0);
     instruction_counts_.resize(program_.functions.size(), 0);
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       contains_eh_[i] = contains_eh(program_.functions[i]);
+      leaf_inline_shapes_[i] = leaf_inline_shape(program_.functions[i]);
       instruction_counts_[i] = instruction_count(program_.functions[i]);
     }
     if(stats_ && !optimized_late_wave_) stats_->inline_input_instructions =
@@ -393,7 +396,7 @@ public:
       const std::size_t function = call_graph_.callee_first_order[cursor];
       if(expand(function) && has_eh_blocked_callers(function) &&
          instruction_counts_[function] <= 4 &&
-         leaf_inline_shape(program_.functions[function])) {
+         leaf_inline_shapes_[function]) {
         stripped.push_back(function);
         if(stats_) ++stats_->worklist_pushes;
       }
@@ -417,12 +420,14 @@ public:
             (*rewritten_symbols_)[program_.functions[caller].symbol] = 1;
         }
         contains_eh_[caller] = contains_eh(program_.functions[caller]);
+        leaf_inline_shapes_[caller] =
+          leaf_inline_shape(program_.functions[caller]);
         instruction_counts_[caller] =
           instruction_count(program_.functions[caller]);
         if(caller_stripped &&
            has_eh_blocked_callers(caller) &&
            instruction_counts_[caller] <= 4 &&
-           leaf_inline_shape(program_.functions[caller])) {
+           leaf_inline_shapes_[caller]) {
           stripped.push_back(caller);
           if(stats_) ++stats_->worklist_pushes;
         }
@@ -445,7 +450,7 @@ private:
   std::vector<unsigned char> no_unwind_;
   const std::vector<unsigned char> & prepared_oversized_symbols_;
   const std::vector<std::size_t> & original_instruction_counts_;
-  std::vector<unsigned char> state_, contains_eh_;
+  std::vector<unsigned char> state_, contains_eh_, leaf_inline_shapes_;
   std::vector<std::size_t> instruction_counts_;
   std::vector<std::size_t> remaining_inline_budget_;
   bool optimized_late_wave_;
@@ -560,10 +565,16 @@ private:
       if(record_stats && stats_) ++stats_->inline_reject_callee_size;
       return false;
     }
+    if(optimized_late_wave_ &&
+       instruction_counts_[target] > kLateNonleafInstructionLimit &&
+       !leaf_inline_shapes_[target]) {
+      if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
+      return false;
+    }
     if(!optimized_late_wave_ &&
        prepared_oversized_symbols_[callee_function.symbol] &&
        (instruction_counts_[target] > 4 ||
-        !leaf_inline_shape(callee_function))) {
+        !leaf_inline_shapes_[target])) {
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
       return false;
     }
@@ -652,6 +663,8 @@ private:
         (*rewritten_symbols_)[program_.functions[function_index].symbol] = 1;
     }
     contains_eh_[function_index] = contains_eh(program_.functions[function_index]);
+    leaf_inline_shapes_[function_index] =
+      leaf_inline_shape(program_.functions[function_index]);
     instruction_counts_[function_index] =
       instruction_count(program_.functions[function_index]);
     state_[function_index] = 2;
@@ -957,7 +970,7 @@ private:
       const std::size_t target = callee(source[i]);
       if(target != kNoFunction &&
          candidate(function_index, target, source[i], landing, active) &&
-         !leaf_inline_shape(program_.functions[target]))
+         !leaf_inline_shapes_[target])
         batch_safe = false;
       if(source[i].kind == Instruction::IK_EH_TRY ||
          source[i].kind == Instruction::IK_EH_CLEANUP) active = true;
@@ -984,7 +997,7 @@ private:
           function_index, target, ins, landing, active, true);
       }
       if(eligible &&
-         leaf_inline_shape(program_.functions[target]) &&
+         leaf_inline_shapes_[target] &&
          consume_inline_budget(target, inline_budget)) {
         inline_leaf_call(function_index, ins, program_.functions[target],
           names, replacements, &rebuilt);

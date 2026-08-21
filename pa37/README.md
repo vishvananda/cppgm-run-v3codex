@@ -302,9 +302,10 @@ is unavailable, the loop remains unchanged. `-O2` does not perform this full
 unrolling.
 
 After these transforms, `-O3` rebuilds the typed direct-call graph once and
-may inline an additional nonrecursive function whose optimized body has at
-most 40 instructions and contains no exception-handling instructions. The
-callee may have multiple blocks or contain calls. This late wave has a fresh
+may inline an additional nonrecursive function whose optimized body contains
+no exception-handling instructions. A single-block, single-return body with no
+calls may have at most 40 instructions. A body that contains a call or has
+multiple blocks may have at most six instructions. This late wave has a fresh
 128-instruction budget for each caller, charged by the optimized instruction
 count of every inlined body. It must continue to preserve `no_inline`,
 variadic, exception-region, unwind, and externally visible call-site
@@ -465,12 +466,14 @@ rewrite. A single function scan and a translation-unit instruction counter are
 sufficient; no loop-level fixed point or rendered-name map is needed.
 
 The late O3 inlining wave may rebuild the typed direct-call graph once after
-local optimization. Admit only nonrecursive bodies within the explicit size
-limit, charge each optimized body against a fresh bounded caller budget, and
-revisit only callers that changed. Multi-block substitution can reuse the
-ordinary typed block, value, slot, return-merge, and phi-edge machinery. This
-permits scalar replacement and CFG cleanup to expose small accessors and
-wrappers without an unbounded optimizer fixed point.
+local optimization. Cache compact per-function instruction counts and shape
+facts while building that graph. Admit only nonrecursive bodies within the
+explicit size limits, charge each optimized body against a fresh bounded
+caller budget, and revisit only callers that changed. Multi-block substitution
+can reuse the ordinary typed block, value, slot, return-merge, and phi-edge
+machinery. This permits scalar replacement and CFG cleanup to expose small
+accessors and wrappers without an unbounded optimizer fixed point or repeated
+body scans at call sites.
 
 For unreachable-edge cleanup, build one dense bitmap indexed by `SymbolId` from
 the program's typed role metadata, then mark target blocks by `BlockId` within
