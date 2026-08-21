@@ -1,8 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; the Rank 0 instrumentation needed by Rank 1 and the dominant
-Rank 1 inlining/body-pruning phase are complete at `1085fcfb`, with the PA29
-corrective reducer at `d7d9e93b`; reusable CFG epochs and Ranks 2--7 remain
+Status: active; Ranks 1 and 2 are complete through `9c63791f`; reusable
+analysis epochs and Ranks 3--7 remain
 
 Date: 2026-08-21
 
@@ -310,6 +309,87 @@ reducer.  Existing PA28 virtual-base ABI references and PA32 linkage inputs
 were corrected to their owning contracts, and the PA37 comparator gained
 tests for the canonical/behavioral distinctions used by optimized fixtures.
 No tests were placed in `proposed`.
+
+## Rank 2 result
+
+Rank 2 replaces promotion's block-by-all-values/all-slots state with sparse
+slot bindings, epoch-indexed transfer scratch, and a packed meet.  It then
+adds bounded iterated-dominance-frontier placement for typed scalar phis.  A
+packed reverse-dependency graph rejects every phi transitively dependent on
+an undefined incoming slot version in O(phis + incoming edges); this was
+required by the frozen reducer and avoids a repeated whole-phi scan.
+
+The public representation is the single PA13 `phi` instruction described in
+the PA13 student contract and scaffold.  It contains typed `(BlockId,
+Operand)` pairs, survives parse/serialize/canonical comparison, and is lowered
+at PA29 as parallel predecessor-edge copies.  There is no hidden or
+object-only LowIR.  PA29 handles cycles with one typed scratch and rewrites
+phi predecessor labels when late force-inlining moves an outgoing edge.
+PA37 owns phi placement, simplification, DCE, and scalar-slot promotion.
+
+Active fixture movement is:
+
+- PA13 grammar, validation, canonicalization, and student-facing syntax;
+- PA29 ordinary/critical/backedge lowering, parallel-copy cycles, and
+  force-inline predecessor correction; and
+- PA37 join/loop promotion, pruned placement, forward simplification,
+  incomplete-phi dependency rejection, EH exclusion, and object round trip.
+
+The R2a staging requirement called for byte-identical output.  The sparse
+commit `eae03449` missed that guard: removal of the obsolete dense-state
+budget admitted one formerly skipped large function (`budget_skips` 1,264 to
+1,263), reducing frozen output by 278 LowIR instructions, 1,256 object bytes,
+and 1,220 `.text*` bytes.  No previously eligible function changed promotion
+decisions.  This bounded output improvement is retained as part of Rank 2's
+scalar-promotion result, but the missed intermediate guard is recorded rather
+than described as exact-output work.
+
+Load-screened ABBA at explicit `-O2`, using immutable Rank 1 (`71e6b7b4`) and
+Rank 2 (`9c63791f`) binaries, produced:
+
+| Metric | Rank 1 | Rank 2 | Delta |
+| --- | ---: | ---: | ---: |
+| median compile wall | 5.370 s | 5.040 s | -6.6% |
+| median user time | 4.745 s | 4.560 s | -4.4% |
+| paired peak RSS | 359,784 KiB | 361,342 KiB | +0.1% |
+| optimizer time | 842.6 ms | 414.3 ms | -50.8% |
+| slot-promotion time | 485.6 ms | 60.2 ms | -87.6% (8.1x) |
+| optimized LowIR instructions | 95,861 | 91,224 | -4.8% |
+| object bytes | 2,143,304 | 2,141,728 | -0.1% |
+| `.text*` bytes | 580,448 | 578,860 | -0.3% |
+| decoded instructions | 137,631 | 137,978 | +0.3% |
+
+The final object retained the same 3,342 defined functions and linkage census
+as Rank 1.  Six independently generated candidate objects were byte-identical.
+Telemetry reports 3,735 eligible slots, 1,537 inserted phis with 3,214
+incoming edges, 3,055 loads replaced by phi values, no phi-budget skips, and
+8.03 MiB peak promotion scratch on the largest function.
+
+The first final frozen compile exposed a transitive incomplete-phi bug in
+`normalize_template_witness_source_location`: an omitted outer-loop phi was
+still referenced by an emitted inner-loop phi.  The PA37
+`440-incomplete-phi-dependency` reducer is defined on every executed path and
+fails on the pre-fix commit by emitting a reference to missing `%t0`.
+`9c63791f` supplies the packed dependency invalidation and the frozen object
+then compiles successfully.
+
+Final Rank 2 validation is:
+
+- `make test-report`: 5,303/5,303;
+- PA39 file audit: zero fatal findings (30 advisory warnings);
+- clean 32-worker `cppgm++-self`: 18.24 s wall, 432.35 s user,
+  41.14 s system, 230,424 KiB peak RSS;
+- separate clean 32-worker inception: 1:41.31 wall, 2,816.62 s user,
+  67.09 s system, 229,048 KiB peak RSS, with all 197 current objects and the
+  final compiler matching byte-for-byte;
+- the exact self compiler's frozen median: 27.84 s at `-O0` and 29.82 s at
+  `-O3`; and
+- the exact self compiler's `lowir_opt.cpp -O3` median: 16.79 s, with all
+  three objects byte-identical.
+
+The self/inception changes remain below the 3% rejection threshold.  The
+generated-self frozen compile is still above the final 15-second goal, so
+Ranks 3--7 remain necessary.
 
 ## Ranked implementation plan
 
@@ -779,8 +859,8 @@ Fill one row for every retained or rejected phase:
 | R1a | bottom-up deterministic inliner | PA37 O1 bottom-up/pruning and source-attribute fixtures; PA13 `no_inline` contract | O1 text -8.3%, calls -11.6% | O1 wall neutral; optimizer 301.7 ms vs 316 ms | 5,291/5,291; zero fatal | self 17.89 s / inception 1:40.69, all matches | complete, `1085fcfb` + `d7d9e93b` corrective reducer |
 | R1b | bounded profitability and localized cloning/cleanup | PA37 O1/O2; existing optimized refs regenerated in place | O2 text -8.6%; object -28.8% | O2 wall -0.7%, RSS neutral | 5,291/5,291; zero fatal | same clean lane | complete for Rank 1; remeasure policy after R2, `1085fcfb` |
 | R1c | post-inline weak/internal pruning audit | PA37 object roundtrip; PA32 owning linkage inputs | defined functions -39.5%; 2,038 weak bodies pruned at O1 | included above | 5,291/5,291; zero fatal | same clean lane | complete, `1085fcfb` |
-| R2a | sparse promotion with identical output | none expected | byte-identical | promotion target >= 2x faster | pending | pending | not started |
-| R2b | phi-capable scalar replacement | PA13/PA29/PA37 if adopted | pending | pending | pending | pending | not started |
+| R2a | sparse promotion state | no new contract; no checked fixture movement | -278 LowIR instructions, object -1,256 B after one old dense-budget skip was removed; intermediate exact-output guard missed and recorded | promotion 485.6 ms to 49.5 ms (9.8x); 1.33 MiB peak sparse scratch | included in final Rank 2 gate | included in final Rank 2 lane | retained with staged-guard discrepancy, `eae03449`; telemetry `9de9d17f` |
+| R2b | public phi-capable scalar replacement | PA13 syntax/scaffold; PA29 lowering/correctives; PA37 O2 and object roundtrip | vs Rank 1: LowIR -4.8%, object -0.1%, text -0.3%; functions unchanged | wall -6.6%, user -4.4%, RSS +0.1%; optimizer -50.8%, promotion 8.1x faster | 5,303/5,303; zero fatal | self 18.24 s / inception 1:41.31; all 197 objects and final binary match | complete, `84b4c184`, `01aebb78`, `9f0538be`, corrective `9c63791f` |
 | R3 | LICM and loop simplification | PA37 O1/O2 | pending | pending | pending | pending | not started |
 | R4 | GVN/load elimination/PRE | PA37 O2 | pending | pending | pending | pending | not started |
 | R5 | MIR placement/coalescing | PA38 O2 and debuginfo | pending | pending | pending | pending | not started |
@@ -806,6 +886,6 @@ This plan is complete only when:
   owning PA, the full `make test-report`, and the PA39 file audit with zero
   fatal findings;
 - a clean 32-worker `cppgm++-self` build and separate clean 32-worker inception
-  compare are timed with peak RSS, all 191 objects match, and the final compiler
-  matches byte-for-byte; and
+  compare are timed with peak RSS, all current objects match, and the final
+  compiler matches byte-for-byte; and
 - each retained changeset and the completed ledger are committed and pushed.
