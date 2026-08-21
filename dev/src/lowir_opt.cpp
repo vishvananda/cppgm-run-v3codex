@@ -1,6 +1,7 @@
 #include "lowir_opt.h"
 #include "lowir_cleanup_o1.h"
 #include "lowir_function_analysis.h"
+#include "lowir_expression_key.h"
 #include "lowir_function_reachability.h"
 #include "lowir_inline_o1.h"
 #include "lowir_loop_opt.h"
@@ -304,166 +305,10 @@ bool is_pure(Instruction::Kind kind)
     kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT;
 }
 
-bool cse_eligible(Instruction::Kind kind)
-{
-  return kind == Instruction::IK_ADDR || kind == Instruction::IK_INDEX ||
-    kind == Instruction::IK_UNARY || kind == Instruction::IK_BINARY ||
-    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT;
-}
-
 bool commutative(LowOperation op)
 {
   return op.kind == LowOperation::LOP_ADD || op.kind == LowOperation::LOP_MUL || op.kind == LowOperation::LOP_AND || op.kind == LowOperation::LOP_OR ||
     op.kind == LowOperation::LOP_XOR;
-}
-
-LowOperation reverse_compare(LowOperation op)
-{
-  if(op.kind == LowOperation::LOP_LT) return LowOperation::LOP_GT;
-  if(op.kind == LowOperation::LOP_LE) return LowOperation::LOP_GE;
-  if(op.kind == LowOperation::LOP_GT) return LowOperation::LOP_LT;
-  if(op.kind == LowOperation::LOP_GE) return LowOperation::LOP_LE;
-  if(op.kind == LowOperation::LOP_ULT) return LowOperation::LOP_UGT;
-  if(op.kind == LowOperation::LOP_ULE) return LowOperation::LOP_UGE;
-  if(op.kind == LowOperation::LOP_UGT) return LowOperation::LOP_ULT;
-  if(op.kind == LowOperation::LOP_UGE) return LowOperation::LOP_ULE;
-  return op;
-}
-
-bool operand_less(const Operand & a, const Operand & b)
-{
-  if(a.kind != b.kind) return a.kind < b.kind;
-  if(a.kind == Operand::OP_SLOT) return a.slot < b.slot;
-  if(a.kind == Operand::OP_LABEL) return a.block < b.block;
-  if(a.kind == Operand::OP_TEMP) return a.value < b.value;
-  if(a.kind == Operand::OP_GLOBAL) return a.symbol < b.symbol;
-  if(a.kind == Operand::OP_INTEGER)
-    return a.int_high != b.int_high ? a.int_high < b.int_high :
-      static_cast<std::uint64_t>(a.int_value) <
-        static_cast<std::uint64_t>(b.int_value);
-  if(a.kind == Operand::OP_FLOAT)
-    return a.literal_high != b.literal_high ?
-      a.literal_high < b.literal_high : a.literal_low < b.literal_low;
-  return false;
-}
-
-struct ExpressionOperandKey
-{
-  Operand::Kind kind;
-  std::uint32_t identity;
-  long long int_value;
-  std::uint64_t int_high;
-
-  bool operator==(const ExpressionOperandKey & other) const
-  {
-    if(kind != other.kind || identity != other.identity ||
-       int_value != other.int_value || int_high != other.int_high)
-      return false;
-    return true;
-  }
-};
-
-ExpressionOperandKey expression_operand_key(const Operand & operand)
-{
-  ExpressionOperandKey key;
-  key.kind = operand.kind;
-  key.identity = lowir_model::kInvalidCompactId;
-  key.int_value = 0;
-  key.int_high = 0;
-  if(operand.kind == Operand::OP_SLOT) key.identity = operand.slot;
-  else if(operand.kind == Operand::OP_LABEL) key.identity = operand.block;
-  else if(operand.kind == Operand::OP_TEMP) key.identity = operand.value;
-  else if(operand.kind == Operand::OP_GLOBAL) key.identity = operand.symbol;
-  else if(operand.kind == Operand::OP_INTEGER ||
-          operand.kind == Operand::OP_FLOAT) {
-    key.int_value = operand.int_value;
-    key.int_high = operand.int_high;
-  }
-  return key;
-}
-
-struct ExpressionKey
-{
-  Instruction::Kind kind;
-  LowOperation op;
-  LowTypeKind type_kind;
-  std::size_t type_size;
-  std::size_t type_alignment;
-  LowTypeKind source_type_kind;
-  std::size_t source_type_size;
-  std::size_t source_type_alignment;
-  lowir_model::IndexProjectionKind index_projection;
-  ExpressionOperandKey first;
-  ExpressionOperandKey second;
-
-  bool operator==(const ExpressionKey & other) const
-  {
-    return kind == other.kind && op == other.op &&
-      type_kind == other.type_kind && type_size == other.type_size &&
-      type_alignment == other.type_alignment &&
-      source_type_kind == other.source_type_kind &&
-      source_type_size == other.source_type_size &&
-      source_type_alignment == other.source_type_alignment &&
-      index_projection == other.index_projection &&
-      first == other.first && second == other.second;
-  }
-};
-
-void combine_hash(std::size_t * seed, std::size_t value)
-{
-  *seed ^= value + static_cast<std::size_t>(0x9e3779b9U) +
-    (*seed << 6) + (*seed >> 2);
-}
-
-struct ExpressionKeyHash
-{
-  std::size_t operator()(const ExpressionKey & key) const
-  {
-    std::size_t result = static_cast<std::size_t>(key.kind);
-    combine_hash(&result, lowir_model::lowir_operation_hash(key.op));
-    combine_hash(&result, static_cast<std::size_t>(key.type_kind));
-    combine_hash(&result, key.type_size);
-    combine_hash(&result, key.type_alignment);
-    combine_hash(&result, static_cast<std::size_t>(key.source_type_kind));
-    combine_hash(&result, key.source_type_size);
-    combine_hash(&result, key.source_type_alignment);
-    combine_hash(&result, static_cast<std::size_t>(key.index_projection));
-    const ExpressionOperandKey operands[] = {key.first, key.second};
-    for(std::size_t i = 0; i < 2; ++i) {
-      combine_hash(&result, static_cast<std::size_t>(operands[i].kind));
-      combine_hash(&result, operands[i].identity);
-      combine_hash(&result, std::hash<long long>()(operands[i].int_value));
-      combine_hash(&result, std::hash<std::uint64_t>()(operands[i].int_high));
-    }
-    return result;
-  }
-};
-
-ExpressionKey expression_key(const Instruction & ins)
-{
-  const Operand * first = &ins.first;
-  const Operand * second = &ins.second;
-  LowOperation op = ins.op;
-  if((ins.kind == Instruction::IK_BINARY && commutative(op)) ||
-     (ins.kind == Instruction::IK_CMP && (op.kind == LowOperation::LOP_EQ || op.kind == LowOperation::LOP_NE))) {
-    if(operand_less(*second, *first)) std::swap(first, second);
-  } else if(ins.kind == Instruction::IK_CMP && operand_less(*second, *first)) {
-    std::swap(first, second);
-    op = reverse_compare(op);
-  }
-  ExpressionKey key;
-  key.kind = ins.kind;
-  key.op = op;
-  key.type_kind = ins.type.kind;
-  key.type_size = ins.type.storage_size;
-  key.type_alignment = ins.type.alignment;
-  key.source_type_kind = ins.source_type.kind;
-  key.source_type_size = ins.source_type.storage_size;
-  key.source_type_alignment = ins.source_type.alignment;
-  key.index_projection = ins.index_projection;
-  key.first = expression_operand_key(*first);
-  key.second = expression_operand_key(*second);
-  return key;
 }
 
 bool fold_unary(const Instruction & ins, Operand * result)
