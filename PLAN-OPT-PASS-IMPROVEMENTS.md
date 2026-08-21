@@ -1,7 +1,8 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--8 are implemented and gated; the matching-level
-matrix and Rank 9 correctness analysis are active
+Status: active; Ranks 1--10i are implemented or measured; the final R10i
+correctness and inception gate is clean, while the under-15-second maximum
+frozen-compile objective remains open
 
 Date: 2026-08-21
 
@@ -1612,6 +1613,64 @@ compile.  Keep all recursive targets rejected.  The diagnostic was an
 out-of-band typed census and was removed after measurement, so ordinary
 builds gain no scan, counter, string lookup, or storage.
 
+#### R10i-d. Preserve frame-address identity through native phi placement
+
+The first final R10i inception attempt exposed a PA29 backend defect rather
+than an inliner-policy failure.  R10h made the valid optimized body of
+`lowir_interprocedural_specialization.cpp` large enough to carry the address
+of a local semantic `Function` object through a representation-preserving
+copy and a `phi ptr`.  LowIR still named the address value correctly.  Native
+parallel-copy lowering instead saw only an `OP_FRAME` machine location and
+loaded the first eight object bytes as the pointer passed to
+`specialize_function`, producing a generated-compiler SIGSEGV at O2/O3.
+Restoring the pre-R10h EH restriction avoided the shape but did not correct
+the backend, so the profitable EH policy remains retained.
+
+The PA29 fix attaches one compact Boolean address-value fact to each transient
+phi move.  Address sources are not equal to scalar values stored at the same
+frame location, do not create false parallel-copy dependencies, and are
+rematerialized with `lea` before being placed in the ordinary pointer phi
+home.  There is no string key, rendered operand comparison, new program scan,
+or serialized side channel.  The lowerer-facing phi adapter moved from the
+3,009-line `lowir_native.cpp` into the existing phi-lowering module; the main
+lowerer is now 2,938 lines and the audit remains below its fatal boundary.
+
+The active PA29 behavioral reducer takes both incoming edges and records the
+informational MIR.  The old compiler exits with signal 11 and shows
+`load.ptr` from the local object; the retained reference exits successfully
+and shows `lea` on each edge.  PA29's normative requirement and non-normative
+Design Notes state the value distinction without maintainer history.  The
+reference was generated through the documented local
+`REF_TEST_APP=../dev/lowir2native` path because it is a newly corrected backend
+contract.
+
+The exact retained tree passes PA29/PA37/PA38 at 460/460, the full report at
+5,367/5,367, and the PA37/PA38 debug lanes.  The PA39 audit has zero fatal
+findings and 32 advisory warnings.  A clean 32-worker O3 self build takes
+19.10 seconds wall, 467.79 seconds aggregate user, 42.96 seconds system, and
+230,828 KiB peak RSS.  The separate clean inception comparison takes 69.76
+seconds wall, 1,864.78 seconds aggregate user, 61.44 seconds system, and
+231,596 KiB peak RSS; all 209 objects and the 12,482,168-byte final compiler
+match byte-for-byte.
+
+Three interleaved compiles with that exact self binary give these medians:
+
+| Diagnostic | Wall | User | System | Peak RSS | Object bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| frozen explicit O0 | 14.96 s | 14.42 s | 0.55 s | 363,076 KiB | 2,965,936 |
+| frozen default maximum | 16.74 s | 16.22 s | 0.51 s | 359,628 KiB | 1,659,296 |
+| `lowir_opt.cpp` explicit O0 | 8.66 s | 8.40 s | 0.25 s | 177,252 KiB | 1,373,792 |
+| `lowir_opt.cpp` default maximum | 9.35 s | 9.09 s | 0.23 s | 182,680 KiB | 712,376 |
+
+Every three-run object set is deterministic.  O0 now crosses below 15 seconds,
+but the maximum pipeline remains 1.74 seconds above the objective.  The final
+typed census contains 934 discardable definitions, 3,904 calls, and 75,963
+instructions; overlapping populations include 193 leaf, 299 EH-bearing, 80
+recursive, and 317 explicit-no-inline definitions.  No remaining multi-use
+leaf has nonpositive static growth under the existing estimator.  A next
+inlining class therefore needs measured runtime benefit, not another global
+cap increase.
+
 #### R10i reducers and acceptance order
 
 PA37 O1 owns the scheduling contract.  Add exact course reducers for an
@@ -1769,7 +1828,7 @@ RUN_ROOT=/tmp/v3codex-opt-<commit>-j32
   INCEPTION_BUILD_JOBS=32
 ```
 
-The second command must compare all 191 objects and the final compiler.  A
+The second command must compare all 209 current objects and the final compiler.  A
 warm or partially inherited object tree is not a clean timing.  Keep the self
 tree between the two commands so the inception measurement does not include a
 second self build; remove only the explicitly named run root when the evidence
@@ -1825,6 +1884,7 @@ Fill one row for every retained or rejected phase:
 | R10i-a | cleanup-coupled nonrecursive convergence in one callee-first traversal | PA37 O1 eight-level cleanup-transition reducer with adversarial definition order and two parents; existing deterministic budget fixture retained; no PA13 change | frozen O1 byte-identical at six/128; reducer removes two retained wrapper calls and all newly unreachable calls | host A/B wall +0.58%, user +0.64%, RSS +0.73%; exact-self wall -1.1%, user -1.0%, RSS +0.6%; 1x/2x/4x work counters exactly linear; no queue/string state | 5,366/5,366; zero fatal, 32 warnings | repeat O1 self 19.31 s / 465.31 user / 228,472 KiB; final combined 32-way inception pending | complete, `96aad279` |
 | R10i-b | broader measured O1 profitability | no fixture or contract movement because no broader point is retained | 8/192: object -4,080 B but text +4,816 B; 12/320: object -2,088 B but text +16,290 B; 18/512 and 24/768 grow object and text | exact-self medians vs 6/128: 8/192 +1.5%, 12/320 -0.6% noise, 18/512 +9.4%; 24/768 host compile +13.6% wall | R10i-a baseline remains 5,366/5,366, zero fatal | four exact O1 self compilers built; no retained policy, so no inception | complete, all broader points rejected; exact 6/128 restored |
 | R10i-c | bounded external-to-recursive-SCC tail | no fixture or contract movement because the measured opportunity does not justify a new policy | 207 external-to-recursive calls narrow to eight eligible sites / three targets / at most 46 cloned instructions | rejected before production implementation; avoids a stable-site snapshot, graph update, and propagation scan for a negligible upper bound | R10i-a baseline remains 5,366/5,366, zero fatal | diagnostic only; final combined lane covers the retained inliner | complete, rejected by typed frozen census; conservative recursive rejection retained |
+| R10i-d | preserve frame-address value identity through native phi transfers | active PA29 behavioral reducer with informational MIR; PA29 normative and Design Notes; no LowIR change | corrected generated compiler; frozen self medians O0 14.96 s / maximum 16.74 s; deterministic objects 2,965,936 / 1,659,296 B | one transient Boolean per phi move, no scan or string identity; phi adapter separated and main lowerer reduced to 2,938 lines | 5,367/5,367; PA37/PA38 debug clean; zero fatal, 32 warnings | O3 self 19.10 s / inception 69.76 s; all 209 objects and final binary match | corrective complete, `a8420b92`; under-15 maximum objective remains open |
 
 ## Completion criteria
 
