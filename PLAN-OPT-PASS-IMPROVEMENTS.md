@@ -1,7 +1,8 @@
 # Plan: Optimization-Pass Improvements
 
-Status: proposed; evidence and phase ordering complete, implementation not
-started
+Status: active; the Rank 0 instrumentation needed by Rank 1 and the dominant
+Rank 1 inlining/body-pruning phase are complete at `1085fcfb`, with the PA29
+corrective reducer at `d7d9e93b`; reusable CFG epochs and Ranks 2--7 remain
 
 Date: 2026-08-21
 
@@ -232,6 +233,83 @@ and O2 placement belongs beside the native analysis/lowering modules rather
 than in the ELF writer.  Add every new `dev/src/*.cpp` file to the applicable
 tool lists in `dev/frontend_source_sets.mk`.  This split is part of the design,
 not cleanup deferred until the file audit fails.
+
+## Implemented Rank 0/1 result
+
+Rank 1 is implemented without a special object-only LowIR.  Serialized
+optimized LowIR and native-object emission use the same typed `LowirProgram`;
+the native writer consumes the prepared program rather than a parallel IR or
+frontend side channel.  The one missing source contract was explicit
+`noinline`: PA13 now defines and round-trips `no_inline=yes` symbol metadata,
+with a PA13 specification test and student-facing syntax/behavior
+instructions.  Source GNU `noinline` attributes populate that field.  No
+other LowIR field was needed.
+
+The retained implementation provides:
+
+- one dense-ID direct-call graph, Tarjan SCC classification, and stable
+  callee-first component order in `lowir_inline_analysis`;
+- bounded bottom-up cloning, a batched leaf-call path, explicit recursive,
+  EH, size, `no_inline`, and per-caller budget rejections, plus targeted
+  no-unwind caller revisits;
+- post-inline use of the existing typed weak/internal reachability analysis,
+  including counters for every retention reason, followed by dead-body
+  pruning before native-object emission; and
+- zero-output stats for graph size, SCCs, recursion, call visits and
+  rejections, cloned instructions, rewritten callers, reachability, pruning,
+  and pass time.  Production graph state uses compact integral IDs and dense
+  vectors; rendered names remain outside the hot path.
+
+The frozen-source A/B used immutable compiler binaries from baseline
+`6df6bd42` and candidate `1085fcfb`, run under the same load screen.  The
+paired census below uses one script and definition for both objects, which is
+why its baseline symbol count differs slightly from the earlier exploratory
+table.
+
+| Metric | O1 baseline | O1 Rank 1 | Delta | O2 baseline | O2 Rank 1 | Delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| median compile wall | 4.98 s | 4.98 s | 0.0% | 5.49 s | 5.45 s | -0.7% |
+| object bytes | 3,047,896 | 2,180,872 | -28.4% | 3,010,064 | 2,143,304 | -28.8% |
+| `.text*` bytes | 671,678 | 616,160 | -8.3% | 634,803 | 580,448 | -8.6% |
+| defined function symbols | 5,528 | 3,342 | -39.5% | 5,528 | 3,342 | -39.5% |
+| static calls | 17,213 | 15,220 | -11.6% | 17,209 | 15,216 | -11.6% |
+
+O1 peak RSS improved by 0.3%; O2 RSS was neutral.  Candidate O1 telemetry
+reported 5,083 LowIR functions, 135,426 input and 106,082 output
+instructions, 17,572 direct edges, 5,028 SCCs, 100 recursive functions,
+5,707 inlined calls, 62,607 cloned instructions, 3,045 reachable functions,
+and 2,038 pruned weak functions.  Inlining took 63.7 ms and the full optimizer
+301.7 ms, versus 316 ms for the comparable baseline optimizer.  Rank 1 thus
+materially closes the dominant body/call gap without consuming compile-time
+or memory headroom.
+
+The first clean optimized self build exposed an earlier PA29 x86-lowering
+bug: when a scalar store source occupied `%rcx`, materializing a spilled
+destination address into the same fixed scratch register destroyed the value.
+The earliest active PA29 behavior reducer covers both ordinary and relaxed
+atomic stores across an EH edge.  Native lowering now chooses `%rax` for the
+address scratch only in that conflict; both registers were already modeled as
+store clobbers, so the fix adds no allocation, map, or scan.  It does not
+change LowIR and requires no PA13 contract addition.
+
+Final validation at `d7d9e93b` is:
+
+- PA29: 265/265; report through PA29: 4,183/4,183;
+- full `make test-report`: 5,291/5,291;
+- PA39 file audit: zero fatal findings (30 advisory warnings);
+- clean 32-worker `cppgm++-self`: 17.89 s wall, 428.55 s user,
+  43.20 s system, 229,164 KiB peak RSS; and
+- separate 32-worker inception: 1:40.69 wall, 2,761.54 s user,
+  69.08 s system, 227,464 KiB peak RSS, with all 191 objects and final
+  `cppgm++-inception` matching.
+
+Fixture movement in this phase is intentional.  PA13 gains the public
+`no_inline` metadata fixture; PA37 gains bottom-up pruning, source-attribute,
+and object-roundtrip coverage; PA29 gains the scratch-clobber behavior/MIR
+reducer.  Existing PA28 virtual-base ABI references and PA32 linkage inputs
+were corrected to their owning contracts, and the PA37 comparator gained
+tests for the canonical/behavioral distinctions used by optimized fixtures.
+No tests were placed in `proposed`.
 
 ## Ranked implementation plan
 
@@ -697,10 +775,10 @@ Fill one row for every retained or rejected phase:
 
 | Phase | Intended result | Fixture/contract movement | Frozen output delta | Compile-time/RSS delta | Full report/audit | 32-way self/inception | Status/commit |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| R0 | typed telemetry and analysis ownership | none expected | must be byte-identical | <= 1% preferred, 3% hard gate | pending | pending | not started |
-| R1a | bottom-up deterministic inliner | PA37 O1 | pending | pending | pending | pending | not started |
-| R1b | profitability and dirty-region cleanup | PA37 O1/O2 | pending | pending | pending | pending | not started |
-| R1c | post-inline weak/internal pruning audit | PA37 roundtrip; PA32 only if object contract moves | pending | pending | pending | pending | not started |
+| R0 | typed telemetry and analysis ownership | stats only; PA37 comparator unit coverage | stats disabled preserves ordinary output | included in Rank 1: O1 RSS -0.3%, O2 neutral | 5,291/5,291; zero fatal | self 17.89 s / inception 1:40.69, both 32-way | Rank 1 telemetry complete, `1085fcfb`; reusable CFG epochs remain before R2 |
+| R1a | bottom-up deterministic inliner | PA37 O1 bottom-up/pruning and source-attribute fixtures; PA13 `no_inline` contract | O1 text -8.3%, calls -11.6% | O1 wall neutral; optimizer 301.7 ms vs 316 ms | 5,291/5,291; zero fatal | self 17.89 s / inception 1:40.69, all matches | complete, `1085fcfb` + `d7d9e93b` corrective reducer |
+| R1b | bounded profitability and localized cloning/cleanup | PA37 O1/O2; existing optimized refs regenerated in place | O2 text -8.6%; object -28.8% | O2 wall -0.7%, RSS neutral | 5,291/5,291; zero fatal | same clean lane | complete for Rank 1; remeasure policy after R2, `1085fcfb` |
+| R1c | post-inline weak/internal pruning audit | PA37 object roundtrip; PA32 owning linkage inputs | defined functions -39.5%; 2,038 weak bodies pruned at O1 | included above | 5,291/5,291; zero fatal | same clean lane | complete, `1085fcfb` |
 | R2a | sparse promotion with identical output | none expected | byte-identical | promotion target >= 2x faster | pending | pending | not started |
 | R2b | phi-capable scalar replacement | PA13/PA29/PA37 if adopted | pending | pending | pending | pending | not started |
 | R3 | LICM and loop simplification | PA37 O1/O2 | pending | pending | pending | pending | not started |
