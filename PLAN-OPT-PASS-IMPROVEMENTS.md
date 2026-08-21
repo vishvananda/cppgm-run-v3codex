@@ -1,7 +1,7 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1 and 2 are complete through `9c63791f`; reusable
-analysis epochs and Ranks 3--7 remain
+Status: active; Ranks 1--4 are complete through `8bb6be47`; Ranks 5--7 and
+the final self/inception gate remain
 
 Date: 2026-08-21
 
@@ -467,6 +467,71 @@ Rank 3 validation is:
 - PA37 debug-info and debug object-roundtrip lanes: 18/18;
 - PA39 file audit: zero fatal findings (28 advisory warnings); and
 - every repeated frozen object was byte-identical within its compiler variant.
+
+## Rank 4 result
+
+Rank 4 is implemented as four reviewable changesets.  Commit `50b2b037`
+replaces the traversal-order-sensitive flat expression cache with a typed
+dominance-scoped table.  One hash entry identifies each compact expression;
+packed value stacks are pushed and restored at dominator-tree scope, so a
+sibling block cannot hide an available ancestor.  The shared analysis epoch
+now also caches dominator children.  The PA37 O1 reducer exercises the prior
+sibling-overwrite miss.
+
+Commit `c950139c` adds sparse memory value numbering at O2.  It derives compact
+locations from existing typed `addr` and `index` instructions; no LowIR field,
+private object form, or rendered name is involved.  Constant offsets and
+access widths prove non-overlap for distinct projections.  Repeated unknown
+pointer values use one conservative unknown-memory version.  Direct stores
+update only overlapping known classes, while unknown stores, ordinary
+read/write calls, atomics, and other memory operations update the unknown
+version.  `readnone`/`readonly` calls and readonly globals retain only the
+facts their public PA13 metadata permits.  Internal memory-version merges are
+placed with the shared iterated dominance frontier and renamed in one
+dominator traversal; they are analysis facts, not hidden serialized IR.
+Functions with EH structure are conservatively skipped.
+
+Commit `1a71f6b4` extracts the expression opcode/type/operand identity into a
+single typed module shared by simplification and PRE.  Commit `8bb6be47` then
+adds bounded O2 PRE using the public PA13 `phi`.  Fully redundant expressions
+at ordinary joins become phis of predecessor values.  Partial insertion is
+limited to nontrapping address or integer bitwise work on single-successor
+predecessors whose operands are already available.  Critical-edge insertion,
+loops, EH, and explicitly located instructions are skipped.  The hard limits
+are 64 inserted expressions, 64 phis, 65,536 availability probes, and 32,768
+input instructions per function; budget exhaustion never restarts the pass.
+
+Active course coverage now includes direct, derived, distinct, overlapping,
+readonly, unknown-pointer, call-effect, branch-merge, atomic, and EH memory
+cases; full and partial expression redundancy; a critical-edge negative; an
+EH negative; and a 65-candidate fixture proving that exactly 64 insertions are
+accepted.  The PRE behavior reducer was also optimized, lowered through the
+ordinary native path, and executed with exit status zero.  No PA13 edit is
+needed because Rank 2's public `phi`, existing typed projections, global
+storage, and call-effect metadata are sufficient.
+
+On the frozen O2 compile, memory GVN builds 539 candidate classes and 391
+internal merge versions, probes 1,331 loads, and removes 555 loads in 6.09 ms.
+Subsequent cleanup reduces optimized LowIR from 91,224 to 90,542 instructions.
+The frozen input offers 67 PRE candidates but none meet the deliberately
+conservative insertion policy; PRE spends 5.31 ms and leaves that object
+unchanged.  Relative to Rank 3, the final object falls from 2,145,208 to
+2,143,000 bytes and `.text*` from 582,314 to 579,593 bytes; decoded
+instructions fall by 616.  The small `.eh_frame` increase of 212 bytes and
+push/pop increase are placement debt for Rank 5.
+
+Load-screened alternating Rank 3/final-Rank-4 frozen O2 compiles produced:
+
+| Metric | Rank 3 | Rank 4 | Paired delta |
+| --- | ---: | ---: | ---: |
+| median wall, six runs each | 5.050 s | 5.075 s | +0.2% |
+| median user | 4.590 s | 4.610 s | +0.5% |
+| median peak RSS | 359,874 KiB | 360,440 KiB | +0.1% |
+
+Every repeated object was deterministic.  `make test-report` passes
+5,315/5,315 and the PA39 file audit has zero fatal findings (28 advisory
+warnings).  The final 32-worker self/inception lane remains intentionally
+deferred until the later ranks have stopped changing the compiler binary.
 
 ## Ranked implementation plan
 
@@ -939,7 +1004,7 @@ Fill one row for every retained or rejected phase:
 | R2a | sparse promotion state | no new contract; no checked fixture movement | -278 LowIR instructions, object -1,256 B after one old dense-budget skip was removed; intermediate exact-output guard missed and recorded | promotion 485.6 ms to 49.5 ms (9.8x); 1.33 MiB peak sparse scratch | included in final Rank 2 gate | included in final Rank 2 lane | retained with staged-guard discrepancy, `eae03449`; telemetry `9de9d17f` |
 | R2b | public phi-capable scalar replacement | PA13 syntax/scaffold; PA29 lowering/correctives; PA37 O2 and object roundtrip | vs Rank 1: LowIR -4.8%, object -0.1%, text -0.3%; functions unchanged | wall -6.6%, user -4.4%, RSS +0.1%; optimizer -50.8%, promotion 8.1x faster | 5,303/5,303; zero fatal | self 18.24 s / inception 1:41.31; all 197 objects and final binary match | complete, `84b4c184`, `01aebb78`, `9f0538be`, corrective `9c63791f` |
 | R3 | LICM and loop simplification | PA37 O1/O2 | active course reducers | +0.6% optimizer sample | +3,480 B object | 5,309/5,309 plus debug lane | complete; frozen benefit absent, +1.5% generated-self remains below gate |
-| R4 | GVN/load elimination/PRE | PA37 O2 | pending | pending | pending | pending | not started |
+| R4 | GVN/load elimination/PRE | PA37 O1/O2 typed GVN, memory, PRE, budget, EH, and behavior reducers; no PA13 movement | -682 LowIR instructions, -2,208 B object, -2,721 B text, -616 decoded instructions vs R3 | wall +0.2%, user +0.5%, RSS +0.1%; memory 6.09 ms, PRE 5.31 ms | 5,315/5,315; zero fatal | final lane deferred until compiler stops changing | complete, `50b2b037`, `c950139c`, `1a71f6b4`, `8bb6be47` |
 | R5 | MIR placement/coalescing | PA38 O2 and debuginfo | pending | pending | pending | pending | not started |
 | R6 | IPA argument/scalar work | PA37 O2/O3 | pending | pending | pending | pending | not started |
 | R7 | distinct O3 | PA37/PA38 O3 plus help/scaffolds | pending | pending | pending | pending | not started |
