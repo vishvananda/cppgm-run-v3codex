@@ -178,6 +178,14 @@ int run_lowiropt_mode(const vector<string> & args)
          << stats.inline_single_call_discarded_bodies
          << " inline_single_call_budget_skips="
          << stats.inline_single_call_budget_skips
+         << " inline_single_call_caller_budget_skips="
+         << stats.inline_single_call_caller_budget_skips
+         << " inline_single_call_translation_unit_budget_skips="
+         << stats.inline_single_call_translation_unit_budget_skips
+         << " inline_single_call_translation_unit_budget="
+         << stats.inline_single_call_translation_unit_budget
+         << " inline_single_call_translation_unit_budget_remaining="
+         << stats.inline_single_call_translation_unit_budget_remaining
          << " inline_input_instructions="
          << stats.inline_input_instructions
          << " inline_output_instructions="

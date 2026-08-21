@@ -65,6 +65,10 @@ struct Stats
   std::size_t inline_single_call_instructions = 0;
   std::size_t inline_single_call_discarded_bodies = 0;
   std::size_t inline_single_call_budget_skips = 0;
+  std::size_t inline_single_call_caller_budget_skips = 0;
+  std::size_t inline_single_call_translation_unit_budget_skips = 0;
+  std::size_t inline_single_call_translation_unit_budget = 0;
+  std::size_t inline_single_call_translation_unit_budget_remaining = 0;
   std::size_t inline_input_instructions = 0;
   std::size_t inline_output_instructions = 0;
   std::size_t inline_reject_recursive = 0;

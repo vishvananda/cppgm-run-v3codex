@@ -1331,6 +1331,28 @@ The clean O1 self build takes 19.61 seconds wall, 459.79 seconds aggregate user,
 43.64 seconds system, and 229,928 KiB peak RSS.  The full report passes
 5,358/5,358 before that self build.
 
+Rank 10e removes the source-size anomaly in the called-once translation-unit
+budget.  The minimum remains 10,240 instructions, but a larger input may
+transfer at most one original translation unit of instruction payload.  The
+existing per-function summary loop accumulates that input count with saturating
+`size_t` arithmetic, so the policy adds no scan, symbol lookup, string key, or
+asymptotic work.  The 160-instruction body and 320-instruction caller limits
+remain unchanged.
+
+On frozen O1 the effective 135,662-instruction budget transfers 2,014 of 2,015
+eligible single-call bodies and charges 41,602 instructions.  Against Rank 10d,
+the object falls from 1,824,328 to 1,786,440 bytes, `.eh_frame` from 56,588 to
+53,340 bytes, and measured definitions from 2,424 to 2,321.  Aggregate text
+rises from 598,690 to 603,829 bytes.  The generated compiler file falls from
+13,160,440 to 13,054,328 bytes while loaded text rises from 8,659,986 to
+8,687,766 bytes.
+
+Three alternating exact O1-self frozen compiles are neutral within host noise:
+baseline/candidate median wall is 17.48/17.55 seconds and median user is
+16.95/17.04 seconds.  The clean candidate self build takes 19.06 seconds wall,
+458.20 seconds aggregate user, 43.22 seconds system, and 229,340 KiB peak RSS.
+No PA37 or PA38 fixture moves; the full report remains 5,358/5,358.
+
 ## Fixture and public-contract policy
 
 Optimization changes are expected to move optimized LowIR and MIR.  They are
@@ -1509,7 +1531,8 @@ Fill one row for every retained or rejected phase:
 | R10a | admit object-named proven-no-unwind callees inside EH regions | PA37 O1 exact + object-roundtrip reducers; PA31 opaque throwing-boundary fixture; PA33 explicit publication roots | O1 object -165,744 B, text -17,692 B, `.eh_frame` -10,560 B, 391 fewer measured function definitions | six-run explicit-O1 A/B median 4.979 to 4.984 s (+0.10%); no new analysis or storage | 5,354/5,354; zero fatal, 29 warnings | final combined lane pending | complete, `8fffcbca` |
 | R10b | stop treating ordinary calls to internal functions as permanent object roots | six PA15/17/22/25 exact refs lose only stale root metadata; seven PA31--PA36 symbol fixtures gain explicit retention; PA37 lambda-control and pruning reducers | vs R10a: object -98,696 B, text -11,178 B, `.eh_frame` -8,800 B, 312 fewer measured local definitions | six-run explicit-O1 A/B median 4.990 to 4.992 s (+0.04%); one constant mask test per symbol | 5,356/5,356; zero fatal, 29 warnings | final combined lane pending | complete, `134f0c17` |
 | R10c | bounded definition-removing single-call inlining with immediate body release | PA37 O1 positive/address/multiple-use reducer and 160-instruction boundary; normative limits and typed Design Notes | vs R10b: object -23,200 B, text +1,551 B, `.eh_frame` -1,832 B, 56 fewer measured definitions | exact O1-built-self frozen medians: O0 17.21 to 16.77 s, O1 18.34 to 17.98 s; host O1 5.04 to 5.00 s; typed scan adds one byte/function; ownership transfer avoids instruction payload copies | 5,358/5,358; zero fatal, 31 warnings | O1 self build succeeds; final O3 32-way lane pending | complete, `0d39bea1` |
-| R10d | run the bounded optimized-body wave at every optimizing level | two existing PA37 O1/O2 exact refs move; PA37 level contract and Design Notes; no PA38 movement | vs R10c O1: object -61,416 B, text +11,146 B, `.eh_frame` -4,276 B, 165 fewer definitions; 1,007 calls inlined | exact O1-self A/B wall 17.99 to 17.66 s, user 17.42 to 17.09 s; one typed graph rebuild and 60.1 ms measured late wave | 5,358/5,358; PA37 debug clean; zero fatal, 31 warnings | O1 self 19.61 s / 459.79 user / 229,928 KiB; final 32-way lane pending | implementation measured; commit pending |
+| R10d | run the bounded optimized-body wave at every optimizing level | two existing PA37 O1/O2 exact refs move; PA37 level contract and Design Notes; no PA38 movement | vs R10c O1: object -61,416 B, text +11,146 B, `.eh_frame` -4,276 B, 165 fewer definitions; 1,007 calls inlined | exact O1-self A/B wall 17.99 to 17.66 s, user 17.42 to 17.09 s; one typed graph rebuild and 60.1 ms measured late wave | 5,358/5,358; PA37 debug clean; zero fatal, 31 warnings | O1 self 19.61 s / 459.79 user / 229,928 KiB; final 32-way lane pending | complete, `0fd38172` |
+| R10e | proportional called-once translation-unit budget | PA37 normative limit and typed Design Notes; no fixture movement | vs R10d O1: object -37,888 B, text +5,139 B, `.eh_frame` -3,248 B, 103 fewer definitions; 2,014 called-once bodies transferred | exact O1-self A/B wall 17.48 to 17.55 s, user 16.95 to 17.04 s; budget accumulated in the existing dense summary loop | 5,358/5,358; zero fatal, 31 warnings | O1 self 19.06 s / 458.20 user / 229,340 KiB; final 32-way lane pending | implementation measured; commit pending |
 
 ## Completion criteria
 

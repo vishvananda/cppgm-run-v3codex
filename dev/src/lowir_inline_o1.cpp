@@ -30,7 +30,7 @@ const std::size_t kNoFunction = InlineCallGraph::no_function();
 const std::size_t kInlineInstructionBudget = 128;
 const std::size_t kSingleCallInstructionLimit = 160;
 const std::size_t kSingleCallCallerBudget = 320;
-const std::size_t kSingleCallTranslationUnitBudget = 10240;
+const std::size_t kMinimumSingleCallTranslationUnitBudget = 10240;
 const std::size_t kLateNonleafInstructionLimit = 6;
 class ValueMap
 {
@@ -387,7 +387,7 @@ public:
       prepared_oversized_symbols_(prepared_oversized_symbols),
       original_instruction_counts_(original_instruction_counts),
       remaining_single_call_translation_unit_budget_(
-        kSingleCallTranslationUnitBudget),
+        kMinimumSingleCallTranslationUnitBudget),
       optimized_late_wave_(optimized_late_wave), rewrites_(0)
   {
     if(original_instruction_counts_.size() != program_.functions.size())
@@ -396,6 +396,7 @@ public:
     leaf_inline_shapes_.resize(program_.functions.size(), 0);
     instruction_counts_.resize(program_.functions.size(), 0);
     single_call_discardable_.resize(program_.functions.size(), 0);
+    std::size_t input_instruction_budget = 0;
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       contains_eh_[i] = contains_eh(program_.functions[i]);
       leaf_inline_shapes_[i] = leaf_inline_shape(program_.functions[i]);
@@ -411,7 +412,18 @@ public:
         !function.metadata.keep_internal_alias &&
         function.metadata.role == lowir_model::SR_NONE &&
         !function.metadata.tls_for_symbol_id.valid();
+      if(input_instruction_budget <=
+         std::numeric_limits<std::size_t>::max() -
+           original_instruction_counts_[i])
+        input_instruction_budget += original_instruction_counts_[i];
+      else
+        input_instruction_budget = std::numeric_limits<std::size_t>::max();
     }
+    remaining_single_call_translation_unit_budget_ = std::max(
+      kMinimumSingleCallTranslationUnitBudget, input_instruction_budget);
+    if(stats_ && !optimized_late_wave_)
+      stats_->inline_single_call_translation_unit_budget =
+        remaining_single_call_translation_unit_budget_;
     if(stats_ && !optimized_late_wave_) stats_->inline_input_instructions =
       std::accumulate(instruction_counts_.begin(), instruction_counts_.end(),
         static_cast<std::size_t>(0));
@@ -469,6 +481,9 @@ public:
       }
     }
     if(stats_) {
+      if(!optimized_late_wave_)
+        stats_->inline_single_call_translation_unit_budget_remaining =
+          remaining_single_call_translation_unit_budget_;
       stats_->inline_output_instructions = 0;
       for(std::size_t i = 0; i < program_.functions.size(); ++i)
         stats_->inline_output_instructions +=
@@ -663,7 +678,13 @@ private:
         *used_single_call = true;
         return true;
       }
-      if(stats_) ++stats_->inline_single_call_budget_skips;
+      if(stats_) {
+        ++stats_->inline_single_call_budget_skips;
+        if(cost > *single_call_remaining)
+          ++stats_->inline_single_call_caller_budget_skips;
+        if(cost > remaining_single_call_translation_unit_budget_)
+          ++stats_->inline_single_call_translation_unit_budget_skips;
+      }
       const Function & function = program_.functions[target];
       const bool ordinary_size_candidate =
         (instruction_counts_[target] <= 40 ||

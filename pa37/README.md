@@ -198,9 +198,10 @@ running optimizing transforms.
 - a separate definition-removing path for a weak or internal function that
   has exactly one direct call and no address, relocation, structured-data,
   alias, lifecycle, object-root, or other non-call use; this path may admit a
-  body of at most 160 instructions, uses a 320-instruction budget per caller
-  and a 10,240-instruction budget per translation unit, and removes the
-  transferred definition after substitution
+  body of at most 160 instructions, uses a 320-instruction budget per caller,
+  and removes the transferred definition after substitution; its
+  translation-unit budget is the greater of 10,240 and the original input
+  instruction count
 - preservation of the ordinary 128-instruction policy when a definition is
   in the single-call class but a separate single-call budget is exhausted;
   calls that meet the ordinary size and growth rules remain ordinary inline
@@ -443,7 +444,10 @@ counts then identify the single-direct-call case without another symbol lookup
 or program pass. When that definition is discardable, move the instruction
 payloads into their renamed caller form and release the old body immediately.
 Keep the ordinary and definition-removing budgets independent so exhausting
-the latter does not suppress an otherwise ordinary inline.
+the latter does not suppress an otherwise ordinary inline. Charging at most
+one original translation unit of definition-removing work keeps the policy
+linear while allowing a large input proportionally more useful transfers than
+a small one.
 
 Interprocedural argument agreement can reuse that same direct-call graph and
 its dense symbol-to-function table. Store parameter facts in one packed array

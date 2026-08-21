@@ -84,6 +84,14 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.inline_single_call_discarded_bodies
 		 << " inline_single_call_budget_skips="
 		 << stats.inline_single_call_budget_skips
+		 << " inline_single_call_caller_budget_skips="
+		 << stats.inline_single_call_caller_budget_skips
+		 << " inline_single_call_translation_unit_budget_skips="
+		 << stats.inline_single_call_translation_unit_budget_skips
+		 << " inline_single_call_translation_unit_budget="
+		 << stats.inline_single_call_translation_unit_budget
+		 << " inline_single_call_translation_unit_budget_remaining="
+		 << stats.inline_single_call_translation_unit_budget_remaining
 		 << " inline_input_instructions=" << stats.inline_input_instructions
 		 << " inline_output_instructions=" << stats.inline_output_instructions
 		 << " inline_reject_recursive=" << stats.inline_reject_recursive
