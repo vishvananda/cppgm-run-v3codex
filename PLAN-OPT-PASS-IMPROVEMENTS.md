@@ -1042,6 +1042,21 @@ peak RSS. File modification times place about 19 seconds in self construction
 and about 151 seconds in the inception work; future O0 evidence must use two
 explicit timers so that approximation is not mistaken for a measured split.
 
+Rank 9a replaces that approximate O0 split with two explicit timers against
+one clean object root at commit `45b15f22`:
+
+| O0 stage | Wall | Aggregate user | System | Peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| `cppgm++-self` | 19.49 s | 450.53 s | 43.48 s | 230,784 KiB |
+| inception compare | 153.97 s | 4,292.13 s | 87.21 s | 228,688 KiB |
+| combined | 173.46 s | 4,742.66 s | 130.69 s | 230,784 KiB |
+
+Every O0 object and the final compiler match.  The 2.56-second combined wall
+difference from the approximate 170.90-second Rank 8 lane is 1.5%, below the
+3% rejection threshold and smaller than expected intermittent host-load
+variation.  Aggregate CPU time falls by 16.52 seconds, so this is not evidence
+of added compiler work.
+
 Twelve immutable compilers were then built from the same source: GCC, Clang
 with GCC's libstdc++ headers and library, and cppgm++ self output, each at
 O0/O1/O2/O3. Three frozen compiles were interleaved by round under the same
@@ -1300,8 +1315,8 @@ Fill one row for every retained or rejected phase:
 | R8a | complete small-object scalar replacement and scalar residual copies | PA37 O2 exact/object; one existing optimized fixture moved; PA29 Design Notes, no MIR change | frozen O3 2,116,672 B; generated-self frozen O0 30.15 to 18.30 s | host compile neutral; bounded dense facts and union/find | 5,338/5,338; zero fatal | self 19.57 s / inception pending | complete, `a30c982f` |
 | R8b | typed unreachable-edge cleanup and bounded late O3 leaf inlining | PA13 role/scaffold/ownership tests; PA16 existing producer fixture; PA37 O1 direct/source and O3 late reducer | frozen O3 2,116,672 to 2,056,816 B; 1,007 late calls removed | unreachable 1.6 ms; late inline 47.6 ms; host wall 5.16 s | 5,346/5,346; zero fatal | self 19.27 s / inception 74.64 s, timed separately; all matches | complete, `9816f4f6`; generated-code correctives `93467e1c`, `f5fe92e1`, `ad7a88d6` |
 | R8c | preserve phi predecessor identity when inlining moves a terminal edge | PA37 O1 exact reducer; PA37 normative inlining contract | no intended frozen change while O3 remains leaf-only | typed block IDs; work bounded by the fixed 128-instruction caller budget | 5,347/5,347; zero fatal | not rerun for output-neutral prerequisite | complete, `9fb2b10b` |
-| R9a | canonical source-lowered `cmp` value identity | PA15 normative contract and exact course reducer; PA37 object roundtrip; 147 PA15--PA28 references regenerated in place | frozen O0 +1,432 B; maximum +4,200 B; 6,836,572-byte O3 LowIR exact parse/dump roundtrip | old/new median O0 wall 4.73/4.72 s, user 4.23/4.26 s; maximum wall 5.20/5.20 s, user 4.71/4.69 s; direct compact types, no new pass or text identity | 5,349/5,349; zero fatal, 31 warnings | pending required clean O0 lane | implementation and fixture gate complete; commit pending |
-| R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O3 exact/behavior/work-counter fixtures | pending | retain 40-instruction callee and 128-instruction caller caps; pending measured policy | pending | pending | blocked on R9a |
+| R9a | canonical source-lowered `cmp` value identity | PA15 normative contract and exact course reducer; PA37 object roundtrip; 147 PA15--PA28 references regenerated in place | frozen O0 +1,432 B; maximum +4,200 B; 6,836,572-byte O3 LowIR exact parse/dump roundtrip | old/new median O0 wall 4.73/4.72 s, user 4.23/4.26 s; maximum wall 5.20/5.20 s, user 4.71/4.69 s; direct compact types, no new pass or text identity | 5,349/5,349; zero fatal, 31 warnings | clean O0: self 19.49 s / inception 153.97 s, timed separately; all matches | complete, `45b15f22` |
+| R9b | bounded late inlining of small callful/multi-block optimized callees | PA37 O3 exact/behavior/work-counter fixtures | pending | retain 40-instruction callee and 128-instruction caller caps; pending measured policy | pending | pending | ready after R9a |
 
 ## Completion criteria
 
