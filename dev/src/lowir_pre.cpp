@@ -168,6 +168,7 @@ lowir_model::ValueId find_available_value(
 
 Instruction make_phi(
     const Instruction & expression,
+    const lowir_model::LowType & result_type,
     const std::vector<std::size_t> & predecessors,
     const std::vector<lowir_model::ValueId> & values,
     const Function & function)
@@ -175,7 +176,7 @@ Instruction make_phi(
   Instruction result;
   result.kind = Instruction::IK_PHI;
   result.dest = expression.dest;
-  result.type = expression.type;
+  result.type = result_type;
   result.args.reserve(predecessors.size() * 2);
   for(std::size_t index = 0; index < predecessors.size(); ++index) {
     result.args.push_back(label_operand(function.blocks[predecessors[index]].id));
@@ -288,6 +289,8 @@ bool eliminate_partial_redundancies(
       const Instruction & expression = instructions[index];
       if(!cse_eligible(expression.kind) || !expression.dest.valid() ||
          expression.debug_location.present()) continue;
+      const lowir_model::LowType result_type =
+        lowir_model::lowir_value_type(*function, expression.dest);
       const ExpressionKey key = expression_key(expression);
       auto found = lists.find(key);
       if(found == lists.end() || found->second.count < 2) continue;
@@ -339,7 +342,7 @@ bool eliminate_partial_redundancies(
         if(missing[edge]) {
           Instruction inserted = expression;
           inserted.dest = lowir_model::append_lowir_fresh_generated_value(
-            *function, expression.type);
+            *function, result_type);
           values[edge] = inserted.dest;
           insertions[predecessors[edge]].push_back(inserted);
           add_occurrence(key, predecessors[edge], inserted.dest,
@@ -347,7 +350,7 @@ bool eliminate_partial_redundancies(
           ++inserted_expressions;
         }
       phis[block].push_back(make_phi(
-        expression, predecessors, values, *function));
+        expression, result_type, predecessors, values, *function));
       if(remove[block].empty()) remove[block].assign(original_size, 0);
       remove[block][index] = 1;
       ++inserted_phis;

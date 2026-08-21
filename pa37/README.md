@@ -235,7 +235,8 @@ value. It must additionally support these conservative loop transforms:
   to retain the facts their metadata permits
 - eliminating a fully redundant pure expression at an ordinary join by
   replacing the join computation with a `phi` of the available predecessor
-  values
+  values; the phi and any inserted predecessor computation use the original
+  expression's result type, including `ptr` for an `addr` result
 - eliminating a partially redundant expression only when the missing
   predecessor has a single successor, every operand is available there, and
   moving the operation cannot introduce a trap or other observable behavior;
