@@ -153,6 +153,12 @@ struct Stats
   std::size_t promote_phi_loads = 0;
   std::size_t promote_phi_budget_skips = 0;
   std::size_t promote_peak_transient_bytes = 0;
+  std::size_t small_object_runs = 0;
+  std::size_t small_object_changes = 0;
+  std::size_t small_object_candidates = 0;
+  std::size_t small_objects_promoted = 0;
+  std::size_t small_object_memory_rewrites = 0;
+  std::size_t small_object_copies_rewritten = 0;
   std::size_t dead_store_runs = 0;
   std::size_t dead_store_changes = 0;
   std::size_t cleanup_resume_runs = 0;
@@ -175,6 +181,7 @@ struct Stats
   std::uint64_t local_slot_nanoseconds = 0;
   std::uint64_t remove_slot_nanoseconds = 0;
   std::uint64_t promote_slot_nanoseconds = 0;
+  std::uint64_t small_object_nanoseconds = 0;
   std::uint64_t dead_store_nanoseconds = 0;
   std::uint64_t cleanup_resume_nanoseconds = 0;
   std::uint64_t cleanup_tail_nanoseconds = 0;

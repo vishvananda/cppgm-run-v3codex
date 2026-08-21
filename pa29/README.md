@@ -721,6 +721,10 @@ strategies include:
   not overlap a dereference base or index for other 64-bit values
 - compare the exact target-byte cost of a fixed small `zero_bytes` with its
   `rep stosb` setup and use direct zero stores only when they are smaller
+- encode a 1-, 2-, 4-, or 8-byte `copy_bytes` as one complete scalar load and
+  store when that is cheaper than string-instruction setup; choose the scratch
+  from the MIR instruction's declared clobber set and keep both logical
+  address registers intact until their last use
 - carry a sole-use load's typed frame, global, dereference, or indexed address
   into an immediately following legal integer right operand, keeping its
   address inputs live until the consuming instruction

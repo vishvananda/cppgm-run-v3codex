@@ -189,6 +189,14 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.promote_phi_budget_skips
 		 << " promote_peak_transient_bytes="
 		 << stats.promote_peak_transient_bytes
+		 << " small_object_runs=" << stats.small_object_runs
+		 << " small_object_changes=" << stats.small_object_changes
+		 << " small_object_candidates=" << stats.small_object_candidates
+		 << " small_objects_promoted=" << stats.small_objects_promoted
+		 << " small_object_memory_rewrites="
+		 << stats.small_object_memory_rewrites
+		 << " small_object_copies_rewritten="
+		 << stats.small_object_copies_rewritten
 		 << " dead_store_runs=" << stats.dead_store_runs
 		 << " dead_store_changes=" << stats.dead_store_changes
 		 << " cleanup_resume_runs=" << stats.cleanup_resume_runs
@@ -214,6 +222,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " local_slot_ns=" << stats.local_slot_nanoseconds
 		 << " remove_slot_ns=" << stats.remove_slot_nanoseconds
 		 << " promote_slot_ns=" << stats.promote_slot_nanoseconds
+		 << " small_object_ns=" << stats.small_object_nanoseconds
 		 << " dead_store_ns=" << stats.dead_store_nanoseconds
 		 << " cleanup_resume_ns=" << stats.cleanup_resume_nanoseconds
 		 << " cleanup_tail_ns=" << stats.cleanup_tail_nanoseconds

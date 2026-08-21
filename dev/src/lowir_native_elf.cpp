@@ -1070,6 +1070,7 @@ bool prepare_explicit_operands(CodeBuffer & out,
     return true;
   }
   if(instruction.opcode == mir_model::MirInstruction::MI_COPY_BYTES) {
+    if(emit_small_copy_bytes(out, instruction)) return true;
     require_operands(instruction, 2);
     const X64Register destination = require_register(instruction.operands[0]);
     const X64Register source = require_register(instruction.operands[1]);

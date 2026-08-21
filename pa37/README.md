@@ -221,6 +221,13 @@ Each incoming value must have the phi result type. A type-changing `copy` that
 feeds a promoted slot must therefore remain, and promotion must insert an
 ordinary typed `copy` on a predecessor edge when another value needs the slot
 type before it can become a phi input.
+`-O2` must also scalar-replace a local `obj<1>`, `obj<2>`, `obj<4>`, or
+`obj<8>` slot when its complete storage is consistently accessed as one
+same-sized scalar value. Complete `copyobj` and `zeroinit` operations may then
+be expressed as scalar loads, stores, and zero values before ordinary slot
+promotion. The object must remain unchanged if its address escapes, an access
+uses a nonzero or partial projection, its scalar access types disagree, or an
+atomic or otherwise unmodelled operation can observe its storage.
 Beyond the direct slot cleanup already allowed at `-O1`, `-O2` also removes
 dead stores to promoted slots when no observable load can see the stored
 value. It must additionally support these conservative loop transforms:
@@ -408,6 +415,13 @@ phis with an iterated dominance-frontier worklist. Dense block epochs let one
 set of scratch vectors serve every slot. Keep the work proportional to direct
 slot accesses, relevant control-flow edges, and inserted phis, and apply an
 explicit growth bound before adding merge instructions.
+
+Small-object scalar replacement can reuse dense value-indexed address facts
+and slot-indexed candidate facts. Trace only typed `addr`, pointer `copy`, and
+`index` operations, reject a candidate as soon as an unsupported use is seen,
+and hand the resulting scalar slot to the ordinary promotion pass. A
+union/find over complete `copyobj` edges lets connected temporary objects share
+one observed scalar type without string keys or repeated instruction scans.
 
 For redundant-load elimination, derive compact location identities from the
 typed `addr` and `index` operations. Sparse memory versions placed through the

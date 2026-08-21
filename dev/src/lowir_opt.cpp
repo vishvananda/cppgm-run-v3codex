@@ -13,6 +13,7 @@
 #include "lowir_pre.h"
 #include "lowir_slot_forward_o1.h"
 #include "lowir_slot_promotion.h"
+#include "lowir_small_object_promotion.h"
 
 #include <algorithm>
 #include <chrono>
@@ -2514,6 +2515,10 @@ bool timed_function_pass(FunctionPass pass, Function * function,
     detailed_runs = &Stats::promote_slot_runs;
     detailed_changes = &Stats::promote_slot_changes;
     detailed_nanoseconds = &Stats::promote_slot_nanoseconds;
+  } else if(pass == promote_small_objects) {
+    detailed_runs = &Stats::small_object_runs;
+    detailed_changes = &Stats::small_object_changes;
+    detailed_nanoseconds = &Stats::small_object_nanoseconds;
   } else if(pass == eliminate_dead_slot_stores) {
     detailed_runs = &Stats::dead_store_runs;
     detailed_changes = &Stats::dead_store_changes;
@@ -2704,6 +2709,12 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_dce(&function, boundaries, stats);
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+    }
+    if(level >= 2 && timed_function_pass(promote_small_objects, &function,
+        stats, &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
+      timed_dce(&function, boundaries, stats);
+      timed_function_pass(remove_dead_slots, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
     if(level >= 2 && timed_function_pass(promote_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {

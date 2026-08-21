@@ -29,5 +29,8 @@ void emit_address_immediate_store(
     elf_detail::CodeBuffer & out, const mir_model::MirOperand & address,
     std::uint64_t value, unsigned width,
     const mir_model::MirFunction & function);
+bool emit_small_copy_bytes(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction);
 
 }  // namespace lowir_native

@@ -1,42 +1,28 @@
 function @select_address(%choose : i64) -> i64 [no_inline=yes] {
-  slot $value : obj<8x8>
-
   block ^entry:
     branch %choose, ^left, ^right
 
   block ^left:
-    %left_address = addr $value
-    store i64 11, %left_address
     jump ^join
 
   block ^right:
-    %right_address = addr $value
-    store i64 22, %right_address
     jump ^join
 
   block ^join:
-    %joined_address = phi ptr [^left: %left_address, ^right: %right_address]
-    %result = load i64 %joined_address
-    return i64 %result
+    %t0 = phi i64 [^left: 11, ^right: 22]
+    return i64 %t0
 }
 function @select_partial_address(%choose : i64) -> i64 [no_inline=yes] {
-  slot $value : obj<8x8>
-
   block ^entry:
     branch %choose, ^left, ^right
 
   block ^left:
-    %left_address = addr $value
-    store i64 33, %left_address
     jump ^join
 
   block ^right:
-    zeroinit 8x8 $value
-    %t0 = addr $value
     jump ^join
 
   block ^join:
-    %joined_address = phi ptr [^left: %left_address, ^right: %t0]
-    %result = load i64 %joined_address
-    return i64 %result
+    %t1 = phi i64 [^left: 33, ^right: 0]
+    return i64 %t1
 }

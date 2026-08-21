@@ -143,4 +143,25 @@ void emit_address_immediate_store(
   } else throw std::logic_error("unsupported native immediate-store address");
 }
 
+bool emit_small_copy_bytes(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction)
+{
+  const std::size_t bytes = instruction.byte_count;
+  if(bytes != 1 && bytes != 2 && bytes != 4 && bytes != 8) return false;
+  if(instruction.operands.size() != 2 ||
+     instruction.operands[0].kind != mir_model::MirOperand::OP_REG ||
+     instruction.operands[1].kind != mir_model::MirOperand::OP_REG)
+    throw std::logic_error("small native copy requires two address registers");
+  const X64Register destination = instruction.operands[0].reg;
+  const X64Register source = instruction.operands[1].reg;
+  // Reuse an existing MI_COPY_BYTES clobber so this target choice does not
+  // change MIR liveness. The source may itself be the scratch after its load.
+  const X64Register scratch = destination != XR_RCX ? XR_RCX :
+    (destination != XR_RSI ? XR_RSI : XR_RDI);
+  emit_load(out, scratch, source, 0, static_cast<unsigned>(bytes * 8));
+  emit_store(out, destination, 0, scratch, static_cast<unsigned>(bytes * 8));
+  return true;
+}
+
 }  // namespace lowir_native
