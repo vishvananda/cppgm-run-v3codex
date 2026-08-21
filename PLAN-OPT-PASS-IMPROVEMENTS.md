@@ -1557,6 +1557,25 @@ recognize STL or demangled spellings.  The earlier unrestricted 40-instruction
 experiment remains evidence that body-count reduction alone can grow text and
 fail to improve runtime.
 
+The measured diagonal sweep rejects every broader general policy.  All three
+generated-self samples per point are deterministic:
+
+| Late body/caller cap | Frozen object | Frozen text | Definitions | O1-self compiler | Frozen wall median | Frozen user median |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 6 / 128 | 2,026,024 B | 528,724 B | 2,395 | 13,131,784 B | 19.84 s | 19.25 s |
+| 8 / 192 | 2,021,944 B | 533,540 B | 2,373 | 13,177,760 B | 20.14 s | 19.50 s |
+| 12 / 320 | 2,023,936 B | 545,014 B | 2,347 | 13,324,504 B | 19.73 s | 19.16 s |
+| 18 / 512 | 2,031,880 B | 561,894 B | 2,304 | 13,522,576 B | 21.70 s | 21.01 s |
+
+The 24/768 point is rejected before self-hosting: it produces a 2,148,064-byte
+object with 660,142 bytes of text and raises the one-run host compile from
+5.79/5.19 seconds wall/user to 6.58/5.96 seconds.  The 8/192 point saves only
+4,080 object bytes while slowing the generated compiler by 1.5%.  The 12/320
+runtime movement is noise, while frozen text grows by 16,290 bytes and the
+compiler by 192,720 bytes.  The larger points are clearly worse.  Restore
+6/128 exactly.  A future broader policy needs a measured typed benefit model;
+raising size and budget caps alone is not an optimization.
+
 #### R10i-c. Admit recursive members once without recursive expansion
 
 The current test `call_graph_.recursive[target]` rejects every call to a
@@ -1792,7 +1811,7 @@ Fill one row for every retained or rejected phase:
 | R10g | one post-prune definition-removing cascade plus wide-compare corrective | PA37 exact cascade and normative contract; PA29 structural, predicate-behavior, and pressure reducers; PA29 Design Note | vs R10e/f O1: object -17,856 B, text +5,373 B, `.eh_frame` -1,708 B, 64 fewer definitions; 59 bodies transferred | exact O1-self A/B wall 17.48 to 17.78 s (+1.7%), user 16.93 to 17.27 s (+2.0%); one compact CSR graph and dense caller byte; no fixed point | 5,362/5,362; zero fatal, 32 warnings | O1 self 20.11 s / 462.13 user / 228,468 KiB; final 32-way lane pending | complete, backend `2e6be885`, inliner `b53bbde4` |
 | R10h | admit EH-control-free callees inside an active caller EH region; atomic-load pressure corrective | PA37 O1 inherited-EH and direct-throw exact reducers; PA29 atomic-load behavior/MIR pressure reducer; PA29/PA37 normative and Design Notes | vs R10g: object -38,984 B, text +10,868 B, `.eh_frame` -3,956 B, LSDA +167 B, 135 fewer definitions; 96 post-prune bodies / 5,465 instructions | host A/B wall -0.36%, user +0.20%, RSS -0.91%; exact-self raw medians wall +0.9%, user +0.8%, RSS -0.1%; no new graph or string-keyed state | 5,365/5,365; zero fatal, 32 warnings | O1 self 19.49 s / 463.69 user / 228,696 KiB; final combined 32-way inception pending | complete, backend `6e4c9fb8`, inliner `a8062b96` |
 | R10i-a | cleanup-coupled nonrecursive convergence in one callee-first traversal | PA37 O1 eight-level cleanup-transition reducer with adversarial definition order and two parents; existing deterministic budget fixture retained; no PA13 change | frozen O1 byte-identical at six/128; reducer removes two retained wrapper calls and all newly unreachable calls | host A/B wall +0.58%, user +0.64%, RSS +0.73%; exact-self wall -1.1%, user -1.0%, RSS +0.6%; 1x/2x/4x work counters exactly linear; no queue/string state | 5,366/5,366; zero fatal, 32 warnings | repeat O1 self 19.31 s / 465.31 user / 228,472 KiB; final combined 32-way inception pending | complete, `96aad279` |
-| R10i-b | broader measured O1 profitability | PA37 exact boundary fixture at retained cap; update intentionally moved O1 fixtures in place | sweep callful caps 8/12/18/24 and caller budgets 192/320/512/768; select by generated-self runtime plus code shape | immutable exact-O1-self A/B; reject >3% compile-time/RSS regression without approved larger runtime win | pending | final retained phase only | planned after R10i-a |
+| R10i-b | broader measured O1 profitability | no fixture or contract movement because no broader point is retained | 8/192: object -4,080 B but text +4,816 B; 12/320: object -2,088 B but text +16,290 B; 18/512 and 24/768 grow object and text | exact-self medians vs 6/128: 8/192 +1.5%, 12/320 -0.6% noise, 18/512 +9.4%; 24/768 host compile +13.6% wall | R10i-a baseline remains 5,366/5,366, zero fatal | four exact O1 self compilers built; no retained policy, so no inception | complete, all broader points rejected; exact 6/128 restored |
 | R10i-c | bounded external-to-recursive-SCC tail | PA37 self/mutual same-SCC negatives, external positive, retained recursive call, and wrapper propagation | retain only if recursive census/profile and generated-self A/B show material value | stable external-call snapshot; cloned recursive calls never enter snapshot; subsequent queue excludes recursive targets | pending | final retained phase only | planned measurement; may be rejected |
 
 ## Completion criteria
