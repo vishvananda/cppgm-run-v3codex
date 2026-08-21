@@ -1,6 +1,6 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--4 are complete through `8bb6be47`; Ranks 5--7 and
+Status: active; Ranks 1--5 are complete through `a04e5900`; Ranks 6--7 and
 the final self/inception gate remain
 
 Date: 2026-08-21
@@ -793,6 +793,44 @@ edges, fixed-register conflicts, XMM values, EH, callee saves, and spill
 fallback.  If only block-local copy selection changes, the earliest reducer
 may be PA38 O1; whole-function allocation remains O2.
 
+#### Rank 5 result
+
+The retained implementation uses the existing dense, typed `FunctionFacts`
+rather than introducing a virtual-register LowIR or another public contract.
+O2 values that are live across an edge may retain their definition-time
+physical GPR or XMM location when call clobbers, fixed-register uses, narrow
+aliases, EH, and cyclic pressure prove that location safe.  A definition-time
+frame fallback supports later acyclic pressure.  Cyclic intervals reserve one
+register of headroom because changing an earlier emitted instruction's assumed
+location after a backedge has been emitted would be unsound.  Call-crossing
+GPRs use callee-saved registers; call-crossing XMM values and all EH functions
+keep the conservative frame path.
+
+The implementation maintains fixed-size register-indexed live-location lists,
+allocates unnamed diagnostic/frame presentation only when needed, reuses safe
+spill homes, and removes physical `mov reg, reg` and `fmov xmm, xmm` identities
+in the ordinary PA38 cleanup pass.  Frame-home and location planning were
+separated into real `.cpp` owners shared by `cppgm++` and `lowir2native`; the
+main lowerer is 2,921 lines and the PA39 audit has no fatal size finding.  No
+LowIR surface change, PA13 fixture, or student scaffold edit is needed.
+
+The frozen O2 workload retains 853 edge values and removes 235 identity moves.
+Relative to final Rank 4, the object falls from 2,143,000 to 2,142,080 bytes,
+`.text*` from 579,593 to 577,716 bytes, and decoded instructions from 139,715
+to 139,627.  Alternating immutable binaries gave 5.04 s versus 5.06 s median
+wall, 4.58 s versus 4.61 s median user time, and 360,760 versus 360,660 KiB
+median peak RSS: compile cost is neutral within host noise.
+
+Active PA38 O1/O2 structural, behavior, and debug reducers cover identity
+cleanup, integer and XMM edge retention, call crossings, EH rejection, spill
+fallback, and cyclic pressure.  Existing PA38 debug references were refreshed
+where already-active direct stores/call rematerialization and copy cleanup had
+left stale MIR; the reference still records the resulting debug locations.
+The full report passes 5,321/5,321 and the audit has zero fatal findings.  A
+full report also found a pre-existing narrow signed frame-to-f80 encoder bug;
+the PA29 behavior reducer and correction are retained in `3a7ccfeb` rather
+than hiding it behind PA38 placement.
+
 ### Rank 6: interprocedural scalar and argument work
 
 Use the rank-1 graph and summaries; do not build a second IPA graph.
@@ -1005,7 +1043,7 @@ Fill one row for every retained or rejected phase:
 | R2b | public phi-capable scalar replacement | PA13 syntax/scaffold; PA29 lowering/correctives; PA37 O2 and object roundtrip | vs Rank 1: LowIR -4.8%, object -0.1%, text -0.3%; functions unchanged | wall -6.6%, user -4.4%, RSS +0.1%; optimizer -50.8%, promotion 8.1x faster | 5,303/5,303; zero fatal | self 18.24 s / inception 1:41.31; all 197 objects and final binary match | complete, `84b4c184`, `01aebb78`, `9f0538be`, corrective `9c63791f` |
 | R3 | LICM and loop simplification | PA37 O1/O2 | active course reducers | +0.6% optimizer sample | +3,480 B object | 5,309/5,309 plus debug lane | complete; frozen benefit absent, +1.5% generated-self remains below gate |
 | R4 | GVN/load elimination/PRE | PA37 O1/O2 typed GVN, memory, PRE, budget, EH, and behavior reducers; no PA13 movement | -682 LowIR instructions, -2,208 B object, -2,721 B text, -616 decoded instructions vs R3 | wall +0.2%, user +0.5%, RSS +0.1%; memory 6.09 ms, PRE 5.31 ms | 5,315/5,315; zero fatal | final lane deferred until compiler stops changing | complete, `50b2b037`, `c950139c`, `1a71f6b4`, `8bb6be47` |
-| R5 | MIR placement/coalescing | PA38 O2 and debuginfo | pending | pending | pending | pending | not started |
+| R5 | MIR placement/coalescing | PA38 O1/O2 structure, behavior, and debug; PA29 narrow x87 corrective | object -920 B, text -1,877 B, decoded -88; 853 edge retains and 235 identity moves | wall +0.4%, user +0.7%, RSS -0.03%; overlapping host-noise range | 5,321/5,321; zero fatal | final lane deferred until compiler stops changing | complete, corrective `3a7ccfeb`, Rank 5 `a04e5900` |
 | R6 | IPA argument/scalar work | PA37 O2/O3 | pending | pending | pending | pending | not started |
 | R7 | distinct O3 | PA37/PA38 O3 plus help/scaffolds | pending | pending | pending | pending | not started |
 
