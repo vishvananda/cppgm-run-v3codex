@@ -70,6 +70,7 @@ struct LoopForest
 Graph build_graph(const lowir_model::Function & function,
                   lowir_opt::Stats * stats);
 DominatorTree dominators(const Graph & graph, lowir_opt::Stats * stats);
+std::vector<EdgeList> build_dominator_children(const DominatorTree & dom);
 std::vector<EdgeList> dominance_frontiers(const Graph & graph,
                                           const DominatorTree & dom);
 LoopForest discover_loops(const lowir_model::Function & function,
@@ -84,6 +85,7 @@ public:
 
   const Graph & graph();
   const DominatorTree & dominator_tree();
+  const std::vector<EdgeList> & dominator_children();
   const std::vector<EdgeList> & dominance_frontier();
   const LoopForest & loop_forest();
   void invalidate_cfg();
@@ -94,11 +96,13 @@ private:
   lowir_opt::Stats * stats_;
   Graph graph_;
   DominatorTree dominators_;
+  std::vector<EdgeList> dominator_children_;
   std::vector<EdgeList> frontiers_;
   LoopForest loops_;
   std::size_t epoch_;
   bool graph_valid_;
   bool dominators_valid_;
+  bool dominator_children_valid_;
   bool frontiers_valid_;
   bool loops_valid_;
 };

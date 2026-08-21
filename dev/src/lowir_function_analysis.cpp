@@ -233,14 +233,22 @@ DominatorTree dominators(const Graph & graph, lowir_opt::Stats * stats)
   return result;
 }
 
+std::vector<EdgeList> build_dominator_children(const DominatorTree & dom)
+{
+  std::vector<EdgeList> children(dom.immediate.size());
+  const std::size_t count = dom.immediate.size();
+  for(std::size_t block = 1; block < count; ++block)
+    if(dom.immediate[block] != kNoBlock && dom.immediate[block] != block)
+      children[dom.immediate[block]].push_back(block);
+  return children;
+}
+
 std::vector<EdgeList> dominance_frontiers(const Graph & graph,
                                           const DominatorTree & dom)
 {
   const std::size_t count = graph.successors.size();
-  std::vector<EdgeList> result(count), children(count);
-  for(std::size_t block = 1; block < count; ++block)
-    if(dom.immediate[block] != kNoBlock && dom.immediate[block] != block)
-      children[dom.immediate[block]].push_back(block);
+  std::vector<EdgeList> result(count);
+  const std::vector<EdgeList> children = build_dominator_children(dom);
   struct Frame { std::size_t block; std::size_t child; };
   std::vector<Frame> stack;
   std::vector<std::size_t> postorder;
@@ -406,7 +414,8 @@ LoopForest discover_loops(const lowir_model::Function & function,
 FunctionAnalysis::FunctionAnalysis(const lowir_model::Function & function,
                                    lowir_opt::Stats * stats)
   : function_(function), stats_(stats), epoch_(1), graph_valid_(false),
-    dominators_valid_(false), frontiers_valid_(false), loops_valid_(false)
+    dominators_valid_(false), dominator_children_valid_(false),
+    frontiers_valid_(false), loops_valid_(false)
 {}
 
 const Graph & FunctionAnalysis::graph()
@@ -431,6 +440,14 @@ const DominatorTree & FunctionAnalysis::dominator_tree()
   dominators_valid_ = true;
   if(stats_) ++stats_->dominator_analysis_builds;
   return dominators_;
+}
+
+const std::vector<EdgeList> & FunctionAnalysis::dominator_children()
+{
+  if(dominator_children_valid_) return dominator_children_;
+  dominator_children_ = build_dominator_children(dominator_tree());
+  dominator_children_valid_ = true;
+  return dominator_children_;
 }
 
 const std::vector<EdgeList> & FunctionAnalysis::dominance_frontier()
@@ -465,6 +482,7 @@ void FunctionAnalysis::invalidate_cfg()
 {
   graph_valid_ = false;
   dominators_valid_ = false;
+  dominator_children_valid_ = false;
   frontiers_valid_ = false;
   loops_valid_ = false;
   ++epoch_;

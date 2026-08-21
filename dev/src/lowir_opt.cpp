@@ -856,20 +856,83 @@ bool simplify_values_with_analysis(
     }
   }
 
-  typedef PassAllocator<std::pair<const ExpressionKey, Fact> >
+  typedef PassAllocator<std::pair<const ExpressionKey, std::size_t> >
     ExpressionAllocator;
+  struct ScopedExpression
+  {
+    Fact fact;
+    std::size_t key;
+    std::size_t previous;
+  };
+  struct BlockEvent
+  {
+    std::size_t block;
+    bool entering;
+  };
   std::vector<Fact> facts(function->value_names.size());
   std::vector<unsigned char> known_facts(function->value_names.size(), 0);
-  std::unordered_map<ExpressionKey, Fact, ExpressionKeyHash,
+  std::unordered_map<ExpressionKey, std::size_t, ExpressionKeyHash,
     std::equal_to<ExpressionKey>, ExpressionAllocator> expressions(
       0, ExpressionKeyHash(), std::equal_to<ExpressionKey>(),
       ExpressionAllocator(&arena));
+  std::vector<std::size_t> expression_heads;
+  std::vector<ScopedExpression> scoped_expressions;
   std::vector<DefinitionFact> definitions(function->value_names.size());
   std::vector<unsigned char> known_definitions(
     function->value_names.size(), 0);
   expressions.reserve(instruction_total / 2 + 1);
+  expression_heads.reserve(instruction_total / 2 + 1);
+  scoped_expressions.reserve(instruction_total / 2 + 1);
+
+  std::vector<lowir_analysis::EdgeList> owned_dom_children;
+  const std::vector<lowir_analysis::EdgeList> * dom_children = 0;
+  if(analysis && function->blocks.size() != 1)
+    dom_children = &analysis->dominator_children();
+  else {
+    owned_dom_children = lowir_analysis::build_dominator_children(dom);
+    dom_children = &owned_dom_children;
+  }
+  struct TraversalFrame
+  {
+    std::size_t block;
+    std::size_t child;
+  };
+  std::vector<BlockEvent> traversal;
+  std::vector<TraversalFrame> traversal_stack;
+  std::vector<unsigned char> scheduled(function->blocks.size(), 0);
+  for(std::size_t root = 0; root < function->blocks.size(); ++root) {
+    if(scheduled[root] || (root != 0 && dom.preorder[root] != 0)) continue;
+    scheduled[root] = 1;
+    traversal.push_back(BlockEvent{root, true});
+    traversal_stack.push_back(TraversalFrame{root, 0});
+    while(!traversal_stack.empty()) {
+      TraversalFrame & frame = traversal_stack.back();
+      if(frame.child < (*dom_children)[frame.block].size()) {
+        const std::size_t child =
+          (*dom_children)[frame.block][frame.child++];
+        scheduled[child] = 1;
+        traversal.push_back(BlockEvent{child, true});
+        traversal_stack.push_back(TraversalFrame{child, 0});
+      } else {
+        traversal.push_back(BlockEvent{frame.block, false});
+        traversal_stack.pop_back();
+      }
+    }
+  }
+  std::vector<std::size_t> scope_marks(
+    function->blocks.size(), 0);
   bool changed = false;
-  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+  for(std::size_t event = 0; event < traversal.size(); ++event) {
+    const std::size_t block = traversal[event].block;
+    if(!traversal[event].entering) {
+      while(scoped_expressions.size() > scope_marks[block]) {
+        const ScopedExpression & scoped = scoped_expressions.back();
+        expression_heads[scoped.key] = scoped.previous;
+        scoped_expressions.pop_back();
+      }
+      continue;
+    }
+    scope_marks[block] = scoped_expressions.size();
     std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
     const std::size_t original_size = instructions.size();
@@ -935,22 +998,41 @@ bool simplify_values_with_analysis(
 
       if(cse_eligible(ins.kind) && ins.dest.valid()) {
         const ExpressionKey key = expression_key(ins);
-        const auto found = expressions.find(key);
+        if(stats) ++stats->gvn_expression_probes;
+        const auto found = expressions.emplace(
+          key, expression_heads.size());
+        if(found.second) {
+          expression_heads.push_back(kNoBlockIndex);
+          if(stats) ++stats->gvn_expression_keys;
+        }
+        const std::size_t key_id = found.first->second;
+        const std::size_t head = expression_heads[key_id];
         const bool cross_block_guard = function_has_eh &&
           (ins.kind == Instruction::IK_ADDR || ins.kind == Instruction::IK_INDEX) &&
-          found != expressions.end() && found->second.block != block;
-        if(found != expressions.end() && !cross_block_guard &&
-           dom.dominates(found->second.block, block)) {
-          facts[ins.dest] = Fact{found->second.value, block};
+          head != kNoBlockIndex &&
+          scoped_expressions[head].fact.block != block;
+        if(head != kNoBlockIndex && !cross_block_guard) {
+          facts[ins.dest] = Fact{
+            scoped_expressions[head].fact.value, block};
           known_facts[ins.dest] = 1;
           changed = true;
-          if(stats) { ++stats->rewrites; ++stats->worklist_pushes; }
+          if(stats) {
+            ++stats->gvn_expression_hits;
+            ++stats->rewrites;
+            ++stats->worklist_pushes;
+          }
           continue;
         }
         Operand produced;
         produced.kind = Operand::OP_TEMP;
         produced.value = ins.dest;
-        expressions[key] = Fact{produced, block};
+        scoped_expressions.push_back(ScopedExpression{
+          Fact{produced, block}, key_id, head});
+        expression_heads[key_id] = scoped_expressions.size() - 1;
+        if(stats)
+          stats->gvn_expression_peak_scope = std::max(
+            stats->gvn_expression_peak_scope,
+            scoped_expressions.size());
       }
       if(ins.dest.valid()) {
         definitions[ins.dest] = DefinitionFact{

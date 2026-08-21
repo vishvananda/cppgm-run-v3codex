@@ -77,6 +77,10 @@ struct Stats
   std::size_t simplify_runs = 0;
   std::size_t simplify_changes = 0;
   std::size_t simplify_candidate_skips = 0;
+  std::size_t gvn_expression_probes = 0;
+  std::size_t gvn_expression_hits = 0;
+  std::size_t gvn_expression_keys = 0;
+  std::size_t gvn_expression_peak_scope = 0;
   std::size_t dce_runs = 0;
   std::size_t dce_changes = 0;
   std::size_t dce_candidate_skips = 0;

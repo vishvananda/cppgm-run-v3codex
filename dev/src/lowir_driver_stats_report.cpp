@@ -91,6 +91,11 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " simplify_runs=" << stats.simplify_runs
 		 << " simplify_changes=" << stats.simplify_changes
 		 << " simplify_candidate_skips=" << stats.simplify_candidate_skips
+		 << " gvn_expression_probes=" << stats.gvn_expression_probes
+		 << " gvn_expression_hits=" << stats.gvn_expression_hits
+		 << " gvn_expression_keys=" << stats.gvn_expression_keys
+		 << " gvn_expression_peak_scope="
+		 << stats.gvn_expression_peak_scope
 		 << " dce_runs=" << stats.dce_runs
 		 << " dce_changes=" << stats.dce_changes
 		 << " dce_candidate_skips=" << stats.dce_candidate_skips
