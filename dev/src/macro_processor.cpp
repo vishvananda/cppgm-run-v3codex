@@ -959,8 +959,18 @@ private:
 		std::ifstream input(path.c_str(), std::ios::in | std::ios::binary);
 		if (!input)
 			throw std::runtime_error("unable to open source file: " + path);
-		return std::string(std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>());
+		input.seekg(0, std::ios::end);
+		const std::streamoff size = input.tellg();
+		if (size < 0)
+			return std::string(std::istreambuf_iterator<char>(input),
+				std::istreambuf_iterator<char>());
+		std::string result(static_cast<std::size_t>(size), '\0');
+		input.seekg(0, std::ios::beg);
+		if (size != 0)
+			input.read(&result[0], size);
+		if (!input)
+			throw std::runtime_error("unable to read source file: " + path);
+		return result;
 	}
 
 	void AccumulateTokenization(const PPTokenizationStats& value)

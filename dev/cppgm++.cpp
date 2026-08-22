@@ -549,7 +549,16 @@ string read_source_file(const string & path)
 {
   ifstream input(path.c_str(), ios::in | ios::binary);
   if(!input) throw runtime_error("unable to open source file: " + path);
-  return string(istreambuf_iterator<char>(input), istreambuf_iterator<char>());
+  input.seekg(0, ios::end);
+  const streamoff size = input.tellg();
+  if(size < 0)
+    return string(istreambuf_iterator<char>(input),
+                  istreambuf_iterator<char>());
+  string result(static_cast<size_t>(size), '\0');
+  input.seekg(0, ios::beg);
+  if(size != 0) input.read(&result[0], size);
+  if(!input) throw runtime_error("unable to read source file: " + path);
+  return result;
 }
 
 char hex_digit(unsigned int value)
