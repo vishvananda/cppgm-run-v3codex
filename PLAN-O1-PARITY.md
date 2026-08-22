@@ -1,0 +1,263 @@
+# Plan: Generated-Code Parity With GCC and Clang at O1
+
+Status: active; P0 correctness gates are complete, P1 is next
+
+Date: 2026-08-22
+
+## Objective
+
+Close the remaining generated-code gap so that the compiler built by cppgm++
+at `-O1` compiles the pinned frozen source in the same time as the same
+source built by GCC or Clang at `-O1`.  The `f5bfd68e` matrix records the
+starting point: the GCC-O1 executable takes 6.06 seconds and the Clang-O1
+executable 5.73 seconds, while the cppgm++ self-O1 executable takes 17.11
+seconds.  Even cppgm++'s best level (O2, 14.93 seconds) is 2.7x slower than
+either host at O1, so most of the remaining gap is shared by every optimized
+level and cannot be closed by O1-only policy tuning.
+
+The acceptance target is a median frozen-compile wall time for the
+configuration-fair cppgm++ self-O1 executable within 10% of the better
+host-built O1 executable, measured by the established interleaved protocol,
+with the full report, zero-fatal audit, and clean 32-worker self/inception
+lanes intact.  Compile-time and RSS gates from `PLAN-OPT-PASS-IMPROVEMENTS.md`
+continue to apply to every phase.
+
+## Measured decomposition of the 2.8x
+
+All numbers are from cpu-clock profiles and object census of the immutable
+matrix executables compiling the pinned `semantic_overload.cpp`, plus
+`--stats` frozen compiles at the current tree.
+
+1. **Configuration skew, about 1.5 seconds.**  cppgm++ never defines
+   `__OPTIMIZE__`; its host-configuration snapshot is taken without `-O`
+   (`dev/gen_builtin_host_config.pl`).  GCC 15's Ubuntu libstdc++ enables
+   `_GLIBCXX_ASSERTIONS` whenever `__OPTIMIZE__` is absent
+   (`bits/c++config.h:597`), and assertions also force
+   `_GLIBCXX_EXTERN_TEMPLATE -1`.  Every cppgm++ compile therefore builds
+   hardened STL code with bounds checks in each accessor and instantiates
+   string bodies per translation unit, while the GCC/Clang matrix builds do
+   not.  A self-O1 rebuild with `_GLIBCXX_NO_ASSERTIONS` compiles the frozen
+   source in 15.43/14.91 seconds wall/user versus 16.91/16.43 (-8.8%), with a
+   byte-identical output object.  The matrix comparison is therefore partly
+   configuration, not code quality, and the fix is semantic truth rather than
+   a tuning trick: define `__OPTIMIZE__` when optimizing.  A GCC-O1 build of
+   the compiler **with** `_GLIBCXX_ASSERTIONS` compiles the frozen source in
+   6.36 seconds median versus 6.06 without: GCC absorbs the hardened
+   configuration almost for free because its inliner folds each check into a
+   cold branch, while the same configuration costs the generated compiler
+   about 1.5 seconds.  The configuration-fair codegen gap is therefore about
+   2.55x (15.43 versus 6.06) either way, and GCC's robustness to hardening
+   independently confirms the cold-successor cost rationale in P2.
+2. **Out-of-line tiny bodies, 40.1% of user samples.**  The self-O1 executable
+   defines 19,992 functions versus GCC's 4,839.  The profile puts 40.1% of
+   user-space samples in bodies GCC does not emit at all: `Token`'s move
+   constructor, `SyntaxArena::IsTag`, `FindDirectChildTag`, `Lexer::Take`,
+   `istreambuf_iterator` helpers, `vector`/`string` accessors, and
+   `__uninitialized_*` fill loops (2.77% in the `Operand` default-fill alone).
+   The current inliner's remaining rejection classes at O1 are size-driven:
+   8,504 `callee_size` plus 8,087 `prepared_size` rejections, against only
+   290 `callee_eh`, 12 `landing`, and 954 `no_inline` after Rank 11.
+3. **Per-body code quality, 51.7% of user samples at 2--4x.**  In bodies both
+   compilers emit, cppgm++ produces 2--4x the instructions: `Lexer::Peek` is
+   162 instructions with 47 frame accesses versus GCC's 61 with zero;
+   `Program::FindEntry` is 4.2x the bytes; `IsInRanges` 3.0x.  The concrete
+   deficiencies, all visible in one page of `Peek` disassembly, are:
+   - loop-invariant addresses stored to and reloaded from the frame three
+     times within ten instructions (no O1 load reuse; `promote_slot_runs=0`,
+     `memory_gvn_runs=0`, `pre_runs=0` at O1);
+   - boolean materialization chains (`sete; movzbl; movzbl; xor; cmp; jne`)
+     where GCC emits `test; je`, a consequence of the R9a canonical `i64`
+     comparison plus `u8` conversion never folding back into a branch;
+   - `planned_edge_register_retains=0` at O1
+     (`lowir_native_location_planning.cpp:136` requires level 2) and only 439
+     at O3, so nearly every cross-edge value round-trips through the frame:
+     of 116,191 O1 MIR instructions, about 74,000 are movement
+     (24,589 scalar-temporary, 21,573 call-boundary, 16,044 source-slot,
+     11,742 address-materialization);
+   - the `Operand` fill loop reloads the element pointer from the frame
+     before every field store and loads `kInvalidCompactId` from memory per
+     element instead of folding the constant; and
+   - exact pointer-difference division by a power-of-two element size emits
+     `idiv` instead of an arithmetic shift, while non-power-of-two sizes
+     already use the magic-multiply path.
+4. **Allocator and libc, about 4%.**  Not a current priority.
+
+## P0: correctness gates exposed by the no-assertions configuration (complete)
+
+The no-assertions configuration had never been self-hosted and exposed two
+latent bugs, both now fixed, with reducers in their earliest owning suites:
+
+- **Retained dereference carriers could be reallocated.**  A deferred
+  storage-only address fact caches a `deref(reg)` operand
+  (`lowir_native_index_lowering.h`), but when every parameter has a frame
+  home the incoming register backing that operand was never reserved in the
+  pool; `try_reserve_result_register`'s caller-saved fallback then handed
+  `%rdi` to an ordinary load and every later replay of the cached operand
+  read garbage.  The generated `PublishVariableInitializerActions` crashed on
+  the frozen source.  Carrier registers of a retained dereference are now
+  reserved at fact creation, following the pending-call-argument precedent.
+  PA29 behavior reducer `deferred-address-parameter-carrier-reuse` fails
+  (segfault) with the old backend and passes now; references were generated
+  through the documented local `REF_TEST_APP=../dev/lowir2native` path
+  because the pinned bundle predates the correction.  Commit `9b8a3bf9`.
+- **Member templates of extern-template classes were suppressed.**  The
+  explicit-instantiation-declaration mark in
+  `pa32_template_preemption_semantic.cpp` covered member templates, so
+  `to_string`'s `__resize_and_overwrite<lambda>` was never instantiated and
+  every no-assertions link failed.  An explicit instantiation covers only
+  ordinary members; a member-template specialization over a TU-local type can
+  never come from the library.  The mark now skips function-template
+  patterns.  PA32 course reducer
+  `200-extern-template-member-template-instantiation` links and runs only
+  with the fix.  Commit `348ad6c7`.
+
+Both fixes are output-neutral on the frozen workload: the maximum-level
+object remains byte-identical at SHA `2d62704d...` and deterministic across
+repeated compiles.  The full report passes 5,408/5,408 and the PA39 audit has
+zero fatal findings.
+
+## P1: host-configuration parity
+
+Define `__OPTIMIZE__` (value 1, matching host GCC) in the predefined-macro
+set whenever the driver's effective optimization level is at least one, for
+every tool that accepts `-O`.  Audit the host snapshot for the other
+level-conditioned macros: host GCC also defines `_FORTIFY_SOURCE 3` when
+optimizing; decide explicitly whether to mirror it (its glibc `_chk` wrappers
+mostly compile away under `__builtin_object_size` unknown) and record the
+decision.  Do not hardcode either macro into the snapshot; both must follow
+the compile's own level so `-O0` output is unchanged.
+
+Owning coverage: the preprocessor predefine surface (hosted host-config
+replay) gains a test that `__OPTIMIZE__` is absent at `-O0` and present at
+`-O1`/`-O2`/`-O3`, plus a driver-level test that a `_GLIBCXX_ASSERTIONS`
+bounds check disappears from an optimized hosted object.  Existing fixture
+movement is expected to be nil because course fixtures are freestanding; any
+hosted fixture that changes is regenerated in place and recorded.
+
+Gate: the self-O1 compiler rebuilt under the new default must reproduce the
+15.43-second measurement (already demonstrated with the explicit define), the
+frozen object must remain byte-identical, and because this changes the STL
+code compiled into every tool at every level, the full report, audit, clean
+32-worker O3 self/inception, and the explicit O0 inception lane must all
+pass.  Re-run the twelve-way matrix afterward so all later phases measure
+against configuration-fair numbers, and record the GCC-O1-with-assertions
+lane once for the historical record.
+
+## P2: inline the hot accessor class
+
+After P1, re-run the frozen census and a fresh generated-self profile, and
+add a call-site-frequency-weighted view (static call counts per callee from
+the object, cross-checked against profile samples) so multi-use hot callees
+such as the `Token` move constructor are ranked by dynamic weight rather
+than by retained-definition count, which hides them.
+
+Then revisit the size-rejection wall (8,504 + 8,087 rejections) with the
+R11h single-variable protocol, extended by one narrowly scoped cost feature:
+a provably cold successor -- a block whose terminator unconditionally reaches
+a `noreturn`/`unreachable` call -- is charged at zero weight, so a guard
+diamond (assert-style check, allocation-failure branch, growth slow path)
+scores as its hot path.  This is the surviving kernel of the rejected
+weighted-cost prototype, without its general weighting machinery.  Sweep the
+leaf cap, then the callful/multi-block cap, then caller growth, each alone,
+scored by exact interleaved generated-self timing; keep the smallest policy
+with a material win.  The targets that must inline for the phase to be
+accepted: `vector`/`string` element access, `Token(Token&&)`, `IsTag`,
+`FindDirectChildTag`, `TypeTable::Get`, `Lexer::Take`, and the
+`istreambuf_iterator` pair.
+
+## P3: fold boolean materialization into branches
+
+Kill the `cmp; sete; movzbl; movzbl; xor; cmp; jne` pattern: when an `i64`
+comparison result's only consumers are a `u8` conversion and/or a branch,
+emit the flags-consuming branch directly and materialize the boolean only
+when it is genuinely stored or passed.  This may live in native selection
+(PA29/PA38) as compare-branch fusion across the conversion, or as a typed O1
+LowIR simplification; prefer whichever preserves serialized-LowIR semantics
+without a new instruction.  Frequency makes this a top-three per-body item:
+every predicate in the hot lexer/parser loops pays it.  PA29/PA38 reducers
+cover fused, stored, mixed, and edge-live cases.
+
+## P4: stop defaulting short-lived values to frame homes at O1
+
+Four independent, individually gated pieces:
+
+- **P4a.** Promote sparse slot promotion (and its render-once byte cost,
+  about 60 ms on the frozen compile at O2) into O1, so named locals stop
+  round-tripping through the frame.  This is the single policy decision
+  R11g explicitly deferred; the movement census above is the evidence it
+  wanted.
+- **P4b.** Run region-aware memory GVN at O1 (9.9 ms at O2 on the frozen
+  compile) so repeated loads of the same field/address within and across
+  blocks collapse.  Budget-gate it if the O1 compile-time cost on large
+  functions is measurable.
+- **P4c.** Extend edge-register retention planning to O1 and remove the
+  mandatory definition-time fallback store that made the R11g native
+  experiment regress: allocate the fallback frame home lazily, only when an
+  eviction actually occurs.  Re-run the R11g upper-bound measurement after
+  P2/P3 change the code shape.
+- **P4d.** Fold initialized-constant internal globals (`kInvalidCompactId`)
+  into immediates at LowIR, and strength-reduce exact pointer-difference
+  division by power-of-two element sizes to shifts in native lowering.
+
+Each piece keeps the frozen-object determinism check, code-shape census,
+owning PA37/PA29/PA38 reducers, and interleaved A/B gates from the
+established protocol.
+
+## P5: remeasure, then decide on deeper allocation work
+
+After P2--P4, repeat the profile and the movement census.  If common-body
+quality is still materially behind (Peek-class functions above about 1.5x
+GCC's size), the remaining structural option is interval-based physical
+allocation at O1/O2 within the existing `FunctionFacts` framework -- the
+O(I log R) linear-scan bound the architecture section has always reserved --
+replacing reactive spill-on-pressure with planned intervals.  That is a
+large backend phase and must not start until the cheaper P2--P4 items have
+been measured, because they change exactly the pressure patterns an
+allocator would be tuned against.
+
+## P6: multi-TU emission hygiene
+
+With the member-template fix, the extern-template configuration is usable
+for the first time.  Measure the self build's defined-function count and
+executable size with active `extern template` (P1 makes it the default) and
+verify the 19,992-body population drops toward the host compilers' range.
+If large weak populations remain, census them by category before inventing
+policy, as R10f did for the frozen object.
+
+## P7: fill and copy idioms
+
+The `__uninitialized_default_n_a<Operand>`/`__uninitialized_fill_n_a` loops
+are the largest single self-only profile entries (about 3.8% combined).
+After P2 inlines element constructors into the loops, add a bounded typed
+recognition of trivial fill: a loop whose body writes only
+constant/zero-splat bytes to consecutive elements becomes `memset`/wide
+stores.  No name recognition; the loop shape and typed stores are the only
+evidence.  PA37 owns the transform with 1x/2x/4x scaling and negative
+(effectful constructor) reducers.
+
+## P8: final matrix and acceptance
+
+Rebuild the twelve-way matrix at the end state.  Acceptance requires:
+
+- configuration-fair self-O1 within 10% of the better host O1 lane;
+- self-O2/O3 at least as fast as self-O1 (no inversion);
+- matching-level cppgm++ compile time still faster than both hosts;
+- full report, zero-fatal audit, clean timed 32-worker O3 and explicit O0
+  self/inception lanes, byte-for-byte object and final-binary matches; and
+- the ledger below completed for every phase, including rejected
+  experiments and their measured reasons.
+
+## Ledger
+
+| Phase | Intended result | Fixture/contract movement | Frozen output delta | Generated-self delta | Full report/audit | Status/commit |
+| --- | --- | --- | --- | --- | --- | --- |
+| P0a | reserve retained dereference carriers | PA29 behavior reducer, local ref generation | none; deterministic, SHA unchanged | fixes no-assert self-compile crash | 5,408/5,408; zero fatal | complete, `9b8a3bf9` |
+| P0b | instantiate member templates under extern template | PA32 course reducer | none | unblocks no-assert link | 5,408/5,408; zero fatal | complete, `348ad6c7` |
+| P1 | `__OPTIMIZE__` at optimized levels; config-fair matrix | | | prototype: 16.91 to 15.43 s wall, identical object | | pending |
+| P2 | hot accessor inlining with cold-successor discount | | | | | pending |
+| P3 | compare-branch fusion through bool conversions | | | | | pending |
+| P4 | O1 value/placement work (promotion, GVN, retention, folds) | | | | | pending |
+| P5 | remeasure; interval allocation decision | | | | | pending |
+| P6 | extern-template emission census | | | | | pending |
+| P7 | trivial fill recognition | | | | | pending |
+| P8 | final matrix and acceptance | | | | | pending |
