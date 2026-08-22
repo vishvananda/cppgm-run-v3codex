@@ -19,8 +19,7 @@ function @internal_target(%value : i64) -> i64 [unwind=no, binding=internal, no_
 }
 function @read_constant(%addend : i64) -> i64 [effects=readonly, unwind=no, binding=internal, no_inline=yes] {
   block ^entry:
-    %value = load i64 @constant_value
-    %result = binary add i64 %value, %addend
+    %result = binary add i64 7, %addend
     return i64 %result
 }
 function @differing(%mode : i64) -> i64 [unwind=no, binding=internal, no_inline=yes] {

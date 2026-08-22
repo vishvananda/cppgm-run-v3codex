@@ -5,7 +5,7 @@ function @callee(%x : i64) -> i64 {
 }
 function @caller(%x : i64) -> i64 {
   block ^entry:
-    %__o1inl0__t1 = binary mul i64 %x, 2
+    %__o1inl0__t1 = binary shl i64 %x, 1
     %__o1inl1__t1 = binary add i64 %x, 1
     %t3 = binary add i64 %__o1inl0__t1, %__o1inl1__t1
     return i64 %t3

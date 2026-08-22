@@ -521,6 +521,34 @@ bool fold_convert(const Instruction & ins, Operand * result)
   return false;
 }
 
+// Rewrite an unsigned divide, remainder, or multiply whose right operand is
+// a positive power of two into the equivalent shift or mask.  Signed division
+// keeps its rounding semantics and is not rewritten.
+bool strength_reduce_binary(Instruction * ins, const LowType & type)
+{
+  if(ins->kind != Instruction::IK_BINARY ||
+     ins->second.kind != Operand::OP_INTEGER ||
+     ins->second.int_high != 0 ||
+     type.kind == lowir_model::LTK_I128) return false;
+  const unsigned long long value = ins->second.int_value;
+  if(value == 0 || (value & (value - 1)) != 0 || value == 1) return false;
+  unsigned shift = 0;
+  while((value >> shift) != 1) ++shift;
+  if(ins->op.kind == LowOperation::LOP_UDIV) {
+    ins->op.kind = LowOperation::LOP_USHR;
+    ins->second.int_value = shift;
+  } else if(ins->op.kind == LowOperation::LOP_UMOD) {
+    ins->op.kind = LowOperation::LOP_AND;
+    ins->second.int_value = value - 1;
+  } else if(ins->op.kind == LowOperation::LOP_MUL) {
+    ins->op.kind = LowOperation::LOP_SHL;
+    ins->second.int_value = shift;
+  } else return false;
+  ins->second.int_high = 0;
+  ins->second.has_spelling = false;
+  return true;
+}
+
 bool algebraic_identity(const Instruction & ins, Operand * result)
 {
   if(ins.kind != Instruction::IK_BINARY) return false;
@@ -824,6 +852,8 @@ bool simplify_values_with_analysis(
         reassociate(&ins, definitions, known_definitions);
         replace = fold_binary(ins, &replacement) ||
           algebraic_identity(ins, &replacement);
+        if(!replace && strength_reduce_binary(&ins, ins.type) && stats)
+          ++stats->rewrites;
       } else if(ins.kind == Instruction::IK_CMP) {
         replace = fold_compare(ins, &replacement);
         if(!replace && (ins.op.kind == LowOperation::LOP_EQ || ins.op.kind == LowOperation::LOP_NE) &&
@@ -2481,6 +2511,35 @@ function_boundaries(const LowirProgram & program)
   return result;
 }
 
+// A readonly scalar global with a literal initializer always observes that
+// literal, so a typed direct load of it is the constant.
+bool fold_readonly_global_loads(Function * function,
+    const std::vector<unsigned char> & readonly_known,
+    const std::vector<Operand> & readonly_constants,
+    const std::vector<LowType> & readonly_types, Stats * stats)
+{
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.kind != Instruction::IK_LOAD ||
+         ins.first.kind != Operand::OP_GLOBAL ||
+         static_cast<std::uint32_t>(ins.first.symbol) >=
+           readonly_known.size() ||
+         !readonly_known[ins.first.symbol] ||
+         !lowir_model::same_lowir_type(
+           ins.type, readonly_types[ins.first.symbol]))
+        continue;
+      ins.kind = Instruction::IK_CONST;
+      ins.first = readonly_constants[ins.first.symbol];
+      ins.second = Operand();
+      changed = true;
+      if(stats) ++stats->rewrites;
+    }
+  return changed;
+}
+
 std::size_t instruction_count(const LowirProgram & program)
 {
   std::size_t result = 0;
@@ -2698,6 +2757,20 @@ void optimize(LowirProgram & program, int level, Stats * stats)
   }
   MemoryGVNSession memory_gvn(program);
   O3UnrollBudget o3_unroll_budget;
+  std::vector<unsigned char> readonly_known(program.symbol_names.size(), 0);
+  std::vector<Operand> readonly_constants(program.symbol_names.size());
+  std::vector<LowType> readonly_types(program.symbol_names.size());
+  if(level >= 1)
+    for(std::size_t i = 0; i < program.globals.size(); ++i) {
+      const lowir_model::GlobalDefinition & global = program.globals[i];
+      if(global.structured ||
+         global.storage != lowir_model::GSM_READONLY ||
+         global.init_kind != lowir_model::GlobalDefinition::INIT_INTEGER ||
+         global.init_operand.kind != Operand::OP_INTEGER) continue;
+      readonly_known[global.symbol] = 1;
+      readonly_constants[global.symbol] = global.init_operand;
+      readonly_types[global.symbol] = global.type;
+    }
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     Function & function = program.functions[i];
     // Keep this an explicit bounded schedule.  A stage is revisited only when
@@ -2755,6 +2828,13 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_dce(&function, boundaries, stats);
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
+    }
+    if(level >= 1 &&
+       fold_readonly_global_loads(&function, readonly_known,
+         readonly_constants, readonly_types, stats)) {
+      timed_function_pass(simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+      timed_dce(&function, boundaries, stats);
     }
     if(level >= 1 && timed_function_pass(promote_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {

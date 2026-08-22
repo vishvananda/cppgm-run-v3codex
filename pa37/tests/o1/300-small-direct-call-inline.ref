@@ -6,6 +6,6 @@ function @inc(%x : i64) -> i64 {
 function @main(%x : i64) -> i64 {
   block ^entry:
     %__o1inl0__a = binary add i64 %x, 1
-    %s = binary mul i64 %__o1inl0__a, 2
+    %s = binary shl i64 %__o1inl0__a, 1
     return i64 %s
 }
