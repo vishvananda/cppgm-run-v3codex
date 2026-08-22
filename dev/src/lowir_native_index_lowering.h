@@ -275,13 +275,21 @@ materialize_index:
       }
     } else {
       mir_model::MirOperand index = lowerer.resolve(instruction.second);
+      const bool encodable_scale = instruction.type.storage_size == 1 ||
+        instruction.type.storage_size == 2 ||
+        instruction.type.storage_size == 4 ||
+        instruction.type.storage_size == 8;
       if(deferred_base && base.kind == mir_model::MirOperand::OP_DEREF &&
-         !base.has_index &&
-         index.kind == mir_model::MirOperand::OP_REG && index.reg != XR_RSP &&
-         (instruction.type.storage_size == 1 ||
-          instruction.type.storage_size == 2 ||
-          instruction.type.storage_size == 4 ||
-          instruction.type.storage_size == 8)) {
+         !base.has_index && encodable_scale &&
+         index.kind != mir_model::MirOperand::OP_REG &&
+         destination.reg != base.reg) {
+        lowerer.move_value_to_register(
+          out, destination.reg, index, lowerer.operand_type(instruction.second));
+        index = destination;
+      }
+      if(deferred_base && base.kind == mir_model::MirOperand::OP_DEREF &&
+         !base.has_index && encodable_scale &&
+         index.kind == mir_model::MirOperand::OP_REG && index.reg != XR_RSP) {
         mir_model::MirOperand address = base;
         address.has_index = true;
         address.index = index.reg;
@@ -310,7 +318,7 @@ materialize_index:
       if(!address_emitted) {
         if(base.kind != mir_model::MirOperand::OP_REG ||
            destination.reg != base.reg) {
-          if(lowerer.is_frame_address(instruction.first))
+          if(deferred_base || lowerer.is_frame_address(instruction.first))
             lowerer.append_address(out, destination.reg, base);
           else
             lowerer.move_value_to_register(
@@ -343,7 +351,7 @@ materialize_index:
     if(!address_emitted && constant_index) {
       if(base.kind != mir_model::MirOperand::OP_REG ||
          destination.reg != base.reg) {
-        if(lowerer.is_frame_address(instruction.first))
+        if(deferred_base || lowerer.is_frame_address(instruction.first))
           lowerer.append_address(out, destination.reg, base);
         else
           lowerer.move_value_to_register(

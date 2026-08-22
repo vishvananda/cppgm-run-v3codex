@@ -9,6 +9,8 @@ global @cells
   storage data
   item i64 0
   item i64 0
+  item i64 0
+  item i64 0
 
 function @produce
   abi
@@ -40,6 +42,39 @@ function @write_second
     store.i64 [rbx], 11
     ret
 
+function @initialize_tail
+  abi
+    param %base -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    temp %index -> [rbp-8] : i64
+
+  block ^entry
+    mov r11, 0
+    store.i64 [rbp-8], r11
+    jmp ^condition
+
+  block ^condition
+    cmp.i64 [rbp-8], 2
+    jb ^body
+    jmp ^done
+
+  block ^body
+    load.i64 r8, [rbp-8]
+    lea r8, [rdi+r8*8+16]
+    load.i64 r9, [rbp-8]
+    add r9, 40
+    store.i64 [r8], r9
+    load.i64 r8, [rbp-8]
+    add r8, 1
+    store.i64 [rbp-8], r8
+    jmp ^condition
+
+  block ^done
+    ret
+
 function @main
   abi
     return i32 -> rax
@@ -52,11 +87,25 @@ function @main
     mov rbx, @cells
     mov rdi, rbx
     call @write_second [args=(rdi)]
+    mov rdi, rbx
+    call @initialize_tail [args=(rdi)]
     load.i64 r8, [rbx+8]
+    load.i64 r9, [rbx+16]
+    load.i64 rdi, [rbx+24]
     mov rdx, 29
     cmp.i64 r8, rdx
     setne r8
     movzx r8, r8
+    mov rdx, 40
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    mov rdx, 41
+    cmp.i64 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    or r9, rdi
+    or r8, r9
     mov rax, r8
     sext.i32 rax
     ret rax
