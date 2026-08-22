@@ -1,0 +1,85 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @sink
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    return void -> void
+  frame
+    stack_size 48
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @probe
+  abi
+    param %p -> rdi : ptr
+    param %q -> rsi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve <gpr0> <gpr1>
+
+  block ^entry
+    load.i64 <gpr0>, [rsi]
+    load.i64 <gpr1>, [rdi+<off0>]
+    mov rdi, 0
+    mov rsi, 0
+    mov rdx, 0
+    mov rcx, 0
+    mov r8, 0
+    call @sink [args=(rcx,rdx,rsi,rdi,r8), unwind=no]
+    cmp.i64 <gpr0>, <gpr1>
+    je ^same
+
+  block ^differ
+    mov rax, 1
+    ret rax
+
+  block ^same
+    mov rax, 0
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve <gpr0> <gpr2> <gpr1>
+    slot $left -> [rbp-<off0>] : obj<16x8>
+    slot $right -> [rbp-<off1>] : i64
+
+  block ^entry
+    lea <gpr0>, [rbp-<off0>]
+    store.i64 [rbp-<off2>], 41
+    store.i64 [rbp-<off1>], 7
+    lea <gpr2>, [rbp-<off1>]
+    mov rdi, <gpr0>
+    mov rsi, <gpr2>
+    call @probe [args=(rsi,rdi), unwind=no]
+    mov <gpr1>, rax
+    store.i64 [rbp-<off1>], 41
+    mov rdi, <gpr0>
+    mov rsi, <gpr2>
+    call @probe [args=(rsi,rdi), unwind=no]
+    mov rdx, 1
+    cmp.i64 <gpr1>, rdx
+    setne <gpr1>
+    movzx <gpr1>, <gpr1>
+    mov rdx, 0
+    cmp.i64 rax, rdx
+    setne r8
+    movzx r8, r8
+    or <gpr1>, r8
+    ret <gpr1>

@@ -42,8 +42,12 @@ protected:
 			 lowerer.facts_.has(instruction.first.value,
 				 analysis::FunctionFacts::VF_EDGE_LIVE)))
 			return false;
+		// A deferred branch comparison replays at the branch, not adjacent
+		// to this load, so its cached carrier cannot be kept live here.
 		if (consumer.kind == lowir_model::Instruction::IK_CMP)
-			return selection::is_integer_or_pointer(instruction.type);
+			return selection::is_integer_or_pointer(instruction.type) &&
+				!(consumer.dest.valid() &&
+				  lowerer.facts_.deferred_branch_comparisons[consumer.dest]);
 		return consumer.kind == lowir_model::Instruction::IK_BINARY &&
 			integer_detail::memory_rhs_operation(consumer.op, consumer.type);
 	}

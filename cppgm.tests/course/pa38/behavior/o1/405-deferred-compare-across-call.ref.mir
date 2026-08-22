@@ -1,0 +1,85 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @sink
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    return void -> void
+  frame
+    stack_size 48
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @probe
+  abi
+    param %p -> rdi : ptr
+    param %q -> rsi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve r13 r12
+
+  block ^entry
+    load.i64 r13, [rsi]
+    load.i64 r12, [rdi+8]
+    mov rdi, 0
+    mov rsi, 0
+    mov rdx, 0
+    mov rcx, 0
+    mov r8, 0
+    call @sink [args=(rcx,rdx,rsi,rdi,r8), unwind=no]
+    cmp.i64 r13, r12
+    je ^same
+
+  block ^differ
+    mov rax, 1
+    ret rax
+
+  block ^same
+    mov rax, 0
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 0
+    preserve r13 rbx r12
+    slot $left -> [rbp-16] : obj<16x8>
+    slot $right -> [rbp-24] : i64
+
+  block ^entry
+    lea r13, [rbp-16]
+    store.i64 [rbp-8], 41
+    store.i64 [rbp-24], 7
+    lea rbx, [rbp-24]
+    mov rdi, r13
+    mov rsi, rbx
+    call @probe [args=(rsi,rdi), unwind=no]
+    mov r12, rax
+    store.i64 [rbp-24], 41
+    mov rdi, r13
+    mov rsi, rbx
+    call @probe [args=(rsi,rdi), unwind=no]
+    mov rdx, 1
+    cmp.i64 r12, rdx
+    setne r12
+    movzx r12, r12
+    mov rdx, 0
+    cmp.i64 rax, rdx
+    setne r8
+    movzx r8, r8
+    or r12, r8
+    ret r12
