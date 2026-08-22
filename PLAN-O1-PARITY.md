@@ -288,6 +288,87 @@ a per-function placement plan computed after `FunctionFacts`:
 Each step lands separately under the established gates, with a synthetic
 1x/2x/4x pressure ladder and the exact-self A/B as the acceptance signal.
 
+### P5d/e/f measured outcome: grant bias is not the lever
+
+P5d/e/f were implemented and measured (2026-08-22); the implementation is
+preserved in this section and the measurement is in the ledger.  Three
+results close this direction:
+
+1. **Grant bias is neutral.**  With EH functions excluded, 1,056 planned
+   values produced 272 grants and changed 7 of 1,335 emitted functions
+   (net +4 instructions).  Including EH functions: 3,142 planned, 950
+   grants, 302 functions changed, net +64, none materially smaller.  The
+   reactive allocator's register *choice* was already adequate; changing
+   which free register a value receives does not remove any movement.
+2. **Plan-gated EH retention regresses.**  Retaining edge-live values in
+   exception-bearing functions only when they sat in their planner-proved
+   register (299 retains on the frozen TU) lost about 1.2% in every
+   interleaved exact-self pair (base 12.51 s median wall, candidate
+   12.67 s).  The retained path still writes the definition-time home
+   store, so retention saves only reloads while paying callee-saved
+   pinning; this reproduces the P5b conclusion under the strictest gate
+   we can construct.
+3. **The non-crossing EH case is already covered.**  `consume()` does not
+   release edge-live values, so a value that crosses no call already stays
+   in its register; `stabilize_edge_live_result`'s entry filter
+   (`LOOP_INVARIANT || crosses_call`) is why widening the EH gate for
+   non-crossing values changed nothing (305 vs 299 retains).
+
+The remaining structural lever is the movement itself, measured on the
+frozen TU at O1 (about 111k instructions): movement instructions are 58%
+of all emitted code -- scalar-temporary traffic 28.6k (26%), call-boundary
+20.6k (19%, of which 7.1k loads and 6.8k argument register copies),
+address materialization 13.0k (12%).  Removing it requires values to live
+in registers *without* eager home stores: the lazy-home design from the
+P5c rejection, now with its constraint identified precisely --
+`SpillIsSafe` dominance is required to evict a value whose home was never
+written, so laziness either restricts eviction (exhaustion risk in the
+reactive path) or the allocator must be driven by the plan end to end.
+Incremental retention variants on the reactive allocator are exhausted:
+three flavors (P5b eager, P5g plan-gated, P5h non-crossing) all measured
+worse or no-coverage.
+
+## P9: dynamic hot-path costs (the Peek decomposition)
+
+Static instruction count does not explain the 2.14x: on the frozen TU we
+emit 109.8k instructions to GCC's 90.0k (+22%), but frame movs are 28.7k
+vs 15.7k (+83%) and push/pop 6.7k vs 3.0k (2.2x).  The runtime gap lives
+in dynamic latency chains on hot paths.  `Lexer::Peek` (122 instructions
+vs GCC's 61, top of the flat profile) decomposes the whole gap into four
+recurring, separately fixable costs, each verified in the emitted LowIR
+and disassembly:
+
+- **P9a. Cold-only definitions ride the hot prologue.**  Three throw-path
+  `addr` constants (string literal, RTTI, constructor) sit in `^entry`
+  after inlining/LICM, are live across the loop's calls, and so receive
+  callee-saved registers plus eager frame homes: three extra pushes,
+  three RIP-relative loads, and three frame stores executed on every
+  call, serving blocks that only run on `throw`.  Fix: sink pure
+  operand-free definitions (CONST, global/function address, `index` off
+  available bases) whose uses all lie in raising-cold blocks (the
+  `sink_cold_blocks` classification) into those blocks.  Breadth: every
+  function with an assertion or throw path -- most of the hot profile.
+- **P9b. Same-block duplicate loads.**  `^land_rhs_7` loads the identical
+  member address twice with no intervening store; the deque size member
+  is loaded five times across the function.  Memory GVN is O2-gated; O1
+  needs at least a linear per-block duplicate-load eliminator
+  (invalidate on stores, calls, and fences).
+- **P9c. Boolean chains reaching branches.**  `cmp eq i64` ->
+  `trunc u8` -> `cmp eq u8 .., 0` -> `branch` survives to native
+  `sete/movzbl/movzbl/cmp/jne` (8 instructions) where GCC emits
+  `test/je`.  The P3 compare-peel must see through `trunc` of a compare
+  when the outer compare is against zero.
+- **P9d. Small `copyobj` staging.**  The 24-byte ring-slot `copyobj`
+  lowers to a frame-staged temporary plus `rep movsb` (high fixed startup
+  cost) in the lexer's refill loop; GCC emits three direct 8-byte stores.
+  Bounded direct load/store lowering for small fixed-size `copyobj`
+  (<= 32 bytes) through a caller-saved scratch removes the staging and the
+  string-op startup from hot container loops.
+
+Order of attack is P9a, P9d, P9b, P9c by expected dynamic leverage; each
+lands separately under the established gates with the exact-self A/B as
+the acceptance signal.
+
 ## P6: multi-TU emission hygiene
 
 With the member-template fix, the extern-template configuration is usable
@@ -346,4 +427,8 @@ Rebuild the twelve-way matrix at the end state.  Acceptance requires:
 | P7 | trivial fill recognition | | | | | pending |
 | P5b | callee-saved edge retention inside exception regions (eager fallback) | rejected before movement | frozen O1 +4,968 B object, +5,092 B text; retains 244 to 681 | exact self-O1 behind in all four interleaved pairs (about +1%); the R11g conclusion -- eager fallback stores plus pressure outweigh saved reloads -- holds after P4 | measured on the P5a tree | rejected |
 | P5c | lazy fallback stores (write the spill home only at eviction) | rejected before movement | frozen O1 near baseline with tripled retention | the generated compiler miscompiles `vector<string>::operator=` and crashes at startup: at least one consumer reads a retained value's home before any eviction writes it, so laziness needs a complete home-reader audit first | measured on the P5a tree | rejected as implemented; the reader audit belongs to the P5 interval phase |
+| P5d/e/f | planned value placement: intervals, linear scan, grant hook in `try_reserve_result_register` | full suite 5,414/5,414 with grants active at O1+; PA26/PA29/PA37/PA38 owning suites clean | non-EH: 272 grants, 7/1,335 functions changed, net +4 instructions; EH included: 950 grants, 302 changed, net +64, none materially smaller | grant bias does not remove movement; the register choice was never the bottleneck | measured on the ctor-fix tree | implemented, measured, reverted; design and evidence preserved in the P5 implementation section |
+| P5g | plan-gated callee-saved edge retention inside exception regions | rejected before movement | 299 retains on the frozen TU; object +1,545 B | exact self-O1 behind in 4 of 6 interleaved pairs, neutral in 2: base 12.51 s median wall vs 12.67 s; the definition-time home store remains, so only reloads are saved while pinning costs are added | measured on the ctor-fix tree | rejected; confirms P5b under a planner-proved conflict-free gate |
+| P5h | non-crossing edge retention inside exception regions | not reached | 305 vs 299 retains: no coverage | `consume()` already keeps non-crossing edge-live values in registers; the stabilize entry filter (`LOOP_INVARIANT \|\| crosses_call`) makes the case vacuous | measured on the ctor-fix tree | moot; recorded to prevent re-derivation |
+| ctor-EH | close the constructor cleanup region on early return (frontend); O0 self lane failed on the new `lowir_scalar_rules.cpp` TU with `host EH protected region remains active at function exit` | PA26 course reducer `210-constructor-early-return-cleanup-region` (fails on the pre-fix compiler); pa26 106/106 + course 8/8; full suite 5,414/5,414; host-EH diagnostic now names the function and block | frozen O1 object byte-identical: no benchmark impact | early `return` in a constructor body left the member-cleanup `EH_CLEANUP` region open; fixed in `LowerReturn` and the shared lexical-return terminal via `constructor_body_cleanup_active_` | O0 self+inception lanes rerun on the fix | complete, `dbff0d16` |
 | P8 | final matrix | hosts rebuilt from the exact final tree; self lanes O0-O3 rebuilt clean | frozen medians: gcc-O1 5.92 s, clang-O1 5.63 s, self-O0 35.45 s, self-O1 12.64 s, self-O2 12.60 s, self-O3 12.57 s; no level inversion; self-O1 improved 17.11 to 12.64 s (-26.1%), ratio to gcc-O1 2.87x to 2.14x | acceptance target of within-10% is not yet met; the recorded P5 follow-on phase carries the remaining 2.1x | all P-phase gates recorded above | complete; target carried to the P5 phase |
