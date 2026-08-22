@@ -2209,6 +2209,84 @@ with `unsupported native move operand`, then compiles and runs after the fix.
 PA29 passes 280/280, the report through PA29 passes 4,217/4,217, and the full
 report passes 5,399/5,399.  Cap-12 profitability remains a separate decision.
 
+After that correction, cap 12 exposed a third independent PA29 defect.  Native
+address folding replaced `lea` plus a typed narrow load with the encoder's raw
+load operation.  A folded `u8` load therefore wrote only the low byte of a
+register and retained stale high bits, while the ordinary typed load path
+zero-extended it.  Folded loads now use the shared typed scalar-memory helper.
+The PA29 `folded-narrow-load-normalization` behavioral reducer forces the
+address fold while retaining stale bits in the destination; it exits 1 with
+the old backend and 0 with the correction.  PA29 passes 281/281, through PA29
+passes 4,218/4,218, the full report passes 5,400/5,400, and the PA39 audit is
+zero-fatal.  The correction is `c60198ac`.
+
+The corrected cap-12 result rejects a larger raw-body limit.  Its clean self
+compiler is 12,035,520 bytes versus 11,850,352 bytes at cap 7.  In three
+interleaved ABBA blocks on the frozen maximum compile, cap 12 changes median
+wall/user/RSS from 17.610 s / 17.000 s / 399,010 KiB to 17.650 s / 17.080 s /
+398,582 KiB.  The paired deltas are +0.142% wall, +0.324% user, and +0.002%
+RSS, while the frozen object grows 14,160 bytes.  The larger compiler and
+output buy no generated-runtime improvement, so cap 7 is restored.
+
+Clang's same-libstdc++ optimization record explains why copying its numerical
+threshold is not an appropriate replacement.  At O2, Clang first inlines the
+small leaves and `_M_destroy` into `_M_dispose`, then inlines `_M_dispose` into
+`~basic_string`, and finally inlines that expanded destructor into callers.
+It does not retain separate shallow and expanded definitions.  Its call-site
+analyzer nevertheless scores `_M_dispose` at 15 and the destructor at 15
+against a normal threshold of 225 because it predicts simplification, dead
+blocks, cheap loads/stores, argument setup, and the avoided call.  The emitted
+Clang O1/O2/O3 objects have only two relocations that take the destructor's
+address and no `_M_dispose` relocation; the nested chain has been folded to
+the ultimate allocation/deallocation work.  LLVM's CGSCC inliner appends new
+calls to a bounded worklist and uses cost multipliers/history to control SCC
+growth, rather than retaining two IR bodies.
+
+Our raw LowIR count cannot yet approximate that post-inline cost: cap 12
+clones frame/slot traffic that later passes do not remove.  A bounded shallow-
+wrapper experiment tested whether preserving one small shape was an adequate
+approximation without copying two bodies.  It retained a single-block,
+inline-hinted wrapper with exactly one nested call and at least 64 direct uses,
+inlined that shallow shape under a separate 512-instruction caller budget, and
+deferred the cloned nested call until the next bounded wave.  This removed all
+711 frozen-object destructor relocations, but mainly changed the next layer's
+`_M_dispose` relocations from 995 to 1,774.  It did not expose the expanded
+dispose body and its ultimate deallocation call.
+
+The corrected exact-self compiler grew 15,104 bytes, from 11,850,352 to
+11,865,456 bytes.  The frozen object became only 568 bytes smaller, from
+1,733,560 to 1,732,992 bytes.  Three interleaved ABBA blocks changed median
+wall/user/RSS from 17.615 s / 17.050 s / 398,568 KiB to 17.690 s / 17.070 s /
+396,240 KiB; paired candidate deltas were +0.142% wall, +0.176% user, and
+-0.846% RSS.  PA37 passed 161/161, the report through PA37 passed 5,364/5,364,
+the full report passed 5,401/5,401, and the audit was zero-fatal, so correctness
+was not the limitation.  The implementation and its proposed PA37 fixture were
+removed because flattening only one call layer adds policy and compiler size
+without improving generated runtime.
+
+The next inliner experiment should instead approximate the feature that made
+Clang's fully expanded body cheap: a bounded post-simplification cost, not an
+alternative stored body.  Compute a compact per-function cost summary during
+the existing bottom-up traversal, with inexpensive address calculations,
+loads/stores, returns, and removable parameter/return plumbing weighted below
+control flow and surviving calls.  At a call site, substitute constants and
+direct slot/address arguments into that summary, identify provably dead
+successors, and charge only the reachable weighted work plus a separate hard
+raw-clone budget.  A direct-call benefit must be subtracted from the weighted
+cost so chains such as `_M_is_local` -> `_M_destroy` -> `_M_dispose` can become
+profitable while allocation/deallocation remains a shared external call.
+
+Keep this analysis allocation-free per call site: dense vectors are prepared
+once per function, a reusable scratch generation array holds substituted facts,
+and branch reachability is a bounded walk over the callee's existing blocks.
+The raw clone budget remains the size-safety backstop, recursion and EH rules
+remain unchanged, and no STL names or ABI-specific patterns are recognized.
+First validate the scoring on synthetic PA37 chains whose raw instruction
+counts are equal but whose surviving call/control-flow costs differ.  Then
+require the frozen destructor chain to reach the deallocation call, an exact-
+self runtime win in interleaved A/B timing, bounded 1x/2x/4x optimizer work,
+the full report, the file audit, and 32-way inception before retaining it.
+
 #### R11i. Defer true EH grafting
 
 Inlining a callee with genuinely live EH regions requires remapping nested
