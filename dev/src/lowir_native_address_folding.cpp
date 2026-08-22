@@ -1,6 +1,7 @@
 #include "lowir_native_address_folding.h"
 #include "lowir_native_data_layout.h"
 #include "lowir_native_encoding.h"
+#include "lowir_native_scalar_memory.h"
 
 #include <limits>
 #include <stdexcept>
@@ -188,22 +189,12 @@ std::size_t emit_dead_setup_load(
     plan_dead_setup_load(instructions, start, &address, scratch_uses);
   if(!count) return 0;
   const MirInstruction & load = instructions[start + count - 1];
-  long long offset = address.offset;
-  X64Register base = address.reg;
-  if(address.kind == MirOperand::OP_FRAME) {
-    base = XR_RBP;
-    if(offset < 0) offset -= static_cast<long long>(
-      function.callee_saved_regs.size() * 8);
-  } else if(address.kind != MirOperand::OP_DEREF) {
+  if(address.kind != MirOperand::OP_FRAME &&
+     address.kind != MirOperand::OP_DEREF) {
     throw std::logic_error("folded native load address is not memory-shaped");
   }
-  if(address.has_index)
-    emit_indexed_load(out, load.operands[0].reg, base, address.index,
-                      address.scale, offset,
-                      data_layout::type_width(load.type));
-  else
-    emit_load(out, load.operands[0].reg, base, offset,
-              data_layout::type_width(load.type));
+  emit_address_normalized_load(
+    out, load.operands[0].reg, address, load.type, function);
   return count;
 }
 

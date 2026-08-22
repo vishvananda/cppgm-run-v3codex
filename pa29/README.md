@@ -605,7 +605,9 @@ To complete PA29, implement these goals:
    A typed integer load defines the complete logical register value: narrow
    signed loads sign-extend and narrow unsigned loads zero-extend as part of
    the load itself.  Do not add a separate normalization instruction after
-   such a load.  Narrow values returned across a call boundary still require
+   such a load.  If native layout folds an address-setup instruction into the
+   load, the combined encoding must preserve the same signed or unsigned
+   extension.  Narrow values returned across a call boundary still require
    explicit normalization before a wider comparison or `switch`; stale upper
    bits must not affect branch or case selection.  A call result used only by
    an immediate same-width store or return may remain in its ABI result carrier
@@ -751,6 +753,8 @@ strategies include:
 - select the signed or unsigned extending memory form directly for a typed
   narrow integer load instead of emitting a partial load followed by a
   register-only normalization
+- route address-setup/load folding through the same typed-load encoder so the
+  compact address form cannot discard narrow-value normalization
 - use the sole-use next instruction to recognize a narrow call result consumed
   by a same-width store, return, or explicit integer conversion, while
   retaining explicit normalization for wider consumers
