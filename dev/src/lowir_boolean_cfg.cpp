@@ -34,6 +34,37 @@ bool has_candidate_merge(const Function & function)
   return false;
 }
 
+bool has_edge_known_branch_candidate(const Function & function)
+{
+  std::vector<unsigned char> seen(function.value_names.size(), 0);
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    if(!instructions.empty() &&
+       instructions.back().kind == Instruction::IK_BRANCH &&
+       instructions.back().first.kind == Operand::OP_TEMP) {
+      const std::uint32_t value = instructions.back().first.value;
+      if(value >= seen.size()) continue;
+      if(seen[value]) return true;
+      seen[value] = 1;
+    }
+  }
+  return false;
+}
+
+bool block_has_phi(const Function & function, const Graph & graph,
+                   const Operand & target)
+{
+  if(target.kind != Operand::OP_LABEL || !target.block.valid()) return true;
+  const std::size_t block = graph.find(target.block);
+  if(block == static_cast<std::size_t>(-1)) return true;
+  const std::vector<Instruction> & instructions =
+    function.blocks[block].instructions;
+  for(std::size_t i = 0; i < instructions.size(); ++i)
+    if(instructions[i].kind == Instruction::IK_PHI) return true;
+  return false;
+}
+
 std::vector<std::size_t> value_uses(const Function & function)
 {
   std::vector<std::size_t> result(function.value_names.size(), 0);
@@ -103,6 +134,55 @@ void remove_unreachable_blocks(Function * function, Stats * stats)
 }
 
 }  // namespace
+
+bool fold_edge_known_branches(Function * function, Stats * stats)
+{
+  if(!has_edge_known_branch_candidate(*function)) return false;
+  const Graph graph = build_graph(*function, stats);
+  bool changed = false;
+  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
+    Block & current = function->blocks[block];
+    if(current.instructions.empty() ||
+       graph.predecessors[block].size() != 1 ||
+       (static_cast<std::uint32_t>(current.id) < graph.eh_targets.size() &&
+        graph.eh_targets[static_cast<std::uint32_t>(current.id)]))
+      continue;
+    Instruction & branch = current.instructions.back();
+    if(branch.kind != Instruction::IK_BRANCH ||
+       branch.first.kind != Operand::OP_TEMP ||
+       branch.second.kind != Operand::OP_LABEL ||
+       branch.third.kind != Operand::OP_LABEL)
+      continue;
+    const std::size_t predecessor = graph.predecessors[block][0];
+    if(function->blocks[predecessor].instructions.empty()) continue;
+    const Instruction & incoming =
+      function->blocks[predecessor].instructions.back();
+    if(incoming.kind != Instruction::IK_BRANCH ||
+       incoming.first.kind != Operand::OP_TEMP ||
+       incoming.first.value != branch.first.value)
+      continue;
+    const bool true_edge = incoming.second.kind == Operand::OP_LABEL &&
+      incoming.second.block == current.id;
+    const bool false_edge = incoming.third.kind == Operand::OP_LABEL &&
+      incoming.third.block == current.id;
+    if(true_edge == false_edge) continue;
+    const Operand selected = true_edge ? branch.second : branch.third;
+    const Operand removed = true_edge ? branch.third : branch.second;
+    // Removing a direct predecessor edge requires phi repair.  Keep this
+    // inexpensive fold on the edge-local case; the general edge editor owns
+    // phi-changing rewrites.
+    if(block_has_phi(*function, graph, removed)) continue;
+    const lowir_model::InstructionDebugLocation debug =
+      branch.debug_location;
+    branch = Instruction();
+    branch.kind = Instruction::IK_JUMP;
+    branch.first = selected;
+    branch.debug_location = debug;
+    changed = true;
+    if(stats) ++stats->rewrites;
+  }
+  return changed;
+}
 
 bool fold_boolean_phi_branch(Function * function, Stats * stats)
 {

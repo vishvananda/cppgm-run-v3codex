@@ -1107,7 +1107,8 @@ std::vector<BlockId> bypass_targets(const Function & function,
 bool cleanup_cfg(Function * function, Stats * stats)
 {
   if(function->blocks.empty()) return false;
-  bool changed = fold_boolean_phi_branch(function, stats);
+  bool changed = fold_edge_known_branches(function, stats);
+  changed = fold_boolean_phi_branch(function, stats) || changed;
   // Phi predecessor identities are part of the instruction contract.  Phi
   // construction runs after CFG cleanup; a later optimizer round trip keeps
   // that CFG stable until edge-aware repair is requested by a transform.
@@ -2879,6 +2880,11 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - post_prune_inline_started).count());
   }
+  // Inlining can expose a repeated branch condition after the caller's last
+  // ordinary cleanup.  One final linear sweep consumes only edge-local facts;
+  // it is not an optimizer fixed point.
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
+    fold_edge_known_branches(&program.functions[i], stats);
   if(stats) {
     collect_retained_inline_census(program, stats);
     stats->inline_reachable_functions = pruning.reachable_functions;

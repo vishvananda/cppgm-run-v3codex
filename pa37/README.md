@@ -179,7 +179,10 @@ running optimizing transforms.
   continuation; a diamond that materializes two integer constants in a `phi`,
   immediately compares that result, and branches may instead retarget the
   original branch when both arms are otherwise empty and the intermediate
-  values have no other uses; straight-line merging must preserve the
+  values have no other uses; a block with one ordinary predecessor may also
+  replace a branch on the predecessor's unchanged selector with the edge-known
+  successor, provided the removed edge does not require `phi` repair;
+  straight-line merging must preserve the
   serialized LowIR rule that every temporary definition precedes every use
 - removal of a conditional edge whose target begins with a call to the PA13
   `role=unreachable` operation, when the other edge remains a normal successor
