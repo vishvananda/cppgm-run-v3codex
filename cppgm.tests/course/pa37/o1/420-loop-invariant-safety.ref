@@ -68,9 +68,9 @@ function @keep_across_eh(%limit : i64, %value : i64) -> i64 [no_inline=yes] {
     %next = binary add i64 %i, 1
     jump ^header
 
-  block ^cleanup:
-    resume
-
   block ^exit:
     return i64 0
+
+  block ^cleanup:
+    resume
 }

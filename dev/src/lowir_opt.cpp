@@ -19,6 +19,7 @@
 #include "lowir_unreachable_opt.h"
 
 #include <algorithm>
+
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -2943,6 +2944,20 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       pruning.unreachable_weak_functions += prior_unreachable_weak;
       pruning.unreachable_internal_functions += prior_unreachable_internal;
     }
+    std::vector<unsigned char> noreturn_symbols(
+      program.symbol_names.size(), 0);
+    for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
+      if(program.function_declarations[i].boundary.returns ==
+           lowir_model::CRM_NORETURN ||
+         program.function_declarations[i].metadata.role ==
+           lowir_model::SR_UNREACHABLE)
+        noreturn_symbols[program.function_declarations[i].symbol] = 1;
+    for(std::size_t i = 0; i < program.functions.size(); ++i)
+      if(program.functions[i].boundary.returns == lowir_model::CRM_NORETURN ||
+         program.functions[i].metadata.role == lowir_model::SR_UNREACHABLE)
+        noreturn_symbols[program.functions[i].symbol] = 1;
+    for(std::size_t i = 0; i < program.functions.size(); ++i)
+      sink_cold_blocks(&program.functions[i], noreturn_symbols, stats);
     if(stats) stats->post_prune_inline_nanoseconds =
       static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(

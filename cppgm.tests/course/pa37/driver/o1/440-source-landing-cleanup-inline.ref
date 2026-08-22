@@ -99,6 +99,9 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     call void @__external_runtime____cxa_end_catch()
     return i32 %t0
 
+  block ^try_end_3:
+    return i32 2
+
   block ^catch_cleanup_10:
     call void @__external_runtime____cxa_end_catch()
     eh_end
@@ -106,7 +109,4 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^catch_next_9:
     resume
-
-  block ^try_end_3:
-    return i32 2
 }

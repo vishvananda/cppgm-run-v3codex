@@ -723,4 +723,105 @@ bool share_exact_cleanup_tails(Function * function, Stats * stats)
   return true;
 }
 
+
+bool sink_cold_blocks(Function * function,
+                      const std::vector<unsigned char> & noreturn_symbols,
+                      Stats * stats)
+{
+  const std::size_t count = function->blocks.size();
+  if(count < 2) return false;
+  std::vector<unsigned char> cold(count, 0);
+  for(std::size_t block = 0; block < count; ++block) {
+    bool raises = false;
+    bool ordinary_successor = false;
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.kind == Instruction::IK_THROW ||
+         ins.kind == Instruction::IK_RESUME)
+        raises = true;
+      else if(ins.kind == Instruction::IK_JUMP ||
+              ins.kind == Instruction::IK_BRANCH ||
+              ins.kind == Instruction::IK_SWITCH ||
+              ins.kind == Instruction::IK_EH_TRY ||
+              ins.kind == Instruction::IK_EH_CLEANUP)
+        ordinary_successor = true;
+      else if(ins.kind == Instruction::IK_CALL &&
+              ins.first.kind == Operand::OP_GLOBAL &&
+              static_cast<std::uint32_t>(ins.first.symbol) <
+                noreturn_symbols.size() &&
+              noreturn_symbols[ins.first.symbol])
+        raises = true;
+    }
+    // A raising block that still names an ordinary successor would leave a
+    // later phi reading a definition serialized after it, so only
+    // successor-free raising blocks sink directly.
+    cold[block] = raises && !ordinary_successor;
+  }
+  // A block whose every successor is cold is itself cold.  The sweeps run
+  // to a fixed point: a partial classification could place a hot-labeled
+  // block ahead of a cold block whose values it consumes.  Each sweep
+  // marks at least one block or stops, so the walk is bounded by the
+  // block count.
+  std::vector<std::size_t> position(count, count);
+  for(std::size_t block = 0; block < count; ++block) {
+    const std::uint32_t id = function->blocks[block].id;
+    if(id < position.size()) position[id] = block;
+    else {
+      position.resize(static_cast<std::size_t>(id) + 1, count);
+      position[id] = block;
+    }
+  }
+  for(std::size_t sweep = 0; sweep < count; ++sweep) {
+    bool grew = false;
+    for(std::size_t block = count; block != 0; --block) {
+      if(cold[block - 1]) continue;
+      std::size_t successors = 0;
+      bool all_cold = true;
+      for(std::size_t index = 0;
+          index < function->blocks[block - 1].instructions.size(); ++index) {
+        const Instruction & ins =
+          function->blocks[block - 1].instructions[index];
+        if(ins.kind != Instruction::IK_JUMP &&
+           ins.kind != Instruction::IK_BRANCH &&
+           ins.kind != Instruction::IK_EH_TRY &&
+           ins.kind != Instruction::IK_EH_CLEANUP) continue;
+        const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t operand = 0;
+            operand < sizeof(fixed) / sizeof(fixed[0]); ++operand) {
+          if(fixed[operand]->kind != Operand::OP_LABEL) continue;
+          ++successors;
+          const std::uint32_t id = fixed[operand]->block;
+          const std::size_t target =
+            id < position.size() ? position[id] : count;
+          all_cold = all_cold && target < count && cold[target];
+        }
+      }
+      if(successors != 0 && all_cold) {
+        cold[block - 1] = 1;
+        grew = true;
+      }
+    }
+    if(!grew) break;
+  }
+  // The entry block stays first even when the whole function raises.
+  bool moves = false;
+  for(std::size_t block = 1; block + 1 < count; ++block)
+    if(cold[block] && !cold[block + 1]) {
+      moves = true;
+      break;
+    }
+  if(!moves) return false;
+  std::vector<Block> ordered;
+  ordered.reserve(count);
+  ordered.push_back(std::move(function->blocks[0]));
+  for(std::size_t block = 1; block < count; ++block)
+    if(!cold[block]) ordered.push_back(std::move(function->blocks[block]));
+  for(std::size_t block = 1; block < count; ++block)
+    if(cold[block]) ordered.push_back(std::move(function->blocks[block]));
+  function->blocks.swap(ordered);
+  if(stats) ++stats->rewrites;
+  return true;
+}
+
 }  // namespace lowir_opt

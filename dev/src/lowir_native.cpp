@@ -714,7 +714,12 @@ private:
   {
     if(operand.kind == Operand::OP_TEMP) {
       if(!value_known_[operand.value])
-        throw std::runtime_error("missing operand type");
+        throw std::runtime_error("missing operand type for " +
+          location_planning::diagnostic_value_name(
+            program_, source_, operand.value) +
+          " in function @" +
+          lowir_model::lowir_symbol_name(program_, source_.symbol) +
+          " at instruction " + std::to_string(position_));
       return values_[operand.value].type;
     }
     if(operand.kind == Operand::OP_SLOT)
