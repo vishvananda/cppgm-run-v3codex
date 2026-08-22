@@ -810,16 +810,21 @@ private:
       live_locations_.remove(id, values_[id].location);
     if(facts_.uses[id] == 0) {
       const ValueFact & value = values_[id];
+      // An edge-live value's register may be read again when an earlier
+      // block re-executes through a backedge, so its register outlives the
+      // final counted use.
       if(value.location.kind == MirOperand::OP_REG &&
          !value.parameter &&
          !value.fixed_register_home &&
          !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&
+         !facts_.has(id, FunctionFacts::VF_EDGE_LIVE) &&
          value.location.reg != retained && value.location.reg != XR_RAX &&
          !has_live_location_alias(id, value.location)) {
         registers_.release(value.location.reg);
       }
       if(!value.parameter && value.location.kind == MirOperand::OP_XMM &&
          !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&
+         !facts_.has(id, FunctionFacts::VF_EDGE_LIVE) &&
          !has_live_location_alias(id, value.location))
         xmms_.release(value.location.xmm);
       if(value.deferred_address) {
