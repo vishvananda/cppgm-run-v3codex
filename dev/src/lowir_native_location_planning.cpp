@@ -133,7 +133,7 @@ bool should_retain_edge_register(
     const allocation::RegisterPool & registers,
     const allocation::XmmPool & xmms)
 {
-  if(optimization_level < 2 || function_has_eh) return false;
+  if(optimization_level < 1 || function_has_eh) return false;
 
   // A retained interval keeps a definition-time frame fallback.  Cycles also
   // keep one register free because a later reactive eviction cannot rewrite
