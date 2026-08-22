@@ -2680,10 +2680,16 @@ void optimize(LowirProgram & program, int level, Stats * stats)
             std::chrono::steady_clock::time_point();
   const UnreachableRoleIndex unreachable_roles(program);
   if(stats) stats->unreachable_role_symbols = unreachable_roles.symbol_count();
+  const std::vector<unsigned char> noreturn_symbols =
+    noreturn_symbol_index(program);
   std::vector<unsigned char> unreachable_changed(program.functions.size(), 0);
-  for(std::size_t i = 0; i < program.functions.size(); ++i)
+  for(std::size_t i = 0; i < program.functions.size(); ++i) {
     unreachable_changed[i] = unreachable_roles.eliminate_conditional_edges(
       &program.functions[i], stats) ? 1 : 0;
+    unreachable_changed[i] = (truncate_noreturn_continuations(
+      &program.functions[i], noreturn_symbols, stats) ? 1 : 0) ||
+      unreachable_changed[i];
+  }
   if(stats) stats->unreachable_nanoseconds = static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - unreachable_started).count());
@@ -2746,20 +2752,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
   }
   MemoryGVNSession memory_gvn(program);
   O3UnrollBudget o3_unroll_budget;
-  std::vector<unsigned char> readonly_known(program.symbol_names.size(), 0);
-  std::vector<Operand> readonly_constants(program.symbol_names.size());
-  std::vector<LowType> readonly_types(program.symbol_names.size());
-  if(level >= 1)
-    for(std::size_t i = 0; i < program.globals.size(); ++i) {
-      const lowir_model::GlobalDefinition & global = program.globals[i];
-      if(global.structured ||
-         global.storage != lowir_model::GSM_READONLY ||
-         global.init_kind != lowir_model::GlobalDefinition::INIT_INTEGER ||
-         global.init_operand.kind != Operand::OP_INTEGER) continue;
-      readonly_known[global.symbol] = 1;
-      readonly_constants[global.symbol] = global.init_operand;
-      readonly_types[global.symbol] = global.type;
-    }
+  ReadonlyGlobalIndex readonly(program, level >= 1);
   for(std::size_t i = 0; i < program.functions.size(); ++i) {
     Function & function = program.functions[i];
     // Keep this an explicit bounded schedule.  A stage is revisited only when
@@ -2819,8 +2812,8 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
     if(level >= 1 &&
-       fold_readonly_global_loads(&function, readonly_known,
-         readonly_constants, readonly_types, stats)) {
+       fold_readonly_global_loads(&function, readonly.known,
+         readonly.constants, readonly.types, stats)) {
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
       timed_dce(&function, boundaries, stats);
@@ -2944,20 +2937,19 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       pruning.unreachable_weak_functions += prior_unreachable_weak;
       pruning.unreachable_internal_functions += prior_unreachable_internal;
     }
-    std::vector<unsigned char> noreturn_symbols(
-      program.symbol_names.size(), 0);
-    for(std::size_t i = 0; i < program.function_declarations.size(); ++i)
-      if(program.function_declarations[i].boundary.returns ==
-           lowir_model::CRM_NORETURN ||
-         program.function_declarations[i].metadata.role ==
-           lowir_model::SR_UNREACHABLE)
-        noreturn_symbols[program.function_declarations[i].symbol] = 1;
-    for(std::size_t i = 0; i < program.functions.size(); ++i)
-      if(program.functions[i].boundary.returns == lowir_model::CRM_NORETURN ||
-         program.functions[i].metadata.role == lowir_model::SR_UNREACHABLE)
-        noreturn_symbols[program.functions[i].symbol] = 1;
-    for(std::size_t i = 0; i < program.functions.size(); ++i)
+    for(std::size_t i = 0; i < program.functions.size(); ++i) {
+      if(truncate_noreturn_continuations(
+           &program.functions[i], noreturn_symbols, stats)) {
+        lowir_analysis::FunctionAnalysis analysis(
+          program.functions[i], stats);
+        timed_function_pass(simplify_values, &program.functions[i], stats,
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        timed_dce(&program.functions[i], boundaries, stats);
+        timed_function_pass(cleanup_cfg, &program.functions[i], stats,
+          &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+      }
       sink_cold_blocks(&program.functions[i], noreturn_symbols, stats);
+    }
     if(stats) stats->post_prune_inline_nanoseconds =
       static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(

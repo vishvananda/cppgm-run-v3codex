@@ -38,6 +38,25 @@ bool strength_reduce_binary(Instruction * ins, const LowType & type)
 
 // A readonly scalar global with a literal initializer always observes that
 // literal, so a typed direct load of it is the constant.
+ReadonlyGlobalIndex::ReadonlyGlobalIndex(
+    const lowir_model::LowirProgram & program, bool populate)
+  : known(program.symbol_names.size(), 0),
+    constants(program.symbol_names.size()),
+    types(program.symbol_names.size())
+{
+  if(!populate) return;
+  for(std::size_t i = 0; i < program.globals.size(); ++i) {
+    const lowir_model::GlobalDefinition & global = program.globals[i];
+    if(global.structured ||
+       global.storage != lowir_model::GSM_READONLY ||
+       global.init_kind != lowir_model::GlobalDefinition::INIT_INTEGER ||
+       global.init_operand.kind != Operand::OP_INTEGER) continue;
+    known[global.symbol] = 1;
+    constants[global.symbol] = global.init_operand;
+    types[global.symbol] = global.type;
+  }
+}
+
 bool fold_readonly_global_loads(Function * function,
     const std::vector<unsigned char> & readonly_known,
     const std::vector<Operand> & readonly_constants,

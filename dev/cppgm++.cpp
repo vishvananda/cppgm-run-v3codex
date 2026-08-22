@@ -249,6 +249,7 @@ struct SourceOutputInvocation
 {
   string output;
   vector<string> inputs;
+  vector<string> include_paths;
   vector<DriverInvocation::MacroAction> macro_actions;
   int optimization_level = 0;
   bool has_optimization_level = false;
@@ -288,6 +289,16 @@ SourceOutputInvocation parse_source_output_invocation(
     if(allow_lowir_options &&
        (args[i] == "--witness" || args[i] == "--witness-debug")) {
       consume_required_option_argument(args, i, args[i], "output file");
+      continue;
+    }
+    if(allow_lowir_options && args[i] == "-I") {
+      consume_required_option_argument(args, i, "-I", "include path");
+      invocation.include_paths.push_back(args[i]);
+      continue;
+    }
+    if(allow_lowir_options && starts_with(args[i], "-I") &&
+       args[i].size() > 2) {
+      invocation.include_paths.push_back(args[i].substr(2));
       continue;
     }
     if(allow_lowir_options && (args[i] == "-D" || args[i] == "-U")) {
@@ -2404,6 +2415,7 @@ int run_emit_lowir_mode(const vector<string> & args)
 		cppgm::WriteLowIRProgram(sources, options, output,
 			invocation.collect_stats ? &stats : 0);
 	} else {
+		options.include_search_paths = invocation.include_paths;
 		cppgm::ConfigureHostedPreprocessing(&options, true,
 			invocation.has_optimization_level &&
 			invocation.optimization_level >= 1);

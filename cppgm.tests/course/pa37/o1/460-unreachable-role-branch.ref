@@ -9,12 +9,12 @@ function @keep_ordinary_call(%condition : i64) -> i64 [binding=strong, no_inline
   block ^entry:
     branch %condition, ^ordinary, ^good
 
-  block ^ordinary:
-    call void @ordinary_noreturn()
-    jump ^good
-
   block ^good:
     return i64 9
+
+  block ^ordinary:
+    call void @ordinary_noreturn()
+    return i64 0
 }
 function @main() -> i64 [role=entry] {
   block ^entry:

@@ -32,11 +32,11 @@ function @keeps_live_successor(%value : i64) -> i64 {
     %bad = cmp ugt i64 %value, 100
     branch %bad, ^observe, ^ok
 
-  block ^observe:
-    call void @fail(%value)
-    jump ^ok
-
   block ^ok:
     %sum = binary add i64 %value, 3
     return i64 %sum
+
+  block ^observe:
+    call void @fail(%value)
+    return i64 0
 }
