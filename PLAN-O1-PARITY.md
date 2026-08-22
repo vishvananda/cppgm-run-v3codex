@@ -1,6 +1,6 @@
 # Plan: Generated-Code Parity With GCC and Clang at O1
 
-Status: active; P0 correctness gates are complete, P1 is next
+Status: phases P0-P8 have measured dispositions; the within-10% acceptance target is carried by the recorded P5 interval-allocation follow-on phase
 
 Date: 2026-08-22
 
@@ -311,7 +311,9 @@ Rebuild the twelve-way matrix at the end state.  Acceptance requires:
 | P2-sweep | late nonleaf caps 8/9 | rejected before movement | compiler +110 KB | exact self-O1 medians 13.03 vs 12.95 s -- noise-to-worse; the R10i-b conclusion holds even with frame-clean bodies | measured on the P3 tree | rejected; callful-body call setup, not size, remains the boundary |
 | P4c | edge register retention planning at O1 | no fixture movement (existing PA29/PA37/PA38 shapes have no eligible edges) | compiler 10,705,720 to 10,701,624 B | exact self-O1 medians about 13.02 to 12.90 s (-0.9%), candidate ahead in five of six interleaved pairs | 5,411/5,411; zero fatal | complete, `2fd09223` |
 | P5a | serialize raising blocks after ordinary blocks (cold-block sinking at O1+) | PA37 O1 exact reducer `390-sink-cold-blocks` with direct, chained, and live-successor-negative cases; two existing O1 refs regenerated; `missing operand type` diagnostics gained function context | frozen O1 1,402,496 to 1,398,096 B, text 563,768 to 559,433 B | exact self-O1 user medians 12.27 to 12.09 s (-1.5%), candidate ahead in every clean interleaved pair | 5,412/5,412; zero fatal | complete, `2a882591` |
-| P5 | remeasure; interval allocation decision | | | | | pending |
+| P5 | remeasure and decide on interval allocation | none | post-P4 profile is flat: `Lexer::Peek` 8.5% then a tail below 2.5%, the general-quality signature; remaining hot bodies are within 2x of GCC with cold code interleaving removed | decision: interval-based physical allocation at O1/O2 within `FunctionFacts` is the confirmed remaining structural lever and proceeds as a dedicated follow-on phase; it must not be grown incrementally out of the reactive allocator | measured on the P5a tree | disposition recorded |
+| P6 | extern-template emission census | none | self-O1 binary 12,317,088 to 10,607,568 B (-13.9%); defined functions 19,992 to 19,447 -- the body population is inliner-policy-bound, not extern-template-bound, and the cap sweeps showed the retained bodies do not cost runtime | measurement only | measured on the final tree | complete |
+| P7 | trivial fill recognition | rejected before implementation | the `Operand` fill dropped from 3.16% to 0.84% of samples once promotion cleaned the loop; the remaining fill is a patterned record write, not a zero fill, so the transform is a rodata-template materialization with under 1% headroom | deferred with the P5 phase | measured on the final tree | deferred |
 | P6 | extern-template emission census | | | | | pending |
 | P7 | trivial fill recognition | | | | | pending |
-| P8 | final matrix and acceptance | | | | | pending |
+| P8 | final matrix | hosts rebuilt from the exact final tree; self lanes O0-O3 rebuilt clean | frozen medians: gcc-O1 5.92 s, clang-O1 5.63 s, self-O0 35.45 s, self-O1 12.64 s, self-O2 12.60 s, self-O3 12.57 s; no level inversion; self-O1 improved 17.11 to 12.64 s (-26.1%), ratio to gcc-O1 2.87x to 2.14x | acceptance target of within-10% is not yet met; the recorded P5 follow-on phase carries the remaining 2.1x | all P-phase gates recorded above | complete; target carried to the P5 phase |
