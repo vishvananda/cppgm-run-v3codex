@@ -853,6 +853,18 @@ private:
   }
   static bool managed_register(X64Register reg)
   { return location_planning::managed_register(reg); }
+  // A retained dereference operand is replayed at every later consumer, so
+  // its carrier registers may not reenter the allocation pool while the
+  // function is still being lowered.
+  void reserve_deferred_address_carriers(const MirOperand & address)
+  {
+    if(address.kind != MirOperand::OP_DEREF) return;
+    if(managed_register(address.reg) && !registers_.is_used(address.reg))
+      registers_.reserve(address.reg);
+    if(address.has_index && managed_register(address.index) &&
+       !registers_.is_used(address.index))
+      registers_.reserve(address.index);
+  }
   bool value_is_live(lowir_model::ValueId value) const
   {
     return facts_.uses[value] != 0 ||

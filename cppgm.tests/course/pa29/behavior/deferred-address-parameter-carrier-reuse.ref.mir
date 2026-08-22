@@ -1,0 +1,242 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @recs
+  storage data
+  item zero 672
+
+global @obj
+  storage data
+  item zero 128
+
+global @info
+  storage data
+  item u32 2
+  item u32 0
+
+function @grow
+  abi
+    param %this -> rdi : ptr
+    param %type -> rsi : u32
+    return u32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, rsi
+    zext.i32 r8
+    add r8, 1
+    mov rax, r8
+    zext.i32 rax
+    ret rax
+
+function @seed
+  abi
+    param %this -> rdi : ptr
+    param %variable -> rsi : u32
+    param %binding -> rdx : u32
+    param %type -> rcx : u32
+    return void -> void
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx r12
+
+  block ^entry
+    mov r8, rdx
+    add r8, rcx
+    zext.i32 r8
+    load.ptr r9, [rdi+104]
+    mov rbx, rsi
+    zext.i32 rbx
+    imul rbx, 168
+    lea r12, [r9+rbx]
+    store.u32 [r12+136], r8
+    ret
+
+function @probe
+  abi
+    param %this -> rdi : ptr
+    param %variable -> rsi : u32
+    param %binding -> rdx : u32
+    param %type -> rcx : u32
+    param %initializer -> r8 : ptr
+    param %has_initializer -> r9 : u8
+    param %declaration_only -> [rbp+16] : u8
+    param %qualified -> [rbp+24] : u8
+    return u32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 0
+    preserve rbx r12 r13
+    param-slot %this -> [rbp-8] : ptr
+    param-slot %variable -> [rbp-12] : u32
+    param-slot %binding -> [rbp-16] : u32
+    param-slot %type -> [rbp-20] : u32
+    param-slot %declaration_only -> [rbp-21] : u8
+    param-slot %qualified -> [rbp-22] : u8
+    slot $object -> [rbp-28] : u32
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.u32 [rbp-12], rsi
+    store.u32 [rbp-16], rdx
+    store.u32 [rbp-20], rcx
+    load.u8 rax, [rbp+16]
+    store.u8 [rbp-21], rax
+    load.u8 rax, [rbp+24]
+    store.u8 [rbp-22], rax
+    mov rax, r9
+    cmp.i64 rax, 0
+    jne ^then
+    jmp ^other
+
+  block ^then
+    load.u32 rsi, [r8]
+    mov rbx, rsi
+    zext.i32 rbx
+    load.ptr rsi, [rdi+104]
+    imul rbx, 168
+    lea r12, [rsi+rbx]
+    load.i64 rsi, [r12+72]
+    load.u32 rbx, [rbp-12]
+    zext.i32 rbx
+    load.ptr r12, [rdi+104]
+    imul rbx, 168
+    lea r13, [r12+rbx]
+    store.i64 [r13+72], rsi
+    load.u32 rsi, [r8]
+    mov r12, rsi
+    zext.i32 r12
+    load.ptr rsi, [rdi+104]
+    imul r12, 168
+    lea r13, [rsi+r12]
+    load.u32 rsi, [r13+132]
+    load.ptr r12, [rdi+104]
+    lea r13, [r12+rbx]
+    store.u32 [r13+132], rsi
+    load.u32 rax, [r8]
+    ret rax
+
+  block ^other
+    mov rsi, rcx
+    call @grow [args=(rsi,rdi)]
+    store.u32 [rbp-28], rax
+    load.u8 rax, [rbp-21]
+    cmp.i64 rax, 0
+    jne ^bail
+    jmp ^orcheck
+
+  block ^orcheck
+    cmp.u32 [rbp-28], 0
+    je ^bail
+    jmp ^orright
+
+  block ^orright
+    load.u8 rax, [rbp-22]
+    cmp.i64 rax, 0
+    jne ^andright
+    jmp ^tail
+
+  block ^andright
+    load.ptr rbx, [rbp-8]
+    lea rbx, [rbx+104]
+    load.u32 rsi, [rbp-28]
+    mov r12, rsi
+    zext.i32 r12
+    load.ptr rsi, [rbx]
+    imul r12, 168
+    lea rbx, [rsi+r12]
+    lea rbx, [rbx+136]
+    load.u32 rsi, [rbx+4]
+    cmp.u32 rsi, 0
+    jne ^bail
+    jmp ^tail
+
+  block ^bail
+    mov rax, 4294967295
+    ret rax
+
+  block ^tail
+    load.ptr rdi, [rbp-8]
+    load.u32 rsi, [rbp-12]
+    load.u32 rdx, [rbp-16]
+    load.u32 rcx, [rbp-20]
+    call @seed [args=(rcx,rdx,rsi,rdi)]
+    load.ptr rbx, [rbp-8]
+    lea rbx, [rbx+104]
+    load.u32 rsi, [rbp-12]
+    zext.i32 rsi
+    load.ptr r12, [rbx]
+    imul rsi, 168
+    lea rbx, [r12+rsi]
+    load.u32 rax, [rbx+136]
+    ret rax
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve rbx
+    temp %recs -> [rbp-8] : ptr
+
+  block ^entry
+    mov r8, @obj
+    mov rbx, @recs
+    store.ptr [rbp-8], rbx
+    load.ptr rax, [rbp-8]
+    store.ptr [r8+104], rax
+    load.ptr r9, [rbp-8]
+    lea r9, [r9+336]
+    store.i64 [r9+72], 77
+    store.u32 [r9+132], 8
+    sub rsp, 16
+    mov r11, 0
+    store.u8 [rsp], r11
+    mov r11, 0
+    store.u8 [rsp+8], r11
+    mov rdi, r8
+    mov rsi, 1
+    mov rdx, 10
+    mov rcx, 20
+    mov r8, @info
+    mov r9, 1
+    call @probe [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
+    add rsp, 16
+    mov r8, rax
+    mov r9, r8
+    zext.i32 r9
+    cmp.i64 r9, 2
+    jne ^fail
+    jmp ^check1
+
+  block ^check1
+    load.ptr r8, [rbp-8]
+    lea r8, [r8+168]
+    load.i64 r9, [r8+72]
+    cmp.i64 r9, 77
+    jne ^fail
+    jmp ^check2
+
+  block ^check2
+    load.u32 r9, [r8+132]
+    mov r8, r9
+    zext.i32 r8
+    cmp.i64 r8, 8
+    jne ^fail
+    jmp ^good
+
+  block ^good
+    mov rax, 0
+    ret rax
+
+  block ^fail
+    mov rax, 1
+    ret rax

@@ -127,6 +127,7 @@ protected:
       if(encodable) {
         if(require_selected_parameter_home)
           base = lowerer.selected_value_location(instruction.first.value);
+        lowerer.reserve_deferred_address_carriers(address);
         ValueFact value;
         value.location = address;
         value.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
@@ -164,6 +165,7 @@ protected:
           base.reg, index.reg,
           static_cast<unsigned>(instruction.type.storage_size));
       }
+      lowerer.reserve_deferred_address_carriers(address);
       ValueFact value;
       value.location = address;
       value.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
