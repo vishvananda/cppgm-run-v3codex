@@ -9,7 +9,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t2 = addr @values
     %t3 = unary decay ptr %t2
     %t4 = binary sub ptr %t1, %t3
-    %t5 = binary div i64 %t4, 4
+    %t5 = binary shr i64 %t4, 2
     %t6 = binary sub i64 %t5, 1
     %t7 = convert trunc i32 i64 %t6
     return i32 %t7

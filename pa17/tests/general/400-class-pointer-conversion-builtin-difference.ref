@@ -19,11 +19,11 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t11 = addr $last
     %t12 = call ptr @pointer__operatorint_(%t11)
     %t13 = binary sub ptr %t10, %t12
-    %t14 = binary div i64 %t13, 4
+    %t14 = binary shr i64 %t13, 2
     %t15 = convert trunc i32 i64 %t14
     return i32 %t15
 }
-function @pointer__operatorint_(%this : ptr) -> ptr [binding=weak, object=_ZNK7pointercvPiEv] {
+function @pointer__operatorint_(%this : ptr) -> ptr [binding=weak, object=_ZNK7pointercvPiEv, inline_hint=yes] {
   slot $this : ptr
 
   block ^entry:

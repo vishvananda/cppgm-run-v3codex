@@ -10,7 +10,7 @@ function @distance(%first : obj<8x8>, %last : ptr) -> i64 [binding=strong, objec
     %t3 = call ptr @iterator__operatorconstint_(%t2)
     %t4 = load ptr $last
     %t5 = binary sub ptr %t3, %t4
-    %t6 = binary div i64 %t5, 4
+    %t6 = binary shr i64 %t5, 2
     return i64 %t6
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
@@ -47,7 +47,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t12 = load i32 $cond__1
     return i32 %t12
 }
-function @iterator__operatorconstint_(%this : ptr) -> ptr [binding=weak, object=_ZNK8iteratorcvPKiEv] {
+function @iterator__operatorconstint_(%this : ptr) -> ptr [binding=weak, object=_ZNK8iteratorcvPKiEv, inline_hint=yes] {
   slot $this : ptr
 
   block ^entry:

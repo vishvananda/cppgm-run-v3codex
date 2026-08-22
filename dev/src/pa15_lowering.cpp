@@ -1731,10 +1731,23 @@ private:
 		const Operand result = Temp(LowI64());
 		Instruction divide(Instruction::BINARY);
 		divide.dest = result.id;
-		divide.op = LOW_OP_DIV;
 		divide.type = LowI64();
 		divide.first = bytes;
-		divide.second = Operand(static_cast<std::int64_t>(element_size), LowI64());
+		if ((element_size & (element_size - 1)) == 0)
+		{
+			// The difference of two pointers into one array is a multiple of
+			// the element size, so the exact division is an arithmetic shift.
+			std::size_t shift = 0;
+			while ((element_size >> shift) != 1) ++shift;
+			divide.op = LOW_OP_SHR;
+			divide.second = Operand(static_cast<std::int64_t>(shift), LowI64());
+		}
+		else
+		{
+			divide.op = LOW_OP_DIV;
+			divide.second =
+				Operand(static_cast<std::int64_t>(element_size), LowI64());
+		}
 		Emit(divide);
 		return result;
 	}

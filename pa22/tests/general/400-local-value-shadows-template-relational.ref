@@ -24,7 +24,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t15 = call i32 @direct_streambuf_int___seek_impl(%t14, 1)
     return i32 %t15
 }
-function @direct_streambuf_int___seek_impl(%this : ptr, %off : i64) -> i32 [binding=weak, object=_ZN16direct_streambufIiE9seek_implEl] {
+function @direct_streambuf_int___seek_impl(%this : ptr, %off : i64) -> i32 [binding=weak, object=_ZN16direct_streambufIiE9seek_implEl, inline_hint=yes] {
   slot $this : ptr
   slot $off : i64
   slot $next : i64
@@ -47,7 +47,7 @@ function @direct_streambuf_int___seek_impl(%this : ptr, %off : i64) -> i32 [bind
     %t9 = index i8 [projection=field] %t8, 0
     %t10 = load ptr %t9
     %t11 = binary sub ptr %t7, %t10
-    %t12 = binary div i64 %t11, 8
+    %t12 = binary shr i64 %t11, 3
     %t13 = cmp gt i64 %t4, %t12
     branch %t13, ^if_then_1, ^if_else_2
 

@@ -18,7 +18,7 @@ function @diff(%a : ptr, %b : ptr) -> i64 [binding=strong, object=_Z4diffPiS_] {
     %t1 = load ptr $a
     %t2 = load ptr $b
     %t3 = binary sub ptr %t1, %t2
-    %t4 = binary div i64 %t3, 4
+    %t4 = binary shr i64 %t3, 2
     return i64 %t4
 }
 function @from_array() -> ptr [binding=strong, object=_Z10from_arrayv] {

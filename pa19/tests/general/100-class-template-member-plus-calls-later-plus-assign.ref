@@ -23,7 +23,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t9 = addr $b
     %t10 = addr $values
     %t11 = unary decay ptr %t10
-    call void @Box_int___Box(%t9, %t11)
+    call void @Box_int___Box_int_(%t9, %t11)
     %t12 = addr $tmpobj__1
     %t13 = addr $b
     %t14 = call obj<8x8> @Box_int___operator_(%t13, 4)
@@ -33,12 +33,12 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t17 = addr $values
     %t18 = unary decay ptr %t17
     %t19 = binary sub ptr %t16, %t18
-    %t20 = binary div i64 %t19, 4
+    %t20 = binary shr i64 %t19, 2
     %t21 = binary sub i64 %t20, 4
     %t22 = convert trunc i32 i64 %t21
     return i32 %t22
 }
-function @Box_int___Box(%this : ptr, %x : ptr) -> void [binding=weak, object=_ZN3BoxIiEC1EPi] {
+function @Box_int___Box_int_(%this : ptr, %x : ptr) -> void [binding=weak, object=_ZN3BoxIiEC1EPi, inline_hint=yes] {
   slot $this : ptr
   slot $x : ptr
 
@@ -51,7 +51,7 @@ function @Box_int___Box(%this : ptr, %x : ptr) -> void [binding=weak, object=_ZN
     store ptr %t1, %t3
     return void
 }
-function @Box_int___operator_(%this : ptr, %n : i64) -> obj<8x8> [binding=weak, object=_ZNK3BoxIiEplEl] {
+function @Box_int___operator_(%this : ptr, %n : i64) -> obj<8x8> [binding=weak, object=_ZNK3BoxIiEplEl, inline_hint=yes] {
   slot $this : ptr
   slot $n : i64
   slot $w : obj<8x8>
@@ -71,7 +71,19 @@ function @Box_int___operator_(%this : ptr, %n : i64) -> obj<8x8> [binding=weak, 
     copyobj 8x8 %t7, %t6
     return obj<8x8> $retobj__1
 }
-function @Box_int___operator__(%this : ptr, %n : i64) -> ptr [binding=weak, object=_ZN3BoxIiEpLEl] {
+function @Box_int___Box_int___ov2(%this : ptr, %__param1 : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN3BoxIiEC1ERKS0_, inline_hint=yes] {
+  slot $this : ptr
+  slot $__param1 : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    store ptr %__param1, $__param1
+    %t1 = load ptr $this
+    %t2 = load ptr $__param1
+    copyobj 8x8 %t2, %t1
+    return void
+}
+function @Box_int___operator__(%this : ptr, %n : i64) -> ptr [binding=weak, object=_ZN3BoxIiEpLEl, inline_hint=yes] {
   slot $this : ptr
   slot $n : i64
 
@@ -88,17 +100,5 @@ function @Box_int___operator__(%this : ptr, %n : i64) -> ptr [binding=weak, obje
     %t7 = load ptr $this
     return ptr %t7
 }
-function @Box_int___Box__ov2(%this : ptr, %__param1 : ptr [pass=reference]) -> void [unwind=no, binding=weak, object=_ZN3BoxIiEC1ERKS0_, trivial_lifecycle=yes] {
-  slot $this : ptr
-  slot $__param1 : ptr
-
-  block ^entry:
-    store ptr %this, $this
-    store ptr %__param1, $__param1
-    %t1 = load ptr $this
-    %t2 = load ptr $__param1
-    copyobj 8x8 %t2, %t1
-    return void
-}
-alias object _ZN3BoxIiEC2EPi = @Box_int___Box
-alias object _ZN3BoxIiEC2ERKS0_ = @Box_int___Box__ov2
+alias object _ZN3BoxIiEC2EPi = @Box_int___Box_int_
+alias object _ZN3BoxIiEC2ERKS0_ = @Box_int___Box_int___ov2
