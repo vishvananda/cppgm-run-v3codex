@@ -1,10 +1,10 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--10i and R11a--c are implemented and clean through the
-full report; Rank 11 continues at lifecycle policy separation, while the
-under-15-second maximum frozen-compile objective remains open
+Status: active; Ranks 1--10i and R11a--h are implemented and clean through the
+full report and 32-worker inception; true EH grafting remains deferred, while
+the under-15-second maximum frozen-compile objective remains open
 
-Date: 2026-08-21
+Date: 2026-08-22
 
 ## Objective
 
@@ -2327,9 +2327,17 @@ frozen median is
 2.1% lower in wall time and 2.3% lower in user time than the immutable R11h
 baseline under the same load.  PA37 owns three new positive/negative reducers,
 and seven existing PA37 references move in place where zero projections or the
-newly marginal lifecycle inline shape change.  Final full-report, audit, and
-32-worker inception results remain the acceptance gate for this retained
-canonicalization changeset.
+newly marginal lifecycle inline shape change.
+
+Final acceptance at `c0526298` is a clean 5,403/5,403 full report and a PA39
+file audit with zero fatal findings and 30 advisory warnings.  The separated
+CFG module keeps `lowir_opt.cpp` below the 3,000-line audit limit.  A clean
+32-worker O3 self build took 18.92 seconds wall, 464.54 seconds user,
+43.10 seconds system, and 231,164 KiB peak RSS; the final compiler is
+12,082,192 bytes.  The following separate 32-worker inception took
+64.71 seconds wall, 1,743.04 seconds user, 59.54 seconds system, and
+230,252 KiB peak RSS.  All 211 objects and the final `cppgm++-inception`
+binary match the self-host baseline.
 
 #### R11i. Defer true EH grafting
 
@@ -2555,7 +2563,7 @@ Fill one row for every retained or rejected phase:
 | R11e | proven-no-unwind landing-block inlining | PA37 exact/source; PA30 exception-in-flight runtime | vs R11d: object -29,848 B, text -1,523 B, -105 definitions; basic-string destructor calls -192 | existing dense landing/no-unwind/EH summaries and budgets | 5,392/5,392; PA37 debug clean; zero fatal | final combined lane required | implementation complete; host O1 median 5.12 s |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | PA33 source; PA37 source/DCE positives and negatives | 53 declarations but 26 attributable live calls; 291/1,432 serialized definitions EH-bearing; O1 byte-identical | compact canonical effects enum; single-pass attribute collection | 5,395/5,395; zero fatal | diagnostic | complete; GNU `nothrow` absent and `basic_string` cleanup unannotated |
 | R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 memory EH positive/barrier/conflict; no rejected-prototype fixtures retained | memory: +70 eliminated loads, -296 B object, -318 B text; PRE +7,560 B object; placement +5,808 B object | shared compact EH states only for retained memory GVN; rejected prototypes removed | 5,396/5,396; zero fatal | required for each retained subphase | complete: memory retained; PRE and placement rejected |
-| R11h | post-harvest inliner profitability sweep; PA29 wide-live-register corrective | PA29 behavior/MIR and normative/Design Notes; PA37 only for a retained policy change | exact-self baseline maximum 16.12 s, O0 14.38 s; policy deltas pending | corrective uses existing dense typed use counts and one O(1) branch; sweep adds no production profiling strings | 5,398/5,398; zero fatal | corrected O3 self 18.32 s / 230,256 KiB; final retained-policy inception pending | correctness baseline complete; policy sweep active |
+| R11h | post-harvest inliner profitability sweep; PA29 correctives; cleanup-body canonicalization | PA29 behavior/MIR and normative/Design Notes; PA37 O1/O2 positive/negative reducers and seven moved references | cap 12, shallow wrapper, weighted cost, and cap 8 rejected; retained cap-7 canonicalization changes exact-self frozen median wall 17.59 to 17.22 s and user 17.03 to 16.63 s | exact typed CFG/use arrays and pointer facts; no strings or retry loop; Boolean CFG work separated from scheduler | 5,403/5,403; zero fatal, 30 warnings | O3 self 18.92 s / 231,164 KiB; 32-way inception 64.71 s / 230,252 KiB; 211 objects and final binary match | complete, `c0526298`; under-15 objective remains open |
 | R11i | true EH-region grafting | PA37 only if justified by a residual profiled-hot population | separate genuine live-EH effect from dead-region work | no unbounded retry or private LowIR side channel | pending | required if retained | deferred pending R11f/h residual census |
 
 ## Completion criteria
