@@ -302,7 +302,9 @@ Rebuild the twelve-way matrix at the end state.  Acceptance requires:
 | P1c | keep edge-live value registers across backedges (inception-exposed miscompile) | no fixture movement; isolated reducer outstanding, recorded above | none on existing fixtures | unblocks the no-assertions O3 self compiler | 5,410/5,410; zero fatal; both lanes above ran on this commit | complete, `882b7456` |
 | P2 | hot accessor inlining with cold-successor discount | | | | | pending |
 | P3 | compare-branch fusion through bool conversions | | | | | pending |
-| P4 | O1 value/placement work (promotion, GVN, retention, folds) | | | | | pending |
+| P4a | scalar slot promotion and dead-slot-store elimination at O1 | 22 PA37 O1/driver/debuginfo refs and one stale O2 loop-prune ref regenerated through the documented local apps; five previously missing `.ref.stdout` artifacts added; PA29/PA38 unchanged | frozen O1 1,444,648 to 1,410,600 B, text 598,232 to 571,898 B (-4.4%); O2/O3 unchanged by promotion; corrective adds +2,704 B at max, +2,144 B at O0 | exact self-O1 frozen medians 15.05 to 13.42 s wall, 14.53 to 12.89 s user (-10.8%); host O1 compile 5.10 s unchanged | 5,410/5,410; debug lanes clean; zero fatal; O3 lane self 18.89 s + inception 54.16 s, 211 objects and final compiler match | complete, `ecf96dcc` |
+| P4a-c1 | home parameters crossing register clobbers (promotion-exposed; latent at O2/O3) | no fixture movement; the slot census alone no longer proves a parameter needs no home, and wide boundaries home clobber-crossing parameters | corrective portion of the movement above | fixes the promoted `visit_store_classes` rcx-divisor miscompile | included in the P4a gates | complete, `99054828` |
+| P4-note | O2 dead-loop deletion misses phi-shaped counted loops (`100-slot-loop-prune` documents current behavior); revisit with P4 loop work | | | | | recorded |
 | P5 | remeasure; interval allocation decision | | | | | pending |
 | P6 | extern-template emission census | | | | | pending |
 | P7 | trivial fill recognition | | | | | pending |
