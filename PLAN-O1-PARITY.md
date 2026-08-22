@@ -401,6 +401,42 @@ Rebuild the twelve-way matrix at the end state.  Acceptance requires:
 - the ledger below completed for every phase, including rejected
   experiments and their measured reasons.
 
+
+## P10: planned register residency (the placement phase)
+
+Everything cheap is harvested.  After P9 the exact-self O1 compile is
+10.32 s against gcc-O1 5.92 s (1.74x), and the remaining movement classes
+-- scalar-temporary home traffic (27.6k instructions on the frozen TU) and
+call-boundary reloads (7.1k loads) -- all trace to one discipline: the
+reactive allocator gives a call-crossing or edge-live value an eager frame
+home and reloads it at every consumer.  Three retention flavors failed
+because they kept the eager store; LowIR load elimination fails (P4b, P9f
+twice) because its values land in exactly those homes.  The fix must make
+planned values *live in registers without homes*:
+
+- **P10a. Planner (P5d/e revived).**  Non-parameter scalar GPR values with
+  two or more uses, intervals `[definition, last_use]` extended over layout
+  backedges; linear scan assigns call-crossing values callee-saved
+  registers from {RBX, R12, R13} only (R14/R15 stay reactive headroom) and
+  non-crossing values from {R8, R9}; registers in the value's
+  `live_across_clobbers` mask are excluded.  Functions with EH, va_start,
+  or dynamic stack are excluded in v1.
+- **P10b. Homeless residency.**  A planned value's register is granted at
+  definition (`try_reserve_result_register` consults the plan first), is
+  NOT released by `consume()` until the interval ends, is skipped by
+  `spill_candidate` (no home to fall back on), and is retained across
+  edges by `stabilize_edge_live_result` with no fallback store, the same
+  contract as `VF_EXACT_FORWARD_EDGE`.
+- **P10c. Exhaustion safety.**  Planned values occupy at most 3 callee-
+  saved plus 2 caller-saved registers; the reactive pool always keeps
+  R14/R15 plus the remaining caller-saved set, and every planned interval
+  ends with a normal release, so the reactive fallback ("reactive GPR
+  allocation exhausted") can only fire where it could today.  Any such
+  failure is a hard build error surfaced immediately by the suites.
+
+Gates as always; the acceptance signal is the exact-self A/B, expecting
+the first material cut into the 27.6k-instruction home-traffic class.
+
 ## Ledger
 
 | Phase | Intended result | Fixture/contract movement | Frozen output delta | Generated-self delta | Full report/audit | Status/commit |
@@ -434,4 +470,5 @@ Rebuild the twelve-way matrix at the end state.  Acceptance requires:
 | P9a | sink cold-only pure definitions (constants and addresses) into their raising blocks, rematerializing per block for shared uses; landing pads excluded | PA37 O1 course reducer `392-sink-cold-only-definitions` (move, rematerialize, and hot-use-negative cases); pinned `200-eh-cleanup-addr-rematerialize` preserved by the landing-pad exclusion; full suite 5,415/5,415; zero-fatal audit; O3+O0 self/inception lanes 212/212 | `Lexer::Peek` 122 to 112 instructions with two callee-saved pushes, three RIP loads, and three frame stores off the hot prologue; frozen-TU signal weak (32 sinks, throws centralized in helpers); pp_tokenizer 54 sinks | exact self-O1 ahead in 5 of 6 interleaved pairs: wall median 12.63 to 12.45 s, user median 12.12 to 11.95 s (about -1.4%) | all gates above | complete |
 | P9b/c/d | same-block duplicate-load elimination; negated boolean compare folds to the inverted comparison (integers only, one conversion deep); small `MI_COPY_BYTES` (<= 32 B) encodes as chunked direct load/store pairs instead of `rep movs` | PA37 O1 reducers `386-negated-boolean-compare` (trunc, direct, and float-negative cases) and `387-duplicate-block-loads` (call-crossing and store-intervening negatives); PA29 behavior reducer `small-copyobj-direct-stores` (7/24/33-byte spans); full suite 5,418/5,418; zero-fatal audit; O3+O0 self/inception lanes | frozen TU: `rep movs` sites 131 to 14, text -2,835 B, LowIR output -448; `Peek` boolean chain `sete/movzbl/cmp/jne` becomes `test/je`; cold sinks compound 32 to 132 | exact self-O1 ahead in all 6 interleaved pairs: wall median 12.48 to 10.55 s (-15.5%), user 11.98 to 9.86 s (-17.7%); ratio to gcc-O1 2.11x to 1.78x | all gates above | complete |
 | P9e | promote small objects at O1 (was O2-gated); fix a latent promotion bug where a `copyobj` against an object passed by value produced an object-typed load or store address (reproducible at O2) | five `pa37/tests/o1` refs regenerated through the documented local flow (staging-slot chains collapse to direct stores or a phi, same precedent as the P4 enablements `ecf96dcc`/`fe0cc35b`); full suite 5,418/5,418; zero-fatal audit; O3+O0 self/inception lanes | frozen TU: 983 objects promoted, LowIR output -2,354, text -15,395 B; pass cost 9 ms per TU | exact self-O1 ahead in 4 of 6 interleaved pairs, tied 2: wall median 10.51 to 10.32 s (-1.8%) | all gates above | complete |
+| P9f | memory GVN at O1, re-measured post-P9 (the P4b "revisit after placement" note) | rejected before fixture movement | 582 loads eliminated at 10.6 ms per TU, but text +7,074 B: each eliminated load becomes a cross-block live value the reactive allocator homes with a store plus reloads, costing more than the original loads | confirms P4b on the new baseline; the harvest still requires cross-block register residency | measured on the P9e tree | rejected again; folded into the P10 requirements |
 | P8 | final matrix | hosts rebuilt from the exact final tree; self lanes O0-O3 rebuilt clean | frozen medians: gcc-O1 5.92 s, clang-O1 5.63 s, self-O0 35.45 s, self-O1 12.64 s, self-O2 12.60 s, self-O3 12.57 s; no level inversion; self-O1 improved 17.11 to 12.64 s (-26.1%), ratio to gcc-O1 2.87x to 2.14x | acceptance target of within-10% is not yet met; the recorded P5 follow-on phase carries the remaining 2.1x | all P-phase gates recorded above | complete; target carried to the P5 phase |
