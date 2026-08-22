@@ -1,4 +1,5 @@
 #include "lowir_opt.h"
+#include "lowir_boolean_cfg.h"
 #include "lowir_cleanup_o1.h"
 #include "lowir_function_analysis.h"
 #include "lowir_expression_key.h"
@@ -809,6 +810,14 @@ bool simplify_values_with_analysis(
           lowir_model::same_lowir_type(
             lowir_model::lowir_value_type(*function, ins.first.value), ins.type);
         replacement = ins.first;
+      } else if(ins.kind == Instruction::IK_INDEX &&
+                ins.first.kind == Operand::OP_TEMP &&
+                is_zero(ins.second)) {
+        // A zero byte displacement preserves the pointer identity.  Restrict
+        // the replacement to a typed value so storage-address rewriting keeps
+        // the ordinary temporary-address contract.
+        replacement = ins.first;
+        replace = true;
       } else if(ins.kind == Instruction::IK_UNARY)
         replace = fold_unary(ins, &replacement);
       else if(ins.kind == Instruction::IK_BINARY) {
@@ -1098,6 +1107,7 @@ std::vector<BlockId> bypass_targets(const Function & function,
 bool cleanup_cfg(Function * function, Stats * stats)
 {
   if(function->blocks.empty()) return false;
+  bool changed = fold_boolean_phi_branch(function, stats);
   // Phi predecessor identities are part of the instruction contract.  Phi
   // construction runs after CFG cleanup; a later optimizer round trip keeps
   // that CFG stable until edge-aware repair is requested by a transform.
@@ -1106,8 +1116,7 @@ bool cleanup_cfg(Function * function, Stats * stats)
         instruction < function->blocks[block].instructions.size();
         ++instruction)
       if(function->blocks[block].instructions[instruction].kind ==
-         Instruction::IK_PHI) return false;
-  bool changed = false;
+         Instruction::IK_PHI) return changed;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     Block & block = function->blocks[i];
     if(block.instructions.empty()) continue;

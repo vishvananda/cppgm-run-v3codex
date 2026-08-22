@@ -1,0 +1,58 @@
+declare function @observe(%value : i64) -> void [unwind=no]
+
+function @fold_boolean_diamond(%choose : i64) -> void {
+  block ^entry:
+    branch %choose, ^observe, ^done
+
+  block ^observe:
+    call void @observe(1)
+    jump ^done
+
+  block ^done:
+    return void
+}
+function @retain_observable_arm(%choose : i64) -> void {
+  block ^entry:
+    branch %choose, ^selected, ^not_selected
+
+  block ^selected:
+    call void @observe(2)
+    jump ^merge
+
+  block ^not_selected:
+    jump ^merge
+
+  block ^merge:
+    %materialized = phi i64 [^selected: 1, ^not_selected: 0]
+    %test = cmp eq i64 %materialized, 0
+    branch %test, ^done, ^observe
+
+  block ^observe:
+    call void @observe(3)
+    jump ^done
+
+  block ^done:
+    return void
+}
+function @retain_shared_phi(%choose : i64) -> void {
+  block ^entry:
+    branch %choose, ^selected, ^not_selected
+
+  block ^selected:
+    jump ^merge
+
+  block ^not_selected:
+    jump ^merge
+
+  block ^merge:
+    %materialized = phi i64 [^selected: 1, ^not_selected: 0]
+    %test = cmp ne i64 %materialized, 0
+    branch %test, ^observe, ^done
+
+  block ^observe:
+    call void @observe(%materialized)
+    jump ^done
+
+  block ^done:
+    return void
+}

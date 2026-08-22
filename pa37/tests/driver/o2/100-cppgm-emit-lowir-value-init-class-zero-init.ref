@@ -7,8 +7,7 @@ function @f() -> i32 [binding=strong, object=_Z1fv] {
     %t3 = addr $arg__1
     zeroinit 24x8 %t3
     copyobj 16x8 %t3, %t1
-    %t6 = index i8 [projection=field] %t1, 0
-    %t7 = load i32 %t6
+    %t7 = load i32 %t1
     %t9 = index i8 [projection=field] %t1, 8
     %t10 = load i64 %t9
     %t11 = convert trunc i32 i64 %t10
@@ -24,8 +23,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %__o1inl0__t3 = addr $__o1inl0__arg__1
     zeroinit 24x8 %__o1inl0__t3
     copyobj 16x8 %__o1inl0__t3, %__o1inl0__t1
-    %__o1inl0__t6 = index i8 [projection=field] %__o1inl0__t1, 0
-    %__o1inl0__t7 = load i32 %__o1inl0__t6
+    %__o1inl0__t7 = load i32 %__o1inl0__t1
     %__o1inl0__t9 = index i8 [projection=field] %__o1inl0__t1, 8
     %__o1inl0__t10 = load i64 %__o1inl0__t9
     %__o1inl0__t11 = convert trunc i32 i64 %__o1inl0__t10

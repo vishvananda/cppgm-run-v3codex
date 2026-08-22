@@ -95,10 +95,9 @@ function @disjoint_typed_projections() -> i64 {
 
   block ^entry:
     %base = addr $pair
-    %left = index i8 [projection=field] %base, 0
     %right = index i8 [projection=field] %base, 8
-    store i64 3, %left
-    %before = load i64 %left
+    store i64 3, %base
+    %before = load i64 %base
     store i64 5, %right
     %sum = binary add i64 %before, %before
     return i64 %sum

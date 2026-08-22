@@ -5,28 +5,20 @@ function @accessor(%p : ptr) -> i64 [binding=strong, prefer_local=yes] {
   block ^entry:
     store ptr %p, $p
     %t1 = load ptr $p
-    %t2 = index i8 [projection=field] %t1, 0
-    %t3 = index i8 [projection=field] %t2, 0
-    %t4 = index i8 [projection=field] %t3, 0
-    %t5 = load i8 %t4
+    %t5 = load i8 %t1
     %t6 = binary and i8 %t5, 1
     branch %t6, ^long, ^short
 
   block ^long:
     %t7 = load ptr $p
-    %t8 = index i8 [projection=field] %t7, 0
-    %t9 = index i8 [projection=field] %t8, 0
-    %t10 = index i8 [projection=field] %t9, 8
+    %t10 = index i8 [projection=field] %t7, 8
     %t11 = load i64 %t10
     store i64 %t11, $cond__1
     jump ^end
 
   block ^short:
     %t12 = load ptr $p
-    %t13 = index i8 [projection=field] %t12, 0
-    %t14 = index i8 [projection=field] %t13, 0
-    %t15 = index i8 [projection=field] %t14, 0
-    %t16 = load i8 %t15
+    %t16 = load i8 %t12
     %t17 = binary shr i8 %t16, 1
     %t18 = binary and i8 %t17, 127
     store i64 %t18, $cond__1
@@ -40,21 +32,20 @@ function @caller(%p : ptr) -> i64 {
   slot $__o1inl0__cond__1 : i64
 
   block ^entry:
-    %__o1inl0__t2 = index i8 [projection=field] %p, 0
-    %__o1inl0__t3 = index i8 [projection=field] %__o1inl0__t2, 0
-    %__o1inl0__t4 = index i8 [projection=field] %__o1inl0__t3, 0
-    %__o1inl0__t5 = load i8 %__o1inl0__t4
+    %__o1inl0__t1 = copy ptr %p
+    %__o1inl0__t5 = load i8 %__o1inl0__t1
     %__o1inl0__t6 = binary and i8 %__o1inl0__t5, 1
     branch %__o1inl0__t6, ^__o1inl0__long, ^__o1inl0__short
 
   block ^__o1inl0__long:
-    %__o1inl0__t10 = index i8 [projection=field] %__o1inl0__t3, 8
+    %__o1inl0__t10 = index i8 [projection=field] %p, 8
     %__o1inl0__t11 = load i64 %__o1inl0__t10
     store i64 %__o1inl0__t11, $__o1inl0__cond__1
     jump ^__o1inl0__end
 
   block ^__o1inl0__short:
-    %__o1inl0__t16 = load i8 %__o1inl0__t4
+    %__o1inl0__t12 = copy ptr %p
+    %__o1inl0__t16 = load i8 %__o1inl0__t12
     %__o1inl0__t17 = binary shr i8 %__o1inl0__t16, 1
     %__o1inl0__t18 = binary and i8 %__o1inl0__t17, 127
     store i64 %__o1inl0__t18, $__o1inl0__cond__1

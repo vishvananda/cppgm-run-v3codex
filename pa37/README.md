@@ -161,8 +161,8 @@ running optimizing transforms.
 - constant folding for scalar `copy`, `unary`, `binary`, `cmp`, and `convert`
   instructions with known constant operands
 - algebraic identities such as `x + 0`, `x - 0`, `x * 1`, `x & -1`, redundant
-  `unary decay`, identity `convert`, and compares whose operands are known to
-  be identical
+  `unary decay`, identity `convert`, a zero-element `index` through a pointer
+  temporary, and compares whose operands are known to be identical
 - local and executable-edge-aware copy and constant propagation
 - local and executable-edge-aware pure-expression reuse for eligible `addr`,
   `index`, `unary`, `binary`, `cmp`, and `convert` instructions
@@ -176,8 +176,11 @@ running optimizing transforms.
   selectors, removing unreachable blocks, bypassing trivial jump-only blocks,
   merging safe straight-line block pairs, and collapsing empty branch diamonds
   when both arms resolve through non-EH jump-only blocks to the same
-  continuation; straight-line merging must preserve the serialized LowIR rule
-  that every temporary definition precedes every use
+  continuation; a diamond that materializes two integer constants in a `phi`,
+  immediately compares that result, and branches may instead retarget the
+  original branch when both arms are otherwise empty and the intermediate
+  values have no other uses; straight-line merging must preserve the
+  serialized LowIR rule that every temporary definition precedes every use
 - removal of a conditional edge whose target begins with a call to the PA13
   `role=unreachable` operation, when the other edge remains a normal successor
 - preservation of exceptional handler targets and exception-structure blocks
@@ -292,8 +295,9 @@ value. It must additionally support these conservative loop transforms:
 - eliminating a redundant scalar load when a dominating load reads the same
   typed location and no store, call, atomic operation, or other memory effect
   can change that location on any intervening path; direct locations,
-  nonescaping slot addresses, repeated pointer values, and proven disjoint
-  constant projections must use the same conservative alias rules
+  nonescaping slot addresses, pointer copies and phis whose inputs are all the
+  same pointer value, and proven disjoint constant projections must use the
+  same conservative alias rules
 - preserving load invalidation across control-flow joins, unknown pointers,
   ordinary read/write calls, atomic operations, exceptional-handler entries,
   EH region transitions, and calls that may unwind; within one equal,
@@ -481,6 +485,12 @@ ordinary acyclic case converges in one traversal. This avoids whole-program
 fixed-point retries; only a later policy that changes incoming-use eligibility
 needs a deduplicated reverse-caller worklist.
 
+Before constructing CFG and use-count state for Boolean-diamond cleanup, scan
+for the exact three-instruction `phi`/`cmp`/`branch` merge shape. Dense use
+counts then prove that the two intermediate values are private to the shape;
+typed block IDs and predecessor arrays are sufficient to retarget the
+original branch without rendered labels or repeated graph searches.
+
 The direct-call graph can record non-call observation in one byte per function
 while it scans instruction operands and structured global data. Reverse-edge
 counts then identify the single-direct-call case without another symbol lookup
@@ -536,6 +546,9 @@ same dominance frontiers can represent stores and conservative unknown-memory
 barriers without copying a dense location table into every block. Hash keys
 should contain typed IDs, offsets, types, and version numbers rather than
 rendered LowIR text.
+Exact pointer copies and phis whose incoming address facts are identical keep
+the original unknown-pointer identity; only an operation that may form a
+different address needs a new identity.
 
 EH-aware value passes can propagate a compact region-stack identity over
 ordinary CFG edges. Give handler entries and region-changing or may-unwind

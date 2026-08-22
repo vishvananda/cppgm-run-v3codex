@@ -4,8 +4,8 @@ function @second(%xs : obj<16x8>) -> i32 [binding=strong, object=_Z6secondSt16in
   block ^entry:
     %t1 = addr $xs
     copyobj 16x8 %xs, %t1
-    %__o1inl0__t2 = index i8 [projection=field] %t1, 0
-    %__o1inl0__t3 = load ptr %__o1inl0__t2
+    %__o1inl0__t1 = copy ptr %t1
+    %__o1inl0__t3 = load ptr %__o1inl0__t1
     %t5 = index i32 [projection=array_element] %__o1inl0__t3, 1
     %t6 = load i32 %t5
     return i32 %t6
@@ -28,8 +28,8 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     store i64 3, %t5
     %__o1inl0__t1 = addr $__o1inl0__xs
     copyobj 16x8 $argobj__1, %__o1inl0__t1
-    %__o1inl0____o1inl0__t2 = index i8 [projection=field] %__o1inl0__t1, 0
-    %__o1inl0____o1inl0__t3 = load ptr %__o1inl0____o1inl0__t2
+    %__o1inl0____o1inl0__t1 = copy ptr %__o1inl0__t1
+    %__o1inl0____o1inl0__t3 = load ptr %__o1inl0____o1inl0__t1
     %__o1inl0__t5 = index i32 [projection=array_element] %__o1inl0____o1inl0__t3, 1
     %__o1inl0__t6 = load i32 %__o1inl0__t5
     %t7 = binary sub i32 %__o1inl0__t6, 14

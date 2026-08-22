@@ -20,20 +20,19 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = addr $p
-    %__o1inl0__t3 = index i8 [projection=field] %t1, 0
-    store ptr 4660, %__o1inl0__t3
+    %__o1inl0__t2 = copy ptr %t1
+    store ptr 4660, %__o1inl0__t2
     call void @P___P(%t1)
     return i32 0
 }
-function @P___P(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1PD1Ev] {
+function @P___P(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN1PD1Ev, inline_hint=yes] {
   block ^entry:
     eh_try ^function_exception_landing_1
     jump ^__o1inl0__entry
 
   block ^__o1inl0__entry:
-    %__o1inl0__t2 = index i8 [projection=field] %this, 0
-    %__o1inl0__t3 = load ptr %__o1inl0__t2
-    store ptr 0, %__o1inl0__t2
+    %__o1inl0__t3 = load ptr %this
+    store ptr 0, %this
     branch %__o1inl0__t3, ^__o1inl0__if_then_1, ^__o1inl0__cont
 
   block ^__o1inl0__if_then_1:

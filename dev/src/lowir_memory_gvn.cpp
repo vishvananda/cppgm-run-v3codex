@@ -160,7 +160,9 @@ std::vector<AddressFact> derive_addresses(const Function & function)
             fact = AddressFact();
       }
       if(fact.known()) {
-        if(!fact.precise) fact.address_identity = instruction.dest;
+        // A copy and an equal-input phi preserve an unknown pointer's exact
+        // identity.  An imprecise index already received its result identity
+        // in offset_address above.
         result[instruction.dest] = fact;
       }
     }

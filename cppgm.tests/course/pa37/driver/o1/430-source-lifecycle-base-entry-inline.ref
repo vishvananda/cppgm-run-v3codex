@@ -4,9 +4,9 @@ function @use_derived() -> i32 [binding=strong, object=_Z11use_derivedv] {
   block ^entry:
     %t1 = addr $value
     %__o1inl0__t2 = index i8 [projection=base_subobject] %t1, 4
-    %__o1inl0____o1inl0__t2 = index i8 [projection=field] %__o1inl0__t2, 0
-    store i32 7, %__o1inl0____o1inl0__t2
-    %t5 = load i32 %__o1inl0____o1inl0__t2
+    %__o1inl0____o1inl0__t1 = copy ptr %__o1inl0__t2
+    store i32 7, %__o1inl0____o1inl0__t1
+    %t5 = load i32 %__o1inl0__t2
     return i32 %t5
 }
 function @Derived___Derived__base_entry(%this : ptr, %__vbptr0 : ptr) -> void [unwind=no, binding=weak, object=_ZN7DerivedD2Ev, object_root=yes, inline_hint=yes] {
@@ -15,5 +15,14 @@ function @Derived___Derived__base_entry(%this : ptr, %__vbptr0 : ptr) -> void [u
 }
 function @Derived___Derived(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN7DerivedD1Ev, object_root=yes, inline_hint=yes] {
   block ^entry:
+    return void
+}
+function @VirtualBase__VirtualBase__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN11VirtualBaseC2Ev, object_root=yes, inline_hint=yes] {
+  slot $this : ptr
+
+  block ^entry:
+    store ptr %this, $this
+    %t1 = load ptr $this
+    store i32 7, %t1
     return void
 }

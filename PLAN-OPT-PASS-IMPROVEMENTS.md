@@ -2287,6 +2287,50 @@ require the frozen destructor chain to reach the deallocation call, an exact-
 self runtime win in interleaved A/B timing, bounded 1x/2x/4x optimizer work,
 the full report, the file audit, and 32-way inception before retaining it.
 
+Implementation result (2026-08-22): a general weighted-cost prototype was
+not retained.  Restricting it to the destructor-shaped conditional cleanup
+still grew frozen `.text*` from 715,765 to 828,594 bytes and the exact self
+compiler from 11,850,352 to 12,099,072 bytes.  Although it removed every
+`_M_dispose` relocation, three ABBA blocks regressed median wall and user time
+by 2.7% and 2.8%, respectively.  The full 5,400-test report passed, so this was
+a profitability rejection rather than a correctness failure.  The weighted
+policy and its unused counters were removed.
+
+The cheaper retained approach canonicalizes the body before applying the
+existing policy.  O1 now removes a zero-element pointer `index` and bypasses
+the strict empty-diamond shape that materializes an integer `phi`, immediately
+compares it, and branches.  The diamond pass rejects EH targets, observable
+arms, shared intermediate values, and all other phi shapes.  It first checks
+for the exact three-instruction merge, then uses dense value-use counts and
+the existing typed CFG; no strings, per-site maps, or fixed-point retry are
+introduced.  O2 memory GVN now preserves an unknown pointer's identity through
+an exact copy or an equal-input phi, which lets the existing dominance walk
+remove the cleanup body's cross-block reload.  Address-forming indexes still
+receive a distinct identity.
+
+These transformations reduce the serialized `_M_dispose` body from fourteen
+instructions and six blocks to eight instructions and three blocks.  Raising
+the hinted raw cap from seven to eight then removes all 1,002 frozen
+`_M_dispose` call relocations, but grows host-built frozen text from 716,660 to
+767,064 bytes and the exact self compiler from 12,073,336 to 12,241,200 bytes.
+The isolated three-way run gives median wall/user/RSS of
+17.59 s / 17.03 s / 398,492 KiB for the original baseline,
+17.22 s / 16.63 s / 398,716 KiB for canonicalization at cap seven, and
+17.36 s / 16.79 s / 398,852 KiB at cap eight.  Cap eight is therefore rejected
+again: canonicalization supplies the measured improvement, while broad
+cleanup-body cloning gives part of it back and causes the size growth.
+
+The retained cap-seven host object is 1,710,984 bytes versus 1,733,560 bytes
+at baseline; the `size(1)` text figure is nearly flat at 716,660 versus
+715,765 bytes.  The exact self compiler is 12,073,336 bytes and its three-run
+frozen median is
+2.1% lower in wall time and 2.3% lower in user time than the immutable R11h
+baseline under the same load.  PA37 owns three new positive/negative reducers,
+and seven existing PA37 references move in place where zero projections or the
+newly marginal lifecycle inline shape change.  Final full-report, audit, and
+32-worker inception results remain the acceptance gate for this retained
+canonicalization changeset.
+
 #### R11i. Defer true EH grafting
 
 Inlining a callee with genuinely live EH regions requires remapping nested

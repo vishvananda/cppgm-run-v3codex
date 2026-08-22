@@ -14,7 +14,6 @@ function @f() -> i64 {
 
   block ^catch:
     %p = addr $x
-    %field = index i8 [projection=field] %p, 0
-    call void @sink(%field)
+    call void @sink(%p)
     return i64 0
 }
