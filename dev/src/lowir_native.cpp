@@ -64,6 +64,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private memory_detail::MemoryLowering<FunctionLowerer>,
                         private parameter_detail::ParameterRegisterState<FunctionLowerer>,
                         private phi_detail::PhiLowering<FunctionLowerer>,
+                        private location_planning::PlannedResidency<FunctionLowerer>,
                         private return_detail::ReturnLowering<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
@@ -79,6 +80,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class memory_detail::MemoryLowering<FunctionLowerer>;
   friend class parameter_detail::ParameterRegisterState<FunctionLowerer>;
   friend class phi_detail::PhiLowering<FunctionLowerer>;
+  friend class location_planning::PlannedResidency<FunctionLowerer>;
   friend class return_detail::ReturnLowering<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirProgram & program,
@@ -119,6 +121,7 @@ public:
         });
     if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
     storage_facts_ = analyze_storage(source_, facts_, tls_wrappers_);
+    compute_value_register_plan(source_, facts_, optimization_level_, stats_);
     slot_offsets_.resize(source_.slot_names.size(), 0);
     slot_offset_known_.assign(source_.slot_names.size(), 0);
     discarded_slots_.assign(source_.slot_names.size(), 0);
@@ -820,24 +823,29 @@ private:
     const lowir_model::ValueId id = operand.value;
     if(facts_.uses[id] == 0)
       throw std::runtime_error("invalid temporary use count");
-    const bool stops_being_live = facts_.uses[id] == 1 &&
-      !facts_.has(id, FunctionFacts::VF_EDGE_LIVE);
+    const bool interval_over = facts_.uses[id] == 1 &&
+      facts_.has(id, FunctionFacts::VF_EDGE_LIVE) &&
+      planned_interval_over(id);
+    const bool stops_being_live = (facts_.uses[id] == 1 &&
+      !facts_.has(id, FunctionFacts::VF_EDGE_LIVE)) || interval_over;
     --facts_.uses[id];
     if(stops_being_live)
       live_locations_.remove(id, values_[id].location);
     if(facts_.uses[id] == 0) {
       const ValueFact & value = values_[id];
-      // An edge-live value's register may be read again when an earlier
-      // block re-executes through a backedge, so its register outlives the
-      // final counted use.
+      // An edge-live register outlives its final counted use unless the
+      // planned interval end has cleared every backedge and backward
+      // exception region. The alias query must not count the value itself
+      // (removed above): an eliding copy may still occupy the register.
       if(value.location.kind == MirOperand::OP_REG &&
          !value.parameter &&
          !value.fixed_register_home &&
          !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&
-         !facts_.has(id, FunctionFacts::VF_EDGE_LIVE) &&
+         (!facts_.has(id, FunctionFacts::VF_EDGE_LIVE) || interval_over) &&
          value.location.reg != retained && value.location.reg != XR_RAX &&
-         !has_live_location_alias(id, value.location)) {
+         !live_locations_.has_alias(id, value.location, false)) {
         registers_.release(value.location.reg);
+        if(interval_over && stats_) ++stats_->planned_interval_releases;
       }
       if(!value.parameter && value.location.kind == MirOperand::OP_XMM &&
          !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&
@@ -876,16 +884,19 @@ private:
   static bool managed_register(X64Register reg)
   { return location_planning::managed_register(reg); }
   // A retained dereference operand is replayed at every later consumer, so
-  // its carrier registers may not reenter the allocation pool while the
-  // function is still being lowered.
+  // its carrier registers may never reenter the allocation pool.
   void reserve_deferred_address_carriers(const MirOperand & address)
   {
     if(address.kind != MirOperand::OP_DEREF) return;
-    if(managed_register(address.reg) && !registers_.is_used(address.reg))
-      registers_.reserve(address.reg);
-    if(address.has_index && managed_register(address.index) &&
-       !registers_.is_used(address.index))
-      registers_.reserve(address.index);
+    if(managed_register(address.reg)) {
+      if(!registers_.is_used(address.reg)) registers_.reserve(address.reg);
+      mark_deferred_carrier(address.reg);
+    }
+    if(address.has_index && managed_register(address.index)) {
+      if(!registers_.is_used(address.index))
+        registers_.reserve(address.index);
+      mark_deferred_carrier(address.index);
+    }
   }
   bool value_is_live(lowir_model::ValueId value) const
   {
@@ -938,6 +949,12 @@ private:
       if(stats_) ++stats_->exact_forward_edge_register_retains;
       return;
     }
+    // A planned resident keeps its register across the edge with no frame
+    // fallback: the linear scan proved it free for the extended interval.
+    if(value_holds_planned_register(instruction.dest)) {
+      if(stats_) ++stats_->planned_edge_residencies;
+      return;
+    }
     const bool crosses = result_crosses_call(instruction.dest);
     const bool narrow_register_alias = location.kind == MirOperand::OP_REG &&
       selection::is_narrow_integer(value.type) &&
@@ -981,6 +998,9 @@ private:
   bool spill_candidate(lowir_model::ValueId value,
                        bool needs_callee_saved) const
   {
+    // A landing pad may read a planned resident's callee-saved register,
+    // so exception-bearing functions never evict one.
+    if(facts_.has_eh && value_holds_planned_register(value)) return false;
     if(!value_known_[value] || values_[value].parameter ||
        values_[value].location.kind != MirOperand::OP_REG ||
        cyclic_register_assumed_[value] ||
@@ -1117,6 +1137,7 @@ private:
                                    bool needs_callee_saved,
                                    X64Register * result)
   {
+    if(try_planned_grant(value, result)) return true;
     static const X64Register caller_saved[] = {
       XR_R8, XR_R9, XR_RDI, XR_RSI
     };

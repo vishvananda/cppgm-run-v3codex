@@ -1773,6 +1773,14 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.exact_forward_edge_register_retains
          << " planned_edge_register_retains="
          << native_stats.planned_edge_register_retains
+         << " planned_value_registers="
+         << native_stats.planned_value_registers
+         << " planned_register_grants="
+         << native_stats.planned_register_grants
+         << " planned_edge_residencies="
+         << native_stats.planned_edge_residencies
+         << " planned_interval_releases="
+         << native_stats.planned_interval_releases
          << " narrow_call_result_normalizations_omitted="
          << native_stats.narrow_call_result_normalizations_omitted
          << " redundant_integer_normalizations_omitted="
@@ -1932,6 +1940,14 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << native_stats.exact_forward_edge_register_retains
 			 << " planned_edge_register_retains="
 			 << native_stats.planned_edge_register_retains
+			 << " planned_value_registers="
+			 << native_stats.planned_value_registers
+			 << " planned_register_grants="
+			 << native_stats.planned_register_grants
+			 << " planned_edge_residencies="
+			 << native_stats.planned_edge_residencies
+			 << " planned_interval_releases="
+			 << native_stats.planned_interval_releases
 			 << " narrow_call_result_normalizations_omitted="
 			 << native_stats.narrow_call_result_normalizations_omitted
 			 << " redundant_integer_normalizations_omitted="

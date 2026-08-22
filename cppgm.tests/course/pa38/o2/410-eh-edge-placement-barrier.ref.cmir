@@ -25,19 +25,17 @@ function @main
     preserve <gpr0>
     temp %host-eh-exception -> [rbp-<off0>] : ptr
     temp %host-eh-selector -> [rbp-<off1>] : i64
-    temp %stable -> [rbp-<off2>] : i64
 
   block ^entry
     mov <gpr0>, 40
     add <gpr0>, 2
-    store.i64 [rbp-<off2>], <gpr0>
     eh_push ^handler, 0
-    load.i64 rdi, [rbp-<off2>]
+    mov rdi, <gpr0>
     call @identity [args=(rdi), unwind=no]
     eh_pop
 
   block ^done
-    cmp.i64 [rbp-<off2>], 42
+    cmp.i64 <gpr0>, 42
     setne rax
     movzx rax, rax
     ret rax

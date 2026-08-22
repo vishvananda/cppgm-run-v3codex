@@ -3,6 +3,8 @@
 #include "lowir_native.h"
 
 #include <algorithm>
+#include <limits>
+#include <utility>
 #include <stdexcept>
 
 namespace lowir_native {
@@ -121,6 +123,180 @@ bool has_xmm_headroom(const allocation::XmmPool & xmms)
 }
 
 }  // namespace
+
+// Layout backedge spans mirror `ControlFlowQueries` spill safety: a
+// backward jump from position e to a block starting at position s means
+// [s, e] may re-execute.  Exception regions add the same hazard: unwinding
+// from a protected call to a landing pad laid out earlier is a backward
+// edge, so a region whose pad starts before the region's end contributes
+// the span [pad start, region end].  An edge-live interval extends to the
+// end of every span it overlaps, to a fixed point.
+std::vector<unsigned char> plan_value_registers(
+    const lowir_model::LowirFunction & function,
+    const analysis::FunctionFacts & facts,
+    int optimization_level,
+    std::vector<std::size_t> * plan_ends,
+    Stats * stats)
+{
+  using analysis::FunctionFacts;
+  std::vector<unsigned char> plan(function.value_names.size(), 0);
+  plan_ends->assign(function.value_names.size(), 0);
+  if(optimization_level < 1 || facts.has_va_start || facts.has_dynamic_stack)
+    return plan;
+
+  std::vector<std::size_t> block_start(function.blocks.size(), 0);
+  std::vector<std::size_t> block_by_id;
+  std::size_t position = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    block_start[block] = position;
+    position += function.blocks[block].instructions.size();
+    const std::uint32_t id = function.blocks[block].id;
+    if(block_by_id.size() <= id)
+      block_by_id.resize(static_cast<std::size_t>(id) + 1,
+                         function.blocks.size());
+    block_by_id[id] = block;
+  }
+  const std::size_t function_end = position;
+  std::vector<std::pair<std::size_t, std::size_t> > spans;
+  std::vector<std::pair<std::size_t, std::size_t> > open_regions;
+  position = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::size_t end_of_block =
+      block_start[block] + function.blocks[block].instructions.size();
+    for(std::size_t i = 0;
+        i < function.blocks[block].instructions.size(); ++i, ++position) {
+      const lowir_model::Instruction & ins =
+        function.blocks[block].instructions[i];
+      if(ins.kind == lowir_model::Instruction::IK_EH_TRY ||
+         ins.kind == lowir_model::Instruction::IK_EH_CLEANUP) {
+        std::size_t pad_start = function_end;
+        if(ins.first.kind == lowir_model::Operand::OP_LABEL) {
+          const std::uint32_t id = ins.first.block;
+          const std::size_t target = id < block_by_id.size() ?
+            block_by_id[id] : function.blocks.size();
+          if(target < function.blocks.size())
+            pad_start = block_start[target];
+        }
+        open_regions.push_back(std::make_pair(pad_start, position));
+        continue;
+      }
+      if(ins.kind == lowir_model::Instruction::IK_EH_END) {
+        if(!open_regions.empty()) {
+          const std::pair<std::size_t, std::size_t> region =
+            open_regions.back();
+          open_regions.pop_back();
+          if(region.first < position)
+            spans.push_back(std::make_pair(region.first, position));
+        }
+        continue;
+      }
+      if(ins.kind != lowir_model::Instruction::IK_JUMP &&
+         ins.kind != lowir_model::Instruction::IK_BRANCH &&
+         ins.kind != lowir_model::Instruction::IK_SWITCH) continue;
+      const lowir_model::Operand * fixed[] =
+        {&ins.first, &ins.second, &ins.third};
+      for(std::size_t operand = 0;
+          operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
+          ++operand) {
+        const lowir_model::Operand & label =
+          operand < sizeof(fixed) / sizeof(fixed[0]) ?
+          *fixed[operand] :
+          ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+        if(label.kind != lowir_model::Operand::OP_LABEL) continue;
+        const std::uint32_t id = label.block;
+        const std::size_t target =
+          id < block_by_id.size() ? block_by_id[id] : function.blocks.size();
+        if(target < function.blocks.size() && target <= block)
+          spans.push_back(std::make_pair(block_start[target], end_of_block));
+      }
+    }
+  }
+  // An unterminated region conservatively spans to the end.
+  for(std::size_t i = 0; i < open_regions.size(); ++i)
+    if(open_regions[i].first < function_end)
+      spans.push_back(std::make_pair(open_regions[i].first, function_end));
+
+  struct Candidate
+  {
+    lowir_model::ValueId value;
+    std::size_t definition;
+    std::size_t end;
+  };
+  std::vector<Candidate> candidates;
+  for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
+    const lowir_model::ValueId value(static_cast<std::uint32_t>(raw));
+    if(facts.definition[raw] == FunctionFacts::missing_position() ||
+       facts.last_use[raw] == FunctionFacts::missing_position() ||
+       facts.uses[raw] < 2 ||
+       !facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL) ||
+       facts.has(value, FunctionFacts::VF_PARAMETER) ||
+       facts.has(value, FunctionFacts::VF_LOOP_INVARIANT) ||
+       facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT) ||
+       facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS))
+      continue;
+    const lowir_model::LowType & type =
+      lowir_model::lowir_value_type(function, value);
+    if(type.kind != lowir_model::LTK_PTR &&
+       type.kind != lowir_model::LTK_I1 &&
+       type.kind != lowir_model::LTK_I8 &&
+       type.kind != lowir_model::LTK_U8 &&
+       type.kind != lowir_model::LTK_I16 &&
+       type.kind != lowir_model::LTK_U16 &&
+       type.kind != lowir_model::LTK_I32 &&
+       type.kind != lowir_model::LTK_U32 &&
+       type.kind != lowir_model::LTK_I64)
+      continue;
+    Candidate candidate;
+    candidate.value = value;
+    candidate.definition = facts.definition[raw];
+    candidate.end = facts.last_use[raw];
+    if(facts.has(value, FunctionFacts::VF_EDGE_LIVE)) {
+      bool grew = true;
+      while(grew) {
+        grew = false;
+        for(std::size_t span = 0; span < spans.size(); ++span)
+          if(spans[span].first <= candidate.end &&
+             candidate.end < spans[span].second) {
+            candidate.end = spans[span].second;
+            grew = true;
+          }
+      }
+    }
+    candidates.push_back(candidate);
+  }
+  if(candidates.empty()) return plan;
+  std::sort(candidates.begin(), candidates.end(),
+            [](const Candidate & left, const Candidate & right) {
+              return left.definition < right.definition ||
+                (left.definition == right.definition &&
+                 static_cast<std::uint32_t>(left.value) <
+                   static_cast<std::uint32_t>(right.value));
+            });
+
+  // The reactive pool prefers RBX, R12, R13 in that order, so the planner
+  // claims from the opposite end; the pools only meet under real pressure.
+  static const X64Register kPool[] = {XR_R13, XR_R12, XR_RBX};
+  std::size_t busy_until[sizeof(kPool) / sizeof(kPool[0])] = {0};
+  for(std::size_t i = 0; i < candidates.size(); ++i) {
+    const Candidate & candidate = candidates[i];
+    const unsigned crossed = facts.live_across_clobbers[
+      static_cast<std::uint32_t>(candidate.value)];
+    for(std::size_t reg = 0;
+        reg < sizeof(kPool) / sizeof(kPool[0]); ++reg) {
+      if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
+      if(busy_until[reg] > candidate.definition) continue;
+      if(crossed & analysis::register_mask(kPool[reg])) continue;
+      busy_until[reg] = candidate.end + 1;
+      plan[static_cast<std::uint32_t>(candidate.value)] =
+        static_cast<unsigned char>(kPool[reg]) + 1;
+      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
+        candidate.end;
+      if(stats) ++stats->planned_value_registers;
+      break;
+    }
+  }
+  return plan;
+}
 
 bool should_retain_edge_register(
     const mir_model::MirOperand & location,
