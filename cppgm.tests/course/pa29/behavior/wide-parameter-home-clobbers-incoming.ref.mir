@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -15,31 +15,19 @@ function @combine_after_copy
     param %f -> r9 : i64
     return i64 -> rax
   frame
-    stack_size 64
+    stack_size 48
     scratch_bytes 0
-    preserve rbx
-    param-slot %a -> [rbp-8] : i64
-    param-slot %c -> [rbp-16] : i64
-    param-slot %d -> [rbp-24] : i64
-    param-slot %e -> [rbp-32] : i64
-    slot $source -> [rbp-40] : obj<8x8>
-    slot $destination -> [rbp-48] : obj<8x8>
+    param-slot %b -> [rbp-8] : i64
+    slot $source -> [rbp-16] : obj<8x8>
+    slot $destination -> [rbp-24] : obj<8x8>
 
   block ^entry
-    store.i64 [rbp-8], rdi
-    store.i64 [rbp-16], rdx
-    store.i64 [rbp-24], rcx
-    store.i64 [rbp-32], r8
-    mov r8, rsi
-    mov rax, 1
-    store.i64 [rbp-40], rax
-    lea rdi, [rbp-48]
-    lea rsi, [rbp-40]
-    copy_bytes 8x8, rdi, rsi
-    mov rbx, r8
-    add rbx, r9
-    mov rax, rbx
-    ret rax
+    store.i64 [rbp-8], rsi
+    store.i64 [rbp-16], 1
+    copy_bytes 8x8, [rbp-24], [rbp-16]
+    load.i64 r8, [rbp-8]
+    add r8, r9
+    ret r8
 
 function @main
   abi
@@ -55,13 +43,9 @@ function @main
     mov rcx, 4
     mov r8, 5
     mov r9, 6
-    call @combine_after_copy
-    mov r8, rax
+    call @combine_after_copy [args=(rcx,rdx,rsi,rdi,r8,r9)]
     mov rdx, 8
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
     ret rax

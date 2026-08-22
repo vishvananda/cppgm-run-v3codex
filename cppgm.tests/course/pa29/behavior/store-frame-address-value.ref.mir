@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -15,17 +15,11 @@ function @read_local_address
     slot $pointer -> [rbp-16] : ptr
 
   block ^entry
-    mov rax, 77
-    lea rcx, [rbp-4]
-    store.i32 [rcx], rax
-    lea rax, [rbp-4]
-    lea rcx, [rbp-16]
-    store.ptr [rcx], rax
-    lea rcx, [rbp-16]
-    load.ptr r8, [rcx]
-    load.i32 r9, [r8]
-    sext.i32 r9
-    mov rax, r9
+    lea r8, [rbp-4]
+    store.i32 [r8], 77
+    store.ptr [rbp-16], r8
+    load.ptr r8, [rbp-16]
+    load.i32 rax, [r8]
     ret rax
 
 function @main
@@ -36,15 +30,12 @@ function @main
     scratch_bytes 48
 
   block ^entry
-    call @read_local_address
-    mov r8, rax
-    sext.i32 r8
+    call @read_local_address [args=()]
+    sext.i32 rax
     mov rdx, 77
-    cmp.i32 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov r9, r8
-    zext.i8 r9
-    sext.i32 r9
-    mov rax, r9
+    cmp.i32 rax, rdx
+    setne rax
+    movzx rax, rax
+    zext.i64 rax
+    sext.i32 rax
     ret rax

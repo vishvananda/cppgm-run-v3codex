@@ -159,6 +159,33 @@ void emit_integer_multiply(
     out.byte(0xaf);
     emit_modrm(out, 3, destination, source.reg);
   } else if(source.kind == mir_model::MirOperand::OP_IMM) {
+    // Strength-reduce the common struct strides: powers of two become a
+    // shift and {3, 5, 9} times a power of two an lea plus a shift.  The
+    // arithmetic is on the full 64-bit register either way, matching the
+    // truncating imul.
+    if(source.imm > 1) {
+      unsigned long long magnitude =
+        static_cast<unsigned long long>(source.imm);
+      unsigned shift = 0;
+      while((magnitude & 1) == 0) {
+        magnitude >>= 1;
+        ++shift;
+      }
+      const bool lea_factor =
+        magnitude == 3 || magnitude == 5 || magnitude == 9;
+      if(magnitude == 1 || lea_factor) {
+        if(lea_factor)
+          emit_indexed_lea(out, destination, destination, destination,
+                           static_cast<unsigned>(magnitude - 1), 0);
+        if(shift != 0) {
+          emit_rex(out, true, XR_RAX, destination);
+          out.byte(shift == 1 ? 0xd1 : 0xc1);
+          emit_modrm(out, 3, 4, destination);
+          if(shift != 1) out.byte(shift);
+        }
+        return;
+      }
+    }
     emit_rex(out, true, destination, destination);
     out.byte(0x69);
     emit_modrm(out, 3, destination, destination);

@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -18,23 +18,18 @@ function @identity
     scratch_bytes 0
 
   block ^entry
-    mov rax, rdi
-    ret rax
+    ret rdi
 
 function @main
   abi
     return i32 -> rax
   frame
-    stack_size 0
-    scratch_bytes 0
+    stack_size 48
+    scratch_bytes 48
 
   block ^entry
-    mov r8, @record
-    mov rdi, r8
-    call @identity
-    mov r9, rax
-    lea r9, [r9+40]
-    mov rax, 1
-    store.u8 [r9], rax
+    mov rdi, @record
+    call @identity [args=(rdi)]
+    store.u8 [rax+40], 1
     mov rax, 0
     ret rax

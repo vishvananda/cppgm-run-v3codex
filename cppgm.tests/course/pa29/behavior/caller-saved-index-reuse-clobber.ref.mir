@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -9,29 +9,22 @@ function @main
   abi
     return i32 -> rax
   frame
-    stack_size 80
-    scratch_bytes 48
-    preserve rbx r12
+    stack_size 16
+    scratch_bytes 0
     slot $source -> [rbp-8] : obj<8x8>
     slot $destination -> [rbp-16] : obj<8x8>
 
   block ^entry
-    mov rax, 7
-    store.i64 [rbp-8], rax
-    mov r8, 10
-    mov r9, 20
-    lea rbx, [rbp-8]
-    lea rdi, [rbp-16]
-    lea rsi, [rbp-8]
-    copy_bytes 8x8, rdi, rsi
-    load.i64 r12, [rbx]
-    add r8, r9
-    add r8, r12
+    store.i64 [rbp-8], 7
+    copy_bytes 8x8, [rbp-16], [rbp-8]
+    load.i64 r8, [rbp-8]
+    mov r9, 10
+    add r9, 20
+    add r9, r8
     mov rdx, 37
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
     mov rax, r9
+    sext.i32 rax
     ret rax

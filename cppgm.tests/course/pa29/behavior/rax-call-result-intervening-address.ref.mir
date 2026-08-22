@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -17,8 +17,7 @@ function @produce
     scratch_bytes 0
 
   block ^entry
-    mov r8, @value
-    mov rax, r8
+    mov rax, @value
     ret rax
 
 function @read
@@ -30,8 +29,7 @@ function @read
     scratch_bytes 0
 
   block ^entry
-    mov r8, rdi
-    load.i64 rax, [r8]
+    load.i64 rax, [rdi]
     ret rax
 
 function @exercise
@@ -43,60 +41,48 @@ function @exercise
     param %e -> r8 : i64
     return i64 -> rax
   frame
-    stack_size 112
+    stack_size 96
     scratch_bytes 0
     preserve rbx r12 r13 r14 r15
     slot $other -> [rbp-8] : i64
     temp %saved -> [rbp-16] : ptr
-    temp %first -> [rbp-24] : i64
-    temp %second -> [rbp-32] : i64
-    temp %third -> [rbp-40] : i64
-    temp %values1 -> [rbp-48] : i64
-    temp %values2 -> [rbp-56] : i64
-    temp %values3 -> [rbp-64] : i64
+    temp %other_address -> [rbp-24] : ptr
+    temp %first -> [rbp-32] : i64
+    temp %second -> [rbp-40] : i64
+    temp %third -> [rbp-48] : i64
 
   block ^entry
-    mov rbx, rdi
-    mov r12, rsi
+    mov r15, rdi
+    mov r14, rsi
     mov r13, rdx
-    mov r14, rcx
-    mov r15, r8
-    mov rax, 22
-    store.i64 [rbp-8], rax
-    call @produce
+    mov r12, rcx
+    mov rbx, r8
+    store.i64 [rbp-8], 22
+    call @produce [args=()]
     store.ptr [rbp-16], rax
+    lea rax, [rbp-8]
+    store.ptr [rbp-24], rax
     load.ptr rdi, [rbp-16]
-    call @read
-    store.i64 [rbp-24], rax
-    lea rdi, [rbp-8]
-    call @read
+    call @read [args=(rdi)]
     store.i64 [rbp-32], rax
-    load.ptr rdi, [rbp-16]
-    call @read
+    load.ptr rdi, [rbp-24]
+    call @read [args=(rdi)]
     store.i64 [rbp-40], rax
-    lea rdi, [rbp-8]
-    call @read
-    mov r8, rax
-    mov r9, rbx
-    add r9, r12
-    add r9, r13
-    add r9, r14
-    add r9, r15
-    load.i64 rax, [rbp-24]
-    load.i64 rdx, [rbp-32]
-    add rax, rdx
+    load.ptr rdi, [rbp-16]
+    call @read [args=(rdi)]
     store.i64 [rbp-48], rax
-    load.i64 rax, [rbp-48]
-    load.i64 rdx, [rbp-40]
-    add rax, rdx
-    store.i64 [rbp-56], rax
-    load.i64 rax, [rbp-56]
-    add rax, r8
-    store.i64 [rbp-64], rax
-    load.i64 r8, [rbp-64]
-    add r8, r9
-    mov rax, r8
-    ret rax
+    load.ptr rdi, [rbp-24]
+    call @read [args=(rdi)]
+    add r15, r14
+    add r15, r13
+    add r15, r12
+    add r15, rbx
+    load.i64 r8, [rbp-32]
+    add r8, [rbp-40]
+    add r8, [rbp-48]
+    add r8, rax
+    add r8, r15
+    ret r8
 
 function @main
   abi
@@ -111,13 +97,9 @@ function @main
     mov rdx, 3
     mov rcx, 4
     mov r8, 5
-    call @exercise
-    mov r8, rax
+    call @exercise [args=(rcx,rdx,rsi,rdi,r8)]
     mov rdx, 81
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
     ret rax

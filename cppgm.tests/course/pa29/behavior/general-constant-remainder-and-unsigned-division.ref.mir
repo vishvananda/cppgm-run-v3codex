@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -14,13 +14,11 @@ function @smod3
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 3
-    mov rcx, rdx
+    mov rcx, 3
     mov rax, rdi
     cqo
     idiv rcx
-    mov rax, rdx
-    ret rax
+    ret rdx
 
 function @smod_negative5
   abi
@@ -31,13 +29,11 @@ function @smod_negative5
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -5
-    mov rcx, rdx
+    mov rcx, -5
     mov rax, rdi
     cqo
     idiv rcx
-    mov rax, rdx
-    ret rax
+    ret rdx
 
 function @smod_narrow3
   abi
@@ -48,17 +44,12 @@ function @smod_narrow3
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 3
-    mov rcx, rdx
-    sext.i8 rcx
+    mov rcx, 3
     mov rax, rdi
-    sext.i8 rax
     cqo
     idiv rcx
-    mov r8, rdx
-    sext.i8 r8
-    mov rax, r8
-    ret rax
+    sext.i8 rdx
+    ret rdx
 
 function @sdiv_i16_7
   abi
@@ -69,16 +60,11 @@ function @sdiv_i16_7
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 7
-    mov rcx, rdx
-    sext.i16 rcx
+    mov rcx, 7
     mov rax, rdi
-    sext.i16 rax
     cqo
     idiv rcx
-    mov r8, rax
-    sext.i16 r8
-    mov rax, r8
+    sext.i16 rax
     ret rax
 
 function @smod_i16_7
@@ -90,17 +76,12 @@ function @smod_i16_7
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 7
-    mov rcx, rdx
-    sext.i16 rcx
+    mov rcx, 7
     mov rax, rdi
-    sext.i16 rax
     cqo
     idiv rcx
-    mov r8, rdx
-    sext.i16 r8
-    mov rax, r8
-    ret rax
+    sext.i16 rdx
+    ret rdx
 
 function @sdiv_i32_negative31
   abi
@@ -111,16 +92,11 @@ function @sdiv_i32_negative31
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -31
-    mov rcx, rdx
-    sext.i32 rcx
+    mov rcx, -31
     mov rax, rdi
-    sext.i32 rax
     cqo
     idiv rcx
-    mov r8, rax
-    sext.i32 r8
-    mov rax, r8
+    sext.i32 rax
     ret rax
 
 function @smod_i32_negative31
@@ -132,17 +108,12 @@ function @smod_i32_negative31
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -31
-    mov rcx, rdx
-    sext.i32 rcx
+    mov rcx, -31
     mov rax, rdi
-    sext.i32 rax
     cqo
     idiv rcx
-    mov r8, rdx
-    sext.i32 r8
-    mov rax, r8
-    ret rax
+    sext.i32 rdx
+    ret rdx
 
 function @udiv3
   abi
@@ -153,8 +124,7 @@ function @udiv3
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 3
-    mov rcx, rdx
+    mov rcx, 3
     mov rax, rdi
     mov rdx, 0
     div rcx
@@ -169,8 +139,7 @@ function @udiv7
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 7
-    mov rcx, rdx
+    mov rcx, 7
     mov rax, rdi
     mov rdx, 0
     div rcx
@@ -185,13 +154,11 @@ function @umod7
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 7
-    mov rcx, rdx
+    mov rcx, 7
     mov rax, rdi
     mov rdx, 0
     div rcx
-    mov rax, rdx
-    ret rax
+    ret rdx
 
 function @udiv_high
   abi
@@ -202,8 +169,7 @@ function @udiv_high
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -9223372036854775807
-    mov rcx, rdx
+    mov rcx, -9223372036854775807
     mov rax, rdi
     mov rdx, 0
     div rcx
@@ -218,13 +184,11 @@ function @umod_max
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -1
-    mov rcx, rdx
+    mov rcx, -1
     mov rax, rdi
     mov rdx, 0
     div rcx
-    mov rax, rdx
-    ret rax
+    ret rdx
 
 function @udiv_u8_7
   abi
@@ -235,16 +199,11 @@ function @udiv_u8_7
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 7
-    mov rcx, rdx
-    zext.i8 rcx
+    mov rcx, 7
     mov rax, rdi
-    zext.i8 rax
     mov rdx, 0
     div rcx
-    mov r8, rax
-    zext.i8 r8
-    mov rax, r8
+    zext.i8 rax
     ret rax
 
 function @umod_u8_7
@@ -256,17 +215,12 @@ function @umod_u8_7
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 7
-    mov rcx, rdx
-    zext.i8 rcx
+    mov rcx, 7
     mov rax, rdi
-    zext.i8 rax
     mov rdx, 0
     div rcx
-    mov r8, rdx
-    zext.i8 r8
-    mov rax, r8
-    ret rax
+    zext.i8 rdx
+    ret rdx
 
 function @udiv_u16_1000
   abi
@@ -277,16 +231,11 @@ function @udiv_u16_1000
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 1000
-    mov rcx, rdx
-    zext.i16 rcx
+    mov rcx, 1000
     mov rax, rdi
-    zext.i16 rax
     mov rdx, 0
     div rcx
-    mov r8, rax
-    zext.i16 r8
-    mov rax, r8
+    zext.i16 rax
     ret rax
 
 function @umod_u16_1000
@@ -298,17 +247,12 @@ function @umod_u16_1000
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 1000
-    mov rcx, rdx
-    zext.i16 rcx
+    mov rcx, 1000
     mov rax, rdi
-    zext.i16 rax
     mov rdx, 0
     div rcx
-    mov r8, rdx
-    zext.i16 r8
-    mov rax, r8
-    ret rax
+    zext.i16 rdx
+    ret rdx
 
 function @udiv_u32_31
   abi
@@ -319,16 +263,11 @@ function @udiv_u32_31
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 31
-    mov rcx, rdx
-    zext.i32 rcx
+    mov rcx, 31
     mov rax, rdi
-    zext.i32 rax
     mov rdx, 0
     div rcx
-    mov r8, rax
-    zext.i32 r8
-    mov rax, r8
+    zext.i32 rax
     ret rax
 
 function @umod_u32_31
@@ -340,239 +279,205 @@ function @umod_u32_31
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 31
-    mov rcx, rdx
-    zext.i32 rcx
+    mov rcx, 31
     mov rax, rdi
-    zext.i32 rax
     mov rdx, 0
     div rcx
-    mov r8, rdx
-    zext.i32 r8
-    mov rax, r8
-    ret rax
+    zext.i32 rdx
+    ret rdx
 
 function @main
   abi
     return i32 -> rax
   frame
-    stack_size 208
+    stack_size 192
     scratch_bytes 48
     preserve rbx r12 r13 r14 r15
-    temp %bad_sq32 -> [rbp-8] : i64
-    temp %bad_sr32 -> [rbp-16] : i64
-    temp %bad_uq3 -> [rbp-24] : i64
-    temp %bad_uq7 -> [rbp-32] : i64
-    temp %bad_ur7 -> [rbp-40] : i64
-    temp %bad_uq_high -> [rbp-48] : i64
-    temp %bad_ur_max -> [rbp-56] : i64
-    temp %bad_uq8 -> [rbp-64] : i64
-    temp %bad_ur8 -> [rbp-72] : i64
-    temp %bad_uq16 -> [rbp-80] : i64
-    temp %bad_ur16 -> [rbp-88] : i64
-    temp %bad_uq32 -> [rbp-96] : i64
-    temp %bad_g -> [rbp-104] : i64
-    temp %bad_h -> [rbp-112] : i64
-    temp %bad_i -> [rbp-120] : i64
+    temp %bad_sr16 -> [rbp-8] : i64
+    temp %bad_sq32 -> [rbp-16] : i64
+    temp %bad_sr32 -> [rbp-24] : i64
+    temp %bad_uq3 -> [rbp-32] : i64
+    temp %bad_uq7 -> [rbp-40] : i64
+    temp %bad_ur7 -> [rbp-48] : i64
+    temp %bad_uq_high -> [rbp-56] : i64
+    temp %bad_ur_max -> [rbp-64] : i64
+    temp %bad_uq8 -> [rbp-72] : i64
+    temp %bad_ur8 -> [rbp-80] : i64
+    temp %bad_uq16 -> [rbp-88] : i64
+    temp %bad_ur16 -> [rbp-96] : i64
 
   block ^entry
     mov rdi, -9223372036854775808
-    call @smod3
-    mov r8, rax
+    call @smod3 [args=(rdi)]
     mov rbx, rax
     mov rdx, -2
     cmp.i64 rbx, rdx
     setne rbx
     movzx rbx, rbx
     mov rdi, 9223372036854775807
-    call @smod_negative5
-    mov r8, rax
+    call @smod_negative5 [args=(rdi)]
     mov r12, rax
     mov rdx, 2
     cmp.i64 r12, rdx
     setne r12
     movzx r12, r12
     mov rdi, -128
-    call @smod_narrow3
-    mov r8, rax
-    sext.i8 r8
-    mov r13, r8
+    call @smod_narrow3 [args=(rdi)]
+    sext.i8 rax
+    mov r13, rax
     mov rdx, -2
     cmp.i8 r13, rdx
     setne r13
     movzx r13, r13
     mov rdi, -32768
-    call @sdiv_i16_7
-    mov r8, rax
-    sext.i16 r8
-    mov r14, r8
+    call @sdiv_i16_7 [args=(rdi)]
+    sext.i16 rax
+    mov r14, rax
     mov rdx, -4681
     cmp.i16 r14, rdx
     setne r14
     movzx r14, r14
     mov rdi, -32768
-    call @smod_i16_7
-    mov r8, rax
-    sext.i16 r8
-    mov r15, r8
+    call @smod_i16_7 [args=(rdi)]
+    sext.i16 rax
+    mov r15, rax
     mov rdx, -1
     cmp.i16 r15, rdx
     setne r15
     movzx r15, r15
     mov rdi, -2147483648
-    call @sdiv_i32_negative31
-    mov r8, rax
-    sext.i32 r8
-    mov rax, r8
+    call @sdiv_i32_negative31 [args=(rdi)]
+    sext.i32 rax
+    store.i64 [rbp-8], r15
+    mov r15, rax
     mov rdx, 69273666
-    cmp.i32 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-8], rax
+    cmp.i32 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, -2147483648
-    call @smod_i32_negative31
-    mov r8, rax
-    sext.i32 r8
-    mov rax, r8
+    call @smod_i32_negative31 [args=(rdi)]
+    sext.i32 rax
+    store.i64 [rbp-16], r15
+    mov r15, rax
     mov rdx, -2
-    cmp.i32 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-16], rax
+    cmp.i32 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, -1
-    call @udiv3
-    mov r8, rax
+    call @udiv3 [args=(rdi)]
+    store.i64 [rbp-24], r15
+    mov r15, rax
     mov rdx, 6148914691236517205
-    cmp.i64 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-24], rax
+    cmp.i64 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, -1
-    call @udiv7
-    mov r8, rax
+    call @udiv7 [args=(rdi)]
+    store.i64 [rbp-32], r15
+    mov r15, rax
     mov rdx, 2635249153387078802
-    cmp.i64 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-32], rax
+    cmp.i64 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, -1
-    call @umod7
-    mov r8, rax
+    call @umod7 [args=(rdi)]
+    store.i64 [rbp-40], r15
+    mov r15, rax
     mov rdx, 1
-    cmp.i64 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-40], rax
+    cmp.i64 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, -1
-    call @udiv_high
-    mov r8, rax
+    call @udiv_high [args=(rdi)]
+    store.i64 [rbp-48], r15
+    mov r15, rax
     mov rdx, 1
-    cmp.i64 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-48], rax
+    cmp.i64 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, -2
-    call @umod_max
-    mov r8, rax
+    call @umod_max [args=(rdi)]
+    store.i64 [rbp-56], r15
+    mov r15, rax
     mov rdx, -2
-    cmp.i64 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-56], rax
+    cmp.i64 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, 255
-    call @udiv_u8_7
-    mov r8, rax
-    zext.i8 r8
-    mov rax, r8
+    call @udiv_u8_7 [args=(rdi)]
+    zext.i8 rax
+    store.i64 [rbp-64], r15
+    mov r15, rax
     mov rdx, 36
-    cmp.u8 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-64], rax
+    cmp.u8 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, 255
-    call @umod_u8_7
-    mov r8, rax
-    zext.i8 r8
-    mov rax, r8
+    call @umod_u8_7 [args=(rdi)]
+    zext.i8 rax
+    store.i64 [rbp-72], r15
+    mov r15, rax
     mov rdx, 3
-    cmp.u8 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-72], rax
+    cmp.u8 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, 65535
-    call @udiv_u16_1000
-    mov r8, rax
-    zext.i16 r8
-    mov rax, r8
+    call @udiv_u16_1000 [args=(rdi)]
+    zext.i16 rax
+    store.i64 [rbp-80], r15
+    mov r15, rax
     mov rdx, 65
-    cmp.u16 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-80], rax
+    cmp.u16 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, 65535
-    call @umod_u16_1000
-    mov r8, rax
-    zext.i16 r8
-    mov rax, r8
+    call @umod_u16_1000 [args=(rdi)]
+    zext.i16 rax
+    store.i64 [rbp-88], r15
+    mov r15, rax
     mov rdx, 535
-    cmp.u16 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-88], rax
+    cmp.u16 r15, rdx
+    setne r15
+    movzx r15, r15
     mov rdi, 4294967295
-    call @udiv_u32_31
-    mov r8, rax
-    zext.i32 r8
-    mov rax, r8
+    call @udiv_u32_31 [args=(rdi)]
+    zext.i32 rax
+    store.i64 [rbp-96], r15
+    mov r15, rax
     mov rdx, 138547332
+    cmp.u32 r15, rdx
+    setne r15
+    movzx r15, r15
+    mov rdi, 4294967295
+    call @umod_u32_31 [args=(rdi)]
+    zext.i32 rax
+    mov rdx, 3
     cmp.u32 rax, rdx
     setne rax
     movzx rax, rax
-    store.i64 [rbp-96], rax
-    mov rdi, 4294967295
-    call @umod_u32_31
-    mov r8, rax
-    zext.i32 r8
-    mov rdx, 3
-    cmp.u32 r8, rdx
-    setne r8
-    movzx r8, r8
     or rbx, r12
     or r13, r14
-    load.i64 rdx, [rbp-8]
-    or r15, rdx
-    load.i64 r9, [rbp-16]
-    load.i64 rdx, [rbp-24]
-    or r9, rdx
-    load.i64 r12, [rbp-32]
-    load.i64 rdx, [rbp-40]
-    or r12, rdx
-    load.i64 r14, [rbp-48]
-    load.i64 rdx, [rbp-56]
-    or r14, rdx
-    load.i64 rax, [rbp-64]
-    load.i64 rdx, [rbp-72]
-    or rax, rdx
-    store.i64 [rbp-104], rax
-    load.i64 rax, [rbp-80]
-    load.i64 rdx, [rbp-88]
-    or rax, rdx
-    store.i64 [rbp-112], rax
-    load.i64 rax, [rbp-96]
-    or rax, r8
-    store.i64 [rbp-120], rax
+    load.i64 r8, [rbp-8]
+    or r8, [rbp-16]
+    load.i64 r9, [rbp-24]
+    or r9, [rbp-32]
+    load.i64 rdi, [rbp-40]
+    or rdi, [rbp-48]
+    load.i64 rsi, [rbp-56]
+    or rsi, [rbp-64]
+    load.i64 r12, [rbp-72]
+    or r12, [rbp-80]
+    load.i64 r14, [rbp-88]
+    or r14, [rbp-96]
+    or r15, rax
     or rbx, r13
-    or r15, r9
+    or r8, r9
+    or rdi, rsi
     or r12, r14
-    load.i64 r8, [rbp-104]
-    load.i64 rdx, [rbp-112]
-    or r8, rdx
+    or rbx, r8
+    or rdi, r12
+    or rbx, rdi
     or rbx, r15
-    or r12, r8
-    or rbx, r12
-    load.i64 rdx, [rbp-120]
-    or rbx, rdx
-    mov r8, rbx
-    sext.i32 r8
-    mov rax, r8
+    mov rax, rbx
+    sext.i32 rax
     ret rax

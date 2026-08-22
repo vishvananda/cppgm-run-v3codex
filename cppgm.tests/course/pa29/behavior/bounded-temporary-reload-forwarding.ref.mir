@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -40,78 +40,31 @@ function @distance_two
     param %d -> r8 : i64
     return i64 -> rax
   frame
-    stack_size 144
+    stack_size 48
     scratch_bytes 0
-    preserve r12 r13 r14 r15
-    temp %indexed -> [rbp-8] : ptr
-    temp %single -> [rbp-16] : i64
-    temp %step1 -> [rbp-24] : ptr
-    temp %step2 -> [rbp-32] : ptr
-    temp %loaded -> [rbp-40] : i64
-    temp %ab -> [rbp-48] : i64
-    temp %cd -> [rbp-56] : i64
-    temp %ac -> [rbp-64] : i64
-    temp %bd -> [rbp-72] : i64
-    temp %left -> [rbp-80] : i64
-    temp %right -> [rbp-88] : i64
-    temp %parameters -> [rbp-96] : i64
-    temp %observed -> [rbp-104] : i64
+    preserve rbx r12 r13 r14 r15
 
   block ^entry
-    mov r9, rdx
-    mov r12, rcx
-    mov r13, r8
+    store.i64 @observed_two, 11
+    load.i64 rbx, [rdi+16]
+    mov r12, rsi
+    add r12, rdx
+    mov r13, rcx
+    add r13, r8
+    mov r14, rsi
+    add r14, rcx
+    mov r15, rdx
+    add r15, r8
+    add r12, r13
+    add r14, r15
+    add r12, r14
+    load.i64 r13, @observed_two
     mov r14, 100
-    mov r15, 200
-    store.ptr [rbp-8], rdi
-    mov rax, 11
-    store.i64 [rbp-16], rax
-    load.ptr rax, [rbp-8]
-    lea rax, [rax+8]
-    store.ptr [rbp-24], rax
-    load.ptr rax, [rbp-24]
-    lea rax, [rax+8]
-    store.ptr [rbp-32], rax
-    load.i64 rax, [rbp-16]
-    store.i64 @observed_two, rax
-    load.ptr rcx, [rbp-32]
-    load.i64 rax, [rcx]
-    store.i64 [rbp-40], rax
-    mov rax, rsi
-    add rax, r9
-    store.i64 [rbp-48], rax
-    mov rax, r12
-    add rax, r13
-    store.i64 [rbp-56], rax
-    mov rax, rsi
-    add rax, r12
-    store.i64 [rbp-64], rax
-    mov rax, r9
-    add rax, r13
-    store.i64 [rbp-72], rax
-    load.i64 rax, [rbp-48]
-    load.i64 rdx, [rbp-56]
-    add rax, rdx
-    store.i64 [rbp-80], rax
-    load.i64 rax, [rbp-64]
-    load.i64 rdx, [rbp-72]
-    add rax, rdx
-    store.i64 [rbp-88], rax
-    load.i64 rax, [rbp-80]
-    load.i64 rdx, [rbp-88]
-    add rax, rdx
-    store.i64 [rbp-96], rax
-    load.i64 rax, @observed_two
-    store.i64 [rbp-104], rax
-    add r14, r15
-    load.i64 r15, [rbp-40]
-    load.i64 rdx, [rbp-104]
-    add r15, rdx
-    add r14, r15
-    load.i64 rdx, [rbp-96]
-    add r14, rdx
-    mov rax, r14
-    ret rax
+    add r14, 200
+    add rbx, r13
+    add r14, rbx
+    add r14, r12
+    ret r14
 
 function @distance_five
   abi
@@ -122,90 +75,31 @@ function @distance_five
     param %d -> r8 : i64
     return i64 -> rax
   frame
-    stack_size 176
+    stack_size 48
     scratch_bytes 0
-    preserve r12 r13 r14 r15
-    temp %indexed -> [rbp-8] : ptr
-    temp %single -> [rbp-16] : i64
-    temp %step1 -> [rbp-24] : ptr
-    temp %step2 -> [rbp-32] : ptr
-    temp %step3 -> [rbp-40] : ptr
-    temp %step4 -> [rbp-48] : ptr
-    temp %step5 -> [rbp-56] : ptr
-    temp %loaded -> [rbp-64] : i64
-    temp %ab -> [rbp-72] : i64
-    temp %cd -> [rbp-80] : i64
-    temp %ac -> [rbp-88] : i64
-    temp %bd -> [rbp-96] : i64
-    temp %left -> [rbp-104] : i64
-    temp %right -> [rbp-112] : i64
-    temp %parameters -> [rbp-120] : i64
-    temp %observed -> [rbp-128] : i64
+    preserve rbx r12 r13 r14 r15
 
   block ^entry
-    mov r9, rdx
-    mov r12, rcx
-    mov r13, r8
+    store.i64 @observed_five, 11
+    load.i64 rbx, [rdi+40]
+    mov r12, rsi
+    add r12, rdx
+    mov r13, rcx
+    add r13, r8
+    mov r14, rsi
+    add r14, rcx
+    mov r15, rdx
+    add r15, r8
+    add r12, r13
+    add r14, r15
+    add r12, r14
+    load.i64 r13, @observed_five
     mov r14, 100
-    mov r15, 200
-    store.ptr [rbp-8], rdi
-    mov rax, 11
-    store.i64 [rbp-16], rax
-    load.ptr rax, [rbp-8]
-    lea rax, [rax+8]
-    store.ptr [rbp-24], rax
-    load.ptr rax, [rbp-24]
-    lea rax, [rax+8]
-    store.ptr [rbp-32], rax
-    load.ptr rax, [rbp-32]
-    lea rax, [rax+8]
-    store.ptr [rbp-40], rax
-    load.ptr rax, [rbp-40]
-    lea rax, [rax+8]
-    store.ptr [rbp-48], rax
-    load.ptr rax, [rbp-48]
-    lea rax, [rax+8]
-    store.ptr [rbp-56], rax
-    load.i64 rax, [rbp-16]
-    store.i64 @observed_five, rax
-    load.ptr rcx, [rbp-56]
-    load.i64 rax, [rcx]
-    store.i64 [rbp-64], rax
-    mov rax, rsi
-    add rax, r9
-    store.i64 [rbp-72], rax
-    mov rax, r12
-    add rax, r13
-    store.i64 [rbp-80], rax
-    mov rax, rsi
-    add rax, r12
-    store.i64 [rbp-88], rax
-    mov rax, r9
-    add rax, r13
-    store.i64 [rbp-96], rax
-    load.i64 rax, [rbp-72]
-    load.i64 rdx, [rbp-80]
-    add rax, rdx
-    store.i64 [rbp-104], rax
-    load.i64 rax, [rbp-88]
-    load.i64 rdx, [rbp-96]
-    add rax, rdx
-    store.i64 [rbp-112], rax
-    load.i64 rax, [rbp-104]
-    load.i64 rdx, [rbp-112]
-    add rax, rdx
-    store.i64 [rbp-120], rax
-    load.i64 rax, @observed_five
-    store.i64 [rbp-128], rax
-    add r14, r15
-    load.i64 r15, [rbp-64]
-    load.i64 rdx, [rbp-128]
-    add r15, rdx
-    add r14, r15
-    load.i64 rdx, [rbp-120]
-    add r14, rdx
-    mov rax, r14
-    ret rax
+    add r14, 200
+    add rbx, r13
+    add r14, rbx
+    add r14, r12
+    ret r14
 
 function @distance_six
   abi
@@ -216,94 +110,31 @@ function @distance_six
     param %d -> r8 : i64
     return i64 -> rax
   frame
-    stack_size 176
+    stack_size 48
     scratch_bytes 0
-    preserve r12 r13 r14 r15
-    temp %indexed -> [rbp-8] : ptr
-    temp %single -> [rbp-16] : i64
-    temp %step1 -> [rbp-24] : ptr
-    temp %step2 -> [rbp-32] : ptr
-    temp %step3 -> [rbp-40] : ptr
-    temp %step4 -> [rbp-48] : ptr
-    temp %step5 -> [rbp-56] : ptr
-    temp %step6 -> [rbp-64] : ptr
-    temp %loaded -> [rbp-72] : i64
-    temp %ab -> [rbp-80] : i64
-    temp %cd -> [rbp-88] : i64
-    temp %ac -> [rbp-96] : i64
-    temp %bd -> [rbp-104] : i64
-    temp %left -> [rbp-112] : i64
-    temp %right -> [rbp-120] : i64
-    temp %parameters -> [rbp-128] : i64
-    temp %observed -> [rbp-136] : i64
+    preserve rbx r12 r13 r14 r15
 
   block ^entry
-    mov r9, rdx
-    mov r12, rcx
-    mov r13, r8
+    store.i64 @observed_six, 11
+    load.i64 rbx, [rdi+48]
+    mov r12, rsi
+    add r12, rdx
+    mov r13, rcx
+    add r13, r8
+    mov r14, rsi
+    add r14, rcx
+    mov r15, rdx
+    add r15, r8
+    add r12, r13
+    add r14, r15
+    add r12, r14
+    load.i64 r13, @observed_six
     mov r14, 100
-    mov r15, 200
-    store.ptr [rbp-8], rdi
-    mov rax, 11
-    store.i64 [rbp-16], rax
-    load.ptr rax, [rbp-8]
-    lea rax, [rax+8]
-    store.ptr [rbp-24], rax
-    load.ptr rax, [rbp-24]
-    lea rax, [rax+8]
-    store.ptr [rbp-32], rax
-    load.ptr rax, [rbp-32]
-    lea rax, [rax+8]
-    store.ptr [rbp-40], rax
-    load.ptr rax, [rbp-40]
-    lea rax, [rax+8]
-    store.ptr [rbp-48], rax
-    load.ptr rax, [rbp-48]
-    lea rax, [rax+8]
-    store.ptr [rbp-56], rax
-    load.ptr rax, [rbp-56]
-    lea rax, [rax+8]
-    store.ptr [rbp-64], rax
-    load.i64 rax, [rbp-16]
-    store.i64 @observed_six, rax
-    load.ptr rcx, [rbp-64]
-    load.i64 rax, [rcx]
-    store.i64 [rbp-72], rax
-    mov rax, rsi
-    add rax, r9
-    store.i64 [rbp-80], rax
-    mov rax, r12
-    add rax, r13
-    store.i64 [rbp-88], rax
-    mov rax, rsi
-    add rax, r12
-    store.i64 [rbp-96], rax
-    mov rax, r9
-    add rax, r13
-    store.i64 [rbp-104], rax
-    load.i64 rax, [rbp-80]
-    load.i64 rdx, [rbp-88]
-    add rax, rdx
-    store.i64 [rbp-112], rax
-    load.i64 rax, [rbp-96]
-    load.i64 rdx, [rbp-104]
-    add rax, rdx
-    store.i64 [rbp-120], rax
-    load.i64 rax, [rbp-112]
-    load.i64 rdx, [rbp-120]
-    add rax, rdx
-    store.i64 [rbp-128], rax
-    load.i64 rax, @observed_six
-    store.i64 [rbp-136], rax
-    add r14, r15
-    load.i64 r15, [rbp-72]
-    load.i64 rdx, [rbp-136]
-    add r15, rdx
-    add r14, r15
-    load.i64 rdx, [rbp-128]
-    add r14, rdx
-    mov rax, r14
-    ret rax
+    add r14, 200
+    add rbx, r13
+    add r14, rbx
+    add r14, r12
+    ret r14
 
 function @source_redefinition_barrier
   abi
@@ -314,73 +145,31 @@ function @source_redefinition_barrier
     param %d -> r8 : i64
     return i64 -> rax
   frame
-    stack_size 144
+    stack_size 48
     scratch_bytes 0
-    preserve r12 r13 r14 r15
-    temp %indexed -> [rbp-8] : ptr
-    temp %single -> [rbp-16] : i64
-    temp %clobber -> [rbp-24] : i64
-    temp %loaded -> [rbp-32] : i64
-    temp %ab -> [rbp-40] : i64
-    temp %cd -> [rbp-48] : i64
-    temp %ac -> [rbp-56] : i64
-    temp %bd -> [rbp-64] : i64
-    temp %left -> [rbp-72] : i64
-    temp %right -> [rbp-80] : i64
-    temp %parameters -> [rbp-88] : i64
-    temp %observed -> [rbp-96] : i64
+    preserve rbx r12 r13 r14 r15
 
   block ^entry
-    mov r9, rdx
-    mov r12, rcx
-    mov r13, r8
+    store.i64 @observed_barrier, 11
+    load.i64 rbx, [rdi]
+    mov r12, rsi
+    add r12, rdx
+    mov r13, rcx
+    add r13, r8
+    mov r14, rsi
+    add r14, rcx
+    mov r15, rdx
+    add r15, r8
+    add r12, r13
+    add r14, r15
+    add r12, r14
+    load.i64 r13, @observed_barrier
     mov r14, 100
-    mov r15, 200
-    store.ptr [rbp-8], rdi
-    mov rax, 11
-    store.i64 [rbp-16], rax
-    mov rax, 99
-    store.i64 [rbp-24], rax
-    load.i64 rax, [rbp-16]
-    store.i64 @observed_barrier, rax
-    load.ptr rcx, [rbp-8]
-    load.i64 rax, [rcx]
-    store.i64 [rbp-32], rax
-    mov rax, rsi
-    add rax, r9
-    store.i64 [rbp-40], rax
-    mov rax, r12
-    add rax, r13
-    store.i64 [rbp-48], rax
-    mov rax, rsi
-    add rax, r12
-    store.i64 [rbp-56], rax
-    mov rax, r9
-    add rax, r13
-    store.i64 [rbp-64], rax
-    load.i64 rax, [rbp-40]
-    load.i64 rdx, [rbp-48]
-    add rax, rdx
-    store.i64 [rbp-72], rax
-    load.i64 rax, [rbp-56]
-    load.i64 rdx, [rbp-64]
-    add rax, rdx
-    store.i64 [rbp-80], rax
-    load.i64 rax, [rbp-72]
-    load.i64 rdx, [rbp-80]
-    add rax, rdx
-    store.i64 [rbp-88], rax
-    load.i64 rax, @observed_barrier
-    store.i64 [rbp-96], rax
-    add r14, r15
-    load.i64 r15, [rbp-32]
-    load.i64 rdx, [rbp-96]
-    add r15, rdx
-    add r14, r15
-    load.i64 rdx, [rbp-88]
-    add r14, rdx
-    mov rax, r14
-    ret rax
+    add r14, 200
+    add rbx, r13
+    add r14, rbx
+    add r14, r12
+    ret r14
 
 function @main
   abi
@@ -397,28 +186,28 @@ function @main
     mov rdx, 2
     mov rcx, 3
     mov r8, 4
-    call @distance_two
+    call @distance_two [args=(rcx,rdx,rsi,rdi,r8)]
     mov r12, rax
     mov rdi, rbx
     mov rsi, 1
     mov rdx, 2
     mov rcx, 3
     mov r8, 4
-    call @distance_five
+    call @distance_five [args=(rcx,rdx,rsi,rdi,r8)]
     mov r13, rax
     mov rdi, rbx
     mov rsi, 1
     mov rdx, 2
     mov rcx, 3
     mov r8, 4
-    call @distance_six
+    call @distance_six [args=(rcx,rdx,rsi,rdi,r8)]
     mov r14, rax
     mov rdi, rbx
     mov rsi, 1
     mov rdx, 2
     mov rcx, 3
     mov r8, 4
-    call @source_redefinition_barrier
+    call @source_redefinition_barrier [args=(rcx,rdx,rsi,rdi,r8)]
     mov r8, rax
     mov rdx, 354
     cmp.i64 r12, rdx
@@ -439,7 +228,6 @@ function @main
     or r12, r13
     or r14, r8
     or r12, r14
-    mov r8, r12
-    sext.i32 r8
-    mov rax, r8
+    mov rax, r12
+    sext.i32 rax
     ret rax

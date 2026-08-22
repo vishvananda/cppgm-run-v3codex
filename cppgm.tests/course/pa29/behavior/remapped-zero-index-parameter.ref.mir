@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -16,36 +16,19 @@ function @read_fifth
     param %unused6 -> [rbp+16] : i64
     return i64 -> rax
   frame
-    stack_size 80
+    stack_size 64
     scratch_bytes 0
-    preserve rbx
-    param-slot %unused0 -> [rbp-8] : ptr
-    param-slot %unused1 -> [rbp-16] : i64
-    param-slot %unused2 -> [rbp-24] : i64
-    param-slot %unused3 -> [rbp-32] : i64
-    param-slot %unused5 -> [rbp-40] : i64
-    param-slot %unused6 -> [rbp-48] : i64
-    slot $scratch1 -> [rbp-56] : i64
-    slot $scratch2 -> [rbp-64] : i64
+    param-slot %unused6 -> [rbp-8] : i64
+    slot $scratch1 -> [rbp-16] : i64
+    slot $scratch2 -> [rbp-24] : i64
 
   block ^entry
-    store.ptr [rbp-8], rdi
-    store.i64 [rbp-16], rsi
-    store.i64 [rbp-24], rdx
-    store.i64 [rbp-32], rcx
-    store.i64 [rbp-40], r9
     load.i64 rax, [rbp+16]
-    store.i64 [rbp-48], rax
-    mov r9, r8
-    load.i64 rbx, [r9]
-    mov rax, 11
-    lea rcx, [rbp-56]
-    store.i64 [rcx], rax
-    mov rax, 22
-    lea rcx, [rbp-64]
-    store.i64 [rcx], rax
-    mov rax, rbx
-    ret rax
+    store.i64 [rbp-8], rax
+    load.i64 r9, [r8]
+    store.i64 [rbp-16], 11
+    store.i64 [rbp-24], 22
+    ret r9
 
 function @main
   abi
@@ -56,26 +39,20 @@ function @main
     slot $value -> [rbp-8] : i64
 
   block ^entry
-    mov rax, 77
-    lea rcx, [rbp-8]
-    store.i64 [rcx], rax
+    lea r8, [rbp-8]
+    store.i64 [r8], 77
     sub rsp, 16
-    lea rdi, [rbp-8]
+    mov rdi, r8
     mov rsi, 1
     mov rdx, 2
     mov rcx, 3
-    lea r8, [rbp-8]
     mov r9, 5
     mov r11, 6
     store.i64 [rsp], r11
-    call @read_fifth
+    call @read_fifth [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
     add rsp, 16
-    mov r8, rax
     mov rdx, 77
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
     ret rax

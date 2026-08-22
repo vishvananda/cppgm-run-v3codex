@@ -31,6 +31,7 @@ void emit_address_immediate_store(
     const mir_model::MirFunction & function);
 bool emit_small_copy_bytes(
     elf_detail::CodeBuffer & out,
-    const mir_model::MirInstruction & instruction);
+    const mir_model::MirInstruction & instruction,
+    const mir_model::MirFunction * function);
 
 }  // namespace lowir_native

@@ -43,21 +43,23 @@ function @construct
     stack_size 112
     scratch_bytes 0
     preserve rbx
-    param-slot %e -> [rbp-1] : u8
-    param-slot %f -> [rbp-8] : i32
-    param-slot %g -> [rbp-12] : i32
+    param-slot %b -> [rbp-4] : i32
+    param-slot %e -> [rbp-5] : u8
+    param-slot %f -> [rbp-12] : i32
+    param-slot %g -> [rbp-16] : i32
     param-slot %h -> [rbp-24] : i64
     param-slot %i -> [rbp-32] : i64
     temp %base_vtable -> [rbp-40] : ptr
     temp %derived_vtable -> [rbp-40] : ptr
 
   block ^entry
+    store.i32 [rbp-4], rcx
     load.u8 rax, [rbp+16]
-    store.u8 [rbp-1], rax
+    store.u8 [rbp-5], rax
     load.i32 rax, [rbp+24]
-    store.i32 [rbp-8], rax
-    load.i32 rax, [rbp+32]
     store.i32 [rbp-12], rax
+    load.i32 rax, [rbp+32]
+    store.i32 [rbp-16], rax
     load.i64 rax, [rbp+40]
     store.i64 [rbp-24], rax
     load.i64 rax, [rbp+48]
@@ -77,11 +79,11 @@ function @construct
     store.i32 [rdi+20], rcx
     store.i64 [rdi+24], r8
     store.u8 [rdi+32], r9
-    load.u8 rax, [rbp-1]
+    load.u8 rax, [rbp-5]
     store.u8 [rdi+33], rax
-    load.i32 rax, [rbp-8]
-    store.i32 [rdi+36], rax
     load.i32 rax, [rbp-12]
+    store.i32 [rdi+36], rax
+    load.i32 rax, [rbp-16]
     store.i32 [rdi+40], rax
     load.i64 rax, [rbp-24]
     store.i64 [rdi+48], rax

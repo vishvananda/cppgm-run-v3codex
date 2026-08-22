@@ -18,38 +18,22 @@ function @initialize
     scratch_bytes 0
 
   block ^entry
-    mov rax, 1
-    store.i8 [rdi], rax
-    mov rax, 35
-    store.i8 [rdi+1], rax
-    mov rax, 69
-    store.i8 [rdi+2], rax
-    mov rax, 103
-    store.i8 [rdi+3], rax
-    mov rax, 137
-    store.i8 [rdi+4], rax
-    mov rax, 171
-    store.i8 [rdi+5], rax
-    mov rax, 205
-    store.i8 [rdi+6], rax
-    mov rax, 239
-    store.i8 [rdi+7], rax
-    mov rax, 254
-    store.i8 [rdi+8], rax
-    mov rax, 220
-    store.i8 [rdi+9], rax
-    mov rax, 186
-    store.i8 [rdi+10], rax
-    mov rax, 152
-    store.i8 [rdi+11], rax
-    mov rax, 118
-    store.i8 [rdi+12], rax
-    mov rax, 84
-    store.i8 [rdi+13], rax
-    mov rax, 50
-    store.i8 [rdi+14], rax
-    mov rax, 16
-    store.i8 [rdi+15], rax
+    store.i8 [rdi], 1
+    store.i8 [rdi+1], 35
+    store.i8 [rdi+2], 69
+    store.i8 [rdi+3], 103
+    store.i8 [rdi+4], 137
+    store.i8 [rdi+5], 171
+    store.i8 [rdi+6], 205
+    store.i8 [rdi+7], 239
+    store.i8 [rdi+8], 254
+    store.i8 [rdi+9], 220
+    store.i8 [rdi+10], 186
+    store.i8 [rdi+11], 152
+    store.i8 [rdi+12], 118
+    store.i8 [rdi+13], 84
+    store.i8 [rdi+14], 50
+    store.i8 [rdi+15], 16
     ret
 
 function @main

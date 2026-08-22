@@ -145,16 +145,37 @@ void emit_address_immediate_store(
 
 bool emit_small_copy_bytes(
     elf_detail::CodeBuffer & out,
-    const mir_model::MirInstruction & instruction)
+    const mir_model::MirInstruction & instruction,
+    const mir_model::MirFunction * function)
 {
   const std::size_t bytes = instruction.byte_count;
-  if(bytes == 0 || bytes > 32) return false;
-  if(instruction.operands.size() != 2 ||
-     instruction.operands[0].kind != mir_model::MirOperand::OP_REG ||
-     instruction.operands[1].kind != mir_model::MirOperand::OP_REG)
-    throw std::logic_error("small native copy requires two address registers");
-  const X64Register destination = instruction.operands[0].reg;
-  const X64Register source = instruction.operands[1].reg;
+  if(instruction.operands.size() != 2)
+    throw std::logic_error("native copy requires two address operands");
+  const mir_model::MirOperand & destination_operand = instruction.operands[0];
+  const mir_model::MirOperand & source_operand = instruction.operands[1];
+  const bool frame_sided =
+    destination_operand.kind == mir_model::MirOperand::OP_FRAME ||
+    source_operand.kind == mir_model::MirOperand::OP_FRAME;
+  if(bytes == 0 || bytes > 32) {
+    if(frame_sided)
+      throw std::logic_error("large native copy requires address registers");
+    return false;
+  }
+  const auto side_base = [&](const mir_model::MirOperand & operand) {
+    if(operand.kind == mir_model::MirOperand::OP_REG) return operand.reg;
+    if(operand.kind != mir_model::MirOperand::OP_FRAME || !function)
+      throw std::logic_error(
+        "small native copy requires register or frame operands");
+    return XR_RBP;
+  };
+  const auto side_offset = [&](const mir_model::MirOperand & operand) {
+    return operand.kind == mir_model::MirOperand::OP_FRAME ?
+      actual_frame_offset(*function, operand.offset) : 0ll;
+  };
+  const X64Register destination = side_base(destination_operand);
+  const X64Register source = side_base(source_operand);
+  const long long destination_base = side_offset(destination_operand);
+  const long long source_base = side_offset(source_operand);
   // Reuse an existing MI_COPY_BYTES clobber so this target choice does not
   // change MIR liveness.  A multi-chunk copy revisits both address
   // registers, so the scratch must avoid them; among the three string-op
@@ -167,9 +188,11 @@ bool emit_small_copy_bytes(
     const std::size_t remaining = bytes - offset;
     const std::size_t chunk =
       remaining >= 8 ? 8 : remaining >= 4 ? 4 : remaining >= 2 ? 2 : 1;
-    emit_load(out, scratch, source, static_cast<long long>(offset),
+    emit_load(out, scratch, source,
+              source_base + static_cast<long long>(offset),
               static_cast<unsigned>(chunk * 8));
-    emit_store(out, destination, static_cast<long long>(offset), scratch,
+    emit_store(out, destination,
+               destination_base + static_cast<long long>(offset), scratch,
                static_cast<unsigned>(chunk * 8));
     offset += chunk;
   }

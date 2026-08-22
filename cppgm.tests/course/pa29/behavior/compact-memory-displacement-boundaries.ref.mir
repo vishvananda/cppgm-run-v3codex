@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -13,92 +13,67 @@ function @main
   abi
     return i32 -> rax
   frame
-    stack_size 96
-    scratch_bytes 48
-    preserve rbx r12 r13 r14 r15
-    temp %value_negative_129 -> [rbp-1] : i8
-    temp %value_negative_128 -> [rbp-2] : i8
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx r12 r13 r14
 
   block ^entry
     mov r8, @bytes
     lea r8, [r8+256]
-    mov r9, r8
-    lea r9, [r9-129]
-    mov rax, 11
-    store.i8 [r9], rax
-    mov rbx, r8
-    lea rbx, [rbx-128]
-    mov rax, 22
-    store.i8 [rbx], rax
-    mov r12, r8
-    lea r12, [r12-1]
-    mov rax, 33
-    store.i8 [r12], rax
-    mov r13, r8
-    mov rax, 44
-    store.i8 [r13], rax
-    mov r14, r8
-    lea r14, [r14+1]
-    mov rax, 55
-    store.i8 [r14], rax
-    mov r15, r8
-    lea r15, [r15+127]
-    mov rax, 66
-    store.i8 [r15], rax
-    lea r8, [r8+128]
-    mov rax, 77
-    store.i8 [r8], rax
-    load.i8 rax, [r9]
-    store.i8 [rbp-1], rax
-    load.i8 r9, [rbp-1]
+    lea r9, [r8-129]
+    store.i8 [r9], 11
+    lea rdi, [r8-128]
+    store.i8 [rdi], 22
+    lea rsi, [r8-1]
+    store.i8 [rsi], 33
+    store.i8 [r8], 44
+    lea rbx, [r8+1]
+    store.i8 [rbx], 55
+    lea r12, [r8+127]
+    store.i8 [r12], 66
+    lea r13, [r8+128]
+    store.i8 [r13], 77
+    load.i8 r14, [r9]
     mov rdx, 11
+    cmp.i8 r14, rdx
+    setne r14
+    movzx r14, r14
+    load.i8 r9, [rdi]
+    mov rdx, 22
     cmp.i8 r9, rdx
     setne r9
     movzx r9, r9
-    load.i8 rax, [rbx]
-    store.i8 [rbp-2], rax
-    load.i8 rbx, [rbp-2]
-    mov rdx, 22
-    cmp.i8 rbx, rdx
-    setne rbx
-    movzx rbx, rbx
-    or r9, rbx
-    load.i8 rbx, [r12]
-    sext.i8 rbx
+    or r14, r9
+    load.i8 r9, [rsi]
     mov rdx, 33
-    cmp.i8 rbx, rdx
-    setne rbx
-    movzx rbx, rbx
-    load.i8 r12, [r13]
-    sext.i8 r12
+    cmp.i8 r9, rdx
+    setne r9
+    movzx r9, r9
+    load.i8 rdi, [r8]
     mov rdx, 44
-    cmp.i8 r12, rdx
-    setne r12
-    movzx r12, r12
-    or rbx, r12
-    load.i8 r12, [r14]
-    sext.i8 r12
+    cmp.i8 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    or r9, rdi
+    load.i8 r8, [rbx]
     mov rdx, 55
-    cmp.i8 r12, rdx
-    setne r12
-    movzx r12, r12
-    load.i8 r13, [r15]
-    sext.i8 r13
+    cmp.i8 r8, rdx
+    setne r8
+    movzx r8, r8
+    load.i8 rdi, [r12]
     mov rdx, 66
-    cmp.i8 r13, rdx
-    setne r13
-    movzx r13, r13
-    or r12, r13
-    load.i8 r13, [r8]
-    sext.i8 r13
+    cmp.i8 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    or r8, rdi
+    load.i8 rdi, [r13]
     mov rdx, 77
-    cmp.i8 r13, rdx
-    setne r13
-    movzx r13, r13
-    or r9, rbx
-    or r12, r13
-    or r9, r12
-    mov r8, r9
-    sext.i32 r8
-    mov rax, r8
+    cmp.i8 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    or r14, r9
+    or r8, rdi
+    or r14, r8
+    mov rax, r14
+    sext.i32 rax
     ret rax

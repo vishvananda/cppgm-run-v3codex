@@ -39,8 +39,7 @@ function @write
     mov r8, rax
     store.i64 [rbx], r8
     mov r9, @other
-    load.i64 rdi, [r9]
-    add r8, rdi
+    add r8, [r9]
     ret r8
 
 function @main

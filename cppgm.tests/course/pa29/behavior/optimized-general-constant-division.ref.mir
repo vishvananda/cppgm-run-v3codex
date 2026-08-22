@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -60,27 +60,25 @@ function @main
 
   block ^entry
     mov rdi, -9223372036854775808
-    call @smod7
-    mov r8, rax
+    call @smod7 [args=(rdi)]
     mov rdx, -1
     cmp.i64 rax, rdx
     setne rbx
     movzx rbx, rbx
     mov rdi, -1
-    call @udiv7
-    mov r8, rax
+    call @udiv7 [args=(rdi)]
     mov rdx, 2635249153387078802
     cmp.i64 rax, rdx
     setne r12
     movzx r12, r12
     mov rdi, -1
-    call @umod31
+    call @umod31 [args=(rdi)]
     mov rdx, 15
     cmp.i64 rax, rdx
-    setne r8
-    movzx r8, r8
+    setne rax
+    movzx rax, rax
     or rbx, r12
-    or rbx, r8
-    mov r8, rbx
-    sext.i32 r8
-    ret r8
+    or rbx, rax
+    mov rax, rbx
+    sext.i32 rax
+    ret rax

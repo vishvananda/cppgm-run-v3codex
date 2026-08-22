@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -31,15 +31,15 @@ function @main
   abi
     return i32 -> rax
   frame
-    stack_size 16
-    scratch_bytes 0
+    stack_size 64
+    scratch_bytes 48
     preserve rbx
 
   block ^entry
-    call @false_condition
+    call @false_condition [args=()]
     mov rbx, rax
     zext.i8 rbx
-    call @clobber_return_register
+    call @clobber_return_register [args=()]
     mov rax, rbx
     cmp.i64 rax, 0
     jne ^wrong

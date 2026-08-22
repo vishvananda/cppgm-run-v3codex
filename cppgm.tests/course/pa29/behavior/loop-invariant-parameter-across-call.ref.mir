@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -20,10 +20,8 @@ function @sink
   frame
     stack_size 16
     scratch_bytes 0
-    param-slot %value -> [rbp-8] : ptr
 
   block ^entry
-    store.ptr [rbp-8], rdi
     ret
 
 function @write_and_clobber
@@ -33,15 +31,13 @@ function @write_and_clobber
     param %other -> rdx : ptr
     return void -> void
   frame
-    stack_size 0
+    stack_size 32
     scratch_bytes 0
 
   block ^entry
-    mov r9, rdi
-    mov r8, rdx
-    store.i64 [r9], rsi
+    store.i64 [rdi], rsi
     mov rdi, rdx
-    call @sink
+    call @sink [args=(rdi)]
     ret
 
 function @loop_store
@@ -55,27 +51,28 @@ function @loop_store
     scratch_bytes 0
     preserve rbx r12 r13 r14
     slot $iteration -> [rbp-8] : i64
+    temp %current -> [rbp-16] : i64
 
   block ^entry
     mov r13, rdi
     mov r12, rsi
     mov rbx, rdx
-    mov rax, 0
-    store.i64 [rbp-8], rax
+    store.i64 [rbp-8], 0
     jmp ^condition
 
   block ^condition
     load.i64 r14, [rbp-8]
-    cmp.i64 r14, rbx
+    store.i64 [rbp-16], r14
+    cmp.i64 [rbp-16], rbx
     jb ^body
     jmp ^done
 
   block ^body
     mov rdi, r13
-    mov rsi, r14
+    load.i64 rsi, [rbp-16]
     mov rdx, r12
-    call @write_and_clobber
-    mov r8, r14
+    call @write_and_clobber [args=(rdx,rsi,rdi)]
+    load.i64 r8, [rbp-16]
     add r8, 1
     store.i64 [rbp-8], r8
     jmp ^condition
@@ -97,7 +94,7 @@ function @main
     mov rdi, rbx
     mov rsi, r12
     mov rdx, 2
-    call @loop_store
+    call @loop_store [args=(rdx,rsi,rdi)]
     load.i64 r8, [rbx]
     load.i64 r9, [r12]
     mov rdx, 1
@@ -109,7 +106,6 @@ function @main
     setne r9
     movzx r9, r9
     or r8, r9
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    mov rax, r8
+    sext.i32 rax
     ret rax

@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -30,7 +30,7 @@ function @choose
 
   block ^entry
     mov rbx, rdi
-    call @clobber
+    call @clobber [args=()]
     cmp.i64 rbx, 0
     je ^return_11
     jmp ^second_test
@@ -66,13 +66,13 @@ function @choose_float
     param %value -> rdi : i64
     return f64 -> xmm0
   frame
-    stack_size 64
+    stack_size 80
     scratch_bytes 48
     preserve rbx
 
   block ^entry
     mov rbx, rdi
-    call @clobber
+    call @clobber [args=()]
     cmp.i64 rbx, 0
     je ^return_first
     jmp ^second_test
@@ -99,13 +99,13 @@ function @choose_extended
     param %value -> rdi : i64
     return f80 -> st0
   frame
-    stack_size 64
+    stack_size 80
     scratch_bytes 48
     preserve rbx
 
   block ^entry
     mov rbx, rdi
-    call @clobber
+    call @clobber [args=()]
     cmp.i64 rbx, 0
     je ^return_first
     jmp ^return_second
@@ -127,7 +127,7 @@ function @choose_void
 
   block ^entry
     mov rbx, rdi
-    call @clobber
+    call @clobber [args=()]
     cmp.i64 rbx, 0
     je ^return_first
     jmp ^second_test
@@ -138,61 +138,56 @@ function @choose_void
     jmp ^return_third
 
   block ^return_first
-    mov rax, 51
-    store.i64 @void_result, rax
+    store.i64 @void_result, 51
     ret
 
   block ^return_second
-    mov rax, 52
-    store.i64 @void_result, rax
+    store.i64 @void_result, 52
     ret
 
   block ^return_third
-    mov rax, 53
-    store.i64 @void_result, rax
+    store.i64 @void_result, 53
     ret
 
 function @main
   abi
     return i32 -> rax
   frame
-    stack_size 160
+    stack_size 144
     scratch_bytes 48
     preserve rbx r12 r13 r14 r15
     temp %f0 -> [rbp-8] : f64
     temp %f1 -> [rbp-16] : f64
     temp %f2 -> [rbp-24] : f64
     temp %extended -> [rbp-48] : f80
-    temp %bad_f2 -> [rbp-56] : i64
-    temp %bad_extended -> [rbp-64] : i64
 
   block ^entry
     mov rdi, 0
-    call @choose
+    call @choose [args=(rdi)]
     mov rbx, rax
     mov rdi, 1
-    call @choose
+    call @choose [args=(rdi)]
     mov r12, rax
     mov rdi, 2
-    call @choose
+    call @choose [args=(rdi)]
     mov r13, rax
     mov rdi, 3
-    call @choose
+    call @choose [args=(rdi)]
     mov r14, rax
     mov rdi, 0
-    call @choose_float
+    call @choose_float [args=(rdi)]
     fmov.f64 [rbp-8], xmm0
     mov rdi, 1
-    call @choose_float
+    call @choose_float [args=(rdi)]
     fmov.f64 [rbp-16], xmm0
     mov rdi, 2
-    call @choose_float
+    call @choose_float [args=(rdi)]
     fmov.f64 [rbp-24], xmm0
     mov rdi, 1
-    call @choose_extended
+    call @choose_extended [args=(rdi)]
     fstp.f80 [rbp-48]
     mov rdi, 2
-    call @choose_void
+    call @choose_void [args=(rdi)]
     load.i64 r8, @void_result
     mov rdx, 11
     cmp.i64 rbx, rdx
@@ -213,26 +208,23 @@ function @main
     fne.f64 rax, [rbp-8], 1.25
     mov r9, rax
     fne.f64 rax, [rbp-16], 2.5
-    mov r15, rax
+    mov rdi, rax
     fne.f64 rax, [rbp-24], 3.75
-    store.i64 [rbp-56], rax
+    mov rsi, rax
     fne.f80 rax, [rbp-48], 5.5L
-    store.i64 [rbp-64], rax
+    mov r15, rax
     mov rdx, 53
     cmp.i64 r8, rdx
     setne r8
     movzx r8, r8
     or rbx, r12
     or r13, r14
-    or r9, r15
-    load.i64 r12, [rbp-56]
-    load.i64 rdx, [rbp-64]
-    or r12, rdx
-    or r12, r8
+    or r9, rdi
+    or rsi, r15
+    or rsi, r8
     or rbx, r13
-    or r9, r12
+    or r9, rsi
     or rbx, r9
-    mov r8, rbx
-    sext.i32 r8
-    mov rax, r8
+    mov rax, rbx
+    sext.i32 rax
     ret rax

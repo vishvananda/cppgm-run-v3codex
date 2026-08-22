@@ -1,14 +1,27 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
 function @observe
   abi
     param %ignored -> rdi : i64
-    param %payload -> [rbp+16] : obj<112x8>
+    param %payload -> [rbp+16] : i64
+    param %payload -> [rbp+24] : i64
+    param %payload -> [rbp+32] : i64
+    param %payload -> [rbp+40] : i64
+    param %payload -> [rbp+48] : i64
+    param %payload -> [rbp+56] : i64
+    param %payload -> [rbp+64] : i64
+    param %payload -> [rbp+72] : i64
+    param %payload -> [rbp+80] : i64
+    param %payload -> [rbp+88] : i64
+    param %payload -> [rbp+96] : i64
+    param %payload -> [rbp+104] : i64
+    param %payload -> [rbp+112] : i64
+    param %payload -> [rbp+120] : i64
     param %value -> rsi : i64
     return i64 -> rax
   frame
@@ -16,6 +29,7 @@ function @observe
     scratch_bytes 0
     param-slot %ignored -> [rbp-8] : i64
     param-slot %payload -> [rbp-120] : obj<112x8>
+    param-slot %value -> [rbp-128] : i64
 
   block ^entry
     store.i64 [rbp-8], rdi
@@ -47,7 +61,8 @@ function @observe
     store.i64 [rbp-24], rax
     load.i64 rax, [rbp+120]
     store.i64 [rbp-16], rax
-    mov rax, rsi
+    store.i64 [rbp-128], rsi
+    load.i64 rax, [rbp-128]
     ret rax
 
 function @forward
@@ -58,19 +73,20 @@ function @forward
   frame
     stack_size 128
     scratch_bytes 0
-    preserve rbx
     slot $payload -> [rbp-112] : obj<112x8>
+    temp %ignored -> [rbp-120] : i64
+    temp %value -> [rbp-128] : i64
 
   block ^entry
-    mov r8, rdi
-    mov rbx, rsi
+    store.i64 [rbp-120], rdi
+    store.i64 [rbp-128], rsi
     sub rsp, 112
-    lea rsi, [rbp-112]
     lea rdi, [rsp]
+    lea rsi, [rbp-112]
     copy_bytes 112x8, rdi, rsi
-    mov rdi, r8
-    mov rsi, rbx
-    call @observe
+    load.i64 rdi, [rbp-120]
+    load.i64 rsi, [rbp-128]
+    call @observe [args=(rsi,rdi), stack=112]
     add rsp, 112
     ret rax
 
@@ -84,13 +100,9 @@ function @main
   block ^entry
     mov rdi, 0
     mov rsi, 42
-    call @forward
-    mov r8, rax
+    call @forward [args=(rsi,rdi)]
     mov rdx, 42
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
     ret rax

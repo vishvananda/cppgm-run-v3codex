@@ -45,6 +45,26 @@ protected:
     return true;
   }
 
+  bool copy_side_operand(const Operand& operand, MirOperand* result)
+  {
+    Derived& derived = static_cast<Derived&>(*this);
+    X64Register address_register = XR_RSI;
+    if (direct_address_register(operand, &address_register))
+    {
+      *result = reg_operand(address_register);
+      return true;
+    }
+    long long frame_offset = 0;
+    if (derived.frame_provenance(operand, frame_offset))
+    {
+      result->kind = MirOperand::OP_FRAME;
+      result->frame_binding = 0;
+      result->offset = frame_offset;
+      return true;
+    }
+    return false;
+  }
+
   void emit_object_copy(const Operand& source, const Operand& destination,
                         std::size_t bytes, std::size_t alignment,
                         std::vector<MirInstruction>& out)
@@ -55,6 +75,27 @@ protected:
       derived.consume(source);
       derived.consume(destination);
       return;
+    }
+    // A small copy encodes as direct load/store chunks, so a frame-resident
+    // side needs no address materialization at all.
+    if (bytes != 0 && bytes <= 32)
+    {
+      MirOperand source_side;
+      MirOperand destination_side;
+      if (copy_side_operand(source, &source_side) &&
+          copy_side_operand(destination, &destination_side))
+      {
+        MirInstruction copy =
+          machine_instruction(MirInstruction::MI_COPY_BYTES);
+        copy.byte_count = bytes;
+        copy.byte_alignment = alignment;
+        append_operand(copy, destination_side);
+        append_operand(copy, source_side);
+        out.push_back(copy);
+        derived.consume(source);
+        derived.consume(destination);
+        return;
+      }
     }
     X64Register source_register = XR_RSI;
     const bool direct_source =

@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -18,24 +18,12 @@ function @take
   frame
     stack_size 64
     scratch_bytes 0
-    param-slot %a -> [rbp-8] : i64
-    param-slot %b -> [rbp-16] : i64
-    param-slot %c -> [rbp-24] : i64
-    param-slot %d -> [rbp-32] : i64
-    param-slot %e -> [rbp-40] : i64
-    param-slot %f -> [rbp-48] : i64
-    param-slot %value -> [rbp-56] : i64
+    param-slot %value -> [rbp-8] : i64
 
   block ^entry
-    store.i64 [rbp-8], rdi
-    store.i64 [rbp-16], rsi
-    store.i64 [rbp-24], rdx
-    store.i64 [rbp-32], rcx
-    store.i64 [rbp-40], r8
-    store.i64 [rbp-48], r9
     load.i64 rax, [rbp+16]
-    store.i64 [rbp-56], rax
-    load.i64 rax, [rbp-56]
+    store.i64 [rbp-8], rax
+    load.i64 rax, [rbp-8]
     ret rax
 
 function @main
@@ -44,29 +32,23 @@ function @main
   frame
     stack_size 64
     scratch_bytes 48
-    preserve rbx
     slot $value -> [rbp-8] : i64
 
   block ^entry
-    mov rax, 1
-    store.i64 [rbp-8], rax
-    mov rbx, rax
+    store.i64 [rbp-8], 1
+    load.i64 r8, [rbp-8]
     sub rsp, 16
+    store.i64 [rsp], r8
     mov rdi, 0
     mov rsi, 0
     mov rdx, 0
     mov rcx, 0
     mov r8, 0
     mov r9, 0
-    store.i64 [rsp], rbx
-    call @take
+    call @take [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
     add rsp, 16
-    mov r9, rax
     mov rdx, 1
-    cmp.i64 r9, rdx
-    setne r9
-    movzx r9, r9
-    mov r8, r9
-    sext.i32 r8
-    mov rax, r8
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
     ret rax

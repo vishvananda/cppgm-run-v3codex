@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -14,9 +14,8 @@ function @reload_to_return_register
     slot $home -> [rbp-8] : i64
 
   block ^entry
-    mov r8, 13
-    store.i64 [rbp-8], r8
-    mov rax, r8
+    store.i64 [rbp-8], 13
+    load.i64 rax, [rbp-8]
     ret rax
 
 function @reload_to_same_register
@@ -28,11 +27,10 @@ function @reload_to_same_register
     slot $home -> [rbp-8] : i64
 
   block ^entry
-    mov r8, 29
-    store.i64 [rbp-8], r8
+    store.i64 [rbp-8], 29
+    load.i64 r8, [rbp-8]
     add r8, 1
-    mov rax, r8
-    ret rax
+    ret r8
 
 function @main
   abi
@@ -43,9 +41,9 @@ function @main
     preserve rbx
 
   block ^entry
-    call @reload_to_return_register
+    call @reload_to_return_register [args=()]
     mov rbx, rax
-    call @reload_to_same_register
+    call @reload_to_same_register [args=()]
     mov r8, rax
     mov rdx, 13
     cmp.i64 rbx, rdx
@@ -56,7 +54,6 @@ function @main
     setne r8
     movzx r8, r8
     or rbx, r8
-    mov r8, rbx
-    sext.i32 r8
-    mov rax, r8
+    mov rax, rbx
+    sext.i32 rax
     ret rax

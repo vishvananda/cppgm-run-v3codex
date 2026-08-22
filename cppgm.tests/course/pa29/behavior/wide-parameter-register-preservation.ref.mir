@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -21,18 +21,8 @@ function @sink
   frame
     stack_size 48
     scratch_bytes 0
-    param-slot %ret -> [rbp-8] : ptr
-    param-slot %this -> [rbp-16] : ptr
-    param-slot %initializer -> [rbp-20] : u32
-    param-slot %scope -> [rbp-24] : u32
-    param-slot %local -> [rbp-25] : u8
 
   block ^entry
-    store.ptr [rbp-8], rdi
-    store.ptr [rbp-16], rsi
-    store.u32 [rbp-20], rdx
-    store.u32 [rbp-24], rcx
-    store.u8 [rbp-25], r9
     store.u32 @observed, r8
     ret
 
@@ -50,40 +40,21 @@ function @wide
   frame
     stack_size 80
     scratch_bytes 0
-    preserve rbx r12 r13 r14 r15
-    param-slot %require -> [rbp-1] : u8
-    param-slot %preserve -> [rbp-2] : u8
-    temp %value -> [rbp-16] : i64
-    temp %next -> [rbp-24] : i64
+    preserve rbx
+    param-slot %scope -> [rbp-4] : u32
+    param-slot %require -> [rbp-5] : u8
+    param-slot %preserve -> [rbp-6] : u8
 
   block ^entry
+    store.u32 [rbp-4], rcx
     load.u8 rax, [rbp+16]
-    store.u8 [rbp-1], rax
+    store.u8 [rbp-5], rax
     load.u8 rax, [rbp+24]
-    store.u8 [rbp-2], rax
-    mov r12, rdi
-    mov r14, rsi
-    mov r13, rcx
-    mov r15, r8
-    mov rbx, r9
-    mov r9, rdx
-    mov r8, rsi
-    lea r8, [r8+8]
-    load.i64 rax, [r8]
-    store.i64 [rbp-16], rax
-    load.i64 rax, [rbp-16]
-    add rax, 1
-    store.i64 [rbp-24], rax
-    load.i64 rax, [rbp-24]
-    store.i64 [r8], rax
-    store.i64 [rbp-32], r9
-    mov rdi, r12
-    mov rsi, r14
-    load.i64 rdx, [rbp-32]
-    mov rcx, r13
-    mov r8, r15
-    mov r9, rbx
-    call @sink
+    store.u8 [rbp-6], rax
+    load.i64 rbx, [rsi+8]
+    add rbx, 1
+    store.i64 [rsi+8], rbx
+    call @sink [args=(rcx,rdx,rsi,rdi,r8,r9)]
     ret
 
 function @main
@@ -96,25 +67,23 @@ function @main
     slot $object -> [rbp-16] : obj<16x8>
 
   block ^entry
-    lea rbx, [rbp-16]
-    lea rbx, [rbx+8]
-    mov rax, 0
-    store.i64 [rbx], rax
+    lea r8, [rbp-16]
+    lea rbx, [r8+8]
+    store.i64 [rbx], 0
     sub rsp, 16
-    lea rdi, [rbp-16]
-    lea rsi, [rbp-16]
+    mov rdi, r8
+    mov rsi, r8
     mov rdx, 1
     mov rcx, 2
     mov r8, 77
     mov r9, 0
     mov r11, 1
-    store.u8 [rsp], r11
+    store.i64 [rsp], r11
     mov r11, 1
-    store.u8 [rsp+8], r11
-    call @wide
+    store.i64 [rsp+8], r11
+    call @wide [args=(rcx,rdx,rsi,rdi,r8,r9), stack=16]
     add rsp, 16
     load.u32 r8, @observed
-    zext.i32 r8
     mov rdx, 77
     cmp.u32 r8, rdx
     setne r8
@@ -125,7 +94,6 @@ function @main
     setne r9
     movzx r9, r9
     or r8, r9
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    mov rax, r8
+    sext.i32 rax
     ret rax

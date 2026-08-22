@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -9,8 +9,8 @@ function @main
   abi
     return i32 -> rax
   frame
-    stack_size 112
-    scratch_bytes 48
+    stack_size 64
+    scratch_bytes 0
     preserve rbx r12
     slot $a -> [rbp-8] : i64
     slot $b -> [rbp-16] : i64
@@ -20,22 +20,18 @@ function @main
     temp %unused -> [rbp-48] : obj<8x8>
 
   block ^entry
-    mov rax, 10
-    store.i64 [rbp-8], rax
-    mov rax, 20
-    store.i64 [rbp-16], rax
-    mov rax, 30
-    store.i64 [rbp-24], rax
-    mov rax, 40
-    store.i64 [rbp-32], rax
-    mov rax, 7
-    store.i64 [rbp-40], rax
+    store.i64 [rbp-8], 10
+    store.i64 [rbp-16], 20
+    store.i64 [rbp-24], 30
+    store.i64 [rbp-32], 40
+    store.i64 [rbp-40], 7
     load.i64 r8, [rbp-8]
     load.i64 r9, [rbp-16]
     load.i64 rbx, [rbp-24]
     load.i64 r12, [rbp-32]
-    load.obj<8x8> rax, [rbp-40]
-    store.obj<8x8> [rbp-48], rax
+    lea rdi, [rbp-48]
+    lea rsi, [rbp-40]
+    copy_bytes 8x8, rdi, rsi
     add r8, r9
     add r8, rbx
     add r8, r12
@@ -43,7 +39,6 @@ function @main
     cmp.i64 r8, rdx
     setne r8
     movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    mov rax, r8
+    sext.i32 rax
     ret rax

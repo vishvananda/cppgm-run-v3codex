@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -9,16 +9,13 @@ function @main
   abi
     return i32 -> rax
   frame
-    stack_size 112
-    scratch_bytes 48
-    preserve rbx r12 r13 r14 r15
-    temp %q1 -> [rbp-8] : i64
-    temp %bad_q1 -> [rbp-16] : i64
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx r12 r13 r14
 
   block ^entry
     mov r8, 100
-    mov rdx, -2
-    mov rcx, rdx
+    mov rcx, -2
     mov rax, r8
     cqo
     idiv rcx
@@ -28,8 +25,7 @@ function @main
     setne r8
     movzx r8, r8
     mov r9, -99
-    mov rdx, -4
-    mov rcx, rdx
+    mov rcx, -4
     mov rax, r9
     cqo
     idiv rcx
@@ -38,82 +34,73 @@ function @main
     cmp.i64 r9, rdx
     setne r9
     movzx r9, r9
-    mov rbx, -99
-    mov rdx, -4
-    mov rcx, rdx
+    mov rdi, -99
+    mov rcx, -4
+    mov rax, rdi
+    cqo
+    idiv rcx
+    mov rdi, rdx
+    mov rdx, -3
+    cmp.i64 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    mov rsi, -9223372036854775808
+    mov rcx, -9223372036854775808
+    mov rax, rsi
+    cqo
+    idiv rcx
+    mov rsi, rax
+    mov rdx, 1
+    cmp.i64 rsi, rdx
+    setne rsi
+    movzx rsi, rsi
+    mov rbx, 9223372036854775807
+    mov rcx, -9223372036854775808
     mov rax, rbx
     cqo
     idiv rcx
     mov rbx, rdx
-    mov rdx, -3
+    mov rdx, 9223372036854775807
     cmp.i64 rbx, rdx
     setne rbx
     movzx rbx, rbx
-    mov r12, -9223372036854775808
-    mov rdx, -9223372036854775808
-    mov rcx, rdx
+    mov r12, -100
+    mov rcx, -7
     mov rax, r12
     cqo
     idiv rcx
     mov r12, rax
-    mov rdx, 1
+    mov rdx, 14
     cmp.i64 r12, rdx
     setne r12
     movzx r12, r12
-    mov r13, 9223372036854775807
-    mov rdx, -9223372036854775808
-    mov rcx, rdx
+    mov r13, -100
+    mov rcx, -7
     mov rax, r13
     cqo
     idiv rcx
     mov r13, rdx
-    mov rdx, 9223372036854775807
+    mov rdx, -2
     cmp.i64 r13, rdx
     setne r13
     movzx r13, r13
-    mov r14, -100
-    mov rdx, -7
-    mov rcx, rdx
+    mov r14, 100
+    mov rcx, -1
     mov rax, r14
     cqo
     idiv rcx
     mov r14, rax
-    mov rdx, 14
+    mov rdx, -100
     cmp.i64 r14, rdx
     setne r14
     movzx r14, r14
-    mov r15, -100
-    mov rdx, -7
-    mov rcx, rdx
-    mov rax, r15
-    cqo
-    idiv rcx
-    mov r15, rdx
-    mov rdx, -2
-    cmp.i64 r15, rdx
-    setne r15
-    movzx r15, r15
-    mov rax, 100
-    mov rdx, -1
-    mov rcx, rdx
-    cqo
-    idiv rcx
-    store.i64 [rbp-8], rax
-    load.i64 rax, [rbp-8]
-    mov rdx, -100
-    cmp.i64 rax, rdx
-    setne rax
-    movzx rax, rax
-    store.i64 [rbp-16], rax
     or r8, r9
+    or rdi, rsi
     or rbx, r12
     or r13, r14
-    load.i64 rdx, [rbp-16]
-    or r15, rdx
+    or r8, rdi
+    or rbx, r13
     or r8, rbx
-    or r13, r15
-    or r8, r13
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    mov rax, r8
+    sext.i32 rax
     ret rax

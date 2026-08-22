@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -14,8 +14,7 @@ function @div3
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 3
-    mov rcx, rdx
+    mov rcx, 3
     mov rax, rdi
     cqo
     idiv rcx
@@ -30,8 +29,7 @@ function @div7
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 7
-    mov rcx, rdx
+    mov rcx, 7
     mov rax, rdi
     cqo
     idiv rcx
@@ -46,8 +44,7 @@ function @div_large
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 2147483647
-    mov rcx, rdx
+    mov rcx, 2147483647
     mov rax, rdi
     cqo
     idiv rcx
@@ -62,8 +59,7 @@ function @div_negative3
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -3
-    mov rcx, rdx
+    mov rcx, -3
     mov rax, rdi
     cqo
     idiv rcx
@@ -78,8 +74,7 @@ function @div_negative5
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -5
-    mov rcx, rdx
+    mov rcx, -5
     mov rax, rdi
     cqo
     idiv rcx
@@ -94,16 +89,11 @@ function @div_narrow3
     scratch_bytes 0
 
   block ^entry
-    mov rdx, 3
-    mov rcx, rdx
-    sext.i8 rcx
+    mov rcx, 3
     mov rax, rdi
-    sext.i8 rax
     cqo
     idiv rcx
-    mov r8, rax
-    sext.i8 r8
-    mov rax, r8
+    sext.i8 rax
     ret rax
 
 function @div_narrow_negative3
@@ -115,16 +105,11 @@ function @div_narrow_negative3
     scratch_bytes 0
 
   block ^entry
-    mov rdx, -3
-    mov rcx, rdx
-    sext.i8 rcx
+    mov rcx, -3
     mov rax, rdi
-    sext.i8 rax
     cqo
     idiv rcx
-    mov r8, rax
-    sext.i8 r8
-    mov rax, r8
+    sext.i8 rax
     ret rax
 
 function @main
@@ -134,75 +119,67 @@ function @main
     stack_size 96
     scratch_bytes 48
     preserve rbx r12 r13 r14 r15
-    temp %bad_q_narrow3 -> [rbp-8] : i64
+    temp %bad_q_negative5 -> [rbp-8] : i64
 
   block ^entry
     mov rdi, -9223372036854775808
-    call @div3
-    mov r8, rax
+    call @div3 [args=(rdi)]
     mov rbx, rax
     mov rdx, -3074457345618258602
     cmp.i64 rbx, rdx
     setne rbx
     movzx rbx, rbx
     mov rdi, 9223372036854775807
-    call @div7
-    mov r8, rax
+    call @div7 [args=(rdi)]
     mov r12, rax
     mov rdx, 1317624576693539401
     cmp.i64 r12, rdx
     setne r12
     movzx r12, r12
     mov rdi, 9223372036854775807
-    call @div_large
-    mov r8, rax
+    call @div_large [args=(rdi)]
     mov r13, rax
     mov rdx, 4294967298
     cmp.i64 r13, rdx
     setne r13
     movzx r13, r13
     mov rdi, -9223372036854775808
-    call @div_negative3
-    mov r8, rax
+    call @div_negative3 [args=(rdi)]
     mov r14, rax
     mov rdx, 3074457345618258602
     cmp.i64 r14, rdx
     setne r14
     movzx r14, r14
     mov rdi, 9223372036854775807
-    call @div_negative5
-    mov r8, rax
+    call @div_negative5 [args=(rdi)]
     mov r15, rax
     mov rdx, -1844674407370955161
     cmp.i64 r15, rdx
     setne r15
     movzx r15, r15
     mov rdi, -128
-    call @div_narrow3
-    mov r8, rax
-    sext.i8 r8
-    mov rax, r8
+    call @div_narrow3 [args=(rdi)]
+    sext.i8 rax
+    store.i64 [rbp-8], r15
+    mov r15, rax
+    mov rdx, -42
+    cmp.i8 r15, rdx
+    setne r15
+    movzx r15, r15
+    mov rdi, 127
+    call @div_narrow_negative3 [args=(rdi)]
+    sext.i8 rax
     mov rdx, -42
     cmp.i8 rax, rdx
     setne rax
     movzx rax, rax
-    store.i64 [rbp-8], rax
-    mov rdi, 127
-    call @div_narrow_negative3
-    mov r8, rax
-    sext.i8 r8
-    mov rdx, -42
-    cmp.i8 r8, rdx
-    setne r8
-    movzx r8, r8
     or rbx, r12
     or r13, r14
-    load.i64 rdx, [rbp-8]
-    or r15, rdx
-    or r15, r8
+    load.i64 r8, [rbp-8]
+    or r8, r15
+    or r8, rax
     or rbx, r13
-    or rbx, r15
-    mov r8, rbx
-    sext.i32 r8
-    mov rax, r8
+    or rbx, r8
+    mov rax, rbx
+    sext.i32 rax
     ret rax

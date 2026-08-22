@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -36,16 +36,8 @@ function @sink
   frame
     stack_size 48
     scratch_bytes 0
-    param-slot %this -> [rbp-8] : ptr
-    param-slot %source -> [rbp-16] : ptr
-    param-slot %type -> [rbp-20] : i32
-    param-slot %data -> [rbp-32] : ptr
 
   block ^entry
-    store.ptr [rbp-8], rdi
-    store.ptr [rbp-16], rsi
-    store.i32 [rbp-20], rdx
-    store.ptr [rbp-32], rcx
     store.i64 @observed, r8
     ret
 
@@ -58,61 +50,37 @@ function @forward
     param %size -> r8 : i64
     return void -> void
   frame
-    stack_size 64
+    stack_size 16
     scratch_bytes 0
-    preserve rbx r14
-    temp %loaded_type -> [rbp-4] : i32
-    temp %loaded_data -> [rbp-16] : ptr
-    temp %loaded_size -> [rbp-24] : i64
-    temp %table -> [rbp-32] : ptr
-    temp %target -> [rbp-40] : ptr
+    preserve rbx r12
 
   block ^entry
-    mov rbx, rsi
-    mov r9, r8
-    mov r8, rcx
-    mov r14, rdi
-    store.i32 [rbp-4], rdx
-    store.ptr [rbp-16], r8
-    store.i64 [rbp-24], r9
-    mov rax, @dispatch
-    store.ptr [rbp-32], rax
-    load.ptr rcx, [rbp-32]
-    load.ptr rax, [rcx]
-    store.ptr [rbp-40], rax
-    load.ptr r10, [rbp-40]
-    mov rdi, r14
-    mov rsi, rbx
-    load.i32 rdx, [rbp-4]
-    load.ptr rcx, [rbp-16]
-    load.i64 r8, [rbp-24]
-    call *r10
+    mov r9, rcx
+    mov rbx, @dispatch
+    load.ptr r12, [rbx]
+    mov rcx, r9
+    call *r12 [args=(rcx,rdx,rsi,rdi,r8)]
     ret
 
 function @main
   abi
     return i32 -> rax
   frame
-    stack_size 64
+    stack_size 48
     scratch_bytes 48
-    preserve rbx
 
   block ^entry
-    mov r8, @receiver
-    mov r9, @source
-    mov rbx, @payload
-    mov rdi, r8
-    mov rsi, r9
+    mov rdi, @receiver
+    mov rsi, @source
     mov rdx, 13
-    mov rcx, rbx
+    mov rcx, @payload
     mov r8, 77
-    call @forward
+    call @forward [args=(rcx,rdx,rsi,rdi,r8)]
     load.i64 r8, @observed
     mov rdx, 77
     cmp.i64 r8, rdx
     setne r8
     movzx r8, r8
-    mov r9, r8
-    sext.i32 r9
-    mov rax, r9
+    mov rax, r8
+    sext.i32 rax
     ret rax

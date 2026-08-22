@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -22,38 +22,32 @@ function @loop_shift
     param %limit -> rdx : i64
     return void -> void
   frame
-    stack_size 48
+    stack_size 16
     scratch_bytes 0
-    preserve rbx r12 r13 r14 r15
+    preserve rbx r12
 
   block ^entry
-    mov rbx, rdi
-    mov r12, rsi
-    mov r9, rdx
-    mov r8, rdi
-    lea r8, [r8+8]
-    mov rax, 0
-    store.i64 [r8], rax
+    mov r8, rdx
+    store.i64 [rdi+8], 0
     jmp ^condition
 
   block ^condition
-    load.i64 r13, [r8]
-    cmp.i64 r13, r9
+    load.i64 r9, [rdi+8]
+    cmp.i64 r9, r8
     jb ^body
     jmp ^done
 
   block ^body
-    mov r14, r13
-    imul r14, 8
-    mov r15, r12
-    mov rcx, r14
-    shr r15, cl
-    mov rdx, 255
-    and r15, rdx
-    store.i64 [rbx], r15
-    mov r14, r13
-    add r14, 1
-    store.i64 [r8], r14
+    mov rbx, r9
+    imul rbx, 8
+    mov r12, rsi
+    mov rcx, rbx
+    shr r12, cl
+    and r12, 255
+    store.i64 [rdi], r12
+    mov rbx, r9
+    add rbx, 1
+    store.i64 [rdi+8], rbx
     jmp ^condition
 
   block ^done
@@ -63,37 +57,41 @@ function @main
   abi
     return i32 -> rax
   frame
-    stack_size 64
+    stack_size 80
     scratch_bytes 48
     preserve rbx r12
+    temp %stable -> [rbp-8] : ptr
+    temp %counter -> [rbp-16] : ptr
 
   block ^entry
-    mov rbx, @state
-    mov r9, rbx
-    mov r8, rbx
+    mov r8, @state
+    store.ptr [rbp-8], r8
     lea r8, [r8+8]
-    mov rax, 0
-    store.i64 [r8], rax
+    store.ptr [rbp-16], r8
+    load.ptr rcx, [rbp-16]
+    store.i64 [rcx], 0
     jmp ^condition
 
   block ^condition
-    load.i64 rbx, [r8]
-    cmp.i64 rbx, 2
+    load.ptr rcx, [rbp-16]
+    load.i64 r8, [rcx]
+    cmp.i64 r8, 2
     jb ^body
     jmp ^done
 
   block ^body
-    mov rax, 7
-    store.i64 [r9], rax
-    mov r12, rbx
-    add r12, 1
-    store.i64 [r8], r12
+    load.ptr rcx, [rbp-8]
+    store.i64 [rcx], 7
+    mov r9, r8
+    add r9, 1
+    load.ptr rcx, [rbp-16]
+    store.i64 [rcx], r9
     jmp ^condition
 
   block ^done
-    mov r8, @state
-    load.i64 r9, [r8]
-    mov rbx, r9
+    mov r9, @state
+    load.i64 rdi, [r9]
+    mov rbx, rdi
     mov rdx, 7
     cmp.i64 rbx, rdx
     setne rbx
@@ -102,14 +100,13 @@ function @main
     mov rdi, r12
     mov rsi, 118046
     mov rdx, 3
-    call @loop_shift
-    load.i64 r8, [r12]
+    call @loop_shift [args=(rdx,rsi,rdi)]
+    load.i64 r9, [r12]
     mov rdx, 1
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    or rbx, r8
-    mov r8, rbx
-    sext.i32 r8
-    mov rax, r8
+    cmp.i64 r9, rdx
+    setne r9
+    movzx r9, r9
+    or rbx, r9
+    mov rax, rbx
+    sext.i32 rax
     ret rax

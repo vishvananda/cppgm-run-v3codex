@@ -21,14 +21,10 @@ function @main
     temp %unused -> [rbp-80] : i128
 
   block ^entry
-    mov rax, 10
-    store.i64 [rbp-8], rax
-    mov rax, 20
-    store.i64 [rbp-16], rax
-    mov rax, 30
-    store.i64 [rbp-24], rax
-    mov rax, 40
-    store.i64 [rbp-32], rax
+    store.i64 [rbp-8], 10
+    store.i64 [rbp-16], 20
+    store.i64 [rbp-24], 30
+    store.i64 [rbp-32], 40
     load.i64 r8, [rbp-8]
     load.i64 r9, [rbp-16]
     load.i64 rbx, [rbp-24]

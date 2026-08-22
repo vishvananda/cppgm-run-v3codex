@@ -1,7 +1,7 @@
 machine_ir x86_64 linux
 
 startup
-    call @main
+    call @main [args=()]
     mov rdi, rax
     exit
 
@@ -18,9 +18,8 @@ function @divide_and_store
     param %value -> rdi : i64
     return i64 -> rax
   frame
-    stack_size 32
+    stack_size 16
     scratch_bytes 0
-    preserve rbx r12 r13
 
   block ^entry
     mov rcx, 32
@@ -34,15 +33,14 @@ function @divide_and_store
     mov rax, rdi
     cqo
     idiv rcx
-    mov rbx, rax
+    mov r9, rax
     store.i64 @saved_magic, rax
-    add rbx, 1
-    load.i64 r12, @saved_power
-    load.i64 r13, @saved_magic
-    add r12, r13
-    add r8, rbx
-    add r12, r8
-    ret r12
+    add r9, 1
+    load.i64 rsi, @saved_power
+    add rsi, @saved_magic
+    add r8, r9
+    add rsi, r8
+    ret rsi
 
 function @main
   abi
@@ -54,19 +52,18 @@ function @main
 
   block ^entry
     mov rdi, 224
-    call @divide_and_store
-    mov r8, rax
+    call @divide_and_store [args=(rdi)]
     mov rdx, 80
     cmp.i64 rax, rdx
     setne rbx
     movzx rbx, rbx
     mov rdi, -224
-    call @divide_and_store
+    call @divide_and_store [args=(rdi)]
     mov rdx, -76
     cmp.i64 rax, rdx
-    setne r8
-    movzx r8, r8
-    or rbx, r8
-    mov r8, rbx
-    sext.i32 r8
-    ret r8
+    setne rax
+    movzx rax, rax
+    or rbx, rax
+    mov rax, rbx
+    sext.i32 rax
+    ret rax

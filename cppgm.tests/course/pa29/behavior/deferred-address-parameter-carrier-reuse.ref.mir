@@ -227,9 +227,9 @@ function @main
 
   block ^check2
     load.u32 r9, [r8+132]
-    mov r8, r9
-    zext.i32 r8
-    cmp.i64 r8, 8
+    mov rdi, r9
+    zext.i32 rdi
+    cmp.i64 rdi, 8
     jne ^fail
     jmp ^good
 
