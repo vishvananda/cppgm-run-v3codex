@@ -216,7 +216,11 @@ struct Instruction
     // frame-resident object chunk transferred to or from an ABI argument or
     // result register likewise uses its final frame operand directly. A frame
     // destination created before a direct-object call remains frame-shaped
-    // through the later call-result copy.
+    // through the later call-result copy. A constant derived address used only
+    // as a memory address may likewise remain base/index/displacement-shaped
+    // across blocks while every named register remains valid. It must become
+    // an explicit pointer value if another use observes the pointer or a
+    // carrier is clobbered.
     MI_FMOV,
     MI_FNEG,
     MI_FADD,

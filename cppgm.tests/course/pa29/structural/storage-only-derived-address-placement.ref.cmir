@@ -1,0 +1,62 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @cells
+  storage data
+  item i64 0
+  item i64 0
+
+function @produce
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov rax, 29
+    ret rax
+
+function @write_second
+  abi
+    param %base -> rdi : ptr
+    return void -> void
+  frame
+    stack_size 16
+    scratch_bytes 0
+    preserve <gpr0>
+
+  block ^entry
+    mov <gpr0>, rdi
+    jmp ^write
+
+  block ^write
+    call @produce [args=()]
+    store.i64 [<gpr0>+<off0>], rax
+    store.i64 [<gpr0>], 11
+    ret
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 64
+    scratch_bytes 48
+    preserve <gpr0>
+
+  block ^entry
+    mov <gpr0>, @cells
+    mov rdi, <gpr0>
+    call @write_second [args=(rdi)]
+    load.i64 r8, [<gpr0>+<off0>]
+    mov rdx, 29
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    mov rax, r8
+    sext.i32 rax
+    ret rax

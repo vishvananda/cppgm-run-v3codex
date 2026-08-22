@@ -216,6 +216,9 @@ protected:
 				out.push_back(lea);
 			}
 			else if (derived.address_is_call_argument(instruction.dest) ||
+				derived.facts_.has(
+					instruction.dest,
+					analysis::FunctionFacts::VF_ONLY_STORAGE_ADDRESS) ||
 				derived.address_is_next_atomic_expected(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_next_va_start(
@@ -239,6 +242,7 @@ protected:
 					lowir_model::builtin_lowir_type(lowir_model::LTK_PTR),
 					derived.storage(instruction.first));
 				derived.values_[instruction.dest].frame_address = true;
+				derived.values_[instruction.dest].deferred_address_stable = true;
 				derived.values_[instruction.dest].has_frame_provenance = true;
 				derived.values_[instruction.dest].frame_provenance =
 					derived.storage(instruction.first).offset;

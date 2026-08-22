@@ -7,6 +7,7 @@
 #include "lowir_native_wide.h"
 
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,6 +19,16 @@ template <class Derived>
 class IndexLowering
 {
 protected:
+  bool add_address_offset(long long left, long long right,
+                          long long * result) const
+  {
+    if((right > 0 && left > std::numeric_limits<long long>::max() - right) ||
+       (right < 0 && left < std::numeric_limits<long long>::min() - right))
+      return false;
+    *result = left + right;
+    return true;
+  }
+
   bool index_has_direct_memory_use(
       const lowir_model::LowirBlock & block,
       std::size_t instruction_index,
@@ -64,6 +75,75 @@ protected:
       selection::integer_value(instruction.second) *
         static_cast<long long>(instruction.type.storage_size) : 0;
     mir_model::MirOperand base = lowerer.resolve(instruction.first);
+    const bool deferred_base =
+      instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+      lowerer.value_known_[instruction.first.value] &&
+      lowerer.values_[instruction.first.value].deferred_address;
+    const bool stable_register_base =
+      instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+      lowerer.value_known_[instruction.first.value] &&
+      lowerer.values_[instruction.first.value].parameter;
+    const bool stable_deferred_base = deferred_base &&
+      lowerer.values_[instruction.first.value].deferred_address_stable;
+    bool require_selected_parameter_home = false;
+    if(constant_index && stable_register_base &&
+       base.kind == mir_model::MirOperand::OP_REG &&
+       lowerer.crosses_register_clobber(instruction.dest, base.reg)) {
+      const mir_model::MirOperand selected =
+        lowerer.values_[instruction.first.value].location;
+      if(selected.kind == mir_model::MirOperand::OP_REG &&
+         !lowerer.crosses_register_clobber(instruction.dest, selected.reg)) {
+        base = selected;
+        require_selected_parameter_home = true;
+      }
+    }
+    if(constant_index &&
+       lowerer.facts_.has(
+         instruction.dest,
+         analysis::FunctionFacts::VF_ONLY_STORAGE_ADDRESS)) {
+      mir_model::MirOperand address;
+      bool encodable = false;
+      if(stable_register_base && base.kind == mir_model::MirOperand::OP_REG &&
+         !lowerer.crosses_register_clobber(instruction.dest, base.reg)) {
+        address = dereference(base.reg, offset);
+        encodable = true;
+      } else if((stable_deferred_base ||
+                 lowerer.is_frame_address(instruction.first)) &&
+                (base.kind == mir_model::MirOperand::OP_DEREF ||
+                 base.kind == mir_model::MirOperand::OP_FRAME)) {
+        long long combined = 0;
+        encodable = add_address_offset(base.offset, offset, &combined);
+        if(encodable && base.kind == mir_model::MirOperand::OP_DEREF) {
+          encodable = !lowerer.crosses_register_clobber(
+            instruction.dest, base.reg) &&
+            (!base.has_index || !lowerer.crosses_register_clobber(
+              instruction.dest, base.index));
+        }
+        if(encodable) {
+          address = base;
+          address.offset = combined;
+        }
+      }
+      if(encodable) {
+        if(require_selected_parameter_home)
+          base = lowerer.selected_value_location(instruction.first.value);
+        ValueFact value;
+        value.location = address;
+        value.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+        value.deferred_address = true;
+        value.deferred_address_stable = true;
+        value.deferred_address_base = instruction.first;
+        value.deferred_address_index = instruction.second;
+        if(base.kind == mir_model::MirOperand::OP_FRAME &&
+           lowerer.is_frame_address(instruction.first)) {
+          value.frame_address = true;
+          value.has_frame_provenance = true;
+          value.frame_provenance = address.offset;
+        }
+        lowerer.set_value(instruction.dest, value);
+        return;
+      }
+    }
     if(index_has_direct_memory_use(block, instruction_index, instruction) &&
        (base.kind == mir_model::MirOperand::OP_REG ||
         (constant_index &&
@@ -88,6 +168,8 @@ protected:
       value.location = address;
       value.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
       value.deferred_address = true;
+      value.deferred_address_stable = constant_index &&
+        (stable_register_base || lowerer.is_frame_address(instruction.first));
       value.deferred_address_base = instruction.first;
       value.deferred_address_index = instruction.second;
       lowerer.set_value(instruction.dest, value);
@@ -171,6 +253,18 @@ materialize_index:
         append_operand(lea, base);
         out.push_back(lea);
         address_emitted = true;
+      } else if(deferred_base &&
+                base.kind == mir_model::MirOperand::OP_DEREF) {
+        long long combined = 0;
+        if(add_address_offset(base.offset, offset, &combined)) {
+          base.offset = combined;
+          mir_model::MirInstruction lea =
+            machine_instruction(mir_model::MirInstruction::MI_LEA);
+          append_operand(lea, destination);
+          append_operand(lea, base);
+          out.push_back(lea);
+          address_emitted = true;
+        }
       } else if(base.kind == mir_model::MirOperand::OP_REG && offset != 0) {
         mir_model::MirInstruction lea =
           machine_instruction(mir_model::MirInstruction::MI_LEA);
@@ -181,7 +275,24 @@ materialize_index:
       }
     } else {
       mir_model::MirOperand index = lowerer.resolve(instruction.second);
-      if(base.kind == mir_model::MirOperand::OP_REG &&
+      if(deferred_base && base.kind == mir_model::MirOperand::OP_DEREF &&
+         !base.has_index &&
+         index.kind == mir_model::MirOperand::OP_REG && index.reg != XR_RSP &&
+         (instruction.type.storage_size == 1 ||
+          instruction.type.storage_size == 2 ||
+          instruction.type.storage_size == 4 ||
+          instruction.type.storage_size == 8)) {
+        mir_model::MirOperand address = base;
+        address.has_index = true;
+        address.index = index.reg;
+        address.scale = static_cast<unsigned>(instruction.type.storage_size);
+        mir_model::MirInstruction lea =
+          machine_instruction(mir_model::MirInstruction::MI_LEA);
+        append_operand(lea, destination);
+        append_operand(lea, address);
+        out.push_back(lea);
+        address_emitted = true;
+      } else if(base.kind == mir_model::MirOperand::OP_REG &&
          index.kind == mir_model::MirOperand::OP_REG && index.reg != XR_RSP &&
          (instruction.type.storage_size == 1 ||
           instruction.type.storage_size == 2 ||

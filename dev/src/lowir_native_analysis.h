@@ -39,7 +39,11 @@ struct FunctionFacts
     // A compiler-created value may remain in its selected register across one
     // presentation-adjacent CFG edge when the source has exactly that
     // successor and the destination has exactly that predecessor.
-    VF_EXACT_FORWARD_EDGE = 1u << 16
+    VF_EXACT_FORWARD_EDGE = 1u << 16,
+    // Every use treats the pointer as an address for a load, store, index, or
+    // bulk-memory operation. Selection may therefore retain an encodable
+    // base/index/displacement instead of materializing a pointer value.
+    VF_ONLY_STORAGE_ADDRESS = 1u << 17
   };
 
   std::vector<std::size_t> uses;

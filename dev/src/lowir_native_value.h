@@ -26,6 +26,11 @@ struct ValueFact
   // instruction consumes the address.  This avoids manufacturing a pointer
   // temporary solely to feed an x86 addressing mode.
   bool deferred_address = false;
+  // True when every register named by the deferred address is held by an
+  // unspillable value for the address lifetime.  Cross-instruction address
+  // composition is restricted to this form so a later spill cannot stale the
+  // captured MIR operand.
+  bool deferred_address_stable = false;
   lowir_model::Operand deferred_address_base;
   lowir_model::Operand deferred_address_index;
 };

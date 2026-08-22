@@ -19,9 +19,8 @@ function @make_pair
     slot $value -> [rbp-<off0>] : obj<16x8>
 
   block ^entry
-    lea r8, [rbp-<off0>]
-    store.i64 [r8], 17
-    store.i64 [r8+<off0>], 23
+    store.i64 [rbp-<off0>], 17
+    store.i64 [rbp-<off1>], 23
     load.i64 rax, [rbp-<off0>]
     load.i64 rdx, [rbp-<off1>]
     ret

@@ -1208,7 +1208,8 @@ private:
       throw std::runtime_error("missing address value");
     const ValueFact & value = values_[operand.value];
     const MirOperand location = selected_value_location(operand.value);
-    if(value.frame_address || value.type.kind == lowir_model::LTK_OBJECT ||
+    if(value.deferred_address || value.frame_address ||
+       value.type.kind == lowir_model::LTK_OBJECT ||
        wide::is_integer(value.type)) {
       if(location.kind == MirOperand::OP_FRAME || location.kind == MirOperand::OP_DEREF) {
         append_address(out, destination, location);

@@ -654,6 +654,11 @@ To complete PA29, implement these goals:
    load, store, or constant index should remain frame-shaped: the memory
    operation should use `[rbp+displacement]` directly, and the constant index
    should incorporate its displacement without first materializing the base.
+   A constant derived address whose uses are all load, store, index, or bulk-
+   memory address operands may remain a base/index/displacement operand across
+   intervening instructions and control-flow edges when its register carriers
+   remain valid for the complete interval. It must be materialized when the
+   pointer value itself is observed or a required carrier is clobbered.
 
 16. Preserve mixed integer/floating call ABI classification.
    Calls that mix GPR and XMM arguments should keep that classification visible in MIR so
@@ -797,6 +802,9 @@ strategies include:
   must remain as a value
 - retain a one-use frame address through a scalar memory consumer so the
   selected memory operand names the frame location directly
+- classify address-only pointer results once in dense per-value facts and
+  retain a typed base/index/displacement value while its carriers are stable,
+  instead of repeatedly rescanning uses or keying hot-path state by text
 - load frame-resident object chunks directly into their ABI argument registers
   instead of materializing a temporary object address
 - transfer direct-object return chunks between their frame locations and ABI
