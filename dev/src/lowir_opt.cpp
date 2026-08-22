@@ -15,6 +15,7 @@
 #include "lowir_slot_forward_o1.h"
 #include "lowir_slot_promotion.h"
 #include "lowir_scalar_rules.h"
+#include "lowir_staged_copy_forwarding.h"
 #include "lowir_small_object_promotion.h"
 #include "lowir_unreachable_opt.h"
 
@@ -183,25 +184,6 @@ bool operator!=(const PassAllocator<T> & left,
                 const PassAllocator<U> & right)
 {
   return !(left == right);
-}
-
-bool same_operand(const Operand & a, const Operand & b)
-{
-  if(a.kind != b.kind) return false;
-  if(a.kind == Operand::OP_LABEL) return a.block == b.block;
-  if(a.kind == Operand::OP_SLOT) return a.slot == b.slot;
-  if(a.kind == Operand::OP_TEMP) return a.value == b.value;
-  if(a.kind == Operand::OP_GLOBAL) return a.symbol == b.symbol;
-  if(a.kind == Operand::OP_INTEGER) {
-    return a.has_int_value == b.has_int_value &&
-      a.int_value == b.int_value && a.int_high == b.int_high;
-  }
-  if(a.kind == Operand::OP_FLOAT) {
-    return a.has_float_bits == b.has_float_bits &&
-      a.literal_low == b.literal_low && a.literal_high == b.literal_high &&
-      same_lowir_type(a.literal_type, b.literal_type);
-  }
-  return true;
 }
 
 Operand integer_operand(long long value, const LowType & type)
@@ -2845,6 +2827,14 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
       timed_dce(&function, boundaries, stats);
+    }
+    if(level >= 1 &&
+       forward_staged_object_copies(&function, &analysis, stats)) {
+      timed_function_pass(simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+      timed_dce(&function, boundaries, stats);
+      timed_function_pass(remove_dead_slots, &function, stats,
+        &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
     if(level >= 2 && simplify_counted_loops(&function, &analysis, stats)) {
       timed_dce(&function, boundaries, stats);

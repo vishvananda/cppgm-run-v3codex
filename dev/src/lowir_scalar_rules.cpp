@@ -85,6 +85,25 @@ bool fold_readonly_global_loads(Function * function,
 }
 
 
+bool same_operand(const Operand & a, const Operand & b)
+{
+  if(a.kind != b.kind) return false;
+  if(a.kind == Operand::OP_LABEL) return a.block == b.block;
+  if(a.kind == Operand::OP_SLOT) return a.slot == b.slot;
+  if(a.kind == Operand::OP_TEMP) return a.value == b.value;
+  if(a.kind == Operand::OP_GLOBAL) return a.symbol == b.symbol;
+  if(a.kind == Operand::OP_INTEGER) {
+    return a.has_int_value == b.has_int_value &&
+      a.int_value == b.int_value && a.int_high == b.int_high;
+  }
+  if(a.kind == Operand::OP_FLOAT) {
+    return a.has_float_bits == b.has_float_bits &&
+      a.literal_low == b.literal_low && a.literal_high == b.literal_high &&
+      lowir_model::same_lowir_type(a.literal_type, b.literal_type);
+  }
+  return true;
+}
+
 bool is_zero(const Operand & value)
 {
   return value.kind == Operand::OP_INTEGER && value.has_int_value &&

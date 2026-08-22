@@ -234,6 +234,7 @@ struct Stats
   std::size_t cleanup_tail_instructions_removed = 0;
   std::size_t cold_sunk_definitions = 0;
   std::size_t duplicate_block_loads_removed = 0;
+  std::size_t staged_copies_forwarded = 0;
   std::size_t unreachable_role_symbols = 0;
   std::size_t unreachable_marker_blocks = 0;
   std::size_t unreachable_edges_removed = 0;

@@ -33,6 +33,8 @@ bool fold_readonly_global_loads(lowir_model::Function * function,
     const std::vector<lowir_model::LowType> & readonly_types,
     Stats * stats);
 
+bool same_operand(const lowir_model::Operand & a,
+                  const lowir_model::Operand & b);
 bool is_zero(const lowir_model::Operand & value);
 bool is_one(const lowir_model::Operand & value);
 bool is_minus_one(const lowir_model::Operand & value);

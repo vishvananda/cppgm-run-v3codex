@@ -11,23 +11,20 @@ function @second(%xs : obj<16x8>) -> i32 [binding=strong, object=_Z6secondSt16in
     return i32 %t6
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
-  slot $argobj__1 : obj<16x8>
   slot $initlist__2 : obj<12x4>
   slot $__o1inl0__xs : obj<16x8>
 
   block ^entry:
-    %t1 = addr $argobj__1
     %t2 = addr $initlist__2
     store i32 13, %t2
     %t3 = index i8 %t2, 4
     store i32 14, %t3
     %t4 = index i8 %t2, 8
     store i32 15, %t4
-    store ptr %t2, %t1
-    %t5 = index i8 %t1, 8
-    store i64 3, %t5
     %__o1inl0__t1 = addr $__o1inl0__xs
-    copyobj 16x8 $argobj__1, %__o1inl0__t1
+    store ptr %t2, %__o1inl0__t1
+    %t0 = index i8 [projection=field] %__o1inl0__t1, 8
+    store i64 3, %t0
     %__o1inl0____o1inl0__t1 = copy ptr %__o1inl0__t1
     %__o1inl0____o1inl0__t3 = load ptr %__o1inl0____o1inl0__t1
     %__o1inl0__t5 = index i32 [projection=array_element] %__o1inl0____o1inl0__t3, 1
