@@ -116,6 +116,27 @@ object remains byte-identical at SHA `2d62704d...` and deterministic across
 repeated compiles.  The full report passes 5,408/5,408 and the PA39 audit has
 zero fatal findings.
 
+The first P1 inception lane exposed a third latent defect in the same
+family.  `consume()` released the register of a value at its final counted
+use even when the value was edge-live; lowering order is block-layout order,
+so a later-layout block could reallocate that register while an
+earlier-layout loop block -- re-entered through a backedge at runtime --
+still addressed through it.  The generated
+`ConfigureSynthesizedStoragePrefix` stored through a clobbered `%r13` and
+the O3 inception crashed on six translation units.  The release now also
+requires the value not be edge-live, mirroring the loop-invariant guard
+(`Keep edge-live value registers across backedges`).  The full report and
+every PA29/PA38 fixture pass unchanged, and the previously crashing
+translation units compile.  An isolated course reducer for this exact guard
+bypass is outstanding: synthetic `.t` shapes place the address value where
+loop-invariance protection already applies, and the failing fact combination
+arises only on the in-memory driver pipeline after inlining has rewritten
+the function, which the parse-based PA29/PA38 harnesses cannot reach.  The
+serialized emit path cannot currently dump the object pipeline's optimized
+LowIR for a hosted translation unit (emit mode takes no `-I`, and `-E`
+output is a token dump the compiler does not re-consume), which is the
+tooling gap that blocks extraction; it is recorded here for follow-up.
+
 ## P1: host-configuration parity
 
 Define `__OPTIMIZE__` (value 1, matching host GCC) in the predefined-macro
@@ -127,21 +148,29 @@ mostly compile away under `__builtin_object_size` unknown) and record the
 decision.  Do not hardcode either macro into the snapshot; both must follow
 the compile's own level so `-O0` output is unchanged.
 
-Owning coverage: the preprocessor predefine surface (hosted host-config
-replay) gains a test that `__OPTIMIZE__` is absent at `-O0` and present at
-`-O1`/`-O2`/`-O3`, plus a driver-level test that a `_GLIBCXX_ASSERTIONS`
-bounds check disappears from an optimized hosted object.  Existing fixture
-movement is expected to be nil because course fixtures are freestanding; any
-hosted fixture that changes is regenerated in place and recorded.
+`_FORTIFY_SOURCE` is deliberately not mirrored: it selects glibc `_chk`
+wrappers rather than libstdc++ behavior, its absence matches a valid host
+configuration (`g++ -U_FORTIFY_SOURCE`), and hardening the generated
+compiler is not a parity requirement.  This decision is recorded here so a
+future compatibility need can revisit it explicitly.
+
+Owning coverage: the PA15 O0 lane proves `__OPTIMIZE__` is absent at `-O0`
+and the PA37 driver O1 lane proves it is present when optimizing; both are
+exact serialized-LowIR course reducers.  Emit modes additionally accept
+`-D`/`-U` so the PA37 object-roundtrip harness can emit its canonical O0
+LowIR under the same preprocessing the direct optimized compile uses; the
+roundtrip contract requires identical preprocessed input on both paths now
+that hosted preprocessing is level-dependent.
 
 Gate: the self-O1 compiler rebuilt under the new default must reproduce the
-15.43-second measurement (already demonstrated with the explicit define), the
-frozen object must remain byte-identical, and because this changes the STL
-code compiled into every tool at every level, the full report, audit, clean
-32-worker O3 self/inception, and the explicit O0 inception lane must all
-pass.  Re-run the twelve-way matrix afterward so all later phases measure
-against configuration-fair numbers, and record the GCC-O1-with-assertions
-lane once for the historical record.
+15.43-second measurement (already demonstrated with the explicit define).
+The frozen maximum-level object intentionally changes -- hosted assertions
+disappear from optimized output -- so the deterministic-output check, the
+code-shape census, the full report, audit, clean 32-worker O3
+self/inception, and the explicit O0 inception lane must all pass, and the
+new frozen SHA becomes the baseline.  Re-run the twelve-way matrix afterward
+so all later phases measure against configuration-fair numbers; the
+GCC-O1-with-assertions lane is recorded in the decomposition above.
 
 ## P2: inline the hot accessor class
 
