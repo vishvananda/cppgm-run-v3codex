@@ -1,0 +1,40 @@
+function @negated_trunc(%left : i64, %right : i64) -> i64 {
+  block ^entry:
+    %inner = cmp ult i64 %left, %right
+    %narrow = convert trunc u8 i64 %inner
+    %test = cmp eq u8 %narrow, 0
+    branch %test, ^not_less, ^less
+
+  block ^not_less:
+    return i64 1
+
+  block ^less:
+    return i64 2
+}
+
+function @negated_direct(%left : i64, %right : i64) -> i64 {
+  block ^entry:
+    %inner = cmp eq i64 %left, %right
+    %test = cmp eq i64 %inner, 0
+    branch %test, ^different, ^same
+
+  block ^different:
+    return i64 3
+
+  block ^same:
+    return i64 4
+}
+
+function @keeps_float(%left : f64, %right : f64) -> i64 {
+  block ^entry:
+    %inner = cmp lt f64 %left, %right
+    %narrow = convert trunc u8 i64 %inner
+    %test = cmp eq u8 %narrow, 0
+    branch %test, ^not_less, ^less
+
+  block ^not_less:
+    return i64 5
+
+  block ^less:
+    return i64 6
+}

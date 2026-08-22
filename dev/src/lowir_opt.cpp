@@ -282,24 +282,6 @@ long long normalize_integer(std::uint64_t value, const LowType & type)
   return static_cast<long long>(value);
 }
 
-bool is_zero(const Operand & value)
-{
-  return value.kind == Operand::OP_INTEGER && value.has_int_value &&
-    value.int_value == 0;
-}
-
-bool is_one(const Operand & value)
-{
-  return value.kind == Operand::OP_INTEGER && value.has_int_value &&
-    value.int_value == 1;
-}
-
-bool is_minus_one(const Operand & value)
-{
-  return value.kind == Operand::OP_INTEGER && value.has_int_value &&
-    value.int_value == -1;
-}
-
 bool is_eh_instruction(Instruction::Kind kind)
 {
   return kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_EH_END;
@@ -860,6 +842,26 @@ bool simplify_values_with_analysis(
              definitions[id].kind == Instruction::IK_CMP) {
             replacement = ins.first;
             replace = true;
+          }
+        }
+        if(!replace && ins.first.kind == Operand::OP_TEMP &&
+           ((is_zero(ins.second) && ins.op.kind == LowOperation::LOP_EQ) ||
+            (is_one(ins.second) && ins.op.kind == LowOperation::LOP_NE))) {
+          std::uint32_t id = ins.first.value;
+          if(id < definitions.size() && known_definitions[id] &&
+             definitions[id].kind == Instruction::IK_CONVERT &&
+             (definitions[id].op.kind == LowOperation::LOP_ZEXT ||
+              definitions[id].op.kind == LowOperation::LOP_SEXT ||
+              definitions[id].op.kind == LowOperation::LOP_TRUNC) &&
+             definitions[id].first.kind == Operand::OP_TEMP)
+            id = definitions[id].first.value;
+          if(id < definitions.size() && known_definitions[id] &&
+             definitions[id].kind == Instruction::IK_CMP &&
+             rewrite_inverted_compare(&ins, definitions[id].op.kind,
+               definitions[id].type_kind, definitions[id].first,
+               definitions[id].second)) {
+            changed = true;
+            if(stats) ++stats->rewrites;
           }
         }
       } else if(ins.kind == Instruction::IK_CONVERT)
@@ -2838,6 +2840,11 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_dce(&function, boundaries, stats);
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
+    }
+    if(level >= 1 && eliminate_duplicate_block_loads(&function, stats)) {
+      timed_function_pass(simplify_values, &function, stats,
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+      timed_dce(&function, boundaries, stats);
     }
     if(level >= 2 && simplify_counted_loops(&function, &analysis, stats)) {
       timed_dce(&function, boundaries, stats);

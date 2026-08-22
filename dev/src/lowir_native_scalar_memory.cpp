@@ -148,7 +148,7 @@ bool emit_small_copy_bytes(
     const mir_model::MirInstruction & instruction)
 {
   const std::size_t bytes = instruction.byte_count;
-  if(bytes != 1 && bytes != 2 && bytes != 4 && bytes != 8) return false;
+  if(bytes == 0 || bytes > 32) return false;
   if(instruction.operands.size() != 2 ||
      instruction.operands[0].kind != mir_model::MirOperand::OP_REG ||
      instruction.operands[1].kind != mir_model::MirOperand::OP_REG)
@@ -156,11 +156,23 @@ bool emit_small_copy_bytes(
   const X64Register destination = instruction.operands[0].reg;
   const X64Register source = instruction.operands[1].reg;
   // Reuse an existing MI_COPY_BYTES clobber so this target choice does not
-  // change MIR liveness. The source may itself be the scratch after its load.
-  const X64Register scratch = destination != XR_RCX ? XR_RCX :
-    (destination != XR_RSI ? XR_RSI : XR_RDI);
-  emit_load(out, scratch, source, 0, static_cast<unsigned>(bytes * 8));
-  emit_store(out, destination, 0, scratch, static_cast<unsigned>(bytes * 8));
+  // change MIR liveness.  A multi-chunk copy revisits both address
+  // registers, so the scratch must avoid them; among the three string-op
+  // clobbers one always remains.
+  const X64Register scratch =
+    destination != XR_RCX && source != XR_RCX ? XR_RCX :
+    destination != XR_RSI && source != XR_RSI ? XR_RSI : XR_RDI;
+  std::size_t offset = 0;
+  while(offset < bytes) {
+    const std::size_t remaining = bytes - offset;
+    const std::size_t chunk =
+      remaining >= 8 ? 8 : remaining >= 4 ? 4 : remaining >= 2 ? 2 : 1;
+    emit_load(out, scratch, source, static_cast<long long>(offset),
+              static_cast<unsigned>(chunk * 8));
+    emit_store(out, destination, static_cast<long long>(offset), scratch,
+               static_cast<unsigned>(chunk * 8));
+    offset += chunk;
+  }
   return true;
 }
 

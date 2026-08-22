@@ -1,0 +1,104 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @src24
+  storage data
+  item i64 11
+  item i64 22
+  item i64 33
+
+global @dst24
+  storage data
+  item zero 24
+
+global @src7
+  storage data
+  item i32 100
+  item i16 200
+  item i8 50
+
+global @dst7
+  storage data
+  item zero 8
+
+global @src33
+  storage data
+  item i64 1
+  item i64 2
+  item i64 3
+  item i64 4
+  item i8 5
+
+global @dst33
+  storage data
+  item zero 33
+
+function @copy_all
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    mov r8, @src24
+    mov r9, @dst24
+    copy_bytes 24x8, r9, r8
+    mov r8, @src7
+    mov r9, @dst7
+    copy_bytes 7x1, r9, r8
+    mov r8, @src33
+    mov r9, @dst33
+    copy_bytes 33x1, r9, r8
+    ret
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 80
+    scratch_bytes 48
+    preserve rbx r12 r13
+
+  block ^entry
+    call @copy_all [args=()]
+    mov r8, @dst24
+    load.i64 r9, [r8]
+    load.i64 rdi, [r8+8]
+    load.i64 rsi, [r8+16]
+    add r9, rdi
+    add r9, rsi
+    mov r8, @dst7
+    load.u32 rdi, [r8]
+    load.u16 rsi, [r8+4]
+    load.u8 rbx, [r8+6]
+    mov r8, rdi
+    zext.i32 r8
+    mov rdi, rsi
+    zext.i16 rdi
+    mov rsi, rbx
+    zext.i8 rsi
+    add r9, r8
+    add r9, rdi
+    add r9, rsi
+    mov r8, @dst33
+    load.i64 rdi, [r8]
+    load.i64 rsi, [r8+8]
+    load.i64 rbx, [r8+16]
+    load.i64 r12, [r8+24]
+    load.u8 r13, [r8+32]
+    mov r8, r13
+    zext.i8 r8
+    add r9, rdi
+    add r9, rsi
+    add r9, rbx
+    add r9, r12
+    add r9, r8
+    cmp.i64 r9, 431
+    setne rax
+    movzx rax, rax
+    ret rax
