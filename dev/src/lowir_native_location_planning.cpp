@@ -227,7 +227,7 @@ std::vector<unsigned char> plan_value_registers(
     const lowir_model::ValueId value(static_cast<std::uint32_t>(raw));
     if(facts.definition[raw] == FunctionFacts::missing_position() ||
        facts.last_use[raw] == FunctionFacts::missing_position() ||
-       facts.uses[raw] < 2 ||
+       facts.uses[raw] < 1 ||
        !facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL) ||
        facts.has(value, FunctionFacts::VF_PARAMETER) ||
        facts.has(value, FunctionFacts::VF_LOOP_INVARIANT) ||
@@ -275,7 +275,10 @@ std::vector<unsigned char> plan_value_registers(
 
   // The reactive pool prefers RBX, R12, R13 in that order, so the planner
   // claims from the opposite end; the pools only meet under real pressure.
-  static const X64Register kPool[] = {XR_R13, XR_R12, XR_RBX};
+  // R14 and R15 extend coverage after the original three so earlier plans
+  // keep their registers.
+  static const X64Register kPool[] =
+    {XR_R13, XR_R12, XR_RBX, XR_R14, XR_R15};
   std::size_t busy_until[sizeof(kPool) / sizeof(kPool[0])] = {0};
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];

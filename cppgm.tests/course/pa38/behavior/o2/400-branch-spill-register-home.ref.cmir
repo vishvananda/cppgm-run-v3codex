@@ -21,16 +21,14 @@ function @accumulate
     param %take_call -> rdi : i64
     return i64 -> rax
   frame
-    stack_size 32
+    stack_size 16
     scratch_bytes 0
     preserve <gpr0>
     slot $digit -> [rbp-<off0>] : i8
-    temp %scaled -> [rbp-<off1>] : i64
 
   block ^entry
     mov <gpr0>, 2
     imul <gpr0>, 10
-    store.i64 [rbp-<off1>], <gpr0>
     test.i64 rdi, rdi
     je ^direct
 
@@ -56,21 +54,21 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
-    preserve <gpr0>
+    preserve <gpr1>
 
   block ^entry
     mov rdi, 0
     call @accumulate [args=(rdi), unwind=no]
-    mov <gpr0>, rax
+    mov <gpr1>, rax
     mov rdi, 1
     call @accumulate [args=(rdi), unwind=no]
     mov rdx, 23
-    cmp.i64 <gpr0>, rdx
-    setne <gpr0>
-    movzx <gpr0>, <gpr0>
+    cmp.i64 <gpr1>, rdx
+    setne <gpr1>
+    movzx <gpr1>, <gpr1>
     mov rdx, 23
     cmp.i64 rax, rdx
     setne r8
     movzx r8, r8
-    or <gpr0>, r8
-    ret <gpr0>
+    or <gpr1>, r8
+    ret <gpr1>

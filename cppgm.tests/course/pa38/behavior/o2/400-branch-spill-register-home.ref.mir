@@ -21,16 +21,14 @@ function @accumulate
     param %take_call -> rdi : i64
     return i64 -> rax
   frame
-    stack_size 32
+    stack_size 16
     scratch_bytes 0
-    preserve rbx
+    preserve r13
     slot $digit -> [rbp-1] : i8
-    temp %scaled -> [rbp-16] : i64
 
   block ^entry
-    mov rbx, 2
-    imul rbx, 10
-    store.i64 [rbp-16], rbx
+    mov r13, 2
+    imul r13, 10
     test.i64 rdi, rdi
     je ^direct
 
@@ -42,7 +40,7 @@ function @accumulate
     load.i8 r8, [rbp-1]
     mov r9, r8
     sext.i8 r9
-    mov r8, rbx
+    mov r8, r13
     add r8, r9
     ret r8
 
