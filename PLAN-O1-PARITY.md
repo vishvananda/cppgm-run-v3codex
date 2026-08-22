@@ -260,6 +260,34 @@ large backend phase and must not start until the cheaper P2--P4 items have
 been measured, because they change exactly the pressure patterns an
 allocator would be tuned against.
 
+## P5 implementation: planned value placement
+
+The measured residual after P1--P5a is a flat profile with every hot body
+about twice GCC's size, dominated by reactive-allocator artifacts: values
+receive homes one instruction at a time, so multi-use values lose registers
+to single-use scratches, edge-live values relocate to frame homes, and the
+caller-saved fallback order is blind to interval length.  The replacement is
+a per-function placement plan computed after `FunctionFacts`:
+
+- **P5d. Interval construction.**  Candidate values are non-parameter
+  scalar GPR temporaries with at least two uses and no fixed-register,
+  deferred-address, wide, or floating constraint.  The interval is
+  `[definition, last_use]` from the existing facts; an edge-live value
+  extends to the end of the outermost layout loop containing one of its
+  uses, honoring the backedge lesson from the edge-live release fix.
+- **P5e. Linear scan.**  Sort by definition; allocate call-crossing values
+  from the callee-saved pool and others from the full managed pool, always
+  excluding registers in the value's `live_across_clobbers` mask; on
+  exhaustion the value simply has no plan and the reactive path stands.
+- **P5f. Integration.**  `try_allocate_result` consults the plan first and
+  reserves the planned register when it is still free; every reactive
+  mechanism remains as the fallback, so a conflict degrades to today's
+  behavior instead of failing.  Exception-bearing functions are excluded
+  until the non-EH measurement justifies the audit.
+
+Each step lands separately under the established gates, with a synthetic
+1x/2x/4x pressure ladder and the exact-self A/B as the acceptance signal.
+
 ## P6: multi-TU emission hygiene
 
 With the member-template fix, the extern-template configuration is usable
