@@ -21,8 +21,8 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    load.ptr r8, @value_ptr
-    cmp.ptr r8, r8
+    load.ptr r9, @value_ptr
+    cmp.ptr r9, r9
     je ^check
 
   block ^bad
@@ -30,8 +30,8 @@ function @main
     ret rax
 
   block ^check
-    load.i64 r9, [r8]
-    cmp.i64 r9, 77
+    load.i64 r8, [r9]
+    cmp.i64 r8, 77
     setne rax
     movzx rax, rax
     ret rax

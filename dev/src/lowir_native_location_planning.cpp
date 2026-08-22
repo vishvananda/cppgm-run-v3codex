@@ -221,6 +221,7 @@ std::vector<unsigned char> plan_value_registers(
     lowir_model::ValueId value;
     std::size_t definition;
     std::size_t end;
+    bool crossing;
   };
   std::vector<Candidate> candidates;
   for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
@@ -228,11 +229,16 @@ std::vector<unsigned char> plan_value_registers(
     if(facts.definition[raw] == FunctionFacts::missing_position() ||
        facts.last_use[raw] == FunctionFacts::missing_position() ||
        facts.uses[raw] < 1 ||
-       !facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL) ||
        facts.has(value, FunctionFacts::VF_PARAMETER) ||
        facts.has(value, FunctionFacts::VF_LOOP_INVARIANT) ||
        facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT) ||
        facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS))
+      continue;
+    // Non-crossing values ride caller-saved registers, so their intervals
+    // must stay call-free; landing pads never preserve them, so functions
+    // with exception regions keep the crossing class only.
+    if(!facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL) &&
+       facts.has_eh)
       continue;
     const lowir_model::LowType & type =
       lowir_model::lowir_value_type(function, value);
@@ -250,6 +256,7 @@ std::vector<unsigned char> plan_value_registers(
     candidate.value = value;
     candidate.definition = facts.definition[raw];
     candidate.end = facts.last_use[raw];
+    candidate.crossing = facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
     if(facts.has(value, FunctionFacts::VF_EDGE_LIVE)) {
       bool grew = true;
       while(grew) {
@@ -261,6 +268,14 @@ std::vector<unsigned char> plan_value_registers(
             grew = true;
           }
       }
+    }
+    // The extended interval may have grown over a call the counted uses
+    // never crossed; a caller-saved resident cannot survive that.
+    if(!candidate.crossing) {
+      const std::vector<std::size_t>::const_iterator call =
+        std::lower_bound(facts.calls.begin(), facts.calls.end(),
+                         candidate.definition);
+      if(call != facts.calls.end() && *call <= candidate.end) continue;
     }
     candidates.push_back(candidate);
   }
@@ -276,22 +291,30 @@ std::vector<unsigned char> plan_value_registers(
   // The reactive pool prefers RBX, R12, R13 in that order, so the planner
   // claims from the opposite end; the pools only meet under real pressure.
   // R14 and R15 extend coverage after the original three so earlier plans
-  // keep their registers.
+  // keep their registers.  Non-crossing call-free intervals ride the
+  // caller-saved pair instead of competing for preserved registers.
   static const X64Register kPool[] =
     {XR_R13, XR_R12, XR_RBX, XR_R14, XR_R15};
+  static const X64Register kCallerPool[] = {XR_R9, XR_R8};
   std::size_t busy_until[sizeof(kPool) / sizeof(kPool[0])] = {0};
+  std::size_t caller_busy_until[sizeof(kCallerPool) /
+                                sizeof(kCallerPool[0])] = {0};
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];
     const unsigned crossed = facts.live_across_clobbers[
       static_cast<std::uint32_t>(candidate.value)];
-    for(std::size_t reg = 0;
-        reg < sizeof(kPool) / sizeof(kPool[0]); ++reg) {
-      if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
-      if(busy_until[reg] > candidate.definition) continue;
-      if(crossed & analysis::register_mask(kPool[reg])) continue;
-      busy_until[reg] = candidate.end + 1;
+    const X64Register * pool = candidate.crossing ? kPool : kCallerPool;
+    std::size_t * busy = candidate.crossing ? busy_until : caller_busy_until;
+    const std::size_t pool_size = candidate.crossing ?
+      sizeof(kPool) / sizeof(kPool[0]) :
+      sizeof(kCallerPool) / sizeof(kCallerPool[0]);
+    for(std::size_t reg = 0; reg < pool_size; ++reg) {
+      if(facts.has_i128_atomic && pool[reg] == XR_RBX) continue;
+      if(busy[reg] > candidate.definition) continue;
+      if(crossed & analysis::register_mask(pool[reg])) continue;
+      busy[reg] = candidate.end + 1;
       plan[static_cast<std::uint32_t>(candidate.value)] =
-        static_cast<unsigned char>(kPool[reg]) + 1;
+        static_cast<unsigned char>(pool[reg]) + 1;
       (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
         candidate.end;
       if(stats) ++stats->planned_value_registers;

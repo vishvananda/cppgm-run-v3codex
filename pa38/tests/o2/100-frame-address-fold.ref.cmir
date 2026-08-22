@@ -15,8 +15,8 @@ function @main
 
   block ^entry
     store.i8 [rbp-<off0>], -1
-    load.i8 r8, [rbp-<off0>]
-    cmp.i64 r8, -1
+    load.i8 r9, [rbp-<off0>]
+    cmp.i64 r9, -1
     sete rax
     movzx rax, rax
     ret rax

@@ -75,16 +75,16 @@ function @probe
     add r8, rdx
     store.i64 [r8], <gpr4>
     call @noop [args=(), unwind=no]
-    mov r8, <gpr0>
-    add r8, <gpr1>
-    mov r9, <gpr2>
-    add r9, <gpr3>
-    add r8, r9
-    add r8, 7
-    mov r9, <gpr4>
-    add r9, 1
-    store.i64 [rbp-<off0>], r9
-    cmp.i64 r8, 17
+    mov r9, <gpr0>
+    add r9, <gpr1>
+    mov r8, <gpr2>
+    add r8, <gpr3>
+    add r9, r8
+    add r9, 7
+    mov r8, <gpr4>
+    add r8, 1
+    store.i64 [rbp-<off0>], r8
+    cmp.i64 r9, 17
     je ^condition
     jmp ^failure
 

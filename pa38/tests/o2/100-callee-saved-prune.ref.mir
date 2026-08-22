@@ -11,19 +11,19 @@ function @main
   frame
     stack_size 16
     scratch_bytes 0
-    preserve rbx
+    preserve r13
     slot $box__0 -> [rbp-8] : i64
 
   block ^entry
     lea rdi, [rbp-8]
     call @Box_int___Box [args=(rdi)]
     store.i32 [rbp-8], 7
-    load.i32 r8, [rbp-8]
-    mov rbx, r8
-    sub rbx, 7
+    load.i32 r9, [rbp-8]
+    mov r13, r9
+    sub r13, 7
     lea rdi, [rbp-8]
     call @Box_int____Box [args=(rdi)]
-    ret rbx
+    ret r13
 
 function @Box_int___Box
   abi

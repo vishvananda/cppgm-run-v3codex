@@ -37,12 +37,12 @@ function @accumulate
     store.i8 [rbp-<off0>], rax
 
   block ^join
-    load.i8 r8, [rbp-<off0>]
-    mov r9, r8
-    sext.i8 r9
-    mov r8, <gpr0>
-    add r8, r9
-    ret r8
+    load.i8 r9, [rbp-<off0>]
+    mov r8, r9
+    sext.i8 r8
+    mov r9, <gpr0>
+    add r9, r8
+    ret r9
 
   block ^direct
     store.i8 [rbp-<off0>], 3

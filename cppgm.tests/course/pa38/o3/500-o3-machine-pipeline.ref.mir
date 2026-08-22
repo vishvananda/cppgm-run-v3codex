@@ -13,11 +13,11 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, 40
-    add r8, 2
+    mov r9, 40
+    add r9, 2
 
   block ^next
-    cmp.i64 r8, 42
+    cmp.i64 r9, 42
     setne rax
     movzx rax, rax
     ret rax
