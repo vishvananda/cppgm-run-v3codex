@@ -531,13 +531,18 @@ private:
       target_.params.push_back(binding);
       value.location = reg_operand(binding.reg);
       const std::size_t uses = storage_facts_.parameter_selected_uses[i];
-      const bool incoming_clobbered = !wide_gpr_boundary && uses &&
+      // LowIR-level slot promotion leaves direct value uses with no
+      // parameter slot, so the slot census alone cannot prove the parameter
+      // needs no home.
+      const std::size_t direct_uses = facts_.uses[parameter.value];
+      const bool incoming_clobbered = !wide_gpr_boundary &&
+        (uses || direct_uses) &&
         crosses_register_clobber(parameter.value, binding.reg);
       const bool promoted_incoming_clobbered =
         i < storage_facts_.promoted_parameter_clobbers.size() &&
         (storage_facts_.promoted_parameter_clobbers[i] &
          analysis::register_mask(binding.reg));
-      if(uses == 0) {
+      if(uses == 0 && direct_uses == 0) {
         // Slot analysis proved that every apparent use is removed during
         // selection. Keep the ABI binding for MIR, but create no value home.
       } else if(facts_.has_va_start) {
@@ -573,6 +578,13 @@ private:
                              StorageFacts::VF_PROMOTED_PARAMETER);
       } else if(wide_gpr_boundary &&
                 parameter_crosses_call(parameter.value)) {
+        const long long home = allocate_frame_binding(
+          mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
+        append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
+                     parameter.type);
+        value.location = frame_operand(home);
+      } else if(wide_gpr_boundary && (uses || direct_uses) &&
+                crosses_register_clobber(parameter.value, binding.reg)) {
         const long long home = allocate_frame_binding(
           mir_model::MirFrameBinding::FB_PARAM_SLOT, parameter.name, parameter.type);
         append_store(parameter_moves_, frame_operand(home), reg_operand(binding.reg),
