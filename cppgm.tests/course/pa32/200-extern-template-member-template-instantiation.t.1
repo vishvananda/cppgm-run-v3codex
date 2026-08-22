@@ -1,0 +1,11 @@
+// An explicit instantiation declaration covers only ordinary members.  A
+// member template specialization, such as basic_string's
+// __resize_and_overwrite over to_string's local lambda, can never be
+// provided by the library and must be emitted by this translation unit.
+#define _GLIBCXX_NO_ASSERTIONS 1
+#include <string>
+
+int main()
+{
+	return std::to_string(17).size() == 2 ? 0 : 1;
+}

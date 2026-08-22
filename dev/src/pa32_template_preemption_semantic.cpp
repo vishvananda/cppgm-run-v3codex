@@ -128,6 +128,10 @@ void SemanticAnalyzer::SetClassExplicitInstantiationSuppression(
 		if (suppressed && program_->bindings[binding].kind == BIND_FUNCTION)
 		{
 			const FunctionInfo& function = GetFunction(binding);
+			// An explicit instantiation covers only ordinary members; a
+			// member template's specializations must still be produced by
+			// each translation unit that uses them.
+			if (function.template_pattern != kNoDumpEdge) return;
 			if (function.definition_in_class ||
 				(program_->bindings[binding].inline_function &&
 				 (function.defaulted_constructor || function.defaulted_destructor ||
