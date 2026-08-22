@@ -45,39 +45,40 @@ function @probe
     scratch_bytes 0
     preserve rbx r12 r13 r14 r15
     slot $counter -> [rbp-8] : i64
-    temp %base -> [rbp-16] : ptr
-    temp %a -> [rbp-24] : i64
-    temp %b -> [rbp-32] : i64
-    temp %c -> [rbp-40] : i64
-    temp %d -> [rbp-48] : i64
-    temp %iteration -> [rbp-56] : i64
+    temp %a -> [rbp-16] : i64
+    temp %b -> [rbp-24] : i64
+    temp %c -> [rbp-32] : i64
+    temp %d -> [rbp-40] : i64
+    temp %iteration -> [rbp-48] : i64
 
   block ^entry
-    mov rbx, @data
-    store.ptr [rbp-16], rbx
-    load.i64 r12, @a
+    load.i64 rbx, @a
+    store.i64 [rbp-16], rbx
+    load.i64 r12, @b
     store.i64 [rbp-24], r12
-    load.i64 r13, @b
+    load.i64 r13, @c
     store.i64 [rbp-32], r13
-    load.i64 r14, @c
+    load.i64 r14, @d
     store.i64 [rbp-40], r14
-    load.i64 r15, @d
-    store.i64 [rbp-48], r15
     store.i64 [rbp-8], 0
 
   block ^condition
     load.i64 r15, [rbp-8]
-    store.i64 [rbp-56], r15
+    store.i64 [rbp-48], r15
     cmp.i64 r15, 2
     jae ^done
 
   block ^body
-    store.i64 [rbx+r15*8], r15
+    mov r8, @data
+    mov rdx, r15
+    imul rdx, 8
+    add r8, rdx
+    store.i64 [r8], r15
     call @noop [args=(), unwind=no]
-    mov r8, r12
-    add r8, r13
-    mov r9, r14
-    add r9, [rbp-48]
+    mov r8, rbx
+    add r8, r12
+    mov r9, r13
+    add r9, r14
     add r8, r9
     add r8, 7
     mov r9, r15
@@ -88,8 +89,10 @@ function @probe
     jmp ^failure
 
   block ^done
-    load.i64 r8, [rbx+8]
-    cmp.i64 r8, 1
+    mov r8, @data
+    lea r8, [r8+8]
+    load.i64 r9, [r8]
+    cmp.i64 r9, 1
     setne rax
     movzx rax, rax
     ret rax

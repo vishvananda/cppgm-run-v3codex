@@ -83,6 +83,19 @@ void emit_normalized_register_move(
     X64Register source, unsigned width, bool sign_extend);
 void emit_store(elf_detail::CodeBuffer & out, X64Register base,
                 long long displacement, X64Register source, unsigned width);
+void emit_rip_load(elf_detail::CodeBuffer & out, X64Register destination,
+                   lowir_model::SymbolId symbol,
+                   mir_model::MirOperand::AddressBinding binding,
+                   unsigned width);
+void emit_rip_normalized_load(
+    elf_detail::CodeBuffer & out, X64Register destination,
+    lowir_model::SymbolId symbol,
+    mir_model::MirOperand::AddressBinding binding,
+    unsigned width, bool sign_extend);
+void emit_rip_store(elf_detail::CodeBuffer & out,
+                    lowir_model::SymbolId symbol,
+                    mir_model::MirOperand::AddressBinding binding,
+                    X64Register source, unsigned width);
 void emit_indexed_store(elf_detail::CodeBuffer & out, X64Register base,
                         X64Register index, unsigned scale,
                         long long displacement, X64Register source,

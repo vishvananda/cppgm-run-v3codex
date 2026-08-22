@@ -23,9 +23,11 @@ function @main
     scratch_bytes 0
 
   block ^entry
-    mov r8, @dst
-    mov r9, @src
-    copy_bytes 16x8, r8, r9
-    load.i64 r9, @dst
-    add r9, [r8+8]
-    ret r9
+    mov rdi, @dst
+    mov rsi, @src
+    copy_bytes 16x8, rdi, rsi
+    load.i64 r8, @dst
+    mov r9, @dst
+    lea r9, [r9+8]
+    add r8, [r9]
+    ret r8

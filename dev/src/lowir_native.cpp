@@ -534,9 +534,8 @@ private:
       target_.params.push_back(binding);
       value.location = reg_operand(binding.reg);
       const std::size_t uses = storage_facts_.parameter_selected_uses[i];
-      // LowIR-level slot promotion leaves direct value uses with no
-      // parameter slot, so the slot census alone cannot prove the parameter
-      // needs no home.
+      // Slot promotion leaves direct value uses with no parameter slot, so
+      // the slot census alone cannot prove the parameter needs no home.
       const std::size_t direct_uses = facts_.uses[parameter.value];
       const bool incoming_clobbered = !wide_gpr_boundary &&
         (uses || direct_uses) &&
@@ -789,6 +788,11 @@ private:
     }
     const MirOperand address = resolve(operand);
     if(address.kind == MirOperand::OP_REG) return dereference(address.reg);
+    if(address.kind == MirOperand::OP_SYMBOL) {
+      MirOperand global = address;
+      global.kind = MirOperand::OP_GLOBAL;
+      return global;
+    }
     move_value_to_register(out, scratch, address, operand_type(operand));
     return dereference(scratch);
   }
@@ -833,10 +837,9 @@ private:
       live_locations_.remove(id, values_[id].location);
     if(facts_.uses[id] == 0) {
       const ValueFact & value = values_[id];
-      // An edge-live register outlives its final counted use unless the
-      // planned interval end has cleared every backedge and backward
-      // exception region. The alias query must not count the value itself
-      // (removed above): an eliding copy may still occupy the register.
+      // An edge-live register outlives its final use unless the planned
+      // interval end cleared every backedge and backward exception region.
+      // The alias query must not count the value itself (removed above).
       if(value.location.kind == MirOperand::OP_REG &&
          !value.parameter &&
          !value.fixed_register_home &&
@@ -949,8 +952,7 @@ private:
       if(stats_) ++stats_->exact_forward_edge_register_retains;
       return;
     }
-    // A planned resident keeps its register across the edge with no frame
-    // fallback: the linear scan proved it free for the extended interval.
+    // The planner proved the register free for the whole interval.
     if(value_holds_planned_register(instruction.dest)) {
       if(stats_) ++stats_->planned_edge_residencies;
       return;
@@ -998,8 +1000,7 @@ private:
   bool spill_candidate(lowir_model::ValueId value,
                        bool needs_callee_saved) const
   {
-    // A landing pad may read a planned resident's callee-saved register,
-    // so exception-bearing functions never evict one.
+    // Landing pads may read planned residents: EH never evicts them.
     if(facts_.has_eh && value_holds_planned_register(value)) return false;
     if(!value_known_[value] || values_[value].parameter ||
        values_[value].location.kind != MirOperand::OP_REG ||
@@ -2472,10 +2473,9 @@ private:
       indirect_target);
     out.push_back(call);
     emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
-    // The call and its stack teardown have consumed every input.  Retire them
-    // before assigning a home to the return value: otherwise an extended call
-    // can make all managed registers look unspillable merely because its dead
-    // arguments still belong to the active LowIR instruction.
+    // Retire every input before homing the return value: otherwise an
+    // extended call makes all managed registers look unspillable merely
+    // because its dead arguments still belong to the active instruction.
     for(std::size_t i = 0; i < instruction.args.size(); ++i)
       consume(instruction.args[i]);
     consume(instruction.first);

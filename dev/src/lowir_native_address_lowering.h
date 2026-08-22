@@ -322,6 +322,17 @@ protected:
 				append_store(out, destination, target, machine_type(lowir_model::LTK_PTR));
 		}
 		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
+			derived.facts_.has(instruction.dest,
+				analysis::FunctionFacts::VF_ONLY_STORAGE_ADDRESS))
+		{
+			// Every use is a load or store address, so the symbol itself is
+			// the complete RIP-relative operand; no register is needed.
+			derived.define(instruction.dest, pointer_type,
+				derived.global_operand(mir_model::MirOperand::OP_SYMBOL,
+					instruction.first));
+			return;
+		}
+		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
 			derived.address_is_call_argument(instruction.dest))
 		{
 			// A symbol address is already a complete target operand.  Retain it

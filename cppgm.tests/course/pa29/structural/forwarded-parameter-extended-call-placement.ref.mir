@@ -42,8 +42,9 @@ function @forward
 
   block ^entry
     mov r9, rdi
-    mov r8, @tag_source
-    copy_bytes 1x1, [rbp-1], r8
+    lea rdi, [rbp-1]
+    mov rsi, @tag_source
+    copy_bytes 1x1, rdi, rsi
     mov rdi, r9
     load.i8 rsi, [rbp-1]
     call @observe [args=(rsi,rdi)]

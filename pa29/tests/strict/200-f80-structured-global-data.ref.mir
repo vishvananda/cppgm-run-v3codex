@@ -20,8 +20,7 @@ function @main
     temp %y -> [rbp-32] : f80
 
   block ^entry
-    mov r8, @table
-    fmov.f80 [rbp-16], [r8]
+    fmov.f80 [rbp-16], @table
     fmov.f80 [rbp-32], 4.5L
     feq.f80 rax, [rbp-16], [rbp-32]
     ret rax

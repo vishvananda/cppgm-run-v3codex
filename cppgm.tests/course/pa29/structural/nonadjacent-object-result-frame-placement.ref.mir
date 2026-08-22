@@ -53,19 +53,19 @@ function @main
     mov r11, @result
     store.i64 [r11], rax
     store.i64 [r11+8], rdx
-    mov r8, @result
-    load.i64 r9, @result
-    mov rdi, @result
-    load.i64 rsi, [rdi+8]
+    load.i64 r8, @result
+    mov r9, @result
+    lea r9, [r9+8]
+    load.i64 rdi, [r9]
     mov rdx, 17
-    cmp.i64 r9, rdx
-    setne r9
-    movzx r9, r9
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
     mov rdx, 23
-    cmp.i64 rsi, rdx
-    setne rsi
-    movzx rsi, rsi
-    or r9, rsi
-    mov rax, r9
+    cmp.i64 rdi, rdx
+    setne rdi
+    movzx rdi, rdi
+    or r8, rdi
+    mov rax, r8
     sext.i32 rax
     ret rax

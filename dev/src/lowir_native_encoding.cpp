@@ -344,6 +344,53 @@ void emit_store(CodeBuffer & out, X64Register base, long long displacement,
   emit_memory_modrm(out, source, base, displacement);
 }
 
+// RIP-relative forms reach locally bound globals in one instruction.  A
+// preemptible symbol must keep the LEA-through-R11 shape instead, because
+// the object writer rewrites that LEA into a GOT load for imports.
+void emit_rip_load(CodeBuffer & out, X64Register destination,
+                   lowir_model::SymbolId symbol,
+                   mir_model::MirOperand::AddressBinding binding,
+                   unsigned width)
+{
+  emit_size_prefix(out, width);
+  emit_rex(out, width == 64, destination, XR_RBP, width == 8);
+  out.byte(width == 8 ? 0x8a : 0x8b);
+  emit_modrm(out, 0, destination, 5);
+  out.address32(symbol, binding);
+}
+
+void emit_rip_normalized_load(CodeBuffer & out, X64Register destination,
+                              lowir_model::SymbolId symbol,
+                              mir_model::MirOperand::AddressBinding binding,
+                              unsigned width, bool sign_extend)
+{
+  if(width >= 64 || (!sign_extend && width == 32)) {
+    emit_rip_load(out, destination, symbol, binding, width);
+    return;
+  }
+  emit_rex(out, sign_extend, destination, XR_RBP);
+  if(sign_extend && width == 32) {
+    out.byte(0x63);
+  } else {
+    out.byte(0x0f);
+    out.byte(sign_extend ? (width == 8 ? 0xbe : 0xbf) :
+                           (width == 8 ? 0xb6 : 0xb7));
+  }
+  emit_modrm(out, 0, destination, 5);
+  out.address32(symbol, binding);
+}
+
+void emit_rip_store(CodeBuffer & out, lowir_model::SymbolId symbol,
+                    mir_model::MirOperand::AddressBinding binding,
+                    X64Register source, unsigned width)
+{
+  emit_size_prefix(out, width);
+  emit_rex(out, width == 64, source, XR_RBP, width == 8);
+  out.byte(width == 8 ? 0x88 : 0x89);
+  emit_modrm(out, 0, source, 5);
+  out.address32(symbol, binding);
+}
+
 void emit_indexed_store(CodeBuffer & out, X64Register base,
                         X64Register index, unsigned scale,
                         long long displacement, X64Register source,

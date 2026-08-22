@@ -45,39 +45,40 @@ function @probe
     scratch_bytes 0
     preserve <gpr0> <gpr1> <gpr2> <gpr3> <gpr4>
     slot $counter -> [rbp-<off0>] : i64
-    temp %base -> [rbp-<off1>] : ptr
-    temp %a -> [rbp-<off2>] : i64
-    temp %b -> [rbp-<off3>] : i64
-    temp %c -> [rbp-<off4>] : i64
-    temp %d -> [rbp-<off5>] : i64
-    temp %iteration -> [rbp-<off6>] : i64
+    temp %a -> [rbp-<off1>] : i64
+    temp %b -> [rbp-<off2>] : i64
+    temp %c -> [rbp-<off3>] : i64
+    temp %d -> [rbp-<off4>] : i64
+    temp %iteration -> [rbp-<off5>] : i64
 
   block ^entry
-    mov <gpr0>, @data
-    store.ptr [rbp-<off1>], <gpr0>
-    load.i64 <gpr1>, @a
+    load.i64 <gpr0>, @a
+    store.i64 [rbp-<off1>], <gpr0>
+    load.i64 <gpr1>, @b
     store.i64 [rbp-<off2>], <gpr1>
-    load.i64 <gpr2>, @b
+    load.i64 <gpr2>, @c
     store.i64 [rbp-<off3>], <gpr2>
-    load.i64 <gpr3>, @c
+    load.i64 <gpr3>, @d
     store.i64 [rbp-<off4>], <gpr3>
-    load.i64 <gpr4>, @d
-    store.i64 [rbp-<off5>], <gpr4>
     store.i64 [rbp-<off0>], 0
 
   block ^condition
     load.i64 <gpr4>, [rbp-<off0>]
-    store.i64 [rbp-<off6>], <gpr4>
+    store.i64 [rbp-<off5>], <gpr4>
     cmp.i64 <gpr4>, 2
     jae ^done
 
   block ^body
-    store.i64 [<gpr0>+<gpr4>*8], <gpr4>
+    mov r8, @data
+    mov rdx, <gpr4>
+    imul rdx, 8
+    add r8, rdx
+    store.i64 [r8], <gpr4>
     call @noop [args=(), unwind=no]
-    mov r8, <gpr1>
-    add r8, <gpr2>
-    mov r9, <gpr3>
-    add r9, [rbp-<off5>]
+    mov r8, <gpr0>
+    add r8, <gpr1>
+    mov r9, <gpr2>
+    add r9, <gpr3>
     add r8, r9
     add r8, 7
     mov r9, <gpr4>
@@ -88,8 +89,10 @@ function @probe
     jmp ^failure
 
   block ^done
-    load.i64 r8, [<gpr0>+<off0>]
-    cmp.i64 r8, 1
+    mov r8, @data
+    lea r8, [r8+<off0>]
+    load.i64 r9, [r8]
+    cmp.i64 r9, 1
     setne rax
     movzx rax, rax
     ret rax
