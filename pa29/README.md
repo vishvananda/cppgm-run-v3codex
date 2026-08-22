@@ -547,8 +547,10 @@ To complete PA29, implement these goals:
 
    Eliminating a scalar parameter's initial store to and later load from a local slot
    must preserve the parameter across every intervening instruction that clobbers its
-   incoming register, including a call. This requirement also applies at six or more
-   integer or pointer parameters, where all incoming argument registers are occupied.
+   incoming register, including a call or bulk-memory operation. The same selected
+   value must be used when an object or wide argument makes the call use extended ABI
+   classification. This requirement also applies at six or more integer or pointer
+   parameters, where all incoming argument registers are occupied.
    While such a parameter remains live, its incoming register must not be assigned
    to a temporary result merely because the function has a wide parameter boundary.
    The register becomes reusable only after the parameter's final selected use.
@@ -745,6 +747,8 @@ strategies include:
   parameter's stable selected home; its consumer can apply any required
   register constraint directly, after accounting for clobbers between the
   eliminated store and load
+- use the same selected parameter home when constructing ordinary and extended
+  call-argument move sets
 - let a representation-preserving scalar copy or decay share an intact parameter
   location when the copied result's interval crosses no clobber
 - record each block's sole predecessor and successor in dense CFG facts so a

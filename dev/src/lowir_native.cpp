@@ -2200,6 +2200,12 @@ private:
             addressable[piece.parameter_index] :
             (rax_result_intact ? resolve_gpr_call_argument(argument) :
              resolve(argument));
+          if(argument.kind == Operand::OP_TEMP) {
+            const ValueFact & value = values_[argument.value];
+            if(value.forwarded_parameter.valid())
+              move.source =
+                selected_value_location(value.forwarded_parameter);
+          }
           move.source_is_address = needs_address[piece.parameter_index] ||
             is_frame_address(argument);
         }

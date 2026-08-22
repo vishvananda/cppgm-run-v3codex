@@ -1,0 +1,67 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @cell
+  storage data
+  item i64 73
+
+global @tag_source
+  storage data
+  item i8 1
+
+function @observe
+  abi
+    param %base -> rdi : ptr
+    param %tag -> rsi : i8
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    param-slot %base -> [rbp-8] : ptr
+    param-slot %tag -> [rbp-9] : obj<1x1>
+
+  block ^entry
+    store.ptr [rbp-8], rdi
+    store.i8 [rbp-9], rsi
+    load.ptr rcx, [rbp-8]
+    load.i64 rax, [rcx]
+    ret rax
+
+function @forward
+  abi
+    param %base -> rdi : ptr
+    return i64 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $tag -> [rbp-1] : obj<1x1>
+
+  block ^entry
+    mov r9, rdi
+    mov r8, @tag_source
+    lea rdi, [rbp-1]
+    copy_bytes 1x1, rdi, r8
+    mov rdi, r9
+    load.i8 rsi, [rbp-1]
+    call @observe [args=(rsi,rdi)]
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, @cell
+    call @forward [args=(rdi)]
+    mov rdx, 73
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
+    ret rax
