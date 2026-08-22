@@ -1,6 +1,6 @@
 # Plan: Generated-Code Parity With GCC and Clang at O1
 
-Status: phases P0-P8 have measured dispositions; the within-10% acceptance target is carried by the recorded P5 interval-allocation follow-on phase
+Status: phases P0-P9 and P11-P12 have measured dispositions (2026-08-22: exact self-O1 12.64 to 10.36 s median, ratio to gcc-O1 2.14x to 1.75x); grant-bias and hook-residency placement variants are rejected with evidence, so the within-10% target is carried by the P10 plan-driven placement rewrite
 
 Date: 2026-08-22
 
