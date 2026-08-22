@@ -172,6 +172,22 @@ new frozen SHA becomes the baseline.  Re-run the twelve-way matrix afterward
 so all later phases measure against configuration-fair numbers; the
 GCC-O1-with-assertions lane is recorded in the decomposition above.
 
+## Execution reordering: P4 before P2
+
+The post-P1 profile keeps the same hot out-of-line population, and a
+prototype cold-successor discount (noreturn/throw/resume-terminated blocks
+charged at zero eligibility weight, with hot-leaf shape classification) left
+the frozen O1 object byte-identical and moved exact-self timing only within
+noise, while growing the self compiler by 8 KiB: with assertions gone, the
+remaining out-of-line bodies are not guard-diamond shapes, and the hot
+`Token(Token&&)`-class bodies are callful straight-line code whose real
+defect is that every field copy reloads `this` and the source pointer from
+frame homes.  Inlining a body that is three times its necessary size
+relocates the bloat (the R10i-b lesson), so the frame-traffic work must land
+first and the discount prototype is rejected pending remeasurement.  P4 is
+therefore executed before P2, and the P2 sweep will be run against
+frame-clean bodies.
+
 ## P2: inline the hot accessor class
 
 After P1, re-run the frozen census and a fresh generated-self profile, and
