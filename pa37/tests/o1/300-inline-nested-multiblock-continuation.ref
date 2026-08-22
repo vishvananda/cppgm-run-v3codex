@@ -1,40 +1,31 @@
 function @main(%outer : i64, %inner : i64) -> i64 {
-  slot $__o1inl0__retmerge__1 : i64
-  slot $__o1inl1__retmerge__1 : i64
-
   block ^entry:
     %__o1inl0__is_zero = cmp eq i64 %outer, 0
-    branch %__o1inl0__is_zero, ^__o1inl1__entry, ^__o1inl0__nonzero
+    branch %__o1inl0__is_zero, ^__o1inl0____o1inl0__entry, ^__o1inl0__nonzero
 
-  block ^__o1inl1__entry:
-    %__o1inl1__is_zero = cmp eq i64 %inner, 0
-    branch %__o1inl1__is_zero, ^__o1inl1__zero, ^__o1inl1__nonzero
+  block ^__o1inl0____o1inl0__entry:
+    %__o1inl0____o1inl0__is_zero = cmp eq i64 %inner, 0
+    branch %__o1inl0____o1inl0__is_zero, ^__o1inl0____o1inl0__zero, ^__o1inl0____o1inl0__nonzero
 
-  block ^__o1inl1__zero:
-    store i64 10, $__o1inl1__retmerge__1
-    jump ^__o1inl1__cont
+  block ^__o1inl0____o1inl0__zero:
+    jump ^__o1inl0____o1inl0__cont
 
-  block ^__o1inl1__nonzero:
-    store i64 20, $__o1inl1__retmerge__1
-    jump ^__o1inl1__cont
+  block ^__o1inl0____o1inl0__nonzero:
+    jump ^__o1inl0____o1inl0__cont
 
-  block ^__o1inl1__cont:
-    %__o1inl0__from_leaf = load i64 $__o1inl1__retmerge__1
-    store i64 %__o1inl0__from_leaf, $__o1inl0__retmerge__1
+  block ^__o1inl0____o1inl0__cont:
+    %t0 = phi i64 [^__o1inl0____o1inl0__zero: 10, ^__o1inl0____o1inl0__nonzero: 20]
     jump ^__o1inl0__cont
 
   block ^__o1inl0__nonzero:
-    store i64 %outer, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    %result = load i64 $__o1inl0__retmerge__1
-    %adjusted = binary add i64 %result, 1
+    %t2 = phi i64 [^__o1inl0____o1inl0__cont: %t0, ^__o1inl0__nonzero: %outer]
+    %adjusted = binary add i64 %t2, 1
     return i64 %adjusted
 }
 function @wrapper(%outer : i64, %inner : i64) -> i64 {
-  slot $__o1inl0__retmerge__1 : i64
-
   block ^entry:
     %is_zero = cmp eq i64 %outer, 0
     branch %is_zero, ^__o1inl0__entry, ^nonzero
@@ -44,16 +35,14 @@ function @wrapper(%outer : i64, %inner : i64) -> i64 {
     branch %__o1inl0__is_zero, ^__o1inl0__zero, ^__o1inl0__nonzero
 
   block ^__o1inl0__zero:
-    store i64 10, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__nonzero:
-    store i64 20, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    %from_leaf = load i64 $__o1inl0__retmerge__1
-    return i64 %from_leaf
+    %t0 = phi i64 [^__o1inl0__zero: 10, ^__o1inl0__nonzero: 20]
+    return i64 %t0
 
   block ^nonzero:
     return i64 %outer

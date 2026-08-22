@@ -1,36 +1,28 @@
 function @accessor(%p : ptr) -> i64 [binding=strong, prefer_local=yes] {
-  slot $p : ptr
-  slot $cond__1 : i64
-
   block ^entry:
-    store ptr %p, $p
-    %t1 = load ptr $p
+    %t1 = copy ptr %p
     %t5 = load i8 %t1
     %t6 = binary and i8 %t5, 1
     branch %t6, ^long, ^short
 
   block ^long:
-    %t7 = load ptr $p
-    %t10 = index i8 [projection=field] %t7, 8
+    %t10 = index i8 [projection=field] %p, 8
     %t11 = load i64 %t10
-    store i64 %t11, $cond__1
     jump ^end
 
   block ^short:
-    %t12 = load ptr $p
+    %t12 = copy ptr %p
     %t16 = load i8 %t12
     %t17 = binary shr i8 %t16, 1
     %t18 = binary and i8 %t17, 127
-    store i64 %t18, $cond__1
+    %t20 = copy i64 %t18
     jump ^end
 
   block ^end:
-    %t19 = load i64 $cond__1
-    return i64 %t19
+    %t0 = phi i64 [^long: %t11, ^short: %t20]
+    return i64 %t0
 }
 function @caller(%p : ptr) -> i64 {
-  slot $__o1inl0__cond__1 : i64
-
   block ^entry:
     %__o1inl0__t1 = copy ptr %p
     %__o1inl0__t5 = load i8 %__o1inl0__t1
@@ -40,7 +32,6 @@ function @caller(%p : ptr) -> i64 {
   block ^__o1inl0__long:
     %__o1inl0__t10 = index i8 [projection=field] %p, 8
     %__o1inl0__t11 = load i64 %__o1inl0__t10
-    store i64 %__o1inl0__t11, $__o1inl0__cond__1
     jump ^__o1inl0__end
 
   block ^__o1inl0__short:
@@ -48,11 +39,11 @@ function @caller(%p : ptr) -> i64 {
     %__o1inl0__t16 = load i8 %__o1inl0__t12
     %__o1inl0__t17 = binary shr i8 %__o1inl0__t16, 1
     %__o1inl0__t18 = binary and i8 %__o1inl0__t17, 127
-    store i64 %__o1inl0__t18, $__o1inl0__cond__1
+    %t3 = copy i64 %__o1inl0__t18
     jump ^__o1inl0__end
 
   block ^__o1inl0__end:
-    %__o1inl0__t19 = load i64 $__o1inl0__cond__1
-    %t2 = binary add i64 %__o1inl0__t19, 1
+    %t0 = phi i64 [^__o1inl0__long: %__o1inl0__t11, ^__o1inl0__short: %t3]
+    %t2 = binary add i64 %t0, 1
     return i64 %t2
 }

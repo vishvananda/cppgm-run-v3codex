@@ -2756,7 +2756,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
-    if(level >= 2 && timed_function_pass(promote_slots, &function, stats,
+    if(level >= 1 && timed_function_pass(promote_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
@@ -2770,7 +2770,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
-    if(level >= 2 && timed_function_pass(eliminate_dead_slot_stores,
+    if(level >= 1 && timed_function_pass(eliminate_dead_slot_stores,
         &function, stats, &Stats::slot_runs, &Stats::slot_nanoseconds,
         &analysis)) {
       timed_dce(&function, boundaries, stats);

@@ -7,10 +7,6 @@ function @mid(%p : ptr) -> ptr {
     return ptr %p
 }
 function @leaf(%p : ptr) -> ptr {
-  slot $p : ptr
-
   block ^entry:
-    store ptr %p, $p
-    %t1 = load ptr $p
-    return ptr %t1
+    return ptr %p
 }

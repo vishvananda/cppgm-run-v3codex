@@ -1,22 +1,18 @@
 function @entry(%value : i64) -> i64 {
-  slot $__o1inl0__retmerge__1 : i64
-
   block ^entry:
     %__o1inl0__positive = cmp gt i64 %value, 0
     branch %__o1inl0__positive, ^__o1inl0__yes, ^__o1inl0__no
 
   block ^__o1inl0__yes:
-    %__o1inl1__adjusted = binary add i64 %value, 1
-    store i64 %__o1inl1__adjusted, $__o1inl0__retmerge__1
+    %__o1inl0____o1inl0__adjusted = binary add i64 %value, 1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__no:
-    store i64 0, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    %result = load i64 $__o1inl0__retmerge__1
-    return i64 %result
+    %t0 = phi i64 [^__o1inl0__yes: %__o1inl0____o1inl0__adjusted, ^__o1inl0__no: 0]
+    return i64 %t0
 }
 function @branch(%value : i64) -> i64 {
   block ^entry:

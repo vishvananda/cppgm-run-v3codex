@@ -10,23 +10,19 @@ function @pick(%x : i32) -> i32 {
     return i32 0
 }
 function @caller(%x : i32) -> i32 {
-  slot $__o1inl0__retmerge__1 : i32
-
   block ^entry:
     %__o1inl0__t2 = cmp eq i32 %x, 0
     branch %__o1inl0__t2, ^__o1inl0__zero, ^__o1inl0__nonzero
 
   block ^__o1inl0__zero:
-    store i32 1, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__nonzero:
-    store i32 0, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    %t2 = load i32 $__o1inl0__retmerge__1
-    branch %t2, ^then, ^else
+    %t0 = phi i32 [^__o1inl0__zero: 1, ^__o1inl0__nonzero: 0]
+    branch %t0, ^then, ^else
 
   block ^then:
     return i32 11

@@ -1,36 +1,28 @@
 function @callee(%x : i64, %take_x : u8) -> i64 {
-  slot $__o1inl0__retmerge__1 : i64
-
   block ^entry:
-    store i64 %x, $__o1inl0__retmerge__1
     branch %take_x, ^take_x, ^increment
 
   block ^take_x:
-    %t1 = load i64 $__o1inl0__retmerge__1
-    return i64 %t1
+    return i64 %x
 
   block ^increment:
     %t2 = binary add i64 %x, 1
     return i64 %t2
 }
 function @caller(%x : i64, %take_x : u8) -> i64 {
-  slot $__o1inl0__retmerge__1 : i64
-
   block ^entry:
     branch %take_x, ^__o1inl0__take_x, ^__o1inl0__increment
 
   block ^__o1inl0__take_x:
-    store i64 %x, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__increment:
     %__o1inl0__t2 = binary add i64 %x, 1
-    store i64 %__o1inl0__t2, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    %t1 = load i64 $__o1inl0__retmerge__1
-    return i64 %t1
+    %t0 = phi i64 [^__o1inl0__take_x: %x, ^__o1inl0__increment: %__o1inl0__t2]
+    return i64 %t0
 }
 function @object_callee(%p : ptr, %take_p : u8) -> obj<8x8> {
   slot $__o1inl0__retmergeobj__1 : obj<8x8>

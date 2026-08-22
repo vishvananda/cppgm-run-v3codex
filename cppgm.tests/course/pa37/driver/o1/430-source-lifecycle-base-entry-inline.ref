@@ -18,11 +18,8 @@ function @Derived___Derived(%this : ptr) -> void [unwind=no, binding=weak, objec
     return void
 }
 function @VirtualBase__VirtualBase__base_entry(%this : ptr) -> void [unwind=no, binding=weak, object=_ZN11VirtualBaseC2Ev, object_root=yes, inline_hint=yes] {
-  slot $this : ptr
-
   block ^entry:
-    store ptr %this, $this
-    %t1 = load ptr $this
+    %t1 = copy ptr %this
     store i32 7, %t1
     return void
 }

@@ -28,10 +28,6 @@ function @fail() -> void [binding=strong, object=_Z4failv, no_inline=yes] {
     return void
 }
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
-  slot $value : obj<1x1>
-  slot $cond__2 : i32
-  slot $land__3 : i64
-
   block ^entry:
     eh_try ^catch_dispatch_1
     eh_try ^call_unwind_dispatch_6
@@ -82,30 +78,26 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^land_rhs_14:
     %t11 = load i32 @cleanup_count
     %t12 = cmp eq i32 %t11, 1
-    store i64 %t12, $land__3
     jump ^land_end_16
 
   block ^land_short_15:
-    store i64 0, $land__3
     jump ^land_end_16
 
   block ^land_end_16:
-    %t14 = load i64 $land__3
-    branch %t14, ^cond_then_11, ^cond_else_12
+    %t16 = phi i64 [^land_rhs_14: %t12, ^land_short_15: 0]
+    branch %t16, ^cond_then_11, ^cond_else_12
 
   block ^cond_then_11:
-    store i32 0, $cond__2
     jump ^cond_end_13
 
   block ^cond_else_12:
-    store i32 1, $cond__2
     jump ^cond_end_13
 
   block ^cond_end_13:
-    %t15 = load i32 $cond__2
+    %t0 = phi i32 [^cond_then_11: 0, ^cond_else_12: 1]
     eh_end
     call void @__external_runtime____cxa_end_catch()
-    return i32 %t15
+    return i32 %t0
 
   block ^catch_cleanup_10:
     call void @__external_runtime____cxa_end_catch()

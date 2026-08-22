@@ -1,10 +1,6 @@
 function @id(%p : ptr) -> ptr [unwind=no] {
-  slot $p : ptr
-
   block ^entry:
-    store ptr %p, $p
-    %t1 = load ptr $p
-    return ptr %t1
+    return ptr %p
 }
 function @caller(%p : ptr) -> ptr {
   block ^entry:

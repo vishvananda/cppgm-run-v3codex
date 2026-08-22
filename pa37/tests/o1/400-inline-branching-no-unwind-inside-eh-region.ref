@@ -10,22 +10,18 @@ function @choose(%x : i64) -> i64 [unwind=no, binding=strong, prefer_local=yes] 
     return i64 20
 }
 function @caller(%x : i64) -> i64 {
-  slot $__o1inl0__retmerge__1 : i64
-
   block ^entry:
     %__o1inl0__t1 = cmp eq i64 %x, 0
     branch %__o1inl0__t1, ^__o1inl0__zero, ^__o1inl0__nonzero
 
   block ^__o1inl0__zero:
-    store i64 10, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__nonzero:
-    store i64 20, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    %t1 = load i64 $__o1inl0__retmerge__1
-    %t2 = binary add i64 %t1, 1
+    %t0 = phi i64 [^__o1inl0__zero: 10, ^__o1inl0__nonzero: 20]
+    %t2 = binary add i64 %t0, 1
     return i64 %t2
 }

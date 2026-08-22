@@ -9,8 +9,6 @@ function @choose(%condition : i64) -> i64 {
     return i64 22
 }
 function @caller(%use_call : i64, %condition : i64) -> i64 [binding=strong] {
-  slot $__o1inl0__retmerge__1 : i64
-
   block ^entry:
     branch %use_call, ^with_call, ^other
 
@@ -21,21 +19,19 @@ function @caller(%use_call : i64, %condition : i64) -> i64 [binding=strong] {
     branch %condition, ^__o1inl0__left, ^__o1inl0__right
 
   block ^__o1inl0__left:
-    store i64 11, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__right:
-    store i64 22, $__o1inl0__retmerge__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    %chosen = load i64 $__o1inl0__retmerge__1
+    %t0 = phi i64 [^__o1inl0__left: 11, ^__o1inl0__right: 22]
     jump ^join
 
   block ^other:
     jump ^join
 
   block ^join:
-    %result = phi i64 [^__o1inl0__cont: %chosen, ^other: 33]
+    %result = phi i64 [^__o1inl0__cont: %t0, ^other: 33]
     return i64 %result
 }
