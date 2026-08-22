@@ -1,0 +1,89 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @choose
+  abi
+    param %c -> rdi : i64
+    param %a -> rsi : i64
+    param %b -> rdx : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve <gpr0>
+
+  block ^entry
+    mov r8, rdx
+    mov rdx, 0
+    cmp.i64 rdi, rdx
+    setne r9
+    movzx r9, r9
+    mov <gpr0>, r8
+    test.i64 r9, r9
+    cmovne <gpr0>, rsi
+    ret <gpr0>
+
+function @choose_narrow
+  abi
+    param %c -> rdi : i64
+    return i32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+
+  block ^entry
+    mov rdx, 9
+    cmp.i64 rdi, rdx
+    setg r9
+    movzx r9, r9
+    mov rdx, 7
+    mov r8, -1
+    test.i64 r9, r9
+    cmovne r8, rdx
+    sext.i32 r8
+    ret r8
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve <gpr0> <gpr1> <gpr2>
+
+  block ^entry
+    mov rdi, 1
+    mov rsi, 40
+    mov rdx, 4
+    call @choose [args=(rdx,rsi,rdi), unwind=no]
+    mov <gpr0>, rax
+    mov rdi, 0
+    mov rsi, 40
+    mov rdx, 4
+    call @choose [args=(rdx,rsi,rdi), unwind=no]
+    mov <gpr1>, rax
+    mov rdi, 10
+    call @choose_narrow [args=(rdi), unwind=no]
+    mov <gpr2>, rax
+    sext.i32 <gpr2>
+    mov rdi, 9
+    call @choose_narrow [args=(rdi), unwind=no]
+    sext.i32 rax
+    mov r9, <gpr2>
+    sext.i32 r9
+    mov r8, rax
+    sext.i32 r8
+    add <gpr0>, <gpr1>
+    add r9, r8
+    add <gpr0>, r9
+    mov rdx, 50
+    cmp.i64 <gpr0>, rdx
+    setne <gpr0>
+    movzx <gpr0>, <gpr0>
+    mov rax, <gpr0>
+    zext.i8 rax
+    ret rax

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lowir_native_mir.h"
+#include "lowir_native_selection.h"
 
 #include <climits>
 #include <vector>
@@ -68,6 +69,63 @@ protected:
     lowerer.move_value_to_register(
       out, XR_RDX, source, lowerer.operand_type(operand));
     return reg_operand(XR_RDX);
+  }
+
+  // A select stages the true value in the RDX scratch and the false value
+  // in the freshly allocated result, then tests the condition
+  // and completes the choice with one conditional move.  Value staging runs
+  // before the test so a value transiently living in RAX is never lost.
+  void emit_select(const lowir_model::Instruction & instruction,
+                   std::vector<mir_model::MirInstruction> & out)
+  {
+    using namespace build;
+    Derived & lowerer = static_cast<Derived &>(*this);
+    X64Register result = XR_RSP;
+    mir_model::MirOperand pressure_home;
+    if(!lowerer.try_allocate_result(instruction.dest, out, &result)) {
+      pressure_home = lowerer.allocate_temp_home(
+        instruction.dest, instruction.type);
+      result = XR_R10;
+    }
+    if(lowerer.is_frame_address(instruction.second))
+      lowerer.emit_operand_address(out, XR_RDX, instruction.second);
+    else
+      lowerer.move_value_to_register(out, XR_RDX,
+        lowerer.resolve(instruction.second), instruction.type);
+    if(lowerer.is_frame_address(instruction.third))
+      lowerer.emit_operand_address(out, result, instruction.third);
+    else
+      lowerer.move_value_to_register(out, result,
+        lowerer.resolve(instruction.third), instruction.type);
+    const lowir_model::LowType condition_type =
+      lowerer.operand_type(instruction.first);
+    lowerer.move_value_to_register(out, XR_RAX,
+      lowerer.resolve(instruction.first), condition_type);
+    mir_model::MirInstruction test = machine_instruction(
+      mir_model::MirInstruction::MI_TEST, condition_type);
+    append_operand(test, reg_operand(XR_RAX));
+    append_operand(test, reg_operand(XR_RAX));
+    out.push_back(test);
+    mir_model::MirInstruction choose = machine_instruction(
+      mir_model::MirInstruction::MI_CMOV, instruction.type);
+    choose.condition = XC_NE;
+    append_operand(choose, reg_operand(result));
+    append_operand(choose, reg_operand(XR_RDX));
+    out.push_back(choose);
+    if(selection::is_narrow_integer(instruction.type))
+      append_integer_normalization(out, instruction.type,
+                                   reg_operand(result));
+    lowerer.consume(instruction.first);
+    lowerer.consume(instruction.second);
+    lowerer.consume(instruction.third, result);
+    if(pressure_home.kind == mir_model::MirOperand::OP_FRAME) {
+      append_store(out, pressure_home, reg_operand(result),
+                   instruction.type);
+      lowerer.define(instruction.dest, instruction.type, pressure_home);
+    } else {
+      lowerer.define(instruction.dest, instruction.type,
+                     reg_operand(result));
+    }
   }
 };
 

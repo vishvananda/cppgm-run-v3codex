@@ -762,6 +762,7 @@ bool preserves_condition_flags(mir_model::MirInstruction::Opcode opcode)
   using mir_model::MirInstruction;
   switch(opcode) {
   case MirInstruction::MI_MOV:
+  case MirInstruction::MI_CMOV:
   case MirInstruction::MI_LOAD:
   case MirInstruction::MI_STORE:
   case MirInstruction::MI_MFENCE:

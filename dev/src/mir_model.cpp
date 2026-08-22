@@ -298,6 +298,11 @@ std::string instruction_text(const Instruction & instruction,
     render_operands(out, instruction, program, function);
     return out.str();
   }
+  if(instruction.opcode == Instruction::MI_CMOV) {
+    out << "cmov" << condition_suffix(instruction.condition);
+    render_operands(out, instruction, program, function);
+    return out.str();
+  }
   if(instruction.opcode == Instruction::MI_LOCK_CMPXCHG16B) {
     out << "lock_cmpxchg16b";
     render_operands(out, instruction, program, function);

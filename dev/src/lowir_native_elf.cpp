@@ -512,7 +512,6 @@ void emit_float_compare_flags(CodeBuffer & out,
     emit_x87_compare_flags(out, left, right, function);
     return;
   }
-  // Compare right with left to match the MIR branch-condition convention.
   materialize_float_operand(out, XMM_6, right, type, function);
   mir_model::MirOperand actual_left = left;
   if(left.kind == mir_model::MirOperand::OP_FLOAT_IMM ||
@@ -1560,6 +1559,13 @@ void emit_instruction(CodeBuffer & out, const mir_model::MirInstruction & instru
     require_operands(instruction, 1);
     emit_set_condition(out, instruction.condition, require_register(instruction.operands[0]));
     return;
+  case mir_model::MirInstruction::MI_CMOV:
+    require_operands(instruction, 2);
+    emit_conditional_move(out, instruction.condition,
+      require_register(instruction.operands[0]),
+      require_register(instruction.operands[1]),
+      type_width(instruction.type) == 64 ? 64 : 32);
+    return;
   case mir_model::MirInstruction::MI_MOVZX:
     require_operands(instruction, 2);
     emit_move_zero_extended_byte(out, require_register(instruction.operands[0]),
@@ -1753,9 +1759,7 @@ std::size_t emit_coalesced_constant_byte_stores(
       stores[position].value, static_cast<unsigned>(width * 8));
     position += width;
   }
-  // The removed address and immediate setup instructions define physical
-  // registers in MIR.  Re-emit the final definitions so any later use sees
-  // exactly the state produced by the scalar sequence.
+  // Re-emit final register definitions the removed setup produced.
   const std::size_t final_setup = start + (stores.size() - 1) * 4;
   for(std::size_t i = 0; i < 3; ++i)
     emit_instruction(out, instructions[final_setup + i], &function);
@@ -1810,9 +1814,7 @@ std::size_t emit_forwarded_frame_reload(
 void emit_prepared_function(
     CodeBuffer & out, const mir_model::MirFunction & function, Stats * stats)
 {
-  // The x86-64 member-function-pointer representation reserves bit zero of
-  // the target word as the virtual-slot tag.  Keep every native function
-  // entry at least two-byte aligned so a direct target cannot carry that tag.
+  // Two-byte alignment keeps the member-pointer virtual-slot tag free.
   out.align(2);
   const std::size_t function_start = out.size();
   out.label(function.symbol);

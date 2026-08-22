@@ -534,8 +534,7 @@ private:
       target_.params.push_back(binding);
       value.location = reg_operand(binding.reg);
       const std::size_t uses = storage_facts_.parameter_selected_uses[i];
-      // Slot promotion leaves direct value uses with no parameter slot, so
-      // the slot census alone cannot prove the parameter needs no home.
+      // Promoted slots leave direct uses the slot census cannot prove.
       const std::size_t direct_uses = facts_.uses[parameter.value];
       const bool incoming_clobbered = !wide_gpr_boundary &&
         (uses || direct_uses) &&
@@ -2473,9 +2472,8 @@ private:
       indirect_target);
     out.push_back(call);
     emit_stack_adjust(out, MirInstruction::MI_ADD, plan.stack_bytes);
-    // Retire every input before homing the return value: otherwise an
-    // extended call makes all managed registers look unspillable merely
-    // because its dead arguments still belong to the active instruction.
+    // Retire every input before homing the return value: dead arguments of
+    // the active call otherwise make managed registers look unspillable.
     for(std::size_t i = 0; i < instruction.args.size(); ++i)
       consume(instruction.args[i]);
     consume(instruction.first);
@@ -2951,6 +2949,8 @@ private:
       else emit_unary_value(instruction, block, instruction_index, out);
     } else if(instruction.kind == Instruction::IK_CONVERT)
       emit_convert(instruction, block, instruction_index, out);
+    else if(instruction.kind == Instruction::IK_SELECT)
+      emit_select(instruction, out);
     else if(instruction.kind == Instruction::IK_CALL)
       emit_call(instruction, block, instruction_index, out);
     else if(instruction.kind == Instruction::IK_COPYOBJ ||

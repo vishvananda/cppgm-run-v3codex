@@ -1,0 +1,17 @@
+declare function @observe(%value : i64) -> void [unwind=no]
+
+function @keeps_select(%c : i64, %a : i64, %b : i64) -> i64 {
+  block ^entry:
+    %test = cmp ne i64 %c, 0
+    %picked = select i64 %test, %a, %b
+    return i64 %picked
+}
+function @main() -> i64 [role=entry] {
+  block ^entry:
+    %__o1inl0__picked = select i64 1, 30, 5
+    %__o1inl1__picked = select i64 0, 30, 5
+    %sum = binary add i64 %__o1inl0__picked, %__o1inl1__picked
+    %bad = cmp ne i64 %sum, 35
+    %wide = convert zext i64 u8 %bad
+    return i64 %wide
+}

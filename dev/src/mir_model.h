@@ -266,6 +266,9 @@ struct Instruction
     // the ABI return carrier while its compare operands retain their selected
     // source locations.
     MI_SETCC,
+    // MI_CMOV conditionally replaces the destination register with the
+    // source register; it reads both and never modifies condition flags.
+    MI_CMOV,
     // MI_MOVZX defines a complete zero-valued or one-valued GPR result. A
     // following narrow integer consumer needs no second normalization.
     MI_MOVZX,

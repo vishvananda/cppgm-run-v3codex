@@ -468,7 +468,11 @@ struct Instruction
     IK_RETURN,
     // Kept at the end so existing serialized instruction identities remain
     // stable.  args stores alternating OP_LABEL/typed-value operands.
-    IK_PHI
+    IK_PHI,
+    // %t = select <type> <condition>, <true-value>, <false-value>: a pure
+    // scalar choice with no control-flow edge.  Appended after IK_PHI to
+    // keep existing serialized instruction identities stable.
+    IK_SELECT
   } kind = IK_CONST;
 
   ValueId dest;

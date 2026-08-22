@@ -105,6 +105,7 @@ bool is_read_write_destination(MirInstruction::Opcode opcode)
   case MirInstruction::MI_LOCK_XADD:
   case MirInstruction::MI_XCHG:
   case MirInstruction::MI_LOCK_CMPXCHG:
+  case MirInstruction::MI_CMOV:
   case MirInstruction::MI_ADD:
   case MirInstruction::MI_SUB:
   case MirInstruction::MI_IMUL:

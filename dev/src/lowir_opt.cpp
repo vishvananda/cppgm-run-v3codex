@@ -1,6 +1,7 @@
 #include "lowir_opt.h"
 #include "lowir_boolean_cfg.h"
 #include "lowir_cleanup_o1.h"
+#include "lowir_select_conversion.h"
 #include "lowir_function_analysis.h"
 #include "lowir_expression_key.h"
 #include "lowir_function_reachability.h"
@@ -275,7 +276,8 @@ bool is_pure(Instruction::Kind kind)
     kind == Instruction::IK_PHI ||
     kind == Instruction::IK_ADDR || kind == Instruction::IK_INDEX ||
     kind == Instruction::IK_UNARY || kind == Instruction::IK_BINARY ||
-    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT;
+    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT ||
+    kind == Instruction::IK_SELECT;
 }
 
 bool commutative(LowOperation op)

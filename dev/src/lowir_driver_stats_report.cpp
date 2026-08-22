@@ -305,6 +305,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " cleanup_tail_instructions_removed="
 		 << stats.cleanup_tail_instructions_removed
 		 << " cold_sunk_definitions=" << stats.cold_sunk_definitions
+		 << " select_diamonds_converted=" << stats.select_diamonds_converted
 		 << " duplicate_block_loads_removed="
 		 << stats.duplicate_block_loads_removed
 		 << " staged_copies_forwarded=" << stats.staged_copies_forwarded

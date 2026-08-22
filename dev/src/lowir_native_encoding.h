@@ -65,6 +65,17 @@ inline void emit_set_condition(elf_detail::CodeBuffer & out,
 }
 void emit_test_register(elf_detail::CodeBuffer & out, X64Register reg,
                         unsigned width = 64);
+inline void emit_conditional_move(elf_detail::CodeBuffer & out,
+                                  X86Condition condition,
+                                  X64Register destination,
+                                  X64Register source,
+                                  unsigned width)
+{
+  emit_rex(out, width == 64, destination, source);
+  out.byte(0x0f);
+  out.byte(0x40 + static_cast<unsigned>(condition));
+  emit_modrm(out, 3, destination, source);
+}
 void emit_load(elf_detail::CodeBuffer & out, X64Register destination,
                X64Register base, long long displacement, unsigned width);
 void emit_indexed_load(elf_detail::CodeBuffer & out, X64Register destination,

@@ -337,6 +337,12 @@ void write_instruction(std::ostream & out, const Instruction & ins,
   case Instruction::IK_CONVERT:
     write_result(out, ins, program, function); out << " = convert " << ins.op << ' ' << lowir_type_text(ins.type) << ' '
         << lowir_type_text(ins.source_type) << ' '; write_operand(out, ins.first, program, function); break;
+  case Instruction::IK_SELECT:
+    write_result(out, ins, program, function);
+    out << " = select " << lowir_type_text(ins.type) << ' ';
+    write_operand(out, ins.first, program, function); out << ", ";
+    write_operand(out, ins.second, program, function); out << ", ";
+    write_operand(out, ins.third, program, function); break;
   case Instruction::IK_ATOMIC_ADD_FETCH:
     write_result(out, ins, program, function); out << " = atomic_add_fetch " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.second, program, function);

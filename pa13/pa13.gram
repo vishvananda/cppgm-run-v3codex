@@ -149,6 +149,7 @@ rvalue-instruction:
 	KW_BINARY binary-operator type value OP_COMMA value
 	KW_CMP compare-predicate type value OP_COMMA value
 	KW_CONVERT conversion-operator type type value
+	KW_SELECT type value OP_COMMA value OP_COMMA value
 	KW_ATOMIC_ADD_FETCH type value OP_COMMA value OP_COMMA integer-literal
 	KW_ATOMIC_EXCHANGE type value OP_COMMA value OP_COMMA integer-literal
 	KW_ATOMIC_COMPARE_EXCHANGE type value OP_COMMA value OP_COMMA value

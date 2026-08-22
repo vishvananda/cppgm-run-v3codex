@@ -780,6 +780,13 @@ private:
     else if(op == "binary") parse_binary(out, Instruction::IK_BINARY);
     else if(op == "cmp") parse_binary(out, Instruction::IK_CMP);
 	else if(op == "convert") parse_convert(out);
+	else if(op == "select") {
+	  out.kind = Instruction::IK_SELECT;
+	  out.type = type();
+	  out.first = operand(); expect(",");
+	  out.second = operand(); expect(",");
+	  out.third = operand();
+	}
 	else if(op == "stack_alloc") {
 	  out.kind = Instruction::IK_STACK_ALLOC;
 	  out.type = builtin_lowir_type(LTK_PTR);
