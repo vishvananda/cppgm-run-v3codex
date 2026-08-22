@@ -75,6 +75,41 @@ function @initialize_tail
   block ^done
     ret
 
+function @read_before_call
+  abi
+    param %base -> rdi : ptr
+    param %x -> rsi : i64
+    param %y -> rdx : i64
+    return i64 -> rax
+  frame
+    stack_size 32
+    scratch_bytes 0
+    preserve rbx r12 r13
+
+  block ^entry
+    mov rbx, rdi
+    jmp ^compute
+
+  block ^compute
+    add rsi, 1
+    add rdx, 2
+    mov r8, 10
+    add r8, 20
+    mov r9, 30
+    add r9, 40
+    mov rdi, rsi
+    add rdi, rdx
+    load.i64 r12, [rbx+8]
+    add r8, r9
+    add rdi, r8
+    mov r13, rdi
+    add r13, r12
+    call @produce [args=()]
+    mov r8, rax
+    store.i64 [rbx], r8
+    add r13, r8
+    ret r13
+
 function @main
   abi
     return i32 -> rax
@@ -89,23 +124,33 @@ function @main
     call @write_second [args=(rdi)]
     mov rdi, rbx
     call @initialize_tail [args=(rdi)]
-    load.i64 r8, [rbx+8]
-    load.i64 r9, [rbx+16]
-    load.i64 rdi, [rbx+24]
+    mov rdi, rbx
+    mov rsi, 3
+    mov rdx, 5
+    call @read_before_call [args=(rdx,rsi,rdi)]
+    mov r8, rax
+    load.i64 r9, [rbx+8]
+    load.i64 rdi, [rbx+16]
+    load.i64 rsi, [rbx+24]
     mov rdx, 29
-    cmp.i64 r8, rdx
-    setne r8
-    movzx r8, r8
-    mov rdx, 40
     cmp.i64 r9, rdx
     setne r9
     movzx r9, r9
-    mov rdx, 41
+    mov rdx, 40
     cmp.i64 rdi, rdx
     setne rdi
     movzx rdi, rdi
+    mov rdx, 41
+    cmp.i64 rsi, rdx
+    setne rsi
+    movzx rsi, rsi
+    mov rdx, 169
+    cmp.i64 r8, rdx
+    setne r8
+    movzx r8, r8
+    or rdi, rsi
+    or r9, r8
     or r9, rdi
-    or r8, r9
-    mov rax, r8
+    mov rax, r9
     sext.i32 rax
     ret rax

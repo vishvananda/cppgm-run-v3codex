@@ -43,11 +43,33 @@ function @initialize_tail(%base : ptr) -> void {
     return void
 }
 
+function @read_before_call(%base : ptr, %x : i64, %y : i64) -> i64 {
+  block ^entry:
+    %field = index i8 %base, 8
+    jump ^compute
+
+  block ^compute:
+    %a = binary add i64 %x, 1
+    %b = binary add i64 %y, 2
+    %c = binary add i64 10, 20
+    %d = binary add i64 30, 40
+    %ab = binary add i64 %a, %b
+    %value = load i64 %field
+    %cd = binary add i64 %c, %d
+    %abcd = binary add i64 %ab, %cd
+    %before = binary add i64 %abcd, %value
+    %produced = call i64 @produce()
+    store i64 %produced, %base
+    %result = binary add i64 %before, %produced
+    return i64 %result
+}
+
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
     %base = addr @cells
     call void @write_second(%base)
     call void @initialize_tail(%base)
+    %result = call i64 @read_before_call(%base, 3, 5)
     %second = index i8 %base, 8
     %value = load i64 %second
     %third = index i8 %base, 16
@@ -57,8 +79,10 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %second_bad = cmp ne i64 %value, 29
     %third_bad = cmp ne i64 %third_value, 40
     %fourth_bad = cmp ne i64 %fourth_value, 41
+    %result_bad = cmp ne i64 %result, 169
     %tail_bad = binary or i64 %third_bad, %fourth_bad
-    %bad = binary or i64 %second_bad, %tail_bad
+    %values_bad = binary or i64 %second_bad, %result_bad
+    %bad = binary or i64 %values_bad, %tail_bad
     %exit = convert trunc i32 i64 %bad
     return i32 %exit
 }

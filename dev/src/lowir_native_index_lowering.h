@@ -86,12 +86,12 @@ protected:
     const bool stable_deferred_base = deferred_base &&
       lowerer.values_[instruction.first.value].deferred_address_stable;
     bool require_selected_parameter_home = false;
-    if(constant_index && stable_register_base &&
-       base.kind == mir_model::MirOperand::OP_REG &&
-       lowerer.crosses_register_clobber(instruction.dest, base.reg)) {
+    if(constant_index && stable_register_base) {
       const mir_model::MirOperand selected =
         lowerer.values_[instruction.first.value].location;
       if(selected.kind == mir_model::MirOperand::OP_REG &&
+         (base.kind != mir_model::MirOperand::OP_REG ||
+          selected.reg != base.reg) &&
          !lowerer.crosses_register_clobber(instruction.dest, selected.reg)) {
         base = selected;
         require_selected_parameter_home = true;
