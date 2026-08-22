@@ -2195,6 +2195,20 @@ and 2,668 defined symbols; its `-O0` object is 3,027,632 bytes with 770,778
 `.text*` bytes and 5,835 definitions.  These figures are the exact-self R11h
 policy baseline.
 
+The 12-instruction probe exposed a second independent PA29 native correctness
+bug before profitability measurement.  An immediately returned division used
+the direct `rax`/`rdx` setup whenever its fixed-register ordering was safe, but
+that setup emits register-only `MI_MOV` instructions and also admitted a
+frame-resident dividend.  The resulting `mov rax, [frame]` reached an encoder
+that correctly rejects memory operands for `MI_MOV`.  Direct setup now accepts
+only a register or immediate dividend; all memory-shaped dividends reuse the
+ordinary typed materialization path.  This is one O(1) operand-kind check and
+adds no analysis.  The PA29 `frame-dividend-direct-return` reducer forces the
+dividend into a frame home across an EH call: it fails on the old predicate
+with `unsupported native move operand`, then compiles and runs after the fix.
+PA29 passes 280/280, the report through PA29 passes 4,217/4,217, and the full
+report passes 5,399/5,399.  Cap-12 profitability remains a separate decision.
+
 #### R11i. Defer true EH grafting
 
 Inlining a callee with genuinely live EH regions requires remapping nested

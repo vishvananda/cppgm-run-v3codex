@@ -1,0 +1,151 @@
+machine_ir x86_64 linux
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+global @division_value
+  storage scalar i64
+  init i64 160
+
+global @guard_value
+  storage scalar i64
+  init i64 7
+
+function @may_unwind
+  abi
+    return void -> void
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @observe_values
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    return void -> void
+  frame
+    stack_size 48
+    scratch_bytes 0
+
+  block ^entry
+    ret
+
+function @divide_frame_value
+  abi
+    param %a -> rdi : i64
+    param %b -> rsi : i64
+    param %c -> rdx : i64
+    param %d -> rcx : i64
+    param %e -> r8 : i64
+    return i64 -> rax
+  frame
+    stack_size 128
+    scratch_bytes 0
+    preserve rbx r12 r13 r14 r15
+    temp %host-eh-exception -> [rbp-8] : ptr
+    temp %host-eh-selector -> [rbp-16] : i64
+    temp %keep0 -> [rbp-24] : i64
+    temp %keep1 -> [rbp-32] : i64
+    temp %keep2 -> [rbp-40] : i64
+    temp %keep3 -> [rbp-48] : i64
+    temp %keep4 -> [rbp-56] : i64
+    temp %partial -> [rbp-64] : i64
+    temp %guard4 -> [rbp-72] : i64
+    temp %guard5 -> [rbp-80] : i64
+    temp %dividend -> [rbp-88] : i64
+
+  block ^entry
+    mov rbx, rdi
+    add rbx, rsi
+    store.i64 [rbp-24], rbx
+    mov rbx, rsi
+    add rbx, rdx
+    store.i64 [rbp-32], rbx
+    mov rbx, rdx
+    add rbx, rcx
+    store.i64 [rbp-40], rbx
+    mov rbx, rcx
+    add rbx, r8
+    store.i64 [rbp-48], rbx
+    mov rbx, r8
+    add rbx, rdi
+    store.i64 [rbp-56], rbx
+    load.i64 rbx, [rbp-24]
+    add rbx, [rbp-40]
+    store.i64 [rbp-64], rbx
+    mov rbx, rsi
+    add rbx, rcx
+    mov r12, rdi
+    add r12, rdx
+    mov r13, rdx
+    add r13, r8
+    mov r14, rdi
+    add r14, r8
+    mov r15, rsi
+    add r15, r8
+    store.i64 [rbp-72], r15
+    load.i64 r15, @guard_value
+    store.i64 [rbp-80], r15
+    load.i64 r15, @division_value
+    store.i64 [rbp-88], r15
+    load.i64 r15, @guard_value
+    eh_push ^cleanup, 0
+    call @may_unwind [args=()]
+    eh_pop
+    add rbx, 0
+    add r12, 0
+    add r13, 0
+    add r14, 0
+    load.i64 r9, [rbp-72]
+    add r9, 0
+    load.i64 r9, [rbp-80]
+    add r9, 0
+    add r15, 0
+    load.i64 r9, [rbp-88]
+    mov rcx, 5
+    mov rax, r9
+    cqo
+    idiv rcx
+    mov r9, rax
+    ret r9
+
+  block ^cleanup
+    resume
+
+  block ^keep_live
+    load.i64 rdi, [rbp-24]
+    load.i64 rsi, [rbp-32]
+    load.i64 rdx, [rbp-40]
+    load.i64 rcx, [rbp-48]
+    load.i64 r8, [rbp-56]
+    call @observe_values [args=(rcx,rdx,rsi,rdi,r8), unwind=no]
+    load.i64 rax, [rbp-64]
+    ret rax
+
+function @main
+  abi
+    return i32 -> rax
+  frame
+    stack_size 48
+    scratch_bytes 48
+
+  block ^entry
+    mov rdi, 10
+    mov rsi, 20
+    mov rdx, 30
+    mov rcx, 40
+    mov r8, 50
+    call @divide_frame_value [args=(rcx,rdx,rsi,rdi,r8)]
+    mov rdx, 32
+    cmp.i64 rax, rdx
+    setne rax
+    movzx rax, rax
+    ret rax

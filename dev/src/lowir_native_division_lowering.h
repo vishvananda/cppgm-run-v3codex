@@ -42,6 +42,11 @@ inline bool direct_return_setup_is_safe(
     const mir_model::MirOperand & divisor)
 {
   using namespace build;
+  // The direct setup uses MI_MOV rather than a typed memory load.  Keep a
+  // frame- or memory-resident dividend on the ordinary materialization path.
+  if(dividend.kind != mir_model::MirOperand::OP_REG &&
+     dividend.kind != mir_model::MirOperand::OP_IMM)
+    return false;
   const bool materializes_in_rdx =
     divisor.kind == mir_model::MirOperand::OP_FRAME ||
     divisor.kind == mir_model::MirOperand::OP_GLOBAL ||

@@ -569,6 +569,11 @@ To complete PA29, implement these goals:
    the call should remain frame-shaped through the later result copy rather
    than occupying a register across the call.
 
+   An immediately returned integer quotient or remainder may use the fixed
+   division result register directly. If its dividend is frame-, global-, or
+   dereference-resident, MIR must first issue a typed load into a register;
+   a register-only `mov` must not carry a memory operand.
+
    Atomic operations are subject to the same pressure correctness requirement. Producing
    an atomic operation's returned old value in a loop must remain executable when its
    address and source values occupy the available general-purpose registers.
@@ -755,6 +760,9 @@ strategies include:
   materialize a scratch only when the concrete x86 encoding requires it, and
   place division or variable-shift operands directly in their required
   registers while keeping a fixed shift count on the shift instruction
+- admit direct division-to-return setup only when its dividend is already a
+  register or immediate; otherwise reuse the ordinary typed materialization
+  path before assigning `rax` and `rdx`
 - encode immediate memory stores directly at 8, 16, and 32 bits and for
   sign-extended 32-bit values at 64 bits; choose an encoder scratch that does
   not overlap a dereference base or index for other 64-bit values
