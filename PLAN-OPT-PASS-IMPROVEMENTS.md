@@ -1,8 +1,8 @@
 # Plan: Optimization-Pass Improvements
 
-Status: active; Ranks 1--10i and R11a--h are implemented and clean through the
-full report and 32-worker inception; true EH grafting remains deferred, while
-the under-15-second maximum frozen-compile objective remains open
+Status: complete; every rank has a retained implementation or measured
+disposition, the maximum frozen compile is below 15 seconds, and the exact
+final tree is clean in both O0 and O3 32-worker inception lanes
 
 Date: 2026-08-22
 
@@ -22,10 +22,12 @@ The primary workload is:
 
 This plan supersedes the unstarted broad O1/O2 recommendations in
 `PLAN-CODEGEN-AND-SELFHOST-OPTIMIZATION.md`.  It does not reopen completed O0,
-demand, LowIR/MIR representation, or backend code-shape phases recorded by the
-earlier plans.  Rank 11 does extend the optimizer's treatment of LowIR EH
-regions because the final R10 census identifies that eligibility boundary as
-the next measured optimization constraint.
+demand, or LowIR representation phases recorded by the earlier plans.  Rank 11
+does extend the optimizer's treatment of LowIR EH regions because the final
+R10 census identifies that eligibility boundary as the next measured
+optimization constraint.  Its final generated-self profile also justifies one
+targeted PA29 native-placement phase; that phase changes MIR and native code,
+not serialized LowIR.
 
 The required outcomes are:
 
@@ -34,7 +36,9 @@ The required outcomes are:
 - keep a matching-level frozen compile faster than GCC and Clang;
 - preserve the no-option driver rule: absence of `-O` selects the maximum
   implemented level;
-- keep `-O0` unchanged by this plan;
+- keep optimizer-specific transformations out of `-O0`; PA29 backend
+  correctness and direct-placement improvements may change MIR and native code
+  at every level without changing serialized LowIR;
 - keep each production pass linear or near-linear, bounded, function-local
   where possible, and based on typed compact identity;
 - add every reducer to the active earliest-owning course suite, never a
@@ -2313,31 +2317,36 @@ instructions and six blocks to eight instructions and three blocks.  Raising
 the hinted raw cap from seven to eight then removes all 1,002 frozen
 `_M_dispose` call relocations, but grows host-built frozen text from 716,660 to
 767,064 bytes and the exact self compiler from 12,073,336 to 12,241,200 bytes.
-The isolated three-way run gives median wall/user/RSS of
-17.59 s / 17.03 s / 398,492 KiB for the original baseline,
+The isolated three-way experiment on the then-live source gives median
+wall/user/RSS of 17.59 s / 17.03 s / 398,492 KiB for the original baseline,
 17.22 s / 16.63 s / 398,716 KiB for canonicalization at cap seven, and
-17.36 s / 16.79 s / 398,852 KiB at cap eight.  Cap eight is therefore rejected
-again: canonicalization supplies the measured improvement, while broad
-cleanup-body cloning gives part of it back and causes the size growth.
+17.36 s / 16.79 s / 398,852 KiB at cap eight.  It is valid for that A/B/C
+decision but is not the pinned frozen-workload acceptance timing.  Cap eight
+is rejected again: canonicalization supplies the measured improvement, while
+broad cleanup-body cloning gives part of it back and causes the size growth.
 
 The retained cap-seven host object is 1,710,984 bytes versus 1,733,560 bytes
 at baseline; the `size(1)` text figure is nearly flat at 716,660 versus
-715,765 bytes.  The exact self compiler is 12,073,336 bytes and its three-run
-frozen median is
-2.1% lower in wall time and 2.3% lower in user time than the immutable R11h
-baseline under the same load.  PA37 owns three new positive/negative reducers,
-and seven existing PA37 references move in place where zero projections or the
-newly marginal lifecycle inline shape change.
+715,765 bytes.  The live-source experiment shows a 2.1% wall and 2.3% user
+improvement.  PA37 owns three new positive/negative reducers, and seven
+existing PA37 references move in place where zero projections or the newly
+marginal lifecycle inline shape change.
 
-Final acceptance at `c0526298` is a clean 5,403/5,403 full report and a PA39
-file audit with zero fatal findings and 30 advisory warnings.  The separated
-CFG module keeps `lowir_opt.cpp` below the 3,000-line audit limit.  A clean
+Acceptance at `c0526298` is a clean 5,403/5,403 full report and a PA39 file
+audit with zero fatal findings and 30 advisory warnings.  The separated CFG
+module keeps `lowir_opt.cpp` below the 3,000-line audit limit.  A clean
 32-worker O3 self build took 18.92 seconds wall, 464.54 seconds user,
-43.10 seconds system, and 231,164 KiB peak RSS; the final compiler is
-12,082,192 bytes.  The following separate 32-worker inception took
-64.71 seconds wall, 1,743.04 seconds user, 59.54 seconds system, and
-230,252 KiB peak RSS.  All 211 objects and the final `cppgm++-inception`
-binary match the self-host baseline.
+43.10 seconds system, and 231,164 KiB peak RSS; the compiler is 12,082,192
+bytes.  The following separate 32-worker inception took 64.71 seconds wall,
+1,743.04 seconds user, 59.54 seconds system, and 230,252 KiB peak RSS.  All 211
+objects and the final `cppgm++-inception` binary match the self-host baseline.
+
+On the pinned stable `semantic_overload.cpp`, that immutable compiler's first
+three consecutive maximum-level runs are 15.73, 15.71, and 15.85 seconds
+(15.73-second median).  Later interleaved runs place it at 15.945 and 15.625
+seconds under different host load.  Those are the correct R11h acceptance
+baseline; the live-source 17.22-second result above is not used for the
+under-15 decision.
 
 #### R11i. Defer true EH grafting
 
@@ -2349,6 +2358,115 @@ follow-up to R11e.  The source exception-specification correction is R11a and
 must not be replaced by optimizer inference.  True grafting remains a PA37
 optimizer feature and adds no private LowIR side channel.
 
+The residual census does not justify this complexity.  The hottest remaining
+work is frontend execution in the generated compiler, while R11c/e already
+remove or cross the dead/nonthrowing EH regions that can be handled without
+grafting.  R11i is therefore complete with a measured deferred disposition;
+no private object-only LowIR or EH metadata is added.
+
+#### R11j. Fold branches known from their sole incoming edge
+
+The generated-self profile still contains repeated tests of the same selector
+on a successor reached by one arm of an earlier branch.  In that successor the
+selector is already known.  O1 now replaces the second branch with a jump when
+the block has exactly one ordinary predecessor, both branches use the same
+typed value, the incoming edge identifies the value, the block is not an EH
+target, and removing the untaken edge needs no `phi` repair.
+
+The implementation first performs a cheap dense `ValueId` candidate scan so
+the usual function avoids graph construction.  A candidate function builds
+the existing typed CFG once and visits each block once.  There is no retry
+loop, string identity, or per-edge map.  The exact PA37 O1
+`504-edge-known-branch` reducer owns the transformation and the PA37 normative
+contract states the edge and `phi` restrictions.  Commit `6d32d926` passes the
+then-current 5,404-test report; the final combined output and timing are
+recorded below.
+
+#### R11k. Retain storage-only derived addresses through native selection
+
+The final generated-self disassembly showed that indexed addresses were still
+materialized in registers even when every consumer was a load, store, further
+index, or bulk-memory address operand.  PA29 now classifies this property once
+during the existing linear use analysis with dense per-`ValueId` bytes.  The
+native value fact retains a typed base/index/scale/displacement operand across
+nonadjacent instructions and CFG edges only while its carrier registers remain
+valid.  A consumer that observes the pointer or crosses a carrier clobber
+materializes the address.  Serialized LowIR and its canonical comparison do
+not change.
+
+The first generated-self probe exposed two real correctness boundaries and
+they were fixed rather than used as rejection reasons.  A deferred base must
+be materialized with address semantics, not loaded as the scalar stored at
+that address (`84784d8f`).  A retained address based on a forwarded parameter
+must use the parameter's stable selected home even when its original incoming
+register happens not to be the carrier that the interval check sees
+(`49cb90a5`).  The structural and behavioral PA29
+`storage-only-derived-address-placement` reducer was expanded at each boundary.
+The initial implementation is `50032b61`; one existing PA29 MIR reference
+moves because the now-public direct placement is the intended contract.
+
+The hot path uses the existing dense use facts, `MirOperand`, precomputed
+clobber masks, and O(1) selected-home lookups.  It adds no string set, textual
+operand parsing, per-consumer rescan, or broad LowIR rewrite.  The PA29
+normative section describes observable address placement; implementation
+advice remains in its non-normative Design Notes.
+
+#### R11l. Preserve forwarded parameters in extended calls
+
+The clean O3 inception lane passed after R11k, but the required explicit-O0
+lane exposed a generated compiler crash.  The ordinary call-argument builder
+already replaced a promoted parameter-slot load with its stable selected
+parameter home.  The extended ABI builder, used when a call also carries an
+object or wide argument, instead reread the clobbered incoming register after
+a bulk copy.  This is a backend lifetime bug, not an O0 ineligibility.
+
+Commit `ecb22eaa` applies the same O(1) typed `forwarded_parameter` lookup to
+the extended GPR move set.  The PA29 structural/behavioral
+`forwarded-parameter-extended-call-placement` reducer forces an intervening
+bulk copy and verifies that the scalar arrives intact.  No call signature,
+LowIR field, extra analysis, or string-keyed state is introduced.
+
+#### R11 final performance and inception gate
+
+The exact final O3-built self compiler at `ecb22eaa` is 11,828,888 bytes.  On
+the pinned frozen source, three ABBA blocks against the immutable `c0526298`
+compiler give:
+
+| Compiler | Runs | Median wall | Median user | Median RSS | Frozen object | `.text*` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| R11h `c0526298` | 6 | 15.625 s | 15.130 s | 369,800 KiB | 1,452,400 B | 581,841 B |
+| final `ecb22eaa` | 6 | 14.925 s | 14.395 s | 368,342 KiB | 1,442,144 B | 571,569 B |
+
+The paired candidate deltas are -4.59% wall, -4.78% user, and -0.39% peak
+RSS.  One candidate invocation was perturbed to 19.25 seconds by transient
+host load; both clean blocks remained 14.79--15.06 seconds and the six-run
+median remains below the 15-second objective.  The final object is 10,256
+bytes smaller, including 10,272 fewer text bytes, with unchanged 34,296-byte
+data.
+
+At explicit O0, three final runs are 13.31, 13.24, and 13.27 seconds
+(13.27-second median, 12.72-second median user).  Their objects are
+byte-identical at 3,025,760 bytes with 916,882 text bytes, down 1,872 object
+bytes and 1,911 text bytes from the immutable R11h compiler.  A no-option
+compile is byte-identical to explicit O3, confirming that absence of `-O`
+still selects the maximum pipeline.  As a slow-object diagnostic,
+`lowir_opt.cpp` takes 7.65 seconds at O0 and 8.14 seconds at O3; optimization
+reduces its object text from 487,511 to 256,731 bytes.
+
+The final clean 32-worker lanes, each with self construction timed separately
+from inception, are:
+
+| Lane | Stage | Wall | Aggregate user | System | Peak RSS |
+| --- | --- | ---: | ---: | ---: | ---: |
+| O0 | `cppgm++-self` | 20.00 s | 454.49 s | 43.96 s | 231,724 KiB |
+| O0 | inception compare | 158.67 s | 4,343.03 s | 89.86 s | 231,508 KiB |
+| O3 | `cppgm++-self` | 18.42 s | 461.90 s | 42.73 s | 232,248 KiB |
+| O3 | inception compare | 59.05 s | 1,600.89 s | 57.05 s | 230,620 KiB |
+
+Both lanes match all 211 objects and the final compiler byte-for-byte.  The
+final implementation tree passes 5,406/5,406 report tests and the PA39 file
+audit has zero fatal findings and 31 advisory warnings.
+
 #### R11 acceptance order
 
 Implement and commit the semantic correction (R11a) and LowIR inline hint
@@ -2359,7 +2477,12 @@ split (R11d), and landing relaxation (R11e) are still material; retain each in
 its own changeset.  R11f is then a measurement/effects checkpoint and may
 reject any or all of R11g.  Commit memory GVN, PRE, and native placement
 separately when retained.  R11h follows only the retained eligibility and
-harvesting phases, and R11i requires a new measured justification.
+harvesting phases.  R11i records the measured decision not to add EH grafting.
+R11j follows the retained canonical cleanup because it consumes the same typed
+CFG.  R11k is a separately reviewable PA29 backend phase, with generated-self
+correctness boundaries fixed and committed before measurement.  R11l is the
+earliest-owned reducer and corrective found only by the explicit-O0 lane.  The
+final O0 and O3 inception gates cover their combined generated code.
 
 At the end of R11, run the zero-fatal audit, a clean timed 32-worker O3 self
 build, and a separate clean timed 32-worker inception comparison with peak RSS
@@ -2367,7 +2490,8 @@ and byte-for-byte object/final-binary comparison.  Also run a clean explicit
 O0 32-worker inception after any source-lowering or lifecycle metadata change,
 because O3 inception can hide unoptimized generated-code defects.  The phase
 is not complete until the full root `make test-report` passes on the exact
-ledger commit.
+ledger commit.  Repeat that report and the zero-fatal audit after updating this
+document.
 
 ## Fixture and public-contract policy
 
@@ -2499,7 +2623,7 @@ RUN_ROOT=/tmp/v3codex-opt-<commit>-j32
   INCEPTION_BUILD_JOBS=32
 ```
 
-The second command must compare all 209 current objects and the final compiler.  A
+The second command must compare all 211 current objects and the final compiler.  A
 warm or partially inherited object tree is not a clean timing.  Keep the self
 tree between the two commands so the inception measurement does not include a
 second self build; remove only the explicitly named run root when the evidence
@@ -2563,8 +2687,11 @@ Fill one row for every retained or rejected phase:
 | R11e | proven-no-unwind landing-block inlining | PA37 exact/source; PA30 exception-in-flight runtime | vs R11d: object -29,848 B, text -1,523 B, -105 definitions; basic-string destructor calls -192 | existing dense landing/no-unwind/EH summaries and budgets | 5,392/5,392; PA37 debug clean; zero fatal | final combined lane required | implementation complete; host O1 median 5.12 s |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | PA33 source; PA37 source/DCE positives and negatives | 53 declarations but 26 attributable live calls; 291/1,432 serialized definitions EH-bearing; O1 byte-identical | compact canonical effects enum; single-pass attribute collection | 5,395/5,395; zero fatal | diagnostic | complete; GNU `nothrow` absent and `basic_string` cleanup unannotated |
 | R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 memory EH positive/barrier/conflict; no rejected-prototype fixtures retained | memory: +70 eliminated loads, -296 B object, -318 B text; PRE +7,560 B object; placement +5,808 B object | shared compact EH states only for retained memory GVN; rejected prototypes removed | 5,396/5,396; zero fatal | required for each retained subphase | complete: memory retained; PRE and placement rejected |
-| R11h | post-harvest inliner profitability sweep; PA29 correctives; cleanup-body canonicalization | PA29 behavior/MIR and normative/Design Notes; PA37 O1/O2 positive/negative reducers and seven moved references | cap 12, shallow wrapper, weighted cost, and cap 8 rejected; retained cap-7 canonicalization changes exact-self frozen median wall 17.59 to 17.22 s and user 17.03 to 16.63 s | exact typed CFG/use arrays and pointer facts; no strings or retry loop; Boolean CFG work separated from scheduler | 5,403/5,403; zero fatal, 30 warnings | O3 self 18.92 s / 231,164 KiB; 32-way inception 64.71 s / 230,252 KiB; 211 objects and final binary match | complete, `c0526298`; under-15 objective remains open |
-| R11i | true EH-region grafting | PA37 only if justified by a residual profiled-hot population | separate genuine live-EH effect from dead-region work | no unbounded retry or private LowIR side channel | pending | required if retained | deferred pending R11f/h residual census |
+| R11h | post-harvest inliner profitability sweep; PA29 correctives; cleanup-body canonicalization | PA29 behavior/MIR and normative/Design Notes; PA37 O1/O2 positive/negative reducers and seven moved references | cap 12, shallow wrapper, weighted cost, and cap 8 rejected; retained cap-7 live-source experiment -2.1% wall/-2.3% user; pinned stable acceptance baseline 15.73 s | exact typed CFG/use arrays and pointer facts; no strings or retry loop; Boolean CFG work separated from scheduler | 5,403/5,403; zero fatal, 30 warnings | O3 self 18.92 s / 231,164 KiB; 32-way inception 64.71 s / 230,252 KiB; 211 objects and final binary match | complete, `c0526298`; pinned under-15 objective still open at this checkpoint |
+| R11i | true EH-region grafting | no fixture or contract movement because the residual profile does not justify the feature | dead and no-unwind regions already handled; genuine live-EH population is not the measured hot constraint | avoids nested handler remapping, extra metadata, and an otherwise unjustified pass | covered by retained R11 report/audit | diagnostic disposition; final combined lane covers retained work | complete, deferred by R11f/h census and profile |
+| R11j | fold a branch whose selector is known from its sole incoming edge | PA37 O1 exact reducer and normative edge/phi limits | included in final combined -10,256 B object/-10,272 B text | cheap dense candidate scan; one existing typed CFG and one block walk only for candidates | 5,404/5,404 at retention; final 5,406/5,406, zero fatal | included in final O0/O3 lanes | complete, `6d32d926` |
+| R11k | retain storage-only derived addresses as typed MIR operands | PA29 structural/behavior reducer expanded across two correctness boundaries; one existing MIR reference moves; normative and Design Notes updated | combined R11j/k final maximum object 1,452,400 to 1,442,144 B; text 581,841 to 571,569 B | dense byte facts and precomputed clobbers; no string keys, rescans, or LowIR movement; final ABBA -4.59% wall/-4.78% user/-0.39% RSS | 5,405/5,405 after placement; final 5,406/5,406, zero fatal | O3 self 18.42 s; inception 59.05 s; 211 objects/final match | complete, `50032b61`, correctives `84784d8f` and `49cb90a5` |
+| R11l | preserve forwarded scalar parameters in extended ABI calls | PA29 structural/behavior reducer; PA29 call-lifetime contract and Design Note | final O0 object 3,027,632 to 3,025,760 B; text 918,793 to 916,882 B | one O(1) typed selected-home lookup per affected GPR argument; no new analysis | 5,406/5,406; zero fatal, 31 warnings | O0 self 20.00 s / inception 158.67 s; O3 self 18.42 s / inception 59.05 s; all 211 objects/final match | corrective complete, `ecb22eaa`; final maximum median 14.925 s |
 
 ## Completion criteria
 
