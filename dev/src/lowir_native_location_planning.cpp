@@ -234,12 +234,9 @@ std::vector<unsigned char> plan_value_registers(
        facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT) ||
        facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS))
       continue;
-    // Non-crossing values ride caller-saved registers, so their intervals
-    // must stay call-free; landing pads never preserve them, so functions
-    // with exception regions keep the crossing class only.
-    if(!facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL) &&
-       facts.has_eh)
-      continue;
+    // Non-crossing values ride caller-saved registers over call-free
+    // intervals.  Unwinding only leaves a call, so a call-free interval is
+    // never live into a landing pad, even in exception-bearing functions.
     const lowir_model::LowType & type =
       lowir_model::lowir_value_type(function, value);
     if(type.kind != lowir_model::LTK_PTR &&
