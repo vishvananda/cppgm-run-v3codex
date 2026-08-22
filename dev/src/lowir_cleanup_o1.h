@@ -22,4 +22,12 @@ bool sink_cold_blocks(lowir_model::Function * function,
                       const std::vector<unsigned char> & noreturn_symbols,
                       Stats * stats = 0);
 
+// Rehome pure operand-free definitions (constants and addresses) whose only
+// uses sit in a single raising-cold block into that block, so the hot path
+// stops carrying them across its calls.
+bool sink_cold_only_definitions(
+    lowir_model::Function * function,
+    const std::vector<unsigned char> & noreturn_symbols,
+    Stats * stats = 0);
+
 }  // namespace lowir_opt

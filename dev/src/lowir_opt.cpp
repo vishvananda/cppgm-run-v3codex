@@ -2948,6 +2948,8 @@ void optimize(LowirProgram & program, int level, Stats * stats)
         timed_function_pass(cleanup_cfg, &program.functions[i], stats,
           &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
       }
+      sink_cold_only_definitions(&program.functions[i], noreturn_symbols,
+                                 stats);
       sink_cold_blocks(&program.functions[i], noreturn_symbols, stats);
     }
     if(stats) stats->post_prune_inline_nanoseconds =

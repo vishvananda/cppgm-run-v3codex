@@ -304,6 +304,7 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << stats.cleanup_tail_blocks_rewritten
 		 << " cleanup_tail_instructions_removed="
 		 << stats.cleanup_tail_instructions_removed
+		 << " cold_sunk_definitions=" << stats.cold_sunk_definitions
 		 << " unreachable_role_symbols=" << stats.unreachable_role_symbols
 		 << " unreachable_marker_blocks=" << stats.unreachable_marker_blocks
 		 << " unreachable_edges_removed=" << stats.unreachable_edges_removed

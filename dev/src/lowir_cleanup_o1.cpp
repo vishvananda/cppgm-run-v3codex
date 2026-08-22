@@ -724,19 +724,18 @@ bool share_exact_cleanup_tails(Function * function, Stats * stats)
 }
 
 
-bool sink_cold_blocks(Function * function,
-                      const std::vector<unsigned char> & noreturn_symbols,
-                      Stats * stats)
+static std::vector<unsigned char> cold_block_mask(
+    const Function & function,
+    const std::vector<unsigned char> & noreturn_symbols)
 {
-  const std::size_t count = function->blocks.size();
-  if(count < 2) return false;
+  const std::size_t count = function.blocks.size();
   std::vector<unsigned char> cold(count, 0);
   for(std::size_t block = 0; block < count; ++block) {
     bool raises = false;
     bool ordinary_successor = false;
     for(std::size_t index = 0;
-        index < function->blocks[block].instructions.size(); ++index) {
-      const Instruction & ins = function->blocks[block].instructions[index];
+        index < function.blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function.blocks[block].instructions[index];
       if(ins.kind == Instruction::IK_THROW ||
          ins.kind == Instruction::IK_RESUME)
         raises = true;
@@ -765,7 +764,7 @@ bool sink_cold_blocks(Function * function,
   // block count.
   std::vector<std::size_t> position(count, count);
   for(std::size_t block = 0; block < count; ++block) {
-    const std::uint32_t id = function->blocks[block].id;
+    const std::uint32_t id = function.blocks[block].id;
     if(id < position.size()) position[id] = block;
     else {
       position.resize(static_cast<std::size_t>(id) + 1, count);
@@ -779,9 +778,9 @@ bool sink_cold_blocks(Function * function,
       std::size_t successors = 0;
       bool all_cold = true;
       for(std::size_t index = 0;
-          index < function->blocks[block - 1].instructions.size(); ++index) {
+          index < function.blocks[block - 1].instructions.size(); ++index) {
         const Instruction & ins =
-          function->blocks[block - 1].instructions[index];
+          function.blocks[block - 1].instructions[index];
         if(ins.kind != Instruction::IK_JUMP &&
            ins.kind != Instruction::IK_BRANCH &&
            ins.kind != Instruction::IK_EH_TRY &&
@@ -804,6 +803,270 @@ bool sink_cold_blocks(Function * function,
     }
     if(!grew) break;
   }
+  return cold;
+}
+
+// Execution-frequency coldness for definition sinking.  Unlike the block
+// reordering mask, a raising block stays cold even when it carries EH
+// region markers or a dead ordinary successor: everything after the
+// noreturn call is unreachable, and an unwind edge is not a fallthrough.
+// Blocks whose every jump, branch, or switch target is cold inherit it.
+static std::vector<unsigned char> raising_path_mask(
+    const Function & function,
+    const std::vector<unsigned char> & noreturn_symbols)
+{
+  const std::size_t count = function.blocks.size();
+  std::vector<unsigned char> cold(count, 0);
+  for(std::size_t block = 0; block < count; ++block) {
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function.blocks[block].instructions[index];
+      if(ins.kind == Instruction::IK_THROW ||
+         ins.kind == Instruction::IK_RESUME ||
+         (ins.kind == Instruction::IK_CALL &&
+          ins.first.kind == Operand::OP_GLOBAL &&
+          static_cast<std::uint32_t>(ins.first.symbol) <
+            noreturn_symbols.size() &&
+          noreturn_symbols[ins.first.symbol])) {
+        cold[block] = 1;
+        break;
+      }
+    }
+  }
+  std::vector<std::size_t> position(count, count);
+  for(std::size_t block = 0; block < count; ++block) {
+    const std::uint32_t id = function.blocks[block].id;
+    if(id < position.size()) position[id] = block;
+    else {
+      position.resize(static_cast<std::size_t>(id) + 1, count);
+      position[id] = block;
+    }
+  }
+  for(std::size_t sweep = 0; sweep < count; ++sweep) {
+    bool grew = false;
+    for(std::size_t block = count; block != 0; --block) {
+      if(cold[block - 1]) continue;
+      std::size_t successors = 0;
+      bool all_cold = true;
+      for(std::size_t index = 0;
+          index < function.blocks[block - 1].instructions.size(); ++index) {
+        const Instruction & ins =
+          function.blocks[block - 1].instructions[index];
+        if(ins.kind != Instruction::IK_JUMP &&
+           ins.kind != Instruction::IK_BRANCH &&
+           ins.kind != Instruction::IK_SWITCH) continue;
+        const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t operand = 0;
+            operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
+            ++operand) {
+          const Operand & label =
+            operand < sizeof(fixed) / sizeof(fixed[0]) ?
+            *fixed[operand] :
+            ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+          if(label.kind != Operand::OP_LABEL) continue;
+          ++successors;
+          const std::uint32_t id = label.block;
+          const std::size_t target =
+            id < position.size() ? position[id] : count;
+          all_cold = all_cold && target < count && cold[target];
+        }
+      }
+      if(successors != 0 && all_cold) {
+        cold[block - 1] = 1;
+        grew = true;
+      }
+    }
+    if(!grew) break;
+  }
+  // Landing pads are excluded even when they only raise: their entry state
+  // is the unwinder's, and the exception-region rematerializer already owns
+  // value placement for them.
+  for(std::size_t block = 0; block < count; ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function.blocks[block].instructions[index];
+      if(ins.kind != Instruction::IK_EH_TRY &&
+         ins.kind != Instruction::IK_EH_CLEANUP) continue;
+      if(ins.first.kind != Operand::OP_LABEL) continue;
+      const std::uint32_t id = ins.first.block;
+      const std::size_t target = id < position.size() ? position[id] : count;
+      if(target < count) cold[target] = 0;
+    }
+  return cold;
+}
+
+// A pure operand-free definition (a constant or a global, function, or
+// slot address) whose only uses sit in raising-cold blocks rides the hot
+// path for nothing: it typically becomes live across the hot calls, claims a
+// callee-saved register, and pays an eager frame home on every invocation.
+// A single-block consumer takes the definition itself; consumers spread over
+// several cold blocks each receive a rematerialized copy, which is free for
+// operand-free instructions.
+bool sink_cold_only_definitions(Function * function,
+                                const std::vector<unsigned char> & noreturn_symbols,
+                                Stats * stats)
+{
+  const std::size_t count = function->blocks.size();
+  if(count < 2) return false;
+  const std::vector<unsigned char> cold =
+    raising_path_mask(*function, noreturn_symbols);
+  bool any_cold = false;
+  for(std::size_t block = 0; block < count && !any_cold; ++block)
+    any_cold = cold[block] != 0;
+  if(!any_cold) return false;
+
+  const std::size_t values = function->value_names.size();
+  const std::size_t no_uses = static_cast<std::size_t>(-1);
+  const std::size_t many = static_cast<std::size_t>(-2);
+  std::vector<std::size_t> use_block(values, no_uses);
+  std::vector<unsigned char> blocked(values, 0);
+  for(std::size_t block = 0; block < count; ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function->blocks[block].instructions[index];
+      const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
+      for(std::size_t operand = 0;
+          operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
+          ++operand) {
+        const Operand & use =
+          operand < sizeof(fixed) / sizeof(fixed[0]) ?
+          *fixed[operand] :
+          ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+        if(use.kind != Operand::OP_TEMP) continue;
+        const std::uint32_t value = static_cast<std::uint32_t>(use.value);
+        if(value >= values) continue;
+        if(ins.kind == Instruction::IK_PHI || !cold[block]) blocked[value] = 1;
+        else if(use_block[value] == no_uses) use_block[value] = block;
+        else if(use_block[value] != block) use_block[value] = many;
+      }
+    }
+
+  struct Move
+  {
+    Instruction payload;
+    std::size_t source_block;
+    std::size_t source_index;
+    std::size_t target_block;
+  };
+  std::vector<Move> moves;
+  std::vector<Move> clones;
+  for(std::size_t block = 0; block < count; ++block) {
+    if(cold[block]) continue;
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      const Instruction & ins = function->blocks[block].instructions[index];
+      if((ins.kind != Instruction::IK_CONST &&
+          ins.kind != Instruction::IK_ADDR) ||
+         !ins.dest.valid() ||
+         ins.first.kind == Operand::OP_TEMP ||
+         ins.second.kind == Operand::OP_TEMP ||
+         ins.third.kind == Operand::OP_TEMP ||
+         !ins.args.empty())
+        continue;
+      const std::uint32_t value = static_cast<std::uint32_t>(ins.dest);
+      if(value >= values || blocked[value] || use_block[value] == no_uses)
+        continue;
+      Move move;
+      move.payload = ins;
+      move.source_block = block;
+      move.source_index = index;
+      move.target_block = use_block[value];
+      if(use_block[value] == many) clones.push_back(move);
+      else moves.push_back(move);
+    }
+  }
+  if(moves.empty() && clones.empty()) return false;
+
+  // Erase originals from the rear so earlier source indices stay valid;
+  // every destination is a cold block and every source is hot, so target
+  // positions never shift.
+  std::vector<Move> removals = moves;
+  removals.insert(removals.end(), clones.begin(), clones.end());
+  std::sort(removals.begin(), removals.end(),
+            [](const Move & left, const Move & right) {
+              return left.source_block < right.source_block ||
+                (left.source_block == right.source_block &&
+                 left.source_index < right.source_index);
+            });
+  for(std::size_t i = removals.size(); i != 0; --i) {
+    const Move & move = removals[i - 1];
+    std::vector<Instruction> & source =
+      function->blocks[move.source_block].instructions;
+    source.erase(source.begin() +
+                 static_cast<std::ptrdiff_t>(move.source_index));
+  }
+
+  const auto first_use_index = [](const std::vector<Instruction> & body,
+                                  lowir_model::ValueId value) {
+    for(std::size_t index = 0; index < body.size(); ++index) {
+      const Instruction & ins = body[index];
+      const Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
+      for(std::size_t operand = 0;
+          operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
+          ++operand) {
+        const Operand & use =
+          operand < sizeof(fixed) / sizeof(fixed[0]) ?
+          *fixed[operand] :
+          ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+        if(use.kind == Operand::OP_TEMP && use.value == value) return index;
+      }
+    }
+    return body.size();
+  };
+  for(std::size_t i = 0; i < moves.size(); ++i) {
+    std::vector<Instruction> & target =
+      function->blocks[moves[i].target_block].instructions;
+    target.insert(target.begin() + static_cast<std::ptrdiff_t>(
+                    first_use_index(target, moves[i].payload.dest)),
+                  moves[i].payload);
+  }
+  std::size_t rematerialized = 0;
+  for(std::size_t i = 0; i < clones.size(); ++i) {
+    const lowir_model::ValueId original = clones[i].payload.dest;
+    for(std::size_t block = 0; block < count; ++block) {
+      if(!cold[block]) continue;
+      std::vector<Instruction> & body = function->blocks[block].instructions;
+      const std::size_t first = first_use_index(body, original);
+      if(first == body.size()) continue;
+      const lowir_model::ValueId copy =
+        lowir_model::append_lowir_fresh_generated_value(
+          *function, clones[i].payload.type);
+      for(std::size_t index = first; index < body.size(); ++index) {
+        Instruction & ins = body[index];
+        Operand * fixed[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t operand = 0;
+            operand < sizeof(fixed) / sizeof(fixed[0]) + ins.args.size();
+            ++operand) {
+          Operand & use =
+            operand < sizeof(fixed) / sizeof(fixed[0]) ?
+            *fixed[operand] :
+            ins.args[operand - sizeof(fixed) / sizeof(fixed[0])];
+          if(use.kind == Operand::OP_TEMP && use.value == original)
+            use.value = copy;
+        }
+      }
+      Instruction replacement = clones[i].payload;
+      replacement.dest = copy;
+      body.insert(body.begin() + static_cast<std::ptrdiff_t>(first),
+                  replacement);
+      ++rematerialized;
+    }
+  }
+  if(stats) {
+    stats->cold_sunk_definitions += moves.size() + rematerialized;
+    stats->rewrites += moves.size() + rematerialized;
+  }
+  return true;
+}
+
+bool sink_cold_blocks(Function * function,
+                      const std::vector<unsigned char> & noreturn_symbols,
+                      Stats * stats)
+{
+  const std::size_t count = function->blocks.size();
+  if(count < 2) return false;
+  const std::vector<unsigned char> cold =
+    cold_block_mask(*function, noreturn_symbols);
   // The entry block stays first even when the whole function raises.
   bool moves = false;
   for(std::size_t block = 1; block + 1 < count; ++block)
