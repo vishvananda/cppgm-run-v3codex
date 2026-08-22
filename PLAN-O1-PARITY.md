@@ -282,7 +282,8 @@ Rebuild the twelve-way matrix at the end state.  Acceptance requires:
 | --- | --- | --- | --- | --- | --- | --- |
 | P0a | reserve retained dereference carriers | PA29 behavior reducer, local ref generation | none; deterministic, SHA unchanged | fixes no-assert self-compile crash | 5,408/5,408; zero fatal | complete, `9b8a3bf9` |
 | P0b | instantiate member templates under extern template | PA32 course reducer | none | unblocks no-assert link | 5,408/5,408; zero fatal | complete, `348ad6c7` |
-| P1 | `__OPTIMIZE__` at optimized levels; config-fair matrix | | | prototype: 16.91 to 15.43 s wall, identical object | | pending |
+| P1 | `__OPTIMIZE__` at optimized levels | PA15 O0 and PA37 driver O1 predefine reducers; emit modes accept `-D`/`-U`; roundtrip harness preprocess parity; no other fixture movement | frozen max object 1,442,144 to 1,373,568 B (-4.8%), text 552,596 B, deterministic; O3 self compiler 11,828,888 to 10,611,520 B (-10.3%) | self-O1 vs gcc-O1 frozen medians 15.08/5.97 s wall (was 17.11/6.06); O3 inception user 1,600.9 to 1,432.1 s | 5,410/5,410; zero fatal; O3 lane self 18.56 s + inception 55.28 s and O0 lane self 20.65 s + inception 161.7 s, all 211 objects and final compiler match in both | complete, `a3d50227` |
+| P1c | keep edge-live value registers across backedges (inception-exposed miscompile) | no fixture movement; isolated reducer outstanding, recorded above | none on existing fixtures | unblocks the no-assertions O3 self compiler | 5,410/5,410; zero fatal; both lanes above ran on this commit | complete, `882b7456` |
 | P2 | hot accessor inlining with cold-successor discount | | | | | pending |
 | P3 | compare-branch fusion through bool conversions | | | | | pending |
 | P4 | O1 value/placement work (promotion, GVN, retention, folds) | | | | | pending |
