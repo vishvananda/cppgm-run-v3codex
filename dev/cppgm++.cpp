@@ -249,6 +249,7 @@ struct SourceOutputInvocation
 {
   string output;
   vector<string> inputs;
+  vector<DriverInvocation::MacroAction> macro_actions;
   int optimization_level = 0;
   bool has_optimization_level = false;
   bool has_debug_info = false;
@@ -287,6 +288,25 @@ SourceOutputInvocation parse_source_output_invocation(
     if(allow_lowir_options &&
        (args[i] == "--witness" || args[i] == "--witness-debug")) {
       consume_required_option_argument(args, i, args[i], "output file");
+      continue;
+    }
+    if(allow_lowir_options && (args[i] == "-D" || args[i] == "-U")) {
+      const bool define = args[i] == "-D";
+      consume_required_option_argument(args, i, args[i], "macro");
+      invocation.macro_actions.push_back(
+        DriverInvocation::MacroAction(define, args[i]));
+      continue;
+    }
+    if(allow_lowir_options && starts_with(args[i], "-D") &&
+       args[i].size() > 2) {
+      invocation.macro_actions.push_back(
+        DriverInvocation::MacroAction(true, args[i].substr(2)));
+      continue;
+    }
+    if(allow_lowir_options && starts_with(args[i], "-U") &&
+       args[i].size() > 2) {
+      invocation.macro_actions.push_back(
+        DriverInvocation::MacroAction(false, args[i].substr(2)));
       continue;
     }
     if(args[i] == "-c" || args[i] == "-E" || is_query_driver_flag(args[i])) {
@@ -638,7 +658,8 @@ cppgm::PreprocessingOptions make_driver_preprocessing_options(
   options.include_search_paths = invocation.include_paths;
   options.system_include_search_paths = invocation.system_include_paths;
 	cppgm::ConfigureHostedPreprocessing(
-		&options, invocation.hosted_system_includes);
+		&options, invocation.hosted_system_includes,
+		invocation.optimization_level >= 1);
 	for(size_t i = 0; i < invocation.macro_actions.size(); ++i) {
 		options.macro_actions.push_back(cppgm::PreprocessingOptions::MacroAction(
 			invocation.macro_actions[i].define,
@@ -2375,10 +2396,22 @@ int run_emit_lowir_mode(const vector<string> & args)
 	const bool object_capable_output = invocation.has_debug_info ||
 		invocation.has_optimization_level;
 	if(!object_capable_output) {
+		for(size_t i = 0; i < invocation.macro_actions.size(); ++i)
+			options.macro_actions.push_back(
+				cppgm::PreprocessingOptions::MacroAction(
+					invocation.macro_actions[i].define,
+					invocation.macro_actions[i].argument));
 		cppgm::WriteLowIRProgram(sources, options, output,
 			invocation.collect_stats ? &stats : 0);
 	} else {
-		cppgm::ConfigureHostedPreprocessing(&options, true);
+		cppgm::ConfigureHostedPreprocessing(&options, true,
+			invocation.has_optimization_level &&
+			invocation.optimization_level >= 1);
+		for(size_t i = 0; i < invocation.macro_actions.size(); ++i)
+			options.macro_actions.push_back(
+				cppgm::PreprocessingOptions::MacroAction(
+					invocation.macro_actions[i].define,
+					invocation.macro_actions[i].argument));
 		lowir_model::LowirProgram program;
 		{
 			cppgm::pa15_lowir_detail::TypedProgram typed =

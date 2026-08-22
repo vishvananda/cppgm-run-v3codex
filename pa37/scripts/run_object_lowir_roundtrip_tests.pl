@@ -171,10 +171,15 @@ sub check_mode {
   my @direct_cmd = ($app, "-c", @debug_flags, @optimization_flags);
   my $direct_error = run_command(@direct_cmd, "-o", $direct, $source);
   return $direct_error if defined $direct_error;
+  # The O0 emission must preprocess exactly like the direct optimized
+  # compile, whose hosted configuration publishes __OPTIMIZE__.
+  my @preprocess_flags =
+    (defined($opt) && $opt ne "-O0") ? ("-D__OPTIMIZE__=1") : ();
   my $emit_error = run_command($app,
                                "--emit-lowir",
                                @debug_flags,
                                "-O0",
+                               @preprocess_flags,
                                "-o",
                                $lowir,
                                $source);

@@ -7,7 +7,7 @@
 namespace cppgm
 {
 void ConfigureHostedPreprocessing(PreprocessingOptions* options,
-	bool add_standard_include_paths)
+	bool add_standard_include_paths, bool optimizing)
 {
 	options->hosted_predefined_source =
 		cppgm_builtin_host_config::kHostPredefinedMacros;
@@ -16,6 +16,9 @@ void ConfigureHostedPreprocessing(PreprocessingOptions* options,
 			cppgm_builtin_host_config::kStandardIncludePaths[i]; ++i)
 			options->system_include_search_paths.push_back(
 				cppgm_builtin_host_config::kStandardIncludePaths[i]);
+	if (optimizing)
+		options->macro_actions.push_back(
+			PreprocessingOptions::MacroAction(true, "__OPTIMIZE__=1"));
 
 	const std::string predefined(options->hosted_predefined_source);
 	if (predefined.find("#define __clang__ ") != std::string::npos &&
