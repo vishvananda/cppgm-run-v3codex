@@ -859,6 +859,27 @@ bool simplify_values_with_analysis(
         if(!replace && (ins.op.kind == LowOperation::LOP_EQ || ins.op.kind == LowOperation::LOP_NE) &&
            ((is_zero(ins.second) && ins.op.kind == LowOperation::LOP_NE) ||
             (is_one(ins.second) && ins.op.kind == LowOperation::LOP_EQ))) {
+          // A widening copy of a comparison result keeps its zero-or-one
+          // value, so the truth test may read the comparison directly.
+          if(ins.first.kind == Operand::OP_TEMP) {
+            const std::uint32_t extended = ins.first.value;
+            if(extended < definitions.size() &&
+               known_definitions[extended] &&
+               definitions[extended].kind == Instruction::IK_CONVERT &&
+               (definitions[extended].op.kind == LowOperation::LOP_ZEXT ||
+                definitions[extended].op.kind == LowOperation::LOP_SEXT ||
+                definitions[extended].op.kind == LowOperation::LOP_TRUNC) &&
+               definitions[extended].first.kind == Operand::OP_TEMP &&
+               definitions[extended].first.value < definitions.size() &&
+               known_definitions[definitions[extended].first.value] &&
+               definitions[definitions[extended].first.value].kind ==
+                 Instruction::IK_CMP) {
+              ins.first = definitions[extended].first;
+              ins.type = lowir_model::builtin_lowir_type(lowir_model::LTK_I64);
+              changed = true;
+              if(stats) ++stats->rewrites;
+            }
+          }
           const std::uint32_t id = ins.first.value;
           if(ins.first.kind == Operand::OP_TEMP &&
              id < definitions.size() && known_definitions[id] &&
@@ -869,7 +890,30 @@ bool simplify_values_with_analysis(
         }
       } else if(ins.kind == Instruction::IK_CONVERT)
         replace = fold_convert(ins, &replacement);
-      else if(ins.kind == Instruction::IK_PHI && ins.args.size() >= 2) {
+      else if(ins.kind == Instruction::IK_BRANCH &&
+              ins.first.kind == Operand::OP_TEMP) {
+        // A widening copy preserves zero versus nonzero, and a truncation
+        // of a comparison result keeps its zero-or-one value, so the branch
+        // may test the original value and free the conversion.
+        const std::uint32_t id = ins.first.value;
+        if(id < definitions.size() && known_definitions[id] &&
+           definitions[id].kind == Instruction::IK_CONVERT &&
+           definitions[id].first.kind == Operand::OP_TEMP) {
+          const bool widening =
+            definitions[id].op.kind == LowOperation::LOP_ZEXT ||
+            definitions[id].op.kind == LowOperation::LOP_SEXT;
+          const std::uint32_t source = definitions[id].first.value;
+          const bool boolean_truncation =
+            definitions[id].op.kind == LowOperation::LOP_TRUNC &&
+            source < definitions.size() && known_definitions[source] &&
+            definitions[source].kind == Instruction::IK_CMP;
+          if(widening || boolean_truncation) {
+            ins.first = definitions[id].first;
+            changed = true;
+            if(stats) ++stats->rewrites;
+          }
+        }
+      } else if(ins.kind == Instruction::IK_PHI && ins.args.size() >= 2) {
         replacement = ins.args[1];
         replace = true;
         for(std::size_t incoming = 3; incoming < ins.args.size(); incoming += 2)
