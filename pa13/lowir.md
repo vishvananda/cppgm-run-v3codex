@@ -873,7 +873,9 @@ instructions.
 %t = addr @function
 %t = addr $slot
 %t = load <type> <storage>
+%t = load volatile <type> <storage>
 store <type> <value>, <storage>
+store volatile <type> <value>, <storage>
 %t = atomic_load <type> <ptr-value>, <order>
 atomic_store <type> <value>, <ptr-value>, <order>
 %t = atomic_exchange <type> <ptr-value>, <value>, <order>
@@ -895,6 +897,15 @@ lowering shape. The currently supported projection kinds are:
 
 When omitted, `index` still means plain pointer arithmetic with no stronger semantic
 projection claim.
+
+`load volatile` and `store volatile` mark an observable access to a
+volatile-qualified object. Volatility is a property of the operation, not of
+the pointer type: no pass may remove, merge, reorder, or forward a volatile
+access, and storage reached by a volatile access may not be promoted or
+discarded. Ordinary `load`/`store` operations to the same storage keep their
+usual optimization freedoms. Bulk object operations (`copyobj`, `zeroinit`)
+have no volatile form; objects with volatile subobjects must be transferred
+through scalar volatile accesses.
 
 Atomic memory-order operands use the GNU/Clang order encoding:
 

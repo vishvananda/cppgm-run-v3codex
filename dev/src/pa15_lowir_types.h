@@ -288,13 +288,16 @@ struct Instruction
 	std::uint8_t atomic_order;
 	std::uint8_t atomic_failure_order;
 	bool indirect;
+	// Volatile accesses are observable behavior: no pass may remove, merge,
+	// reorder, or forward them, and their slots may not be promoted away.
+	bool volatile_access;
 
 	explicit Instruction(Kind kind_value)
 		: dest(kNoLowId), extra_first(kNoLowId), extra_count(0),
 		  virtual_base_argument_count(0),
 		  target(kNoLowId), alternate(kNoLowId), kind(kind_value),
 		  op(LOW_OP_NONE), projection(INDEX_PROJECTION_NONE), atomic_order(0),
-		  atomic_failure_order(0), indirect(false) {}
+		  atomic_failure_order(0), indirect(false), volatile_access(false) {}
 };
 
 inline bool IsTerminator(const Instruction& instruction)

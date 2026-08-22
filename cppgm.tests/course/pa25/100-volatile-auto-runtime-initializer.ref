@@ -3,13 +3,12 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
 
   block ^entry:
     %t1 = call i32 @next_value()
-    store i32 %t1, $value
-    %t2 = load i32 $value
+    store volatile i32 %t1, $value
+    %t2 = load volatile i32 $value
     %t3 = binary sub i32 %t2, 7
     return i32 %t3
 }
-
-function @next_value() -> i32 [binding=weak, object=_Z10next_valuev] {
+function @next_value() -> i32 [binding=weak, object=_Z10next_valuev, inline_hint=yes] {
   block ^entry:
     return i32 7
 }

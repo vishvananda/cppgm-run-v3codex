@@ -768,7 +768,10 @@ private:
     else if(op == "addr") {
       out.kind = Instruction::IK_ADDR;
       out.first = operand();
-    } else if(op == "load") parse_typed_unary(out, Instruction::IK_LOAD);
+    } else if(op == "load") {
+      out.volatile_access = accept("volatile");
+      parse_typed_unary(out, Instruction::IK_LOAD);
+    }
     else if(op == "atomic_load") {
       parse_typed_unary(out, Instruction::IK_ATOMIC_LOAD);
       expect(","); out.args.push_back(operand());
@@ -912,7 +915,9 @@ private:
     const std::size_t instruction_line = peek_line();
     const std::string op = take();
     if(op == "store") {
-      out.kind = Instruction::IK_STORE; out.type = type(); out.first = operand();
+      out.kind = Instruction::IK_STORE;
+      out.volatile_access = accept("volatile");
+      out.type = type(); out.first = operand();
       expect(","); out.second = operand();
     } else if(op == "atomic_store") {
       out.kind = Instruction::IK_ATOMIC_STORE; out.type = type(); out.first = operand();

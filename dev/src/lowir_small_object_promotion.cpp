@@ -286,7 +286,7 @@ bool promote_small_objects(Function * function, Stats * stats)
            candidate[address.slot]) {
           const std::size_t bytes =
             lowir_model::lowir_slot_type(*function, address.slot).storage_size;
-          if(!address.zero_offset ||
+          if(instruction.volatile_access || !address.zero_offset ||
              !complete_scalar_type(instruction.type, bytes))
             invalid[address.slot] = 1;
           else

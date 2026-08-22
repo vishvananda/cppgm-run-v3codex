@@ -300,13 +300,17 @@ void write_instruction(std::ostream & out, const Instruction & ins,
   case Instruction::IK_ADDR:
     write_result(out, ins, program, function); out << " = addr "; write_operand(out, ins.first, program, function); break;
   case Instruction::IK_LOAD:
-    write_result(out, ins, program, function); out << " = load " << lowir_type_text(ins.type) << ' ';
+    write_result(out, ins, program, function);
+    out << (ins.volatile_access ? " = load volatile " : " = load ")
+        << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); break;
   case Instruction::IK_ATOMIC_LOAD:
     write_result(out, ins, program, function); out << " = atomic_load " << lowir_type_text(ins.type) << ' ';
     write_operand(out, ins.first, program, function); out << ", "; write_operand(out, ins.args.at(0), program, function); break;
   case Instruction::IK_STORE:
-    out << "store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, program, function);
+    out << (ins.volatile_access ? "store volatile " : "store ")
+        << lowir_type_text(ins.type) << ' ';
+    write_operand(out, ins.first, program, function);
     out << ", "; write_operand(out, ins.second, program, function); break;
   case Instruction::IK_ATOMIC_STORE:
     out << "atomic_store " << lowir_type_text(ins.type) << ' '; write_operand(out, ins.first, program, function);

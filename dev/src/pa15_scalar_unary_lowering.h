@@ -96,7 +96,8 @@ protected:
 		if (operation == OP_STAR)
 			return derived.LoadStorage(
 				derived.LowerValue(children[0], LowPtr()),
-				derived.LowerExpressionType(record.type));
+				derived.LowerExpressionType(record.type),
+				derived.TypeIsVolatile(record.type));
 		if (operation == OP_INC || operation == OP_DEC)
 			return derived.LowerIncrement(record, children[0], false);
 		if (operation == OP_LNOT)

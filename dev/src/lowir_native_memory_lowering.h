@@ -24,7 +24,8 @@ protected:
 		std::size_t instruction_index) const
 	{
 		const Derived& lowerer = static_cast<const Derived&>(*this);
-		if (lowerer.facts_.uses[instruction.dest] != 1 ||
+		if (instruction.volatile_access ||
+			lowerer.facts_.uses[instruction.dest] != 1 ||
 			lowerer.facts_.has(instruction.dest,
 				analysis::FunctionFacts::VF_EDGE_LIVE) ||
 			instruction_index + 1 >= block.instructions.size())
@@ -149,6 +150,7 @@ protected:
 		}
 		if (lowerer.facts_.has(instruction.dest,
 				analysis::FunctionFacts::VF_DIRECT_COMPARE_STORAGE) &&
+			!instruction.volatile_access &&
 			!(instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
 			  lowerer.tls_wrappers_[instruction.first.symbol].valid()))
 		{
@@ -197,6 +199,7 @@ protected:
 		}
 		mir_model::MirInstruction load = machine_instruction(
 			mir_model::MirInstruction::MI_LOAD, instruction.type);
+		load.volatile_access = instruction.volatile_access;
 		append_operand(load, destination);
 		append_operand(load,
 			lowerer.materialized_storage(instruction.first, out));
@@ -274,6 +277,7 @@ protected:
 		}
 		mir_model::MirInstruction store = machine_instruction(
 			mir_model::MirInstruction::MI_STORE, instruction.type);
+		store.volatile_access = instruction.volatile_access;
 		mir_model::MirOperand value = lowerer.resolve(instruction.first);
 		if (value.kind != mir_model::MirOperand::OP_REG &&
 			value.kind != mir_model::MirOperand::OP_IMM)

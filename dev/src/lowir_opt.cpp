@@ -981,7 +981,8 @@ bool eliminate_dead_code(Function * function,
   for(std::size_t i = 0; !has_candidate && i < function->blocks.size(); ++i)
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
-      if(is_pure(ins.kind) || ins.kind == Instruction::IK_LOAD ||
+      if(is_pure(ins.kind) ||
+         (ins.kind == Instruction::IK_LOAD && !ins.volatile_access) ||
          call_is_removable(ins, boundaries)) {
         has_candidate = true;
         break;
@@ -1029,7 +1030,8 @@ bool eliminate_dead_code(Function * function,
       function->blocks[value.definition.first].instructions[
         value.definition.second];
     if(value.uses == 0 &&
-       (is_pure(ins.kind) || ins.kind == Instruction::IK_LOAD ||
+       (is_pure(ins.kind) ||
+         (ins.kind == Instruction::IK_LOAD && !ins.volatile_access) ||
         call_is_removable(ins, boundaries))) {
       work.push_back(value.definition);
       if(stats) ++stats->worklist_pushes;
@@ -1045,7 +1047,8 @@ bool eliminate_dead_code(Function * function,
     const Instruction & producer =
       function->blocks[value.definition.first].instructions[
         value.definition.second];
-    if(is_pure(producer.kind) || producer.kind == Instruction::IK_LOAD ||
+    if(is_pure(producer.kind) ||
+       (producer.kind == Instruction::IK_LOAD && !producer.volatile_access) ||
        call_is_removable(producer, boundaries)) {
       work.push_back(value.definition);
       if(stats) ++stats->worklist_pushes;
@@ -1460,8 +1463,9 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
       const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(operands[k]->kind == Operand::OP_SLOT &&
-           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)))
+           (ins.volatile_access ||
+            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
+              (ins.kind == Instruction::IK_STORE && k == 1))))
           escaped[operands[k]->slot] = 1;
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_SLOT)

@@ -477,6 +477,9 @@ struct Instruction
   LowOperation op;
   std::size_t byte_count = 0;
   std::size_t byte_alignment = 1;
+  // A volatile access is observable behavior: passes may not remove, merge,
+  // reorder, or forward it, and its storage may not be promoted away.
+  bool volatile_access = false;
   bool has_eh_selector = false;
   long long eh_selector = 0;
   IndexProjectionKind index_projection = IPK_NONE;

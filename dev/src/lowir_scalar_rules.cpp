@@ -67,7 +67,7 @@ bool fold_readonly_global_loads(Function * function,
     for(std::size_t index = 0;
         index < function->blocks[block].instructions.size(); ++index) {
       Instruction & ins = function->blocks[block].instructions[index];
-      if(ins.kind != Instruction::IK_LOAD ||
+      if(ins.kind != Instruction::IK_LOAD || ins.volatile_access ||
          ins.first.kind != Operand::OP_GLOBAL ||
          static_cast<std::uint32_t>(ins.first.symbol) >=
            readonly_known.size() ||
@@ -208,7 +208,7 @@ bool eliminate_duplicate_block_loads(Function * function, Stats * stats)
     for(std::size_t index = 0;
         index < function->blocks[block].instructions.size(); ++index) {
       Instruction & ins = function->blocks[block].instructions[index];
-      if(ins.kind == Instruction::IK_LOAD) {
+      if(ins.kind == Instruction::IK_LOAD && !ins.volatile_access) {
         bool matched = false;
         for(std::size_t i = 0; i < live.size() && !matched; ++i) {
           if(!same_load_address(live[i].address, ins.first) ||

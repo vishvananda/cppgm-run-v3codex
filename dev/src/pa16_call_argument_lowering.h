@@ -1296,7 +1296,8 @@ protected:
 		if (binding != kNoBinding &&
 			derived.program_.bindings[binding].bit_field)
 			return derived.LoadBitField(binding, derived.LowerStorage(node));
-		return derived.LoadStorage(derived.LowerStorage(node), type);
+		return derived.LoadStorage(derived.LowerStorage(node), type,
+			derived.TypeIsVolatile(record.type));
 	}
 };
 

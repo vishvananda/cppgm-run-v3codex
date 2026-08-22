@@ -13,7 +13,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t3 = addr $volatile_value
     %t4 = index i8 [projection=base_subobject] %t3, 0
     %t5 = index i8 [projection=field] %t4, 0
-    %t6 = load i64 %t5
+    %t6 = load volatile i64 %t5
     %t7 = cmp eq i64 %t6, 0
     branch %t7, ^land_rhs_7, ^land_short_8
 
@@ -65,7 +65,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t22 = load i32 $cond__1
     return i32 %t22
 }
-function @YVolatileValue__YVolatileValue(%this : ptr) -> void [binding=weak, object=_ZN14YVolatileValueC1Ev] {
+function @YVolatileValue__YVolatileValue(%this : ptr) -> void [binding=weak, object=_ZN14YVolatileValueC1Ev, inline_hint=yes] {
   slot $this : ptr
 
   block ^entry:
@@ -77,7 +77,7 @@ function @YVolatileValue__YVolatileValue(%this : ptr) -> void [binding=weak, obj
     store i64 0, %t3
     return void
 }
-function @YChoiceOwner__YChoiceOwner(%this : ptr) -> void [binding=weak, object=_ZN12YChoiceOwnerC1Ev] {
+function @YChoiceOwner__YChoiceOwner(%this : ptr) -> void [binding=weak, object=_ZN12YChoiceOwnerC1Ev, inline_hint=yes] {
   slot $this : ptr
 
   block ^entry:

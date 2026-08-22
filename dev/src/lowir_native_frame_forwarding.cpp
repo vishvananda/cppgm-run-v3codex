@@ -163,6 +163,7 @@ bool parse_reload(
   const MirInstruction & load = instructions[start + 1];
   if(store.opcode != MirInstruction::MI_STORE ||
      load.opcode != MirInstruction::MI_LOAD ||
+     store.volatile_access || load.volatile_access ||
      store.type != load.type || data_layout::type_width(store.type) > 64 ||
      store.operands.size() != 2 || load.operands.size() != 2 ||
      store.operands[0].kind != MirOperand::OP_FRAME ||
@@ -198,6 +199,7 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
     for(std::size_t j = 0; j < instructions.size(); ++j) {
       const MirInstruction & instruction = instructions[j];
       if(instruction.opcode == MirInstruction::MI_STORE &&
+         !instruction.volatile_access &&
          instruction.operands.size() == 2 &&
          instruction.operands[0].kind == MirOperand::OP_FRAME &&
          instruction.operands[1].kind == MirOperand::OP_REG) {
@@ -218,6 +220,7 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
       }
       if(instruction.operands.size() != 2) continue;
       if(instruction.opcode == MirInstruction::MI_LOAD &&
+         !instruction.volatile_access &&
          instruction.operands[0].kind == MirOperand::OP_REG &&
          instruction.operands[1].kind == MirOperand::OP_FRAME) {
         const MirOperand & operand = instruction.operands[1];

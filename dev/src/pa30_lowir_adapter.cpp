@@ -549,6 +549,7 @@ void AdaptInstruction(const Instruction& source,
 	if (source.source_type.kind != LOW_INVALID)
 		target.source_type = AdaptType(source.source_type);
 	target.op = AdaptOperation(source.op);
+	target.volatile_access = source.volatile_access;
 	AdaptOperand(source.first, program, function, values, literals, telemetry,
 		&target.first);
 	AdaptOperand(source.second, program, function, values, literals, telemetry,

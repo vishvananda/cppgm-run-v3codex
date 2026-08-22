@@ -857,6 +857,8 @@ protected:
 			const LowType type = derived.LowerStorageType(record.type);
 			Instruction store(Instruction::STORE);
 			store.type = type;
+			store.volatile_access = !derived.IsReferenceType(record.type) &&
+				derived.TypeIsVolatile(record.type);
 			const Operand value = derived.IsReferenceType(record.type) ?
 				derived.AddressOfStorage(derived.LowerStorage(children[0])) :
 				derived.LowerInitializerConvertedValue(children[0], type);

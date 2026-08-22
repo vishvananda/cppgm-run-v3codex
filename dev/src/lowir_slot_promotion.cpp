@@ -41,8 +41,9 @@ std::vector<unsigned char> find_promotable_slots(
       const Operand * values[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(values[k]->kind == Operand::OP_SLOT &&
-          !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)) &&
+           (ins.volatile_access ||
+            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
+              (ins.kind == Instruction::IK_STORE && k == 1))) &&
            eligible[values[k]->slot]) {
           eligible[values[k]->slot] = 0;
           --*count;

@@ -37,8 +37,9 @@ bool remove_dead_slots(Function * function, Stats * stats)
       const Operand * values[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(values[k]->kind == Operand::OP_SLOT &&
-           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)))
+           (ins.volatile_access ||
+            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
+              (ins.kind == Instruction::IK_STORE && k == 1))))
           escaped[values[k]->slot] = 1;
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_SLOT)
@@ -145,6 +146,14 @@ bool local_slot_forward(Function * function, Stats * stats)
           ins.kind == Instruction::IK_ATOMIC_STORE) &&
          ins.second.kind != Operand::OP_SLOT)
         std::fill(has_value.begin(), has_value.end(), 0);
+      if(ins.volatile_access) {
+        if(ins.kind == Instruction::IK_STORE &&
+           ins.second.kind == Operand::OP_SLOT)
+          has_value[ins.second.slot] = 0;
+        if(kept != j) instructions[kept] = std::move(ins);
+        ++kept;
+        continue;
+      }
       if(ins.kind == Instruction::IK_STORE && ins.second.kind == Operand::OP_SLOT) {
         values[ins.second.slot] = ins.first;
         has_value[ins.second.slot] = 1;
@@ -243,8 +252,9 @@ bool forward_single_store_slots(Function * function, Stats * stats)
       for(std::size_t k = 0; k < 3; ++k) {
         const std::size_t slot = find_slot(*operands[k]);
         if(slot != kNoBlock &&
-           !((ins.kind == Instruction::IK_LOAD && k == 0) ||
-             (ins.kind == Instruction::IK_STORE && k == 1)))
+           (ins.volatile_access ||
+            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
+              (ins.kind == Instruction::IK_STORE && k == 1))))
           facts[slot].escaped = true;
       }
       for(std::size_t k = 0; k < ins.args.size(); ++k) {

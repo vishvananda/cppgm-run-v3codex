@@ -209,6 +209,7 @@ std::size_t debug_hash(const InstructionDebugLocation & debug)
 bool same_instruction(const Instruction & left, const Instruction & right)
 {
   if(left.kind != right.kind || left.dest != right.dest ||
+     left.volatile_access != right.volatile_access ||
      !same_type(left.type, right.type) ||
      !same_type(left.source_type, right.source_type) ||
      left.op != right.op || left.byte_count != right.byte_count ||
@@ -237,6 +238,7 @@ bool same_instruction(const Instruction & left, const Instruction & right)
 std::size_t instruction_hash(const Instruction & instruction)
 {
   std::size_t result = static_cast<std::size_t>(instruction.kind);
+  combine_hash(&result, instruction.volatile_access ? 1 : 0);
   combine_hash(&result, static_cast<std::uint32_t>(instruction.dest));
   combine_hash(&result, type_hash(instruction.type));
   combine_hash(&result, type_hash(instruction.source_type));

@@ -1,0 +1,40 @@
+declare function @observe(%value : i32) -> void [unwind=no]
+
+function @keeps_volatile_slot_accesses() -> i32 {
+  slot $flag : i32
+
+  block ^entry:
+    store volatile i32 0, $flag
+    store volatile i32 1, $flag
+    %first = load volatile i32 $flag
+    %second = load volatile i32 $flag
+    %sum = binary add i32 %first, %second
+    return i32 %sum
+}
+function @keeps_unused_volatile_load(%port : ptr) -> void {
+  block ^entry:
+    %discarded = load volatile i32 %port
+    return void
+}
+function @keeps_ordinary_elimination(%port : ptr) -> i32 {
+  block ^entry:
+    return i32 18
+}
+function @main() -> i32 [role=entry] {
+  slot $port : i32
+  slot $__o1inl1__flag : i32
+
+  block ^entry:
+    store i32 5, $port
+    %port_address = addr $port
+    %__o1inl0__discarded = load volatile i32 %port_address
+    store volatile i32 0, $__o1inl1__flag
+    store volatile i32 1, $__o1inl1__flag
+    %__o1inl1__first = load volatile i32 $__o1inl1__flag
+    %__o1inl1__second = load volatile i32 $__o1inl1__flag
+    %__o1inl1__sum = binary add i32 %__o1inl1__first, %__o1inl1__second
+    %total = binary add i32 %__o1inl1__sum, 18
+    %bad = cmp ne i32 %total, 20
+    %wide = convert zext i32 u8 %bad
+    return i32 %wide
+}

@@ -1113,13 +1113,20 @@ private:
 			IsReferenceType(program_.bindings[binding].type);
 	}
 
-	Operand LoadStorage(const Operand& storage, const LowType& type)
+	bool TypeIsVolatile(TypeId type) const
+	{
+		return type != kNoType &&
+			(program_.types.Get(type).cv & CV_VOLATILE) != 0;
+	}
+	Operand LoadStorage(const Operand& storage, const LowType& type,
+		bool volatile_access = false)
 	{
 		const Operand result = Temp(type);
 		Instruction load(Instruction::LOAD);
 		load.dest = result.id;
 		load.type = type;
 		load.first = storage;
+		load.volatile_access = volatile_access;
 		Emit(load);
 		return result;
 	}
@@ -1475,12 +1482,14 @@ private:
 			{
 				const LowType type = LowerExpressionType(record.type);
 				const Operand storage = LowerStorage(node);
-				result = LoadStorage(storage, type);
+				result = LoadStorage(storage, type,
+					TypeIsVolatile(record.type));
 			}
 		}
 		else if (record.kind == DUMP_SUBSCRIPT_EXPRESSION)
 			result = LoadStorage(LowerStorage(node),
-				LowerExpressionType(record.type));
+				LowerExpressionType(record.type),
+				TypeIsVolatile(record.type));
 		else if (record.kind == DUMP_MEMBER_EXPRESSION)
 			result = LowerMemberValue(node, record, children);
 		else if (record.kind == DUMP_INITIALIZER_LIST_BEGIN ||
@@ -1512,7 +1521,8 @@ private:
 			if (IsReferenceType(record.type) &&
 				!IsFunctionType(RemoveReference(record.type)))
 				result = LoadStorage(result,
-					LowerExpressionType(RemoveReference(record.type)));
+					LowerExpressionType(RemoveReference(record.type)),
+					TypeIsVolatile(RemoveReference(record.type)));
 		}
 		else if (record.kind == DUMP_NEW_EXPRESSION) result = LowerNewExpression(node, record, children);
 		else if (record.kind == DUMP_DELETE_EXPRESSION) result = LowerDeleteExpression(node, record, children);
@@ -1535,7 +1545,8 @@ private:
 			}
 			else if (record.category == VALUE_LVALUE || record.category == VALUE_XVALUE)
 				result = LoadStorage(LowerStorage(node),
-					LowerExpressionType(record.type));
+					LowerExpressionType(record.type),
+					TypeIsVolatile(record.type));
 			else if (record.base_projection_count != 0)
 				result = LowerProjectedClassPointer(
 					children[0], record.base_projection_count,
@@ -1793,8 +1804,11 @@ private:
 		const LowType type = bit_field == kNoBinding ?
 			LowerExpressionType(arena_.nodes[operand_node].type) :
 			BitFieldAccessType(program_.bindings[bit_field]);
+		const bool volatile_access = bit_field == kNoBinding &&
+			TypeIsVolatile(arena_.nodes[operand_node].type);
 		Operand old_value = bit_field == kNoBinding ?
-			LoadStorage(storage, type) : LoadBitField(bit_field, storage);
+			LoadStorage(storage, type, volatile_access) :
+			LoadBitField(bit_field, storage);
 		if (bit_field != kNoBinding) old_value.type = type;
 		Operand new_value;
 		if (IsPointerLikeType(arena_.nodes[operand_node].type))
@@ -1817,6 +1831,7 @@ private:
 			store.type = type;
 			store.first = new_value;
 			store.second = storage;
+			store.volatile_access = volatile_access;
 			Emit(store);
 		}
 		else

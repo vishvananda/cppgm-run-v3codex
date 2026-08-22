@@ -823,6 +823,7 @@ StorageFacts analyze_storage(
       }
       const bool has_dead_store_candidate =
         instruction.kind == Instruction::IK_STORE &&
+        !instruction.volatile_access &&
         operand_slots[1] != no_index &&
         operand_slots[0] != operand_slots[1] &&
         operand_slots[2] != operand_slots[1];
@@ -883,6 +884,7 @@ StorageFacts analyze_storage(
 
         if(scalar_state_indexes[slot_index] == no_index) continue;
         ScalarSlotState & state = scalar_states[scalar_state_indexes[slot_index]];
+        if(instruction.volatile_access) state.valid = false;
         const bool first = operand_slots[0] == slot_index;
         const bool second = operand_slots[1] == slot_index;
         const bool third = operand_slots[2] == slot_index;

@@ -142,7 +142,7 @@ rvalue-instruction:
 	KW_COPY type value
 	KW_PHI type OP_LSQUARE phi-incoming (OP_COMMA phi-incoming)* OP_RSQUARE
 	KW_ADDR addressable
-	KW_LOAD type storage
+	KW_LOAD KW_VOLATILE? type storage
 	KW_ATOMIC_LOAD type value OP_COMMA integer-literal
 	KW_INDEX type index-metadata? value OP_COMMA value
 	KW_UNARY unary-operator type value
@@ -161,7 +161,7 @@ phi-incoming:
 	block-name OP_COLON value
 
 store-instruction:
-	KW_STORE type value OP_COMMA storage
+	KW_STORE KW_VOLATILE? type value OP_COMMA storage
 
 atomic-store-instruction:
 	KW_ATOMIC_STORE type value OP_COMMA value OP_COMMA integer-literal

@@ -177,6 +177,7 @@ bool forward_one_staged_copy(
           continue;
         SlotPlan & plan = plans[address.slot];
         if(plan.disqualified) continue;
+        if(ins.volatile_access) { plan.disqualified = true; continue; }
         if(plumbing_definition(ins, operand)) continue;
         if(ins.kind == Instruction::IK_STORE && operand == 1) {
           const std::size_t bytes = scalar_store_bytes(ins.type);

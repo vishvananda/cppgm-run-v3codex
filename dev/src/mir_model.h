@@ -340,6 +340,8 @@ struct Instruction
   std::size_t byte_count = 0;
   std::size_t byte_alignment = 1;
   lowir_model::SymbolId tls_storage_symbol;
+  // A volatile access must survive machine-level forwarding and elision.
+  bool volatile_access = false;
   bool call_unwind_no = false;
   bool call_returns_noreturn = false;
   bool call_variadic = false;

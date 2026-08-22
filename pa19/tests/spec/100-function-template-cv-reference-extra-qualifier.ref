@@ -4,7 +4,7 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   slot $tmpobj__2 : obj<8x8>
 
   block ^entry:
-    store i32 4, $value
+    store volatile i32 4, $value
     %t1 = addr $tmpobj__2
     %t2 = addr $value
     %t3 = call obj<8x8> @cref_like(%t2)
@@ -26,7 +26,18 @@ function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
     %t7 = load i32 $cond__1
     return i32 %t7
 }
-function @ref_view_int_const_volatile___get(%this : ptr) -> ptr [binding=weak, object=_ZNK8ref_viewIVKiE3getEv] {
+function @cref_like(%value : ptr [pass=reference]) -> obj<8x8> [binding=weak, object=_Z9cref_likeIViE8ref_viewIKT_ERS3_] {
+  slot $value : ptr
+  slot $retobj__1 : obj<8x8>
+
+  block ^entry:
+    store ptr %value, $value
+    %t1 = addr $retobj__1
+    %t2 = load ptr $value
+    call void @ref_view_int_const_volatile___ref_view_int_const_volatile_(%t1, %t2)
+    return obj<8x8> $retobj__1
+}
+function @ref_view_int_const_volatile___get(%this : ptr) -> ptr [binding=weak, object=_ZNK8ref_viewIVKiE3getEv, inline_hint=yes] {
   slot $this : ptr
 
   block ^entry:
@@ -36,18 +47,7 @@ function @ref_view_int_const_volatile___get(%this : ptr) -> ptr [binding=weak, o
     %t3 = load ptr %t2
     return ptr %t3
 }
-function @cref_like(%value : ptr [pass=reference]) -> obj<8x8> [binding=weak, object=_Z9cref_likeIViE8ref_viewIKT_ERS3_] {
-  slot $value : ptr
-  slot $retobj__1 : obj<8x8>
-
-  block ^entry:
-    store ptr %value, $value
-    %t1 = addr $retobj__1
-    %t2 = load ptr $value
-    call void @ref_view_int_const_volatile___ref_view(%t1, %t2)
-    return obj<8x8> $retobj__1
-}
-function @ref_view_int_const_volatile___ref_view(%this : ptr, %value : ptr [pass=reference]) -> void [binding=weak, object=_ZN8ref_viewIVKiEC1ERS0_] {
+function @ref_view_int_const_volatile___ref_view_int_const_volatile_(%this : ptr, %value : ptr [pass=reference]) -> void [binding=weak, object=_ZN8ref_viewIVKiEC1ERS0_, inline_hint=yes] {
   slot $this : ptr
   slot $value : ptr
 
@@ -60,4 +60,4 @@ function @ref_view_int_const_volatile___ref_view(%this : ptr, %value : ptr [pass
     store ptr %t1, %t3
     return void
 }
-alias object _ZN8ref_viewIVKiEC2ERS0_ = @ref_view_int_const_volatile___ref_view
+alias object _ZN8ref_viewIVKiEC2ERS0_ = @ref_view_int_const_volatile___ref_view_int_const_volatile_

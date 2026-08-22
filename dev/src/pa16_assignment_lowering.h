@@ -333,6 +333,8 @@ public:
 
 		Operand storage;
 		Operand value;
+		const bool volatile_access =
+			derived.TypeIsVolatile(derived.arena_.nodes[children[0]].type);
 		if (op == OP_ASS)
 		{
 			bool union_member = false;
@@ -355,7 +357,8 @@ public:
 			derived.IsPointerLikeType(derived.arena_.nodes[children[0]].type))
 		{
 			storage = derived.LowerStorage(children[0]);
-			const Operand left = derived.LoadStorage(storage, LowPtr());
+			const Operand left =
+				derived.LoadStorage(storage, LowPtr(), volatile_access);
 			value = derived.ApplyPointerOffset(left,
 				derived.LowerValue(children[1]),
 				derived.PointeeType(derived.arena_.nodes[children[0]].type),
@@ -364,7 +367,8 @@ public:
 		else if (op == OP_PLUSASS && record.reverse_pointer_compound_assignment)
 		{
 			storage = derived.LowerStorage(children[0]);
-			const Operand offset = derived.LoadStorage(storage, type);
+			const Operand offset =
+				derived.LoadStorage(storage, type, volatile_access);
 			value = derived.ApplyPointerOffset(
 				derived.LowerValue(children[1]), offset,
 				derived.PointeeType(derived.arena_.nodes[children[1]].type), false);
@@ -378,6 +382,7 @@ public:
 			load.dest = left.id;
 			load.type = type;
 			load.first = storage;
+			load.volatile_access = volatile_access;
 			derived.Emit(load);
 			if (record.operand_type == kNoType)
 				throw std::runtime_error(
@@ -409,6 +414,7 @@ public:
 		store.type = type;
 		store.first = value;
 		store.second = storage;
+		store.volatile_access = volatile_access;
 		derived.Emit(store);
 		return return_storage ? storage : value;
 	}

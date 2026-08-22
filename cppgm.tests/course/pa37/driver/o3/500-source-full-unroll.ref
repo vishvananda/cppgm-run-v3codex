@@ -2,17 +2,17 @@ global @observed : i32 [binding=strong, object=_Z8observed] = zero
 
 function @main() -> i32 [role=entry, binding=strong, keep_alias=yes] {
   block ^entry:
-    store i32 0, @observed
-    store i32 1, @observed
-    store i32 3, @observed
-    store i32 6, @observed
+    store volatile i32 0, @observed
+    store volatile i32 1, @observed
+    store volatile i32 3, @observed
+    store volatile i32 6, @observed
     jump ^for_end_4
 
   block ^for_end_4:
     branch 1, ^land_rhs_8, ^land_short_9
 
   block ^land_rhs_8:
-    %t11 = load i32 @observed
+    %t11 = load volatile i32 @observed
     %t12 = cmp eq i32 %t11, 6
     jump ^land_end_10
 

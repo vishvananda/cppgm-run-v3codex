@@ -5,8 +5,8 @@ function @inc__touch() -> i32 [binding=strong, object=_ZN3inc5touchEv] {
 
   block ^entry:
     %t1 = convert sext i64 i32 7
-    store i64 %t1, @inc__counter
-    %t2 = load i64 @inc__counter
+    store volatile i64 %t1, @inc__counter
+    %t2 = load volatile i64 @inc__counter
     %t3 = convert sext i64 i32 7
     %t4 = cmp eq i64 %t2, %t3
     branch %t4, ^cond_then_1, ^cond_else_2

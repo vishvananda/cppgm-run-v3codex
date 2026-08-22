@@ -352,7 +352,8 @@ bool hoist_loop_invariants(lowir_model::Program * program,
           !unsupported_slot_operand(ins);
         if(optimization_level >= 2 && ins.kind == Instruction::IK_LOAD) {
           eligible = false;
-          if(ins.first.kind == Operand::OP_GLOBAL && !unknown_memory_write)
+          if(ins.volatile_access) { /* volatile loads never hoist */ }
+          else if(ins.first.kind == Operand::OP_GLOBAL && !unknown_memory_write)
             eligible = !std::binary_search(
               written_globals.begin(), written_globals.end(),
               ins.first.symbol);

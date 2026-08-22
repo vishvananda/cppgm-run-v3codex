@@ -217,7 +217,8 @@ test of its rendered name.
 
 Required instructions:
 
-- `const`, `copy`, `phi`, `addr`, `load`, and `store`
+- `const`, `copy`, `phi`, `addr`, `load`, and `store`, including the
+  `load volatile`/`store volatile` forms that pin an observable access
 - `atomic_load`, `atomic_store`, `atomic_exchange`,
   `atomic_compare_exchange`, `atomic_add_fetch`, `atomic_thread_fence`, and
   `atomic_signal_fence`

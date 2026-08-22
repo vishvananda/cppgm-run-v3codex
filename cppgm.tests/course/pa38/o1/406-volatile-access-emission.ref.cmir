@@ -1,0 +1,40 @@
+machine_ir x86_64 <host-target>
+
+startup
+    call @main [args=()]
+    mov rdi, rax
+    exit
+
+function @spin_flag
+  abi
+    return i32 -> rax
+  frame
+    stack_size 16
+    scratch_bytes 0
+    slot $flag -> [rbp-<off0>] : i32
+
+  block ^entry
+    store.i32 [rbp-<off0>], 0
+    store.i32 [rbp-<off0>], 1
+    load.i32 r9, [rbp-<off0>]
+    load.i32 r8, [rbp-<off0>]
+    add r9, r8
+    sext.i32 r9
+    ret r9
+
+function @main
+  abi
+    return i64 -> rax
+  frame
+    stack_size 0
+    scratch_bytes 0
+
+  block ^entry
+    call @spin_flag [args=(), unwind=no]
+    sext.i32 rax
+    mov rdx, 2
+    cmp.i32 rax, rdx
+    setne rax
+    movzx rax, rax
+    zext.i8 rax
+    ret rax

@@ -391,7 +391,7 @@ void collect_load_locations(
       const Instruction & instruction =
         function.blocks[block].instructions[index];
       if(instruction.kind != Instruction::IK_LOAD ||
-         instruction.debug_location.present() ||
+         instruction.volatile_access || instruction.debug_location.present() ||
          !scalar_load_type(instruction.type)) continue;
       const AddressFact address = operand_address(
         instruction.first, addresses);
@@ -846,7 +846,7 @@ bool MemoryGVNSession::eliminate_redundant_loads(
         if(stats && call) ++stats->memory_gvn_eh_barriers;
       }
       if(instruction.kind == Instruction::IK_LOAD &&
-         !instruction.debug_location.present() &&
+         !instruction.volatile_access && !instruction.debug_location.present() &&
          scalar_load_type(instruction.type)) {
         const std::size_t memory_class = load_class(
           instruction, addresses, locations);
