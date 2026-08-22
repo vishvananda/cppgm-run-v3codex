@@ -8,14 +8,6 @@ function @read_object(%value : obj<8x8>) -> i64 {
     return i64 %result
 }
 function @main() -> i64 {
-  slot $argument : obj<8x8>
-  slot $__o1inl0__local : obj<8x8>
-
   block ^entry:
-    %argument_address = addr $argument
-    store i64 37, %argument_address
-    %__o1inl0__local_address = addr $__o1inl0__local
-    copyobj 8x8 $argument, %__o1inl0__local_address
-    %__o1inl0__result = load i64 %__o1inl0__local_address
-    return i64 %__o1inl0__result
+    return i64 37
 }

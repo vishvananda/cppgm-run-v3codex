@@ -299,17 +299,32 @@ bool promote_small_objects(Function * function, Stats * stats)
           candidate[source.slot];
         const bool destination_candidate = destination.known &&
           destination.slot < slot_count && candidate[destination.slot];
+        // The scalar rewrite turns the opposite operand into a load or store
+        // address, so it must be pointer-valued: an object passed by value
+        // has no address at this level.
+        const bool source_is_object_value =
+          instruction.first.kind == Operand::OP_TEMP &&
+          lowir_model::lowir_value_type(
+            *function, instruction.first.value).kind == lowir_model::LTK_OBJECT;
+        const bool destination_is_object_value =
+          instruction.second.kind == Operand::OP_TEMP &&
+          lowir_model::lowir_value_type(
+            *function, instruction.second.value).kind ==
+            lowir_model::LTK_OBJECT;
         if(source_candidate) {
           const LowType & type =
             lowir_model::lowir_slot_type(*function, source.slot);
-          if(!source.zero_offset || instruction.byte_count != type.storage_size)
+          if(!source.zero_offset ||
+             instruction.byte_count != type.storage_size ||
+             destination_is_object_value)
             invalid[source.slot] = 1;
         }
         if(destination_candidate) {
           const LowType & type =
             lowir_model::lowir_slot_type(*function, destination.slot);
           if(!destination.zero_offset ||
-             instruction.byte_count != type.storage_size)
+             instruction.byte_count != type.storage_size ||
+             source_is_object_value)
             invalid[destination.slot] = 1;
         }
         if(source_candidate && destination_candidate &&

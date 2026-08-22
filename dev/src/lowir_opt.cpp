@@ -2807,7 +2807,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
     }
-    if(level >= 2 && timed_function_pass(promote_small_objects, &function,
+    if(level >= 1 && timed_function_pass(promote_small_objects, &function,
         stats, &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
       timed_dce(&function, boundaries, stats);
       timed_function_pass(remove_dead_slots, &function, stats,

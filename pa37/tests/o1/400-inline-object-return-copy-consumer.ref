@@ -18,14 +18,7 @@ function @wrap(%p : ptr) -> obj<8x8> {
     return obj<8x8> $retobj__1
 }
 function @caller(%p : ptr, %out : ptr) -> void {
-  slot $__o1inl0__retobj__1 : obj<8x8>
-  slot $__o1inl0____o1inl0__retobj__1 : obj<8x8>
-
   block ^entry:
-    %__o1inl0__t1 = addr $__o1inl0__retobj__1
-    %__o1inl0____o1inl0__t1 = addr $__o1inl0____o1inl0__retobj__1
-    store ptr %p, %__o1inl0____o1inl0__t1
-    copyobj 8x8 $__o1inl0____o1inl0__retobj__1, %__o1inl0__t1
-    copyobj 8x8 $__o1inl0__retobj__1, %out
+    store ptr %p, %out
     return void
 }

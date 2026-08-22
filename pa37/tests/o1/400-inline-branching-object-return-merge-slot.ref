@@ -15,25 +15,17 @@ function @leaf(%cond : i1, %p : ptr) -> obj<8x8> {
     return obj<8x8> $retobj__1
 }
 function @caller(%cond : i1, %p : ptr, %out : ptr) -> void {
-  slot $__o1inl0__retobj__1 : obj<8x8>
-  slot $__o1inl0__retmergeobj__1 : obj<8x8>
-
   block ^entry:
     branch %cond, ^__o1inl0__then, ^__o1inl0__else
 
   block ^__o1inl0__then:
-    %__o1inl0__t1 = addr $__o1inl0__retobj__1
-    store ptr %p, %__o1inl0__t1
-    copyobj 8x8 $__o1inl0__retobj__1, $__o1inl0__retmergeobj__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__else:
-    %__o1inl0__t2 = addr $__o1inl0__retobj__1
-    store ptr 0, %__o1inl0__t2
-    copyobj 8x8 $__o1inl0__retobj__1, $__o1inl0__retmergeobj__1
     jump ^__o1inl0__cont
 
   block ^__o1inl0__cont:
-    copyobj 8x8 $__o1inl0__retmergeobj__1, %out
+    %t5 = phi ptr [^__o1inl0__then: %p, ^__o1inl0__else: 0]
+    store ptr %t5, %out
     return void
 }
