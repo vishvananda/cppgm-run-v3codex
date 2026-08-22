@@ -87,9 +87,13 @@ protected:
 			if (!BuildConstructorCleanup(
 				derived.arena_.nodes[children[i]], &cleanup)) continue;
 			InstallConstructorCleanup(cleanup, &active);
+			// Body statements from here on run inside the member cleanup
+			// region; an early return must pop it before leaving.
+			derived.constructor_body_cleanup_active_ = true;
 		}
 		if (active != kNoLowId && !derived.CurrentBlock().terminated)
 			derived.Emit(Instruction(Instruction::EH_END));
+		derived.constructor_body_cleanup_active_ = false;
 	}
 
 	bool ElidesNestedTemporaryConstruction(

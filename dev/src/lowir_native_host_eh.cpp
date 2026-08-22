@@ -514,7 +514,8 @@ HostEhRegionPlan analyze_host_eh_regions(
       }
       if(is_function_exit(instruction) && state != 0)
         throw std::logic_error(
-          "host EH protected region remains active at function exit");
+          "host EH protected region remains active at function exit: " +
+          function_name + " block " + block_name(block.id));
       if(is_unconditional_exit(instruction)) unconditional_exit = true;
     }
     if(!unconditional_exit && block_number + 1 < function.blocks.size()) {

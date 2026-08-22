@@ -101,6 +101,7 @@ public:
 		  current_class_value_boundary_(false), current_this_binding_(kNoBinding), current_member_owner_(kNoEntity),
 		  destructor_return_target_(kNoLowId),
 		  destructor_return_routes_to_epilogue_(false),
+		  constructor_body_cleanup_active_(false),
 		  full_expression_cleanup_active_(false), full_expression_cleanup_dispatch_(kNoLowId),
 		  full_expression_cleanup_end_(kNoLowId), full_expression_linked_cleanup_dispatch_(kNoLowId),
 		  full_expression_cleanup_dispatch_reused_(false), full_expression_tracks_lifetime_state_(false),
@@ -2685,6 +2686,7 @@ private:
 	EntityId current_member_owner_;
 	BlockId destructor_return_target_;
 	bool destructor_return_routes_to_epilogue_, full_expression_cleanup_active_;
+	bool constructor_body_cleanup_active_;
 	BlockId full_expression_cleanup_dispatch_, full_expression_cleanup_end_, full_expression_linked_cleanup_dispatch_;
 	bool full_expression_cleanup_dispatch_reused_, full_expression_tracks_lifetime_state_, full_expression_uses_linked_dispatch_, full_expression_uses_branch_cleanup_, full_expression_cleanup_ready_, full_expression_deferred_cleanup_;
 	std::size_t full_expression_linked_action_cursor_;

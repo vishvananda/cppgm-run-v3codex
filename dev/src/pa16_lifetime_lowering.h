@@ -253,6 +253,8 @@ protected:
 			{
 				derived.FinishExceptionControlExit(closed_exception_handlers,
 					exception_regions);
+				if (derived.constructor_body_cleanup_active_)
+					derived.Emit(Instruction(Instruction::EH_END));
 				derived.FinishFunctionExceptionBoundaryNormalExit();
 				if (!returns_value)
 					derived.Emit(Instruction(Instruction::RETURN_VOID));
@@ -514,6 +516,8 @@ protected:
 		}
 		derived.FinishExceptionControlExit(
 			closed_exception_handlers, exception_regions);
+		if (derived.constructor_body_cleanup_active_)
+			derived.Emit(Instruction(Instruction::EH_END));
 		if (derived.destructor_return_routes_to_epilogue_)
 		{
 			if (derived.destructor_return_target_ == kNoLowId)
