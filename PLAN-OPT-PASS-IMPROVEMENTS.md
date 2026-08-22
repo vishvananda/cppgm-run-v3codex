@@ -2174,6 +2174,27 @@ wall on the host-built compiler.  The retained 7/128 policy passes the full
 5,397-test report and the PA39 audit has zero fatal findings.  Profitability
 selection remains separate from this required correctness fix.
 
+The same probe exposed an independent PA29 native-placement defect in the
+generated self compiler.  On a wide scalar boundary, the constrained-pressure
+path reserved only `r8` and `r9`; it could therefore allocate a temporary over
+a still-live `rdi` or `rsi` parameter.  The generated
+`GeneratedTokenCollector` constructor overwrote `this` while materializing a
+vtable address and the self compiler crashed in `Lexer::StartTokenSpelling`.
+The `wide-live-parameter-temporary-pressure` behavioral reducer preserves the
+public native-placement contract without requiring exact MIR comparison.
+Placement now reserves every allocator-managed live incoming register through
+the existing dense typed use count, including at a wide boundary.  This adds
+one O(1) branch per incoming register parameter and no string identity or
+additional scan.  The full report passes 5,398/5,398 and the PA39 audit remains
+zero-fatal.  A clean corrected 32-worker O3 self build took 18.32 seconds and
+230,256 KiB peak RSS; that compiler's interleaved frozen-source medians are
+14.38 seconds at `-O0` and 16.12 seconds at the default maximum level, at about
+370 MiB peak RSS.  The 11,850,352-byte compiler emits a 1,473,328-byte maximum
+object with 520,609 `.text*` bytes, 44,140 `.eh_frame` bytes, 18,256 LSDA bytes,
+and 2,668 defined symbols; its `-O0` object is 3,027,632 bytes with 770,778
+`.text*` bytes and 5,835 definitions.  These figures are the exact-self R11h
+policy baseline.
+
 #### R11i. Defer true EH grafting
 
 Inlining a callee with genuinely live EH regions requires remapping nested
@@ -2398,7 +2419,7 @@ Fill one row for every retained or rejected phase:
 | R11e | proven-no-unwind landing-block inlining | PA37 exact/source; PA30 exception-in-flight runtime | vs R11d: object -29,848 B, text -1,523 B, -105 definitions; basic-string destructor calls -192 | existing dense landing/no-unwind/EH summaries and budgets | 5,392/5,392; PA37 debug clean; zero fatal | final combined lane required | implementation complete; host O1 median 5.12 s |
 | R11f | post-eligibility weighted census, profile, and GNU effects audit | PA33 source; PA37 source/DCE positives and negatives | 53 declarations but 26 attributable live calls; 291/1,432 serialized definitions EH-bearing; O1 byte-identical | compact canonical effects enum; single-pass attribute collection | 5,395/5,395; zero fatal | diagnostic | complete; GNU `nothrow` absent and `basic_string` cleanup unannotated |
 | R11g | region-aware memory GVN, PRE, and native edge placement when justified | PA37 O2 memory EH positive/barrier/conflict; no rejected-prototype fixtures retained | memory: +70 eliminated loads, -296 B object, -318 B text; PRE +7,560 B object; placement +5,808 B object | shared compact EH states only for retained memory GVN; rejected prototypes removed | 5,396/5,396; zero fatal | required for each retained subphase | complete: memory retained; PRE and placement rejected |
-| R11h | post-harvest inliner profitability sweep | PA37 only for a retained policy change | exact-self maximum runtime plus object/text/EH deltas | one-variable bounded sweep; no production profiling strings | pending | final retained policy only | conditional on R11a--g |
+| R11h | post-harvest inliner profitability sweep; PA29 wide-live-register corrective | PA29 behavior/MIR and normative/Design Notes; PA37 only for a retained policy change | exact-self baseline maximum 16.12 s, O0 14.38 s; policy deltas pending | corrective uses existing dense typed use counts and one O(1) branch; sweep adds no production profiling strings | 5,398/5,398; zero fatal | corrected O3 self 18.32 s / 230,256 KiB; final retained-policy inception pending | correctness baseline complete; policy sweep active |
 | R11i | true EH-region grafting | PA37 only if justified by a residual profiled-hot population | separate genuine live-EH effect from dead-region work | no unbounded retry or private LowIR side channel | pending | required if retained | deferred pending R11f/h residual census |
 
 ## Completion criteria

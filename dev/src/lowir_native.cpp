@@ -600,7 +600,7 @@ private:
       if(incoming_pool_reserved[i] &&
          (value.location.kind != MirOperand::OP_REG || value.location.reg != binding.reg))
         registers_.release(binding.reg);
-      if(!wide_gpr_boundary)
+      if(!wide_gpr_boundary || constrained_wide_pressure())
         reserve_direct_parameter_register(binding, value, uses);
       set_value(parameter.value, value);
     }

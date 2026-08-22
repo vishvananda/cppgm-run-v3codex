@@ -549,6 +549,9 @@ To complete PA29, implement these goals:
    must preserve the parameter across every intervening instruction that clobbers its
    incoming register, including a call. This requirement also applies at six or more
    integer or pointer parameters, where all incoming argument registers are occupied.
+   While such a parameter remains live, its incoming register must not be assigned
+   to a temporary result merely because the function has a wide parameter boundary.
+   The register becomes reusable only after the parameter's final selected use.
 
    When a frame-resident object or wide-integer chunk is assigned to a GPR
    argument, MIR should load that chunk directly from its frame location. It
@@ -714,6 +717,9 @@ strategies include:
 
 - keep incoming parameters and call results in their ABI registers until an
   emitted instruction invalidates that location
+- reserve every allocator-managed incoming register that still carries a live
+  parameter, including on a wide scalar boundary, and release it through the
+  ordinary typed use count after its final selected consumer
 - represent each instruction's fixed-register writes as a compact register
   mask and keep a scalar in an incoming register only when its live interval
   crosses none of those writes
