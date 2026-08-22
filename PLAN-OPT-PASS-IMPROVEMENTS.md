@@ -2465,7 +2465,7 @@ from inception, are:
 
 Both lanes match all 211 objects and the final compiler byte-for-byte.  The
 final implementation tree passes 5,406/5,406 report tests and the PA39 file
-audit has zero fatal findings and 31 advisory warnings.
+audit has zero fatal findings and 33 advisory warnings.
 
 #### R11 acceptance order
 
@@ -2571,9 +2571,13 @@ Build immutable baseline and candidate compiler copies before timing.  Do not
 build or test concurrently with the measurements.  Use
 `scripts/run_ab_compile_benchmark.py` with at least three load-screened ABBA
 blocks at every affected level.  Record wall, user, and peak RSS medians plus
-paired deltas.  Also run the frozen extended-tree
-`validate_perf_regression.py` check, whose default no-flag command exercises
-the maximum optimization level and gates on retired instructions and memory.
+paired deltas.  The frozen extended-tree `validate_perf_regression.py` is a
+BSD-time hardware-counter gate: on this Linux host its `/usr/bin/time -lp`
+invocation is unsupported and exits before compiling.  Do not treat that as a
+candidate failure or edit the frozen checkout.  Here the local GNU-time A/B
+runner, deterministic output/code-shape census, and inception peak-RSS gate
+provide the portable signals.  The default no-flag command is still compiled
+separately to exercise maximum-level routing.
 
 Reject or redesign a phase when:
 
@@ -2691,7 +2695,7 @@ Fill one row for every retained or rejected phase:
 | R11i | true EH-region grafting | no fixture or contract movement because the residual profile does not justify the feature | dead and no-unwind regions already handled; genuine live-EH population is not the measured hot constraint | avoids nested handler remapping, extra metadata, and an otherwise unjustified pass | covered by retained R11 report/audit | diagnostic disposition; final combined lane covers retained work | complete, deferred by R11f/h census and profile |
 | R11j | fold a branch whose selector is known from its sole incoming edge | PA37 O1 exact reducer and normative edge/phi limits | included in final combined -10,256 B object/-10,272 B text | cheap dense candidate scan; one existing typed CFG and one block walk only for candidates | 5,404/5,404 at retention; final 5,406/5,406, zero fatal | included in final O0/O3 lanes | complete, `6d32d926` |
 | R11k | retain storage-only derived addresses as typed MIR operands | PA29 structural/behavior reducer expanded across two correctness boundaries; one existing MIR reference moves; normative and Design Notes updated | combined R11j/k final maximum object 1,452,400 to 1,442,144 B; text 581,841 to 571,569 B | dense byte facts and precomputed clobbers; no string keys, rescans, or LowIR movement; final ABBA -4.59% wall/-4.78% user/-0.39% RSS | 5,405/5,405 after placement; final 5,406/5,406, zero fatal | O3 self 18.42 s; inception 59.05 s; 211 objects/final match | complete, `50032b61`, correctives `84784d8f` and `49cb90a5` |
-| R11l | preserve forwarded scalar parameters in extended ABI calls | PA29 structural/behavior reducer; PA29 call-lifetime contract and Design Note | final O0 object 3,027,632 to 3,025,760 B; text 918,793 to 916,882 B | one O(1) typed selected-home lookup per affected GPR argument; no new analysis | 5,406/5,406; zero fatal, 31 warnings | O0 self 20.00 s / inception 158.67 s; O3 self 18.42 s / inception 59.05 s; all 211 objects/final match | corrective complete, `ecb22eaa`; final maximum median 14.925 s |
+| R11l | preserve forwarded scalar parameters in extended ABI calls | PA29 structural/behavior reducer; PA29 call-lifetime contract and Design Note | final O0 object 3,027,632 to 3,025,760 B; text 918,793 to 916,882 B | one O(1) typed selected-home lookup per affected GPR argument; no new analysis | 5,406/5,406; zero fatal, 33 warnings | O0 self 20.00 s / inception 158.67 s; O3 self 18.42 s / inception 59.05 s; all 211 objects/final match | corrective complete, `ecb22eaa`; final maximum median 14.925 s |
 
 ## Completion criteria
 
