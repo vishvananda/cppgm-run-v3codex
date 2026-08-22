@@ -84,6 +84,25 @@ ControlFlowQueries::ControlFlowQueries(
 			AppendSuccessor(i, fallthrough, blocks);
 		}
 	}
+	// Interval-mark layout-backward edges: a spill point inside such a span
+	// can execute after later-emitted blocks have already run, so register
+	// contents there cannot be assumed by walk order.
+	backedge_covered_.assign(function.blocks.size(), 0);
+	std::vector<int> delta(function.blocks.size() + 1, 0);
+	for (std::size_t from = 0; from < successors_.size(); ++from)
+		for (std::size_t edge = 0; edge < successors_[from].size(); ++edge)
+		{
+			const std::size_t target = successors_[from][edge];
+			if (target > from) continue;
+			++delta[target];
+			--delta[from + 1];
+		}
+	int depth = 0;
+	for (std::size_t i = 0; i < backedge_covered_.size(); ++i)
+	{
+		depth += delta[i];
+		backedge_covered_[i] = depth > 0 ? 1 : 0;
+	}
 }
 
 void ControlFlowQueries::AppendSuccessor(std::size_t from,
@@ -174,6 +193,11 @@ bool ControlFlowQueries::SpillIsSafe(
 	lowir_model::ValueId value, std::size_t position) const
 {
 	if (CurrentBlockIsCyclic()) return false;
+	// A block inside a layout-backward edge span is reached again after
+	// later-layout blocks execute, so a spill store here may read a register
+	// those blocks have already repurposed.
+	if (current_block_ < backedge_covered_.size() &&
+		backedge_covered_[current_block_]) return false;
 	const std::vector<ValueUseSite>& uses = use_sites_[value];
 	for (std::size_t i = 0; i < uses.size(); ++i)
 	{

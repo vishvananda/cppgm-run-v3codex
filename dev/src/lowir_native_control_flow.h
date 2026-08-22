@@ -34,6 +34,9 @@ private:
 
 	std::vector<std::vector<std::size_t> > successors_;
 	std::vector<std::vector<ValueUseSite> > use_sites_;
+	// Blocks lying inside any layout-backward edge span [target, source]:
+	// such a block can be re-entered by blocks the walk has not emitted yet.
+	std::vector<unsigned char> backedge_covered_;
 	mutable std::vector<unsigned char> reachable_;
 	mutable std::vector<unsigned char> dominated_;
 	std::size_t current_block_;
