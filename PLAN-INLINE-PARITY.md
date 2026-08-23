@@ -319,3 +319,16 @@ source reshaping remains out of scope per the standing directive).
   standalone slice.  The census delta (-3.3% movement) is the PRIZE
   measurement for that redesign.  Tree reverted; frozen output
   byte-identical to eb619ca2.
+- L11 (Phase B disposition): leaf frame/rbp elision requires zero
+  stack adjustment and no callee-saved pushes, but the E5 census
+  stands — 96% of functions carry frames because the walk frame-homes
+  values — so the elidable population is ~4% of bodies until
+  placement improves.  Every remaining Phase B item (scratch widening
+  per L10, frame elision, the frame-traffic delta of L8) converges on
+  Phase C: liveness-based value placement for the post-inline class
+  with encoder scratch modeled explicitly, loop-carried phis in
+  registers first (E6), prototyped behind --stats-functions and
+  enabled class by class.  Phase C is the program's single open
+  front; its prize measurements are L4's N ~ 2.9 multiplier, L8's
+  6.92B ceremony bound and 34.7% frame-operand share, and L10's
+  -3.3% movement census.
