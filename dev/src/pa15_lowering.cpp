@@ -775,20 +775,37 @@ private:
 						program_, record.binding, record.text,
 						stats_ ? &stats_->abi : 0, &abi_context_)));
 		bool keep_global_class_address = false;
+		bool dynamic_initializer = false;
 		if (!SetExplicitVariableZero(record, &global) &&
 			!static_initializers_.Lower(action, thread_local_object, &global,
 			&needs_global_class_initializer_, &keep_global_class_address))
 		{
 			static_initializers_.SetZero(action.type, &global);
+			dynamic_initializer = true;
 			if (thread_local_object)
 				thread_local_dynamic_[action_index] = 1;
 			else namespace_initializers_.push_back(std::make_pair(action_index, true));
 		}
-		else if (keep_global_class_address) namespace_initializers_.push_back(
-			std::make_pair(action_index, false));
+		else if (keep_global_class_address)
+		{
+			dynamic_initializer = true;
+			namespace_initializers_.push_back(
+				std::make_pair(action_index, false));
+		}
 		if (action.destructor != kNoDumpEdge &&
 			!program_.bindings[action.object].thread_local_storage)
 			dynamic_finalizers_.push_back(action_index);
+		// A statically initialized const scalar can never be written, so its
+		// storage is readonly and later passes may fold or deduplicate its
+		// loads.  Class objects stay default: mutable members and lifecycle
+		// actions can write through a const complete object.
+		const TypeRecord& qualified = program_.types.Get(record.type);
+		if (!dynamic_initializer && !thread_local_object &&
+			action.destructor == kNoDumpEdge &&
+			(qualified.cv & CV_CONST) != 0 &&
+			(qualified.cv & (CV_VOLATILE | CV_ATOMIC)) == 0 &&
+			global.type.kind != LOW_OBJECT)
+			global.storage = Global::STORAGE_READONLY;
 		if (stats_) ++stats_->globals;
 		return global;
 	}
