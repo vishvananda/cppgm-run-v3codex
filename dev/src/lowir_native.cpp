@@ -29,6 +29,7 @@
 #include "lowir_native_return_lowering.h"
 #include "lowir_native_selection.h"
 #include "lowir_native_session.h"
+#include "lowir_native_spill_selection.h"
 #include "lowir_native_spill_slots.h"
 #include "lowir_native_stack.h"
 #include "lowir_native_value.h"
@@ -65,7 +66,8 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private parameter_detail::ParameterRegisterState<FunctionLowerer>,
                         private phi_detail::PhiLowering<FunctionLowerer>,
                         private location_planning::PlannedResidency<FunctionLowerer>,
-                        private return_detail::ReturnLowering<FunctionLowerer>
+                        private return_detail::ReturnLowering<FunctionLowerer>,
+                        private spill_detail::SpillSelection<FunctionLowerer>
 {
   friend class IntrinsicLowering<FunctionLowerer>;
   friend class AddressLowering<FunctionLowerer>;
@@ -82,6 +84,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
   friend class phi_detail::PhiLowering<FunctionLowerer>;
   friend class location_planning::PlannedResidency<FunctionLowerer>;
   friend class return_detail::ReturnLowering<FunctionLowerer>;
+  friend class spill_detail::SpillSelection<FunctionLowerer>;
 public:
   FunctionLowerer(const lowir_model::LowirProgram & program,
                   const lowir_model::LowirFunction & source,
@@ -101,6 +104,7 @@ public:
     values_.resize(source_.value_names.size());
     value_known_.assign(source_.value_names.size(), 0);
     cyclic_register_assumed_.assign(source_.value_names.size(), 0);
+    phi_planned_home_.assign(source_.value_names.size(), 0);
     incoming_parameter_registers_.resize(source_.value_names.size(), XR_RSP);
     incoming_parameter_register_known_.assign(source_.value_names.size(), 0);
     target_.symbol = source.symbol;
@@ -141,6 +145,9 @@ public:
       block.instructions.reserve(source_.blocks[i].instructions.size() +
         (i == 0 ? parameter_moves_.size() : 0));
       control_flow_.SelectBlock(i);
+      current_block_id_ = source_.blocks[i].id;
+      current_block_last_position_ = source_.blocks[i].instructions.empty() ?
+        position_ : position_ + source_.blocks[i].instructions.size() - 1;
       for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_) {
         const std::size_t first_machine_instruction = block.instructions.size();
         const Instruction & source_instruction =
@@ -226,6 +233,10 @@ private:
   std::vector<ValueFact> values_;
   std::vector<unsigned char> value_known_;
   std::vector<unsigned char> cyclic_register_assumed_;
+  // A phi holding its planned register outlives its counted uses exactly
+  // like an edge-live value: predecessor terminators keep writing the
+  // register until the planned interval end.
+  std::vector<unsigned char> phi_planned_home_;
   std::vector<long long> slot_offsets_;
   std::vector<unsigned char> slot_offset_known_;
   std::vector<X64Register> incoming_parameter_registers_;
@@ -235,6 +246,8 @@ private:
   MirOperand phi_cycle_scratch_;
   std::vector<MirInstruction> parameter_moves_;
   const Instruction * active_instruction_ = 0;
+  std::uint32_t current_block_id_ = 0;
+  std::size_t current_block_last_position_ = 0;
   std::size_t position_, frame_bytes_ = 0;
   std::size_t skipped_position_ = static_cast<std::size_t>(-1);
   bool uses_scalar_float_ = false;
@@ -288,6 +301,30 @@ private:
   bool crosses_call(lowir_model::ValueId value) const
   {
     return facts_.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
+  }
+  // A planned phi claims its register at construction time so every
+  // predecessor transfer targets the register directly.  Failure to
+  // reserve (a competing fixed reservation) falls back to the frame home.
+  bool try_claim_planned_phi_register(lowir_model::ValueId value,
+                                      const LowType & type)
+  {
+    const unsigned char entry = planned_register_entry(value);
+    if(entry == 0) return false;
+    // The constrained-wide-pressure binary path claims R15 as a fixed
+    // parameter destination, below the reservation discipline.
+    if(constrained_wide_pressure()) return false;
+    const X64Register planned = static_cast<X64Register>(entry - 1);
+    if(crosses_register_clobber(value, planned) ||
+       !registers_.try_reserve(planned)) return false;
+    define(value, type, reg_operand(planned));
+    phi_planned_home_[value] = 1;
+    if(stats_) ++stats_->phi_register_homes;
+    return true;
+  }
+  bool value_outlives_counted_uses(lowir_model::ValueId value) const
+  {
+    return facts_.has(value, FunctionFacts::VF_EDGE_LIVE) ||
+      phi_planned_home_[value] != 0;
   }
   bool constrained_wide_pressure() const { return source_.params.size() > 6 && source_.slots.empty() && !facts_.calls.empty(); }
   bool crosses_register_clobber(lowir_model::ValueId value,
@@ -801,24 +838,87 @@ private:
       return wide::literal_value(operand);
     return wide::storage_value(resolve(operand));
   }
+  bool block_transfers_into(lowir_model::ValueId phi) const
+  {
+    if(current_block_id_ >= phi_transfers_.size()) return false;
+    const std::vector<phi_detail::Transfer> & transfers =
+      phi_transfers_[current_block_id_];
+    for(std::size_t i = 0; i < transfers.size(); ++i)
+      if(transfers[i].destination == phi) return true;
+    return false;
+  }
+  bool value_is_block_transfer_source(lowir_model::ValueId value) const
+  {
+    if(current_block_id_ >= phi_transfers_.size()) return false;
+    const std::vector<phi_detail::Transfer> & transfers =
+      phi_transfers_[current_block_id_];
+    for(std::size_t i = 0; i < transfers.size(); ++i)
+      if(transfers[i].source.kind == Operand::OP_TEMP &&
+         transfers[i].source.value == value) return true;
+    return false;
+  }
+  // The active instruction's result may take over a backedge-fed phi home
+  // only when it cannot outlive this block's phi transfers: it dies before
+  // the terminator, or its sole use IS a transfer at the terminator (a
+  // deferred-compare read after the transfers would see the rewrite).
+  bool phi_home_takeover_tail_allowed() const
+  {
+    if(!active_instruction_ || !active_instruction_->dest.valid())
+      return false;
+    const lowir_model::ValueId dest = active_instruction_->dest;
+    if(facts_.has(dest, FunctionFacts::VF_EDGE_LIVE)) return false;
+    if(facts_.last_use[dest] == FunctionFacts::missing_position())
+      return false;
+    if(facts_.last_use[dest] < current_block_last_position_) return true;
+    return facts_.uses[dest] == 1 && value_is_block_transfer_source(dest);
+  }
+  bool phi_backedge_takeover_allowed(lowir_model::ValueId id) const
+  {
+    return value_holds_planned_register(id) && block_transfers_into(id) &&
+      phi_home_takeover_tail_allowed();
+  }
+  // A fully consumed planned phi awaiting its backedge rewrite may share
+  // its register with the value chain that computes the next iteration's
+  // value; any other co-resident blocks destructive reuse.
+  bool location_alias_blocks_reuse(lowir_model::ValueId id,
+                                   const MirOperand & location) const
+  {
+    if(location.kind != MirOperand::OP_REG) return true;
+    const bool takeover = phi_home_takeover_tail_allowed();
+    const std::vector<lowir_model::ValueId> & occupants =
+      live_locations_.gpr_values(location.reg);
+    for(std::size_t i = 0; i < occupants.size(); ++i) {
+      const lowir_model::ValueId occupant = occupants[i];
+      if(occupant == id) continue;
+      if(takeover && facts_.uses[occupant] == 0 &&
+         phi_planned_home_[occupant] != 0 &&
+         block_transfers_into(occupant)) continue;
+      return true;
+    }
+    return false;
+  }
   bool can_reuse(const Operand & operand) const
   {
     if(operand.kind != Operand::OP_TEMP) return false;
     const lowir_model::ValueId id = operand.value;
-    const bool destructive_parameter = value_known_[id] &&
+    if(facts_.uses[id] != 1 || !value_known_[id] ||
+       values_[id].location.kind != MirOperand::OP_REG ||
+       location_alias_blocks_reuse(id, values_[id].location))
+      return false;
+    // A phi home register is rewritten by this block's own backedge
+    // transfer, so the chain computing the next iteration's value may run
+    // destructively in the register; any other consumer may not.
+    if(phi_planned_home_[id] != 0) return phi_backedge_takeover_allowed(id);
+    const bool destructive_parameter =
       incoming_parameter_register_known_[id] &&
-      facts_.has(id, FunctionFacts::VF_DESTRUCTIVE_PARAMETER) &&
-      facts_.uses[id] == 1;
+      facts_.has(id, FunctionFacts::VF_DESTRUCTIVE_PARAMETER);
     const bool reusable_destructive_parameter = destructive_parameter &&
       !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT);
-    return facts_.uses[id] == 1 && value_known_[id] &&
-           (!values_[id].parameter || reusable_destructive_parameter) &&
+    return (!values_[id].parameter || reusable_destructive_parameter) &&
            !values_[id].fixed_register_home &&
            (!facts_.has(id, FunctionFacts::VF_EDGE_LIVE) ||
             facts_.has(id, FunctionFacts::VF_EXACT_FORWARD_EDGE) ||
-            reusable_destructive_parameter) &&
-           values_[id].location.kind == MirOperand::OP_REG &&
-           !has_live_location_alias(id, values_[id].location);
+            reusable_destructive_parameter);
   }
   void consume(const Operand & operand, X64Register retained = XR_RSP)
   {
@@ -827,10 +927,10 @@ private:
     if(facts_.uses[id] == 0)
       throw std::runtime_error("invalid temporary use count");
     const bool interval_over = facts_.uses[id] == 1 &&
-      facts_.has(id, FunctionFacts::VF_EDGE_LIVE) &&
+      value_outlives_counted_uses(id) &&
       planned_interval_over(id);
     const bool stops_being_live = (facts_.uses[id] == 1 &&
-      !facts_.has(id, FunctionFacts::VF_EDGE_LIVE)) || interval_over;
+      !value_outlives_counted_uses(id)) || interval_over;
     --facts_.uses[id];
     if(stops_being_live)
       live_locations_.remove(id, values_[id].location);
@@ -843,7 +943,7 @@ private:
          !value.parameter &&
          !value.fixed_register_home &&
          !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&
-         (!facts_.has(id, FunctionFacts::VF_EDGE_LIVE) || interval_over) &&
+         (!value_outlives_counted_uses(id) || interval_over) &&
          value.location.reg != retained && value.location.reg != XR_RAX &&
          !live_locations_.has_alias(id, value.location, false)) {
         registers_.release(value.location.reg);
@@ -902,8 +1002,7 @@ private:
   }
   bool value_is_live(lowir_model::ValueId value) const
   {
-    return facts_.uses[value] != 0 ||
-      facts_.has(value, FunctionFacts::VF_EDGE_LIVE);
+    return facts_.uses[value] != 0 || value_outlives_counted_uses(value);
   }
   void set_value(lowir_model::ValueId value, const ValueFact & replacement)
   {
@@ -995,118 +1094,6 @@ private:
       }
     }
     set_value_location(instruction.dest, home);
-  }
-  bool spill_candidate(lowir_model::ValueId value,
-                       bool needs_callee_saved) const
-  {
-    // Landing pads may read planned residents: EH never evicts them.
-    if(facts_.has_eh && value_holds_planned_register(value)) return false;
-    if(!value_known_[value] || values_[value].parameter ||
-       values_[value].location.kind != MirOperand::OP_REG ||
-       cyclic_register_assumed_[value] ||
-       !location_planning::managed_register(values_[value].location.reg) ||
-       (needs_callee_saved &&
-        !is_callee_saved(values_[value].location.reg)) ||
-       has_live_location_alias(value, values_[value].location) ||
-       current_instruction_uses(value)) return false;
-    return ((values_[value].has_spill_home &&
-             !control_flow_.CurrentBlockIsCyclic()) ||
-            control_flow_.SpillIsSafe(value, position_)) &&
-      facts_.uses[value] != 0;
-  }
-  void record_cyclic_register_assumptions(
-      const std::vector<MirInstruction> & instructions,
-      std::size_t first)
-  {
-    if(!control_flow_.CurrentBlockIsCyclic()) return;
-    for(std::size_t instruction = first;
-        instruction < instructions.size(); ++instruction)
-      for(std::size_t operand = 0;
-          operand < instructions[instruction].operands.size(); ++operand) {
-        const MirOperand & location =
-          instructions[instruction].operands[operand];
-        if(location.kind == MirOperand::OP_REG)
-          record_cyclic_register_assumption(location.reg);
-        else if(location.kind == MirOperand::OP_DEREF) {
-          record_cyclic_register_assumption(location.reg);
-          if(location.has_index)
-            record_cyclic_register_assumption(location.index);
-        }
-      }
-  }
-  void record_cyclic_register_assumption(X64Register reg)
-  {
-    const std::vector<lowir_model::ValueId> & occupants =
-      live_locations_.gpr_values(reg);
-    for(std::size_t value = 0; value < occupants.size(); ++value)
-      cyclic_register_assumed_[occupants[value]] = 1;
-  }
-  lowir_model::ValueId
-  find_spill_victim_full_scan(bool needs_callee_saved)
-  {
-    lowir_model::ValueId victim;
-    std::size_t farthest_use = 0;
-    for(std::size_t raw_value = 0; raw_value < values_.size(); ++raw_value) {
-      const lowir_model::ValueId value(static_cast<std::uint32_t>(raw_value));
-      if(stats_) ++stats_->spill_value_visits;
-      if(!spill_candidate(value, needs_callee_saved)) continue;
-      const std::size_t last = facts_.last_use[value] ==
-        FunctionFacts::missing_position() ? 0 : facts_.last_use[value];
-      if(!victim.valid() || last >= farthest_use) {
-        victim = value;
-        farthest_use = last;
-      }
-    }
-    return victim;
-  }
-  lowir_model::ValueId
-  find_spill_victim(bool needs_callee_saved)
-  {
-    lowir_model::ValueId victim;
-    std::size_t farthest_use = 0;
-    bool tied = false;
-    for(std::size_t reg = 0; reg < 16; ++reg) {
-      const std::vector<lowir_model::ValueId> & occupants =
-        live_locations_.gpr_values(static_cast<X64Register>(reg));
-      for(std::size_t i = 0; i < occupants.size(); ++i) {
-        if(stats_) ++stats_->spill_value_visits;
-        const lowir_model::ValueId value = occupants[i];
-        if(!value_known_[value])
-          throw std::logic_error("native live-location value is missing");
-        if(!spill_candidate(value, needs_callee_saved)) continue;
-        if(stats_) ++stats_->spill_candidates;
-        const std::size_t last = facts_.last_use[value] ==
-          FunctionFacts::missing_position() ? 0 : facts_.last_use[value];
-        if(!victim.valid() || last > farthest_use) {
-          victim = value;
-          farthest_use = last;
-          tied = false;
-        } else if(last == farthest_use) {
-          tied = true;
-        }
-      }
-    }
-    if(!tied) return victim;
-    if(stats_) ++stats_->spill_full_scan_fallbacks;
-    return find_spill_victim_full_scan(needs_callee_saved);
-  }
-  bool spill_one(bool needs_callee_saved, std::vector<MirInstruction> & out)
-  {
-    if(stats_) ++stats_->spill_attempts;
-    const lowir_model::ValueId victim = find_spill_victim(needs_callee_saved);
-    if(!victim.valid()) return false;
-    MirOperand home;
-    if(values_[victim].has_spill_home) home = values_[victim].spill_home;
-    else {
-      home = allocate_temp_frame_binding(
-        victim, values_[victim].type, THR_REGISTER_PRESSURE);
-      append_store(out, home, values_[victim].location, values_[victim].type);
-    }
-    const X64Register released = values_[victim].location.reg;
-    set_value_location(victim, home);
-    registers_.release(released);
-    if(stats_) ++stats_->spills;
-    return true;
   }
   bool reclaim_dead_parameter_register(bool needs_callee_saved)
   {
@@ -1349,7 +1336,9 @@ private:
       instruction.second.kind == Operand::OP_TEMP &&
       instruction.first.value == instruction.second.value &&
       facts_.uses[instruction.first.value] == 2 &&
-      !values_[instruction.first.value].parameter;
+      !values_[instruction.first.value].parameter &&
+      (phi_planned_home_[instruction.first.value] == 0 ||
+       phi_backedge_takeover_allowed(instruction.first.value));
     const bool safe_reuse = (can_reuse(instruction.first) || duplicate_last_use) &&
       !crosses_register_clobber(instruction.dest, left.reg);
     if(safe_reuse) return left;

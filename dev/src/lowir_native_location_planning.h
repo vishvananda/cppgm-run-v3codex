@@ -69,6 +69,10 @@ bool managed_register(X64Register reg);
 // plan_ends carries the extended interval end used for runtime release; it
 // covers layout-backward jump spans AND exception regions whose landing
 // pad lies before the region end, since unwinding is a backward edge too.
+// Phi destinations participate with an interval starting at the earliest
+// predecessor terminator (where the first transfer writes the home) and
+// always span-extended; they claim callee-saved registers first, one phi
+// per register, because DefinePhi reserves the home at construction time.
 std::vector<unsigned char> plan_value_registers(
     const lowir_model::LowirFunction & function,
     const analysis::FunctionFacts & facts,

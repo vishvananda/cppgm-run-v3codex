@@ -191,6 +191,7 @@ struct ProgramLoweringSession::Impl
     std::size_t scalar_loads, scalar_stores;
     std::size_t call_loads, call_stores, call_copies;
     std::size_t planned, grants, releases, spills, frame_homes;
+    std::size_t phi_planned, phi_homes;
   };
 
   FunctionCensusSnapshot TakeCensusSnapshot() const
@@ -215,6 +216,8 @@ struct ProgramLoweringSession::Impl
     snapshot.releases = stats->planned_interval_releases;
     snapshot.spills = stats->spills;
     snapshot.frame_homes = stats->temporary_frame_homes_created;
+    snapshot.phi_planned = stats->planned_phi_registers;
+    snapshot.phi_homes = stats->phi_register_homes;
     return snapshot;
   }
 
@@ -244,6 +247,8 @@ struct ProgramLoweringSession::Impl
     field("releases", after.releases - before.releases);
     field("spills", after.spills - before.spills);
     field("frame_homes", after.frame_homes - before.frame_homes);
+    field("phi_planned", after.phi_planned - before.phi_planned);
+    field("phi_homes", after.phi_homes - before.phi_homes);
     stats->function_census_lines.push_back(std::move(line));
   }
 

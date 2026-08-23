@@ -29,6 +29,20 @@ struct Move
   bool pending;
 };
 
+// Register-homed phi destinations add a hazard frame destinations never had:
+// a pending source may read a destination register through a dereference
+// base or index, not only by occupying the same location.
+bool move_reads_location(const Move & move,
+                         const mir_model::MirOperand & location)
+{
+  if(move.source_is_address) return false;
+  if(same_location(location, move.source)) return true;
+  return location.kind == mir_model::MirOperand::OP_REG &&
+    move.source.kind == mir_model::MirOperand::OP_DEREF &&
+    (move.source.reg == location.reg ||
+     (move.source.has_index && move.source.index == location.reg));
+}
+
 }  // namespace
 
 void plan_transfers(
@@ -81,8 +95,8 @@ void emit_parallel_transfers(const std::vector<Transfer> & transfers,
       if(!moves[i].pending) continue;
       bool destination_needed = false;
       for(std::size_t j = 0; j < moves.size(); ++j)
-        if(i != j && moves[j].pending && !moves[j].source_is_address &&
-           same_location(moves[i].destination, moves[j].source)) {
+        if(i != j && moves[j].pending &&
+           move_reads_location(moves[j], moves[i].destination)) {
           destination_needed = true;
           break;
         }
@@ -96,10 +110,21 @@ void emit_parallel_transfers(const std::vector<Transfer> & transfers,
       progressed = true;
     }
     if(progressed) continue;
-    std::size_t cycle = 0;
-    while(cycle < moves.size() && !moves[cycle].pending) ++cycle;
-    if(cycle == moves.size() ||
-       moves[cycle].source.kind != mir_model::MirOperand::OP_FRAME)
+    // Break the cycle at a move whose source reads a pending destination:
+    // buffering that source in the scratch slot unblocks the destination it
+    // reads.  A frame-destination cycle always reads through OP_FRAME
+    // sources; register-homed phis add OP_REG and OP_DEREF readers.
+    std::size_t cycle = moves.size();
+    for(std::size_t i = 0; i < moves.size() && cycle == moves.size(); ++i) {
+      if(!moves[i].pending) continue;
+      for(std::size_t j = 0; j < moves.size(); ++j)
+        if(i != j && moves[j].pending &&
+           move_reads_location(moves[i], moves[j].destination)) {
+          cycle = i;
+          break;
+        }
+    }
+    if(cycle == moves.size())
       throw std::logic_error("invalid native phi transfer cycle");
     const mir_model::MirOperand saved_source = moves[cycle].source;
     const mir_model::MirOperand scratch = emitter->PhiCycleScratch();
@@ -110,6 +135,10 @@ void emit_parallel_transfers(const std::vector<Transfer> & transfers,
       if(moves[i].pending && !moves[i].source_is_address &&
          same_location(moves[i].source, saved_source))
         moves[i].source = scratch;
+    // A dereference source is not location-identical to anything, so the
+    // chosen move redirects itself explicitly.
+    moves[cycle].source = scratch;
+    moves[cycle].source_is_address = false;
   }
 }
 

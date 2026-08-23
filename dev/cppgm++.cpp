@@ -1638,6 +1638,10 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.planned_edge_residencies
          << " planned_interval_releases="
          << native_stats.planned_interval_releases
+         << " planned_phi_registers="
+         << native_stats.planned_phi_registers
+         << " phi_register_homes="
+         << native_stats.phi_register_homes
          << " narrow_call_result_normalizations_omitted="
          << native_stats.narrow_call_result_normalizations_omitted
          << " redundant_integer_normalizations_omitted="
@@ -1806,6 +1810,10 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << native_stats.planned_edge_residencies
 			 << " planned_interval_releases="
 			 << native_stats.planned_interval_releases
+			 << " planned_phi_registers="
+			 << native_stats.planned_phi_registers
+			 << " phi_register_homes="
+			 << native_stats.phi_register_homes
 			 << " narrow_call_result_normalizations_omitted="
 			 << native_stats.narrow_call_result_normalizations_omitted
 			 << " redundant_integer_normalizations_omitted="

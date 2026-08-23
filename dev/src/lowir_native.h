@@ -105,6 +105,8 @@ struct Stats
   std::size_t planned_register_grants = 0;
   std::size_t planned_edge_residencies = 0;
   std::size_t planned_interval_releases = 0;
+  std::size_t planned_phi_registers = 0;
+  std::size_t phi_register_homes = 0;
   std::size_t narrow_call_result_normalizations_omitted = 0;
   std::size_t redundant_integer_normalizations_omitted = 0;
   std::size_t fused_integer_normalization_moves = 0;

@@ -58,6 +58,11 @@ struct FunctionFacts
   // The first LowIR position that destroys each physical GPR's incoming
   // value.  This is a fixed 16-entry table populated by analyze_function.
   std::vector<std::size_t> first_register_clobber;
+  // Every clobbering position per physical GPR, sorted ascending; a fixed
+  // 16-entry table.  Interval queries (phi planning spans positions outside
+  // [definition+1, last use], which live_across_clobbers cannot answer)
+  // lower_bound into these.
+  std::vector<std::vector<std::size_t> > clobber_positions;
   std::vector<const lowir_model::Instruction *> deferred_branch_comparisons;
   std::vector<unsigned> live_across_clobbers;
   bool has_va_start = false;

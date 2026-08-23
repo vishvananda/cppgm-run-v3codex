@@ -332,3 +332,50 @@ source reshaping remains out of scope per the standing directive).
   front; its prize measurements are L4's N ~ 2.9 multiplier, L8's
   6.92B ceremony bound and 34.7% frame-operand share, and L10's
   -3.3% movement census.
+- L12 (Phase C slice 1: loop-carried phi register homes + backedge
+  coalescing).  Mechanism: DefinePhi frame-homed every phi — E6's
+  per-iteration frame traffic.  plan_value_registers now plans
+  loop-carried phi destinations: interval [earliest predecessor
+  terminator, span-extended last use], exact per-register clobber
+  queries over the full interval (FunctionFacts::clobber_positions,
+  newly exported — live_across_clobbers cannot see the pre-definition
+  transfer segment or the span extension), phi-first claiming from
+  the R15 end of the callee-saved pool (one phi per register; pool
+  reservations do not nest), gated on the unavoidable header (no
+  layout-forward edge from before the header to after it).  DefinePhi
+  claims at construction with frame fallback (contested reservation,
+  or constrained_wide_pressure whose binary path takes R15 as a fixed
+  destination below the reservation discipline).  EmitPhiMove handles
+  register destinations; the parallel-transfer solver orders
+  deref-source reads against register destinations and breaks
+  register cycles through the frame scratch.  consume/value_is_live/
+  can_reuse treat a claimed phi as outliving its counted uses (the
+  backedge keeps writing the register), and the backedge chain
+  computes the next iteration's value destructively in the phi
+  register (can_reuse takeover) when the block feeds the phi and the
+  chain dies by the terminator.  Dose-response in honest Ir
+  (self-built compiling the frozen TU; baseline 44.700B): ALL phis
+  45.097B (+0.89% — merge phis in hot leaves buy ~one load but the
+  claimed register adds push/pop on every call; IsIdentifierBody
+  +19%); loop-carried only 44.824B; caller-saved routing REJECTED at
+  44.928B (starving R8/R9, the reactive pool's first choices, pushes
+  every loop temporary into fresh callee-saved registers); header
+  gate 44.715B; + backedge coalescing 44.628B; early-return gate arm
+  dropped (it forfeited rewrite_promoted_slots-class wins without
+  avoiding losses) → **44.625B, -0.17%**.  Census at the landing
+  point vs L9: MIR -210, movement -219, frozen text -142 bytes;
+  143 phis planned / 136 claimed on the frozen TU; per-function:
+  NamePath -16.4%, FindChild -6.5%, FunctionTemplateTypeIsDependent
+  -9.5%.  Honest ratio 44.625/20.851 = 2.140 (from 2.144).  Wall
+  A/B not measurable at this dose (-0.17% is under the P25c ~1%
+  noise floor; L5: wall converts at ~half the Ir delta).  Residual
+  regressors documented for the next slices: eliminate_dead_slot_
+  stores +7.8% and DumpArena::Add +17.8% — ceremony now binds
+  through reactive TEMPS in claimed loops (cursor loads and RBX/R12
+  overflow when loop demand exceeds the caller-saved supply); the
+  successors are load-path coalescing (mov (R),R for cursor
+  advances) and the managed-pool widening that L10/L11 already
+  scope.  Gates: report 5430/5430, zero-fatal audit, O3+O0
+  inception lanes MATCH, frozen self-reproduction byte-for-byte at
+  every measured point.  No pa37 reducer: no LowIR-level policy
+  changed.

@@ -46,6 +46,7 @@ protected:
                  const lowir_model::LowType & type) override
   {
     Derived & lowerer = static_cast<Derived &>(*this);
+    if(lowerer.try_claim_planned_phi_register(value, type)) return;
     const long long offset = lowerer.allocate_frame_binding(
       mir_model::MirFrameBinding::FB_TEMP,
       lowir_model::lowir_value_presentation(lowerer.source_, value), type);
@@ -93,6 +94,13 @@ protected:
                    std::vector<mir_model::MirInstruction> * out) override
   {
     Derived & lowerer = static_cast<Derived &>(*this);
+    if(destination.kind == mir_model::MirOperand::OP_REG) {
+      if(source_is_address)
+        lowerer.append_address(*out, destination.reg, source);
+      else
+        lowerer.move_value_to_register(*out, destination.reg, source, type);
+      return;
+    }
     if(selection::is_scalar_float(type)) {
       if(source.kind == mir_model::MirOperand::OP_XMM)
         build::append_float_move(*out, destination, source, type);

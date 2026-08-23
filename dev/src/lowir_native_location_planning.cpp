@@ -122,6 +122,107 @@ bool has_xmm_headroom(const allocation::XmmPool & xmms)
   return false;
 }
 
+struct Candidate
+{
+  lowir_model::ValueId value;
+  std::size_t definition;
+  std::size_t end;
+  bool crossing;
+  bool is_phi;
+};
+
+// A phi interval spans positions the per-value clobber mask never covered
+// (transfers before the linearized definition, span extension past the last
+// use), so phi claims query the clobber index over the exact interval.
+bool clobbered_in_interval(const analysis::FunctionFacts & facts,
+                           X64Register reg,
+                           std::size_t start, std::size_t end)
+{
+  const std::size_t index = static_cast<std::size_t>(reg);
+  if(index >= facts.clobber_positions.size()) return true;
+  const std::vector<std::size_t> & positions = facts.clobber_positions[index];
+  const std::vector<std::size_t>::const_iterator clobber =
+    std::lower_bound(positions.begin(), positions.end(), start);
+  return clobber != positions.end() && *clobber <= end;
+}
+
+// The reactive pool prefers RBX, R12, R13 in that order, so the planner
+// claims from the opposite end; the pools only meet under real pressure.
+// R14 and R15 extend coverage after the original three so earlier plans
+// keep their registers.  Non-crossing call-free intervals ride the
+// caller-saved pair instead of competing for preserved registers.
+// Phis claim first: a phi home is reserved at construction time, before
+// the walk, so its register is occupied from function entry to interval
+// end and cannot be shared with a second phi (the pool rejects nested
+// reservations).  Phis claim callee-saved only: routing call-free phi
+// intervals through R9/R8 measured WORSE (44.93B vs 44.82B honest Ir) —
+// starving the reactive pool's first choices pushes every loop temporary
+// into fresh callee-saved registers instead.  Ordinary candidates may
+// still follow a phi on the same register after its interval releases.
+void assign_candidate_registers(
+    const std::vector<Candidate> & candidates,
+    const analysis::FunctionFacts & facts,
+    std::vector<unsigned char> * plan,
+    std::vector<std::size_t> * plan_ends,
+    Stats * stats)
+{
+  static const X64Register kPool[] =
+    {XR_R13, XR_R12, XR_RBX, XR_R14, XR_R15};
+  static const X64Register kCallerPool[] = {XR_R9, XR_R8};
+  std::size_t busy_until[sizeof(kPool) / sizeof(kPool[0])] = {0};
+  std::size_t caller_busy_until[sizeof(kCallerPool) /
+                                sizeof(kCallerPool[0])] = {0};
+  bool phi_claimed[sizeof(kPool) / sizeof(kPool[0])] = {false};
+  // Phis iterate the pool from the far end (R15 first): the ordinary pass
+  // claims R13-first and the reactive pool RBX-first, so far-end claims
+  // displace the fewest other residents.
+  for(std::size_t i = 0; i < candidates.size(); ++i) {
+    const Candidate & candidate = candidates[i];
+    if(!candidate.is_phi) continue;
+    for(std::size_t reg = sizeof(kPool) / sizeof(kPool[0]); reg-- > 0;) {
+      if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
+      if(phi_claimed[reg]) continue;
+      if(clobbered_in_interval(facts, kPool[reg],
+                               candidate.definition, candidate.end))
+        continue;
+      phi_claimed[reg] = true;
+      busy_until[reg] = std::max(busy_until[reg], candidate.end + 1);
+      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
+        static_cast<unsigned char>(kPool[reg]) + 1;
+      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
+        candidate.end;
+      if(stats) {
+        ++stats->planned_value_registers;
+        ++stats->planned_phi_registers;
+      }
+      break;
+    }
+  }
+  for(std::size_t i = 0; i < candidates.size(); ++i) {
+    const Candidate & candidate = candidates[i];
+    if(candidate.is_phi) continue;
+    const unsigned crossed = facts.live_across_clobbers[
+      static_cast<std::uint32_t>(candidate.value)];
+    const X64Register * pool = candidate.crossing ? kPool : kCallerPool;
+    std::size_t * busy = candidate.crossing ? busy_until : caller_busy_until;
+    const std::size_t pool_size = candidate.crossing ?
+      sizeof(kPool) / sizeof(kPool[0]) :
+      sizeof(kCallerPool) / sizeof(kCallerPool[0]);
+    for(std::size_t reg = 0; reg < pool_size; ++reg) {
+      if(facts.has_i128_atomic && pool[reg] == XR_RBX) continue;
+      if(busy[reg] > candidate.definition) continue;
+      if(crossed & analysis::register_mask(pool[reg])) continue;
+      busy[reg] = candidate.end + 1;
+      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
+        static_cast<unsigned char>(pool[reg]) + 1;
+      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
+        candidate.end;
+      if(stats) ++stats->planned_value_registers;
+      break;
+    }
+  }
+}
+
 }  // namespace
 
 // Layout backedge spans mirror `ControlFlowQueries` spill safety: a
@@ -157,8 +258,22 @@ std::vector<unsigned char> plan_value_registers(
     block_by_id[id] = block;
   }
   const std::size_t function_end = position;
+  // A phi's register is written at every predecessor terminator, so its
+  // occupancy starts at the earliest transfer, not at the header position.
+  // Only loop-carried phis (an incoming transfer at or after the phi in
+  // layout order) qualify: a straight-line merge phi saves one load per
+  // execution but a claimed callee-saved register costs prologue/epilogue
+  // ceremony on every call, which measured as a net dynamic regression.
+  std::vector<std::size_t> phi_transfer_start(
+    function.value_names.size(), FunctionFacts::missing_position());
+  std::vector<unsigned char> phi_loop_carried(function.value_names.size(), 0);
+  std::vector<std::size_t> phi_header_start(
+    function.value_names.size(), FunctionFacts::missing_position());
   std::vector<std::pair<std::size_t, std::size_t> > spans;
   std::vector<std::pair<std::size_t, std::size_t> > open_regions;
+  // Bypass evidence for the unavoidable-header gate: every layout-forward
+  // edge (source position, target start).
+  std::vector<std::pair<std::size_t, std::size_t> > forward_edges;
   position = 0;
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     const std::size_t end_of_block =
@@ -167,6 +282,27 @@ std::vector<unsigned char> plan_value_registers(
         i < function.blocks[block].instructions.size(); ++i, ++position) {
       const lowir_model::Instruction & ins =
         function.blocks[block].instructions[i];
+      if(ins.kind == lowir_model::Instruction::IK_PHI) {
+        if(!ins.dest.valid()) continue;
+        std::size_t & start = phi_transfer_start[ins.dest];
+        start = position;
+        phi_header_start[ins.dest] = block_start[block];
+        for(std::size_t incoming = 0;
+            incoming + 1 < ins.args.size(); incoming += 2) {
+          if(ins.args[incoming].kind != lowir_model::Operand::OP_LABEL)
+            continue;
+          const std::uint32_t id = ins.args[incoming].block;
+          const std::size_t predecessor = id < block_by_id.size() ?
+            block_by_id[id] : function.blocks.size();
+          if(predecessor >= function.blocks.size() ||
+             function.blocks[predecessor].instructions.empty()) continue;
+          const std::size_t terminator = block_start[predecessor] +
+            function.blocks[predecessor].instructions.size() - 1;
+          start = std::min(start, terminator);
+          if(terminator >= position) phi_loop_carried[ins.dest] = 1;
+        }
+        continue;
+      }
       if(ins.kind == lowir_model::Instruction::IK_EH_TRY ||
          ins.kind == lowir_model::Instruction::IK_EH_CLEANUP) {
         std::size_t pad_start = function_end;
@@ -208,6 +344,9 @@ std::vector<unsigned char> plan_value_registers(
           id < block_by_id.size() ? block_by_id[id] : function.blocks.size();
         if(target < function.blocks.size() && target <= block)
           spans.push_back(std::make_pair(block_start[target], end_of_block));
+        else if(target < function.blocks.size())
+          forward_edges.push_back(
+            std::make_pair(position, block_start[target]));
       }
     }
   }
@@ -216,23 +355,43 @@ std::vector<unsigned char> plan_value_registers(
     if(open_regions[i].first < function_end)
       spans.push_back(std::make_pair(open_regions[i].first, function_end));
 
-  struct Candidate
-  {
-    lowir_model::ValueId value;
-    std::size_t definition;
-    std::size_t end;
-    bool crossing;
-  };
   std::vector<Candidate> candidates;
   for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
     const lowir_model::ValueId value(static_cast<std::uint32_t>(raw));
+    bool is_phi = phi_loop_carried[raw] != 0;
+    // The unavoidable-header gate: claim a register only when no
+    // layout-forward edge jumps from before the phi's header to after it.
+    // A jumped-over loop may be dynamically cold while the function stays
+    // hot, and then the claimed callee-saved register's prologue/epilogue
+    // ceremony taxes every call for a loop that rarely runs (measured:
+    // IsIdentifierBody's guarded Annex-E search, +19% dynamic
+    // instructions).  Early returns before the header do not suppress:
+    // that arm measured as forgone wins, not avoided losses.
+    if(is_phi) {
+      const std::size_t header = phi_header_start[raw];
+      for(std::size_t edge = 0;
+          edge < forward_edges.size(); ++edge)
+        if(forward_edges[edge].first < header &&
+           forward_edges[edge].second > header) {
+          is_phi = false;
+          break;
+        }
+    }
+    // A merge phi is written before its linearized definition, so it can
+    // never ride the ordinary interval model; only loop-carried phis are
+    // candidates, and only through the phi pass.
+    if(phi_transfer_start[raw] != FunctionFacts::missing_position() &&
+       !is_phi)
+      continue;
+    // A register-resident phi turns every storage-address use into a direct
+    // [reg] operand, so the storage-address exclusion does not apply to phis.
     if(facts.definition[raw] == FunctionFacts::missing_position() ||
        facts.last_use[raw] == FunctionFacts::missing_position() ||
        facts.uses[raw] < 1 ||
        facts.has(value, FunctionFacts::VF_PARAMETER) ||
        facts.has(value, FunctionFacts::VF_LOOP_INVARIANT) ||
        facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT) ||
-       facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS))
+       (!is_phi && facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS)))
       continue;
     // Non-crossing values ride caller-saved registers over call-free
     // intervals.  Unwinding only leaves a call, so a call-free interval is
@@ -251,10 +410,15 @@ std::vector<unsigned char> plan_value_registers(
       continue;
     Candidate candidate;
     candidate.value = value;
-    candidate.definition = facts.definition[raw];
+    candidate.definition = is_phi ?
+      std::min(facts.definition[raw], phi_transfer_start[raw]) :
+      facts.definition[raw];
     candidate.end = facts.last_use[raw];
     candidate.crossing = facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
-    if(facts.has(value, FunctionFacts::VF_EDGE_LIVE)) {
+    candidate.is_phi = is_phi;
+    // Phis are edge-live by construction (written at predecessor
+    // terminators), whether or not any read crosses a block boundary.
+    if(is_phi || facts.has(value, FunctionFacts::VF_EDGE_LIVE)) {
       bool grew = true;
       while(grew) {
         grew = false;
@@ -267,8 +431,9 @@ std::vector<unsigned char> plan_value_registers(
       }
     }
     // The extended interval may have grown over a call the counted uses
-    // never crossed; a caller-saved resident cannot survive that.
-    if(!candidate.crossing) {
+    // never crossed; a caller-saved resident cannot survive that.  Phis
+    // ride the callee-saved pool, so a call-spanning interval is fine.
+    if(!is_phi && !candidate.crossing) {
       const std::vector<std::size_t>::const_iterator call =
         std::lower_bound(facts.calls.begin(), facts.calls.end(),
                          candidate.definition);
@@ -284,40 +449,7 @@ std::vector<unsigned char> plan_value_registers(
                  static_cast<std::uint32_t>(left.value) <
                    static_cast<std::uint32_t>(right.value));
             });
-
-  // The reactive pool prefers RBX, R12, R13 in that order, so the planner
-  // claims from the opposite end; the pools only meet under real pressure.
-  // R14 and R15 extend coverage after the original three so earlier plans
-  // keep their registers.  Non-crossing call-free intervals ride the
-  // caller-saved pair instead of competing for preserved registers.
-  static const X64Register kPool[] =
-    {XR_R13, XR_R12, XR_RBX, XR_R14, XR_R15};
-  static const X64Register kCallerPool[] = {XR_R9, XR_R8};
-  std::size_t busy_until[sizeof(kPool) / sizeof(kPool[0])] = {0};
-  std::size_t caller_busy_until[sizeof(kCallerPool) /
-                                sizeof(kCallerPool[0])] = {0};
-  for(std::size_t i = 0; i < candidates.size(); ++i) {
-    const Candidate & candidate = candidates[i];
-    const unsigned crossed = facts.live_across_clobbers[
-      static_cast<std::uint32_t>(candidate.value)];
-    const X64Register * pool = candidate.crossing ? kPool : kCallerPool;
-    std::size_t * busy = candidate.crossing ? busy_until : caller_busy_until;
-    const std::size_t pool_size = candidate.crossing ?
-      sizeof(kPool) / sizeof(kPool[0]) :
-      sizeof(kCallerPool) / sizeof(kCallerPool[0]);
-    for(std::size_t reg = 0; reg < pool_size; ++reg) {
-      if(facts.has_i128_atomic && pool[reg] == XR_RBX) continue;
-      if(busy[reg] > candidate.definition) continue;
-      if(crossed & analysis::register_mask(pool[reg])) continue;
-      busy[reg] = candidate.end + 1;
-      plan[static_cast<std::uint32_t>(candidate.value)] =
-        static_cast<unsigned char>(pool[reg]) + 1;
-      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
-        candidate.end;
-      if(stats) ++stats->planned_value_registers;
-      break;
-    }
-  }
+  assign_candidate_registers(candidates, facts, &plan, plan_ends, stats);
   return plan;
 }
 

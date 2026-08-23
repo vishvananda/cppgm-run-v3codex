@@ -727,6 +727,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   for(std::size_t value = 0; value < value_count; ++value)
     if(facts.uses[value] != 1)
       facts.value_flags[value] &= ~FunctionFacts::VF_DESTRUCTIVE_PARAMETER;
+  facts.clobber_positions = std::move(clobber_positions);
   return facts;
 }
 
