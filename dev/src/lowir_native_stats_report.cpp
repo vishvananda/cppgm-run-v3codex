@@ -73,4 +73,11 @@ void report_code_shape_stats(std::ostream & output, const Stats & stats)
   }
 }
 
+
+void report_function_census(std::ostream & output, const Stats & stats)
+{
+  for(std::size_t i = 0; i < stats.function_census_lines.size(); ++i)
+    output << stats.function_census_lines[i] << '\n';
+}
+
 }

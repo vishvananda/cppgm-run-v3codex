@@ -185,12 +185,77 @@ struct ProgramLoweringSession::Impl
         std::chrono::steady_clock::now() - started).count());
   }
 
+  struct FunctionCensusSnapshot
+  {
+    std::size_t loads, stores, copies;
+    std::size_t scalar_loads, scalar_stores;
+    std::size_t call_loads, call_stores, call_copies;
+    std::size_t planned, grants, releases, spills, frame_homes;
+  };
+
+  FunctionCensusSnapshot TakeCensusSnapshot() const
+  {
+    FunctionCensusSnapshot snapshot;
+    snapshot.loads = snapshot.stores = snapshot.copies = 0;
+    for(std::size_t reason = 0; reason < NMR_COUNT; ++reason) {
+      snapshot.loads += stats->movement_loads_by_reason[reason];
+      snapshot.stores += stats->movement_stores_by_reason[reason];
+      snapshot.copies += stats->movement_register_copies_by_reason[reason];
+    }
+    snapshot.scalar_loads =
+      stats->movement_loads_by_reason[NMR_SCALAR_TEMPORARY];
+    snapshot.scalar_stores =
+      stats->movement_stores_by_reason[NMR_SCALAR_TEMPORARY];
+    snapshot.call_loads = stats->movement_loads_by_reason[NMR_CALL_BOUNDARY];
+    snapshot.call_stores = stats->movement_stores_by_reason[NMR_CALL_BOUNDARY];
+    snapshot.call_copies =
+      stats->movement_register_copies_by_reason[NMR_CALL_BOUNDARY];
+    snapshot.planned = stats->planned_value_registers;
+    snapshot.grants = stats->planned_register_grants;
+    snapshot.releases = stats->planned_interval_releases;
+    snapshot.spills = stats->spills;
+    snapshot.frame_homes = stats->temporary_frame_homes_created;
+    return snapshot;
+  }
+
+  void AppendCensusLine(std::size_t index, std::size_t mir_instructions,
+                        const FunctionCensusSnapshot & before)
+  {
+    const FunctionCensusSnapshot after = TakeCensusSnapshot();
+    std::string line = "function_census symbol=" +
+      lowir_model::lowir_symbol_name(source, source.functions[index].symbol);
+    const auto field = [&line](const char * name, std::size_t value) {
+      line += ' ';
+      line += name;
+      line += '=';
+      line += std::to_string(value);
+    };
+    field("mir", mir_instructions);
+    field("mov_loads", after.loads - before.loads);
+    field("mov_stores", after.stores - before.stores);
+    field("mov_copies", after.copies - before.copies);
+    field("scalar_loads", after.scalar_loads - before.scalar_loads);
+    field("scalar_stores", after.scalar_stores - before.scalar_stores);
+    field("call_loads", after.call_loads - before.call_loads);
+    field("call_stores", after.call_stores - before.call_stores);
+    field("call_copies", after.call_copies - before.call_copies);
+    field("planned", after.planned - before.planned);
+    field("grants", after.grants - before.grants);
+    field("releases", after.releases - before.releases);
+    field("spills", after.spills - before.spills);
+    field("frame_homes", after.frame_homes - before.frame_homes);
+    stats->function_census_lines.push_back(std::move(line));
+  }
+
   mir_model::MirFunction LowerFunction(std::size_t index)
   {
     if(index >= source.functions.size())
       throw std::logic_error("native function index is out of bounds");
     std::chrono::steady_clock::time_point started;
     if(stats) started = std::chrono::steady_clock::now();
+    FunctionCensusSnapshot census_before;
+    const bool census = stats && stats->function_census;
+    if(census) census_before = TakeCensusSnapshot();
     mir_model::MirFunction result = session_detail::lower_native_function(
       source, source.functions[index], pointer_globals, tls_wrappers,
       signatures, optimization_level, stats);
@@ -219,6 +284,8 @@ struct ProgramLoweringSession::Impl
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::steady_clock::now() - started).count());
     }
+    if(census) AppendCensusLine(index, opt_stats.output_instructions,
+                                census_before);
     return result;
   }
 

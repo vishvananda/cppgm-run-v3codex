@@ -108,6 +108,10 @@ struct Stats
   std::size_t narrow_call_result_normalizations_omitted = 0;
   std::size_t redundant_integer_normalizations_omitted = 0;
   std::size_t fused_integer_normalization_moves = 0;
+  // Per-function movement census, filled only when the driver requests it
+  // with --stats-functions; one formatted line per lowered function.
+  bool function_census = false;
+  std::vector<std::string> function_census_lines;
   std::array<std::size_t, NMR_COUNT> movement_instructions_by_reason = {{0}};
   std::array<std::size_t, NMR_COUNT> movement_loads_by_reason = {{0}};
   std::array<std::size_t, NMR_COUNT> movement_stores_by_reason = {{0}};

@@ -82,6 +82,7 @@ struct DriverInvocation
   int optimization_level;
   bool line_tables;
   bool collect_stats;
+  bool collect_function_census = false;
   bool hosted_system_includes;
 
   DriverInvocation()
@@ -385,8 +386,9 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
       preprocess_only = true;
       continue;
     }
-    if(args[i] == "--stats") {
+    if(args[i] == "--stats" || args[i] == "--stats-functions") {
       invocation.collect_stats = true;
+      invocation.collect_function_census |= args[i] == "--stats-functions";
       continue;
     }
     if(args[i] == "-nostdinc") {
@@ -1682,6 +1684,7 @@ int run_compile_driver(const DriverInvocation & invocation,
 		  !private_object, presentation_policy);
 	cppgm::pa30::ObjectSerializationStats serialization_stats;
   lowir_native::Stats native_stats;
+  native_stats.function_census = invocation.collect_function_census;
   if(private_object) {
     cppgm::pa30::WriteCompilerObject(
       invocation.output, object,
@@ -1848,6 +1851,7 @@ int run_compile_driver(const DriverInvocation & invocation,
 		 << serialization_stats.full_buffer_copies
 		 << " payload_serialize_ns="
 		 << serialization_stats.elapsed_nanoseconds << '\n';
+    lowir_native::report_function_census(cerr, native_stats);
   }
   return EXIT_SUCCESS;
 }
