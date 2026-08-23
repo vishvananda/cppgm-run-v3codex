@@ -22,6 +22,40 @@ with the full report, zero-fatal audit, and clean 32-worker self/inception
 lanes intact.  Compile-time and RSS gates from `PLAN-OPT-PASS-IMPROVEMENTS.md`
 continue to apply to every phase.
 
+
+## P22: whole-function value placement (design, not yet started)
+
+The remaining ~1.87x is bounded by the placement architecture: a planner that
+reserves registers for a few value classes plus a reactive walk that decides
+everything else instruction by instruction.  Five consecutive incremental
+probes at or below noise (P16, P19, P20, P21a, P18b) confirm no ordering,
+coverage, or shape tweak inside this split moves the benchmark.  The next
+phase makes placement a whole-function decision:
+
+1. **Ownership inversion.**  `plan_value_registers` grows into a placement
+   plan covering EVERY scalar GPR value: each value gets either a register
+   interval (with the existing extended-end machinery over backedges and
+   exception regions) or a planned frame home.  The reactive walk becomes an
+   executor: grants at definitions, releases at interval ends, planned homes
+   instead of on-demand `allocate_temp_frame_binding` calls.  All three
+   mechanisms already exist and are proven sound (P10).
+2. **Interval splitting.**  A call-crossing value occupies a callee-saved
+   register only for the segments that actually cross calls; call-free
+   segments may use the caller-saved pool with a planned home carrying the
+   value across the split points.  This is where the remaining ~13k scalar
+   temporary loads and ~10k stores on the frozen TU live.
+3. **Per-function validation.**  Build the plan-executor behind a
+   per-function census comparison first: run BOTH placements, compare spill
+   counts and emitted movement per function, and enable the planned path
+   only for function classes where it wins, expanding coverage class by
+   class with the established gates (output-verified self-O1, lanes, full
+   report).  The five latent-bug postmortems this session (spill walk
+   order, carrier replay, alias accounting, select clobbers, cmov
+   read-write) define the audit checklist for every executor change.
+4. **Exit criterion.**  The phase pays if scalar-temporary movement on the
+   frozen TU drops by more than a third; the P15 decomposition implies that
+   is the remaining path to the 1.10x acceptance.
+
 ## Measured decomposition of the 2.8x
 
 All numbers are from cpu-clock profiles and object census of the immutable
