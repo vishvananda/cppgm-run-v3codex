@@ -635,7 +635,7 @@ TypeId SemanticAnalyzer::PrepareBuiltinArithmetic(
 }
 
 ExpressionInfo SemanticAnalyzer::BuildBinaryExpression(
-	const std::string& operation, const std::string& display_operation,
+	const std::string& operation, std::string display_operation,
 	NodeId left_syntax, NodeId right_syntax, ExpressionInfo left,
 	ExpressionInfo right, ScopeId scope)
 {

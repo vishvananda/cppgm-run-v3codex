@@ -1369,10 +1369,11 @@ private:
 		ExpressionInfo* left, ExpressionInfo* right, TypeId* operand_type);
 	TypeId PrepareBuiltinArithmetic(const std::string& operation,
 		const ExpressionInfo& left, const ExpressionInfo& right);
+	// display_operation is by value: callers pass syntax-arena references
+	// that the nested overload analysis can invalidate by reallocation.
 	ExpressionInfo BuildBinaryExpression(const std::string& operation,
-		const std::string& display_operation, NodeId left_syntax,
-		NodeId right_syntax, ExpressionInfo left, ExpressionInfo right,
-		ScopeId scope);
+		std::string display_operation, NodeId left_syntax, NodeId right_syntax,
+		ExpressionInfo left, ExpressionInfo right, ScopeId scope);
 	ExpressionInfo AnalyzeAssignment(NodeId node, ScopeId scope);
 	ExpressionInfo AnalyzeAssignmentInBracedContext(
 		NodeId node, ScopeId scope);
