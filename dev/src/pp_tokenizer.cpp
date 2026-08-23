@@ -52,6 +52,12 @@ public:
 	{
 		if (empty())
 			throw std::logic_error("fixed lookahead queue underflow");
+		pop_front_unchecked();
+	}
+
+	// For callers whose control flow already guarantees a nonempty queue.
+	void pop_front_unchecked()
+	{
 		begin_ = (begin_ + 1) % Capacity;
 		--size_;
 	}
@@ -147,15 +153,20 @@ bool IsIdentifierNondigit(int c)
 {
 	if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_')
 		return true;
+	// Every code point below the first Annex E.1 range misses the table.
+	if (c < kAnnexE1Ranges[0].first)
+		return false;
 	return IsInRanges(c, kAnnexE1Ranges,
 		sizeof(kAnnexE1Ranges) / sizeof(kAnnexE1Ranges[0]));
 }
 
 bool IsIdentifierInitial(int c)
 {
+	// Every code point below the first Annex E.2 range misses the table.
 	return IsIdentifierNondigit(c) &&
-		!IsInRanges(c, kAnnexE2Ranges,
-			sizeof(kAnnexE2Ranges) / sizeof(kAnnexE2Ranges[0]));
+		(c < kAnnexE2Ranges[0].first ||
+		 !IsInRanges(c, kAnnexE2Ranges,
+			sizeof(kAnnexE2Ranges) / sizeof(kAnnexE2Ranges[0])));
 }
 
 bool IsIdentifierBody(int c)
@@ -219,21 +230,53 @@ public:
 
 	int Next()
 	{
+		// The single-byte decode stays here so the dominant path is small
+		// enough to inline into the translation cursor.
 		if (position_ < source_.size())
 		{
-			const int code_point = DecodeOne();
-			last_line_ = line_;
-			last_column_ = column_;
-			if (code_point == '\n')
+			const int first = static_cast<unsigned char>(source_[position_]);
+			if (first <= 0x7F)
 			{
-				++line_;
-				column_ = 1;
+				++position_;
+				last_line_ = line_;
+				last_column_ = column_;
+				if (first == '\n')
+				{
+					++line_;
+					column_ = 1;
+				}
+				else ++column_;
+				if (stats_)
+					++stats_->decoded_code_points;
+				return first;
 			}
-			else ++column_;
-			if (stats_)
-				++stats_->decoded_code_points;
-			return code_point;
+			return NextMultiByte();
 		}
+		return NextAtEnd();
+	}
+
+	std::size_t LastLine() const { return last_line_; }
+	std::size_t LastColumn() const { return last_column_; }
+
+private:
+	__attribute__((noinline)) int NextMultiByte()
+	{
+		const int code_point = DecodeOne();
+		last_line_ = line_;
+		last_column_ = column_;
+		if (code_point == '\n')
+		{
+			++line_;
+			column_ = 1;
+		}
+		else ++column_;
+		if (stats_)
+			++stats_->decoded_code_points;
+		return code_point;
+	}
+
+	__attribute__((noinline)) int NextAtEnd()
+	{
 		if (final_newline_pending_)
 		{
 			final_newline_pending_ = false;
@@ -248,10 +291,6 @@ public:
 		return kEndOfFile;
 	}
 
-	std::size_t LastLine() const { return last_line_; }
-	std::size_t LastColumn() const { return last_column_; }
-
-private:
 	static int DecodeWindows1252Byte(int byte)
 	{
 		static const int replacements[32] = {
@@ -557,9 +596,12 @@ public:
 
 	void Run()
 	{
-		while (Peek(0) != kEndOfFile)
+		// The scanners consume nothing when they decline, so one lookahead
+		// read serves the whole dispatch chain.
+		int head;
+		while ((head = Peek(0)) != kEndOfFile)
 		{
-			if (Peek(0) == '\n')
+			if (head == '\n')
 			{
 				const std::size_t line = PeekLine(0);
 				const std::size_t column = PeekColumn(0);
@@ -567,16 +609,16 @@ public:
 				output_.set_source_location(line, column);
 				EmitNewLine();
 			}
-			else if (ScanWhitespaceAndComments())
+			else if (ScanWhitespaceAndComments(head))
 			{}
-			else if (header_context_ == kAfterInclude && ScanHeaderName())
+			else if (header_context_ == kAfterInclude && ScanHeaderName(head))
 			{}
-			else if (ScanLiteral())
+			else if (ScanLiteral(head))
 			{}
-			else if (IsIdentifierInitial(Peek(0)))
+			else if (IsIdentifierInitial(head))
 				ScanIdentifier();
-			else if (IsAsciiDigit(Peek(0)) ||
-				(Peek(0) == '.' && IsAsciiDigit(Peek(1))))
+			else if (IsAsciiDigit(head) ||
+				(head == '.' && IsAsciiDigit(Peek(1))))
 				ScanPPNumber();
 			else if (!ScanPunctuator())
 				ScanNonWhitespaceCharacter();
@@ -594,10 +636,20 @@ private:
 
 	int Peek(std::size_t offset)
 	{
+		// The filled-queue read stays here so the dominant path is small
+		// enough to inline into the scanning loops.
+		if (offset < lookahead_.size())
+			return lookahead_.unchecked(offset).value;
+		return PeekFill(offset);
+	}
+
+	__attribute__((noinline)) int PeekFill(std::size_t offset)
+	{
 		while (lookahead_.size() <= offset)
 		{
 			if (!lookahead_.empty() &&
-				lookahead_.back().value == kEndOfFile)
+				lookahead_.unchecked(lookahead_.size() - 1).value ==
+					kEndOfFile)
 				return kEndOfFile;
 			const int value = translation_.Next();
 			lookahead_.push_back(LocatedCodePoint(value,
@@ -611,7 +663,7 @@ private:
 		if (lookahead_.empty())
 			return translation_.Next();
 		const int result = lookahead_.unchecked(0).value;
-		lookahead_.pop_front();
+		lookahead_.pop_front_unchecked();
 		return result;
 	}
 
@@ -699,10 +751,10 @@ private:
 		last_token_was_operator_ = false;
 	}
 
-	bool ScanWhitespaceAndComments()
+	bool ScanWhitespaceAndComments(int head)
 	{
-		if (!IsHorizontalWhitespace(Peek(0)) &&
-			!(Peek(0) == '/' && (Peek(1) == '/' || Peek(1) == '*')))
+		if (!IsHorizontalWhitespace(head) &&
+			!(head == '/' && (Peek(1) == '/' || Peek(1) == '*')))
 			return false;
 		while (true)
 		{
@@ -733,9 +785,9 @@ private:
 		return true;
 	}
 
-	bool ScanHeaderName()
+	bool ScanHeaderName(int head)
 	{
-		const int opening = Peek(0);
+		const int opening = head;
 		if ((opening != '<' && opening != '"') || Peek(1) == '\n' ||
 			Peek(1) == kEndOfFile || Peek(1) == (opening == '<' ? '>' : '"'))
 			return false;
@@ -769,41 +821,41 @@ private:
 			AppendTake(spelling);
 	}
 
-	bool ScanLiteral()
+	bool ScanLiteral(int head)
 	{
-		if (Peek(0) == 'R' && Peek(1) == '"')
+		if (head == 'R' && Peek(1) == '"')
 		{
 			ScanRawLiteral(2);
 			return true;
 		}
-		if (Peek(0) == 'u' && Peek(1) == '8' && Peek(2) == 'R' &&
+		if (head == 'u' && Peek(1) == '8' && Peek(2) == 'R' &&
 			Peek(3) == '"')
 		{
 			ScanRawLiteral(4);
 			return true;
 		}
-		if ((Peek(0) == 'u' || Peek(0) == 'U' || Peek(0) == 'L') &&
+		if ((head == 'u' || head == 'U' || head == 'L') &&
 			Peek(1) == 'R' && Peek(2) == '"')
 		{
 			ScanRawLiteral(3);
 			return true;
 		}
-		if (Peek(0) == '"')
+		if (head == '"')
 		{
 			ScanQuotedLiteral(1, '"');
 			return true;
 		}
-		if (Peek(0) == '\'')
+		if (head == '\'')
 		{
 			ScanQuotedLiteral(1, '\'');
 			return true;
 		}
-		if (Peek(0) == 'u' && Peek(1) == '8' && Peek(2) == '"')
+		if (head == 'u' && Peek(1) == '8' && Peek(2) == '"')
 		{
 			ScanQuotedLiteral(3, '"');
 			return true;
 		}
-		if ((Peek(0) == 'u' || Peek(0) == 'U' || Peek(0) == 'L') &&
+		if ((head == 'u' || head == 'U' || head == 'L') &&
 			(Peek(1) == '"' || Peek(1) == '\''))
 		{
 			ScanQuotedLiteral(2, Peek(1));
@@ -952,10 +1004,10 @@ private:
 	{
 		std::string& spelling = StartTokenSpelling();
 		AppendTake(&spelling);
-		while (IsAsciiDigit(Peek(0)) || IsIdentifierNondigit(Peek(0)) ||
-			Peek(0) == '.')
+		int current;
+		while ((current = Peek(0)) == '.' || IsAsciiDigit(current) ||
+			IsIdentifierNondigit(current))
 		{
-			const int current = Peek(0);
 			AppendTake(&spelling);
 			const bool hexadecimal = spelling.size() >= 2 && spelling[0] == '0' &&
 				(spelling[1] == 'x' || spelling[1] == 'X');
@@ -971,7 +1023,10 @@ private:
 
 	bool ScanPunctuator()
 	{
-		if (Peek(0) == '<' && Peek(1) == ':' && Peek(2) == ':' &&
+		const int first = Peek(0);
+		const int second = Peek(1);
+		const int third = Peek(2);
+		if (first == '<' && second == ':' && third == ':' &&
 			Peek(3) != ':' && Peek(3) != '>')
 		{
 			std::string& spelling = StartTokenSpelling();
@@ -980,9 +1035,6 @@ private:
 			return true;
 		}
 		std::size_t length = 0;
-		const int first = Peek(0);
-		const int second = Peek(1);
-		const int third = Peek(2);
 		switch (first)
 		{
 		case '%':
