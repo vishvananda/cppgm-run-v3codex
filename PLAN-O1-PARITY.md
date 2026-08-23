@@ -56,6 +56,40 @@ phase makes placement a whole-function decision:
    frozen TU drops by more than a third; the P15 decomposition implies that
    is the remaining path to the 1.10x acceptance.
 
+## P27: the abstraction-collapse midend (program design)
+
+Every incremental lever is measured dead (P22-P26); the 1.90x is
+structural.  The path to 1.10x is the pipeline gcc actually runs: make
+bodies LEAF-LIKE before inlining decisions, so inlining merges epochs
+instead of re-partitioning them, then let placement exploit the merged
+regions.  Phases, each with the R10/R11 discipline (PA37 reducers first,
+frozen-TU census go/no-go, then wall):
+
+1. **P27a SROA / full slot promotion at O1 quality.**  The existing
+   promote pass creates phis but runs at O2 and skips aggregates.  Build
+   scalar replacement for non-escaping small objects (the `Token`,
+   `LocatedCodePoint`, iterator, and `LookupResult` classes dominate the
+   census) so member loads become SSA values.  Go/no-go: frozen-TU
+   scalar movement AND `Dr` census both drop.
+2. **P27b interprocedural leafness.**  After SROA, re-run the R10i
+   callee-first convergence so accessor/constructor bodies that are now
+   call-free and tiny actually inline (the existing 6/128 policy admits
+   them once they are leaf-shaped -- no policy change).  The P26d
+   invariant breaks exactly here: post-SROA bodies stop importing calls.
+3. **P27c placement over merged epochs.**  Re-arm the P26 segment
+   machinery (full implementation preserved in the P26 spec and this
+   session's ledger) -- after P27a/b, uses-per-epoch finally rises and
+   the segment population materializes.  The parked LICM stash re-arms
+   for the same reason.
+4. **P27d re-measure the closed loop.**  GVN at O1, the inline caps, and
+   the icache balance all shift once bodies collapse; every P22-P26
+   rejection is explicitly conditional on the OLD epoch structure and
+   must be re-swept at the new operating point.
+
+The go/no-go discipline from P25c stands: census deltas gate every
+phase (movement, Dr/Dw, I1mr); wall A/Bs only confirm effects the census
+already shows at multi-percent scale.
+
 ## P26: segment-split planned residency (implementation specification)
 
 Settled by the P25 probes; every design decision below is grounded in a
