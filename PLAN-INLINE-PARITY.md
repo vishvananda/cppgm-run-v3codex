@@ -379,3 +379,16 @@ source reshaping remains out of scope per the standing directive).
   inception lanes MATCH, frozen self-reproduction byte-for-byte at
   every measured point.  No pa37 reducer: no LowIR-level policy
   changed.
+- L13 (Phase C slice 2: load-path cursor takeover).  A scalar load
+  whose address value resolves to a claimed phi-home register (the
+  phi itself or a chain alias of it, e.g. the copy the frontend
+  emits for `p = p->next`) loads into that register directly —
+  `mov (R), R` — under the same takeover conditions as the backedge
+  chain; the read precedes the write.  find()'s loop body drops to
+  7 instructions with the gcc-shape advance.  Effect on the frozen
+  workload is real but small: honest Ir 44.6249B -> 44.6244B, MIR
+  -15, movement -14, text -44 — the compiler's own hot cursors
+  mostly live in object fields, not local phis; the shape matters
+  more as deeper inlining merges cursor towers into locals.  Gates:
+  report 5430/5430, zero-fatal audit, O3+O0 inception lanes MATCH,
+  frozen self-reproduction byte-for-byte.

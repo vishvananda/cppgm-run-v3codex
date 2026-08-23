@@ -237,6 +237,7 @@ private:
   // like an edge-live value: predecessor terminators keep writing the
   // register until the planned interval end.
   std::vector<unsigned char> phi_planned_home_;
+  unsigned char phi_home_registers_[16] = {};
   std::vector<long long> slot_offsets_;
   std::vector<unsigned char> slot_offset_known_;
   std::vector<X64Register> incoming_parameter_registers_;
@@ -318,8 +319,13 @@ private:
        !registers_.try_reserve(planned)) return false;
     define(value, type, reg_operand(planned));
     phi_planned_home_[value] = 1;
+    phi_home_registers_[static_cast<unsigned>(planned)] = 1;
     if(stats_) ++stats_->phi_register_homes;
     return true;
+  }
+  bool is_phi_home_register(X64Register reg) const
+  {
+    return phi_home_registers_[static_cast<unsigned>(reg)] != 0;
   }
   bool value_outlives_counted_uses(lowir_model::ValueId value) const
   {

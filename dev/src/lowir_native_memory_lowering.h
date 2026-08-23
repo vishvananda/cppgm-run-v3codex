@@ -169,6 +169,8 @@ protected:
 			lowerer.facts_.definition[instruction.dest] >
 			lowerer.facts_.calls.front();
 		mir_model::MirOperand pressure_home;
+		mir_model::MirOperand takeover_storage;
+		bool phi_address_takeover = false;
 		if (pressure_load)
 		{
 			pressure_home =
@@ -186,8 +188,32 @@ protected:
 		}
 		else
 		{
+			// A cursor advance through a claimed phi home loads into the
+			// address register itself (the read happens before the write),
+			// under the same takeover conditions as the backedge chain.
+			// The address value may be the phi or a chain alias of it.
+			if (instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+				lowerer.value_known_[instruction.first.value] &&
+				lowerer.values_[instruction.first.value].location.kind ==
+					mir_model::MirOperand::OP_REG &&
+				lowerer.is_phi_home_register(
+					lowerer.values_[instruction.first.value].location.reg) &&
+				lowerer.can_reuse(instruction.first))
+			{
+				takeover_storage =
+					lowerer.materialized_storage(instruction.first, out);
+				const X64Register home =
+					lowerer.values_[instruction.first.value].location.reg;
+				if (takeover_storage.kind == mir_model::MirOperand::OP_DEREF &&
+					takeover_storage.reg == home)
+				{
+					destination = reg_operand(home);
+					phi_address_takeover = true;
+				}
+			}
 			X64Register result = XR_RSP;
-			if (lowerer.try_allocate_result(instruction.dest, out, &result))
+			if (phi_address_takeover) {}
+			else if (lowerer.try_allocate_result(instruction.dest, out, &result))
 				destination = reg_operand(result);
 			else
 			{
@@ -201,7 +227,7 @@ protected:
 			mir_model::MirInstruction::MI_LOAD, instruction.type);
 		load.volatile_access = instruction.volatile_access;
 		append_operand(load, destination);
-		append_operand(load,
+		append_operand(load, phi_address_takeover ? takeover_storage :
 			lowerer.materialized_storage(instruction.first, out));
 		out.push_back(load);
 		if (selection::is_integer_or_pointer(instruction.type))
