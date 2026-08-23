@@ -56,6 +56,79 @@ phase makes placement a whole-function decision:
    frozen TU drops by more than a third; the P15 decomposition implies that
    is the remaining path to the 1.10x acceptance.
 
+## P26: segment-split planned residency (implementation specification)
+
+Settled by the P25 probes; every design decision below is grounded in a
+measured failure of a simpler variant.
+
+**Objective.**  Let one caller-saved register carry MANY short value
+segments (between calls) with residency that survives BLOCK boundaries,
+which the reactive walk cannot do (`stabilize_edge_live_result` demotes
+every unplanned edge-live value at its definition).  This multiplies
+effective register capacity instead of re-dividing the existing capacity
+(the P25 failure mode).
+
+**Analysis (lowir_native_analysis).**
+- `FunctionFacts::barriers`: sorted positions of `IK_CALL` and `IK_THROW`
+  (P25c validated the collection point in the definition pass).
+- Per-value USE POSITION lists for planner candidates only: one transient
+  `std::vector<std::pair<ValueId, position>>` filled in `note_operand`,
+  sorted once -- NOT per-value vectors (allocation cost); the planner
+  walks each candidate's slice with `equal_range`.
+
+**Planner (`plan_value_registers` v2).**
+- Segment = maximal run of a value's uses between consecutive barriers,
+  PLUS the definition prefix segment (definition to first barrier).
+- Candidate segments: >= 2 accesses (definition counts as one for the
+  prefix segment) -- P25's 12-survivor result came from requiring the
+  WHOLE prefix to clear spans; per-segment spans are much smaller.
+- Span safety per segment: extend the segment end over layout-backedge
+  and EH-pad spans (existing fixed point); DROP the segment if the
+  extension meets a barrier (re-executed code would read a call-clobbered
+  register -- the P25c soundness analysis).
+- Assignment: all surviving segments from all values, sorted by start,
+  first-fit onto {R9, R8} (+RCX, RDX only if census shows exhaustion;
+  P25b measured pool width alone is not the constraint).
+- Output: `std::vector<PlannedSegment>{value, start, end, reg}` sorted by
+  (value, start) plus a per-value first-index, NOT the per-value
+  byte-plan (a value may own several segments).
+
+**Executor (PlannedResidency v2 + lowir_native.cpp).**
+- `planned_register_entry(value)` becomes position-aware:
+  `planned_segment(value, position_)` -> binary search the value's slice.
+- Definition-time: `try_planned_grant` grants the segment covering the
+  definition; the fallback frame store is written AT THE DEFINITION via
+  the `stabilize_edge_live_result` planned-clamped branch (P25c: a store
+  at the call site does NOT dominate call-free paths -- this was the
+  caught wrong-code hole).
+- Use-time re-entry: in the operand materialization path, when a
+  frame-homed value is loaded at a use whose position lies inside one of
+  its planned segments, load INTO the segment register and mark resident
+  until the segment end (this is the NEW capability: cross-block
+  residency between calls).
+- Call entry (`emit_call` head, before `requires_extended_call`):
+  `demote_clamped_residents` -- flip register residents of {R9, R8} whose
+  plan is segmented back to their definition-time frame homes (no store
+  needed; the definition store dominates), release the registers, skip
+  `deferred_carrier_registers_`.
+- Release: `planned_interval_over` compares against the CURRENT segment
+  end.  `spill_candidate` protection and the EH rules carry over.
+- The P10-era audit checklist applies to every change: spill walk order,
+  carrier replay, alias accounting, select clobbers, cmov read-write.
+
+**Validation ladder.**
+1. PA37 O1 exact reducers FIRST: a two-segment value across one call
+   (loads collapse to register uses in both segments), a segment crossing
+   a block boundary, a span-dropped segment (backedge over a call), a
+   throw-barrier segment, an EH-function segment, and a deferred-carrier
+   collision negative.
+2. Frozen-TU census (`--stats-functions`): expect scalar-temporary loads
+   (13.0k) and stores (9.6k) to drop by >= 15% before any A/B is worth
+   running (the P25c noise floor: sub-2% expected effects are
+   unmeasurable; the census is the go/no-go gate, wall confirms after).
+3. Then the standing gates: report, O3+O0 restored-self lanes, verified
+   self-O1, PSI-gated A/B vs /tmp/v3codex-base-o1.
+
 ## Measured decomposition of the 2.8x
 
 All numbers are from cpu-clock profiles and object census of the immutable
@@ -535,4 +608,5 @@ the first material cut into the 27.6k-instruction home-traffic class.
 | P25a | per-function placement census harness (`--stats-functions`): the P22 program's phase-3 validation instrument built first, one line per lowered function with movement loads/stores/copies (total, scalar-temporary, call-boundary), planned values, grants, releases, spills, and reactive frame homes | landed; frozen output BYTE-IDENTICAL with the flag off and on (instrumentation only), gates: audit zero-fatal, report 5,426/5,426, O3+O0 restored-self lanes MATCH | first census results on the honest baseline: grant starvation is extreme in the hot semantic functions -- `analyze_call_expression` 671 planned / 52 granted (7.7%), `analyze_overloaded_assignment_expression` 243/5 (2%), `note_function_call_source_event` 242/11 -- the 5-register callee-saved pool with unsplit whole-range intervals cannot cover call-sequencer functions (498 calls in 1,979 instructions in the disassembled example) | disassembly ground truth for `note_function_call_source_event`: 349 frame loads + 297 stores of 1,979 instructions, 63% of loads re-access a slot touched within 15 instructions, the prologue stores all 12 parameters then immediately reloads the first, and stack-arriving parameters are copied into our frame at entry | the planner categorically EXCLUDES `VF_LOOP_INVARIANT` values (lowir_native_location_planning.cpp candidate filter) -- the direct cause of the LICM no-op | P25 lever backlog, ordered: (1) parameter-home round-trip elimination at entry, (2) lift the loop-invariant exclusion and re-test the parked LICM stash, (3) interval splitting at call sites for crossing values, (4) cross-edge state retention beyond planned intervals, (5) stack-argument rehoming |
 | P25b | three planner-side probes inside the current split architecture, all FLAT or NEGATIVE by static census | (1) lifting the `VF_LOOP_INVARIANT` candidate exclusion: loads +240 / stores +174 for +57 grants -- unsplit whole-loop intervals hog the 5-register pool and evict better candidates, so the exclusion is CORRECT until splitting exists (and it is the direct cause of the parked LICM stash measuring ~0 dynamic delta); (2) caller-pool expansion {R9,R8} -> {R9,R8,RCX,RDX}: +215 grants convert to only -7 loads -- call-free-interval grants are redundant with reactive same-block behavior; (3) with P21a's benefit-ordering rejection this makes THREE independent nulls on planner-side tweaks | the architectural finding from reading the executor: `stabilize_edge_live_result` demotes EVERY unplanned edge-live value to a frame home AT ITS DEFINITION (register released immediately); cross-block register survival exists only via planner grants (195 residencies), exact-forward-edge (30), or the retain-with-fallback path (204, and `function_has_eh` disables it for the whole hot semantic cluster) -- thousands of edge-live values round-trip by construction | phase-2 design settled: per-value SEGMENT lists split at call positions, segments with >=2 uses get caller-saved grants (frame home carries across the split), whole-interval callee-saved for high-density crossing values, segment ends span-extended over layout backedges/EH pads exactly like today's intervals, executor consults the segment plan at the reload-after-call path and in `stabilize_edge_live_result` | requires per-value use POSITIONS from the analysis pass (today only count + last_use) | reverted both probes; implementation next |
 | P25c | executor-side probes and the measurement-floor finding | (1) planned preemption of reactive residents (targeted `spill_register_for_plan` inside the reserve path): grants 3,656 -> 3,762 but loads +94 / stores +65 / spills +88 -- every marginal grant displaces equal reactive value; (2) clamped caller-saved grants over barrier-free prefixes (barriers = calls + throws, per-value early-use facts in the analysis, definition-dominating fallback store, call-entry demotion sweep): only 12 clamped plans survive the span/barrier gates on the frozen TU -- the barrier-free-prefix population is real but tiny; (3) plan-idle attribution (temp `CPPGM_PLAN_DEBUG` at `define`): of ~6,000 planner assignments that never become residencies, most die in selection shapes that are ALREADY optimal (dm-rhs fused loads, RAX single-use shapes) -- the planner over-plans values selection handles better; (4) narrow-immediate compare fix (drop the RDX materialization so `form_zero_tests` sees the zero): statically strictly better (-201 instructions, xor-edx sites 618 -> 417) yet +1.17% wall | THE MEASUREMENT INSIGHT: with 403M I1 misses (15% of cycles), any text-shifting change reflows the instruction cache for roughly +/-1% wall regardless of merit -- the effective A/B noise floor for small codegen changes is ~1%, not the ~0.3% run-to-run band, which retroactively explains the tight clustering of past sub-1.5% probe rejections | consequence: single-lever codegen probes below ~2% expected effect are UNMEASURABLE on this workload; only multi-percent structural changes (full segment splitting with cross-block planned residency, EH-callee grafting, cross-block boolean branch threading) can clear the floor | all probes reverted; the census harness remains the validation instrument | next: the full P22 segment-splitting build with PA37 reducers, or an icache-oriented layout lever (the #2 cycle term) |
+| P25d | trace_layout at O1 (the block-reordering pass is gated level >= 2; O1 lays blocks in presentation order) | REJECTED: +1.73% wall / +1.85% user -- the profile-blind trace heuristic breaks the frontend's already fall-through-friendly order on this workload | reverted | with this, every single-lever probe class is measured: planner shape (3 nulls), executor grants (2 regressions), selection (1 under-floor), layout (1 regression) | the P26 specification section now carries the full segment-splitting design with per-decision provenance; the frozen-TU census (scalar movement -15% minimum) is the go/no-go gate BEFORE any wall A/B, per the noise-floor finding | next session: implement P26 starting with the PA37 reducers |
 | P8 | final matrix | hosts rebuilt from the exact final tree; self lanes O0-O3 rebuilt clean | frozen medians: gcc-O1 5.92 s, clang-O1 5.63 s, self-O0 35.45 s, self-O1 12.64 s, self-O2 12.60 s, self-O3 12.57 s; no level inversion; self-O1 improved 17.11 to 12.64 s (-26.1%), ratio to gcc-O1 2.87x to 2.14x | acceptance target of within-10% is not yet met; the recorded P5 follow-on phase carries the remaining 2.1x | all P-phase gates recorded above | complete; target carried to the P5 phase |
