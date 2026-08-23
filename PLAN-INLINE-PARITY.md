@@ -301,3 +301,21 @@ source reshaping remains out of scope per the standing directive).
   4-in/5-out under a doubly exhausted budget), zero-fatal audit, O3
   and O0 inception lanes MATCH; pa37/README.md documents the
   exemption.  Honest Ir ratio 44.700/20.851 = 2.144.
+- L10 (Phase B scratch widening REFUTED as a slice): granting R10/R11
+  to values through the existing clobber-guarded caller-saved path
+  (alongside R8/R9/RDI/RSI) censused well (frozen text -2.3%, MIR
+  -2.5%, movement -3.3%) but produced WRONG CODE — the self-built
+  compiler segfaulted on the frozen TU and the verify gate caught it
+  before any landing.  Root cause: R10/R11 are the backend's
+  encoder-level scratch, used by phi parallel moves, spill/reload
+  address materialization, global addressing (scalar_memory), and
+  compare lowering — all BELOW the LowIR instruction clobber masks
+  (allocator-inserted spill sequences belong to no LowIR instruction),
+  so crosses_register_clobber cannot see them.  RCX/RDX are likewise
+  not quick wins: they are unmanaged argument-staging registers with
+  dense clobber masks (every narrow load declares RCX).  The scratch
+  item therefore requires making encoder scratch explicit in planning
+  — it merges into Phase C's allocation redesign instead of being a
+  standalone slice.  The census delta (-3.3% movement) is the PRIZE
+  measurement for that redesign.  Tree reverted; frozen output
+  byte-identical to eb619ca2.
