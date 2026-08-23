@@ -1,4 +1,5 @@
 #include "lowir_inline_o1.h"
+#include "lowir_unreachable_opt.h"
 #include "lowir_inline_analysis.h"
 #include "lowir_opt.h"
 #include "lowir_phi_edges.h"
@@ -443,10 +444,14 @@ public:
     single_call_discardable_.resize(program_.functions.size(), 0);
     candidate_callers_.resize(program_.functions.size(), 0);
     std::size_t input_instruction_budget = 0;
+    noreturn_symbols_ = noreturn_symbol_index(program_);
+    cold_discounted_counts_.resize(program_.functions.size(), 0);
+    effective_leaf_shapes_.resize(program_.functions.size(), 0);
     for(std::size_t i = 0; i < program_.functions.size(); ++i) {
       contains_eh_[i] = contains_eh(program_.functions[i]);
       leaf_inline_shapes_[i] = leaf_inline_shape(program_.functions[i]);
       instruction_counts_[i] = instruction_count(program_.functions[i]);
+      refresh_cold_discounted_shape(i);
       const Function & function = program_.functions[i];
       const std::size_t direct_uses =
         call_graph_.reverse_offsets[i + 1] - call_graph_.reverse_offsets[i];
@@ -525,6 +530,7 @@ public:
         if((caller_inlined || caller_stripped) && cleanup_ && cleanup_->run)
           cleanup_->run(&program_.functions[caller], stats_, cleanup_->context);
         contains_eh_[caller] = contains_eh(program_.functions[caller]);
+        refresh_cold_discounted_shape(caller);
         leaf_inline_shapes_[caller] =
           leaf_inline_shape(program_.functions[caller]);
         instruction_counts_[caller] =
@@ -564,6 +570,9 @@ private:
   const std::vector<unsigned char> & prepared_oversized_symbols_;
   const std::vector<std::size_t> & original_instruction_counts_;
   std::vector<unsigned char> state_, contains_eh_, leaf_inline_shapes_;
+  std::vector<std::size_t> cold_discounted_counts_;
+  std::vector<unsigned char> effective_leaf_shapes_;
+  std::vector<unsigned char> noreturn_symbols_;
   std::vector<unsigned char> single_call_discardable_;
   std::vector<unsigned char> candidate_callers_;
   std::vector<std::size_t> instruction_counts_;
@@ -703,7 +712,7 @@ private:
         ++stats_->post_prune_inline_reject_size;
       return false;
     }
-    if(instruction_counts_[target] > 40 &&
+    if(cold_discounted_counts_[target] > 40 &&
        (optimized_late_wave_ ||
         !callee_function.metadata.prefer_local_object_binding) &&
        !bounded_single_call) {
@@ -714,7 +723,9 @@ private:
       kLateHintNonleafInstructionLimit : kLateNonleafInstructionLimit;
     if(optimized_late_wave_ &&
        instruction_counts_[target] > late_nonleaf_limit &&
-       !leaf_inline_shapes_[target]) {
+       !leaf_inline_shapes_[target] &&
+       !(effective_leaf_shapes_[target] &&
+         cold_discounted_counts_[target] <= 40)) {
       if(record_stats && stats_ && callee_function.metadata.inline_hint)
         ++stats_->inline_hint_size_rejects;
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
@@ -786,7 +797,7 @@ private:
       if(definition_removing_only_) return false;
       const Function & function = program_.functions[target];
       const bool ordinary_size_candidate =
-        (instruction_counts_[target] <= 40 ||
+        (cold_discounted_counts_[target] <= 40 ||
          function.metadata.prefer_local_object_binding) &&
         (!prepared_oversized_symbols_[function.symbol] ||
          (instruction_counts_[target] <= 4 &&
@@ -807,6 +818,8 @@ private:
     if(!used_single_call) return;
     std::vector<Block>().swap(program_.functions[target].blocks);
     instruction_counts_[target] = 0;
+    cold_discounted_counts_[target] = 0;
+    effective_leaf_shapes_[target] = 0;
     contains_eh_[target] = 0;
     leaf_inline_shapes_[target] = 0;
     single_call_discardable_[target] = 0;
@@ -1002,6 +1015,7 @@ private:
       cleanup_->run(
         &program_.functions[function_index], stats_, cleanup_->context);
     contains_eh_[function_index] = contains_eh(program_.functions[function_index]);
+    refresh_cold_discounted_shape(function_index);
     leaf_inline_shapes_[function_index] =
       leaf_inline_shape(program_.functions[function_index]);
     instruction_counts_[function_index] =
@@ -1073,6 +1087,46 @@ private:
     }
   }
 
+  // A block that raises or resumes an exception terminates the hot path:
+  // its instructions do not count toward the callee's size, and calls
+  // confined to such blocks do not make the callee callful for the late
+  // nonleaf limit.  The checked-accessor pattern (bounds test plus a
+  // throwing arm) is the population this admits.
+  void cold_discounted_shape(const Function & function,
+                             std::size_t * count,
+                             bool * effective_leaf) const
+  {
+    *count = 0;
+    *effective_leaf = true;
+    for(std::size_t b = 0; b < function.blocks.size(); ++b) {
+      const std::vector<Instruction> & instructions =
+        function.blocks[b].instructions;
+      bool cold = false;
+      for(std::size_t i = 0; i < instructions.size() && !cold; ++i)
+        cold = instructions[i].kind == Instruction::IK_THROW ||
+          instructions[i].kind == Instruction::IK_RESUME ||
+          (instructions[i].kind == Instruction::IK_CALL &&
+           (instructions[i].call_boundary.returns ==
+              lowir_model::CRM_NORETURN ||
+            (instructions[i].first.kind == Operand::OP_GLOBAL &&
+             instructions[i].first.symbol < noreturn_symbols_.size() &&
+             noreturn_symbols_[instructions[i].first.symbol])));
+      if(cold) continue;
+      *count += instructions.size();
+      for(std::size_t i = 0; i < instructions.size(); ++i)
+        if(instructions[i].kind == Instruction::IK_CALL)
+          *effective_leaf = false;
+    }
+  }
+  void refresh_cold_discounted_shape(std::size_t function_index)
+  {
+    std::size_t count = 0;
+    bool effective_leaf = false;
+    cold_discounted_shape(program_.functions[function_index], &count,
+                          &effective_leaf);
+    cold_discounted_counts_[function_index] = count;
+    effective_leaf_shapes_[function_index] = effective_leaf ? 1 : 0;
+  }
   bool leaf_inline_shape(const Function & function) const
   {
     if(function.blocks.size() != 1) return false;

@@ -1,0 +1,45 @@
+declare function @observe(%value : i64) -> void
+declare function @escape(%pointer : ptr) -> void
+
+function @decomposes(%dest : ptr, %a : i64, %b : u32, %flag : u8) -> i64 {
+  slot $local__sroa8 : i64
+  slot $local__sroa20 : i32
+
+  block ^entry:
+    branch %flag, ^then, ^join
+
+  block ^then:
+    store i64 21, $local__sroa8
+    jump ^join
+
+  block ^join:
+    %wide = convert zext i64 u32 %b
+    %sum = binary add i64 %a, %wide
+    store i64 %a, %dest
+    %t1 = index i8 [projection=field] %dest, 8
+    %t2 = load i64 $local__sroa8
+    store i64 %t2, %t1
+    %t3 = index i8 [projection=field] %dest, 16
+    store u32 %b, %t3
+    %t5 = index i8 [projection=field] %dest, 20
+    %t6 = load i32 $local__sroa20
+    store i32 %t6, %t5
+    return i64 %sum
+}
+function @copies_between_locals(%a : i64) -> i64 {
+  block ^entry:
+    %sum = binary add i64 %a, 5
+    return i64 %sum
+}
+function @escaping_stays(%a : i64) -> i64 {
+  slot $local : obj<16x8>
+
+  block ^entry:
+    %base = addr $local
+    %f8 = index i8 [projection=field] %base, 8
+    store i64 %a, %base
+    store i64 3, %f8
+    call void @escape(%base)
+    %read = load i64 %base
+    return i64 %read
+}

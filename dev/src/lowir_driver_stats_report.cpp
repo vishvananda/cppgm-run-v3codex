@@ -35,6 +35,11 @@ void ReportOptimizer(std::ostream& output, const std::string& input,
 		 << " licm_candidates=" << stats.licm_candidates
 		 << " licm_hoisted=" << stats.licm_hoisted
 		 << " licm_loads_hoisted=" << stats.licm_loads_hoisted
+		 << " sroa_candidates=" << stats.sroa_candidates
+		 << " sroa_slots_replaced=" << stats.sroa_slots_replaced
+		 << " sroa_field_slots=" << stats.sroa_field_slots
+		 << " sroa_memory_rewrites=" << stats.sroa_memory_rewrites
+		 << " sroa_copy_expansions=" << stats.sroa_copy_expansions
 		 << " licm_preheaders_created=" << stats.licm_preheaders_created
 		 << " licm_no_preheader=" << stats.licm_no_preheader
 		 << " licm_eh_skips=" << stats.licm_eh_skips

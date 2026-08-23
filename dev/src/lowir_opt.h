@@ -220,6 +220,11 @@ struct Stats
   std::size_t small_object_changes = 0;
   std::size_t small_object_candidates = 0;
   std::size_t small_objects_promoted = 0;
+  std::size_t sroa_candidates = 0;
+  std::size_t sroa_slots_replaced = 0;
+  std::size_t sroa_field_slots = 0;
+  std::size_t sroa_memory_rewrites = 0;
+  std::size_t sroa_copy_expansions = 0;
   std::size_t small_object_memory_rewrites = 0;
   std::size_t small_object_copies_rewritten = 0;
   std::size_t dead_store_runs = 0;

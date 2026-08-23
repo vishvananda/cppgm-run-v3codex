@@ -2795,8 +2795,12 @@ void optimize(LowirProgram & program, int level, Stats * stats)
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
     }
+    bool object_slots_changed = level >= 1 &&
+      scalar_replace_aggregate_slots(&program, &function, stats);
     if(level >= 1 && timed_function_pass(promote_small_objects, &function,
-        stats, &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
+        stats, &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis))
+      object_slots_changed = true;
+    if(object_slots_changed) {
       timed_dce(&function, boundaries, stats);
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);

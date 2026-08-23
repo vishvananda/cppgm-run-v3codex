@@ -250,10 +250,28 @@ bool forward_one_staged_copy(
       function->blocks[plan.copy_block].instructions;
     const Instruction copy = copy_body[plan.copy_index];
     std::vector<Instruction> replacement;
+    // A slot-valued copy destination cannot carry member indexing or
+    // scalar stores directly; take its address once and let the member
+    // accesses run through the pointer.
+    Operand copy_base = copy.second;
+    if(copy_base.kind == Operand::OP_SLOT) {
+      Instruction take_address;
+      take_address.kind = Instruction::IK_ADDR;
+      take_address.type = lowir_model::builtin_lowir_type(
+        lowir_model::LTK_PTR);
+      take_address.dest = lowir_model::append_lowir_fresh_generated_value(
+        *function, take_address.type);
+      take_address.first = copy.second;
+      take_address.debug_location = copy.debug_location;
+      copy_base = Operand();
+      copy_base.kind = Operand::OP_TEMP;
+      copy_base.value = take_address.dest;
+      replacement.push_back(take_address);
+    }
     for(std::size_t i = 0; i < plan.stores.size(); ++i) {
       const Instruction & staged = function->blocks[plan.stores[i].block]
         .instructions[plan.stores[i].index];
-      Operand destination = copy.second;
+      Operand destination = copy_base;
       if(plan.stores[i].offset != 0) {
         Instruction index_ins;
         index_ins.kind = Instruction::IK_INDEX;
@@ -262,7 +280,7 @@ bool forward_one_staged_copy(
         index_ins.index_projection = lowir_model::IPK_FIELD;
         index_ins.dest = lowir_model::append_lowir_fresh_generated_value(
           *function, lowir_model::builtin_lowir_type(lowir_model::LTK_PTR));
-        index_ins.first = copy.second;
+        index_ins.first = copy_base;
         index_ins.second = Operand();
         index_ins.second.kind = Operand::OP_INTEGER;
         index_ins.second.has_int_value = true;
