@@ -56,6 +56,13 @@ phase makes placement a whole-function decision:
    frozen TU drops by more than a third; the P15 decomposition implies that
    is the remaining path to the 1.10x acceptance.
 
+## Forward work has moved
+
+Inlining-driven parity work now lives in **PLAN-INLINE-PARITY.md**
+(evidence E1-E12, investigations I1-I6, phases A-E).  This document and
+PLAN-OPT-PASS-IMPROVEMENTS.md remain the historical record and the
+provenance for that plan's evidence.
+
 ## P28: three-way analysis and the investigation program (2026-08-23)
 
 Fresh references at HEAD fd019bdc, same source, byte-comparable outputs:
