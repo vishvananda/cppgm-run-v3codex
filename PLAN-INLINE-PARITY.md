@@ -272,3 +272,20 @@ source reshaping remains out of scope per the standing directive).
   blocked by exactly the L4/L5 movement and text material, so Phase C
   (merged-region placement) and Phase B (ceremony) now carry the
   program; Phase A depth beyond this point is parked until they land.
+- L8 (I4 RESULT, callgrind + per-function asm census on the landing
+  binary): 738.8M dynamic calls; the census-matched 609.6M of them pay
+  a **6.92B-instruction ceremony bound (15.4% of the 44.9B total)** in
+  prologue/epilogue plus call/ret alone.  Top payers: Lexer::Peek 99.0M
+  calls x 12 = 1.19B (2.6% of the program in ceremony!), the lexer
+  tower (Peek/PC::Next/TC::Next/Take) 2.28B (5.1%).  Static shares at
+  the landing: ours 5.8% ceremony / 34.7% frame-relative memory
+  operands vs gcc 4.0% / 21.0% — 2.34x the ceremony and 2.66x the
+  frame traffic in absolute terms.  Phase B's recoverable bound is the
+  6.92B (frame elision, scratch widening); the 34.7% frame-operand
+  share is Phase C material.  Bonus finding: trivial leaves still take
+  millions of dynamic calls (vector::operator[] 8.3M at 9
+  instructions, SyntaxToken::Kind 12.2M at 11) — budget-exhausted
+  callers skip near-free bodies whose inline cost is below the call
+  overhead itself; a trivial-leaf budget exemption is the cheapest
+  Phase B slice.  Artifacts: ~/i1-roots/{callgrind-landing.out,
+  ceremony-static-dem.txt, i4-join.py}.
