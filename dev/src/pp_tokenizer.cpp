@@ -44,6 +44,12 @@ public:
 	{
 		if (size_ == Capacity)
 			throw std::logic_error("fixed lookahead queue overflow");
+		push_back_unchecked(value);
+	}
+
+	// For callers whose control flow already guarantees size() < Capacity.
+	void push_back_unchecked(const T& value)
+	{
 		data_[(begin_ + size_) % Capacity] = value;
 		++size_;
 	}
@@ -171,7 +177,14 @@ bool IsIdentifierInitial(int c)
 
 bool IsIdentifierBody(int c)
 {
-	return IsIdentifierNondigit(c) || IsAsciiDigit(c);
+	if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' ||
+		(c >= '0' && c <= '9'))
+		return true;
+	// Every code point below the first Annex E.1 range misses the table.
+	if (c < kAnnexE1Ranges[0].first)
+		return false;
+	return IsInRanges(c, kAnnexE1Ranges,
+		sizeof(kAnnexE1Ranges) / sizeof(kAnnexE1Ranges[0]));
 }
 
 bool IsHorizontalWhitespace(int c)
@@ -419,7 +432,7 @@ public:
 					CountTranslated(direct);
 					return direct;
 				}
-				physical_pending_.push_back(LocatedCodePoint(direct,
+				physical_pending_.push_back_unchecked(LocatedCodePoint(direct,
 					physical_.LastLine(), physical_.LastColumn()));
 			}
 			const LocatedCodePoint current = TakeUCN();
@@ -465,7 +478,7 @@ private:
 				physical_.LastLine(), physical_.LastColumn());
 		}
 		const LocatedCodePoint result = physical_pending_.front();
-		physical_pending_.pop_front();
+		physical_pending_.pop_front_unchecked();
 		return result;
 	}
 
@@ -477,7 +490,7 @@ private:
 				physical_pending_.back().value == kEndOfFile)
 				return physical_pending_.back();
 			const int value = physical_.Next();
-			physical_pending_.push_back(LocatedCodePoint(value,
+			physical_pending_.push_back_unchecked(LocatedCodePoint(value,
 				physical_.LastLine(), physical_.LastColumn()));
 		}
 		return physical_pending_[offset];
@@ -501,14 +514,14 @@ private:
 		if (phase1_pending_.empty())
 			return PullPhase1();
 		const LocatedCodePoint result = phase1_pending_.front();
-		phase1_pending_.pop_front();
+		phase1_pending_.pop_front_unchecked();
 		return result;
 	}
 
 	const LocatedCodePoint& PeekPhase1()
 	{
 		if (phase1_pending_.empty())
-			phase1_pending_.push_back(PullPhase1());
+			phase1_pending_.push_back_unchecked(PullPhase1());
 		return phase1_pending_.front();
 	}
 
@@ -550,14 +563,14 @@ private:
 		if (ucn_pending_.empty())
 			return PullUCN();
 		const LocatedCodePoint result = ucn_pending_.front();
-		ucn_pending_.pop_front();
+		ucn_pending_.pop_front_unchecked();
 		return result;
 	}
 
 	const LocatedCodePoint& PeekUCN()
 	{
 		if (ucn_pending_.empty())
-			ucn_pending_.push_back(PullUCN());
+			ucn_pending_.push_back_unchecked(PullUCN());
 		return ucn_pending_.front();
 	}
 
@@ -573,13 +586,28 @@ private:
 
 bool IsNamedOperator(const std::string& spelling)
 {
-	const char* operators[] = {
-		"new", "delete", "and", "and_eq", "bitand", "bitor", "compl",
-		"not", "not_eq", "or", "or_eq", "xor", "xor_eq"
-	};
-	for (std::size_t i = 0; i < sizeof(operators) / sizeof(operators[0]); ++i)
-		if (spelling == operators[i])
-			return true;
+	// Gate on the first character so ordinary identifiers skip the
+	// spelling comparisons entirely.
+	if (spelling.empty())
+		return false;
+	switch (spelling[0])
+	{
+	case 'a':
+		return spelling == "and" || spelling == "and_eq";
+	case 'b':
+		return spelling == "bitand" || spelling == "bitor";
+	case 'c':
+		return spelling == "compl";
+	case 'd':
+		return spelling == "delete";
+	case 'n':
+		return spelling == "new" || spelling == "not" ||
+			spelling == "not_eq";
+	case 'o':
+		return spelling == "or" || spelling == "or_eq";
+	case 'x':
+		return spelling == "xor" || spelling == "xor_eq";
+	}
 	return false;
 }
 
@@ -652,7 +680,7 @@ private:
 					kEndOfFile)
 				return kEndOfFile;
 			const int value = translation_.Next();
-			lookahead_.push_back(LocatedCodePoint(value,
+			lookahead_.push_back_unchecked(LocatedCodePoint(value,
 				translation_.LastLine(), translation_.LastColumn()));
 		}
 		return lookahead_.unchecked(offset).value;
