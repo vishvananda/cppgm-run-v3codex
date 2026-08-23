@@ -31,6 +31,12 @@ public:
 	{
 		if (offset >= size_)
 			throw std::logic_error("fixed lookahead queue underflow");
+		return unchecked(offset);
+	}
+
+	// For callers whose control flow already guarantees offset < size().
+	const T& unchecked(std::size_t offset) const
+	{
 		return data_[(begin_ + offset) % Capacity];
 	}
 
@@ -597,14 +603,14 @@ private:
 			lookahead_.push_back(LocatedCodePoint(value,
 				translation_.LastLine(), translation_.LastColumn()));
 		}
-		return lookahead_[offset].value;
+		return lookahead_.unchecked(offset).value;
 	}
 
 	int Take()
 	{
 		if (lookahead_.empty())
 			return translation_.Next();
-		const int result = lookahead_.front().value;
+		const int result = lookahead_.unchecked(0).value;
 		lookahead_.pop_front();
 		return result;
 	}
@@ -612,13 +618,13 @@ private:
 	std::size_t PeekLine(std::size_t offset)
 	{
 		Peek(offset);
-		return lookahead_[offset].line;
+		return lookahead_.unchecked(offset).line;
 	}
 
 	std::size_t PeekColumn(std::size_t offset)
 	{
 		Peek(offset);
-		return lookahead_[offset].column;
+		return lookahead_.unchecked(offset).column;
 	}
 
 	void AppendTake(std::string* spelling)
