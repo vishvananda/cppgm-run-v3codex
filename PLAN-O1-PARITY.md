@@ -56,6 +56,121 @@ phase makes placement a whole-function decision:
    frozen TU drops by more than a third; the P15 decomposition implies that
    is the remaining path to the 1.10x acceptance.
 
+## P28: three-way analysis and the investigation program (2026-08-23)
+
+Fresh references at HEAD fd019bdc, same source, byte-comparable outputs:
+gcc 15 -O1, clang 21 -O1, and the self-O1 compiler.  Primary metric:
+cachegrind dynamic instructions (Ir), which the ablation data shows in
+1:1 lockstep with wall on this workload (Ir ratio 2.35 = wall ratio
+2.34), making it deterministic and immune to the P25c layout noise
+floor.
+
+### The three-way table (frozen TU)
+
+| | self | gcc-O1 | clang-O1 |
+|---|---|---|---|
+| wall | 10.8 s | 5.69 s | 5.65 s |
+| Ir | 44.47B | 20.24B | 20.63B |
+| I1 misses | 413M | 184M | 150M |
+| cond. mispredicts | 217M | 131M | 142M |
+| data writes | 11.9B | 4.64B | 4.64B |
+| functions emitted | 14,700 | 4,718 | 4,669 |
+| local `t` symbols | 11,305 | 1,420 | -- |
+| funcs with >=6 saved regs | 19% | 38% | 43% |
+| funcs with <=1 saved reg | 56% | 34% | 26% |
+| funcs with frames | 96% | 63% | 43% |
+| memory-operand instr share | 50% | 41% | 38% |
+
+clang beats gcc's icache by 18% at equal wall with MORE instructions;
+the two mature compilers land within 1.3% of each other, so the gap is
+generic capability, not vendor magic.
+
+### The gcc ablation attribution (rebuild gcc-O1 minus one pass each)
+
+| ablation | wall | Ir | text |
+|---|---|---|---|
+| baseline | 5.69 | 20.24B | 4.96M |
+| **-fno-inline*** | **13.30 (+134%)** | **47.47B (+134%)** | 3.96M |
+| -fno-tree-sra | +1.5% | +0.3% | |
+| -fno-tree-fre | +0.9% | +0.2% | |
+| -fno-tree-dominator-opts | +1.2% | +4.0% | |
+| -fno-guess-branch-probability | +0.2% | -0.3% | |
+| -fno-omit-frame-pointer | +0.4% | +2.3% | |
+| -fno-tree-ter | +0.1% | +1.2% | |
+| all-midend-off | +139% | 48.12B | 4.02M |
+
+### The findings
+
+1. **The gap is inlining, full stop.**  gcc without inlining is 47.47B
+   Ir / 13.30 s -- WORSE than us (44.47B / 10.8 s).  Every value pass
+   combined adds only +2.3% on top of no-inline.  Our backend BEATS
+   gcc's backend at the matched no-inline operating point.
+2. **gcc pays +25% text for inlining and wins 57% wall** -- "inlining
+   is icache-gated" was a misdiagnosis; our sweeps regressed at +3%
+   text because our POST-INLINE code quality inverts the gains (the
+   H-inversion measured all session), not because text growth cannot
+   pay on this host.
+3. **gcc-O1's inline policy is our policy CLASS at 10x our limits**:
+   keyword/hinted bodies to ~70 GIMPLE statements and called-once
+   unbounded, versus our hinted-7-late/40-early and called-once-160.
+   The R10i-b/R11b rejections explored doses far below gcc's operating
+   point, measured in wall at the noise floor, with pre-P27 post-inline
+   quality.
+4. Frame pointers cost gcc 0.4% -- our rbp ceremony is not the
+   substance either; the 7.3B excess data writes are frame-home CHURN
+   (50% memory-operand share, 96% frame rate, callee-saved used as
+   scratch: the FindChild dissection shows 76 vs 33 instructions
+   decomposing into loop-carried-value-in-frame, invariant reloads,
+   no addressing folds, zext self-moves, and 15 instructions of leaf
+   frame ceremony).
+5. Excess emitted bodies quantified: 11,305 local functions vs 1,420,
+   plus 5,381 weak bodies gcc folds away.
+6. Minor: the clang-built compiler's output differs from gcc/self-built
+   by 12 bytes on the frozen TU -- a latent host-sensitivity worth a
+   small investigation.
+
+### Prioritized investigations
+
+1. **Inline dose-response measured in Ir (the decisive experiment).**
+   Sweep hinted-late-cap x budget toward gcc's operating point (hint
+   cap 24/48/96; budget 384/768/1536; called-once uncapped) on the
+   frozen TU, reading Ir + movement censuses per point (deterministic;
+   no wall until a point clears multi-percent).  If Ir falls toward
+   ~20B monotonically, wall follows at 1:1 and the whole gap closes on
+   this axis; where the curve bends, its residue names the next
+   constraint.  One day; highest expected value.
+2. **Post-inline region quality differential.**  Force-inline the
+   Peek/TC::Next/PC::Next/DecodeOne chain (the P27d trial machinery
+   with forced accept) and diff the merged region against gcc's
+   inlined version instruction-by-instruction; the movement multiplier
+   for merged regions is the number that decides how much allocator
+   work investigation 3-4 must deliver before doses pay.  One day.
+3. **Scratch-pool inversion + leaf frame elision.**  The ordinary pool
+   is {R8,R9} before callee-saved; RCX/RDX/RSI/RDI are never scratch.
+   Widen with clobber-mask guards; elide frame/rbp for leaves without
+   spills.  Bounded, allocator-local, attacks the 7.3B write excess
+   and the 15-instruction leaf ceremony directly; census-gated.  Two
+   days.
+4. **Loop-carried values in registers.**  Phi/cursor values live in
+   frames (FindChild round-trips its edge cursor every iteration).
+   A loop-scoped binding for header phis, census-gated on in-loop
+   frame operations.  Three days.
+5. **Merged-region allocation spike.**  If investigation 2 shows a
+   large movement multiplier, prototype liveness-based allocation for
+   the post-inline function class on the per-function census harness.
+   One-week spike, contingent on 2.
+6. **Body-count reduction.**  The 10k excess local bodies: measure how
+   much is reachable-but-cold versus never-called-after-inlining;
+   extend post-prune reachability.  Two days, icache-oriented.
+7. **Small fry:** clang-host 12-byte nondeterminism; complex-addressing
+   folds in selection; zext self-move elimination in machine_opt.
+
+The strategic reversal this analysis forces: the P22-P27 'closed loop'
+was an artifact of measuring small inline doses through a bad
+post-inline pipeline at the wall-noise floor.  The path to 1.10x runs
+through inline depth at gcc's operating point, gated by Ir census, with
+the allocator work (3-5) sized by investigation 2's multiplier.
+
 ## P27: the abstraction-collapse midend (program design)
 
 Every incremental lever is measured dead (P22-P26); the 1.90x is
