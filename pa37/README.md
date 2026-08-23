@@ -211,6 +211,11 @@ running optimizing transforms.
 - a deterministic 384-instruction whole-caller inlining budget, charged by
   the greater of a callee's original and simplified instruction counts, so
   repeated individually eligible calls cannot cause unbounded growth
+- a trivial-leaf exemption from that budget: a leaf body of at most four
+  instructions is substituted even when the caller's growth budget is
+  exhausted, because the call sequence it replaces is at least as large;
+  the definition-removing waves keep their own accounting and do not use
+  the exemption
 - a separate definition-removing path for a weak or internal function that
   has exactly one direct call and no address, relocation, structured-data,
   alias, lifecycle, object-root, or other non-call use; this path may admit a

@@ -36,6 +36,7 @@ const std::size_t kMinimumSingleCallTranslationUnitBudget = 10240;
 const std::size_t kLateNonleafInstructionLimit = 6;
 const std::size_t kLateHintNonleafInstructionLimit = 24;
 const std::size_t kOrdinarySizeCap = 40;
+const std::size_t kTrivialLeafInstructionLimit = 4;
 
 // The active policy limits: the shipped defaults with any nonzero fields of
 // the driver's --inline-limit overrides applied on top.
@@ -848,6 +849,12 @@ private:
         return false;
     }
     if(cost > *remaining) {
+      // The call sequence itself costs as much as a trivial leaf body, so
+      // substituting one cannot grow text; budget exhaustion never blocks
+      // it.  Definition-removing waves still require their own accounting.
+      if(!definition_removing_only_ &&
+         cost <= kTrivialLeafInstructionLimit && leaf_inline_shapes_[target])
+        return true;
       if(stats_) ++stats_->budget_skips;
       return false;
     }

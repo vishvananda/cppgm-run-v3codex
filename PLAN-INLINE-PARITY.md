@@ -289,3 +289,15 @@ source reshaping remains out of scope per the standing directive).
   overhead itself; a trivial-leaf budget exemption is the cheapest
   Phase B slice.  Artifacts: ~/i1-roots/{callgrind-landing.out,
   ceremony-static-dem.txt, i4-join.py}.
+- L9 (Phase B slice 1, trivial-leaf budget exemption): a leaf body of
+  at most 4 instructions is substituted even when the caller growth
+  budget is exhausted — the replaced call sequence is at least as
+  large, so text cannot grow; the definition-removing waves keep their
+  own accounting.  Census on the frozen TU: budget_skips 8,866 ->
+  8,061 (-805 sites), MIR 122,714 -> 122,633, frozen text -1,344
+  bytes, movement flat.  Honest Ir 44.895B -> 44.700B (-0.44%);
+  self-built binary reproduces the host frozen object.  Gates: report
+  5430/5430 (new reducer 392-inline-trivial-leaf-budget-exempt pins
+  4-in/5-out under a doubly exhausted budget), zero-fatal audit, O3
+  and O0 inception lanes MATCH; pa37/README.md documents the
+  exemption.  Honest Ir ratio 44.700/20.851 = 2.144.
