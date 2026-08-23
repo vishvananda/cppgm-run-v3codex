@@ -3,8 +3,10 @@
 Objective: bring the exact self-O1 compiler within 10% of gcc-O1 on the
 frozen benchmark (`~/cppgm-extended-pa39-source-layout/benchmarks/
 self_compile/stable/semantic_overload.cpp`, `-std=gnu++11 -O1 -Idev/src`).
-Current honest state at fd019bdc: self-O1 10.8 s / 44.47B dynamic
-instructions vs gcc-O1 5.69 s / 20.24B = 1.90x wall, 2.20x instructions.
+Current honest state at e325dc7e (P24 protocol, ledger L7): self-O1
+10.99 s / 44.90B dynamic instructions vs gcc-O1 5.81 s / 20.85B = 1.89x
+wall, 2.15x instructions.  (At fd019bdc: 10.8 s / 44.47B vs 5.69 s /
+20.24B = 1.90x wall, 2.20x instructions.)
 
 This plan supersedes the inlining-related threads of PLAN-O1-PARITY.md
 (P22-P28) and PLAN-OPT-PASS-IMPROVEMENTS.md (R10-R11) for forward work.
@@ -255,3 +257,18 @@ source reshaping remains out of scope per the standing directive).
   wave: 5 x 512-instruction single-call bodies -> 2 early + 2
   post-prune + fifth retained); pa37/README.md constants updated.
   Deeper doses (h48+) re-enter at I1 after Phase C per L3/L4/L5.
+  Landed `e325dc7e`: full report 5429/5429, zero-fatal audit, O3 and
+  O0 inception lanes MATCH, self/host frozen outputs byte-identical.
+- L7 (post-landing P24 re-baseline at e325dc7e): the grid's Ir numbers
+  are CONSTANT-WORKLOAD codegen measurements (dosed binaries compiling
+  at the old default policy).  After landing, the compiler also RUNS
+  the deeper policy on the frozen TU: +23% MIR through the backend and
+  +23.6% object text cost the self binary +1.82B of compile work
+  against its -1.39B codegen gain, and cost the gcc-built reference
+  +0.61B.  Honest pair: self-O1 44.895B Ir / 10.990 s wall vs gcc-O1
+  20.851B / 5.810 s = **2.153x Ir (from 2.197x), 1.891x wall (from
+  1.898x)**; both compilers emit byte-identical frozen objects.  The
+  Ir-ratio gain converts to wall only partially — the conversion is
+  blocked by exactly the L4/L5 movement and text material, so Phase C
+  (merged-region placement) and Phase B (ceremony) now carry the
+  program; Phase A depth beyond this point is parked until they land.
