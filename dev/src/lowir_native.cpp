@@ -233,9 +233,8 @@ private:
   std::vector<ValueFact> values_;
   std::vector<unsigned char> value_known_;
   std::vector<unsigned char> cyclic_register_assumed_;
-  // A phi holding its planned register outlives its counted uses exactly
-  // like an edge-live value: predecessor terminators keep writing the
-  // register until the planned interval end.
+  // A phi holding its planned register outlives its counted uses:
+  // predecessor terminators keep writing it until the interval end.
   std::vector<unsigned char> phi_planned_home_;
   unsigned char phi_home_registers_[16] = {};
   std::vector<long long> slot_offsets_;
@@ -304,8 +303,8 @@ private:
     return facts_.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
   }
   // A planned phi claims its register at construction time so every
-  // predecessor transfer targets the register directly.  Failure to
-  // reserve (a competing fixed reservation) falls back to the frame home.
+  // predecessor transfer targets it directly; a contested reservation
+  // falls back to the frame home.
   bool try_claim_planned_phi_register(lowir_model::ValueId value,
                                       const LowType & type)
   {
@@ -945,10 +944,13 @@ private:
       // An edge-live register outlives its final use unless the planned
       // interval end cleared every backedge and backward exception region.
       // The alias query must not count the value itself (removed above).
+      // A planned loop-invariant resident may release once its extended
+      // interval (which covers every re-reading span) is over.
       if(value.location.kind == MirOperand::OP_REG &&
          !value.parameter &&
          !value.fixed_register_home &&
-         !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&
+         (!facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) ||
+          interval_over) &&
          (!value_outlives_counted_uses(id) || interval_over) &&
          value.location.reg != retained && value.location.reg != XR_RAX &&
          !live_locations_.has_alias(id, value.location, false)) {
@@ -1337,14 +1339,17 @@ private:
                                 MirOperand * pressure_home = 0,
                                 const LowType * pressure_type = 0)
   {
+    // A planned resident's register may be re-read after a backedge:
+    // duplicates take it over only under the phi takeover conditions.
     const bool duplicate_last_use = allow_same_instruction_duplicate &&
       instruction.first.kind == Operand::OP_TEMP &&
       instruction.second.kind == Operand::OP_TEMP &&
       instruction.first.value == instruction.second.value &&
       facts_.uses[instruction.first.value] == 2 &&
       !values_[instruction.first.value].parameter &&
-      (phi_planned_home_[instruction.first.value] == 0 ||
-       phi_backedge_takeover_allowed(instruction.first.value));
+      (!value_holds_planned_register(instruction.first.value) ||
+       (phi_planned_home_[instruction.first.value] != 0 &&
+        phi_backedge_takeover_allowed(instruction.first.value)));
     const bool safe_reuse = (can_reuse(instruction.first) || duplicate_last_use) &&
       !crosses_register_clobber(instruction.dest, left.reg);
     if(safe_reuse) return left;

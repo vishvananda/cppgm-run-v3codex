@@ -129,7 +129,47 @@ struct Candidate
   std::size_t end;
   bool crossing;
   bool is_phi;
+  bool is_invariant;
 };
+
+// A backedge span is unavoidable when no layout-forward edge jumps from
+// before its header to after it — the same gate the phi pass uses.
+std::vector<unsigned char> mark_unavoidable_spans(
+    const std::vector<std::pair<std::size_t, std::size_t> > & spans,
+    const std::vector<unsigned char> & span_is_backedge,
+    const std::vector<std::pair<std::size_t, std::size_t> > & forward_edges)
+{
+  std::vector<unsigned char> unavoidable(spans.size(), 0);
+  for(std::size_t span = 0; span < spans.size(); ++span) {
+    if(!span_is_backedge[span]) continue;
+    bool bypassed = false;
+    for(std::size_t edge = 0; edge < forward_edges.size(); ++edge)
+      if(forward_edges[edge].first < spans[span].first &&
+         forward_edges[edge].second > spans[span].first) {
+        bypassed = true;
+        break;
+      }
+    unavoidable[span] = bypassed ? 0 : 1;
+  }
+  return unavoidable;
+}
+
+// A loop-invariant value qualifies for the invariant pass when its use
+// range overlaps an unavoidable loop: it is reloaded from its frame home
+// every iteration there (E6's invariant bases).  Bypassable loops keep the
+// exclusion — same ceremony reasoning as the phi gate, and the P25b probe
+// measured the ungated lift as negative.
+bool uses_overlap_unavoidable_span(
+    const std::vector<std::pair<std::size_t, std::size_t> > & spans,
+    const std::vector<unsigned char> & span_unavoidable,
+    std::size_t first_use, std::size_t last_use)
+{
+  for(std::size_t span = 0; span < spans.size(); ++span)
+    if(span_unavoidable[span] && spans[span].first <= last_use &&
+       first_use <= spans[span].second)
+      return true;
+  return false;
+}
 
 // A phi interval spans positions the per-value clobber mask never covered
 // (transfers before the linearized definition, span extension past the last
@@ -198,9 +238,34 @@ void assign_candidate_registers(
       break;
     }
   }
+  // Loop-invariant candidates claim next, also from the far end: their
+  // grants happen at definition through the ordinary planned machinery, so
+  // they share registers by interval like any candidate, but far-end
+  // claiming keeps them off the ordinary pass's R13-first choices.
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];
-    if(candidate.is_phi) continue;
+    if(!candidate.is_invariant) continue;
+    for(std::size_t reg = sizeof(kPool) / sizeof(kPool[0]); reg-- > 0;) {
+      if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
+      if(busy_until[reg] > candidate.definition) continue;
+      if(clobbered_in_interval(facts, kPool[reg],
+                               candidate.definition, candidate.end))
+        continue;
+      busy_until[reg] = candidate.end + 1;
+      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
+        static_cast<unsigned char>(kPool[reg]) + 1;
+      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
+        candidate.end;
+      if(stats) {
+        ++stats->planned_value_registers;
+        ++stats->planned_invariant_registers;
+      }
+      break;
+    }
+  }
+  for(std::size_t i = 0; i < candidates.size(); ++i) {
+    const Candidate & candidate = candidates[i];
+    if(candidate.is_phi || candidate.is_invariant) continue;
     const unsigned crossed = facts.live_across_clobbers[
       static_cast<std::uint32_t>(candidate.value)];
     const X64Register * pool = candidate.crossing ? kPool : kCallerPool;
@@ -270,6 +335,10 @@ std::vector<unsigned char> plan_value_registers(
   std::vector<std::size_t> phi_header_start(
     function.value_names.size(), FunctionFacts::missing_position());
   std::vector<std::pair<std::size_t, std::size_t> > spans;
+  // Parallel to `spans`: true for layout-backedge spans (loops), false for
+  // exception-region spans.  Interval extension uses both; the invariant
+  // gate wants loops only.
+  std::vector<unsigned char> span_is_backedge;
   std::vector<std::pair<std::size_t, std::size_t> > open_regions;
   // Bypass evidence for the unavoidable-header gate: every layout-forward
   // edge (source position, target start).
@@ -321,8 +390,10 @@ std::vector<unsigned char> plan_value_registers(
           const std::pair<std::size_t, std::size_t> region =
             open_regions.back();
           open_regions.pop_back();
-          if(region.first < position)
+          if(region.first < position) {
             spans.push_back(std::make_pair(region.first, position));
+            span_is_backedge.push_back(0);
+          }
         }
         continue;
       }
@@ -342,9 +413,10 @@ std::vector<unsigned char> plan_value_registers(
         const std::uint32_t id = label.block;
         const std::size_t target =
           id < block_by_id.size() ? block_by_id[id] : function.blocks.size();
-        if(target < function.blocks.size() && target <= block)
+        if(target < function.blocks.size() && target <= block) {
           spans.push_back(std::make_pair(block_start[target], end_of_block));
-        else if(target < function.blocks.size())
+          span_is_backedge.push_back(1);
+        } else if(target < function.blocks.size())
           forward_edges.push_back(
             std::make_pair(position, block_start[target]));
       }
@@ -352,8 +424,12 @@ std::vector<unsigned char> plan_value_registers(
   }
   // An unterminated region conservatively spans to the end.
   for(std::size_t i = 0; i < open_regions.size(); ++i)
-    if(open_regions[i].first < function_end)
+    if(open_regions[i].first < function_end) {
       spans.push_back(std::make_pair(open_regions[i].first, function_end));
+      span_is_backedge.push_back(0);
+    }
+  const std::vector<unsigned char> span_unavoidable =
+    mark_unavoidable_spans(spans, span_is_backedge, forward_edges);
 
   std::vector<Candidate> candidates;
   for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
@@ -383,15 +459,25 @@ std::vector<unsigned char> plan_value_registers(
     if(phi_transfer_start[raw] != FunctionFacts::missing_position() &&
        !is_phi)
       continue;
-    // A register-resident phi turns every storage-address use into a direct
-    // [reg] operand, so the storage-address exclusion does not apply to phis.
     if(facts.definition[raw] == FunctionFacts::missing_position() ||
        facts.last_use[raw] == FunctionFacts::missing_position() ||
-       facts.uses[raw] < 1 ||
-       facts.has(value, FunctionFacts::VF_PARAMETER) ||
-       facts.has(value, FunctionFacts::VF_LOOP_INVARIANT) ||
+       facts.uses[raw] < 1)
+      continue;
+    const bool is_invariant = !is_phi &&
+      facts.has(value, FunctionFacts::VF_LOOP_INVARIANT) &&
+      facts.first_use[raw] != FunctionFacts::missing_position() &&
+      uses_overlap_unavoidable_span(spans, span_unavoidable,
+                                    facts.first_use[raw],
+                                    facts.last_use[raw]);
+    // A register-resident phi or invariant base turns every
+    // storage-address use into a direct [reg] operand, so the
+    // storage-address exclusion does not apply to them.
+    if(facts.has(value, FunctionFacts::VF_PARAMETER) ||
+       (!is_invariant &&
+        facts.has(value, FunctionFacts::VF_LOOP_INVARIANT)) ||
        facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT) ||
-       (!is_phi && facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS)))
+       (!is_phi && !is_invariant &&
+        facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS)))
       continue;
     // Non-crossing values ride caller-saved registers over call-free
     // intervals.  Unwinding only leaves a call, so a call-free interval is
@@ -416,6 +502,7 @@ std::vector<unsigned char> plan_value_registers(
     candidate.end = facts.last_use[raw];
     candidate.crossing = facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
     candidate.is_phi = is_phi;
+    candidate.is_invariant = is_invariant;
     // Phis are edge-live by construction (written at predecessor
     // terminators), whether or not any read crosses a block boundary.
     if(is_phi || facts.has(value, FunctionFacts::VF_EDGE_LIVE)) {
@@ -432,8 +519,9 @@ std::vector<unsigned char> plan_value_registers(
     }
     // The extended interval may have grown over a call the counted uses
     // never crossed; a caller-saved resident cannot survive that.  Phis
-    // ride the callee-saved pool, so a call-spanning interval is fine.
-    if(!is_phi && !candidate.crossing) {
+    // and invariants ride the callee-saved pool, so a call-spanning
+    // interval is fine for them.
+    if(!is_phi && !is_invariant && !candidate.crossing) {
       const std::vector<std::size_t>::const_iterator call =
         std::lower_bound(facts.calls.begin(), facts.calls.end(),
                          candidate.definition);

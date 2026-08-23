@@ -41,30 +41,22 @@ function @probe
   abi
     return i64 -> rax
   frame
-    stack_size 96
+    stack_size 64
     scratch_bytes 0
-    preserve rbx r12 r13 r14 r15
+    preserve r14 rbx r12 r13 r15
     slot $counter -> [rbp-8] : i64
-    temp %a -> [rbp-16] : i64
-    temp %b -> [rbp-24] : i64
-    temp %c -> [rbp-32] : i64
-    temp %d -> [rbp-40] : i64
-    temp %iteration -> [rbp-48] : i64
+    temp %iteration -> [rbp-16] : i64
 
   block ^entry
-    load.i64 rbx, @a
-    store.i64 [rbp-16], rbx
-    load.i64 r12, @b
-    store.i64 [rbp-24], r12
-    load.i64 r13, @c
-    store.i64 [rbp-32], r13
-    load.i64 r14, @d
-    store.i64 [rbp-40], r14
+    load.i64 r14, @a
+    load.i64 rbx, @b
+    load.i64 r12, @c
+    load.i64 r13, @d
     store.i64 [rbp-8], 0
 
   block ^condition
     load.i64 r15, [rbp-8]
-    store.i64 [rbp-48], r15
+    store.i64 [rbp-16], r15
     cmp.i64 r15, 2
     jae ^done
 
@@ -75,10 +67,10 @@ function @probe
     add r8, rdx
     store.i64 [r8], r15
     call @noop [args=(), unwind=no]
-    mov r9, rbx
-    add r9, r12
-    mov r8, r13
-    add r8, r14
+    mov r9, r14
+    add r9, rbx
+    mov r8, r12
+    add r8, r13
     add r9, r8
     add r9, 7
     mov r8, r15

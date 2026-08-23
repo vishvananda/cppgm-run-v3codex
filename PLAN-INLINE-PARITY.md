@@ -392,3 +392,64 @@ source reshaping remains out of scope per the standing directive).
   more as deeper inlining merges cursor towers into locals.  Gates:
   report 5430/5430, zero-fatal audit, O3+O0 inception lanes MATCH,
   frozen self-reproduction byte-for-byte.
+- L14 (Phase C slice 3: loop-invariant register residency).  P24's
+  strategy lock conditioned the parked LICM stash on "placement can
+  hold hoisted values in registers", and P25b showed the planner's
+  VF_LOOP_INVARIANT exclusion was correct only under the old claiming
+  discipline.  The slice admits loop-invariant values (including
+  VF_ONLY_STORAGE_ADDRESS bases — E6's "invariant bases reloaded per
+  iteration") as planner candidates when their use range overlaps an
+  UNAVOIDABLE backedge span (the phi pass's forward-edge gate applied
+  per span), claiming callee-saved registers from the R15 end between
+  the phi pass and the ordinary pass; grants flow through the
+  existing definition-time machinery, so intervals share registers
+  normally, and consume may now release a planned invariant once its
+  extended interval is over.  Guard added: a same-instruction
+  duplicate may not destructively take any planned resident's
+  register outside the phi takeover conditions.  Census on the
+  frozen TU: 275 invariants planned; text -504 bytes; MIR/movement
+  +100/+63 (fallback shapes shift).  Honest Ir 44.6244B ->
+  44.5976B (-27M); cumulative from the L9 baseline 44.700B ->
+  44.598B = -0.23%, ratio 2.139.  Per-function: TranslationCursor::
+  Next -1.9% (the lexer tower's first movement), FindChild -8%
+  cumulative, rewrite_promoted_slots -22.8M; the planner's own
+  compile cost +15.6M (R3-class, honestly counted).  One pa38
+  fixture regenerated in place per the standing rule:
+  410-cyclic-edge-register-pressure — the pressure test's invariants
+  (a/b/c/d/base) now hold callee-saved registers with no frame
+  temps, program behavior identical, reference program 424 -> 408
+  bytes (precedent: 108fb8d8 regenerated the same fixture for
+  caller-saved residency).  Gates: report 5430/5430, zero-fatal
+  audit, O3+O0 inception lanes MATCH, frozen self-reproduction
+  byte-for-byte.  Final tree honest Ir (with the L15 fix included)
+  44.5818B — cumulative Phase C 44.700B -> 44.582B = -0.26%, ratio
+  2.138.  The LICM stash re-test remains open: hoisted values now
+  have a residency path, but only inside unavoidable loops —
+  re-measure after the next placement slice widens coverage.
+- L15 (frontend use-after-free, found by the slice-3 O0 lane and
+  fixed).  The lane's inception stage failed: every SELF-BUILT
+  compiler (O0/O1/O3-built alike) errored "binary expression is
+  missing its PA12 operand type" compiling lowir_native_session.cpp
+  at -O0, while the g++-built host compiled it fine — and the same
+  content PASSED from a different file path.  Slice 3's one-line
+  Stats-header shift exposed it; the trigger predates the slice.
+  Memcheck on the HOST binary found the mechanism: BuildBinary-
+  Expression received `display_operation` as a const reference into
+  the syntax arena's InternedStringTable texts_ vector; the nested
+  overload analysis inside can intern new spellings, reallocating
+  texts_ and dangling the reference BEFORE it is interned into the
+  name table.  Hashing the freed bytes yields the right NameId only
+  while the freed block still holds the old bytes — allocator-reuse
+  differences between binaries made g++-built pass and self-built
+  fail, with file-path/header-size sensitivity through heap layout.
+  A wrong NameId misclassifies operation_kind, PA15's consistency
+  check catches the missing operand type.  Fix: display_operation
+  passes BY VALUE (the copy is taken while the reference is still
+  valid); memcheck 0 errors (was 18/10 contexts), the O0 lane
+  MATCHes again, and the host frozen output is byte-identical (the
+  frozen compile never hit the dangle).  Toolkit note for R2: the
+  hybrid-link bisection must mix OUR-compiled objects only (g++
+  objects fail to link against ours — [abi:cxx11] tag mismatch on
+  std::string-returning symbols), and "same content, different
+  path" flipping an outcome is the signature of allocator-layout-
+  dependent latent bugs, not codegen regressions.

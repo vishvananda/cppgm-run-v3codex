@@ -1642,6 +1642,8 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.planned_phi_registers
          << " phi_register_homes="
          << native_stats.phi_register_homes
+         << " planned_invariant_registers="
+         << native_stats.planned_invariant_registers
          << " narrow_call_result_normalizations_omitted="
          << native_stats.narrow_call_result_normalizations_omitted
          << " redundant_integer_normalizations_omitted="
@@ -1814,6 +1816,8 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << native_stats.planned_phi_registers
 			 << " phi_register_homes="
 			 << native_stats.phi_register_homes
+			 << " planned_invariant_registers="
+			 << native_stats.planned_invariant_registers
 			 << " narrow_call_result_normalizations_omitted="
 			 << native_stats.narrow_call_result_normalizations_omitted
 			 << " redundant_integer_normalizations_omitted="
