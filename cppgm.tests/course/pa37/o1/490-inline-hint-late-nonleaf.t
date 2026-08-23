@@ -48,6 +48,23 @@ function @preferred(%value : i64) -> void [binding=strong, inline_hint=yes] {
     call void @observe(%v39)
     call void @observe(%v39)
     call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
     return void
 }
 
@@ -99,6 +116,18 @@ function @over_cap(%value : i64) -> void [binding=strong, inline_hint=yes] {
     %v37 = binary add i64 %v36, 0
     %v38 = binary add i64 %v37, 0
     %v39 = binary add i64 %v38, 0
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
+    call void @observe(%v39)
     call void @observe(%v39)
     call void @observe(%v39)
     call void @observe(%v39)

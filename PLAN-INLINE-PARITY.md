@@ -189,3 +189,69 @@ source reshaping remains out of scope per the standing directive).
   that envelope; Phase D reclaims.
 - R5: fixture churn — every intentionally moved PA37 fixture regenerates
   in place with the movement explained in the landing ledger row.
+
+## 6. Ledger
+
+- L1 (toolkit): `--inline-limit name=value` driver option exposing the
+  four policy limits (hinted late cap, ordinary caller budget,
+  called-once cap, called-once caller budget), threaded through
+  `lowir_opt::optimize` into all three waves; defaults byte-stable on
+  the frozen TU; the hinted late cap also widens the hinted
+  cold-discounted size gate to max(40, cap).  The audit rejects
+  environment variables as compiler configuration, so the R2 toolkit is
+  a flag, not an env var.  `INCEPTION_EXTRA_CC_FLAGS` (exported `?=`
+  hook in pa39) doses selfhost builds; a plain `INCEPTION_CC_FLAGS`
+  command-line override is silently dropped by the MAKEFLAGS-clearing
+  object sub-make.  Landed `d752de22` + `7b64f27f`; full report
+  5427/5427; zero-fatal audit; test-debuginfo pa13/pa37/pa38 failures
+  pre-exist at fd019bdc (verified on the untouched reference worktree).
+- L2 (I3 RESULT): the called-once population above the 160 cap is ~70
+  sites on the frozen TU.  once-cap 512 + caller 1024 captures 61 of
+  them (+14,930 cloned instructions), post-prune reject_size 34 -> 2,
+  and both total post-inline instructions (85,906 -> 84,744) and frozen
+  text (363,002 -> 362,576) SHRINK.  The TU budget is input-scaled
+  (135,407 with 73,869 remaining) — the 10,240 floor never binds.
+  Unbounded called-once is WORSE than 512 in Ir (44.399B vs 44.316B):
+  giant single-call merges dilute.  512/1024 goes into the operating
+  point; called-once depth is exhausted as a dimension.
+- L3 (I1 RESULT, 15-point grid at d752de22): Ir falls monotonically in
+  caller budget everywhere and in hinted cap through 48, then REGRESSES
+  at 96 at every budget (budget crowding plus the next wall: at cap 96
+  `inline_hint_size_rejects`=0 and `inline_reject_callee_eh` jumps 378
+  -> 3,269 — the EH wall stands behind the size wall).  Best point
+  h48-b1536: 42.055B (-5.4%) at +68% frozen text.  Ir does NOT fall
+  toward 20B: full hint-depth at gcc's operating point recovers ~10% of
+  the 24.2B gap.  Movement RISES steeply with dose: census movement
+  share 65.4% (p0) -> 72.6% (h96-b1536), absolute movement 65,355 ->
+  128,162 while Ir falls only 5%.  Per the I1 decision rule this makes
+  Phase C the binding precondition for deeper doses.
+- L4 (I2 RESULT): same-scope merged-region comparison
+  (PhysicalCursor::Next with DecodeOne absorbed, present in the
+  h48-b1536 dosed self binary and in gcc-O1): ours 542 insns / 220
+  memory operands (40.6%) / 45 residual calls vs gcc 189 / 57 (30.2%)
+  / 0.  N ~ 2.9x instructions, 3.9x memory operands — N > 2, so Phase C
+  gates Phase A's deeper doses.  Lexer::Peek is UNCHANGED at every dose
+  (its callees exceed even cap 96); TC::Next grows without absorbing
+  PC::Next.  The gcc tower for reference: Peek 47/18/1,
+  TC::Next 481/156/3, PC::Next 189/57/0.
+- L5 (wall A/B, PSI-gated 5-block ABBA vs same-revision p0): h12-b384
+  -1.44% wall / -1.47% user; h24-b384 -1.40% / -1.27%; h24-b768 -0.65%
+  / -0.83%; h48-b768 -4.18% / -1.91% (wall<user divergence = load
+  noise; user is the steady signal).  Wall converts at roughly HALF the
+  Ir delta and stops improving past the text envelope — R1 confirmed,
+  as I2's N predicted.  The Ir:wall 1:1 of E3 holds only between
+  same-policy binaries; dosed binaries lose IPC to text and movement.
+- L6 (Phase A landing): operating point h24-b384 — hinted late cap
+  7 -> 24, ordinary caller budget 128 -> 384, called-once cap
+  160 -> 512, called-once caller budget 320 -> 1,024; the hinted
+  cold-discounted size gate stays 40 (max(40, 24)).  Measured at the
+  point: Ir 43.080B (-3.12%), wall -1.40% / user -1.27%, frozen text
+  +23.6% (inside gcc's +25% envelope, R4), lowir_opt_ns +15% (R3),
+  self-hosted binary reproduces the host frozen object byte-for-byte.
+  PA37 reducers: 475 and 490 resized to the new 512/513 and 24/25
+  boundaries; new 391-inline-growth-budget-boundary (384 pinned per
+  wave: 26 calls x 32-instruction leaf -> 12 early + 12 late + 2
+  residual) and 476-inline-single-call-caller-budget (1,024 pinned per
+  wave: 5 x 512-instruction single-call bodies -> 2 early + 2
+  post-prune + fifth retained); pa37/README.md constants updated.
+  Deeper doses (h48+) re-enter at I1 after Phase C per L3/L4/L5.

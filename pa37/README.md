@@ -208,20 +208,21 @@ running optimizing transforms.
 - immediate local simplification, dead-code elimination, and control-flow
   cleanup after a late inlining batch, so the callee's compact shape is
   visible to every later caller in the same bottom-up traversal
-- a deterministic 128-instruction whole-caller inlining budget, charged by
+- a deterministic 384-instruction whole-caller inlining budget, charged by
   the greater of a callee's original and simplified instruction counts, so
   repeated individually eligible calls cannot cause unbounded growth
 - a separate definition-removing path for a weak or internal function that
   has exactly one direct call and no address, relocation, structured-data,
   alias, lifecycle, object-root, or other non-call use; this path may admit a
-  body of at most 160 instructions, uses a 320-instruction budget per caller,
+  body of at most 512 instructions, uses a 1,024-instruction budget per
+  caller,
   and removes the transferred definition after substitution; its
   translation-unit budget is the greater of 10,240 and the original input
   instruction count
 - one post-reachability graph rebuild followed by the definition-removing path
   alone, so removing dead callers may expose a new single-call definition;
-  this wave uses the optimized body count with the same 160-instruction body,
-  320-instruction caller, and proportional translation-unit limits, then
+  this wave uses the optimized body count with the same 512-instruction body,
+  1,024-instruction caller, and proportional translation-unit limits, then
   prunes transferred definitions
 - inlining a callee with no EH control instructions from an active caller EH
   region even when the callee may unwind; potentially throwing calls cloned
@@ -234,7 +235,7 @@ running optimizing transforms.
 - treating `throw`, `exception`, `exception_selector`, and `resume` as
   EH-bearing instructions, just like the `eh_*` markers; a function containing
   any of them is not an ordinary inlining candidate
-- preservation of the ordinary 128-instruction policy when a definition is
+- preservation of the ordinary 384-instruction policy when a definition is
   in the single-call class but a separate single-call budget is exhausted;
   calls that meet the ordinary size and growth rules remain ordinary inline
   candidates
@@ -363,8 +364,8 @@ rebuilds the typed direct-call graph once and may inline an additional
 nonrecursive function whose optimized body contains no exception-handling
 instructions. A single-block, single-return body with no calls may have at
 most 40 instructions. A body that contains a call or has multiple blocks may
-have at most six instructions, or at most seven instructions when its
-definition has `inline_hint=yes`. This late wave has a fresh 128-instruction
+have at most six instructions, or at most twenty-four instructions when its
+definition has `inline_hint=yes`. This late wave has a fresh 384-instruction
 budget for each caller, charged by the optimized instruction count of every
 inlined body. The hint does not override that budget or `no_inline=yes`. The
 wave must continue to preserve variadic,
