@@ -140,3 +140,4 @@ FRONTEND_OBJ_BASENAMES_lowir2native += lowir_native_global_encoding
 FRONTEND_OBJ_BASENAMES_lowir2native += lowir_native_location_planning
 FRONTEND_OBJ_BASENAMES_lowir2native += lowir_phi_edges
 FRONTEND_OBJ_BASENAMES_lowir2native += lowir_native_phi_lowering
+FRONTEND_OBJ_BASENAMES_cppgm++ += lowir_line_table_debug

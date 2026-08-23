@@ -2333,7 +2333,8 @@ void cleanup_late_inline_body(Function * function, Stats * stats,
 
 }  // namespace
 
-void optimize(LowirProgram & program, int level, Stats * stats)
+void optimize(LowirProgram & program, int level, Stats * stats,
+              const InlinePolicyOverrides * inline_limits)
 {
   if(level < 0 || level > 3)
     throw std::logic_error("invalid LowIR optimization level");
@@ -2398,7 +2399,7 @@ void optimize(LowirProgram & program, int level, Stats * stats)
   if(stats) inline_started = std::chrono::steady_clock::now();
   const std::size_t inline_rewrites =
     inline_o1_calls(program, call_graph, prepared_oversized_symbols,
-      original_instruction_counts, &inlined_symbols, stats);
+      original_instruction_counts, &inlined_symbols, stats, inline_limits);
   if(stats) {
     stats->inline_changed_callers =
       std::count(inlined_symbols.begin(), inlined_symbols.end(), 1);
@@ -2588,7 +2589,8 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     cleanup.run = cleanup_late_inline_body;
     cleanup.context = &cleanup_context;
     const std::size_t late_rewrites = inline_optimized_calls(
-      program, late_call_graph, &late_rewritten_symbols, stats, &cleanup);
+      program, late_call_graph, &late_rewritten_symbols, stats, &cleanup,
+      inline_limits);
     if(stats) {
       stats->rewrites += late_rewrites;
       stats->late_inline_changed_callers = std::count(
@@ -2612,7 +2614,8 @@ void optimize(LowirProgram & program, int level, Stats * stats)
     std::vector<unsigned char> post_prune_rewritten_symbols(
       program.symbol_names.size(), 0);
     const std::size_t post_prune_rewrites = inline_post_prune_single_calls(
-      program, post_prune_call_graph, &post_prune_rewritten_symbols, stats);
+      program, post_prune_call_graph, &post_prune_rewritten_symbols, stats,
+      inline_limits);
     if(stats) {
       stats->rewrites += post_prune_rewrites;
       stats->post_prune_inline_changed_callers = std::count(

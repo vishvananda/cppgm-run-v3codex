@@ -35,6 +35,41 @@ const std::size_t kSingleCallCallerBudget = 320;
 const std::size_t kMinimumSingleCallTranslationUnitBudget = 10240;
 const std::size_t kLateNonleafInstructionLimit = 6;
 const std::size_t kLateHintNonleafInstructionLimit = 7;
+const std::size_t kOrdinarySizeCap = 40;
+
+// The active policy limits: the shipped defaults with any nonzero fields of
+// the driver's --inline-limit overrides applied on top.
+struct InlinePolicyLimits
+{
+  std::size_t caller_budget;
+  std::size_t single_call_limit;
+  std::size_t single_call_caller_budget;
+  std::size_t hint_late_nonleaf_limit;
+  std::size_t hint_size_cap;
+};
+
+InlinePolicyLimits resolve_inline_policy_limits(
+  const InlinePolicyOverrides * overrides)
+{
+  InlinePolicyLimits limits;
+  limits.caller_budget = kInlineInstructionBudget;
+  limits.single_call_limit = kSingleCallInstructionLimit;
+  limits.single_call_caller_budget = kSingleCallCallerBudget;
+  limits.hint_late_nonleaf_limit = kLateHintNonleafInstructionLimit;
+  if(overrides) {
+    if(overrides->caller_budget)
+      limits.caller_budget = overrides->caller_budget;
+    if(overrides->single_call_limit)
+      limits.single_call_limit = overrides->single_call_limit;
+    if(overrides->single_call_caller_budget)
+      limits.single_call_caller_budget = overrides->single_call_caller_budget;
+    if(overrides->hint_late_cap)
+      limits.hint_late_nonleaf_limit = overrides->hint_late_cap;
+  }
+  limits.hint_size_cap =
+    std::max(kOrdinarySizeCap, limits.hint_late_nonleaf_limit);
+  return limits;
+}
 class ValueMap
 {
 public:
@@ -423,7 +458,8 @@ public:
           std::vector<unsigned char> * rewritten_symbols,
           Stats * stats, bool optimized_late_wave = false,
           bool definition_removing_only = false,
-          const InlineCleanup * cleanup = 0)
+          const InlineCleanup * cleanup = 0,
+          const InlinePolicyOverrides * limit_overrides = 0)
     : program_(*program), rewritten_symbols_(rewritten_symbols),
       stats_(stats),
       call_graph_(call_graph),
@@ -432,6 +468,7 @@ public:
       original_instruction_counts_(original_instruction_counts),
       remaining_single_call_translation_unit_budget_(
         kMinimumSingleCallTranslationUnitBudget),
+      limits_(resolve_inline_policy_limits(limit_overrides)),
       optimized_late_wave_(optimized_late_wave),
       definition_removing_only_(definition_removing_only), cleanup_(cleanup),
       rewrites_(0)
@@ -490,9 +527,9 @@ public:
     infer_no_unwind();
     state_.assign(program_.functions.size(), 0);
     remaining_inline_budget_.assign(program_.functions.size(),
-      kInlineInstructionBudget);
+      limits_.caller_budget);
     remaining_single_call_budget_.assign(program_.functions.size(),
-      kSingleCallCallerBudget);
+      limits_.single_call_caller_budget);
   }
 
   std::size_t run()
@@ -579,6 +616,7 @@ private:
   std::vector<std::size_t> remaining_inline_budget_;
   std::vector<std::size_t> remaining_single_call_budget_;
   std::size_t remaining_single_call_translation_unit_budget_;
+  InlinePolicyLimits limits_;
   bool optimized_late_wave_;
   bool definition_removing_only_;
   const InlineCleanup * cleanup_;
@@ -706,13 +744,15 @@ private:
       instruction_counts_[target], original_instruction_counts_[target]);
     const bool bounded_single_call = !optimized_late_wave_ &&
       single_call_discardable_[target] &&
-      inline_cost <= kSingleCallInstructionLimit;
+      inline_cost <= limits_.single_call_limit;
     if(definition_removing_only_ && !bounded_single_call) {
       if(record_stats && stats_ && single_call_discardable_[target])
         ++stats_->post_prune_inline_reject_size;
       return false;
     }
-    if(cold_discounted_counts_[target] > 40 &&
+    const std::size_t size_cap = callee_function.metadata.inline_hint ?
+      limits_.hint_size_cap : kOrdinarySizeCap;
+    if(cold_discounted_counts_[target] > size_cap &&
        (optimized_late_wave_ ||
         !callee_function.metadata.prefer_local_object_binding) &&
        !bounded_single_call) {
@@ -720,12 +760,12 @@ private:
       return false;
     }
     const std::size_t late_nonleaf_limit = callee_function.metadata.inline_hint ?
-      kLateHintNonleafInstructionLimit : kLateNonleafInstructionLimit;
+      limits_.hint_late_nonleaf_limit : kLateNonleafInstructionLimit;
     if(optimized_late_wave_ &&
        instruction_counts_[target] > late_nonleaf_limit &&
        !leaf_inline_shapes_[target] &&
        !(effective_leaf_shapes_[target] &&
-         cold_discounted_counts_[target] <= 40)) {
+         cold_discounted_counts_[target] <= size_cap)) {
       if(record_stats && stats_ && callee_function.metadata.inline_hint)
         ++stats_->inline_hint_size_rejects;
       if(record_stats && stats_) ++stats_->inline_reject_prepared_size;
@@ -775,7 +815,7 @@ private:
       std::max(instruction_counts_[target],
         original_instruction_counts_[target]), 1);
     if(!optimized_late_wave_ && single_call_discardable_[target] &&
-       cost <= kSingleCallInstructionLimit) {
+       cost <= limits_.single_call_limit) {
       if(cost <= *single_call_remaining &&
          cost <= remaining_single_call_translation_unit_budget_) {
         *single_call_remaining -= cost;
@@ -797,7 +837,9 @@ private:
       if(definition_removing_only_) return false;
       const Function & function = program_.functions[target];
       const bool ordinary_size_candidate =
-        (cold_discounted_counts_[target] <= 40 ||
+        (cold_discounted_counts_[target] <=
+           (function.metadata.inline_hint ?
+            limits_.hint_size_cap : kOrdinarySizeCap) ||
          function.metadata.prefer_local_object_binding) &&
         (!prepared_oversized_symbols_[function.symbol] ||
          (instruction_counts_[target] <= 4 &&
@@ -1557,10 +1599,12 @@ std::size_t inline_o1_calls(
   const std::vector<unsigned char> & prepared_oversized_symbols,
   const std::vector<std::size_t> & original_instruction_counts,
   std::vector<unsigned char> * rewritten_symbols,
-  Stats * stats)
+  Stats * stats,
+  const InlinePolicyOverrides * limit_overrides)
 {
   Inliner inliner(&program, call_graph, prepared_oversized_symbols,
-    original_instruction_counts, rewritten_symbols, stats);
+    original_instruction_counts, rewritten_symbols, stats, false, false, 0,
+    limit_overrides);
   return inliner.run();
 }
 
@@ -1569,7 +1613,8 @@ std::size_t inline_optimized_calls(
   const InlineCallGraph & call_graph,
   std::vector<unsigned char> * rewritten_symbols,
   Stats * stats,
-  const InlineCleanup * cleanup)
+  const InlineCleanup * cleanup,
+  const InlinePolicyOverrides * limit_overrides)
 {
   std::vector<unsigned char> no_prepared_oversized(
     program.symbol_names.size(), 0);
@@ -1579,7 +1624,7 @@ std::size_t inline_optimized_calls(
     optimized_instruction_counts[i] = instruction_count(program.functions[i]);
   Inliner inliner(&program, call_graph, no_prepared_oversized,
     optimized_instruction_counts, rewritten_symbols, stats, true, false,
-    cleanup);
+    cleanup, limit_overrides);
   return inliner.run();
 }
 
@@ -1587,7 +1632,8 @@ std::size_t inline_post_prune_single_calls(
   LowirProgram & program,
   const InlineCallGraph & call_graph,
   std::vector<unsigned char> * rewritten_symbols,
-  Stats * stats)
+  Stats * stats,
+  const InlinePolicyOverrides * limit_overrides)
 {
   std::vector<unsigned char> no_prepared_oversized(
     program.symbol_names.size(), 0);
@@ -1596,7 +1642,8 @@ std::size_t inline_post_prune_single_calls(
   for(std::size_t i = 0; i < program.functions.size(); ++i)
     optimized_instruction_counts[i] = instruction_count(program.functions[i]);
   Inliner inliner(&program, call_graph, no_prepared_oversized,
-    optimized_instruction_counts, rewritten_symbols, stats, false, true);
+    optimized_instruction_counts, rewritten_symbols, stats, false, true, 0,
+    limit_overrides);
   return inliner.run();
 }
 

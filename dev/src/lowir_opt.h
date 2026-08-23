@@ -8,6 +8,18 @@
 
 namespace lowir_opt {
 
+// Optional overrides for the O1 inline policy limits, driven by the
+// repeatable --inline-limit name=value driver option.  A zero field keeps
+// the shipped default; hint_late_cap also widens the hinted callee size cap
+// to max(40, hint_late_cap) so a single number states the hinted dose.
+struct InlinePolicyOverrides
+{
+  std::size_t caller_budget = 0;
+  std::size_t single_call_limit = 0;
+  std::size_t single_call_caller_budget = 0;
+  std::size_t hint_late_cap = 0;
+};
+
 struct Stats
 {
   static const std::size_t kInlineRetainedUseBucketCount = 7;
@@ -272,6 +284,7 @@ struct Stats
 // Optimize one already-typed LowIR program in place. Level zero deliberately
 // performs no transform; parsing and serialization provide canonicalization.
 void optimize(lowir_model::LowirProgram & program, int level,
-              Stats * stats = 0);
+              Stats * stats = 0,
+              const InlinePolicyOverrides * inline_limits = 0);
 
 }  // namespace lowir_opt

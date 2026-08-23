@@ -16,6 +16,7 @@
 #include "lowir_native_stats_report.h"
 #include "lowir_opt.h"
 #include "preprocessor.h"
+#include "lowir_line_table_debug.h"
 #include "tool_help_text.h"
 
 #include <chrono>
@@ -84,6 +85,7 @@ struct DriverInvocation
   bool collect_stats;
   bool collect_function_census = false;
   bool hosted_system_includes;
+  lowir_opt::InlinePolicyOverrides inline_limits;
 
   DriverInvocation()
       : mode(DriverMode::Link), optimization_level(3), line_tables(false),
@@ -151,6 +153,30 @@ bool is_debug_info_flag(const string & arg)
       arg == "-gline-tables-only" ||
       arg == "-g" ||
       starts_with(arg, "-g");
+}
+
+// --inline-limit name=value overrides one O1 inline policy limit.  Values
+// must be positive; a limit left unset keeps the shipped default.
+void apply_inline_limit_option(lowir_opt::InlinePolicyOverrides * limits,
+                               const string & spec)
+{
+  const size_t equals = spec.find('=');
+  if(equals == string::npos || equals == 0 || equals + 1 == spec.size())
+    throw logic_error("invalid --inline-limit argument: " + spec);
+  const string name = spec.substr(0, equals);
+  const string text = spec.substr(equals + 1);
+  char * end = 0;
+  const unsigned long long value = strtoull(text.c_str(), &end, 10);
+  if(end == text.c_str() || *end != '\0' || value == 0 ||
+     value > static_cast<unsigned long long>(SIZE_MAX))
+    throw logic_error("invalid --inline-limit value: " + spec);
+  const size_t limit = static_cast<size_t>(value);
+  if(name == "caller-budget") limits->caller_budget = limit;
+  else if(name == "once-cap") limits->single_call_limit = limit;
+  else if(name == "once-caller-budget")
+    limits->single_call_caller_budget = limit;
+  else if(name == "hint-late-cap") limits->hint_late_cap = limit;
+  else throw logic_error("unknown --inline-limit name: " + spec);
 }
 
 bool is_benign_driver_flag(const string & arg)
@@ -257,6 +283,7 @@ struct SourceOutputInvocation
   bool has_debug_info = false;
   bool line_tables = false;
   bool collect_stats = false;
+  lowir_opt::InlinePolicyOverrides inline_limits;
 };
 
 SourceOutputInvocation parse_source_output_invocation(
@@ -273,6 +300,12 @@ SourceOutputInvocation parse_source_output_invocation(
     }
     if(args[i] == "--stats") {
       invocation.collect_stats = true;
+      continue;
+    }
+    if(allow_lowir_options && args[i] == "--inline-limit") {
+      consume_required_option_argument(args, i, "--inline-limit",
+        "name=value");
+      apply_inline_limit_option(&invocation.inline_limits, args[i]);
       continue;
     }
     if(allow_lowir_options && is_optimization_flag(args[i])) {
@@ -389,6 +422,12 @@ DriverInvocation parse_driver_invocation(const vector<string> & args)
     if(args[i] == "--stats" || args[i] == "--stats-functions") {
       invocation.collect_stats = true;
       invocation.collect_function_census |= args[i] == "--stats-functions";
+      continue;
+    }
+    if(args[i] == "--inline-limit") {
+      consume_required_option_argument(args, i, "--inline-limit",
+        "name=value");
+      apply_inline_limit_option(&invocation.inline_limits, args[i]);
       continue;
     }
     if(args[i] == "-nostdinc") {
@@ -744,207 +783,13 @@ int run_query_driver(const string & query)
 	throw logic_error("unknown driver query");
 }
 
-lowir_model::InstructionDebugLocation source_location(
-    lowir_model::StringId file, size_t line, size_t column)
-{
-	lowir_model::InstructionDebugLocation result;
-	result.file = file;
-	result.line = line;
-	result.column = column;
-	return result;
-}
-
-size_t first_source_column(const string & line)
-{
-	const size_t found = line.find_first_not_of(" \t");
-	return found == string::npos ? 1 : found + 1;
-}
-
-void attach_line_table_debug(lowir_model::LowirProgram * program,
-	const string & path, const string & source)
-{
-	const lowir_model::StringId debug_file = program->strings.intern(path);
-	vector<string> lines;
-	size_t begin = 0;
-	while(begin <= source.size()) {
-		const size_t end = source.find('\n', begin);
-		lines.push_back(source.substr(begin,
-			end == string::npos ? string::npos : end - begin));
-		if(end == string::npos) break;
-		begin = end + 1;
-	}
-	struct WordOccurrence {
-		size_t line;
-		size_t column;
-		bool followed_by_parenthesis;
-		bool followed_by_semicolon;
-	};
-	unordered_map<string, vector<WordOccurrence> > words;
-	vector<size_t> return_lines;
-	for(size_t line = 0; line < lines.size(); ++line) {
-		const string & text = lines[line];
-		for(size_t at = 0; at < text.size();) {
-			if(!(isalpha(static_cast<unsigned char>(text[at])) || text[at] == '_')) {
-				++at;
-				continue;
-			}
-			const size_t first = at++;
-			while(at < text.size() &&
-				  (isalnum(static_cast<unsigned char>(text[at])) || text[at] == '_'))
-				++at;
-			const string word = text.substr(first, at - first);
-			WordOccurrence occurrence;
-			occurrence.line = line;
-			occurrence.column = first;
-			occurrence.followed_by_parenthesis =
-				text.find('(', at) != string::npos;
-			occurrence.followed_by_semicolon =
-				text.find(';', at) != string::npos;
-			words[word].push_back(occurrence);
-			if(word == "return") return_lines.push_back(line);
-		}
-	}
-	const auto find_word = [&words](const string & word, size_t first_line,
-		bool require_parenthesis, bool require_semicolon, WordOccurrence * result) {
-		const unordered_map<string, vector<WordOccurrence> >::const_iterator found =
-			words.find(word);
-		if(found == words.end()) return false;
-		const vector<WordOccurrence> & occurrences = found->second;
-		size_t first = 0, last = occurrences.size();
-		while(first < last) {
-			const size_t middle = first + (last - first) / 2;
-			if(occurrences[middle].line < first_line) first = middle + 1;
-			else last = middle;
-		}
-		for(; first < occurrences.size(); ++first) {
-			if(require_parenthesis && !occurrences[first].followed_by_parenthesis)
-				continue;
-			if(require_semicolon && !occurrences[first].followed_by_semicolon)
-				continue;
-			*result = occurrences[first];
-			return true;
-		}
-		return false;
-	};
-	for(size_t fi = 0; fi < program->functions.size(); ++fi) {
-		lowir_model::Function & function = program->functions[fi];
-		const string& lowir_name = lowir_model::lowir_symbol_name(
-			*program, function.symbol);
-		string source_name = lowir_name;
-		const size_t separator = source_name.find("__");
-		if(separator != string::npos) source_name.erase(separator);
-		size_t function_line = 0;
-		WordOccurrence function_occurrence;
-		if(find_word(source_name, 0, true, false, &function_occurrence))
-			function_line = function_occurrence.line;
-		function.debug_location = source_location(debug_file, function_line + 1,
-			first_source_column(lines[function_line]));
-		unordered_set<string> parameters;
-		for(size_t i = 0; i < function.params.size(); ++i)
-			parameters.insert(lowir_model::lowir_parameter_name(
-				*program, function.params[i]));
-		struct LocalLocation { size_t line = 0; size_t statement = 1; size_t rhs = 1; };
-		unordered_map<string, LocalLocation> locals;
-		for(size_t i = 0; i < function.slots.size(); ++i) {
-			const string name = lowir_model::lowir_slot_name(
-				program->strings, function, function.slots[i]);
-			if(parameters.count(name)) continue;
-			WordOccurrence local_occurrence;
-			if(find_word(name, function_line + 1, false, true, &local_occurrence)) {
-				const size_t line = local_occurrence.line;
-				const size_t at = local_occurrence.column;
-				LocalLocation location;
-				location.line = line;
-				location.statement = first_source_column(lines[line]);
-				const size_t equal = lines[line].find('=', at + name.size());
-				if(equal == string::npos) location.rhs = location.statement;
-				else {
-					size_t rhs = lines[line].find_first_not_of(" \t", equal + 1);
-					location.rhs = rhs == string::npos ? location.statement : rhs + 1;
-				}
-				locals[name] = location;
-			}
-		}
-		size_t return_line = function_line;
-		vector<size_t>::const_iterator return_at = lower_bound(
-			return_lines.begin(), return_lines.end(), function_line + 1);
-		if(return_at != return_lines.end()) return_line = *return_at;
-		const lowir_model::InstructionDebugLocation function_loc =
-			function.debug_location;
-		const lowir_model::InstructionDebugLocation return_loc =
-			source_location(debug_file, return_line + 1,
-				first_source_column(lines[return_line]));
-		unordered_set<string> used_value_names = parameters;
-		for(size_t i = 0; i < function.value_names.size(); ++i) {
-			const lowir_model::PresentationName presentation =
-				lowir_model::lowir_value_presentation(
-					function, lowir_model::ValueId(static_cast<uint32_t>(i)));
-			if(presentation.valid()) used_value_names.insert(
-				lowir_model::lowir_value_name(program->strings, function,
-					lowir_model::ValueId(static_cast<uint32_t>(i))));
-		}
-		vector<size_t> debug_value_ordinals(function.slot_names.size(), 0);
-		for(size_t b = 0; b < function.blocks.size(); ++b) {
-			vector<lowir_model::Instruction> with_debug;
-			for(size_t j = 0; j < function.blocks[b].instructions.size(); ++j) {
-				lowir_model::Instruction ins = function.blocks[b].instructions[j];
-				if(ins.kind == lowir_model::Instruction::IK_RETURN)
-					ins.debug_location = return_loc;
-					else if(ins.kind == lowir_model::Instruction::IK_STORE &&
-							ins.second.kind == lowir_model::Operand::OP_SLOT) {
-						const string slot = lowir_model::lowir_slot_name(
-							program->strings, function, ins.second.slot);
-					if(parameters.count(slot)) ins.debug_location = function_loc;
-					else if(locals.count(slot)) {
-						const LocalLocation & loc = locals[slot];
-						ins.debug_location = source_location(debug_file, loc.line + 1,
-							loc.statement);
-							lowir_model::Instruction copy;
-							copy.kind = lowir_model::Instruction::IK_COPY;
-							copy.type = ins.type;
-							string debug_name;
-							do {
-								debug_name = "dbg_" + slot + "__" + to_string(
-									++debug_value_ordinals[ins.second.slot]);
-							} while(!used_value_names.insert(debug_name).second);
-							copy.dest = lowir_model::append_lowir_value(function,
-								program->strings.intern(debug_name),
-								copy.type, true);
-						copy.first = ins.first;
-						copy.debug_location = ins.debug_location;
-							lowir_model::Operand debug_value;
-							debug_value.kind = lowir_model::Operand::OP_TEMP;
-							debug_value.value = copy.dest;
-						ins.first = std::move(debug_value);
-						with_debug.push_back(copy);
-					}
-					} else if(ins.kind == lowir_model::Instruction::IK_LOAD &&
-							  ins.first.kind == lowir_model::Operand::OP_SLOT) {
-						const string slot = lowir_model::lowir_slot_name(
-							program->strings, function, ins.first.slot);
-					if(locals.count(slot)) ins.debug_location = return_loc;
-					else if(!locals.empty()) {
-						const LocalLocation & loc = locals.begin()->second;
-						ins.debug_location = source_location(debug_file, loc.line + 1,
-							loc.statement);
-					}
-				} else if(ins.kind == lowir_model::Instruction::IK_BINARY &&
-						  !locals.empty()) {
-					const LocalLocation & loc = locals.begin()->second;
-					ins.debug_location = source_location(debug_file, loc.line + 1, loc.rhs);
-				}
-				with_debug.push_back(ins);
-			}
-			function.blocks[b].instructions.swap(with_debug);
-		}
-	}
-}
 
 void optimize_lowir(lowir_model::LowirProgram * program, int level,
-	const string & input, bool collect)
+	const string & input, bool collect,
+	const lowir_opt::InlinePolicyOverrides & inline_limits)
 {
 	lowir_opt::Stats stats;
-	lowir_opt::optimize(*program, level, collect ? &stats : 0);
+	lowir_opt::optimize(*program, level, collect ? &stats : 0, &inline_limits);
 	if(collect)
 		lowir_driver_stats_report::ReportOptimizer(cerr, input, stats);
 }
@@ -1062,7 +907,7 @@ lowir_model::LowirProgram build_source_lowir(
 		preparation_stats, &timings->adapter_nanoseconds);
 	if(invocation.line_tables) {
 		if(collect_stats) started = chrono::steady_clock::now();
-		attach_line_table_debug(&result, path, source);
+		lowir_line_table_debug::attach_line_table_debug(&result, path, source);
 		if(collect_stats) timings->debug_nanoseconds =
 			static_cast<uint64_t>(chrono::duration_cast<chrono::nanoseconds>(
 				chrono::steady_clock::now() - started).count());
@@ -1129,7 +974,7 @@ cppgm::pa30::CompilerObject compile_source_object(
 	chrono::steady_clock::time_point optimize_started;
 	if(collect_stats) optimize_started = chrono::steady_clock::now();
 	optimize_lowir(&object.lowir, invocation.optimization_level, path,
-		collect_stats);
+		collect_stats, invocation.inline_limits);
 	if(collect_stats) timings.lowir_opt_nanoseconds = static_cast<uint64_t>(
 		chrono::duration_cast<chrono::nanoseconds>(
 			chrono::steady_clock::now() - optimize_started).count());
@@ -2461,10 +2306,11 @@ int run_emit_lowir_mode(const vector<string> & args)
 			program = cppgm::AdaptTypedLowIRForNative(std::move(typed));
 		}
 		if(invocation.line_tables && sources.size() == 1)
-			attach_line_table_debug(&program, sources[0].path, sources[0].source);
+			lowir_line_table_debug::attach_line_table_debug(
+				&program, sources[0].path, sources[0].source);
 		optimize_lowir(&program, invocation.optimization_level,
 			sources.size() == 1 ? sources[0].path : "<translation-unit>",
-			invocation.collect_stats);
+			invocation.collect_stats, invocation.inline_limits);
 		output << lowir_model::serialize_lowir_program(program);
 	}
 	if(invocation.collect_stats) {
