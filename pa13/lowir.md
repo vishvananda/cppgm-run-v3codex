@@ -948,6 +948,16 @@ Where:
 object-typed value, the operation copies from that semantic object value rather than
 requiring the IR to spell the host ABI chunking explicitly.
 
+`copyobj` is a non-overlapping semantic object copy: the source and destination
+spans must not overlap (byte-identical source and destination addresses are the
+one permitted degenerate case, and lowering may elide such a copy). Producers
+lower semantic object transfers, which never alias their storage, and native
+lowering is free to use forward byte copies or chunked register moves that would
+be wrong for overlapping spans. An overlap-capable move remains a hosted/runtime
+operation (`memmove`); if a later optimizer needs a first-class overlap-safe IR
+operation, it must be added as a distinct instruction rather than by weakening
+this contract.
+
 `zeroinit` writes zero to exactly `<bytes>` bytes starting at `<dst>`.
 
 These instructions are intended for lowered object storage, trivial copies, and simple static
