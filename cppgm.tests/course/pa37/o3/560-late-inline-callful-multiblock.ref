@@ -16,21 +16,17 @@ function @choose(%condition : i64, %value : i64) -> i64 [binding=strong] {
     return i64 0
 }
 function @main(%condition : i64, %value : i64) -> i64 [role=entry] {
-  slot $__o1inl1__retmerge__1 : i64
-
   block ^entry:
     call void @observe(%value)
     branch %condition, ^__o1inl1__selected, ^__o1inl1__zero
 
   block ^__o1inl1__selected:
-    store i64 %value, $__o1inl1__retmerge__1
     jump ^__o1inl1__cont
 
   block ^__o1inl1__zero:
-    store i64 0, $__o1inl1__retmerge__1
     jump ^__o1inl1__cont
 
   block ^__o1inl1__cont:
-    %selected = load i64 $__o1inl1__retmerge__1
-    return i64 %selected
+    %t0 = phi i64 [^__o1inl1__selected: %value, ^__o1inl1__zero: 0]
+    return i64 %t0
 }

@@ -4,6 +4,7 @@
 #include "lowir_opt.h"
 #include "lowir_phi_edges.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -267,6 +268,365 @@ bool fold_boolean_phi_branch(Function * function, Stats * stats)
     return true;
   }
   return false;
+}
+
+
+namespace {
+
+using lowir_model::BlockId;
+using lowir_model::LowType;
+
+const std::size_t kNoBlock = static_cast<std::size_t>(-1);
+const std::size_t kNoBlockIndex = static_cast<std::size_t>(-1);
+
+bool cleanup_is_eh_instruction(Instruction::Kind kind)
+{
+  return kind >= Instruction::IK_EH_TRY && kind <= Instruction::IK_EH_END;
+}
+
+bool is_pure(Instruction::Kind kind)
+{
+  return kind == Instruction::IK_CONST || kind == Instruction::IK_COPY ||
+    kind == Instruction::IK_PHI ||
+    kind == Instruction::IK_ADDR || kind == Instruction::IK_INDEX ||
+    kind == Instruction::IK_UNARY || kind == Instruction::IK_BINARY ||
+    kind == Instruction::IK_CMP || kind == Instruction::IK_CONVERT ||
+    kind == Instruction::IK_SELECT;
+}
+
+}  // namespace
+
+std::vector<BlockId> bypass_targets(const Function & function,
+                                    const Graph & graph)
+{
+  const std::size_t count = function.blocks.size();
+  std::vector<std::size_t> next(count, kNoBlock);
+  for(std::size_t i = 0; i < count; ++i) {
+    const Block & block = function.blocks[i];
+    if(graph.eh_targets[static_cast<std::uint32_t>(block.id)] ||
+       block.instructions.size() != 1 ||
+       block.instructions[0].kind != Instruction::IK_JUMP) continue;
+    const std::size_t found = graph.find(block.instructions[0].first.block);
+    if(found != kNoBlockIndex) next[i] = found;
+  }
+  std::vector<BlockId> result(count);
+  std::vector<unsigned char> state(count, 0);
+  for(std::size_t start = 0; start < count; ++start) {
+    if(state[start] == 2) continue;
+    std::vector<std::size_t> path;
+    std::size_t cursor = start;
+    while(state[cursor] == 0 && next[cursor] != kNoBlock) {
+      state[cursor] = 1;
+      path.push_back(cursor);
+      cursor = next[cursor];
+    }
+    if(state[cursor] == 0) {
+      state[cursor] = 2;
+      result[cursor] = function.blocks[cursor].id;
+    }
+    if(state[cursor] == 1) {
+      std::size_t cycle = 0;
+      while(cycle < path.size() && path[cycle] != cursor) ++cycle;
+      for(std::size_t i = cycle; i < path.size(); ++i) {
+        result[path[i]] = function.blocks[path[i]].id;
+        state[path[i]] = 2;
+      }
+      for(std::size_t i = cycle; i > 0; --i) {
+        result[path[i - 1]] = function.blocks[cursor].id;
+        state[path[i - 1]] = 2;
+      }
+      continue;
+    }
+    const BlockId target = result[cursor];
+    for(std::size_t i = path.size(); i > 0; --i) {
+      result[path[i - 1]] = target;
+      state[path[i - 1]] = 2;
+    }
+  }
+  for(std::size_t i = 0; i < count; ++i)
+    if(!result[i].valid()) result[i] = function.blocks[i].id;
+  return result;
+}
+
+bool cleanup_cfg(Function * function, Stats * stats)
+{
+  if(function->blocks.empty()) return false;
+  bool changed = fold_edge_known_branches(function, stats);
+  changed = fold_boolean_phi_branch(function, stats) || changed;
+  // Phi predecessor identities are part of the instruction contract.  Phi
+  // construction runs after CFG cleanup; a later optimizer round trip keeps
+  // that CFG stable until edge-aware repair is requested by a transform.
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function->blocks[block].instructions.size();
+        ++instruction)
+      if(function->blocks[block].instructions[instruction].kind ==
+         Instruction::IK_PHI) return changed;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    Block & block = function->blocks[i];
+    if(block.instructions.empty()) continue;
+    Instruction & term = block.instructions.back();
+    if(term.kind == Instruction::IK_BRANCH) {
+      if(term.first.kind == Operand::OP_INTEGER && term.first.has_int_value) {
+        const Operand selected = term.first.int_value ? term.second : term.third;
+        const lowir_model::InstructionDebugLocation debug = term.debug_location;
+        term = Instruction();
+        term.kind = Instruction::IK_JUMP;
+        term.first = selected;
+        term.debug_location = debug;
+        changed = true;
+      } else if(term.second.block == term.third.block) {
+        term.kind = Instruction::IK_JUMP;
+        term.first = term.second;
+        term.second = Operand();
+        term.third = Operand();
+        changed = true;
+      }
+    } else if(term.kind == Instruction::IK_SWITCH &&
+              term.first.kind == Operand::OP_INTEGER && term.first.has_int_value) {
+      Operand selected = term.second;
+      for(std::size_t j = 0; j + 1 < term.args.size(); j += 2)
+        if(term.args[j].kind == Operand::OP_INTEGER &&
+           term.args[j].has_int_value &&
+           term.args[j].int_value == term.first.int_value) {
+          selected = term.args[j + 1];
+          break;
+        }
+      const lowir_model::InstructionDebugLocation debug = term.debug_location;
+      term = Instruction();
+      term.kind = Instruction::IK_JUMP;
+      term.first = selected;
+      term.debug_location = debug;
+      changed = true;
+    }
+  }
+
+  // There are no unreachable blocks, bypass chains, or merge candidates in a
+  // one-block function.  Terminal folding above is the complete CFG cleanup.
+  if(function->blocks.size() == 1) return changed;
+
+  Graph graph = build_graph(*function, stats);
+  const std::vector<BlockId> bypass = bypass_targets(*function, graph);
+  bool graph_targets_changed = false;
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      Instruction & ins = function->blocks[i].instructions[j];
+      Operand * targets[3] = {0, 0, 0};
+      std::size_t count = 0;
+      if(ins.kind == Instruction::IK_JUMP || ins.kind == Instruction::IK_EH_TRY ||
+         ins.kind == Instruction::IK_EH_CLEANUP) targets[count++] = &ins.first;
+      else if(ins.kind == Instruction::IK_BRANCH) {
+        targets[count++] = &ins.second; targets[count++] = &ins.third;
+      } else if(ins.kind == Instruction::IK_SWITCH) targets[count++] = &ins.second;
+      for(std::size_t k = 0; k < count; ++k) {
+        const std::size_t found = graph.find(targets[k]->block);
+        const BlockId target = found == kNoBlockIndex ?
+          targets[k]->block : bypass[found];
+        if(target != targets[k]->block &&
+           ins.kind != Instruction::IK_EH_TRY &&
+           ins.kind != Instruction::IK_EH_CLEANUP) {
+          targets[k]->block = target;
+          changed = true;
+          graph_targets_changed = true;
+        }
+      }
+      if(ins.kind == Instruction::IK_SWITCH)
+        for(std::size_t k = 1; k < ins.args.size(); k += 2) {
+          const std::size_t found = graph.find(ins.args[k].block);
+          const BlockId target = found == kNoBlockIndex ?
+            ins.args[k].block : bypass[found];
+          if(target != ins.args[k].block) {
+            ins.args[k].block = target;
+            changed = true;
+            graph_targets_changed = true;
+          }
+        }
+      if(ins.kind == Instruction::IK_BRANCH &&
+         ins.second.block == ins.third.block) {
+        const Operand selected = ins.second;
+        const lowir_model::InstructionDebugLocation debug = ins.debug_location;
+        ins = Instruction();
+        ins.kind = Instruction::IK_JUMP;
+        ins.first = selected;
+        ins.debug_location = debug;
+        changed = true;
+      }
+    }
+  }
+
+  if(graph_targets_changed) graph = build_graph(*function, stats);
+  std::vector<unsigned char> reachable(function->blocks.size(), 0);
+  std::deque<std::size_t> work;
+  reachable[0] = 1;
+  work.push_back(0);
+  while(!work.empty()) {
+    const std::size_t block = work.front(); work.pop_front();
+    for(std::size_t i = 0; i < graph.successors[block].size(); ++i) {
+      const std::size_t next = graph.successors[block][i];
+      if(!reachable[next]) { reachable[next] = 1; work.push_back(next); }
+    }
+  }
+
+  const bool has_unreachable =
+    std::find(reachable.begin(), reachable.end(), 0) != reachable.end();
+
+  // EH cleanup code can intentionally use an address computed on a source
+  // edge which constant folding proves untaken.  The address is still part of
+  // the cleanup contract, so rematerialize simple dead-edge definitions at
+  // the entry before pruning that edge.
+  if(has_unreachable) {
+    struct Definition { std::size_t block; Instruction instruction; };
+    std::vector<Definition> definitions(function->value_names.size());
+    std::vector<unsigned char> defined(function->value_names.size(), 0);
+    std::vector<std::vector<lowir_model::ValueId> > dependencies(
+      function->value_names.size());
+    for(std::size_t i = 0; i < function->blocks.size(); ++i)
+      for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+      const Instruction & ins = function->blocks[i].instructions[j];
+      if(!ins.dest.valid()) continue;
+      definitions[ins.dest] = Definition{i, ins};
+      defined[ins.dest] = 1;
+      const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+      for(std::size_t k = 0; k < 3; ++k)
+        if(operands[k]->kind == Operand::OP_TEMP)
+          dependencies[ins.dest].push_back(operands[k]->value);
+      for(std::size_t k = 0; k < ins.args.size(); ++k)
+        if(ins.args[k].kind == Operand::OP_TEMP)
+          dependencies[ins.dest].push_back(ins.args[k].value);
+      }
+    std::vector<unsigned char> available(function->value_names.size(), 0);
+    for(std::size_t i = 0; i < function->params.size(); ++i)
+      available[function->params[i].value] = 1;
+    const std::size_t entry_end = function->blocks[0].instructions.empty() ? 0 :
+      function->blocks[0].instructions.size() - 1;
+    for(std::size_t i = 0; i < entry_end; ++i)
+      if(function->blocks[0].instructions[i].dest.valid())
+        available[function->blocks[0].instructions[i].dest] = 1;
+    std::vector<Instruction> rematerialized;
+    const auto eligible_definition = [&](lowir_model::ValueId value) {
+      return defined[value] && !reachable[definitions[value].block] &&
+        is_pure(definitions[value].instruction.kind);
+    };
+    const auto rematerialize = [&](lowir_model::ValueId value) {
+      if(available[value]) return true;
+      if(!eligible_definition(value)) return false;
+      struct Frame { lowir_model::ValueId value; std::size_t dependency; };
+      std::vector<Frame> stack(1, Frame{value, 0});
+      std::vector<unsigned char> active(function->value_names.size(), 0);
+      active[value] = 1;
+      while(!stack.empty()) {
+        Frame & frame = stack.back();
+        const std::vector<lowir_model::ValueId> & required =
+          dependencies[frame.value];
+        while(frame.dependency < required.size() &&
+              available[required[frame.dependency]])
+          ++frame.dependency;
+        if(frame.dependency < required.size()) {
+          const lowir_model::ValueId dependency = required[frame.dependency++];
+          if(active[dependency] || !eligible_definition(dependency))
+            return false;
+          active[dependency] = 1;
+          stack.push_back(Frame{dependency, 0});
+          continue;
+        }
+        rematerialized.push_back(definitions[frame.value].instruction);
+        available[frame.value] = 1;
+        active[frame.value] = 0;
+        stack.pop_back();
+      }
+      return true;
+    };
+    for(std::size_t i = 0; i < function->blocks.size(); ++i) if(reachable[i])
+      for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
+        const Instruction & ins = function->blocks[i].instructions[j];
+        const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
+        for(std::size_t k = 0; k < 3; ++k)
+          if(operands[k]->kind == Operand::OP_TEMP &&
+             defined[operands[k]->value] &&
+             !reachable[definitions[operands[k]->value].block])
+            rematerialize(operands[k]->value);
+        for(std::size_t k = 0; k < ins.args.size(); ++k)
+          if(ins.args[k].kind == Operand::OP_TEMP &&
+             defined[ins.args[k].value] &&
+             !reachable[definitions[ins.args[k].value].block])
+            rematerialize(ins.args[k].value);
+      }
+    if(!rematerialized.empty()) {
+      function->blocks[0].instructions.insert(
+        function->blocks[0].instructions.begin() + entry_end,
+        rematerialized.begin(), rematerialized.end());
+      changed = true;
+      if(stats) stats->rewrites += rematerialized.size();
+    }
+
+    std::vector<Block> live;
+    live.reserve(function->blocks.size());
+    for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+      if(reachable[i]) live.push_back(std::move(function->blocks[i]));
+      else changed = true;
+    }
+    function->blocks.swap(live);
+
+    graph = build_graph(*function, stats);
+  }
+  std::vector<unsigned char> block_has_eh(function->blocks.size(), 0);
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    const Block & block = function->blocks[i];
+    for(std::size_t j = 0; j < block.instructions.size(); ++j)
+      block_has_eh[i] = block_has_eh[i] ||
+        cleanup_is_eh_instruction(block.instructions[j].kind);
+  }
+  std::vector<std::size_t> merge_next(function->blocks.size(), kNoBlock),
+    merge_parent(function->blocks.size(), kNoBlock);
+  for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+    const Block & block = function->blocks[i];
+    if(block.instructions.empty() ||
+       block.instructions.back().kind != Instruction::IK_JUMP) continue;
+    const std::size_t target =
+      graph.find(block.instructions.back().first.block);
+    // A backward merge would relocate the target after blocks that may use
+    // values it defines, violating LowIR's presentation-order requirement.
+    if(target == kNoBlockIndex || target <= i ||
+       block_has_eh[i] || block_has_eh[target] ||
+       graph.eh_targets[static_cast<std::uint32_t>(block.id)] ||
+       graph.eh_targets[static_cast<std::uint32_t>(
+         block.instructions.back().first.block)] ||
+       graph.predecessors[target].size() != 1) continue;
+    merge_next[i] = target;
+    merge_parent[target] = i;
+  }
+  std::vector<unsigned char> consumed(function->blocks.size(), 0);
+  std::vector<Block> merged(function->blocks.size());
+  std::size_t merged_edges = 0;
+  for(std::size_t head = 0; head < function->blocks.size(); ++head) {
+    if(merge_next[head] == kNoBlock || merge_parent[head] != kNoBlock) continue;
+    merged[head] = std::move(function->blocks[head]);
+    std::size_t cursor = head;
+    while(merge_next[cursor] != kNoBlock) {
+      const std::size_t target = merge_next[cursor];
+      consumed[target] = 1;
+      merged[head].instructions.pop_back();
+      merged[head].instructions.insert(merged[head].instructions.end(),
+        std::make_move_iterator(function->blocks[target].instructions.begin()),
+        std::make_move_iterator(function->blocks[target].instructions.end()));
+      cursor = target;
+      ++merged_edges;
+    }
+  }
+  if(merged_edges) {
+    std::vector<Block> compact;
+    compact.reserve(function->blocks.size() - merged_edges);
+    for(std::size_t i = 0; i < function->blocks.size(); ++i) {
+      if(consumed[i]) continue;
+      if(!merged[i].id.valid())
+        compact.push_back(std::move(function->blocks[i]));
+      else compact.push_back(std::move(merged[i]));
+    }
+    function->blocks.swap(compact);
+    changed = true;
+    if(stats) stats->rewrites += merged_edges;
+  }
+  return changed;
 }
 
 }  // namespace lowir_opt
