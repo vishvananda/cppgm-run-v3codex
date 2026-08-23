@@ -2,6 +2,7 @@
 
 #include "lowir_function_analysis.h"
 #include "lowir_opt.h"
+#include "lowir_phi_edges.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -258,6 +259,10 @@ bool fold_boolean_phi_branch(Function * function, Stats * stats)
       continue;
     parent_branch.second = selected_true;
     parent_branch.third = selected_false;
+    // The merge block's targets may hold phis naming it as a predecessor;
+    // the parent now owns those edges.
+    lowir_phi_edges::rewrite_moved_phi_edges(
+      function, parent_branch, merge_block.id, function->blocks[parent].id);
     remove_unreachable_blocks(function, stats);
     return true;
   }

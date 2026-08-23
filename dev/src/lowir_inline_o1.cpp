@@ -206,6 +206,36 @@ void rename_instruction(Instruction * result, const ValueMap & values,
   rename_operand(&result->first, values, slots, blocks);
   rename_operand(&result->second, values, slots, blocks);
   rename_operand(&result->third, values, slots, blocks);
+  if(result->kind == Instruction::IK_PHI) {
+    // A callee phi may keep an entry for a predecessor an earlier cleanup
+    // deleted; that identity has no clone, so the dead entry is dropped
+    // rather than leaking a callee-space block id into the caller.
+    std::size_t kept = 0;
+    for(std::size_t i = 0; i + 1 < result->args.size(); i += 2) {
+      const std::uint32_t id = result->args[i].block;
+      if(result->args[i].kind != Operand::OP_LABEL ||
+         id >= blocks.size() || !blocks[id].id.valid())
+        continue;
+      result->args[kept] = result->args[i];
+      result->args[kept + 1] = result->args[i + 1];
+      rename_operand(&result->args[kept], values, slots, blocks);
+      rename_operand(&result->args[kept + 1], values, slots, blocks);
+      kept += 2;
+    }
+    if(kept == 0 && result->args.size() >= 2) {
+      // Every predecessor died, so the phi's block is unreachable; keep a
+      // valid instruction shape for later cleanup to discard.
+      result->kind = Instruction::IK_COPY;
+      result->first = result->args[1];
+      rename_operand(&result->first, values, slots, blocks);
+      result->second = Operand();
+      result->third = Operand();
+      result->args.clear();
+      return;
+    }
+    result->args.resize(kept);
+    return;
+  }
   for(std::size_t i = 0; i < result->args.size(); ++i)
     rename_operand(&result->args[i], values, slots, blocks);
 }
