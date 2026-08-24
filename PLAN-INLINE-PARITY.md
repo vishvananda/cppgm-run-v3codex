@@ -1055,3 +1055,28 @@ source reshaping remains out of scope per the standing directive).
   call-boundary channel: argument staging directly from planned
   homes (8.2k loads); (4) pure-address rematerialization (frame/RIP
   lea on demand) for the address_materialization residue.
+- L36 (P29 Phase 1 probe: BINDING CLAIMS, REFUTED — and the
+  busy-holder population finally decomposed).  Making planned claims
+  binding on reactive allocation (preserved pool: conflict-or-held
+  means frame fallback, no take-anything pass; caller-saved pool:
+  claim-conflict check added) measured grants +41 (+0.73%), busy
+  fails 7,844 -> 7,806, but MIR +0.28% and mov_loads +0.78% — the
+  displaced scratch stages through frames at more cost than the
+  unblocked grants return.  THE DECOMPOSITION that matters: with
+  planned-holder busy-fails at 76 (L33's schedule works), the 6.5k
+  value-holder busy-fails are dominated by the planner's own 4,673
+  ASSIGNMENT FAILURES — candidates that fit no register in the
+  weighted-crossing assignment and then acquire registers reactively,
+  overlapping the claims that did fit.  Steering their acquisition
+  (L34a), extending their declared lifetimes (L34a), evicting them
+  (L34b), releasing them earlier (L33 — landed, small), and now
+  refusing them claimed registers (L36) all measure flat-to-negative
+  because the conflict is REAL DEMAND: ~24.5k planned-or-failed
+  candidates competing for 9 allocatable registers across 5,139
+  functions.  Register-count arithmetic closes this front: RCX/RDX
+  are encoder scratch, RDI/RSI/R8/R9 already serve, RAX is the
+  result carrier.  What remains of P29 is the part that changes the
+  DEMAND side or the SUPPLY GRANULARITY: interval splitting (one
+  register serves two half-lifetimes), spill placement by region,
+  and the midend collapse that removes values outright.  Probe
+  reverted; tree byte-identical to L33 (TREE_AT_L33_AGAIN).
