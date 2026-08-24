@@ -524,3 +524,25 @@ source reshaping remains out of scope per the standing directive).
   below the wall noise floor — combined 4+5 ABBA wall -1.07% /
   user -1.11%.  Gates: report 5430/5430, zero-fatal audit, O3+O0
   inception lanes MATCH, frozen self-reproduction byte-for-byte.
+- L19 (Phase C slice 6: r11 as the second carry register).  The
+  oracle is parameterized by scratch register and hardened by the
+  L18 lesson — the by-emission-site sweep of r11 burners added two
+  blockers the definition mask misses: the EH marker family
+  (MI_EH_FILTER/MI_EH_CLEANUP_CLAUSE/MI_RESUME stage handler
+  records through r11) and MI_COPY_BYTES (its rsi/rdi argument
+  shuffle swaps through r11); both now block BOTH carry registers.
+  The address-folding interlock is automatic: r11 windows exclude
+  every MIR-visible r11 mention, and the folds' own r11 writes only
+  occur at OP_GLOBAL instructions the oracle already blocks.
+  Carried windows on the same register stay non-overlapping; r10
+  and r11 windows interleave freely (each oracle excludes its own
+  register's mentions).  Census: 1,504 carries (+272), text 435,026
+  (cumulative -12,002 / -2.7% vs pre-carry); full cache-sim D refs
+  26.622B (cumulative -502M / -1.85%), Ir flat, I1 misses layout-
+  noisy (+9.6M this build, still -3.4M vs pre-carry); increment
+  ABBA user ~-0.4% (at the noise floor, counter-backed).  Gates:
+  report 5430/5430, zero-fatal audit, O3+O0 inception lanes MATCH,
+  frozen self-reproduction byte-for-byte; the refreshed gcc-O1
+  reference at this revision emits byte-identical frozen output.
+  The carry family's remaining recorded step is cross-block
+  carries; the residual same-block population is thinning.

@@ -37,28 +37,40 @@ struct PlannedReload
   std::vector<std::size_t> load_indices;
   X64Register source = XR_RAX;
   bool adjacent = false;
+  bool r10_ok = false;
+  bool r11_ok = false;
   bool carried = false;
+  X64Register carry = XR_R10;
 };
 
-// r10 may carry a value only across instructions that cannot touch it, at
-// either level: the MIR stream (operands and the machine_opt definition
-// mask, which models the implicit EH/i128/bulk/call clobbers) and the
-// encode-time rewriters (constant-division magic burns r10/r11 around
-// div/mul; global and symbol addressing materializes through the
-// scalar-memory scratch pick; out-of-int32 immediates materialize through
-// scratch).  Anything matching those shapes blocks the window.
-bool touches_carry_scratch(const MirInstruction & instruction)
+// A scratch register may carry a value only across instructions that
+// cannot touch it, at either level: the MIR stream (operands and the
+// machine_opt definition mask, which models the implicit i128/bulk/call
+// clobbers) and the encode-time rewriters, which the oracle enumerates BY
+// EMISSION SITE: constant-division magic burns r10/r11 around div/mul;
+// float emission materializes immediates, sign masks, and x87 staging
+// through both; global and symbol addressing takes the scalar-memory
+// scratch pick; out-of-int32 immediates materialize through scratch; the
+// EH markers not covered by the definition mask (filter, cleanup clause,
+// resume) stage their records through r11; and copy-bytes argument
+// shuffling swaps through r11.
+bool touches_carry_scratch(const MirInstruction & instruction,
+                           X64Register scratch)
 {
   if(machine_opt::instruction_definition_mask(instruction) &
-     (std::uint64_t(1) << XR_R10))
+     (std::uint64_t(1) << scratch))
     return true;
   if(instruction.opcode == MirInstruction::MI_MUL ||
      instruction.opcode == MirInstruction::MI_IMUL ||
      instruction.opcode == MirInstruction::MI_IDIV ||
      instruction.opcode == MirInstruction::MI_DIV)
     return true;
-  // Floating-point emission materializes immediates, sign masks (fneg),
-  // and x87 staging through r10 regardless of operand values.
+  if(instruction.opcode >= MirInstruction::MI_EH_PUSH &&
+     instruction.opcode <= MirInstruction::MI_RESUME)
+    return true;
+  if(instruction.opcode == MirInstruction::MI_COPY_BYTES ||
+     instruction.opcode == MirInstruction::MI_ZERO_BYTES)
+    return true;
   if(instruction.type.kind == lowir_model::LTK_F32 ||
      instruction.type.kind == lowir_model::LTK_F64 ||
      instruction.type.kind == lowir_model::LTK_F80)
@@ -72,10 +84,10 @@ bool touches_carry_scratch(const MirInstruction & instruction)
        (operand.imm > 0x7fffffffLL || operand.imm < -0x80000000LL))
       return true;
     if((operand.kind == MirOperand::OP_REG ||
-        operand.kind == MirOperand::OP_DEREF) && operand.reg == XR_R10)
+        operand.kind == MirOperand::OP_DEREF) && operand.reg == scratch)
       return true;
     if(operand.kind == MirOperand::OP_DEREF && operand.has_index &&
-       operand.index == XR_R10)
+       operand.index == scratch)
       return true;
     if(operand.kind == MirOperand::OP_XMM) return true;
   }
@@ -172,21 +184,30 @@ void append_reload(const mir_model::MirFunction & function,
       preserved = preserves_register(
         function.blocks[facts.store_block].instructions[i], reload.source);
     if(!preserved) {
-      // The source register does not survive; the value can still ride the
-      // r10 carry when the whole window is provably free of r10 touches.
-      // An MI_MOV immediately before the store blocks the carry: the
-      // encode-time mov/store fold and byte-store coalescing start at that
-      // mov and would consume the store, orphaning the carry replacement.
+      // The source register does not survive; the value can still ride a
+      // scratch carry when the whole window is provably free of touches of
+      // that register.  An MI_MOV immediately before the store blocks the
+      // carry: the encode-time mov/store fold and byte-store coalescing
+      // start at that mov and would consume the store, orphaning the carry
+      // replacement.
       if(gap > 40) return;
       if(facts.store_index > 0 &&
          function.blocks[facts.store_block]
            .instructions[facts.store_index - 1].opcode ==
              MirInstruction::MI_MOV)
         return;
-      for(std::size_t i = facts.store_index + 1; i < last; ++i)
-        if(touches_carry_scratch(
-             function.blocks[facts.store_block].instructions[i]))
-          return;
+      reload.r10_ok = true;
+      reload.r11_ok = true;
+      for(std::size_t i = facts.store_index + 1;
+          (reload.r10_ok || reload.r11_ok) && i < last; ++i) {
+        const MirInstruction & inside =
+          function.blocks[facts.store_block].instructions[i];
+        if(reload.r10_ok && touches_carry_scratch(inside, XR_R10))
+          reload.r10_ok = false;
+        if(reload.r11_ok && touches_carry_scratch(inside, XR_R11))
+          reload.r11_ok = false;
+      }
+      if(!reload.r10_ok && !reload.r11_ok) return;
       reload.carried = true;
     }
   }
@@ -212,7 +233,7 @@ void build_action_table(const mir_model::MirFunction & function,
       continue;
     }
     const X64Register forward_source =
-      reload.carried ? XR_R10 : reload.source;
+      reload.carried ? reload.carry : reload.source;
     for(std::size_t j = 0; j < reload.load_indices.size(); ++j) {
       FrameReloadPlan::InstructionAction & load = plan->actions[
         plan->block_starts[reload.store_block] + reload.load_indices[j]];
@@ -220,8 +241,9 @@ void build_action_table(const mir_model::MirFunction & function,
       load.source = static_cast<std::uint8_t>(forward_source);
     }
     if(reload.carried) {
-      store.kind =
-        FrameReloadPlan::InstructionAction::IA_CARRY_SCRATCH_STORE;
+      store.kind = reload.carry == XR_R10 ?
+        FrameReloadPlan::InstructionAction::IA_CARRY_SCRATCH_STORE :
+        FrameReloadPlan::InstructionAction::IA_CARRY_SCRATCH_STORE_R11;
       store.source = static_cast<std::uint8_t>(reload.source);
       continue;
     }
@@ -243,10 +265,15 @@ bool emit_carry_scratch_store(
     const FrameReloadPlan::InstructionAction & action, Stats * stats)
 {
   if(action.kind != FrameReloadPlan::InstructionAction::
-       IA_CARRY_SCRATCH_STORE)
+       IA_CARRY_SCRATCH_STORE &&
+     action.kind != FrameReloadPlan::InstructionAction::
+       IA_CARRY_SCRATCH_STORE_R11)
     return false;
+  const X64Register carry = action.kind ==
+    FrameReloadPlan::InstructionAction::IA_CARRY_SCRATCH_STORE ?
+    XR_R10 : XR_R11;
   emit_normalized_register_move(
-    out, XR_R10, action.source_register(), instruction.type);
+    out, carry, action.source_register(), instruction.type);
   if(stats) ++stats->scratch_carried_reloads;
   return true;
 }
@@ -357,12 +384,13 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
   }
   for(std::size_t i = 1; i < uses.size(); ++i)
     if(bindings.eligible[i]) append_reload(function, uses[i], &reloads);
-  // All carried windows share the single r10 carry, so overlapping carried
-  // windows would clobber each other; keep a greedy non-overlapping subset
-  // per block, position-ordered.
+  // Carried windows on the same register must not overlap (they would
+  // clobber each other's carry); r10 and r11 windows may interleave
+  // freely, since each window's oracle already excludes explicit mentions
+  // of its own register.  Greedy per block, position-ordered, r10 first.
   std::vector<PlannedReload> accepted;
   accepted.reserve(reloads.size());
-  std::vector<const PlannedReload *> carried;
+  std::vector<PlannedReload *> carried;
   for(std::size_t i = 0; i < reloads.size(); ++i) {
     if(reloads[i].carried) carried.push_back(&reloads[i]);
     else accepted.push_back(reloads[i]);
@@ -373,15 +401,24 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
                 (left->store_block == right->store_block &&
                  left->store_index < right->store_index);
             });
-  std::size_t open_block = static_cast<std::size_t>(-1);
-  std::size_t open_end = 0;
+  std::size_t open_block[2] = {static_cast<std::size_t>(-1),
+                               static_cast<std::size_t>(-1)};
+  std::size_t open_end[2] = {0, 0};
   for(std::size_t i = 0; i < carried.size(); ++i) {
-    if(carried[i]->store_block == open_block &&
-       carried[i]->store_index <= open_end)
-      continue;
-    open_block = carried[i]->store_block;
-    open_end = carried[i]->load_indices.back();
-    accepted.push_back(*carried[i]);
+    PlannedReload & reload = *carried[i];
+    const bool eligible[2] = {reload.r10_ok, reload.r11_ok};
+    static const X64Register registers[2] = {XR_R10, XR_R11};
+    for(std::size_t slot = 0; slot < 2; ++slot) {
+      if(!eligible[slot]) continue;
+      if(reload.store_block == open_block[slot] &&
+         reload.store_index <= open_end[slot])
+        continue;
+      open_block[slot] = reload.store_block;
+      open_end[slot] = reload.load_indices.back();
+      reload.carry = registers[slot];
+      accepted.push_back(reload);
+      break;
+    }
   }
   build_action_table(function, accepted, &result);
   return result;

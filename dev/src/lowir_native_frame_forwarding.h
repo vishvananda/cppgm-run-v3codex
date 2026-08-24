@@ -24,12 +24,14 @@ struct FrameReloadPlan
       IA_SKIP_DELAYED_STORE,
       IA_FORWARD_DELAYED_LOAD,
       IA_DROP_ADJACENT_STORE,
-      // The store's value rides r10 across a window proven free of every
-      // r10 touch, including the encoder-inserted ones; the paired load
-      // forwards from r10 via IA_FORWARD_DELAYED_LOAD.  Applied before
-      // the encode-time peepholes so a fold cannot consume the store and
-      // orphan the carry.
-      IA_CARRY_SCRATCH_STORE
+      // The store's value rides r10 (or r11) across a window proven free
+      // of every touch of that register, including the encoder-inserted
+      // ones; the paired loads forward from it via
+      // IA_FORWARD_DELAYED_LOAD.  Applied before the encode-time
+      // peepholes so a fold cannot consume the store and orphan the
+      // carry.
+      IA_CARRY_SCRATCH_STORE,
+      IA_CARRY_SCRATCH_STORE_R11
     } kind = IA_NONE;
 
     std::uint8_t source = 0;
