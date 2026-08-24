@@ -2096,13 +2096,42 @@ bool promote_slots_with_analysis(
     }
   }
   if(promoted_count == 0) return false;
+  // A promoted slot's load replacement can name the planned phi of a
+  // DIFFERENT slot (a store forwards one slot's merged value into
+  // another), so gating insertion on the phi's own slot being promoted
+  // leaves the rewrite referencing a value that never materializes.
+  // Insert every phi a promoted rewrite can reach: phis of promoted
+  // slots, phis named by promoted load replacements, and transitively
+  // the phis feeding their incoming arms.
+  std::vector<unsigned char> phi_needed(planned_phis.size(), 0);
+  std::vector<std::size_t> phi_need_work;
+  const auto require_phi = [&](std::size_t phi) {
+    if(phi == kNoBlockIndex || phi_needed[phi]) return;
+    phi_needed[phi] = 1;
+    phi_need_work.push_back(phi);
+  };
+  for(std::size_t phi = 0; phi < planned_phis.size(); ++phi)
+    if(planned_phis[phi].complete && promoted[planned_phis[phi].slot])
+      require_phi(phi);
+  for(std::size_t value = 0; value < has_replacement.size(); ++value)
+    if(has_replacement[value] && has_load_slot[value] &&
+       promoted[load_slots[value]] &&
+       replacement_values[value].kind == Operand::OP_TEMP)
+      require_phi(phi_owner[replacement_values[value].value]);
+  for(std::size_t cursor = 0; cursor < phi_need_work.size(); ++cursor) {
+    const std::vector<Operand> & args =
+      planned_phis[phi_need_work[cursor]].instruction.args;
+    for(std::size_t incoming = 1; incoming < args.size(); incoming += 2)
+      if(args[incoming].kind == Operand::OP_TEMP)
+        require_phi(phi_owner[args[incoming].value]);
+  }
   std::vector<std::vector<Instruction> > inserted_phis(
     function->blocks.size());
   std::vector<std::vector<Instruction> > inserted_phi_edge_copies(
     function->blocks.size());
   std::vector<unsigned char> phi_values(function->value_names.size(), 0);
   for(std::size_t phi = 0; phi < planned_phis.size(); ++phi)
-    if(planned_phis[phi].complete && promoted[planned_phis[phi].slot]) {
+    if(planned_phis[phi].complete && phi_needed[phi]) {
       Instruction & instruction = planned_phis[phi].instruction;
       for(std::size_t incoming = 1;
           incoming < instruction.args.size(); incoming += 2) {
@@ -2411,6 +2440,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   const std::size_t inline_rewrites =
     inline_o1_calls(program, call_graph, prepared_oversized_symbols,
       original_instruction_counts, &inlined_symbols, stats, inline_limits);
+  for(std::size_t i = 0; i < program.functions.size(); ++i)
   if(stats) {
     stats->inline_changed_callers =
       std::count(inlined_symbols.begin(), inlined_symbols.end(), 1);
@@ -2602,6 +2632,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     const std::size_t late_rewrites = inline_optimized_calls(
       program, late_call_graph, &late_rewritten_symbols, stats, &cleanup,
       inline_limits);
+    for(std::size_t i = 0; i < program.functions.size(); ++i)
     if(stats) {
       stats->rewrites += late_rewrites;
       stats->late_inline_changed_callers = std::count(
@@ -2663,6 +2694,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
                                  stats);
       sink_cold_blocks(&program.functions[i], noreturn_symbols, stats);
     }
+    for(std::size_t i = 0; i < program.functions.size(); ++i)
     if(stats) stats->post_prune_inline_nanoseconds =
       static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(

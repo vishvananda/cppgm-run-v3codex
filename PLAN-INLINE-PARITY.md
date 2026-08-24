@@ -1163,3 +1163,23 @@ source reshaping remains out of scope per the standing directive).
   grid point's honest pair; (3) only then consider the budget
   dimension.  Tree reverted; byte-identical to L38
   (TREE_AT_L38_AGAIN).
+- L40 (THE PROMOTED-PHI CROSS-SLOT FIX LANDED — the L39 landmine is
+  defused).  promote_slots gated phi INSERTION on `complete &&
+  promoted[the phi's own slot]`, but the sparse dataflow forwards one
+  slot's merged value into ANOTHER slot (`store %phiA_dest, $slotB`),
+  so a promoted slot's load replacement can name the planned phi of
+  an UNPROMOTED slot — the rewrite then references a value that never
+  materializes ("missing lowered temporary"; the L39 vector-field
+  trio with one member missing).  The fix computes the NEEDED set:
+  phis of promoted slots, phis named by promoted load replacements,
+  closed transitively over phi-argument dependencies — and inserts
+  every needed complete phi.  Needed phis are provably complete (an
+  incomplete phi poisons its dependents, and textual availability
+  already required a definition), and a phi of an unpromoted slot is
+  still a correct merge of that slot's stored values, so extra
+  insertions are at worst dce fodder.  At the DEFAULT policy the
+  triggering shape never occurs: PHIFIX_FROZEN_MATCH (byte-identical
+  frozen object), 5430/5430, zero-fatal audit, O3+O0 lanes MATCH.
+  The honest pair therefore carries over from L38 unchanged (1.756x
+  wall, 2.031x Ir).  The L39 repro (loop-gated caps +
+  pa12_semantic_initialization.cpp) now compiles clean at O1.
