@@ -891,3 +891,22 @@ source reshaping remains out of scope per the standing directive).
   **2.056x** (from 2.139x).  The compounding chain that produced it:
   L26 optimizer self-cost -> L30 span-free release -> the L31 dose
   landing each unlocked the next.
+- L32 (release-widening follow-ups, REFUTED — one by population, one
+  by wrong code).  (a) Pad-aware release inside exception-region
+  spans (VF_READ_IN_PAD_REACHABLE analysis + span-kind export):
+  measured +5 releases — backward-pad regions are rare and
+  forward-pad regions never created spans, so L30 already covered
+  the real population.  (b) Slot-alias-safe PARAMETER release
+  (whitelisting parameters without promoted/forwarded-slot replay):
+  delivered releases 908 -> 1,301 and grants +233 at the new default
+  — and WRONG CODE: pa29 behavior test loop-invariant-temporary-home
+  exits 1 (bisect: the parameter arm alone).  Parameters have AT
+  LEAST three uncounted location-replay channels — promoted-slot
+  forwarding, forwarded-parameter staging, and direct storage-base
+  reservations whose [param_reg + offset] reads carry SLOT operands,
+  not parameter uses — so facts-side whitelisting cannot be sound.
+  A safe parameter release needs walk-side accounting of every
+  replay (a per-register replay pin, cleared when the last replaying
+  consumer passes).  Both arms reverted; tree byte-identical to the
+  L31 landing.  The 709-1,020 parameter busy-holders remain the
+  measured prize for that future walk-side design.
