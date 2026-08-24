@@ -729,3 +729,33 @@ source reshaping remains out of scope per the standing directive).
   string-ctor class and the deep-dose EH wall (L3: 3,269 rejects at
   cap 96).  Recipe preserved in this row; the o1/499 fixture text
   lives in git history at the reverted change.
+- L25 (region-granular EH retention, MEASURED and REFUTED — the third
+  flat placement/EH micro-slice; E10 re-confirmed from a third
+  direction).  Built in full: analysis records unwind sources (calls
+  and throws inside linearly-nested open regions, calls inside landing
+  pad blocks; non-linear nesting falls back to the blanket), the
+  planner exports its extension spans, and stabilize_edge_live_result
+  prices the hazard over the value's span-extended interval (grown in
+  BOTH directions over overlapping spans — layout position is not
+  execution order) instead of function-wide has_eh.  Verified
+  FROZEN_MATCH-clean and self-reproducing.  Frozen-TU census: retains
+  146 -> 161, edge-live demotions 770 -> 676, planned residencies 445
+  -> 581, movement +20 loads / +63 stores (the belt-and-braces backup
+  stores).  Honest: Ir +36M, I1 +4.9M, D refs +13M (reads -7M, writes
+  +21M) — the backup-store cost exceeds the reload savings; REVERTED.
+  Structural reason the reach is small: the demotion mass is crossing
+  values sitting in CALLER-saved registers at definition — retention
+  cannot keep those across calls regardless of EH; they need planned
+  callee-saved homes, which the planner already attempts (the L22
+  grant-rate residual).  VERDICT across L24-L25: placement and EH
+  micro-slices are exhausted at the current inline depth — E10's
+  "uses-per-epoch ~1" bites from every direction.  The program's
+  binding constraint is L23's dose arithmetic: the optimizer's own
+  execution cost (~9-12% of self wall per the L24 profile) is both a
+  direct ratio lever (it runs at self's 2.1x inefficiency in the
+  numerator) and the dose blocker.  Next front: lowir_opt self-cost
+  reduction under a byte-identical-output gate (FROZEN_MATCH makes
+  iteration safe and fast), starting from the profile's top passes:
+  simplify_values 534M, rewrite_promoted_slots 505M,
+  eliminate_dead_slot_stores 527M, resolve_instruction_operands 274M,
+  inliner 232M, cleanup_cfg 228M.
