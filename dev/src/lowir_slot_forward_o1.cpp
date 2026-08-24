@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -112,11 +113,21 @@ bool local_slot_forward(Function * function, Stats * stats)
           note_use(ins.args[k].value, i);
     }
   bool changed = false;
+  // Epoch-stamped slot values and load aliases: the per-block vector
+  // rebuilds were O(values + slots) each, and the bulk invalidation at
+  // every call, bulk-memory, indirect-store, or EH instruction was
+  // O(slots).  A stamp mismatch means "absent", so block entry and bulk
+  // invalidation are one counter bump; entries stamped 0 stay invalid
+  // (the counters start at 1 and only grow).
+  std::vector<Operand> values(function->slot_names.size());
+  std::vector<std::uint32_t> value_stamp(function->slot_names.size(), 0);
+  std::vector<Operand> aliases(function->value_names.size());
+  std::vector<std::uint32_t> alias_stamp(function->value_names.size(), 0);
+  std::uint32_t value_epoch = 1;
+  std::uint32_t alias_epoch = 1;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::vector<Operand> values(function->slot_names.size());
-    std::vector<unsigned char> has_value(function->slot_names.size(), 0);
-    std::vector<Operand> aliases(function->value_names.size());
-    std::vector<unsigned char> has_alias(function->value_names.size(), 0);
+    ++value_epoch;
+    ++alias_epoch;
     std::vector<Instruction> & instructions =
       function->blocks[i].instructions;
     const std::size_t original_size = instructions.size();
@@ -126,11 +137,11 @@ bool local_slot_forward(Function * function, Stats * stats)
       Operand * operands[] = {&ins.first, &ins.second, &ins.third};
       for(std::size_t k = 0; k < 3; ++k)
         if(operands[k]->kind == Operand::OP_TEMP &&
-           has_alias[operands[k]->value])
+           alias_stamp[operands[k]->value] == alias_epoch)
           *operands[k] = aliases[operands[k]->value];
       for(std::size_t k = 0; k < ins.args.size(); ++k)
         if(ins.args[k].kind == Operand::OP_TEMP &&
-           has_alias[ins.args[k].value])
+           alias_stamp[ins.args[k].value] == alias_epoch)
           ins.args[k] = aliases[ins.args[k].value];
       // Taking a slot's address or storing through an indirect pointer can
       // change a previously recorded slot value.  Inlining commonly exposes
@@ -141,36 +152,37 @@ bool local_slot_forward(Function * function, Stats * stats)
         if(slot_operands[k]->kind == Operand::OP_SLOT &&
            !((ins.kind == Instruction::IK_LOAD && k == 0) ||
              (ins.kind == Instruction::IK_STORE && k == 1)))
-          has_value[slot_operands[k]->slot] = 0;
+          value_stamp[slot_operands[k]->slot] = 0;
       if((ins.kind == Instruction::IK_STORE ||
           ins.kind == Instruction::IK_ATOMIC_STORE) &&
          ins.second.kind != Operand::OP_SLOT)
-        std::fill(has_value.begin(), has_value.end(), 0);
+        ++value_epoch;
       if(ins.volatile_access) {
         if(ins.kind == Instruction::IK_STORE &&
            ins.second.kind == Operand::OP_SLOT)
-          has_value[ins.second.slot] = 0;
+          value_stamp[ins.second.slot] = 0;
         if(kept != j) instructions[kept] = std::move(ins);
         ++kept;
         continue;
       }
       if(ins.kind == Instruction::IK_STORE && ins.second.kind == Operand::OP_SLOT) {
         values[ins.second.slot] = ins.first;
-        has_value[ins.second.slot] = 1;
+        value_stamp[ins.second.slot] = value_epoch;
       } else if(ins.kind == Instruction::IK_LOAD &&
-                ins.first.kind == Operand::OP_SLOT && has_value[ins.first.slot] &&
+                ins.first.kind == Operand::OP_SLOT &&
+                value_stamp[ins.first.slot] == value_epoch &&
                 (!use_blocks[ins.dest].multiple &&
                  (use_blocks[ins.dest].first == kNoBlock ||
                   use_blocks[ins.dest].first == i))) {
         aliases[ins.dest] = values[ins.first.slot];
-        has_alias[ins.dest] = 1;
+        alias_stamp[ins.dest] = alias_epoch;
         changed = true;
         if(stats) ++stats->rewrites;
         continue;
       } else {
         if(ins.kind == Instruction::IK_CALL || ins.kind == Instruction::IK_COPYOBJ ||
            ins.kind == Instruction::IK_ZEROINIT || is_eh_instruction(ins.kind))
-          std::fill(has_value.begin(), has_value.end(), 0);
+          ++value_epoch;
       }
       if(kept != j) instructions[kept] = std::move(ins);
       ++kept;

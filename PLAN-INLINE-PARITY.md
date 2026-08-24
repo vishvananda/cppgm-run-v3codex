@@ -759,3 +759,31 @@ source reshaping remains out of scope per the standing directive).
   simplify_values 534M, rewrite_promoted_slots 505M,
   eliminate_dead_slot_stores 527M, resolve_instruction_operands 274M,
   inliner 232M, cleanup_cfg 228M.
+- L26 (optimizer self-cost batch 1: the pass-cost front OPENS and
+  pays immediately).  Three FROZEN_MATCH-verified algorithmic fixes,
+  byte-identical output throughout: (1) eliminate_dead_slot_stores'
+  dense per-slot byte-vector liveness became word-packed bitsets with
+  hoisted scratch (the per-block-visit merge/compare/allocation was
+  the pass); (2) rewrite_promoted_slots' has_alias map was rebuilt
+  per BLOCK — O(values x blocks) — and is block-invariant: hoisted;
+  (3) local_slot_forward allocated four vectors per block (two sized
+  by value count) and paid O(slots) std::fill at every call/EH/bulk
+  instruction — epoch-stamped maps make block entry and bulk
+  invalidation one counter bump.  Host-side (g++-built, same source):
+  Ir 17.389 -> 16.986B (-403M, -2.32%).  HONEST self-side: Ir 44.610
+  -> 43.217B (-1.393B, -3.12%), D refs 26.578 -> 25.785B (-793M,
+  -2.98%), I1 flat; ABBA wall -3.04% real / -3.05% user — 1:1 with
+  Ir (E3 holds within a policy).  THE MULTIPLIER LESSON: the removed
+  work cost the self binary 3.46x what it costs the g++ build — dense
+  byte loops and allocator traffic are our codegen's worst case, so
+  optimizer-algorithmic cuts move the honest numerator
+  disproportionately; conversely allocator/libc-side work is SHARED
+  code and near-ratio-neutral (cutting it helps both walls equally).
+  Gates: report 5430/5430, zero-fatal audit, O3+O0 lanes MATCH,
+  frozen self-reproduction byte-for-byte (codegen untouched).
+  NEXT IN THIS ARC: pass-invocation volume is the remaining structure
+  — simplify_values runs 14,063x / dce 17,813x / cleanup_cfg 19,344x
+  on the frozen TU, each rebuilding value-count-sized scratch; a
+  reusable scratch context threaded through the pipeline is the next
+  slice, then the L23 dose re-arm check (each optimizer-second saved
+  shrinks the dose's self-side policy cost directly).

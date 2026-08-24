@@ -1214,45 +1214,58 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     return true;
   }
   const Graph graph = build_graph(*function, stats);
-  typedef std::vector<unsigned char> LiveSlots;
+  // Word-packed live sets: the dense per-slot byte vectors dominated this
+  // pass's cost on post-inline functions (merge, compare, and a heap
+  // allocation per block visit).  Identical liveness, identical removals.
+  const std::size_t words = (slot_count + 63) / 64;
+  typedef std::vector<std::uint64_t> LiveSlots;
   std::vector<LiveSlots> live_in(
-    function->blocks.size(), LiveSlots(slot_count, 0));
+    function->blocks.size(), LiveSlots(words, 0));
+  const auto live_test = [](const LiveSlots & set, std::size_t slot) {
+    return ((set[slot >> 6] >> (slot & 63)) & 1) != 0;
+  };
+  const auto live_set = [](LiveSlots & set, std::size_t slot) {
+    set[slot >> 6] |= std::uint64_t(1) << (slot & 63);
+  };
+  const auto live_clear = [](LiveSlots & set, std::size_t slot) {
+    set[slot >> 6] &= ~(std::uint64_t(1) << (slot & 63));
+  };
+  const auto live_merge = [words](LiveSlots & into, const LiveSlots & from) {
+    for(std::size_t w = 0; w < words; ++w) into[w] |= from[w];
+  };
+  LiveSlots live(words, 0);
+  std::vector<std::size_t> successors;
   const auto transfer = [&](std::size_t block) {
-    LiveSlots live(slot_count, 0);
-    std::vector<std::size_t> successors;
+    live.assign(words, 0);
+    successors.clear();
     normal_successors(*function, graph, block, &successors);
     for(std::size_t i = 0; i < successors.size(); ++i)
-      for(std::size_t slot = 0; slot < slot_count; ++slot)
-        live[slot] |= live_in[successors[i]][slot];
+      live_merge(live, live_in[successors[i]]);
     std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
     for(std::size_t index = instructions.size(); index > 0; --index) {
       Instruction & ins = instructions[index - 1];
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
-         graph.find(ins.first.block) != kNoBlockIndex) {
-        const LiveSlots & handler = live_in[graph.find(ins.first.block)];
-        for(std::size_t slot = 0; slot < slot_count; ++slot)
-          live[slot] |= handler[slot];
-      }
+         graph.find(ins.first.block) != kNoBlockIndex)
+        live_merge(live, live_in[graph.find(ins.first.block)]);
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
-        live[ins.first.slot] = 1;
+        live_set(live, ins.first.slot);
       else if(ins.kind == Instruction::IK_STORE &&
               ins.second.kind == Operand::OP_SLOT &&
               !escaped[ins.second.slot])
-        live[ins.second.slot] = 0;
+        live_clear(live, ins.second.slot);
       else {
         const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
         for(std::size_t i = 0; i < 3; ++i)
           if(operands[i]->kind == Operand::OP_SLOT)
-            live[operands[i]->slot] = 1;
+            live_set(live, operands[i]->slot);
         for(std::size_t i = 0; i < ins.args.size(); ++i)
           if(ins.args[i].kind == Operand::OP_SLOT)
-            live[ins.args[i].slot] = 1;
+            live_set(live, ins.args[i].slot);
       }
       if(stats) ++stats->instruction_visits;
     }
-    return live;
   };
   std::deque<std::size_t> work;
   std::vector<unsigned char> queued(function->blocks.size(), 1);
@@ -1262,7 +1275,7 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
     const std::size_t block = work.front();
     work.pop_front();
     queued[block] = 0;
-    LiveSlots live = transfer(block);
+    transfer(block);
     if(live == live_in[block]) continue;
     live_in[block].swap(live);
     if(stats) ++stats->dataflow_updates;
@@ -1278,12 +1291,11 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
   bool changed = false;
   for(std::size_t reverse = function->blocks.size(); reverse > 0; --reverse) {
     const std::size_t block = reverse - 1;
-    LiveSlots live(slot_count, 0);
-    std::vector<std::size_t> successors;
+    live.assign(words, 0);
+    successors.clear();
     normal_successors(*function, graph, block, &successors);
     for(std::size_t i = 0; i < successors.size(); ++i)
-      for(std::size_t slot = 0; slot < slot_count; ++slot)
-        live[slot] |= live_in[successors[i]][slot];
+      live_merge(live, live_in[successors[i]]);
     std::vector<Instruction> kept_reverse;
     std::vector<Instruction> & instructions =
       function->blocks[block].instructions;
@@ -1291,30 +1303,27 @@ bool eliminate_dead_slot_stores(Function * function, Stats * stats)
       Instruction & ins = instructions[index - 1];
       if((ins.kind == Instruction::IK_EH_TRY ||
           ins.kind == Instruction::IK_EH_CLEANUP) &&
-         graph.find(ins.first.block) != kNoBlockIndex) {
-        const LiveSlots & handler = live_in[graph.find(ins.first.block)];
-        for(std::size_t slot = 0; slot < slot_count; ++slot)
-          live[slot] |= handler[slot];
-      }
+         graph.find(ins.first.block) != kNoBlockIndex)
+        live_merge(live, live_in[graph.find(ins.first.block)]);
       if(ins.kind == Instruction::IK_LOAD && ins.first.kind == Operand::OP_SLOT)
-        live[ins.first.slot] = 1;
+        live_set(live, ins.first.slot);
       else if(ins.kind == Instruction::IK_STORE &&
               ins.second.kind == Operand::OP_SLOT &&
               !escaped[ins.second.slot]) {
-        if(!live[ins.second.slot]) {
+        if(!live_test(live, ins.second.slot)) {
           changed = true;
           if(stats) ++stats->rewrites;
           continue;
         }
-        live[ins.second.slot] = 0;
+        live_clear(live, ins.second.slot);
       } else {
         const Operand * operands[] = {&ins.first, &ins.second, &ins.third};
         for(std::size_t i = 0; i < 3; ++i)
           if(operands[i]->kind == Operand::OP_SLOT)
-            live[operands[i]->slot] = 1;
+            live_set(live, operands[i]->slot);
         for(std::size_t i = 0; i < ins.args.size(); ++i)
           if(ins.args[i].kind == Operand::OP_SLOT)
-            live[ins.args[i].slot] = 1;
+            live_set(live, ins.args[i].slot);
       }
       kept_reverse.push_back(std::move(ins));
     }
@@ -1530,19 +1539,21 @@ void rewrite_promoted_slots(Function * function,
     }
     return value;
   };
+  // has_alias depends only on the function-level inputs; building it per
+  // block cost O(values x blocks) on post-inline functions.
+  std::vector<unsigned char> has_alias = has_load;
+  for(std::size_t value = 0; value < storage.size(); ++value)
+    if(storage[value]) has_alias[value] = 0;
+  const auto resolve = [&loads, &has_alias](Operand value) {
+    for(std::size_t step = 0;
+        step < loads.size() && value.kind == Operand::OP_TEMP; ++step) {
+      const std::uint32_t id = value.value;
+      if(id >= loads.size() || !has_alias[id]) break;
+      value = loads[id];
+    }
+    return value;
+  };
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    std::vector<unsigned char> has_alias = has_load;
-    for(std::size_t value = 0; value < storage.size(); ++value)
-      if(storage[value]) has_alias[value] = 0;
-    const auto resolve = [&loads, &has_alias](Operand value) {
-      for(std::size_t step = 0;
-          step < loads.size() && value.kind == Operand::OP_TEMP; ++step) {
-        const std::uint32_t id = value.value;
-        if(id >= loads.size() || !has_alias[id]) break;
-        value = loads[id];
-      }
-      return value;
-    };
     std::vector<Instruction> & instructions =
       function->blocks[i].instructions;
     const std::size_t original_size = instructions.size();
