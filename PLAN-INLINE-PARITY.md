@@ -582,3 +582,32 @@ source reshaping remains out of scope per the standing directive).
   frame traffic is call-crossing (caller-saved carries cannot reach
   it) — the callee-saved side of that residual belongs to the
   placement redesign, not to encode-time carries.
+- L21 (callee-saved carries, MEASURED and REFUTED — the fourth and
+  final carry direction).  Idea: a preserved callee-saved register
+  survives calls and the encoder never stages through it, so a
+  window whose resident value is DEAD could carry call-crossing
+  reloads — the 586-window population L20 identified.  Built in
+  full and FROZEN_MATCH-verified: mention-level physical-register
+  liveness over the MIR (plain mov/load/lea destinations count as
+  writes, everything else reads), normal-edge successors plus
+  every-block-to-every-pad unwind edges (MI_EH_PUSH's label operand
+  names the pad in BOTH EH flavors — landing pads read planned
+  callee-saved residents, so unwind flow must be modeled), the EH
+  marker range blocked in-window (the compact-EH record rolls
+  callee-saved back to push-time values on unwind), indirect-jump
+  functions excluded, recruitment only from function.callee_saved_
+  regs (the preserve set is fixed before encode time).  A naive
+  probe said 860 windows; liveness+conflicts recruited 186.  The
+  honest counters refute it twice over: Ir +564M of liveness
+  self-cost against Dw -3M — the recruited windows are COLD
+  (EH-adjacent), and the structural finding is that PRESERVED-AND-
+  DEAD callee-saved capacity barely exists: where the walk pushes a
+  callee-saved register it keeps it live.  All four carry
+  directions are now measured (same-block caller-saved: LANDED,
+  -1.4% wall; cross-block: cost-negative; callee-saved: cost-
+  negative and cold).  Machinery reverted; the row is the re-arm
+  recipe (efficient mask-based liveness sketched) should idle
+  callee-saved capacity ever appear.  The call-crossing frame
+  residual is confirmed to live in LIVE callee-saved registers —
+  reachable only by the walk-time placement redesign that decides
+  WHICH values deserve them, not by encode-time scavenging.
