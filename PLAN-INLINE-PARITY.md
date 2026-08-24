@@ -987,3 +987,43 @@ source reshaping remains out of scope per the standing directive).
   front (region-granular EH pricing -> resume-capable inlining, the
   L24 sequencing), which simultaneously gates h96 depth, the 3,269
   EH inline rejects, and the 291-function EH release exclusion.
+- L35 (THE EH INLINING FRONT, BUILT END TO END AND REFUTED BY SILICON
+  — the L24-sequencing hypothesis is closed).  The full resume-capable
+  program was implemented: (1) EH-bearing callees splice VERBATIM at
+  call sites whose handler-stack depth is zero — under the dynamic
+  handler-stack model a throw inside the cloned body reaches the
+  cloned pads first and a cloned frame-exit `resume` continues
+  unwinding out of the caller exactly as the original call did, so no
+  clause merging or resume retargeting is needed at depth zero;
+  (2) a depth-based EH-context analysis (saturating counter,
+  propagated through landing-pad edges with pads receiving the
+  pre-push depth) replaced the binary active-bit whose two holes this
+  slice exposed — pad-only-reachable code read as region-free (the
+  pa34 lifecycle test aborted: holder destructors spliced INSIDE
+  main's try), and eh_end-pops-all blinded nesting; (3) splicing
+  refreshes the caller context and restarts the scan; (4) direct-throw
+  bodies stay outlined (the 486 pin); (5) callee-saved edge-live
+  retention enabled in EH functions (the FDE records every
+  callee-saved save, so pads read unwinder-restored registers — the
+  same guarantee planned residents already rely on); (6) two latent
+  bugs fixed on the way: the specializer's folded-null reference
+  argument (integer literal into pass=reference — now lowered as the
+  pointer value) and the depth pump on unbalanced-region cycles
+  (saturation).  All gates GREEN at both doses: 5431/5431 (a new
+  401 depth-gate reducer), zero-fatal audit, O3+O0 lanes MATCH,
+  REF/SELF byte-identical.  Census at h48-b768: 286 splices, MIR
+  +2.11%, grants -0.87%, spills 76->238.  Census at h96-b1536: 1,018
+  splices, MIR +49%, grants +22%, optimizer +53%.  HONEST VERDICTS:
+  undosed pair 10.650/5.990 = **1.778x** (from 1.769x, self Ir
+  +0.81% vs ref +0.86% — the policy cost is SYMMETRIC and the
+  codegen gain is ZERO in Ir); h96-b1536 dosed pair 11.815/6.625 =
+  **1.783x**.  THE CLOSING FACT: even with the 3,269-reject class
+  admitted (1,018 splices at depth), grants +22%, and the register
+  machinery region-aware, the deep dose loses — the h96 wall was
+  never the EH rejects; it is the post-inline body quality itself
+  (the movement the census shows: mov_stores +64% at h96).  The
+  ablation-reversal target (gcc-shaped inlining at ~70-GIMPLE caps)
+  is not reachable by policy admission alone under this backend's
+  merged-body codegen.  Everything reverted; tree byte-identical to
+  L33 (TREE_BACK_AT_L33).  Recipes preserved in this row and in git
+  history at this commit's parent working state.
