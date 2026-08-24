@@ -1258,3 +1258,26 @@ source reshaping remains out of scope per the standing directive).
   re-check at each gate live in L34/L36/L37/L39/L41/L42.  Honest
   state carried into the program: **1.756x wall / 2.031x Ir** at
   L40.
+- P30a (GATE (i) GROUNDWORK: the decision-surface catalog).  Every
+  register/xmm pool mutation the timeline must subsume — 35 sites,
+  eight kinds: (1) FIXED reservations: i128-atomic RBX (l.126),
+  mixed-boundary R8 scratch (l.369), ABI argument registers during
+  staging (l.526), R9 conversion fallback (l.611-612), all in
+  lowir_native.cpp; (2) PLANNED GRANTS: try_planned_grant's
+  try_reserve (planning.h) + the parameter-home path (l.323); (3)
+  REACTIVE RESULTS: caller-saved probe (l.1137), preserved pool via
+  try_allocate_preserved_avoiding_plans (planning.h), wide/other
+  allocate calls (l.641/649/2711/2885), XMM (l.1190); (4)
+  CONSUME-TIME RELEASES: the l.976/987 release block and the
+  set_value transitions (l.1115/1120/1209/1213/1296/1299); (5) THE
+  L33 SCHEDULE: flush_planned_releases + span-end heap (planning.h);
+  (6) SPILLS/RECLAIMS: spill_one + reclaim_dead_parameter_register
+  (spill_selection.h); (7) CARRIERS: deferred-address index
+  reservations (l.1030) and the parameter-move release (l.660,
+  l.2578 argument staging); (8) INCOMING-REGISTER reuse
+  (memory_lowering.h promoted-parameter reserve).  Gate (i)'s
+  record/replay seam wraps exactly these: a per-function decision
+  log (position, kind, value, register) recorded by a dry-run of
+  the CURRENT logic and replayed by the emitter; byte-identity of
+  record->replay is the gate.  After the seam exists, gates
+  (ii)-(iv) replace the log producer, never the emitter.
