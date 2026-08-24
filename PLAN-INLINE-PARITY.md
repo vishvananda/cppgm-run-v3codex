@@ -787,3 +787,9 @@ source reshaping remains out of scope per the standing directive).
   reusable scratch context threaded through the pipeline is the next
   slice, then the L23 dose re-arm check (each optimizer-second saved
   shrinks the dose's self-side policy cost directly).
+  HONEST PAIR REFRESH at 342e1bfc (P24, gcc-O1 reference rebuilt
+  same-revision, REF_L26_MATCH byte-identical): self-O1 10.386 s vs
+  gcc-O1 5.799 s = **1.791x wall** (below 1.8 for the first time; from
+  1.827x at L23), user 1.857x; Ir 43.217B vs 20.359B = **2.123x**
+  (the reference gained -514M from the same fixes — g++-O1 vectorizes
+  the removed loops less than the O3 host build).
