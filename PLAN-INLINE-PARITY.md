@@ -696,4 +696,36 @@ source reshaping remains out of scope per the standing directive).
   moves materially.  HONEST PAIR REFRESH at 4fc1679f (P24, both
   policies default): self-O1 10.656 s vs gcc-O1 5.831 s = **1.827x
   wall** (from 1.835x at L19), user 1.897x; Ir 44.610B vs 20.873B =
-  **2.137x** — the L22 slice's honest wall confirmation.
+  **2.137x** — the L22 slice's honest wall confirmation.- L24 (the EH inlining wall, SIZED and first slice REFUTED; the
+  profile refreshed at 4fc1679f).  Fresh callgrind: the lexer tower is
+  ~20% of the honest self run (Peek 7.2%, Run 5.2%, TC::Next 2.7%,
+  PC::Next 2.7%, Take 2.1%), the lowir_opt family ~9-12%, allocator
+  and libc string ops ~6%.  Reject census by callee (throwaway
+  instrumentation, removed): 884 EH rejects on the frozen TU decompose
+  into 635 RESUME-bearing (string ctor cleanup-rethrow shapes), 138
+  cleanup, and only 87 terminate-only — the implicit-noexcept wrapper
+  around destructor bodies (Scoped* RAII guards, Rb_tree dtors); the
+  hot lexer tower is entirely SIZE-rejected, not EH.  Two slices were
+  built, gated (5431/5431 with a new o1/499 reducer, audit, O3+O0
+  lanes MATCH, byte self-reproduction), measured honestly, and
+  REVERTED: (1) marking synthesized TLS wrappers nonthrowing (the body
+  is emit_tls_address+ret; the missing unwind=no kept terminate
+  regions alive around every destructor touching thread-locals) —
+  honest Ir +20M; (2) terminate-only EH inlining (admit bodies with no
+  resume/throw/cleanup whose pad-side calls are unbodied-or-noreturn;
+  clone machinery splices regions verbatim, verified correct) —
+  combined honest Ir +31M, I1 +4.9M (text +0.30%), D +24M, ABBA wall
+  -0.14% (noise); the dosed h48-b768 point on the slice tree is also
+  flat (Ir +40M, I1 -1.3M vs the L23 dose) — the enabling-at-depth
+  hypothesis fails because the EH wall's mass is the resume class.
+  MECHANISM: splicing regions into EH-free callers flips has_eh, and
+  the backend's blanket penalties (should_retain_edge_register returns
+  false for ANY EH function; edge-live values demote to frame) tax the
+  whole caller — the destructor-call savings drown in it.  SEQUENCING
+  LESSON: the backend must price EH by REGION, not by function
+  (retention and placement inside uncovered spans of EH functions),
+  BEFORE any EH inlining can pay; then the resume-capable design
+  (retarget resume to the call site's enclosing pad) unlocks the 635
+  string-ctor class and the deep-dose EH wall (L3: 3,269 rejects at
+  cap 96).  Recipe preserved in this row; the o1/499 fixture text
+  lives in git history at the reverted change.
