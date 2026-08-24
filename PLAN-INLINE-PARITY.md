@@ -806,3 +806,24 @@ source reshaping remains out of scope per the standing directive).
   / dce 17,813 / cleanup_cfg 19,344 per frozen TU at DEFAULT policy;
   more at the dose).  Each optimizer-cost slice both lowers the
   standing numerator AND shrinks this gap.
+- L28 (the E6 compare-fold, MEASURED and REFUTED by silicon against
+  every counter).  Census: 1,328 single-use loads feed a compare's
+  FIRST operand vs 490 the (already-folded) second.  The extension —
+  defer the load into cmp [mem], reg/imm through the existing
+  deferred-address carrier machinery, one gate condition — measured
+  the biggest static win of the program (frozen MIR -1,588 / -1.30%,
+  text -6,172B, binary text -0.78%) and improved every honest counter
+  (Ir -464M / -1.07%, I1 misses -2.0%, D refs -200M, D1 misses -6.4%)
+  — and LOST the wall: +1.15% real / +1.24% user, slower in 9/10
+  pairings.  Mechanism: cmp-with-memory + jcc does not macro-fuse and
+  puts the load latency on the branch's critical path; a separate
+  load issues early and cmp reg + jcc fuses.  Restricting the fold to
+  non-branch-feeding compares keeps only ~6% of the population (-93
+  MIR) — noise-class; REVERTED entirely, fixtures restored.  THE
+  METRIC LESSON (the L17 lesson's mirror): counters and wall can
+  disagree in BOTH directions — store/load conversions win wall
+  invisibly to Ir, and instruction-eliminating compare folds lose
+  wall visibly to fusion and latency.  Wall A/B is the only final
+  arbiter for selection-shape changes; and gcc's use of this shape
+  is paired with its SCHEDULER hoisting the load off the critical
+  path — shape parity without scheduling is not parity.
