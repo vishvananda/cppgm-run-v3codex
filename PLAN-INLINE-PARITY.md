@@ -544,5 +544,13 @@ source reshaping remains out of scope per the standing directive).
   report 5430/5430, zero-fatal audit, O3+O0 inception lanes MATCH,
   frozen self-reproduction byte-for-byte; the refreshed gcc-O1
   reference at this revision emits byte-identical frozen output.
-  The carry family's remaining recorded step is cross-block
-  carries; the residual same-block population is thinning.
+  HONEST PAIR REFRESH at 0c296b7a (P24 protocol, PSI-gated 5-block
+  ABBA, gcc-O1 reference rebuilt from the same revision): self-O1
+  10.702 s vs gcc-O1 5.831 s = **1.835x wall** (from 1.891x at L7),
+  user 10.205 vs 5.369 = 1.901x; Ir 44.638B vs 20.865B = **2.139x**
+  (from 2.153x).  The Phase C program has moved the wall ratio
+  -3.0% relative while Ir moved -0.7% — the carry family's
+  D-ref/text reductions convert to wall that Ir cannot see, exactly
+  as the L17 metric lesson predicted.  The carry family's remaining
+  recorded step is cross-block carries; the residual same-block
+  population is thinning.
