@@ -1183,3 +1183,25 @@ source reshaping remains out of scope per the standing directive).
   The honest pair therefore carries over from L38 unchanged (1.756x
   wall, 2.031x Ir).  The L39 repro (loop-gated caps +
   pa12_semantic_initialization.cpp) now compiles clean at O1.
+- L41 (LOOP-GATED CAPS MEASURED AND REFUTED — the depth front closes
+  from its most favorable angle).  With the L40 fix unblocking the
+  selfhost, the governed grid point (hint caps x2 at backedge-span
+  sites, id-inherited loop map, budget 768) ran the full honest
+  pair: 5430/5430, O0 lane MATCH, REF_LGC_MATCH, LGC_REPRODUCES.
+  Counters: ref Ir +2.03% (the dosed policy cost), self Ir +2.66% —
+  ratio 2.031x -> 2.043x; ABBA wall self 10.715 s vs ref 5.995 s =
+  **1.787x** (from 1.756x, -1.8% WORSE), user 1.857x.  Even 22
+  hot-loop Peek splices — the single most favorable population the
+  matched profile could name — lose on wall: the spliced bodies'
+  movement under our allocator exceeds the call overhead they
+  remove, the L35 verdict reproduced at surgical selectivity.  The
+  O3 lane also exposed a SECOND latent depth-only landmine, still
+  open: a deeply nested throw-path block loses its defs
+  ("missing operand type for %<internal-1856>" in Lexer::Run at
+  -O3; logic_error ctor + cxa_throw args with no defs — a whole
+  callee block dropped by some O3-path transform).  VERDICT: the
+  26%-of-gap lexer cluster is NOT reachable by inline policy under
+  this backend; it is reachable only by making merged bodies CHEAP
+  (P29 interval splitting / spill placement) or by not needing the
+  splice (midend value collapse).  Probe reverted; both trees
+  byte-verified at L40 (TREE_AT_L40, REF_AT_L40).
