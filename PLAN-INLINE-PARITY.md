@@ -3,11 +3,11 @@
 Objective: bring the exact self-O1 compiler within 10% of gcc-O1 on the
 frozen benchmark (`~/cppgm-extended-pa39-source-layout/benchmarks/
 self_compile/stable/semantic_overload.cpp`, `-std=gnu++11 -O1 -Idev/src`).
-Current honest state at 4fc1679f (P24 protocol, ledger L23): self-O1
-10.656 s / 44.61B dynamic instructions vs gcc-O1 5.831 s / 20.87B =
-**1.827x wall, 2.137x instructions**.  (At L19/0c296b7a: 1.835x wall,
-2.139x Ir; at the Phase A landing e325dc7e, L7: 1.891x wall, 2.153x
-Ir; at fd019bdc: 1.90x wall, 2.20x Ir.)
+Current honest state at 678c5091 (P24 protocol, ledger L31): self-O1
+10.501 s / 42.93B dynamic instructions vs gcc-O1 5.921 s / 20.88B =
+**1.774x wall, 2.056x instructions**.  (At L26/342e1bfc: 1.791x wall,
+2.123x Ir; at L19/0c296b7a: 1.835x, 2.139x; at the first Phase A
+landing e325dc7e, L7: 1.891x, 2.153x; at fd019bdc: 1.90x, 2.20x.)
 
 This plan supersedes the inlining-related threads of PLAN-O1-PARITY.md
 (P22-P28) and PLAN-OPT-PASS-IMPROVEMENTS.md (R10-R11) for forward work.
@@ -885,3 +885,9 @@ source reshaping remains out of scope per the standing directive).
   h96/EH walls (L3: 3,269 EH rejects at cap 96) are the next depth
   frontier — blocked on resume-capable EH inlining, which is blocked
   on region-granular EH pricing (the L24 sequencing).
+  HONEST PAIR AT 678c5091 (P24, reference rebuilt same-revision,
+  REF_L31_MATCH): wall 10.501 s vs 5.921 s = **1.774x** (from 1.835x
+  at the session open), user 1.882x; Ir 42.933B vs 20.881B =
+  **2.056x** (from 2.139x).  The compounding chain that produced it:
+  L26 optimizer self-cost -> L30 span-free release -> the L31 dose
+  landing each unlocked the next.
