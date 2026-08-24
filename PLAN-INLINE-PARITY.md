@@ -827,3 +827,17 @@ source reshaping remains out of scope per the standing directive).
   arbiter for selection-shape changes; and gcc's use of this shape
   is paired with its SCHEDULER hoisting the load off the critical
   path — shape parity without scheduling is not parity.
+- L29 (the dose-response VALLEY: h32-b512 measured and refuted on
+  both gates).  The unprobed intermediate point between the landed
+  h24-b384 and the L23 knee: text +4.5%, H32_REPRODUCES and
+  H32_DOSED_MATCH verified — but constant-workload wall is +1.16%
+  real / +1.23% user WORSE than undosed (h48-b768 was -0.74%), and
+  the honest dosed pair is 1.816x (vs 1.791x undosed).  The
+  dose-response is a VALLEY, not a slope: caps 25-47 admit mid-size
+  bodies that pay text and icache without the specific tower merges
+  that only trigger at cap >= 48; the h48 gain is those merges, not
+  depth per se.  Consequence: the only dose worth landing is
+  h48-b768 itself, and the L27 arithmetic (0.093 s needed vs 0.08 s
+  covered) closes by cheapening the dose's incremental policy cost
+  or improving merged-region codegen (E10's parked placement
+  material), not by shrinking the dose.
