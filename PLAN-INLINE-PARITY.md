@@ -1027,3 +1027,31 @@ source reshaping remains out of scope per the standing directive).
   merged-body codegen.  Everything reverted; tree byte-identical to
   L33 (TREE_BACK_AT_L33).  Recipes preserved in this row and in git
   history at this commit's parent working state.
+- P29 (THE PLACEMENT-QUALITY PROGRAM — opened after L35 closed the
+  policy fronts).  CEILING ARITHMETIC from the honest counters at
+  L33: self D refs 25.72B (Dr 14.41B / Dw 11.31B) vs reference
+  10.42B (5.76B/4.66B) — ratios 2.50x/2.43x against an Ir ratio of
+  2.05x at IPC parity.  If whole-function placement brought the
+  D-ref ratio down to ~1.25x of the reference, the removed
+  loads/stores would take roughly 8-10B instructions off the self
+  numerator: ~42.9B -> ~33-35B = a wall ratio around 1.58-1.67x.
+  CONSEQUENCE: allocation quality is the largest single remaining
+  chunk but does NOT reach 1.5x alone — the rest is midend value
+  redundancy (the P26 abstraction-collapse half).  The frozen-TU
+  movement census that scopes Phase 1: movement by reason =
+  scalar_temporary 27.4k loads + 16.0k stores, call_boundary 8.2k
+  loads, address_materialization 12.3k, source_slot 2.3k; frame-home
+  creations by reason = edge_live 838, scalar_value 622 (serving
+  9,756 staging requests), call_result 107; the L34 saturation
+  census (2,536 planned single-use loads failing allocation
+  entirely) marks the dense regions where the reactive walk starves.
+  PHASES (census-gated, wall-arbitered as always): (1) planner
+  admission widened from call-crossing/phi/invariant values to all
+  multi-use scalar temporaries, with claimed-interval SPLITTING so a
+  value can hold different registers in different regions (the
+  missing capability every prior probe circled); (2) spill placement
+  by interval — stores at region boundaries instead of definition
+  sites, killing the belt-and-braces staging pattern; (3) the
+  call-boundary channel: argument staging directly from planned
+  homes (8.2k loads); (4) pure-address rematerialization (frame/RIP
+  lea on demand) for the address_materialization residue.
