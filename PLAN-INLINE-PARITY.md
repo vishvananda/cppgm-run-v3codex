@@ -3,10 +3,11 @@
 Objective: bring the exact self-O1 compiler within 10% of gcc-O1 on the
 frozen benchmark (`~/cppgm-extended-pa39-source-layout/benchmarks/
 self_compile/stable/semantic_overload.cpp`, `-std=gnu++11 -O1 -Idev/src`).
-Current honest state at 0c296b7a (P24 protocol, ledger L19): self-O1
-10.702 s / 44.64B dynamic instructions vs gcc-O1 5.831 s / 20.87B =
-**1.835x wall, 2.139x instructions**.  (At the Phase A landing e325dc7e,
-L7: 1.891x wall, 2.153x Ir; at fd019bdc: 1.90x wall, 2.20x Ir.)
+Current honest state at 4fc1679f (P24 protocol, ledger L23): self-O1
+10.656 s / 44.61B dynamic instructions vs gcc-O1 5.831 s / 20.87B =
+**1.827x wall, 2.137x instructions**.  (At L19/0c296b7a: 1.835x wall,
+2.139x Ir; at the Phase A landing e325dc7e, L7: 1.891x wall, 2.153x
+Ir; at fd019bdc: 1.90x wall, 2.20x Ir.)
 
 This plan supersedes the inlining-related threads of PLAN-O1-PARITY.md
 (P22-P28) and PLAN-OPT-PASS-IMPROVEMENTS.md (R10-R11) for forward work.
@@ -661,20 +662,38 @@ source reshaping remains out of scope per the standing directive).
   the 422 -> 217 gap vs gcc is value-materialization structure (gcc
   collapses derived pointers into one reloaded base), LowIR-level
   material, not allocation order.
-- L23 (corrected I1 re-entry at h48-b768, SINGLE POINT — the L16
-  refutation used the wrong gate).  L16 judged the dose on constant-
-  workload Ir alone; the L17 metric lesson (movement converts to
-  D-refs/wall invisibly to Ir) was never applied to the dose question.
-  On the L22 tree: dosed h48-b768 selfhost at constant workload is Ir
-  43.786B (-1.85%, unchanged from L16's increment) but D refs 26.176B
-  (-402M, -1.51%) against I1 misses +40.3M (+9.4%, text +13.9%) — and
-  PSI-gated 5-block ABBA wall says the dosed binary WINS: -0.74% real /
-  -0.68% user, faster in 10/10 pairings.  The carry family + placement
-  slices changed the conversion economics exactly as L16 hypothesized
-  in reverse: they thinned the movement the dose amplifies.  The dose
-  door REOPENS — but landing a dose is Phase A territory: the honest
-  pair also charges the deeper policy's compile work to both binaries
-  (L7: +1.82B self / +0.61B gcc at h24), so the next step is an I1
-  re-grid with the corrected gates (Ir AND full-sim D refs AND ABBA
-  wall) and an honest-pair confirmation at the chosen point, not a
-  single-point landing.
+- L23 (corrected I1 re-grid + honest-pair arithmetic: the dose makes
+  BETTER CODEGEN but still cannot land).  L16 judged h48 on constant-
+  workload Ir alone; re-measured on the L22 tree with the L17-corrected
+  gates (Ir AND full-sim D refs AND PSI-gated ABBA wall), all points
+  self-reproducing byte-for-byte:
+    h48-b768:  Ir -1.85%, D -1.51%, I1 +9.4%,  text +13.9%, WALL -0.74%
+               real / -0.68% user, dosed faster in 10/10 pairings;
+    h48-b1536: Ir -2.34%, D -1.87%, I1 +10.0%, text +16.4%, wall +0.17%
+               (flat — the extra budget's D gains don't convert);
+    h96-b1536: Ir -0.87% (the cap-96 EH wall again), D -2.20%,
+               I1 +22.1%, text +29.8%, wall +5.73% (catastrophic).
+  The knee is h48-b768 and the wall-positive text envelope is ~+14%,
+  well under gcc's +25% (E2 does not transfer to our icache shape).
+  L16's Ir-only refutation is SUPERSEDED: the carry family + placement
+  slices made the dose's codegen genuinely wall-positive.  BUT the
+  honest-pair arithmetic still refuses the landing.  Simulated landing
+  at 4fc1679f (both binaries run the h48-b768 policy via flags;
+  DOSED_POLICY_MATCH byte-verified; gcc-O1 reference worktree rebuilt
+  at this revision — TRAP: the worktree dev/Makefile defaults to -O3,
+  the honest reference needs CC_FLAGS forced to -O1):
+    Ir: self 44.610 -> 45.591B (policy +1.805B vs codegen -0.823B),
+    ref 20.873 -> 21.524B (+0.651B); ratio 2.137 -> 2.118 (IMPROVES);
+    WALL: self 10.656 -> 11.009s (+3.3%), ref 5.831 -> 5.998s (+2.9%);
+    ratio 1.827 -> 1.835 (WORSENS — the verdict).
+  The inliner's own compile work runs at the self binary's ~2.1x
+  inefficiency, so the policy cost lands asymmetrically in wall and
+  swamps the -0.74% codegen gain.  RE-ARM CONDITION (quantitative):
+  the dose is wall-ratio-neutral when its constant-workload wall gain
+  covers policy_cost_self - ratio x policy_cost_ref (~0.13s needed vs
+  ~0.08s actual today); the gap closes as parity itself improves or as
+  lowir_opt gets cheaper — re-run this row's protocol after either
+  moves materially.  HONEST PAIR REFRESH at 4fc1679f (P24, both
+  policies default): self-O1 10.656 s vs gcc-O1 5.831 s = **1.827x
+  wall** (from 1.835x at L19), user 1.897x; Ir 44.610B vs 20.873B =
+  **2.137x** — the L22 slice's honest wall confirmation.
