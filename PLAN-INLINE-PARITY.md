@@ -864,3 +864,24 @@ source reshaping remains out of scope per the standing directive).
   Also in this landing: ControlFlowQueries reachability/dominance
   fills became epoch stamps (byte-identical, host-flat, removes the
   per-block-change O(blocks) fills and a per-query allocation).
+- L31 (PHASE A STEP 2: h48-b768 LANDED as the default policy — the
+  L23/L27 refutations superseded by L30's grant scaling).  On the L30
+  tree the dose's honest pair measured 10.501/5.921 = **1.774x wall**
+  against the undosed 10.336/5.775 = 1.790x — ratio-positive for the
+  first time (span-free release raised dosed grants +34% and cut
+  dosed MIR -3.7%, supplying the gain the L27 arithmetic lacked).
+  Constants: hinted late cap 24 -> 48, ordinary caller budget 384 ->
+  768 (once-cap 512 and once-caller-budget 1024 unchanged); the
+  new-default host output is byte-identical to the flagged
+  configuration (NEW_DEFAULTS_MATCH_FLAGS).  Reducers resized to the
+  new boundaries: 391 and 392 to 50 piece calls (24 early + 24 late
+  + 2 residual pins budget 768; the trivial-leaf exemption again
+  runs under a doubly exhausted budget), 490's over_cap to 49
+  observe calls (post-cleanup 48/49 boundary); pa37/README.md
+  updated to forty-eight/768.  Gates: report 5430/5430 with zero
+  pa38 movement, zero-fatal audit, O3+O0 lanes MATCH,
+  NEWDEF_SELF_REPRODUCES.  The E1 chain is now open: deeper merged
+  epochs give the placement machinery real material (E10), and the
+  h96/EH walls (L3: 3,269 EH rejects at cap 96) are the next depth
+  frontier — blocked on resume-capable EH inlining, which is blocked
+  on region-granular EH pricing (the L24 sequencing).

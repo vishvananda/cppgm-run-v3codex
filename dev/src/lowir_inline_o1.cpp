@@ -29,12 +29,12 @@ using lowir_model::LowirProgram;
 using lowir_model::Operand;
 
 const std::size_t kNoFunction = InlineCallGraph::no_function();
-const std::size_t kInlineInstructionBudget = 384;
+const std::size_t kInlineInstructionBudget = 768;
 const std::size_t kSingleCallInstructionLimit = 512;
 const std::size_t kSingleCallCallerBudget = 1024;
 const std::size_t kMinimumSingleCallTranslationUnitBudget = 10240;
 const std::size_t kLateNonleafInstructionLimit = 6;
-const std::size_t kLateHintNonleafInstructionLimit = 24;
+const std::size_t kLateHintNonleafInstructionLimit = 48;
 const std::size_t kOrdinarySizeCap = 40;
 const std::size_t kTrivialLeafInstructionLimit = 4;
 

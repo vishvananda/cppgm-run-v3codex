@@ -208,7 +208,7 @@ running optimizing transforms.
 - immediate local simplification, dead-code elimination, and control-flow
   cleanup after a late inlining batch, so the callee's compact shape is
   visible to every later caller in the same bottom-up traversal
-- a deterministic 384-instruction whole-caller inlining budget, charged by
+- a deterministic 768-instruction whole-caller inlining budget, charged by
   the greater of a callee's original and simplified instruction counts, so
   repeated individually eligible calls cannot cause unbounded growth
 - a trivial-leaf exemption from that budget: a leaf body of at most four
@@ -240,7 +240,7 @@ running optimizing transforms.
 - treating `throw`, `exception`, `exception_selector`, and `resume` as
   EH-bearing instructions, just like the `eh_*` markers; a function containing
   any of them is not an ordinary inlining candidate
-- preservation of the ordinary 384-instruction policy when a definition is
+- preservation of the ordinary 768-instruction policy when a definition is
   in the single-call class but a separate single-call budget is exhausted;
   calls that meet the ordinary size and growth rules remain ordinary inline
   candidates
@@ -369,8 +369,8 @@ rebuilds the typed direct-call graph once and may inline an additional
 nonrecursive function whose optimized body contains no exception-handling
 instructions. A single-block, single-return body with no calls may have at
 most 40 instructions. A body that contains a call or has multiple blocks may
-have at most six instructions, or at most twenty-four instructions when its
-definition has `inline_hint=yes`. This late wave has a fresh 384-instruction
+have at most six instructions, or at most forty-eight instructions when its
+definition has `inline_hint=yes`. This late wave has a fresh 768-instruction
 budget for each caller, charged by the optimized instruction count of every
 inlined body. The hint does not override that budget or `no_inline=yes`. The
 wave must continue to preserve variadic,
