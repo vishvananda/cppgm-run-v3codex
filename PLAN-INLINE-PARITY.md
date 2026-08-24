@@ -1129,3 +1129,37 @@ source reshaping remains out of scope per the standing directive).
   1.764x/1.824x): the D-side pressure relief outruns the Ir story,
   the same lesson as L17 in the other direction.  Session
   trajectory: 1.835x -> 1.756x.
+- L39 (LOOP-GATED INLINE CAPS, EXPLORED AND PARKED — the per-function
+  profile finally names the remaining hot mass, and the probe
+  surfaced a latent wrong-LowIR landmine that must be fixed before
+  any depth experiment can measure).  Fresh matched callgrind at L38:
+  the LEXER CLUSTER (Peek 3.21B, Run 2.92B, PhysicalCursor::Next
+  1.09B, TranslationCursor::Next 1.04B, Token-move 0.72B,
+  IsIdentifierBody 0.40B, AppendUTF8 0.78B) totals ~10.2B self vs
+  ~4.6B ref — 26% of the WHOLE remaining gap — and the mechanism is
+  visible in the ref profile: g++ has no Peek/PC::Next/Token-move
+  symbols at all (inlined into their towers), while our cap-48
+  policy keeps Peek (72 instrs, cold 64) outlined at every site.
+  THE PROBE: sites inside layout backedge spans get 2x hint caps,
+  with an id-indexed loop map inherited by spliced blocks (the
+  position-indexed map goes stale after any multi-block splice — the
+  first build classified 148 of Run's Peek sites as non-loop for
+  exactly that reason).  Grid: caps-x2 alone spliced 4 of 82 Peek
+  sites (budget-bound); +budget exemption at loop sites: MIR +49%,
+  Peek -> 24 (unbounded cascade, valley class); +budget kept at 768:
+  MIR +4.7%, Peek -> 60, grants -5%.  THE LANDMINE: at the governed
+  point, selfhost DIES at O1 and O3 — "missing lowered temporary"
+  in SelectUsualDeallocation: an SROA-promoted vector-field phi TRIO
+  ([nullptr, nullptr, %tX] per field) loses ONE member while a store
+  reading it survives (t294/t298 phis intact, t290 deleted, its
+  `store ptr %t290, ...` dangling; also "missing operand type for
+  %<internal-1856>" in Lexer::Run at O3).  The bug is in the DEFAULT
+  optimizer pipeline (promoted-slot phi bookkeeping vs dce/cleanup),
+  reachable only under deeper splicing today; the probe diff is
+  preserved (scratchpad loop-gated-caps.patch, 226 lines) and this
+  row carries the design.  SEQUENCE FOR RESUMPTION: (1) fix the phi
+  trio bug (repro: apply the patch, compile
+  pa12_semantic_initialization.cpp at -O1); (2) re-run the governed
+  grid point's honest pair; (3) only then consider the budget
+  dimension.  Tree reverted; byte-identical to L38
+  (TREE_AT_L38_AGAIN).
