@@ -6,6 +6,9 @@
 #include "mir_model.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <queue>
 
 #include <memory>
 #include <string>
@@ -192,6 +195,124 @@ protected:
   {
     deferred_carrier_registers_[static_cast<unsigned>(reg)] = 1;
   }
+  // A planned resident whose final use lies inside a span is only
+  // releasable once the walk passes its extended plan end — but the
+  // consume-time check runs at the final use, so without a schedule the
+  // register stays held to the end of the function.  Block entry flushes
+  // every schedule entry the walk has passed.
+  void build_planned_release_schedule()
+  {
+    planned_release_schedule_.clear();
+    planned_release_cursor_ = 0;
+    while(!deferred_span_end_releases_.empty())
+      deferred_span_end_releases_.pop();
+    planned_release_done_.assign(value_register_plan_.size(), 0);
+    for(std::size_t v = 0; v < value_register_plan_.size(); ++v)
+      if(value_register_plan_[v] != 0)
+        planned_release_schedule_.push_back(
+          std::make_pair(value_plan_end_[v],
+                         lowir_model::ValueId(
+                           static_cast<std::uint32_t>(v))));
+    std::sort(planned_release_schedule_.begin(),
+              planned_release_schedule_.end());
+  }
+  void note_planned_release(lowir_model::ValueId value)
+  {
+    planned_release_done_[value] = 1;
+  }
+  void flush_planned_releases()
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    while(planned_release_cursor_ < planned_release_schedule_.size() &&
+          planned_release_schedule_[planned_release_cursor_].first <
+            lowerer.position_)
+      release_at_span_end(
+        planned_release_schedule_[planned_release_cursor_++].second);
+    while(!deferred_span_end_releases_.empty() &&
+          deferred_span_end_releases_.top().first < lowerer.position_) {
+      const lowir_model::ValueId value(deferred_span_end_releases_.top().second);
+      deferred_span_end_releases_.pop();
+      release_at_span_end(value);
+    }
+  }
+  // An edge-live register is dead once the walk passes the extended end of
+  // its final counted use: every span that could re-execute the use is
+  // over — the same envelope interval_over trusts for planned values.
+  void release_at_span_end(lowir_model::ValueId value)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    if(planned_release_done_[value] ||
+       !lowerer.value_known_[value] ||
+       lowerer.facts_.uses[value] != 0 ||
+       !lowerer.value_outlives_counted_uses(value) ||
+       lowerer.values_[value].parameter ||
+       lowerer.values_[value].fixed_register_home ||
+       lowerer.phi_planned_home_[value] != 0 ||
+       lowerer.values_[value].location.kind != mir_model::MirOperand::OP_REG ||
+       lowerer.values_[value].location.reg == XR_RAX ||
+       deferred_carrier_registers_[static_cast<unsigned>(
+         lowerer.values_[value].location.reg)] ||
+       lowerer.has_live_location_alias(
+         value, lowerer.values_[value].location))
+      return;
+    planned_release_done_[value] = 1;
+    lowerer.live_locations_.remove(value, lowerer.values_[value].location);
+    lowerer.registers_.release(lowerer.values_[value].location.reg);
+    hold_released_for_plan(lowerer.values_[value].location.reg);
+    if(lowerer.stats_) ++lowerer.stats_->planned_interval_releases;
+  }
+  // An unplanned edge-live value whose final counted use sits inside a
+  // backedge or exception span cannot release at the use, but its register
+  // is reclaimable at the extended span end.
+  void maybe_schedule_span_end_release(lowir_model::ValueId value)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    if(planned_register_entry(value) != 0 ||
+       lowerer.phi_planned_home_[value] != 0 ||
+       lowerer.values_[value].parameter ||
+       lowerer.values_[value].fixed_register_home ||
+       lowerer.values_[value].location.kind != mir_model::MirOperand::OP_REG)
+      return;
+    std::size_t end = lowerer.position_;
+    bool grew = true;
+    while(grew) {
+      grew = false;
+      for(std::size_t i = 0; i < extension_spans_.size(); ++i)
+        if(extension_spans_[i].first <= end &&
+           end < extension_spans_[i].second) {
+          end = extension_spans_[i].second;
+          grew = true;
+        }
+    }
+    deferred_span_end_releases_.push(
+      std::make_pair(end, static_cast<std::uint32_t>(value)));
+  }
+  bool value_outlives_counted_uses(lowir_model::ValueId value) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    return lowerer.facts_.has(
+        value, analysis::FunctionFacts::VF_EDGE_LIVE) ||
+      lowerer.phi_planned_home_[value] != 0;
+  }
+  bool value_is_live(lowir_model::ValueId value) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    return lowerer.facts_.uses[value] != 0 ||
+      value_outlives_counted_uses(value);
+  }
+  // A future claim on a just-released register keeps it out of ordinary
+  // reactive rotation so the claim's grant still finds it free.
+  void hold_released_for_plan(X64Register reg)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    const std::vector<std::pair<std::size_t, std::size_t> > & spans =
+      planned_register_spans_[static_cast<unsigned>(reg)];
+    for(std::size_t i = 0; i < spans.size(); ++i)
+      if(spans[i].first > lowerer.position_) {
+        lowerer.registers_.hold_for_plan(reg);
+        return;
+      }
+  }
   // True when a planned value's claimed interval on reg overlaps
   // [start, end] — the reactive allocator prefers a different register.
   bool planned_span_conflicts(X64Register reg, std::size_t start,
@@ -216,10 +337,12 @@ protected:
     static const X64Register preserved[] = {
       XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15
     };
-    for(std::size_t pass = 0; pass < 2; ++pass)
+    for(std::size_t pass = 0; pass < 3; ++pass)
       for(std::size_t i = 0;
           i < sizeof(preserved) / sizeof(preserved[0]); ++i) {
         if(pass == 0 && planned_span_conflicts(preserved[i], start, end))
+          continue;
+        if(pass < 2 && lowerer.registers_.plan_held(preserved[i]))
           continue;
         if(lowerer.registers_.try_reserve(preserved[i])) {
           *result = preserved[i];
@@ -311,6 +434,15 @@ protected:
   std::vector<std::pair<std::size_t, std::size_t> >
     planned_register_spans_[16];
   std::vector<std::pair<std::size_t, std::size_t> > extension_spans_;
+  std::vector<std::pair<std::size_t, lowir_model::ValueId> >
+    planned_release_schedule_;
+  std::size_t planned_release_cursor_ = 0;
+  std::vector<unsigned char> planned_release_done_;
+  std::priority_queue<
+    std::pair<std::size_t, std::uint32_t>,
+    std::vector<std::pair<std::size_t, std::uint32_t> >,
+    std::greater<std::pair<std::size_t, std::uint32_t> > >
+    deferred_span_end_releases_;
   unsigned char deferred_carrier_registers_[16] = {};
 };
 

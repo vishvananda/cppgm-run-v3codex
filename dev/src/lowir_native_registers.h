@@ -22,9 +22,14 @@ public:
   void release(X64Register reg);
   void discard_unused_reservation(X64Register reg);
   const std::vector<X64Register> & preserves() const;
+  // A released register with a future planned claim stays available only
+  // as a last resort, so reactive values do not sit on it into the claim.
+  void hold_for_plan(X64Register reg);
+  bool plan_held(X64Register reg) const;
 
 private:
   bool used_[16];
+  bool plan_held_[16];
   unsigned reservation_count_[16];
   std::vector<X64Register> preserves_;
 

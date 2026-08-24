@@ -15,6 +15,7 @@ bool is_callee_saved(X64Register reg)
 RegisterPool::RegisterPool()
 {
   std::fill(used_, used_ + 16, false);
+  std::fill(plan_held_, plan_held_ + 16, false);
   std::fill(reservation_count_, reservation_count_ + 16, 0U);
 }
 
@@ -24,8 +25,19 @@ void RegisterPool::reserve(X64Register reg)
     throw std::runtime_error("MIR register allocation conflict");
   const unsigned index = static_cast<unsigned>(reg);
   used_[index] = true;
+  plan_held_[index] = false;
   ++reservation_count_[index];
   remember_preserve(reg);
+}
+
+void RegisterPool::hold_for_plan(X64Register reg)
+{
+  plan_held_[static_cast<unsigned>(reg)] = true;
+}
+
+bool RegisterPool::plan_held(X64Register reg) const
+{
+  return plan_held_[static_cast<unsigned>(reg)];
 }
 
 bool RegisterPool::try_reserve(X64Register reg)
@@ -59,13 +71,14 @@ bool RegisterPool::try_allocate(bool across_call, X64Register & result)
   const std::size_t count = across_call ?
     sizeof(preserved) / sizeof(preserved[0]) :
     sizeof(ordinary) / sizeof(ordinary[0]);
-  for(std::size_t i = 0; i < count; ++i) {
-    const unsigned index = static_cast<unsigned>(choices[i]);
-    if(used_[index]) continue;
-    reserve(choices[i]);
-    result = choices[i];
-    return true;
-  }
+  for(std::size_t pass = 0; pass < 2; ++pass)
+    for(std::size_t i = 0; i < count; ++i) {
+      const unsigned index = static_cast<unsigned>(choices[i]);
+      if(used_[index] || (pass == 0 && plan_held_[index])) continue;
+      reserve(choices[i]);
+      result = choices[i];
+      return true;
+    }
   return false;
 }
 

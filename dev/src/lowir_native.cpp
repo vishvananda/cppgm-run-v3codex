@@ -126,6 +126,7 @@ public:
     if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
     storage_facts_ = analyze_storage(source_, facts_, tls_wrappers_);
     compute_value_register_plan(source_, facts_, optimization_level_, stats_);
+    build_planned_release_schedule();
     slot_offsets_.resize(source_.slot_names.size(), 0);
     slot_offset_known_.assign(source_.slot_names.size(), 0);
     discarded_slots_.assign(source_.slot_names.size(), 0);
@@ -146,6 +147,7 @@ public:
         (i == 0 ? parameter_moves_.size() : 0));
       control_flow_.SelectBlock(i);
       current_block_id_ = source_.blocks[i].id;
+      flush_planned_releases();
       current_block_last_position_ = source_.blocks[i].instructions.empty() ?
         position_ : position_ + source_.blocks[i].instructions.size() - 1;
       for(std::size_t j = 0; j < source_.blocks[i].instructions.size(); ++j, ++position_) {
@@ -328,11 +330,6 @@ private:
   bool is_phi_home_register(X64Register reg) const
   {
     return phi_home_registers_[static_cast<unsigned>(reg)] != 0;
-  }
-  bool value_outlives_counted_uses(lowir_model::ValueId value) const
-  {
-    return facts_.has(value, FunctionFacts::VF_EDGE_LIVE) ||
-      phi_planned_home_[value] != 0;
   }
   bool constrained_wide_pressure() const { return source_.params.size() > 6 && source_.slots.empty() && !facts_.calls.empty(); }
   bool crosses_register_clobber(lowir_model::ValueId value,
@@ -953,9 +950,13 @@ private:
     const bool stops_being_live = (facts_.uses[id] == 1 &&
       !value_outlives_counted_uses(id)) || interval_over ||
       span_free_interval_over;
+    if(facts_.uses[id] == 1 && value_outlives_counted_uses(id) &&
+       !interval_over && !span_free_interval_over)
+      maybe_schedule_span_end_release(id);
     --facts_.uses[id];
     if(stops_being_live)
       live_locations_.remove(id, values_[id].location);
+    if(interval_over || span_free_interval_over) note_planned_release(id);
     if(facts_.uses[id] == 0) {
       const ValueFact & value = values_[id];
       // An edge-live register outlives its final use unless the planned
@@ -973,6 +974,8 @@ private:
          value.location.reg != retained && value.location.reg != XR_RAX &&
          !live_locations_.has_alias(id, value.location, false)) {
         registers_.release(value.location.reg);
+        if(interval_over || span_free_interval_over)
+          hold_released_for_plan(value.location.reg);
         if(interval_over && stats_) ++stats_->planned_interval_releases;
         if(span_free_interval_over && stats_)
           ++stats_->span_free_edge_releases;
@@ -1027,10 +1030,6 @@ private:
         registers_.reserve(address.index);
       mark_deferred_carrier(address.index);
     }
-  }
-  bool value_is_live(lowir_model::ValueId value) const
-  {
-    return facts_.uses[value] != 0 || value_outlives_counted_uses(value);
   }
   void set_value(lowir_model::ValueId value, const ValueFact & replacement)
   {

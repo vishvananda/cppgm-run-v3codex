@@ -3,11 +3,12 @@
 Objective: bring the exact self-O1 compiler within 10% of gcc-O1 on the
 frozen benchmark (`~/cppgm-extended-pa39-source-layout/benchmarks/
 self_compile/stable/semantic_overload.cpp`, `-std=gnu++11 -O1 -Idev/src`).
-Current honest state at 678c5091 (P24 protocol, ledger L31): self-O1
-10.501 s / 42.93B dynamic instructions vs gcc-O1 5.921 s / 20.88B =
-**1.774x wall, 2.056x instructions**.  (At L26/342e1bfc: 1.791x wall,
-2.123x Ir; at L19/0c296b7a: 1.835x, 2.139x; at the first Phase A
-landing e325dc7e, L7: 1.891x, 2.153x; at fd019bdc: 1.90x, 2.20x.)
+Current honest state at the L33 landing (P24 protocol): self-O1
+10.595 s / 42.85B dynamic instructions vs gcc-O1 5.990 s / 20.88B =
+**1.769x wall, 2.052x instructions**.  (At L31/678c5091: 1.774x,
+2.056x; at L26/342e1bfc: 1.791x wall, 2.123x Ir; at L19/0c296b7a:
+1.835x, 2.139x; at the first Phase A landing e325dc7e, L7: 1.891x,
+2.153x; at fd019bdc: 1.90x, 2.20x.)
 
 This plan supersedes the inlining-related threads of PLAN-O1-PARITY.md
 (P22-P28) and PLAN-OPT-PASS-IMPROVEMENTS.md (R10-R11) for forward work.
@@ -910,3 +911,44 @@ source reshaping remains out of scope per the standing directive).
   consumer passes).  Both arms reverted; tree byte-identical to the
   L31 landing.  The 709-1,020 parameter busy-holders remain the
   measured prize for that future walk-side design.
+- L33 (SPAN-END RELEASE SCHEDULE LANDED — the walk now reclaims
+  edge-live registers when their re-execution envelope closes, not
+  only at a lucky final-use position).  Three cooperating pieces, all
+  inside PlannedResidency + RegisterPool (lowir_native.cpp stays at
+  2,999 lines):  (1) A static schedule of (plan_end, value) for every
+  planned value, flushed at block entry — a planned loop resident
+  whose final use sits INSIDE a span previously held its callee-saved
+  register to function end, because planned_interval_over was only
+  evaluated at the final consume.  (2) A deferred min-heap of
+  (extended-span-end, value) for UNPLANNED edge-live values whose
+  final counted use lies inside a backedge/EH span — the population
+  L30's span-free rule had to refuse.  The release point is the
+  fixpoint extension of the use position over extension_spans_ —
+  exactly the envelope the planner already trusts for plan_end, so
+  the soundness argument is L30's, deferred.  Parameters, fixed
+  homes, phi homes, RAX, deferred carriers, and aliased locations
+  all keep their exclusions (the L32 lesson stands: parameters stay
+  untouched).  (3) RegisterPool plan-holds: a released register with
+  a future planned claim becomes last-resort for reactive allocation
+  (two-pass try_allocate + a third pass in the preserved helper), so
+  the freed register survives until its claim's grant instead of
+  being re-pinned by scratch.  Two instructive failures on the way:
+  the release-done marker must accompany the index REMOVAL, not the
+  register release (an interval_over removal whose release-if was
+  vetoed by alias/retained left a phantom holder → live-location
+  index inconsistency); and excluding planned values from span-free
+  release to dodge that bug cost grants −11%/spills 2x — the marker
+  makes the exclusion unnecessary.  Frozen census vs L31: MIR
+  −1.03%, mov_loads −2.10%, mov_stores −2.98%, grants 5,452→5,652
+  (+3.67%), spills 84→76, frame_homes −1.31%, releases 642→970;
+  busy-fails 8,074→7,844 with planned-holder 180→76.  Gates: audit
+  zero-fatal; 5430/5430; O3+O0 inception lanes MATCH; REF_PREL_MATCH
+  (gcc-O1 reference rebuilt same-revision, byte-identical frozen
+  object); PREL_REPRODUCES (self byte-identical).  Honest counters:
+  self Ir 42.853B (−0.19%), ref Ir 20.880B (flat — the schedule's
+  policy cost is free).  ABBA wall: self 10.595 s vs ref 5.990 s =
+  **1.769x** (from 1.774x), user 1.835x, Ir **2.052x** (from
+  2.056x).  Remaining busy-holder prizes after this landing: 6,588
+  unplanned value-holders (the flush only helps claims that start
+  after the holder's extended end; the rest need eviction or plan
+  coverage) and 1,019 parameter-holders (walk-side replay pins).
