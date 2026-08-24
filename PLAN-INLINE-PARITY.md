@@ -3,9 +3,9 @@
 Objective: bring the exact self-O1 compiler within 10% of gcc-O1 on the
 frozen benchmark (`~/cppgm-extended-pa39-source-layout/benchmarks/
 self_compile/stable/semantic_overload.cpp`, `-std=gnu++11 -O1 -Idev/src`).
-Current honest state at the L37 landing (P24 protocol): self-O1
-10.445 s / 42.38B dynamic instructions vs gcc-O1 5.920 s / 20.86B =
-**1.764x wall, 2.032x instructions**.  (At L33/446f86ba: 1.769x,
+Current honest state at the L38 landing (P24 protocol): self-O1
+10.350 s / 42.36B dynamic instructions vs gcc-O1 5.895 s / 20.86B =
+**1.756x wall, 2.031x instructions**.  (At L33/446f86ba: 1.769x,
 2.052x; at L31/678c5091: 1.774x, 2.056x; at L26/342e1bfc: 1.791x,
 2.123x; at L19/0c296b7a: 1.835x, 2.139x; at the first Phase A
 landing e325dc7e, L7: 1.891x, 2.153x; at fd019bdc: 1.90x, 2.20x.)
@@ -1111,3 +1111,21 @@ source reshaping remains out of scope per the standing directive).
   frame_provenance machinery already tracks constant offsets) and
   the reg-path population now freed; then re-examine the register
   competition census with 1,255 fewer contenders.
+- L38 (P29: THE INDEX GATE JOINS THE UNION — constant-offset chains
+  from pure frame bases defer under VF_ADDRESS_UNION_SAFE).  The
+  first attempt widened both encodable arms and pa29 refuted it at
+  once (three behavior tests, SIGSEGV): register-carried [reg+off]
+  forms need their carrier alive at every consumer, a guarantee only
+  the all-storage analysis provides — the union flag admits call
+  arguments whose staging happens at positions the carrier analysis
+  never priced.  The landed form restricts the union to the FRAME
+  arm: a pure rbp-relative combined offset replays anywhere.
+  Census on top of L37: MIR -0.48%, mov_loads -0.80%, mov_stores
+  -0.98%, mov_copies -1.05%, spills 80 -> 75.  Gates: zero-fatal
+  audit, 5430/5430, O3+O0 lanes MATCH, REF_IX_MATCH,
+  IXD_REPRODUCES.  Honest: self Ir -0.04% (the chains are
+  dynamically cool), ratio 2.032x -> 2.031x — but ABBA wall self
+  10.350 s vs ref 5.895 s = **1.756x real / 1.819x user** (from
+  1.764x/1.824x): the D-side pressure relief outruns the Ir story,
+  the same lesson as L17 in the other direction.  Session
+  trajectory: 1.835x -> 1.756x.

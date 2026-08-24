@@ -97,13 +97,21 @@ protected:
         require_selected_parameter_home = true;
       }
     }
+    // The union flag extends deferral only to the FRAME form: a pure
+    // rbp-relative address replays anywhere, while register-carried
+    // forms need the carrier alive at every consumer, which only the
+    // all-storage analysis guarantees.
+    const bool storage_only_uses = lowerer.facts_.has(
+      instruction.dest, analysis::FunctionFacts::VF_ONLY_STORAGE_ADDRESS);
     if(constant_index &&
-       lowerer.facts_.has(
-         instruction.dest,
-         analysis::FunctionFacts::VF_ONLY_STORAGE_ADDRESS)) {
+       (storage_only_uses ||
+        lowerer.facts_.has(
+          instruction.dest,
+          analysis::FunctionFacts::VF_ADDRESS_UNION_SAFE))) {
       mir_model::MirOperand address;
       bool encodable = false;
       if(stable_register_base && base.kind == mir_model::MirOperand::OP_REG &&
+         storage_only_uses &&
          !lowerer.crosses_register_clobber(instruction.dest, base.reg)) {
         address = dereference(base.reg, offset);
         encodable = true;
@@ -114,8 +122,9 @@ protected:
         long long combined = 0;
         encodable = add_address_offset(base.offset, offset, &combined);
         if(encodable && base.kind == mir_model::MirOperand::OP_DEREF) {
-          encodable = !lowerer.crosses_register_clobber(
-            instruction.dest, base.reg) &&
+          encodable = storage_only_uses &&
+            !lowerer.crosses_register_clobber(
+              instruction.dest, base.reg) &&
             (!base.has_index || !lowerer.crosses_register_clobber(
               instruction.dest, base.index));
         }
