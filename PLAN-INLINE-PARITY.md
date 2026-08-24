@@ -952,3 +952,38 @@ source reshaping remains out of scope per the standing directive).
   unplanned value-holders (the flush only helps claims that start
   after the holder's extended end; the rest need eviction or plan
   coverage) and 1,019 parameter-holders (walk-side replay pins).
+- L34 (post-L33 allocation probes, REFUTED — three flat censuses that
+  jointly map the remaining busy-holder structure).  (a) Extended-end
+  reactive avoidance (reactive_lifetime_end span-extended for
+  edge-live values; parameters declared full-range): grants +0, MIR
+  -0.01% — pass-0 avoidance already covers the reachable cases, and
+  in dense functions every preserved register carries claims, so
+  avoidance has nowhere to steer.  (b) Grant-time eviction of the
+  planned register's lone occupant: eager placement won grants
+  +3.03% but MIR +0.17%/loads +0.39% (victim reload traffic exceeds
+  the granted savings — the occupants are not squatters); last-resort
+  placement fired ~8 times.  (c) Parameter release schedule (the L32
+  walk-side follow-up): all three replay channels statically bounded
+  per parameter — extended last counted use, extended position of
+  every reference to an aliased/promoted/forwarded slot, extended
+  last use of every forwarding-load destination — pushed into the
+  L33 schedule with per-value sanction bits, callee-saved homes
+  only, EH/va_start functions excluded.  Sound (census exit 0) but
+  only +50 releases and parameter-holder busy-fails 1,019 -> 1,014.
+  The diagnostic census explains the ceiling: 1,382 parameters
+  sanctioned and 821 of them replay-free in the FIRST half of their
+  function, but parameters are rarely callee-saved-register-resident
+  outside exception functions — and 291 EH functions holding 884
+  parameters sit behind the has_eh exclusion that every release
+  mechanism (L30 span-free, L33 schedule, spill_candidate) shares.
+  STRUCTURAL READING: after L33 the busy-fail population is (1) EH
+  functions, where no release machinery operates at all, and (2)
+  claim/holder lifetime overlaps in register-saturated regions,
+  which no release timing can fix.  The 4,730 fresh-binding frame
+  homes of planned values (2,536 of them single-use non-crossing
+  loads) fail allocation ENTIRELY at definition — every managed
+  register held by unspillable residents — confirming saturation,
+  not scheduling, as the wall.  Next lever by this census: the EH
+  front (region-granular EH pricing -> resume-capable inlining, the
+  L24 sequencing), which simultaneously gates h96 depth, the 3,269
+  EH inline rejects, and the 291-function EH release exclusion.
