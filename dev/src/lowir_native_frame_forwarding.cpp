@@ -1,7 +1,11 @@
 #include "lowir_native_frame_forwarding.h"
 
+#include "lowir_native.h"
 #include "lowir_native_data_layout.h"
+#include "lowir_native_opt.h"
+#include "lowir_native_scalar_memory.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 namespace lowir_native {
@@ -33,7 +37,43 @@ struct PlannedReload
   std::size_t load_index = 0;
   X64Register source = XR_RAX;
   bool adjacent = false;
+  bool carried = false;
 };
+
+// r10 may carry a value only across instructions that cannot touch it, at
+// either level: the MIR stream (operands and the machine_opt definition
+// mask, which models the implicit EH/i128/bulk/call clobbers) and the
+// encode-time rewriters (constant-division magic burns r10/r11 around
+// div/mul; global and symbol addressing materializes through the
+// scalar-memory scratch pick; out-of-int32 immediates materialize through
+// scratch).  Anything matching those shapes blocks the window.
+bool touches_carry_scratch(const MirInstruction & instruction)
+{
+  if(machine_opt::instruction_definition_mask(instruction) &
+     (std::uint64_t(1) << XR_R10))
+    return true;
+  if(instruction.opcode == MirInstruction::MI_MUL ||
+     instruction.opcode == MirInstruction::MI_IMUL ||
+     instruction.opcode == MirInstruction::MI_IDIV ||
+     instruction.opcode == MirInstruction::MI_DIV)
+    return true;
+  for(std::size_t i = 0; i < instruction.operands.size(); ++i) {
+    const MirOperand & operand = instruction.operands[i];
+    if(operand.kind == MirOperand::OP_GLOBAL ||
+       operand.kind == MirOperand::OP_SYMBOL)
+      return true;
+    if(operand.kind == MirOperand::OP_IMM &&
+       (operand.imm > 0x7fffffffLL || operand.imm < -0x80000000LL))
+      return true;
+    if((operand.kind == MirOperand::OP_REG ||
+        operand.kind == MirOperand::OP_DEREF) && operand.reg == XR_R10)
+      return true;
+    if(operand.kind == MirOperand::OP_DEREF && operand.has_index &&
+       operand.index == XR_R10)
+      return true;
+  }
+  return false;
+}
 
 bool eligible_reload_type(const lowir_model::LowType & type)
 {
@@ -113,7 +153,24 @@ void append_reload(const mir_model::MirFunction & function,
         preserved && i < facts.load_index; ++i)
       preserved = preserves_register(
         function.blocks[facts.store_block].instructions[i], reload.source);
-    if(!preserved) return;
+    if(!preserved) {
+      // The source register does not survive; the value can still ride the
+      // r10 carry when the whole window is provably free of r10 touches.
+      // An MI_MOV immediately before the store blocks the carry: the
+      // encode-time mov/store fold and byte-store coalescing start at that
+      // mov and would consume the store, orphaning the carry replacement.
+      if(gap > 40) return;
+      if(facts.store_index > 0 &&
+         function.blocks[facts.store_block]
+           .instructions[facts.store_index - 1].opcode ==
+             MirInstruction::MI_MOV)
+        return;
+      for(std::size_t i = facts.store_index + 1; i < facts.load_index; ++i)
+        if(touches_carry_scratch(
+             function.blocks[facts.store_block].instructions[i]))
+          return;
+      reload.carried = true;
+    }
   }
   reloads->push_back(reload);
 }
@@ -136,10 +193,17 @@ void build_action_table(const mir_model::MirFunction & function,
       store.kind = FrameReloadPlan::InstructionAction::IA_DROP_ADJACENT_STORE;
       continue;
     }
-    store.kind = FrameReloadPlan::InstructionAction::IA_SKIP_DELAYED_STORE;
     FrameReloadPlan::InstructionAction & load = plan->actions[
       plan->block_starts[reload.load_block] + reload.load_index];
     load.kind = FrameReloadPlan::InstructionAction::IA_FORWARD_DELAYED_LOAD;
+    if(reload.carried) {
+      store.kind =
+        FrameReloadPlan::InstructionAction::IA_CARRY_SCRATCH_STORE;
+      store.source = static_cast<std::uint8_t>(reload.source);
+      load.source = static_cast<std::uint8_t>(XR_R10);
+      continue;
+    }
+    store.kind = FrameReloadPlan::InstructionAction::IA_SKIP_DELAYED_STORE;
     load.source = static_cast<std::uint8_t>(reload.source);
   }
 }
@@ -151,6 +215,43 @@ FrameReloadPlan::InstructionAction FrameReloadPlan::action(
 {
   if(actions.empty()) return InstructionAction();
   return actions[block_starts[block] + instruction];
+}
+
+bool emit_carry_scratch_store(
+    elf_detail::CodeBuffer & out, const MirInstruction & instruction,
+    const FrameReloadPlan::InstructionAction & action, Stats * stats)
+{
+  if(action.kind != FrameReloadPlan::InstructionAction::
+       IA_CARRY_SCRATCH_STORE)
+    return false;
+  emit_normalized_register_move(
+    out, XR_R10, action.source_register(), instruction.type);
+  if(stats) ++stats->scratch_carried_reloads;
+  return true;
+}
+
+bool emit_delayed_frame_forwarding(
+    elf_detail::CodeBuffer & out, const MirInstruction & instruction,
+    const FrameReloadPlan::InstructionAction & action)
+{
+  if(instruction.opcode == MirInstruction::MI_STORE &&
+     instruction.operands.size() == 2 &&
+     instruction.operands[0].kind == MirOperand::OP_FRAME &&
+     action.kind == FrameReloadPlan::InstructionAction::
+       IA_SKIP_DELAYED_STORE)
+    return true;
+  if(instruction.opcode != MirInstruction::MI_LOAD ||
+     instruction.operands.size() != 2 ||
+     instruction.operands[0].kind != MirOperand::OP_REG ||
+     instruction.operands[1].kind != MirOperand::OP_FRAME)
+    return false;
+  if(action.kind != FrameReloadPlan::InstructionAction::
+       IA_FORWARD_DELAYED_LOAD)
+    return false;
+  emit_normalized_register_move(
+    out, instruction.operands[0].reg, action.source_register(),
+    instruction.type);
+  return true;
 }
 
 bool parse_reload(
@@ -235,7 +336,33 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
   }
   for(std::size_t i = 1; i < uses.size(); ++i)
     if(bindings.eligible[i]) append_reload(function, uses[i], &reloads);
-  build_action_table(function, reloads, &result);
+  // All carried windows share the single r10 carry, so overlapping carried
+  // windows would clobber each other; keep a greedy non-overlapping subset
+  // per block, position-ordered.
+  std::vector<PlannedReload> accepted;
+  accepted.reserve(reloads.size());
+  std::vector<const PlannedReload *> carried;
+  for(std::size_t i = 0; i < reloads.size(); ++i) {
+    if(reloads[i].carried) carried.push_back(&reloads[i]);
+    else accepted.push_back(reloads[i]);
+  }
+  std::sort(carried.begin(), carried.end(),
+            [](const PlannedReload * left, const PlannedReload * right) {
+              return left->store_block < right->store_block ||
+                (left->store_block == right->store_block &&
+                 left->store_index < right->store_index);
+            });
+  std::size_t open_block = static_cast<std::size_t>(-1);
+  std::size_t open_end = 0;
+  for(std::size_t i = 0; i < carried.size(); ++i) {
+    if(carried[i]->store_block == open_block &&
+       carried[i]->store_index <= open_end)
+      continue;
+    open_block = carried[i]->store_block;
+    open_end = carried[i]->load_index;
+    accepted.push_back(*carried[i]);
+  }
+  build_action_table(function, accepted, &result);
   return result;
 }
 

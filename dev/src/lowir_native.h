@@ -111,6 +111,7 @@ struct Stats
   std::size_t narrow_call_result_normalizations_omitted = 0;
   std::size_t redundant_integer_normalizations_omitted = 0;
   std::size_t fused_integer_normalization_moves = 0;
+  std::size_t scratch_carried_reloads = 0;
   // Per-function movement census, filled only when the driver requests it
   // with --stats-functions; one formatted line per lowered function.
   bool function_census = false;

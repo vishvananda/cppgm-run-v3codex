@@ -1766,33 +1766,6 @@ std::size_t emit_coalesced_constant_byte_stores(
   return stores.size() * 4;
 }
 
-bool emit_delayed_frame_forwarding(
-    CodeBuffer & out, const mir_model::MirInstruction & instruction,
-    const frame_forwarding::FrameReloadPlan::InstructionAction & action)
-{
-  using mir_model::MirInstruction;
-  using mir_model::MirOperand;
-  if(instruction.opcode == MirInstruction::MI_STORE &&
-     instruction.operands.size() == 2 &&
-     instruction.operands[0].kind == MirOperand::OP_FRAME &&
-     action.kind == frame_forwarding::FrameReloadPlan::InstructionAction::
-       IA_SKIP_DELAYED_STORE)
-    return true;
-  if(instruction.opcode != MirInstruction::MI_LOAD ||
-     instruction.operands.size() != 2 ||
-     instruction.operands[0].kind != MirOperand::OP_REG ||
-     instruction.operands[1].kind != MirOperand::OP_FRAME)
-    return false;
-  if(action.kind != frame_forwarding::FrameReloadPlan::InstructionAction::
-       IA_FORWARD_DELAYED_LOAD)
-    return false;
-  const X64Register source = action.source_register();
-  const X64Register destination = instruction.operands[0].reg;
-  emit_normalized_register_move(
-    out, destination, source, instruction.type);
-  return true;
-}
-
 std::size_t emit_forwarded_frame_reload(
     CodeBuffer & out,
     const std::vector<mir_model::MirInstruction> & instructions,
@@ -1841,6 +1814,11 @@ void emit_prepared_function(
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
       const frame_forwarding::FrameReloadPlan::InstructionAction
         frame_reload_action = frame_reload_plan.action(i, j);
+      // The carry replaces the store before the peepholes run: a fold that
+      // consumed the store would orphan the paired scratch forward.
+      if(frame_forwarding::emit_carry_scratch_store(
+           out, block.instructions[j], frame_reload_action, stats))
+        continue;
       std::size_t folded = 0;
       const address_folding::MemoryFoldKind fold_kind =
         address_folding::classify_memory_fold(block.instructions, j);
@@ -1864,8 +1842,8 @@ void emit_prepared_function(
         j += normalized - 1;
         continue;
       }
-      if(emit_delayed_frame_forwarding(out,
-           block.instructions[j], frame_reload_action))
+      if(frame_forwarding::emit_delayed_frame_forwarding(
+           out, block.instructions[j], frame_reload_action))
         continue;
       const std::size_t forwarded = emit_forwarded_frame_reload(
         out, block.instructions, j, function, frame_reload_action);
@@ -2553,6 +2531,11 @@ HostFunctionLayout emit_prepared_host_function(
     for(std::size_t j = 0; j < block.instructions.size(); ++j) {
       const frame_forwarding::FrameReloadPlan::InstructionAction
         frame_reload_action = frame_reload_plan.action(i, j);
+      // The carry replaces the store before the peepholes run: a fold that
+      // consumed the store would orphan the paired scratch forward.
+      if(frame_forwarding::emit_carry_scratch_store(
+           out, block.instructions[j], frame_reload_action, stats))
+        continue;
       std::size_t folded = 0;
       const address_folding::MemoryFoldKind fold_kind =
         address_folding::classify_memory_fold(block.instructions, j);
@@ -2576,7 +2559,7 @@ HostFunctionLayout emit_prepared_host_function(
         j += normalized - 1;
         continue;
       }
-      if(emit_delayed_frame_forwarding(
+      if(frame_forwarding::emit_delayed_frame_forwarding(
            out, block.instructions[j], frame_reload_action))
         continue;
       const std::size_t forwarded = emit_forwarded_frame_reload(

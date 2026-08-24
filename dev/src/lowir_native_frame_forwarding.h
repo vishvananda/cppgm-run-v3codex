@@ -1,6 +1,7 @@
 #ifndef CPPGM_LOWIR_NATIVE_FRAME_FORWARDING_H
 #define CPPGM_LOWIR_NATIVE_FRAME_FORWARDING_H
 
+#include "lowir_native_code_buffer.h"
 #include "mir_model.h"
 
 #include <cstddef>
@@ -8,6 +9,9 @@
 #include <vector>
 
 namespace lowir_native {
+
+struct Stats;
+
 namespace frame_forwarding {
 
 struct FrameReloadPlan
@@ -19,7 +23,13 @@ struct FrameReloadPlan
       IA_NONE,
       IA_SKIP_DELAYED_STORE,
       IA_FORWARD_DELAYED_LOAD,
-      IA_DROP_ADJACENT_STORE
+      IA_DROP_ADJACENT_STORE,
+      // The store's value rides r10 across a window proven free of every
+      // r10 touch, including the encoder-inserted ones; the paired load
+      // forwards from r10 via IA_FORWARD_DELAYED_LOAD.  Applied before
+      // the encode-time peepholes so a fold cannot consume the store and
+      // orphan the carry.
+      IA_CARRY_SCRATCH_STORE
     } kind = IA_NONE;
 
     std::uint8_t source = 0;
@@ -43,6 +53,18 @@ bool parse_reload(
 
 FrameReloadPlan find_single_use_reloads(
     const mir_model::MirFunction & function);
+
+// Emitters consulted by the encoder's per-instruction loop: the carry
+// replacement (applied before the peepholes), the delayed store skip, and
+// the delayed load forward.
+bool emit_carry_scratch_store(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction,
+    const FrameReloadPlan::InstructionAction & action, Stats * stats);
+bool emit_delayed_frame_forwarding(
+    elf_detail::CodeBuffer & out,
+    const mir_model::MirInstruction & instruction,
+    const FrameReloadPlan::InstructionAction & action);
 
 }  // namespace frame_forwarding
 }  // namespace lowir_native

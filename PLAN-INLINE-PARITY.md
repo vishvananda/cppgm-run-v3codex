@@ -453,3 +453,50 @@ source reshaping remains out of scope per the standing directive).
   std::string-returning symbols), and "same content, different
   path" flipping an outcome is the signature of allocator-layout-
   dependent latent bugs, not codegen regressions.
+- L16 (I1 re-entry at h48 after Phase C slices 1-3, REFUTED again).
+  Dosed h48-b768 selfhost at the improved backend: constant-workload
+  Ir 43.791B vs the landed default's 44.582B = -1.77% incremental —
+  statistically UNCHANGED from the old backend's increment (L3 grid:
+  43.080B -> 42.288B = -1.84%).  Census at the dose: movement share
+  still rises (68.5% -> 71.2%), frozen text 549,996 = +51% over the
+  pre-Phase-A base (R4's +25% envelope still blown), phi/invariant
+  claims stay ~430 TU-wide against 106K movement instructions.  The
+  slices fixed the loop-carried class E6 identified, but the dosed
+  IR's movement mass lives in the merged straight-line epochs the
+  planner still can't reach (P26a's uses-per-epoch ~1 invariant).
+  Deeper doses remain parked; the program's open front is unchanged:
+  whole-function placement with the managed pool widened past
+  {RDI,RSI,R8,R9}+callee-saved — L10's R10/R11 audit (the -3.3%
+  movement prize) is the entry point.
+- L17 (Phase C slice 4: the r10 frame-carry, the first pool-widening
+  landing).  The L10 lesson inverted: instead of teaching the
+  LowIR-time planner about encoder scratch, the widening runs at the
+  MIR/encode layer where every instruction is visible.  The frame-
+  forwarding pass's rejected windows (source register not preserved)
+  now ride r10: the store becomes `mov r10, src`, the load forwards
+  from r10, when the window passes the carry oracle — machine_opt's
+  instruction_definition_mask (implicit EH/i128/bulk/call clobbers)
+  plus the encode-time rewriter shapes (div/mul magic burns r10/r11;
+  OP_GLOBAL/OP_SYMBOL addressing takes the scalar-memory scratch
+  pick; out-of-int32 immediates materialize through scratch) plus
+  explicit r10 operand mentions.  Two wrong-code hazards found by
+  the verify gate and review, both closed at plan time: (1) an
+  MI_MOV immediately before the store lets the encode-time mov/store
+  fold consume the store and orphan the carry — such windows are
+  refused; (2) overlapping carried windows would share the single
+  r10 — a greedy non-overlapping subset per block is kept.  R11 is
+  NOT recruited (the address-folding machinery owns it).  Census on
+  the frozen TU: 1,095 carried reloads, text -7,792 bytes (-1.7%).
+  THE METRIC LESSON: honest Ir is FLAT (+6M — each carry swaps
+  store+load for two register moves, same instruction count); the
+  win lives in the terms Ir cannot see — full cache-sim D refs
+  27.123B -> 26.744B (-380M, -1.4%), I1 misses -3.9M (-0.9%), and
+  PSI-gated 5-block ABBA wall -1.34% / user -1.40% with the carry
+  binary faster in all ten pairings.  For store/load-to-move
+  conversions the go/no-go is Dr/Dw + wall, not Ir.  Honest wall
+  pair after landing: self-O1 ~10.71 s vs the previous ~10.86 s;
+  the Ir ratio stays 2.138.  Gates: report 5430/5430, zero-fatal
+  audit, O3+O0 inception lanes MATCH, frozen self-reproduction
+  byte-for-byte.  Next widening steps recorded: cross-block
+  carries, r11 recruitment behind an address-folding interlock, and
+  multi-load slots (count>2) — each rides the same oracle.
