@@ -1205,3 +1205,56 @@ source reshaping remains out of scope per the standing directive).
   (P29 interval splitting / spill placement) or by not needing the
   splice (midend value collapse).  Probe reverted; both trees
   byte-verified at L40 (TREE_AT_L40, REF_AT_L40).
+- L42 (GVN/PRE RE-ARM AND THE LAST MICRO-CLASSES, CLOSED BY CENSUS
+  AND BY REASONING — the slice space at O1 scope is exhausted).
+  (a) GVN at O1 (post-L26 cheap infrastructure): loads -1.4%, copies
+  -8.2%, BUT stores +5.1%, grants -22.8%, spills +36%, frame_homes
+  +12% — eliminating a redundant load merges two short lifetimes
+  into one edge-live crossing lifetime, and the allocator demotes
+  it; the 3f-era verdict reproduces exactly, PRE contributes nothing
+  either way.  REVERTED.  (b) The E10 epoch census re-run on TODAY'S
+  merged bodies (offline over the frozen LowIR): mean 1.23 uses per
+  value-epoch, 85.2% of value-epochs single-use, only 7.4% of values
+  span multiple epochs — interval SPLITTING is refuted by census
+  before construction; P29 phase 1 dies with phase-depth.  (c) The
+  two-lea stride fold (m*2^k index scaling): implemented in
+  emit_index and NEVER FIRED — the ring-buffer shape reaches the
+  encoder as a LowIR binary-mul, strength-reduced there; the direct
+  3-instruction population in the whole self binary is ~119 sites —
+  sub-noise-floor; reverted.  (d) EBB-scope load dedup: closed by
+  reasoning — cleanup_cfg already merges exact edges, so the only
+  reachable chains cross conditional edges, which is precisely the
+  GVN demotion mechanism (a).
+- P30 (THE ALLOCATOR REBUILD — the only measured-open path to 1.5x;
+  design record for the next session).  EVERYTHING this campaign
+  measured converges on one wall: values that cross blocks, calls,
+  or merges demote to frame homes because location decisions are
+  made reactively at consume time against a 9-register pool with no
+  liveness model.  The rebuild replaces the DECISION layer while
+  keeping the walk as the EMITTER: (1) a whole-function pass
+  computes, per value, a location TIMELINE (register R over
+  [a,b], frame over [b,c], ...) from the existing facts
+  (uses/positions/clobber index/spans) with proper interval SPLITTING
+  at pressure points and spill placement at region boundaries — the
+  planner's claimed-interval machinery, plan_end extension, and the
+  L33 release schedule are the seed of exactly this; (2) the walk
+  consults the timeline instead of the reactive pool: definition
+  emits into the assigned location, transitions emit the scheduled
+  move/spill/reload, consume-time release logic disappears; (3) the
+  reactive path survives only as the fallback for values the
+  timeline declines.  MIGRATION GATES, in order: (i) timeline covers
+  planned values only, byte-identical output required (the timeline
+  reproduces today's grant/release decisions — pure refactor,
+  FROZEN_MATCH); (ii) timeline admits all multi-use scalars with
+  splitting, census-gated (grants/mov must move, E10 does NOT bind
+  here because splitting serves PRESSURE, not epoch amortization —
+  the value gets a register exactly where its uses are, frame
+  elsewhere); (iii) spill placement by span boundaries replaces
+  stabilize's definition-time backup stores (the 3.3k edge_live
+  staging events); (iv) then and only then re-arm GVN@O1 (its
+  harvest was real: copies -8% — it was the DEMOTION that refuted
+  it) and re-run the L41 loop-cap point (its splices failed on
+  movement, not on the splice).  The instrumented populations to
+  re-check at each gate live in L34/L36/L37/L39/L41/L42.  Honest
+  state carried into the program: **1.756x wall / 2.031x Ir** at
+  L40.
