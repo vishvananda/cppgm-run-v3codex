@@ -793,3 +793,16 @@ source reshaping remains out of scope per the standing directive).
   1.827x at L23), user 1.857x; Ir 43.217B vs 20.359B = **2.123x**
   (the reference gained -514M from the same fixes — g++-O1 vectorizes
   the removed loops less than the O3 host build).
+- L27 (dose re-arm re-check at L26, still parked — but converging).
+  h48-b768 rebuilt on the L26 tree (H48_L26_REPRODUCES,
+  DOSED_L26_MATCH): honest dosed pair 10.785/5.970 = 1.807x wall vs
+  the undosed 1.791x — the dose still worsens the honest ratio.  The
+  re-arm gap narrowed: needs codegen gain >= policy_cost_self -
+  ratio x policy_cost_ref = 0.399 - 1.79x0.171 ~ 0.093 s against the
+  ~0.08 s measured constant-workload gain (was ~0.13 vs 0.08 at L23).
+  The dose's incremental policy cost (self +0.399 s) is inliner +
+  pipeline work on the cloned IR — precisely the pass-invocation
+  volume the next optimizer-cost slice targets (simplify 14,063 runs
+  / dce 17,813 / cleanup_cfg 19,344 per frozen TU at DEFAULT policy;
+  more at the dose).  Each optimizer-cost slice both lowers the
+  standing numerator AND shrinks this gap.
