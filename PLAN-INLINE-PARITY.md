@@ -3,12 +3,12 @@
 Objective: bring the exact self-O1 compiler within 10% of gcc-O1 on the
 frozen benchmark (`~/cppgm-extended-pa39-source-layout/benchmarks/
 self_compile/stable/semantic_overload.cpp`, `-std=gnu++11 -O1 -Idev/src`).
-Current honest state at the L33 landing (P24 protocol): self-O1
-10.595 s / 42.85B dynamic instructions vs gcc-O1 5.990 s / 20.88B =
-**1.769x wall, 2.052x instructions**.  (At L31/678c5091: 1.774x,
-2.056x; at L26/342e1bfc: 1.791x wall, 2.123x Ir; at L19/0c296b7a:
-1.835x, 2.139x; at the first Phase A landing e325dc7e, L7: 1.891x,
-2.153x; at fd019bdc: 1.90x, 2.20x.)
+Current honest state at the L37 landing (P24 protocol): self-O1
+10.445 s / 42.38B dynamic instructions vs gcc-O1 5.920 s / 20.86B =
+**1.764x wall, 2.032x instructions**.  (At L33/446f86ba: 1.769x,
+2.052x; at L31/678c5091: 1.774x, 2.056x; at L26/342e1bfc: 1.791x,
+2.123x; at L19/0c296b7a: 1.835x, 2.139x; at the first Phase A
+landing e325dc7e, L7: 1.891x, 2.153x; at fd019bdc: 1.90x, 2.20x.)
 
 This plan supersedes the inlining-related threads of PLAN-O1-PARITY.md
 (P22-P28) and PLAN-OPT-PASS-IMPROVEMENTS.md (R10-R11) for forward work.
@@ -1080,3 +1080,34 @@ source reshaping remains out of scope per the standing directive).
   register serves two half-lifetimes), spill placement by region,
   and the midend collapse that removes values outright.  Probe
   reverted; tree byte-identical to L33 (TREE_AT_L33_AGAIN).
+- L37 (P29 PHASE 4 LANDED: UNION-SAFE ADDRESS DEFERRAL — the first
+  wall-positive slice of the placement program, and the cheapest
+  landing of the campaign: one analysis flag plus one whitelist
+  line).  The ADDRC instrumentation sized the target exactly: 1,659
+  pure slot addresses per frozen TU frame-homed (one store + up to
+  6,235 reloads) and 1,255 more burning registers, all because the
+  deferral whitelist demanded single-CLASS uses — VF_ONLY_STORAGE
+  _ADDRESS wants every use to be storage, address_is_call_argument
+  wants every use an argument, and the dominant semantic shape
+  (&local passed to calls AND dereferenced) fell through both.
+  VF_ADDRESS_UNION_SAFE marks values whose every use lies in the
+  UNION {load/store/index/bulk address, call argument} — each member
+  already consumes deferred addresses (argument staging emits its
+  own lea), so no consumer changes at all.  The flag is separate
+  from VF_ONLY_STORAGE_ADDRESS, whose meaning planner admission
+  keys on.  Census: MIR -2.29%, mov_loads -7.83%, mov_stores
+  -4.37%, frame_homes 1,654 -> 1,315 (-20.5%), copies -2.2%.
+  One pa38 fixture regenerated (405-deferred-compare-across-call:
+  preserves 3 -> 1, stack 48 -> 32 — the improvement, pinned).
+  Gates: zero-fatal audit (analyze_function's marking loops
+  extracted to mark_use_class_flags), 5430/5430, O3+O0 lanes MATCH,
+  REF_REMAT_MATCH, REMAT_REPRODUCES.  Honest: self Ir 42.853 ->
+  42.378B (-1.11%), D refs -1.15%, ref Ir -0.10% (the policy SAVES
+  compiler work: fewer homes allocated and stores emitted); Ir
+  ratio 2.052x -> **2.032x**.  ABBA wall: self 10.445 s vs ref
+  5.920 s = **1.764x real / 1.824x user** (from 1.769x/1.835x).
+  NEXT IN P29: the same union argument applies to the remaining
+  address classes — field-of-slot index chains (8.4k static, the
+  frame_provenance machinery already tracks constant offsets) and
+  the reg-path population now freed; then re-examine the register
+  competition census with 1,255 fewer contenders.

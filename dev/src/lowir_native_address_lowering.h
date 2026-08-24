@@ -219,6 +219,9 @@ protected:
 				derived.facts_.has(
 					instruction.dest,
 					analysis::FunctionFacts::VF_ONLY_STORAGE_ADDRESS) ||
+				derived.facts_.has(
+					instruction.dest,
+					analysis::FunctionFacts::VF_ADDRESS_UNION_SAFE) ||
 				derived.address_is_next_atomic_expected(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_next_va_start(

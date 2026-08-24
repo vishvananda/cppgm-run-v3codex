@@ -43,7 +43,13 @@ struct FunctionFacts
     // Every use treats the pointer as an address for a load, store, index, or
     // bulk-memory operation. Selection may therefore retain an encodable
     // base/index/displacement instead of materializing a pointer value.
-    VF_ONLY_STORAGE_ADDRESS = 1u << 17
+    VF_ONLY_STORAGE_ADDRESS = 1u << 17,
+    // Every use is either a storage-address use or a call argument — the
+    // union of shapes that consume a deferred address without needing the
+    // pointer materialized as a register or frame value (argument staging
+    // emits the lea itself).  Wider than VF_ONLY_STORAGE_ADDRESS, which
+    // planner admission also keys on and therefore keeps its meaning.
+    VF_ADDRESS_UNION_SAFE = 1u << 18
   };
 
   std::vector<std::size_t> uses;

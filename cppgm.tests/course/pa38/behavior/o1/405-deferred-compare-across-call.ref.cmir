@@ -54,32 +54,30 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 48
+    stack_size 32
     scratch_bytes 0
-    preserve <gpr0> <gpr2> <gpr1>
+    preserve <gpr2>
     slot $left -> [rbp-<off0>] : obj<16x8>
     slot $right -> [rbp-<off1>] : i64
 
   block ^entry
-    lea <gpr0>, [rbp-<off0>]
     store.i64 [rbp-<off2>], 41
     store.i64 [rbp-<off1>], 7
-    lea <gpr2>, [rbp-<off1>]
-    mov rdi, <gpr0>
-    mov rsi, <gpr2>
+    lea rdi, [rbp-<off0>]
+    lea rsi, [rbp-<off1>]
     call @probe [args=(rsi,rdi), unwind=no]
-    mov <gpr1>, rax
+    mov <gpr2>, rax
     store.i64 [rbp-<off1>], 41
-    mov rdi, <gpr0>
-    mov rsi, <gpr2>
+    lea rdi, [rbp-<off0>]
+    lea rsi, [rbp-<off1>]
     call @probe [args=(rsi,rdi), unwind=no]
     mov rdx, 1
-    cmp.i64 <gpr1>, rdx
-    setne <gpr1>
-    movzx <gpr1>, <gpr1>
+    cmp.i64 <gpr2>, rdx
+    setne <gpr2>
+    movzx <gpr2>, <gpr2>
     mov rdx, 0
     cmp.i64 rax, rdx
     setne r8
     movzx r8, r8
-    or <gpr1>, r8
-    ret <gpr1>
+    or <gpr2>, r8
+    ret <gpr2>

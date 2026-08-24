@@ -449,7 +449,8 @@ void note_instruction_uses(
 void note_storage_address_uses(
     const Instruction & instruction,
     std::vector<unsigned char> * address_uses,
-    std::vector<unsigned char> * other_uses)
+    std::vector<unsigned char> * other_uses,
+    std::vector<unsigned char> * beyond_union_uses)
 {
   const bool first_is_address =
     instruction.kind == Instruction::IK_LOAD ||
@@ -466,11 +467,37 @@ void note_storage_address_uses(
   for(std::size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i) {
     if(fixed[i]->kind != Operand::OP_TEMP) continue;
     if(address_role[i]) (*address_uses)[fixed[i]->value] = 1;
-    else (*other_uses)[fixed[i]->value] = 1;
+    else {
+      (*other_uses)[fixed[i]->value] = 1;
+      (*beyond_union_uses)[fixed[i]->value] = 1;
+    }
   }
   for(std::size_t i = 0; i < instruction.args.size(); ++i)
-    if(instruction.args[i].kind == Operand::OP_TEMP)
+    if(instruction.args[i].kind == Operand::OP_TEMP) {
       (*other_uses)[instruction.args[i].value] = 1;
+      if(instruction.kind != Instruction::IK_CALL)
+        (*beyond_union_uses)[instruction.args[i].value] = 1;
+    }
+}
+
+void mark_use_class_flags(
+    FunctionFacts * facts, std::size_t value_count,
+    const std::vector<unsigned char> & call_arguments,
+    const std::vector<unsigned char> & other_uses,
+    const std::vector<unsigned char> & storage_address_uses,
+    const std::vector<unsigned char> & non_storage_address_uses,
+    const std::vector<unsigned char> & beyond_union_uses)
+{
+  for(std::size_t value = 0; value < value_count; ++value) {
+    const lowir_model::ValueId id(static_cast<std::uint32_t>(value));
+    if(call_arguments[value] && !other_uses[value])
+      facts->mark(id, FunctionFacts::VF_ONLY_CALL_ARGUMENT);
+    if(storage_address_uses[value] && !non_storage_address_uses[value])
+      facts->mark(id, FunctionFacts::VF_ONLY_STORAGE_ADDRESS);
+    if(!beyond_union_uses[value] &&
+       (storage_address_uses[value] || call_arguments[value]))
+      facts->mark(id, FunctionFacts::VF_ADDRESS_UNION_SAFE);
+  }
 }
 
 }  // namespace
@@ -514,6 +541,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   std::vector<unsigned char> other_uses(value_count, 0);
   std::vector<unsigned char> storage_address_uses(value_count, 0);
   std::vector<unsigned char> non_storage_address_uses(value_count, 0);
+  std::vector<unsigned char> beyond_union_uses(value_count, 0);
   std::vector<std::size_t> definition_blocks(
     value_count, FunctionFacts::missing_position());
   std::vector<std::pair<lowir_model::ValueId, std::size_t> > block_uses;
@@ -549,7 +577,8 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         &facts, instruction, position, i, block_index, block_last_position,
         definition_blocks, &block_uses, &call_arguments, &other_uses);
       note_storage_address_uses(
-        instruction, &storage_address_uses, &non_storage_address_uses);
+        instruction, &storage_address_uses, &non_storage_address_uses,
+        &beyond_union_uses);
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
          facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
@@ -588,14 +617,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         facts.has_i128_atomic = true;
     }
   }
-  for(std::size_t value = 0; value < value_count; ++value)
-    if(call_arguments[value] && !other_uses[value])
-      facts.mark(lowir_model::ValueId(static_cast<std::uint32_t>(value)),
-                 FunctionFacts::VF_ONLY_CALL_ARGUMENT);
-  for(std::size_t value = 0; value < value_count; ++value)
-    if(storage_address_uses[value] && !non_storage_address_uses[value])
-      facts.mark(lowir_model::ValueId(static_cast<std::uint32_t>(value)),
-                 FunctionFacts::VF_ONLY_STORAGE_ADDRESS);
+  mark_use_class_flags(&facts, value_count, call_arguments, other_uses,
+                       storage_address_uses, non_storage_address_uses,
+                       beyond_union_uses);
 
   position = 0;
   std::vector<std::size_t> comparisons(

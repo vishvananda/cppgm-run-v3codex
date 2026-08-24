@@ -54,24 +54,22 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 48
+    stack_size 32
     scratch_bytes 0
-    preserve r13 r12 rbx
+    preserve rbx
     slot $left -> [rbp-16] : obj<16x8>
     slot $right -> [rbp-24] : i64
 
   block ^entry
-    lea r13, [rbp-16]
     store.i64 [rbp-8], 41
     store.i64 [rbp-24], 7
-    lea r12, [rbp-24]
-    mov rdi, r13
-    mov rsi, r12
+    lea rdi, [rbp-16]
+    lea rsi, [rbp-24]
     call @probe [args=(rsi,rdi), unwind=no]
     mov rbx, rax
     store.i64 [rbp-24], 41
-    mov rdi, r13
-    mov rsi, r12
+    lea rdi, [rbp-16]
+    lea rsi, [rbp-24]
     call @probe [args=(rsi,rdi), unwind=no]
     mov rdx, 1
     cmp.i64 rbx, rdx
