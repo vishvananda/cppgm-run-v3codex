@@ -554,3 +554,31 @@ source reshaping remains out of scope per the standing directive).
   as the L17 metric lesson predicted.  The carry family's remaining
   recorded step is cross-block carries; the residual same-block
   population is thinning.
+- L20 (cross-block carries, MEASURED and REFUTED; Phase D pruning
+  measured LOW-VALUE; L18 correction).  Cross-block: the frozen TU
+  holds 2,442 cross-block single-store slots with 7,679 loads — a
+  ceiling nearly twice the same-block carry population — and the
+  full machinery was built and verified (normal-edge MIR CFG with
+  fallthrough, landing pads excluded as normally-unreachable,
+  bitset dominators, on-path region = forward-reach(store) ∩
+  reaches(loads) with whole-block oracle cleanliness, block-set
+  claims layered under the same-block windows; FROZEN_MATCH held).
+  The filters collapse the ceiling to 70 realized windows: the
+  clean-path condition dies on call/global-dense paths — the P26
+  epoch wall again, now at block granularity.  Honest trade: -11M
+  D refs against +79M Ir of pass self-cost (allocation and def-mask
+  traffic, confirmed by profile; gating CFG construction on real
+  candidates barely moved it).  Machinery reverted; this row is the
+  re-arm recipe if a later stage thins calls on paths.  Phase D
+  pruning null: crediting .eh_frame FDE self-references, the frozen
+  TU has 214 unreferenced local bodies = 11.4KB (2.6% of text), all
+  never-executed cold code — no icache value, pruning deferred.
+  L18 CORRECTION: the preserved-multi path landed inert (a bisect
+  cap of 0 survived into the commit); enabling it at the shared
+  cap-40 measures -5 carries / -16 bytes (the preserved whitelist
+  rarely holds over long windows) and is landed here so the code
+  matches the ledger.  THE CARRY FAMILY IS CLOSED: same-block r10 +
+  r11, multi-load, all measured; wall banked ~-1.4%; the residual
+  frame traffic is call-crossing (caller-saved carries cannot reach
+  it) — the callee-saved side of that residual belongs to the
+  placement redesign, not to encode-time carries.

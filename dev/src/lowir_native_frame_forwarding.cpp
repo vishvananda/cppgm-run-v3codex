@@ -174,11 +174,9 @@ void append_reload(const mir_model::MirFunction & function,
   const std::size_t gap = last - facts.store_index - 1;
   reload.adjacent = reload.load_indices.size() == 1 && gap == 0;
   if(!reload.adjacent) {
-    // The single-load preserved window keeps its landed gap cap; wider
-    // windows and multi-load slots take the exact per-instruction checks.
-    const std::size_t preserved_cap =
-      reload.load_indices.size() == 1 ? 5 : 0;
-    bool preserved = gap <= preserved_cap;
+    // The preserved walk is exact per instruction, so the window cap is
+    // just a cost bound shared with the carry path.
+    bool preserved = gap <= 40;
     for(std::size_t i = facts.store_index + 1;
         preserved && i < last; ++i)
       preserved = preserves_register(
