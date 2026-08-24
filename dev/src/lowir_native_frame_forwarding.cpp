@@ -22,19 +22,19 @@ struct FrameUseFacts
 {
   std::size_t count = 0;
   const MirInstruction * store = 0;
-  const MirInstruction * load = 0;
   std::size_t store_block = 0;
   std::size_t store_index = 0;
-  std::size_t load_block = 0;
-  std::size_t load_index = 0;
+  // Every matching load of the slot, in scan order: (block, index, type).
+  std::vector<std::size_t> load_blocks;
+  std::vector<std::size_t> load_indices;
+  std::vector<const MirInstruction *> load_instructions;
 };
 
 struct PlannedReload
 {
   std::size_t store_block = 0;
   std::size_t store_index = 0;
-  std::size_t load_block = 0;
-  std::size_t load_index = 0;
+  std::vector<std::size_t> load_indices;
   X64Register source = XR_RAX;
   bool adjacent = false;
   bool carried = false;
@@ -57,6 +57,12 @@ bool touches_carry_scratch(const MirInstruction & instruction)
      instruction.opcode == MirInstruction::MI_IDIV ||
      instruction.opcode == MirInstruction::MI_DIV)
     return true;
+  // Floating-point emission materializes immediates, sign masks (fneg),
+  // and x87 staging through r10 regardless of operand values.
+  if(instruction.type.kind == lowir_model::LTK_F32 ||
+     instruction.type.kind == lowir_model::LTK_F64 ||
+     instruction.type.kind == lowir_model::LTK_F80)
+    return true;
   for(std::size_t i = 0; i < instruction.operands.size(); ++i) {
     const MirOperand & operand = instruction.operands[i];
     if(operand.kind == MirOperand::OP_GLOBAL ||
@@ -71,6 +77,7 @@ bool touches_carry_scratch(const MirInstruction & instruction)
     if(operand.kind == MirOperand::OP_DEREF && operand.has_index &&
        operand.index == XR_R10)
       return true;
+    if(operand.kind == MirOperand::OP_XMM) return true;
   }
   return false;
 }
@@ -134,23 +141,34 @@ void append_reload(const mir_model::MirFunction & function,
                    const FrameUseFacts & facts,
                    std::vector<PlannedReload> * reloads)
 {
-  if(facts.count != 2 || !facts.store || !facts.load ||
-     facts.store_block != facts.load_block ||
-     facts.store->type != facts.load->type ||
-     facts.store_index >= facts.load_index)
+  // Every reference to the slot must be the one store or a matching load,
+  // all in the store's block and after it; anything else (a second store,
+  // an address-taken use, a cross-block read) keeps the slot.
+  if(!facts.store || facts.load_indices.empty() ||
+     facts.count != 1 + facts.load_indices.size())
     return;
-  const std::size_t gap = facts.load_index - facts.store_index - 1;
+  for(std::size_t i = 0; i < facts.load_indices.size(); ++i)
+    if(facts.load_blocks[i] != facts.store_block ||
+       facts.load_indices[i] <= facts.store_index ||
+       facts.store->type != facts.load_instructions[i]->type)
+      return;
   PlannedReload reload;
   reload.store_block = facts.store_block;
   reload.store_index = facts.store_index;
-  reload.load_block = facts.load_block;
-  reload.load_index = facts.load_index;
+  reload.load_indices = facts.load_indices;
+  std::sort(reload.load_indices.begin(), reload.load_indices.end());
   reload.source = facts.store->operands[1].reg;
-  reload.adjacent = gap == 0;
+  const std::size_t last = reload.load_indices.back();
+  const std::size_t gap = last - facts.store_index - 1;
+  reload.adjacent = reload.load_indices.size() == 1 && gap == 0;
   if(!reload.adjacent) {
-    bool preserved = gap <= 5;
+    // The single-load preserved window keeps its landed gap cap; wider
+    // windows and multi-load slots take the exact per-instruction checks.
+    const std::size_t preserved_cap =
+      reload.load_indices.size() == 1 ? 5 : 0;
+    bool preserved = gap <= preserved_cap;
     for(std::size_t i = facts.store_index + 1;
-        preserved && i < facts.load_index; ++i)
+        preserved && i < last; ++i)
       preserved = preserves_register(
         function.blocks[facts.store_block].instructions[i], reload.source);
     if(!preserved) {
@@ -165,7 +183,7 @@ void append_reload(const mir_model::MirFunction & function,
            .instructions[facts.store_index - 1].opcode ==
              MirInstruction::MI_MOV)
         return;
-      for(std::size_t i = facts.store_index + 1; i < facts.load_index; ++i)
+      for(std::size_t i = facts.store_index + 1; i < last; ++i)
         if(touches_carry_scratch(
              function.blocks[facts.store_block].instructions[i]))
           return;
@@ -193,18 +211,21 @@ void build_action_table(const mir_model::MirFunction & function,
       store.kind = FrameReloadPlan::InstructionAction::IA_DROP_ADJACENT_STORE;
       continue;
     }
-    FrameReloadPlan::InstructionAction & load = plan->actions[
-      plan->block_starts[reload.load_block] + reload.load_index];
-    load.kind = FrameReloadPlan::InstructionAction::IA_FORWARD_DELAYED_LOAD;
+    const X64Register forward_source =
+      reload.carried ? XR_R10 : reload.source;
+    for(std::size_t j = 0; j < reload.load_indices.size(); ++j) {
+      FrameReloadPlan::InstructionAction & load = plan->actions[
+        plan->block_starts[reload.store_block] + reload.load_indices[j]];
+      load.kind = FrameReloadPlan::InstructionAction::IA_FORWARD_DELAYED_LOAD;
+      load.source = static_cast<std::uint8_t>(forward_source);
+    }
     if(reload.carried) {
       store.kind =
         FrameReloadPlan::InstructionAction::IA_CARRY_SCRATCH_STORE;
       store.source = static_cast<std::uint8_t>(reload.source);
-      load.source = static_cast<std::uint8_t>(XR_R10);
       continue;
     }
     store.kind = FrameReloadPlan::InstructionAction::IA_SKIP_DELAYED_STORE;
-    load.source = static_cast<std::uint8_t>(reload.source);
   }
 }
 
@@ -327,9 +348,9 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
         const MirOperand & operand = instruction.operands[1];
         const std::uint32_t ordinal = bindings.resolve(operand);
         if(ordinal != 0) {
-          uses[ordinal].load = &instruction;
-          uses[ordinal].load_block = i;
-          uses[ordinal].load_index = j;
+          uses[ordinal].load_blocks.push_back(i);
+          uses[ordinal].load_indices.push_back(j);
+          uses[ordinal].load_instructions.push_back(&instruction);
         }
       }
     }
@@ -359,7 +380,7 @@ FrameReloadPlan find_single_use_reloads(const mir_model::MirFunction & function)
        carried[i]->store_index <= open_end)
       continue;
     open_block = carried[i]->store_block;
-    open_end = carried[i]->load_index;
+    open_end = carried[i]->load_indices.back();
     accepted.push_back(*carried[i]);
   }
   build_action_table(function, accepted, &result);

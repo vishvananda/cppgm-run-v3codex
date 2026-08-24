@@ -500,3 +500,27 @@ source reshaping remains out of scope per the standing directive).
   byte-for-byte.  Next widening steps recorded: cross-block
   carries, r11 recruitment behind an address-folding interlock, and
   multi-load slots (count>2) — each rides the same oracle.
+- L18 (Phase C slice 5: multi-load slots + the float oracle hole).
+  Frame forwarding generalizes to slots with one store and N
+  same-block loads (count == 1+N exactly): the preserved-source and
+  r10-carry paths forward every load; single-load behavior is
+  byte-identical to L17 (verified during the bisect).  The verify
+  gate caught wrong code again, and the hybrid-link bisection
+  (our-O1-objects mix, then pa21_constant_evaluator.o pinpointed by
+  swap) plus the kept-store discriminator experiment localized it:
+  the carry oracle was BLIND TO FLOATING-POINT EMISSION — float
+  immediates (even 0.0), fneg's sign mask, and x87 staging all
+  materialize through r10 at encode time with no operand or
+  definition-mask evidence.  The oracle now blocks float-typed
+  instructions and any OP_XMM operand.  This hole ALSO existed in
+  landed L17: the compiler TU is float-sparse so every gate passed,
+  but float-heavy user code could have miscompiled — the fix
+  retroactively hardens slice 4, and the oracle lesson generalizes:
+  ENUMERATE ENCODER SCRATCH BY EMISSION SITE, not by operand shape
+  alone.  Census: 1,232 carries (from 1,095), text 437,096 (-158
+  further); full cache-sim vs the pre-carry baseline: D refs
+  -435M (-1.6%), I1 misses -13.0M (-3.0%); the slice-5 increment
+  over slice 4 (D refs -55M, I1 -9.1M) is counter-visible but
+  below the wall noise floor — combined 4+5 ABBA wall -1.07% /
+  user -1.11%.  Gates: report 5430/5430, zero-fatal audit, O3+O0
+  inception lanes MATCH, frozen self-reproduction byte-for-byte.
