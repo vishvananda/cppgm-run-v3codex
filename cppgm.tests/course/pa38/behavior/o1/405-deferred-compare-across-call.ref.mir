@@ -56,7 +56,7 @@ function @main
   frame
     stack_size 48
     scratch_bytes 0
-    preserve r13 rbx r12
+    preserve r13 r12 rbx
     slot $left -> [rbp-16] : obj<16x8>
     slot $right -> [rbp-24] : i64
 
@@ -64,22 +64,22 @@ function @main
     lea r13, [rbp-16]
     store.i64 [rbp-8], 41
     store.i64 [rbp-24], 7
-    lea rbx, [rbp-24]
+    lea r12, [rbp-24]
     mov rdi, r13
-    mov rsi, rbx
+    mov rsi, r12
     call @probe [args=(rsi,rdi), unwind=no]
-    mov r12, rax
+    mov rbx, rax
     store.i64 [rbp-24], 41
     mov rdi, r13
-    mov rsi, rbx
+    mov rsi, r12
     call @probe [args=(rsi,rdi), unwind=no]
     mov rdx, 1
-    cmp.i64 r12, rdx
-    setne r12
-    movzx r12, r12
+    cmp.i64 rbx, rdx
+    setne rbx
+    movzx rbx, rbx
     mov rdx, 0
     cmp.i64 rax, rdx
     setne r8
     movzx r8, r8
-    or r12, r8
-    ret r12
+    or rbx, r8
+    ret rbx

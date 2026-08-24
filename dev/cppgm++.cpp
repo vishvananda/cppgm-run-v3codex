@@ -1644,6 +1644,84 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.phi_register_homes
          << " planned_invariant_registers="
          << native_stats.planned_invariant_registers
+         << " planned_grant_clobber_fails="
+         << native_stats.planned_grant_clobber_fails
+         << " planned_grant_busy_fails="
+         << native_stats.planned_grant_busy_fails
+         << " planned_grant_busy_fails_callee="
+         << native_stats.planned_grant_busy_fails_callee
+         << " planned_grant_busy_planned_holder="
+         << native_stats.planned_grant_busy_planned_holder
+         << " planned_defined_in_plan="
+         << native_stats.planned_defined_in_plan
+         << " planned_defined_in_plan_callee="
+         << native_stats.planned_defined_in_plan_callee
+         << " planned_defined_frame="
+         << native_stats.planned_defined_frame
+         << " planned_defined_frame_callee="
+         << native_stats.planned_defined_frame_callee
+         << " planned_defined_other_register="
+         << native_stats.planned_defined_other_register
+         << " planned_defined_other_register_callee="
+         << native_stats.planned_defined_other_register_callee
+         << " planned_defined_elsewhere="
+         << native_stats.planned_defined_elsewhere
+         << " planned_frame_homes_scalar_value="
+         << native_stats.planned_frame_homes_by_reason[0]
+         << " planned_frame_homes_object_value="
+         << native_stats.planned_frame_homes_by_reason[1]
+         << " planned_frame_homes_live_across_call="
+         << native_stats.planned_frame_homes_by_reason[2]
+         << " planned_frame_homes_edge_live="
+         << native_stats.planned_frame_homes_by_reason[3]
+         << " planned_frame_homes_register_pressure="
+         << native_stats.planned_frame_homes_by_reason[4]
+         << " planned_frame_homes_address_escape="
+         << native_stats.planned_frame_homes_by_reason[5]
+         << " planned_frame_homes_call_result="
+         << native_stats.planned_frame_homes_by_reason[6]
+         << " planned_frame_homes_extended="
+         << native_stats.planned_frame_homes_by_reason[7]
+         << " planned_frame_homes_unattributed="
+         << native_stats.planned_frame_homes_by_reason[8]
+         << " call_arg_frame_loads="
+         << native_stats.call_arg_frame_loads
+         << " call_arg_frame_loads_slot="
+         << native_stats.call_arg_frame_loads_slot
+         << " call_arg_frame_loads_parameter="
+         << native_stats.call_arg_frame_loads_parameter
+         << " call_arg_frame_loads_only_call_argument="
+         << native_stats.call_arg_frame_loads_only_call_argument
+         << " call_arg_frame_loads_storage_address="
+         << native_stats.call_arg_frame_loads_storage_address
+         << " call_arg_frame_loads_planned="
+         << native_stats.call_arg_frame_loads_planned
+         << " call_arg_frame_loads_crossing_unplanned="
+         << native_stats.call_arg_frame_loads_crossing_unplanned
+         << " call_arg_frame_loads_other="
+         << native_stats.call_arg_frame_loads_other
+         << " call_arg_frame_loads_oca_call_result="
+         << native_stats.call_arg_frame_loads_oca_call_result
+         << " call_arg_frame_loads_oca_crossing="
+         << native_stats.call_arg_frame_loads_oca_crossing
+         << " call_arg_frame_loads_oca_edge_live="
+         << native_stats.call_arg_frame_loads_oca_edge_live
+         << " call_arg_frame_loads_oca_multi_use="
+         << native_stats.call_arg_frame_loads_oca_multi_use
+         << " planner_candidate_call_arguments="
+         << native_stats.planner_candidate_call_arguments
+         << " planner_assigned_call_arguments="
+         << native_stats.planner_assigned_call_arguments
+         << " planner_assign_failures="
+         << native_stats.planner_assign_failures
+         << " planner_assign_failures_call_argument="
+         << native_stats.planner_assign_failures_call_argument
+         << " planned_grant_busy_parameter_holder="
+         << native_stats.planned_grant_busy_parameter_holder
+         << " planned_grant_busy_value_holder="
+         << native_stats.planned_grant_busy_value_holder
+         << " planned_grant_busy_no_holder="
+         << native_stats.planned_grant_busy_no_holder
          << " narrow_call_result_normalizations_omitted="
          << native_stats.narrow_call_result_normalizations_omitted
          << " redundant_integer_normalizations_omitted="

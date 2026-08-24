@@ -130,6 +130,7 @@ struct Candidate
   bool crossing;
   bool is_phi;
   bool is_invariant;
+  bool is_call_argument;
 };
 
 // A backedge span is unavoidable when no layout-forward edge jumps from
@@ -186,6 +187,19 @@ bool clobbered_in_interval(const analysis::FunctionFacts & facts,
   return clobber != positions.end() && *clobber <= end;
 }
 
+// A candidate fits a pool register when its interval overlaps no claimed
+// span.  The weighted crossing pass assigns out of definition order, so
+// the callee-saved pool tracks exact claimed spans instead of a busy-until
+// watermark (which is only sound for definition-ordered sweeps).
+bool span_is_free(
+    const std::vector<std::pair<std::size_t, std::size_t> > & spans,
+    std::size_t start, std::size_t end)
+{
+  for(std::size_t i = 0; i < spans.size(); ++i)
+    if(spans[i].first <= end && start <= spans[i].second) return false;
+  return true;
+}
+
 // The reactive pool prefers RBX, R12, R13 in that order, so the planner
 // claims from the opposite end; the pools only meet under real pressure.
 // R14 and R15 extend coverage after the original three so earlier plans
@@ -199,17 +213,23 @@ bool clobbered_in_interval(const analysis::FunctionFacts & facts,
 // starving the reactive pool's first choices pushes every loop temporary
 // into fresh callee-saved registers instead.  Ordinary candidates may
 // still follow a phi on the same register after its interval releases.
+// Crossing candidates assign in descending use-count order: the pool is
+// smaller than the demand in call-dense bodies, and first-fit by
+// definition position hands the registers to whatever is defined first
+// rather than to the values whose reloads dominate the frame traffic.
 void assign_candidate_registers(
     const std::vector<Candidate> & candidates,
     const analysis::FunctionFacts & facts,
     std::vector<unsigned char> * plan,
     std::vector<std::size_t> * plan_ends,
+    std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
     Stats * stats)
 {
   static const X64Register kPool[] =
     {XR_R13, XR_R12, XR_RBX, XR_R14, XR_R15};
   static const X64Register kCallerPool[] = {XR_R9, XR_R8};
-  std::size_t busy_until[sizeof(kPool) / sizeof(kPool[0])] = {0};
+  std::vector<std::pair<std::size_t, std::size_t> >
+    claimed[sizeof(kPool) / sizeof(kPool[0])];
   std::size_t caller_busy_until[sizeof(kCallerPool) /
                                 sizeof(kCallerPool[0])] = {0};
   bool phi_claimed[sizeof(kPool) / sizeof(kPool[0])] = {false};
@@ -226,7 +246,10 @@ void assign_candidate_registers(
                                candidate.definition, candidate.end))
         continue;
       phi_claimed[reg] = true;
-      busy_until[reg] = std::max(busy_until[reg], candidate.end + 1);
+      // The phi's register is reserved at construction time, so it is
+      // occupied from function entry, not from the transfer position.
+      claimed[reg].push_back(std::make_pair(
+        static_cast<std::size_t>(0), candidate.end));
       (*plan)[static_cast<std::uint32_t>(candidate.value)] =
         static_cast<unsigned char>(kPool[reg]) + 1;
       (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
@@ -247,11 +270,13 @@ void assign_candidate_registers(
     if(!candidate.is_invariant) continue;
     for(std::size_t reg = sizeof(kPool) / sizeof(kPool[0]); reg-- > 0;) {
       if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
-      if(busy_until[reg] > candidate.definition) continue;
+      if(!span_is_free(claimed[reg], candidate.definition, candidate.end))
+        continue;
       if(clobbered_in_interval(facts, kPool[reg],
                                candidate.definition, candidate.end))
         continue;
-      busy_until[reg] = candidate.end + 1;
+      claimed[reg].push_back(
+        std::make_pair(candidate.definition, candidate.end));
       (*plan)[static_cast<std::uint32_t>(candidate.value)] =
         static_cast<unsigned char>(kPool[reg]) + 1;
       (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
@@ -263,87 +288,128 @@ void assign_candidate_registers(
       break;
     }
   }
+  std::vector<std::size_t> crossing_order;
   for(std::size_t i = 0; i < candidates.size(); ++i) {
     const Candidate & candidate = candidates[i];
     if(candidate.is_phi || candidate.is_invariant) continue;
+    if(candidate.crossing) {
+      crossing_order.push_back(i);
+      continue;
+    }
     const unsigned crossed = facts.live_across_clobbers[
       static_cast<std::uint32_t>(candidate.value)];
-    const X64Register * pool = candidate.crossing ? kPool : kCallerPool;
-    std::size_t * busy = candidate.crossing ? busy_until : caller_busy_until;
-    const std::size_t pool_size = candidate.crossing ?
-      sizeof(kPool) / sizeof(kPool[0]) :
-      sizeof(kCallerPool) / sizeof(kCallerPool[0]);
-    for(std::size_t reg = 0; reg < pool_size; ++reg) {
-      if(facts.has_i128_atomic && pool[reg] == XR_RBX) continue;
-      if(busy[reg] > candidate.definition) continue;
-      if(crossed & analysis::register_mask(pool[reg])) continue;
-      busy[reg] = candidate.end + 1;
+    bool assigned = false;
+    for(std::size_t reg = 0;
+        reg < sizeof(kCallerPool) / sizeof(kCallerPool[0]); ++reg) {
+      if(caller_busy_until[reg] > candidate.definition) continue;
+      if(crossed & analysis::register_mask(kCallerPool[reg])) continue;
+      caller_busy_until[reg] = candidate.end + 1;
       (*plan)[static_cast<std::uint32_t>(candidate.value)] =
-        static_cast<unsigned char>(pool[reg]) + 1;
+        static_cast<unsigned char>(kCallerPool[reg]) + 1;
       (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
         candidate.end;
-      if(stats) ++stats->planned_value_registers;
+      if(stats) {
+        ++stats->planned_value_registers;
+        if(candidate.is_call_argument)
+          ++stats->planner_assigned_call_arguments;
+      }
+      assigned = true;
       break;
     }
+    if(!assigned && stats) {
+      ++stats->planner_assign_failures;
+      if(candidate.is_call_argument)
+        ++stats->planner_assign_failures_call_argument;
+    }
   }
+  std::sort(crossing_order.begin(), crossing_order.end(),
+            [&candidates, &facts](std::size_t left, std::size_t right) {
+              const Candidate & a = candidates[left];
+              const Candidate & b = candidates[right];
+              const std::size_t a_uses =
+                facts.uses[static_cast<std::uint32_t>(a.value)];
+              const std::size_t b_uses =
+                facts.uses[static_cast<std::uint32_t>(b.value)];
+              if(a_uses != b_uses) return a_uses > b_uses;
+              if(a.definition != b.definition)
+                return a.definition < b.definition;
+              return static_cast<std::uint32_t>(a.value) <
+                static_cast<std::uint32_t>(b.value);
+            });
+  for(std::size_t i = 0; i < crossing_order.size(); ++i) {
+    const Candidate & candidate = candidates[crossing_order[i]];
+    const unsigned crossed = facts.live_across_clobbers[
+      static_cast<std::uint32_t>(candidate.value)];
+    bool assigned = false;
+    for(std::size_t reg = 0; reg < sizeof(kPool) / sizeof(kPool[0]); ++reg) {
+      if(facts.has_i128_atomic && kPool[reg] == XR_RBX) continue;
+      if(!span_is_free(claimed[reg], candidate.definition, candidate.end))
+        continue;
+      if(crossed & analysis::register_mask(kPool[reg])) continue;
+      claimed[reg].push_back(
+        std::make_pair(candidate.definition, candidate.end));
+      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
+        static_cast<unsigned char>(kPool[reg]) + 1;
+      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
+        candidate.end;
+      if(stats) {
+        ++stats->planned_value_registers;
+        if(candidate.is_call_argument)
+          ++stats->planner_assigned_call_arguments;
+      }
+      assigned = true;
+      break;
+    }
+    if(!assigned && stats) {
+      ++stats->planner_assign_failures;
+      if(candidate.is_call_argument)
+        ++stats->planner_assign_failures_call_argument;
+    }
+  }
+  for(std::size_t reg = 0; reg < sizeof(kPool) / sizeof(kPool[0]); ++reg)
+    register_spans[static_cast<unsigned>(kPool[reg])] = claimed[reg];
 }
 
-}  // namespace
+struct LayoutScan
+{
+  std::vector<std::size_t> phi_transfer_start;
+  std::vector<unsigned char> phi_loop_carried;
+  std::vector<std::size_t> phi_header_start;
+  std::vector<std::pair<std::size_t, std::size_t> > spans;
+  std::vector<unsigned char> span_is_backedge;
+  std::vector<std::pair<std::size_t, std::size_t> > forward_edges;
+};
 
-// Layout backedge spans mirror `ControlFlowQueries` spill safety: a
-// backward jump from position e to a block starting at position s means
-// [s, e] may re-execute.  Exception regions add the same hazard: unwinding
-// from a protected call to a landing pad laid out earlier is a backward
-// edge, so a region whose pad starts before the region's end contributes
-// the span [pad start, region end].  An edge-live interval extends to the
-// end of every span it overlaps, to a fixed point.
-std::vector<unsigned char> plan_value_registers(
+// One pass over the layout: phi transfer starts and loop-carried marks
+// (a phi's register is written at every predecessor terminator, so its
+// occupancy starts at the earliest transfer; only loop-carried phis
+// qualify — merge phis measured as a net dynamic regression), backedge
+// and exception-region spans (parallel span_is_backedge distinguishes
+// them: interval extension uses both, the invariant gate wants loops
+// only), and layout-forward edges — the bypass evidence for the
+// unavoidable-header gate.
+LayoutScan scan_function_layout(
     const lowir_model::LowirFunction & function,
-    const analysis::FunctionFacts & facts,
-    int optimization_level,
-    std::vector<std::size_t> * plan_ends,
-    Stats * stats)
+    const std::vector<std::size_t> & block_start,
+    const std::vector<std::size_t> & block_by_id,
+    std::size_t function_end)
 {
   using analysis::FunctionFacts;
-  std::vector<unsigned char> plan(function.value_names.size(), 0);
-  plan_ends->assign(function.value_names.size(), 0);
-  if(optimization_level < 1 || facts.has_va_start || facts.has_dynamic_stack)
-    return plan;
-
-  std::vector<std::size_t> block_start(function.blocks.size(), 0);
-  std::vector<std::size_t> block_by_id;
-  std::size_t position = 0;
-  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
-    block_start[block] = position;
-    position += function.blocks[block].instructions.size();
-    const std::uint32_t id = function.blocks[block].id;
-    if(block_by_id.size() <= id)
-      block_by_id.resize(static_cast<std::size_t>(id) + 1,
-                         function.blocks.size());
-    block_by_id[id] = block;
-  }
-  const std::size_t function_end = position;
-  // A phi's register is written at every predecessor terminator, so its
-  // occupancy starts at the earliest transfer, not at the header position.
-  // Only loop-carried phis (an incoming transfer at or after the phi in
-  // layout order) qualify: a straight-line merge phi saves one load per
-  // execution but a claimed callee-saved register costs prologue/epilogue
-  // ceremony on every call, which measured as a net dynamic regression.
-  std::vector<std::size_t> phi_transfer_start(
+  LayoutScan scan;
+  scan.phi_transfer_start.assign(
     function.value_names.size(), FunctionFacts::missing_position());
-  std::vector<unsigned char> phi_loop_carried(function.value_names.size(), 0);
-  std::vector<std::size_t> phi_header_start(
+  scan.phi_loop_carried.assign(function.value_names.size(), 0);
+  scan.phi_header_start.assign(
     function.value_names.size(), FunctionFacts::missing_position());
-  std::vector<std::pair<std::size_t, std::size_t> > spans;
-  // Parallel to `spans`: true for layout-backedge spans (loops), false for
-  // exception-region spans.  Interval extension uses both; the invariant
-  // gate wants loops only.
-  std::vector<unsigned char> span_is_backedge;
+  std::vector<std::size_t> & phi_transfer_start = scan.phi_transfer_start;
+  std::vector<unsigned char> & phi_loop_carried = scan.phi_loop_carried;
+  std::vector<std::size_t> & phi_header_start = scan.phi_header_start;
+  std::vector<std::pair<std::size_t, std::size_t> > & spans = scan.spans;
+  std::vector<unsigned char> & span_is_backedge = scan.span_is_backedge;
+  std::vector<std::pair<std::size_t, std::size_t> > & forward_edges =
+    scan.forward_edges;
   std::vector<std::pair<std::size_t, std::size_t> > open_regions;
-  // Bypass evidence for the unavoidable-header gate: every layout-forward
-  // edge (source position, target start).
-  std::vector<std::pair<std::size_t, std::size_t> > forward_edges;
-  position = 0;
+  std::size_t position = 0;
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     const std::size_t end_of_block =
       block_start[block] + function.blocks[block].instructions.size();
@@ -428,8 +494,56 @@ std::vector<unsigned char> plan_value_registers(
       spans.push_back(std::make_pair(open_regions[i].first, function_end));
       span_is_backedge.push_back(0);
     }
+  return scan;
+}
+
+}  // namespace
+
+// Layout backedge spans mirror `ControlFlowQueries` spill safety: a
+// backward jump from position e to a block starting at position s means
+// [s, e] may re-execute.  Exception regions add the same hazard: unwinding
+// from a protected call to a landing pad laid out earlier is a backward
+// edge, so a region whose pad starts before the region's end contributes
+// the span [pad start, region end].  An edge-live interval extends to the
+// end of every span it overlaps, to a fixed point.
+std::vector<unsigned char> plan_value_registers(
+    const lowir_model::LowirFunction & function,
+    const analysis::FunctionFacts & facts,
+    int optimization_level,
+    std::vector<std::size_t> * plan_ends,
+    std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
+    Stats * stats)
+{
+  using analysis::FunctionFacts;
+  std::vector<unsigned char> plan(function.value_names.size(), 0);
+  plan_ends->assign(function.value_names.size(), 0);
+  for(std::size_t reg = 0; reg < 16; ++reg) register_spans[reg].clear();
+  if(optimization_level < 1 || facts.has_va_start || facts.has_dynamic_stack)
+    return plan;
+
+  std::vector<std::size_t> block_start(function.blocks.size(), 0);
+  std::vector<std::size_t> block_by_id;
+  std::size_t position = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    block_start[block] = position;
+    position += function.blocks[block].instructions.size();
+    const std::uint32_t id = function.blocks[block].id;
+    if(block_by_id.size() <= id)
+      block_by_id.resize(static_cast<std::size_t>(id) + 1,
+                         function.blocks.size());
+    block_by_id[id] = block;
+  }
+  const std::size_t function_end = position;
+  LayoutScan scan = scan_function_layout(function, block_start, block_by_id,
+                                         function_end);
+  std::vector<std::size_t> & phi_transfer_start = scan.phi_transfer_start;
+  std::vector<unsigned char> & phi_loop_carried = scan.phi_loop_carried;
+  std::vector<std::size_t> & phi_header_start = scan.phi_header_start;
+  std::vector<std::pair<std::size_t, std::size_t> > & spans = scan.spans;
+  std::vector<std::pair<std::size_t, std::size_t> > & forward_edges =
+    scan.forward_edges;
   const std::vector<unsigned char> span_unavoidable =
-    mark_unavoidable_spans(spans, span_is_backedge, forward_edges);
+    mark_unavoidable_spans(spans, scan.span_is_backedge, forward_edges);
 
   std::vector<Candidate> candidates;
   for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
@@ -471,11 +585,19 @@ std::vector<unsigned char> plan_value_registers(
                                     facts.last_use[raw]);
     // A register-resident phi or invariant base turns every
     // storage-address use into a direct [reg] operand, so the
-    // storage-address exclusion does not apply to them.
+    // storage-address exclusion does not apply to them.  A call-crossing
+    // value used only as a call argument is a candidate too: without a
+    // planned callee-saved home the walk demotes it to the frame at
+    // definition (edge-live stabilization, EH functions retain nothing)
+    // and reloads it at the consuming call's argument staging — the
+    // dominant class of call-boundary frame loads on the frozen TU.
+    // Non-crossing call arguments keep the exclusion: they ride the
+    // reactive caller-saved pool to their call already.
     if(facts.has(value, FunctionFacts::VF_PARAMETER) ||
        (!is_invariant &&
         facts.has(value, FunctionFacts::VF_LOOP_INVARIANT)) ||
-       facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT) ||
+       (facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT) &&
+        !facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL)) ||
        (!is_phi && !is_invariant &&
         facts.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS)))
       continue;
@@ -503,6 +625,10 @@ std::vector<unsigned char> plan_value_registers(
     candidate.crossing = facts.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL);
     candidate.is_phi = is_phi;
     candidate.is_invariant = is_invariant;
+    candidate.is_call_argument =
+      facts.has(value, FunctionFacts::VF_ONLY_CALL_ARGUMENT);
+    if(stats && candidate.is_call_argument)
+      ++stats->planner_candidate_call_arguments;
     // Phis are edge-live by construction (written at predecessor
     // terminators), whether or not any read crosses a block boundary.
     if(is_phi || facts.has(value, FunctionFacts::VF_EDGE_LIVE)) {
@@ -537,7 +663,8 @@ std::vector<unsigned char> plan_value_registers(
                  static_cast<std::uint32_t>(left.value) <
                    static_cast<std::uint32_t>(right.value));
             });
-  assign_candidate_registers(candidates, facts, &plan, plan_ends, stats);
+  assign_candidate_registers(candidates, facts, &plan, plan_ends,
+                             register_spans, stats);
   return plan;
 }
 

@@ -41,15 +41,13 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 32
+    stack_size 16
     scratch_bytes 0
     preserve <gpr0> <gpr1>
-    temp %stable -> [rbp-<off0>] : i64
 
   block ^entry
     mov <gpr0>, 40
     add <gpr0>, 2
-    store.i64 [rbp-<off0>], <gpr0>
 
   block ^loop
     mov rdi, <gpr0>

@@ -41,18 +41,16 @@ function @main
   abi
     return i64 -> rax
   frame
-    stack_size 32
+    stack_size 16
     scratch_bytes 0
-    preserve rbx r12
-    temp %stable -> [rbp-8] : i64
+    preserve r15 r13
 
   block ^entry
-    mov rbx, 40
-    add rbx, 2
-    store.i64 [rbp-8], rbx
+    mov r15, 40
+    add r15, 2
 
   block ^loop
-    mov rdi, rbx
+    mov rdi, r15
     call @identity [args=(rdi), unwind=no]
     mov r8, rax
     test.i64 rax, rax
@@ -61,8 +59,8 @@ function @main
   block ^done
     mov rdx, 42
     cmp.i64 r8, rdx
-    setne r12
-    movzx r12, r12
+    setne r13
+    movzx r13, r13
     call @float_loop [args=(), unwind=no]
-    or r12, rax
-    ret r12
+    or r13, rax
+    ret r13

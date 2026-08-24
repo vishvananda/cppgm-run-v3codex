@@ -293,6 +293,9 @@ private:
                                          const LowType & type,
                                          TemporaryHomeReason reason = THR_COUNT)
   {
+    if(stats_ && planned_register_entry(value) != 0)
+      ++stats_->planned_frame_homes_by_reason[
+        reason <= THR_COUNT ? reason : THR_COUNT];
     return frame_home_planning::allocate_temporary(
       target_, frame_bytes_, spill_slots_, generated_frame_names_, facts_,
       value, type, position_, reason, result_crosses_call(value), stats_);
@@ -401,7 +404,8 @@ private:
         if(clobbered || (facts_.has_va_start &&
            ((parameter_gpr_index != 0 && uses) ||
             (parameter.type.kind == lowir_model::LTK_PTR && uses > 1)))) {
-          const X64Register destination = registers_.allocate(true);
+          const X64Register destination =
+            allocate_preserved_for_parameter(parameter.value);
           value.location = reg_operand(destination);
           append_optional_parameter_move(gpr_parameter_moves,
             gpr_parameter_move_values, value, parameter.value,
@@ -537,7 +541,7 @@ private:
         const lowir_model::ValueId value = source_.params[i - 1].value;
         if(storage_facts_.parameter_selected_uses[i - 1] &&
            parameter_crosses_call(value)) {
-          cross_call_homes[value] = registers_.allocate(true);
+          cross_call_homes[value] = allocate_preserved_for_parameter(value);
           cross_call_home_known[value] = 1;
         }
       }
@@ -635,15 +639,17 @@ private:
         value.location = frame_operand(home);
       } else if(!wide_gpr_boundary &&
                 parameter.metadata.passing != lowir_model::PPM_DIRECT && uses) {
-        const X64Register destination =
-          registers_.allocate(crosses_call(parameter.value));
+        const X64Register destination = crosses_call(parameter.value) ?
+          allocate_preserved_for_parameter(parameter.value) :
+          registers_.allocate(false);
         value.location = reg_operand(destination);
         append_optional_parameter_move(register_parameter_moves,
           register_parameter_move_values, value, parameter.value,
           reg_operand(binding.reg));
       } else if(!wide_gpr_boundary && incoming_clobbered) {
-        const X64Register destination =
-          registers_.allocate(crosses_call(parameter.value));
+        const X64Register destination = crosses_call(parameter.value) ?
+          allocate_preserved_for_parameter(parameter.value) :
+          registers_.allocate(false);
         value.location = reg_operand(destination);
         value.fixed_register_home =
           storage_facts_.has(parameter.value,
@@ -1103,31 +1109,6 @@ private:
     }
     set_value_location(instruction.dest, home);
   }
-  bool reclaim_dead_parameter_register(bool needs_callee_saved)
-  {
-    if(control_flow_.CurrentBlockIsCyclic()) return false;
-    if(stats_) ++stats_->reclaim_attempts;
-    for(std::size_t i = 0; i < source_.params.size(); ++i) {
-      if(stats_) ++stats_->reclaim_parameter_visits;
-      const lowir_model::ValueId value = source_.params[i].value;
-      if(!value_known_[value]) continue;
-      if(!values_[value].parameter || values_[value].fixed_register_home ||
-         values_[value].location.kind != MirOperand::OP_REG ||
-         !location_planning::managed_register(values_[value].location.reg) ||
-         !registers_.is_used(values_[value].location.reg) ||
-         (needs_callee_saved &&
-          !is_callee_saved(values_[value].location.reg)))
-        continue;
-      if(facts_.uses[value] != 0 ||
-         facts_.has(value, FunctionFacts::VF_EDGE_LIVE) ||
-         !control_flow_.SpillIsSafe(value, position_) ||
-         has_live_location_alias(value, values_[value].location)) continue;
-      registers_.release(values_[value].location.reg);
-      if(stats_) ++stats_->reclaims;
-      return true;
-    }
-    return false;
-  }
   bool try_reserve_result_register(lowir_model::ValueId value,
                                    bool needs_callee_saved,
                                    X64Register * result)
@@ -1144,7 +1125,8 @@ private:
           *result = caller_saved[i];
           return true;
         }
-    return registers_.try_allocate(true, *result);
+    return try_allocate_preserved_avoiding_plans(
+      position_, reactive_lifetime_end(value), result);
   }
   bool try_allocate_result(lowir_model::ValueId value,
                            std::vector<MirInstruction> & out,
@@ -1198,6 +1180,7 @@ private:
   void define(lowir_model::ValueId id, const LowType & type,
               const MirOperand & location)
   {
+    record_planned_definition(id, location);
     remember_selected_register_definition(location, position_);
     ValueFact value;
     value.location = location;
@@ -1969,6 +1952,9 @@ private:
       }
       move.type = operand_type(instruction.args[i]);
       move.source_is_address = is_frame_address(instruction.args[i]);
+      if(stats_ && move.source.kind == MirOperand::OP_FRAME &&
+         !move.source_is_address)
+        record_call_argument_frame_load(instruction.args[i]);
       moves.push_back(move);
     }
     emit_parallel_gpr_moves(moves, out);

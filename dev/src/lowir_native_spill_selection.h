@@ -25,6 +25,40 @@ template <class Derived>
 class SpillSelection
 {
 protected:
+  // A dead register-resident parameter's register may be reclaimed for a
+  // new definition once no later use or edge can read it.
+  bool reclaim_dead_parameter_register(bool needs_callee_saved)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    if(lowerer.control_flow_.CurrentBlockIsCyclic()) return false;
+    if(lowerer.stats_) ++lowerer.stats_->reclaim_attempts;
+    for(std::size_t i = 0; i < lowerer.source_.params.size(); ++i) {
+      if(lowerer.stats_) ++lowerer.stats_->reclaim_parameter_visits;
+      const lowir_model::ValueId value = lowerer.source_.params[i].value;
+      if(!lowerer.value_known_[value]) continue;
+      if(!lowerer.values_[value].parameter ||
+         lowerer.values_[value].fixed_register_home ||
+         lowerer.values_[value].location.kind !=
+           mir_model::MirOperand::OP_REG ||
+         !location_planning::managed_register(
+           lowerer.values_[value].location.reg) ||
+         !lowerer.registers_.is_used(lowerer.values_[value].location.reg) ||
+         (needs_callee_saved &&
+          !allocation::is_callee_saved(lowerer.values_[value].location.reg)))
+        continue;
+      if(lowerer.facts_.uses[value] != 0 ||
+         lowerer.facts_.has(value,
+                            analysis::FunctionFacts::VF_EDGE_LIVE) ||
+         !lowerer.control_flow_.SpillIsSafe(value, lowerer.position_) ||
+         lowerer.has_live_location_alias(value,
+                                         lowerer.values_[value].location))
+        continue;
+      lowerer.registers_.release(lowerer.values_[value].location.reg);
+      if(lowerer.stats_) ++lowerer.stats_->reclaims;
+      return true;
+    }
+    return false;
+  }
   bool spill_candidate(lowir_model::ValueId value,
                        bool needs_callee_saved) const
   {

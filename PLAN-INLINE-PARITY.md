@@ -3,10 +3,10 @@
 Objective: bring the exact self-O1 compiler within 10% of gcc-O1 on the
 frozen benchmark (`~/cppgm-extended-pa39-source-layout/benchmarks/
 self_compile/stable/semantic_overload.cpp`, `-std=gnu++11 -O1 -Idev/src`).
-Current honest state at e325dc7e (P24 protocol, ledger L7): self-O1
-10.99 s / 44.90B dynamic instructions vs gcc-O1 5.81 s / 20.85B = 1.89x
-wall, 2.15x instructions.  (At fd019bdc: 10.8 s / 44.47B vs 5.69 s /
-20.24B = 1.90x wall, 2.20x instructions.)
+Current honest state at 0c296b7a (P24 protocol, ledger L19): self-O1
+10.702 s / 44.64B dynamic instructions vs gcc-O1 5.831 s / 20.87B =
+**1.835x wall, 2.139x instructions**.  (At the Phase A landing e325dc7e,
+L7: 1.891x wall, 2.153x Ir; at fd019bdc: 1.90x wall, 2.20x Ir.)
 
 This plan supersedes the inlining-related threads of PLAN-O1-PARITY.md
 (P22-P28) and PLAN-OPT-PASS-IMPROVEMENTS.md (R10-R11) for forward work.
@@ -611,3 +611,70 @@ source reshaping remains out of scope per the standing directive).
   residual is confirmed to live in LIVE callee-saved registers —
   reachable only by the walk-time placement redesign that decides
   WHICH values deserve them, not by encode-time scavenging.
+
+- L22 (I7 census + Phase C slice 7: deserving-based callee-saved
+  placement).  I7 instrumented the plan-to-grant funnel and the call
+  boundary (counters land with the slice, all --stats-guarded).  At the
+  L21 baseline: 15,458 planned values -> only 3,876 walk grants; failures
+  are 6,819 busy vs 0 clobber, and the busy holders are mostly values the
+  planner never put there (reactive scratch, eager parameter homes; the
+  caller-pool R8/R9 plans dominate raw counts — the callee subset is 594).
+  Of 3,232 frame-sourced GPR argument-staging loads, 2,358 (73%) are
+  VF_ONLY_CALL_ARGUMENT values (1,153 crossing / 1,000 edge-live / 151
+  call-results) — the class the planner EXCLUDED from candidacy; the
+  edge-live demotion path frame-homes them at definition (EH functions
+  retain nothing).  Hot-body dissection vs REAL g++ -O1 (NOTE:
+  ~/i1-roots/gcc-frozen.o is OUR e325cd7e compiler's output, not g++ —
+  a provenance trap; true-gcc object regenerated fresh): the
+  select_constructor::$_0 lambda pays 437 frame loads / 453 calls vs
+  gcc's 217 / 381 — 2.0x the reloads at 1.19x the calls, from 82
+  distinct slots vs 30; at this call density gcc spills its hottest
+  values too (top slot reloaded 30x), it just keeps ~50 more values out
+  of the frame.  Whole frozen TU at HEAD: ours 123,921 insns / 39,043
+  frame operands (31.5%) vs g++ 89,993 / 21,213 (23.6%).  THE SLICE
+  (three components, each census-checked): (1) admit crossing
+  VF_ONLY_CALL_ARGUMENT values as ordinary crossing candidates; (2)
+  assign the crossing callee-saved pool in descending use-count order
+  over per-register claimed-interval sets (replacing first-fit-by-
+  definition watermarks — gap-filling packs better: OCA assignments
+  287 -> 454, total failures 4,372 -> 3,980); (3) the reactive
+  callee-saved allocator and eager parameter homes prefer registers
+  with no overlapping planned span (two-pass — a conflict never turns
+  an allocation success into failure; caller pool R8/R9 untouched per
+  the L12 starvation lesson).  Census: grants 3,876 -> 4,098, spills
+  219 -> 205, MIR 122,598 -> 122,538, call-boundary loads 8,317 ->
+  8,130, hot-lambda frame loads 437 -> 422, TU frame operands -366.
+  HONEST NUMBERS (selfhost, frozen TU): Ir 44.638B -> 44.610B (-0.06%),
+  D refs 26.622B -> 26.578B (-44M, -0.17%), I1 misses 433.0M -> 427.0M
+  (-1.4%) — counter-visible, below the wall noise floor, same magnitude
+  class as the landed L18 increment.  Two pa38 fixtures regenerated in
+  place (o2/400-loop-invariant-call-crossing-placement: a frame temp
+  and its store vanish, stack 32 -> 16; behavior/o1/405-deferred-
+  compare-across-call: pure rbx/r12 renaming from the weighted order),
+  program behavior identical.  Gates: report 5430/5430, zero-fatal
+  audit (lowir_native.cpp held at its 3,000-line limit by moving the
+  census recorders and reactive-avoidance helpers into PlannedResidency
+  and reclaim_dead_parameter_register into SpillSelection — all
+  byte-neutral, FROZEN_MATCH), O3+O0 inception lanes MATCH, frozen
+  self-reproduction byte-for-byte.  RESIDUAL: walk grants still lag
+  plans (planned values landing in frame 4,009 -> 4,472 as plans grew);
+  the 422 -> 217 gap vs gcc is value-materialization structure (gcc
+  collapses derived pointers into one reloaded base), LowIR-level
+  material, not allocation order.
+- L23 (corrected I1 re-entry at h48-b768, SINGLE POINT — the L16
+  refutation used the wrong gate).  L16 judged the dose on constant-
+  workload Ir alone; the L17 metric lesson (movement converts to
+  D-refs/wall invisibly to Ir) was never applied to the dose question.
+  On the L22 tree: dosed h48-b768 selfhost at constant workload is Ir
+  43.786B (-1.85%, unchanged from L16's increment) but D refs 26.176B
+  (-402M, -1.51%) against I1 misses +40.3M (+9.4%, text +13.9%) — and
+  PSI-gated 5-block ABBA wall says the dosed binary WINS: -0.74% real /
+  -0.68% user, faster in 10/10 pairings.  The carry family + placement
+  slices changed the conversion economics exactly as L16 hypothesized
+  in reverse: they thinned the movement the dose amplifies.  The dose
+  door REOPENS — but landing a dose is Phase A territory: the honest
+  pair also charges the deeper policy's compile work to both binaries
+  (L7: +1.82B self / +0.61B gcc at h24), so the next step is an I1
+  re-grid with the corrected gates (Ir AND full-sim D refs AND ABBA
+  wall) and an honest-pair confirmation at the chosen point, not a
+  single-point landing.
