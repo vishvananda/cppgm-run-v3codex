@@ -1638,6 +1638,8 @@ int run_compile_driver(const DriverInvocation & invocation,
          << native_stats.planned_edge_residencies
          << " planned_interval_releases="
          << native_stats.planned_interval_releases
+         << " span_free_edge_releases="
+         << native_stats.span_free_edge_releases
          << " planned_phi_registers="
          << native_stats.planned_phi_registers
          << " phi_register_homes="

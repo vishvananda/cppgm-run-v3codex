@@ -841,3 +841,26 @@ source reshaping remains out of scope per the standing directive).
   covered) closes by cheapening the dose's incremental policy cost
   or improving merged-region codegen (E10's parked placement
   material), not by shrinking the dose.
+- L30 (span-free edge-live release: the register-release starvation
+  slice, the largest static win of the program).  The E10 re-aim:
+  at the h48 dose the planner's candidates scale +24% but walk
+  grants collapse to 20.5% — registers stay busy because edge-live
+  values NEVER release (value_outlives_counted_uses holds them for
+  potential backedge re-reads even when none exist).  The slice: a
+  final counted use lying outside every backedge and backward
+  exception span cannot be re-executed, so an unplanned edge-live
+  non-parameter register releases right there (parameters excluded:
+  promoted-slot forwarding replays their location beyond counted
+  uses; the planner re-exports its extension spans for the
+  membership test).  Frozen TU census: MIR 122,406 -> 118,687
+  (-3,719 / -3.04%), spills 205 -> 86, grants 4,098 -> 5,082 (+24%),
+  call-boundary loads 8,140 -> 7,516 (-7.7%), 743 releases; at the
+  h48 dose: MIR -3.7%, grants +34% — the effect GROWS with merged
+  epochs, as E10 predicted.  Honest: Ir 43.217 -> 42.365B (-852M /
+  -1.97%), I1 misses -5.7%, D refs -604M (-2.34%), D1 misses -6.8%;
+  ABBA wall -0.63% real / -0.72% user.  Gates: report 5430/5430
+  with ZERO fixture movement, zero-fatal audit (file held at the
+  3,000-line limit), O3+O0 lanes MATCH, frozen self-reproduction.
+  Also in this landing: ControlFlowQueries reachability/dominance
+  fills became epoch stamps (byte-identical, host-flat, removes the
+  per-block-change O(blocks) fills and a per-query allocation).

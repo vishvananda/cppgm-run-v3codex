@@ -15,8 +15,9 @@ const std::size_t kNoBlock = static_cast<std::size_t>(-1);
 ControlFlowQueries::ControlFlowQueries(
 	const lowir_model::LowirFunction& function)
 	: successors_(function.blocks.size()), use_sites_(function.value_names.size()),
-	  reachable_(function.blocks.size()),
-	  dominated_(function.blocks.size()), current_block_(0),
+	  reachable_(function.blocks.size(), 0),
+	  dominated_(function.blocks.size(), 0),
+	  reachable_epoch_(0), dominated_epoch_(0), current_block_(0),
 	  reachability_ready_(false), dominance_ready_(false)
 {
 	std::vector<std::size_t> blocks(function.next_block_id, kNoBlock);
@@ -139,49 +140,49 @@ bool ControlFlowQueries::CurrentBlockDominates(std::size_t target) const
 	if (current_block_ == 0 || current_block_ == target) return true;
 	if (!dominance_ready_)
 	{
-		std::fill(dominated_.begin(), dominated_.end(), 1);
-		std::vector<unsigned char> seen(successors_.size(), 0);
+		// The stamp marks blocks reachable from entry without entering the
+		// current block (the current block itself is stamped only as the
+		// traversal barrier); a stamped block is therefore NOT dominated.
+		++dominated_epoch_;
 		std::vector<std::size_t> work;
-		seen[current_block_] = 1;
-		seen[0] = 1;
+		dominated_[current_block_] = dominated_epoch_;
+		dominated_[0] = dominated_epoch_;
 		work.push_back(0);
 		while (!work.empty())
 		{
 			const std::size_t block = work.back();
 			work.pop_back();
-			dominated_[block] = 0;
 			for (std::size_t i = 0; i < successors_[block].size(); ++i)
 			{
 				const std::size_t successor = successors_[block][i];
-				if (seen[successor]) continue;
-				seen[successor] = 1;
+				if (dominated_[successor] == dominated_epoch_) continue;
+				dominated_[successor] = dominated_epoch_;
 				work.push_back(successor);
 			}
 		}
-		dominated_[current_block_] = 1;
 		dominance_ready_ = true;
 	}
-	return dominated_[target] != 0;
+	return dominated_[target] != dominated_epoch_;
 }
 
 bool ControlFlowQueries::CurrentBlockReaches(std::size_t target) const
 {
 	if (!reachability_ready_)
 	{
-		std::fill(reachable_.begin(), reachable_.end(), 0);
+		++reachable_epoch_;
 		std::vector<std::size_t> work = successors_[current_block_];
 		while (!work.empty())
 		{
 			const std::size_t block = work.back();
 			work.pop_back();
-			if (reachable_[block]) continue;
-			reachable_[block] = 1;
+			if (reachable_[block] == reachable_epoch_) continue;
+			reachable_[block] = reachable_epoch_;
 			work.insert(work.end(), successors_[block].begin(),
 				successors_[block].end());
 		}
 		reachability_ready_ = true;
 	}
-	return reachable_[target] != 0;
+	return reachable_[target] == reachable_epoch_;
 }
 
 bool ControlFlowQueries::CurrentBlockIsCyclic() const

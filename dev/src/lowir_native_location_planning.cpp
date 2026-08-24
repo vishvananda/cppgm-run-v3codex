@@ -512,12 +512,14 @@ std::vector<unsigned char> plan_value_registers(
     int optimization_level,
     std::vector<std::size_t> * plan_ends,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
+    std::vector<std::pair<std::size_t, std::size_t> > * extension_spans,
     Stats * stats)
 {
   using analysis::FunctionFacts;
   std::vector<unsigned char> plan(function.value_names.size(), 0);
   plan_ends->assign(function.value_names.size(), 0);
   for(std::size_t reg = 0; reg < 16; ++reg) register_spans[reg].clear();
+  extension_spans->clear();
   if(optimization_level < 1 || facts.has_va_start || facts.has_dynamic_stack)
     return plan;
 
@@ -536,6 +538,7 @@ std::vector<unsigned char> plan_value_registers(
   const std::size_t function_end = position;
   LayoutScan scan = scan_function_layout(function, block_start, block_by_id,
                                          function_end);
+  *extension_spans = scan.spans;
   std::vector<std::size_t> & phi_transfer_start = scan.phi_transfer_start;
   std::vector<unsigned char> & phi_loop_carried = scan.phi_loop_carried;
   std::vector<std::size_t> & phi_header_start = scan.phi_header_start;

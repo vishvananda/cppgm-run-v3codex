@@ -80,12 +80,16 @@ bool managed_register(X64Register reg);
 // reactive allocator can steer scratch away from registers a planned
 // value will need.  The spans are advisory: ignoring them only makes a
 // later planned grant fail busy, never wrong code.
+// extension_spans receives every layout backedge and backward exception
+// span (the interval-extension material), filled even for functions the
+// planner otherwise skips, so the walk can test span membership.
 std::vector<unsigned char> plan_value_registers(
     const lowir_model::LowirFunction & function,
     const analysis::FunctionFacts & facts,
     int optimization_level,
     std::vector<std::size_t> * plan_ends,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
+    std::vector<std::pair<std::size_t, std::size_t> > * extension_spans,
     Stats * stats);
 
 // CRTP state and queries for planned register residency.  The derived
@@ -102,7 +106,17 @@ protected:
   {
     value_register_plan_ = plan_value_registers(
       function, facts, optimization_level, &value_plan_end_,
-      planned_register_spans_, stats);
+      planned_register_spans_, &extension_spans_, stats);
+  }
+  // True when no layout backedge or backward exception span contains the
+  // position: a final counted use here can never be re-executed, so an
+  // otherwise edge-live register is genuinely dead past it.
+  bool position_outside_extension_spans(std::size_t position) const
+  {
+    for(std::size_t i = 0; i < extension_spans_.size(); ++i)
+      if(extension_spans_[i].first <= position &&
+         position < extension_spans_[i].second) return false;
+    return true;
   }
   unsigned char planned_register_entry(lowir_model::ValueId value) const
   {
@@ -296,6 +310,7 @@ protected:
   std::vector<std::size_t> value_plan_end_;
   std::vector<std::pair<std::size_t, std::size_t> >
     planned_register_spans_[16];
+  std::vector<std::pair<std::size_t, std::size_t> > extension_spans_;
   unsigned char deferred_carrier_registers_[16] = {};
 };
 

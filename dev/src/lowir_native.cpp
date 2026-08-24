@@ -940,8 +940,19 @@ private:
     const bool interval_over = facts_.uses[id] == 1 &&
       value_outlives_counted_uses(id) &&
       planned_interval_over(id);
+    // An unplanned edge-live register is also genuinely dead at a final
+    // counted use lying outside every backedge and backward exception
+    // span — nothing can re-execute a read.  Parameters keep their homes:
+    // promoted-slot forwarding replays them beyond their counted uses.
+    const bool span_free_interval_over = facts_.uses[id] == 1 &&
+      value_outlives_counted_uses(id) && !interval_over &&
+      phi_planned_home_[id] == 0 &&
+      !values_[id].parameter && !values_[id].fixed_register_home &&
+      values_[id].location.kind == MirOperand::OP_REG &&
+      position_outside_extension_spans(position_);
     const bool stops_being_live = (facts_.uses[id] == 1 &&
-      !value_outlives_counted_uses(id)) || interval_over;
+      !value_outlives_counted_uses(id)) || interval_over ||
+      span_free_interval_over;
     --facts_.uses[id];
     if(stops_being_live)
       live_locations_.remove(id, values_[id].location);
@@ -956,12 +967,15 @@ private:
          !value.parameter &&
          !value.fixed_register_home &&
          (!facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) ||
-          interval_over) &&
-         (!value_outlives_counted_uses(id) || interval_over) &&
+          interval_over || span_free_interval_over) &&
+         (!value_outlives_counted_uses(id) || interval_over ||
+          span_free_interval_over) &&
          value.location.reg != retained && value.location.reg != XR_RAX &&
          !live_locations_.has_alias(id, value.location, false)) {
         registers_.release(value.location.reg);
         if(interval_over && stats_) ++stats_->planned_interval_releases;
+        if(span_free_interval_over && stats_)
+          ++stats_->span_free_edge_releases;
       }
       if(!value.parameter && value.location.kind == MirOperand::OP_XMM &&
          !facts_.has(id, FunctionFacts::VF_LOOP_INVARIANT) &&

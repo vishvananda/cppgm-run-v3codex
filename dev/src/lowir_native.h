@@ -105,6 +105,7 @@ struct Stats
   std::size_t planned_register_grants = 0;
   std::size_t planned_edge_residencies = 0;
   std::size_t planned_interval_releases = 0;
+  std::size_t span_free_edge_releases = 0;
   std::size_t planned_phi_registers = 0;
   std::size_t phi_register_homes = 0;
   std::size_t planned_invariant_registers = 0;

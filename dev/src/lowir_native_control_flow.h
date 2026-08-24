@@ -3,6 +3,7 @@
 #include "lowir_model.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 namespace lowir_native
@@ -37,8 +38,13 @@ private:
 	// Blocks lying inside any layout-backward edge span [target, source]:
 	// such a block can be re-entered by blocks the walk has not emitted yet.
 	std::vector<unsigned char> backedge_covered_;
-	mutable std::vector<unsigned char> reachable_;
-	mutable std::vector<unsigned char> dominated_;
+	// Stamp-validated marks: an entry counts only when it equals the
+	// matching epoch, so invalidation at every block change is one
+	// counter bump instead of a fill over all blocks.
+	mutable std::vector<std::uint32_t> reachable_;
+	mutable std::vector<std::uint32_t> dominated_;
+	mutable std::uint32_t reachable_epoch_;
+	mutable std::uint32_t dominated_epoch_;
 	std::size_t current_block_;
 	mutable bool reachability_ready_;
 	mutable bool dominance_ready_;
