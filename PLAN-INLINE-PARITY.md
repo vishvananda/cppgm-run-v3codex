@@ -1397,3 +1397,18 @@ source reshaping remains out of scope per the standing directive).
   counters are unavailable here; software QEMU instruction callbacks could
   be an earlier directional gate but are not a Cachegrind Dref substitute.
   Future inception lanes use `INCEPTION_BUILD_JOBS=32`.
+- L48 (P30 SHORT REGION-BOUNDARY STAGING PROBE REJECTED).  The first
+  post-L47 transition producer deferred an unplanned edge-live GPR's backup
+  store from its definition to the next throwing-call/control boundary,
+  capped at eight LowIR positions and falling back to the ordinary reactive
+  pressure spill.  It exercised the intended timeline/emitter seam and an
+  isolated 32-way O1 inception lane matched every object and final binary.
+  Static shape improved slightly on the frozen TU (object -208 bytes, MIR
+  -54, scalar loads -45, scalar stores -7, frame-home count flat), but ten
+  additional pressure spills made the exact Ir-only profile regress
+  44,051,899,088 -> 44,069,480,106 (+17,581,018, +0.040%).  A four-position
+  cap avoided the extra spills but recovered only 29 MIR instructions and
+  18 loads.  Therefore definition-to-first-boundary retention is not the
+  missing region placement: useful transitions must start around use
+  clusters or rematerialize values without extending residency.  The probe
+  was fully reverted and no profiler process remains.
