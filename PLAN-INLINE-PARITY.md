@@ -1623,3 +1623,21 @@ source reshaping remains out of scope per the standing directive).
   reverted without Cachegrind or inception.  This closes the compare class
   as an emitter-level P30 target; a future win there must improve the final
   machine optimizer, not merely its input.
+- L58 (P30 STAGED INTEGER-CONVERSION SOURCE REUSE REJECTED BY THE EXACT
+  GATE).  Of seven staged conversion results, one final-use, non-edge-live
+  source register can safely hold its own converted result.  The probe makes
+  the normal allocation attempt and releases its successful transient
+  reservation before converting in place, preserving pressure/replay shape.
+  It removes a real `movzbl` in `note_function_call_source_event`: final MIR
+  falls 125,832 -> 125,830 and object size falls 1,426,720 -> 1,426,704 bytes,
+  while homes, spills, grants, and movement stay flat.  PA38 remains 41/41
+  and the 32-way O1 inception lane MATCHES, but exact self-hosted Ir-only
+  Cachegrind regresses 43,437,250,755 -> 43,439,419,512 (+2,168,757,
+  +0.004993%): the full compare-and-facts predicate costs more in the
+  compiler than the single emitted instruction saves.  The measured object
+  was verified at
+  `880e89455a86d1291ed96c985516a6d4d5cbd0c6f04374a72facee7ee432de6c`.
+  The implementation and counter are fully reverted, no further inception
+  lanes are warranted, and no profiler process remains.  This closes the
+  current staged-conversion population unless a materially cheaper shared
+  placement predicate appears.
