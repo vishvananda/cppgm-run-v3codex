@@ -534,19 +534,25 @@ void resolve_instruction_operands(Instruction * ins,
                                   const std::vector<std::size_t> & block_index,
                                   const DominatorTree & dom)
 {
-  Operand * values[] = {&ins->first, &ins->second, &ins->third};
-  for(std::size_t i = 0; i < 3; ++i) {
-    const bool storage_address =
-      (i == 0 && (ins->kind == Instruction::IK_LOAD ||
-                  ins->kind == Instruction::IK_ATOMIC_LOAD)) ||
-      (i == 1 && (ins->kind == Instruction::IK_STORE ||
-                  ins->kind == Instruction::IK_ATOMIC_STORE));
-    if(values[i]->kind == Operand::OP_TEMP) {
-      const Operand resolved = resolve_operand(
-        *values[i], facts, known, block, dom);
-      if(!storage_address || resolved.kind == Operand::OP_TEMP)
-        *values[i] = resolved;
-    }
+  if(ins->first.kind == Operand::OP_TEMP) {
+    const Operand resolved = resolve_operand(
+      ins->first, facts, known, block, dom);
+    const bool storage_address = ins->kind == Instruction::IK_LOAD ||
+      ins->kind == Instruction::IK_ATOMIC_LOAD;
+    if(!storage_address || resolved.kind == Operand::OP_TEMP)
+      ins->first = resolved;
+  }
+  if(ins->second.kind == Operand::OP_TEMP) {
+    const Operand resolved = resolve_operand(
+      ins->second, facts, known, block, dom);
+    const bool storage_address = ins->kind == Instruction::IK_STORE ||
+      ins->kind == Instruction::IK_ATOMIC_STORE;
+    if(!storage_address || resolved.kind == Operand::OP_TEMP)
+      ins->second = resolved;
+  }
+  if(ins->third.kind == Operand::OP_TEMP) {
+    ins->third = resolve_operand(
+      ins->third, facts, known, block, dom);
   }
   for(std::size_t i = 0; i < ins->args.size(); ++i)
     if(ins->args[i].kind == Operand::OP_TEMP) {

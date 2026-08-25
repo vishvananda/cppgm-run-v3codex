@@ -1939,3 +1939,31 @@ source reshaping remains out of scope per the standing directive).
   `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`,
   and no profiler remains.  Variable-index takeover is closed unless it can
   share an already-paid destination-selection predicate.
+- L72 (P30 FIXED-OPERAND RESOLUTION DISPATCH LANDED; THE FAST GATE FINDS A
+  SHARED COST WIN).  L68's exact profile placed
+  `resolve_instruction_operands` at 281,166,504 Ir: the simplifier built a
+  three-pointer array and ran a counted loop for every instruction merely to
+  visit the fixed `first`, `second`, and `third` operands.  The fixed visits
+  are now explicit.  The first and second arms preserve exactly the existing
+  load/store address rule (a forwarded literal may not replace a temporary
+  storage address), the third remains an ordinary resolution, and the
+  variable argument loop is unchanged.  This is semantics-neutral compiler
+  work removal: source and serialized-LowIR MIR, movement, allocation, and
+  object metrics remain identical, at hashes
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`
+  and `ba6231e2a3260262e1d165637cb700e1a0a8b550f9623f5098f56d0fc6ca3130`.
+  The sub-minute isolated backend gate improves 4,570,651,256 ->
+  4,549,247,208 Ir (-21,404,048, -0.46829%).  The exact O1 self-hosted source
+  gate confirms 40,398,754,919 -> 40,279,693,240 Ir (-119,061,679,
+  -0.294716%): the resolver itself falls to 161,467,981 Ir (-119,698,523,
+  -42.57%), while `resolve_operand` remains 76,987,804 and the simplifier's
+  semantic body remains 566,732,995.  Eight-per-side native ABBA is correctly
+  treated as inconclusive at 1.6025 s -> 1.60625 s mean user time (+0.23%),
+  inside the established wall noise floor.  PA38 is 41/41, the through-PA38
+  report is 5,431/5,431, and the audit has zero fatal findings (36 warnings).
+  O3, O1, and O0 self/inception lanes all MATCH object-by-object and at the
+  final compiler; every lane used outer `-j32` and
+  `INCEPTION_BUILD_JOBS=32`.  No fixture changed and no profiler remains.
+  This does not claim another gate-(iii) target-code reduction; it removes a
+  shared optimizer tax that made small P30 placement candidates harder to
+  amortize, and demonstrates the intended frozen-LowIR-first validation loop.
