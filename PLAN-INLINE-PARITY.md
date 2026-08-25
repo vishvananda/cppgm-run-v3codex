@@ -1761,3 +1761,25 @@ source reshaping remains out of scope per the standing directive).
   rebuilding the full checkpoint.  Full inception remains a survivor gate,
   with `INCEPTION_BUILD_JOBS=32` required on every run.  No profiler process
   remains.
+- L66 (P30 ACTIVE MIR ALIAS FACTS LANDED; THE ISOLATED BACKEND GATE PAYS).
+  PA38's local MIR rewrite invalidated aliases by scanning all 16 GPR and
+  eight XMM fact records after every instruction, although only a small sparse
+  subset is live at once.  `LocalFacts` now maintains compact active-index
+  arrays, compacts those arrays under the identical destination/source
+  invalidation predicates, and records facts through bounded `set_gpr` and
+  `set_xmm` paths.  MIR, allocation/movement counters, function census, and
+  the frozen 1,426,720-byte object remain byte-identical at
+  `f496c227be1db4007a24af5bd5d437804cc7a1c19b117cfd3c0bb1ba6e919693`.
+  Host-side machine optimization falls 35.549 ms -> 31.088 ms (-12.6%) and
+  total lowering 210.775 ms -> 205.946 ms.  More usefully, a 9.1-MiB
+  unoptimized serialized-LowIR snapshot isolates the optimizer/backend from
+  frontend noise: four ABBA samples improve 3.385 s -> 3.345 s mean user time
+  (-1.18%), with all eight objects identical.  This is the new sub-minute
+  native direction gate after `probe-self-link`.  Exact self-hosted Ir-only
+  Cachegrind improves 40,512,780,696 -> 40,401,605,545 (-111,175,151,
+  -0.274420%); `rewrite_local_operands` itself falls 189,049,950 ->
+  77,740,269 Ir, accounting for the result.  PA38 is 41/41, the through-PA38
+  report is 5,431/5,431, the audit has zero fatal findings (36 warnings), and
+  isolated O1/O3/O0 self/inception lanes all MATCH byte-for-byte.  Every
+  inception build used both outer `-j32` and `INCEPTION_BUILD_JOBS=32`.  No
+  profiler process remains.

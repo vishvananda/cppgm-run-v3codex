@@ -288,24 +288,66 @@ struct LocalFacts
 {
   std::array<ValueFact, 16> gprs;
   std::array<ValueFact, 8> xmms;
+  std::array<std::size_t, 16> active_gprs;
+  std::array<std::size_t, 8> active_xmms;
+  std::size_t active_gpr_count = 0;
+  std::size_t active_xmm_count = 0;
 
   void invalidate(RegisterMask defs)
   {
-    for(std::size_t i = 0; i < gprs.size(); ++i) {
-      if(defs & (RegisterMask(1) << i)) gprs[i].valid = false;
-      if(gprs[i].valid && gprs[i].value.kind == MirOperand::OP_REG &&
-         (defs & gpr_bit(gprs[i].value.reg))) gprs[i].valid = false;
-      if(gprs[i].valid && gprs[i].value.kind == MirOperand::OP_DEREF &&
+    std::size_t kept = 0;
+    for(std::size_t active = 0; active < active_gpr_count; ++active) {
+      const std::size_t i = active_gprs[active];
+      const bool destination_changed = defs & (RegisterMask(1) << i);
+      const bool source_changed =
+        (gprs[i].value.kind == MirOperand::OP_REG &&
+         (defs & gpr_bit(gprs[i].value.reg))) ||
+        (gprs[i].value.kind == MirOperand::OP_DEREF &&
          ((defs & gpr_bit(gprs[i].value.reg)) ||
           (gprs[i].value.has_index &&
-           (defs & gpr_bit(gprs[i].value.index)))))
+           (defs & gpr_bit(gprs[i].value.index)))));
+      if(destination_changed || source_changed)
         gprs[i].valid = false;
+      else
+        active_gprs[kept++] = i;
     }
-    for(std::size_t i = 0; i < xmms.size(); ++i) {
-      if(defs & (RegisterMask(1) << (16 + i))) xmms[i].valid = false;
-      if(xmms[i].valid && xmms[i].value.kind == MirOperand::OP_XMM &&
-         (defs & xmm_bit(xmms[i].value.xmm))) xmms[i].valid = false;
+    active_gpr_count = kept;
+    kept = 0;
+    for(std::size_t active = 0; active < active_xmm_count; ++active) {
+      const std::size_t i = active_xmms[active];
+      const bool destination_changed =
+        defs & (RegisterMask(1) << (16 + i));
+      const bool source_changed =
+        xmms[i].value.kind == MirOperand::OP_XMM &&
+        (defs & xmm_bit(xmms[i].value.xmm));
+      if(destination_changed || source_changed)
+        xmms[i].valid = false;
+      else
+        active_xmms[kept++] = i;
     }
+    active_xmm_count = kept;
+  }
+
+  void set_gpr(X64Register reg, const MirOperand & value,
+               std::size_t definition)
+  {
+    const std::size_t index = static_cast<std::size_t>(reg);
+    ValueFact & fact = gprs[index];
+    if(!fact.valid) active_gprs[active_gpr_count++] = index;
+    fact.valid = true;
+    fact.value = value;
+    fact.definition = definition;
+  }
+
+  void set_xmm(XmmRegister reg, const MirOperand & value,
+               std::size_t definition)
+  {
+    const std::size_t index = static_cast<std::size_t>(reg);
+    ValueFact & fact = xmms[index];
+    if(!fact.valid) active_xmms[active_xmm_count++] = index;
+    fact.valid = true;
+    fact.value = value;
+    fact.definition = definition;
   }
 
   MirOperand canonical(const MirOperand & operand, std::size_t * definition = 0) const
@@ -495,11 +537,7 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
       const MirOperand & source = instruction.operands[1];
       if(source.kind == MirOperand::OP_REG || source.kind == MirOperand::OP_IMM ||
          source.kind == MirOperand::OP_SYMBOL || source.kind == MirOperand::OP_GLOBAL) {
-        ValueFact & fact = facts.gprs[static_cast<std::size_t>(
-          instruction.operands[0].reg)];
-        fact.valid = true;
-        fact.value = source;
-        fact.definition = i;
+        facts.set_gpr(instruction.operands[0].reg, source, i);
       }
     } else if(instruction.opcode == MirInstruction::MI_FMOV &&
               instruction.operands.size() == 2 &&
@@ -508,21 +546,14 @@ void rewrite_local_operands(MirBlock & block, std::vector<bool> & preserve,
       if(source.kind == MirOperand::OP_XMM ||
          source.kind == MirOperand::OP_FLOAT_IMM ||
          source.kind == MirOperand::OP_IMM) {
-        ValueFact & fact = facts.xmms[static_cast<std::size_t>(
-          instruction.operands[0].xmm)];
-        fact.valid = true;
-        fact.value = source;
-        fact.definition = i;
+        facts.set_xmm(instruction.operands[0].xmm, source, i);
       }
     } else if(instruction.opcode == MirInstruction::MI_LEA &&
               instruction.operands.size() == 2 &&
               instruction.operands[0].kind == MirOperand::OP_REG &&
               instruction.operands[1].kind == MirOperand::OP_FRAME) {
-      ValueFact & fact = facts.gprs[static_cast<std::size_t>(
-        instruction.operands[0].reg)];
-      fact.valid = true;
-      fact.value = instruction.operands[1];
-      fact.definition = i;
+      facts.set_gpr(instruction.operands[0].reg,
+                    instruction.operands[1], i);
     }
   }
 }
