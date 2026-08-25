@@ -548,7 +548,8 @@ FunctionLocationTimeline plan_value_locations(
   std::vector<Candidate> candidates;
   for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
     const lowir_model::ValueId value(static_cast<std::uint32_t>(raw));
-    if(facts.has(value, FunctionFacts::VF_ADDRESS_REMATERIALIZE_SAFE)) {
+    if(facts.has(value, FunctionFacts::VF_SLOT_ADDRESS) &&
+       facts.has(value, FunctionFacts::VF_ADDRESS_REMATERIALIZE_SAFE)) {
       timeline[raw].push_back(PlannedLocationSegment(
         facts.definition[raw], facts.last_use[raw], PLK_REMATERIALIZE));
       if(stats) ++stats->planned_rematerialized_addresses;

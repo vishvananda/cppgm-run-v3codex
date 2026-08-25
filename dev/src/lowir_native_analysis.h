@@ -52,10 +52,12 @@ struct FunctionFacts
     VF_ADDRESS_UNION_SAFE = 1u << 18,
     // The value is produced by taking the address of a fixed frame slot.
     VF_SLOT_ADDRESS = 1u << 19,
-    // The value is a fixed-slot address and every use can consume its
-    // rematerialized rbp-relative form: storage and call uses plus safe
-    // copy chains, pointer-value stores, and returns.
-    VF_ADDRESS_REMATERIALIZE_SAFE = 1u << 20
+    // The value is a fixed-slot/global address and every use can consume its
+    // rematerialized form: storage and call uses plus safe copy chains,
+    // pointer-value stores, and returns.
+    VF_ADDRESS_REMATERIALIZE_SAFE = 1u << 20,
+    // The value is produced by taking the address of a global object.
+    VF_GLOBAL_ADDRESS = 1u << 21
   };
 
   std::vector<std::size_t> uses;

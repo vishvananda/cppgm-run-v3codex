@@ -193,6 +193,8 @@ struct ProgramLoweringSession::Impl
     std::size_t call_loads, call_stores, call_copies;
     std::size_t planned, grants, releases, spills, frame_homes;
     std::size_t phi_planned, phi_homes;
+    std::size_t edge_staging, edge_copy, edge_load, edge_index;
+    std::size_t edge_binary, edge_call;
   };
 
   FunctionCensusSnapshot TakeCensusSnapshot() const
@@ -219,6 +221,17 @@ struct ProgramLoweringSession::Impl
     snapshot.frame_homes = stats->temporary_frame_homes_created;
     snapshot.phi_planned = stats->planned_phi_registers;
     snapshot.phi_homes = stats->phi_register_homes;
+    snapshot.edge_staging = stats->edge_staging_total;
+    snapshot.edge_copy =
+      stats->edge_staging_by_kind[lowir_model::Instruction::IK_COPY];
+    snapshot.edge_load =
+      stats->edge_staging_by_kind[lowir_model::Instruction::IK_LOAD];
+    snapshot.edge_index =
+      stats->edge_staging_by_kind[lowir_model::Instruction::IK_INDEX];
+    snapshot.edge_binary =
+      stats->edge_staging_by_kind[lowir_model::Instruction::IK_BINARY];
+    snapshot.edge_call =
+      stats->edge_staging_by_kind[lowir_model::Instruction::IK_CALL];
     return snapshot;
   }
 
@@ -250,6 +263,12 @@ struct ProgramLoweringSession::Impl
     field("frame_homes", after.frame_homes - before.frame_homes);
     field("phi_planned", after.phi_planned - before.phi_planned);
     field("phi_homes", after.phi_homes - before.phi_homes);
+    field("edge_staging", after.edge_staging - before.edge_staging);
+    field("edge_copy", after.edge_copy - before.edge_copy);
+    field("edge_load", after.edge_load - before.edge_load);
+    field("edge_index", after.edge_index - before.edge_index);
+    field("edge_binary", after.edge_binary - before.edge_binary);
+    field("edge_call", after.edge_call - before.edge_call);
     stats->function_census_lines.push_back(std::move(line));
   }
 

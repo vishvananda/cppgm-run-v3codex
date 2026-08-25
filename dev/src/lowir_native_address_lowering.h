@@ -326,6 +326,22 @@ protected:
 				append_store(out, destination, target, machine_type(lowir_model::LTK_PTR));
 		}
 		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
+			derived.optimization_level_ >= 1 &&
+			derived.facts_.has(instruction.dest,
+				analysis::FunctionFacts::VF_ADDRESS_REMATERIALIZE_SAFE))
+		{
+			if (derived.stats_)
+				++derived.stats_->planned_rematerialized_global_addresses;
+			derived.define(instruction.dest, pointer_type,
+				derived.global_operand(mir_model::MirOperand::OP_SYMBOL,
+					instruction.first));
+			if (derived.pointer_globals_[instruction.first.symbol])
+				derived.values_[instruction.dest].pointer_global_cell =
+					derived.global_operand(mir_model::MirOperand::OP_GLOBAL,
+						instruction.first);
+			return;
+		}
+		else if (instruction.first.kind == lowir_model::Operand::OP_GLOBAL &&
 			derived.facts_.has(instruction.dest,
 				analysis::FunctionFacts::VF_ONLY_STORAGE_ADDRESS))
 		{

@@ -110,6 +110,7 @@ struct Stats
   std::size_t phi_register_homes = 0;
   std::size_t planned_invariant_registers = 0;
   std::size_t planned_rematerialized_addresses = 0;
+  std::size_t planned_rematerialized_global_addresses = 0;
   std::size_t edge_staging_total = 0;
   std::array<std::size_t, lowir_model::Instruction::IK_SELECT + 1>
     edge_staging_by_kind = {{0}};

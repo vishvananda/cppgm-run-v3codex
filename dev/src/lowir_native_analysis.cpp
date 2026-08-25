@@ -524,7 +524,8 @@ void mark_use_class_flags(
     if(!(unsupported_address_uses[value] & 1) &&
        (storage_address_uses[value] || call_arguments[value]))
       facts->mark(id, FunctionFacts::VF_ADDRESS_UNION_SAFE);
-    if(facts->has(id, FunctionFacts::VF_SLOT_ADDRESS) && facts->uses[id] &&
+    if((facts->has(id, FunctionFacts::VF_SLOT_ADDRESS) ||
+        facts->has(id, FunctionFacts::VF_GLOBAL_ADDRESS)) && facts->uses[id] &&
        !(unsupported_address_uses[value] & 2))
       facts->mark(id, FunctionFacts::VF_ADDRESS_REMATERIALIZE_SAFE);
   }
@@ -596,11 +597,11 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         ++j, ++position) {
       const Instruction & instruction = function.blocks[i].instructions[j];
       if(!instruction.dest.valid()) continue;
-      facts.definition[instruction.dest] = position;
-      definition_blocks[instruction.dest] = i;
-      if(instruction.kind == Instruction::IK_ADDR &&
-         instruction.first.kind == Operand::OP_SLOT)
+      facts.definition[instruction.dest] = position; definition_blocks[instruction.dest] = i;
+      if(instruction.kind == Instruction::IK_ADDR && instruction.first.kind == Operand::OP_SLOT)
         facts.mark(instruction.dest, FunctionFacts::VF_SLOT_ADDRESS);
+      else if(instruction.kind == Instruction::IK_ADDR && instruction.first.kind == Operand::OP_GLOBAL)
+        facts.mark(instruction.dest, FunctionFacts::VF_GLOBAL_ADDRESS);
     }
     block_last_position[i] = position ? position - 1 : 0;
   }

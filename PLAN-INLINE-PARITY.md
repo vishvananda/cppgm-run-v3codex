@@ -1412,3 +1412,30 @@ source reshaping remains out of scope per the standing directive).
   missing region placement: useful transitions must start around use
   clusters or rematerialize values without extending residency.  The probe
   was fully reverted and no profiler process remains.
+- L49 (P30 SAFE GLOBAL-ADDRESS REMATERIALIZATION LANDED).  The L47
+  transitive consumer proof now also identifies non-TLS global addresses
+  whose complete copy/use closure remains safe for symbolic
+  rematerialization.  At O1+ address lowering keeps those values as direct
+  symbol operands instead of manufacturing a GPR lifetime and fallback
+  home; TLS addresses and pointer-to-integer arithmetic escapes retain the
+  old materialized path.  The PA38 reducer now covers copied global
+  call/store/return consumers and an unsafe integer-arithmetic round trip.
+  A per-function edge-staging census landed with the change and localized
+  the principal win: `Lexer::Run`, which accounts for 2.948B baseline Ir,
+  falls from 13 global-address staging events to zero, 31 frame homes to 18,
+  688 scalar loads to 671, 670 stores to 647, and 3,610 MIR instructions to
+  3,565.  Across the frozen TU, 1,693 global addresses rematerialize; MIR
+  falls 129,570 -> 129,466, temporary homes 863 -> 860, scalar loads
+  23,741 -> 23,737, scalar stores 15,038 -> 15,025, and object size
+  1,429,720 -> 1,429,680 bytes.  Total scalar movement rises by 134 and one
+  unrelated edge-staging event moves into the final allocation, so the
+  candidate was accepted on the exact dynamic gate rather than static
+  appearance: Ir-only Cachegrind improves 44,051,899,088 -> 44,031,791,881
+  (-20,107,207, -0.0456%).  The final object/self-host hash is
+  `686b87763e6f87b5eea7168df05be57e32933e1427febedc3f7675ac176cb3f8`.
+  PA38 is 41/41, the through-PA38 report is 5,431/5,431 with no fixture
+  movement beyond the new reducer reference, the audit has zero fatal
+  findings (36 warnings), and isolated 32-way O1/O3/O0 inception lanes all
+  MATCH byte-for-byte.  No profiler process remains.  This reinforces L48's
+  result: profitable boundary work removes rematerializable lifetimes near
+  their consumers instead of retaining ordinary values longer.
