@@ -211,6 +211,10 @@ struct Stats
   std::uint64_t machine_opt_nanoseconds = 0;
   std::uint64_t encode_nanoseconds = 0;
   std::uint64_t write_nanoseconds = 0;
+  std::size_t planner_use_tail_candidates = 0;
+  std::size_t planner_use_tail_assignments = 0;
+  std::size_t planned_use_tail_promotions = 0;
+  std::size_t planned_use_tail_busy_fails = 0;
 };
 
 struct RelocatableLabel

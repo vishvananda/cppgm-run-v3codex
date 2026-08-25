@@ -160,8 +160,8 @@ public:
         const Instruction & source_instruction =
           source_.blocks[i].instructions[j];
         active_instruction_ = &source_instruction;
-        if(decision_log_)
-          decision_log_->set_context(position_, source_instruction.dest);
+        if(decision_log_) decision_log_->set_context(position_, source_instruction.dest);
+        if(position_ != skipped_position_) promote_planned_segments(block.instructions);
         if(source_instruction.kind == Instruction::IK_JUMP ||
            source_instruction.kind == Instruction::IK_BRANCH ||
            source_instruction.kind == Instruction::IK_SWITCH)
@@ -1123,13 +1123,13 @@ private:
       if(!has_live_location_alias(instruction.dest, location))
         xmms_.release(location.xmm);
     } else {
-      append_store(out, home, location,
-                   value.type);
+      append_store(out, home, location, value.type);
       if(managed_register(location.reg) &&
          !has_live_location_alias(instruction.dest, location))
         registers_.release(location.reg);
     }
     set_value_location(instruction.dest, home);
+    plan_staged_use_tail(instruction.dest);
   }
   bool try_reserve_result_register(lowir_model::ValueId value,
                                    bool needs_callee_saved,

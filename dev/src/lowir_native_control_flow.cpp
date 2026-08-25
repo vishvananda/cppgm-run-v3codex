@@ -263,5 +263,44 @@ bool ControlFlowQueries::SpillIsSafe(
 	return true;
 }
 
+bool ControlFlowQueries::FindDominatedUseTail(
+	lowir_model::ValueId value, std::size_t after_position,
+	std::size_t* begin, std::size_t* end)
+{
+	const std::vector<ValueUseSite>& uses = use_sites_[value];
+	std::size_t first = static_cast<std::size_t>(-1);
+	std::size_t last = 0;
+	std::size_t first_block = kNoBlock;
+	for (std::size_t i = 0; i < uses.size(); ++i)
+	{
+		if (uses[i].position <= after_position) continue;
+		if (uses[i].position < first)
+		{
+			first = uses[i].position;
+			first_block = uses[i].block;
+		}
+		last = std::max(last, uses[i].position);
+	}
+	// A one-position tail cannot amortize its boundary reload.
+	if (first == static_cast<std::size_t>(-1) || first >= last ||
+		first_block == kNoBlock) return false;
+	const std::size_t selected_block = current_block_;
+	SelectBlock(first_block);
+	bool dominated = true;
+	for (std::size_t i = 0; i < uses.size(); ++i)
+		if (uses[i].position > after_position &&
+			(cyclic_[uses[i].block] ||
+			 !CurrentBlockDominates(uses[i].block)))
+		{
+			dominated = false;
+			break;
+		}
+	SelectBlock(selected_block);
+	if (!dominated) return false;
+	*begin = first;
+	*end = last;
+	return true;
+}
+
 }
 }

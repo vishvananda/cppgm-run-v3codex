@@ -110,6 +110,14 @@ void report_edge_staging_stats(std::ostream & output, const Stats & stats)
          << stats.edge_staging_index_constant
          << " edge_staging_index_variable="
          << stats.edge_staging_index_variable
+         << " planner_use_tail_candidates="
+         << stats.planner_use_tail_candidates
+         << " planner_use_tail_assignments="
+         << stats.planner_use_tail_assignments
+         << " planned_use_tail_promotions="
+         << stats.planned_use_tail_promotions
+         << " planned_use_tail_busy_fails="
+         << stats.planned_use_tail_busy_fails
          << " edge_staging_by_kind=";
   for(std::size_t i = 0; i < stats.edge_staging_by_kind.size(); ++i) {
     if(i) output << ',';

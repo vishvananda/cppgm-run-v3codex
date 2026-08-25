@@ -17,6 +17,7 @@
 namespace lowir_native {
 
 struct Stats;
+namespace analysis { class ControlFlowQueries; }
 
 namespace location_planning {
 
@@ -147,24 +148,29 @@ protected:
          position < extension_spans_[i].second) return false;
     return true;
   }
-  unsigned char planned_register_entry(lowir_model::ValueId value) const
+  const PlannedLocationSegment * planned_register_segment_at(
+      lowir_model::ValueId value, std::size_t position) const
   {
     if(!value.valid() ||
        static_cast<std::size_t>(value) >= location_timeline_.size()) return 0;
     const ValueLocationTimeline & timeline = location_timeline_[value];
     for(std::size_t i = 0; i < timeline.size(); ++i)
-      if(timeline[i].kind == PLK_GPR) return timeline[i].index + 1;
+      if(timeline[i].kind == PLK_GPR && timeline[i].begin <= position &&
+         position <= timeline[i].end) return &timeline[i];
     return 0;
+  }
+  unsigned char planned_register_entry(lowir_model::ValueId value) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    const PlannedLocationSegment * segment =
+      planned_register_segment_at(value, lowerer.position_);
+    return segment ? segment->index + 1 : 0;
   }
   const PlannedLocationSegment * planned_register_segment(
       lowir_model::ValueId value) const
   {
-    if(!value.valid() ||
-       static_cast<std::size_t>(value) >= location_timeline_.size()) return 0;
-    const ValueLocationTimeline & timeline = location_timeline_[value];
-    for(std::size_t i = 0; i < timeline.size(); ++i)
-      if(timeline[i].kind == PLK_GPR) return &timeline[i];
-    return 0;
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    return planned_register_segment_at(value, lowerer.position_);
   }
   bool planned_rematerialization(lowir_model::ValueId value) const
   {
@@ -179,11 +185,19 @@ protected:
   bool value_holds_planned_register(lowir_model::ValueId value) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
-    const unsigned char entry = planned_register_entry(value);
-    return entry != 0 && lowerer.value_known_[value] &&
-      lowerer.values_[value].location.kind == mir_model::MirOperand::OP_REG &&
-      static_cast<unsigned char>(
-        lowerer.values_[value].location.reg) + 1 == entry;
+    if(!value.valid() || !lowerer.value_known_[value] ||
+       lowerer.values_[value].location.kind != mir_model::MirOperand::OP_REG ||
+       static_cast<std::size_t>(value) >= location_timeline_.size())
+      return false;
+    const ValueLocationTimeline & timeline = location_timeline_[value];
+    for(std::size_t i = 0; i < timeline.size(); ++i)
+      if(timeline[i].kind == PLK_GPR &&
+         timeline[i].begin <= lowerer.position_ &&
+         lowerer.position_ <= timeline[i].end &&
+         timeline[i].index == static_cast<unsigned>(
+           lowerer.values_[value].location.reg))
+        return true;
+    return false;
   }
   bool try_planned_grant(lowir_model::ValueId value, X64Register * result)
   {
@@ -234,11 +248,19 @@ protected:
   bool planned_interval_over(lowir_model::ValueId value) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
-    const PlannedLocationSegment * segment = planned_register_segment(value);
-    return value_holds_planned_register(value) &&
-      segment && lowerer.position_ >= segment->end &&
-      !deferred_carrier_registers_[static_cast<unsigned>(
-        lowerer.values_[value].location.reg)];
+    if(!value_holds_planned_register(value) ||
+       deferred_carrier_registers_[static_cast<unsigned>(
+         lowerer.values_[value].location.reg)])
+      return false;
+    const ValueLocationTimeline & timeline = location_timeline_[value];
+    for(std::size_t i = 0; i < timeline.size(); ++i)
+      if(timeline[i].kind == PLK_GPR &&
+         timeline[i].index == static_cast<unsigned>(
+           lowerer.values_[value].location.reg) &&
+         timeline[i].begin <= lowerer.position_ &&
+         lowerer.position_ >= timeline[i].end)
+        return true;
+    return false;
   }
   void mark_deferred_carrier(X64Register reg)
   {
@@ -253,20 +275,165 @@ protected:
   {
     planned_release_schedule_.clear();
     planned_release_cursor_ = 0;
+    planned_promotion_schedule_.clear();
+    planned_promotion_cursor_ = 0;
     while(!deferred_span_end_releases_.empty())
       deferred_span_end_releases_.pop();
     planned_release_done_.assign(location_timeline_.size(), 0);
     for(std::size_t v = 0; v < location_timeline_.size(); ++v) {
-      const PlannedLocationSegment * segment = planned_register_segment(
-        lowir_model::ValueId(static_cast<std::uint32_t>(v)));
-      if(segment)
+      for(std::size_t i = 0; i < location_timeline_[v].size(); ++i) {
+        const PlannedLocationSegment & segment = location_timeline_[v][i];
+        if(segment.kind != PLK_GPR) continue;
         planned_release_schedule_.push_back(
-          std::make_pair(segment->end,
+          std::make_pair(segment.end,
                          lowir_model::ValueId(
                            static_cast<std::uint32_t>(v))));
+        if(segment.begin >
+             static_cast<const Derived &>(*this).facts_.definition[v])
+          planned_promotion_schedule_.push_back(
+            std::make_pair(segment.begin,
+                           lowir_model::ValueId(
+                             static_cast<std::uint32_t>(v))));
+      }
     }
     std::sort(planned_release_schedule_.begin(),
               planned_release_schedule_.end());
+    std::sort(planned_promotion_schedule_.begin(),
+              planned_promotion_schedule_.end());
+  }
+  void promote_planned_segments(
+      std::vector<mir_model::MirInstruction> & out)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    while(planned_promotion_cursor_ < planned_promotion_schedule_.size() &&
+          planned_promotion_schedule_[planned_promotion_cursor_].first <
+            lowerer.position_)
+      ++planned_promotion_cursor_;
+    while(planned_promotion_cursor_ < planned_promotion_schedule_.size() &&
+          planned_promotion_schedule_[planned_promotion_cursor_].first ==
+            lowerer.position_) {
+      const lowir_model::ValueId value =
+        planned_promotion_schedule_[planned_promotion_cursor_++].second;
+      const PlannedLocationSegment * segment = 0;
+      const ValueLocationTimeline & timeline = location_timeline_[value];
+      for(std::size_t i = 0; i < timeline.size(); ++i)
+        if(timeline[i].kind == PLK_GPR &&
+           timeline[i].begin == lowerer.position_ &&
+           timeline[i].begin > lowerer.facts_.definition[value]) {
+          segment = &timeline[i];
+          break;
+        }
+      if(!segment || !lowerer.value_known_[value] ||
+         lowerer.values_[value].location.kind !=
+           mir_model::MirOperand::OP_FRAME)
+        continue;
+      const X64Register reg = static_cast<X64Register>(segment->index);
+      if(!lowerer.registers_.try_reserve(reg)) {
+        if(lowerer.stats_) ++lowerer.stats_->planned_use_tail_busy_fails;
+        continue;
+      }
+      const mir_model::MirOperand source = lowerer.values_[value].location;
+      lowerer.move_value_to_register(
+        out, reg, source, lowerer.values_[value].type);
+      mir_model::MirOperand replacement;
+      replacement.kind = mir_model::MirOperand::OP_REG;
+      replacement.reg = reg;
+      lowerer.set_value_location(value, replacement);
+      if(lowerer.stats_) {
+        ++lowerer.stats_->planned_register_grants;
+        ++lowerer.stats_->planned_use_tail_promotions;
+      }
+    }
+  }
+  void plan_staged_use_tail(lowir_model::ValueId value)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    using analysis::FunctionFacts;
+    if(lowerer.optimization_level_ < 1 ||
+       lowerer.facts_.uses[value] < 2 ||
+       !lowerer.facts_.has(value, FunctionFacts::VF_EDGE_LIVE) ||
+       !lowerer.facts_.has(value, FunctionFacts::VF_LIVE_ACROSS_CALL) ||
+       lowerer.facts_.has(value, FunctionFacts::VF_PARAMETER) ||
+       lowerer.facts_.has(value, FunctionFacts::VF_SLOT_ADDRESS) ||
+       lowerer.facts_.has(value, FunctionFacts::VF_GLOBAL_ADDRESS) ||
+       lowerer.facts_.has(value, FunctionFacts::VF_ONLY_STORAGE_ADDRESS) ||
+       lowerer.facts_.definition[value] ==
+         FunctionFacts::missing_position() ||
+       lowerer.facts_.last_use[value] ==
+         FunctionFacts::missing_position())
+      return;
+    std::vector<std::size_t>::const_iterator call =
+      std::upper_bound(lowerer.facts_.calls.begin(),
+                       lowerer.facts_.calls.end(),
+                       lowerer.facts_.last_use[value]);
+    if(call == lowerer.facts_.calls.begin()) return;
+    --call;
+    if(*call <= lowerer.facts_.definition[value]) return;
+    std::size_t begin = 0, end = 0;
+    if(!lowerer.control_flow_.FindDominatedUseTail(
+         value, *call, &begin, &end)) return;
+    const lowir_model::LowType & type = lowerer.values_[value].type;
+    if(type.kind != lowir_model::LTK_PTR &&
+       type.kind != lowir_model::LTK_I1 &&
+       type.kind != lowir_model::LTK_I8 &&
+       type.kind != lowir_model::LTK_U8 &&
+       type.kind != lowir_model::LTK_I16 &&
+       type.kind != lowir_model::LTK_U16 &&
+       type.kind != lowir_model::LTK_I32 &&
+       type.kind != lowir_model::LTK_U32 &&
+       type.kind != lowir_model::LTK_I64)
+      return;
+    if(lowerer.stats_) ++lowerer.stats_->planner_use_tail_candidates;
+    static const X64Register pool[] = {XR_R9, XR_R8};
+    build_use_tail_conflict_index();
+    for(std::size_t choice = 0;
+        choice < sizeof(pool) / sizeof(pool[0]); ++choice) {
+      const X64Register reg = pool[choice];
+      if(use_tail_span_conflicts(choice, begin, end)) continue;
+      const std::vector<std::size_t> & clobbers =
+        lowerer.facts_.clobber_positions[static_cast<std::size_t>(reg)];
+      const std::vector<std::size_t>::const_iterator clobber =
+        std::lower_bound(clobbers.begin(), clobbers.end(), begin);
+      if(clobber != clobbers.end() && *clobber <= end) continue;
+      location_timeline_[value].push_back(PlannedLocationSegment(
+        begin, end, PLK_GPR, static_cast<unsigned>(reg)));
+      use_tail_conflict_spans_[choice].push_back(
+        std::make_pair(begin, end));
+      planned_promotion_schedule_.push_back(std::make_pair(begin, value));
+      std::sort(planned_promotion_schedule_.begin(),
+                planned_promotion_schedule_.end());
+      if(lowerer.stats_) {
+        ++lowerer.stats_->planned_value_registers;
+        ++lowerer.stats_->planner_use_tail_assignments;
+      }
+      return;
+    }
+  }
+  void build_use_tail_conflict_index()
+  {
+    if(use_tail_conflict_index_ready_) return;
+    use_tail_conflict_index_ready_ = true;
+    for(std::size_t value = 0; value < location_timeline_.size(); ++value)
+      for(std::size_t i = 0; i < location_timeline_[value].size(); ++i) {
+        const PlannedLocationSegment & segment =
+          location_timeline_[value][i];
+        if(segment.kind != PLK_GPR) continue;
+        if(segment.index == static_cast<unsigned>(XR_R9))
+          use_tail_conflict_spans_[0].push_back(
+            std::make_pair(segment.begin, segment.end));
+        else if(segment.index == static_cast<unsigned>(XR_R8))
+          use_tail_conflict_spans_[1].push_back(
+            std::make_pair(segment.begin, segment.end));
+      }
+  }
+  bool use_tail_span_conflicts(std::size_t reg, std::size_t begin,
+                               std::size_t end) const
+  {
+    const std::vector<std::pair<std::size_t, std::size_t> > & spans =
+      use_tail_conflict_spans_[reg];
+    for(std::size_t i = 0; i < spans.size(); ++i)
+      if(spans[i].first <= end && begin <= spans[i].second) return true;
+    return false;
   }
   void note_planned_release(lowir_model::ValueId value)
   {
@@ -488,6 +655,12 @@ protected:
   std::vector<std::pair<std::size_t, lowir_model::ValueId> >
     planned_release_schedule_;
   std::size_t planned_release_cursor_ = 0;
+  std::vector<std::pair<std::size_t, lowir_model::ValueId> >
+    planned_promotion_schedule_;
+  std::size_t planned_promotion_cursor_ = 0;
+  std::vector<std::pair<std::size_t, std::size_t> >
+    use_tail_conflict_spans_[2];
+  bool use_tail_conflict_index_ready_ = false;
   std::vector<unsigned char> planned_release_done_;
   std::priority_queue<
     std::pair<std::size_t, std::uint32_t>,

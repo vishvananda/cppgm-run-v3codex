@@ -1783,3 +1783,36 @@ source reshaping remains out of scope per the standing directive).
   isolated O1/O3/O0 self/inception lanes all MATCH byte-for-byte.  Every
   inception build used both outer `-j32` and `INCEPTION_BUILD_JOBS=32`.  No
   profiler process remains.
+- L67 (P30 DOMINATED POST-CALL USE TAILS LAND; GATE (iii) GAINS A REAL
+  REGION TRANSITION).  An edge-live scalar that has already been staged to
+  its frame home may now acquire a second, use-local GPR timeline segment
+  after its final call.  The first tail-use block must dominate every later
+  tail use, every such block must be acyclic, the segment must avoid LowIR
+  clobbers and existing R8/R9 plans, and a busy boundary register simply
+  keeps the old frame path.  The emitter therefore pays one boundary reload
+  and retains the value through multiple dominated uses without extending
+  residency across a call, loop, or unwind edge.  The frozen TU finds seven
+  candidates, assigns four, promotes all four, and records zero busy
+  fallbacks.  Against L66, final MIR falls 125,832 -> 125,829, machine input
+  145,864 -> 145,861, scalar loads 24,017 -> 24,014, total scalar movement
+  45,624 -> 45,623, and the object shrinks 1,426,720 -> 1,426,688 bytes;
+  homes, spills, stores, and copies are unchanged.  The first correct form
+  repeatedly scanned all timeline segments and cost +282,025 exact Ir even
+  though its generated object improved.  A lazy two-register conflict index
+  preserves the object at
+  `f3073bb15df14b8b4280d23e1445ffdec40616b5962d0a47b5d1ad971092779c`
+  while recovering 3,132,651 Ir from that implementation; final exact
+  self-hosted Ir-only Cachegrind is 40,398,754,919 versus L66's
+  40,401,605,545 (-2,850,626, -0.007056%).  No fixture changed: PA38 is
+  41/41, the through-PA38 report is 5,431/5,431, and the audit has zero
+  fatal findings (36 warnings).  O1/O3/O0 self/inception lanes all MATCH;
+  every build used both outer `-j32` and `INCEPTION_BUILD_JOBS=32`.  No stale
+  profiler remains.  Future iteration uses the serialized LowIR compile
+  (about 1.9 s natively) for deterministic object/MIR/stats checks and native
+  alternating timing for direction; full-TU Ir-only Cachegrind (about 388 s)
+  is reserved for milestone survivors.  The isolated Cachegrind total is
+  faster (about 38 s/sample) but too variable across separately built host
+  binaries to reject a deterministic codegen improvement at the 0.001%
+  scale.  This is concrete progress on gate (iii), not closure: the original
+  definition-time backup store remains, while the newly supported second
+  timeline segment eliminates repeated reloads inside a proven use region.

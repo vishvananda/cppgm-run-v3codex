@@ -18,6 +18,8 @@ public:
 	void SelectBlock(std::size_t block);
 	bool CurrentBlockIsCyclic() const;
 	bool SpillIsSafe(lowir_model::ValueId value, std::size_t position) const;
+	bool FindDominatedUseTail(lowir_model::ValueId value,
+		std::size_t after_position, std::size_t* begin, std::size_t* end);
 
 private:
 	struct ValueUseSite
