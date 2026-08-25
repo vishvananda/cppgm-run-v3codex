@@ -197,6 +197,7 @@ struct Stats
   std::size_t shared_resume_branches = 0;
   std::size_t immediate_stores_selected = 0;
   std::size_t memory_rhs_operations_selected = 0;
+  std::size_t three_operand_adds_selected = 0;
   std::size_t direct_zero_operations_selected = 0;
   std::size_t direct_zero_stores_emitted = 0;
   std::size_t direct_zero_bytes = 0;

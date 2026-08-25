@@ -134,6 +134,7 @@ protected:
 
     MirOperand pressure_home;
     MirOperand destination;
+    const std::size_t destination_start = out.size();
     if(direct_division_return)
       destination = reg_operand(division.remainder ? XR_RDX : XR_RAX);
     else if(!pressure_leaf)
@@ -204,10 +205,41 @@ protected:
         lowir_model::lowir_operation_text(instruction.op));
     }
 
-    MirInstruction operation = machine_instruction(opcode, instruction.type);
-    append_operand(operation, destination);
-    append_operand(operation, right);
-    out.push_back(operation);
+    const bool three_operand_add = lowerer.optimization_level_ >= 1 &&
+      instruction.op.kind == LowOperation::LOP_ADD &&
+      (instruction.type.kind == lowir_model::LTK_I64 ||
+       instruction.type.kind == lowir_model::LTK_PTR) &&
+      left.kind == MirOperand::OP_REG && destination.kind == MirOperand::OP_REG &&
+      ((right.kind == MirOperand::OP_REG && right.reg != XR_RSP) ||
+       (right.kind == MirOperand::OP_IMM &&
+        right.imm >= INT32_MIN && right.imm <= INT32_MAX)) &&
+      out.size() > destination_start &&
+      out.back().opcode == MirInstruction::MI_MOV &&
+      out.back().operands.size() == 2 &&
+      out.back().operands[0].kind == MirOperand::OP_REG &&
+      out.back().operands[0].reg == destination.reg &&
+      out.back().operands[1].kind == MirOperand::OP_REG &&
+      out.back().operands[1].reg == left.reg;
+    if(three_operand_add) {
+      const MirInstruction setup = out.back();
+      out.pop_back();
+      MirInstruction operation = machine_instruction(
+        MirInstruction::MI_LEA, instruction.type);
+      operation.debug_location = setup.debug_location;
+      operation.has_source_position = setup.has_source_position;
+      operation.source_position = setup.source_position;
+      append_operand(operation, destination);
+      append_operand(operation, right.kind == MirOperand::OP_REG ?
+        indexed_dereference(left.reg, right.reg, 1) :
+        dereference(left.reg, right.imm));
+      out.push_back(operation);
+      if(lowerer.stats_) ++lowerer.stats_->three_operand_adds_selected;
+    } else {
+      MirInstruction operation = machine_instruction(opcode, instruction.type);
+      append_operand(operation, destination);
+      append_operand(operation, right);
+      out.push_back(operation);
+    }
     if(memory_operand(right) && lowerer.stats_)
       ++lowerer.stats_->memory_rhs_operations_selected;
     append_integer_normalization(out, instruction.type, destination);

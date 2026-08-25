@@ -1527,3 +1527,29 @@ source reshaping remains out of scope per the standing directive).
   process remains.  The result validates the fast census as a rejection gate
   while retaining exact Ir-only Cachegrind as the acceptance gate for small
   scalar-placement survivors.
+- L54 (P30 THREE-OPERAND 64-BIT ADD SELECTION LANDED).  An O1+ integer or
+  pointer add whose destination cannot take over its left source now folds
+  the lowering-created `mov destination, left; add destination, right` into
+  one `lea destination, [left+right]` when the right source is a GPR or a
+  signed-32-bit displacement.  This removes work without retaining either
+  source longer or changing PA29's O0 MIR contract.  The frozen TU selects
+  14 such adds: MIR falls 125,866 -> 125,852, scalar-temporary register
+  copies fall 1,934 -> 1,920, and object size falls 1,426,888 -> 1,426,808
+  bytes; scalar movement, loads, stores, edge staging, homes, and spills are
+  otherwise flat.  The small static population is hot: exact self-hosted
+  Ir-only Cachegrind improves 43,469,739,908 -> 43,444,897,460
+  (-24,842,448, -0.057149%).  Host and self-host frozen objects are
+  byte-identical at
+  `7891f9f2a5a4c36d1d2fd73b10ca8dfd1fa78c3074e29447624ad927a17ffb27`.
+  The two PA38 fixture changes are strict MIR improvements, replacing the
+  same `mov`+`add` pairs with `lea`; both generated programs remain exact.
+  PA38 is 41/41, the through-PA38 report is 5,431/5,431, the audit has zero
+  fatal findings (36 warnings), and isolated 32-way O1/O3/O0 inception lanes
+  all MATCH byte-for-byte.  No profiler process remains.  Validation timing
+  establishes the forward loop: the frozen compile/census takes about 5.4 s
+  and rejects non-survivors before profiling, while the exact Cachegrind run
+  took 404.84 s.  Count-only Callgrind was slower (only 11.73B Ir after
+  105.18 s) and was stopped.  QEMU is not installed here; full-system TCG
+  does not provide useful host retired-instruction counters, though a future
+  user-mode count-only TCG plugin could serve as a directional, not final,
+  gate.
