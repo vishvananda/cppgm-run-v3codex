@@ -1678,3 +1678,17 @@ source reshaping remains out of scope per the standing directive).
   lanes are warranted, and no profiler process remains.  Fixed-result
   staging is closed at the current division lowering; a future division win
   must simplify setup itself rather than only its final copy.
+- L61 (P30 RESIDUAL STAGED COPY CLASS CLOSED BY CENSUS).  All 19 copy-defined
+  values that still reach edge stabilization preserve representation exactly.
+  Fifteen already alias their stable source register through copy lowering;
+  stabilization stores that register directly, so they contain no transient
+  result copy to remove.  The other four read a frame-resident source and
+  necessarily use a register between the load and destination-home store
+  because x86 has no general memory-to-memory move.  This population is
+  complementary to L53's 16 direct-home copies, which are register sources
+  that could not remain aliases across the destination lifetime.  The
+  temporary five-counter census reproduced the exact L56 frozen object at
+  `f496c227be1db4007a24af5bd5d437804cc7a1c19b117cfd3c0bb1ba6e919693`
+  and was fully reverted.  No Cachegrind or inception run is warranted and
+  no profiler process exists.  Copy-result staging is therefore exhausted
+  at the emitter level.
