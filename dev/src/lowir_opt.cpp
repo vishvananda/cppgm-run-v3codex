@@ -1065,6 +1065,31 @@ struct FunctionBoundaries
   std::vector<unsigned char> known;
 };
 
+typedef std::pair<std::size_t, std::size_t> DceLocation;
+
+struct DceValueLiveness
+{
+  DceLocation definition = DceLocation(0, 0);
+  std::size_t uses = 0;
+  bool defined = false;
+};
+
+struct DceScratch
+{
+  std::vector<DceValueLiveness> values;
+  std::vector<std::vector<unsigned char> > dead;
+  std::deque<DceLocation> work;
+
+  void reset(const Function & function)
+  {
+    values.assign(function.value_names.size(), DceValueLiveness());
+    if(dead.size() < function.blocks.size()) dead.resize(function.blocks.size());
+    for(std::size_t block = 0; block < function.blocks.size(); ++block)
+      dead[block].assign(function.blocks[block].instructions.size(), 0);
+    work.clear();
+  }
+};
+
 bool call_is_removable(const Instruction & ins,
                        const FunctionBoundaries & boundaries)
 {
@@ -1080,7 +1105,8 @@ bool call_is_removable(const Instruction & ins,
 
 bool eliminate_dead_code(Function * function,
                          const FunctionBoundaries & boundaries,
-                         Stats * stats)
+                         Stats * stats,
+                         DceScratch * reusable_scratch)
 {
   bool has_candidate = false;
   for(std::size_t i = 0; !has_candidate && i < function->blocks.size(); ++i)
@@ -1097,25 +1123,20 @@ bool eliminate_dead_code(Function * function,
     if(stats) ++stats->dce_candidate_skips;
     return false;
   }
-  typedef std::pair<std::size_t, std::size_t> Location;
-  struct ValueLiveness
-  {
-    Location definition = Location(0, 0);
-    std::size_t uses = 0;
-    bool defined = false;
-  };
-  std::vector<ValueLiveness> values(function->value_names.size());
-  std::vector<std::vector<unsigned char> > dead(function->blocks.size());
+  DceScratch owned_scratch;
+  DceScratch & scratch = reusable_scratch ? *reusable_scratch : owned_scratch;
+  scratch.reset(*function);
+  std::vector<DceValueLiveness> & values = scratch.values;
+  std::vector<std::vector<unsigned char> > & dead = scratch.dead;
   const auto count_use = [&values](const Operand & operand) {
     if(operand.kind == Operand::OP_TEMP) ++values[operand.value].uses;
   };
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
-    dead[i].assign(function->blocks[i].instructions.size(), 0);
     for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function->blocks[i].instructions[j];
       if(ins.dest.valid()) {
-        ValueLiveness & value = values[ins.dest];
-        value.definition = Location(i, j);
+        DceValueLiveness & value = values[ins.dest];
+        value.definition = DceLocation(i, j);
         value.defined = true;
       }
       count_use(ins.first);
@@ -1127,9 +1148,9 @@ bool eliminate_dead_code(Function * function,
     }
   }
 
-  std::deque<Location> work;
+  std::deque<DceLocation> & work = scratch.work;
   for(std::size_t i = 0; i < values.size(); ++i) {
-    const ValueLiveness & value = values[i];
+    const DceValueLiveness & value = values[i];
     if(!value.defined) continue;
     const Instruction & ins =
       function->blocks[value.definition.first].instructions[
@@ -1145,7 +1166,7 @@ bool eliminate_dead_code(Function * function,
 
   const auto release_operand = [&](const Operand & operand) {
     if(operand.kind != Operand::OP_TEMP) return;
-    ValueLiveness & value = values[operand.value];
+    DceValueLiveness & value = values[operand.value];
     if(value.uses == 0) return;
     --value.uses;
     if(value.uses != 0 || !value.defined) return;
@@ -1162,7 +1183,7 @@ bool eliminate_dead_code(Function * function,
 
   std::size_t removed = 0;
   while(!work.empty()) {
-    const Location location = work.front();
+    const DceLocation location = work.front();
     work.pop_front();
     if(dead[location.first][location.second]) continue;
     dead[location.first][location.second] = 1;
@@ -2411,13 +2432,16 @@ bool timed_function_pass(FunctionPass pass, Function * function,
 
 bool timed_dce(Function * function,
                const FunctionBoundaries & boundaries,
-               Stats * stats)
+               Stats * stats,
+               DceScratch * dce_scratch)
 {
-  if(!stats) return eliminate_dead_code(function, boundaries, 0);
+  if(!stats)
+    return eliminate_dead_code(function, boundaries, 0, dce_scratch);
   ++stats->dce_runs;
   const std::chrono::steady_clock::time_point started =
     std::chrono::steady_clock::now();
-  const bool changed = eliminate_dead_code(function, boundaries, stats);
+  const bool changed = eliminate_dead_code(
+    function, boundaries, stats, dce_scratch);
   if(changed) ++stats->dce_changes;
   stats->dce_nanoseconds += static_cast<std::uint64_t>(
     std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -2428,18 +2452,19 @@ bool timed_dce(Function * function,
 bool prepare_for_inlining(Function * function,
                           const FunctionBoundaries & boundaries,
                           Stats * stats,
-                          SimplifyScratch * simplify_arena)
+                          SimplifyScratch * simplify_arena,
+                          DceScratch * dce_scratch)
 {
   timed_function_pass(simplify_values, function, stats,
     &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0, simplify_arena);
-  timed_dce(function, boundaries, stats);
+  timed_dce(function, boundaries, stats, dce_scratch);
   if(!timed_function_pass(cleanup_cfg, function, stats,
        &Stats::cfg_runs, &Stats::cfg_nanoseconds))
     return false;
   const bool values_changed = timed_function_pass(
     simplify_values, function, stats,
     &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0, simplify_arena);
-  timed_dce(function, boundaries, stats);
+  timed_dce(function, boundaries, stats, dce_scratch);
   return values_changed;
 }
 
@@ -2448,6 +2473,7 @@ struct LateInlineCleanupContext
   const FunctionBoundaries * boundaries;
   LowirProgram * program;
   SimplifyScratch * simplify_arena;
+  DceScratch * dce_scratch;
 };
 
 // Callee-first convergence: collapse a freshly inlined body's object
@@ -2460,25 +2486,26 @@ void cleanup_late_inline_body(Function * function, Stats * stats,
   const LateInlineCleanupContext & context =
     *static_cast<const LateInlineCleanupContext *>(opaque);
   prepare_for_inlining(
-    function, *context.boundaries, stats, context.simplify_arena);
+    function, *context.boundaries, stats, context.simplify_arena,
+    context.dce_scratch);
   bool object_slots_changed =
     scalar_replace_aggregate_slots(context.program, function, stats);
   if(promote_small_objects(function, stats)) object_slots_changed = true;
   if(object_slots_changed) {
-    timed_dce(function, *context.boundaries, stats);
+    timed_dce(function, *context.boundaries, stats, context.dce_scratch);
     remove_dead_slots(function, stats);
   }
   if(promote_slots(function, stats)) {
     timed_function_pass(simplify_values, function, stats,
       &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0,
       context.simplify_arena);
-    timed_dce(function, *context.boundaries, stats);
+    timed_dce(function, *context.boundaries, stats, context.dce_scratch);
   }
   if(eliminate_duplicate_block_loads(function, stats)) {
     timed_function_pass(simplify_values, function, stats,
       &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0,
       context.simplify_arena);
-    timed_dce(function, *context.boundaries, stats);
+    timed_dce(function, *context.boundaries, stats, context.dce_scratch);
   }
 }
 
@@ -2508,6 +2535,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   FunctionBoundaries boundaries =
     function_boundaries(program);
   SimplifyScratch simplify_arena;
+  DceScratch dce_scratch;
   const std::chrono::steady_clock::time_point unreachable_started =
     stats ? std::chrono::steady_clock::now() :
             std::chrono::steady_clock::time_point();
@@ -2543,7 +2571,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       prepared_oversized_symbols[program.functions[i].symbol] = 1;
     post_cfg_values_changed[i] =
       (prepare_for_inlining(
-         &program.functions[i], boundaries, stats, &simplify_arena) ||
+         &program.functions[i], boundaries, stats, &simplify_arena,
+         &dce_scratch) ||
        unreachable_changed[i]) ? 1 : 0;
   }
   std::vector<unsigned char> inlined_symbols(program.symbol_names.size(), 0);
@@ -2583,7 +2612,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       if(ipa_rewritten_symbols[program.functions[i].symbol])
         post_cfg_values_changed[i] =
           prepare_for_inlining(
-            &program.functions[i], boundaries, stats, &simplify_arena) ||
+            &program.functions[i], boundaries, stats, &simplify_arena,
+            &dce_scratch) ||
           post_cfg_values_changed[i];
   }
   MemoryGVNSession memory_gvn(program);
@@ -2598,7 +2628,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     if(inlined_symbols[function.symbol])
       post_cfg_values_changed[i] =
         prepare_for_inlining(
-          &function, boundaries, stats, &simplify_arena) ? 1 : 0;
+          &function, boundaries, stats, &simplify_arena,
+          &dce_scratch) ? 1 : 0;
     const std::chrono::steady_clock::time_point cleanup_resume_started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();
@@ -2630,7 +2661,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
     }
     if(post_cfg_values_changed[i] || slot_values_changed)
       timed_function_pass(cleanup_cfg, &function, stats,
@@ -2639,7 +2670,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
     }
@@ -2649,7 +2680,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         stats, &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis))
       object_slots_changed = true;
     if(object_slots_changed) {
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
@@ -2659,20 +2690,20 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
     }
     if(level >= 1 && timed_function_pass(promote_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
       if(timed_function_pass(cleanup_cfg, &function, stats,
           &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis)) {
         timed_function_pass(simplify_values, &function, stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);
-        timed_dce(&function, boundaries, stats);
+        timed_dce(&function, boundaries, stats, &dce_scratch);
       }
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
@@ -2680,7 +2711,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     if(level >= 1 && timed_function_pass(eliminate_dead_slot_stores,
         &function, stats, &Stats::slot_runs, &Stats::slot_nanoseconds,
         &analysis)) {
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
@@ -2688,19 +2719,19 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
     }
     if(level >= 1 &&
        forward_staged_object_copies(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
     }
     if(level >= 2 && simplify_counted_loops(&function, &analysis, stats)) {
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
       timed_function_pass(cleanup_cfg, &function, stats,
         &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
     }
@@ -2718,7 +2749,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         timed_function_pass(simplify_values, &function, stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);
-        timed_dce(&function, boundaries, stats);
+        timed_dce(&function, boundaries, stats, &dce_scratch);
         timed_function_pass(cleanup_cfg, &function, stats,
           &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
       }
@@ -2729,14 +2760,14 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
     }
     if(level >= 2 &&
        eliminate_partial_redundancies(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
-      timed_dce(&function, boundaries, stats);
+      timed_dce(&function, boundaries, stats, &dce_scratch);
     }
   }
   if(level >= 1) {
@@ -2750,7 +2781,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     std::vector<unsigned char> late_rewritten_symbols(
       program.symbol_names.size(), 0);
     LateInlineCleanupContext cleanup_context = {
-      &boundaries, &program, &simplify_arena};
+      &boundaries, &program, &simplify_arena, &dce_scratch};
     InlineCleanup cleanup;
     cleanup.run = cleanup_late_inline_body;
     cleanup.context = &cleanup_context;
@@ -2794,7 +2825,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       for(std::size_t i = 0; i < program.functions.size(); ++i)
         if(post_prune_rewritten_symbols[program.functions[i].symbol])
           prepare_for_inlining(
-            &program.functions[i], boundaries, stats, &simplify_arena);
+            &program.functions[i], boundaries, stats, &simplify_arena,
+            &dce_scratch);
       const std::size_t prior_pruned = pruning.pruned_functions;
       const std::size_t prior_unreachable_weak =
         pruning.unreachable_weak_functions;
@@ -2813,7 +2845,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         timed_function_pass(simplify_values, &program.functions[i], stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);
-        timed_dce(&program.functions[i], boundaries, stats);
+        timed_dce(
+          &program.functions[i], boundaries, stats, &dce_scratch);
         timed_function_pass(cleanup_cfg, &program.functions[i], stats,
           &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
       }
