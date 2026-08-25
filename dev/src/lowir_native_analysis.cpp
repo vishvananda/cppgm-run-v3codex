@@ -426,18 +426,30 @@ void note_instruction_uses(
     if(definition_blocks[value] != predecessor)
       facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
   }
-  const Operand * fixed[] = {
-    &instruction.first, &instruction.second, &instruction.third
-  };
-  for(std::size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i)
-    if(fixed[i]->kind == Operand::OP_TEMP) {
-      const lowir_model::ValueId value = fixed[i]->value;
-      (*other_uses)[value] = 1;
-      block_uses->push_back(std::make_pair(value, block));
-      if(definition_blocks[value] != FunctionFacts::missing_position() &&
-         definition_blocks[value] != block)
-        facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
-    }
+  if(instruction.first.kind == Operand::OP_TEMP) {
+    const lowir_model::ValueId value = instruction.first.value;
+    (*other_uses)[value] = 1;
+    block_uses->push_back(std::make_pair(value, block));
+    if(definition_blocks[value] != FunctionFacts::missing_position() &&
+       definition_blocks[value] != block)
+      facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
+  }
+  if(instruction.second.kind == Operand::OP_TEMP) {
+    const lowir_model::ValueId value = instruction.second.value;
+    (*other_uses)[value] = 1;
+    block_uses->push_back(std::make_pair(value, block));
+    if(definition_blocks[value] != FunctionFacts::missing_position() &&
+       definition_blocks[value] != block)
+      facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
+  }
+  if(instruction.third.kind == Operand::OP_TEMP) {
+    const lowir_model::ValueId value = instruction.third.value;
+    (*other_uses)[value] = 1;
+    block_uses->push_back(std::make_pair(value, block));
+    if(definition_blocks[value] != FunctionFacts::missing_position() &&
+       definition_blocks[value] != block)
+      facts->mark(value, FunctionFacts::VF_EDGE_LIVE);
+  }
   for(std::size_t i = 0;
       instruction.kind != Instruction::IK_PHI &&
       i < instruction.args.size(); ++i)
@@ -467,23 +479,29 @@ void note_storage_address_uses(
   const bool second_is_address =
     instruction.kind == Instruction::IK_STORE ||
     instruction.kind == Instruction::IK_COPYOBJ;
-  const Operand * fixed[] = {
-    &instruction.first, &instruction.second, &instruction.third
-  };
-  const bool address_role[] = {first_is_address, second_is_address, false};
-  for(std::size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); ++i) {
-    if(fixed[i]->kind != Operand::OP_TEMP) continue;
-    if(address_role[i]) (*address_uses)[fixed[i]->value] = 1;
+  if(instruction.first.kind == Operand::OP_TEMP) {
+    if(first_is_address) (*address_uses)[instruction.first.value] = 1;
     else {
-      (*other_uses)[fixed[i]->value] = 1;
-      (*unsupported_address_uses)[fixed[i]->value] |= 1;
-      const bool rematerializes_address = i == 0 &&
+      (*other_uses)[instruction.first.value] = 1;
+      (*unsupported_address_uses)[instruction.first.value] |= 1;
+      const bool rematerializes_address =
         (instruction.kind == Instruction::IK_COPY ||
          instruction.kind == Instruction::IK_STORE ||
          instruction.kind == Instruction::IK_RETURN);
       if(!rematerializes_address)
-        (*unsupported_address_uses)[fixed[i]->value] |= 2;
+        (*unsupported_address_uses)[instruction.first.value] |= 2;
     }
+  }
+  if(instruction.second.kind == Operand::OP_TEMP) {
+    if(second_is_address) (*address_uses)[instruction.second.value] = 1;
+    else {
+      (*other_uses)[instruction.second.value] = 1;
+      (*unsupported_address_uses)[instruction.second.value] |= 3;
+    }
+  }
+  if(instruction.third.kind == Operand::OP_TEMP) {
+    (*other_uses)[instruction.third.value] = 1;
+    (*unsupported_address_uses)[instruction.third.value] |= 3;
   }
   for(std::size_t i = 0; i < instruction.args.size(); ++i)
     if(instruction.args[i].kind == Operand::OP_TEMP) {

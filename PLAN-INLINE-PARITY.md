@@ -1967,3 +1967,27 @@ source reshaping remains out of scope per the standing directive).
   This does not claim another gate-(iii) target-code reduction; it removes a
   shared optimizer tax that made small P30 placement candidates harder to
   amortize, and demonstrates the intended frozen-LowIR-first validation loop.
+- L73 (P30 NATIVE FIXED-USE CLASSIFICATION DISPATCH LANDED; THE FAST GATE
+  EXTENDS BEYOND THE OPTIMIZER).  Native whole-function analysis visits each
+  instruction's fixed `first`, `second`, and `third` operands after ordinary
+  liveness to classify edge/use roles and again to classify storage-address
+  roles.  Both classification visits used three-pointer arrays and counted
+  loops.  They are now explicit fixed visits while the variable argument
+  loops and every role predicate remain unchanged.  Source and serialized
+  LowIR outputs remain byte-identical at
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`
+  and `ba6231e2a3260262e1d165637cb700e1a0a8b550f9623f5098f56d0fc6ca3130`.
+  The isolated serialized gate improves 4,549,247,208 -> 4,546,884,565 Ir
+  (-2,362,643, -0.051935%), with `analyze_function` falling 50,700,058 ->
+  47,758,932 Ir (-2,941,126, -5.80%).  The exact O1 self-hosted source gate
+  confirms 40,279,693,240 -> 40,267,653,423 Ir (-12,039,817, -0.029891%);
+  `analyze_function` falls 180,614,681 -> 167,159,737 Ir (-13,454,944,
+  -7.45%).  Eight-per-side serialized native ABBA is correctly inconclusive
+  at 1.61625 s -> 1.62125 s mean user time (+0.31%), inside the established
+  wall noise floor.  Unrolling adjacent fixed-slot loops in `analyze_storage`
+  was also tested, but the combined gate rose 33,012 Ir relative to the
+  smaller candidate, so that extension was reverted.  PA38 is 41/41, the
+  through-PA38 report is 5,431/5,431, and the audit has zero fatal findings
+  (36 warnings).  O3, O1, and O0 self/inception lanes all MATCH every object
+  and the final compiler; every run used outer `-j32` and
+  `INCEPTION_BUILD_JOBS=32`.  No fixture changed and no profiler remains.
