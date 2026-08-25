@@ -64,7 +64,9 @@ const std::size_t kNoBlock = static_cast<std::size_t>(-1);
 class PassArena
 {
 public:
-  PassArena() : inline_used_(0), block_count_(0), next_block_size_(4096) {}
+  PassArena()
+    : inline_used_(0), block_count_(0), active_block_(0),
+      next_block_size_(4096) {}
   PassArena(const PassArena &) = delete;
   PassArena & operator=(const PassArena &) = delete;
 
@@ -76,17 +78,31 @@ public:
       ::operator delete(overflow_blocks_[i].storage);
   }
 
+  void reset()
+  {
+    inline_used_ = 0;
+    for(std::size_t i = 0; i < block_count_; ++i)
+      inline_blocks_[i].used = 0;
+    for(std::size_t i = 0; i < overflow_blocks_.size(); ++i)
+      overflow_blocks_[i].used = 0;
+    active_block_ = 0;
+  }
+
   void * allocate(std::size_t bytes, std::size_t alignment)
   {
     void * result = allocate_from(inline_storage_, sizeof(inline_storage_),
                                   &inline_used_, bytes, alignment);
     if(result) return result;
-    if(block_count_ != 0 || !overflow_blocks_.empty()) {
-      Block & block = overflow_blocks_.empty() ?
-        inline_blocks_[block_count_ - 1] : overflow_blocks_.back();
+    const std::size_t existing_blocks =
+      block_count_ + overflow_blocks_.size();
+    while(active_block_ < existing_blocks) {
+      Block & block = active_block_ < block_count_ ?
+        inline_blocks_[active_block_] :
+        overflow_blocks_[active_block_ - block_count_];
       result = allocate_from(block.storage, block.capacity, &block.used,
                              bytes, alignment);
       if(result) return result;
+      ++active_block_;
     }
     std::size_t capacity = next_block_size_;
     if(bytes > std::numeric_limits<std::size_t>::max() - alignment + 1)
@@ -110,6 +126,7 @@ public:
       }
       stored = &overflow_blocks_.back();
     }
+    active_block_ = block_count_ + overflow_blocks_.size() - 1;
     if(next_block_size_ < 1024 * 1024) next_block_size_ *= 2;
     return allocate_from(stored->storage, capacity, &stored->used,
                          bytes, alignment);
@@ -142,6 +159,7 @@ private:
   std::size_t inline_used_;
   Block inline_blocks_[8];
   std::size_t block_count_;
+  std::size_t active_block_;
   std::size_t next_block_size_;
   std::vector<Block> overflow_blocks_;
 };
@@ -580,6 +598,64 @@ struct DefinitionFact
   Operand second;
 };
 
+struct ScopedExpression
+{
+  Fact fact;
+  std::size_t key;
+  std::size_t previous;
+};
+
+struct BlockEvent
+{
+  std::size_t block;
+  bool entering;
+};
+
+struct TraversalFrame
+{
+  std::size_t block;
+  std::size_t child;
+};
+
+struct SimplifyScratch
+{
+  PassArena arena;
+  std::vector<unsigned char> storage_temporaries;
+  std::vector<std::size_t> block_index;
+  std::vector<unsigned char> phi_used;
+  std::vector<Fact> facts;
+  std::vector<unsigned char> known_facts;
+  std::vector<std::size_t> expression_heads;
+  std::vector<ScopedExpression> scoped_expressions;
+  std::vector<DefinitionFact> definitions;
+  std::vector<unsigned char> known_definitions;
+  std::vector<lowir_analysis::EdgeList> owned_dom_children;
+  std::vector<BlockEvent> traversal;
+  std::vector<TraversalFrame> traversal_stack;
+  std::vector<unsigned char> scheduled;
+  std::vector<std::size_t> scope_marks;
+
+  void reset(std::size_t value_count, std::size_t next_block_id,
+             std::size_t block_count)
+  {
+    arena.reset();
+    storage_temporaries.clear();
+    block_index.assign(next_block_id, kNoBlockIndex);
+    phi_used.assign(value_count, 0);
+    facts.resize(value_count);
+    known_facts.assign(value_count, 0);
+    expression_heads.clear();
+    scoped_expressions.clear();
+    definitions.resize(value_count);
+    known_definitions.assign(value_count, 0);
+    owned_dom_children.clear();
+    traversal.clear();
+    traversal_stack.clear();
+    scheduled.assign(block_count, 0);
+    scope_marks.assign(block_count, 0);
+  }
+};
+
 bool same_fact_type(const DefinitionFact & fact, const LowType & type)
 {
   return fact.type_kind == type.kind &&
@@ -611,107 +687,164 @@ bool reassociate(Instruction * ins,
   return true;
 }
 
-std::vector<unsigned char> find_storage_temporaries(
-    const Function & function, bool * has_eh = 0)
+void mark_storage_temporaries(
+    const Function & function, std::vector<unsigned char> * storage,
+    bool * has_eh = 0)
 {
-  std::vector<unsigned char> storage(function.value_names.size(), 0);
+  storage->assign(function.value_names.size(), 0);
   if(has_eh) *has_eh = false;
   for(std::size_t i = 0; i < function.blocks.size(); ++i)
     for(std::size_t j = 0; j < function.blocks[i].instructions.size(); ++j) {
       const Instruction & ins = function.blocks[i].instructions[j];
       if(has_eh && is_eh_instruction(ins.kind)) *has_eh = true;
       if((ins.kind == Instruction::IK_LOAD ||
-          ins.kind == Instruction::IK_ATOMIC_LOAD) &&
+         ins.kind == Instruction::IK_ATOMIC_LOAD) &&
          ins.first.kind == Operand::OP_TEMP)
-        storage[ins.first.value] = 1;
+        (*storage)[ins.first.value] = 1;
       if((ins.kind == Instruction::IK_STORE ||
-          ins.kind == Instruction::IK_ATOMIC_STORE) &&
+         ins.kind == Instruction::IK_ATOMIC_STORE) &&
          ins.second.kind == Operand::OP_TEMP)
-        storage[ins.second.value] = 1;
+        (*storage)[ins.second.value] = 1;
     }
+}
+
+std::vector<unsigned char> find_storage_temporaries(
+    const Function & function, bool * has_eh = 0)
+{
+  std::vector<unsigned char> storage;
+  mark_storage_temporaries(function, &storage, has_eh);
   return storage;
+}
+
+bool has_simplify_candidate(const Function & function, Stats * stats)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function.blocks[block].instructions.size(); ++index)
+      if(is_pure(function.blocks[block].instructions[index].kind))
+        return true;
+  if(stats) ++stats->simplify_candidate_skips;
+  return false;
+}
+
+const DominatorTree * simplify_dominator(
+    Function * function, Stats * stats,
+    lowir_analysis::FunctionAnalysis * analysis,
+    DominatorTree * owned_dom)
+{
+  if(function->blocks.size() == 1) {
+    owned_dom->immediate.assign(1, 0);
+    owned_dom->preorder.assign(1, 1);
+    owned_dom->postorder.assign(1, 1);
+    return owned_dom;
+  }
+  if(analysis) return &analysis->dominator_tree();
+  const Graph graph = build_graph(*function, stats);
+  *owned_dom = dominators(graph, stats);
+  return owned_dom;
+}
+
+std::size_t initialize_simplify_scratch(
+    const Function & function, SimplifyScratch * scratch,
+    bool * function_has_eh)
+{
+  scratch->reset(function.value_names.size(), function.next_block_id,
+                 function.blocks.size());
+  mark_storage_temporaries(
+    function, &scratch->storage_temporaries, function_has_eh);
+  std::size_t instruction_total = 0;
+  for(std::size_t block = 0; block < function.blocks.size(); ++block) {
+    const std::vector<Instruction> & instructions =
+      function.blocks[block].instructions;
+    instruction_total += instructions.size();
+    scratch->block_index[function.blocks[block].id] = block;
+    for(std::size_t index = 0; index < instructions.size(); ++index) {
+      const Instruction & ins = instructions[index];
+      if(ins.kind != Instruction::IK_PHI) break;
+      for(std::size_t incoming = 1; incoming < ins.args.size(); incoming += 2)
+        if(ins.args[incoming].kind == Operand::OP_TEMP)
+          scratch->phi_used[ins.args[incoming].value] = 1;
+    }
+  }
+  return instruction_total;
+}
+
+void build_simplify_traversal(
+    const DominatorTree & dom,
+    const std::vector<lowir_analysis::EdgeList> & dom_children,
+    SimplifyScratch * scratch)
+{
+  for(std::size_t root = 0; root < scratch->scheduled.size(); ++root) {
+    if(scratch->scheduled[root] ||
+       (root != 0 && dom.preorder[root] != 0)) continue;
+    scratch->scheduled[root] = 1;
+    scratch->traversal.push_back(BlockEvent{root, true});
+    scratch->traversal_stack.push_back(TraversalFrame{root, 0});
+    while(!scratch->traversal_stack.empty()) {
+      TraversalFrame & frame = scratch->traversal_stack.back();
+      if(frame.child < dom_children[frame.block].size()) {
+        const std::size_t child = dom_children[frame.block][frame.child++];
+        scratch->scheduled[child] = 1;
+        scratch->traversal.push_back(BlockEvent{child, true});
+        scratch->traversal_stack.push_back(TraversalFrame{child, 0});
+      } else {
+        scratch->traversal.push_back(BlockEvent{frame.block, false});
+        scratch->traversal_stack.pop_back();
+      }
+    }
+  }
+}
+
+void resolve_simplified_phis(
+    Function * function, const SimplifyScratch & scratch,
+    const DominatorTree & dom)
+{
+  for(std::size_t block = 0; block < function->blocks.size(); ++block)
+    for(std::size_t index = 0;
+        index < function->blocks[block].instructions.size(); ++index) {
+      Instruction & ins = function->blocks[block].instructions[index];
+      if(ins.kind != Instruction::IK_PHI) break;
+      resolve_instruction_operands(&ins, scratch.facts, scratch.known_facts,
+        block, scratch.block_index, dom);
+    }
 }
 
 bool simplify_values_with_analysis(
     Function * function, Stats * stats,
-    lowir_analysis::FunctionAnalysis * analysis)
+    lowir_analysis::FunctionAnalysis * analysis,
+    SimplifyScratch * reusable_scratch)
 {
   if(function->blocks.empty()) return false;
-  bool has_candidate = false;
-  for(std::size_t i = 0; !has_candidate && i < function->blocks.size(); ++i)
-    for(std::size_t j = 0; j < function->blocks[i].instructions.size(); ++j)
-      if(is_pure(function->blocks[i].instructions[j].kind)) {
-        has_candidate = true;
-        break;
-      }
-  if(!has_candidate) {
-    if(stats) ++stats->simplify_candidate_skips;
-    return false;
-  }
+  if(!has_simplify_candidate(*function, stats)) return false;
   DominatorTree owned_dom;
-  const DominatorTree * dom_view = &owned_dom;
-  if(function->blocks.size() == 1) {
-    owned_dom.immediate.assign(1, 0);
-    owned_dom.preorder.assign(1, 1);
-    owned_dom.postorder.assign(1, 1);
-  } else if(analysis) {
-    dom_view = &analysis->dominator_tree();
-  } else {
-    const Graph graph = build_graph(*function, stats);
-    owned_dom = dominators(graph, stats);
-  }
-  const DominatorTree & dom = *dom_view;
-  std::size_t instruction_total = 0;
-  for(std::size_t i = 0; i < function->blocks.size(); ++i)
-    instruction_total += function->blocks[i].instructions.size();
-  PassArena arena;
+  const DominatorTree & dom = *simplify_dominator(
+    function, stats, analysis, &owned_dom);
+  SimplifyScratch owned_scratch;
+  SimplifyScratch & scratch = reusable_scratch ?
+    *reusable_scratch : owned_scratch;
   bool function_has_eh = false;
-  const std::vector<unsigned char> storage_temporaries =
-    find_storage_temporaries(*function, &function_has_eh);
-  std::vector<std::size_t> block_index(
-    function->next_block_id, kNoBlockIndex);
-  std::vector<unsigned char> phi_used(function->value_names.size(), 0);
-  for(std::size_t block = 0; block < function->blocks.size(); ++block) {
-    block_index[function->blocks[block].id] = block;
-    for(std::size_t index = 0;
-        index < function->blocks[block].instructions.size(); ++index) {
-      const Instruction & ins = function->blocks[block].instructions[index];
-      if(ins.kind != Instruction::IK_PHI) break;
-      for(std::size_t incoming = 1; incoming < ins.args.size(); incoming += 2)
-        if(ins.args[incoming].kind == Operand::OP_TEMP)
-          phi_used[ins.args[incoming].value] = 1;
-    }
-  }
-
+  const std::size_t instruction_total = initialize_simplify_scratch(
+    *function, &scratch, &function_has_eh);
+  PassArena & arena = scratch.arena;
+  const std::vector<unsigned char> & storage_temporaries = scratch.storage_temporaries;
+  std::vector<std::size_t> & block_index = scratch.block_index;
+  std::vector<unsigned char> & phi_used = scratch.phi_used;
   typedef PassAllocator<std::pair<const ExpressionKey, std::size_t> >
     ExpressionAllocator;
-  struct ScopedExpression
-  {
-    Fact fact;
-    std::size_t key;
-    std::size_t previous;
-  };
-  struct BlockEvent
-  {
-    std::size_t block;
-    bool entering;
-  };
-  std::vector<Fact> facts(function->value_names.size());
-  std::vector<unsigned char> known_facts(function->value_names.size(), 0);
+  std::vector<Fact> & facts = scratch.facts;
+  std::vector<unsigned char> & known_facts = scratch.known_facts;
   std::unordered_map<ExpressionKey, std::size_t, ExpressionKeyHash,
     std::equal_to<ExpressionKey>, ExpressionAllocator> expressions(
       0, ExpressionKeyHash(), std::equal_to<ExpressionKey>(),
       ExpressionAllocator(&arena));
-  std::vector<std::size_t> expression_heads;
-  std::vector<ScopedExpression> scoped_expressions;
-  std::vector<DefinitionFact> definitions(function->value_names.size());
-  std::vector<unsigned char> known_definitions(
-    function->value_names.size(), 0);
+  std::vector<std::size_t> & expression_heads = scratch.expression_heads;
+  std::vector<ScopedExpression> & scoped_expressions = scratch.scoped_expressions;
+  std::vector<DefinitionFact> & definitions = scratch.definitions;
+  std::vector<unsigned char> & known_definitions = scratch.known_definitions;
   expressions.reserve(instruction_total / 2 + 1);
   expression_heads.reserve(instruction_total / 2 + 1);
   scoped_expressions.reserve(instruction_total / 2 + 1);
-
-  std::vector<lowir_analysis::EdgeList> owned_dom_children;
+  std::vector<lowir_analysis::EdgeList> & owned_dom_children = scratch.owned_dom_children;
   const std::vector<lowir_analysis::EdgeList> * dom_children = 0;
   if(analysis && function->blocks.size() != 1)
     dom_children = &analysis->dominator_children();
@@ -719,35 +852,9 @@ bool simplify_values_with_analysis(
     owned_dom_children = lowir_analysis::build_dominator_children(dom);
     dom_children = &owned_dom_children;
   }
-  struct TraversalFrame
-  {
-    std::size_t block;
-    std::size_t child;
-  };
-  std::vector<BlockEvent> traversal;
-  std::vector<TraversalFrame> traversal_stack;
-  std::vector<unsigned char> scheduled(function->blocks.size(), 0);
-  for(std::size_t root = 0; root < function->blocks.size(); ++root) {
-    if(scheduled[root] || (root != 0 && dom.preorder[root] != 0)) continue;
-    scheduled[root] = 1;
-    traversal.push_back(BlockEvent{root, true});
-    traversal_stack.push_back(TraversalFrame{root, 0});
-    while(!traversal_stack.empty()) {
-      TraversalFrame & frame = traversal_stack.back();
-      if(frame.child < (*dom_children)[frame.block].size()) {
-        const std::size_t child =
-          (*dom_children)[frame.block][frame.child++];
-        scheduled[child] = 1;
-        traversal.push_back(BlockEvent{child, true});
-        traversal_stack.push_back(TraversalFrame{child, 0});
-      } else {
-        traversal.push_back(BlockEvent{frame.block, false});
-        traversal_stack.pop_back();
-      }
-    }
-  }
-  std::vector<std::size_t> scope_marks(
-    function->blocks.size(), 0);
+  std::vector<BlockEvent> & traversal = scratch.traversal;
+  build_simplify_traversal(dom, *dom_children, &scratch);
+  std::vector<std::size_t> & scope_marks = scratch.scope_marks;
   bool changed = false;
   for(std::size_t event = 0; event < traversal.size(); ++event) {
     const std::size_t block = traversal[event].block;
@@ -769,7 +876,6 @@ bool simplify_values_with_analysis(
       if(stats) ++stats->instruction_visits;
       resolve_instruction_operands(
         &ins, facts, known_facts, block, block_index, dom);
-
       Operand replacement;
       bool replace = false;
       if(ins.kind == Instruction::IK_CONST &&
@@ -888,7 +994,6 @@ bool simplify_values_with_analysis(
             break;
           }
       }
-
       if(replace && ins.dest.valid()) {
         facts[ins.dest] = Fact{replacement, block};
         known_facts[ins.dest] = 1;
@@ -896,7 +1001,6 @@ bool simplify_values_with_analysis(
         if(stats) { ++stats->rewrites; ++stats->worklist_pushes; }
         if(!phi_used[ins.dest]) continue;
       }
-
       if(cse_eligible(ins.kind) && ins.dest.valid()) {
         const ExpressionKey key = expression_key(ins);
         if(stats) ++stats->gvn_expression_probes;
@@ -946,20 +1050,13 @@ bool simplify_values_with_analysis(
     }
     instructions.resize(kept);
   }
-  for(std::size_t block = 0; block < function->blocks.size(); ++block)
-    for(std::size_t index = 0;
-        index < function->blocks[block].instructions.size(); ++index) {
-      Instruction & ins = function->blocks[block].instructions[index];
-      if(ins.kind != Instruction::IK_PHI) break;
-      resolve_instruction_operands(
-        &ins, facts, known_facts, block, block_index, dom);
-    }
+  resolve_simplified_phis(function, scratch, dom);
   return changed;
 }
 
 bool simplify_values(Function * function, Stats * stats)
 {
-  return simplify_values_with_analysis(function, stats, 0);
+  return simplify_values_with_analysis(function, stats, 0, 0);
 }
 
 struct FunctionBoundaries
@@ -2247,11 +2344,14 @@ typedef bool (*FunctionPass)(Function *, Stats *);
 bool timed_function_pass(FunctionPass pass, Function * function,
                          Stats * stats, std::size_t Stats::* runs,
                          std::uint64_t Stats::* nanoseconds,
-                         lowir_analysis::FunctionAnalysis * analysis = 0)
+                         lowir_analysis::FunctionAnalysis * analysis = 0,
+                         SimplifyScratch * simplify_arena = 0)
 {
-  const auto run = [pass, function, analysis](Stats * pass_stats) {
-    if(analysis && pass == simplify_values)
-      return simplify_values_with_analysis(function, pass_stats, analysis);
+  const auto run = [pass, function, analysis,
+                    simplify_arena](Stats * pass_stats) {
+    if(pass == simplify_values)
+      return simplify_values_with_analysis(
+        function, pass_stats, analysis, simplify_arena);
     if(analysis && pass == promote_slots)
       return promote_slots_with_analysis(function, pass_stats, analysis);
     return pass(function, pass_stats);
@@ -2327,17 +2427,18 @@ bool timed_dce(Function * function,
 
 bool prepare_for_inlining(Function * function,
                           const FunctionBoundaries & boundaries,
-                          Stats * stats)
+                          Stats * stats,
+                          SimplifyScratch * simplify_arena)
 {
   timed_function_pass(simplify_values, function, stats,
-    &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+    &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0, simplify_arena);
   timed_dce(function, boundaries, stats);
   if(!timed_function_pass(cleanup_cfg, function, stats,
        &Stats::cfg_runs, &Stats::cfg_nanoseconds))
     return false;
   const bool values_changed = timed_function_pass(
     simplify_values, function, stats,
-    &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+    &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0, simplify_arena);
   timed_dce(function, boundaries, stats);
   return values_changed;
 }
@@ -2346,6 +2447,7 @@ struct LateInlineCleanupContext
 {
   const FunctionBoundaries * boundaries;
   LowirProgram * program;
+  SimplifyScratch * simplify_arena;
 };
 
 // Callee-first convergence: collapse a freshly inlined body's object
@@ -2357,7 +2459,8 @@ void cleanup_late_inline_body(Function * function, Stats * stats,
 {
   const LateInlineCleanupContext & context =
     *static_cast<const LateInlineCleanupContext *>(opaque);
-  prepare_for_inlining(function, *context.boundaries, stats);
+  prepare_for_inlining(
+    function, *context.boundaries, stats, context.simplify_arena);
   bool object_slots_changed =
     scalar_replace_aggregate_slots(context.program, function, stats);
   if(promote_small_objects(function, stats)) object_slots_changed = true;
@@ -2367,12 +2470,14 @@ void cleanup_late_inline_body(Function * function, Stats * stats,
   }
   if(promote_slots(function, stats)) {
     timed_function_pass(simplify_values, function, stats,
-      &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+      &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0,
+      context.simplify_arena);
     timed_dce(function, *context.boundaries, stats);
   }
   if(eliminate_duplicate_block_loads(function, stats)) {
     timed_function_pass(simplify_values, function, stats,
-      &Stats::simplify_runs, &Stats::simplify_nanoseconds);
+      &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0,
+      context.simplify_arena);
     timed_dce(function, *context.boundaries, stats);
   }
 }
@@ -2402,6 +2507,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   }
   FunctionBoundaries boundaries =
     function_boundaries(program);
+  SimplifyScratch simplify_arena;
   const std::chrono::steady_clock::time_point unreachable_started =
     stats ? std::chrono::steady_clock::now() :
             std::chrono::steady_clock::time_point();
@@ -2436,7 +2542,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
        !program.functions[i].metadata.prefer_local_object_binding)
       prepared_oversized_symbols[program.functions[i].symbol] = 1;
     post_cfg_values_changed[i] =
-      (prepare_for_inlining(&program.functions[i], boundaries, stats) ||
+      (prepare_for_inlining(
+         &program.functions[i], boundaries, stats, &simplify_arena) ||
        unreachable_changed[i]) ? 1 : 0;
   }
   std::vector<unsigned char> inlined_symbols(program.symbol_names.size(), 0);
@@ -2475,7 +2582,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     for(std::size_t i = 0; i < program.functions.size(); ++i)
       if(ipa_rewritten_symbols[program.functions[i].symbol])
         post_cfg_values_changed[i] =
-          prepare_for_inlining(&program.functions[i], boundaries, stats) ||
+          prepare_for_inlining(
+            &program.functions[i], boundaries, stats, &simplify_arena) ||
           post_cfg_values_changed[i];
   }
   MemoryGVNSession memory_gvn(program);
@@ -2489,7 +2597,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     // worklists.
     if(inlined_symbols[function.symbol])
       post_cfg_values_changed[i] =
-        prepare_for_inlining(&function, boundaries, stats) ? 1 : 0;
+        prepare_for_inlining(
+          &function, boundaries, stats, &simplify_arena) ? 1 : 0;
     const std::chrono::steady_clock::time_point cleanup_resume_started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();
@@ -2519,7 +2628,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
           slot_values_changed;
     if(slot_values_changed) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
       timed_dce(&function, boundaries, stats);
     }
     if(post_cfg_values_changed[i] || slot_values_changed)
@@ -2547,18 +2657,21 @@ void optimize(LowirProgram & program, int level, Stats * stats,
        fold_readonly_global_loads(&function, readonly.known,
          readonly.constants, readonly.types, stats)) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
       timed_dce(&function, boundaries, stats);
     }
     if(level >= 1 && timed_function_pass(promote_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
       timed_dce(&function, boundaries, stats);
       if(timed_function_pass(cleanup_cfg, &function, stats,
           &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis)) {
         timed_function_pass(simplify_values, &function, stats,
-          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+          &simplify_arena);
         timed_dce(&function, boundaries, stats);
       }
       timed_function_pass(remove_dead_slots, &function, stats,
@@ -2573,13 +2686,15 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     }
     if(level >= 1 && eliminate_duplicate_block_loads(&function, stats)) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
       timed_dce(&function, boundaries, stats);
     }
     if(level >= 1 &&
        forward_staged_object_copies(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
       timed_dce(&function, boundaries, stats);
       timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis);
@@ -2601,7 +2716,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
             std::chrono::steady_clock::now() - unroll_started).count());
       if(unrolled) {
         timed_function_pass(simplify_values, &function, stats,
-          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+          &simplify_arena);
         timed_dce(&function, boundaries, stats);
         timed_function_pass(cleanup_cfg, &function, stats,
           &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
@@ -2611,13 +2727,15 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     if(level >= 2 &&
        memory_gvn.eliminate_redundant_loads(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
       timed_dce(&function, boundaries, stats);
     }
     if(level >= 2 &&
        eliminate_partial_redundancies(&function, &analysis, stats)) {
       timed_function_pass(simplify_values, &function, stats,
-        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+        &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+        &simplify_arena);
       timed_dce(&function, boundaries, stats);
     }
   }
@@ -2631,7 +2749,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       stats->late_inline_direct_edges = late_call_graph.edges.size();
     std::vector<unsigned char> late_rewritten_symbols(
       program.symbol_names.size(), 0);
-    LateInlineCleanupContext cleanup_context = {&boundaries, &program};
+    LateInlineCleanupContext cleanup_context = {
+      &boundaries, &program, &simplify_arena};
     InlineCleanup cleanup;
     cleanup.run = cleanup_late_inline_body;
     cleanup.context = &cleanup_context;
@@ -2674,7 +2793,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       boundaries = function_boundaries(program);
       for(std::size_t i = 0; i < program.functions.size(); ++i)
         if(post_prune_rewritten_symbols[program.functions[i].symbol])
-          prepare_for_inlining(&program.functions[i], boundaries, stats);
+          prepare_for_inlining(
+            &program.functions[i], boundaries, stats, &simplify_arena);
       const std::size_t prior_pruned = pruning.pruned_functions;
       const std::size_t prior_unreachable_weak =
         pruning.unreachable_weak_functions;
@@ -2691,7 +2811,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         lowir_analysis::FunctionAnalysis analysis(
           program.functions[i], stats);
         timed_function_pass(simplify_values, &program.functions[i], stats,
-          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis);
+          &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
+          &simplify_arena);
         timed_dce(&program.functions[i], boundaries, stats);
         timed_function_pass(cleanup_cfg, &program.functions[i], stats,
           &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);

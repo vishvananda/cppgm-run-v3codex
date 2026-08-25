@@ -2034,3 +2034,27 @@ source reshaping remains out of scope per the standing directive).
   compiler is byte-identical to L73 at
   `88fa096a7cdbbc17ffeb08caa103f10a411e1d49fe74377923966053f86ead4d`,
   no fixture changed, and no profiler remains.
+- L77 (P30 REUSABLE SIMPLIFIER SCRATCH LANDED; THE ORIGINAL PASS-VOLUME
+  SLICE CLOSES).  The simplifier runs roughly 14.3k times on the frozen TU
+  and previously rebuilt its value/block-sized fact, definition, traversal,
+  phi, and expression vectors on every invocation.  `optimize` now owns one
+  explicit, reentrant `SimplifyScratch` and threads it through every scheduled
+  simplifier call, retaining vector capacity and the expression arena between
+  completed passes.  `PassArena::reset` reuses its geometric blocks only after
+  the prior map has been destroyed; public standalone `simplify_values` keeps
+  a call-local context.  An arena-only form was insufficient at
+  4,551,573,453 Ir, so the landed change deliberately covers the actual
+  value/block scratch population.  Source and serialized LowIR outputs remain
+  byte-identical at
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`
+  and `ba6231e2a3260262e1d165637cb700e1a0a8b550f9623f5098f56d0fc6ca3130`.
+  The isolated serialized gate improves 4,546,884,565 -> 4,513,564,029 Ir
+  (-33,320,536, -0.73282%); its simplifier body falls 185,281,315 ->
+  176,316,608 Ir, `free` falls 193,387,546 -> 186,732,588, and `operator new`
+  falls 144,524,134 -> 139,631,326.  The final audit-safe helper packaging
+  improves the exact O1 self-hosted source gate 40,267,653,423 ->
+  40,121,352,390 Ir (-146,301,033, -0.363321%).  PA38 is 41/41, the
+  through-PA38 report is 5,431/5,431, and the audit has zero fatal findings
+  (36 warnings).  O3, O1, and O0 self/inception lanes all MATCH every object
+  and the final compiler; every lane used outer `-j32` and
+  `INCEPTION_BUILD_JOBS=32`.  No fixture changed and no profiler remains.
