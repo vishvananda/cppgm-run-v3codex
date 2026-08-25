@@ -2178,3 +2178,38 @@ source reshaping remains out of scope per the standing directive).
   planned lifetimes.  The one-condition probe is fully reverted before
   profiling or correctness/inception reruns; the L81 source is restored
   exactly, no fixture changed, and no profiler remains.
+- L83 (P30 ALLOCATOR-REBUILD PROGRAM CLOSED; THE 1.5X TARGET IS NOT MET).
+  The ordered migration is now fully adjudicated.  Gate (i)'s explicit
+  location timeline landed at L46 and its transitional record/replay walk was
+  retired at L63.  Gate (ii)'s general pressure splitting premise was measured
+  false at L43: simultaneous overlap, rather than sequential scheduling,
+  dominates the failures.  Gate (iii) landed every profitable cheaper-spill
+  class found by the timeline and producer audits: lazy homes (L44), frame,
+  global, and constant-index rematerialization (L47/L49/L50), direct copy and
+  call-result homes plus final-use load takeover (L53/L55/L56), post-call use
+  regions (L67/L68), and call-free EH loads (L81).  Its remaining source-TU
+  staging population is exactly 318 call-crossing definitions: 126 loads, 62
+  call results, 61 indexes, 30 binary results, 17 copies, 11 compares, seven
+  conversions, and four addresses.  Each producer class has a landed direct
+  form or a measured negative result; delaying an ordinary backup to the first
+  boundary (L48), adding pre-call regions (L70), and retaining the final
+  cross-call callee-saved population (L82) all lose to pressure or compiler
+  work.  Those residual caller-saved values require a backup before the call
+  under the current saturated geometry.  Gate (iv) was re-armed twice: full
+  GVN at L51 improved LowIR but regressed placement by 1.44% exact Ir, while
+  the lifetime-bounded retry at L69 improved every target-code counter but
+  still lost 0.12% exact Ir because the current memory-SSA engine does not
+  amortize at O1.  Another wrapper around that engine is therefore closed.
+  A fresh same-implementation native endpoint used the validated L81 self-O1
+  compiler and a gcc-O1 reference built from `686c61af`; both reproduced the
+  frozen object at
+  `f5f3a11c079a07da2ab4b891828ade8a4332f32ac67c77417e46f25b20ba4753`.
+  Five ABBA blocks (ten samples per side) measured 9.941 s vs 5.867 s mean
+  wall = **1.694x**, and 9.465 s vs 5.405 s mean user = **1.751x**.  This is
+  real progress from P30's L40 1.756x wall starting point, but not the stated
+  1.5x objective.  The result closes P30 honestly rather than extending a
+  disproven allocator seam: the next program must remove the midend operation-
+  count half of the gap and/or provide a genuinely lightweight cross-block
+  forwarder integrated with a different global allocation geometry.  L81's
+  full PA38, through-PA38, audit, and three 32-way inception lanes remain the
+  final correctness matrix; no fixture changed and no profiler remains.
