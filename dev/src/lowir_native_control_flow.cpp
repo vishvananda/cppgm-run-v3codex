@@ -15,6 +15,7 @@ const std::size_t kNoBlock = static_cast<std::size_t>(-1);
 ControlFlowQueries::ControlFlowQueries(
 	const lowir_model::LowirFunction& function)
 	: successors_(function.blocks.size()), use_sites_(function.value_names.size()),
+	  cyclic_(function.blocks.size(), 0),
 	  reachable_(function.blocks.size(), 0),
 	  dominated_(function.blocks.size(), 0),
 	  reachable_epoch_(0), dominated_epoch_(0), current_block_(0),
@@ -85,6 +86,15 @@ ControlFlowQueries::ControlFlowQueries(
 			AppendSuccessor(i, fallthrough, blocks);
 		}
 	}
+	std::vector<int> component_index(function.blocks.size(), -1);
+	std::vector<int> component_low(function.blocks.size(), -1);
+	std::vector<unsigned char> component_stacked(function.blocks.size(), 0);
+	std::vector<std::size_t> component_stack;
+	int next_component_index = 0;
+	for (std::size_t block = 0; block < function.blocks.size(); ++block)
+		if (component_index[block] < 0)
+			VisitComponent(block, component_index, component_low,
+				component_stacked, component_stack, next_component_index);
 	// Interval-mark layout-backward edges: a spill point inside such a span
 	// can execute after later-emitted blocks have already run, so register
 	// contents there cannot be assumed by walk order.
@@ -104,6 +114,50 @@ ControlFlowQueries::ControlFlowQueries(
 		depth += delta[i];
 		backedge_covered_[i] = depth > 0 ? 1 : 0;
 	}
+}
+
+void ControlFlowQueries::VisitComponent(std::size_t block,
+	std::vector<int>& index, std::vector<int>& low,
+	std::vector<unsigned char>& stacked,
+	std::vector<std::size_t>& stack, int& next_index)
+{
+	index[block] = next_index;
+	low[block] = next_index++;
+	stack.push_back(block);
+	stacked[block] = 1;
+	for (std::size_t i = 0; i < successors_[block].size(); ++i)
+	{
+		const std::size_t successor = successors_[block][i];
+		if (index[successor] < 0)
+		{
+			VisitComponent(successor, index, low, stacked, stack, next_index);
+			low[block] = std::min(low[block], low[successor]);
+		}
+		else if (stacked[successor])
+			low[block] = std::min(low[block], index[successor]);
+	}
+	if (low[block] != index[block]) return;
+	std::size_t first_member = kNoBlock;
+	std::size_t component_size = 0;
+	for (;;)
+	{
+		const std::size_t member = stack.back();
+		stack.pop_back();
+		stacked[member] = 0;
+		if (component_size == 0)
+			first_member = member;
+		else
+		{
+			cyclic_[first_member] = 1;
+			cyclic_[member] = 1;
+		}
+		++component_size;
+		if (member == block) break;
+	}
+	if (component_size == 1 &&
+		std::find(successors_[block].begin(), successors_[block].end(), block) !=
+			successors_[block].end())
+		cyclic_[block] = 1;
 }
 
 void ControlFlowQueries::AppendSuccessor(std::size_t from,
@@ -187,18 +241,18 @@ bool ControlFlowQueries::CurrentBlockReaches(std::size_t target) const
 
 bool ControlFlowQueries::CurrentBlockIsCyclic() const
 {
-	return CurrentBlockReaches(current_block_);
+	return cyclic_[current_block_] != 0;
 }
 
 bool ControlFlowQueries::SpillIsSafe(
 	lowir_model::ValueId value, std::size_t position) const
 {
-	if (CurrentBlockIsCyclic()) return false;
 	// A block inside a layout-backward edge span is reached again after
 	// later-layout blocks execute, so a spill store here may read a register
 	// those blocks have already repurposed.
 	if (current_block_ < backedge_covered_.size() &&
 		backedge_covered_[current_block_]) return false;
+	if (CurrentBlockIsCyclic()) return false;
 	const std::vector<ValueUseSite>& uses = use_sites_[value];
 	for (std::size_t i = 0; i < uses.size(); ++i)
 	{

@@ -1692,3 +1692,25 @@ source reshaping remains out of scope per the standing directive).
   and was fully reverted.  No Cachegrind or inception run is warranted and
   no profiler process exists.  Copy-result staging is therefore exhausted
   at the emitter level.
+- L62 (P30 SPILL-SAFETY CYCLE QUERIES PRECOMPUTED).  Native spill selection
+  asked whether the current block was cyclic from several hot paths.  The
+  answer was previously obtained by building and caching the complete set of
+  blocks reachable from each selected block, even when no later spill-use
+  query needed that set.  `ControlFlowQueries` now classifies cyclic blocks
+  once with strongly-connected components, including singleton self-edges,
+  and answers the exact same predicate in constant time.  The independent
+  reachability cache remains available for the prior-use safety test, while
+  layout-backedge coverage is rejected before either graph query.  The fast
+  gate reproduced the accepted frozen object byte-for-byte at
+  `f496c227be1db4007a24af5bd5d437804cc7a1c19b117cfd3c0bb1ba6e919693`
+  (1,426,720 bytes), with MIR and all movement/allocation counters unchanged.
+  Four alternating native self-host runs reduced mean user time 10.385 s ->
+  9.930 s (-4.38%).  Exact self-hosted Ir-only Cachegrind improves
+  43,437,250,755 -> 41,954,137,863 (-1,483,112,892, -3.414380%): attributed
+  `CurrentBlockReaches` work falls from 1,017,977,702 to 2,815,420 Ir, while
+  the one-time component traversal costs 12,489,122 Ir.  PA38 is 41/41, the
+  through-PA38 report is 5,431/5,431, the audit has zero fatal findings
+  (36 warnings), and isolated 32-way O1/O3/O0 inception lanes all MATCH
+  byte-for-byte.  No profiler process remains.  The native alternating-run
+  gate is retained as the sub-minute directional check before exact
+  Cachegrind for future survivors.

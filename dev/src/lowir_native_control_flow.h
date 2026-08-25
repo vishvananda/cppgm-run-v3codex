@@ -28,6 +28,10 @@ private:
 
 	void AppendSuccessor(std::size_t from, const lowir_model::Operand& target,
 		const std::vector<std::size_t>& blocks);
+	void VisitComponent(std::size_t block,
+		std::vector<int>& index, std::vector<int>& low,
+		std::vector<unsigned char>& stacked,
+		std::vector<std::size_t>& stack, int& next_index);
 	void RecordUse(const lowir_model::Operand& operand,
 		std::size_t position, std::size_t block);
 	bool CurrentBlockDominates(std::size_t target) const;
@@ -35,6 +39,9 @@ private:
 
 	std::vector<std::vector<std::size_t> > successors_;
 	std::vector<std::vector<ValueUseSite> > use_sites_;
+	// Exact membership in a nontrivial strongly-connected component or a
+	// singleton component with a self-edge.
+	std::vector<unsigned char> cyclic_;
 	// Blocks lying inside any layout-backward edge span [target, source]:
 	// such a block can be re-entered by blocks the walk has not emitted yet.
 	std::vector<unsigned char> backedge_covered_;
