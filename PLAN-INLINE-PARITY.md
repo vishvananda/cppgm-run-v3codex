@@ -1991,3 +1991,17 @@ source reshaping remains out of scope per the standing directive).
   (36 warnings).  O3, O1, and O0 self/inception lanes all MATCH every object
   and the final compiler; every run used outer `-j32` and
   `INCEPTION_BUILD_JOBS=32`.  No fixture changed and no profiler remains.
+- L74 (P30 ONE-BLOCK CFG SHORTCUT REJECTED; LOCAL PASS SAVINGS DO NOT PAY
+  THE SELF-COMPILER LAYOUT TAX).  `cleanup_cfg` probes two cross-block folds
+  before its existing one-block exit even though neither can fire with one
+  block.  Three byte-identical forms tested that fact against L73's isolated
+  4,546,884,565-Ir control.  Extracting terminal folding and moving the full
+  one-block exit forward reduced `cleanup_cfg` 114,671,406 -> 112,445,382 Ir,
+  but total work rose to 4,548,034,526 (+1,149,961, +0.025291%).  A minimal
+  caller guard rose to 4,548,372,529 (+1,487,964, +0.032725%), and one-block
+  guards inside the two helpers rose to 4,548,596,027 (+1,711,462,
+  +0.037640%).  Every form reproduced the serialized object at
+  `ba6231e2a3260262e1d165637cb700e1a0a8b550f9623f5098f56d0fc6ca3130`.
+  All code was reverted; the hosted compiler is byte-identical to the L73
+  control.  The fast gate therefore closes this shortcut without an exact
+  source run, correctness rerun, or inception, and no profiler remains.
