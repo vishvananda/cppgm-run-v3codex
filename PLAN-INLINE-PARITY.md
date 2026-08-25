@@ -1281,3 +1281,37 @@ source reshaping remains out of scope per the standing directive).
   the CURRENT logic and replayed by the emitter; byte-identity of
   record->replay is the gate.  After the seam exists, gates
   (ii)-(iv) replace the log producer, never the emitter.
+- L43 (THREE P30 PROBES CLOSED IN ONE SITTING, AND THE DECOMPOSITION
+  THAT CONSTRAINS THE REBUILD).  (a) Truncated prefix claims (the
+  planner's assignment failures get the register with the
+  latest-starting conflict for a prefix of the interval, retention
+  fallback store keeps the home valid, the release schedule demotes
+  at a span-free boundary; span-snap refined so def-containing spans
+  permit in-loop boundaries): 100 of 4,673 failures convert, grants
+  +24, movement FLAT — the failures are SIMULTANEOUS overlap beyond
+  the register file, not sequential scheduling, so splitting has
+  nothing to harvest; P30 gate (ii)'s premise is measured false at
+  this geometry.  (b) RCX/RDX pool widening: the clobber model
+  already prices them, but 66 emitter sites use them as free
+  transient scratch, and declaring those clobbers honestly would
+  make both registers unallocatable in exactly the dense regions
+  that are short — structurally capped, not attempted.  (c)
+  Distance-capped GVN at O1 (same-block, same-call-epoch reuse via
+  alias classes — the lifetime-safe subset): 85 loads eliminated on
+  the frozen TU, noise elsewhere — block dedup already owns the
+  local population; GVN's only real harvest is the cross-block kind
+  that L42 showed the allocator punishes.  All reverted; tree
+  byte-identical to L40.  THE DECOMPOSITION (from the L38 honest
+  counters): self 42.36B Ir = 14.3B loads + 11.2B stores + 16.9B
+  other; ref 20.86B = 5.8 + 4.7 + 10.4.  Non-memory operations are
+  only 1.63x — the 21.5B gap is ~70% MOVEMENT, split roughly evenly
+  between an op-count-proportional share (1.63x more operations
+  needing operands) and a RATE share (0.84 loads per non-memory op
+  vs gcc's 0.56).  CONSEQUENCE FOR P30: closing the rate half alone
+  lands ~1.67x; closing the op-count half alone lands ~1.55x; 1.5x
+  requires BOTH a midend that removes operations AND placement that
+  serves the survivors at gcc's staging rate — with the register
+  file measured saturated at simultaneous-overlap level, the
+  placement half must come from cheaper spills (region placement,
+  rematerialization) rather than more residency.  The next session
+  starts here.
