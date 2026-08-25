@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lowir_native_mir.h"
+#include "lowir_native_analysis.h"
 #include "lowir_native_selection.h"
 #include "lowir_native_value.h"
 #include "lowir_native_wide.h"
@@ -38,6 +39,7 @@ protected:
       return;
     }
     const mir_model::MirOperand source = lowerer.resolve(instruction.first);
+    bool identity_representation = false;
     if(instruction.first.kind == lowir_model::Operand::OP_TEMP) {
       const ValueFact & original =
         lowerer.values_[instruction.first.value];
@@ -50,13 +52,13 @@ protected:
            original.spill_home.frame_binding == source.frame_binding))) ||
         (source.kind == mir_model::MirOperand::OP_REG &&
          !lowerer.crosses_register_clobber(instruction.dest, source.reg));
-      const bool same_representation =
+      identity_representation =
         lowir_model::same_lowir_type(original.type, instruction.type) ||
         ((original.type.kind == lowir_model::LTK_PTR &&
           instruction.type.kind == lowir_model::LTK_I64) ||
          (original.type.kind == lowir_model::LTK_I64 &&
           instruction.type.kind == lowir_model::LTK_PTR));
-      if(stable && same_representation) {
+      if(stable && identity_representation) {
         ValueFact alias = original;
         alias.type = instruction.type;
         alias.parameter = false;
@@ -70,6 +72,33 @@ protected:
        selection::is_integer_or_pointer(instruction.type)) {
       lowerer.consume(instruction.first);
       lowerer.define(instruction.dest, instruction.type, source);
+      return;
+    }
+    // In an EH function an unplanned edge-live scalar is forced to a frame
+    // home after definition.  For an identity copy from a register, store
+    // the source straight into that home instead of manufacturing a transient
+    // result register which either pressure fallback or edge stabilization
+    // immediately spills again.
+    const bool direct_edge_home = lowerer.optimization_level_ >= 1 &&
+      source.kind == mir_model::MirOperand::OP_REG &&
+      identity_representation &&
+      selection::is_integer_or_pointer(instruction.type) &&
+      lowerer.facts_.has_eh &&
+      lowerer.facts_.has(
+        instruction.dest, analysis::FunctionFacts::VF_EDGE_LIVE) &&
+      (lowerer.facts_.has(
+         instruction.dest, analysis::FunctionFacts::VF_LOOP_INVARIANT) ||
+       lowerer.result_crosses_call(instruction.dest)) &&
+      !lowerer.facts_.has(
+         instruction.dest, analysis::FunctionFacts::VF_EXACT_FORWARD_EDGE) &&
+      !lowerer.value_holds_planned_register(instruction.dest);
+    if(direct_edge_home) {
+      const mir_model::MirOperand home = lowerer.allocate_temp_frame_binding(
+        instruction.dest, instruction.type, THR_EDGE_LIVE);
+      append_store(out, home, source, instruction.type);
+      lowerer.consume(instruction.first);
+      lowerer.define(instruction.dest, instruction.type, home);
+      if(lowerer.stats_) ++lowerer.stats_->planned_direct_copy_edge_homes;
       return;
     }
     mir_model::MirOperand destination;

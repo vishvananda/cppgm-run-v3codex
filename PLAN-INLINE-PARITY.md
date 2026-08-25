@@ -1503,3 +1503,27 @@ source reshaping remains out of scope per the standing directive).
   rematerialization classes help address lifetimes, but do not make deeper
   merged inline bodies cheap enough.  Broader inlining remains closed until
   non-address scalar placement changes materially.
+- L53 (P30 EDGE-LIVE IDENTITY-COPY HOMES LANDED).  The first remaining
+  non-address scalar slice removes a redundant register round trip for
+  integer/pointer identity copies in EH functions.  When the destination is
+  an unplanned edge-live value that must be stabilized, lowering now stores
+  the already-normalized source register directly into the destination's
+  frame home instead of allocating a transient destination register and
+  immediately spilling it.  A prior attempt to alias an existing spill home
+  had zero population on the frozen TU and was reverted byte-identically;
+  direct placement fires 16 times.  Against L50, frozen MIR falls 126,021 ->
+  125,866 (-155), scalar temporary movement 45,738 -> 45,624 (-114), loads
+  24,067 -> 24,017 (-50), stores 14,985 -> 14,933 (-52), register copies
+  1,946 -> 1,934 (-12), edge staging 332 -> 328 (-4), and object size
+  1,427,248 -> 1,426,888 bytes (-360).  Temporary homes and spills remain
+  flat at 818 and 51.  The exact self-hosted Ir-only profile, including the
+  identity-representation guard, confirms the small strict win,
+  43,469,998,821 -> 43,469,739,908 (-258,913, -0.000596%); the frozen and
+  self-hosted objects both hash to
+  `ac93da5fe2a18932fd592da4591ebe5a24f6596ed8a72a80b9a10ede1343403d`.
+  PA38 is 41/41 with no fixture changes, the through-PA38 report is
+  5,431/5,431, the audit has zero fatal findings (34 warnings), and isolated
+  32-way O1/O3/O0 inception lanes all MATCH byte-for-byte.  No profiler
+  process remains.  The result validates the fast census as a rejection gate
+  while retaining exact Ir-only Cachegrind as the acceptance gate for small
+  scalar-placement survivors.
