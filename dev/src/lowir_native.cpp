@@ -1096,13 +1096,6 @@ private:
       if(location.kind == MirOperand::OP_REG &&
          selection::is_narrow_integer(value.type))
         append_integer_normalization(out, value.type, location);
-      const MirOperand fallback = allocate_temp_frame_binding(
-        instruction.dest, value.type, THR_EDGE_LIVE);
-      if(location.kind == MirOperand::OP_XMM)
-        append_float_move(out, fallback, location, value.type);
-      else append_store(out, fallback, location, value.type);
-      value.has_spill_home = true;
-      value.spill_home = fallback;
       if(stats_) ++stats_->planned_edge_register_retains;
       return;
     }

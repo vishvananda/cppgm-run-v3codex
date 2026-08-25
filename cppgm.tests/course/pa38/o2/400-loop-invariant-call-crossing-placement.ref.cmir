@@ -20,13 +20,11 @@ function @float_loop
   abi
     return i64 -> rax
   frame
-    stack_size 64
+    stack_size 48
     scratch_bytes 48
-    temp %stable -> [rbp-<off0>] : f64
 
   block ^entry
     fmov.f64 xmm0, 3.5
-    fmov.f64 [rbp-<off0>], xmm0
 
   block ^loop
     fcmp.f64 xmm0, 3.5

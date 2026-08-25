@@ -41,11 +41,10 @@ function @probe
   abi
     return i64 -> rax
   frame
-    stack_size 64
+    stack_size 48
     scratch_bytes 0
     preserve <gpr0> <gpr1> <gpr2> <gpr3> <gpr4>
     slot $counter -> [rbp-<off0>] : i64
-    temp %iteration -> [rbp-<off1>] : i64
 
   block ^entry
     load.i64 <gpr0>, @a
@@ -56,7 +55,6 @@ function @probe
 
   block ^condition
     load.i64 <gpr4>, [rbp-<off0>]
-    store.i64 [rbp-<off1>], <gpr4>
     cmp.i64 <gpr4>, 2
     jae ^done
 

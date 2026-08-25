@@ -1315,3 +1315,26 @@ source reshaping remains out of scope per the standing directive).
   placement half must come from cheaper spills (region placement,
   rematerialization) rather than more residency.  The next session
   starts here.
+- L44 (LAZY FALLBACK-HOME WIN; VALIDATION LADDER RESET).
+  Deferring `stabilize_edge_live_result`'s fallback-home allocation
+  and store until an actual spill self-hosts correctly at O1 and O3,
+  and the instrumented objects reproduce their uninstrumented SHA-256
+  exactly.  On the frozen TU it removes 86 temporary homes (-6.6%),
+  145 generated scalar stores (-0.92%), and 736 object bytes, but full
+  Cachegrind moves only 42.363B to 42.246B Ir (-0.278%) and 25.412B to
+  25.291B data references (-0.475%).  It also changes two PA38 pinned
+  MIR fixtures (`400-loop-invariant-call-crossing-placement` and
+  `410-cyclic-edge-register-pressure`), both strictly improving by
+  removing the unused fallback slot/store while preserving behavior.
+  ACCEPTED as the first spill-cost reduction feeding P30 gate (iii);
+  it is not itself the planned region-boundary placement.  The two
+  owning refs were regenerated in place; PA38 is 40/40, the through-PA38
+  report is 5,430/5,430, the file audit has zero fatal findings, and
+  isolated O3 and O0 inception lanes both MATCH byte-for-byte.  No stale
+  Valgrind job survived the paired run.  Lackey basic counting was
+  stopped after 10m43s because it was not faster than full Cachegrind.
+  Future probes use exact object/MIR/stats census first, Cachegrind with
+  cache and branch simulation disabled for Ir-only survivors, and full
+  Cachegrind only when the hypothesis needs data references or cache
+  behavior; every allocator survivor still runs verified-output
+  self-host and the full owning suites.
