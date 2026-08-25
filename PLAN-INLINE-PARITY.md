@@ -2107,3 +2107,17 @@ source reshaping remains out of scope per the standing directive).
   self/inception lanes all MATCH every object and the final compiler; every
   lane used outer `-j32` and `INCEPTION_BUILD_JOBS=32`.  No fixture changed
   and no profiler remains.
+- L80 (P30 REUSABLE DEAD-SLOT SCRATCH REJECTED BY THE FAST GATE).
+  `remove_dead_slots` runs roughly 6.7k times on the frozen TU and rebuilds
+  slot-sized load-count, escape, and dead masks on every nonempty call.  An
+  explicit per-`optimize` scratch retained all three capacities, covered the
+  late-inline direct call and every timed scheduling site, preserved
+  standalone call-local behavior, passed the file audit, and reproduced the
+  serialized output exactly at
+  `ba6231e2a3260262e1d165637cb700e1a0a8b550f9623f5098f56d0fc6ca3130`.
+  Nevertheless the isolated gate regressed 4,473,401,874 -> 4,479,246,943 Ir
+  (+5,845,069, +0.130663%): the additional pass plumbing and changed compiler
+  layout cost more than the avoided allocations.  The candidate was reverted
+  without an exact source run, correctness rerun, or inception; the L79
+  serialized object is restored byte-identically, no fixture changed, and no
+  profiler remains.
