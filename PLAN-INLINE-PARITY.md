@@ -1641,3 +1641,22 @@ source reshaping remains out of scope per the standing directive).
   lanes are warranted, and no profiler process remains.  This closes the
   current staged-conversion population unless a materially cheaper shared
   placement predicate appears.
+- L59 (P30 FAILED-PLAN CALL-RESULT RAX RETENTION REJECTED BY THE EXACT
+  GATE).  A temporary register census split the 62 staged call results into
+  25 already in RAX (the L55 population) and 37 in another GPR.  Most of the
+  latter have a timeline register whose grant failed: L55 excluded them
+  merely because a plan existed, even though the allocated fallback was not
+  the planned register.  Preserving only allocations that actually equal the
+  plan recovers 35 more direct-RAX results (60 total), reduces call-boundary
+  copies 5,795 -> 5,760 and machine-optimizer input 145,864 -> 145,829,
+  reduces final MIR 125,832 -> 125,818, and shrinks the object 1,426,720 ->
+  1,426,688 bytes with homes/spills/grants flat.  PA38 remains 41/41 and the
+  32-way O1 inception lane MATCHES.  Nevertheless exact self-hosted Ir-only
+  Cachegrind regresses 43,437,250,755 -> 43,441,601,216 (+4,350,461,
+  +0.010016%); changing these fallback locations costs more in the compiler
+  itself than the frozen target-copy reduction saves.  The measured object
+  was verified at
+  `778192a56765564e348569e0025c4d7cd30f48308c0095e1613f7090855ac229`.
+  The four-line generalization and temporary census are fully reverted, no
+  further inception lanes are warranted, and no profiler process remains.
+  L55's stricter no-plan gate therefore remains the measured optimum.
