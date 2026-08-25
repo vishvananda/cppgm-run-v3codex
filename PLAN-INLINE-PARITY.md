@@ -1879,3 +1879,40 @@ source reshaping remains out of scope per the standing directive).
   protects the selected lifetimes.  A future retry needs a genuinely lighter
   cross-block load-forwarder, not another profitability wrapper around this
   pass.
+- L70 (P30 DOMINATED PRE-CALL USE REGIONS REJECTED; THE DEMOTION SEAM IS
+  PROVEN BUT DOES NOT AMORTIZE).  L67's post-final-call tail has a symmetric
+  candidate before the first call: retain the mandatory definition-time frame
+  backup, reload once at the first dominated acyclic use, keep the value in a
+  caller GPR through the local use region, then return compiler location state
+  to the still-valid frame home without another store.  The broad census finds
+  31 source-TU and 44 serialized-LowIR regions.  Its correct implementation
+  assigns all 31 source regions, promotes and demotes 28, and takes three busy
+  fallbacks.  It is a genuine target improvement: final MIR falls 125,826 ->
+  125,802, scalar loads fall 24,013 -> 23,986, total scalar movement falls
+  45,623 -> 45,615, and the object shrinks 1,426,656 -> 1,426,336 bytes at
+  `dff3147d3ba44f5883853d9921f19c552270935f5b8c70c00d81bc6ece14519e`.
+  The trade is 19 extra register copies and two extra stores.  A PA36 hosted
+  `vector<bool>` reducer exposed the necessary completed-release guard: a
+  prefix whose final counted use had already released its register must not be
+  demoted a second time.  With that semantic fix, PA38 is 41/41, the through
+  report is 5,431/5,431, the audit has zero fatal findings (36 warnings), and
+  both O3 and O1 self/inception lanes MATCH object-by-object and at the final
+  compiler.  Every inception build used outer `-j32` and
+  `INCEPTION_BUILD_JOBS=32`; no fixture changed.  Native timing is correctly
+  treated as inconclusive: one eight-sample ABBA set improves 1.6075 s ->
+  1.5900 s, while a second set containing a 1.69 s outlier reverses direction
+  to 1.60875 s -> 1.62625 s.  Paired isolated backend Cachegrind is decisive at
+  4,570,651,256 -> 4,572,041,769 Ir (+1,390,513, +0.030423%), and the combined
+  L68 + prefix exact self-source milestone is 40,407,746,805 versus L67's
+  40,398,754,919 (+8,991,886, +0.022258%).  A profitability rescue requiring
+  three pre-call uses keeps 23 source regions, promotes every one, removes the
+  two stores, reduces final MIR by 25, loads by 24, and the object by 288 bytes,
+  but is still worse in the isolated gate at 4,572,637,618 Ir (+1,986,362,
+  +0.043459%).  The no-inline packaging rescue is independently 90,172 Ir
+  worse in a one-object self-compiler comparison.  The implementation,
+  demotion state, generalized query, and counters are therefore fully
+  reverted; the L68 source object is restored exactly at
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`,
+  and no profiler remains.  Pre-first-call residency needs either a transition
+  mechanism shared with a larger allocator change or a materially larger use
+  population; this standalone region class is closed.
