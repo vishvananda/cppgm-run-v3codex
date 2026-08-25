@@ -1746,3 +1746,18 @@ source reshaping remains out of scope per the standing directive).
   and the frozen hash exactly.  Both retention forms were reverted without
   Cachegrind or further inception; the accepted tree and object are restored
   byte-for-byte, and no profiler process exists.
+- L65 (P30 SIMPLIFIER CENSUS FUSION REJECTED; THE FAST GATE GETS FASTER).
+  `simplify_values_with_analysis` separately counts instructions, classifies
+  storage-address temporaries/EH, and indexes blocks/phi uses.  Fusing those
+  whole-function censuses preserved every optimizer and native counter, and
+  reproduced the accepted 1,426,720-byte frozen object at
+  `f496c227be1db4007a24af5bd5d437804cc7a1c19b117cfd3c0bb1ba6e919693`, but
+  it did not reduce host-side simplifier time (164.101 ms -> 164.365 ms) and
+  four ABBA native samples were slightly worse at 9.555 s -> 9.605 s mean
+  user time (+0.52%).  The change was therefore reverted without Cachegrind
+  or inception.  For future one-source candidates, PA39's `probe-self-link`
+  now supplies the native A/B compiler by rebuilding and substituting only
+  the touched self-host object: this candidate linked in 3.7 s instead of
+  rebuilding the full checkpoint.  Full inception remains a survivor gate,
+  with `INCEPTION_BUILD_JOBS=32` required on every run.  No profiler process
+  remains.
