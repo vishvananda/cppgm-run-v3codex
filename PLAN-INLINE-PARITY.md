@@ -1485,3 +1485,21 @@ source reshaping remains out of scope per the standing directive).
   GVN re-arm at the current placement point: a future retry needs either a
   profitability gate that excludes the demoting cross-block cases or another
   material reduction in the home/spill cost of their merged lifetimes.
+- L52 (P30 LOOP-GATED INLINE POINT RE-RUN AND REJECTED BY THE FAST
+  CENSUS).  The preserved L41 policy was replayed exactly on top of L50:
+  calls inside layout backedge spans receive twice the hinted size/nonleaf
+  caps, with inherited loop membership for blocks created by a splice.  PA38
+  remains 41/41, but the frozen TU fails the pre-Cachegrind survivor gate by a
+  wide margin: optimized LowIR rises 108,170 -> 110,141, MIR 126,021 ->
+  133,055 (+7,034, +5.58%), scalar temporary movement 45,738 -> 50,139
+  (+4,401, +9.62%), loads 24,067 -> 26,116, stores 14,985 -> 16,607,
+  temporary homes 818 -> 969, edge staging 332 -> 371, and object size
+  1,427,248 -> 1,455,216 bytes (+27,968).  The candidate hash was
+  `8315adcb195f0c963f09042bdbec7d52073353b7e75d93ec461360f3b00d1a09`.
+  Because every backend cost proxy moved substantially in the wrong
+  direction, no Cachegrind or inception run was warranted; the 81-line probe
+  is fully reverted and no profiler process exists.  This reproduces L41's
+  structural verdict after the P30 placement wins: the current
+  rematerialization classes help address lifetimes, but do not make deeper
+  merged inline bodies cheap enough.  Broader inlining remains closed until
+  non-address scalar placement changes materially.
