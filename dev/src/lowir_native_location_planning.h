@@ -674,7 +674,7 @@ protected:
 bool should_retain_edge_register(
     const mir_model::MirOperand & location,
     int optimization_level,
-    bool function_has_eh,
+    bool requires_eh_fallback,
     bool loop_carried,
     bool crosses_call,
     bool has_narrow_alias,

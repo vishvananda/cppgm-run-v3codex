@@ -1102,7 +1102,7 @@ private:
     const bool fixed_register_clobber = location.kind == MirOperand::OP_REG &&
       crosses_register_clobber(instruction.dest, location.reg);
     if(location_planning::should_retain_edge_register(
-         location, optimization_level_, facts_.has_eh,
+         location, optimization_level_, facts_.has_eh && (crosses || instruction.kind != Instruction::IK_LOAD),
          facts_.has(instruction.dest, FunctionFacts::VF_LOOP_INVARIANT),
          crosses, narrow_register_alias, fixed_register_clobber,
          registers_, xmms_)) {

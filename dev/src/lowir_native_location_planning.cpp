@@ -678,7 +678,7 @@ FunctionLocationTimeline plan_value_locations(
 bool should_retain_edge_register(
     const mir_model::MirOperand & location,
     int optimization_level,
-    bool function_has_eh,
+    bool requires_eh_fallback,
     bool loop_carried,
     bool crosses_call,
     bool has_narrow_alias,
@@ -686,7 +686,11 @@ bool should_retain_edge_register(
     const allocation::RegisterPool & registers,
     const allocation::XmmPool & xmms)
 {
-  if(optimization_level < 1 || function_has_eh) return false;
+  // Unwinding can only leave a call.  The caller therefore permits a
+  // call-free EH load result to use the ordinary clobber, loop-headroom, and
+  // backward-span checks instead of forcing a frame fallback solely because
+  // its enclosing function contains EH elsewhere.
+  if(optimization_level < 1 || requires_eh_fallback) return false;
 
   // A retained interval keeps a definition-time frame fallback.  Cycles also
   // keep one register free because a later reactive eviction cannot rewrite

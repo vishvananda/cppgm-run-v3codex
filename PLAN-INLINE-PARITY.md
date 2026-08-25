@@ -2121,3 +2121,40 @@ source reshaping remains out of scope per the standing directive).
   without an exact source run, correctness rerun, or inception; the L79
   serialized object is restored byte-identically, no fixture changed, and no
   profiler remains.
+- L81 (P30 CALL-FREE EH LOAD RESIDENCY LANDED; THE FUNCTION-WIDE EH FALLBACK
+  NARROWS).  A definition-time edge-staging census on the frozen source found
+  330 events: 318 cross a call, 299 occur in an EH function, and 208 are loop
+  invariant.  The exact overlap is 287 EH/call-crossing, 31 non-EH/call-
+  crossing, and 12 EH/call-free, with no ordinary non-EH/call-free remainder.
+  Unwinding can only leave a call, so a call-free value cannot be live into a
+  landing pad; the existing fixed-clobber, narrow-alias, loop-headroom, and
+  backward-span checks remain responsible for every other retention hazard.
+  Removing the EH fallback for all 12 call-free values was too broad: on the
+  serialized input it retained five extra values and removed five loads, but
+  added six stores, seven final MIR instructions, and one temporary home.
+  Restricting the exception to index results was also a loss: three retained
+  values added ten final MIR instructions, five scalar movements, one home,
+  and 16 object bytes.  Both forms were reverted.  The profitable residual is
+  load-only.  On the frozen serialized input it retains two loads and changes
+  final MIR 135,469 -> 135,466, machine input 156,288 -> 156,284, scalar
+  movement 49,544 -> 49,540, loads 26,067 -> 26,065, and stores 16,437 ->
+  16,435; copies, spills, and the 933 temporary homes are unchanged.  The
+  object shrinks 1,540,192 -> 1,540,144 bytes at
+  `e6a4672cd52794f93eb8abe595b7521af6b442c884e2c17c1ad248a30658b899`.
+  On the frozen source it retains three loads and changes final MIR 125,826 ->
+  125,821, machine input 145,859 -> 145,853, scalar movement 45,623 ->
+  45,617, loads 24,013 -> 24,010, and stores 14,933 -> 14,930; copies,
+  spills, and the 818 temporary homes are unchanged.  That object shrinks
+  1,426,656 -> 1,426,592 bytes at
+  `f5f3a11c079a07da2ab4b891828ade8a4332f32ac67c77417e46f25b20ba4753`.
+  The isolated serialized compiler-work gate is 4,473,401,874 ->
+  4,473,425,375 Ir (+23,501, +0.000525%), below the established 0.001%
+  cross-build noise threshold; per the accepted L67/L68 policy, that
+  sub-basis-point drift does not warrant a roughly 388-second exact source
+  Cachegrind when both target-code improvements are deterministic.  PA38 is
+  41/41, the through-PA38 report is 5,431/5,431, and the audit has zero fatal
+  findings (36 warnings).  O3, O1, and O0 self/inception lanes all MATCH every
+  object and the final compiler, each with outer `-j32` and
+  `INCEPTION_BUILD_JOBS=32`.  No fixture changed and no profiler remains.
+  This lands a proven residual rather than claiming gate (iii) complete: 318
+  call-crossing staging events, predominantly in EH functions, remain.
