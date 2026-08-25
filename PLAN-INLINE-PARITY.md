@@ -1732,3 +1732,17 @@ source reshaping remains out of scope per the standing directive).
   through-PA38 report is 5,431/5,431, the audit has zero fatal findings
   (36 warnings), and isolated 32-way O1/O3/O0 inception lanes all MATCH
   byte-for-byte.  No profiler process remains.
+- L64 (P30 RESIDUAL LOAD-HOME AND EH-RETENTION PROBES CLOSED BY THE FAST
+  GATE).  A temporary source-kind census split the 129 remaining staged
+  loads into 126 loads through temporary pointer values and only three
+  direct slot loads; there is no stable source-frame home to alias in the
+  dominant population, and the census was fully reverted.  Separately,
+  allowing call-free edge values to remain in registers merely because
+  their EH-bearing function's exception machinery lies elsewhere retained
+  ten more values, but displaced nine planned grants, added one frame home,
+  and raised final MIR 125,832 -> 125,842 despite reducing loads by 15 and
+  object size by 96 bytes.  Restricting the relaxation to single-use,
+  non-loop values had zero final population and reproduced every L63 metric
+  and the frozen hash exactly.  Both retention forms were reverted without
+  Cachegrind or further inception; the accepted tree and object are restored
+  byte-for-byte, and no profiler process exists.
