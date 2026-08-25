@@ -1610,3 +1610,16 @@ source reshaping remains out of scope per the standing directive).
   process remains.  The fast frozen compile/census again selected the sole
   small survivor in about 5.5 s; exact profiling remained the final
   profitability gate rather than a search loop.
+- L57 (P30 STAGED NONDESTRUCTIVE COMPARE PROBE REJECTED BY THE FAST
+  GATE).  Six of the eleven staged compare results can compare their
+  original left register directly instead of first copying it into the
+  register that receives `setcc`.  The probe reduces machine-optimizer
+  input and scalar-temporary register-copy counts by six, but the existing
+  optimizer already removes all six copies: final MIR remains 125,832,
+  object size remains 1,426,720 bytes, and the frozen object remains exactly
+  `f496c227be1db4007a24af5bd5d437804cc7a1c19b117cfd3c0bb1ba6e919693`.
+  Because the added selection predicate would execute across the full
+  compare population for zero generated-code change, the probe is fully
+  reverted without Cachegrind or inception.  This closes the compare class
+  as an emitter-level P30 target; a future win there must improve the final
+  machine optimizer, not merely its input.
