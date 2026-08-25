@@ -2005,3 +2005,16 @@ source reshaping remains out of scope per the standing directive).
   All code was reverted; the hosted compiler is byte-identical to the L73
   control.  The fast gate therefore closes this shortcut without an exact
   source run, correctness rerun, or inception, and no profiler remains.
+- L75 (P30 PROMOTED-SLOT FIXED RESOLUTION REJECTED BY THE EXACT GATE).
+  `rewrite_promoted_slots` used the same three-pointer counted-loop shape that
+  L72 profitably removed from the main simplifier.  Explicit fixed `first`,
+  `second`, and `third` resolution reproduced both frozen outputs exactly and
+  improved the isolated serialized gate 4,546,884,565 -> 4,542,983,925 Ir
+  (-3,900,640, -0.085787%); the rewrite body itself fell 20,262,177 ->
+  16,507,953 Ir (-18.5%).  The exact O1 source gate reversed the verdict:
+  40,267,653,423 -> 40,269,922,059 Ir (+2,268,636, +0.005634%), even though
+  the exact rewrite body fell 46,363,337 -> 45,405,722 Ir.  The smaller
+  source-side population does not amortize the changed self-compiler object
+  layout.  The code was reverted and the hosted compiler is byte-identical
+  to L73.  No correctness or inception run was warranted, no fixture changed,
+  and no profiler remains.
