@@ -1816,3 +1816,32 @@ source reshaping remains out of scope per the standing directive).
   scale.  This is concrete progress on gate (iii), not closure: the original
   definition-time backup store remains, while the newly supported second
   timeline segment eliminates repeated reloads inside a proven use region.
+- L68 (P30 USE-TAIL CALLER POOL EXHAUSTED; ADJACENT REGION CLASSES
+  CLOSED).  Post-call tails cannot cross another call, so the same indexed
+  conflict test can safely consider all four ordinary caller registers used
+  by native allocation: R9, R8, RDI, and RSI.  Existing clobber and timeline
+  facts still price each choice, and a register busy at the promotion
+  boundary still falls back to the frame path.  On the frozen source TU the
+  wider pool assigns all seven candidates, promotes six, and encounters one
+  busy boundary, versus four assignments/promotions with the two-register
+  pool.  Final MIR falls 125,829 -> 125,826 and the object shrinks 1,426,688
+  -> 1,426,656 bytes.  Scalar loads fall 24,014 -> 24,013 while register
+  copies rise 1,920 -> 1,921, leaving total scalar movement flat at 45,623;
+  homes, spills, and stores remain 818, 51, and 14,933, while planned grants
+  rise 5,585 -> 5,587.  Host and rebuilt O1 self-host outputs agree at
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`.
+  The serialized-LowIR gate independently gains three MIR instructions and
+  16 object bytes; four native ABBA samples improve mean user time 1.6025 s
+  -> 1.5900 s (-0.78%), with stable output hashes in every lane.  Two nearby
+  extensions are now closed by reverted fast probes: admitting acyclic
+  loop-exit tails found zero new candidates, while dominated regions between
+  calls found only two qualifying values, too little population to justify a
+  demotion schedule and alias-release state.  No fixture changed: PA38 is
+  41/41, the through-PA38 report is 5,431/5,431, and the audit has zero fatal
+  findings (36 warnings).  O1/O3/O0 self/inception lanes all MATCH, and every
+  build used both outer `-j32` and `INCEPTION_BUILD_JOBS=32`.  No profiler
+  process remains.  Per L67's gate policy, another full-source Cachegrind is
+  deferred until the next combined milestone: this bounded pool extension is
+  accepted on reproducible generated-code improvement, the isolated backend
+  check, native direction, and the full correctness/inception matrix rather
+  than spending about 388 s to adjudicate a sub-basis-point compiler effect.

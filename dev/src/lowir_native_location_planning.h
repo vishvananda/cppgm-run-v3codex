@@ -384,7 +384,7 @@ protected:
        type.kind != lowir_model::LTK_I64)
       return;
     if(lowerer.stats_) ++lowerer.stats_->planner_use_tail_candidates;
-    static const X64Register pool[] = {XR_R9, XR_R8};
+    static const X64Register pool[] = {XR_R9, XR_R8, XR_RDI, XR_RSI};
     build_use_tail_conflict_index();
     for(std::size_t choice = 0;
         choice < sizeof(pool) / sizeof(pool[0]); ++choice) {
@@ -418,12 +418,13 @@ protected:
         const PlannedLocationSegment & segment =
           location_timeline_[value][i];
         if(segment.kind != PLK_GPR) continue;
-        if(segment.index == static_cast<unsigned>(XR_R9))
-          use_tail_conflict_spans_[0].push_back(
-            std::make_pair(segment.begin, segment.end));
-        else if(segment.index == static_cast<unsigned>(XR_R8))
-          use_tail_conflict_spans_[1].push_back(
-            std::make_pair(segment.begin, segment.end));
+        static const X64Register pool[] = {XR_R9, XR_R8, XR_RDI, XR_RSI};
+        for(std::size_t reg = 0; reg < sizeof(pool) / sizeof(pool[0]); ++reg)
+          if(segment.index == static_cast<unsigned>(pool[reg])) {
+            use_tail_conflict_spans_[reg].push_back(
+              std::make_pair(segment.begin, segment.end));
+            break;
+          }
       }
   }
   bool use_tail_span_conflicts(std::size_t reg, std::size_t begin,
@@ -659,7 +660,7 @@ protected:
     planned_promotion_schedule_;
   std::size_t planned_promotion_cursor_ = 0;
   std::vector<std::pair<std::size_t, std::size_t> >
-    use_tail_conflict_spans_[2];
+    use_tail_conflict_spans_[4];
   bool use_tail_conflict_index_ready_ = false;
   std::vector<unsigned char> planned_release_done_;
   std::priority_queue<
