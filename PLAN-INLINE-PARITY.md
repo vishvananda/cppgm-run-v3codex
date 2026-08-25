@@ -1553,3 +1553,29 @@ source reshaping remains out of scope per the standing directive).
   does not provide useful host retired-instruction counters, though a future
   user-mode count-only TCG plugin could serve as a directional, not final,
   gate.
+- L55 (P30 STAGED SCALAR CALL RESULTS LAND DIRECTLY FROM RAX).  An
+  unplanned scalar call result in an EH function previously took the path
+  `RAX -> transient allocated register -> edge-live frame home`, even when
+  the post-instruction stabilizer was certain to create that home.  Lowering
+  now performs the same allocation attempt to preserve the allocator's
+  pressure and record/replay decisions, but releases a successful transient
+  reservation and leaves eligible results in RAX for the existing stabilizer
+  to store.  Planned-register and exact-forward results retain their prior
+  placement, and the stabilizer no longer records no-op releases for
+  unmanaged fixed registers.  The frozen TU takes this path 25 times:
+  call-boundary register copies and machine-optimizer input each fall by 25,
+  final MIR falls 125,852 -> 125,832, and object size falls 1,426,808 ->
+  1,426,744 bytes.  Temporary homes, spills, edge staging, and scalar
+  temporary movement remain exactly flat at 818, 51, 328, and 45,624.
+  Exact self-hosted Ir-only Cachegrind improves 43,444,897,460 ->
+  43,440,018,508 (-4,878,952, -0.011230%).  Host and self-host frozen objects
+  are byte-identical at
+  `a5ebb16c106c4e46daf87b6c26b2cc79d2830f435cb10035513597c9dfd51caf`.
+  PA38 is 41/41 with no fixture changes, the through-PA38 report is
+  5,431/5,431, the audit has zero fatal findings (36 warnings), and isolated
+  32-way O1/O3/O0 inception lanes all MATCH byte-for-byte.  No profiler
+  process remains.  A temporary census also closes cheap rematerialization
+  of the remaining 30 staged binary values as the next slice: they comprise
+  only four adds and one subtract, versus three multiplies, eleven
+  divide/remainder operations, and eleven shifts; the census was fully
+  reverted.

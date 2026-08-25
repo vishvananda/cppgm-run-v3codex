@@ -1124,9 +1124,9 @@ private:
     } else {
       append_store(out, home, location,
                    value.type);
-      if(!has_live_location_alias(instruction.dest, location)) {
+      if(managed_register(location.reg) &&
+         !has_live_location_alias(instruction.dest, location))
         registers_.release(location.reg);
-      }
     }
     set_value_location(instruction.dest, home);
   }
@@ -2528,8 +2528,8 @@ private:
                                                instruction.dest)) {
         X64Register result = XR_RSP;
         if(try_allocate_result(instruction.dest, out, &result)) {
-          location = reg_operand(result);
-          append_move(out, location, reg_operand(XR_RAX));
+          location = place_allocated_scalar_call_result(
+            instruction.dest, result, out);
         } else {
           pressure_home = allocate_temp_home(
             instruction.dest, instruction.type, THR_CALL_RESULT);
@@ -2719,8 +2719,8 @@ private:
                 instruction.dest, instruction.type, THR_CALL_RESULT);
           }
           if(fallback_home.kind != MirOperand::OP_FRAME) {
-            location = reg_operand(result);
-            append_move(out, location, reg_operand(XR_RAX));
+            location = place_allocated_scalar_call_result(
+              instruction.dest, result, out);
           }
         }
         if(selection::is_narrow_integer(instruction.type) &&

@@ -176,6 +176,35 @@ protected:
       consumer.second.value != result;
   }
 
+  bool scalar_call_result_stages_directly_from_rax(
+      lowir_model::ValueId result) const
+  {
+    const Derived & lowerer = static_cast<const Derived &>(*this);
+    return lowerer.optimization_level_ >= 1 && lowerer.facts_.has_eh &&
+      lowerer.facts_.has(result, analysis::FunctionFacts::VF_EDGE_LIVE) &&
+      (lowerer.facts_.has(
+         result, analysis::FunctionFacts::VF_LOOP_INVARIANT) ||
+       lowerer.result_crosses_call(result)) &&
+      !lowerer.facts_.has(
+        result, analysis::FunctionFacts::VF_EXACT_FORWARD_EDGE) &&
+      lowerer.planned_register_entry(result) == 0;
+  }
+
+  mir_model::MirOperand place_allocated_scalar_call_result(
+      lowir_model::ValueId value, X64Register result,
+      std::vector<mir_model::MirInstruction> & out)
+  {
+    Derived & lowerer = static_cast<Derived &>(*this);
+    if(scalar_call_result_stages_directly_from_rax(value)) {
+      lowerer.registers_.release(result);
+      if(lowerer.stats_) ++lowerer.stats_->planned_direct_call_edge_homes;
+      return build::reg_operand(XR_RAX);
+    }
+    const mir_model::MirOperand location = build::reg_operand(result);
+    build::append_move(out, location, build::reg_operand(XR_RAX));
+    return location;
+  }
+
   bool stabilize_extended_register_sources(
       const lowir_model::Instruction & instruction,
       const std::vector<lowir_model::LowirParameter> & parameters,

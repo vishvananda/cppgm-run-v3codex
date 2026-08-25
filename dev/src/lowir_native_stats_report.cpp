@@ -86,6 +86,8 @@ void report_edge_staging_stats(std::ostream & output, const Stats & stats)
          << stats.planned_rematerialized_constant_indexes
          << " planned_direct_copy_edge_homes="
          << stats.planned_direct_copy_edge_homes
+         << " planned_direct_call_edge_homes="
+         << stats.planned_direct_call_edge_homes
          << " edge_staging_gpr=" << stats.edge_staging_gpr
          << " edge_staging_xmm=" << stats.edge_staging_xmm
          << " edge_staging_eh=" << stats.edge_staging_eh
