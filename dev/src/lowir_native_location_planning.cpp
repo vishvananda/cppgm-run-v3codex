@@ -200,6 +200,18 @@ bool span_is_free(
   return true;
 }
 
+void assign_candidate_location(const Candidate & candidate, X64Register reg,
+                               FunctionLocationTimeline * timeline)
+{
+  const std::size_t value = static_cast<std::uint32_t>(candidate.value);
+  // A phi home is reserved before the walk and receives predecessor
+  // transfers before its linear definition, so its occupancy begins at
+  // function entry.  Ordinary segments begin at their definition.
+  const std::size_t begin = candidate.is_phi ? 0 : candidate.definition;
+  (*timeline)[value].push_back(PlannedLocationSegment(
+    begin, candidate.end, PLK_GPR, static_cast<unsigned>(reg)));
+}
+
 // The reactive pool prefers RBX, R12, R13 in that order, so the planner
 // claims from the opposite end; the pools only meet under real pressure.
 // R14 and R15 extend coverage after the original three so earlier plans
@@ -220,8 +232,7 @@ bool span_is_free(
 void assign_candidate_registers(
     const std::vector<Candidate> & candidates,
     const analysis::FunctionFacts & facts,
-    std::vector<unsigned char> * plan,
-    std::vector<std::size_t> * plan_ends,
+    FunctionLocationTimeline * timeline,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
     Stats * stats)
 {
@@ -250,10 +261,7 @@ void assign_candidate_registers(
       // occupied from function entry, not from the transfer position.
       claimed[reg].push_back(std::make_pair(
         static_cast<std::size_t>(0), candidate.end));
-      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
-        static_cast<unsigned char>(kPool[reg]) + 1;
-      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
-        candidate.end;
+      assign_candidate_location(candidate, kPool[reg], timeline);
       if(stats) {
         ++stats->planned_value_registers;
         ++stats->planned_phi_registers;
@@ -277,10 +285,7 @@ void assign_candidate_registers(
         continue;
       claimed[reg].push_back(
         std::make_pair(candidate.definition, candidate.end));
-      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
-        static_cast<unsigned char>(kPool[reg]) + 1;
-      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
-        candidate.end;
+      assign_candidate_location(candidate, kPool[reg], timeline);
       if(stats) {
         ++stats->planned_value_registers;
         ++stats->planned_invariant_registers;
@@ -304,10 +309,7 @@ void assign_candidate_registers(
       if(caller_busy_until[reg] > candidate.definition) continue;
       if(crossed & analysis::register_mask(kCallerPool[reg])) continue;
       caller_busy_until[reg] = candidate.end + 1;
-      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
-        static_cast<unsigned char>(kCallerPool[reg]) + 1;
-      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
-        candidate.end;
+      assign_candidate_location(candidate, kCallerPool[reg], timeline);
       if(stats) {
         ++stats->planned_value_registers;
         if(candidate.is_call_argument)
@@ -348,10 +350,7 @@ void assign_candidate_registers(
       if(crossed & analysis::register_mask(kPool[reg])) continue;
       claimed[reg].push_back(
         std::make_pair(candidate.definition, candidate.end));
-      (*plan)[static_cast<std::uint32_t>(candidate.value)] =
-        static_cast<unsigned char>(kPool[reg]) + 1;
-      (*plan_ends)[static_cast<std::uint32_t>(candidate.value)] =
-        candidate.end;
+      assign_candidate_location(candidate, kPool[reg], timeline);
       if(stats) {
         ++stats->planned_value_registers;
         if(candidate.is_call_argument)
@@ -506,22 +505,20 @@ LayoutScan scan_function_layout(
 // edge, so a region whose pad starts before the region's end contributes
 // the span [pad start, region end].  An edge-live interval extends to the
 // end of every span it overlaps, to a fixed point.
-std::vector<unsigned char> plan_value_registers(
+FunctionLocationTimeline plan_value_locations(
     const lowir_model::LowirFunction & function,
     const analysis::FunctionFacts & facts,
     int optimization_level,
-    std::vector<std::size_t> * plan_ends,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
     std::vector<std::pair<std::size_t, std::size_t> > * extension_spans,
     Stats * stats)
 {
   using analysis::FunctionFacts;
-  std::vector<unsigned char> plan(function.value_names.size(), 0);
-  plan_ends->assign(function.value_names.size(), 0);
+  FunctionLocationTimeline timeline(function.value_names.size());
   for(std::size_t reg = 0; reg < 16; ++reg) register_spans[reg].clear();
   extension_spans->clear();
   if(optimization_level < 1 || facts.has_va_start || facts.has_dynamic_stack)
-    return plan;
+    return timeline;
 
   std::vector<std::size_t> block_start(function.blocks.size(), 0);
   std::vector<std::size_t> block_by_id;
@@ -658,7 +655,7 @@ std::vector<unsigned char> plan_value_registers(
     }
     candidates.push_back(candidate);
   }
-  if(candidates.empty()) return plan;
+  if(candidates.empty()) return timeline;
   std::sort(candidates.begin(), candidates.end(),
             [](const Candidate & left, const Candidate & right) {
               return left.definition < right.definition ||
@@ -666,9 +663,9 @@ std::vector<unsigned char> plan_value_registers(
                  static_cast<std::uint32_t>(left.value) <
                    static_cast<std::uint32_t>(right.value));
             });
-  assign_candidate_registers(candidates, facts, &plan, plan_ends,
+  assign_candidate_registers(candidates, facts, &timeline,
                              register_spans, stats);
-  return plan;
+  return timeline;
 }
 
 bool should_retain_edge_register(

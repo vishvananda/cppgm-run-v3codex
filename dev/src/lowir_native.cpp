@@ -127,7 +127,7 @@ public:
         });
     if(facts_.has_i128_atomic) registers_.reserve(XR_RBX);
     storage_facts_ = analyze_storage(source_, facts_, tls_wrappers_);
-    compute_value_register_plan(source_, facts_, optimization_level_, stats_);
+    compute_location_timeline(source_, facts_, optimization_level_, stats_);
     build_planned_release_schedule();
     slot_offsets_.resize(source_.slot_names.size(), 0);
     slot_offset_known_.assign(source_.slot_names.size(), 0);

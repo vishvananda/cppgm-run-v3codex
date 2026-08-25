@@ -67,13 +67,40 @@ bool xmm_destination_is_safe(
 
 bool managed_register(X64Register reg);
 
-// Assign call-crossing scalar temporaries proven conflict-free by a linear
-// scan over `[definition, extended last use]` intervals to callee-saved
-// registers, claimed from the opposite end of the reactive preference
-// order.  Each entry is the planned register plus one; zero means no plan.
-// plan_ends carries the extended interval end used for runtime release; it
-// covers layout-backward jump spans AND exception regions whose landing
-// pad lies before the region end, since unwinding is a backward edge too.
+enum PlannedLocationKind
+{
+  PLK_GPR,
+  PLK_XMM,
+  PLK_FRAME,
+  PLK_REMATERIALIZE
+};
+
+struct PlannedLocationSegment
+{
+  PlannedLocationSegment(std::size_t segment_begin,
+                         std::size_t segment_end,
+                         PlannedLocationKind location_kind,
+                         unsigned location_index = 0)
+    : begin(segment_begin), end(segment_end), kind(location_kind),
+      index(location_index) {}
+
+  std::size_t begin;
+  std::size_t end;
+  PlannedLocationKind kind;
+  unsigned index;
+};
+
+typedef std::vector<PlannedLocationSegment> ValueLocationTimeline;
+typedef std::vector<ValueLocationTimeline> FunctionLocationTimeline;
+
+// Assign eligible scalar temporaries proven conflict-free by a linear scan
+// over `[definition, extended last use]` intervals.  The result is an
+// explicit per-value location timeline; gate (i) initially emits the same
+// single GPR segment represented by the legacy register/plan_end vectors.
+// Later P30 phases can add frame/rematerialized gaps and multiple register
+// segments without changing the walk's interface.  Segment ends cover
+// layout-backward jump spans AND exception regions whose landing pad lies
+// before the region end, since unwinding is a backward edge too.
 // Phi destinations participate with an interval starting at the earliest
 // predecessor terminator (where the first transfer writes the home) and
 // always span-extended; they claim callee-saved registers first, one phi
@@ -86,11 +113,10 @@ bool managed_register(X64Register reg);
 // extension_spans receives every layout backedge and backward exception
 // span (the interval-extension material), filled even for functions the
 // planner otherwise skips, so the walk can test span membership.
-std::vector<unsigned char> plan_value_registers(
+FunctionLocationTimeline plan_value_locations(
     const lowir_model::LowirFunction & function,
     const analysis::FunctionFacts & facts,
     int optimization_level,
-    std::vector<std::size_t> * plan_ends,
     std::vector<std::pair<std::size_t, std::size_t> > * register_spans,
     std::vector<std::pair<std::size_t, std::size_t> > * extension_spans,
     Stats * stats);
@@ -102,14 +128,14 @@ template <class Derived>
 class PlannedResidency
 {
 protected:
-  void compute_value_register_plan(
+  void compute_location_timeline(
       const lowir_model::LowirFunction & function,
       const analysis::FunctionFacts & facts,
       int optimization_level, Stats * stats)
   {
-    value_register_plan_ = plan_value_registers(
-      function, facts, optimization_level, &value_plan_end_,
-      planned_register_spans_, &extension_spans_, stats);
+    location_timeline_ = plan_value_locations(
+      function, facts, optimization_level, planned_register_spans_,
+      &extension_spans_, stats);
   }
   // True when no layout backedge or backward exception span contains the
   // position: a final counted use here can never be re-executed, so an
@@ -123,9 +149,22 @@ protected:
   }
   unsigned char planned_register_entry(lowir_model::ValueId value) const
   {
-    return value.valid() &&
-      static_cast<std::size_t>(value) < value_register_plan_.size() ?
-      value_register_plan_[value] : 0;
+    if(!value.valid() ||
+       static_cast<std::size_t>(value) >= location_timeline_.size()) return 0;
+    const ValueLocationTimeline & timeline = location_timeline_[value];
+    for(std::size_t i = 0; i < timeline.size(); ++i)
+      if(timeline[i].kind == PLK_GPR) return timeline[i].index + 1;
+    return 0;
+  }
+  const PlannedLocationSegment * planned_register_segment(
+      lowir_model::ValueId value) const
+  {
+    if(!value.valid() ||
+       static_cast<std::size_t>(value) >= location_timeline_.size()) return 0;
+    const ValueLocationTimeline & timeline = location_timeline_[value];
+    for(std::size_t i = 0; i < timeline.size(); ++i)
+      if(timeline[i].kind == PLK_GPR) return &timeline[i];
+    return 0;
   }
   bool value_holds_planned_register(lowir_model::ValueId value) const
   {
@@ -185,9 +224,9 @@ protected:
   bool planned_interval_over(lowir_model::ValueId value) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
+    const PlannedLocationSegment * segment = planned_register_segment(value);
     return value_holds_planned_register(value) &&
-      static_cast<std::size_t>(value) < value_plan_end_.size() &&
-      lowerer.position_ >= value_plan_end_[value] &&
+      segment && lowerer.position_ >= segment->end &&
       !deferred_carrier_registers_[static_cast<unsigned>(
         lowerer.values_[value].location.reg)];
   }
@@ -206,13 +245,16 @@ protected:
     planned_release_cursor_ = 0;
     while(!deferred_span_end_releases_.empty())
       deferred_span_end_releases_.pop();
-    planned_release_done_.assign(value_register_plan_.size(), 0);
-    for(std::size_t v = 0; v < value_register_plan_.size(); ++v)
-      if(value_register_plan_[v] != 0)
+    planned_release_done_.assign(location_timeline_.size(), 0);
+    for(std::size_t v = 0; v < location_timeline_.size(); ++v) {
+      const PlannedLocationSegment * segment = planned_register_segment(
+        lowir_model::ValueId(static_cast<std::uint32_t>(v)));
+      if(segment)
         planned_release_schedule_.push_back(
-          std::make_pair(value_plan_end_[v],
+          std::make_pair(segment->end,
                          lowir_model::ValueId(
                            static_cast<std::uint32_t>(v))));
+    }
     std::sort(planned_release_schedule_.begin(),
               planned_release_schedule_.end());
   }
@@ -429,8 +471,7 @@ protected:
       ++stats->call_arg_frame_loads_other;
   }
 
-  std::vector<unsigned char> value_register_plan_;
-  std::vector<std::size_t> value_plan_end_;
+  FunctionLocationTimeline location_timeline_;
   std::vector<std::pair<std::size_t, std::size_t> >
     planned_register_spans_[16];
   std::vector<std::pair<std::size_t, std::size_t> > extension_spans_;

@@ -1356,3 +1356,19 @@ source reshaping remains out of scope per the standing directive).
   transitional: the whole-function location timeline replaces this
   recorded producer incrementally; it is not the final allocator cost
   model.
+- L46 (P30 GATE (i) LOCATION TIMELINE LANDED; BYTE IDENTITY HOLDS).
+  The planner's parallel `value_register_plan`/`value_plan_end` arrays are
+  replaced by an explicit whole-function, per-value sequence of location
+  segments.  A segment records `[begin,end]`, location kind (GPR, XMM,
+  frame, or rematerialized), and physical index; today's producer emits
+  one GPR segment for exactly the previously planned population, including
+  phi occupancy from function entry.  Every planned grant, interval-end
+  release, release schedule entry, conflict query, and stats classifier now
+  reads this representation.  This closes the pure-refactor migration gate
+  without reviving L43's disproven multi-use/splitting expansion: the frozen
+  object is byte-identical at
+  `6a183b784f03134f1323c649a054506ac644fbbfbfbf0977a978fe1629708b34`,
+  PA38 is 40/40, the through-PA38 report is 5,430/5,430, the audit has zero
+  fatal findings (36 warnings), and isolated O3/O0 inception lanes both
+  MATCH.  The open timeline work is now cheaper-spill placement and
+  rematerialized gaps, not additional residency.
