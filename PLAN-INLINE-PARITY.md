@@ -1660,3 +1660,21 @@ source reshaping remains out of scope per the standing directive).
   The four-line generalization and temporary census are fully reverted, no
   further inception lanes are warranted, and no profiler process remains.
   L55's stricter no-plan gate therefore remains the measured optimum.
+- L60 (P30 FIXED DIVIDE/REMAINDER RESULT STAGING REJECTED BY THE EXACT
+  GATE).  Nine of the eleven staged divide/remainder values can leave the
+  quotient or remainder in its architectural RAX/RDX result register for the
+  existing stabilizer, instead of copying through the transient destination
+  selected for dividend setup.  The narrow no-plan probe reduces
+  machine-optimizer input and scalar-temporary register copies by nine,
+  leaves final MIR flat at 125,832, and shrinks the frozen object 1,426,720
+  -> 1,426,592 bytes; homes, spills, and grants remain flat.  PA38 remains
+  41/41 and the 32-way O1 inception lane MATCHES.  Exact self-hosted Ir-only
+  Cachegrind nevertheless regresses 43,437,250,755 -> 43,438,369,171
+  (+1,118,416, +0.002575%), so the fixed-register ownership/allocation change
+  is dynamically worse despite the smaller target object.  The measured
+  object was verified at
+  `515e3df3617b8400b9447660d985c7427fc57b20228c3c9c10a80f20bab37544`.
+  The implementation and counter are fully reverted, no further inception
+  lanes are warranted, and no profiler process remains.  Fixed-result
+  staging is closed at the current division lowering; a future division win
+  must simplify setup itself rather than only its final copy.
