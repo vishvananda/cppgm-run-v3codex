@@ -1845,3 +1845,37 @@ source reshaping remains out of scope per the standing directive).
   accepted on reproducible generated-code improvement, the isolated backend
   check, native direction, and the full correctness/inception matrix rather
   than spending about 388 s to adjudicate a sub-basis-point compiler effect.
+- L69 (P30 LIFETIME-BOUNDED GVN@O1 RE-ARM REJECTED; GATE (iv) REMAINS
+  CLOSED).  L51's unconditional GVN merged short loads into long edge-live
+  lifetimes.  The narrow retry therefore accepted a redundant load only when
+  its dominating value already had an original layout use at least as late as
+  every use of the removed load, so the replacement could not lengthen that
+  layout lifetime.  This is a real generated-code win, not fixture noise: it
+  eliminates 47 loads on the frozen source TU, reduces final MIR 125,826 ->
+  125,664, shrinks the object 1,426,656 -> 1,425,904 bytes, reduces spills
+  51 -> 46 and homes 818 -> 815, and lowers scalar loads/stores/copies
+  24,013/14,933/1,921 -> 23,957/14,896/1,909.  The candidate object is stable
+  at `e9e0b8cb6cc78043266166e60617432dc980c6b20fe4c0114cc844783a0749e3`.
+  PA38 remains 41/41, the through-PA38 report remains 5,431/5,431, the audit
+  has zero fatal findings (36 warnings), and O1/O3/O0 self/inception lanes all
+  MATCH; every inception build used both outer `-j32` and
+  `INCEPTION_BUILD_JOBS=32`.  But repeated native backend ABBA initially
+  regresses about 1.4%, and the combined L68 + retry full-source Ir-only
+  profile is 40,448,238,854 versus L67's exact 40,398,754,919 (+49,483,935,
+  +0.12250%).  Unlike a sub-0.001% fluctuation, this is material and agrees
+  with native direction.  A final rescue prefiltered functions before EH,
+  dominance, and memory-SSA construction and required multiple predicted
+  non-extending pairs.  It retained 24 source-TU eliminations, five fewer
+  spills, five fewer homes, 107 fewer MIR instructions, and a 336-byte object
+  reduction.  Even that bounded form remains slower in eight native ABBA
+  pairs, 1.59875 s -> 1.60750 s mean user time (+0.55%), and a paired isolated
+  backend Cachegrind measures 4,570,797,619 -> 4,583,402,108 Ir (+12,604,489,
+  +0.27576%), far outside the observed sub-million isolated-run noise.  The
+  implementation and every census hook are fully reverted; the L68 source
+  object is restored exactly at
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`,
+  and no profiler remains.  GVN's harvest is genuine, but the current full
+  memory-SSA engine cannot amortize an O1 invocation even after placement
+  protects the selected lifetimes.  A future retry needs a genuinely lighter
+  cross-block load-forwarder, not another profitability wrapper around this
+  pass.
