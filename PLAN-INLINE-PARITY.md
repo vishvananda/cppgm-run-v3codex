@@ -1916,3 +1916,26 @@ source reshaping remains out of scope per the standing directive).
   and no profiler remains.  Pre-first-call residency needs either a transition
   mechanism shared with a larger allocator change or a materially larger use
   population; this standalone region class is closed.
+- L71 (P30 VARIABLE-INDEX FINAL-USE TAKEOVER REJECTED; TARGET WIN IS TOO
+  SMALL TO AMORTIZE).  The residual staging census contains nine variable
+  `INDEX` results.  Sixteen unplanned edge-live definitions reach the
+  materializer, but only nine are actually staged; four of those nine have a
+  safe final-use operand register that x86 `lea` may overwrite (three bases,
+  two indexes, with one overlap), and all four are predictably in EH
+  functions.  An EH-only implementation therefore leaves the seven
+  reactively retained definitions untouched.  It is a real but tiny target
+  improvement: the source fixture falls 125,826 -> 125,824 MIR instructions
+  and 1,426,656 -> 1,426,632 object bytes; the isolated serialized fixture
+  falls 1,540,192 -> 1,540,152 bytes.  Two pressure-homed results move into
+  the ordinary edge-staging path, so the staging census rises 330 -> 332 and
+  its scalar-temporary store classification rises 14,933 -> 14,935 even
+  though the net instruction count falls.  The deterministic isolated backend
+  gate rejects the added lowering predicates: Cachegrind rises from L68's
+  4,570,651,256 to 4,571,298,015 Ir (+646,759, +0.01415%).  This is precisely
+  why P30 does not accept a locally cleaner MIR fixture by itself: the
+  self-hosted compiler executes the lowering machinery on every applicable
+  index, while only four sites benefit.  The implementation and census hooks
+  are fully reverted, the L68 source object is restored exactly at
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`,
+  and no profiler remains.  Variable-index takeover is closed unless it can
+  share an already-paid destination-selection predicate.
