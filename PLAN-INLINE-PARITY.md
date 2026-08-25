@@ -2158,3 +2158,23 @@ source reshaping remains out of scope per the standing directive).
   `INCEPTION_BUILD_JOBS=32`.  No fixture changed and no profiler remains.
   This lands a proven residual rather than claiming gate (iii) complete: 318
   call-crossing staging events, predominantly in EH functions, remain.
+- L82 (P30 CROSS-CALL EH LOAD RESIDENCY REJECTED; REACTIVE PRESERVED
+  CAPACITY IS SATURATED).  Planned callee-saved residents already rely on the
+  function's unwind metadata, so the next narrow probe gave the same treatment
+  to an unplanned EH load result that happened to land in a callee-saved
+  register and cross a call.  The class is large, but retaining it disrupts
+  later allocation.  On the frozen source, 79 call-crossing staging events
+  disappear and temporary homes fall 818 -> 801, while planned edge-register
+  retains rise 132 -> 196.  The downstream cost is nine additional spills,
+  final MIR 125,821 -> 126,084 (+263), machine input 145,853 -> 146,104,
+  scalar movement 45,617 -> 45,770 (loads +94, stores +65, copies -8), and
+  object size 1,426,592 -> 1,427,152 bytes.  The serialized input confirms
+  the same shape: staging 362 -> 283, homes 933 -> 906, and retains 145 ->
+  224, but spills rise 55 -> 64, final MIR 135,466 -> 135,861 (+395), machine
+  input 156,284 -> 156,655, scalar movement 49,540 -> 49,796 (loads +150,
+  stores +111, copies -8), and the object grows 1,540,144 -> 1,540,608 bytes.
+  This is the L43 simultaneous-overlap result seen from the residual side:
+  preserving reactive values longer steals capacity from more profitable
+  planned lifetimes.  The one-condition probe is fully reverted before
+  profiling or correctness/inception reruns; the L81 source is restored
+  exactly, no fixture changed, and no profiler remains.
