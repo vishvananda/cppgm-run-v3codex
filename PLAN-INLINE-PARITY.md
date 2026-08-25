@@ -2080,3 +2080,30 @@ source reshaping remains out of scope per the standing directive).
   and O0 self/inception lanes all MATCH every object and the final compiler;
   every lane used outer `-j32` and `INCEPTION_BUILD_JOBS=32`.  No fixture
   changed and no profiler remains.
+- L79 (P30 REUSABLE CFG CANDIDATE SCRATCH LANDED; THE FAST NEGATIVE PATH
+  STOPS ALLOCATING).  CFG cleanup runs roughly 19.4k times on the frozen TU,
+  and its first edge-known-branch census previously allocated and zeroed a
+  value-sized `seen` vector on every call, including the overwhelmingly common
+  no-candidate path.  `optimize` now owns one explicit, reentrant
+  `CleanupCfgScratch` and threads it through scheduled cleanup plus the final
+  edge-known-branch sweep; standalone public calls retain a call-local
+  context.  Audit-safe terminal-folding and phi-presence helpers keep the
+  large legacy cleanup body within the current function-size gate.  Source
+  and serialized LowIR outputs remain byte-identical at
+  `200cee5bc5a0e50297875289038b6a706fe2fe131df0540306237d2f463120f6`
+  and `ba6231e2a3260262e1d165637cb700e1a0a8b550f9623f5098f56d0fc6ca3130`.
+  The isolated serialized gate improves 4,474,624,945 -> 4,473,401,874 Ir
+  (-1,223,071, -0.027333%), with `cleanup_cfg` falling 114,671,922 ->
+  112,274,741 Ir, `free` falling 179,044,207 -> 178,521,313, and
+  `operator new` falling 133,875,730 -> 133,488,007.  The exact O1
+  self-hosted source gate confirms 40,072,784,649 -> 40,054,636,360 Ir
+  (-18,148,289, -0.045288%); `cleanup_cfg` falls 285,316,138 -> 261,676,501
+  Ir, `free` falls 520,988,921 -> 520,471,564, and `operator new` falls
+  390,495,940 -> 390,111,497.  A broader form also retained bypass,
+  reachability, EH, and merge scratch, but decisively regressed the isolated
+  gate to 4,487,701,167 Ir (+13,076,222, +0.29223%) and was reverted before
+  exact measurement.  PA38 is 41/41, the through-PA38 report is 5,431/5,431,
+  and the audit has zero fatal findings (36 warnings).  O3, O1, and O0
+  self/inception lanes all MATCH every object and the final compiler; every
+  lane used outer `-j32` and `INCEPTION_BUILD_JOBS=32`.  No fixture changed
+  and no profiler remains.

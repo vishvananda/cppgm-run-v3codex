@@ -2379,7 +2379,9 @@ bool timed_function_pass(FunctionPass pass, Function * function,
   };
   if(!stats) {
     const bool changed = run(0);
-    if(changed && analysis && pass == cleanup_cfg) analysis->invalidate_cfg();
+    if(changed && analysis &&
+       pass == static_cast<FunctionPass>(cleanup_cfg))
+      analysis->invalidate_cfg();
     return changed;
   }
   ++(stats->*runs);
@@ -2420,13 +2422,15 @@ bool timed_function_pass(FunctionPass pass, Function * function,
       std::chrono::steady_clock::now() - started).count());
   if(changed) {
     if(pass == simplify_values) ++stats->simplify_changes;
-    else if(pass == cleanup_cfg) ++stats->cfg_changes;
+    else if(pass == static_cast<FunctionPass>(cleanup_cfg))
+      ++stats->cfg_changes;
     else ++stats->slot_changes;
     if(detailed_changes) ++(stats->*detailed_changes);
   }
   stats->*nanoseconds += elapsed;
   if(detailed_nanoseconds) stats->*detailed_nanoseconds += elapsed;
-  if(changed && analysis && pass == cleanup_cfg) analysis->invalidate_cfg();
+  if(changed && analysis && pass == static_cast<FunctionPass>(cleanup_cfg))
+    analysis->invalidate_cfg();
   return changed;
 }
 
@@ -2449,17 +2453,38 @@ bool timed_dce(Function * function,
   return changed;
 }
 
+bool timed_cfg(Function * function, Stats * stats,
+               CleanupCfgScratch * cfg_scratch,
+               lowir_analysis::FunctionAnalysis * analysis = 0)
+{
+  if(!stats) {
+    const bool changed = cleanup_cfg(function, 0, cfg_scratch);
+    if(changed && analysis) analysis->invalidate_cfg();
+    return changed;
+  }
+  ++stats->cfg_runs;
+  const std::chrono::steady_clock::time_point started =
+    std::chrono::steady_clock::now();
+  const bool changed = cleanup_cfg(function, stats, cfg_scratch);
+  if(changed) ++stats->cfg_changes;
+  if(changed && analysis) analysis->invalidate_cfg();
+  stats->cfg_nanoseconds += static_cast<std::uint64_t>(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - started).count());
+  return changed;
+}
+
 bool prepare_for_inlining(Function * function,
                           const FunctionBoundaries & boundaries,
                           Stats * stats,
                           SimplifyScratch * simplify_arena,
-                          DceScratch * dce_scratch)
+                          DceScratch * dce_scratch,
+                          CleanupCfgScratch * cfg_scratch)
 {
   timed_function_pass(simplify_values, function, stats,
     &Stats::simplify_runs, &Stats::simplify_nanoseconds, 0, simplify_arena);
   timed_dce(function, boundaries, stats, dce_scratch);
-  if(!timed_function_pass(cleanup_cfg, function, stats,
-       &Stats::cfg_runs, &Stats::cfg_nanoseconds))
+  if(!timed_cfg(function, stats, cfg_scratch))
     return false;
   const bool values_changed = timed_function_pass(
     simplify_values, function, stats,
@@ -2474,6 +2499,7 @@ struct LateInlineCleanupContext
   LowirProgram * program;
   SimplifyScratch * simplify_arena;
   DceScratch * dce_scratch;
+  CleanupCfgScratch * cfg_scratch;
 };
 
 // Callee-first convergence: collapse a freshly inlined body's object
@@ -2487,7 +2513,7 @@ void cleanup_late_inline_body(Function * function, Stats * stats,
     *static_cast<const LateInlineCleanupContext *>(opaque);
   prepare_for_inlining(
     function, *context.boundaries, stats, context.simplify_arena,
-    context.dce_scratch);
+    context.dce_scratch, context.cfg_scratch);
   bool object_slots_changed =
     scalar_replace_aggregate_slots(context.program, function, stats);
   if(promote_small_objects(function, stats)) object_slots_changed = true;
@@ -2536,6 +2562,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     function_boundaries(program);
   SimplifyScratch simplify_arena;
   DceScratch dce_scratch;
+  CleanupCfgScratch cfg_scratch;
   const std::chrono::steady_clock::time_point unreachable_started =
     stats ? std::chrono::steady_clock::now() :
             std::chrono::steady_clock::time_point();
@@ -2572,7 +2599,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     post_cfg_values_changed[i] =
       (prepare_for_inlining(
          &program.functions[i], boundaries, stats, &simplify_arena,
-         &dce_scratch) ||
+         &dce_scratch, &cfg_scratch) ||
        unreachable_changed[i]) ? 1 : 0;
   }
   std::vector<unsigned char> inlined_symbols(program.symbol_names.size(), 0);
@@ -2613,7 +2640,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         post_cfg_values_changed[i] =
           prepare_for_inlining(
             &program.functions[i], boundaries, stats, &simplify_arena,
-            &dce_scratch) ||
+            &dce_scratch, &cfg_scratch) ||
           post_cfg_values_changed[i];
   }
   MemoryGVNSession memory_gvn(program);
@@ -2629,7 +2656,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       post_cfg_values_changed[i] =
         prepare_for_inlining(
           &function, boundaries, stats, &simplify_arena,
-          &dce_scratch) ? 1 : 0;
+          &dce_scratch, &cfg_scratch) ? 1 : 0;
     const std::chrono::steady_clock::time_point cleanup_resume_started =
       stats ? std::chrono::steady_clock::now() :
               std::chrono::steady_clock::time_point();
@@ -2664,15 +2691,12 @@ void optimize(LowirProgram & program, int level, Stats * stats,
       timed_dce(&function, boundaries, stats, &dce_scratch);
     }
     if(post_cfg_values_changed[i] || slot_values_changed)
-      timed_function_pass(cleanup_cfg, &function, stats,
-        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+      timed_cfg(&function, stats, &cfg_scratch, &analysis);
     if(timed_function_pass(remove_dead_slots, &function, stats,
         &Stats::slot_runs, &Stats::slot_nanoseconds, &analysis)) {
-      timed_function_pass(cleanup_cfg, &function, stats,
-        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+      timed_cfg(&function, stats, &cfg_scratch, &analysis);
       timed_dce(&function, boundaries, stats, &dce_scratch);
-      timed_function_pass(cleanup_cfg, &function, stats,
-        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+      timed_cfg(&function, stats, &cfg_scratch, &analysis);
     }
     bool object_slots_changed = level >= 1 &&
       scalar_replace_aggregate_slots(&program, &function, stats);
@@ -2698,8 +2722,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
         &simplify_arena);
       timed_dce(&function, boundaries, stats, &dce_scratch);
-      if(timed_function_pass(cleanup_cfg, &function, stats,
-          &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis)) {
+      if(timed_cfg(&function, stats, &cfg_scratch, &analysis)) {
         timed_function_pass(simplify_values, &function, stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);
@@ -2732,8 +2755,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     }
     if(level >= 2 && simplify_counted_loops(&function, &analysis, stats)) {
       timed_dce(&function, boundaries, stats, &dce_scratch);
-      timed_function_pass(cleanup_cfg, &function, stats,
-        &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+      timed_cfg(&function, stats, &cfg_scratch, &analysis);
     }
     if(level >= 3) {
       const std::chrono::steady_clock::time_point unroll_started =
@@ -2750,8 +2772,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
           &Stats::simplify_runs, &Stats::simplify_nanoseconds, &analysis,
           &simplify_arena);
         timed_dce(&function, boundaries, stats, &dce_scratch);
-        timed_function_pass(cleanup_cfg, &function, stats,
-          &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+        timed_cfg(&function, stats, &cfg_scratch, &analysis);
       }
     }
     hoist_loop_invariants(&program, &function, &analysis, level, stats);
@@ -2781,7 +2802,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
     std::vector<unsigned char> late_rewritten_symbols(
       program.symbol_names.size(), 0);
     LateInlineCleanupContext cleanup_context = {
-      &boundaries, &program, &simplify_arena, &dce_scratch};
+      &boundaries, &program, &simplify_arena, &dce_scratch, &cfg_scratch};
     InlineCleanup cleanup;
     cleanup.run = cleanup_late_inline_body;
     cleanup.context = &cleanup_context;
@@ -2826,7 +2847,7 @@ void optimize(LowirProgram & program, int level, Stats * stats,
         if(post_prune_rewritten_symbols[program.functions[i].symbol])
           prepare_for_inlining(
             &program.functions[i], boundaries, stats, &simplify_arena,
-            &dce_scratch);
+            &dce_scratch, &cfg_scratch);
       const std::size_t prior_pruned = pruning.pruned_functions;
       const std::size_t prior_unreachable_weak =
         pruning.unreachable_weak_functions;
@@ -2847,8 +2868,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
           &simplify_arena);
         timed_dce(
           &program.functions[i], boundaries, stats, &dce_scratch);
-        timed_function_pass(cleanup_cfg, &program.functions[i], stats,
-          &Stats::cfg_runs, &Stats::cfg_nanoseconds, &analysis);
+        timed_cfg(
+          &program.functions[i], stats, &cfg_scratch, &analysis);
       }
       sink_cold_only_definitions(&program.functions[i], noreturn_symbols,
                                  stats);
@@ -2864,7 +2885,8 @@ void optimize(LowirProgram & program, int level, Stats * stats,
   // ordinary cleanup.  One final linear sweep consumes only edge-local facts;
   // it is not an optimizer fixed point.
   for(std::size_t i = 0; i < program.functions.size(); ++i)
-    fold_edge_known_branches(&program.functions[i], stats);
+    fold_edge_known_branches(
+      &program.functions[i], stats, &cfg_scratch);
   if(stats) {
     collect_retained_inline_census(program, stats);
     stats->inline_reachable_functions = pruning.reachable_functions;

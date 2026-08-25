@@ -36,9 +36,10 @@ bool has_candidate_merge(const Function & function)
   return false;
 }
 
-bool has_edge_known_branch_candidate(const Function & function)
+bool has_edge_known_branch_candidate(
+    const Function & function, std::vector<unsigned char> * seen)
 {
-  std::vector<unsigned char> seen(function.value_names.size(), 0);
+  seen->assign(function.value_names.size(), 0);
   for(std::size_t block = 0; block < function.blocks.size(); ++block) {
     const std::vector<Instruction> & instructions =
       function.blocks[block].instructions;
@@ -46,9 +47,9 @@ bool has_edge_known_branch_candidate(const Function & function)
        instructions.back().kind == Instruction::IK_BRANCH &&
        instructions.back().first.kind == Operand::OP_TEMP) {
       const std::uint32_t value = instructions.back().first.value;
-      if(value >= seen.size()) continue;
-      if(seen[value]) return true;
-      seen[value] = 1;
+      if(value >= seen->size()) continue;
+      if((*seen)[value]) return true;
+      (*seen)[value] = 1;
     }
   }
   return false;
@@ -135,11 +136,11 @@ void remove_unreachable_blocks(Function * function, Stats * stats)
   if(stats) stats->rewrites += removed + 1;
 }
 
-}  // namespace
-
-bool fold_edge_known_branches(Function * function, Stats * stats)
+bool fold_edge_known_branches_with_scratch(
+    Function * function, Stats * stats,
+    std::vector<unsigned char> * branch_values)
 {
-  if(!has_edge_known_branch_candidate(*function)) return false;
+  if(!has_edge_known_branch_candidate(*function, branch_values)) return false;
   const Graph graph = build_graph(*function, stats);
   bool changed = false;
   for(std::size_t block = 0; block < function->blocks.size(); ++block) {
@@ -184,6 +185,23 @@ bool fold_edge_known_branches(Function * function, Stats * stats)
     if(stats) ++stats->rewrites;
   }
   return changed;
+}
+
+}  // namespace
+
+bool fold_edge_known_branches(Function * function, Stats * stats)
+{
+  return fold_edge_known_branches(function, stats, 0);
+}
+
+bool fold_edge_known_branches(Function * function, Stats * stats,
+                              CleanupCfgScratch * reusable_scratch)
+{
+  CleanupCfgScratch owned_scratch;
+  CleanupCfgScratch & scratch = reusable_scratch ?
+    *reusable_scratch : owned_scratch;
+  return fold_edge_known_branches_with_scratch(
+    function, stats, &scratch.branch_values);
 }
 
 bool fold_boolean_phi_branch(Function * function, Stats * stats)
@@ -348,20 +366,9 @@ std::vector<BlockId> bypass_targets(const Function & function,
   return result;
 }
 
-bool cleanup_cfg(Function * function, Stats * stats)
+bool fold_terminal_control(Function * function)
 {
-  if(function->blocks.empty()) return false;
-  bool changed = fold_edge_known_branches(function, stats);
-  changed = fold_boolean_phi_branch(function, stats) || changed;
-  // Phi predecessor identities are part of the instruction contract.  Phi
-  // construction runs after CFG cleanup; a later optimizer round trip keeps
-  // that CFG stable until edge-aware repair is requested by a transform.
-  for(std::size_t block = 0; block < function->blocks.size(); ++block)
-    for(std::size_t instruction = 0;
-        instruction < function->blocks[block].instructions.size();
-        ++instruction)
-      if(function->blocks[block].instructions[instruction].kind ==
-         Instruction::IK_PHI) return changed;
+  bool changed = false;
   for(std::size_t i = 0; i < function->blocks.size(); ++i) {
     Block & block = function->blocks[i];
     if(block.instructions.empty()) continue;
@@ -383,7 +390,8 @@ bool cleanup_cfg(Function * function, Stats * stats)
         changed = true;
       }
     } else if(term.kind == Instruction::IK_SWITCH &&
-              term.first.kind == Operand::OP_INTEGER && term.first.has_int_value) {
+              term.first.kind == Operand::OP_INTEGER &&
+              term.first.has_int_value) {
       Operand selected = term.second;
       for(std::size_t j = 0; j + 1 < term.args.size(); j += 2)
         if(term.args[j].kind == Operand::OP_INTEGER &&
@@ -400,6 +408,38 @@ bool cleanup_cfg(Function * function, Stats * stats)
       changed = true;
     }
   }
+  return changed;
+}
+
+bool function_has_phi(const Function & function)
+{
+  for(std::size_t block = 0; block < function.blocks.size(); ++block)
+    for(std::size_t instruction = 0;
+        instruction < function.blocks[block].instructions.size();
+        ++instruction)
+      if(function.blocks[block].instructions[instruction].kind ==
+         Instruction::IK_PHI) return true;
+  return false;
+}
+
+bool cleanup_cfg(Function * function, Stats * stats)
+{
+  return cleanup_cfg(function, stats, 0);
+}
+
+bool cleanup_cfg(Function * function, Stats * stats, CleanupCfgScratch * scratch)
+{
+  if(function->blocks.empty()) return false;
+  CleanupCfgScratch owned_scratch;
+  CleanupCfgScratch & active_scratch = scratch ? *scratch : owned_scratch;
+  bool changed = fold_edge_known_branches_with_scratch(
+    function, stats, &active_scratch.branch_values);
+  changed = fold_boolean_phi_branch(function, stats) || changed;
+  // Phi predecessor identities are part of the instruction contract.  Phi
+  // construction runs after CFG cleanup; a later optimizer round trip keeps
+  // that CFG stable until edge-aware repair is requested by a transform.
+  if(function_has_phi(*function)) return changed;
+  changed = fold_terminal_control(function) || changed;
 
   // There are no unreachable blocks, bypass chains, or merge candidates in a
   // one-block function.  Terminal folding above is the complete CFG cleanup.
