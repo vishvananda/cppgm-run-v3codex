@@ -1714,3 +1714,21 @@ source reshaping remains out of scope per the standing directive).
   byte-for-byte.  No profiler process remains.  The native alternating-run
   gate is retained as the sub-minute directional check before exact
   Cachegrind for future survivors.
+- L63 (P30 TRANSITIONAL ALLOCATION REPLAY WALK RETIRED).  Gate (i)'s
+  allocation-decision record/replay seam had completed its migration role,
+  but production lowering still constructed and walked every function twice:
+  a stats-free first walk recorded the current deterministic allocator, then
+  an identical second walk replayed it and supplied the emitted MIR.  Normal
+  lowering now emits the single deterministic walk directly with decision
+  logging disabled; the optional log hooks remain available for focused
+  validation.  This changes no location, allocation, MIR, movement, or object
+  counter: the frozen object remains 1,426,720 bytes and byte-identical at
+  `f496c227be1db4007a24af5bd5d437804cc7a1c19b117cfd3c0bb1ba6e919693`.
+  Four alternating native self-host runs reduce mean user time 9.930 s ->
+  9.588 s (-3.44%).  Exact self-hosted Ir-only Cachegrind improves
+  41,954,137,863 -> 40,512,780,696 (-1,441,357,167, -3.435554%);
+  `analyze_function` falls 361,229,362 -> 180,614,681 Ir and control-flow
+  construction falls 43,778,542 -> 21,889,271 Ir.  PA38 is 41/41, the
+  through-PA38 report is 5,431/5,431, the audit has zero fatal findings
+  (36 warnings), and isolated 32-way O1/O3/O0 inception lanes all MATCH
+  byte-for-byte.  No profiler process remains.

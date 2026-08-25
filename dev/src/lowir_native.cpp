@@ -160,7 +160,8 @@ public:
         const Instruction & source_instruction =
           source_.blocks[i].instructions[j];
         active_instruction_ = &source_instruction;
-        decision_log_->set_context(position_, source_instruction.dest);
+        if(decision_log_)
+          decision_log_->set_context(position_, source_instruction.dest);
         if(source_instruction.kind == Instruction::IK_JUMP ||
            source_instruction.kind == Instruction::IK_BRANCH ||
            source_instruction.kind == Instruction::IK_SWITCH)
@@ -2996,5 +2997,4 @@ mir_model::MirFunction session_detail::lower_native_function(
   return FunctionLowerer(program, function, pointer_globals, tls_wrappers,
                          signatures, optimization_level, stats, decisions).lower();
 }
-
 }  // namespace lowir_native
