@@ -8,6 +8,7 @@
 
 namespace lowir_native {
 struct Stats;
+namespace allocation { class AllocationDecisionLog; }
 namespace session_detail {
 
 mir_model::MirFunction lower_native_function(
@@ -17,7 +18,8 @@ mir_model::MirFunction lower_native_function(
     const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
     int optimization_level,
-    Stats * stats);
+    Stats * stats,
+    allocation::AllocationDecisionLog * decisions);
 
 }  // namespace session_detail
 }  // namespace lowir_native

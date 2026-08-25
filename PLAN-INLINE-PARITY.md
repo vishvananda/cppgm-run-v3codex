@@ -1338,3 +1338,21 @@ source reshaping remains out of scope per the standing directive).
   Cachegrind only when the hypothesis needs data references or cache
   behavior; every allocator survivor still runs verified-output
   self-host and the full owning suites.
+- L45 (P30a RECORD/REPLAY SEAM LANDED; GATE (i) PRODUCER
+  HANDOFF READY).  Every GPR/XMM pool mutation now passes through a
+  per-function allocation-decision log carrying operation, instruction
+  position, destination value, requested/selected register, call-crossing
+  class, and success.  A non-emitting-stats first walk records the CURRENT
+  reactive/planned decisions; the emitting walk replays the sequence and
+  rejects any context or outcome divergence, so this is a strict oracle
+  for replacing the producer without silently changing the emitter.
+  Coverage includes fixed and planned reservations, reactive allocation,
+  releases/discards, planned holds, and XMM allocation/release.  The gate
+  is a pure refactor: the frozen instrumented object remains exactly
+  `6a183b784f03134f1323c649a054506ac644fbbfbfbf0977a978fe1629708b34`,
+  PA38 is 40/40, the through-PA38 report is 5,430/5,430, the file audit has
+  zero fatal findings (36 pre-existing warnings), and isolated O3 and O0
+  inception lanes both MATCH byte-for-byte.  The extra first walk is
+  transitional: the whole-function location timeline replaces this
+  recorded producer incrementally; it is not the final allocator cost
+  model.

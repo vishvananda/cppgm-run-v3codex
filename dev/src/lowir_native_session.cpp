@@ -5,6 +5,7 @@
 #include "lowir_native_opt.h"
 #include "lowir_phi_edges.h"
 #include "lowir_native_program.h"
+#include "lowir_native_registers.h"
 #include "lowir_native_session.h"
 
 #include <algorithm>
@@ -261,9 +262,15 @@ struct ProgramLoweringSession::Impl
     FunctionCensusSnapshot census_before;
     const bool census = stats && stats->function_census;
     if(census) census_before = TakeCensusSnapshot();
+    allocation::AllocationDecisionLog decisions;
+    session_detail::lower_native_function(
+      source, source.functions[index], pointer_globals, tls_wrappers,
+      signatures, optimization_level, 0, &decisions);
+    decisions.begin_replay();
     mir_model::MirFunction result = session_detail::lower_native_function(
       source, source.functions[index], pointer_globals, tls_wrappers,
-      signatures, optimization_level, stats);
+      signatures, optimization_level, stats, &decisions);
+    decisions.finish_replay();
     machine_opt::Stats opt_stats;
     machine_opt::optimize_function(result, optimization_level,
                                    stats ? &opt_stats : 0);

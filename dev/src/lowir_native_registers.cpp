@@ -1,6 +1,7 @@
 #include "lowir_native_registers.h"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace lowir_native {
@@ -12,17 +13,69 @@ bool is_callee_saved(X64Register reg)
          reg == XR_R14 || reg == XR_R15;
 }
 
-RegisterPool::RegisterPool()
+AllocationDecisionLog::AllocationDecisionLog()
+  : cursor_(0), position_(0),
+    value_(std::numeric_limits<std::uint32_t>::max()), replaying_(false) {}
+
+void AllocationDecisionLog::set_context(std::size_t position,
+                                        std::uint32_t value)
+{
+  position_ = position;
+  value_ = value;
+}
+
+AllocationDecision AllocationDecisionLog::resolve(
+    AllocationDecisionOperation operation, unsigned requested_register,
+    unsigned selected_register, bool across_call, bool success)
+{
+  if(!replaying_) {
+    AllocationDecision decision;
+    decision.operation = operation;
+    decision.position = position_;
+    decision.value = value_;
+    decision.requested_register = requested_register;
+    decision.selected_register = selected_register;
+    decision.across_call = across_call;
+    decision.success = success;
+    decisions_.push_back(decision);
+    return decision;
+  }
+  if(cursor_ == decisions_.size())
+    throw std::logic_error("allocation decision replay exhausted");
+  const AllocationDecision decision = decisions_[cursor_++];
+  if(decision.operation != operation || decision.position != position_ ||
+     decision.value != value_ ||
+     decision.requested_register != requested_register ||
+     decision.across_call != across_call || decision.success != success ||
+     (success && decision.selected_register != selected_register))
+    throw std::logic_error("allocation decision replay diverged");
+  return decision;
+}
+
+void AllocationDecisionLog::begin_replay()
+{
+  cursor_ = 0;
+  position_ = 0;
+  value_ = std::numeric_limits<std::uint32_t>::max();
+  replaying_ = true;
+}
+
+void AllocationDecisionLog::finish_replay() const
+{
+  if(!replaying_ || cursor_ != decisions_.size())
+    throw std::logic_error("allocation decision replay incomplete");
+}
+
+RegisterPool::RegisterPool(AllocationDecisionLog * decisions)
+  : decisions_(decisions)
 {
   std::fill(used_, used_ + 16, false);
   std::fill(plan_held_, plan_held_ + 16, false);
   std::fill(reservation_count_, reservation_count_ + 16, 0U);
 }
 
-void RegisterPool::reserve(X64Register reg)
+void RegisterPool::reserve_raw(X64Register reg)
 {
-  if(used_[static_cast<unsigned>(reg)])
-    throw std::runtime_error("MIR register allocation conflict");
   const unsigned index = static_cast<unsigned>(reg);
   used_[index] = true;
   plan_held_[index] = false;
@@ -30,9 +83,21 @@ void RegisterPool::reserve(X64Register reg)
   remember_preserve(reg);
 }
 
+void RegisterPool::reserve(X64Register reg)
+{
+  const unsigned index = static_cast<unsigned>(reg);
+  if(used_[index]) throw std::runtime_error("MIR register allocation conflict");
+  if(decisions_) decisions_->resolve(
+    ADO_GPR_RESERVE, index, index, false, true);
+  reserve_raw(reg);
+}
+
 void RegisterPool::hold_for_plan(X64Register reg)
 {
-  plan_held_[static_cast<unsigned>(reg)] = true;
+  const unsigned index = static_cast<unsigned>(reg);
+  if(decisions_) decisions_->resolve(
+    ADO_GPR_HOLD_FOR_PLAN, index, index, false, true);
+  plan_held_[index] = true;
 }
 
 bool RegisterPool::plan_held(X64Register reg) const
@@ -42,9 +107,14 @@ bool RegisterPool::plan_held(X64Register reg) const
 
 bool RegisterPool::try_reserve(X64Register reg)
 {
-  if(used_[static_cast<unsigned>(reg)]) return false;
-  reserve(reg);
-  return true;
+  const unsigned index = static_cast<unsigned>(reg);
+  const bool success = !used_[index];
+  const AllocationDecision decision = decisions_ ? decisions_->resolve(
+    ADO_GPR_TRY_RESERVE, index, index, false, success) :
+    AllocationDecision();
+  const bool resolved = decisions_ ? decision.success : success;
+  if(resolved) reserve_raw(reg);
+  return resolved;
 }
 
 bool RegisterPool::is_used(X64Register reg) const
@@ -55,11 +125,18 @@ bool RegisterPool::is_used(X64Register reg) const
 X64Register RegisterPool::allocate(bool across_call)
 {
   X64Register result = XR_RSP;
-  if(try_allocate(across_call, result)) return result;
-  throw std::runtime_error("foundation register pool exhausted");
+  const bool success = choose(across_call, &result);
+  const AllocationDecision decision = decisions_ ? decisions_->resolve(
+    ADO_GPR_ALLOCATE, 16, static_cast<unsigned>(result), across_call,
+    success) : AllocationDecision();
+  if(decisions_ && decision.success)
+    result = static_cast<X64Register>(decision.selected_register);
+  if(!success) throw std::runtime_error("foundation register pool exhausted");
+  reserve_raw(result);
+  return result;
 }
 
-bool RegisterPool::try_allocate(bool across_call, X64Register & result)
+bool RegisterPool::choose(bool across_call, X64Register * result) const
 {
   static const X64Register ordinary[] = {
     XR_R8, XR_R9, XR_RBX, XR_R12, XR_R13, XR_R14, XR_R15
@@ -75,25 +152,43 @@ bool RegisterPool::try_allocate(bool across_call, X64Register & result)
     for(std::size_t i = 0; i < count; ++i) {
       const unsigned index = static_cast<unsigned>(choices[i]);
       if(used_[index] || (pass == 0 && plan_held_[index])) continue;
-      reserve(choices[i]);
-      result = choices[i];
+      *result = choices[i];
       return true;
     }
   return false;
 }
 
+bool RegisterPool::try_allocate(bool across_call, X64Register & result)
+{
+  const bool success = choose(across_call, &result);
+  const AllocationDecision decision = decisions_ ? decisions_->resolve(
+    ADO_GPR_TRY_ALLOCATE, 16, static_cast<unsigned>(result), across_call,
+    success) : AllocationDecision();
+  const bool resolved = decisions_ ? decision.success : success;
+  if(!resolved) return false;
+  if(decisions_) result = static_cast<X64Register>(decision.selected_register);
+  reserve_raw(result);
+  return true;
+}
+
 void RegisterPool::release(X64Register reg)
 {
   const unsigned index = static_cast<unsigned>(reg);
+  if(decisions_) decisions_->resolve(
+    ADO_GPR_RELEASE, index, index, false, true);
   if(reg == XR_RDI || reg == XR_RSI || reg == XR_R8 || reg == XR_R9 ||
      is_callee_saved(reg)) used_[index] = false;
 }
 
 void RegisterPool::discard_unused_reservation(X64Register reg)
 {
-  release(reg);
+  const unsigned index = static_cast<unsigned>(reg);
+  if(decisions_) decisions_->resolve(
+    ADO_GPR_DISCARD, index, index, false, true);
+  if(reg == XR_RDI || reg == XR_RSI || reg == XR_R8 || reg == XR_R9 ||
+     is_callee_saved(reg)) used_[index] = false;
   if(!is_callee_saved(reg) ||
-     reservation_count_[static_cast<unsigned>(reg)] != 1) return;
+     reservation_count_[index] != 1) return;
   preserves_.erase(std::remove(preserves_.begin(), preserves_.end(), reg),
                    preserves_.end());
 }
@@ -110,7 +205,8 @@ void RegisterPool::remember_preserve(X64Register reg)
     preserves_.push_back(reg);
 }
 
-XmmPool::XmmPool()
+XmmPool::XmmPool(AllocationDecisionLog * decisions)
+  : decisions_(decisions)
 {
   std::fill(used_, used_ + 8, false);
 }
@@ -118,8 +214,15 @@ XmmPool::XmmPool()
 XmmRegister XmmPool::allocate()
 {
   XmmRegister result = XMM_0;
-  if(try_allocate(result)) return result;
-  throw std::runtime_error("scalar XMM register pool exhausted");
+  const bool success = choose(&result);
+  const AllocationDecision decision = decisions_ ? decisions_->resolve(
+    ADO_XMM_ALLOCATE, 8, static_cast<unsigned>(result), false, success) :
+    AllocationDecision();
+  if(decisions_ && decision.success)
+    result = static_cast<XmmRegister>(decision.selected_register);
+  if(!success) throw std::runtime_error("scalar XMM register pool exhausted");
+  used_[static_cast<unsigned>(result)] = true;
+  return result;
 }
 
 bool XmmPool::is_used(XmmRegister xmm) const
@@ -127,21 +230,35 @@ bool XmmPool::is_used(XmmRegister xmm) const
   return used_[static_cast<unsigned>(xmm)];
 }
 
-bool XmmPool::try_allocate(XmmRegister & result)
+bool XmmPool::choose(XmmRegister * result) const
 {
   // xmm6/xmm7 remain available to the encoder for immediate and memory forms.
   for(unsigned i = 0; i != 6; ++i) {
     if(used_[i]) continue;
-    used_[i] = true;
-    result = static_cast<XmmRegister>(i);
+    *result = static_cast<XmmRegister>(i);
     return true;
   }
   return false;
 }
 
+bool XmmPool::try_allocate(XmmRegister & result)
+{
+  const bool success = choose(&result);
+  const AllocationDecision decision = decisions_ ? decisions_->resolve(
+    ADO_XMM_TRY_ALLOCATE, 8, static_cast<unsigned>(result), false, success) :
+    AllocationDecision();
+  const bool resolved = decisions_ ? decision.success : success;
+  if(!resolved) return false;
+  if(decisions_) result = static_cast<XmmRegister>(decision.selected_register);
+  used_[static_cast<unsigned>(result)] = true;
+  return true;
+}
+
 void XmmPool::release(XmmRegister xmm)
 {
   const unsigned index = static_cast<unsigned>(xmm);
+  if(decisions_) decisions_->resolve(
+    ADO_XMM_RELEASE, index, index, false, true);
   if(index < 6) used_[index] = false;
 }
 

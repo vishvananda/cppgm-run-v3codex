@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 #include "x86_register_model.h"
@@ -9,10 +11,57 @@ namespace allocation {
 
 bool is_callee_saved(X64Register reg);
 
+enum AllocationDecisionOperation
+{
+  ADO_GPR_RESERVE,
+  ADO_GPR_TRY_RESERVE,
+  ADO_GPR_ALLOCATE,
+  ADO_GPR_TRY_ALLOCATE,
+  ADO_GPR_RELEASE,
+  ADO_GPR_DISCARD,
+  ADO_GPR_HOLD_FOR_PLAN,
+  ADO_XMM_ALLOCATE,
+  ADO_XMM_TRY_ALLOCATE,
+  ADO_XMM_RELEASE
+};
+
+struct AllocationDecision
+{
+  AllocationDecisionOperation operation;
+  std::size_t position;
+  std::uint32_t value;
+  unsigned requested_register;
+  unsigned selected_register;
+  bool across_call;
+  bool success;
+};
+
+// Gate (i)'s per-function seam: a first walk records every physical-pool
+// mutation and its result; the emitting walk consumes that exact sequence.
+class AllocationDecisionLog
+{
+public:
+  AllocationDecisionLog();
+
+  void set_context(std::size_t position, std::uint32_t value);
+  AllocationDecision resolve(AllocationDecisionOperation operation,
+    unsigned requested_register, unsigned selected_register,
+    bool across_call, bool success);
+  void begin_replay();
+  void finish_replay() const;
+
+private:
+  std::vector<AllocationDecision> decisions_;
+  std::size_t cursor_;
+  std::size_t position_;
+  std::uint32_t value_;
+  bool replaying_;
+};
+
 class RegisterPool
 {
 public:
-  RegisterPool();
+  explicit RegisterPool(AllocationDecisionLog * decisions = 0);
 
   void reserve(X64Register reg);
   bool try_reserve(X64Register reg);
@@ -32,14 +81,17 @@ private:
   bool plan_held_[16];
   unsigned reservation_count_[16];
   std::vector<X64Register> preserves_;
+  AllocationDecisionLog * decisions_;
 
   void remember_preserve(X64Register reg);
+  void reserve_raw(X64Register reg);
+  bool choose(bool across_call, X64Register * result) const;
 };
 
 class XmmPool
 {
 public:
-  XmmPool();
+  explicit XmmPool(AllocationDecisionLog * decisions = 0);
 
   XmmRegister allocate();
   bool is_used(XmmRegister xmm) const;
@@ -48,6 +100,8 @@ public:
 
 private:
   bool used_[8];
+  AllocationDecisionLog * decisions_;
+  bool choose(XmmRegister * result) const;
 };
 
 }  // namespace allocation

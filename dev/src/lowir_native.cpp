@@ -92,14 +92,16 @@ public:
                   const std::vector<lowir_model::SymbolId> & tls_wrappers,
                   const FunctionSignatureIndex & signatures,
                   int optimization_level,
-                  lowir_native::Stats * stats)
+                  lowir_native::Stats * stats,
+                  allocation::AllocationDecisionLog * decisions)
     : program_(program), source_(source), pointer_globals_(pointer_globals),
       tls_wrappers_(tls_wrappers),
       signatures_(signatures), optimization_level_(optimization_level),
       stats_(stats),
       facts_(analyze_function(source, stats)),
-      control_flow_(source), live_locations_(stats),
-      generated_frame_names_(source), position_(0)
+      control_flow_(source), decision_log_(decisions), registers_(decisions),
+      xmms_(decisions), live_locations_(stats), generated_frame_names_(source),
+      position_(0)
   {
     values_.resize(source_.value_names.size());
     value_known_.assign(source_.value_names.size(), 0);
@@ -155,6 +157,7 @@ public:
         const Instruction & source_instruction =
           source_.blocks[i].instructions[j];
         active_instruction_ = &source_instruction;
+        decision_log_->set_context(position_, source_instruction.dest);
         if(source_instruction.kind == Instruction::IK_JUMP ||
            source_instruction.kind == Instruction::IK_BRANCH ||
            source_instruction.kind == Instruction::IK_SWITCH)
@@ -227,6 +230,7 @@ private:
   StorageFacts storage_facts_;
   analysis::ControlFlowQueries control_flow_;
   mir_model::MirFunction target_;
+  allocation::AllocationDecisionLog * decision_log_;
   RegisterPool registers_;
   XmmPool xmms_;
   spill_slots::Pool spill_slots_;
@@ -2983,10 +2987,11 @@ mir_model::MirFunction session_detail::lower_native_function(
     const std::vector<lowir_model::SymbolId> & tls_wrappers,
     const abi::FunctionSignatureIndex & signatures,
     int optimization_level,
-    lowir_native::Stats * stats)
+    lowir_native::Stats * stats,
+    allocation::AllocationDecisionLog * decisions)
 {
   return FunctionLowerer(program, function, pointer_globals, tls_wrappers,
-                         signatures, optimization_level, stats).lower();
+                         signatures, optimization_level, stats, decisions).lower();
 }
 
 }  // namespace lowir_native
