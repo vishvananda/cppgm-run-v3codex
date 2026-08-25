@@ -47,7 +47,9 @@ void report_elf_string_table_stats(std::ostream & output,
 void report_code_shape_stats(std::ostream & output, const Stats & stats)
 {
   output << " three_operand_adds_selected="
-         << stats.three_operand_adds_selected;
+         << stats.three_operand_adds_selected
+         << " load_address_register_takeovers="
+         << stats.load_address_register_takeovers;
   for(std::size_t reason = 0; reason < NMR_COUNT; ++reason) {
     output << " movement_" << kMovementReasonNames[reason]
            << "_instructions="

@@ -1579,3 +1579,34 @@ source reshaping remains out of scope per the standing directive).
   only four adds and one subtract, versus three multiplies, eleven
   divide/remainder operations, and eleven shifts; the census was fully
   reverted.
+- L56 (P30 FINAL-USE LOAD ADDRESSES BECOME THEIR RESULTS).  A census of
+  the 127 remaining staged scalar loads found 124 temporary addresses,
+  but none consumed within four instructions and only 39 within sixteen;
+  broad load folding therefore has little adjacent population.  Seventeen
+  loads do, however, consume a temporary pointer for the final time while
+  producing an unplanned edge-live result.  At O1+ in EH functions, those
+  loads now use the dead address register as their destination: x86 reads
+  the effective address before replacing that register, after which the
+  existing stabilizer places the result.  The source must not be edge-live,
+  must have no aliases, and must pass the existing destructive-reuse test;
+  planned and exact-forward results are excluded.  The older phi-home
+  address takeover retains its original predicate and is deliberately not
+  included in the new counter.  An earlier unconditional generalization
+  fired 786 times but raised homes 818 -> 826 and edge staging 328 -> 392;
+  the fast census rejected that allocation disruption before profiling.
+  The narrow survivor fires 17 times.  Frozen MIR stays 125,832, scalar
+  temporary movement stays 45,624 (24,017 loads, 14,933 stores, and 1,920
+  register copies), and homes/spills stay 818/51.  Edge-staging
+  classification moves 328 -> 330 without adding MIR, while real generated
+  sequences such as `lea address; load result; store result` become
+  `load address-as-result; store result`; object size falls 1,426,744 ->
+  1,426,720 bytes.  Exact self-hosted Ir-only Cachegrind improves
+  43,440,018,508 -> 43,437,250,755 (-2,767,753, -0.006371%).  Host,
+  self-host, and profiled frozen objects are byte-identical at
+  `f496c227be1db4007a24af5bd5d437804cc7a1c19b117cfd3c0bb1ba6e919693`.
+  PA38 is 41/41 with no fixture movement, the through-PA38 report is
+  5,431/5,431, the audit has zero fatal findings (36 warnings), and isolated
+  32-way O1/O3/O0 inception lanes all MATCH byte-for-byte.  No profiler
+  process remains.  The fast frozen compile/census again selected the sole
+  small survivor in about 5.5 s; exact profiling remained the final
+  profitability gate rather than a search loop.

@@ -170,7 +170,7 @@ protected:
 			lowerer.facts_.calls.front();
 		mir_model::MirOperand pressure_home;
 		mir_model::MirOperand takeover_storage;
-		bool phi_address_takeover = false;
+		bool address_register_takeover = false;
 		if (pressure_load)
 		{
 			pressure_home =
@@ -188,31 +188,45 @@ protected:
 		}
 		else
 		{
-			// A cursor advance through a claimed phi home loads into the
-			// address register itself (the read happens before the write),
-			// under the same takeover conditions as the backedge chain.
-			// The address value may be the phi or a chain alias of it.
+			// A final-use pointer may load into its own register: x86 reads the
+			// effective address before replacing the destination.  This also
+			// retains the cursor-advance takeover through a claimed phi home.
 			if (instruction.first.kind == lowir_model::Operand::OP_TEMP &&
 				lowerer.value_known_[instruction.first.value] &&
 				lowerer.values_[instruction.first.value].location.kind ==
 					mir_model::MirOperand::OP_REG &&
-				lowerer.is_phi_home_register(
-					lowerer.values_[instruction.first.value].location.reg) &&
 				lowerer.can_reuse(instruction.first))
 			{
-				takeover_storage =
-					lowerer.materialized_storage(instruction.first, out);
 				const X64Register home =
 					lowerer.values_[instruction.first.value].location.reg;
-				if (takeover_storage.kind == mir_model::MirOperand::OP_DEREF &&
+				const bool phi_takeover = lowerer.is_phi_home_register(home);
+				const bool staged_takeover = lowerer.optimization_level_ >= 1 &&
+					lowerer.facts_.has_eh &&
+					lowerer.facts_.has(instruction.dest,
+						analysis::FunctionFacts::VF_EDGE_LIVE) &&
+					(lowerer.facts_.has(instruction.dest,
+						 analysis::FunctionFacts::VF_LOOP_INVARIANT) ||
+					 lowerer.result_crosses_call(instruction.dest)) &&
+					!lowerer.facts_.has(instruction.dest,
+						analysis::FunctionFacts::VF_EXACT_FORWARD_EDGE) &&
+					lowerer.planned_register_entry(instruction.dest) == 0 &&
+					!lowerer.facts_.has(instruction.first.value,
+						analysis::FunctionFacts::VF_EDGE_LIVE);
+				if (phi_takeover || staged_takeover)
+					takeover_storage =
+						lowerer.materialized_storage(instruction.first, out);
+				if ((phi_takeover || staged_takeover) &&
+					takeover_storage.kind == mir_model::MirOperand::OP_DEREF &&
 					takeover_storage.reg == home)
 				{
 					destination = reg_operand(home);
-					phi_address_takeover = true;
+					address_register_takeover = true;
+					if (staged_takeover && !phi_takeover && lowerer.stats_)
+						++lowerer.stats_->load_address_register_takeovers;
 				}
 			}
 			X64Register result = XR_RSP;
-			if (phi_address_takeover) {}
+			if (address_register_takeover) {}
 			else if (lowerer.try_allocate_result(instruction.dest, out, &result))
 				destination = reg_operand(result);
 			else
@@ -227,7 +241,7 @@ protected:
 			mir_model::MirInstruction::MI_LOAD, instruction.type);
 		load.volatile_access = instruction.volatile_access;
 		append_operand(load, destination);
-		append_operand(load, phi_address_takeover ? takeover_storage :
+		append_operand(load, address_register_takeover ? takeover_storage :
 			lowerer.materialized_storage(instruction.first, out));
 		out.push_back(load);
 		if (selection::is_integer_or_pointer(instruction.type))
