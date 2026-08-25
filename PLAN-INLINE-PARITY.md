@@ -1466,3 +1466,22 @@ source reshaping remains out of scope per the standing directive).
   profiler process remains.  The address replay machinery is separated from
   the emitter so subsequent rematerialized timeline kinds can share the same
   lifetime-safe path.
+- L51 (P30 GVN@O1 RE-ARM REJECTED; PLACEMENT IMPROVED BUT IS NOT YET
+  SUFFICIENT).  Enabling the existing memory GVN at O1 eliminates 776 loads
+  and reduces optimized LowIR 108,170 -> 105,813 (-2,357).  The post-L50
+  allocator response is less uniformly bad than L42: scalar temporary
+  movement falls 45,738 -> 45,283 (-455), including loads 24,067 -> 23,058
+  (-1,009), and edge staging falls 332 -> 330.  But the merged cross-block
+  lifetimes still reduce planned grants 5,590 -> 4,170, raise temporary homes
+  818 -> 960, spills 51 -> 80, and scalar stores 14,985 -> 15,533; final MIR
+  rises 126,021 -> 126,531 and object size rises 1,427,248 -> 1,427,688 bytes.
+  The exact apples-to-apples self-host Ir-only profile therefore regresses
+  43,469,998,821 -> 44,095,917,884 (+625,919,063, +1.4399%).  The candidate's
+  frozen output hash was
+  `bff1820939843a68ccae0a11042d04fe863b83271d62bf3c6c5b561105310d7f`;
+  PA38 remained 41/41 and its 32-way O1 inception lane matched every object
+  and the final binary.  The one-line enablement is reverted, no fixtures
+  moved, and no profiler process remains.  This closes the unconditional
+  GVN re-arm at the current placement point: a future retry needs either a
+  profitability gate that excludes the demoting cross-block cases or another
+  material reduction in the home/spill cost of their merged lifetimes.
