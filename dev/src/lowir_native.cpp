@@ -1,6 +1,7 @@
 #include "lowir_native.h"
 #include "lowir_native_abi.h"
 #include "lowir_native_address_lowering.h"
+#include "lowir_native_address_replay.h"
 #include "lowir_native_analysis.h"
 #include "lowir_native_atomic_lowering.h"
 #include "lowir_native_bulk_lowering.h"
@@ -54,6 +55,7 @@ using namespace build;
 using namespace selection;
 class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
                         private AddressLowering<FunctionLowerer>,
+                        private address_replay_detail::AddressReplay<FunctionLowerer>,
                         private AtomicLowering<FunctionLowerer>,
                         private bulk_detail::BulkLowering<FunctionLowerer>,
                         private call_detail::CallLowering<FunctionLowerer>,
@@ -71,6 +73,7 @@ class FunctionLowerer : private IntrinsicLowering<FunctionLowerer>,
 {
   friend class IntrinsicLowering<FunctionLowerer>;
   friend class AddressLowering<FunctionLowerer>;
+  friend class address_replay_detail::AddressReplay<FunctionLowerer>;
   friend class AtomicLowering<FunctionLowerer>;
   friend class bulk_detail::BulkLowering<FunctionLowerer>;
   friend class call_detail::CallLowering<FunctionLowerer>;
@@ -98,7 +101,7 @@ public:
       tls_wrappers_(tls_wrappers),
       signatures_(signatures), optimization_level_(optimization_level),
       stats_(stats),
-      facts_(analyze_function(source, stats)),
+      facts_(analyze_function(source, stats, optimization_level)),
       control_flow_(source), decision_log_(decisions), registers_(decisions),
       xmms_(decisions), live_locations_(stats), generated_frame_names_(source),
       position_(0)
@@ -823,6 +826,11 @@ private:
     if(operand.kind == Operand::OP_SLOT)
       return storage(operand);
     if(operand.kind == Operand::OP_TEMP) {
+      if(value_known_[operand.value] &&
+        values_[operand.value].rematerialized_constant_index) {
+        emit_rematerialized_index_base(out, scratch, values_[operand.value]);
+        return dereference(scratch, values_[operand.value].rematerialized_index_offset);
+      }
       if(value_known_[operand.value] && values_[operand.value].deferred_address)
         return selected_value_location(operand.value);
     }
@@ -1212,20 +1220,6 @@ private:
             !has_live_location_alias(id, location))
       xmms_.release(location.xmm);
   }
-  bool is_frame_address(const Operand & operand) const
-  {
-    if(operand.kind != Operand::OP_TEMP) return false;
-    return value_known_[operand.value] && values_[operand.value].frame_address;
-  }
-  void append_address(std::vector<MirInstruction> & out,
-                      X64Register destination,
-                      const MirOperand & source)
-  {
-    MirInstruction lea = machine_instruction(MirInstruction::MI_LEA);
-    append_operand(lea, reg_operand(destination));
-    append_operand(lea, source);
-    out.push_back(lea);
-  }
   void emit_operand_address(std::vector<MirInstruction> & out,
                             X64Register destination,
                             const Operand & operand)
@@ -1253,6 +1247,12 @@ private:
     if(!value_known_[operand.value])
       throw std::runtime_error("missing address value");
     const ValueFact & value = values_[operand.value];
+    if(value.rematerialized_constant_index) {
+      emit_rematerialized_index_base(out, destination, value);
+      if(value.rematerialized_index_offset)
+        append_address(out, destination, dereference(destination, value.rematerialized_index_offset));
+      return;
+    }
     const MirOperand location = selected_value_location(operand.value);
     if(value.deferred_address || value.frame_address ||
        value.type.kind == lowir_model::LTK_OBJECT ||

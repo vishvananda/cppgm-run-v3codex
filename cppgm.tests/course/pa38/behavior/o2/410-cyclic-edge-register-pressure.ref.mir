@@ -79,9 +79,8 @@ function @probe
     jmp ^failure
 
   block ^done
-    mov r8, @data
-    lea r8, [r8+8]
-    load.i64 r9, [r8]
+    mov rcx, @data
+    load.i64 r9, [rcx+8]
     cmp.i64 r9, 1
     setne rax
     movzx rax, rax

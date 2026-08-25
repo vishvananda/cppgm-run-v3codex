@@ -31,6 +31,11 @@ struct ValueFact
   // composition is restricted to this form so a later spill cannot stale the
   // captured MIR operand.
   bool deferred_address_stable = false;
+  // A constant INDEX whose base has stable storage can be replayed at each
+  // storage consumer.  The base remains a semantic dependency; location is
+  // deliberately not a captured physical register.
+  bool rematerialized_constant_index = false;
+  long long rematerialized_index_offset = 0;
   lowir_model::Operand deferred_address_base;
   lowir_model::Operand deferred_address_index;
 };

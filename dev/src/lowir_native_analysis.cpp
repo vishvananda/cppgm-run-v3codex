@@ -181,14 +181,21 @@ bool scalar_identity_may_share_frame_home(const Instruction & instruction)
 }
 
 void extend_shared_storage_liveness(
-    FunctionFacts & facts, const lowir_model::LowirFunction & function)
+    FunctionFacts & facts, const lowir_model::LowirFunction & function,
+    int optimization_level)
 {
   for(std::size_t block = function.blocks.size(); block-- > 0; ) {
     const std::vector<Instruction> & instructions =
       function.blocks[block].instructions;
     for(std::size_t index = instructions.size(); index-- > 0; ) {
       const Instruction & identity = instructions[index];
-      if(!scalar_identity_may_share_frame_home(identity)) continue;
+      const bool replayed_index = optimization_level >= 1 &&
+        identity.kind == Instruction::IK_INDEX &&
+        identity.first.kind == Operand::OP_TEMP &&
+        identity.second.kind == Operand::OP_INTEGER &&
+        facts.has(identity.dest, FunctionFacts::VF_ONLY_STORAGE_ADDRESS);
+      if(!replayed_index && !scalar_identity_may_share_frame_home(identity))
+        continue;
       std::size_t end = facts.last_use[identity.dest] ==
           FunctionFacts::missing_position() ? 0 : facts.last_use[identity.dest];
       if(facts.shared_storage_last_use[identity.dest] !=
@@ -553,7 +560,7 @@ bool register_was_clobbered_before(const FunctionFacts & facts,
 }
 
 FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
-                               Stats * stats)
+                               Stats * stats, int optimization_level)
 {
   FunctionFacts facts;
   const std::size_t value_count = function.value_names.size();
@@ -785,7 +792,7 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   // time and O(IR) storage for instructions, operands, blocks, and CFG edges.
   extend_loop_liveness(facts, function, definition_blocks,
     block_uses, block_first_position, block_last_position, clobber_positions);
-  extend_shared_storage_liveness(facts, function);
+  extend_shared_storage_liveness(facts, function, optimization_level);
   mark_exact_forward_edge_values(
     facts, function, definition_blocks, block_uses, stats);
   for(std::size_t value = 0; value < value_count; ++value)

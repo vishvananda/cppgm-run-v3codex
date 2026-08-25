@@ -154,6 +154,30 @@ protected:
         return;
       }
     }
+    // A pointer value already held in stable storage is cheaper to reload at
+    // the eventual memory operation than to build, spill, and reload a second
+    // pointer for base+constant.  Keep the semantic base alive and replay the
+    // displacement only for the all-storage consumer class.
+    if(lowerer.optimization_level_ >= 1 && constant_index &&
+       storage_only_uses &&
+       (base.kind == mir_model::MirOperand::OP_FRAME ||
+        base.kind == mir_model::MirOperand::OP_SYMBOL ||
+        base.kind == mir_model::MirOperand::OP_GLOBAL ||
+        (instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+         lowerer.value_known_[instruction.first.value] &&
+         lowerer.values_[instruction.first.value].rematerialized_constant_index))) {
+      ValueFact value;
+      value.type = lowir_model::builtin_lowir_type(lowir_model::LTK_PTR);
+      value.deferred_address = true;
+      value.rematerialized_constant_index = true;
+      value.rematerialized_index_offset = offset;
+      value.deferred_address_base = instruction.first;
+      value.deferred_address_index = instruction.second;
+      lowerer.set_value(instruction.dest, value);
+      if(lowerer.stats_)
+        ++lowerer.stats_->planned_rematerialized_constant_indexes;
+      return;
+    }
     if(index_has_direct_memory_use(block, instruction_index, instruction) &&
        (base.kind == mir_model::MirOperand::OP_REG ||
         (constant_index &&
@@ -329,7 +353,11 @@ materialize_index:
       if(!address_emitted) {
         if(base.kind != mir_model::MirOperand::OP_REG ||
            destination.reg != base.reg) {
-          if(deferred_base || lowerer.is_frame_address(instruction.first))
+          if(instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+             lowerer.values_[instruction.first.value].rematerialized_constant_index)
+            lowerer.emit_operand_address(
+              out, destination.reg, instruction.first);
+          else if(deferred_base || lowerer.is_frame_address(instruction.first))
             lowerer.append_address(out, destination.reg, base);
           else
             lowerer.move_value_to_register(
@@ -362,7 +390,10 @@ materialize_index:
     if(!address_emitted && constant_index) {
       if(base.kind != mir_model::MirOperand::OP_REG ||
          destination.reg != base.reg) {
-        if(deferred_base || lowerer.is_frame_address(instruction.first))
+        if(instruction.first.kind == lowir_model::Operand::OP_TEMP &&
+           lowerer.values_[instruction.first.value].rematerialized_constant_index)
+          lowerer.emit_operand_address(out, destination.reg, instruction.first);
+        else if(deferred_base || lowerer.is_frame_address(instruction.first))
           lowerer.append_address(out, destination.reg, base);
         else
           lowerer.move_value_to_register(

@@ -1439,3 +1439,30 @@ source reshaping remains out of scope per the standing directive).
   MATCH byte-for-byte.  No profiler process remains.  This reinforces L48's
   result: profitable boundary work removes rematerializable lifetimes near
   their consumers instead of retaining ordinary values longer.
+- L50 (P30 CONSTANT-INDEX ADDRESS REPLAY LANDED).  At O1+, an `INDEX`
+  whose index is constant and whose complete use closure remains a storage
+  address now records a semantic base-plus-offset recipe instead of
+  materializing another pointer lifetime.  The recipe composes through
+  nested constant indexes and is replayed at each memory consumer from a
+  stable frame, symbol, global, or earlier replayed base.  The first
+  self-host exposed the important lifetime constraint directly: stage 1
+  linked, but stage 2 crashed because the base frame binding could be reused
+  before a replayed consumer.  Extending the analysis lifetime through every
+  replay consumer fixed the real cause; the resulting O1/O3/O0 self-hosts
+  all match.  On the frozen TU, 1,750 constant-index recipes reduce MIR
+  instructions 129,466 -> 126,021 (-3,445, -2.66%), temporary homes 860 ->
+  818 (-42), scalar stores 15,025 -> 14,985 (-40), edge staging 355 -> 332
+  (-23), and constant-index staging 80 -> 59 (-21).  Scalar loads rise
+  23,737 -> 24,067 and total scalar movement rises 44,947 -> 45,738, so the
+  exact dynamic gate again decides the survivor: Ir-only Cachegrind improves
+  44,031,791,881 -> 43,469,998,821 (-561,793,060, -1.2759%), while object
+  size falls 1,429,680 -> 1,427,248 bytes.  The final object/self-host hash
+  is `600a404d2994699b39eef17a4432351eef950eb2f5d6ec07f8415431b7f70bcb`.
+  The sole existing fixture movement is a strict MIR improvement in PA38's
+  cyclic-pressure case (`mov` + `lea` + `load` becomes `mov` + displaced
+  `load`); behavior remains identical.  PA38 is 41/41, the through-PA38
+  report is 5,431/5,431, the audit has zero fatal findings (34 warnings),
+  and isolated 32-way O1/O3/O0 inception lanes all MATCH byte-for-byte.  No
+  profiler process remains.  The address replay machinery is separated from
+  the emitter so subsequent rematerialized timeline kinds can share the same
+  lifetime-safe path.
