@@ -2018,3 +2018,19 @@ source reshaping remains out of scope per the standing directive).
   layout.  The code was reverted and the hosted compiler is byte-identical
   to L73.  No correctness or inception run was warranted, no fixture changed,
   and no profiler remains.
+- L76 (P30 SAME-BLOCK DOMINANCE BYPASS REJECTED BY THE FAST GATE).
+  `resolve_operand` asks the dominator tree whether each known replacement's
+  defining block dominates the current block even when those block indices
+  are equal, a case where `DominatorTree::dominates` immediately returns true.
+  Bypassing the call only for equal blocks preserved the frozen serialized
+  object exactly at
+  `ba6231e2a3260262e1d165637cb700e1a0a8b550f9623f5098f56d0fc6ca3130`
+  and reduced the isolated `resolve_operand` body to 34,315,394 Ir and its
+  `resolve_instruction_operands` caller to 70,525,341 Ir.  Nevertheless the
+  whole isolated gate regressed 4,546,884,565 -> 4,575,440,493 Ir
+  (+28,555,928, +0.62799%): the changed self-compiler layout overwhelms the
+  local saving.  The candidate was therefore rejected without an exact source
+  run, correctness rerun, or inception.  The code was reverted, the hosted
+  compiler is byte-identical to L73 at
+  `88fa096a7cdbbc17ffeb08caa103f10a411e1d49fe74377923966053f86ead4d`,
+  no fixture changed, and no profiler remains.
