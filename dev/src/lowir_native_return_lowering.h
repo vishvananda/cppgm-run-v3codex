@@ -100,12 +100,19 @@ protected:
 		}
 		else if (instruction.type.kind != lowir_model::LTK_VOID)
 		{
-			scalar_return = lowerer.resolve(instruction.first);
-			if (scalar_return.kind != mir_model::MirOperand::OP_REG)
-			{
-				lowerer.move_value_to_register(out, XR_RAX, scalar_return,
-					instruction.type);
+			if (lowerer.is_frame_address(instruction.first)) {
+				lowerer.emit_operand_address(out, XR_RAX, instruction.first);
 				scalar_return = reg_operand(XR_RAX);
+			}
+			else
+			{
+				scalar_return = lowerer.resolve(instruction.first);
+				if (scalar_return.kind != mir_model::MirOperand::OP_REG)
+				{
+					lowerer.move_value_to_register(out, XR_RAX, scalar_return,
+						instruction.type);
+					scalar_return = reg_operand(XR_RAX);
+				}
 			}
 		}
 		mir_model::MirInstruction ret =

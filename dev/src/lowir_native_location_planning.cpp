@@ -548,6 +548,12 @@ FunctionLocationTimeline plan_value_locations(
   std::vector<Candidate> candidates;
   for(std::size_t raw = 0; raw < function.value_names.size(); ++raw) {
     const lowir_model::ValueId value(static_cast<std::uint32_t>(raw));
+    if(facts.has(value, FunctionFacts::VF_ADDRESS_REMATERIALIZE_SAFE)) {
+      timeline[raw].push_back(PlannedLocationSegment(
+        facts.definition[raw], facts.last_use[raw], PLK_REMATERIALIZE));
+      if(stats) ++stats->planned_rematerialized_addresses;
+      continue;
+    }
     bool is_phi = phi_loop_carried[raw] != 0;
     // The unavoidable-header gate: claim a register only when no
     // layout-forward edge jumps from before the phi's header to after it.
@@ -694,6 +700,42 @@ bool should_retain_edge_register(
       (!loop_carried || has_xmm_headroom(xmms));
 
   return false;
+}
+
+void record_edge_staging(Stats * stats,
+    lowir_model::Instruction::Kind instruction_kind,
+    lowir_model::Operand::Kind first_kind,
+    lowir_model::Operand::Kind second_kind,
+    mir_model::MirOperand::Kind location_kind, bool function_has_eh,
+    bool loop_invariant, bool crosses_call, bool narrow_alias,
+    bool fixed_clobber, std::size_t remaining_uses)
+{
+  if(!stats) return;
+  ++stats->edge_staging_total;
+  ++stats->edge_staging_by_kind[instruction_kind];
+  if(location_kind == mir_model::MirOperand::OP_REG)
+    ++stats->edge_staging_gpr;
+  else if(location_kind == mir_model::MirOperand::OP_XMM)
+    ++stats->edge_staging_xmm;
+  if(function_has_eh) ++stats->edge_staging_eh;
+  if(loop_invariant) ++stats->edge_staging_loop_invariant;
+  if(crosses_call) ++stats->edge_staging_crosses_call;
+  if(narrow_alias) ++stats->edge_staging_narrow_alias;
+  if(fixed_clobber) ++stats->edge_staging_fixed_clobber;
+  if(remaining_uses == 1) ++stats->edge_staging_single_use;
+  else ++stats->edge_staging_multi_use;
+  if(instruction_kind == lowir_model::Instruction::IK_ADDR) {
+    if(first_kind == lowir_model::Operand::OP_SLOT)
+      ++stats->edge_staging_addr_slot;
+    else if(first_kind == lowir_model::Operand::OP_GLOBAL)
+      ++stats->edge_staging_addr_global;
+    else ++stats->edge_staging_addr_other;
+  }
+  if(instruction_kind == lowir_model::Instruction::IK_INDEX) {
+    if(second_kind == lowir_model::Operand::OP_INTEGER)
+      ++stats->edge_staging_index_constant;
+    else ++stats->edge_staging_index_variable;
+  }
 }
 
 std::string diagnostic_value_name(

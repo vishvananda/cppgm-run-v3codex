@@ -450,7 +450,7 @@ void note_storage_address_uses(
     const Instruction & instruction,
     std::vector<unsigned char> * address_uses,
     std::vector<unsigned char> * other_uses,
-    std::vector<unsigned char> * beyond_union_uses)
+    std::vector<unsigned char> * unsupported_address_uses)
 {
   const bool first_is_address =
     instruction.kind == Instruction::IK_LOAD ||
@@ -469,15 +469,42 @@ void note_storage_address_uses(
     if(address_role[i]) (*address_uses)[fixed[i]->value] = 1;
     else {
       (*other_uses)[fixed[i]->value] = 1;
-      (*beyond_union_uses)[fixed[i]->value] = 1;
+      (*unsupported_address_uses)[fixed[i]->value] |= 1;
+      const bool rematerializes_address = i == 0 &&
+        (instruction.kind == Instruction::IK_COPY ||
+         instruction.kind == Instruction::IK_STORE ||
+         instruction.kind == Instruction::IK_RETURN);
+      if(!rematerializes_address)
+        (*unsupported_address_uses)[fixed[i]->value] |= 2;
     }
   }
   for(std::size_t i = 0; i < instruction.args.size(); ++i)
     if(instruction.args[i].kind == Operand::OP_TEMP) {
       (*other_uses)[instruction.args[i].value] = 1;
-      if(instruction.kind != Instruction::IK_CALL)
-        (*beyond_union_uses)[instruction.args[i].value] = 1;
+      if(instruction.kind != Instruction::IK_CALL) {
+        (*unsupported_address_uses)[instruction.args[i].value] |= 3;
+      }
     }
+}
+
+void propagate_unsupported_copy_uses(
+    std::vector<unsigned char> * unsupported_address_uses,
+    const std::vector<std::pair<lowir_model::ValueId,
+                                lowir_model::ValueId> > & copy_edges)
+{
+  bool changed = true;
+  while(changed) {
+    changed = false;
+    for(std::size_t i = copy_edges.size(); i-- > 0;) {
+      const lowir_model::ValueId source = copy_edges[i].first;
+      const lowir_model::ValueId destination = copy_edges[i].second;
+      if(((*unsupported_address_uses)[destination] & 2) &&
+         !((*unsupported_address_uses)[source] & 2)) {
+        (*unsupported_address_uses)[source] |= 2;
+        changed = true;
+      }
+    }
+  }
 }
 
 void mark_use_class_flags(
@@ -486,7 +513,7 @@ void mark_use_class_flags(
     const std::vector<unsigned char> & other_uses,
     const std::vector<unsigned char> & storage_address_uses,
     const std::vector<unsigned char> & non_storage_address_uses,
-    const std::vector<unsigned char> & beyond_union_uses)
+    const std::vector<unsigned char> & unsupported_address_uses)
 {
   for(std::size_t value = 0; value < value_count; ++value) {
     const lowir_model::ValueId id(static_cast<std::uint32_t>(value));
@@ -494,9 +521,12 @@ void mark_use_class_flags(
       facts->mark(id, FunctionFacts::VF_ONLY_CALL_ARGUMENT);
     if(storage_address_uses[value] && !non_storage_address_uses[value])
       facts->mark(id, FunctionFacts::VF_ONLY_STORAGE_ADDRESS);
-    if(!beyond_union_uses[value] &&
+    if(!(unsupported_address_uses[value] & 1) &&
        (storage_address_uses[value] || call_arguments[value]))
       facts->mark(id, FunctionFacts::VF_ADDRESS_UNION_SAFE);
+    if(facts->has(id, FunctionFacts::VF_SLOT_ADDRESS) && facts->uses[id] &&
+       !(unsupported_address_uses[value] & 2))
+      facts->mark(id, FunctionFacts::VF_ADDRESS_REMATERIALIZE_SAFE);
   }
 }
 
@@ -541,7 +571,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
   std::vector<unsigned char> other_uses(value_count, 0);
   std::vector<unsigned char> storage_address_uses(value_count, 0);
   std::vector<unsigned char> non_storage_address_uses(value_count, 0);
-  std::vector<unsigned char> beyond_union_uses(value_count, 0);
+  std::vector<unsigned char> unsupported_address_uses(value_count, 0);
+  std::vector<std::pair<lowir_model::ValueId,
+                        lowir_model::ValueId> > rematerialize_copy_edges;
   std::vector<std::size_t> definition_blocks(
     value_count, FunctionFacts::missing_position());
   std::vector<std::pair<lowir_model::ValueId, std::size_t> > block_uses;
@@ -566,6 +598,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
       if(!instruction.dest.valid()) continue;
       facts.definition[instruction.dest] = position;
       definition_blocks[instruction.dest] = i;
+      if(instruction.kind == Instruction::IK_ADDR &&
+         instruction.first.kind == Operand::OP_SLOT)
+        facts.mark(instruction.dest, FunctionFacts::VF_SLOT_ADDRESS);
     }
     block_last_position[i] = position ? position - 1 : 0;
   }
@@ -578,7 +613,9 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         definition_blocks, &block_uses, &call_arguments, &other_uses);
       note_storage_address_uses(
         instruction, &storage_address_uses, &non_storage_address_uses,
-        &beyond_union_uses);
+        &unsupported_address_uses);
+      if(instruction.kind == Instruction::IK_COPY && instruction.dest.valid() && instruction.first.kind == Operand::OP_TEMP)
+        rematerialize_copy_edges.push_back(std::make_pair(instruction.first.value, instruction.dest));
       if(instruction.kind == Instruction::IK_INDEX &&
          instruction.first.kind == Operand::OP_TEMP &&
          facts.has(instruction.first.value, FunctionFacts::VF_PARAMETER) &&
@@ -617,9 +654,11 @@ FunctionFacts analyze_function(const lowir_model::LowirFunction & function,
         facts.has_i128_atomic = true;
     }
   }
+  propagate_unsupported_copy_uses(
+    &unsupported_address_uses, rematerialize_copy_edges);
   mark_use_class_flags(&facts, value_count, call_arguments, other_uses,
                        storage_address_uses, non_storage_address_uses,
-                       beyond_union_uses);
+                       unsupported_address_uses);
 
   position = 0;
   std::vector<std::size_t> comparisons(

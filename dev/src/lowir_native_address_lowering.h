@@ -222,6 +222,7 @@ protected:
 				derived.facts_.has(
 					instruction.dest,
 					analysis::FunctionFacts::VF_ADDRESS_UNION_SAFE) ||
+				derived.rematerialize_address(instruction.dest) ||
 				derived.address_is_next_atomic_expected(
 					block, instruction_index, instruction.dest) ||
 				derived.address_is_next_va_start(

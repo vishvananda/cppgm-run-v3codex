@@ -332,9 +332,9 @@ private:
     return true;
   }
   bool is_phi_home_register(X64Register reg) const
-  {
-    return phi_home_registers_[static_cast<unsigned>(reg)] != 0;
-  }
+  { return phi_home_registers_[static_cast<unsigned>(reg)] != 0; }
+  bool rematerialize_address(lowir_model::ValueId value) const
+  { return planned_rematerialization(value); }
   bool constrained_wide_pressure() const { return source_.params.size() > 6 && source_.slots.empty() && !facts_.calls.empty(); }
   bool crosses_register_clobber(lowir_model::ValueId value,
                                 X64Register reg) const
@@ -1103,11 +1103,14 @@ private:
       if(stats_) ++stats_->planned_edge_register_retains;
       return;
     }
+    location_planning::record_edge_staging(stats_, instruction.kind, instruction.first.kind,
+      instruction.second.kind, location.kind,
+      facts_.has_eh, facts_.has(instruction.dest, FunctionFacts::VF_LOOP_INVARIANT),
+      crosses, narrow_register_alias, fixed_register_clobber, facts_.uses[instruction.dest]);
     const MirOperand home =
       allocate_temp_frame_binding(instruction.dest, value.type, THR_EDGE_LIVE);
     if(location.kind == MirOperand::OP_XMM) {
-      append_float_move(out, home, location,
-                        value.type);
+      append_float_move(out, home, location, value.type);
       if(!has_live_location_alias(instruction.dest, location))
         xmms_.release(location.xmm);
     } else {

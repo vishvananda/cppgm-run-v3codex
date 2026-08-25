@@ -73,6 +73,38 @@ void report_code_shape_stats(std::ostream & output, const Stats & stats)
   }
 }
 
+void report_edge_staging_stats(std::ostream & output, const Stats & stats)
+{
+  output << " edge_staging_total=" << stats.edge_staging_total
+         << " planned_rematerialized_addresses="
+         << stats.planned_rematerialized_addresses
+         << " edge_staging_gpr=" << stats.edge_staging_gpr
+         << " edge_staging_xmm=" << stats.edge_staging_xmm
+         << " edge_staging_eh=" << stats.edge_staging_eh
+         << " edge_staging_loop_invariant="
+         << stats.edge_staging_loop_invariant
+         << " edge_staging_crosses_call="
+         << stats.edge_staging_crosses_call
+         << " edge_staging_narrow_alias="
+         << stats.edge_staging_narrow_alias
+         << " edge_staging_fixed_clobber="
+         << stats.edge_staging_fixed_clobber
+         << " edge_staging_single_use=" << stats.edge_staging_single_use
+         << " edge_staging_multi_use=" << stats.edge_staging_multi_use
+         << " edge_staging_addr_slot=" << stats.edge_staging_addr_slot
+         << " edge_staging_addr_global=" << stats.edge_staging_addr_global
+         << " edge_staging_addr_other=" << stats.edge_staging_addr_other
+         << " edge_staging_index_constant="
+         << stats.edge_staging_index_constant
+         << " edge_staging_index_variable="
+         << stats.edge_staging_index_variable
+         << " edge_staging_by_kind=";
+  for(std::size_t i = 0; i < stats.edge_staging_by_kind.size(); ++i) {
+    if(i) output << ',';
+    output << stats.edge_staging_by_kind[i];
+  }
+}
+
 
 void report_function_census(std::ostream & output, const Stats & stats)
 {

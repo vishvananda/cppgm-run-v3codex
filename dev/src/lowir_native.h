@@ -109,6 +109,24 @@ struct Stats
   std::size_t planned_phi_registers = 0;
   std::size_t phi_register_homes = 0;
   std::size_t planned_invariant_registers = 0;
+  std::size_t planned_rematerialized_addresses = 0;
+  std::size_t edge_staging_total = 0;
+  std::array<std::size_t, lowir_model::Instruction::IK_SELECT + 1>
+    edge_staging_by_kind = {{0}};
+  std::size_t edge_staging_gpr = 0;
+  std::size_t edge_staging_xmm = 0;
+  std::size_t edge_staging_eh = 0;
+  std::size_t edge_staging_loop_invariant = 0;
+  std::size_t edge_staging_crosses_call = 0;
+  std::size_t edge_staging_narrow_alias = 0;
+  std::size_t edge_staging_fixed_clobber = 0;
+  std::size_t edge_staging_single_use = 0;
+  std::size_t edge_staging_multi_use = 0;
+  std::size_t edge_staging_addr_slot = 0;
+  std::size_t edge_staging_addr_global = 0;
+  std::size_t edge_staging_addr_other = 0;
+  std::size_t edge_staging_index_constant = 0;
+  std::size_t edge_staging_index_variable = 0;
   std::size_t planned_grant_clobber_fails = 0;
   std::size_t planned_grant_busy_fails = 0;
   std::size_t planned_grant_busy_fails_callee = 0;

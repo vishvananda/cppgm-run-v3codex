@@ -1372,3 +1372,28 @@ source reshaping remains out of scope per the standing directive).
   fatal findings (36 warnings), and isolated O3/O0 inception lanes both
   MATCH.  The open timeline work is now cheaper-spill placement and
   rematerialized gaps, not additional residency.
+- L47 (P30 SAFE FRAME-ADDRESS REMATERIALIZATION LANDED; FIRST
+  TIMELINE-DRIVEN PLACEMENT WIN).  Fixed stack-slot addresses whose
+  transitive copy consumers remain address-safe now receive a
+  `rematerialized` timeline segment instead of a GPR lifetime and fallback
+  home.  The analysis rejects integer/arithmetic escape through an explicit
+  backward copy-use closure; address lowering, call/storage staging, copies,
+  and returns consume the frame-relative fact directly.  A PA38 behavior
+  reducer covers safe copied call/store/return uses plus an unsafe
+  pointer-to-integer arithmetic round trip.  On the frozen TU, against a
+  fair L46/current-P30 control (including the record/replay first walk), this
+  admits 7,035 addresses, removes all 120 slot-address edge-staging events,
+  lowers total edge staging 472 -> 354 (-25.0%), temporary homes 1,225 ->
+  863 (-29.6%), scalar temporary movement 48,245 -> 44,813 (-7.1%), MIR
+  instructions 137,974 -> 129,570 (-6.1%), and object size 1,461,616 ->
+  1,429,720 bytes (-31,896).  Exact Ir-only Cachegrind improves
+  44,618,163,231 -> 44,051,899,088 (-1.269%); comparing to L44's 42.246B
+  would be invalid because L45's transitional record walk lies between the
+  two.  The final object/self-host hash is
+  `472b716ccb90649d780c77ae396aa9f58b462450cc1c2fe81f6df66b5b627871`.
+  PA38 is 41/41, the through-PA38 report is 5,431/5,431, the audit has zero
+  fatal findings (36 warnings), and isolated O1/O3/O0 inception lanes all
+  MATCH byte-for-byte.  There is no stale profiler process.  Native hardware
+  counters are unavailable here; software QEMU instruction callbacks could
+  be an earlier directional gate but are not a Cachegrind Dref substitute.
+  Future inception lanes use `INCEPTION_BUILD_JOBS=32`.

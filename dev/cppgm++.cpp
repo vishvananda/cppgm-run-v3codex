@@ -1733,6 +1733,7 @@ int run_compile_driver(const DriverInvocation & invocation,
          << " scratch_carried_reloads="
          << native_stats.scratch_carried_reloads;
     lowir_native::report_code_shape_stats(cerr, native_stats);
+    lowir_native::report_edge_staging_stats(cerr, native_stats);
     cerr
          << " shared_storage_lifetime_extensions="
          << native_stats.shared_storage_lifetime_extensions
@@ -1909,6 +1910,7 @@ int run_link_driver(const DriverInvocation & invocation,
 			 << " scratch_carried_reloads="
 			 << native_stats.scratch_carried_reloads;
 		lowir_native::report_code_shape_stats(cerr, native_stats);
+		lowir_native::report_edge_staging_stats(cerr, native_stats);
 		cerr
 			 << " shared_storage_lifetime_extensions="
 			 << native_stats.shared_storage_lifetime_extensions

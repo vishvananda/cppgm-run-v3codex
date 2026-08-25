@@ -166,6 +166,16 @@ protected:
       if(timeline[i].kind == PLK_GPR) return &timeline[i];
     return 0;
   }
+  bool planned_rematerialization(lowir_model::ValueId value) const
+  {
+    if(!value.valid() ||
+       static_cast<std::size_t>(value) >= location_timeline_.size())
+      return false;
+    const ValueLocationTimeline & timeline = location_timeline_[value];
+    for(std::size_t i = 0; i < timeline.size(); ++i)
+      if(timeline[i].kind == PLK_REMATERIALIZE) return true;
+    return false;
+  }
   bool value_holds_planned_register(lowir_model::ValueId value) const
   {
     const Derived & lowerer = static_cast<const Derived &>(*this);
@@ -497,6 +507,14 @@ bool should_retain_edge_register(
     bool crosses_fixed_register_clobber,
     const allocation::RegisterPool & registers,
     const allocation::XmmPool & xmms);
+
+void record_edge_staging(Stats * stats,
+    lowir_model::Instruction::Kind instruction_kind,
+    lowir_model::Operand::Kind first_kind,
+    lowir_model::Operand::Kind second_kind,
+    mir_model::MirOperand::Kind location_kind, bool function_has_eh,
+    bool loop_invariant, bool crosses_call, bool narrow_alias,
+    bool fixed_clobber, std::size_t remaining_uses);
 
 std::string diagnostic_value_name(
     const lowir_model::LowirProgram & program,
