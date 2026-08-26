@@ -1704,8 +1704,42 @@ inception lane while another build or profiler is active.
   absence of string setup.  It names no physical register and compares no
   complete MIR, program, object, or hash.  Disabling the new class makes the
   control fail specifically on retained REP setup; restoring it passes.
-  PA29 passes 291/291.  Full aggregate gates are amortized with the next push
-  checkpoint, and no profiler or build process remains.
+  PA29 passes 291/291.  The combined push checkpoint below records the full
+  aggregate gates, and no profiler or build process remains.
+- **P32-L51 (FORWARDED-ADDRESS COMPOSITION REJECTED).** The refreshed native
+  profile still ranks `Lexer::Run`, `Lexer::Peek`, and the cursor chain first
+  at 5.21%, 4.94%, and about 2.50% combined.  Inspection corrected an apparent
+  `Peek` frame miss: the existing bounded PA29 forwarding oracle already
+  replaces the private home with a proved `r10`/`r11` carry at encoding time,
+  but each logical reload still becomes a move from that carry before an
+  immediate memory consumer.  A source-independent probe substituted the
+  carry directly into an adjacent load/store address when the consumer had no
+  other dependency on the logical reload register.
+
+  The broad point removes 16,744 compiler text bytes; tokenizer text falls 51
+  bytes, `Peek` falls 9 bytes by removing its three repeated moves, and `Run`
+  falls 33 bytes.  Nevertheless, four balanced pairs regress from
+  9.240/8.745 to 9.270/8.785 s wall/user medians.  Restricting the same proof
+  to homes with at least two forwarded reloads tests whether broad one-off
+  layout displacement caused the result.  It still removes 10,608 compiler
+  text bytes and all three `Peek` moves, but regresses 9.265/8.800 ->
+  9.300/8.815 s across another four balanced pairs.  Both candidate outputs
+  are deterministic but intentionally differ from the retained output.  This
+  is another measured instance of smaller generated layout destructively
+  interfering with the current native compiler; the repeated-use restriction
+  rules out single-use volume as the sole cause.  Both probes are removed,
+  no new contract/test is warranted, and the worktree is restored to L50.
+  No profiler or build process remains.
+- **P32-L52 (VECTOR-ZERO CHECKPOINT PUSH).** Atomic implementation, PA29
+  README/property extension, and ledger commit `bab3b164` passed root
+  `make test-report-through-pa38` at 5,453/5,453 and the PA38 file audit with
+  zero fatal findings and the same 36 advisory warnings.  Fresh O1 inception
+  matched every object and the final compiler using outer `-j32` and inner
+  `INCEPTION_BUILD_JOBS=32` in 52.05 s wall (1,361.15 s aggregate user,
+  230,088 KiB maximum RSS).  Push `f17e8c2f..bab3b164` advanced
+  `origin/v3opt` successfully.  This ledger-only follow-up also records L51's
+  rejected probes and does not require another compiler gate.  No profiler,
+  build, or timing process remains.
 
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
