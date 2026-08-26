@@ -2195,6 +2195,43 @@ inception lane while another build or profiler is active.
   Restored PA29 passes 291/291 and PA38 passes 46/46.  No full inception
   comparison ran for a rejected candidate, and no profiler process remains.
 
+- **P32-L73 (LOWIR DEFINITION-POINTER REPRESENTATION REJECTED).** The fresh
+  source-matched profiles attributed `simplify_values_with_analysis` about
+  0.96% of self task-clock versus 0.69% GCC and 0.90% Clang.  Inspection of
+  the self-hosted body found its hottest sampled offset immediately after a
+  128-byte `rep movsb`: every retained instruction copied a `DefinitionFact`
+  snapshot into the per-value table.  A semantics-neutral PA37 probe replaced
+  those snapshots with pointers to already-compacted instructions.  The
+  pointer lifetime was bounded to this pass; the block vector cannot
+  reallocate during compaction, earlier retained elements are not overwritten,
+  and no later mutating pass can observe the scratch table.
+
+  The probe was based on source tree `6d9d8145`, used landing self
+  `/dev/shm/v3codex-p32-switchimm-final.1jeCam/bin/selfhost/cppgm++-self`, host
+  GCC `/dev/shm/v3codex-p32-switchimm-host-gcc.9RmyQV/bin/host/cppgm++-self`,
+  and host Clang
+  `/dev/shm/v3codex-p32-switchimm-host-clang.fp5U44/bin/host/cppgm++-self`.
+  Candidate preparation used explicit self-host O1 and outer, inner, and
+  object build parallelism of 32, completed in 18.06 s, and produced
+  `/dev/shm/v3codex-p34-definition-pointer-o1/bin/selfhost/cppgm++-self`.
+  The frozen output remained byte-identical at `21883ca7...e639`; PA37 passed
+  all 187 LowIR cases (19/19 harness groups).  Candidate `lowir_opt.o` text
+  fell 219,575 -> 218,061 bytes and complete compiler text fell 8,589,538 ->
+  8,587,494 bytes, although the simplifier body itself grew 404 bytes from
+  pointer validity branches and indirection.
+
+  The first balanced three-position task-clock set measured baseline
+  9,206.49/9,188.01/9,174.79 ms (median 9,188.01) and candidate
+  9,139.44/9,059.42/9,241.37 ms (median 9,139.44), an apparent -0.53%.
+  The reversed repeat measured baseline 9,235.38/9,122.51/9,188.14 ms
+  (median 9,188.14) and candidate 9,190.27/9,198.81/9,209.72 ms (median
+  9,198.81), +0.12%.  Across all six positions the medians are
+  9,188.075/9,194.540 ms, a candidate regression of 6.465 ms or 0.07%.
+  The implementation is removed at the fast native gate; restored PA37
+  remains clean.  Because this was a rejected representation-only probe, no
+  student contract or property is retained, no Cachegrind or full inception
+  comparison ran, and no profiler process remains.
+
 Append one entry for every census, probe, landing, rejection, and re-baseline.
 Each entry records the source tree, self and host binaries, output hash,
 correctness matrix, native protocol, exact Ir when run, affected movement/text,
